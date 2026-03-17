@@ -94,6 +94,9 @@ export async function validateDocumoWebhook(
     ['verify']
   )
 
-  const signatureBytes = Buffer.from(signature, 'hex')
+  // Decode hex signature using pure Web API (no Node.js Buffer — Edge-compatible)
+  const signatureBytes = new Uint8Array(
+    signature.match(/.{2}/g)!.map(byte => parseInt(byte, 16))
+  )
   return crypto.subtle.verify('HMAC', key, signatureBytes, encoder.encode(rawBody))
 }

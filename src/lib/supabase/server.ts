@@ -1,5 +1,7 @@
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import {
+  createServerComponentClient,
+  createRouteHandlerClient as _createRouteHandlerClient,
+} from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import type { Database } from '@/types/database.types'
 
@@ -13,5 +15,5 @@ export function createServerClient() {
 // Route Handler client — uses RLS based on the user's JWT session.
 // Use in API route handlers that act on behalf of the authenticated user.
 export function createRouteHandlerClient() {
-  return createRouteHandlerClient<Database>({ cookies })
+  return _createRouteHandlerClient<Database>({ cookies })
 }
