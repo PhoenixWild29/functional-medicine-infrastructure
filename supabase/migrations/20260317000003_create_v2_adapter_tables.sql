@@ -11,8 +11,8 @@ CREATE TABLE pharmacy_api_configs (
   endpoints                JSONB         NOT NULL,  -- { submitOrder, getStatus, cancelOrder, getCatalog }
   api_version              TEXT,
   timeout_ms               INTEGER       NOT NULL DEFAULT 30000,
-  retry_config             JSONB,
-  rate_limit               JSONB,
+  retry_config             JSONB,        -- { maxAttempts, backoffMs, retryOn: [status_codes] }
+  rate_limit               JSONB,        -- { requestsPerMinute, burstLimit }
   is_active                BOOLEAN       NOT NULL DEFAULT true,
   created_at               TIMESTAMPTZ   NOT NULL DEFAULT now(),
   updated_at               TIMESTAMPTZ   NOT NULL DEFAULT now()
@@ -51,8 +51,8 @@ CREATE TABLE adapter_submissions (
   pharmacy_id           UUID                          NOT NULL REFERENCES pharmacies(pharmacy_id),
   tier                  integration_tier_enum         NOT NULL,
   status                adapter_submission_status_enum NOT NULL DEFAULT 'PENDING',
-  request_payload       JSONB,
-  response_payload      JSONB,
+  request_payload       JSONB,        -- normalized order payload sent to pharmacy
+  response_payload      JSONB,        -- raw response received from pharmacy
   external_reference_id TEXT,
   ai_confidence_score   NUMERIC(3,2) CHECK (ai_confidence_score BETWEEN 0.00 AND 1.00),
   screenshot_url        TEXT,
@@ -80,7 +80,7 @@ CREATE TABLE normalized_catalog (
   source             catalog_source_enum     NOT NULL,
   wholesale_price    NUMERIC(10,2),
   regulatory_status  regulatory_status_enum  NOT NULL DEFAULT 'ACTIVE',
-  state_availability JSONB,
+  state_availability JSONB,            -- { [state_code]: boolean } availability by US state
   confidence_score   NUMERIC(3,2) CHECK (confidence_score BETWEEN 0.00 AND 1.00),
   is_active          BOOLEAN                 NOT NULL DEFAULT true,
   created_at         TIMESTAMPTZ             NOT NULL DEFAULT now(),
@@ -99,7 +99,7 @@ CREATE TABLE pharmacy_webhook_events (
   pharmacy_id         UUID        NOT NULL REFERENCES pharmacies(pharmacy_id),
   event_id            TEXT        NOT NULL,  -- pharmacy-assigned event ID
   event_type          TEXT        NOT NULL,
-  payload             JSONB       NOT NULL,
+  payload             JSONB       NOT NULL,  -- raw webhook payload from pharmacy
   order_id            UUID        REFERENCES orders(order_id),
   submission_id       UUID        REFERENCES adapter_submissions(submission_id),
   external_order_id   TEXT,
@@ -165,9 +165,9 @@ ALTER TABLE transfer_failures ENABLE ROW LEVEL SECURITY;
 
 -- 9. DISPUTES (Stripe dispute evidence tracking)
 CREATE TABLE disputes (
-  dispute_id            TEXT        NOT NULL PRIMARY KEY,  -- Stripe dp_xxx format
+  dispute_id            TEXT        NOT NULL PRIMARY KEY CHECK (dispute_id LIKE 'dp_%'),  -- Stripe dp_xxx format
   order_id              UUID        NOT NULL REFERENCES orders(order_id),
-  payment_intent_id     TEXT        NOT NULL,
+  payment_intent_id     TEXT        NOT NULL,  -- Stripe pi_xxx reference
   reason                TEXT,
   amount                INTEGER     NOT NULL,  -- in cents
   currency              TEXT        NOT NULL DEFAULT 'usd',
