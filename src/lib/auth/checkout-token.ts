@@ -1,5 +1,13 @@
 import { serverEnv } from '@/lib/env'
 
+// Decode a base64url string to a Uint8Array using pure Web APIs (no Node.js Buffer).
+function base64urlToBytes(b64url: string): Uint8Array {
+  const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4)
+  const binary = atob(padded)
+  return Uint8Array.from(binary, c => c.charCodeAt(0))
+}
+
 export interface CheckoutTokenPayload {
   orderId: string
   patientId: string
@@ -19,7 +27,7 @@ export async function verifyCheckoutToken(
     if (!headerB64 || !payloadB64 || !signatureB64) return null
 
     const payload = JSON.parse(
-      Buffer.from(payloadB64, 'base64url').toString('utf-8')
+      new TextDecoder().decode(base64urlToBytes(payloadB64))
     ) as CheckoutTokenPayload
 
     // Check expiry
@@ -41,7 +49,7 @@ export async function verifyCheckoutToken(
     )
 
     const data = encoder.encode(`${headerB64}.${payloadB64}`)
-    const signature = Buffer.from(signatureB64, 'base64url')
+    const signature = base64urlToBytes(signatureB64)
 
     const valid = await crypto.subtle.verify('HMAC', cryptoKey, signature, data)
 

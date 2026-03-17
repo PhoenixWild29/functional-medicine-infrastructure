@@ -12,50 +12,50 @@
     },
     {
       "path": "/api/cron/payment-expiry",
-      "schedule": "*/5 * * * *"
+      "schedule": "*/15 * * * *"
     },
     {
       "path": "/api/cron/adapter-health-check",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/10 * * * *"
     }
   ],
 
   "functions": {
     "src/app/api/webhooks/stripe/route.ts": {
-      "maxDuration": 30,
+      "maxDuration": 60,
       "memory": 1024
     },
     "src/app/api/webhooks/documo/route.ts": {
-      "maxDuration": 30,
+      "maxDuration": 60,
       "memory": 1024
     },
     "src/app/api/webhooks/twilio/route.ts": {
-      "maxDuration": 10,
-      "memory": 512
+      "maxDuration": 60,
+      "memory": 1024
     },
     "src/app/api/webhooks/pharmacy/route.ts": {
-      "maxDuration": 30,
+      "maxDuration": 60,
       "memory": 1024
     },
     "src/app/api/cron/sla-check/route.ts": {
-      "maxDuration": 60,
-      "memory": 1024
+      "maxDuration": 300,
+      "memory": 512
     },
     "src/app/api/cron/payment-expiry/route.ts": {
-      "maxDuration": 60,
-      "memory": 1024
+      "maxDuration": 300,
+      "memory": 512
     },
     "src/app/api/cron/adapter-health-check/route.ts": {
-      "maxDuration": 60,
-      "memory": 1024
+      "maxDuration": 300,
+      "memory": 512
     },
     "src/app/(checkout)/checkout/route.ts": {
       "maxDuration": 10,
-      "memory": 512
+      "memory": 256
     },
     "src/app/api/sms/callback/route.ts": {
-      "maxDuration": 10,
-      "memory": 512
+      "maxDuration": 60,
+      "memory": 1024
     }
   },
 
@@ -65,7 +65,8 @@
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
       ]
     }
   ],

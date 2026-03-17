@@ -135,7 +135,7 @@ npm run dev
 - [ ] `NEXT_TELEMETRY_DISABLED`
 - [ ] `NODE_ENV`
 
-**Total: 30 variables**
+**Total: 34 variables**
 
 > **Note on Sentry dual-config:** Both `SENTRY_DSN` (server-side) and `NEXT_PUBLIC_SENTRY_DSN` (client-side browser) are intentional — Sentry initializes separately in server components and client components in Next.js 14.
 >

@@ -14,7 +14,8 @@ export async function middleware(request: NextRequest) {
   }
 
   // Public routes — no auth required
-  const publicRoutes = ['/login', '/unauthorized', '/checkout']
+  // /api/webhooks must be public — Stripe/Documo/Twilio arrive without a session
+  const publicRoutes = ['/login', '/unauthorized', '/checkout', '/api/webhooks']
   if (publicRoutes.some(route => pathname.startsWith(route))) {
     return response
   }
