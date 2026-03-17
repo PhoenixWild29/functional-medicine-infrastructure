@@ -37,6 +37,9 @@ Thumbs.db
 .vscode/settings.json
 .idea/
 
+# MCP config — contains API keys, never commit
+.mcp.json
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
