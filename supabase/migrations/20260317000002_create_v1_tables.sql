@@ -111,9 +111,10 @@ CREATE TABLE pharmacy_state_licenses (
     'SD','TN','TX','UT','VT','VA','WA','WV','WI','WY',
     'DC','AS','GU','MP','PR','VI'
   )),
-  license_number  TEXT    NOT NULL,
-  expiration_date DATE    NOT NULL,
-  is_active       BOOLEAN NOT NULL DEFAULT true,
+  license_number  TEXT        NOT NULL,
+  expiration_date DATE        NOT NULL,
+  is_active       BOOLEAN     NOT NULL DEFAULT true,
+  deleted_at      TIMESTAMPTZ,
   PRIMARY KEY (pharmacy_id, state_code)
 );
 
@@ -230,6 +231,8 @@ CREATE TABLE order_sla_deadlines (
   acknowledged_at   TIMESTAMPTZ,
   resolution_notes  TEXT,
   created_at        TIMESTAMPTZ   NOT NULL DEFAULT now(),
+  deleted_at        TIMESTAMPTZ,
+  is_active         BOOLEAN       NOT NULL DEFAULT true,
   PRIMARY KEY (order_id, sla_type)
 );
 
@@ -249,7 +252,8 @@ CREATE TABLE inbound_fax_queue (
   notes               TEXT,
   created_at          TIMESTAMPTZ           NOT NULL DEFAULT now(),
   updated_at          TIMESTAMPTZ           NOT NULL DEFAULT now(),
-  deleted_at          TIMESTAMPTZ
+  deleted_at          TIMESTAMPTZ,
+  is_active           BOOLEAN               NOT NULL DEFAULT true
 );
 
 ALTER TABLE inbound_fax_queue ENABLE ROW LEVEL SECURITY;
