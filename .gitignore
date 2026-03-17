@@ -21,6 +21,9 @@ supabase/.branches
 supabase/.temp
 supabase/functions/.cache
 
+# Seed file contains test credentials — local dev only
+supabase/seed.sql
+
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
