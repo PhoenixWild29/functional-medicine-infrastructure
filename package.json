@@ -18,6 +18,7 @@
     "@supabase/supabase-js": "^2.43.0",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
 
+    "stripe": "^14.0.0",
     "@stripe/stripe-js": "^4.0.0",
     "@stripe/react-stripe-js": "^2.7.0",
 
@@ -39,6 +40,10 @@
     "react-pdf": "^7.7.0",
 
     "react-signature-canvas": "^1.0.6",
+
+    "twilio": "^5.0.0",
+    "playwright": "^1.45.0",
+    "@sentry/nextjs": "^8.0.0",
 
     "papaparse": "^5.4.0",
     "react-dropzone": "^14.2.0",

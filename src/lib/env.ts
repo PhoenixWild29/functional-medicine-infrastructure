@@ -27,6 +27,7 @@ export const serverEnv = {
   twilioAccountSid: () => requireEnv('TWILIO_ACCOUNT_SID'),
   twilioAuthToken: () => requireEnv('TWILIO_AUTH_TOKEN'),
   twilioPhoneNumber: () => requireEnv('TWILIO_PHONE_NUMBER'),
+  twilioWebhookSecret: () => requireEnv('TWILIO_WEBHOOK_SECRET'),
 
   // Documo
   documoApiKey: () => requireEnv('DOCUMO_API_KEY'),
