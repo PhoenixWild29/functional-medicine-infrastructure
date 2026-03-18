@@ -256,8 +256,9 @@ async function initiateStripeTransfer(
     await sendSlackAlert(
       buildAdapterFailureAlert({
         orderId,
-        tier: 'stripe_transfer',
-        error: err instanceof Error ? err.message : 'Stripe Connect transfer failed',
+        pharmacySlug: 'stripe',
+        integrationTier: 'STRIPE_CONNECT',
+        errorCode: err instanceof Error ? err.message : 'transfer_error',
       })
     ).catch(alertErr =>
       console.error('[stripe-webhook] failed to send transfer failure alert:', alertErr)
@@ -358,8 +359,9 @@ async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
   await sendSlackAlert(
     buildAdapterFailureAlert({
       orderId: order.order_id,
-      tier: 'dispute',
-      error: `Stripe dispute ${dispute.id} opened | reason=${dispute.reason} | amount=${dispute.amount}${dispute.currency}`,
+      pharmacySlug: 'stripe',
+      integrationTier: 'STRIPE_DISPUTE',
+      errorCode: `${dispute.id}|reason=${dispute.reason ?? 'unknown'}|${dispute.amount}${dispute.currency}`,
     })
   ).catch(err =>
     console.error('[stripe-webhook] failed to send dispute alert:', err)
@@ -410,8 +412,9 @@ async function handleTransferFailed(transfer: Stripe.Transfer): Promise<void> {
   await sendSlackAlert(
     buildAdapterFailureAlert({
       orderId: order.order_id,
-      tier: 'transfer_failed',
-      error: `Stripe transfer ${transfer.id} failed | amount=${transfer.amount}${transfer.currency}`,
+      pharmacySlug: 'stripe',
+      integrationTier: 'STRIPE_TRANSFER_FAILED',
+      errorCode: `${transfer.id}|${transfer.amount}${transfer.currency}`,
     })
   ).catch(err =>
     console.error('[stripe-webhook] failed to send transfer.failed alert:', err)
