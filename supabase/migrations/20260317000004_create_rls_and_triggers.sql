@@ -43,56 +43,72 @@ $$ LANGUAGE plpgsql;
 -- (excludes append-only tables: catalog_history, order_status_history,
 --  webhook_events, adapter_submissions, pharmacy_webhook_events,
 --  sms_log, transfer_failures)
+--
+-- DROP TRIGGER IF EXISTS before each CREATE TRIGGER makes this migration
+-- idempotent on PG15/16 (CREATE TRIGGER IF NOT EXISTS requires PG17+).
 
+DROP TRIGGER IF EXISTS set_updated_at_clinics ON clinics;
 CREATE TRIGGER set_updated_at_clinics
   BEFORE UPDATE ON clinics
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS set_updated_at_providers ON providers;
 CREATE TRIGGER set_updated_at_providers
   BEFORE UPDATE ON providers
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS set_updated_at_patients ON patients;
 CREATE TRIGGER set_updated_at_patients
   BEFORE UPDATE ON patients
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS set_updated_at_pharmacies ON pharmacies;
 CREATE TRIGGER set_updated_at_pharmacies
   BEFORE UPDATE ON pharmacies
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS set_updated_at_catalog ON catalog;
 CREATE TRIGGER set_updated_at_catalog
   BEFORE UPDATE ON catalog
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS set_updated_at_orders ON orders;
 CREATE TRIGGER set_updated_at_orders
   BEFORE UPDATE ON orders
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS set_updated_at_inbound_fax_queue ON inbound_fax_queue;
 CREATE TRIGGER set_updated_at_inbound_fax_queue
   BEFORE UPDATE ON inbound_fax_queue
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS set_updated_at_pharmacy_api_configs ON pharmacy_api_configs;
 CREATE TRIGGER set_updated_at_pharmacy_api_configs
   BEFORE UPDATE ON pharmacy_api_configs
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS set_updated_at_pharmacy_portal_configs ON pharmacy_portal_configs;
 CREATE TRIGGER set_updated_at_pharmacy_portal_configs
   BEFORE UPDATE ON pharmacy_portal_configs
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS set_updated_at_normalized_catalog ON normalized_catalog;
 CREATE TRIGGER set_updated_at_normalized_catalog
   BEFORE UPDATE ON normalized_catalog
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS set_updated_at_sms_templates ON sms_templates;
 CREATE TRIGGER set_updated_at_sms_templates
   BEFORE UPDATE ON sms_templates
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS set_updated_at_disputes ON disputes;
 CREATE TRIGGER set_updated_at_disputes
   BEFORE UPDATE ON disputes
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- Attach snapshot immutability trigger to orders
+DROP TRIGGER IF EXISTS prevent_snapshot_mutation ON orders;
 CREATE TRIGGER prevent_snapshot_mutation
   BEFORE UPDATE ON orders
   FOR EACH ROW EXECUTE FUNCTION prevent_snapshot_mutation();
