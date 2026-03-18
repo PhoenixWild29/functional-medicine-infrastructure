@@ -32,6 +32,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { submitTier1Api } from '@/lib/adapters/tier1-api'
+import { submitTier2Portal } from '@/lib/adapters/tier2-portal'
 import { submitTier4Fax } from '@/lib/adapters/tier4-fax'
 import type { IntegrationTier } from '@/lib/adapters/audit-trail'
 
@@ -107,10 +108,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         return NextResponse.json({ status: 'ok', ...result }, { status: 200 })
       }
 
-      case 'TIER_2_PORTAL':
+      case 'TIER_2_PORTAL': {
+        const result = await submitTier2Portal(orderId, pharmacyId)
+        console.info(
+          `[adapter-submit] TIER_2_PORTAL | order=${orderId} | outcome=${result.outcome} | confidence=${result.aiConfidenceScore?.toFixed(2) ?? 'n/a'}`
+        )
+        return NextResponse.json({ status: 'ok', ...result }, { status: 200 })
+      }
+
       case 'TIER_3_HYBRID':
-        // Tier 2 portal adapter is implemented in WO-20.
-        // Return 501 until that work order is complete.
         return NextResponse.json(
           { error: `${tier} adapter not yet implemented` },
           { status: 501 }

@@ -29,6 +29,14 @@
     {
       "path": "/api/cron/fax-retry",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/portal-status-poll",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/screenshot-cleanup",
+      "schedule": "0 * * * *"
     }
   ],
 
@@ -63,6 +71,14 @@
     },
     "src/app/api/adapters/submit/route.ts": {
       "maxDuration": 120,
+      "memory": 512
+    },
+    "src/app/api/cron/portal-status-poll/route.ts": {
+      "maxDuration": 300,
+      "memory": 1024
+    },
+    "src/app/api/cron/screenshot-cleanup/route.ts": {
+      "maxDuration": 60,
       "memory": 512
     }
   },
