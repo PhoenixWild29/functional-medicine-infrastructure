@@ -215,7 +215,8 @@ export async function submitTier1Api(
     orderNumber:        order.order_number ?? null,
     providerFirstName:  provider.first_name,
     providerLastName:   provider.last_name,
-    providerNpi:        order.provider_npi_snapshot ?? provider.npi_number,
+    // REQ-AAT-005 / snapshot immutability: always use frozen snapshot, never live data
+    providerNpi:        order.provider_npi_snapshot ?? '',
     providerDea:        provider.dea_number ?? null,
     providerLicenseState: provider.license_state,
     patientFirstName:   patient.first_name,
@@ -293,7 +294,7 @@ export async function submitTier1Api(
       try {
         responseBody = (await response.json()) as Record<string, unknown>
       } catch {
-        responseBody = { raw: await response.text().catch(() => '') }
+        responseBody = {}
       }
 
     } catch (fetchErr) {
@@ -308,7 +309,7 @@ export async function submitTier1Api(
         console.warn(
           `[tier1-api] attempt ${attempt}/${MAX_ATTEMPTS} network error | order=${orderId} | ${msg}`
         )
-        await sleep(RETRY_DELAYS_MS[attempt - 1])
+        await sleep(RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)])
         continue
       }
 
@@ -382,10 +383,11 @@ export async function submitTier1Api(
     )
 
     if (attempt < MAX_ATTEMPTS) {
+      const delayMs = RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)]
       console.warn(
-        `[tier1-api] attempt ${attempt}/${MAX_ATTEMPTS} transient failure | order=${orderId} | HTTP ${statusCode} — retrying in ${RETRY_DELAYS_MS[attempt - 1]}ms`
+        `[tier1-api] attempt ${attempt}/${MAX_ATTEMPTS} transient failure | order=${orderId} | HTTP ${statusCode} — retrying in ${delayMs}ms`
       )
-      await sleep(RETRY_DELAYS_MS[attempt - 1])
+      await sleep(delayMs)
     }
   }
 

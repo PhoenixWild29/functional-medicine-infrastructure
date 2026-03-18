@@ -119,8 +119,10 @@ async function fetchOAuth2Token(creds: OAuthCredential): Promise<string> {
   })
 
   if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`[vault] OAuth2 token fetch failed: ${response.status} ${text}`)
+    // HC-11: do NOT include raw response body in error — it may contain
+    // OAuth server error details that could indirectly reference credentials.
+    // Log only the HTTP status code.
+    throw new Error(`[vault] OAuth2 token fetch failed: HTTP ${response.status}`)
   }
 
   const data = (await response.json()) as { access_token?: string }
