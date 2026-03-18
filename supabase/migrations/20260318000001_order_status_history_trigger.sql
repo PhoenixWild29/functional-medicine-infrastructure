@@ -66,6 +66,10 @@ $$ LANGUAGE plpgsql;
 -- ============================================================
 -- 4. Attach trigger to orders
 -- ============================================================
+-- DROP IF EXISTS before CREATE makes this idempotent on PG15/16
+-- (CREATE TRIGGER IF NOT EXISTS requires PG17+).
+
+DROP TRIGGER IF EXISTS log_order_status_changes ON orders;
 
 CREATE TRIGGER log_order_status_changes
   AFTER UPDATE ON orders

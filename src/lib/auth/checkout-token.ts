@@ -99,7 +99,7 @@ export async function generateCheckoutToken(
   )
 
   const now = Math.floor(Date.now() / 1000)
-  const ttl = parseInt(process.env.CHECKOUT_TOKEN_EXPIRY ?? '259200', 10) // 72h default
+  const ttl = serverEnv.checkoutTokenExpiry()
   const payload: CheckoutTokenPayload = {
     orderId,
     patientId,
