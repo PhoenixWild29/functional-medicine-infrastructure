@@ -60,6 +60,10 @@
     "src/app/api/cron/fax-retry/route.ts": {
       "maxDuration": 300,
       "memory": 512
+    },
+    "src/app/api/adapters/submit/route.ts": {
+      "maxDuration": 120,
+      "memory": 512
     }
   },
 
