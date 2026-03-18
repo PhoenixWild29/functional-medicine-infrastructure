@@ -54,8 +54,8 @@
       "memory": 256
     },
     "src/app/api/sms/callback/route.ts": {
-      "maxDuration": 60,
-      "memory": 1024
+      "maxDuration": 10,
+      "memory": 512
     }
   },
 

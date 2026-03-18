@@ -1,26 +1,28 @@
 import { redirect } from 'next/navigation'
-import { verifyCheckoutToken } from '@/lib/auth/checkout-token'
+import { headers } from 'next/headers'
 import { Providers } from '@/components/providers'
 
 // Patient Checkout: stateless JWT token auth (no Supabase session)
 // Mobile-first: optimized for 320px-428px viewports
 // No login required — access via one-time checkout token in URL
+//
+// JWT validation is performed at the Edge Middleware layer (src/middleware.ts).
+// On success, middleware forwards x-checkout-order-id as a request header.
+// This layout reads that header as a defense-in-depth guard — if the header
+// is absent it means middleware either rejected the token (rare: middleware
+// should have already redirected) or the request bypassed middleware entirely.
+//
+// NOTE: Next.js 14 App Router layouts do NOT receive searchParams — only
+// page.tsx files do. Token validation must happen in middleware or page layer.
 export default async function PatientCheckoutLayout({
   children,
-  searchParams,
 }: {
   children: React.ReactNode
-  searchParams: { token?: string }
 }) {
-  const token = searchParams.token
+  const headersList = headers()
+  const orderId = headersList.get('x-checkout-order-id')
 
-  if (!token) {
-    redirect('/checkout/expired')
-  }
-
-  const payload = await verifyCheckoutToken(token)
-
-  if (!payload) {
+  if (!orderId) {
     redirect('/checkout/expired')
   }
 

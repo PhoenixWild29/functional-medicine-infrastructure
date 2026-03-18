@@ -70,8 +70,8 @@ Vercel Dashboard → Project → Settings → Cron Jobs
 | Cron | Schedule | Purpose |
 |------|----------|---------|
 | `/api/cron/sla-check` | Every 5 min | Check SLA deadlines and escalate |
-| `/api/cron/payment-expiry` | Every 5 min | Expire unpaid orders after timeout |
-| `/api/cron/adapter-health-check` | Every 15 min | Verify pharmacy adapter status |
+| `/api/cron/payment-expiry` | Every 15 min | Expire unpaid orders after timeout |
+| `/api/cron/adapter-health-check` | Every 10 min | Verify pharmacy adapter status |
 
 ## Step 6: Local Development Setup
 
@@ -87,9 +87,11 @@ npm run dev
 
 ## Environment Variable Checklist
 
-### Database (4 vars)
+### Database (6 vars)
 - [ ] `SUPABASE_URL`
 - [ ] `SUPABASE_ANON_KEY`
+- [ ] `NEXT_PUBLIC_SUPABASE_URL`
+- [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - [ ] `SUPABASE_SERVICE_ROLE_KEY`
 - [ ] `DATABASE_URL`
 
@@ -115,10 +117,12 @@ npm run dev
 - [ ] `JWT_SECRET`
 - [ ] `CHECKOUT_TOKEN_EXPIRY`
 
-### Monitoring (3 vars)
+### Monitoring (5 vars)
 - [ ] `SENTRY_DSN`
 - [ ] `SENTRY_AUTH_TOKEN`
 - [ ] `NEXT_PUBLIC_SENTRY_DSN`
+- [ ] `SENTRY_ORG`
+- [ ] `SENTRY_PROJECT`
 
 ### Alerting (3 vars)
 - [ ] `SLACK_WEBHOOK_URL`

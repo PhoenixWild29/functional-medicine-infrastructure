@@ -10,22 +10,32 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Patient checkout: validate JWT token before page render
-  // /checkout/[token] — token segment is the signed JWT
-  // /checkout (base) and /checkout/expired — pass through without auth
+  //
+  // Supported URL patterns:
+  //   /checkout/[token]  — token as path segment (primary pattern)
+  //   /checkout?token=x  — token as query param (legacy / layout compat)
+  //
+  // /checkout (bare, no token) and /checkout/expired pass through without auth.
+  // On success, forwards x-checkout-order-id, x-checkout-patient-id,
+  // and x-checkout-clinic-id as request headers for downstream Server Components.
   if (pathname.startsWith('/checkout')) {
     const segments = pathname.split('/').filter(Boolean)
-    const tokenSegment = segments[1] // undefined for /checkout, 'expired' for /checkout/expired
+    const pathToken = segments[1] // path-based: /checkout/[token]
+    const queryToken = request.nextUrl.searchParams.get('token') // query-based: /checkout?token=x
 
-    if (tokenSegment && tokenSegment !== 'expired') {
-      const payload = await verifyCheckoutToken(tokenSegment)
+    // Resolve token — path segment takes priority; skip reserved segments
+    const token = (pathToken && pathToken !== 'expired') ? pathToken : queryToken
+
+    if (token) {
+      const payload = await verifyCheckoutToken(token)
 
       if (!payload) {
         // Expired or invalid — redirect to the expired page
         return NextResponse.redirect(new URL('/checkout/expired', request.url))
       }
 
-      // Attach decoded claims as request headers for downstream page/API handlers
-      // NOTE: these headers are set on the request forwarded to the Next.js page, not the client response
+      // Attach decoded claims as request headers for downstream Server Components
+      // (Next.js 14 layouts/pages read these via `headers()` from 'next/headers')
       const forwarded = NextResponse.next()
       forwarded.headers.set('x-checkout-order-id', payload.orderId)
       forwarded.headers.set('x-checkout-patient-id', payload.patientId)
