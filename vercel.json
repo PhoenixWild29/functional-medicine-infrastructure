@@ -17,6 +17,14 @@
     {
       "path": "/api/cron/adapter-health-check",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/submission-reconciliation",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/daily-digest",
+      "schedule": "0 14 * * *"
     }
   ],
 
@@ -33,7 +41,7 @@
       "maxDuration": 60,
       "memory": 1024
     },
-    "src/app/api/webhooks/pharmacy/route.ts": {
+    "src/app/api/webhooks/pharmacy/[pharmacySlug]/route.ts": {
       "maxDuration": 60,
       "memory": 1024
     },
@@ -55,6 +63,14 @@
     },
     "src/app/api/sms/callback/route.ts": {
       "maxDuration": 10,
+      "memory": 512
+    },
+    "src/app/api/cron/submission-reconciliation/route.ts": {
+      "maxDuration": 300,
+      "memory": 512
+    },
+    "src/app/api/cron/daily-digest/route.ts": {
+      "maxDuration": 300,
       "memory": 512
     }
   },
