@@ -72,9 +72,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   )
 
   // ─── M-03: DLQ count by source ───────────────────────────────────────────
+  // Filtered to period window — counts events that entered the DLQ in the last 24h.
   const { data: dlqEvents } = await supabase
     .from('webhook_events')
     .select('source')
+    .gte('created_at', periodStartIso)
     .not('error', 'is', null)
     .gt('retry_count', 3)
     .is('processed_at', null)
@@ -315,6 +317,21 @@ function buildDailyDigestAlert(metrics: Record<string, unknown>): SlackAlertPayl
             (metrics.m11_top_error_codes as string[]).length > 0
               ? (metrics.m11_top_error_codes as string[]).map(e => `• ${e}`).join('\n')
               : '✅ No errors'
+          }`,
+        },
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Failures by Endpoint:*\n${
+            Object.keys(metrics.m17_failures_by_endpoint as Record<string, number>).length > 0
+              ? Object.entries(metrics.m17_failures_by_endpoint as Record<string, number>)
+                  .sort(([, a], [, b]) => b - a)
+                  .slice(0, 5)
+                  .map(([ep, n]) => `• ${ep}: ${n}`)
+                  .join('\n')
+              : '✅ No failures'
           }`,
         },
       },

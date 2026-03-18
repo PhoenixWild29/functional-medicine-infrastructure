@@ -115,13 +115,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   } else if (pendingAlerts && pendingAlerts.length > 0) {
     for (const alert of pendingAlerts) {
       try {
-        await sendSlackAlert(buildOpsAlertPayload(alert))
-
-        await supabase
+        // Optimistic claim: atomically mark sent_at only if it is still null.
+        // If a concurrent cron run already claimed this alert, the update
+        // matches 0 rows and we skip — prevents double-sending.
+        const { data: claimed } = await supabase
           .from('ops_alert_queue')
           .update({ sent_at: new Date().toISOString() })
           .eq('alert_id', alert.alert_id)
+          .is('sent_at', null)
+          .select('alert_id')
 
+        if (!claimed || claimed.length === 0) {
+          // Already claimed by a concurrent cron run — skip
+          continue
+        }
+
+        await sendSlackAlert(buildOpsAlertPayload(alert))
         alertQueueFlushed++
       } catch (err) {
         console.error(

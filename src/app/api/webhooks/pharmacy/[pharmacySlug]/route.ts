@@ -254,10 +254,17 @@ async function verifyPharmacySignature(
       ['verify']
     )
 
-    // Decode hex signature to bytes
-    const hexPairs = signature.match(/.{2}/g)
-    if (!hexPairs) return false
+    // Decode hex signature to bytes — validate format before parsing
+    // Guards: non-empty, even length, all hex chars (prevents NaN coercion)
+    if (
+      signature.length === 0 ||
+      signature.length % 2 !== 0 ||
+      !/^[0-9a-fA-F]+$/.test(signature)
+    ) {
+      return false
+    }
 
+    const hexPairs = signature.match(/.{2}/g)!
     const signatureBytes = new Uint8Array(
       hexPairs.map(byte => parseInt(byte, 16))
     )
@@ -277,7 +284,7 @@ async function verifyPharmacySignature(
 async function resolveOrderByExternalRef(
   externalOrderId: string,
   pharmacyId: string
-): Promise<{ order_id: string; status: OrderStatus; clinic_id: string; pharmacy_id: string } | null> {
+): Promise<{ order_id: string; status: OrderStatus; clinic_id: string } | null> {
   const supabase = createServiceClient()
 
   const { data: submission } = await supabase
@@ -293,11 +300,11 @@ async function resolveOrderByExternalRef(
 
   const { data: order } = await supabase
     .from('orders')
-    .select('order_id, status, clinic_id, pharmacy_id')
+    .select('order_id, status, clinic_id')
     .eq('order_id', submission.order_id)
     .single()
 
-  return order as { order_id: string; status: OrderStatus; clinic_id: string; pharmacy_id: string } | null
+  return order as { order_id: string; status: OrderStatus; clinic_id: string } | null
 }
 
 // ============================================================
@@ -338,16 +345,22 @@ async function handleOrderConfirmed(
   }
 
   // Resolve SUBMISSION SLA — pharmacy acknowledged within timeout
-  await supabase
+  const { error: slaResolveErr } = await supabase
     .from('order_sla_deadlines')
     .update({ resolved_at: new Date().toISOString() })
     .eq('order_id', order.order_id)
     .eq('sla_type', 'SUBMISSION')
     .is('resolved_at', null)
+  if (slaResolveErr) {
+    console.error(
+      `[pharmacy-webhook] order.confirmed: failed to resolve SUBMISSION SLA for order=${order.order_id}:`,
+      slaResolveErr.message
+    )
+  }
 
   // Create PHARMACY_CONFIRMATION SLA — 4 hours for pharmacy to begin compounding
   const pharmacyConfirmationDeadline = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
-  await supabase
+  const { error: slaUpsertErr } = await supabase
     .from('order_sla_deadlines')
     .upsert(
       {
@@ -359,6 +372,12 @@ async function handleOrderConfirmed(
       },
       { onConflict: 'order_id,sla_type', ignoreDuplicates: true }
     )
+  if (slaUpsertErr) {
+    console.error(
+      `[pharmacy-webhook] order.confirmed: failed to upsert PHARMACY_CONFIRMATION SLA for order=${order.order_id}:`,
+      slaUpsertErr.message
+    )
+  }
 
   console.info(
     `[pharmacy-webhook] order.confirmed | order=${order.order_id} | ext_ref=${envelope.orderId}`
@@ -400,12 +419,18 @@ async function handleOrderCompounding(
   }
 
   // Resolve PHARMACY_CONFIRMATION SLA — pharmacy confirmed compounding started
-  await supabase
+  const { error: slaCompoundErr } = await supabase
     .from('order_sla_deadlines')
     .update({ resolved_at: new Date().toISOString() })
     .eq('order_id', order.order_id)
     .eq('sla_type', 'PHARMACY_CONFIRMATION')
     .is('resolved_at', null)
+  if (slaCompoundErr) {
+    console.error(
+      `[pharmacy-webhook] order.compounding: failed to resolve PHARMACY_CONFIRMATION SLA for order=${order.order_id}:`,
+      slaCompoundErr.message
+    )
+  }
 
   console.info(
     `[pharmacy-webhook] order.compounding | order=${order.order_id}`
@@ -438,19 +463,35 @@ async function handleOrderShipped(
   const trackingNumber = envelope.data?.trackingNumber ?? null
   const carrier = envelope.data?.carrier ?? null
 
+  if (!trackingNumber) {
+    console.warn(
+      `[pharmacy-webhook] order.shipped: no tracking_number provided for order=${order.order_id} | pharmacy=${pharmacyId}`
+    )
+  }
+
   // Write tracking info before CAS (required fields for SHIPPED state)
   if (trackingNumber || carrier) {
-    await supabase
+    const { error: trackingErr } = await supabase
       .from('orders')
       .update({
         ...(trackingNumber ? { tracking_number: trackingNumber } : {}),
         ...(carrier ? { carrier } : {}),
       })
       .eq('order_id', order.order_id)
+    if (trackingErr) {
+      console.error(
+        `[pharmacy-webhook] order.shipped: failed to write tracking info for order=${order.order_id}:`,
+        trackingErr.message
+      )
+    }
   }
 
-  // Cascade through intermediate states to reach READY_TO_SHIP
-  // Pharmacy may skip sending intermediate events (not all send order.compounding)
+  // Cascade through intermediate states to reach READY_TO_SHIP.
+  // Pharmacy may skip sending intermediate events (not all send order.compounding).
+  // Each intermediate CAS is best-effort: if the state was already advanced by a
+  // concurrent webhook, wasAlreadyTransitioned=true and we continue to the next step.
+  // Errors from intermediate CAS steps are logged but do not abort — the final CAS
+  // is the authoritative transition gate.
   const currentStatus = order.status
 
   if (currentStatus === 'PHARMACY_ACKNOWLEDGED') {
@@ -461,14 +502,18 @@ async function handleOrderShipped(
       newStatus: 'PHARMACY_COMPOUNDING',
       actor: 'pharmacy_webhook',
       metadata: { external_order_id: envelope.orderId, reason: 'implicit_from_shipped' },
-    })
+    }).catch(err =>
+      console.warn(`[pharmacy-webhook] order.shipped: intermediate CAS ACKNOWLEDGED→COMPOUNDING non-fatal:`, err)
+    )
     await casTransition({
       orderId: order.order_id,
       expectedStatus: 'PHARMACY_COMPOUNDING',
       newStatus: 'READY_TO_SHIP',
       actor: 'pharmacy_webhook',
       metadata: { external_order_id: envelope.orderId, reason: 'implicit_from_shipped' },
-    })
+    }).catch(err =>
+      console.warn(`[pharmacy-webhook] order.shipped: intermediate CAS COMPOUNDING→READY_TO_SHIP non-fatal:`, err)
+    )
   } else if (currentStatus === 'PHARMACY_COMPOUNDING') {
     // Advance: COMPOUNDING → READY_TO_SHIP
     await casTransition({
@@ -477,7 +522,9 @@ async function handleOrderShipped(
       newStatus: 'READY_TO_SHIP',
       actor: 'pharmacy_webhook',
       metadata: { external_order_id: envelope.orderId, reason: 'implicit_from_shipped' },
-    })
+    }).catch(err =>
+      console.warn(`[pharmacy-webhook] order.shipped: intermediate CAS COMPOUNDING→READY_TO_SHIP non-fatal:`, err)
+    )
   } else if (currentStatus === 'PHARMACY_PROCESSING') {
     // Advance: PROCESSING → READY_TO_SHIP
     await casTransition({
@@ -486,7 +533,9 @@ async function handleOrderShipped(
       newStatus: 'READY_TO_SHIP',
       actor: 'pharmacy_webhook',
       metadata: { external_order_id: envelope.orderId, reason: 'implicit_from_shipped' },
-    })
+    }).catch(err =>
+      console.warn(`[pharmacy-webhook] order.shipped: intermediate CAS PROCESSING→READY_TO_SHIP non-fatal:`, err)
+    )
   }
   // If already READY_TO_SHIP, proceed directly to final CAS
 
@@ -508,12 +557,18 @@ async function handleOrderShipped(
   }
 
   // Resolve SHIPPING SLA
-  await supabase
+  const { error: shippingSlaErr } = await supabase
     .from('order_sla_deadlines')
     .update({ resolved_at: new Date().toISOString() })
     .eq('order_id', order.order_id)
     .eq('sla_type', 'SHIPPING')
     .is('resolved_at', null)
+  if (shippingSlaErr) {
+    console.error(
+      `[pharmacy-webhook] order.shipped: failed to resolve SHIPPING SLA for order=${order.order_id}:`,
+      shippingSlaErr.message
+    )
+  }
 
   // Log shipping SMS intent — FRD 5 SMS service will send the notification
   console.info(

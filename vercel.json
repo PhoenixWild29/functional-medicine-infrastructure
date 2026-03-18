@@ -45,26 +45,6 @@
       "maxDuration": 60,
       "memory": 1024
     },
-    "src/app/api/cron/sla-check/route.ts": {
-      "maxDuration": 300,
-      "memory": 512
-    },
-    "src/app/api/cron/payment-expiry/route.ts": {
-      "maxDuration": 300,
-      "memory": 512
-    },
-    "src/app/api/cron/adapter-health-check/route.ts": {
-      "maxDuration": 300,
-      "memory": 512
-    },
-    "src/app/(checkout)/checkout/route.ts": {
-      "maxDuration": 10,
-      "memory": 256
-    },
-    "src/app/api/sms/callback/route.ts": {
-      "maxDuration": 10,
-      "memory": 512
-    },
     "src/app/api/cron/submission-reconciliation/route.ts": {
       "maxDuration": 300,
       "memory": 512
