@@ -6,22 +6,16 @@
 //
 // REQ-PTA-006: Polls pharmacy portals for order status updates.
 //
-// For each order in a portal-active state (ACKNOWLEDGED via Tier 2,
-// pending warehouse/shipping confirmation from the pharmacy), this cron:
+// For each order in TIER_2_PORTAL ACKNOWLEDGED state, this cron:
 //   1. Loads the pharmacy_portal_configs.status_check_flow
-//   2. Launches Playwright, executes the status check flow
-//   3. Extracts status text via 'getText' steps in the flow
-//   4. Maps pharmacy status text to CompoundIQ order status
-//   5. Updates the order status via casTransition if changed
-//
-// Eligibility: adapter_submissions where
-//   tier = TIER_2_PORTAL, status = ACKNOWLEDGED,
-//   order.status IN (FAX_QUEUED, PAID_PROCESSING) — portal orders
-//   that are acknowledged but not yet delivered/cancelled.
+//   2. Throttles per-order using portal_last_polled_at + poll_interval_minutes
+//   3. Launches Playwright, executes the status check flow
+//   4. Extracts status text via 'getText' steps in the flow
+//   5. Maps pharmacy status text to CompoundIQ order status
+//   6. Updates order status via casTransition if changed (NB-06)
+//   7. Updates adapter_submissions.portal_last_polled_at (BUG-02)
 //
 // Safe to re-run: casTransition prevents double-transitions.
-// Each poll is logged; if status_check_flow is absent for a pharmacy,
-// the order is skipped (not an error).
 
 import { NextRequest, NextResponse } from 'next/server'
 import { chromium } from 'playwright'
@@ -30,10 +24,9 @@ import { getBrowserLaunchOptions, getBrowserContextOptions } from '@/lib/playwri
 import { executeFlow } from '@/lib/adapters/portal-flow-executor'
 import type { FlowStep } from '@/lib/adapters/portal-flow-executor'
 import { getVaultSecret } from '@/lib/adapters/vault'
+import { casTransition } from '@/lib/orders/cas-transition'
 
 // ── Map pharmacy portal status text → CompoundIQ order status ──
-// Pharmacy portals use varied language; this map covers common cases.
-// Keys are lowercase normalized status strings from the portal.
 const PORTAL_STATUS_MAP: Record<string, string> = {
   'order received':       'PHARMACY_PROCESSING',
   'processing':           'PHARMACY_PROCESSING',
@@ -65,14 +58,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const supabase = createServiceClient()
 
-  // ── Find TIER_2_PORTAL ACKNOWLEDGED submissions with active orders ──
+  // ── Find TIER_2_PORTAL ACKNOWLEDGED submissions ────────────
   const { data: candidates, error: fetchError } = await supabase
     .from('adapter_submissions')
-    .select('submission_id, order_id, pharmacy_id, created_at')
+    .select('submission_id, order_id, pharmacy_id, portal_last_polled_at')
     .eq('tier', 'TIER_2_PORTAL')
     .eq('status', 'ACKNOWLEDGED')
-    .order('created_at', { ascending: true })
-    .limit(20)  // batch cap per cron run
+    .order('portal_last_polled_at', { ascending: true, nullsFirst: true })
+    .limit(20)
 
   if (fetchError) {
     console.error('[portal-status-poll] failed to query candidates:', fetchError.message)
@@ -87,7 +80,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }[] = []
 
   for (const submission of candidates ?? []) {
-    const { order_id: orderId, pharmacy_id: pharmacyId } = submission
+    const { submission_id: submissionId, order_id: orderId, pharmacy_id: pharmacyId } = submission
 
     try {
       // Load portal config + status_check_flow
@@ -103,11 +96,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         continue
       }
 
-      // Throttle: only poll if poll_interval_minutes has elapsed since last check
-      const pollIntervalMs = (config.poll_interval_minutes ?? 30) * 60 * 1000
-      const lastCheckedMs  = new Date(submission.created_at).getTime()
-      if (Date.now() - lastCheckedMs < pollIntervalMs) {
-        results.push({ orderId, outcome: 'skipped', reason: 'poll_interval_not_elapsed' })
+      // BUG-02: Throttle using portal_last_polled_at (actual last poll time),
+      // not submission.created_at (which never changes and breaks throttling).
+      const pollIntervalMs   = (config.poll_interval_minutes ?? 30) * 60 * 1000
+      const lastPolledAt     = submission.portal_last_polled_at
+      const lastPolledMs     = lastPolledAt ? new Date(lastPolledAt).getTime() : 0
+      const elapsedSincePoll = Date.now() - lastPolledMs
+
+      if (elapsedSincePoll < pollIntervalMs) {
+        const remainingSec = Math.ceil((pollIntervalMs - elapsedSincePoll) / 1000)
+        results.push({ orderId, outcome: 'skipped', reason: `poll_interval_not_elapsed (${remainingSec}s remaining)` })
         continue
       }
 
@@ -124,7 +122,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         const context = await browser.newContext(getBrowserContextOptions())
         const page    = await context.newPage()
 
-        const flowSteps = config.status_check_flow as FlowStep[]
+        const flowSteps  = config.status_check_flow as FlowStep[]
         const flowResults = await executeFlow(page, flowSteps, { username, password }, { orderId })
 
         // Extract status from getText step results
@@ -132,8 +130,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         const rawStatus    = statusResult?.textContent ?? ''
         const mappedStatus = rawStatus ? mapPortalStatus(rawStatus) : null
 
+        // BUG-02: Update portal_last_polled_at after every poll attempt
+        await supabase
+          .from('adapter_submissions')
+          .update({ portal_last_polled_at: new Date().toISOString() })
+          .eq('submission_id', submissionId)
+
         if (!mappedStatus) {
-          results.push({ orderId, outcome: 'no_change', reason: `unmapped_status: ${rawStatus}` })
+          // NB-05: do NOT include rawStatus in reason — portal getText may contain PHI
+          results.push({ orderId, outcome: 'no_change', reason: 'unmapped_portal_status' })
           continue
         }
 
@@ -149,14 +154,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           continue
         }
 
-        // Update order status directly (portal poll status updates are informational)
-        const { error: updateError } = await supabase
-          .from('orders')
-          .update({ status: mappedStatus, updated_at: new Date().toISOString() })
-          .eq('order_id', orderId)
+        // NB-06: Use casTransition instead of direct .update() to respect
+        // the order state machine and prevent invalid transitions.
+        const casResult = await casTransition({
+          orderId,
+          expectedStatus: currentOrder?.status ?? '',
+          newStatus:      mappedStatus,
+          actor:          'portal_status_poll',
+          metadata:       { poll_source: 'status_check_flow' },
+        })
 
-        if (updateError) {
-          results.push({ orderId, outcome: 'error', reason: `update_failed: ${updateError.message}` })
+        if (casResult.wasAlreadyTransitioned) {
+          results.push({ orderId, outcome: 'no_change', reason: 'cas_already_transitioned' })
           continue
         }
 
@@ -186,7 +195,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   console.info('[portal-status-poll] complete', summary)
-  return NextResponse.json({ status: 'ok', ...summary, results }, { status: 200 })
+  // NB-05: Return summary only — omit results array (may contain portal-extracted text)
+  return NextResponse.json({ status: 'ok', ...summary }, { status: 200 })
 }
 
 // Return 405 for all non-GET methods

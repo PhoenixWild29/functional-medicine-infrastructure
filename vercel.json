@@ -70,8 +70,8 @@
       "memory": 512
     },
     "src/app/api/adapters/submit/route.ts": {
-      "maxDuration": 120,
-      "memory": 512
+      "maxDuration": 300,
+      "memory": 1024
     },
     "src/app/api/cron/portal-status-poll/route.ts": {
       "maxDuration": 300,

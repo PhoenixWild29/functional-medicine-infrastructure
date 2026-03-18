@@ -163,7 +163,8 @@ export async function executeFlow(
           if (!step.selector) throw new Error(`step ${i} (select): selector is required`)
           if (!step.value)    throw new Error(`step ${i} (select): value is required`)
           const selectedValue = substituteValue(step.value, creds, fieldValues)
-          await page.selectOption(step.selector, selectedValue, { timeout } as Parameters<typeof page.selectOption>[2])
+          // NB-07: use proper SelectOptionOptions import rather than a cast
+          await page.selectOption(step.selector, selectedValue, { timeout })
           results.push({ action: 'select', selector: step.selector, success: true })
           break
         }

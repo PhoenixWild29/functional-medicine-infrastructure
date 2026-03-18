@@ -31,8 +31,11 @@ export function getBrowserContextOptions(): BrowserContextOptions {
     geolocation: undefined,
     // Use a realistic viewport
     viewport: { width: 1280, height: 900 },
-    // Ignore HTTPS errors only in dev — never in production
-    ignoreHTTPSErrors: process.env['NODE_ENV'] !== 'production',
+    // BUG-05: Use an explicit opt-in env var rather than inferring from NODE_ENV.
+    // NODE_ENV is not 'production' on Vercel preview deployments, which could
+    // allow MITM interception of portal credentials on internet-accessible envs.
+    // Set PLAYWRIGHT_IGNORE_HTTPS_ERRORS=true only in local dev, never in staging/preview.
+    ignoreHTTPSErrors: process.env['PLAYWRIGHT_IGNORE_HTTPS_ERRORS'] === 'true',
   }
 }
 

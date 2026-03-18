@@ -336,7 +336,8 @@ export async function markPortalError(
 export async function markManualReview(
   submissionId: string,
   aiConfidenceScore: number,
-  screenshotUrl: string
+  // BUG-04: accept string | null — screenshot upload can fail before this call
+  screenshotUrl: string | null
 ): Promise<void> {
   const supabase = createServiceClient()
 
@@ -346,6 +347,8 @@ export async function markManualReview(
       status:              'MANUAL_REVIEW',
       ai_confidence_score: aiConfidenceScore,
       screenshot_url:      screenshotUrl,
+      // BUG-04: add completed_at so SLA metrics have a terminal timestamp
+      completed_at:        new Date().toISOString(),
     })
     .eq('submission_id', submissionId)
 

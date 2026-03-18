@@ -83,7 +83,10 @@ async function scoreConfirmationScreenshot(screenshotBytes: Uint8Array): Promise
       'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      // NB-03: Use gpt-4o (not mini) with high detail for accurate confirmation
+      // detection. Medical prescription submissions require high accuracy;
+      // low-detail 512×512 downscaling misses fine-print order numbers/status.
+      model: 'gpt-4o',
       messages: [
         {
           role: 'user',
@@ -101,7 +104,7 @@ async function scoreConfirmationScreenshot(screenshotBytes: Uint8Array): Promise
             },
             {
               type: 'image_url',
-              image_url: { url: `data:image/png;base64,${base64Image}`, detail: 'low' },
+              image_url: { url: `data:image/png;base64,${base64Image}`, detail: 'high' },
             },
           ],
         },
@@ -134,8 +137,9 @@ async function scoreConfirmationScreenshot(screenshotBytes: Uint8Array): Promise
 
     return confidence
   } catch {
-    // Unparseable response — treat as low confidence to trigger manual review
-    console.warn('[tier2-portal] OpenAI Vision response could not be parsed as JSON:', content)
+    // NB-04: Do NOT log raw content — Vision responses may include quoted
+    // descriptions of PHI visible in the screenshot (patient name, order info).
+    console.warn('[tier2-portal] OpenAI Vision response could not be parsed as JSON (content omitted)')
     return 0
   }
 }
@@ -171,16 +175,20 @@ async function uploadScreenshot(
 
 export async function submitTier2Portal(
   orderId: string,
-  pharmacyId: string
+  pharmacyId: string,
+  // NB-02: caller (routing engine) supplies attempt number for correct audit trail
+  attemptNumber: number = 1
 ): Promise<Tier2PortalResult> {
   const supabase = createServiceClient()
 
   // ── 1. Load pharmacy_portal_configs ───────────────────────
   const { data: config, error: configError } = await supabase
     .from('pharmacy_portal_configs')
+    // BUG-03: include all REQ-PTA-001 required columns
     .select(
-      'config_id, portal_url, username_vault_id, password_vault_id,' +
-      ' login_flow, submit_flow, screenshot_on_error'
+      'config_id, portal_url, portal_type, username_vault_id, password_vault_id,' +
+      ' login_flow, submit_flow, status_check_flow, selectors,' +
+      ' poll_interval_minutes, screenshot_on_error'
     )
     .eq('pharmacy_id', pharmacyId)
     .eq('is_active', true)
@@ -229,8 +237,8 @@ export async function submitTier2Portal(
     orderId,
     pharmacyId,
     tier: 'TIER_2_PORTAL',
-    attemptNumber: 1,
-    metadata: { config_id: config.config_id },
+    attemptNumber,  // NB-02: use caller-supplied attempt number
+    metadata: { config_id: config.config_id, portal_type: config.portal_type },
   })
 
   // ── 4. Decrypt portal credentials (HC-14) ─────────────────
@@ -274,18 +282,24 @@ export async function submitTier2Portal(
   // ── 6. Mark SUBMITTED (pre-browser) ───────────────────────
   await markSubmitted(submissionId, {
     portal_url:  config.portal_url,
-    portal_type: 'TIER_2_PORTAL',
+    portal_type: config.portal_type ?? 'TIER_2_PORTAL',  // BUG-03: use actual portal_type from config
   })
 
   // ── 7. Launch Playwright + execute flows ───────────────────
   const browser = await chromium.launch(getBrowserLaunchOptions())
 
+  // BUG-01: Hoist page/context outside the try block so the catch block can
+  // capture an error screenshot from the live page state instead of a blank
+  // new-browser page. Declared as undefined; assigned inside try.
+  let page:    import('playwright').Page | undefined
+  let context: import('playwright').BrowserContext | undefined
+
   let screenshotUrl: string | null = null
   let aiConfidenceScore: number | null = null
 
   try {
-    const context = await browser.newContext(getBrowserContextOptions())
-    const page    = await context.newPage()
+    context = await browser.newContext(getBrowserContextOptions())
+    page    = await context.newPage()
 
     // ── 7a. Execute login flow ─────────────────────────────
     const loginSteps = (config.login_flow as FlowStep[] | null) ?? []
@@ -298,9 +312,12 @@ export async function submitTier2Portal(
     } catch (loginErr) {
       const msg = loginErr instanceof Error ? loginErr.message : String(loginErr)
 
-      // Retry login once before giving up (REQ-PTA-002)
+      // NB-01: Re-navigate to portal URL instead of page.reload() — reload
+      // keeps the browser on the error/CAPTCHA page; a fresh navigate starts
+      // from a clean state matching the original login flow intent.
+      // REQ-PTA-002: retry login once before escalating to PORTAL_ERROR.
       console.warn(`[tier2-portal] login attempt 1 failed for ${pharmacyId}: ${msg} — retrying`)
-      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.goto(config.portal_url, { waitUntil: 'domcontentloaded' })
       await executeFlow(page, loginSteps, creds, {})  // throws on second failure
     }
 
@@ -355,16 +372,13 @@ export async function submitTier2Portal(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
 
-    // Capture error screenshot if configured (REQ-PTA-001 AC-PTA-001.1)
+    // BUG-01: Capture error screenshot from the live page (if still alive),
+    // not from a brand-new blank browser.
     let errorScreenshotUrl: string | undefined
-    if (config.screenshot_on_error) {
+    if (config.screenshot_on_error && page) {
       try {
-        const browser2 = await chromium.launch(getBrowserLaunchOptions())
-        const errorContext = await browser2.newContext(getBrowserContextOptions())
-        const errorPage = await errorContext.newPage()
-        const errorBytes = await errorPage.screenshot({ type: 'png' })
+        const errorBytes = await page.screenshot({ type: 'png', fullPage: false })
         errorScreenshotUrl = await uploadScreenshot(orderId, submissionId, 'error', errorBytes)
-        await browser2.close()
       } catch (screenshotErr) {
         // Don't let error screenshot failure mask the original error
         console.warn('[tier2-portal] failed to capture error screenshot:', screenshotErr)
