@@ -118,9 +118,12 @@ CREATE TABLE IF NOT EXISTS circuit_breaker_state (
 
 ALTER TABLE circuit_breaker_state ENABLE ROW LEVEL SECURITY;
 
--- Service role only — circuit breaker is never exposed to clinic users
+-- Service role only — circuit breaker is never exposed to clinic users.
+-- RESTRICTIVE policy blocks all non-service_role access regardless of other policies.
 CREATE POLICY "service_role_circuit_breaker"
   ON circuit_breaker_state
+  AS RESTRICTIVE
+  TO authenticated
   USING (false)
   WITH CHECK (false);
 
@@ -141,3 +144,8 @@ CREATE INDEX IF NOT EXISTS idx_circuit_breaker_open
 CREATE INDEX IF NOT EXISTS idx_adapter_submissions_latency
   ON adapter_submissions (submitted_at, acknowledged_at)
   WHERE submitted_at IS NOT NULL AND acknowledged_at IS NOT NULL;
+
+-- WO-23 routing engine: scan for stuck PENDING submissions by age
+CREATE INDEX IF NOT EXISTS idx_adapter_submissions_pending_created
+  ON adapter_submissions (created_at)
+  WHERE status = 'PENDING';

@@ -46,7 +46,6 @@ export type AdapterSubmissionStatus =
   | 'FAILED'
   | 'SUBMISSION_FAILED'
   | 'TIMEOUT'
-  | 'TIMED_OUT'
   | 'PORTAL_ERROR'
   | 'MANUAL_REVIEW'
   | 'CANCELLED'
@@ -158,6 +157,7 @@ export async function markAcknowledged(
       acknowledged_at:       new Date().toISOString(),
       external_reference_id: externalReferenceId,
       response_payload:      responsePayload ?? null,
+      completed_at:          new Date().toISOString(),
     })
     .eq('submission_id', submissionId)
 
@@ -371,8 +371,7 @@ export function computeSubmissionLatencyMs(
   return new Date(acknowledgedAt).getTime() - new Date(submittedAt).getTime()
 }
 
-// Fetch a submission record by ID (for routing engine status checks).
-export async function getSubmission(submissionId: string): Promise<{
+export interface SubmissionDetail {
   submission_id: string
   order_id: string
   pharmacy_id: string
@@ -384,7 +383,10 @@ export async function getSubmission(submissionId: string): Promise<{
   external_reference_id: string | null
   error_code: string | null
   metadata: Record<string, unknown> | null
-} | null> {
+}
+
+// Fetch a submission record by ID (for routing engine status checks).
+export async function getSubmission(submissionId: string): Promise<SubmissionDetail | null> {
   const supabase = createServiceClient()
 
   const { data, error } = await supabase
@@ -396,5 +398,5 @@ export async function getSubmission(submissionId: string): Promise<{
     .single()
 
   if (error || !data) return null
-  return data as ReturnType<typeof getSubmission> extends Promise<infer T> ? NonNullable<T> : never
+  return data as SubmissionDetail
 }
