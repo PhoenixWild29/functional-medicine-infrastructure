@@ -74,7 +74,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       )
 
       // Insert into ops_alert_queue (REQ-IEL-016)
-      await supabase
+      const { error: alertQueueErr } = await supabase
         .from('ops_alert_queue')
         .insert({
           alert_type: 'reconciliation_orphan',
@@ -89,9 +89,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           slack_channel: '#ops-alerts',
           severity: 'warning',
         })
-        .catch(err =>
-          console.error('[reconciliation-cron] failed to queue alert:', err)
-        )
+      if (alertQueueErr) {
+        console.error('[reconciliation-cron] failed to queue alert:', alertQueueErr.message)
+        errors.push(`alert_queue insert for ${orphan.submission_id}: ${alertQueueErr.message}`)
+      }
 
       console.warn(
         `[reconciliation-cron] orphan | submission=${orphan.submission_id} | order=${orphan.order_id} | pharmacy=${pharmacySlug} | age=${ageMinutes}min`
