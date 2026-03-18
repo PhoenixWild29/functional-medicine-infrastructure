@@ -179,6 +179,20 @@ function transformMediVeraPayload(p: OrderPayload): PharmacyPayload {
 }
 
 // ============================================================
+// TIER 3 STANDARDIZED SPEC TRANSFORMER — WO-21
+// ============================================================
+// Tier 3 pharmacies implement the CompoundIQ canonical OpenAPI spec,
+// so they accept the OrderPayload natively — no transformation needed.
+// (AC-SPC-002.2: "passes the canonical OrderPayload through without
+// modification, since Tier 3 pharmacies accept the CompoundIQ-native
+// schema directly")
+// Reference: pharmacy_api_configs.payload_transformer = 'tier3_standard'
+
+function transformTier3StandardPayload(p: OrderPayload): PharmacyPayload {
+  return p as unknown as PharmacyPayload
+}
+
+// ============================================================
 // GENERIC FALLBACK TRANSFORMER
 // ============================================================
 // Used when no specific transformer is configured.
@@ -196,6 +210,7 @@ const TRANSFORMER_REGISTRY: Record<string, TransformerFn> = {
   transformViosPayload,
   transformLifeFilePayload,
   transformMediVeraPayload,
+  tier3_standard: transformTier3StandardPayload,
   transformGenericPayload,
 }
 

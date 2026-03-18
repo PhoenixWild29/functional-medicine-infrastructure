@@ -95,11 +95,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         return NextResponse.json({ status: 'ok', ...result }, { status: 200 })
       }
 
+      case 'TIER_3_SPEC': {
+        // AC-SPC-002.3: Tier 3 pharmacies implement the CompoundIQ canonical
+        // OpenAPI spec, so they are processed by the Tier 1 adapter with no
+        // code changes — only the transformer/parser config differs.
+        const result = await submitTier1Api(orderId, pharmacyId)
+        console.info(
+          `[adapter-submit] TIER_3_SPEC | order=${orderId} | outcome=${result.outcome} | attempts=${result.attemptsMade}`
+        )
+        return NextResponse.json({ status: 'ok', ...result }, { status: 200 })
+      }
+
       case 'TIER_2_PORTAL':
-      case 'TIER_3_SPEC':
       case 'TIER_3_HYBRID':
-        // Tier 2 and Tier 3 adapters are implemented in WO-20 and WO-21.
-        // Return 501 until those work orders are complete.
+        // Tier 2 portal adapter is implemented in WO-20.
+        // Return 501 until that work order is complete.
         return NextResponse.json(
           { error: `${tier} adapter not yet implemented` },
           { status: 501 }

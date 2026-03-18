@@ -146,6 +146,50 @@ function parseMediVeraResponse(statusCode: number, body: Record<string, unknown>
 }
 
 // ============================================================
+// TIER 3 STANDARDIZED SPEC PARSER — WO-21
+// ============================================================
+// Parses the canonical Tier 3 response format defined in the
+// CompoundIQ OpenAPI 3.1 specification (REQ-SPC-001).
+//
+// Standard success response:
+//   { "success": true, "data": { "orderId": "pharmacy-ref-xxx" } }
+// Standard rejection response:
+//   { "success": false, "error": { "code": "...", "message": "..." } }
+//
+// AC-SPC-002.2: external_order_id extracted from data.orderId
+// Reference: pharmacy_api_configs.response_parser = 'tier3_standard'
+
+function parseTier3StandardResponse(statusCode: number, body: Record<string, unknown>): SubmissionResult {
+  const data = body['data'] as Record<string, unknown> | null | undefined
+  const error = body['error'] as Record<string, unknown> | null | undefined
+
+  if ((statusCode === 200 || statusCode === 201) && body['success'] === true) {
+    return {
+      outcome:         'accepted',
+      externalOrderId: (data?.['orderId'] as string | null) ?? null,
+      errorCode:       null,
+      errorMessage:    null,
+    }
+  }
+
+  if (statusCode === 422 || (statusCode >= 400 && statusCode < 500 && body['success'] === false)) {
+    return {
+      outcome:         'rejected',
+      externalOrderId: null,
+      errorCode:       (error?.['code'] as string | null) ?? String(statusCode),
+      errorMessage:    (error?.['message'] as string | null) ?? `HTTP ${statusCode}`,
+    }
+  }
+
+  return {
+    outcome:         'unknown',
+    externalOrderId: null,
+    errorCode:       String(statusCode),
+    errorMessage:    (error?.['message'] as string | null) ?? `HTTP ${statusCode}`,
+  }
+}
+
+// ============================================================
 // GENERIC FALLBACK PARSER
 // ============================================================
 // For pharmacies without a specific parser.
@@ -190,6 +234,7 @@ const PARSER_REGISTRY: Record<string, ParserFn> = {
   parseViosResponse,
   parseLifeFileResponse,
   parseMediVeraResponse,
+  tier3_standard: parseTier3StandardResponse,
   parseGenericResponse,
 }
 
