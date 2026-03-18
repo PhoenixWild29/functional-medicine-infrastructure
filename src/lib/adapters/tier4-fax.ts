@@ -72,7 +72,7 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
     .select(
       'order_id, status, pharmacy_id, clinic_id, provider_id, patient_id,' +
       ' medication_snapshot, provider_npi_snapshot, quantity, sig_text,' +
-      ' order_number, fax_attempt_count'
+      ' order_number, fax_attempt_count, locked_at, created_at'
     )
     .eq('order_id', orderId)
     .single()
@@ -160,10 +160,12 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
       medicationName:     String(med?.medication_name ?? 'Compounded Medication'),
       medicationForm:     String(med?.form ?? ''),
       medicationDose:     String(med?.dose ?? ''),
-      quantity:           order.quantity,
+      quantity:           order.quantity ?? 0,
       sigText:            order.sig_text ?? null,
       orderNumber:        order.order_number ?? null,
-      orderDate:          new Date().toISOString(),
+      // Use locked_at (provider signature date) for medical record authenticity;
+      // fall back to created_at if not yet locked (should not occur at FAX_QUEUED stage)
+      orderDate:          order.locked_at ?? order.created_at,
       clinicName:         clinic?.name ?? 'CompoundIQ Clinic',
       pharmacyName:       pharmacy.name,
     }

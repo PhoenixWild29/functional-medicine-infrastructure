@@ -66,13 +66,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     try {
       // ── Check webhook_events for last failure and any subsequent queued ──
-      const { data: events } = await supabase
+      const { data: events, error: eventsError } = await supabase
         .from('webhook_events')
         .select('event_type, created_at')
         .eq('order_id', orderId)
         .in('event_type', ['fax.failed', 'fax.queued'])
         .order('created_at', { ascending: false })
         .limit(10)
+
+      if (eventsError) {
+        console.error(`[fax-retry] webhook_events query failed for order ${orderId}:`, eventsError.message)
+        results.push({ orderId, outcome: 'error', reason: `webhook_query_error: ${eventsError.message}` })
+        continue
+      }
 
       const lastFailed = events?.find(e => e.event_type === 'fax.failed')
 
