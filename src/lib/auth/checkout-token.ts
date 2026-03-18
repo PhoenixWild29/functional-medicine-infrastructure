@@ -12,6 +12,7 @@ export interface CheckoutTokenPayload {
   orderId: string
   patientId: string
   clinicId: string
+  iat: number
   exp: number
 }
 
@@ -32,6 +33,7 @@ export async function verifyCheckoutToken(
 
     // Check expiry
     if (payload.exp < Math.floor(Date.now() / 1000)) {
+      console.warn('[checkout-token] verifyCheckoutToken failed: expired', { orderId: payload.orderId })
       return null
     }
 
@@ -53,8 +55,65 @@ export async function verifyCheckoutToken(
 
     const valid = await crypto.subtle.verify('HMAC', cryptoKey, signature, data)
 
+    if (!valid) {
+      console.warn('[checkout-token] verifyCheckoutToken failed: invalid signature')
+    }
     return valid ? payload : null
-  } catch {
+  } catch (err) {
+    console.warn('[checkout-token] verifyCheckoutToken failed: malformed token', err)
     return null
   }
+}
+
+// ============================================================
+// GENERATE CHECKOUT TOKEN
+// ============================================================
+// Creates a signed HS256 JWT for patient checkout links.
+// Uses Web Crypto API — Edge Runtime compatible (no Node.js Buffer).
+//
+// Token lifetime: CHECKOUT_TOKEN_EXPIRY env var, default 72 hours.
+// Matches the PAYMENT_EXPIRY SLA window.
+
+function bytesToBase64url(bytes: Uint8Array): string {
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+}
+
+export async function generateCheckoutToken(
+  orderId: string,
+  patientId: string,
+  clinicId: string
+): Promise<string> {
+  const secret = serverEnv.jwtSecret()
+  const encoder = new TextEncoder()
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+
+  const now = Math.floor(Date.now() / 1000)
+  const ttl = parseInt(process.env.CHECKOUT_TOKEN_EXPIRY ?? '259200', 10) // 72h default
+  const payload: CheckoutTokenPayload = {
+    orderId,
+    patientId,
+    clinicId,
+    iat: now,
+    exp: now + ttl,
+  }
+
+  const headerB64 = bytesToBase64url(encoder.encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })))
+  const payloadB64 = bytesToBase64url(encoder.encode(JSON.stringify(payload)))
+  const signingInput = `${headerB64}.${payloadB64}`
+
+  const signatureBuffer = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(signingInput))
+  const signatureB64 = bytesToBase64url(new Uint8Array(signatureBuffer))
+
+  return `${signingInput}.${signatureB64}`
 }
