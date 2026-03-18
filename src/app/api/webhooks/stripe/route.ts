@@ -286,22 +286,28 @@ async function branchByTier(orderId: string, pharmacyId: string): Promise<void> 
 
   if (tier === 'TIER_4_FAX') {
     // AC-SWH-005.3: Tier 4 → FAX_QUEUED (Documo fax submission in FRD 4)
-    await casTransition({
+    const casResult = await casTransition({
       orderId,
       expectedStatus: 'PAID_PROCESSING',
       newStatus: 'FAX_QUEUED',
       actor: 'stripe_webhook',
       metadata: { tier: 'TIER_4_FAX' },
     })
+    if (casResult.wasAlreadyTransitioned) {
+      console.info(`[stripe-webhook] branchByTier: order ${orderId} already past PAID_PROCESSING (FAX path) — idempotent no-op`)
+    }
   } else {
     // AC-SWH-005.2: Tier 1/2/3 → SUBMISSION_PENDING (adapter submission in FRD 4)
-    await casTransition({
+    const casResult = await casTransition({
       orderId,
       expectedStatus: 'PAID_PROCESSING',
       newStatus: 'SUBMISSION_PENDING',
       actor: 'stripe_webhook',
       metadata: { tier: tier ?? 'TIER_1_API' },
     })
+    if (casResult.wasAlreadyTransitioned) {
+      console.info(`[stripe-webhook] branchByTier: order ${orderId} already past PAID_PROCESSING (API path) — idempotent no-op`)
+    }
   }
 }
 

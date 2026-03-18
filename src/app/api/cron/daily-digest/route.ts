@@ -293,6 +293,19 @@ function buildDailyDigestAlert(metrics: Record<string, unknown>): SlackAlertPayl
       },
       {
         type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Success Rate by Source (M-02):*\n${
+            Object.entries(metrics.m02_success_rate_by_source as Record<string, string>).length > 0
+              ? Object.entries(metrics.m02_success_rate_by_source as Record<string, string>)
+                  .map(([src, rate]) => `• ${src}: ${rate}`)
+                  .join('\n')
+              : '✅ No events'
+          }`,
+        },
+      },
+      {
+        type: 'section',
         fields: [
           { type: 'mrkdwn', text: `*Adapter Success Rate:*\n${metrics.m07_adapter_submission_success_rate}` },
           { type: 'mrkdwn', text: `*Fax Delivery Rate:*\n${metrics.m08_fax_delivery_success_rate}` },
