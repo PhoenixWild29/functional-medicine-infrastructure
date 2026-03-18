@@ -18,6 +18,11 @@
 //       Ops validates the pharmacy's webhook implementation (AC-SPC-002.4)
 //       before activating via this endpoint.
 //
+// Required env vars:
+//   ADAPTER_INTERNAL_SECRET  — shared secret for X-Internal-Token auth
+//   WEBHOOK_SECRET_ENCRYPTION_KEY — 64-char hex string (32 bytes) for
+//     AES-256-GCM encryption of the pharmacy HMAC signing secret (NB-08)
+//
 // HIPAA: No PHI is accepted or stored by this endpoint.
 //        The HMAC secret is encrypted before storage; it is never logged.
 
@@ -37,7 +42,14 @@ function encryptWebhookSecret(secret: string): string {
     )
   }
 
+  // BLK-04: Buffer.from(hex) silently skips invalid hex chars, producing a
+  // short key. Verify decoded length is exactly 32 bytes after conversion.
   const key = Buffer.from(keyHex, 'hex')
+  if (key.length !== 32) {
+    throw new Error(
+      '[webhook-register] WEBHOOK_SECRET_ENCRYPTION_KEY decoded to fewer than 32 bytes — ensure it contains only valid hex characters'
+    )
+  }
   const iv  = randomBytes(12)  // 96-bit IV recommended for AES-GCM
 
   const cipher = createCipheriv('aes-256-gcm', key, iv)
@@ -154,12 +166,33 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
   }
 
-  const subscribedEvents = Array.isArray(event_types) && event_types.length > 0
+  // NB-05: empty array is stored as-is and means "subscribe to all events".
+  // The webhook dispatch engine treats [] as "no filter" (send all).
+  // Documented in OpenAPI spec description for event_types field.
+  const subscribedEvents: string[] = Array.isArray(event_types) && event_types.length > 0
     ? event_types
-    : []  // empty = all events (caller interprets)
+    : []
 
   const registrationId  = randomUUID()
   const registeredAt    = new Date().toISOString()
+
+  // ── Verify pharmacy_api_configs row exists before updating ──
+  // BLK-03: Supabase .update() returns no error when WHERE matches 0 rows.
+  // A pharmacy might exist in `pharmacies` but lack a config row if not yet
+  // fully onboarded. Without this check, the endpoint would silently return
+  // 200 while storing nothing.
+  const { data: existingConfig, error: configCheckError } = await supabase
+    .from('pharmacy_api_configs')
+    .select('config_id')
+    .eq('pharmacy_id', pharmacy_id)
+    .single()
+
+  if (configCheckError || !existingConfig) {
+    return NextResponse.json(
+      { error: `pharmacy_api_configs not found for pharmacy ${pharmacy_id} — complete onboarding before registering webhooks` },
+      { status: 404 }
+    )
+  }
 
   // ── Update pharmacy_api_configs (AC-SPC-004.2) ────────────
   const { error: updateError } = await supabase
@@ -183,8 +216,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     )
   }
 
+  // NB-04: log hostname + pathname (not query string) for ops diagnostics
   console.info(
-    `[webhook-register] registered | pharmacy=${pharmacy_id} | url=${parsedUrl.hostname} | events=${subscribedEvents.length || 'all'}`
+    `[webhook-register] registered | pharmacy=${pharmacy_id} | url=${parsedUrl.hostname}${parsedUrl.pathname} | events=${subscribedEvents.length || 'all'}`
   )
 
   // AC-SPC-004.3: Return config excluding the secret

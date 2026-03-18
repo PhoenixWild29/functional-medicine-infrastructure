@@ -172,7 +172,10 @@ function parseTier3StandardResponse(statusCode: number, body: Record<string, unk
     }
   }
 
-  if (statusCode === 422 || (statusCode >= 400 && statusCode < 500 && body['success'] === false)) {
+  // NB-01: treat all 4xx as rejected regardless of success field presence.
+  // A missing success field on a 4xx is almost certainly non-retriable;
+  // classifying as unknown would trigger up to 3 retry attempts needlessly.
+  if (statusCode >= 400 && statusCode < 500) {
     return {
       outcome:         'rejected',
       externalOrderId: null,

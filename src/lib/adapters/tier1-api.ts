@@ -64,11 +64,12 @@ const MAX_ATTEMPTS    = 3
 // RATE LIMIT CHECK
 // ============================================================
 // DB-based rate limit enforcement — works across serverless instances.
-// RPM: count recent TIER_1_API submissions for this pharmacy in last 60s.
-// Concurrent: count PENDING or SUBMITTED submissions for this pharmacy.
+// RPM: count recent submissions for this pharmacy+tier in last 60s.
+// Concurrent: count PENDING or SUBMITTED submissions for this pharmacy+tier.
 
 async function checkRateLimits(
   pharmacyId: string,
+  tier: IntegrationTier,
   rateLimitRpm: number | null,
   rateLimitConcurrent: number | null
 ): Promise<void> {
@@ -82,7 +83,7 @@ async function checkRateLimits(
       .from('adapter_submissions')
       .select('*', { count: 'exact', head: true })
       .eq('pharmacy_id', pharmacyId)
-      .eq('tier', 'TIER_1_API')
+      .eq('tier', tier)
       .gte('created_at', windowStart)
 
     if ((count ?? 0) >= rateLimitRpm) {
@@ -97,7 +98,7 @@ async function checkRateLimits(
       .from('adapter_submissions')
       .select('*', { count: 'exact', head: true })
       .eq('pharmacy_id', pharmacyId)
-      .eq('tier', 'TIER_1_API')
+      .eq('tier', tier)
       .in('status', ['PENDING', 'SUBMITTED'])
 
     if ((count ?? 0) >= rateLimitConcurrent) {
@@ -119,7 +120,11 @@ const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, m
 
 export async function submitTier1Api(
   orderId: string,
-  pharmacyId: string
+  pharmacyId: string,
+  // BLK-02: tier parameter ensures correct audit trail classification.
+  // TIER_3_SPEC pharmacies share this code path (AC-SPC-002.3) but must
+  // be recorded with their actual tier in adapter_submissions.
+  tier: IntegrationTier = 'TIER_1_API'
 ): Promise<Tier1SubmitResult> {
   const supabase = createServiceClient()
 
@@ -149,9 +154,11 @@ export async function submitTier1Api(
     .eq('pharmacy_id', pharmacyId)
     .single()
 
-  if (pharmacy && pharmacy.integration_tier !== 'TIER_1_API') {
+  // BLK-01: TIER_3_SPEC pharmacies share this adapter (AC-SPC-002.3).
+  // Both TIER_1_API and TIER_3_SPEC are valid; reject any other tier.
+  if (pharmacy && pharmacy.integration_tier !== 'TIER_1_API' && pharmacy.integration_tier !== 'TIER_3_SPEC') {
     throw new Error(
-      `[tier1-api] pharmacy ${pharmacyId} is ${pharmacy.integration_tier}, not TIER_1_API`
+      `[tier1-api] pharmacy ${pharmacyId} is ${pharmacy.integration_tier}, expected TIER_1_API or TIER_3_SPEC`
     )
   }
 
@@ -167,7 +174,7 @@ export async function submitTier1Api(
   const authHeaders = await buildAuthHeaders(authType, credential)
 
   // ── 4. Rate limit check ───────────────────────────────────
-  await checkRateLimits(pharmacyId, config.rate_limit_rpm, config.rate_limit_concurrent)
+  await checkRateLimits(pharmacyId, tier, config.rate_limit_rpm, config.rate_limit_concurrent)
 
   // ── 5. Load order data for payload transformation ─────────
   const { data: order, error: orderError } = await supabase
@@ -253,7 +260,7 @@ export async function submitTier1Api(
     const submissionId = await createSubmissionRecord({
       orderId,
       pharmacyId,
-      tier:          'TIER_1_API',
+      tier,          // BLK-02: use the caller-supplied tier, not hardcoded TIER_1_API
       attemptNumber: attempt,
       metadata: {
         config_id:   config.config_id,

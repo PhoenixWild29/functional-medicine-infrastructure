@@ -83,10 +83,14 @@ const spec = {
     securitySchemes: {
       oauth2ClientCredentials: {
         type: 'oauth2',
-        description: 'Primary auth method. CompoundIQ uses client_credentials grant to obtain a bearer token before submitting orders.',
+        // NB-02: tokenUrl must be a resolved URL in OpenAPI 3.1 (server
+        // variables are not expanded inside securitySchemes). Each pharmacy
+        // provides their actual token URL during onboarding; this is a
+        // canonical placeholder matching the server variable default.
+        description: 'Primary auth method. CompoundIQ uses client_credentials grant to obtain a bearer token before submitting orders. Replace the tokenUrl with your actual OAuth token endpoint during onboarding.',
         flows: {
           clientCredentials: {
-            tokenUrl: 'https://{pharmacyApiHost}/v1/oauth/token',
+            tokenUrl: 'https://api.yourpharmacy.com/v1/oauth/token',
             scopes: {
               'order:write': 'Submit and cancel orders',
               'catalog:read': 'Read pharmacy catalog',
@@ -264,7 +268,11 @@ const spec = {
     },
   },
 
-  // ── Security (applies to all pharmacy-side endpoints) ───────
+  // ── Security (applies to all pharmacy-side endpoints by default) ──
+  // NB-03: This applies to all paths unless overridden at the operation
+  // level with security: []. CompoundIQ-side endpoints (e.g., /v1/webhooks/
+  // register) MUST explicitly set security: [] to avoid inheriting these
+  // pharmacy-issued auth schemes.
   security: [
     { oauth2ClientCredentials: ['order:write', 'catalog:read'] },
     { apiKeyBearer: [] },

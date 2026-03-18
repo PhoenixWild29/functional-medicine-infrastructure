@@ -99,7 +99,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         // AC-SPC-002.3: Tier 3 pharmacies implement the CompoundIQ canonical
         // OpenAPI spec, so they are processed by the Tier 1 adapter with no
         // code changes — only the transformer/parser config differs.
-        const result = await submitTier1Api(orderId, pharmacyId)
+        // Pass 'TIER_3_SPEC' so audit_submissions.tier is recorded correctly (BLK-02).
+        const result = await submitTier1Api(orderId, pharmacyId, 'TIER_3_SPEC')
         console.info(
           `[adapter-submit] TIER_3_SPEC | order=${orderId} | outcome=${result.outcome} | attempts=${result.attemptsMade}`
         )
@@ -118,7 +119,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[adapter-submit] unhandled error | order=${orderId} | tier=${tier}:`, msg)
-    return NextResponse.json({ error: msg }, { status: 500 })
+    // NB-07: return generic message — raw error may contain internal config details
+    return NextResponse.json({ error: 'Internal submission error' }, { status: 500 })
   }
 }
 
