@@ -1,0 +1,130 @@
+# ============================================================
+# CompoundIQ — Manual Rollback
+# ============================================================
+# Manual trigger only. Rolls back the target environment to the
+# previous Vercel deployment and optionally runs down migrations.
+#
+# Usage: GitHub Actions → Run workflow → select environment,
+# provide the Vercel deployment ID to roll back to, and
+# optionally provide the migration file prefix to roll back.
+# ============================================================
+
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - production
+          - staging
+      vercel_deployment_id:
+        description: 'Vercel deployment ID to restore (dpl_xxx)'
+        required: true
+        type: string
+      rollback_migrations:
+        description: 'Run down migrations? (dangerous — requires confirmation)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      migration_prefix:
+        description: 'Migration timestamp prefix to roll back (e.g. 20260319000012)'
+        required: false
+        type: string
+
+jobs:
+  # ── Guard: require explicit environment approval ──────────────
+  rollback:
+    name: Rollback ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log rollback intent
+        run: |
+          echo "Rolling back ${{ inputs.environment }} to deployment: ${{ inputs.vercel_deployment_id }}"
+          echo "Triggered by: ${{ github.actor }}"
+          echo "Run down migrations: ${{ inputs.rollback_migrations }}"
+
+      # ── Optional: run down migrations ────────────────────────
+      - name: Setup Supabase CLI
+        if: inputs.rollback_migrations == 'true'
+        uses: supabase/setup-cli@v1
+        with:
+          version: 1.171.0  # NB-3: pinned for reproducibility
+
+      # BLK-6: link project before any db commands
+      - name: Link Supabase project
+        if: inputs.rollback_migrations == 'true'
+        run: supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      # BLK-4: validate migration_prefix before using in file path (prevent path traversal)
+      - name: Validate migration prefix
+        if: inputs.rollback_migrations == 'true' && inputs.migration_prefix != ''
+        run: |
+          if ! echo "${{ inputs.migration_prefix }}" | grep -qE '^[0-9]{14}$'; then
+            echo "ERROR: migration_prefix must be exactly 14 digits (YYYYMMDDHHMMSS format)"
+            exit 1
+          fi
+
+      - name: Run down migrations
+        if: inputs.rollback_migrations == 'true' && inputs.migration_prefix != ''
+        run: |
+          prefix="${{ inputs.migration_prefix }}"
+          down_file="supabase/migrations/down/${prefix}_down.sql"
+          if [ -f "$down_file" ]; then
+            echo "Executing down migration: $down_file"
+            supabase db execute --db-url "${{ secrets.DATABASE_URL }}" --file "$down_file"
+          else
+            echo "WARNING: No down migration found at $down_file — skipping"
+          fi
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      # ── Redeploy previous Vercel deployment ───────────────────
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Promote previous deployment
+        run: |
+          vercel promote ${{ inputs.vercel_deployment_id }} \
+            --scope=${{ secrets.VERCEL_ORG_ID }} \
+            --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      # ── Health check post-rollback ────────────────────────────
+      - name: Verify rollback health
+        run: |
+          url="${{ inputs.environment == 'production' && secrets.PRODUCTION_URL || secrets.STAGING_URL }}/api/health"
+          for i in {1..5}; do
+            status=$(curl -s -o /dev/null -w "%{http_code}" "$url")
+            if [ "$status" = "200" ]; then
+              echo "Rollback health check passed"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "ERROR: Post-rollback health check failed"
+          exit 1
+
+      # ── Slack notification ────────────────────────────────────
+      - name: Notify Slack of rollback
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          EMOJI="$( [ "$STATUS" = "success" ] && echo "⏪" || echo "🚨" )"
+          curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"text\": \"$EMOJI *CompoundIQ ROLLBACK — ${{ inputs.environment }} $STATUS* | to: ${{ inputs.vercel_deployment_id }} | by: ${{ github.actor }}\"}"

@@ -172,7 +172,7 @@ async function handleSmsFailureFallback(params: SmsFailureParams): Promise<void>
       .single()
 
     if (order?.clinic_id) {
-      await supabase
+      const { error: notifErr } = await supabase
         .from('clinic_notifications')
         .insert({
           clinic_id: order.clinic_id,
@@ -180,9 +180,7 @@ async function handleSmsFailureFallback(params: SmsFailureParams): Promise<void>
           notification_type: 'sms_failed',
           message: `SMS delivery ${messageStatus} for order ${orderId}. Template: ${templateName}. Error code: ${errorCode ?? 'N/A'}. Please contact patient directly to ensure they received their ${templateName === 'payment_link' ? 'payment link' : 'notification'}.`,
         })
-        .catch(err =>
-          console.error('[twilio-webhook] failed to insert clinic_notification:', err)
-        )
+      if (notifErr) console.error('[twilio-webhook] failed to insert clinic_notification:', notifErr)
     }
   }
 

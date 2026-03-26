@@ -61,8 +61,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const sourceStats: Record<string, { total: number; success: number }> = {}
   for (const ev of eventsBySource ?? []) {
     if (!sourceStats[ev.source]) sourceStats[ev.source] = { total: 0, success: 0 }
-    sourceStats[ev.source].total++
-    if (ev.processed_at && !ev.error) sourceStats[ev.source].success++
+    sourceStats[ev.source]!.total++
+    if (ev.processed_at && !ev.error) sourceStats[ev.source]!.success++
   }
   metrics.m02_success_rate_by_source = Object.fromEntries(
     Object.entries(sourceStats).map(([src, s]) => [
@@ -126,7 +126,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     .gte('created_at', periodStartIso)
 
   const submissionTotal = submissions?.length ?? 0
-  const submissionSuccess = submissions?.filter(s => s.status === 'COMPLETED').length ?? 0
+  const submissionSuccess = submissions?.filter(s => s.status === 'SUBMITTED' || s.status === 'CONFIRMED' || s.status === 'ACKNOWLEDGED').length ?? 0
   metrics.m07_adapter_submission_success_rate = submissionTotal > 0
     ? `${Math.round((submissionSuccess / submissionTotal) * 100)}%`
     : 'N/A'
@@ -183,7 +183,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const errorCounts: Record<string, number> = {}
   for (const row of errorRows ?? []) {
     // Extract first line of error as the code
-    const code = (row.error ?? '').split('\n')[0].substring(0, 80)
+    const code = (row.error ?? '').split('\n')[0]!.substring(0, 80)
     errorCounts[code] = (errorCounts[code] ?? 0) + 1
   }
   const top5Errors = Object.entries(errorCounts)

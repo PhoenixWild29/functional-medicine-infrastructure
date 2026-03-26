@@ -1,8 +1,4 @@
-// AUTO-GENERATED — do not edit manually.
-// Regenerate with: npm run db:types
-// Source: supabase gen types typescript --project-id <ref>
-
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -10,1018 +6,1992 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-// ============================================================
-// ENUMS
-// ============================================================
-
-export type OrderStatusEnum =
-  | 'DRAFT'
-  | 'AWAITING_PAYMENT'
-  | 'PAYMENT_EXPIRED'
-  | 'PAID_PROCESSING'
-  | 'SUBMISSION_PENDING'
-  | 'SUBMISSION_FAILED'
-  | 'FAX_QUEUED'
-  | 'FAX_DELIVERED'
-  | 'FAX_FAILED'
-  | 'PHARMACY_ACKNOWLEDGED'
-  | 'PHARMACY_COMPOUNDING'
-  | 'PHARMACY_PROCESSING'
-  | 'PHARMACY_REJECTED'
-  | 'REROUTE_PENDING'
-  | 'READY_TO_SHIP'
-  | 'SHIPPED'
-  | 'DELIVERED'
-  | 'CANCELLED'
-  | 'ERROR_PAYMENT_FAILED'
-  | 'ERROR_COMPLIANCE_HOLD'
-  | 'REFUND_PENDING'
-  | 'REFUNDED'
-  | 'DISPUTED'
-
-export type StripeConnectStatusEnum =
-  | 'PENDING'
-  | 'ONBOARDING'
-  | 'RESTRICTED'
-  | 'ACTIVE'
-  | 'DEACTIVATED'
-
-export type AppRoleEnum =
-  | 'clinic_admin'
-  | 'provider'
-  | 'medical_assistant'
-  | 'ops_admin'
-
-export type WebhookSourceEnum = 'STRIPE' | 'DOCUMO' | 'PHARMACY'
-
-export type SlaTypeEnum =
-  | 'FAX_DELIVERY'
-  | 'PHARMACY_ACKNOWLEDGE'
-  | 'SHIPPING'
-  | 'PAYMENT'
-  | 'SUBMISSION'
-  | 'PHARMACY_CONFIRMATION'
-  | 'STATUS_UPDATE'
-  | 'REROUTE_RESOLUTION'
-
-export type FaxQueueStatusEnum =
-  | 'RECEIVED'
-  | 'MATCHED'
-  | 'UNMATCHED'
-  | 'PROCESSING'
-  | 'ERROR'
-
-export type RegulatoryStatusEnum =
-  | 'ACTIVE'
-  | 'RECALLED'
-  | 'DISCONTINUED'
-  | 'SHORTAGE'
-
-export type IntegrationTierEnum =
-  | 'TIER_1_API'
-  | 'TIER_2_PORTAL'
-  | 'TIER_3_HYBRID'
-  | 'TIER_4_FAX'
-
-export type AdapterSubmissionStatusEnum =
-  | 'PENDING'
-  | 'SUBMITTED'
-  | 'CONFIRMED'
-  | 'FAILED'
-  | 'TIMEOUT'
-  | 'PORTAL_ERROR'
-  | 'MANUAL_REVIEW'
-
-export type CatalogSourceEnum =
-  | 'PHARMACY_API'
-  | 'PORTAL_SCRAPE'
-  | 'MANUAL_ENTRY'
-  | 'BULK_IMPORT'
-
-// ============================================================
-// DATABASE SCHEMA
-// ============================================================
-
-export interface Database {
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.4"
+  }
   public: {
     Tables: {
-      clinics: {
+      adapter_submissions: {
         Row: {
-          clinic_id: string
-          name: string
-          stripe_connect_account_id: string | null
-          stripe_connect_status: StripeConnectStatusEnum
-          logo_url: string | null
-          default_markup_pct: number | null
-          order_intake_blocked: boolean
+          acknowledged_at: string | null
+          ai_confidence_score: number | null
+          attempt_number: number
+          completed_at: string | null
           created_at: string
-          updated_at: string
-          deleted_at: string | null
-          is_active: boolean
-        }
-        Insert: {
-          clinic_id?: string
-          name: string
-          stripe_connect_account_id?: string | null
-          stripe_connect_status?: StripeConnectStatusEnum
-          logo_url?: string | null
-          default_markup_pct?: number | null
-          order_intake_blocked?: boolean
-          created_at?: string
-          updated_at?: string
-          deleted_at?: string | null
-          is_active?: boolean
-        }
-        Update: {
-          clinic_id?: string
-          name?: string
-          stripe_connect_account_id?: string | null
-          stripe_connect_status?: StripeConnectStatusEnum
-          logo_url?: string | null
-          default_markup_pct?: number | null
-          order_intake_blocked?: boolean
-          updated_at?: string
-          deleted_at?: string | null
-          is_active?: boolean
-        }
-      }
-      providers: {
-        Row: {
-          provider_id: string
-          clinic_id: string
-          first_name: string
-          last_name: string
-          npi_number: string
-          license_state: string
-          license_number: string
-          dea_number: string | null
-          signature_on_file: boolean
-          created_at: string
-          updated_at: string
-          deleted_at: string | null
-          is_active: boolean
-        }
-        Insert: {
-          provider_id?: string
-          clinic_id: string
-          first_name: string
-          last_name: string
-          npi_number: string
-          license_state: string
-          license_number: string
-          dea_number?: string | null
-          signature_on_file?: boolean
-          created_at?: string
-          updated_at?: string
-          deleted_at?: string | null
-          is_active?: boolean
-        }
-        Update: {
-          provider_id?: string
-          clinic_id?: string
-          first_name?: string
-          last_name?: string
-          npi_number?: string
-          license_state?: string
-          license_number?: string
-          dea_number?: string | null
-          signature_on_file?: boolean
-          updated_at?: string
-          deleted_at?: string | null
-          is_active?: boolean
-        }
-      }
-      patients: {
-        Row: {
-          patient_id: string
-          clinic_id: string
-          first_name: string
-          last_name: string
-          date_of_birth: string
-          phone: string
-          email: string | null
-          address_line1: string | null
-          address_line2: string | null
-          city: string | null
-          state: string | null
-          zip: string | null
-          sms_opt_in: boolean
-          created_at: string
-          updated_at: string
-          deleted_at: string | null
-          is_active: boolean
-        }
-        Insert: {
-          patient_id?: string
-          clinic_id: string
-          first_name: string
-          last_name: string
-          date_of_birth: string
-          phone: string
-          email?: string | null
-          address_line1?: string | null
-          address_line2?: string | null
-          city?: string | null
-          state?: string | null
-          zip?: string | null
-          sms_opt_in?: boolean
-          created_at?: string
-          updated_at?: string
-          deleted_at?: string | null
-          is_active?: boolean
-        }
-        Update: {
-          patient_id?: string
-          clinic_id?: string
-          first_name?: string
-          last_name?: string
-          date_of_birth?: string
-          phone?: string
-          email?: string | null
-          address_line1?: string | null
-          address_line2?: string | null
-          city?: string | null
-          state?: string | null
-          zip?: string | null
-          sms_opt_in?: boolean
-          updated_at?: string
-          deleted_at?: string | null
-          is_active?: boolean
-        }
-      }
-      pharmacies: {
-        Row: {
+          error_code: string | null
+          error_message: string | null
+          external_reference_id: string | null
+          metadata: Json | null
+          order_id: string
           pharmacy_id: string
-          name: string
-          slug: string
-          phone: string | null
-          fax_number: string | null
-          email: string | null
-          address_line1: string | null
-          address_line2: string | null
-          city: string | null
-          state: string | null
-          zip: string | null
-          website_url: string | null
-          average_turnaround_days: number | null
-          integration_tier: IntegrationTierEnum
-          api_config_id: string | null
-          portal_config_id: string | null
-          supports_webhook: boolean
-          adapter_status: string | null
-          supports_real_time_status: boolean
-          created_at: string
-          updated_at: string
-          deleted_at: string | null
-          is_active: boolean
+          portal_last_polled_at: string | null
+          request_payload: Json | null
+          response_payload: Json | null
+          screenshot_url: string | null
+          status: Database["public"]["Enums"]["adapter_submission_status_enum"]
+          submission_id: string
+          submitted_at: string | null
+          tier: Database["public"]["Enums"]["integration_tier_enum"]
         }
         Insert: {
+          acknowledged_at?: string | null
+          ai_confidence_score?: number | null
+          attempt_number?: number
+          completed_at?: string | null
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          external_reference_id?: string | null
+          metadata?: Json | null
+          order_id: string
+          pharmacy_id: string
+          portal_last_polled_at?: string | null
+          request_payload?: Json | null
+          response_payload?: Json | null
+          screenshot_url?: string | null
+          status?: Database["public"]["Enums"]["adapter_submission_status_enum"]
+          submission_id?: string
+          submitted_at?: string | null
+          tier: Database["public"]["Enums"]["integration_tier_enum"]
+        }
+        Update: {
+          acknowledged_at?: string | null
+          ai_confidence_score?: number | null
+          attempt_number?: number
+          completed_at?: string | null
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          external_reference_id?: string | null
+          metadata?: Json | null
+          order_id?: string
           pharmacy_id?: string
-          name: string
-          slug: string
-          phone?: string | null
-          fax_number?: string | null
-          email?: string | null
-          address_line1?: string | null
-          address_line2?: string | null
-          city?: string | null
-          state?: string | null
-          zip?: string | null
-          website_url?: string | null
-          average_turnaround_days?: number | null
-          integration_tier?: IntegrationTierEnum
-          api_config_id?: string | null
-          portal_config_id?: string | null
-          supports_webhook?: boolean
-          adapter_status?: string | null
-          supports_real_time_status?: boolean
-          created_at?: string
-          updated_at?: string
-          deleted_at?: string | null
-          is_active?: boolean
+          portal_last_polled_at?: string | null
+          request_payload?: Json | null
+          response_payload?: Json | null
+          screenshot_url?: string | null
+          status?: Database["public"]["Enums"]["adapter_submission_status_enum"]
+          submission_id?: string
+          submitted_at?: string | null
+          tier?: Database["public"]["Enums"]["integration_tier_enum"]
         }
-        Update: {
-          pharmacy_id?: string
-          name?: string
-          slug?: string
-          phone?: string | null
-          fax_number?: string | null
-          email?: string | null
-          address_line1?: string | null
-          address_line2?: string | null
-          city?: string | null
-          state?: string | null
-          zip?: string | null
-          website_url?: string | null
-          average_turnaround_days?: number | null
-          integration_tier?: IntegrationTierEnum
-          api_config_id?: string | null
-          portal_config_id?: string | null
-          supports_webhook?: boolean
-          adapter_status?: string | null
-          supports_real_time_status?: boolean
-          updated_at?: string
-          deleted_at?: string | null
-          is_active?: boolean
-        }
-      }
-      pharmacy_state_licenses: {
-        Row: {
-          pharmacy_id: string
-          state_code: string
-          license_number: string
-          expiration_date: string
-          is_active: boolean
-          deleted_at: string | null
-        }
-        Insert: {
-          pharmacy_id: string
-          state_code: string
-          license_number: string
-          expiration_date: string
-          is_active?: boolean
-          deleted_at?: string | null
-        }
-        Update: {
-          license_number?: string
-          expiration_date?: string
-          is_active?: boolean
-          deleted_at?: string | null
-        }
+        Relationships: [
+          {
+            foreignKeyName: "adapter_submissions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "adapter_submissions_pharmacy_id_fkey"
+            columns: ["pharmacy_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacies"
+            referencedColumns: ["pharmacy_id"]
+          },
+        ]
       }
       catalog: {
         Row: {
-          item_id: string
-          pharmacy_id: string
-          medication_name: string
-          form: string
-          dose: string
-          wholesale_price: number
-          retail_price: number | null
-          regulatory_status: RegulatoryStatusEnum
-          requires_prior_auth: boolean
-          normalized_id: string | null
           created_at: string
-          updated_at: string
+          dea_schedule: number
           deleted_at: string | null
+          dose: string
+          form: string
           is_active: boolean
+          item_id: string
+          medication_name: string
+          normalized_id: string | null
+          pharmacy_id: string
+          regulatory_status: Database["public"]["Enums"]["regulatory_status_enum"]
+          requires_prior_auth: boolean
+          retail_price: number | null
+          updated_at: string
+          upload_history_id: string | null
+          wholesale_price: number
         }
         Insert: {
-          item_id?: string
-          pharmacy_id: string
-          medication_name: string
-          form: string
-          dose: string
-          wholesale_price: number
-          retail_price?: number | null
-          regulatory_status?: RegulatoryStatusEnum
-          requires_prior_auth?: boolean
-          normalized_id?: string | null
           created_at?: string
-          updated_at?: string
+          dea_schedule?: number
           deleted_at?: string | null
+          dose: string
+          form: string
           is_active?: boolean
+          item_id?: string
+          medication_name: string
+          normalized_id?: string | null
+          pharmacy_id: string
+          regulatory_status?: Database["public"]["Enums"]["regulatory_status_enum"]
+          requires_prior_auth?: boolean
+          retail_price?: number | null
+          updated_at?: string
+          upload_history_id?: string | null
+          wholesale_price: number
         }
         Update: {
-          pharmacy_id?: string
-          medication_name?: string
-          form?: string
-          dose?: string
-          wholesale_price?: number
-          retail_price?: number | null
-          regulatory_status?: RegulatoryStatusEnum
-          requires_prior_auth?: boolean
-          normalized_id?: string | null
-          updated_at?: string
+          created_at?: string
+          dea_schedule?: number
           deleted_at?: string | null
+          dose?: string
+          form?: string
           is_active?: boolean
+          item_id?: string
+          medication_name?: string
+          normalized_id?: string | null
+          pharmacy_id?: string
+          regulatory_status?: Database["public"]["Enums"]["regulatory_status_enum"]
+          requires_prior_auth?: boolean
+          retail_price?: number | null
+          updated_at?: string
+          upload_history_id?: string | null
+          wholesale_price?: number
         }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_normalized_id_fkey"
+            columns: ["normalized_id"]
+            isOneToOne: false
+            referencedRelation: "normalized_catalog"
+            referencedColumns: ["normalized_id"]
+          },
+          {
+            foreignKeyName: "catalog_pharmacy_id_fkey"
+            columns: ["pharmacy_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacies"
+            referencedColumns: ["pharmacy_id"]
+          },
+          {
+            foreignKeyName: "catalog_upload_history_id_fkey"
+            columns: ["upload_history_id"]
+            isOneToOne: false
+            referencedRelation: "catalog_upload_history"
+            referencedColumns: ["history_id"]
+          },
+        ]
       }
       catalog_history: {
         Row: {
-          history_id: string
-          item_id: string
-          field_changed: string
-          old_value: string | null
-          new_value: string | null
-          changed_by: string | null
           changed_at: string
+          changed_by: string | null
+          field_changed: string
+          history_id: string
+          item_id: string
+          new_value: string | null
+          old_value: string | null
         }
         Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          field_changed: string
           history_id?: string
           item_id: string
-          field_changed: string
-          old_value?: string | null
           new_value?: string | null
-          changed_by?: string | null
+          old_value?: string | null
+        }
+        Update: {
           changed_at?: string
-        }
-        Update: Record<string, never> // append-only
-      }
-      orders: {
-        Row: {
-          order_id: string
-          patient_id: string
-          provider_id: string
-          catalog_item_id: string
-          clinic_id: string
-          status: OrderStatusEnum
-          quantity: number
-          wholesale_price_snapshot: number | null
-          retail_price_snapshot: number | null
-          medication_snapshot: Json | null
-          shipping_state_snapshot: string | null
-          provider_npi_snapshot: string | null
-          pharmacy_snapshot: Json | null
-          locked_at: string | null
-          stripe_payment_intent_id: string | null
-          stripe_transfer_id: string | null
-          tracking_number: string | null
-          carrier: string | null
-          submission_tier: IntegrationTierEnum | null
-          adapter_submission_id: string | null
-          estimated_completion_at: string | null
-          reroute_count: number
-          sig_text: string | null
-          order_number: string | null
-          notes: string | null
-          created_at: string
-          updated_at: string
-          deleted_at: string | null
-          is_active: boolean
-        }
-        Insert: {
-          order_id?: string
-          patient_id: string
-          provider_id: string
-          catalog_item_id: string
-          clinic_id: string
-          status?: OrderStatusEnum
-          quantity: number
-          wholesale_price_snapshot?: number | null
-          retail_price_snapshot?: number | null
-          medication_snapshot?: Json | null
-          shipping_state_snapshot?: string | null
-          provider_npi_snapshot?: string | null
-          pharmacy_snapshot?: Json | null
-          locked_at?: string | null
-          stripe_payment_intent_id?: string | null
-          stripe_transfer_id?: string | null
-          tracking_number?: string | null
-          carrier?: string | null
-          submission_tier?: IntegrationTierEnum | null
-          adapter_submission_id?: string | null
-          estimated_completion_at?: string | null
-          reroute_count?: number
-          sig_text?: string | null
-          order_number?: string | null
-          notes?: string | null
-          created_at?: string
-          updated_at?: string
-          deleted_at?: string | null
-          is_active?: boolean
-        }
-        Update: {
-          order_id?: string
-          patient_id?: string
-          provider_id?: string
-          catalog_item_id?: string
-          clinic_id?: string
-          status?: OrderStatusEnum
-          quantity?: number
-          wholesale_price_snapshot?: number | null
-          retail_price_snapshot?: number | null
-          medication_snapshot?: Json | null
-          shipping_state_snapshot?: string | null
-          provider_npi_snapshot?: string | null
-          pharmacy_snapshot?: Json | null
-          locked_at?: string | null
-          stripe_payment_intent_id?: string | null
-          stripe_transfer_id?: string | null
-          tracking_number?: string | null
-          carrier?: string | null
-          submission_tier?: IntegrationTierEnum | null
-          adapter_submission_id?: string | null
-          estimated_completion_at?: string | null
-          reroute_count?: number
-          sig_text?: string | null
-          order_number?: string | null
-          notes?: string | null
-          updated_at?: string
-          deleted_at?: string | null
-          is_active?: boolean
-        }
-      }
-      order_status_history: {
-        Row: {
-          history_id: string
-          order_id: string
-          old_status: OrderStatusEnum
-          new_status: OrderStatusEnum
-          changed_by: string | null
-          metadata: Json | null
-          created_at: string
-        }
-        Insert: {
-          history_id?: string
-          order_id: string
-          old_status: OrderStatusEnum
-          new_status: OrderStatusEnum
           changed_by?: string | null
-          metadata?: Json | null
-          created_at?: string
+          field_changed?: string
+          history_id?: string
+          item_id?: string
+          new_value?: string | null
+          old_value?: string | null
         }
-        Update: Record<string, never> // append-only
+        Relationships: [
+          {
+            foreignKeyName: "catalog_history_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "catalog"
+            referencedColumns: ["item_id"]
+          },
+        ]
       }
-      webhook_events: {
+      catalog_upload_history: {
         Row: {
-          event_id: string
-          source: WebhookSourceEnum
-          event_type: string
-          payload: Json
-          order_id: string | null
-          processed_at: string | null
-          error: string | null
-          created_at: string
-        }
-        Insert: {
-          event_id?: string
-          source: WebhookSourceEnum
-          event_type: string
-          payload: Json
-          order_id?: string | null
-          processed_at?: string | null
-          error?: string | null
-          created_at?: string
-        }
-        Update: Record<string, never> // append-only
-      }
-      order_sla_deadlines: {
-        Row: {
-          order_id: string
-          sla_type: SlaTypeEnum
-          deadline_at: string
-          escalated: boolean
-          escalated_at: string | null
-          resolved_at: string | null
-          acknowledged_by: string | null
-          escalation_tier: number
-          acknowledged_at: string | null
-          resolution_notes: string | null
-          created_at: string
-          deleted_at: string | null
+          delta_summary: Json
+          history_id: string
           is_active: boolean
+          notes: string | null
+          pharmacy_id: string
+          row_count: number
+          upload_source: string
+          uploaded_at: string
+          uploader: string
+          version_number: number
         }
         Insert: {
-          order_id: string
-          sla_type: SlaTypeEnum
-          deadline_at: string
-          escalated?: boolean
-          escalated_at?: string | null
-          resolved_at?: string | null
-          acknowledged_by?: string | null
-          escalation_tier?: number
-          acknowledged_at?: string | null
-          resolution_notes?: string | null
-          created_at?: string
-          deleted_at?: string | null
+          delta_summary?: Json
+          history_id?: string
           is_active?: boolean
+          notes?: string | null
+          pharmacy_id: string
+          row_count?: number
+          upload_source?: string
+          uploaded_at?: string
+          uploader: string
+          version_number: number
         }
         Update: {
-          deadline_at?: string
-          escalated?: boolean
-          escalated_at?: string | null
-          resolved_at?: string | null
-          acknowledged_by?: string | null
-          escalation_tier?: number
+          delta_summary?: Json
+          history_id?: string
+          is_active?: boolean
+          notes?: string | null
+          pharmacy_id?: string
+          row_count?: number
+          upload_source?: string
+          uploaded_at?: string
+          uploader?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_upload_history_pharmacy_id_fkey"
+            columns: ["pharmacy_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacies"
+            referencedColumns: ["pharmacy_id"]
+          },
+        ]
+      }
+      circuit_breaker_state: {
+        Row: {
+          cooldown_until: string | null
+          failure_count: number
+          last_failure_at: string | null
+          pharmacy_id: string
+          state: string
+          tripped_by_submission_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          cooldown_until?: string | null
+          failure_count?: number
+          last_failure_at?: string | null
+          pharmacy_id: string
+          state?: string
+          tripped_by_submission_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cooldown_until?: string | null
+          failure_count?: number
+          last_failure_at?: string | null
+          pharmacy_id?: string
+          state?: string
+          tripped_by_submission_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "circuit_breaker_state_pharmacy_id_fkey"
+            columns: ["pharmacy_id"]
+            isOneToOne: true
+            referencedRelation: "pharmacies"
+            referencedColumns: ["pharmacy_id"]
+          },
+          {
+            foreignKeyName: "circuit_breaker_state_tripped_by_submission_id_fkey"
+            columns: ["tripped_by_submission_id"]
+            isOneToOne: false
+            referencedRelation: "adapter_submissions"
+            referencedColumns: ["submission_id"]
+          },
+        ]
+      }
+      clinic_notifications: {
+        Row: {
+          acknowledged_at: string | null
+          clinic_id: string
+          created_at: string
+          message: string
+          notification_id: string
+          notification_type: string
+          order_id: string | null
+        }
+        Insert: {
           acknowledged_at?: string | null
-          resolution_notes?: string | null
+          clinic_id: string
+          created_at?: string
+          message: string
+          notification_id?: string
+          notification_type: string
+          order_id?: string | null
+        }
+        Update: {
+          acknowledged_at?: string | null
+          clinic_id?: string
+          created_at?: string
+          message?: string
+          notification_id?: string
+          notification_type?: string
+          order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clinic_notifications_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+          {
+            foreignKeyName: "clinic_notifications_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["order_id"]
+          },
+        ]
+      }
+      clinics: {
+        Row: {
+          clinic_id: string
+          contact_email: string | null
+          contact_phone: string | null
+          created_at: string
+          default_markup_pct: number | null
+          deleted_at: string | null
+          is_active: boolean
+          logo_url: string | null
+          name: string
+          order_intake_blocked: boolean
+          stripe_connect_account_id: string | null
+          stripe_connect_status: Database["public"]["Enums"]["stripe_connect_status_enum"]
+          updated_at: string
+        }
+        Insert: {
+          clinic_id?: string
+          contact_email?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          default_markup_pct?: number | null
           deleted_at?: string | null
           is_active?: boolean
+          logo_url?: string | null
+          name: string
+          order_intake_blocked?: boolean
+          stripe_connect_account_id?: string | null
+          stripe_connect_status?: Database["public"]["Enums"]["stripe_connect_status_enum"]
+          updated_at?: string
         }
+        Update: {
+          clinic_id?: string
+          contact_email?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          default_markup_pct?: number | null
+          deleted_at?: string | null
+          is_active?: boolean
+          logo_url?: string | null
+          name?: string
+          order_intake_blocked?: boolean
+          stripe_connect_account_id?: string | null
+          stripe_connect_status?: Database["public"]["Enums"]["stripe_connect_status_enum"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      disputes: {
+        Row: {
+          amount: number
+          created_at: string
+          currency: string
+          dispute_id: string
+          evidence_collected_at: string | null
+          order_id: string
+          payment_intent_id: string
+          reason: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          currency?: string
+          dispute_id: string
+          evidence_collected_at?: string | null
+          order_id: string
+          payment_intent_id: string
+          reason?: string | null
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          currency?: string
+          dispute_id?: string
+          evidence_collected_at?: string | null
+          order_id?: string
+          payment_intent_id?: string
+          reason?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "disputes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["order_id"]
+          },
+        ]
       }
       inbound_fax_queue: {
         Row: {
-          fax_id: string
-          documo_fax_id: string
-          from_number: string
-          page_count: number
-          storage_path: string
-          status: FaxQueueStatusEnum
-          matched_pharmacy_id: string | null
-          matched_order_id: string | null
-          processed_by: string | null
-          notes: string | null
           created_at: string
-          updated_at: string
           deleted_at: string | null
+          documo_fax_id: string
+          fax_id: string
+          from_number: string
           is_active: boolean
+          matched_order_id: string | null
+          matched_pharmacy_id: string | null
+          notes: string | null
+          page_count: number
+          processed_by: string | null
+          status: Database["public"]["Enums"]["fax_queue_status_enum"]
+          storage_path: string
+          updated_at: string
         }
         Insert: {
-          fax_id?: string
-          documo_fax_id: string
-          from_number: string
-          page_count: number
-          storage_path: string
-          status?: FaxQueueStatusEnum
-          matched_pharmacy_id?: string | null
-          matched_order_id?: string | null
-          processed_by?: string | null
-          notes?: string | null
           created_at?: string
-          updated_at?: string
           deleted_at?: string | null
+          documo_fax_id: string
+          fax_id?: string
+          from_number: string
           is_active?: boolean
+          matched_order_id?: string | null
+          matched_pharmacy_id?: string | null
+          notes?: string | null
+          page_count: number
+          processed_by?: string | null
+          status?: Database["public"]["Enums"]["fax_queue_status_enum"]
+          storage_path: string
+          updated_at?: string
         }
         Update: {
-          status?: FaxQueueStatusEnum
-          matched_pharmacy_id?: string | null
-          matched_order_id?: string | null
-          processed_by?: string | null
-          notes?: string | null
-          updated_at?: string
+          created_at?: string
           deleted_at?: string | null
+          documo_fax_id?: string
+          fax_id?: string
+          from_number?: string
           is_active?: boolean
+          matched_order_id?: string | null
+          matched_pharmacy_id?: string | null
+          notes?: string | null
+          page_count?: number
+          processed_by?: string | null
+          status?: Database["public"]["Enums"]["fax_queue_status_enum"]
+          storage_path?: string
+          updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "inbound_fax_queue_matched_order_id_fkey"
+            columns: ["matched_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "inbound_fax_queue_matched_pharmacy_id_fkey"
+            columns: ["matched_pharmacy_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacies"
+            referencedColumns: ["pharmacy_id"]
+          },
+        ]
+      }
+      normalized_catalog: {
+        Row: {
+          canonical_name: string
+          confidence_score: number | null
+          created_at: string
+          dose: string
+          form: string
+          is_active: boolean
+          normalized_id: string
+          pharmacy_id: string
+          regulatory_status: Database["public"]["Enums"]["regulatory_status_enum"]
+          source: Database["public"]["Enums"]["catalog_source_enum"]
+          source_item_id: string | null
+          state_availability: Json | null
+          updated_at: string
+          wholesale_price: number | null
+        }
+        Insert: {
+          canonical_name: string
+          confidence_score?: number | null
+          created_at?: string
+          dose: string
+          form: string
+          is_active?: boolean
+          normalized_id?: string
+          pharmacy_id: string
+          regulatory_status?: Database["public"]["Enums"]["regulatory_status_enum"]
+          source: Database["public"]["Enums"]["catalog_source_enum"]
+          source_item_id?: string | null
+          state_availability?: Json | null
+          updated_at?: string
+          wholesale_price?: number | null
+        }
+        Update: {
+          canonical_name?: string
+          confidence_score?: number | null
+          created_at?: string
+          dose?: string
+          form?: string
+          is_active?: boolean
+          normalized_id?: string
+          pharmacy_id?: string
+          regulatory_status?: Database["public"]["Enums"]["regulatory_status_enum"]
+          source?: Database["public"]["Enums"]["catalog_source_enum"]
+          source_item_id?: string | null
+          state_availability?: Json | null
+          updated_at?: string
+          wholesale_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "normalized_catalog_pharmacy_id_fkey"
+            columns: ["pharmacy_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacies"
+            referencedColumns: ["pharmacy_id"]
+          },
+          {
+            foreignKeyName: "normalized_catalog_source_item_id_fkey"
+            columns: ["source_item_id"]
+            isOneToOne: false
+            referencedRelation: "catalog"
+            referencedColumns: ["item_id"]
+          },
+        ]
+      }
+      ops_alert_queue: {
+        Row: {
+          alert_id: string
+          alert_type: string
+          created_at: string
+          message: string
+          metadata: Json | null
+          sent_at: string | null
+          severity: string
+          slack_channel: string
+        }
+        Insert: {
+          alert_id?: string
+          alert_type: string
+          created_at?: string
+          message: string
+          metadata?: Json | null
+          sent_at?: string | null
+          severity?: string
+          slack_channel?: string
+        }
+        Update: {
+          alert_id?: string
+          alert_type?: string
+          created_at?: string
+          message?: string
+          metadata?: Json | null
+          sent_at?: string | null
+          severity?: string
+          slack_channel?: string
+        }
+        Relationships: []
+      }
+      order_sla_deadlines: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          cascade_attempted: boolean
+          created_at: string
+          deadline_at: string
+          deleted_at: string | null
+          escalated: boolean
+          escalated_at: string | null
+          escalation_tier: number
+          is_active: boolean
+          last_alerted_at: string | null
+          order_id: string
+          resolution_notes: string | null
+          resolved_at: string | null
+          sla_type: Database["public"]["Enums"]["sla_type_enum"]
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          cascade_attempted?: boolean
+          created_at?: string
+          deadline_at: string
+          deleted_at?: string | null
+          escalated?: boolean
+          escalated_at?: string | null
+          escalation_tier?: number
+          is_active?: boolean
+          last_alerted_at?: string | null
+          order_id: string
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          sla_type: Database["public"]["Enums"]["sla_type_enum"]
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          cascade_attempted?: boolean
+          created_at?: string
+          deadline_at?: string
+          deleted_at?: string | null
+          escalated?: boolean
+          escalated_at?: string | null
+          escalation_tier?: number
+          is_active?: boolean
+          last_alerted_at?: string | null
+          order_id?: string
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          sla_type?: Database["public"]["Enums"]["sla_type_enum"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_sla_deadlines_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["order_id"]
+          },
+        ]
+      }
+      order_status_history: {
+        Row: {
+          changed_by: string | null
+          created_at: string
+          history_id: string
+          metadata: Json | null
+          new_status: Database["public"]["Enums"]["order_status_enum"]
+          old_status: Database["public"]["Enums"]["order_status_enum"]
+          order_id: string
+        }
+        Insert: {
+          changed_by?: string | null
+          created_at?: string
+          history_id?: string
+          metadata?: Json | null
+          new_status: Database["public"]["Enums"]["order_status_enum"]
+          old_status: Database["public"]["Enums"]["order_status_enum"]
+          order_id: string
+        }
+        Update: {
+          changed_by?: string | null
+          created_at?: string
+          history_id?: string
+          metadata?: Json | null
+          new_status?: Database["public"]["Enums"]["order_status_enum"]
+          old_status?: Database["public"]["Enums"]["order_status_enum"]
+          order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_status_history_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["order_id"]
+          },
+        ]
+      }
+      orders: {
+        Row: {
+          adapter_submission_id: string | null
+          carrier: string | null
+          catalog_item_id: string
+          clinic_id: string
+          created_at: string
+          deleted_at: string | null
+          documo_fax_id: string | null
+          estimated_completion_at: string | null
+          fax_attempt_count: number
+          is_active: boolean
+          locked_at: string | null
+          medication_snapshot: Json | null
+          notes: string | null
+          ops_assignee: string | null
+          order_id: string
+          order_number: string | null
+          patient_id: string
+          pharmacy_id: string | null
+          pharmacy_snapshot: Json | null
+          provider_id: string
+          provider_npi_snapshot: string | null
+          provider_signature_hash_snapshot: string | null
+          quantity: number
+          reroute_count: number
+          retail_price_snapshot: number | null
+          shipping_state_snapshot: string | null
+          sig_text: string | null
+          status: Database["public"]["Enums"]["order_status_enum"]
+          stripe_payment_intent_id: string | null
+          stripe_transfer_id: string | null
+          submission_tier:
+            | Database["public"]["Enums"]["integration_tier_enum"]
+            | null
+          tracking_number: string | null
+          updated_at: string
+          wholesale_price_snapshot: number | null
+        }
+        Insert: {
+          adapter_submission_id?: string | null
+          carrier?: string | null
+          catalog_item_id: string
+          clinic_id: string
+          created_at?: string
+          deleted_at?: string | null
+          documo_fax_id?: string | null
+          estimated_completion_at?: string | null
+          fax_attempt_count?: number
+          is_active?: boolean
+          locked_at?: string | null
+          medication_snapshot?: Json | null
+          notes?: string | null
+          ops_assignee?: string | null
+          order_id?: string
+          order_number?: string | null
+          patient_id: string
+          pharmacy_id?: string | null
+          pharmacy_snapshot?: Json | null
+          provider_id: string
+          provider_npi_snapshot?: string | null
+          provider_signature_hash_snapshot?: string | null
+          quantity: number
+          reroute_count?: number
+          retail_price_snapshot?: number | null
+          shipping_state_snapshot?: string | null
+          sig_text?: string | null
+          status?: Database["public"]["Enums"]["order_status_enum"]
+          stripe_payment_intent_id?: string | null
+          stripe_transfer_id?: string | null
+          submission_tier?:
+            | Database["public"]["Enums"]["integration_tier_enum"]
+            | null
+          tracking_number?: string | null
+          updated_at?: string
+          wholesale_price_snapshot?: number | null
+        }
+        Update: {
+          adapter_submission_id?: string | null
+          carrier?: string | null
+          catalog_item_id?: string
+          clinic_id?: string
+          created_at?: string
+          deleted_at?: string | null
+          documo_fax_id?: string | null
+          estimated_completion_at?: string | null
+          fax_attempt_count?: number
+          is_active?: boolean
+          locked_at?: string | null
+          medication_snapshot?: Json | null
+          notes?: string | null
+          ops_assignee?: string | null
+          order_id?: string
+          order_number?: string | null
+          patient_id?: string
+          pharmacy_id?: string | null
+          pharmacy_snapshot?: Json | null
+          provider_id?: string
+          provider_npi_snapshot?: string | null
+          provider_signature_hash_snapshot?: string | null
+          quantity?: number
+          reroute_count?: number
+          retail_price_snapshot?: number | null
+          shipping_state_snapshot?: string | null
+          sig_text?: string | null
+          status?: Database["public"]["Enums"]["order_status_enum"]
+          stripe_payment_intent_id?: string | null
+          stripe_transfer_id?: string | null
+          submission_tier?:
+            | Database["public"]["Enums"]["integration_tier_enum"]
+            | null
+          tracking_number?: string | null
+          updated_at?: string
+          wholesale_price_snapshot?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_adapter_submission_id_fkey"
+            columns: ["adapter_submission_id"]
+            isOneToOne: false
+            referencedRelation: "adapter_submissions"
+            referencedColumns: ["submission_id"]
+          },
+          {
+            foreignKeyName: "orders_catalog_item_id_fkey"
+            columns: ["catalog_item_id"]
+            isOneToOne: false
+            referencedRelation: "catalog"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "orders_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+          {
+            foreignKeyName: "orders_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["patient_id"]
+          },
+          {
+            foreignKeyName: "orders_pharmacy_id_fkey"
+            columns: ["pharmacy_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacies"
+            referencedColumns: ["pharmacy_id"]
+          },
+          {
+            foreignKeyName: "orders_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "providers"
+            referencedColumns: ["provider_id"]
+          },
+        ]
+      }
+      patients: {
+        Row: {
+          address_line1: string | null
+          address_line2: string | null
+          city: string | null
+          clinic_id: string
+          created_at: string
+          date_of_birth: string
+          deleted_at: string | null
+          email: string | null
+          first_name: string
+          is_active: boolean
+          last_name: string
+          patient_id: string
+          phone: string
+          sms_opt_in: boolean
+          state: string | null
+          updated_at: string
+          zip: string | null
+        }
+        Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          clinic_id: string
+          created_at?: string
+          date_of_birth: string
+          deleted_at?: string | null
+          email?: string | null
+          first_name: string
+          is_active?: boolean
+          last_name: string
+          patient_id?: string
+          phone: string
+          sms_opt_in?: boolean
+          state?: string | null
+          updated_at?: string
+          zip?: string | null
+        }
+        Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          clinic_id?: string
+          created_at?: string
+          date_of_birth?: string
+          deleted_at?: string | null
+          email?: string | null
+          first_name?: string
+          is_active?: boolean
+          last_name?: string
+          patient_id?: string
+          phone?: string
+          sms_opt_in?: boolean
+          state?: string | null
+          updated_at?: string
+          zip?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patients_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+        ]
+      }
+      pharmacies: {
+        Row: {
+          adapter_status: string | null
+          address_line1: string | null
+          address_line2: string | null
+          api_config_id: string | null
+          average_turnaround_days: number | null
+          catalog_last_synced_at: string | null
+          city: string | null
+          created_at: string
+          deleted_at: string | null
+          email: string | null
+          fax_number: string | null
+          integration_tier: Database["public"]["Enums"]["integration_tier_enum"]
+          is_active: boolean
+          name: string
+          pharmacy_id: string
+          pharmacy_status: string
+          phone: string | null
+          portal_config_id: string | null
+          slug: string
+          state: string | null
+          supports_real_time_status: boolean
+          supports_webhook: boolean
+          timezone: string
+          updated_at: string
+          website_url: string | null
+          zip: string | null
+        }
+        Insert: {
+          adapter_status?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
+          api_config_id?: string | null
+          average_turnaround_days?: number | null
+          catalog_last_synced_at?: string | null
+          city?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          email?: string | null
+          fax_number?: string | null
+          integration_tier?: Database["public"]["Enums"]["integration_tier_enum"]
+          is_active?: boolean
+          name: string
+          pharmacy_id?: string
+          pharmacy_status?: string
+          phone?: string | null
+          portal_config_id?: string | null
+          slug: string
+          state?: string | null
+          supports_real_time_status?: boolean
+          supports_webhook?: boolean
+          timezone?: string
+          updated_at?: string
+          website_url?: string | null
+          zip?: string | null
+        }
+        Update: {
+          adapter_status?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
+          api_config_id?: string | null
+          average_turnaround_days?: number | null
+          catalog_last_synced_at?: string | null
+          city?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          email?: string | null
+          fax_number?: string | null
+          integration_tier?: Database["public"]["Enums"]["integration_tier_enum"]
+          is_active?: boolean
+          name?: string
+          pharmacy_id?: string
+          pharmacy_status?: string
+          phone?: string | null
+          portal_config_id?: string | null
+          slug?: string
+          state?: string | null
+          supports_real_time_status?: boolean
+          supports_webhook?: boolean
+          timezone?: string
+          updated_at?: string
+          website_url?: string | null
+          zip?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pharmacies_api_config_id_fkey"
+            columns: ["api_config_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacy_api_configs"
+            referencedColumns: ["config_id"]
+          },
+          {
+            foreignKeyName: "pharmacies_portal_config_id_fkey"
+            columns: ["portal_config_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacy_portal_configs"
+            referencedColumns: ["config_id"]
+          },
+        ]
       }
       pharmacy_api_configs: {
         Row: {
-          config_id: string
-          pharmacy_id: string
-          base_url: string
-          vault_secret_id: string
-          webhook_secret_vault_id: string | null
-          endpoints: Json
           api_version: string | null
-          timeout_ms: number
-          retry_config: Json | null
-          rate_limit: Json | null
-          is_active: boolean
+          auth_type: string | null
+          base_url: string
+          circuit_breaker_threshold: number
+          config_id: string
           created_at: string
+          endpoints: Json
+          is_active: boolean
+          payload_transformer: string | null
+          pharmacy_id: string
+          rate_limit: Json | null
+          rate_limit_concurrent: number | null
+          rate_limit_rpm: number | null
+          response_parser: string | null
+          retry_config: Json | null
+          timeout_ms: number
           updated_at: string
+          vault_secret_id: string
+          webhook_callback_url: string | null
+          webhook_events: string[]
+          webhook_secret_encrypted: string | null
+          webhook_secret_vault_id: string | null
         }
         Insert: {
-          config_id?: string
-          pharmacy_id: string
-          base_url: string
-          vault_secret_id: string
-          webhook_secret_vault_id?: string | null
-          endpoints: Json
           api_version?: string | null
-          timeout_ms?: number
-          retry_config?: Json | null
-          rate_limit?: Json | null
-          is_active?: boolean
+          auth_type?: string | null
+          base_url: string
+          circuit_breaker_threshold?: number
+          config_id?: string
           created_at?: string
+          endpoints: Json
+          is_active?: boolean
+          payload_transformer?: string | null
+          pharmacy_id: string
+          rate_limit?: Json | null
+          rate_limit_concurrent?: number | null
+          rate_limit_rpm?: number | null
+          response_parser?: string | null
+          retry_config?: Json | null
+          timeout_ms?: number
           updated_at?: string
+          vault_secret_id: string
+          webhook_callback_url?: string | null
+          webhook_events?: string[]
+          webhook_secret_encrypted?: string | null
+          webhook_secret_vault_id?: string | null
         }
         Update: {
-          base_url?: string
-          vault_secret_id?: string
-          webhook_secret_vault_id?: string | null
-          endpoints?: Json
           api_version?: string | null
-          timeout_ms?: number
-          retry_config?: Json | null
-          rate_limit?: Json | null
+          auth_type?: string | null
+          base_url?: string
+          circuit_breaker_threshold?: number
+          config_id?: string
+          created_at?: string
+          endpoints?: Json
           is_active?: boolean
+          payload_transformer?: string | null
+          pharmacy_id?: string
+          rate_limit?: Json | null
+          rate_limit_concurrent?: number | null
+          rate_limit_rpm?: number | null
+          response_parser?: string | null
+          retry_config?: Json | null
+          timeout_ms?: number
           updated_at?: string
+          vault_secret_id?: string
+          webhook_callback_url?: string | null
+          webhook_events?: string[]
+          webhook_secret_encrypted?: string | null
+          webhook_secret_vault_id?: string | null
         }
+        Relationships: [
+          {
+            foreignKeyName: "pharmacy_api_configs_pharmacy_id_fkey"
+            columns: ["pharmacy_id"]
+            isOneToOne: true
+            referencedRelation: "pharmacies"
+            referencedColumns: ["pharmacy_id"]
+          },
+        ]
       }
       pharmacy_portal_configs: {
         Row: {
           config_id: string
-          pharmacy_id: string
-          portal_url: string
-          username_vault_id: string
-          password_vault_id: string
+          confirmation_selector: Json | null
+          created_at: string
+          is_active: boolean
+          login_flow: Json | null
           login_selector: Json | null
           order_form_selector: Json | null
-          confirmation_selector: Json | null
-          login_flow: Json | null
+          password_vault_id: string
+          pharmacy_id: string
+          poll_interval_minutes: number
+          portal_type: string | null
+          portal_url: string
+          screenshot_on_error: boolean
+          selectors: Json | null
+          status_check_flow: Json | null
           submit_flow: Json | null
-          is_active: boolean
-          created_at: string
           updated_at: string
+          username_vault_id: string
         }
         Insert: {
           config_id?: string
-          pharmacy_id: string
-          portal_url: string
-          username_vault_id: string
+          confirmation_selector?: Json | null
+          created_at?: string
+          is_active?: boolean
+          login_flow?: Json | null
+          login_selector?: Json | null
+          order_form_selector?: Json | null
           password_vault_id: string
-          login_selector?: Json | null
-          order_form_selector?: Json | null
-          confirmation_selector?: Json | null
-          login_flow?: Json | null
+          pharmacy_id: string
+          poll_interval_minutes?: number
+          portal_type?: string | null
+          portal_url: string
+          screenshot_on_error?: boolean
+          selectors?: Json | null
+          status_check_flow?: Json | null
           submit_flow?: Json | null
-          is_active?: boolean
-          created_at?: string
           updated_at?: string
+          username_vault_id: string
         }
         Update: {
-          portal_url?: string
-          username_vault_id?: string
+          config_id?: string
+          confirmation_selector?: Json | null
+          created_at?: string
+          is_active?: boolean
+          login_flow?: Json | null
+          login_selector?: Json | null
+          order_form_selector?: Json | null
           password_vault_id?: string
-          login_selector?: Json | null
-          order_form_selector?: Json | null
-          confirmation_selector?: Json | null
-          login_flow?: Json | null
+          pharmacy_id?: string
+          poll_interval_minutes?: number
+          portal_type?: string | null
+          portal_url?: string
+          screenshot_on_error?: boolean
+          selectors?: Json | null
+          status_check_flow?: Json | null
           submit_flow?: Json | null
-          is_active?: boolean
           updated_at?: string
+          username_vault_id?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "pharmacy_portal_configs_pharmacy_id_fkey"
+            columns: ["pharmacy_id"]
+            isOneToOne: true
+            referencedRelation: "pharmacies"
+            referencedColumns: ["pharmacy_id"]
+          },
+        ]
       }
-      adapter_submissions: {
+      pharmacy_state_licenses: {
         Row: {
-          submission_id: string
-          order_id: string
-          pharmacy_id: string
-          tier: IntegrationTierEnum
-          status: AdapterSubmissionStatusEnum
-          request_payload: Json | null
-          response_payload: Json | null
-          external_reference_id: string | null
-          ai_confidence_score: number | null
-          screenshot_url: string | null
-          error_code: string | null
-          error_message: string | null
-          attempt_number: number
-          created_at: string
-          completed_at: string | null
-        }
-        Insert: {
-          submission_id?: string
-          order_id: string
-          pharmacy_id: string
-          tier: IntegrationTierEnum
-          status?: AdapterSubmissionStatusEnum
-          request_payload?: Json | null
-          response_payload?: Json | null
-          external_reference_id?: string | null
-          ai_confidence_score?: number | null
-          screenshot_url?: string | null
-          error_code?: string | null
-          error_message?: string | null
-          attempt_number?: number
-          created_at?: string
-          completed_at?: string | null
-        }
-        Update: Record<string, never> // append-only
-      }
-      normalized_catalog: {
-        Row: {
-          normalized_id: string
-          canonical_name: string
-          form: string
-          dose: string
-          pharmacy_id: string
-          source_item_id: string | null
-          source: CatalogSourceEnum
-          wholesale_price: number | null
-          regulatory_status: RegulatoryStatusEnum
-          state_availability: Json | null
-          confidence_score: number | null
+          deleted_at: string | null
+          expiration_date: string
           is_active: boolean
-          created_at: string
-          updated_at: string
+          license_number: string
+          pharmacy_id: string
+          state_code: string
         }
         Insert: {
-          normalized_id?: string
-          canonical_name: string
-          form: string
-          dose: string
-          pharmacy_id: string
-          source_item_id?: string | null
-          source: CatalogSourceEnum
-          wholesale_price?: number | null
-          regulatory_status?: RegulatoryStatusEnum
-          state_availability?: Json | null
-          confidence_score?: number | null
+          deleted_at?: string | null
+          expiration_date: string
           is_active?: boolean
-          created_at?: string
-          updated_at?: string
+          license_number: string
+          pharmacy_id: string
+          state_code: string
         }
         Update: {
-          canonical_name?: string
-          form?: string
-          dose?: string
-          wholesale_price?: number | null
-          regulatory_status?: RegulatoryStatusEnum
-          state_availability?: Json | null
-          confidence_score?: number | null
+          deleted_at?: string | null
+          expiration_date?: string
           is_active?: boolean
-          updated_at?: string
+          license_number?: string
+          pharmacy_id?: string
+          state_code?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "pharmacy_state_licenses_pharmacy_id_fkey"
+            columns: ["pharmacy_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacies"
+            referencedColumns: ["pharmacy_id"]
+          },
+        ]
       }
       pharmacy_webhook_events: {
         Row: {
-          id: string
-          pharmacy_id: string
-          event_id: string
-          event_type: string
-          payload: Json
-          order_id: string | null
-          submission_id: string | null
-          external_order_id: string | null
-          signature_verified: boolean
-          retry_count: number
-          processed_at: string | null
+          created_at: string
           error: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          pharmacy_id: string
           event_id: string
           event_type: string
-          payload: Json
-          order_id?: string | null
-          submission_id?: string | null
-          external_order_id?: string | null
-          signature_verified?: boolean
-          retry_count?: number
-          processed_at?: string | null
-          error?: string | null
-          created_at?: string
-        }
-        Update: Record<string, never> // append-only
-      }
-      sms_log: {
-        Row: {
-          sms_id: string
+          external_order_id: string | null
+          id: string
           order_id: string | null
-          patient_id: string | null
-          template_name: string
-          twilio_message_sid: string
-          to_number: string
-          status: string
-          error_code: string | null
-          error_message: string | null
-          created_at: string
-          delivered_at: string | null
+          payload: Json
+          pharmacy_id: string
+          processed_at: string | null
+          retry_count: number
+          signature_verified: boolean
+          submission_id: string | null
         }
         Insert: {
-          sms_id?: string
-          order_id?: string | null
-          patient_id?: string | null
-          template_name: string
-          twilio_message_sid: string
-          to_number: string
-          status?: string
-          error_code?: string | null
-          error_message?: string | null
           created_at?: string
-          delivered_at?: string | null
+          error?: string | null
+          event_id: string
+          event_type: string
+          external_order_id?: string | null
+          id?: string
+          order_id?: string | null
+          payload: Json
+          pharmacy_id: string
+          processed_at?: string | null
+          retry_count?: number
+          signature_verified?: boolean
+          submission_id?: string | null
         }
-        Update: Record<string, never> // append-only
+        Update: {
+          created_at?: string
+          error?: string | null
+          event_id?: string
+          event_type?: string
+          external_order_id?: string | null
+          id?: string
+          order_id?: string | null
+          payload?: Json
+          pharmacy_id?: string
+          processed_at?: string | null
+          retry_count?: number
+          signature_verified?: boolean
+          submission_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pharmacy_webhook_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "pharmacy_webhook_events_pharmacy_id_fkey"
+            columns: ["pharmacy_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacies"
+            referencedColumns: ["pharmacy_id"]
+          },
+          {
+            foreignKeyName: "pharmacy_webhook_events_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "adapter_submissions"
+            referencedColumns: ["submission_id"]
+          },
+        ]
       }
-      sms_templates: {
+      providers: {
         Row: {
-          template_id: string
-          template_name: string
-          body_template: string
-          trigger_event: string
-          is_active: boolean
+          clinic_id: string
           created_at: string
+          dea_number: string | null
+          deleted_at: string | null
+          first_name: string
+          is_active: boolean
+          last_name: string
+          license_number: string
+          license_state: string
+          npi_number: string
+          provider_id: string
+          signature_hash: string | null
+          signature_on_file: boolean
           updated_at: string
         }
         Insert: {
+          clinic_id: string
+          created_at?: string
+          dea_number?: string | null
+          deleted_at?: string | null
+          first_name: string
+          is_active?: boolean
+          last_name: string
+          license_number: string
+          license_state: string
+          npi_number: string
+          provider_id?: string
+          signature_hash?: string | null
+          signature_on_file?: boolean
+          updated_at?: string
+        }
+        Update: {
+          clinic_id?: string
+          created_at?: string
+          dea_number?: string | null
+          deleted_at?: string | null
+          first_name?: string
+          is_active?: boolean
+          last_name?: string
+          license_number?: string
+          license_state?: string
+          npi_number?: string
+          provider_id?: string
+          signature_hash?: string | null
+          signature_on_file?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "providers_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+        ]
+      }
+      sla_notifications_log: {
+        Row: {
+          channel: string
+          escalation_tier: number
+          id: string
+          order_id: string
+          sent_at: string
+          sla_type: string
+        }
+        Insert: {
+          channel: string
+          escalation_tier: number
+          id?: string
+          order_id: string
+          sent_at?: string
+          sla_type: string
+        }
+        Update: {
+          channel?: string
+          escalation_tier?: number
+          id?: string
+          order_id?: string
+          sent_at?: string
+          sla_type?: string
+        }
+        Relationships: []
+      }
+      sms_log: {
+        Row: {
+          created_at: string
+          delivered_at: string | null
+          error_code: string | null
+          error_message: string | null
+          failed_at: string | null
+          order_id: string | null
+          patient_id: string | null
+          sent_at: string | null
+          sms_id: string
+          status: string
+          template_name: string
+          to_number: string
+          twilio_message_sid: string
+        }
+        Insert: {
+          created_at?: string
+          delivered_at?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          failed_at?: string | null
+          order_id?: string | null
+          patient_id?: string | null
+          sent_at?: string | null
+          sms_id?: string
+          status?: string
+          template_name: string
+          to_number: string
+          twilio_message_sid: string
+        }
+        Update: {
+          created_at?: string
+          delivered_at?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          failed_at?: string | null
+          order_id?: string | null
+          patient_id?: string | null
+          sent_at?: string | null
+          sms_id?: string
+          status?: string
+          template_name?: string
+          to_number?: string
+          twilio_message_sid?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_log_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "sms_log_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["patient_id"]
+          },
+        ]
+      }
+      sms_templates: {
+        Row: {
+          body_template: string
+          created_at: string
+          is_active: boolean
+          template_id: string
+          template_name: string
+          trigger_event: string
+          updated_at: string
+        }
+        Insert: {
+          body_template: string
+          created_at?: string
+          is_active?: boolean
           template_id?: string
           template_name: string
-          body_template: string
           trigger_event: string
-          is_active?: boolean
-          created_at?: string
           updated_at?: string
         }
         Update: {
           body_template?: string
-          trigger_event?: string
+          created_at?: string
           is_active?: boolean
+          template_id?: string
+          template_name?: string
+          trigger_event?: string
           updated_at?: string
         }
+        Relationships: []
       }
       transfer_failures: {
         Row: {
+          amount: number
+          clinic_id: string
+          created_at: string
+          currency: string
+          failure_code: string
           failure_id: string
-          transfer_id: string
-          order_id: string
-          clinic_id: string
-          amount: number
-          currency: string
-          failure_code: string
           failure_message: string | null
-          created_at: string
+          order_id: string
+          transfer_id: string
         }
         Insert: {
-          failure_id?: string
-          transfer_id: string
-          order_id: string
-          clinic_id: string
           amount: number
+          clinic_id: string
+          created_at?: string
           currency?: string
           failure_code: string
+          failure_id?: string
           failure_message?: string | null
-          created_at?: string
-        }
-        Update: Record<string, never> // append-only
-      }
-      disputes: {
-        Row: {
-          dispute_id: string
           order_id: string
-          payment_intent_id: string
-          reason: string | null
-          amount: number
-          currency: string
-          status: string
-          evidence_collected_at: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          dispute_id: string
-          order_id: string
-          payment_intent_id: string
-          reason?: string | null
-          amount: number
-          currency?: string
-          status: string
-          evidence_collected_at?: string | null
-          created_at?: string
-          updated_at?: string
+          transfer_id: string
         }
         Update: {
-          reason?: string | null
-          status?: string
-          evidence_collected_at?: string | null
-          updated_at?: string
+          amount?: number
+          clinic_id?: string
+          created_at?: string
+          currency?: string
+          failure_code?: string
+          failure_id?: string
+          failure_message?: string | null
+          order_id?: string
+          transfer_id?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "transfer_failures_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+          {
+            foreignKeyName: "transfer_failures_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["order_id"]
+          },
+        ]
+      }
+      webhook_events: {
+        Row: {
+          created_at: string
+          error: string | null
+          event_id: string
+          event_type: string
+          external_event_id: string | null
+          order_id: string | null
+          payload: Json
+          processed_at: string | null
+          retry_count: number
+          source: Database["public"]["Enums"]["webhook_source_enum"]
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          event_id?: string
+          event_type: string
+          external_event_id?: string | null
+          order_id?: string | null
+          payload: Json
+          processed_at?: string | null
+          retry_count?: number
+          source: Database["public"]["Enums"]["webhook_source_enum"]
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          event_id?: string
+          event_type?: string
+          external_event_id?: string | null
+          order_id?: string | null
+          payload?: Json
+          processed_at?: string | null
+          retry_count?: number
+          source?: Database["public"]["Enums"]["webhook_source_enum"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["order_id"]
+          },
+        ]
       }
     }
-    Views: Record<string, never>
+    Views: {
+      pharmacy_webhook_dead_letter_queue: {
+        Row: {
+          created_at: string | null
+          error: string | null
+          event_type: string | null
+          external_order_id: string | null
+          id: string | null
+          order_id: string | null
+          pharmacy_id: string | null
+          processed_at: string | null
+          retry_count: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          error?: string | null
+          event_type?: string | null
+          external_order_id?: string | null
+          id?: string | null
+          order_id?: string | null
+          pharmacy_id?: string | null
+          processed_at?: string | null
+          retry_count?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          error?: string | null
+          event_type?: string | null
+          external_order_id?: string | null
+          id?: string | null
+          order_id?: string | null
+          pharmacy_id?: string | null
+          processed_at?: string | null
+          retry_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pharmacy_webhook_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "pharmacy_webhook_events_pharmacy_id_fkey"
+            columns: ["pharmacy_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacies"
+            referencedColumns: ["pharmacy_id"]
+          },
+        ]
+      }
+      webhook_dead_letter_queue: {
+        Row: {
+          created_at: string | null
+          error: string | null
+          event_id: string | null
+          event_type: string | null
+          order_id: string | null
+          processed_at: string | null
+          retry_count: number | null
+          source: Database["public"]["Enums"]["webhook_source_enum"] | null
+        }
+        Insert: {
+          created_at?: string | null
+          error?: string | null
+          event_id?: string | null
+          event_type?: string | null
+          order_id?: string | null
+          processed_at?: string | null
+          retry_count?: number | null
+          source?: Database["public"]["Enums"]["webhook_source_enum"] | null
+        }
+        Update: {
+          created_at?: string | null
+          error?: string | null
+          event_id?: string | null
+          event_type?: string | null
+          order_id?: string | null
+          processed_at?: string | null
+          retry_count?: number | null
+          source?: Database["public"]["Enums"]["webhook_source_enum"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["order_id"]
+          },
+        ]
+      }
+    }
     Functions: {
       create_vault_secret: {
         Args: { p_name: string; p_secret: string }
         Returns: string
       }
+      delete_vault_secret: { Args: { p_secret_id: string }; Returns: undefined }
       rotate_vault_secret: {
-        Args: { p_secret_id: string; p_new_secret: string }
+        Args: { p_new_secret: string; p_secret_id: string }
         Returns: undefined
       }
-      delete_vault_secret: {
-        Args: { p_secret_id: string }
-        Returns: undefined
-      }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
-      order_status_enum: OrderStatusEnum
-      stripe_connect_status_enum: StripeConnectStatusEnum
-      app_role_enum: AppRoleEnum
-      webhook_source_enum: WebhookSourceEnum
-      sla_type_enum: SlaTypeEnum
-      fax_queue_status_enum: FaxQueueStatusEnum
-      regulatory_status_enum: RegulatoryStatusEnum
-      integration_tier_enum: IntegrationTierEnum
-      adapter_submission_status_enum: AdapterSubmissionStatusEnum
-      catalog_source_enum: CatalogSourceEnum
+      adapter_submission_status_enum:
+        | "PENDING"
+        | "SUBMITTED"
+        | "CONFIRMED"
+        | "FAILED"
+        | "TIMEOUT"
+        | "PORTAL_ERROR"
+        | "MANUAL_REVIEW"
+        | "ACKNOWLEDGED"
+        | "REJECTED"
+        | "SUBMISSION_FAILED"
+        | "CANCELLED"
+      app_role_enum:
+        | "clinic_admin"
+        | "provider"
+        | "medical_assistant"
+        | "ops_admin"
+      catalog_source_enum:
+        | "PHARMACY_API"
+        | "PORTAL_SCRAPE"
+        | "MANUAL_ENTRY"
+        | "BULK_IMPORT"
+      fax_queue_status_enum:
+        | "RECEIVED"
+        | "MATCHED"
+        | "UNMATCHED"
+        | "PROCESSING"
+        | "ERROR"
+        | "PROCESSED"
+        | "ARCHIVED"
+      integration_tier_enum:
+        | "TIER_1_API"
+        | "TIER_2_PORTAL"
+        | "TIER_3_HYBRID"
+        | "TIER_4_FAX"
+        | "TIER_3_SPEC"
+      order_status_enum:
+        | "DRAFT"
+        | "AWAITING_PAYMENT"
+        | "PAYMENT_EXPIRED"
+        | "PAID_PROCESSING"
+        | "SUBMISSION_PENDING"
+        | "SUBMISSION_FAILED"
+        | "FAX_QUEUED"
+        | "FAX_DELIVERED"
+        | "FAX_FAILED"
+        | "PHARMACY_ACKNOWLEDGED"
+        | "PHARMACY_COMPOUNDING"
+        | "PHARMACY_PROCESSING"
+        | "PHARMACY_REJECTED"
+        | "REROUTE_PENDING"
+        | "READY_TO_SHIP"
+        | "SHIPPED"
+        | "DELIVERED"
+        | "CANCELLED"
+        | "ERROR_PAYMENT_FAILED"
+        | "ERROR_COMPLIANCE_HOLD"
+        | "REFUND_PENDING"
+        | "REFUNDED"
+        | "DISPUTED"
+      regulatory_status_enum:
+        | "ACTIVE"
+        | "RECALLED"
+        | "DISCONTINUED"
+        | "SHORTAGE"
+      sla_type_enum:
+        | "FAX_DELIVERY"
+        | "PHARMACY_ACKNOWLEDGE"
+        | "SHIPPING"
+        | "PAYMENT"
+        | "SUBMISSION"
+        | "PHARMACY_CONFIRMATION"
+        | "STATUS_UPDATE"
+        | "REROUTE_RESOLUTION"
+        | "ADAPTER_SUBMISSION_ACK"
+        | "PHARMACY_COMPOUNDING_ACK"
+      stripe_connect_status_enum:
+        | "PENDING"
+        | "ONBOARDING"
+        | "RESTRICTED"
+        | "ACTIVE"
+        | "DEACTIVATED"
+      webhook_source_enum: "STRIPE" | "DOCUMO" | "PHARMACY" | "TWILIO"
+    }
+    CompositeTypes: {
+      [_ in never]: never
     }
   }
 }
 
-// ============================================================
-// CONVENIENCE TYPE ALIASES
-// ============================================================
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-type Tables = Database['public']['Tables']
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
-export type Clinic = Tables['clinics']['Row']
-export type Provider = Tables['providers']['Row']
-export type Patient = Tables['patients']['Row']
-export type Pharmacy = Tables['pharmacies']['Row']
-export type PharmacyStateLicense = Tables['pharmacy_state_licenses']['Row']
-export type CatalogItem = Tables['catalog']['Row']
-export type CatalogHistory = Tables['catalog_history']['Row']
-export type Order = Tables['orders']['Row']
-export type OrderStatusHistory = Tables['order_status_history']['Row']
-export type WebhookEvent = Tables['webhook_events']['Row']
-export type OrderSlaDeadline = Tables['order_sla_deadlines']['Row']
-export type InboundFaxQueue = Tables['inbound_fax_queue']['Row']
-export type PharmacyApiConfig = Tables['pharmacy_api_configs']['Row']
-export type PharmacyPortalConfig = Tables['pharmacy_portal_configs']['Row']
-export type AdapterSubmission = Tables['adapter_submissions']['Row']
-export type NormalizedCatalog = Tables['normalized_catalog']['Row']
-export type PharmacyWebhookEvent = Tables['pharmacy_webhook_events']['Row']
-export type SmsLog = Tables['sms_log']['Row']
-export type SmsTemplate = Tables['sms_templates']['Row']
-export type TransferFailure = Tables['transfer_failures']['Row']
-export type Dispute = Tables['disputes']['Row']
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
 
-// Insert types
-export type InsertOrder = Tables['orders']['Insert']
-export type InsertPatient = Tables['patients']['Insert']
-export type InsertProvider = Tables['providers']['Insert']
-export type InsertOrderStatusHistory = Tables['order_status_history']['Insert']
-export type InsertAdapterSubmission = Tables['adapter_submissions']['Insert']
-export type InsertSmsLog = Tables['sms_log']['Insert']
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      adapter_submission_status_enum: [
+        "PENDING",
+        "SUBMITTED",
+        "CONFIRMED",
+        "FAILED",
+        "TIMEOUT",
+        "PORTAL_ERROR",
+        "MANUAL_REVIEW",
+        "ACKNOWLEDGED",
+        "REJECTED",
+        "SUBMISSION_FAILED",
+        "CANCELLED",
+      ],
+      app_role_enum: [
+        "clinic_admin",
+        "provider",
+        "medical_assistant",
+        "ops_admin",
+      ],
+      catalog_source_enum: [
+        "PHARMACY_API",
+        "PORTAL_SCRAPE",
+        "MANUAL_ENTRY",
+        "BULK_IMPORT",
+      ],
+      fax_queue_status_enum: [
+        "RECEIVED",
+        "MATCHED",
+        "UNMATCHED",
+        "PROCESSING",
+        "ERROR",
+        "PROCESSED",
+        "ARCHIVED",
+      ],
+      integration_tier_enum: [
+        "TIER_1_API",
+        "TIER_2_PORTAL",
+        "TIER_3_HYBRID",
+        "TIER_4_FAX",
+        "TIER_3_SPEC",
+      ],
+      order_status_enum: [
+        "DRAFT",
+        "AWAITING_PAYMENT",
+        "PAYMENT_EXPIRED",
+        "PAID_PROCESSING",
+        "SUBMISSION_PENDING",
+        "SUBMISSION_FAILED",
+        "FAX_QUEUED",
+        "FAX_DELIVERED",
+        "FAX_FAILED",
+        "PHARMACY_ACKNOWLEDGED",
+        "PHARMACY_COMPOUNDING",
+        "PHARMACY_PROCESSING",
+        "PHARMACY_REJECTED",
+        "REROUTE_PENDING",
+        "READY_TO_SHIP",
+        "SHIPPED",
+        "DELIVERED",
+        "CANCELLED",
+        "ERROR_PAYMENT_FAILED",
+        "ERROR_COMPLIANCE_HOLD",
+        "REFUND_PENDING",
+        "REFUNDED",
+        "DISPUTED",
+      ],
+      regulatory_status_enum: [
+        "ACTIVE",
+        "RECALLED",
+        "DISCONTINUED",
+        "SHORTAGE",
+      ],
+      sla_type_enum: [
+        "FAX_DELIVERY",
+        "PHARMACY_ACKNOWLEDGE",
+        "SHIPPING",
+        "PAYMENT",
+        "SUBMISSION",
+        "PHARMACY_CONFIRMATION",
+        "STATUS_UPDATE",
+        "REROUTE_RESOLUTION",
+        "ADAPTER_SUBMISSION_ACK",
+        "PHARMACY_COMPOUNDING_ACK",
+      ],
+      stripe_connect_status_enum: [
+        "PENDING",
+        "ONBOARDING",
+        "RESTRICTED",
+        "ACTIVE",
+        "DEACTIVATED",
+      ],
+      webhook_source_enum: ["STRIPE", "DOCUMO", "PHARMACY", "TWILIO"],
+    },
+  },
+} as const
+
+// Convenience type aliases — re-export commonly imported enum types using the
+// generated Enums<> helper so existing import sites don't need to change.
+export type OrderStatusEnum         = Enums<"order_status_enum">
+export type StripeConnectStatusEnum = Enums<"stripe_connect_status_enum">
+export type IntegrationTierEnum     = Enums<"integration_tier_enum">

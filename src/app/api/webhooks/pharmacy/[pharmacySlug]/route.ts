@@ -62,9 +62,9 @@ interface PharmacyEventData {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { pharmacySlug: string } }
+  { params }: { params: Promise<{ pharmacySlug: string }> }
 ): Promise<NextResponse> {
-  const { pharmacySlug } = params
+  const { pharmacySlug } = await params
   const supabase = createServiceClient()
 
   // Step 1: Validate pharmacy slug — unknown slug → 404 (REQ-PWH-001)
@@ -101,8 +101,8 @@ export async function POST(
   }
 
   // Decrypt secret via vault.decrypted_secrets view (service_role only)
-  const { data: vaultRow } = await supabase
-    .schema('vault')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: vaultRow } = await (supabase as any).schema('vault')
     .from('decrypted_secrets')
     .select('decrypted_secret')
     .eq('id', apiConfig.webhook_secret_vault_id)
@@ -151,7 +151,7 @@ export async function POST(
       pharmacy_id: pharmacyId,
       event_id: externalEventId,
       event_type: envelope.eventType,
-      payload: JSON.parse(rawBody) as Record<string, unknown>,
+      payload: JSON.parse(rawBody),
       external_order_id: envelope.orderId,
       signature_verified: true,
       order_id: null,

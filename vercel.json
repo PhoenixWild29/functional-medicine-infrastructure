@@ -11,6 +11,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/sla-refire",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/payment-expiry",
       "schedule": "*/15 * * * *"
     },
@@ -65,6 +69,22 @@
       "maxDuration": 300,
       "memory": 512
     },
+    "src/app/api/cron/sla-check/route.ts": {
+      "maxDuration": 300,
+      "memory": 512
+    },
+    "src/app/api/cron/sla-refire/route.ts": {
+      "maxDuration": 60,
+      "memory": 512
+    },
+    "src/app/api/cron/payment-expiry/route.ts": {
+      "maxDuration": 300,
+      "memory": 512
+    },
+    "src/app/api/slack/interactions/route.ts": {
+      "maxDuration": 10,
+      "memory": 256
+    },
     "src/app/api/cron/fax-retry/route.ts": {
       "maxDuration": 300,
       "memory": 512
@@ -80,6 +100,10 @@
     "src/app/api/cron/screenshot-cleanup/route.ts": {
       "maxDuration": 60,
       "memory": 512
+    },
+    "src/app/api/adapters/route-order/route.ts": {
+      "maxDuration": 300,
+      "memory": 1024
     }
   },
 

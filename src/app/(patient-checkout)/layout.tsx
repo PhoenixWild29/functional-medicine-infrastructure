@@ -19,7 +19,7 @@ export default async function PatientCheckoutLayout({
 }: {
   children: React.ReactNode
 }) {
-  const headersList = headers()
+  const headersList = await headers()
   const orderId = headersList.get('x-checkout-order-id')
 
   if (!orderId) {

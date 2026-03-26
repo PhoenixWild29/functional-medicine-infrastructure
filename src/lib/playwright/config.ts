@@ -27,8 +27,6 @@ export function getBrowserContextOptions(): BrowserContextOptions {
   return {
     // Disable permissions that pharmacies don't need
     permissions: [],
-    // Block geolocation to avoid leaking server location
-    geolocation: undefined,
     // Use a realistic viewport
     viewport: { width: 1280, height: 900 },
     // BUG-05: Use an explicit opt-in env var rather than inferring from NODE_ENV.

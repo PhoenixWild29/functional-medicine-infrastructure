@@ -131,7 +131,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           continue
         }
 
-        await sendSlackAlert(buildOpsAlertPayload(alert))
+        await sendSlackAlert(buildOpsAlertPayload({ ...alert, metadata: alert.metadata as Record<string, unknown> | null }))
         alertQueueFlushed++
       } catch (err) {
         console.error(

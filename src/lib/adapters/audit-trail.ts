@@ -32,6 +32,7 @@
 //   on Supabase row-level security (service_role only) for access control.
 
 import { createServiceClient } from '@/lib/supabase/service'
+import type { Json } from '@/types/database.types'
 
 // ============================================================
 // TYPES
@@ -94,7 +95,7 @@ export async function createSubmissionRecord(
       tier:           params.tier,
       status:         'PENDING',
       attempt_number: params.attemptNumber,
-      metadata:       params.metadata ?? null,
+      metadata:       (params.metadata ?? null) as Json,
     })
     .select('submission_id')
     .single()
@@ -125,7 +126,7 @@ export async function markSubmitted(
     .update({
       status:          'SUBMITTED',
       submitted_at:    new Date().toISOString(),
-      request_payload: requestPayload ?? null,
+      request_payload: (requestPayload ?? null) as Json,
     })
     .eq('submission_id', submissionId)
 
@@ -156,7 +157,7 @@ export async function markAcknowledged(
       status:                'ACKNOWLEDGED',
       acknowledged_at:       new Date().toISOString(),
       external_reference_id: externalReferenceId,
-      response_payload:      responsePayload ?? null,
+      response_payload:      (responsePayload ?? null) as Json,
       completed_at:          new Date().toISOString(),
     })
     .eq('submission_id', submissionId)
@@ -189,7 +190,7 @@ export async function markFailed(
       status:           'FAILED',
       error_code:       errorCode,
       error_message:    errorMessage,
-      response_payload: responsePayload ?? null,
+      response_payload: (responsePayload ?? null) as Json,
       completed_at:     new Date().toISOString(),
     })
     .eq('submission_id', submissionId)
@@ -222,7 +223,7 @@ export async function markRejected(
       status:           'REJECTED',
       error_code:       errorCode,
       error_message:    errorMessage,
-      response_payload: responsePayload ?? null,
+      response_payload: (responsePayload ?? null) as Json,
       completed_at:     new Date().toISOString(),
     })
     .eq('submission_id', submissionId)
@@ -256,7 +257,7 @@ export async function markSubmissionFailed(
       error_code:    errorCode,
       error_message: errorMessage,
       completed_at:  new Date().toISOString(),
-      ...(metadata ? { metadata } : {}),
+      ...(metadata ? { metadata: metadata as Json } : {}),
     })
     .eq('submission_id', submissionId)
 

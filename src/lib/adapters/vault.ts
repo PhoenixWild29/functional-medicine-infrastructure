@@ -28,8 +28,8 @@ import { createServiceClient } from '@/lib/supabase/service'
 export async function getVaultSecret(vaultSecretId: string): Promise<string> {
   const supabase = createServiceClient()
 
-  const { data, error } = await supabase
-    .schema('vault')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).schema('vault')
     .from('decrypted_secrets')
     .select('decrypted_secret')
     .eq('id', vaultSecretId)

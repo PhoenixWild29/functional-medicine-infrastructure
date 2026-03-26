@@ -8,10 +8,13 @@ import { phiBeforeSend } from '@/lib/sentry/phi-scrubber'
 Sentry.init({
   dsn: process.env['NEXT_PUBLIC_SENTRY_DSN'],
 
-  // Capture 5% of transactions in production to avoid excess quota usage
-  tracesSampleRate: process.env['NODE_ENV'] === 'production' ? 0.05 : 1.0,
+  // Associate errors with the exact Git commit deployed (required for source map correlation)
+  release: process.env['NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA'],
 
-  // Do not capture replays — session replay may capture PHI in form inputs
+  // Capture 10% of transactions in production (consistent with server/edge configs)
+  tracesSampleRate: process.env['NODE_ENV'] === 'production' ? 0.1 : 1.0,
+
+  // Do not capture replays — session replay captures form inputs and may contain PHI
   replaysSessionSampleRate: 0,
   replaysOnErrorSampleRate: 0,
 

@@ -67,7 +67,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       external_event_id: externalEventId,
       source: 'STRIPE',
       event_type: event.type,
-      payload: JSON.parse(rawBody) as Record<string, unknown>,
+      payload: JSON.parse(rawBody),
       order_id: null,      // updated per-handler if order is resolved
       processed_at: null,  // updated after processing
     })
@@ -96,7 +96,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       case 'charge.dispute.created':
         await handleDisputeCreated(event.data.object as Stripe.Dispute)
         break
-      case 'transfer.failed':
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      case 'transfer.failed' as any:
         await handleTransferFailed(event.data.object as Stripe.Transfer)
         break
       case 'account.updated':
@@ -191,7 +192,7 @@ async function handlePaymentIntentSucceeded(
   await initiateStripeTransfer(paymentIntent, order.order_id, order.clinic_id)
 
   // AC-SWH-005: V2.0 tier-aware fulfillment branching
-  await branchByTier(order.order_id, order.pharmacy_id)
+  await branchByTier(order.order_id, order.pharmacy_id!)
 }
 
 // ------------------------------------------------------------

@@ -90,6 +90,7 @@ export const VALID_TRANSITIONS: Record<OrderStatus, ReadonlySet<OrderStatus>> = 
     'PHARMACY_ACKNOWLEDGED',  // Tier 1/2/3: order.confirmed webhook from pharmacy API
     'SUBMISSION_FAILED',      // All adapter tiers exhausted, cascade failed
     'REROUTE_PENDING',        // This tier failed, rerouting to next tier or pharmacy
+    'FAX_QUEUED',             // SLA breach cascade: adapter timed out, fall back to Tier 4 fax
   ]),
 
   SUBMISSION_FAILED: new Set([
@@ -107,6 +108,7 @@ export const VALID_TRANSITIONS: Record<OrderStatus, ReadonlySet<OrderStatus>> = 
   FAX_DELIVERED: new Set([
     'PHARMACY_ACKNOWLEDGED',  // Ops confirms pharmacy received and is processing
     'FAX_FAILED',             // Pharmacy did not receive / no response within SLA
+    'PHARMACY_REJECTED',      // Inbound fax indicates pharmacy rejected the order
   ]),
 
   FAX_FAILED: new Set([
@@ -218,6 +220,7 @@ export const TRANSITION_RULES: Partial<Record<OrderStatus, ReadonlyArray<Transit
     { to: 'PHARMACY_ACKNOWLEDGED', actors: SYSTEM,      trigger: 'Tier 1/2/3: order.confirmed webhook from pharmacy API' },
     { to: 'SUBMISSION_FAILED',     actors: SYSTEM,      trigger: 'All adapter tiers exhausted — cascade failed' },
     { to: 'REROUTE_PENDING',       actors: OPS_OR_SYSTEM, trigger: 'Tier failed — reroute to next tier or alternate pharmacy' },
+    { to: 'FAX_QUEUED',            actors: SYSTEM,      trigger: 'SLA breach cascade: adapter ACK timed out, falling back to Tier 4 fax' },
   ],
   SUBMISSION_FAILED: [
     { to: 'FAX_QUEUED',      actors: ALL_OPS, trigger: 'Ops fallback: send fax to Tier 4 pharmacy' },
@@ -232,6 +235,7 @@ export const TRANSITION_RULES: Partial<Record<OrderStatus, ReadonlyArray<Transit
   FAX_DELIVERED: [
     { to: 'PHARMACY_ACKNOWLEDGED', actors: ALL_OPS, trigger: 'Ops confirms pharmacy received and is processing' },
     { to: 'FAX_FAILED',            actors: ALL_OPS, trigger: 'Pharmacy did not respond within SLA window' },
+    { to: 'PHARMACY_REJECTED',     actors: ALL_OPS, trigger: 'Inbound fax indicates pharmacy rejected the order' },
   ],
   FAX_FAILED: [
     { to: 'FAX_QUEUED',      actors: ALL_OPS, trigger: 'Ops retries fax to same pharmacy' },

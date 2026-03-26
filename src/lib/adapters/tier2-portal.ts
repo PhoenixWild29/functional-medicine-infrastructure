@@ -74,6 +74,10 @@ async function scoreConfirmationScreenshot(screenshotBytes: Uint8Array): Promise
     throw new Error('[tier2-portal] OPENAI_API_KEY is not set — cannot score confirmation screenshot')
   }
 
+  // NB-1: Buffer.from() is Node.js-only (not Web-standard btoa). This is
+  // intentional — this function is coupled to the Node.js runtime by design,
+  // since Playwright (used for screenshot capture) also requires Node.js.
+  // This file must never be deployed to an Edge runtime.
   const base64Image = Buffer.from(screenshotBytes).toString('base64')
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -182,17 +186,28 @@ export async function submitTier2Portal(
   const supabase = createServiceClient()
 
   // ── 1. Load pharmacy_portal_configs ───────────────────────
-  const { data: config, error: configError } = await supabase
+  const { data: config, error: configError } = await (supabase
     .from('pharmacy_portal_configs')
     // BUG-03: include all REQ-PTA-001 required columns
-    .select(
-      'config_id, portal_url, portal_type, username_vault_id, password_vault_id,' +
-      ' login_flow, submit_flow, status_check_flow, selectors,' +
-      ' poll_interval_minutes, screenshot_on_error'
-    )
+    .select('config_id, portal_url, portal_type, username_vault_id, password_vault_id, login_flow, submit_flow, status_check_flow, selectors, poll_interval_minutes, screenshot_on_error')
     .eq('pharmacy_id', pharmacyId)
     .eq('is_active', true)
-    .single()
+    .single() as unknown as Promise<{
+      data: {
+        config_id: string
+        portal_url: string
+        portal_type: string
+        username_vault_id: string
+        password_vault_id: string
+        login_flow: unknown
+        submit_flow: unknown
+        status_check_flow: unknown
+        selectors: Record<string, string> | null
+        poll_interval_minutes: number | null
+        screenshot_on_error: boolean
+      } | null
+      error: Error | null
+    }>)
 
   if (configError || !config) {
     throw new Error(
@@ -201,14 +216,22 @@ export async function submitTier2Portal(
   }
 
   // ── 2. Load order data for form field substitution ─────────
-  const { data: order, error: orderError } = await supabase
+  const { data: order, error: orderError } = await (supabase
     .from('orders')
-    .select(
-      'order_id, order_number, patient_id, provider_id,' +
-      ' medication_snapshot, quantity, sig_text'
-    )
+    .select('order_id, order_number, patient_id, provider_id, medication_snapshot, quantity, sig_text')
     .eq('order_id', orderId)
-    .single()
+    .single() as unknown as Promise<{
+      data: {
+        order_id: string
+        order_number: string
+        patient_id: string
+        provider_id: string | null
+        medication_snapshot: Record<string, unknown> | null
+        quantity: number | null
+        sig_text: string | null
+      } | null
+      error: Error | null
+    }>)
 
   if (orderError || !order) {
     throw new Error(
@@ -225,7 +248,7 @@ export async function submitTier2Portal(
   const { data: provider } = await supabase
     .from('providers')
     .select('first_name, last_name, npi_number, dea_number')
-    .eq('provider_id', order.provider_id)
+    .eq('provider_id', order.provider_id!)
     .single()
 
   if (!patient || !provider) {

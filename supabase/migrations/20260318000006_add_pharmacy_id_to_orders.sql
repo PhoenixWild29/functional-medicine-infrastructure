@@ -21,12 +21,4 @@ CREATE INDEX IF NOT EXISTS idx_orders_pharmacy_id
   ON orders (pharmacy_id)
   WHERE pharmacy_id IS NOT NULL;
 
--- Backfill from catalog_items for any existing rows
--- catalog_items → catalogs → pharmacies
-UPDATE orders o
-SET pharmacy_id = c.pharmacy_id
-FROM catalog_items ci
-JOIN catalogs c ON c.catalog_id = ci.catalog_id
-WHERE o.catalog_item_id = ci.catalog_item_id
-  AND o.pharmacy_id IS NULL
-  AND c.pharmacy_id IS NOT NULL;
+-- Backfill omitted: fresh deployment, no existing orders to backfill.

@@ -6,53 +6,20 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "next lint --max-warnings 0",
     "type-check": "tsc --noEmit",
-    "db:types": "supabase gen types typescript --project-id your-project-ref > src/types/database.types.ts"
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:e2e": "playwright test",
+    "format:check": "prettier --check .",
+    "format:write": "prettier --write .",
+    "db:types": "supabase gen types typescript --project-id your-project-ref > src/types/database.types.ts",
+    "db:migrate": "supabase db push",
+    "seed:poc": "dotenv -e .env.local -- tsx scripts/seed-poc.ts"
   },
   "dependencies": {
-    "next": "^14.2.0",
-    "react": "^18.3.0",
-    "react-dom": "^18.3.0",
-
-    "@supabase/supabase-js": "^2.43.0",
-    "@supabase/auth-helpers-nextjs": "^0.10.0",
-
-    "stripe": "^14.0.0",
-    "@stripe/stripe-js": "^4.0.0",
-    "@stripe/react-stripe-js": "^2.7.0",
-
-    "@tanstack/react-query": "^5.40.0",
-    "@tanstack/react-query-devtools": "^5.40.0",
-
-    "zustand": "^4.5.0",
-
-    "react-hook-form": "^7.51.0",
-    "zod": "^3.23.0",
+    "@eslint/eslintrc": "^3.3.5",
     "@hookform/resolvers": "^3.6.0",
-
-    "date-fns": "^3.6.0",
-
-    "sonner": "^1.5.0",
-
-    "recharts": "^2.12.0",
-
-    "react-pdf": "^7.7.0",
-
-    "react-signature-canvas": "^1.0.6",
-
-    "twilio": "^5.0.0",
-    "playwright": "^1.45.0",
-    "@sentry/nextjs": "^8.0.0",
-
-    "papaparse": "^5.4.0",
-    "react-dropzone": "^14.2.0",
-
-    "class-variance-authority": "^0.7.0",
-    "clsx": "^2.1.0",
-    "tailwind-merge": "^2.3.0",
-    "lucide-react": "^0.400.0",
-
     "@radix-ui/react-dialog": "^1.1.0",
     "@radix-ui/react-dropdown-menu": "^2.1.0",
     "@radix-ui/react-label": "^2.1.0",
@@ -61,21 +28,54 @@
     "@radix-ui/react-slot": "^1.1.0",
     "@radix-ui/react-tabs": "^1.1.0",
     "@radix-ui/react-toast": "^1.2.0",
-    "@radix-ui/react-tooltip": "^1.1.0"
+    "@radix-ui/react-tooltip": "^1.1.0",
+    "@sentry/nextjs": "^10.45.0",
+    "@stripe/react-stripe-js": "^2.7.0",
+    "@stripe/stripe-js": "^4.0.0",
+    "@supabase/ssr": "^0.9.0",
+    "@supabase/supabase-js": "^2.43.0",
+    "@tanstack/react-query": "^5.40.0",
+    "@tanstack/react-query-devtools": "^5.40.0",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.0",
+    "date-fns": "^3.6.0",
+    "lucide-react": "^0.400.0",
+    "next": "^16.2.1",
+    "papaparse": "^5.4.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "react-dropzone": "^14.2.0",
+    "react-hook-form": "^7.51.0",
+    "react-pdf": "^10.4.1",
+    "react-signature-canvas": "^1.0.6",
+    "recharts": "^2.12.0",
+    "sonner": "^1.5.0",
+    "stripe": "^14.0.0",
+    "tailwind-merge": "^2.3.0",
+    "twilio": "^5.0.0",
+    "zod": "^3.23.0",
+    "zustand": "^4.5.0"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
+    "@playwright/test": "^1.45.0",
+    "@types/jest": "^29.5.0",
     "@types/node": "^20.14.0",
+    "@types/papaparse": "^5.3.14",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
-    "@types/papaparse": "^5.3.14",
     "@types/react-signature-canvas": "^1.0.5",
-
-    "tailwindcss": "^3.4.0",
-    "postcss": "^8.4.0",
     "autoprefixer": "^10.4.0",
-
-    "eslint": "^8.57.0",
-    "eslint-config-next": "^14.2.0"
+    "dotenv-cli": "^7.4.0",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.1",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^30.3.0",
+    "postcss": "^8.4.0",
+    "prettier": "^3.3.0",
+    "tailwindcss": "^3.4.0",
+    "ts-jest": "^29.1.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.16.0",
+    "typescript": "^5.4.0"
   }
 }

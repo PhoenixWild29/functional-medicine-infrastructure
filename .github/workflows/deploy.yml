@@ -1,0 +1,222 @@
+# ============================================================
+# CompoundIQ — Continuous Deployment
+# ============================================================
+# Triggered on push to main (→ production) or develop (→ staging).
+# PRs automatically get Vercel Preview URLs (Vercel GitHub integration).
+#
+# Deployment order:
+#   1. migrate  — run Supabase migrations (supabase db push)
+#   2. deploy   — deploy to Vercel (uses cached build from CI)
+#   3. verify   — health-check endpoint ping
+#   4. notify   — Slack #deployments channel notification
+# ============================================================
+
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main     # → production
+      - develop  # → staging
+
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false  # Never cancel an in-flight deployment
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ── Resolve target environment ────────────────────────────────
+  resolve-env:
+    name: Resolve Environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      vercel_target: ${{ steps.env.outputs.vercel_target }}
+      app_url: ${{ steps.env.outputs.app_url }}
+    steps:
+      - id: env
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "environment=production" >> "$GITHUB_OUTPUT"
+            echo "vercel_target=production" >> "$GITHUB_OUTPUT"
+            echo "app_url=${{ secrets.PRODUCTION_URL }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=staging" >> "$GITHUB_OUTPUT"
+            echo "vercel_target=preview" >> "$GITHUB_OUTPUT"
+            echo "app_url=${{ secrets.STAGING_URL }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── Step 1: Run Supabase migrations ──────────────────────────
+  migrate:
+    name: Run Migrations
+    runs-on: ubuntu-latest
+    needs: resolve-env
+    environment: ${{ needs.resolve-env.outputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 1.171.0  # NB-3: pinned for reproducibility
+
+      - name: Link Supabase project
+        run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Run migrations (supabase db push)
+        run: supabase db push --db-url "${{ secrets.DATABASE_URL }}"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      # BLK-1/NB-8: Do not commit generated types from CI — this causes
+      # re-trigger loops and merge conflicts. Instead, fail loudly if the
+      # checked-in types are stale so developers must regenerate locally.
+      - name: Verify TypeScript types are up to date
+        run: |
+          supabase gen types typescript \
+            --project-id "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            > /tmp/database.types.generated.ts
+          if ! diff -q /tmp/database.types.generated.ts src/types/database.types.ts > /dev/null 2>&1; then
+            echo "ERROR: src/types/database.types.ts is stale."
+            echo "Run 'npm run db:types' locally and commit the updated file."
+            diff /tmp/database.types.generated.ts src/types/database.types.ts || true
+            exit 1
+          fi
+          echo "TypeScript types are up to date."
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+  # ── Step 2: Deploy to Vercel ──────────────────────────────────
+  deploy:
+    name: Deploy to Vercel
+    runs-on: ubuntu-latest
+    needs: [resolve-env, migrate]
+    environment: ${{ needs.resolve-env.outputs.environment }}
+    outputs:
+      deployment_url: ${{ steps.deploy.outputs.deployment_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@37.5.0  # NB-4: pinned version for reproducibility
+
+      # BLK-2/3: resolve --prod flag in a separate step to avoid shell injection
+      # via inline GitHub expression evaluation in run: commands.
+      - name: Resolve Vercel production flag
+        id: vflags
+        run: |
+          if [ "${{ needs.resolve-env.outputs.vercel_target }}" = "production" ]; then
+            echo "prod_flag=--prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "prod_flag=" >> "$GITHUB_OUTPUT"
+          fi
+          # BLK-3: safe-quote the environment value before use
+          echo "env_flag=${{ needs.resolve-env.outputs.vercel_target }}" >> "$GITHUB_OUTPUT"
+
+      - name: Pull Vercel environment configuration
+        run: vercel pull --yes --environment="${{ steps.vflags.outputs.env_flag }}" --token="${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Build with Vercel
+        run: vercel build ${{ steps.vflags.outputs.prod_flag }} --token="${{ secrets.VERCEL_TOKEN }}"
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          NEXT_TELEMETRY_DISABLED: '1'
+
+      - name: Deploy pre-built output to Vercel
+        id: deploy
+        run: |
+          url=$(vercel deploy --prebuilt ${{ steps.vflags.outputs.prod_flag }} --token="${{ secrets.VERCEL_TOKEN }}")
+          echo "deployment_url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed to: $url"
+
+  # ── Step 3: Post-deployment health check ─────────────────────
+  verify:
+    name: Post-deployment Verification
+    runs-on: ubuntu-latest
+    needs: [resolve-env, deploy]
+    steps:
+      - name: Health check — /api/health endpoint
+        run: |
+          url="${{ needs.deploy.outputs.deployment_url }}/api/health"
+          echo "Checking $url"
+          for i in {1..5}; do
+            status=$(curl -s -o /dev/null -w "%{http_code}" "$url")
+            if [ "$status" = "200" ]; then
+              echo "Health check passed (attempt $i)"
+              exit 0
+            fi
+            echo "Attempt $i: status=$status — retrying in 10s"
+            sleep 10
+          done
+          echo "ERROR: Health check failed after 5 attempts"
+          exit 1
+
+  # ── Step 4: Slack notification ────────────────────────────────
+  notify:
+    name: Notify Slack
+    runs-on: ubuntu-latest
+    # BLK-5: include migrate so that a migration failure shows as "failure" not "skipped"
+    needs: [resolve-env, migrate, deploy, verify]
+    if: always()
+    steps:
+      - name: Send Slack notification
+        run: |
+          # BLK-5: determine overall status from all dependent jobs
+          MIGRATE_RESULT="${{ needs.migrate.result }}"
+          DEPLOY_RESULT="${{ needs.deploy.result }}"
+          VERIFY_RESULT="${{ needs.verify.result }}"
+
+          if [ "$MIGRATE_RESULT" = "failure" ]; then
+            STATUS="failure (migration failed)"
+          elif [ "$DEPLOY_RESULT" = "failure" ]; then
+            STATUS="failure (deploy failed)"
+          elif [ "$VERIFY_RESULT" = "failure" ]; then
+            STATUS="failure (health check failed)"
+          elif [ "$VERIFY_RESULT" = "success" ]; then
+            STATUS="success"
+          else
+            STATUS="$VERIFY_RESULT"
+          fi
+
+          EMOJI="$( [ "$STATUS" = "success" ] && echo "✅" || echo "❌" )"
+          ENV="${{ needs.resolve-env.outputs.environment }}"
+          URL="${{ needs.deploy.outputs.deployment_url }}"
+          SHA="${{ github.sha }}"
+          ACTOR="${{ github.actor }}"
+
+          # Use jq to construct JSON safely — prevents malformed payload if any
+          # variable contains quotes, backslashes, or other JSON special characters.
+          payload=$(jq -n \
+            --arg emoji    "$EMOJI" \
+            --arg env      "$ENV" \
+            --arg status   "$STATUS" \
+            --arg sha      "$SHA" \
+            --arg sha_short "${SHA:0:7}" \
+            --arg actor    "$ACTOR" \
+            --arg url      "$URL" \
+            --arg repo_url "${{ github.server_url }}/${{ github.repository }}" \
+            '{
+              text: "\($emoji) *CompoundIQ — \($env) deployment \($status)*",
+              blocks: [{
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: "\($emoji) *CompoundIQ \($env) deployment \($status)*\n*Commit:* <\($repo_url)/commit/\($sha)|\($sha_short)>\n*Actor:* \($actor)\n*URL:* \(if $url != "" then "<\($url)|\($url)>" else "N/A" end)"
+                }
+              }]
+            }')
+          curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "$payload"

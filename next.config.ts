@@ -7,9 +7,7 @@ const nextConfig: NextConfig = {
 
   // Disable Supabase Realtime — all updates via polling (HIPAA requirement)
   // No WebSocket connections permitted
-  experimental: {
-    serverComponentsExternalPackages: ['@supabase/supabase-js'],
-  },
+  serverExternalPackages: ['@supabase/supabase-js'],
 
   // Security: prevent sensitive env vars from leaking to client bundle
   // Only NEXT_PUBLIC_* vars are exposed to the browser
@@ -24,18 +22,20 @@ const nextConfig: NextConfig = {
 
 export default withSentryConfig(nextConfig, {
   // Sentry build-time config
-  org: process.env['SENTRY_ORG'],
-  project: process.env['SENTRY_PROJECT'],
-  authToken: process.env['SENTRY_AUTH_TOKEN'],
+  org: process.env['SENTRY_ORG'] ?? '',
+  project: process.env['SENTRY_PROJECT'] ?? '',
+  authToken: process.env['SENTRY_AUTH_TOKEN'] ?? '',
 
   // Upload source maps in production only
   silent: true,
-  hideSourceMaps: true,
+  sourcemaps: { deleteSourcemapsAfterUpload: true },
 
   // Disable Sentry telemetry
   telemetry: false,
 
   // Automatically instrument Next.js routes
-  autoInstrumentServerFunctions: true,
-  autoInstrumentMiddleware: true,
+  webpack: {
+    autoInstrumentServerFunctions: true,
+    autoInstrumentMiddleware: true,
+  },
 })

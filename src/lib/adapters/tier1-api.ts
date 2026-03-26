@@ -38,6 +38,7 @@ import {
   markFailed,
   markRejected,
   markSubmissionFailed,
+  type IntegrationTier,
 } from '@/lib/adapters/audit-trail'
 
 // ============================================================
@@ -131,13 +132,22 @@ export async function submitTier1Api(
   // ── 1. Load pharmacy_api_configs ──────────────────────────
   const { data: config, error: configError } = await supabase
     .from('pharmacy_api_configs')
-    .select(
-      'config_id, base_url, vault_secret_id, endpoints, api_version,' +
-      ' auth_type, payload_transformer, response_parser,' +
-      ' rate_limit_rpm, rate_limit_concurrent, timeout_ms'
-    )
+    .select('config_id, base_url, vault_secret_id, endpoints, api_version, auth_type, payload_transformer, response_parser, rate_limit_rpm, rate_limit_concurrent, timeout_ms')
     .eq('pharmacy_id', pharmacyId)
     .eq('is_active', true)
+    .returns<Array<{
+      config_id: string
+      base_url: string
+      vault_secret_id: string
+      endpoints: Record<string, string> | null
+      api_version: string | null
+      auth_type: string | null
+      payload_transformer: string | null
+      response_parser: string | null
+      rate_limit_rpm: number | null
+      rate_limit_concurrent: number | null
+      timeout_ms: number
+    }>>()
     .single()
 
   if (configError || !config) {
@@ -163,7 +173,7 @@ export async function submitTier1Api(
   }
 
   // ── 2. Validate endpoints config ─────────────────────────
-  const endpoints = config.endpoints as Record<string, string> | null
+  const endpoints = config.endpoints
   const submitPath = endpoints?.submitOrder ?? endpoints?.submit ?? '/orders'
   const submitUrl  = `${config.base_url.replace(/\/$/, '')}${submitPath}`
 
@@ -177,14 +187,24 @@ export async function submitTier1Api(
   await checkRateLimits(pharmacyId, tier, config.rate_limit_rpm, config.rate_limit_concurrent)
 
   // ── 5. Load order data for payload transformation ─────────
-  const { data: order, error: orderError } = await supabase
+  const { data: order, error: orderError } = await (supabase
     .from('orders')
-    .select(
-      'order_id, order_number, provider_id, patient_id, clinic_id,' +
-      ' medication_snapshot, provider_npi_snapshot, quantity, sig_text'
-    )
+    .select('order_id, order_number, provider_id, patient_id, clinic_id, medication_snapshot, provider_npi_snapshot, quantity, sig_text')
     .eq('order_id', orderId)
-    .single()
+    .single() as unknown as Promise<{
+      data: {
+        order_id: string
+        order_number: string
+        provider_id: string | null
+        patient_id: string
+        clinic_id: string
+        medication_snapshot: Record<string, unknown> | null
+        provider_npi_snapshot: string | null
+        quantity: number | null
+        sig_text: string | null
+      } | null
+      error: Error | null
+    }>)
 
   if (orderError || !order) {
     throw new Error(
@@ -195,7 +215,7 @@ export async function submitTier1Api(
   const { data: provider } = await supabase
     .from('providers')
     .select('first_name, last_name, npi_number, dea_number, license_state')
-    .eq('provider_id', order.provider_id)
+    .eq('provider_id', order.provider_id!)
     .single()
 
   const { data: patient } = await supabase
@@ -237,7 +257,7 @@ export async function submitTier1Api(
     medicationName:     String(med?.medication_name ?? 'Compounded Medication'),
     medicationForm:     String(med?.form ?? ''),
     medicationDose:     String(med?.dose ?? ''),
-    quantity:           order.quantity,
+    quantity:           order.quantity ?? 1,
     sigText:            order.sig_text ?? null,
     clinicName:         clinic?.name ?? 'CompoundIQ Clinic',
   }
@@ -316,7 +336,7 @@ export async function submitTier1Api(
         console.warn(
           `[tier1-api] attempt ${attempt}/${MAX_ATTEMPTS} network error | order=${orderId} | ${msg}`
         )
-        await sleep(RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)])
+        await sleep(RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)]!)
         continue
       }
 
@@ -390,7 +410,7 @@ export async function submitTier1Api(
     )
 
     if (attempt < MAX_ATTEMPTS) {
-      const delayMs = RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)]
+      const delayMs = RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)]!
       console.warn(
         `[tier1-api] attempt ${attempt}/${MAX_ATTEMPTS} transient failure | order=${orderId} | HTTP ${statusCode} — retrying in ${delayMs}ms`
       )

@@ -25,6 +25,7 @@ import { executeFlow } from '@/lib/adapters/portal-flow-executor'
 import type { FlowStep } from '@/lib/adapters/portal-flow-executor'
 import { getVaultSecret } from '@/lib/adapters/vault'
 import { casTransition } from '@/lib/orders/cas-transition'
+import type { OrderStatusEnum } from '@/types/database.types'
 
 // ── Map pharmacy portal status text → CompoundIQ order status ──
 const PORTAL_STATUS_MAP: Record<string, string> = {
@@ -122,7 +123,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         const context = await browser.newContext(getBrowserContextOptions())
         const page    = await context.newPage()
 
-        const flowSteps  = config.status_check_flow as FlowStep[]
+        const flowSteps  = config.status_check_flow as unknown as FlowStep[]
         const flowResults = await executeFlow(page, flowSteps, { username, password }, { orderId })
 
         // Extract status from getText step results
@@ -158,8 +159,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         // the order state machine and prevent invalid transitions.
         const casResult = await casTransition({
           orderId,
-          expectedStatus: currentOrder?.status ?? '',
-          newStatus:      mappedStatus,
+          expectedStatus: currentOrder!.status,
+          newStatus:      mappedStatus as OrderStatusEnum,
           actor:          'portal_status_poll',
           metadata:       { poll_source: 'status_check_flow' },
         })

@@ -42,9 +42,17 @@ export const serverEnv = {
   // Monitoring
   sentryAuthToken: () => requireEnv('SENTRY_AUTH_TOKEN'),
 
-  // Alerting
+  // Application
+  appBaseUrl: () => requireEnv('APP_BASE_URL'),   // e.g. https://app.compoundiq.com
+
+  // Alerting — Slack
   slackWebhookUrl: () => requireEnv('SLACK_WEBHOOK_URL'),
+  slackBotToken: () => requireEnv('SLACK_BOT_TOKEN'),
+  slackSigningSecret: () => requireEnv('SLACK_SIGNING_SECRET'),
   slackOpsAlertsChannelId: () => requireEnv('SLACK_OPS_ALERTS_CHANNEL_ID'),
+  slackOpsManagerUserId: () => requireEnv('SLACK_OPS_MANAGER_USER_ID'),
+
+  // Alerting — PagerDuty
   pagerdutyRoutingKey: () => requireEnv('PAGERDUTY_ROUTING_KEY'),
 
   // Adapter

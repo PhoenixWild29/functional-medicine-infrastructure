@@ -53,7 +53,7 @@ export async function verifyCheckoutToken(
     const data = encoder.encode(`${headerB64}.${payloadB64}`)
     const signature = base64urlToBytes(signatureB64)
 
-    const valid = await crypto.subtle.verify('HMAC', cryptoKey, signature, data)
+    const valid = await crypto.subtle.verify('HMAC', cryptoKey, signature as BufferSource, data)
 
     if (!valid) {
       console.warn('[checkout-token] verifyCheckoutToken failed: invalid signature')

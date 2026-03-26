@@ -67,15 +67,29 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
   const supabase = createServiceClient()
 
   // ── 1. Load order ──────────────────────────────────────────
-  const { data: order, error: orderError } = await supabase
+  const { data: order, error: orderError } = await (supabase
     .from('orders')
-    .select(
-      'order_id, status, pharmacy_id, clinic_id, provider_id, patient_id,' +
-      ' medication_snapshot, provider_npi_snapshot, quantity, sig_text,' +
-      ' order_number, fax_attempt_count, locked_at, created_at'
-    )
+    .select('order_id, status, pharmacy_id, clinic_id, provider_id, patient_id, medication_snapshot, provider_npi_snapshot, quantity, sig_text, order_number, fax_attempt_count, locked_at, created_at')
     .eq('order_id', orderId)
-    .single()
+    .single() as unknown as Promise<{
+      data: {
+        order_id: string
+        status: string
+        pharmacy_id: string | null
+        clinic_id: string
+        provider_id: string | null
+        patient_id: string
+        medication_snapshot: Record<string, unknown> | null
+        provider_npi_snapshot: string | null
+        quantity: number | null
+        sig_text: string | null
+        order_number: string
+        fax_attempt_count: number | null
+        locked_at: string | null
+        created_at: string
+      } | null
+      error: Error | null
+    }>)
 
   if (orderError || !order) {
     throw new Error(
@@ -89,7 +103,7 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
   const { data: pharmacy } = await supabase
     .from('pharmacies')
     .select('name, fax_number, slug')
-    .eq('pharmacy_id', order.pharmacy_id)
+    .eq('pharmacy_id', order.pharmacy_id!)
     .single()
 
   if (!pharmacy?.fax_number) {
@@ -109,7 +123,7 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
   const { data: provider } = await supabase
     .from('providers')
     .select('first_name, last_name, npi_number, dea_number, license_state')
-    .eq('provider_id', order.provider_id)
+    .eq('provider_id', order.provider_id!)
     .single()
 
   if (!provider) {
@@ -117,14 +131,23 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
   }
 
   // ── 5. Load patient ────────────────────────────────────────
-  const { data: patient } = await supabase
+  const { data: patient } = await (supabase
     .from('patients')
-    .select(
-      'first_name, last_name, date_of_birth,' +
-      ' address_line1, address_line2, city, state, zip'
-    )
+    .select('first_name, last_name, date_of_birth, address_line1, address_line2, city, state, zip')
     .eq('patient_id', order.patient_id)
-    .single()
+    .single() as unknown as Promise<{
+      data: {
+        first_name: string
+        last_name: string
+        date_of_birth: string | null
+        address_line1: string | null
+        address_line2: string | null
+        city: string | null
+        state: string | null
+        zip: string | null
+      } | null
+      error: Error | null
+    }>)
 
   if (!patient) {
     throw new Error(`[tier4-fax] patient ${order.patient_id} not found`)
@@ -133,7 +156,7 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
   // ── 6. Create audit trail submission record ────────────────
   const submissionId = await createSubmissionRecord({
     orderId,
-    pharmacyId: order.pharmacy_id,
+    pharmacyId: order.pharmacy_id!,
     tier: 'TIER_4_FAX',
     attemptNumber,
     metadata: { is_retry: attemptNumber > 1, pharmacy_slug: pharmacy.slug },
@@ -151,7 +174,7 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
       providerLicenseState: provider.license_state,
       patientFirstName:   patient.first_name,
       patientLastName:    patient.last_name,
-      patientDateOfBirth: patient.date_of_birth,
+      patientDateOfBirth: patient.date_of_birth ?? '',
       patientAddressLine1: patient.address_line1 ?? null,
       patientAddressLine2: patient.address_line2 ?? null,
       patientCity:        patient.city ?? null,
@@ -206,18 +229,33 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
     })
 
     // ── 11. Submit to Documo mFax (HC-04) ────────────────────
-    const { faxId } = await sendFax({
-      recipientFaxNumber: pharmacy.fax_number,
-      recipientName:      pharmacy.name,
-      documentUrl:        signedUrlData.signedUrl,
-      coverPageText: [
-        'CompoundIQ Compounded Medication Prescription',
-        order.order_number ? `Order #: ${order.order_number}` : '',
-        'HIPAA Protected — Confidential',
-      ]
-        .filter(Boolean)
-        .join(' | '),
-    })
+    //
+    // WO-53: DOCUMO_ENABLED=false disables live fax dispatch for POC environments.
+    // A synthetic faxId is used so the rest of the flow (FAX_QUEUED, SLA, audit trail)
+    // still runs end-to-end. The PDF is still built and uploaded so the storage path
+    // is verifiable during validation.
+    let faxId: string
+    if (process.env['DOCUMO_ENABLED'] === 'false') {
+      faxId = `poc-disabled-fax-${orderId.slice(0, 8)}-attempt${attemptNumber}`
+      console.info(
+        `[tier4-fax] DOCUMO_ENABLED=false — fax suppressed | order=${orderId} | ` +
+        `to=${pharmacy.fax_number} | pdf=${storagePath} | synthetic_fax_id=${faxId}`
+      )
+    } else {
+      const result = await sendFax({
+        recipientFaxNumber: pharmacy.fax_number,
+        recipientName:      pharmacy.name,
+        documentUrl:        signedUrlData.signedUrl,
+        coverPageText: [
+          'CompoundIQ Compounded Medication Prescription',
+          order.order_number ? `Order #: ${order.order_number}` : '',
+          'HIPAA Protected — Confidential',
+        ]
+          .filter(Boolean)
+          .join(' | '),
+      })
+      faxId = result.faxId
+    }
 
     // ── 12. Update order: new documo_fax_id + attempt count ──
     const { error: orderUpdateError } = await supabase

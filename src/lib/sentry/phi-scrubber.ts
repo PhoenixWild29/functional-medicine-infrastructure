@@ -1,4 +1,4 @@
-import type { Event, EventHint } from '@sentry/nextjs'
+import type { ErrorEvent, EventHint } from '@sentry/nextjs'
 
 // PHI scrubbing patterns for Sentry beforeSend hook.
 //
@@ -68,6 +68,8 @@ const ALWAYS_REDACT_KEYS = new Set([
   'DOCUMO_API_KEY', 'DOCUMO_WEBHOOK_SECRET',
   'PAGERDUTY_ROUTING_KEY', 'SLACK_WEBHOOK_URL',
   'JWT_SECRET',
+  // HTTP auth/session headers — Bearer tokens and session cookies must never reach Sentry
+  'Authorization', 'authorization', 'Cookie', 'cookie', 'set-cookie',
 ])
 
 function scrubObject(obj: Record<string, unknown>): Record<string, unknown> {
@@ -88,21 +90,37 @@ const DROPPED_EXTRA_KEYS = new Set([
   'twilioBody', 'pharmacyApiResponse', 'pharmacyWebhookPayload',
 ])
 
-export function phiBeforeSend(event: Event, _hint: EventHint): Event | null {
+export function phiBeforeSend(event: ErrorEvent, _hint: EventHint): ErrorEvent | null {
   // Scrub breadcrumbs
-  if (event.breadcrumbs?.values) {
-    event.breadcrumbs.values = event.breadcrumbs.values.map((crumb) => ({
+  // NOTE: Event.breadcrumbs is Breadcrumb[] (a plain array in v8+),
+  // not the v7 shape { values?: Breadcrumb[] }. Access directly, not via .values.
+  if (event.breadcrumbs) {
+    event.breadcrumbs = event.breadcrumbs.map((crumb) => ({
       ...crumb,
-      message: crumb.message ? scrubString(crumb.message) : crumb.message,
-      data: crumb.data ? (scrubObject(crumb.data as Record<string, unknown>) as typeof crumb.data) : crumb.data,
+      ...(crumb.message !== undefined ? { message: scrubString(crumb.message) } : {}),
+      ...(crumb.data !== undefined ? { data: scrubObject(crumb.data as Record<string, unknown>) as typeof crumb.data } : {}),
     }))
   }
 
-  // Scrub exception values
+  // Scrub exception values and stack frame variable snapshots
   if (event.exception?.values) {
     event.exception.values = event.exception.values.map((ex) => ({
       ...ex,
-      value: ex.value ? scrubString(ex.value) : ex.value,
+      ...(ex.value !== undefined ? { value: scrubString(ex.value) } : {}),
+      ...(ex.stacktrace !== undefined ? {
+        stacktrace: {
+          ...ex.stacktrace,
+          ...(ex.stacktrace.frames !== undefined ? {
+            frames: ex.stacktrace.frames.map((frame) => ({
+              ...frame,
+              // Scrub local variable snapshots — may contain PHI if passed into Error constructors
+              ...(frame.vars !== undefined ? {
+                vars: scrubObject(frame.vars as Record<string, unknown>) as typeof frame.vars,
+              } : {}),
+            })),
+          } : {}),
+        },
+      } : {}),
     }))
   }
 
@@ -131,11 +149,16 @@ export function phiBeforeSend(event: Event, _hint: EventHint): Event | null {
     delete event.request.data
   }
 
-  // Scrub user context — remove all identifying fields
+  // Scrub user context — retain only non-PHI operational fields.
+  // Permitted: id (auth UUID), clinic_id (UUID), app_role (enum string).
+  // Stripped: username, email, ip_address, and any other fields that may be PHI.
   if (event.user) {
     event.user = {
-      // Only retain non-PHI fields
-      id: event.user.id,
+      id:        event.user.id,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ...(( event.user as any).clinic_id  && { clinic_id:  (event.user as any).clinic_id  }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ...(( event.user as any).app_role   && { app_role:   (event.user as any).app_role   }),
     }
   }
 

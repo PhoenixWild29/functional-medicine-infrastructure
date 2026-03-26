@@ -54,3 +54,7 @@ coverage/
 *.png
 *.jpg
 *.jpeg
+
+# Local secrets/notes — never commit
+copy.md
+copy.docx

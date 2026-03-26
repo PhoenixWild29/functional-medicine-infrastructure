@@ -1,0 +1,244 @@
+# ============================================================
+# CompoundIQ — Continuous Integration
+# ============================================================
+# Runs on every push to main and every PR targeting main.
+# All 4 jobs must pass before merge is allowed.
+#
+# Jobs: lint → typecheck → test → build (parallel where possible)
+# ============================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref_name }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ── Job 1: Lint ──────────────────────────────────────────────
+  lint:
+    name: Lint (ESLint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint (zero warnings allowed)
+        run: npm run lint
+
+  # ── Job 2: Type check ────────────────────────────────────────
+  typecheck:
+    name: Type Check (tsc)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run TypeScript type check
+        run: npm run type-check
+
+  # ── Job 3: Unit Tests ────────────────────────────────────────
+  test:
+    name: Unit Tests (Jest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
+        env:
+          # Stub env vars so modules that import serverEnv don't throw during test
+          SUPABASE_URL: https://placeholder.supabase.co
+          SUPABASE_ANON_KEY: placeholder
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
+          SUPABASE_SERVICE_ROLE_KEY: placeholder
+          STRIPE_SECRET_KEY: sk_test_placeholder
+          JWT_SECRET: test-jwt-secret-min-32-chars-long-enough
+          NEXT_TELEMETRY_DISABLED: '1'
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+  # ── Job 4: Build ─────────────────────────────────────────────
+  build:
+    name: Build (next build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate required environment variables
+        run: |
+          required_vars=(
+            "NEXT_PUBLIC_SUPABASE_URL"
+            "NEXT_PUBLIC_SUPABASE_ANON_KEY"
+            "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"
+            "NEXT_PUBLIC_SENTRY_DSN"
+          )
+          missing=()
+          for var in "${required_vars[@]}"; do
+            if [ -z "${!var}" ]; then
+              missing+=("$var")
+            fi
+          done
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "ERROR: Missing required environment variables: ${missing[*]}"
+            exit 1
+          fi
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
+
+      - name: Build Next.js application
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          NEXT_TELEMETRY_DISABLED: '1'
+
+      # NB-2: removed build output cache — no restore step consumes it,
+      # so saving it provides no benefit and wastes cache quota.
+
+  # ── Job 5: E2E Tests (Playwright) ────────────────────────────
+  # Runs after unit tests AND build pass. Skipped on fork PRs (secrets unavailable).
+  # The 8-step Stripe happy path test skips gracefully when
+  # STRIPE_WEBHOOK_FORWARDING is not set (no Stripe CLI in CI).
+  e2e:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    needs: [test, build]
+    # Skip on fork PRs — secrets are not available for external contributors
+    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+
+      - name: Install Playwright OS dependencies
+        run: npx playwright install-deps
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+        env:
+          CI: 'true'
+          # ── Next.js public vars (injected into browser bundle) ──
+          NEXT_PUBLIC_SUPABASE_URL:            ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY:       ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:  ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_SENTRY_DSN:              ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
+          # ── Server-side vars (used by Next.js API routes + test scripts) ──
+          SUPABASE_URL:                        ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_ANON_KEY:                   ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}  # same value as NEXT_PUBLIC_SUPABASE_ANON_KEY — anon key, not service role
+          SUPABASE_SERVICE_ROLE_KEY:           ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DATABASE_URL:                        ${{ secrets.DATABASE_URL }}
+          STRIPE_SECRET_KEY:                   ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET:               ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          JWT_SECRET:                          ${{ secrets.JWT_SECRET }}
+          CHECKOUT_TOKEN_EXPIRY:               '3600'
+          APP_BASE_URL:                        'http://localhost:3000'
+          # ── Sentry (optional — source maps + release tracking) ──
+          SENTRY_AUTH_TOKEN:                   ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG:                          ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT:                      ${{ secrets.SENTRY_PROJECT }}
+          # ── Feature flags: suppress external services in CI ──────
+          TWILIO_ENABLED:   'false'
+          DOCUMO_ENABLED:   'false'
+          # ── Misc ─────────────────────────────────────────────────
+          NEXT_TELEMETRY_DISABLED: '1'
+          # PLAYWRIGHT_BASE_URL intentionally omitted — playwright.config.ts
+          # starts a local `next dev` server when this is not set.
+          # Set this secret if you prefer to run E2E against a Vercel preview URL.
+
+      - name: Upload Playwright HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Upload JUnit XML results
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-junit
+          path: test-results/junit.xml
+          retention-days: 14

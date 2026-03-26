@@ -37,7 +37,9 @@ CREATE POLICY "clinic_staff_read_own_notifications"
   FOR SELECT
   USING (
     clinic_id = (
-      SELECT clinic_id FROM users WHERE user_id = auth.uid()
+      SELECT (raw_user_meta_data->>'clinic_id')::uuid
+      FROM auth.users
+      WHERE id = auth.uid()
     )
   );
 

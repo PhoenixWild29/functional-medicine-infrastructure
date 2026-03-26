@@ -92,7 +92,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       external_event_id: externalEventId,
       source: 'DOCUMO',
       event_type: envelope.event,
-      payload: JSON.parse(rawBody) as Record<string, unknown>,
+      payload: JSON.parse(rawBody),
       order_id: null,      // updated in Step 6 once resolved
       processed_at: null,  // updated in Step 6
     })
@@ -315,14 +315,14 @@ async function handleFaxFailed(fax: DocumoFaxData): Promise<string | null> {
   const { data: pharmacy } = await supabase
     .from('pharmacies')
     .select('slug')
-    .eq('pharmacy_id', order.pharmacy_id)
+    .eq('pharmacy_id', order.pharmacy_id!)
     .single()
 
   // Alert ops — manual intervention required (re-route or contact pharmacy)
   await sendSlackAlert(
     buildAdapterFailureAlert({
       orderId: order.order_id,
-      pharmacySlug: pharmacy?.slug ?? order.pharmacy_id,
+      pharmacySlug: pharmacy?.slug ?? order.pharmacy_id ?? 'unknown',
       integrationTier: 'TIER_4_FAX',
       errorCode: `fax_permanently_failed|fax=${fax.id}|attempts=${failureCount}`,
     })

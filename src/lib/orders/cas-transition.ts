@@ -1,6 +1,7 @@
 import { createServiceClient } from '@/lib/supabase/service'
 import { canTransition } from '@/lib/orders/state-machine'
 import type { OrderStatus } from '@/lib/orders/state-machine'
+import type { Json } from '@/types/database.types'
 
 // ============================================================
 // COMPARE-AND-SWAP (CAS) ORDER TRANSITION
@@ -109,7 +110,7 @@ export async function casTransition(
       oldStatus: expectedStatus,
       newStatus,
       actor,
-      metadata,
+      ...(metadata !== undefined ? { metadata } : {}),
     })
 
     logCasResult({ orderId, expectedStatus, newStatus, actor, outcome: 'transitioned' })
@@ -148,7 +149,7 @@ async function writeStatusHistory(params: WriteStatusHistoryParams): Promise<voi
     old_status: oldStatus,
     new_status: newStatus,
     changed_by: actor,
-    metadata: metadata ?? null,
+    metadata: (metadata ?? null) as Json,
   })
 
   if (error) {
@@ -228,7 +229,8 @@ export async function casTransitionRpc(
 
   const supabase = createServiceClient()
 
-  const { data, error } = await supabase.rpc(rpcName, {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await supabase.rpc(rpcName as any, {
     p_order_id: orderId,
     p_expected_status: expectedStatus,
     p_new_status: newStatus,

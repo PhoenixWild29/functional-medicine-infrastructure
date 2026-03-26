@@ -124,7 +124,7 @@ export async function executeFlow(
         case 'navigate': {
           if (!step.url) throw new Error(`step ${i} (navigate): url is required`)
           await page.goto(step.url, { timeout, waitUntil: 'domcontentloaded' })
-          results.push({ action: 'navigate', url: step.url, success: true })
+          results.push({ action: 'navigate', success: true })
           break
         }
 
@@ -197,7 +197,7 @@ export async function executeFlow(
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      results.push({ action: step.action, selector: step.selector, success: false, error: msg })
+      results.push({ action: step.action, ...(step.selector ? { selector: step.selector } : {}), success: false, error: msg })
       // Re-throw so caller can catch and record PORTAL_ERROR
       throw new Error(
         `[portal-flow] step ${i} (${step.action}${step.selector ? ` selector=${step.selector}` : ''}) failed: ${msg}`

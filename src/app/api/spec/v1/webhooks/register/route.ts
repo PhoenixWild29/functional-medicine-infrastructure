@@ -26,10 +26,13 @@
 // HIPAA: No PHI is accepted or stored by this endpoint.
 //        The HMAC secret is encrypted before storage; it is never logged.
 
+// NB-2: This route uses Node.js built-in 'crypto' (createCipheriv, randomBytes,
+// randomUUID). It runs on the Node.js serverless runtime and must never be
+// moved to an Edge runtime or Edge middleware, as the Web Crypto API differs
+// and would require a rewrite of the AES-256-GCM encryption logic.
 import { NextRequest, NextResponse } from 'next/server'
-import { createCipheriv, randomBytes } from 'crypto'
+import { createCipheriv, randomBytes, randomUUID } from 'crypto'
 import { createServiceClient } from '@/lib/supabase/service'
-import { randomUUID } from 'crypto'
 
 // ── Encrypt the HMAC signing secret (AES-256-GCM) ───────────
 // Format stored in webhook_secret_encrypted: iv:authTag:ciphertext (all hex)
