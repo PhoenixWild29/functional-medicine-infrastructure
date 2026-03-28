@@ -124,8 +124,10 @@ export function ReviewForm({
     }
   }, [selectedPatientId, selectedProviderId, runChecks])
 
+  // provider_signature check is gated by signatureCaptured (canvas) not the DB hash —
+  // the DB hash is only written AFTER sign-and-send, so checking it upfront is circular.
   const allChecksPassed = complianceChecks !== null &&
-    complianceChecks.every(c => c.passed) &&
+    complianceChecks.filter(c => c.id !== 'provider_signature').every(c => c.passed) &&
     signatureCaptured
 
   // BLK-05: reset signature when provider changes to prevent stale sig being submitted
