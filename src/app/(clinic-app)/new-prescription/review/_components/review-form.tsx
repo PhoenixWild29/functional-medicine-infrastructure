@@ -126,9 +126,17 @@ export function ReviewForm({
 
   // provider_signature check is gated by signatureCaptured (canvas) not the DB hash —
   // the DB hash is only written AFTER sign-and-send, so checking it upfront is circular.
-  const allChecksPassed = complianceChecks !== null &&
-    complianceChecks.filter(c => c.id !== 'provider_signature').every(c => c.passed) &&
-    signatureCaptured
+  const nonSigChecks = complianceChecks?.filter(c => c.id !== 'provider_signature') ?? []
+  const nonSigAllPassed = nonSigChecks.length > 0 && nonSigChecks.every(c => c.passed)
+  const allChecksPassed = complianceChecks !== null && nonSigAllPassed && signatureCaptured
+  // DEBUG — remove before shipping
+  console.log('[review-form] allChecksPassed debug:', {
+    complianceChecksNull: complianceChecks === null,
+    nonSigChecks: nonSigChecks.map(c => ({ id: c.id, passed: c.passed })),
+    nonSigAllPassed,
+    signatureCaptured,
+    allChecksPassed,
+  })
 
   // BLK-05: reset signature when provider changes to prevent stale sig being submitted
   useEffect(() => {
