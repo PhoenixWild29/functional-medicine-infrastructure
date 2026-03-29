@@ -132,14 +132,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // REQ-PSR-002: application_fee_amount = wholesale + 15% of margin (platform retains);
     //              transfer_data.destination = clinic Connect account (gets 85% of margin).
     // REQ-OAS-008 / REQ-PSR-008: Zero PHI in metadata.
+    //
+    // POC mode: if the clinic's Connect account is a placeholder (not yet onboarded),
+    // omit Connect routing so the POC can complete end-to-end without a real account.
+    const isPocPlaceholder = clinic.stripe_connect_account_id === 'poc_placeholder'
+
     const pi = await stripe.paymentIntents.create(
       {
         amount:   retailCents,
         currency: 'usd',
-        application_fee_amount: platformFeeCents,
-        transfer_data: {
-          destination: clinic.stripe_connect_account_id,
-        },
+        ...(isPocPlaceholder ? {} : {
+          application_fee_amount: platformFeeCents,
+          transfer_data: { destination: clinic.stripe_connect_account_id },
+        }),
         metadata: {
           order_id:  orderId,
           clinic_id: clinicId,
