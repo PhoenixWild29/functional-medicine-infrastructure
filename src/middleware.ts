@@ -60,7 +60,7 @@ export async function middleware(request: NextRequest) {
   //     with no session cookie — redirect would break the deploy gate.
   // NB-05: /auth/callback must be public — Supabase email-verification links arrive
   //   as cold visits (no session) and must reach the route handler to exchange the code.
-  const publicRoutes = ['/login', '/unauthorized', '/auth/callback', '/api/webhooks', '/api/cron', '/api/health']
+  const publicRoutes = ['/login', '/unauthorized', '/auth/callback', '/api/webhooks', '/api/cron', '/api/health', '/api/checkout']
   if (publicRoutes.some(route => pathname.startsWith(route))) {
     return response
   }
