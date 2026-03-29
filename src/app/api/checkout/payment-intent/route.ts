@@ -155,7 +155,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         // Automatic payment methods includes card, Apple Pay, Google Pay (REQ-PSR-003)
         automatic_payment_methods: { enabled: true },
       },
-      { idempotencyKey: `checkout-pi-${orderId}` }
+      { idempotencyKey: `checkout-pi-v2-${orderId}` }
     )
 
     if (!pi.client_secret) {
