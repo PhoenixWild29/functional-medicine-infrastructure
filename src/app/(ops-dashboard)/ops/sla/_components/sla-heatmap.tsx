@@ -200,7 +200,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
             </span>
           )}
         </div>
-        {isFetching && <span className="text-[10px] text-muted-foreground" aria-live="polite">↻ refreshing</span>}
+        {isFetching && <span role="status" className="text-[10px] text-muted-foreground" aria-live="polite">↻ refreshing</span>}
         <button
           type="button"
           onClick={() => setShowHandoff(v => !v)}
@@ -321,6 +321,11 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
                     {timeStr}
                   </p>
 
+                  {/* WO-72: Progress bar — absolute time remaining as % of total window */}
+                  {!row.resolvedAt && (
+                    <SlaProgressBar row={row} now={now} color={color} />
+                  )}
+
                   {/* Pharmacy + tier — NB-12: lookup map */}
                   {row.pharmacyName && (
                     <p className="mt-1 truncate text-[10px] text-muted-foreground">
@@ -375,6 +380,40 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── SLA Progress Bar — WO-72 ─────────────────────────────────
+// Shows absolute time remaining as a % of the full SLA window.
+// Colorblind-safe: color matches getSlaColor output.
+
+function SlaProgressBar({ row, now, color }: { row: SlaRow; now: number; color: SlaColor }) {
+  const deadlineMs  = new Date(row.deadlineAt).getTime()
+  const createdMs   = new Date(row.createdAt).getTime()
+  const windowMs    = deadlineMs - createdMs
+  const remainingMs = deadlineMs - now
+  const pct = windowMs > 0 ? Math.max(0, Math.min(100, Math.round((remainingMs / windowMs) * 100))) : 0
+
+  const barColor =
+    color === 'red'    ? 'bg-red-500'
+    : color === 'yellow' ? 'bg-amber-400'
+    : color === 'blue'   ? 'bg-blue-400'
+    : 'bg-emerald-400'
+
+  return (
+    <div
+      className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+      role="progressbar"
+      aria-valuenow={pct}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={`${pct}% of SLA window remaining — ${color === 'red' ? 'Critical' : color === 'yellow' ? 'Approaching' : 'On track'}`}
+    >
+      <div
+        className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+        style={{ width: `${pct}%` }}
+      />
     </div>
   )
 }

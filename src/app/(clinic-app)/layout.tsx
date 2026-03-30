@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { Providers } from '@/components/providers'
-import { NavSignOutButton } from '@/components/nav-sign-out-button'
+import { SidebarNav } from '@/components/sidebar-nav'
+import { ClinicErrorBoundary } from '@/components/clinic-error-boundary'
 
 // Clinic App: auth required, app_role must be clinic_user
 // Accessible to: clinic_admin, provider, medical_assistant
@@ -24,14 +25,21 @@ export default async function ClinicAppLayout({
     redirect('/unauthorized')
   }
 
+  const userEmail = session.user.email ?? ''
+  const userRole  = appRole
+
   return (
     <Providers>
+      {/* md: 56px icon-rail offset | xl: 240px sidebar (or 56px if collapsed) */}
       <div className="min-h-screen bg-background">
-        <header className="border-b border-border bg-card px-4 py-3 flex items-center justify-between">
-          <span className="text-sm font-semibold text-foreground">CompoundIQ</span>
-          <NavSignOutButton />
-        </header>
-        {children}
+        <SidebarNav userEmail={userEmail} userRole={userRole} />
+
+        {/* Main content — offset for sidebar on tablet/desktop */}
+        <div className="md:pl-14 xl:pl-60 transition-[padding] duration-[var(--duration-normal)]">
+          <ClinicErrorBoundary>
+            {children}
+          </ClinicErrorBoundary>
+        </div>
       </div>
     </Providers>
   )

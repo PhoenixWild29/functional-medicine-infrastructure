@@ -58,8 +58,15 @@ export default async function DashboardPage() {
 
   const supabase = createServiceClient()
 
+  // MTD window: first day of current month 00:00:00 UTC
+  const nowDate    = new Date()
+  const mtdStart   = new Date(Date.UTC(nowDate.getUTCFullYear(), nowDate.getUTCMonth(), 1)).toISOString()
+  // Prior-year same-month window for trend comparison
+  const pyStart    = new Date(Date.UTC(nowDate.getUTCFullYear() - 1, nowDate.getUTCMonth(), 1)).toISOString()
+  const pyEnd      = new Date(Date.UTC(nowDate.getUTCFullYear() - 1, nowDate.getUTCMonth() + 1, 1)).toISOString()
+
   // Fetch clinic (for stripe status gate — REQ-GDB-003) + orders in parallel
-  const [clinicResult, ordersResult] = await Promise.all([
+  const [clinicResult, ordersResult, priorYearResult] = await Promise.all([
     supabase
       .from('clinics')
       .select('stripe_connect_status')
@@ -78,6 +85,15 @@ export default async function DashboardPage() {
       .eq('clinic_id', clinicId)
       .is('deleted_at', null)
       .order('updated_at', { ascending: false }),
+
+    // Prior-year same month — count + revenue only (no joins needed)
+    supabase
+      .from('orders')
+      .select('status, retail_price_snapshot, wholesale_price_snapshot')
+      .eq('clinic_id', clinicId)
+      .is('deleted_at', null)
+      .gte('created_at', pyStart)
+      .lt('created_at', pyEnd),
   ])
 
   const clinicData = clinicResult.data as { stripe_connect_status: string } | null
@@ -127,22 +143,32 @@ export default async function DashboardPage() {
     }
   })
 
-  // Aggregate financial totals for RevenueSummary (WO-30, HC-01: integer cents).
-  // NB-4: exclude non-revenue statuses (DRAFT = uncommitted, PAYMENT_EXPIRED = never paid,
-  //        CANCELLED/REFUNDED = money returned) to prevent inflated totals.
+  // Exclude non-revenue statuses (HC-01)
   const EXCLUDED_FROM_REVENUE = new Set([
     'DRAFT', 'PAYMENT_EXPIRED', 'CANCELLED', 'REFUNDED', 'REFUND_PENDING',
   ])
 
-  let totalRevenueCents      = 0
-  let totalPlatformFeeCents  = 0
-  let totalClinicPayoutCents = 0
+  // MTD metrics (current month)
+  const mtdOrders = orders.filter(o => o.createdAt >= mtdStart)
+  let mtdRevenueCents = 0
+  let mtdCompletedCount = 0
+  let pendingPaymentCount = 0
 
-  for (const o of orders) {
-    if (EXCLUDED_FROM_REVENUE.has(o.status)) continue
-    totalRevenueCents      += o.retailCents
-    totalPlatformFeeCents  += o.platformFeeCents
-    totalClinicPayoutCents += o.clinicPayoutCents
+  for (const o of mtdOrders) {
+    if (!EXCLUDED_FROM_REVENUE.has(o.status)) mtdRevenueCents += o.retailCents
+    if (o.status === 'DELIVERED') mtdCompletedCount++
+    if (o.status === 'AWAITING_PAYMENT') pendingPaymentCount++
+  }
+
+  // Prior-year same month totals for trend
+  const pyRows = priorYearResult.data ?? []
+  let priorYearRevenueCents = 0
+  let priorYearOrdersMtd    = 0
+  for (const o of pyRows) {
+    if (!EXCLUDED_FROM_REVENUE.has(o.status)) {
+      priorYearRevenueCents += Math.round((o.retail_price_snapshot ?? 0) * 100)
+      priorYearOrdersMtd++
+    }
   }
 
   return (
@@ -158,12 +184,14 @@ export default async function DashboardPage() {
           </p>
         </div>
 
-        {/* Financial summary — REQ-CAD-004 */}
+        {/* Metric cards — WO-71 */}
         <RevenueSummary
-          totalRevenueCents={totalRevenueCents}
-          totalPlatformFeeCents={totalPlatformFeeCents}
-          totalClinicPayoutCents={totalClinicPayoutCents}
-          orderCount={orders.length}
+          totalOrdersMtd={mtdOrders.length}
+          totalRevenueCents={mtdRevenueCents}
+          pendingPaymentCount={pendingPaymentCount}
+          completedMtd={mtdCompletedCount}
+          priorYearOrdersMtd={priorYearOrdersMtd}
+          priorYearRevenueCents={priorYearRevenueCents}
         />
 
         {/* Interactive order management — REQ-GDB-001/002/003/004 */}

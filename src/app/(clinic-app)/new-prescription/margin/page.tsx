@@ -12,6 +12,7 @@
 import { notFound, redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { WizardProgress }    from '@/components/wizard-progress'
 import { MarginBuilderForm } from './_components/margin-builder-form'
 
 export const metadata = {
@@ -101,16 +102,15 @@ export default async function MarginPage({ searchParams }: PageProps) {
     <main className="mx-auto max-w-2xl px-4 py-8">
       {/* Step indicator */}
       <div className="mb-6">
-        <nav aria-label="Prescription wizard steps">
-          <ol className="flex items-center gap-2 text-sm">
-            <li className="text-muted-foreground">1. Select Pharmacy</li>
-            <li aria-hidden className="text-muted-foreground">›</li>
-            <li aria-current="step" className="font-semibold text-primary">2. Set Price</li>
-            <li aria-hidden className="text-muted-foreground">›</li>
-            <li className="text-muted-foreground">3. Review & Send</li>
-          </ol>
-        </nav>
-        <h1 className="mt-3 text-2xl font-bold text-foreground">Set Retail Price</h1>
+        <WizardProgress
+          steps={[
+            { number: 1, label: 'Select Pharmacy', href: '/new-prescription' },
+            { number: 2, label: 'Set Price' },
+            { number: 3, label: 'Review & Send' },
+          ]}
+          currentStep={2}
+        />
+        <h1 className="mt-4 text-2xl font-bold text-foreground">Set Retail Price</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Set the price your patient will pay and add prescription directions.
         </p>

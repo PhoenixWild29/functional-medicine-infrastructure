@@ -16,6 +16,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createBrowserClient } from '@/lib/supabase/client'
 import type { DashboardOrder } from '../page'
+import { getStatusConfig } from '@/lib/orders/status-config'
 
 interface Props {
   order: DashboardOrder | null
@@ -44,32 +45,6 @@ function formatDateTime(iso: string): string {
   })
 }
 
-// Friendly label for each order status
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT:                  'Draft created',
-  AWAITING_PAYMENT:       'Awaiting patient payment',
-  PAYMENT_EXPIRED:        'Payment link expired',
-  PAID_PROCESSING:        'Payment received — processing',
-  SUBMISSION_PENDING:     'Awaiting submission',
-  SUBMISSION_FAILED:      'Submission failed',
-  FAX_QUEUED:             'Fax queued',
-  FAX_DELIVERED:          'Fax delivered to pharmacy',
-  FAX_FAILED:             'Fax failed',
-  PHARMACY_ACKNOWLEDGED:  'Pharmacy acknowledged',
-  PHARMACY_COMPOUNDING:   'Compounding in progress',
-  PHARMACY_PROCESSING:    'Pharmacy processing',
-  PHARMACY_REJECTED:      'Pharmacy rejected order',
-  REROUTE_PENDING:        'Reroute in progress',
-  READY_TO_SHIP:          'Ready to ship',
-  SHIPPED:                'Shipped',
-  DELIVERED:              'Delivered',
-  CANCELLED:              'Cancelled',
-  ERROR_PAYMENT_FAILED:   'Payment failed',
-  ERROR_COMPLIANCE_HOLD:  'Compliance hold',
-  REFUND_PENDING:         'Refund pending',
-  REFUNDED:               'Refunded',
-  DISPUTED:               'Disputed',
-}
 
 export function OrderDrawer({ order, onClose }: Props) {
   // BLK-03: stable ref prevents stale closure + avoids re-running effect when client recreated
@@ -206,10 +181,10 @@ export function OrderDrawer({ order, onClose }: Props) {
                     <span className="absolute -left-[1.125rem] top-1 h-3 w-3 rounded-full border-2 border-border bg-background" />
                     {/* NB-3: show transition label using new_status (the status transitioned TO) */}
                     <p className="text-sm font-medium text-foreground">
-                      {STATUS_LABELS[row.new_status] ?? row.new_status}
+                      {getStatusConfig(row.new_status).label}
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      from {STATUS_LABELS[row.old_status] ?? row.old_status}
+                      from {getStatusConfig(row.old_status).label}
                       {row.changed_by && ` · ${row.changed_by}`}
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">

@@ -52,6 +52,20 @@ interface SuccessOrderRow {
   } | null
 }
 
+// WO-73: CSS-only animated checkmark (no external animation library)
+const CHECKMARK_STYLE = `
+  @keyframes checkmark-draw {
+    0%   { stroke-dashoffset: 100; opacity: 0; }
+    50%  { opacity: 1; }
+    100% { stroke-dashoffset: 0;   opacity: 1; }
+  }
+  .checkmark-path {
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+    animation: checkmark-draw 0.6s ease-out forwards 0.2s;
+  }
+` as const
+
 export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
   const resolvedParams  = await searchParams
   const paymentIntentId = resolvedParams.payment_intent
@@ -109,34 +123,34 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
     ? Number(pharmacy['average_turnaround_days'])
     : null
 
-  // REQ-SPG-002: Tier-aware next-steps messaging
-  const nextStepsMessage = supportsRealTime
-    ? 'Your prescription is being processed. You\'ll receive tracking information via text when it ships, typically within 24-48 hours.'
-    : `Your prescription is being compounded. Typical fulfillment is ${avgTurnaroundDays ? `${avgTurnaroundDays} business days` : '3-7 business days'}. You\'ll receive tracking information via text when it ships.`
-
   return (
     <main className="flex min-h-screen flex-col items-center px-4 py-12">
+      {/* WO-73: CSS-only animated checkmark keyframes */}
+      {/* eslint-disable-next-line react/no-danger */}
+      <style dangerouslySetInnerHTML={{ __html: CHECKMARK_STYLE }} />
+
       <div className="w-full max-w-sm space-y-6">
 
-        {/* Confirmation header — REQ-SPG-001 */}
+        {/* WO-73: Animated checkmark + confirmation header — REQ-SPG-001 */}
         <div className="flex flex-col items-center space-y-3 text-center">
           <div
-            className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100"
+            className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100"
             aria-hidden
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="h-8 w-8 text-emerald-600"
+              className="h-10 w-10 text-emerald-600"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
-              strokeWidth={2}
+              strokeWidth={2.5}
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              <path className="checkmark-path" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
 
-          <h1 className="text-2xl font-bold text-gray-900">
+          {/* NB-1: Use semantic tokens, not hardcoded gray values */}
+          <h1 className="text-2xl font-semibold text-foreground">
             Payment Received
           </h1>
 
@@ -146,32 +160,61 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
           </p>
 
           {/* REQ-SPG-004: Generic language — no medication name */}
-          <p className="text-sm text-gray-500">
-            Your prescription order with {clinicName} has been confirmed.
+          <p className="text-base text-muted-foreground">
+            Your prescription is being processed.
+          </p>
+
+          {/* WO-73: Order reference for patient records */}
+          <p className="font-mono text-sm text-muted-foreground/60" aria-label="Order reference">
+            Reference: #{(order as unknown as { order_id: string }).order_id.slice(0, 8)}
           </p>
         </div>
 
-        {/* Next steps — REQ-SPG-002 */}
-        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        {/* WO-73: "What happens next" — 3-step static list (icon + text, not color alone) — REQ-SPG-002 */}
+        <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             What Happens Next
           </p>
-          <p className="mt-2 text-sm text-gray-700">
-            {nextStepsMessage}
-          </p>
+          <ol className="mt-3 space-y-3">
+            <li className="flex items-start gap-3">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold" aria-hidden>✓</span>
+              <div>
+                <p className="text-sm font-medium text-foreground">Payment confirmed</p>
+                <p className="text-xs text-muted-foreground">Your payment has been received.</p>
+              </div>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs" aria-label="Pending" aria-hidden>⏳</span>
+              <div>
+                <p className="text-sm font-medium text-foreground">Prescription sent to pharmacy</p>
+                <p className="text-xs text-muted-foreground">Within a few minutes.</p>
+              </div>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs" aria-label="Pending" aria-hidden>⏳</span>
+              <div>
+                <p className="text-sm font-medium text-foreground">Pharmacy will contact you</p>
+                <p className="text-xs text-muted-foreground">
+                  {supportsRealTime
+                    ? 'Within 24–48 hours. You\'ll receive tracking info via text when it ships.'
+                    : `Within ${avgTurnaroundDays ? `${avgTurnaroundDays} business days` : '3–7 business days'}.`}
+                </p>
+              </div>
+            </li>
+          </ol>
         </div>
 
         {/* Clinic contact — REQ-SPG-003 */}
         {(clinicPhone || clinicEmail) && (
-          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+          <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Questions? Contact {clinicName}
             </p>
             <div className="mt-2 space-y-1.5">
               {clinicPhone && (
                 <a
                   href={`tel:${clinicPhone}`}
-                  className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                  className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
@@ -182,7 +225,7 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
               {clinicEmail && (
                 <a
                   href={`mailto:${clinicEmail}`}
-                  className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                  className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -194,7 +237,7 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
           </div>
         )}
 
-        <p className="text-center text-xs text-gray-400">
+        <p className="text-center text-xs text-muted-foreground/60">
           You will receive a text message with updates on your order.
         </p>
       </div>

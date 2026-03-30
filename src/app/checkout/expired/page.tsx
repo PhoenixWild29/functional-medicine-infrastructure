@@ -32,17 +32,14 @@ export default function CheckoutExpiredPage() {
           </svg>
         </div>
 
-        <h1 className="text-xl font-semibold text-gray-900">
-          Payment Link No Longer Valid
+        {/* WO-73 NB-2: Calm, professional copy — use semantic tokens, not hardcoded gray */}
+        <h1 className="text-2xl font-semibold text-foreground">
+          This payment link has expired
         </h1>
 
-        <p className="text-sm text-gray-600">
-          This payment link is no longer valid. Links expire after 72 hours for
-          security.
-        </p>
-
-        <p className="text-sm text-gray-600">
-          Please contact your clinic to request a new payment link.
+        <p className="text-base text-muted-foreground">
+          Payment links expire after 72 hours for security. Please contact your
+          clinic to request a new one.
         </p>
       </div>
     </main>

@@ -268,38 +268,49 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId }
         })}
       </div>
 
-      {/* ── Empty state — REQ-GDB-004 ── */}
+      {/* ── Empty state — REQ-GDB-004 / WO-71 ── */}
       {!isFetching && filteredOrders.length === 0 && (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/20 py-16 text-center">
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/10 py-16 text-center gap-3">
           {orders.length === 0 ? (
             <>
-              <p className="text-sm font-medium text-foreground">No prescriptions yet</p>
-              {isStripeActive ? (
-                <>
+              <svg className="h-10 w-10 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-foreground">No orders found</p>
+                {isStripeActive ? (
                   <p className="mt-1 text-sm text-muted-foreground">
                     Create your first prescription to get started.
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => router.push('/new-prescription')}
-                    className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    + New Prescription
-                  </button>
-                </>
-              ) : (
-                // NB-02: explain the Stripe gate in the empty state
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Complete{' '}
-                  <a href="/settings" className="underline text-primary">Stripe onboarding</a>{' '}
-                  in Settings to enable order creation.
-                </p>
+                ) : (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Complete{' '}
+                    <a href="/settings" className="underline text-primary">Stripe onboarding</a>{' '}
+                    in Settings to enable order creation.
+                  </p>
+                )}
+              </div>
+              {isStripeActive && (
+                <button
+                  type="button"
+                  onClick={() => router.push('/new-prescription')}
+                  className="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
+                >
+                  New Prescription
+                </button>
               )}
             </>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              No orders match the &ldquo;{activeTabDef.label}&rdquo; filter.
-            </p>
+            <>
+              <p className="text-sm font-medium text-foreground">No orders match your filters</p>
+              <button
+                type="button"
+                onClick={() => setActiveTab('all')}
+                className="text-sm text-primary underline-offset-2 hover:underline focus-visible:outline-none"
+              >
+                Clear filters
+              </button>
+            </>
           )}
         </div>
       )}
@@ -310,7 +321,9 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId }
           <OrdersTable
             orders={filteredOrders}
             isLoading={isFetching && orders.length === 0}
+            isError={isError}
             onRowClick={handleRowClick}
+            onRetry={() => void refetch()}
           />
         ) : (
           <OrdersKanban

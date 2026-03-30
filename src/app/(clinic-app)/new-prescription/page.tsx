@@ -12,7 +12,14 @@
 //   Step 3 — /new-prescription/review   (order assembly — WO-29)
 
 import { createServerClient } from '@/lib/supabase/server'
+import { WizardProgress }    from '@/components/wizard-progress'
 import { PharmacySearchForm } from './_components/pharmacy-search-form'
+
+const WIZARD_STEPS = [
+  { number: 1, label: 'Select Pharmacy' },
+  { number: 2, label: 'Set Price'       },
+  { number: 3, label: 'Review & Send'   },
+]
 
 // NB-03: Valid US state codes for clinicState validation
 const VALID_STATES = new Set([
@@ -44,16 +51,8 @@ export default async function NewPrescriptionPage() {
     <main className="mx-auto max-w-2xl px-4 py-8">
       {/* Step indicator */}
       <div className="mb-6">
-        <nav aria-label="Prescription wizard steps">
-          <ol className="flex items-center gap-2 text-sm">
-            <li className="font-semibold text-primary">1. Select Pharmacy</li>
-            <li aria-hidden className="text-muted-foreground">›</li>
-            <li className="text-muted-foreground">2. Set Price</li>
-            <li aria-hidden className="text-muted-foreground">›</li>
-            <li className="text-muted-foreground">3. Review & Send</li>
-          </ol>
-        </nav>
-        <h1 className="mt-3 text-2xl font-bold text-foreground">Find a Pharmacy</h1>
+        <WizardProgress steps={WIZARD_STEPS} currentStep={1} />
+        <h1 className="mt-4 text-2xl font-bold text-foreground">Find a Pharmacy</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Search for the compounded medication and select a licensed pharmacy
           for your patient&apos;s shipping state.

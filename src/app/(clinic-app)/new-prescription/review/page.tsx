@@ -12,8 +12,9 @@
 import { notFound, redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { ReviewForm } from './_components/review-form'
-import { HipaaTimeout } from '@/components/hipaa-timeout'
+import { WizardProgress } from '@/components/wizard-progress'
+import { ReviewForm }     from './_components/review-form'
+import { HipaaTimeout }   from '@/components/hipaa-timeout'
 
 export const metadata = {
   title: 'New Prescription — Review & Send',
@@ -104,16 +105,19 @@ export default async function ReviewPage({ searchParams }: PageProps) {
       <main className="mx-auto max-w-2xl px-4 py-8">
         {/* Step indicator */}
         <div className="mb-6">
-          <nav aria-label="Prescription wizard steps">
-            <ol className="flex items-center gap-2 text-sm">
-              <li className="text-muted-foreground">1. Select Pharmacy</li>
-              <li aria-hidden className="text-muted-foreground">›</li>
-              <li className="text-muted-foreground">2. Set Price</li>
-              <li aria-hidden className="text-muted-foreground">›</li>
-              <li aria-current="step" className="font-semibold text-primary">3. Review & Send</li>
-            </ol>
-          </nav>
-          <h1 className="mt-3 text-2xl font-bold text-foreground">Review & Send Payment Link</h1>
+          <WizardProgress
+            steps={[
+              { number: 1, label: 'Select Pharmacy', href: '/new-prescription' },
+              {
+                number: 2,
+                label:  'Set Price',
+                href:   `/new-prescription/margin?pharmacyId=${encodeURIComponent(pharmacyId)}&itemId=${encodeURIComponent(itemId)}`,
+              },
+              { number: 3, label: 'Review & Send' },
+            ]}
+            currentStep={3}
+          />
+          <h1 className="mt-4 text-2xl font-bold text-foreground">Review & Send Payment Link</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Review the prescription, select a patient and provider, sign, and send.
           </p>

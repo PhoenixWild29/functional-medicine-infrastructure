@@ -17,6 +17,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery }          from '@tanstack/react-query'
 import type { FaxEntry, FaxQueueResponse, FaxStatus } from '@/app/api/ops/fax/route'
+import { SkeletonTableRow }  from '@/components/ui/skeleton'
 
 // ── Status config ─────────────────────────────────────────────
 
@@ -180,12 +181,38 @@ export function FaxTriageQueue({ initialData }: Props) {
           ))}
         </div>
 
-        {/* Fax table — REQ-FTQ-001 */}
-        {faxes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/20 py-16 text-center">
-            <p className="text-sm text-muted-foreground">No faxes match the current filter</p>
+        {/* WO-72: Skeleton loading on initial fetch */}
+        {isFetching && faxes.length === 0 && (
+          <div className="overflow-x-auto rounded-md border border-border">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
+                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 font-medium">From</th>
+                  <th className="px-3 py-2 font-medium">Pages</th>
+                  <th className="px-3 py-2 font-medium">Pharmacy</th>
+                  <th className="px-3 py-2 font-medium">Order</th>
+                  <th className="px-3 py-2 font-medium">Received</th>
+                  <th className="px-3 py-2 font-medium" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {[1,2,3,4,5].map(i => <SkeletonTableRow key={i} cols={7} />)}
+              </tbody>
+            </table>
           </div>
-        ) : (
+        )}
+
+        {/* Fax table — REQ-FTQ-001 */}
+        {!isFetching && faxes.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/20 py-16 text-center gap-2">
+            <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 13.5h3.86a2.25 2.25 0 012.012 1.244l.256.512a2.25 2.25 0 002.013 1.244h3.218a2.25 2.25 0 002.013-1.244l.256-.512a2.25 2.25 0 012.013-1.244h3.859m-19.5.338V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 00-2.15-1.588H6.911a2.25 2.25 0 00-2.15 1.588L2.35 13.177a2.25 2.25 0 00-.1.661z" />
+            </svg>
+            <p className="text-sm font-medium text-foreground">No faxes in queue</p>
+            <p className="text-xs text-muted-foreground">All caught up ✓</p>
+          </div>
+        ) : faxes.length > 0 ? (
           <div className="overflow-x-auto rounded-md border border-border">
             <table className="w-full text-xs">
               <thead>
@@ -250,7 +277,7 @@ export function FaxTriageQueue({ initialData }: Props) {
               </tbody>
             </table>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* ── Right: Detail pane ── */}

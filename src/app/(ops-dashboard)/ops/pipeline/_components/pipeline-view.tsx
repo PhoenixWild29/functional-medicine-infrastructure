@@ -16,12 +16,15 @@
 // Polling: 10-second refetch interval via TanStack Query.
 // Bulk ops: checkbox select + bulk action bar (CAS per order — HC-09).
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useQuery }  from '@tanstack/react-query'
 import { createBrowserClient } from '@/lib/supabase/client'
 import type { PipelineOrder, FilterOption } from '@/types/pipeline'
 import type { OrderStatusEnum, IntegrationTierEnum } from '@/types/database.types'
 import { OrderDetailDrawer } from './order-detail-drawer'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { getStatusConfig } from '@/lib/orders/status-config'
+import { SkeletonTableRow } from '@/components/ui/skeleton'
 
 // ── Status lane config ───────────────────────────────────────
 
@@ -65,31 +68,6 @@ const STATUS_GROUPS: StatusGroup[] = [
   },
 ]
 
-const STATUS_LABEL: Record<OrderStatusEnum, string> = {
-  DRAFT:                  'Draft',
-  AWAITING_PAYMENT:       'Awaiting Payment',
-  PAYMENT_EXPIRED:        'Payment Expired',
-  PAID_PROCESSING:        'Paid — Processing',
-  SUBMISSION_PENDING:     'Submission Pending',
-  SUBMISSION_FAILED:      'Submission Failed',
-  FAX_QUEUED:             'Fax Queued',
-  FAX_DELIVERED:          'Fax Delivered',
-  FAX_FAILED:             'Fax Failed',
-  PHARMACY_ACKNOWLEDGED:  'Pharmacy Ack',
-  PHARMACY_COMPOUNDING:   'Compounding',
-  PHARMACY_PROCESSING:    'Processing',
-  PHARMACY_REJECTED:      'Pharmacy Rejected',
-  REROUTE_PENDING:        'Reroute Pending',
-  READY_TO_SHIP:          'Ready to Ship',
-  SHIPPED:                'Shipped',
-  DELIVERED:              'Delivered',
-  CANCELLED:              'Cancelled',
-  ERROR_PAYMENT_FAILED:   'Payment Failed',
-  ERROR_COMPLIANCE_HOLD:  'Compliance Hold',
-  REFUND_PENDING:         'Refund Pending',
-  REFUNDED:               'Refunded',
-  DISPUTED:               'Disputed',
-}
 
 const TIER_LABELS: Record<IntegrationTierEnum, string> = {
   TIER_1_API:    'T1 API',
@@ -99,37 +77,6 @@ const TIER_LABELS: Record<IntegrationTierEnum, string> = {
   TIER_4_FAX:    'T4 Fax',
 }
 
-// ── Status badge styles ──────────────────────────────────────
-
-function statusBadgeClass(status: OrderStatusEnum): string {
-  const ERROR = 'bg-red-100 text-red-700 border border-red-200'
-  const WARN  = 'bg-amber-100 text-amber-700 border border-amber-200'
-  const OK    = 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-  const BLUE  = 'bg-blue-100 text-blue-700 border border-blue-200'
-  const GRAY  = 'bg-gray-100 text-gray-600 border border-gray-200'
-
-  const map: Partial<Record<OrderStatusEnum, string>> = {
-    SUBMISSION_FAILED:     ERROR,
-    FAX_FAILED:            ERROR,
-    PHARMACY_REJECTED:     ERROR,
-    ERROR_PAYMENT_FAILED:  ERROR,
-    ERROR_COMPLIANCE_HOLD: ERROR,
-    PAYMENT_EXPIRED:       WARN,
-    REROUTE_PENDING:       WARN,
-    REFUND_PENDING:        WARN,
-    READY_TO_SHIP:         OK,
-    SHIPPED:               OK,
-    DELIVERED:             OK,
-    PAID_PROCESSING:       BLUE,
-    SUBMISSION_PENDING:    BLUE,
-    FAX_QUEUED:            BLUE,
-    FAX_DELIVERED:         BLUE,
-    CANCELLED:             GRAY,
-    REFUNDED:              GRAY,
-    DISPUTED:              GRAY,
-  }
-  return map[status] ?? 'bg-muted text-muted-foreground border border-border'
-}
 
 // ── Filters type ─────────────────────────────────────────────
 
@@ -230,6 +177,26 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions }: 
     filters.statuses.length > 0 || !!filters.dateFrom || !!filters.dateTo ||
     selectedGroup !== null
 
+  // ── Last updated timestamp ───────────────────────────────────
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number>(Date.now())
+  const [secondsAgo,    setSecondsAgo]    = useState(0)
+
+  // Track last successful fetch time
+  useEffect(() => {
+    if (!isFetching) {
+      setLastUpdatedAt(Date.now())
+      setSecondsAgo(0)
+    }
+  }, [isFetching])
+
+  // Live "Xs ago" counter
+  useEffect(() => {
+    const id = setInterval(() => {
+      setSecondsAgo(Math.round((Date.now() - lastUpdatedAt) / 1000))
+    }, 1000)
+    return () => clearInterval(id)
+  }, [lastUpdatedAt])
+
   // ── Current user for claim ───────────────────────────────────
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null)
   // BLK-02: useEffect (not useState) for side effects
@@ -318,7 +285,18 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions }: 
     }
   }
 
-  // ── Format SLA deadline ──────────────────────────────────────
+  // ── SLA urgency — WO-72: based on absolute minutes remaining ──
+  // >240 min: muted  |  60-240 min: amber  |  <60 min: red  |  overdue: red bold OVERDUE
+  function getSlaUrgency(order: PipelineOrder): 'none' | 'low' | 'amber' | 'red' | 'overdue' {
+    if (!order.nearestSlaDeadline) return 'none'
+    const diff = new Date(order.nearestSlaDeadline).getTime() - Date.now()
+    if (diff < 0) return 'overdue'
+    const mins = diff / 60_000
+    if (mins < 60)  return 'red'
+    if (mins < 240) return 'amber'
+    return 'low'
+  }
+
   function formatSla(order: PipelineOrder): string {
     if (!order.nearestSlaDeadline) return '—'
     const diff = new Date(order.nearestSlaDeadline).getTime() - Date.now()
@@ -393,7 +371,7 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions }: 
                           : 'text-muted-foreground hover:bg-accent hover:text-foreground'}
                       `}
                     >
-                      <span className="truncate">{STATUS_LABEL[status]}</span>
+                      <span className="truncate">{getStatusConfig(status).label}</span>
                       <span className="ml-1 shrink-0 text-[10px]">{count}</span>
                     </button>
                   )
@@ -501,9 +479,15 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions }: 
             </button>
           )}
 
-          <span className="ml-auto text-xs text-muted-foreground">
-            {filteredOrders.length} of {orders.length} orders
-          </span>
+          <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+            <span>
+              {filteredOrders.length} of {orders.length} orders
+            </span>
+            {/* WO-72: live "last updated" counter */}
+            <span role="status" aria-live="polite" aria-atomic>
+              {isFetching ? '↻ Updating…' : `Updated ${secondsAgo}s ago`}
+            </span>
+          </div>
         </div>
 
         {/* ── Active filter chips — REQ-OPV-002 AC-002.3 ── */}
@@ -522,12 +506,12 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions }: 
             )}
             {filters.statuses.map(s => (
               <span key={s} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                {STATUS_LABEL[s]}
+                {getStatusConfig(s).label}
                 <button
                   type="button"
                   onClick={() => setFilters(f => ({ ...f, statuses: f.statuses.filter(x => x !== s) }))}
                   className="hover:text-destructive focus-visible:outline-none"
-                  aria-label={`Remove ${STATUS_LABEL[s]} filter`}
+                  aria-label={`Remove ${getStatusConfig(s).label} filter`}
                 >×</button>
               </span>
             ))}
@@ -559,6 +543,29 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions }: 
             >
               Deselect all
             </button>
+          </div>
+        )}
+
+        {/* ── Skeleton loading — WO-72: 8 rows on initial load ── */}
+        {isFetching && orders.length === 0 && (
+          <div className="overflow-x-auto rounded-lg border border-border bg-card">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40 text-xs font-medium text-muted-foreground">
+                  <th scope="col" className="w-8 px-3 py-2" />
+                  <th scope="col" className="px-3 py-2 text-left">Order</th>
+                  <th scope="col" className="px-3 py-2 text-left">Status</th>
+                  <th scope="col" className="px-3 py-2 text-left">Clinic</th>
+                  <th scope="col" className="px-3 py-2 text-left">Pharmacy / Tier</th>
+                  <th scope="col" className="px-3 py-2 text-left">SLA</th>
+                  <th scope="col" className="px-3 py-2 text-left">Assigned</th>
+                  <th scope="col" className="px-3 py-2 text-left">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {[1,2,3,4,5,6,7,8].map(i => <SkeletonTableRow key={i} cols={8} />)}
+              </tbody>
+            </table>
           </div>
         )}
 
@@ -613,6 +620,7 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions }: 
                     onOpenDetail={() => setSelectedOrder(order)}
                     onAction={handleAction}
                     formatSla={formatSla}
+                    getSlaUrgency={getSlaUrgency}
                   />
                 ))}
               </tbody>
@@ -642,6 +650,7 @@ interface OrderRowProps {
   onOpenDetail:     () => void
   onAction:         (orderId: string, action: string, payload?: Record<string, unknown>) => Promise<void>
   formatSla:        (order: PipelineOrder) => string
+  getSlaUrgency:    (order: PipelineOrder) => 'none' | 'low' | 'amber' | 'red' | 'overdue'
 }
 
 function OrderRow({
@@ -652,6 +661,7 @@ function OrderRow({
   onOpenDetail,
   onAction,
   formatSla,
+  getSlaUrgency,
 }: OrderRowProps) {
   const [trackingInput, setTrackingInput] = useState('')
   const [carrierInput,  setCarrierInput]  = useState('')
@@ -669,16 +679,18 @@ function OrderRow({
   }
 
   const slaText    = formatSla(order)
-  const slaBreached = order.hasSlaBreached
+  const slaUrgency = getSlaUrgency(order)
+  const isOverdue  = slaUrgency === 'overdue'
 
   return (
     <tr
       data-order-id={order.orderId}
-      className={`
-        border-b border-border last:border-0 hover:bg-muted/30 transition-colors
-        ${isSelected ? 'bg-primary/5' : ''}
-        ${slaBreached ? 'border-l-2 border-l-red-400' : ''}
-      `}
+      className={[
+        'border-b border-border last:border-0 hover:bg-muted/30 transition-colors',
+        isSelected ? 'bg-primary/5' : '',
+        // WO-72: overdue rows — 4 indicators: left border + tint + icon + text (in SLA cell)
+        isOverdue ? 'border-l-4 border-l-red-500 bg-red-950/20' : '',
+      ].join(' ')}
     >
       {/* Checkbox — REQ-OPV-005 bulk ops */}
       <td className="px-3 py-2">
@@ -707,9 +719,7 @@ function OrderRow({
 
       {/* Status badge */}
       <td className="px-3 py-2">
-        <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${statusBadgeClass(order.status)}`}>
-          {STATUS_LABEL[order.status]}
-        </span>
+        <StatusBadge status={order.status} className="text-[11px]" />
         {order.rerouteCount > 0 && (
           <span className="ml-1 text-[10px] text-amber-600">
             {order.rerouteCount}/2 reroutes
@@ -734,12 +744,27 @@ function OrderRow({
         )}
       </td>
 
-      {/* SLA — REQ-OPV-003 */}
+      {/* SLA — REQ-OPV-003 / WO-72: urgency tiers */}
       <td className="px-3 py-2">
         {order.nearestSlaDeadline ? (
-          <span className={`text-xs font-medium ${slaBreached ? 'text-red-600' : 'text-muted-foreground'}`}>
-            {slaBreached ? '⚠ ' : ''}{slaText}
-          </span>
+          slaUrgency === 'overdue' ? (
+            <span className="inline-flex items-center gap-1 text-xs font-bold text-destructive">
+              <svg className="h-3 w-3 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden><path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" /></svg>
+              OVERDUE {slaText}
+            </span>
+          ) : slaUrgency === 'red' ? (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
+              <svg className="h-3 w-3 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clipRule="evenodd" /></svg>
+              {slaText}
+            </span>
+          ) : slaUrgency === 'amber' ? (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-500">
+              <svg className="h-3 w-3 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clipRule="evenodd" /></svg>
+              {slaText}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">{slaText}</span>
+          )
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         )}

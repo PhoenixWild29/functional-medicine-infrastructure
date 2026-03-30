@@ -58,3 +58,5 @@ coverage/
 # Local secrets/notes — never commit
 copy.md
 copy.docx
+
+.vercel

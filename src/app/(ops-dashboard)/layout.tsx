@@ -25,7 +25,8 @@ export default async function OpsDashboardLayout({
 
   return (
     <Providers>
-      <div className="min-h-screen bg-background">
+      {/* dark: scoped to ops subtree — does not affect clinic app or checkout */}
+      <div className="dark min-h-screen bg-background">
         <header className="border-b border-border bg-card px-4 py-3 flex items-center justify-between">
           <span className="text-sm font-semibold text-foreground">CompoundIQ — Ops</span>
           <NavSignOutButton />

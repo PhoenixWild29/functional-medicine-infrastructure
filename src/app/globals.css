@@ -4,30 +4,108 @@
 
 @layer base {
   :root {
+    /* Backgrounds */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
-  }
-}
+    --foreground: 222 47% 7%;           /* #0F172A slate-900 */
 
-@layer base {
+    /* Surfaces */
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 7%;
+    --muted: 210 40% 97%;               /* #F8FAFC slate-50 */
+    --muted-foreground: 215 16% 47%;    /* #64748B slate-500 */
+
+    /* Brand Primary */
+    --primary: 221 83% 53%;             /* #2563EB blue-600 */
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary */
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+
+    /* Semantic — Destructive */
+    --destructive: 0 84% 60%;           /* #EF4444 red-500 */
+    --destructive-foreground: 0 0% 100%;
+
+    /* Semantic — Success */
+    --success: 142 71% 45%;             /* #22C55E green-500 */
+    --success-foreground: 0 0% 100%;
+
+    /* Semantic — Warning */
+    --warning: 38 92% 50%;              /* #F59E0B amber-500 */
+    --warning-foreground: 30 80% 15%;   /* dark amber — WCAG AA on amber background */
+
+    /* Semantic — Info */
+    --info: 199 89% 48%;                /* #0EA5E9 sky-500 */
+    --info-foreground: 0 0% 100%;
+
+    /* Borders / Inputs */
+    --border: 214 32% 91%;              /* #E2E8F0 slate-200 */
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+
+    /* Accent (secondary interactive) */
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+
+    /* Popover */
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 7%;
+
+    /* Radius */
+    --radius: 0.625rem;                 /* 10px — modern SaaS standard */
+
+    /* Motion scale */
+    --duration-fast:   150ms;
+    --duration-normal: 250ms;
+    --duration-slow:   350ms;
+    --easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Dark mode — Ops Dashboard only (applied via .dark wrapper on ops layout) */
+  .dark {
+    --background: 222 47% 5%;           /* #0C0E14 */
+    --foreground: 213 27% 92%;          /* #E8EAF0 */
+    --card: 222 39% 10%;                /* #161B27 */
+    --card-foreground: 213 27% 92%;
+    --muted: 222 35% 16%;               /* #1E2535 */
+    --muted-foreground: 220 20% 55%;    /* #6B7A99 */
+    --primary: 217 91% 60%;             /* #3B82F6 blue-500 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 222 35% 16%;
+    --secondary-foreground: 213 27% 92%;
+    --destructive: 0 72% 51%;           /* #DC2626 red-600 */
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 30 80% 15%;   /* dark amber — WCAG AA on amber background */
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+    --border: 222 30% 22%;              /* #2A3347 */
+    --input: 222 30% 22%;
+    --ring: 217 91% 60%;
+    --accent: 222 35% 16%;
+    --accent-foreground: 213 27% 92%;
+    --popover: 222 39% 10%;
+    --popover-foreground: 213 27% 92%;
+  }
+
+  /* Global resets */
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* Global input focus ring — ensures consistent focus style across all inputs
+     without requiring per-component class application (BLOCKING-02) */
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px hsl(var(--ring) / 0.3);
+    border-color: hsl(var(--ring));
   }
 }

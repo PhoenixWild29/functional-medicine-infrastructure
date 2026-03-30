@@ -23,6 +23,36 @@ import type { MedicationSuggestion } from '@/app/api/pharmacy-search/medications
 import type { PharmacySearchResult } from '@/app/api/pharmacy-search/route'
 import { PharmacyResultCard } from './pharmacy-result-card'
 
+// ── sessionStorage state preservation ─────────────────────────
+// Saves wizard Step 1 form state so it can be restored if the user
+// navigates back from Step 2 or Step 3.
+
+const STORAGE_KEY = 'wizard-step1'
+
+interface SavedStep1State {
+  medicationQuery: string
+  selectedItem:    MedicationSuggestion | null
+  patientState:    string
+  formFilter:      string
+}
+
+function loadSavedState(): SavedStep1State | null {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as SavedStep1State) : null
+  } catch {
+    return null
+  }
+}
+
+function saveState(state: SavedStep1State) {
+  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state)) } catch { /* quota/private */ }
+}
+
+function clearSavedState() {
+  try { sessionStorage.removeItem(STORAGE_KEY) } catch { /* noop */ }
+}
+
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DC','DE','FL','GA','HI','ID','IL','IN',
   'IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH',
@@ -47,8 +77,50 @@ export function PharmacySearchForm({ defaultState }: Props) {
   // dropdown doesn't collapse when a form is selected (filtering reduces results).
   const [availableFormsSnapshot, setAvailableFormsSnapshot] = useState<string[]>([])
 
-  const suggestionsRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  // sessionStorage restore banner state
+  const [showRestoreBanner, setShowRestoreBanner] = useState(false)
+  const [pendingRestore, setPendingRestore]       = useState<SavedStep1State | null>(null)
+
+  const suggestionsRef  = useRef<HTMLDivElement>(null)
+  const inputRef        = useRef<HTMLInputElement>(null)
+  // Skip the initial save-effect run so it doesn't overwrite saved state before
+  // the restore check fires (both effects run on the same initial render).
+  const hasMountedRef   = useRef(false)
+
+  // ── On mount: check for saved state ────────────────────────
+  useEffect(() => {
+    const saved = loadSavedState()
+    // Only offer restore if there's a meaningful selection (not just an empty draft)
+    if (saved?.selectedItem) {
+      setPendingRestore(saved)
+      setShowRestoreBanner(true)
+    }
+  }, [])
+
+  // ── Persist form state to sessionStorage on every change ──
+  useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true
+      return
+    }
+    saveState({ medicationQuery, selectedItem, patientState, formFilter })
+  }, [medicationQuery, selectedItem, patientState, formFilter])
+
+  function handleRestore() {
+    if (!pendingRestore) return
+    setMedicationQuery(pendingRestore.medicationQuery)
+    setSelectedItem(pendingRestore.selectedItem)
+    setPatientState(pendingRestore.patientState)
+    setFormFilter(pendingRestore.formFilter)
+    setShowRestoreBanner(false)
+    setPendingRestore(null)
+  }
+
+  function handleDismissRestore() {
+    clearSavedState()
+    setShowRestoreBanner(false)
+    setPendingRestore(null)
+  }
 
   // ── Medication autocomplete — REQ-SCS-001 ────────────────────
   const { data: autocompleteData, isFetching: isAutocompleting } = useQuery({
@@ -161,6 +233,37 @@ export function PharmacySearchForm({ defaultState }: Props) {
 
   return (
     <div className="space-y-6">
+
+      {/* ── Restore banner — shown when returning from step 2/3 ── */}
+      {showRestoreBanner && pendingRestore && (
+        <div className="flex items-start justify-between gap-3 rounded-md border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          <div>
+            <p className="font-medium">Continue where you left off?</p>
+            <p className="mt-0.5 text-xs text-blue-700">
+              Previous selection: <strong>{pendingRestore.selectedItem?.medication_name}</strong>
+              {pendingRestore.patientState ? ` · ${pendingRestore.patientState}` : ''}
+            </p>
+          </div>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={handleRestore}
+              className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+            >
+              Restore
+            </button>
+            <button
+              type="button"
+              onClick={handleDismissRestore}
+              className="rounded px-2 py-1 text-xs text-blue-600 hover:text-blue-800 focus-visible:outline-none"
+              aria-label="Dismiss restore banner"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSearch} className="space-y-4">
 
         {/* Medication autocomplete — REQ-SCS-001 */}

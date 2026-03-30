@@ -26,10 +26,18 @@ const STATUS_STYLES = {
   red:    { dot: 'bg-red-500',     card: 'border-l-4 border-l-red-400',     badge: 'bg-red-100 text-red-700' },
 }
 
+// WO-72: Plain English circuit-breaker labels
 const CB_BADGE: Record<string, { label: string; cls: string }> = {
-  CLOSED:    { label: 'CB: Closed',    cls: 'bg-emerald-100 text-emerald-700' },
-  OPEN:      { label: 'CB: OPEN',      cls: 'bg-red-100 text-red-700 font-bold' },
-  HALF_OPEN: { label: 'CB: Half-Open', cls: 'bg-amber-100 text-amber-700' },
+  CLOSED:    { label: 'Online',   cls: 'bg-emerald-100 text-emerald-700' },
+  OPEN:      { label: 'Offline',  cls: 'bg-red-100 text-red-700 font-bold' },
+  HALF_OPEN: { label: 'Degraded', cls: 'bg-amber-100 text-amber-700' },
+}
+
+// WO-72: Plain English adapter status labels
+const STATUS_LABELS: Record<string, string> = {
+  green:  'Healthy',
+  yellow: 'Degraded',
+  red:    'Critical',
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -186,9 +194,9 @@ export function AdapterHealthMonitor({ initialData }: Props) {
             className="rounded border border-input bg-background px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value="all">All Status</option>
-            <option value="green">Green</option>
-            <option value="yellow">Yellow</option>
-            <option value="red">Red</option>
+            <option value="green">Healthy</option>
+            <option value="yellow">Degraded</option>
+            <option value="red">Critical</option>
           </select>
         </label>
 
@@ -292,14 +300,14 @@ function PharmacyCard({
             )}
           </div>
         </div>
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${styles.badge}`}>
-          {p.adapterStatus}
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${styles.badge}`}>
+          {STATUS_LABELS[p.adapterStatus] ?? p.adapterStatus}
         </span>
       </div>
 
       {/* Metrics — REQ-AHM-004 */}
       <div className="grid grid-cols-3 gap-2 px-4 pb-3 pt-1 text-center">
-        <Stat label="Success Rate" value={p.totalCount > 0 ? `${p.successRate}%` : 'N/A'} highlight={p.successRate < 80 && p.totalCount > 0} />
+        <Stat label="Success Rate (24h)" value={p.totalCount > 0 ? `${p.successRate}%` : 'N/A'} highlight={p.successRate < 80 && p.totalCount > 0} />
         <Stat label="24h Total"    value={p.totalCount.toString()} />
         <Stat label="Failures"     value={p.failureCount.toString()} highlight={p.failureCount > 0} />
       </div>
@@ -354,7 +362,10 @@ function PharmacyCard({
                 close_circuit:   'Close Circuit',
               }
               const armed = Object.keys(ACTION_LABELS).find(a => isArmed(a))
-              if (armed) handleConfirmClick(armed, ACTION_LABELS[armed]!)
+              if (!armed) return
+              const label = ACTION_LABELS[armed]
+              if (!label) return
+              handleConfirmClick(armed, label)
             }} className="rounded bg-amber-600 px-2 py-0.5 text-white hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               Yes, proceed
             </button>
