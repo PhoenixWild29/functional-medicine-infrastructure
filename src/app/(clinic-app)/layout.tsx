@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { Providers } from '@/components/providers'
 import { SidebarNav } from '@/components/sidebar-nav'
+import { MainContentOffset } from '@/components/main-content-offset'
 import { ClinicErrorBoundary } from '@/components/clinic-error-boundary'
 
 // Clinic App: auth required, app_role must be clinic_user
@@ -34,12 +35,12 @@ export default async function ClinicAppLayout({
       <div className="min-h-screen bg-background">
         <SidebarNav userEmail={userEmail} userRole={userRole} />
 
-        {/* Main content — offset for sidebar on tablet/desktop */}
-        <div className="md:pl-14 xl:pl-60 transition-[padding] duration-[var(--duration-normal)]">
+        {/* Main content — offset adjusts dynamically with sidebar collapse state */}
+        <MainContentOffset>
           <ClinicErrorBoundary>
             {children}
           </ClinicErrorBoundary>
-        </div>
+        </MainContentOffset>
       </div>
     </Providers>
   )

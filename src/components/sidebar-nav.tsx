@@ -66,7 +66,10 @@ export function SidebarNav({ userEmail, userRole }: Props) {
   function toggleCollapse() {
     const next = !isCollapsed
     setIsCollapsed(next)
-    try { localStorage.setItem('sidebar-collapsed', String(next)) } catch { /* ignore */ }
+    try {
+      localStorage.setItem('sidebar-collapsed', String(next))
+      window.dispatchEvent(new CustomEvent('sidebar-toggle', { detail: { collapsed: next } }))
+    } catch { /* ignore */ }
   }
 
   async function handleSignOut() {

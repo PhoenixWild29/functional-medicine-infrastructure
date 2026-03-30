@@ -131,7 +131,7 @@ function DraggableCard({
       {...attributes}
       {...listeners}
       className={[
-        'rounded-lg border bg-white p-3 cursor-grab active:cursor-grabbing select-none',
+        'rounded-lg border bg-card p-3 cursor-grab active:cursor-grabbing select-none',
         'transition-shadow duration-[var(--duration-normal)]',
         isDragging ? 'shadow-lg opacity-50' : 'shadow-sm hover:shadow-md',
         order.isOverdue48h ? 'bg-amber-50 border-amber-300' : 'border-border',
@@ -201,7 +201,7 @@ function OverlayCard({ order }: { order: DashboardOrder }) {
   const isError = ERROR_STATUSES.has(order.status)
   return (
     <div
-      className="rounded-lg border border-border bg-white p-3 shadow-xl w-48"
+      className="rounded-lg border border-border bg-card p-3 shadow-xl w-48"
       style={isError ? { borderLeft: '4px solid #A84B2F' } : {}}
     >
       <p className="font-mono text-[11px] text-muted-foreground">{order.orderId.slice(0, 8)}…</p>

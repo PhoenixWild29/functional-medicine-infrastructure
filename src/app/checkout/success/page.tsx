@@ -266,10 +266,10 @@ function PendingConfirmationState() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
         </div>
-        <h1 className="text-xl font-semibold text-gray-900">
+        <h1 className="text-xl font-semibold text-foreground">
           Payment Received
         </h1>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-muted-foreground">
           Your payment was successful. Order confirmation is being processed —
           you will receive a text message shortly.
         </p>
@@ -297,10 +297,10 @@ function GenericErrorState() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
         </div>
-        <h1 className="text-xl font-semibold text-gray-900">
+        <h1 className="text-xl font-semibold text-foreground">
           Payment Unsuccessful
         </h1>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-muted-foreground">
           Your payment could not be completed. Please contact your clinic to
           try again.
         </p>

@@ -21,7 +21,7 @@ const TIER_COLOR: Record<string, string> = {
   green: 'bg-emerald-100 text-emerald-800',
   blue:  'bg-blue-100 text-blue-800',
   teal:  'bg-teal-100 text-teal-800',
-  gray:  'bg-gray-100 text-gray-700',
+  gray:  'bg-muted text-muted-foreground',
 }
 
 interface Props {
