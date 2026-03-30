@@ -38,7 +38,7 @@ interface Props {
 const STATUS_BADGE: Record<string, string> = {
   ACTIVE:       'bg-emerald-100 text-emerald-700',
   RECALLED:     'bg-red-100 text-red-700',
-  DISCONTINUED: 'bg-gray-100 text-gray-500',
+  DISCONTINUED: 'bg-muted text-muted-foreground',
   SHORTAGE:     'bg-amber-100 text-amber-700',
 }
 
@@ -526,7 +526,7 @@ export function CatalogManager({ initialData }: Props) {
                         {item.retailPrice != null ? `$${item.retailPrice.toFixed(2)}` : '—'}
                       </td>
                       <td className="px-3 py-2">
-                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${STATUS_BADGE[item.regulatoryStatus] ?? 'bg-gray-100 text-gray-600'}`}>
+                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${STATUS_BADGE[item.regulatoryStatus] ?? 'bg-muted text-muted-foreground'}`}>
                           {item.regulatoryStatus}
                         </span>
                       </td>
@@ -601,7 +601,7 @@ export function CatalogManager({ initialData }: Props) {
                       <td className="px-3 py-2 text-muted-foreground truncate max-w-[120px]">{v.uploader}</td>
                       <td className="px-3 py-2 text-muted-foreground">{new Date(v.uploadedAt).toLocaleDateString()}</td>
                       <td className="px-3 py-2">
-                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${v.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${v.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground'}`}>
                           {v.isActive ? 'Active' : 'Inactive'}
                         </span>
                       </td>

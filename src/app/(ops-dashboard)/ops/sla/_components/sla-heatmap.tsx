@@ -49,7 +49,7 @@ const COLOR_STYLES: Record<SlaColor, { card: string; badge: string; label: strin
   yellow:   { card: 'border-amber-200 bg-amber-50',          badge: 'bg-amber-100 text-amber-700',     label: 'Approaching' },
   red:      { card: 'border-red-200 bg-red-50',              badge: 'bg-red-100 text-red-700',         label: 'Breached' },
   blue:     { card: 'border-blue-200 bg-blue-50',            badge: 'bg-blue-100 text-blue-700',       label: 'Cascade Attempted' },  // NB-01: "Attempted" not "Active"
-  resolved: { card: 'border-gray-200 bg-gray-50 opacity-60', badge: 'bg-gray-100 text-gray-500',       label: 'Resolved' },
+  resolved: { card: 'border-border bg-muted/30 opacity-60',  badge: 'bg-muted text-muted-foreground',   label: 'Resolved' },
 }
 
 const SLA_LABELS: Record<string, string> = {
@@ -343,7 +343,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
                         {Array.from({ length: MAX_ESCALATION_TIER }, (_, i) => i + 1).map(t => (
                           <span
                             key={t}
-                            className={`h-1.5 w-5 rounded-sm ${t <= row.escalationTier ? 'bg-amber-500' : 'bg-gray-200'}`}
+                            className={`h-1.5 w-5 rounded-sm ${t <= row.escalationTier ? 'bg-amber-500' : 'bg-muted'}`}
                           />
                         ))}
                       </div>
@@ -403,7 +403,7 @@ function SlaProgressBar({ row, now, color }: { row: SlaRow; now: number; color: 
 
   return (
     <div
-      className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+      className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted"
       role="progressbar"
       aria-valuenow={pct}
       aria-valuemin={0}

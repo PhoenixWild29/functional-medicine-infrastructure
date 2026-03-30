@@ -26,8 +26,8 @@ const STATUS_BADGE: Record<FaxStatus, { label: string; cls: string }> = {
   MATCHED:    { label: 'Matched',    cls: 'bg-emerald-100 text-emerald-700' },
   UNMATCHED:  { label: 'Unmatched',  cls: 'bg-amber-100 text-amber-700' },
   PROCESSING: { label: 'Processing', cls: 'bg-sky-100 text-sky-700' },
-  PROCESSED:  { label: 'Processed',  cls: 'bg-gray-100 text-gray-600' },
-  ARCHIVED:   { label: 'Archived',   cls: 'bg-gray-100 text-gray-400' },
+  PROCESSED:  { label: 'Processed',  cls: 'bg-muted text-muted-foreground' },
+  ARCHIVED:   { label: 'Archived',   cls: 'bg-muted text-muted-foreground/60' },
   ERROR:      { label: 'Error',      cls: 'bg-red-100 text-red-700' },
 }
 
@@ -228,7 +228,7 @@ export function FaxTriageQueue({ initialData }: Props) {
               </thead>
               <tbody>
                 {faxes.map(fax => {
-                  const badge    = STATUS_BADGE[fax.status] ?? { label: fax.status, cls: 'bg-gray-100 text-gray-600' }
+                  const badge    = STATUS_BADGE[fax.status] ?? { label: fax.status, cls: 'bg-muted text-muted-foreground' }
                   const isActive = selectedFaxLive?.faxId === fax.faxId
                   return (
                     <tr
@@ -440,12 +440,12 @@ export function FaxTriageQueue({ initialData }: Props) {
 
               {/* Archive */}
               {confirmKey === `${selectedFaxLive.faxId}:archive` ? (
-                <div className="flex items-center gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px]">
-                  <span className="text-gray-700 font-medium">Archive this fax?</span>
+                <div className="flex items-center gap-2 rounded border border-border bg-muted px-2 py-1.5 text-[11px]">
+                  <span className="text-foreground font-medium">Archive this fax?</span>
                   <button
                     type="button"
                     onClick={() => { void handleAction(selectedFaxLive.faxId, 'archive') }}
-                    className="rounded bg-gray-600 px-2 py-0.5 text-white hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="rounded bg-muted-foreground px-2 py-0.5 text-background hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     Yes
                   </button>
