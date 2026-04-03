@@ -417,7 +417,7 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions }: 
           <select
             value={filters.clinicId}
             onChange={e => setFilters(f => ({ ...f, clinicId: e.target.value }))}
-            className="rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md border border-input bg-background text-foreground px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Filter by clinic"
           >
             <option value="">All Clinics</option>
@@ -429,7 +429,7 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions }: 
           <select
             value={filters.pharmacyId}
             onChange={e => setFilters(f => ({ ...f, pharmacyId: e.target.value }))}
-            className="rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md border border-input bg-background text-foreground px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Filter by pharmacy"
           >
             <option value="">All Pharmacies</option>
@@ -441,13 +441,13 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions }: 
           <select
             value={filters.tier}
             onChange={e => setFilters(f => ({ ...f, tier: e.target.value }))}
-            className="rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md border border-input bg-background text-foreground px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Filter by integration tier"
           >
             <option value="">All Tiers</option>
             <option value="TIER_1_API">T1 API</option>
             <option value="TIER_2_PORTAL">T2 Portal</option>
-            <option value="TIER_3_HYBRID">T3 Hybrid</option>
+            <option value="TIER_3_SPEC">T3 Spec</option>
             <option value="TIER_4_FAX">T4 Fax</option>
           </select>
 

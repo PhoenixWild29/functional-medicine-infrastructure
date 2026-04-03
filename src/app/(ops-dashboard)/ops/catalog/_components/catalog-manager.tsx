@@ -518,10 +518,10 @@ export function CatalogManager({ initialData }: Props) {
                 <tbody>
                   {items.map(item => (
                     <tr key={item.itemId} className="border-b border-border last:border-0 hover:bg-muted/20">
-                      <td className="px-3 py-2 font-medium">{item.medicationName}</td>
+                      <td className="px-3 py-2 font-medium text-foreground">{item.medicationName}</td>
                       <td className="px-3 py-2 text-muted-foreground">{item.form}</td>
                       <td className="px-3 py-2 text-muted-foreground">{item.dose}</td>
-                      <td className="px-3 py-2">${item.wholesalePrice.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-foreground">${item.wholesalePrice.toFixed(2)}</td>
                       <td className="px-3 py-2 text-muted-foreground">
                         {item.retailPrice != null ? `$${item.retailPrice.toFixed(2)}` : '—'}
                       </td>
@@ -686,11 +686,11 @@ export function CatalogManager({ initialData }: Props) {
                 <tbody>
                   {normalized.map(n => (
                     <tr key={n.normalizedId} className="border-b border-border last:border-0 hover:bg-muted/20">
-                      <td className="px-3 py-2 font-medium">{n.canonicalName}</td>
+                      <td className="px-3 py-2 font-medium text-foreground">{n.canonicalName}</td>
                       <td className="px-3 py-2 text-muted-foreground">{n.form}</td>
                       <td className="px-3 py-2 text-muted-foreground">{n.dose}</td>
                       <td className="px-3 py-2 text-muted-foreground">{n.pharmacyName}</td>
-                      <td className="px-3 py-2">{n.wholesalePrice != null ? `$${n.wholesalePrice.toFixed(2)}` : '—'}</td>
+                      <td className="px-3 py-2 text-foreground">{n.wholesalePrice != null ? `$${n.wholesalePrice.toFixed(2)}` : '—'}</td>
                       <td className="px-3 py-2">
                         {n.confidence != null ? (
                           <span className={n.confidence >= 0.8 ? 'text-emerald-700 font-medium' : n.confidence >= 0.5 ? 'text-amber-600' : 'text-red-600'}>
