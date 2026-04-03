@@ -16,7 +16,9 @@
 //   npm run seed:poc
 //   (runs: dotenv -e .env.local -- tsx scripts/seed-poc.ts)
 //
-// Idempotent: safe to run multiple times. Existing records are skipped.
+// Idempotent: safe to run multiple times.
+// - Auth users: upserts password + metadata on existing users (prevents credential drift)
+// - Database records: existing records are skipped (checked by deterministic UUID or unique key)
 // Uses deterministic UUIDs so each entity has a stable, known ID.
 //
 // ⚠️  Requires: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY in .env.local
@@ -119,7 +121,18 @@ async function createAuthUsers() {
 
   for (const user of AUTH_USERS) {
     if (existingEmails.has(user.email)) {
-      console.log(`  ⏭  ${user.label} (${user.email}) — already exists, skipped`)
+      // Upsert: sync password and metadata to canonical values (prevents credential drift)
+      const existing = existingUsers.find(u => u.email === user.email)
+      if (existing) {
+        const { error: updateError } = await supabase.auth.admin.updateUserById(existing.id, {
+          password:       user.password,
+          user_metadata:  user.user_metadata,
+        })
+        if (updateError) {
+          throw new Error(`Failed to sync ${user.label} (${user.email}): ${updateError.message}`)
+        }
+        console.log(`  🔄  ${user.label} (${user.email}) — exists, credentials synced`)
+      }
       continue
     }
 
