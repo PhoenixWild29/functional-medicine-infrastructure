@@ -287,6 +287,16 @@ export function CheckoutPageContent({
           {checkoutState === 'active' && (
             <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
 
+              {/* HSA/FSA eligibility — shown at top of payment area so patients see it before entering card */}
+              <div className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+                  HSA / FSA
+                </span>
+                <span className="text-xs text-emerald-800">
+                  Eligible — enter your HSA/FSA debit card like a regular credit card
+                </span>
+              </div>
+
               {/* Error: payment-intent fetch failed */}
               {fetchError && (
                 <div
@@ -382,12 +392,6 @@ export function CheckoutPageContent({
             </div>
             <p className="text-xs text-muted-foreground">
               Your payment info is encrypted and never stored by CompoundIQ.
-            </p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2 py-0.5 font-medium">
-                HSA / FSA Eligible
-              </span>
-              {' '}Enter your HSA/FSA debit card like a regular credit card.
             </p>
           </div>
 
