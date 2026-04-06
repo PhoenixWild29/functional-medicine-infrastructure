@@ -186,9 +186,17 @@
 
 > "A tokenized JWT payment link was generated with a 72-hour expiry and would normally be sent via Twilio SMS to the patient's phone. For the POC, SMS is disabled but the full flow executes — the order is real, the token is real, the SLA timers are running."
 
-30. **Find the checkout URL** in the order detail (click the order row to open the detail drawer)
-
 > "Three SLA timers just started automatically: a 24-hour reminder, a 48-hour final warning, and a 72-hour auto-expiry. If the patient doesn't pay, the system handles everything — reminders, escalation, and cleanup. The MA's job is done."
+
+30. **Get the patient checkout URL** — In production, the patient receives this link via text message. For the POC demo, generate the checkout URL by running this command in a separate terminal:
+
+```bash
+npx dotenv -e .env.local -- npx tsx scripts/get-checkout-url.ts
+```
+
+This finds the most recent order awaiting payment and generates a fresh, signed checkout URL. Copy the URL from the output.
+
+> "In production, the patient receives this exact URL in a text message. They never see the clinic dashboard — they just tap a link on their phone and land directly on the checkout page. For our demo, we're generating the same URL manually since SMS is disabled."
 
 ---
 
@@ -196,7 +204,7 @@
 
 ### 4A — Checkout Page
 
-1. Open the **checkout URL** in a new tab (or on a mobile device for extra impact)
+1. Open the **checkout URL** from Step 30 in a new tab (or on a mobile device for extra impact)
 2. **Point out:**
    - Clinic branding: "Sunrise Functional Medicine" displayed prominently
    - Generic line item: "Prescription Service" — NOT the medication name

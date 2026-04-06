@@ -36,11 +36,17 @@
 
 **Say:** "30 seconds: search, price, sign, send. The patient gets a payment link via SMS. Three SLA timers start automatically."
 
+8. **Get the checkout URL** — In a separate terminal, run:
+```bash
+npx dotenv -e .env.local -- npx tsx scripts/get-checkout-url.ts
+```
+Copy the URL from the output. (In production, the patient receives this via text message.)
+
 ---
 
 ### Step 3 — Patient Checkout (2 min)
 
-1. Open the **checkout URL** from the order detail
+1. Open the **checkout URL** from Step 2.8 in a new tab
 2. Show: **clinic branding**, generic line item ("Prescription Service" — no medication name), $300 total
 3. Pay with test card: `4242 4242 4242 4242`
 4. Show the **success page**: animated checkmark, order reference `#xxxxx`, "Within 3–7 business days"
