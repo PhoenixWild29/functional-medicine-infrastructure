@@ -383,6 +383,12 @@ export function CheckoutPageContent({
             <p className="text-xs text-muted-foreground">
               Your payment info is encrypted and never stored by CompoundIQ.
             </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2 py-0.5 font-medium">
+                HSA / FSA Eligible
+              </span>
+              {' '}Enter your HSA/FSA debit card like a regular credit card.
+            </p>
           </div>
 
         </div>
