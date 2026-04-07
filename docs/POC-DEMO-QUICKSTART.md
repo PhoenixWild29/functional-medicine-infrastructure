@@ -24,7 +24,7 @@
 
 ---
 
-### Step 2 — Create an Order & Provider Handoff (4 min)
+### Step 2 — Create an Order (3 min)
 
 1. Click **"+ New Prescription"**
 2. State: **TX** → Search: **Sema** → Select **Semaglutide**
@@ -32,11 +32,13 @@
 4. Select pharmacy → Click **2x multiplier**
 5. Show the **margin math**: $300 retail, 50% margin, $22.50 platform fee, $127.50 clinic payout
 6. Enter Sig: `Take 0.5mg weekly` → Continue to review
-7. **Sign out** → Log in as provider: `dr.chen@sunrise-clinic.com` / `POCProvider2026!`
-8. Show the **provider sees the same dashboard** with "Provider" role badge
-9. Open the order → Navigate to review → **Sign** → **Send Payment Link** → Confirm
+7. **Sign** on the signature pad → **Send Payment Link** → Confirm
 
-**Say:** "The MA prepares the order, the provider signs it. Different roles, same data, same clinic. 30 seconds from search to payment link. Three SLA timers start automatically."
+**Say:** "The MA prepares the order, the provider reviews and signs — all in one flow. In production, providers will have a dedicated signature queue with notifications. 30 seconds from search to payment link. Three SLA timers start automatically."
+
+8. **Quick role check:** Sign out → Log in as provider (`dr.chen@sunrise-clinic.com` / `POCProvider2026!`) → Show "Provider" role badge in sidebar → The order is visible → Sign out
+
+**Say:** "Different role, same clinic data. Row-Level Security scopes everything to the clinic."
 
 8. **Get the checkout URL** — In a separate terminal, run:
 ```bash

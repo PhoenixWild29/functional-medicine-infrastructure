@@ -167,34 +167,37 @@
 
 23. Click **"Continue"** or proceed to the review step
 
-### 3D — Provider Handoff (Multi-Role Demo)
+### 3D — Provider Signature & Send
 
-> "In a real clinic, the MA prepares the order and the provider signs it. Let me show you that handoff."
+> "In a real clinic, the MA prepares everything — searches the pharmacy, sets the price, enters the Sig — and then the provider reviews and signs. In many small practices, the MA preps on one screen and the provider walks over to review and sign at the same workstation. That's exactly what we'll show here."
 
-24. **Sign out** of the clinic admin account
-25. **Log in as the provider:** `dr.chen@sunrise-clinic.com` / `POCProvider2026!`
-26. **Point out:**
-    - Same dashboard layout — the provider sees all orders for their clinic
-    - Sidebar shows **"dr.chen / Provider"** role badge
-    - The order the MA just created is visible (in DRAFT status or ready for review)
+> "In our production roadmap, we're building a dedicated signature queue where the MA saves a draft and the provider logs in later to sign it with a notification badge showing pending orders. For now, the flow is streamlined — the MA prepares, the provider signs, all in one session."
 
-> "The provider logs in and sees the same dashboard, scoped to their clinic. In production, they'd have a notification that an order is waiting for their signature. For now, they can see it in the order list."
-
-27. Click on the order the MA created to open the detail view
-28. Click through to the **review/signature** step
-
-### 3E — Provider Signature & Send
-
-29. On the review page, **point out:**
+24. On the review page, **point out:**
     - Order summary (medication, pharmacy, pricing)
     - Provider signature area
-    - The provider is reviewing what the MA prepared — they don't re-enter any data
+    - All the data the MA entered is displayed for the provider to review — they don't re-enter anything
 
 > "The provider reviews the prescription, confirms the medication, pharmacy, and pricing are correct, then signs. The signature is captured as a SHA-256 hash — no third-party e-signature service needed. Once signed, everything is locked: the wholesale price, retail price, medication, pharmacy, provider NPI — all frozen into immutable snapshots."
 
-30. **Sign the order** (click/draw on the signature pad)
-31. Click **"Sign & Send Payment Link"**
-32. **Point out the confirmation dialog:** Shows amount, patient name, phone number
+25. **Sign the order** (click/draw on the signature pad)
+26. Click **"Sign & Send Payment Link"**
+27. **Point out the confirmation dialog:** Shows amount, patient name, phone number
+
+### 3E — Multi-Role Verification (Quick Demo)
+
+> "Let me show you that the provider role works independently."
+
+28. After the order is sent, **sign out** of the clinic admin account
+29. **Log in as the provider:** `dr.chen@sunrise-clinic.com` / `POCProvider2026!`
+30. **Point out:**
+    - Same dashboard layout — the provider sees all orders for their clinic
+    - Sidebar shows **"dr.chen / Provider"** role badge
+    - The order that was just created is visible with "Awaiting Payment" status
+
+> "The provider has their own login and sees the same clinic data. Row-Level Security ensures they only see their clinic's orders — same as the MA and admin. Different roles, same data boundaries."
+
+31. **Sign out
 
 > "The system runs 6 compliance checks before sending: pharmacy license verification, valid NPI, signature captured, retail >= wholesale, Stripe account active, and DEA scheduling check."
 
