@@ -167,17 +167,34 @@
 
 23. Click **"Continue"** or proceed to the review step
 
-### 3D — Provider Signature & Send
+### 3D — Provider Handoff (Multi-Role Demo)
 
-24. On the review page, **point out:**
+> "In a real clinic, the MA prepares the order and the provider signs it. Let me show you that handoff."
+
+24. **Sign out** of the clinic admin account
+25. **Log in as the provider:** `dr.chen@sunrise-clinic.com` / `POCProvider2026!`
+26. **Point out:**
+    - Same dashboard layout — the provider sees all orders for their clinic
+    - Sidebar shows **"dr.chen / Provider"** role badge
+    - The order the MA just created is visible (in DRAFT status or ready for review)
+
+> "The provider logs in and sees the same dashboard, scoped to their clinic. In production, they'd have a notification that an order is waiting for their signature. For now, they can see it in the order list."
+
+27. Click on the order the MA created to open the detail view
+28. Click through to the **review/signature** step
+
+### 3E — Provider Signature & Send
+
+29. On the review page, **point out:**
     - Order summary (medication, pharmacy, pricing)
     - Provider signature area
+    - The provider is reviewing what the MA prepared — they don't re-enter any data
 
-> "Step 3: the provider reviews and digitally signs. The signature is captured as a SHA-256 hash — no third-party e-signature service needed. Once signed, everything is locked: the wholesale price, retail price, medication, pharmacy, provider NPI — all frozen into immutable snapshots."
+> "The provider reviews the prescription, confirms the medication, pharmacy, and pricing are correct, then signs. The signature is captured as a SHA-256 hash — no third-party e-signature service needed. Once signed, everything is locked: the wholesale price, retail price, medication, pharmacy, provider NPI — all frozen into immutable snapshots."
 
-25. **Sign the order** (click/draw on the signature pad)
-26. Click **"Sign & Send Payment Link"**
-27. **Point out the confirmation dialog:** Shows amount, patient name, phone number
+30. **Sign the order** (click/draw on the signature pad)
+31. Click **"Sign & Send Payment Link"**
+32. **Point out the confirmation dialog:** Shows amount, patient name, phone number
 
 > "The system runs 6 compliance checks before sending: pharmacy license verification, valid NPI, signature captured, retail >= wholesale, Stripe account active, and DEA scheduling check."
 
