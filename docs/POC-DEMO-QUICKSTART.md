@@ -24,21 +24,30 @@
 
 ---
 
-### Step 2 — Create an Order (3 min)
+### Step 2 — Multi-Prescription Flow (4 min)
 
 1. Click **"+ New Prescription"**
-2. State: **TX** → Search: **Sema** → Select **Semaglutide**
-3. Show the **pharmacy card** (Strive Pharmacy, $150, Fax tier badge)
-4. Select pharmacy → Click **2x multiplier**
-5. Show the **margin math**: $300 retail, 50% margin, $22.50 platform fee, $127.50 clinic payout
-6. Enter Sig: `Take 0.5mg weekly` → Continue to review
-7. **Sign** on the signature pad → **Send Payment Link** → Confirm
+2. Select **Alex Demo** as patient → provider auto-selects → Continue
+3. Search **Sema** → Select **Semaglutide** → Select **Strive Pharmacy**
+4. Click **2x multiplier** → show margin math ($300 retail, $127.50 clinic payout)
+5. Enter Sig: `Take 0.5mg weekly` → Click **"Add & Search Another"**
+6. Search **Testo** → Select **Testosterone** → Select Strive → Click **1.5x** → Enter Sig → Click **"Review & Send (2)"**
+7. Show **batch review**: 2 prescription cards, combined totals, single signature pad
+8. **Sign** → **"Sign & Send All 2 Prescriptions"** → Confirm
 
-**Say:** "The MA prepares the order, the provider reviews and signs — all in one flow. In production, providers will have a dedicated signature queue with notifications. 30 seconds from search to payment link. Three SLA timers start automatically."
+**Say:** "Patient selected first. Two prescriptions in one session. One signature. 45 seconds for a multi-medication visit."
 
-8. **Quick role check:** Sign out → Log in as provider (`dr.chen@sunrise-clinic.com` / `POCProvider2026!`) → Show "Provider" role badge in sidebar → The order is visible → Sign out
+### Step 2B — Draft Flow (2 min)
 
-**Say:** "Different role, same clinic data. Row-Level Security scopes everything to the clinic."
+1. Click **"+ New Prescription"** → Select Alex Demo → Continue
+2. Search **Sema** → Select pharmacy → 2x multiplier → Enter Sig
+3. Click **"Save as Draft — Provider Signs Later"** → redirects to dashboard
+4. Show **"Drafts" tab** — the draft order is visible
+5. **Sign out** → Log in as provider: `dr.chen@sunrise-clinic.com` / `POCProvider2026!`
+6. Click **Drafts** tab → Click draft → Click amber **"Review & Sign"** button
+7. Review details → **Sign** → Confirm → order moves to "Awaiting Payment"
+
+**Say:** "The MA saves it. The provider signs it later. Different sessions, different logins. This is how real clinics work."
 
 8. **Get the checkout URL** — In a separate terminal, run:
 ```bash

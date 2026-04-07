@@ -87,7 +87,7 @@
 
 ---
 
-## Part 3: The Clinic Workflow (10–15 minutes)
+## Part 3: The Clinic Workflow (15–20 minutes)
 
 ### 3A — Dashboard Overview
 
@@ -104,119 +104,119 @@
    - Navigation links with icons
    - Active page highlighted
    - User info and role badge at the bottom
-5. Click the **collapse button** (chevron) on the sidebar
-6. Show the sidebar collapses to icon-only mode
-7. Click again to re-expand
+5. Click the **collapse button** (chevron) on the sidebar — show it collapses to icon-only mode, click again to re-expand
 
-> "The sidebar collapses for more screen real estate. The main content area adjusts automatically — no gap or layout shift."
+> "The sidebar collapses for more screen real estate. The main content area adjusts automatically."
 
-### 3B — New Prescription: Pharmacy Search
+### 3B — Patient & Provider Selection (New in Phase 15)
 
-8. Click **"+ New Prescription"** button
-9. **Point out the 3-step progress indicator** at the top (Select Pharmacy → Set Price → Review & Send)
+6. Click **"+ New Prescription"** button
+7. **Point out the patient/provider selector page:**
+   - Patient search with name filter
+   - Provider auto-selected (only one provider in this clinic)
+   - "Continue to Pharmacy Search" button (disabled until both selected)
 
-> "The prescription workflow is a 3-step process designed for sub-30-second completion. Step 1: find the right pharmacy."
+> "The first thing the MA does is select the patient. The patient's shipping state auto-populates for all pharmacy searches — no manual entry. The provider is also selected upfront. Both stay pinned at the top of every screen throughout the flow."
 
-10. Select **Patient Shipping State: TX** (Texas)
-11. In the medication search field, type **"Sema"**
-12. **Point out:** Autocomplete dropdown appears with matching medications
+8. Search for **"Alex"** — select **Alex Demo** (TX state badge visible)
+9. Note the provider **Dr. Sarah Chen** is auto-selected
+10. Click **"Continue to Pharmacy Search"**
 
-> "The system searches across all pharmacies in the network. But here's the critical part — it only shows pharmacies that hold an active license in the patient's shipping state. An unlicensed pharmacy never appears in results. This is compliance at the query level."
+### 3C — Pharmacy Search
 
-13. Select **Semaglutide** from the autocomplete
-14. **Point out the pharmacy result card:**
-    - Pharmacy name: Strive Pharmacy
-    - Wholesale price: $150.00
-    - Integration tier badge: "Fax · ~30 min" (gray pill)
-    - Turnaround time
-    - Regulatory status (Active)
+11. **Point out the session banner** at the top — Alex Demo + Dr. Sarah Chen pinned
+12. **Point out** the Patient Shipping State is already **TX** (auto-filled from Alex Demo's record)
+13. Type **"Sema"** in the medication search — select **Semaglutide**
+14. **Point out the pharmacy result card** (Strive Pharmacy, $150, Fax tier badge)
 
-> "Each pharmacy card shows the wholesale cost, turnaround time, and integration tier. The tier badge tells you how the prescription will be submitted — API for instant delivery, Portal for automated browser submission, or Fax as the universal fallback. The system always uses the highest available tier."
+> "The system only shows pharmacies licensed in the patient's state. Compliance at the query level — an unlicensed pharmacy never appears."
 
-15. Click the **Strive Pharmacy card** to select it
+15. Click **Strive Pharmacy** to select it
 
-### 3C — Dynamic Margin Builder
+### 3D — Dynamic Margin Builder + Multi-Prescription
 
-16. **Point out the Margin Builder:**
-    - Wholesale Cost: $150.00 (locked, read-only)
-    - Retail Price to Patient (editable)
-    - Quick-action multiplier buttons: 1.5x, 2x, 2.5x, 3x
+16. **Point out the Margin Builder** — Wholesale: $150 (locked), multiplier buttons, Sig field
+17. Click **2x multiplier** — retail updates to $300, margin 50%, platform fee $22.50, clinic payout $127.50
 
-> "Step 2: set the patient price. The wholesale cost is locked — it can never be changed. The clinic sets the retail price, and the system calculates everything in real time."
+> "Full transparency. The clinic sees exactly what they earn before committing."
 
-17. Click the **2x multiplier button**
-18. **Point out the margin calculations update instantly:**
-    - Retail Price: $300.00
-    - Margin: 50.0%
-    - Platform Fee (15%): $22.50
-    - Estimated Clinic Margin: $127.50 (in green)
+18. Enter Sig: **"Take 0.5mg subcutaneous injection weekly"**
+19. **Point out the three action buttons:**
+    - **"Add & Search Another"** — add this prescription and search for another medication
+    - **"Review & Send"** — go to batch review with all prescriptions
+    - **"Save as Draft — Provider Signs Later"** — save without signing (WO-77)
 
-> "The clinic makes $127.50 on this prescription. The platform captures a 15% fee on the margin spread. The patient pays $300. Full transparency — the clinic sees exactly what they earn before they commit."
+> "The MA has three choices. They can add more prescriptions for the same patient, go straight to review, or save it as a draft for the provider to sign later. Let me show the multi-prescription flow first."
 
-19. Show the **validation warnings:**
-    - Try entering a retail price below $150 — shows error "Retail price must be equal to or greater than wholesale cost"
-    - Enter $900 (6x) — shows amber warning about exceeding 5x markup
+20. Click **"Add & Search Another"**
+21. **Point out** — back on pharmacy search, session banner shows **"1 prescription in this session"**
 
-> "There are guardrails. You can't sell below cost — that's enforced at the database level too, not just the UI. And excessive markups get a soft warning."
+> "The patient and provider context is preserved. The MA can keep adding prescriptions without starting over."
 
-20. Set retail back to **$300.00** (2x)
-21. Enter Sig: **"Take 0.5mg subcutaneous injection weekly"**
-22. **Point out** the character counter on the Sig field
+22. Search for **"Testo"** → select **Testosterone** → select **Strive Pharmacy**
+23. Click **1.5x multiplier**, enter Sig: **"Apply topical cream daily"**
+24. Click **"Review & Send (2)"** — note the button shows the count
 
-> "The prescription directions are required — minimum 10 characters. This goes on the prescription PDF that gets sent to the pharmacy."
+### 3E — Batch Review & Sign
 
-23. Click **"Continue"** or proceed to the review step
+25. **Point out the batch review page:**
+    - Session banner with "2 prescriptions in this session"
+    - Two prescription cards with medication, pharmacy, pricing, and sig for each
+    - Combined totals (total retail, platform fee, clinic payout)
+    - "Remove" link on each card
+    - "+ Add Another Prescription" button
+    - Single provider signature pad
 
-### 3D — Provider Signature & Send
+> "The provider reviews all prescriptions at once and signs once. One signature covers everything. The combined totals show the full financial picture for this patient visit."
 
-> "In a real clinic, the MA prepares everything — searches the pharmacy, sets the price, enters the Sig — and then the provider reviews and signs. In many small practices, the MA preps on one screen and the provider walks over to review and sign at the same workstation. That's exactly what we'll show here."
+26. **Sign** on the signature pad
+27. Click **"Sign & Send All 2 Prescriptions"**
+28. **Point out the confirmation dialog** — total amount, prescription count, patient name, phone
+29. Click **"Confirm & Send"** — watch the progress messages
+30. Verify redirect to dashboard — both orders visible as "Awaiting Payment"
 
-> "In our production roadmap, we're building a dedicated signature queue where the MA saves a draft and the provider logs in later to sign it with a notification badge showing pending orders. For now, the flow is streamlined — the MA prepares, the provider signs, all in one session."
+> "Two orders created, two payment links generated, three SLA timers each — all from one signature. The MA's workflow for a multi-medication visit: 45 seconds."
 
-24. On the review page, **point out:**
-    - Order summary (medication, pharmacy, pricing)
-    - Provider signature area
-    - All the data the MA entered is displayed for the provider to review — they don't re-enter anything
+### 3F — Provider Signature Queue (Draft Flow)
 
-> "The provider reviews the prescription, confirms the medication, pharmacy, and pricing are correct, then signs. The signature is captured as a SHA-256 hash — no third-party e-signature service needed. Once signed, everything is locked: the wholesale price, retail price, medication, pharmacy, provider NPI — all frozen into immutable snapshots."
+> "Now let me show you the draft flow — where the MA saves a prescription for the provider to sign later."
 
-25. **Sign the order** (click/draw on the signature pad)
-26. Click **"Sign & Send Payment Link"**
-27. **Point out the confirmation dialog:** Shows amount, patient name, phone number
+31. Click **"+ New Prescription"** again
+32. Select **Alex Demo** + provider auto-selects → Continue
+33. Search **"Sema"** → select **Semaglutide** → select **Strive Pharmacy**
+34. Click **2x multiplier**, enter Sig: **"Draft flow demo"**
+35. Click **"Save as Draft — Provider Signs Later"**
+36. Verify redirect to dashboard — order appears with **"Draft"** status
 
-### 3E — Multi-Role Verification (Quick Demo)
+> "The MA saved this without the provider being present. No signature yet."
 
-> "Let me show you that the provider role works independently."
+37. **Sign out** of clinic admin
+38. **Log in as provider:** `dr.chen@sunrise-clinic.com` / `POCProvider2026!`
+39. Click the **"Drafts"** tab on the dashboard
+40. Click on the draft order — **point out the amber "Awaiting Provider Signature" banner**
+41. Click **"Review & Sign This Prescription"**
 
-28. After the order is sent, **sign out** of the clinic admin account
-29. **Log in as the provider:** `dr.chen@sunrise-clinic.com` / `POCProvider2026!`
-30. **Point out:**
-    - Same dashboard layout — the provider sees all orders for their clinic
-    - Sidebar shows **"dr.chen / Provider"** role badge
-    - The order that was just created is visible with "Awaiting Payment" status
+> "The provider sees a dedicated sign page with all the details the MA entered — medication, pharmacy, pricing, directions. They just review and sign."
 
-> "The provider has their own login and sees the same clinic data. Row-Level Security ensures they only see their clinic's orders — same as the MA and admin. Different roles, same data boundaries."
+42. **Point out** the sign page: patient info, provider info, prescription details, financial summary, signature pad
+43. **Sign** on the pad → Click **"Sign & Send Payment Link"** → Confirm
+44. Verify redirect to dashboard — order now shows **"Awaiting Payment"**
 
-31. **Sign out
+> "The MA prepared it, the provider signed it later. Different sessions, different logins, same result. This is how a real clinic works."
 
-> "The system runs 6 compliance checks before sending: pharmacy license verification, valid NPI, signature captured, retail >= wholesale, Stripe account active, and DEA scheduling check."
+45. **Sign out**
 
-28. Confirm sending
-29. **Point out:** Order transitions to "Awaiting Payment"
+### 3G — Get the Checkout URL
 
-> "A tokenized JWT payment link was generated with a 72-hour expiry and would normally be sent via Twilio SMS to the patient's phone. For the POC, SMS is disabled but the full flow executes — the order is real, the token is real, the SLA timers are running."
-
-> "Three SLA timers just started automatically: a 24-hour reminder, a 48-hour final warning, and a 72-hour auto-expiry. If the patient doesn't pay, the system handles everything — reminders, escalation, and cleanup. The MA's job is done."
-
-30. **Get the patient checkout URL** — In production, the patient receives this link via text message. For the POC demo, generate the checkout URL by running this command in a separate terminal:
+46. **Get the patient checkout URL** — In production, the patient receives this via SMS. For the POC demo:
 
 ```bash
 npx dotenv -e .env.local -- npx tsx scripts/get-checkout-url.ts
 ```
 
-This finds the most recent order awaiting payment and generates a fresh, signed checkout URL. Copy the URL from the output.
+Copy the URL from the output.
 
-> "In production, the patient receives this exact URL in a text message. They never see the clinic dashboard — they just tap a link on their phone and land directly on the checkout page. For our demo, we're generating the same URL manually since SMS is disabled."
+> "In production, the patient gets this link in a text message. They tap it on their phone and land directly on checkout."
 
 ---
 
