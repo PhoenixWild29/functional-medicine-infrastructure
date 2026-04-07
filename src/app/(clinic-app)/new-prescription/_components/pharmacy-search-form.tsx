@@ -22,6 +22,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { MedicationSuggestion } from '@/app/api/pharmacy-search/medications/route'
 import type { PharmacySearchResult } from '@/app/api/pharmacy-search/route'
 import { PharmacyResultCard } from './pharmacy-result-card'
+import { usePrescriptionSession } from '../_context/prescription-session'
 
 // ── sessionStorage state preservation ─────────────────────────
 // Saves wizard Step 1 form state so it can be restored if the user
@@ -66,11 +67,15 @@ interface Props {
 }
 
 export function PharmacySearchForm({ defaultState }: Props) {
+  // WO-80: Read patient state from session context (selected in step 0)
+  const rxSession = usePrescriptionSession()
+  const sessionPatientState = rxSession.patient?.state ?? undefined
+
   const [medicationQuery, setMedicationQuery]     = useState('')
   const [selectedItem, setSelectedItem]           = useState<MedicationSuggestion | null>(null)
   const [showSuggestions, setShowSuggestions]     = useState(false)
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1)
-  const [patientState, setPatientState]           = useState(defaultState ?? '')
+  const [patientState, setPatientState]           = useState(sessionPatientState ?? defaultState ?? '')
   const [formFilter, setFormFilter]               = useState('')
   const [searchTriggered, setSearchTriggered]     = useState(false)
   // BLK-02/08: snapshot available forms from the unfiltered result set so the

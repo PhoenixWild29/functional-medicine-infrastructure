@@ -16,6 +16,7 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { usePrescriptionSession } from '../../_context/prescription-session'
 
 // ── Cent arithmetic helpers — HC-01 ──────────────────────────
 // Convert a NUMERIC(10,2) server value (JS float64) to integer cents once.
@@ -78,6 +79,7 @@ export function MarginBuilderForm({
   defaultMarkupPct,
 }: Props) {
   const router = useRouter()
+  const rxSession = usePrescriptionSession()
 
   const wholesaleCents = useMemo(() => toCents(wholesalePrice), [wholesalePrice])
 
@@ -134,23 +136,38 @@ export function MarginBuilderForm({
     setHighMarkupAcknowledged(false)
   }
 
-  // ── Continue → review ─────────────────────────────────────────
-  function handleContinue(e: React.FormEvent) {
-    e.preventDefault()
+  // ── WO-80: Add prescription to session ─────────────────────────
+  function addToSession() {
     if (!canContinue) return
-    const params = new URLSearchParams({
+    rxSession.addPrescription({
       pharmacyId,
+      pharmacyName,
       itemId,
-      // Pass as integer cents to avoid float serialization issues
-      retailCents: retailCents.toString(),
-      // BLK-05: pass trimmed value
+      medicationName,
+      form,
+      dose,
+      wholesaleCents,
+      deaSchedule: deaSchedule || null,
+      retailCents,
       sigText: sigTrimmed,
+      integrationTier: '',
     })
-    router.push(`/new-prescription/review?${params.toString()}`)
+  }
+
+  function handleAddAnother(e: React.MouseEvent) {
+    e.preventDefault()
+    addToSession()
+    router.push('/new-prescription/search')
+  }
+
+  function handleReviewAll(e: React.FormEvent) {
+    e.preventDefault()
+    addToSession()
+    router.push('/new-prescription/review')
   }
 
   return (
-    <form onSubmit={handleContinue} className="space-y-6">
+    <form onSubmit={handleReviewAll} className="space-y-6">
 
       {/* ── Locked wholesale display — REQ-DMB-001 ── */}
       <div className="rounded-lg border border-border bg-muted/40 p-4">
@@ -312,14 +329,31 @@ export function MarginBuilderForm({
         </p>
       </div>
 
-      {/* ── Continue button ── */}
-      <button
-        type="submit"
-        disabled={!canContinue}
-        className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        Continue to Review
-      </button>
+      {/* ── WO-80: Session-aware action buttons ── */}
+      <div className="flex gap-3">
+        <button
+          type="button"
+          onClick={handleAddAnother}
+          disabled={!canContinue}
+          className="flex-1 rounded-md border border-primary bg-background px-4 py-2 text-sm font-medium text-primary shadow-sm hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Add & Search Another
+        </button>
+        <button
+          type="submit"
+          disabled={!canContinue}
+          className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {rxSession.prescriptionCount > 0
+            ? `Review & Send (${rxSession.prescriptionCount + 1})`
+            : 'Review & Send'}
+        </button>
+      </div>
+      {rxSession.prescriptionCount > 0 && (
+        <p className="text-center text-xs text-muted-foreground">
+          {rxSession.prescriptionCount} prescription{rxSession.prescriptionCount !== 1 ? 's' : ''} already in session — this will add one more
+        </p>
+      )}
     </form>
   )
 }

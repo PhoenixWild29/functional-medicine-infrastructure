@@ -1,142 +1,47 @@
 // ============================================================
-// New Prescription — Step 3: Order Assembly & Review — WO-29
-// /new-prescription/review?pharmacyId=&itemId=&retailCents=&sigText=
+// New Prescription — Step 3: Batch Review & Send — WO-29 + WO-80
+// /new-prescription/review
 // ============================================================
 //
-// Server Component: fetches medication info, pharmacy name, patient list,
-// and provider list before rendering the client review form.
+// WO-80 redesign: This page now reads ALL prescriptions from the
+// PrescriptionSession context instead of URL parameters. The
+// provider signs once and all orders are submitted as a batch.
 //
-// REQ-OAS-001: Draft order creation (handled via client POST /api/orders).
-// REQ-OAS-011: HIPAA timeout injected via <HipaaTimeout />.
+// The old URL-parameter-based flow (pharmacyId, itemId, retailCents,
+// sigText) is no longer used — all data comes from the session context.
 
-import { notFound, redirect } from 'next/navigation'
-import { createServerClient } from '@/lib/supabase/server'
-import { createServiceClient } from '@/lib/supabase/service'
 import { WizardProgress } from '@/components/wizard-progress'
-import { ReviewForm }     from './_components/review-form'
 import { HipaaTimeout }   from '@/components/hipaa-timeout'
+import { SessionBanner }  from '../_components/session-banner'
+import { BatchReviewForm } from './_components/batch-review-form'
+
+const WIZARD_STEPS = [
+  { number: 1, label: 'Patient & Provider', href: '/new-prescription' },
+  { number: 2, label: 'Add Prescriptions',  href: '/new-prescription/search' },
+  { number: 3, label: 'Review & Send' },
+]
 
 export const metadata = {
   title: 'New Prescription — Review & Send',
 }
 
-interface PageProps {
-  searchParams: Promise<{
-    pharmacyId?: string
-    itemId?: string
-    retailCents?: string
-    sigText?: string
-  }>
-}
-
-export default async function ReviewPage({ searchParams }: PageProps) {
-  const resolvedParams = await searchParams
-  const pharmacyId  = (resolvedParams.pharmacyId  ?? '').trim()
-  const itemId      = (resolvedParams.itemId      ?? '').trim()
-  const retailCents = parseInt(resolvedParams.retailCents ?? '', 10)
-  const sigText     = (resolvedParams.sigText     ?? '').trim()
-
-  if (!pharmacyId || !itemId || isNaN(retailCents) || retailCents <= 0 || sigText.length < 10) {
-    redirect('/new-prescription')
-  }
-
-  const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) redirect('/login')
-
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
-    : undefined
-
-  if (!clinicId) redirect('/login')
-
-  const supabase = createServiceClient()
-
-  // Fetch catalog item + pharmacy + patients + providers in parallel
-  const [catalogResult, pharmacyResult, patientsResult, providersResult] =
-    await Promise.all([
-      supabase
-        .from('catalog')
-        .select('item_id, medication_name, form, dose, wholesale_price, dea_schedule')
-        .eq('item_id', itemId)
-        .eq('pharmacy_id', pharmacyId)
-        .eq('is_active', true)
-        .is('deleted_at', null)
-        .maybeSingle(),
-
-      supabase
-        .from('pharmacies')
-        .select('pharmacy_id, name, integration_tier')
-        .eq('pharmacy_id', pharmacyId)
-        .eq('is_active', true)
-        .is('deleted_at', null)
-        .maybeSingle(),
-
-      supabase
-        .from('patients')
-        .select('patient_id, first_name, last_name, date_of_birth, phone, state, sms_opt_in')
-        .eq('clinic_id', clinicId)
-        .eq('is_active', true)
-        .is('deleted_at', null)
-        .order('last_name', { ascending: true }),
-
-      supabase
-        .from('providers')
-        .select('provider_id, first_name, last_name, npi_number, signature_hash')
-        .eq('clinic_id', clinicId)
-        .eq('is_active', true)
-        .is('deleted_at', null)
-        .order('last_name', { ascending: true }),
-    ])
-
-  if (!catalogResult.data) notFound()
-  if (!pharmacyResult.data) notFound()
-
-  const catalogItem = catalogResult.data
-  const pharmacy    = pharmacyResult.data
-  const patients    = patientsResult.data ?? []
-  const providers   = providersResult.data ?? []
-
+export default function ReviewPage() {
   return (
     <>
-      {/* REQ-OAS-011: HIPAA 30-minute inactivity timeout */}
       <HipaaTimeout />
-
       <main className="mx-auto max-w-2xl px-4 py-8">
-        {/* Step indicator */}
+        {/* Session banner — patient + provider pinned at top */}
+        <SessionBanner />
+
         <div className="mb-6">
-          <WizardProgress
-            steps={[
-              { number: 1, label: 'Select Pharmacy', href: '/new-prescription' },
-              {
-                number: 2,
-                label:  'Set Price',
-                href:   `/new-prescription/margin?pharmacyId=${encodeURIComponent(pharmacyId)}&itemId=${encodeURIComponent(itemId)}`,
-              },
-              { number: 3, label: 'Review & Send' },
-            ]}
-            currentStep={3}
-          />
-          <h1 className="mt-4 text-2xl font-bold text-foreground">Review & Send Payment Link</h1>
+          <WizardProgress steps={WIZARD_STEPS} currentStep={3} />
+          <h1 className="mt-4 text-2xl font-bold text-foreground">Review & Send</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Review the prescription, select a patient and provider, sign, and send.
+            Review all prescriptions, sign once, and send the payment link.
           </p>
         </div>
 
-        <ReviewForm
-          pharmacyId={pharmacyId}
-          itemId={itemId}
-          pharmacyName={pharmacy.name}
-          medicationName={catalogItem.medication_name}
-          form={catalogItem.form}
-          dose={catalogItem.dose}
-          wholesalePrice={catalogItem.wholesale_price}
-          deaSchedule={catalogItem.dea_schedule ?? 0}
-          retailCents={retailCents}
-          sigText={sigText}
-          patients={patients}
-          providers={providers}
-        />
+        <BatchReviewForm />
       </main>
     </>
   )

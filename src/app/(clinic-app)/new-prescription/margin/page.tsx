@@ -13,7 +13,9 @@ import { notFound, redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { WizardProgress }    from '@/components/wizard-progress'
+import { HipaaTimeout }      from '@/components/hipaa-timeout'
 import { MarginBuilderForm } from './_components/margin-builder-form'
+import { SessionBanner }     from '../_components/session-banner'
 
 export const metadata = {
   title: 'New Prescription — Set Price',
@@ -33,7 +35,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
 
   // Both params required — if missing, send back to step 1
   if (!pharmacyId || !itemId) {
-    redirect('/new-prescription')
+    redirect('/new-prescription/search')
   }
 
   const supabaseAuth = await createServerClient()
@@ -63,7 +65,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
   if (catalogError) {
     console.error('[margin-page] catalog fetch failed:', catalogError.message)
     // Fail safe — send back to step 1 rather than crash
-    redirect('/new-prescription')
+    redirect('/new-prescription/search')
   }
 
   if (!catalogItem) notFound()
@@ -81,7 +83,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
 
   if (pharmacyError) {
     console.error('[margin-page] pharmacy fetch failed:', pharmacyError.message)
-    redirect('/new-prescription')
+    redirect('/new-prescription/search')
   }
 
   if (!pharmacy) notFound()
@@ -99,13 +101,18 @@ export default async function MarginPage({ searchParams }: PageProps) {
   }
 
   return (
+    <>
+    <HipaaTimeout />
     <main className="mx-auto max-w-2xl px-4 py-8">
+      {/* WO-80: Session banner — patient + provider pinned at top */}
+      <SessionBanner />
+
       {/* Step indicator */}
       <div className="mb-6">
         <WizardProgress
           steps={[
-            { number: 1, label: 'Select Pharmacy', href: '/new-prescription' },
-            { number: 2, label: 'Set Price' },
+            { number: 1, label: 'Patient & Provider', href: '/new-prescription' },
+            { number: 2, label: 'Add Prescriptions', href: '/new-prescription/search' },
             { number: 3, label: 'Review & Send' },
           ]}
           currentStep={2}
@@ -128,5 +135,6 @@ export default async function MarginPage({ searchParams }: PageProps) {
         defaultMarkupPct={defaultMarkupPct}
       />
     </main>
+    </>
   )
 }
