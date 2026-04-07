@@ -149,12 +149,14 @@ export function BatchReviewForm() {
         sentCount++
       }
 
-      // All prescriptions sent — clear remaining session state
-      session.clearSession()
-
-      // Navigate to dashboard with success
+      // Navigate to dashboard FIRST, then clear session.
+      // Order matters: clearSession() triggers SessionBanner's redirect to
+      // /new-prescription via useEffect. Navigating first prevents the race.
       setSubmitProgress(null)
       router.push(`/dashboard?sent=${totalCount}`)
+
+      // Clear session after a tick to avoid the SessionBanner redirect race
+      setTimeout(() => session.clearSession(), 100)
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'An unexpected error occurred'
