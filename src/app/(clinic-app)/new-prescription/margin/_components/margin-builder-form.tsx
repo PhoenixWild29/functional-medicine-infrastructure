@@ -198,9 +198,11 @@ export function MarginBuilderForm({
         throw new Error(err.error ?? 'Failed to save draft')
       }
 
-      // Clear session and go to dashboard
-      rxSession.clearSession()
+      // Navigate FIRST, then clear session after a tick.
+      // Same pattern as WO-80 batch send: clearSession triggers
+      // SessionBanner redirect to /new-prescription before router.push fires.
       router.push('/dashboard?draft=1')
+      setTimeout(() => rxSession.clearSession(), 100)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'An unexpected error occurred'
       setDraftError(msg)
