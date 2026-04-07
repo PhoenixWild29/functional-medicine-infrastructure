@@ -2,7 +2,7 @@
 
 **Date:** April 7, 2026
 **Status:** Research complete, awaiting final clinician feedback before work order creation
-**Sources:** Clinician feedback (2026-04-07), real prescription labels (ITC Compounding, Olympia Pharmacy), Lauren Perkins protocol data, Gemini Deep Research Report (22 pages, 82 citations)
+**Sources:** Clinician feedback (2026-04-07), real prescription labels (ITC Compounding, Olympia Pharmacy), Lauren Perkins protocol data, Gemini Deep Research Report (22 pages, 82 citations), Perplexity Deep Research Report (137 pages, 7 research areas)
 
 ---
 
@@ -425,4 +425,93 @@ These are the configurations the dropdown system must handle correctly, based on
 
 ---
 
-*This document captures all research, clinician feedback, label analysis, and design thinking for the cascading dropdown prescription builder. It should be the starting point for the work order when ready to build.*
+---
+
+## 10. Perplexity Deep Research Findings (137-Page Report)
+
+**Full PDF:** `docs/compoundiq_rx_ordering_ux_research.pdf` (137 pages, 7 research areas)
+
+### Three Competitive Gaps — No Existing Platform Fills These
+
+These represent CompoundIQ's biggest opportunities for differentiation:
+
+**Gap 1: No portal has a titration schedule builder.**
+Semaglutide dose escalation, LDN titration, and testosterone adjustment protocols are ALL handled via free-text sig fields or sequential manual prescriptions across every platform studied. CompoundIQ building a structured, multi-phase titration system would be **a first in the market**.
+
+**Gap 2: No portal supports protocol templates as order bundles.**
+Clinics running "Weight Loss Protocol" (Semaglutide + BPC-157 + Lipo-Mino) have to manually create 3 separate prescriptions on every platform. Cerbo's "Chart Parts" is the closest — but it's a text insertion tool, not a structured order generator. CompoundIQ can be **the first platform where one click generates a complete multi-medication protocol**.
+
+**Gap 3: No portal uses progressive disclosure.**
+LifeFile (the dominant platform used by Empower, Belmar, Strive, and others) dumps all fields at once. Pharmacy trainers explicitly warn providers it is "finicky." Research from Epic/Cerner implementations shows cascading progressive disclosure **reduces order friction 50-80%**. CompoundIQ would be the first compounding platform to implement this pattern.
+
+### The 10-Level Cascade Tree (Data Model + UX Model)
+
+Perplexity's Section 8 synthesizes a cascade validated against all 4 reference medications:
+
+```
+Level 1:  Medication Category (Weight Loss, Men's Health, Peptides, etc.)
+Level 2:  Drug / Active Ingredient (Semaglutide, Testosterone, Naltrexone)
+Level 3:  Salt / Ester Form (Cypionate, Enanthate, Hydrochloride)
+Level 4:  Dosage Form (Injectable, Capsule, Cream, RDT, Solution)
+Level 5:  Route of Administration (SubQ, IM, Oral, Sublingual, Topical)
+Level 6:  Concentration (5mg/mL, 200mg/mL, 1mg/mL)
+Level 7:  Volume / Quantity (5mL vial, 60mL bottle, 90 tablets)
+Level 8:  Dose per Administration (0.1mL, 1 tablet, 25 units)
+Level 9:  Frequency (QD, BID, QW, QOD, M-F, 2-3x/week)
+Level 10: Titration Schedule (start, increment, interval, target, duration)
+```
+
+**Each selection constrains the options at every subsequent level.** This is both the database query pattern AND the UI interaction pattern.
+
+### Key Architectural Insights from Perplexity
+
+1. **Data model must be ingredient-centric.** Compounded meds have no NDC codes, no RxCUI. The entity is a recipe (Master Formulation Record) with a junction table of ingredients, not a fixed SKU.
+
+2. **Sig building: structured internally, free text externally.** NCPDP structured sig can represent 95% of directions, but only 10-32% of prescriptions currently use it. CompoundIQ should generate structured data for its database while outputting clean narrative text for pharmacy transmission. This gives us the best of both worlds — structured data for analytics/compliance AND human-readable text for pharmacists.
+
+3. **503A vs 503B have fundamentally different catalog structures:**
+   - **503A** = Formula library (configurable recipes) — the prescriber can modify concentrations, swap bases, adjust quantities
+   - **503B** = Product catalog (fixed SKUs with NDC numbers) — the prescriber selects from pre-manufactured items
+   - CompoundIQ MUST handle both since our pharmacy network includes both types (Olympia is 503B, Wells is 503A, Empower has both)
+
+4. **DEA pre-signing review screen is mandatory.** 21 CFR 1311 requires that the system explicitly present ALL critical data to the prescriber for review BEFORE allowing the digital signature. This means our review page isn't just a UX nicety — it's a legal requirement for controlled substances.
+
+5. **Post-signing immutability + 2-year audit trails.** For controlled substances, once signed, the prescription record must be immutable and the complete audit trail must be retained for minimum 2 years in a sortable, searchable format. Our existing `order_status_history` table and snapshot immutability pattern (prevent_snapshot_mutation trigger) already satisfy this for the order record, but we may need additional audit fields for the prescription-specific data.
+
+6. **Epic SmartSets reduce ordering time by ~1 minute per encounter.** When hospital systems standardize order sets and embed clinical decision support, utilization jumps dramatically. This validates the protocol template approach — pre-built order bundles save significant time.
+
+7. **Poor UX causes real medication errors.** The APOTTI study (Epic-based EHR in Helsinki) found that UI flaws and ambiguous order names contributed to 92 severe medication errors. This is why progressive disclosure matters — it's not just about speed, it's about patient safety.
+
+---
+
+## 11. Combined Research Summary — What This Means for CompoundIQ
+
+### The Moat
+
+By implementing these three features that NO competitor has:
+
+1. **Structured titration schedule builder** — First in market
+2. **Protocol templates as order bundles** — First in market  
+3. **Progressive disclosure cascading dropdowns** — First in compounding pharmacy space
+
+CompoundIQ doesn't just become "faster" — it becomes **the only platform that can handle the actual complexity of functional medicine prescribing** without forcing providers to work around the system.
+
+### The Competitive Positioning
+
+> "Every other platform forces providers to manually re-enter complex protocols medication by medication, fight through non-cascading form fields that pharmacy trainers call 'finicky,' and copy-paste titration schedules into free-text fields that the receiving pharmacy may misinterpret. CompoundIQ is the first platform where a provider selects a protocol template, the system auto-generates structured prescriptions with validated titration schedules, and progressive disclosure ensures they only see the fields relevant to their selections — all in under 30 seconds per prescription."
+
+### The Build Priority
+
+Based on both research reports + clinician feedback + real protocol data:
+
+1. **Hierarchical data model** (prerequisite for everything — can't cascade without the hierarchy)
+2. **Cascading dropdown UI** (the core prescriber experience — replaces cards)
+3. **Structured sig builder** (generates compliant directions from dropdown selections)
+4. **Favorites** (immediate productivity gain — one-click reordering)
+5. **Protocol templates** (competitive differentiator — one-click multi-medication protocols)
+6. **Titration engine** (competitive differentiator — no competitor has this)
+7. **EPCS 2FA** (legal requirement for controlled substances)
+
+---
+
+*This document captures all research (Gemini + Perplexity), clinician feedback, label analysis, and design thinking for the cascading dropdown prescription builder. It should be the starting point for the work order when ready to build.*
