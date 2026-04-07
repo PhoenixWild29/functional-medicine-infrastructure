@@ -166,6 +166,48 @@ export function MarginBuilderForm({
     router.push('/new-prescription/review')
   }
 
+  // ── WO-77: Save as Draft — create DRAFT order without signing ──
+  const [isSavingDraft, setIsSavingDraft] = useState(false)
+  const [draftError, setDraftError] = useState<string | null>(null)
+
+  async function handleSaveDraft(e: React.MouseEvent) {
+    e.preventDefault()
+    if (!canContinue) return
+    if (!rxSession.patient || !rxSession.provider) return
+
+    setIsSavingDraft(true)
+    setDraftError(null)
+
+    try {
+      const orderRes = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientId:     rxSession.patient.patient_id,
+          providerId:    rxSession.provider.provider_id,
+          catalogItemId: itemId,
+          pharmacyId,
+          retailCents,
+          sigText:       sigTrimmed,
+          patientState:  rxSession.patient.state ?? '',
+        }),
+      })
+
+      if (!orderRes.ok) {
+        const err = await orderRes.json()
+        throw new Error(err.error ?? 'Failed to save draft')
+      }
+
+      // Clear session and go to dashboard
+      rxSession.clearSession()
+      router.push('/dashboard?draft=1')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'An unexpected error occurred'
+      setDraftError(msg)
+      setIsSavingDraft(false)
+    }
+  }
+
   return (
     <form onSubmit={handleReviewAll} className="space-y-6">
 
@@ -354,6 +396,24 @@ export function MarginBuilderForm({
           {rxSession.prescriptionCount} prescription{rxSession.prescriptionCount !== 1 ? 's' : ''} already in session — this will add one more
         </p>
       )}
+
+      {/* WO-77: Save as Draft — for provider to sign later */}
+      <div className="border-t border-border pt-4">
+        <button
+          type="button"
+          onClick={handleSaveDraft}
+          disabled={!canContinue || isSavingDraft || !rxSession.isSessionStarted}
+          className="w-full rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {isSavingDraft ? 'Saving...' : 'Save as Draft — Provider Signs Later'}
+        </button>
+        <p className="mt-1 text-center text-[10px] text-muted-foreground">
+          Creates the order without signing. The provider can review and sign from the dashboard.
+        </p>
+        {draftError && (
+          <p className="mt-2 text-center text-xs text-red-600">{draftError}</p>
+        )}
+      </div>
     </form>
   )
 }

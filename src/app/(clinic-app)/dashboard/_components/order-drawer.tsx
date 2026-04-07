@@ -14,6 +14,7 @@
 // adapter work orders (out of scope for WO-31).
 
 import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
 import type { DashboardOrder } from '../page'
 import { getStatusConfig } from '@/lib/orders/status-config'
@@ -47,6 +48,7 @@ function formatDateTime(iso: string): string {
 
 
 export function OrderDrawer({ order, onClose }: Props) {
+  const router = useRouter()
   // BLK-03: stable ref prevents stale closure + avoids re-running effect when client recreated
   const supabaseRef = useRef(createBrowserClient())
 
@@ -110,6 +112,26 @@ export function OrderDrawer({ order, onClose }: Props) {
         </div>
 
         <div className="space-y-6 px-5 py-5">
+
+          {/* WO-77: Review & Sign CTA for DRAFT orders */}
+          {order.status === 'DRAFT' && (
+            <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-4">
+              <p className="text-sm font-semibold text-amber-800">Awaiting Provider Signature</p>
+              <p className="mt-1 text-xs text-amber-700">
+                This prescription was saved as a draft. A provider needs to review and sign before the payment link is sent to the patient.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose()
+                  router.push(`/new-prescription/sign/${order.orderId}`)
+                }}
+                className="mt-3 w-full rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
+              >
+                Review & Sign This Prescription
+              </button>
+            </div>
+          )}
 
           {/* Order summary */}
           <section className="space-y-1">
