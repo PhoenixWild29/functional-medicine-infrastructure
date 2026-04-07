@@ -1,0 +1,21 @@
+medication_name,form,dose,strength,wholesale_price,regulatory_status,dea_schedule,average_turnaround_days
+Semaglutide,Injectable,0.5mg/0.5mL,0.5mg,150.00,ACTIVE,,5
+Semaglutide,Injectable,1mg/0.5mL,1mg,175.00,ACTIVE,,5
+Semaglutide,Injectable,2.5mg/0.5mL,2.5mg,200.00,ACTIVE,,5
+Tirzepatide,Injectable,2.5mg/0.5mL,2.5mg,225.00,ACTIVE,,5
+Tirzepatide,Injectable,5mg/0.5mL,5mg,250.00,ACTIVE,,5
+Tirzepatide,Injectable,10mg/0.5mL,10mg,300.00,ACTIVE,,5
+Testosterone Cypionate,Injectable,200mg/mL,200mg,85.00,ACTIVE,3,3
+Testosterone Cream,Topical Cream,100mg/mL,100mg,65.00,ACTIVE,3,4
+Sermorelin,Injectable,9mg/3mL,9mg,195.00,ACTIVE,,7
+Sermorelin/Ipamorelin,Injectable,9mg/9mg/3mL,9mg/9mg,275.00,ACTIVE,,7
+BPC-157,Capsule,500mcg,500mcg,120.00,ACTIVE,,5
+Naltrexone (LDN),Capsule,4.5mg,4.5mg,45.00,ACTIVE,,3
+Naltrexone (LDN),Capsule,1.5mg,1.5mg,45.00,ACTIVE,,3
+Progesterone,Capsule,200mg,200mg,55.00,ACTIVE,,3
+Progesterone,Topical Cream,100mg/mL,100mg,60.00,ACTIVE,,4
+DHEA,Capsule,25mg,25mg,35.00,ACTIVE,,3
+Glutathione,Injectable,200mg/mL,200mg,110.00,ACTIVE,,5
+Methylene Blue,Capsule,10mg,10mg,40.00,ACTIVE,,3
+Vitamin D3/K2,Injectable,50000IU/1mg/mL,50000IU,75.00,ACTIVE,,4
+NAD+,Injectable,100mg/mL,100mg,350.00,ACTIVE,,7
