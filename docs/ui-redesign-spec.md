@@ -256,9 +256,86 @@ Pay button visible without scrolling on 375px × 667px (iPhone SE). Collapse ord
 
 ---
 
-## Open Items (Future Enhancements, Not This Phase)
+## Open Items (Future Enhancements)
 - Keyboard shortcuts for ops users (J/K navigation, Enter/Escape)
 - Dark mode for Clinic App (system-preference respecting)
 - Real-time step updates on checkout success page
 - HIPAA trust badge (pending legal/compliance approval)
 - Copywriting review for all marketing/tagline copy in the product
+
+---
+
+## Phase 15 Addendum — Patient-Centric Workflow Redesign (WO-77 + WO-80)
+
+**Date:** April 7, 2026
+**Status:** Implemented and deployed
+
+Phase 15 introduced major UX changes to the prescription creation flow. These build on the Phase 13 design system (tokens, typography, components) but add new screens and interactions.
+
+### New UI Components (WO-80 — Multi-Script Patient Sessions)
+
+1. **Patient & Provider Selector** (`/new-prescription`)
+   - Patient search input with filterable scrollable list (name, DOB, phone, state badge)
+   - Provider card list with auto-select for single-provider clinics
+   - Green checkmark confirmation on patient selection
+   - "Continue to Pharmacy Search" button (disabled until both selected)
+
+2. **Session Banner** (persistent across all prescription flow pages)
+   - Left: Patient avatar (initials), name, DOB, state, phone
+   - Right: Provider name, NPI
+   - Bottom row (when prescriptions added): Count badge + "Review & Send" shortcut link
+   - Uses `bg-muted/30`, `border-border`, `text-foreground`/`text-muted-foreground`
+
+3. **Dual Action Buttons** (margin builder page)
+   - "Add & Search Another" (outlined/secondary: `border-primary`, `text-primary`)
+   - "Review & Send (N)" (primary: `bg-primary`, `text-primary-foreground`) with dynamic count
+   - Session count note below buttons when prescriptions already in session
+
+4. **Batch Review Page** (`/new-prescription/review`)
+   - Prescription cards: medication, pharmacy, form, dose, sig, wholesale, retail, clinic margin
+   - "Remove" link per card
+   - "+ Add Another Prescription" dashed border button
+   - Combined totals section: total retail, total platform fee (15%), total clinic payout
+   - Single provider signature pad with "Signing N prescriptions for [Patient]" label
+   - "Sign & Send All N Prescriptions" / "Sign & Send Payment Link" (adapts to count)
+   - Confirmation dialog with total amount, count, patient name, phone, 72-hour warning
+
+### New UI Components (WO-77 — Provider Signature Queue)
+
+5. **Save as Draft Button** (margin builder page, below main action buttons)
+   - Separated by `border-t border-border` divider
+   - Muted style: `border-border`, `text-muted-foreground`
+   - Helper text: "Creates the order without signing. The provider can review and sign from the dashboard."
+
+6. **Amber "Awaiting Provider Signature" Banner** (order detail drawer for DRAFT orders)
+   - `border-amber-300`, `bg-amber-50`, `text-amber-800`
+   - Explanation text + "Review & Sign This Prescription" button (`bg-amber-600`)
+
+7. **Provider Sign Page** (`/new-prescription/sign/[orderId]`)
+   - Patient info card (left: name, DOB, state, phone / right: provider name, NPI)
+   - Prescription detail card (medication, form, dose, pharmacy, sig)
+   - Financial summary card (wholesale, retail, platform fee, clinic payout)
+   - Signature pad with provider name + NPI label
+   - "Sign & Send Payment Link" button + confirmation dialog
+   - "Back to Dashboard" secondary action
+
+### Updated Wizard Steps
+
+Old (Phase 13):
+```
+Step 1: Select Pharmacy → Step 2: Set Price → Step 3: Review & Send
+```
+
+New (Phase 15):
+```
+Step 1: Patient & Provider → Step 2: Add Prescriptions → Step 3: Review & Send
+```
+
+### Route Changes
+
+| Old Route | New Route | Purpose |
+|-----------|-----------|---------|
+| `/new-prescription` (pharmacy search) | `/new-prescription` (patient/provider selector) | Entry point changed |
+| — | `/new-prescription/search` | Pharmacy search moved here |
+| `/new-prescription/review` (single order, URL params) | `/new-prescription/review` (batch, session context) | Now reads from session, not URL |
+| — | `/new-prescription/sign/[orderId]` | Provider signs drafts |

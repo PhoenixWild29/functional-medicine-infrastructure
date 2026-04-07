@@ -44,12 +44,15 @@ Today, prescriptions are faxed to the pharmacy. Then everyone waits. There is no
 
 ## How It Works — The User Experience
 
-### For the Medical Assistant (30 seconds)
+### For the Medical Assistant (30 seconds per prescription)
 
-1. **Search** — Enter the patient's state and medication. See all licensed pharmacies with pricing.
-2. **Price** — Select a pharmacy, set the markup with one click. See the margin instantly.
-3. **Send** — The provider signs digitally. One click sends the patient a payment link via text.
-4. **Done** — The rest is automated. SMS reminders at 24 and 48 hours if the patient hasn't paid. Auto-cancellation at 72 hours. No follow-up needed.
+1. **Select patient & provider** — Search for the patient by name. The provider auto-selects if the clinic has only one. Both stay pinned at the top of every screen.
+2. **Search** — The patient's shipping state auto-fills. Search for the medication. See all licensed pharmacies with pricing.
+3. **Price** — Select a pharmacy, set the markup with one click. See the margin instantly.
+4. **Add more or send** — "Add & Search Another" to add more prescriptions for the same patient, or "Review & Send" to batch review everything. For a 3-medication visit, this takes about 45 seconds total.
+5. **Or save as draft** — If the provider isn't available, the MA saves the prescription as a draft. The provider logs in later, reviews from the Drafts tab, and signs with one tap.
+6. **Sign & send** — The provider signs once — a single signature covers all prescriptions in the session. Payment links fire automatically.
+7. **Done** — SMS reminders at 24 and 48 hours if the patient hasn't paid. Auto-cancellation at 72 hours. No follow-up needed.
 
 ### For the Patient (60 seconds)
 
@@ -160,7 +163,7 @@ CompoundIQ handles protected health information (PHI) and is designed for HIPAA-
 
 | Milestone | Status |
 |-----------|--------|
-| Platform built | 13 phases, 75 work orders completed |
+| Platform built | 15 phases, 81 work orders (76 completed, 5 in backlog) |
 | All 3 applications functional | Clinic App, Ops Dashboard, Patient Checkout |
 | QA validated | 29 automated test checks pass across all applications |
 | Externally tested | Claude Cowork browser QA validated all screens |

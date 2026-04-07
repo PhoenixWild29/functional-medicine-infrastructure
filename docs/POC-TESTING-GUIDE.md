@@ -93,24 +93,42 @@ The sidebar collapses to an icon-only rail on tablet. On mobile it becomes a ham
 
 ---
 
-### New Prescription Wizard (`/new-prescription`)
+### New Prescription Flow (`/new-prescription`)
 
-The wizard has 3 steps with a progress indicator at the top. Completed steps are clickable to go back.
+The flow has a 3-step progress indicator (Patient & Provider → Add Prescriptions → Review & Send).
 
-**Step 1 — Find Medication & Pharmacy**
-- Type a medication name in the search box (e.g. "Semaglutide", "Tirzepatide", "Metformin")
-- Results appear with pharmacy name, tier, and price
-- Select a result — the form fields below populate
-- Choose a patient state from the dropdown
-- **Session state is saved** — if you navigate back from Step 2, your selections restore with a blue banner offering to restore them
+**Step 0 — Select Patient & Provider** (`/new-prescription`)
+- Search for a patient by name, DOB, or phone
+- Select the prescribing provider (auto-selects if only one in the clinic)
+- Both stay pinned in a session banner at the top of all subsequent screens
+- Patient's shipping state auto-populates for pharmacy search
+
+**Step 1 — Find Medication & Pharmacy** (`/new-prescription/search`)
+- Shipping state already filled from the patient record
+- Type a medication name in the search box (e.g. "Semaglutide", "Tirzepatide")
+- Results appear with pharmacy name, tier badge, price, and turnaround time
+- Select a pharmacy to proceed to pricing
 
 **Step 2 — Margin & Pricing** (`/new-prescription/margin`)
-- Shows wholesale cost, your retail price, margin, and platform fee breakdown
-- You can adjust the retail price
+- Wholesale cost locked and read-only. Quick multiplier buttons (1.5x, 2x, 2.5x, 3x)
+- Real-time margin calculation: margin %, platform fee, clinic payout
+- Enter prescription directions (Sig) — minimum 10 characters
+- Three action buttons:
+  - **"Add & Search Another"** — saves this prescription and returns to Step 1 for another medication
+  - **"Review & Send"** — proceeds to batch review with all prescriptions in the session
+  - **"Save as Draft"** — creates the order without signing, for the provider to sign later from the dashboard
 
-**Step 3 — Review & Submit** (`/new-prescription/review`)
-- Final review before creating the order
-- Clicking "Submit" creates the order and sends the patient a payment link via SMS
+**Step 3 — Batch Review & Sign** (`/new-prescription/review`)
+- All prescriptions in the session displayed with medication, pharmacy, pricing, and sig
+- Combined totals: total retail, total platform fee, total clinic payout
+- Single provider signature pad — one signature covers all prescriptions
+- "Sign & Send All" sends payment links for every prescription
+
+**Provider Signature Queue** (`/new-prescription/sign/[orderId]`)
+- When an MA saves a draft, the order appears on the dashboard "Drafts" tab
+- Clicking a draft order shows an amber "Awaiting Provider Signature" banner
+- Provider clicks "Review & Sign" → dedicated sign page with pre-populated details
+- Provider signs and sends — order transitions from Draft to Awaiting Payment
 
 ---
 

@@ -1,7 +1,7 @@
 # CompoundIQ — System Architecture Overview
 
 **Version:** 1.0 | **Date:** April 5, 2026
-**Status:** Production POC — All 13 phases complete (75 work orders)
+**Status:** Production POC — 15 phases complete, 81 work orders (76 completed, 5 in backlog)
 
 ---
 
@@ -350,8 +350,8 @@ All cron endpoints are protected by CRON_SECRET bearer token authentication.
 | SLA types | 10 |
 | Integration tiers | 4 |
 | Cron jobs | 9 |
-| Build phases completed | 13 |
-| Work orders completed | 75 |
+| Build phases completed | 15 (Phases 14-16 in backlog) |
+| Work orders completed | 81 (76 completed, 5 in backlog) |
 | Applications | 3 |
 | User roles | 4 (+ patient anonymous) |
 | Webhook sources | 4 (Stripe, Documo, Twilio, Pharmacy APIs) |

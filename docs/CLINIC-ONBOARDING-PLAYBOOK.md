@@ -162,30 +162,38 @@ This is the critical step that enables the clinic to receive patient payments.
 
 Walk through the complete order flow to verify everything works:
 
-1. **MA creates order:**
-   - Search for a medication and select a pharmacy
+1. **MA selects patient & provider:**
+   - Click "+ New Prescription" on the dashboard
+   - Search for the test patient and select them
+   - Provider auto-selects (or select from the list)
+   - Click "Continue to Pharmacy Search"
+
+2. **MA searches and prices:**
+   - Patient shipping state is auto-filled from the patient record
+   - Search for a medication (e.g., "Semaglutide") and select a pharmacy
    - Set retail price using the 2x multiplier
    - Enter prescription directions (Sig)
-   - Proceed to review
+   - Choose one of three options:
+     - **"Add & Search Another"** — to add more prescriptions for the same patient
+     - **"Review & Send"** — to go to batch review and sign
+     - **"Save as Draft"** — to save for the provider to sign later
 
-2. **Provider signs:**
-   - Log in as the provider
-   - Review the order details
-   - Digital signature on the signature pad
-   - Click "Sign & Send Payment Link"
+3. **Provider signs (two options):**
+   - **Option A (same session):** Click "Review & Send" → provider signs on the batch review page → all prescriptions sent at once
+   - **Option B (draft flow):** MA clicks "Save as Draft" → provider logs in later → opens the "Drafts" tab on the dashboard → clicks the draft → clicks "Review & Sign This Prescription" → signs and sends
 
-3. **Verify order created:**
+4. **Verify order created:**
    - Order appears on dashboard as "Awaiting Payment"
-   - Checkout URL generated (visible in order detail)
+   - Generate checkout URL: `npx dotenv -e .env.local -- npx tsx scripts/get-checkout-url.ts`
    - Three SLA timers created (24h reminder, 48h reminder, 72h expiry)
 
-4. **Complete test payment:**
-   - Open the checkout URL
+5. **Complete test payment:**
+   - Open the checkout URL in a new tab
    - Verify clinic branding appears
    - Pay with Stripe test card: `4242 4242 4242 4242`
    - Verify success page displays correctly
 
-5. **Verify fulfillment triggered:**
+6. **Verify fulfillment triggered:**
    - Order transitions to PAID_PROCESSING
    - Prescription routed to pharmacy via the appropriate tier
    - Adapter submission logged
