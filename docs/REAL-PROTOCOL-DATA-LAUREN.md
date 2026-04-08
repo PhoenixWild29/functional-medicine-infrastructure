@@ -209,4 +209,149 @@ This is the complete daily protocol including timing, supplements, and cycling n
 
 ---
 
+---
+
+## Protocol 3: 2025 Master Detox + Performance Protocol (6 Phases, 10+ Weeks)
+
+**Start Date:** Week of July 1, 2025
+**Use Case:** Mold detox, MCAS modulation, mitochondrial + cognitive repair
+**Note:** Phases 1-4 were planned but non-response validated in labs — did not proceed to Phases 5-6, now recalibrating.
+
+This protocol represents the MAXIMUM complexity a functional medicine practice would manage. It has 6 phases spanning 10+ weeks, with peptide cycling, hormone optimization, biohacks, and conditional phase advancement based on lab results.
+
+### PHASE 1: Immune Reboot + Barrier Repair + Cognitive Activation (Weeks 1-3)
+
+**Peptides:**
+
+| Medication | Concentration | Dose | Route | Cycle | Duration | Purpose |
+|-----------|--------------|------|-------|-------|----------|---------|
+| Thymosin Alpha-1 | 3 mg/mL | 1.0 mg (0.33 mL) | SubQ | 5 days on / 2 off | Weeks 1-7 (6 weeks), then reassess | Immune modulation, mast cell calming, barrier integrity |
+| BPC-157 | 5 mg/mL | Start 250-500 mcg → titrate to 1.0 mg (0.2 mL) | SubQ | Daily (5 days/week) once tolerated | Weeks 2-7 (6 weeks), then reassess or rotate to blend | Gut/vascular repair, mast cell stabilization |
+
+**Cognitive + Redox Support (optional, rotate in as needed):**
+
+| Item | Dose | Frequency | Notes |
+|------|------|-----------|-------|
+| Methylene Blue | 45 mg/day oral | 3-5x/week | Do not cycle unless overstimulated |
+| NAD+ | 25 units | M-F, weekends off | Do not cycle unless overstimulated |
+| Red Light Therapy (w/ vibration plate) | — | Daily or 3-5x/week | Do not cycle unless overstimulated |
+
+**Binders & Detox Support:**
+
+| Item | Starting Dose | Target Dose | Frequency | Notes |
+|------|-------------|------------|-----------|-------|
+| Liposomal Glutathione | 250 mg/day | 500 mg/day | Daily | Continuous |
+| Chlorella | 500 mg (start Day 5-7) | Titrate to 1500 mg/day | Daily with food | Take 2-3 days off every 2-3 weeks |
+
+**Biohacks:**
+- Balancer Pro: 2-3x/week
+- NeuroVIZR: Daily
+- Vibration Plate (with Red Light): 5-7x/week
+- Rebounder: Optional daily AM
+
+### PHASE 2: Free Testosterone / Tesamorelin Optimization (Weeks 3-4+)
+
+**Hormones:**
+
+| Medication | Dose | Frequency | Duration |
+|-----------|------|-----------|----------|
+| Lifestyle Med's Free Testosterone | Daily application | Daily | 60 days |
+
+**Growth Hormone:**
+
+| Medication | Cycle | Duration |
+|-----------|-------|----------|
+| Tesamorelin | 5 days on / 2 days off | 12-week protocol |
+
+**Biohacks:**
+- Balancer Pro: Maintain 2x/week
+- NeuroVIZR: Daily
+
+### PHASE 3: Neural + Vascular Repair (Weeks 5-7)
+
+**Peptides:**
+
+| Medication | Dose | Route | Cycle | Duration | Pause | Purpose |
+|-----------|------|-------|-------|----------|-------|---------|
+| GHK-Cu (injectable) | 2 mg | SubQ | 2-3x/week | 4-6 weeks | 2-4 weeks off | Skin/vascular repair, copper transport |
+| GHK-Cu (topical) | AM/PM | Topical | As tolerated | With injectable cycle | — | Skin repair |
+| DSIP (Delta Sleep-Inducing Peptide) | 250 mcg (0.05 mL) | SubQ | 3-5x/week before bed | 6-8 weeks | 2-4 weeks before next cycle | Sleep optimization |
+
+**Detox:** Continue glutathione + chlorella
+
+**Biohacks:**
+- HOCATT: 1x/week
+- NeuroVIZR: Continue daily
+- Balancer Pro: Continue post-HOCATT
+
+### PHASE 4: NAD+ Injectables + 5-Amino-1MQ
+
+| Medication | Dose | Route | Cycle | Notes |
+|-----------|------|-------|-------|-------|
+| NAD+ Injectable | 50-100 mg | SubQ | 2-3x/week, pulse 4-6 weeks → rest 2-3 weeks | Higher dose than maintenance |
+| 5-Amino-1MQ | TBD | TBD | TBD based on effect | Reserved until SS-31 and MOTS-c are stable |
+
+### PHASE 5: Advanced Mitochondrial Repair (Weeks 8-10) — NOT YET STARTED
+
+| Medication | Dose | Route | Cycle | Duration | Pause | Notes |
+|-----------|------|-------|-------|----------|-------|-------|
+| SS-31 | 5-10 mg (TBD) | SubQ | 2x/week | 4-6 weeks, then evaluate | 2-4 weeks | Mitochondrial repair |
+| MOTS-c | 5-10 mg (TBD) | SubQ | 2x/week (alternate days from SS-31) | 4-6 weeks | 2-4 weeks | **Do not inject SS-31 and MOTS-c on same day** |
+
+**Biohacks:**
+- Red Light + MB/NAD+: 3x/week
+- Contrast Showers: 3x/week
+- Balancer Pro + Sauna: 2-3x/week alternating
+- Gentle Cardio (Post-Lymph): 2x/week
+- Sauna: 1-2x/week
+
+### PHASE 6: Senolytics + Cerebrolysin — NOT YET STARTED
+
+| Medication | Dose | Route | Cycle | Duration | Notes |
+|-----------|------|-------|-------|----------|-------|
+| Senocell (senolytic) | Start with ½ dose | TBD | TBD | TBD | Support: Glutathione, chlorella, hydration, rest |
+| Cerebrolysin | 1-5 mL | IM (test IV) | Daily x 10 days (single pulse) | 10-day pulse, repeat every 2-3 months | Neuroplasticity, trauma recovery, focus |
+
+**Biohacks:**
+- HOCATT: 1x/week
+- Balancer Pro: Weekly baseline
+- Rest Days: Post-pulse recovery
+
+---
+
+## Protocol 3 — System Design Implications
+
+This 6-phase protocol reveals additional complexity beyond Protocol 2:
+
+1. **Phase-gated advancement** — Phases 5-6 were NOT started because lab results from Phases 1-4 showed non-response. The system needs to support conditional phase advancement based on clinical assessment.
+
+2. **Peptide cycling with specific on/off schedules** — "5 days on / 2 off", "4-6 weeks then 2-4 weeks off", "pulse 4-6 weeks → rest 2-3 weeks". These aren't simple frequencies — they're cycling protocols.
+
+3. **Drug interaction constraints** — "Do not inject SS-31 and MOTS-c on same day." The system should flag incompatible same-day injections.
+
+4. **Dose titration within phases** — BPC-157 starts at 250-500 mcg and titrates to 1.0 mg within Phase 1.
+
+5. **Biohack integration** — The protocol includes non-Rx items (Red Light, HOCATT, Vibration Plate) that are part of the clinical plan but not prescriptions. Future consideration: should the system track these alongside Rx?
+
+6. **12+ unique compounded medications** across all phases — Thymosin Alpha-1, BPC-157, Methylene Blue, NAD+ (two different dose levels), GHK-Cu (injectable + topical), DSIP, 5-Amino-1MQ, SS-31, MOTS-c, Senocell, Cerebrolysin, plus Testosterone and Tesamorelin.
+
+7. **"Reassess" and "TBD" fields** — Not everything is pre-determined. The provider adjusts based on response. The system needs to support open-ended/placeholder doses.
+
+8. **Multiple delivery routes for same medication** — GHK-Cu is both injectable (SubQ) AND topical (cream AM/PM).
+
+### Additional Test Cases for Dropdown System
+
+| Test | What It Validates |
+|------|------------------|
+| Thymosin Alpha-1 "5 days on / 2 off" for 6 weeks | Cycling schedule with defined on/off pattern + total duration |
+| BPC-157 titration from 250mcg → 1.0mg | Intra-phase dose titration (different from LDN's simple linear titration) |
+| SS-31 and MOTS-c "do not inject on same day" | Drug interaction / scheduling constraint |
+| Phase 5 "NOT YET STARTED" based on labs | Conditional phase advancement |
+| GHK-Cu injectable 2-3x/week + topical AM/PM | Same medication, two routes, two frequencies |
+| NAD+ at 25 units (Phase 1) vs 50-100mg (Phase 4) | Same medication, different doses in different phases |
+| Cerebrolysin "daily x 10 days, repeat every 2-3 months" | Pulse dosing protocol with multi-month cycle |
+| "Start with ½ dose" for Senocell | Exploratory dosing with no pre-defined target |
+
+---
+
 *This document preserves all real patient protocol data collected during the CompoundIQ design research phase. It serves as the primary test case library for the cascading dropdown prescription builder feature.*
