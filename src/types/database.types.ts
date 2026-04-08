@@ -1576,6 +1576,236 @@ export type Database = {
           },
         ]
       }
+      protocol_items: {
+        Row: {
+          condition_description: string | null
+          created_at: string | null
+          default_quantity: string | null
+          default_refills: number | null
+          dose_amount: string | null
+          dose_unit: string | null
+          formulation_id: string
+          frequency_code: string | null
+          is_conditional: boolean | null
+          item_id: string
+          pharmacy_id: string | null
+          phase_end_week: number | null
+          phase_name: string | null
+          phase_start_week: number | null
+          protocol_id: string
+          sig_mode: string | null
+          sig_text: string | null
+          sort_order: number | null
+          timing_code: string | null
+        }
+        Insert: {
+          condition_description?: string | null
+          created_at?: string | null
+          default_quantity?: string | null
+          default_refills?: number | null
+          dose_amount?: string | null
+          dose_unit?: string | null
+          formulation_id: string
+          frequency_code?: string | null
+          is_conditional?: boolean | null
+          item_id?: string
+          pharmacy_id?: string | null
+          phase_end_week?: number | null
+          phase_name?: string | null
+          phase_start_week?: number | null
+          protocol_id: string
+          sig_mode?: string | null
+          sig_text?: string | null
+          sort_order?: number | null
+          timing_code?: string | null
+        }
+        Update: {
+          condition_description?: string | null
+          created_at?: string | null
+          default_quantity?: string | null
+          default_refills?: number | null
+          dose_amount?: string | null
+          dose_unit?: string | null
+          formulation_id?: string
+          frequency_code?: string | null
+          is_conditional?: boolean | null
+          item_id?: string
+          pharmacy_id?: string | null
+          phase_end_week?: number | null
+          phase_name?: string | null
+          phase_start_week?: number | null
+          protocol_id?: string
+          sig_mode?: string | null
+          sig_text?: string | null
+          sort_order?: number | null
+          timing_code?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "protocol_items_formulation_id_fkey"
+            columns: ["formulation_id"]
+            isOneToOne: false
+            referencedRelation: "formulations"
+            referencedColumns: ["formulation_id"]
+          },
+          {
+            foreignKeyName: "protocol_items_pharmacy_id_fkey"
+            columns: ["pharmacy_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacies"
+            referencedColumns: ["pharmacy_id"]
+          },
+          {
+            foreignKeyName: "protocol_items_protocol_id_fkey"
+            columns: ["protocol_id"]
+            isOneToOne: false
+            referencedRelation: "protocol_templates"
+            referencedColumns: ["protocol_id"]
+          },
+        ]
+      }
+      protocol_templates: {
+        Row: {
+          clinic_id: string
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          is_active: boolean | null
+          name: string
+          protocol_id: string
+          therapeutic_category: string | null
+          total_duration_weeks: number | null
+          updated_at: string | null
+          use_count: number | null
+        }
+        Insert: {
+          clinic_id: string
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          is_active?: boolean | null
+          name: string
+          protocol_id?: string
+          therapeutic_category?: string | null
+          total_duration_weeks?: number | null
+          updated_at?: string | null
+          use_count?: number | null
+        }
+        Update: {
+          clinic_id?: string
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          is_active?: boolean | null
+          name?: string
+          protocol_id?: string
+          therapeutic_category?: string | null
+          total_duration_weeks?: number | null
+          updated_at?: string | null
+          use_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "protocol_templates_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+          {
+            foreignKeyName: "protocol_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "providers"
+            referencedColumns: ["provider_id"]
+          },
+        ]
+      }
+      provider_favorites: {
+        Row: {
+          created_at: string | null
+          default_quantity: string | null
+          default_refills: number | null
+          dose_amount: string | null
+          dose_unit: string | null
+          duration_code: string | null
+          favorite_id: string
+          formulation_id: string
+          frequency_code: string | null
+          label: string
+          last_used_at: string | null
+          pharmacy_id: string | null
+          provider_id: string
+          sig_mode: string | null
+          sig_text: string | null
+          timing_code: string | null
+          updated_at: string | null
+          use_count: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          default_quantity?: string | null
+          default_refills?: number | null
+          dose_amount?: string | null
+          dose_unit?: string | null
+          duration_code?: string | null
+          favorite_id?: string
+          formulation_id: string
+          frequency_code?: string | null
+          label: string
+          last_used_at?: string | null
+          pharmacy_id?: string | null
+          provider_id: string
+          sig_mode?: string | null
+          sig_text?: string | null
+          timing_code?: string | null
+          updated_at?: string | null
+          use_count?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          default_quantity?: string | null
+          default_refills?: number | null
+          dose_amount?: string | null
+          dose_unit?: string | null
+          duration_code?: string | null
+          favorite_id?: string
+          formulation_id?: string
+          frequency_code?: string | null
+          label?: string
+          last_used_at?: string | null
+          pharmacy_id?: string | null
+          provider_id?: string
+          sig_mode?: string | null
+          sig_text?: string | null
+          timing_code?: string | null
+          updated_at?: string | null
+          use_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provider_favorites_formulation_id_fkey"
+            columns: ["formulation_id"]
+            isOneToOne: false
+            referencedRelation: "formulations"
+            referencedColumns: ["formulation_id"]
+          },
+          {
+            foreignKeyName: "provider_favorites_pharmacy_id_fkey"
+            columns: ["pharmacy_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacies"
+            referencedColumns: ["pharmacy_id"]
+          },
+          {
+            foreignKeyName: "provider_favorites_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "providers"
+            referencedColumns: ["provider_id"]
+          },
+        ]
+      }
       providers: {
         Row: {
           clinic_id: string
@@ -2069,6 +2299,31 @@ export type Database = {
           },
         ]
       }
+      provider_prescribing_history: {
+        Row: {
+          catalog_item_id: string | null
+          last_prescribed_at: string | null
+          medication_name: string | null
+          prescription_count: number | null
+          provider_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_catalog_item_id_fkey"
+            columns: ["catalog_item_id"]
+            isOneToOne: false
+            referencedRelation: "catalog"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "orders_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "providers"
+            referencedColumns: ["provider_id"]
+          },
+        ]
+      }
       webhook_dead_letter_queue: {
         Row: {
           created_at: string | null
@@ -2431,11 +2686,7 @@ export const Constants = {
   },
 } as const
 
-// ============================================================
-// Convenience type aliases — used throughout the codebase
-// Re-added after type regeneration (WO-82)
-// ============================================================
-
+// ── Custom type aliases (re-added after supabase gen types) ──
 export type OrderStatusEnum = Database['public']['Enums']['order_status_enum']
 export type StripeConnectStatusEnum = Database['public']['Enums']['stripe_connect_status_enum']
 export type IntegrationTierEnum = Database['public']['Enums']['integration_tier_enum']

@@ -19,6 +19,7 @@ import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { usePrescriptionSession } from '../_context/prescription-session'
 import { StructuredSigBuilder } from './structured-sig-builder'
+import { QuickActionsPanel } from './quick-actions-panel'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -224,6 +225,23 @@ export function CascadingPrescriptionBuilder() {
     currentSig.length >= 10
   )
 
+  // ── Load from favorite (WO-85) ──────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function handleLoadFavorite(fav: any) {
+    if (!fav.formulation_id || !fav.pharmacy_id) return
+
+    // Navigate directly to margin builder with favorite's saved config
+    const params = new URLSearchParams({
+      pharmacyId: fav.pharmacy_id,
+      formulation_id: fav.formulation_id,
+      dose: `${fav.dose_amount ?? ''} ${fav.dose_unit ?? ''}`.trim(),
+      frequency: fav.frequency_code ?? '',
+      sigText: fav.sig_text ?? '',
+    })
+
+    router.push(`/new-prescription/margin?${params.toString()}`)
+  }
+
   // ── Navigate to margin builder (where retail price is set) ──
   // BLK-01 fix: Don't add to session here — the margin builder handles
   // addPrescription after the retail price is set. We pass all config
@@ -246,6 +264,9 @@ export function CascadingPrescriptionBuilder() {
 
   return (
     <div className="space-y-4">
+
+      {/* Quick Actions: Favorites + Protocols (WO-85) */}
+      <QuickActionsPanel onLoadFavorite={handleLoadFavorite} />
 
       {/* FDA Alert */}
       {selectedIngredient?.fda_alert_status && (
@@ -458,17 +479,134 @@ export function CascadingPrescriptionBuilder() {
         </div>
       )}
 
-      {/* Action: Continue to set retail price */}
+      {/* Actions: Save Favorite + Continue to set retail price */}
       {selectedPharmacy && (
-        <button
-          type="button"
-          onClick={navigateToMargin}
-          disabled={!canAdd}
-          className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          Continue — Set Retail Price
-        </button>
+        <div className="flex gap-2">
+          <SaveFavoriteButton
+            formulation={selectedFormulation}
+            pharmacyId={selectedPharmacy.pharmacies?.pharmacy_id ?? null}
+            doseAmount={doseAmount}
+            doseUnit={doseUnit}
+            frequencyCode={selectedFrequency}
+            sigText={currentSig}
+            quantity={quantity}
+            refills={parseInt(refills, 10)}
+            providerId={session.provider?.provider_id ?? ''}
+            disabled={!canAdd}
+          />
+          <button
+            type="button"
+            onClick={navigateToMargin}
+            disabled={!canAdd}
+            className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Continue — Set Retail Price
+          </button>
+        </div>
       )}
     </div>
+  )
+}
+
+// ── Save as Favorite Button (WO-85) ─────────────────────────
+
+function SaveFavoriteButton({
+  formulation, pharmacyId, doseAmount, doseUnit,
+  frequencyCode, sigText, quantity, refills, providerId, disabled,
+}: {
+  formulation: Formulation | null
+  pharmacyId: string | null
+  doseAmount: string
+  doseUnit: string
+  frequencyCode: string
+  sigText: string
+  quantity: string
+  refills: number
+  providerId: string
+  disabled: boolean
+}) {
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [showLabel, setShowLabel] = useState(false)
+  const [label, setLabel] = useState('')
+
+  async function handleSave() {
+    if (!formulation || !providerId || !label.trim()) return
+    setSaving(true)
+
+    const res = await fetch('/api/favorites', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider_id: providerId,
+        formulation_id: formulation.formulation_id,
+        pharmacy_id: pharmacyId,
+        label: label.trim(),
+        dose_amount: doseAmount,
+        dose_unit: doseUnit,
+        frequency_code: frequencyCode,
+        sig_text: sigText,
+        default_quantity: quantity,
+        default_refills: refills,
+      }),
+    })
+
+    setSaving(false)
+    if (res.ok) {
+      setSaved(true)
+      setShowLabel(false)
+      setTimeout(() => setSaved(false), 3000)
+    }
+  }
+
+  if (saved) {
+    return (
+      <span className="flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs font-medium text-green-700">
+        Saved
+      </span>
+    )
+  }
+
+  if (showLabel) {
+    return (
+      <div className="flex gap-1">
+        <input
+          type="text"
+          placeholder="Favorite name..."
+          value={label}
+          onChange={e => setLabel(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSave()}
+          autoFocus
+          className="w-40 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={!label.trim() || saving}
+          className="rounded-md bg-primary/10 px-2 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 disabled:opacity-50"
+        >
+          {saving ? '...' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowLabel(false)}
+          className="rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted/50"
+        >
+          Cancel
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setShowLabel(true)}
+      disabled={disabled}
+      title="Save as Favorite"
+      className="rounded-md border border-border px-3 py-2 text-sm transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      &#9734;
+    </button>
   )
 }
