@@ -41,8 +41,8 @@ const IDS = {
   glutathione:      'b1000000-0000-4000-8000-000000000019',
   lipo_mino:        'b1000000-0000-4000-8000-000000000020',
 
-  // Pharmacy (existing seed pharmacy)
-  strivePharmacy:   'a4000000-0000-4000-8000-000000000000',
+  // Pharmacy (existing seed pharmacy — matches seed-poc.ts)
+  strivePharmacy:   'a4000000-0000-0000-0000-000000000001',
 }
 
 async function main() {

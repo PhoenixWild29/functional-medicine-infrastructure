@@ -57,6 +57,7 @@ interface Props {
   wholesalePrice:   number         // NUMERIC(10,2) from DB
   deaSchedule:      number
   defaultMarkupPct: number | null  // NUMERIC(5,2) from DB — e.g. 50.00 = 50%
+  presetSigText?:   string | undefined  // WO-83: Pre-filled sig from cascading builder
 }
 
 // ── Multiplier buttons ────────────────────────────────────────
@@ -77,6 +78,7 @@ export function MarginBuilderForm({
   wholesalePrice,
   deaSchedule,
   defaultMarkupPct,
+  presetSigText,
 }: Props) {
   const router = useRouter()
   const rxSession = usePrescriptionSession()
@@ -87,7 +89,8 @@ export function MarginBuilderForm({
   const [retailInput, setRetailInput] = useState<string>(() =>
     toCurrency(defaultRetailCents(wholesaleCents, defaultMarkupPct))
   )
-  const [sigText, setSigText] = useState('')
+  // WO-83: Pre-fill sig from cascading builder if available
+  const [sigText, setSigText] = useState(presetSigText ?? '')
   // REQ-DMB-006: soft-block for >5x wholesale — requires explicit acknowledgment
   const [highMarkupAcknowledged, setHighMarkupAcknowledged] = useState(false)
 

@@ -365,7 +365,7 @@ export function CascadingPrescriptionBuilder() {
       {selectedIngredient && saltForms.length > 1 && (
         <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
           <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Form
+            Salt / Ester Form
           </label>
           <div className="mt-1 flex flex-wrap gap-2">
             {saltForms.map(sf => (

@@ -174,6 +174,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
         wholesalePrice={catalogItem.wholesale_price}
         deaSchedule={catalogItem.dea_schedule ?? 0}
         defaultMarkupPct={defaultMarkupPct}
+        presetSigText={presetSig || undefined}
       />
     </main>
     </>
