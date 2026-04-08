@@ -18,6 +18,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { usePrescriptionSession } from '../_context/prescription-session'
+import { StructuredSigBuilder } from './structured-sig-builder'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -88,21 +89,7 @@ interface PharmacyOption {
   } | null
 }
 
-// ── Frequency options ─────────────────────────────────────────
-
-const FREQUENCY_OPTIONS = [
-  { code: 'QD', display: 'Once daily', sig: 'once daily' },
-  { code: 'BID', display: 'Twice daily', sig: 'twice daily' },
-  { code: 'TID', display: 'Three times daily', sig: 'three times daily' },
-  { code: 'QID', display: 'Four times daily', sig: 'four times daily' },
-  { code: 'QHS', display: 'At bedtime', sig: 'at bedtime' },
-  { code: 'QW', display: 'Once weekly', sig: 'once weekly' },
-  { code: 'Q2W', display: 'Every 2 weeks', sig: 'every 2 weeks' },
-  { code: 'QOD', display: 'Every other day', sig: 'every other day' },
-  { code: 'MF', display: 'Mon-Fri (weekends off)', sig: 'Monday through Friday, weekends off' },
-  { code: 'TIW', display: '2-3 times per week', sig: '2-3 times per week' },
-  { code: 'PRN', display: 'As needed', sig: 'as needed' },
-]
+// Frequency options moved to structured-sig-builder.types.ts (WO-84)
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -141,8 +128,7 @@ export function CascadingPrescriptionBuilder() {
   const [doseUnit, setDoseUnit] = useState('')
   const [quantity, setQuantity] = useState('')
   const [refills, setRefills] = useState('0')
-  const [sigOverride, setSigOverride] = useState('')
-  const [showSigEditor, setShowSigEditor] = useState(false)
+  const [currentSig, setCurrentSig] = useState('')
 
   // ── Cascading queries ───────────────────────────────────
 
@@ -189,42 +175,10 @@ export function CascadingPrescriptionBuilder() {
     }
   }, [saltForms, selectedSaltForm])
 
-  // ── Auto-generate sig ───────────────────────────────────
-  const generatedSig = useCallback(() => {
-    if (!selectedFormulation || !doseAmount || !selectedFrequency) return ''
-    const route = selectedFormulation.routes_of_administration
-    const freq = FREQUENCY_OPTIONS.find(f => f.code === selectedFrequency)
-    const prefix = route?.sig_prefix ?? 'Take'
-    const unitText = doseUnit || ''
-
-    // Injectable unit conversion
-    let doseDisplay = `${doseAmount} ${unitText}`.trim()
-    if (selectedFormulation.concentration_value && selectedFormulation.concentration_unit === 'mg/mL') {
-      const doseNum = parseFloat(doseAmount)
-      if (!isNaN(doseNum)) {
-        if (unitText === 'mg') {
-          const mL = doseNum / selectedFormulation.concentration_value
-          const units = Math.round(mL * 100)
-          doseDisplay = `${units} units (${mL.toFixed(2)}mL / ${doseNum}mg)`
-        } else if (unitText === 'units') {
-          const mL = doseNum / 100
-          const mg = mL * selectedFormulation.concentration_value
-          doseDisplay = `${doseNum} units (${mL.toFixed(2)}mL / ${mg.toFixed(2)}mg)`
-        } else if (unitText === 'mL') {
-          const mg = doseNum * selectedFormulation.concentration_value
-          const units = Math.round(doseNum * 100)
-          doseDisplay = `${units} units (${doseNum}mL / ${mg.toFixed(2)}mg)`
-        }
-      }
-    }
-
-    const routeText = route?.name ? route.name.toLowerCase() : ''
-    const sigRoute = routeText ? ` ${routeText}` : ''
-
-    return `${prefix} ${doseDisplay}${sigRoute} ${freq?.sig ?? selectedFrequency}`.trim()
-  }, [selectedFormulation, doseAmount, doseUnit, selectedFrequency])
-
-  const currentSig = sigOverride || generatedSig()
+  // ── Stable callback for sig changes from StructuredSigBuilder ──
+  const handleSigChange = useCallback((sig: string) => {
+    setCurrentSig(sig)
+  }, [])
 
   // ── Reset downstream selections ─────────────────────────
   function selectIngredient(ing: Ingredient) {
@@ -236,7 +190,7 @@ export function CascadingPrescriptionBuilder() {
     setDoseUnit('')
     setSelectedFrequency('')
     setQuantity('')
-    setSigOverride('')
+    setCurrentSig('')
   }
 
   function selectSaltForm(sf: SaltForm) {
@@ -416,74 +370,19 @@ export function CascadingPrescriptionBuilder() {
         </div>
       )}
 
-      {/* Level 4: Dose + Frequency */}
+      {/* Level 4: Dose + Frequency + Sig Builder (WO-84) */}
       {selectedFormulation && (
-        <div className="rounded-lg border border-border bg-card p-4 shadow-sm space-y-3">
-          <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Dose & Frequency
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Amount"
-              value={doseAmount}
-              onChange={e => setDoseAmount(e.target.value)}
-              className="w-24 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-            <select
-              value={doseUnit}
-              onChange={e => setDoseUnit(e.target.value)}
-              className="rounded-md border border-input bg-background px-2 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="">Unit</option>
-              <option value="mg">mg</option>
-              <option value="mL">mL</option>
-              <option value="units">units</option>
-              <option value="mcg">mcg</option>
-              <option value="tablet">tablet(s)</option>
-              <option value="capsule">capsule(s)</option>
-              <option value="click">click(s)</option>
-            </select>
-            <select
-              value={selectedFrequency}
-              onChange={e => setSelectedFrequency(e.target.value)}
-              className="flex-1 rounded-md border border-input bg-background px-2 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="">Select frequency</option>
-              {FREQUENCY_OPTIONS.map(f => (
-                <option key={f.code} value={f.code}>{f.display}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Auto-generated Sig */}
-          {currentSig && (
-            <div className="rounded-md border border-border bg-muted/30 p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Sig (Directions)
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setShowSigEditor(!showSigEditor)}
-                  className="text-[10px] text-primary underline"
-                >
-                  {showSigEditor ? 'Use auto-generated' : 'Edit manually'}
-                </button>
-              </div>
-              {showSigEditor ? (
-                <textarea
-                  value={sigOverride || generatedSig()}
-                  onChange={e => setSigOverride(e.target.value)}
-                  rows={2}
-                  className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              ) : (
-                <p className="mt-1 text-sm text-foreground italic">&ldquo;{currentSig}&rdquo;</p>
-              )}
-            </div>
-          )}
-        </div>
+        <StructuredSigBuilder
+          key={selectedFormulation.formulation_id}
+          formulation={selectedFormulation}
+          doseAmount={doseAmount}
+          doseUnit={doseUnit}
+          frequency={selectedFrequency}
+          onDoseAmountChange={setDoseAmount}
+          onDoseUnitChange={setDoseUnit}
+          onFrequencyChange={setSelectedFrequency}
+          onSigChange={handleSigChange}
+        />
       )}
 
       {/* Level 5: Pharmacy Selection */}
