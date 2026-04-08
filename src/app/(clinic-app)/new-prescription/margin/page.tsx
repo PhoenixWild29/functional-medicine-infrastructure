@@ -25,47 +25,88 @@ interface PageProps {
   searchParams: Promise<{
     pharmacyId?: string
     itemId?: string
+    formulation_id?: string
+    dose?: string
+    frequency?: string
+    sigText?: string
   }>
 }
 
 export default async function MarginPage({ searchParams }: PageProps) {
   const resolvedParams = await searchParams
-  const pharmacyId = (resolvedParams.pharmacyId ?? '').trim()
-  const itemId     = (resolvedParams.itemId ?? '').trim()
+  const pharmacyId     = (resolvedParams.pharmacyId ?? '').trim()
+  const itemId         = (resolvedParams.itemId ?? '').trim()
+  const formulationId  = (resolvedParams.formulation_id ?? '').trim()
+  const presetDose     = (resolvedParams.dose ?? '').trim()
+  const presetFreq     = (resolvedParams.frequency ?? '').trim()
+  const presetSig      = (resolvedParams.sigText ?? '').trim()
 
-  // Both params required — if missing, send back to step 1
-  if (!pharmacyId || !itemId) {
+  // Need pharmacyId + (itemId OR formulation_id)
+  if (!pharmacyId || (!itemId && !formulationId)) {
     redirect('/new-prescription/search')
   }
 
   const supabaseAuth = await createServerClient()
   const { data: { session } } = await supabaseAuth.auth.getSession()
-  // Session guaranteed by layout; defensive redirect if somehow missing
   if (!session) redirect('/login')
 
-  // NB-05: user_metadata is untyped JSON — runtime type guard prevents number/undefined
-  // being cast silently to string, which would cause the clinic query to return no rows.
   const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
     ? session.user.user_metadata['clinic_id'] as string
     : undefined
 
   const supabase = createServiceClient()
 
-  // Fetch catalog item — scoped to the specified pharmacy to prevent
-  // spoofed itemId/pharmacyId combinations
-  const { data: catalogItem, error: catalogError } = await supabase
-    .from('catalog')
-    .select('item_id, medication_name, form, dose, wholesale_price, dea_schedule')
-    .eq('item_id', itemId)
-    .eq('pharmacy_id', pharmacyId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .maybeSingle()
+  // WO-83: Support both catalog-based (old) and formulation-based (new) paths
+  let catalogItem: { item_id: string; medication_name: string; form: string; dose: string; wholesale_price: number; dea_schedule: number | null } | null = null
 
-  if (catalogError) {
-    console.error('[margin-page] catalog fetch failed:', catalogError.message)
-    // Fail safe — send back to step 1 rather than crash
-    redirect('/new-prescription/search')
+  if (formulationId) {
+    // New path: fetch from formulations + pharmacy_formulations
+    const [formResult, priceResult] = await Promise.all([
+      supabase.from('formulations')
+        .select('formulation_id, name, concentration, dosage_forms(name), routes_of_administration(name)')
+        .eq('formulation_id', formulationId)
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .maybeSingle(),
+      supabase.from('pharmacy_formulations')
+        .select('wholesale_price')
+        .eq('formulation_id', formulationId)
+        .eq('pharmacy_id', pharmacyId)
+        .eq('is_available', true)
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .maybeSingle(),
+    ])
+
+    if (formResult.data && priceResult.data) {
+      const df = formResult.data.dosage_forms as Record<string, string> | null
+      catalogItem = {
+        item_id: formResult.data.formulation_id,
+        medication_name: formResult.data.name,
+        form: df?.name ?? '',
+        dose: presetDose || formResult.data.concentration || '',
+        wholesale_price: priceResult.data.wholesale_price,
+        dea_schedule: null, // TODO: resolve from ingredient
+      }
+    }
+  }
+
+  if (!catalogItem && itemId) {
+    // Legacy path: fetch from flat catalog table
+    const { data, error } = await supabase
+      .from('catalog')
+      .select('item_id, medication_name, form, dose, wholesale_price, dea_schedule')
+      .eq('item_id', itemId)
+      .eq('pharmacy_id', pharmacyId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (error) {
+      console.error('[margin-page] catalog fetch failed:', error.message)
+      redirect('/new-prescription/search')
+    }
+    catalogItem = data
   }
 
   if (!catalogItem) notFound()
@@ -125,7 +166,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
 
       <MarginBuilderForm
         pharmacyId={pharmacyId}
-        itemId={itemId}
+        itemId={catalogItem.item_id}
         pharmacyName={pharmacy.name}
         medicationName={catalogItem.medication_name}
         form={catalogItem.form}

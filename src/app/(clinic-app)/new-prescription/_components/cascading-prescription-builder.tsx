@@ -270,26 +270,22 @@ export function CascadingPrescriptionBuilder() {
     currentSig.length >= 10
   )
 
-  // ── Add to session ──────────────────────────────────────
-  function handleAddToSession() {
-    if (!canAdd || !selectedFormulation || !selectedPharmacy?.pharmacies) return
+  // ── Navigate to margin builder (where retail price is set) ──
+  // BLK-01 fix: Don't add to session here — the margin builder handles
+  // addPrescription after the retail price is set. We pass all config
+  // via URL params so the margin builder has everything it needs.
+  function navigateToMargin() {
+    if (!selectedFormulation || !selectedPharmacy?.pharmacies) return
 
-    session.addPrescription({
+    const params = new URLSearchParams({
       pharmacyId: selectedPharmacy.pharmacies.pharmacy_id,
-      pharmacyName: selectedPharmacy.pharmacies.name,
-      itemId: selectedFormulation.formulation_id,
-      medicationName: selectedFormulation.name,
-      form: selectedFormulation.dosage_forms?.name ?? '',
+      formulation_id: selectedFormulation.formulation_id,
       dose: `${doseAmount} ${doseUnit}`.trim(),
-      wholesaleCents: toCents(selectedPharmacy.wholesale_price),
-      deaSchedule: selectedIngredient?.dea_schedule ?? null,
-      retailCents: 0, // Set in margin builder
+      frequency: selectedFrequency,
       sigText: currentSig,
-      integrationTier: selectedPharmacy.pharmacies.integration_tier ?? '',
     })
 
-    // Navigate to margin builder to set retail price
-    router.push(`/new-prescription/margin?pharmacyId=${selectedPharmacy.pharmacies.pharmacy_id}&itemId=${selectedFormulation.formulation_id}`)
+    router.push(`/new-prescription/margin?${params.toString()}`)
   }
 
   // ── Render ──────────────────────────────────────────────
@@ -563,34 +559,16 @@ export function CascadingPrescriptionBuilder() {
         </div>
       )}
 
-      {/* Action Buttons */}
+      {/* Action: Continue to set retail price */}
       {selectedPharmacy && (
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              handleAddToSession()
-              router.push('/new-prescription/search')
-            }}
-            disabled={!canAdd}
-            className="flex-1 rounded-md border border-primary bg-background px-4 py-2.5 text-sm font-medium text-primary shadow-sm hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            Add & Search Another
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              handleAddToSession()
-              router.push('/new-prescription/review')
-            }}
-            disabled={!canAdd}
-            className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {session.prescriptionCount > 0
-              ? `Review & Send (${session.prescriptionCount + 1})`
-              : 'Review & Send'}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={navigateToMargin}
+          disabled={!canAdd}
+          className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Continue — Set Retail Price
+        </button>
       )}
     </div>
   )
