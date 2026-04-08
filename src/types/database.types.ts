@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -444,6 +444,173 @@ export type Database = {
           },
         ]
       }
+      dosage_forms: {
+        Row: {
+          calculation_method: string | null
+          default_route: string | null
+          dosage_form_id: string
+          is_sterile: boolean
+          name: string
+          requires_injection_supplies: boolean
+          sort_order: number
+        }
+        Insert: {
+          calculation_method?: string | null
+          default_route?: string | null
+          dosage_form_id?: string
+          is_sterile?: boolean
+          name: string
+          requires_injection_supplies?: boolean
+          sort_order?: number
+        }
+        Update: {
+          calculation_method?: string | null
+          default_route?: string | null
+          dosage_form_id?: string
+          is_sterile?: boolean
+          name?: string
+          requires_injection_supplies?: boolean
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      formulation_ingredients: {
+        Row: {
+          concentration_per_unit: string
+          concentration_unit: string | null
+          concentration_value: number | null
+          formulation_id: string
+          formulation_ingredient_id: string
+          ingredient_id: string
+          role: string
+          salt_form_id: string | null
+          sort_order: number
+        }
+        Insert: {
+          concentration_per_unit: string
+          concentration_unit?: string | null
+          concentration_value?: number | null
+          formulation_id: string
+          formulation_ingredient_id?: string
+          ingredient_id: string
+          role?: string
+          salt_form_id?: string | null
+          sort_order?: number
+        }
+        Update: {
+          concentration_per_unit?: string
+          concentration_unit?: string | null
+          concentration_value?: number | null
+          formulation_id?: string
+          formulation_ingredient_id?: string
+          ingredient_id?: string
+          role?: string
+          salt_form_id?: string | null
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "formulation_ingredients_formulation_id_fkey"
+            columns: ["formulation_id"]
+            isOneToOne: false
+            referencedRelation: "formulations"
+            referencedColumns: ["formulation_id"]
+          },
+          {
+            foreignKeyName: "formulation_ingredients_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "ingredients"
+            referencedColumns: ["ingredient_id"]
+          },
+          {
+            foreignKeyName: "formulation_ingredients_salt_form_id_fkey"
+            columns: ["salt_form_id"]
+            isOneToOne: false
+            referencedRelation: "salt_forms"
+            referencedColumns: ["salt_form_id"]
+          },
+        ]
+      }
+      formulations: {
+        Row: {
+          concentration: string | null
+          concentration_unit: string | null
+          concentration_value: number | null
+          created_at: string
+          deleted_at: string | null
+          description: string | null
+          dosage_form_id: string
+          excipient_base: string | null
+          formulation_id: string
+          is_active: boolean
+          is_combination: boolean
+          name: string
+          route_id: string
+          salt_form_id: string | null
+          total_ingredients: number
+          updated_at: string
+        }
+        Insert: {
+          concentration?: string | null
+          concentration_unit?: string | null
+          concentration_value?: number | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          dosage_form_id: string
+          excipient_base?: string | null
+          formulation_id?: string
+          is_active?: boolean
+          is_combination?: boolean
+          name: string
+          route_id: string
+          salt_form_id?: string | null
+          total_ingredients?: number
+          updated_at?: string
+        }
+        Update: {
+          concentration?: string | null
+          concentration_unit?: string | null
+          concentration_value?: number | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          dosage_form_id?: string
+          excipient_base?: string | null
+          formulation_id?: string
+          is_active?: boolean
+          is_combination?: boolean
+          name?: string
+          route_id?: string
+          salt_form_id?: string | null
+          total_ingredients?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "formulations_dosage_form_id_fkey"
+            columns: ["dosage_form_id"]
+            isOneToOne: false
+            referencedRelation: "dosage_forms"
+            referencedColumns: ["dosage_form_id"]
+          },
+          {
+            foreignKeyName: "formulations_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "routes_of_administration"
+            referencedColumns: ["route_id"]
+          },
+          {
+            foreignKeyName: "formulations_salt_form_id_fkey"
+            columns: ["salt_form_id"]
+            isOneToOne: false
+            referencedRelation: "salt_forms"
+            referencedColumns: ["salt_form_id"]
+          },
+        ]
+      }
       inbound_fax_queue: {
         Row: {
           created_at: string
@@ -509,6 +676,51 @@ export type Database = {
             referencedColumns: ["pharmacy_id"]
           },
         ]
+      }
+      ingredients: {
+        Row: {
+          common_name: string
+          created_at: string
+          dea_schedule: number | null
+          deleted_at: string | null
+          description: string | null
+          fda_alert_message: string | null
+          fda_alert_status: string | null
+          ingredient_id: string
+          is_active: boolean
+          is_hazardous: boolean
+          therapeutic_category: string | null
+          updated_at: string
+        }
+        Insert: {
+          common_name: string
+          created_at?: string
+          dea_schedule?: number | null
+          deleted_at?: string | null
+          description?: string | null
+          fda_alert_message?: string | null
+          fda_alert_status?: string | null
+          ingredient_id?: string
+          is_active?: boolean
+          is_hazardous?: boolean
+          therapeutic_category?: string | null
+          updated_at?: string
+        }
+        Update: {
+          common_name?: string
+          created_at?: string
+          dea_schedule?: number | null
+          deleted_at?: string | null
+          description?: string | null
+          fda_alert_message?: string | null
+          fda_alert_status?: string | null
+          ingredient_id?: string
+          is_active?: boolean
+          is_hazardous?: boolean
+          therapeutic_category?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       normalized_catalog: {
         Row: {
@@ -1122,6 +1334,72 @@ export type Database = {
           },
         ]
       }
+      pharmacy_formulations: {
+        Row: {
+          available_quantities: Json | null
+          available_supply_durations: Json | null
+          created_at: string
+          deleted_at: string | null
+          estimated_turnaround_days: number | null
+          formulation_id: string
+          is_active: boolean
+          is_available: boolean
+          last_synced_at: string | null
+          pharmacy_formulation_id: string
+          pharmacy_id: string
+          sku_code: string | null
+          updated_at: string
+          wholesale_price: number
+        }
+        Insert: {
+          available_quantities?: Json | null
+          available_supply_durations?: Json | null
+          created_at?: string
+          deleted_at?: string | null
+          estimated_turnaround_days?: number | null
+          formulation_id: string
+          is_active?: boolean
+          is_available?: boolean
+          last_synced_at?: string | null
+          pharmacy_formulation_id?: string
+          pharmacy_id: string
+          sku_code?: string | null
+          updated_at?: string
+          wholesale_price: number
+        }
+        Update: {
+          available_quantities?: Json | null
+          available_supply_durations?: Json | null
+          created_at?: string
+          deleted_at?: string | null
+          estimated_turnaround_days?: number | null
+          formulation_id?: string
+          is_active?: boolean
+          is_available?: boolean
+          last_synced_at?: string | null
+          pharmacy_formulation_id?: string
+          pharmacy_id?: string
+          sku_code?: string | null
+          updated_at?: string
+          wholesale_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pharmacy_formulations_formulation_id_fkey"
+            columns: ["formulation_id"]
+            isOneToOne: false
+            referencedRelation: "formulations"
+            referencedColumns: ["formulation_id"]
+          },
+          {
+            foreignKeyName: "pharmacy_formulations_pharmacy_id_fkey"
+            columns: ["pharmacy_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacies"
+            referencedColumns: ["pharmacy_id"]
+          },
+        ]
+      }
       pharmacy_portal_configs: {
         Row: {
           config_id: string
@@ -1354,6 +1632,169 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "clinics"
             referencedColumns: ["clinic_id"]
+          },
+        ]
+      }
+      routes_of_administration: {
+        Row: {
+          abbreviation: string
+          name: string
+          route_id: string
+          sig_prefix: string
+          sort_order: number
+        }
+        Insert: {
+          abbreviation: string
+          name: string
+          route_id?: string
+          sig_prefix: string
+          sort_order?: number
+        }
+        Update: {
+          abbreviation?: string
+          name?: string
+          route_id?: string
+          sig_prefix?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      salt_forms: {
+        Row: {
+          abbreviation: string | null
+          cas_number: string | null
+          conversion_factor: number | null
+          created_at: string
+          deleted_at: string | null
+          ingredient_id: string
+          is_active: boolean
+          molecular_weight: number | null
+          salt_form_id: string
+          salt_name: string
+          updated_at: string
+        }
+        Insert: {
+          abbreviation?: string | null
+          cas_number?: string | null
+          conversion_factor?: number | null
+          created_at?: string
+          deleted_at?: string | null
+          ingredient_id: string
+          is_active?: boolean
+          molecular_weight?: number | null
+          salt_form_id?: string
+          salt_name: string
+          updated_at?: string
+        }
+        Update: {
+          abbreviation?: string | null
+          cas_number?: string | null
+          conversion_factor?: number | null
+          created_at?: string
+          deleted_at?: string | null
+          ingredient_id?: string
+          is_active?: boolean
+          molecular_weight?: number | null
+          salt_form_id?: string
+          salt_name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salt_forms_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "ingredients"
+            referencedColumns: ["ingredient_id"]
+          },
+        ]
+      }
+      sig_templates: {
+        Row: {
+          created_at: string
+          cycling_duration: string | null
+          cycling_off_days: number | null
+          cycling_on_days: number | null
+          cycling_rest: string | null
+          dose_amount: string | null
+          dose_unit: string | null
+          dose_value: number | null
+          duration: string | null
+          formulation_id: string | null
+          frequency_code: string | null
+          frequency_display: string | null
+          generated_sig_text: string | null
+          is_cycling: boolean
+          is_titration: boolean
+          label: string | null
+          route_text: string | null
+          sig_template_id: string
+          timing: string | null
+          titration_increment: string | null
+          titration_interval: string | null
+          titration_start_dose: string | null
+          titration_target: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          cycling_duration?: string | null
+          cycling_off_days?: number | null
+          cycling_on_days?: number | null
+          cycling_rest?: string | null
+          dose_amount?: string | null
+          dose_unit?: string | null
+          dose_value?: number | null
+          duration?: string | null
+          formulation_id?: string | null
+          frequency_code?: string | null
+          frequency_display?: string | null
+          generated_sig_text?: string | null
+          is_cycling?: boolean
+          is_titration?: boolean
+          label?: string | null
+          route_text?: string | null
+          sig_template_id?: string
+          timing?: string | null
+          titration_increment?: string | null
+          titration_interval?: string | null
+          titration_start_dose?: string | null
+          titration_target?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          cycling_duration?: string | null
+          cycling_off_days?: number | null
+          cycling_on_days?: number | null
+          cycling_rest?: string | null
+          dose_amount?: string | null
+          dose_unit?: string | null
+          dose_value?: number | null
+          duration?: string | null
+          formulation_id?: string | null
+          frequency_code?: string | null
+          frequency_display?: string | null
+          generated_sig_text?: string | null
+          is_cycling?: boolean
+          is_titration?: boolean
+          label?: string | null
+          route_text?: string | null
+          sig_template_id?: string
+          timing?: string | null
+          titration_increment?: string | null
+          titration_interval?: string | null
+          titration_start_dose?: string | null
+          titration_target?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sig_templates_formulation_id_fkey"
+            columns: ["formulation_id"]
+            isOneToOne: false
+            referencedRelation: "formulations"
+            referencedColumns: ["formulation_id"]
           },
         ]
       }
@@ -1990,8 +2431,11 @@ export const Constants = {
   },
 } as const
 
-// Convenience type aliases — re-export commonly imported enum types using the
-// generated Enums<> helper so existing import sites don't need to change.
-export type OrderStatusEnum         = Enums<"order_status_enum">
-export type StripeConnectStatusEnum = Enums<"stripe_connect_status_enum">
-export type IntegrationTierEnum     = Enums<"integration_tier_enum">
+// ============================================================
+// Convenience type aliases — used throughout the codebase
+// Re-added after type regeneration (WO-82)
+// ============================================================
+
+export type OrderStatusEnum = Database['public']['Enums']['order_status_enum']
+export type StripeConnectStatusEnum = Database['public']['Enums']['stripe_connect_status_enum']
+export type IntegrationTierEnum = Database['public']['Enums']['integration_tier_enum']
