@@ -29,10 +29,10 @@ CREATE TABLE IF NOT EXISTS ingredients (
 );
 
 -- Index for search autocomplete
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_ingredients_name
+CREATE INDEX IF NOT EXISTS idx_ingredients_name
     ON ingredients (common_name) WHERE deleted_at IS NULL AND is_active = true;
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_ingredients_category
+CREATE INDEX IF NOT EXISTS idx_ingredients_category
     ON ingredients (therapeutic_category) WHERE deleted_at IS NULL AND is_active = true;
 
 -- ============================================================
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS salt_forms (
     UNIQUE (ingredient_id, salt_name)
 );
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_salt_forms_ingredient
+CREATE INDEX IF NOT EXISTS idx_salt_forms_ingredient
     ON salt_forms (ingredient_id) WHERE deleted_at IS NULL AND is_active = true;
 
 -- ============================================================
@@ -106,13 +106,13 @@ CREATE TABLE IF NOT EXISTS formulations (
     is_active           BOOLEAN NOT NULL DEFAULT true
 );
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_formulations_salt_form
+CREATE INDEX IF NOT EXISTS idx_formulations_salt_form
     ON formulations (salt_form_id) WHERE deleted_at IS NULL AND is_active = true;
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_formulations_dosage_form
+CREATE INDEX IF NOT EXISTS idx_formulations_dosage_form
     ON formulations (dosage_form_id) WHERE deleted_at IS NULL AND is_active = true;
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_formulations_route
+CREATE INDEX IF NOT EXISTS idx_formulations_route
     ON formulations (route_id) WHERE deleted_at IS NULL AND is_active = true;
 
 -- ============================================================
@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS formulation_ingredients (
     UNIQUE (formulation_id, ingredient_id)
 );
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_formulation_ingredients_formulation
+CREATE INDEX IF NOT EXISTS idx_formulation_ingredients_formulation
     ON formulation_ingredients (formulation_id);
 
 -- ============================================================
@@ -157,10 +157,10 @@ CREATE TABLE IF NOT EXISTS pharmacy_formulations (
     UNIQUE (pharmacy_id, formulation_id)
 );
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pharmacy_formulations_pharmacy
+CREATE INDEX IF NOT EXISTS idx_pharmacy_formulations_pharmacy
     ON pharmacy_formulations (pharmacy_id) WHERE deleted_at IS NULL AND is_active = true;
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pharmacy_formulations_formulation
+CREATE INDEX IF NOT EXISTS idx_pharmacy_formulations_formulation
     ON pharmacy_formulations (formulation_id) WHERE deleted_at IS NULL AND is_active = true;
 
 -- ============================================================
@@ -194,7 +194,7 @@ CREATE TABLE IF NOT EXISTS sig_templates (
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sig_templates_formulation
+CREATE INDEX IF NOT EXISTS idx_sig_templates_formulation
     ON sig_templates (formulation_id);
 
 -- ============================================================
