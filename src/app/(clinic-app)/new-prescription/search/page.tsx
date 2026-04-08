@@ -10,11 +10,10 @@
 // The pharmacy search form reads the patient's shipping state from
 // the PrescriptionSession context rather than requiring manual input.
 
-import { createServerClient } from '@/lib/supabase/server'
 import { WizardProgress }    from '@/components/wizard-progress'
 import { HipaaTimeout }      from '@/components/hipaa-timeout'
-import { PharmacySearchForm } from '../_components/pharmacy-search-form'
 import { SessionBanner }      from '../_components/session-banner'
+import { CascadingPrescriptionBuilder } from '../_components/cascading-prescription-builder'
 
 const WIZARD_STEPS = [
   { number: 1, label: 'Patient & Provider', href: '/new-prescription' },
@@ -40,13 +39,13 @@ export default async function PharmacySearchPage() {
 
         <div className="mb-6">
           <WizardProgress steps={WIZARD_STEPS} currentStep={2} />
-          <h1 className="mt-4 text-2xl font-bold text-foreground">Find a Pharmacy</h1>
+          <h1 className="mt-4 text-2xl font-bold text-foreground">Configure Prescription</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Search for the compounded medication and select a licensed pharmacy.
+            Search for the medication, select formulation and pharmacy, set dose and frequency.
           </p>
         </div>
 
-        <PharmacySearchForm />
+        <CascadingPrescriptionBuilder />
       </main>
     </>
   )
