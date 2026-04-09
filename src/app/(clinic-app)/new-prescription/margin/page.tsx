@@ -29,6 +29,7 @@ interface PageProps {
     dose?: string
     frequency?: string
     sigText?: string
+    deaSchedule?: string
   }>
 }
 
@@ -86,7 +87,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
         form: df?.name ?? '',
         dose: presetDose || formResult.data.concentration || '',
         wholesale_price: priceResult.data.wholesale_price,
-        dea_schedule: null, // TODO: resolve from ingredient
+        dea_schedule: resolvedParams.deaSchedule ? parseInt(resolvedParams.deaSchedule, 10) : null,
       }
     }
   }

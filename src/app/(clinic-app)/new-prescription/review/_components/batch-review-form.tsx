@@ -16,6 +16,8 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import SignatureCanvas from 'react-signature-canvas'
 import { usePrescriptionSession } from '../../_context/prescription-session'
+import { EpcsTotpGate } from '../../_components/epcs-totp-gate'
+import { DrugInteractionAlerts } from '../../_components/drug-interaction-alerts'
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -39,6 +41,7 @@ export function BatchReviewForm() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitProgress, setSubmitProgress] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [showEpcsGate, setShowEpcsGate] = useState(false)
 
   // Redirect if no session or no prescriptions
   useEffect(() => {
@@ -168,6 +171,22 @@ export function BatchReviewForm() {
 
   return (
     <div className="space-y-6">
+
+      {/* WO-86: Controlled substance banner */}
+      {prescriptions.some(rx => rx.deaSchedule && rx.deaSchedule >= 2) && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/20">
+          <p className="text-sm font-semibold text-red-800 dark:text-red-200">
+            Controlled Substance — EPCS 2FA Required
+          </p>
+          <p className="mt-1 text-xs text-red-700 dark:text-red-300">
+            This session contains DEA-scheduled medications. Two-factor authentication via authenticator app
+            will be required at signing per DEA 21 CFR 1311.
+          </p>
+        </div>
+      )}
+
+      {/* WO-86: Drug Interaction Alerts */}
+      <DrugInteractionAlerts medicationNames={prescriptions.map(rx => rx.medicationName)} />
 
       {/* Prescription list */}
       <div className="space-y-3">
@@ -308,7 +327,15 @@ export function BatchReviewForm() {
           <div className="mt-3 flex gap-3">
             <button
               type="button"
-              onClick={handleSignAndSend}
+              onClick={() => {
+                // WO-86: Check for controlled substances → require EPCS 2FA
+                const controlled = prescriptions.filter(rx => rx.deaSchedule && rx.deaSchedule >= 2)
+                if (controlled.length > 0) {
+                  setShowEpcsGate(true)
+                } else {
+                  handleSignAndSend()
+                }
+              }}
               disabled={isSubmitting}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
@@ -340,6 +367,28 @@ export function BatchReviewForm() {
         >
           Sign & Send {prescriptions.length > 1 ? `All ${prescriptions.length} Prescriptions` : 'Payment Link'}
         </button>
+      )}
+      {/* WO-86: EPCS 2FA Gate for controlled substances */}
+      {showEpcsGate && (
+        <EpcsTotpGate
+          providerId={provider.provider_id}
+          providerName={`${provider.first_name} ${provider.last_name}`}
+          medicationNames={
+            prescriptions
+              .filter(rx => rx.deaSchedule && rx.deaSchedule >= 2)
+              .map(rx => rx.medicationName)
+          }
+          deaSchedules={
+            prescriptions
+              .filter(rx => rx.deaSchedule && rx.deaSchedule >= 2)
+              .map(rx => rx.deaSchedule)
+          }
+          onVerified={() => {
+            setShowEpcsGate(false)
+            handleSignAndSend()
+          }}
+          onCancel={() => setShowEpcsGate(false)}
+        />
       )}
     </div>
   )

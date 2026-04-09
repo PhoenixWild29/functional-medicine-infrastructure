@@ -474,6 +474,118 @@ export type Database = {
         }
         Relationships: []
       }
+      drug_interactions: {
+        Row: {
+          clinical_note: string | null
+          created_at: string | null
+          description: string
+          ingredient_a_id: string
+          ingredient_b_id: string
+          interaction_id: string
+          severity: string
+          source: string | null
+        }
+        Insert: {
+          clinical_note?: string | null
+          created_at?: string | null
+          description: string
+          ingredient_a_id: string
+          ingredient_b_id: string
+          interaction_id?: string
+          severity: string
+          source?: string | null
+        }
+        Update: {
+          clinical_note?: string | null
+          created_at?: string | null
+          description?: string
+          ingredient_a_id?: string
+          ingredient_b_id?: string
+          interaction_id?: string
+          severity?: string
+          source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "drug_interactions_ingredient_a_id_fkey"
+            columns: ["ingredient_a_id"]
+            isOneToOne: false
+            referencedRelation: "ingredients"
+            referencedColumns: ["ingredient_id"]
+          },
+          {
+            foreignKeyName: "drug_interactions_ingredient_b_id_fkey"
+            columns: ["ingredient_b_id"]
+            isOneToOne: false
+            referencedRelation: "ingredients"
+            referencedColumns: ["ingredient_id"]
+          },
+        ]
+      }
+      epcs_audit_log: {
+        Row: {
+          audit_id: string
+          created_at: string | null
+          dea_schedule: number
+          details: Json | null
+          event_type: string
+          ip_address: string | null
+          medication_name: string
+          order_id: string | null
+          patient_id: string | null
+          provider_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          audit_id?: string
+          created_at?: string | null
+          dea_schedule: number
+          details?: Json | null
+          event_type: string
+          ip_address?: string | null
+          medication_name: string
+          order_id?: string | null
+          patient_id?: string | null
+          provider_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          audit_id?: string
+          created_at?: string | null
+          dea_schedule?: number
+          details?: Json | null
+          event_type?: string
+          ip_address?: string | null
+          medication_name?: string
+          order_id?: string | null
+          patient_id?: string | null
+          provider_id?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "epcs_audit_log_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "epcs_audit_log_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["patient_id"]
+          },
+          {
+            foreignKeyName: "epcs_audit_log_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "providers"
+            referencedColumns: ["provider_id"]
+          },
+        ]
+      }
       formulation_ingredients: {
         Row: {
           concentration_per_unit: string
@@ -1081,6 +1193,67 @@ export type Database = {
           },
         ]
       }
+      patient_protocol_phases: {
+        Row: {
+          advanced_by: string | null
+          advancement_note: string | null
+          created_at: string | null
+          current_phase: string
+          patient_id: string
+          phase_started_at: string | null
+          protocol_id: string
+          status: string | null
+          tracking_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          advanced_by?: string | null
+          advancement_note?: string | null
+          created_at?: string | null
+          current_phase: string
+          patient_id: string
+          phase_started_at?: string | null
+          protocol_id: string
+          status?: string | null
+          tracking_id?: string
+          updated_at?: string | null
+        }
+        Update: {
+          advanced_by?: string | null
+          advancement_note?: string | null
+          created_at?: string | null
+          current_phase?: string
+          patient_id?: string
+          phase_started_at?: string | null
+          protocol_id?: string
+          status?: string | null
+          tracking_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_protocol_phases_advanced_by_fkey"
+            columns: ["advanced_by"]
+            isOneToOne: false
+            referencedRelation: "providers"
+            referencedColumns: ["provider_id"]
+          },
+          {
+            foreignKeyName: "patient_protocol_phases_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["patient_id"]
+          },
+          {
+            foreignKeyName: "patient_protocol_phases_protocol_id_fkey"
+            columns: ["protocol_id"]
+            isOneToOne: false
+            referencedRelation: "protocol_templates"
+            referencedColumns: ["protocol_id"]
+          },
+        ]
+      }
       patients: {
         Row: {
           address_line1: string | null
@@ -1576,6 +1749,54 @@ export type Database = {
           },
         ]
       }
+      phase_advancement_history: {
+        Row: {
+          advanced_by: string | null
+          created_at: string | null
+          from_phase: string
+          history_id: string
+          lab_results: Json | null
+          reason: string | null
+          to_phase: string
+          tracking_id: string
+        }
+        Insert: {
+          advanced_by?: string | null
+          created_at?: string | null
+          from_phase: string
+          history_id?: string
+          lab_results?: Json | null
+          reason?: string | null
+          to_phase: string
+          tracking_id: string
+        }
+        Update: {
+          advanced_by?: string | null
+          created_at?: string | null
+          from_phase?: string
+          history_id?: string
+          lab_results?: Json | null
+          reason?: string | null
+          to_phase?: string
+          tracking_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phase_advancement_history_advanced_by_fkey"
+            columns: ["advanced_by"]
+            isOneToOne: false
+            referencedRelation: "providers"
+            referencedColumns: ["provider_id"]
+          },
+          {
+            foreignKeyName: "phase_advancement_history_tracking_id_fkey"
+            columns: ["tracking_id"]
+            isOneToOne: false
+            referencedRelation: "patient_protocol_phases"
+            referencedColumns: ["tracking_id"]
+          },
+        ]
+      }
       protocol_items: {
         Row: {
           condition_description: string | null
@@ -1821,6 +2042,9 @@ export type Database = {
           provider_id: string
           signature_hash: string | null
           signature_on_file: boolean
+          totp_enabled: boolean | null
+          totp_secret_encrypted: string | null
+          totp_verified_at: string | null
           updated_at: string
         }
         Insert: {
@@ -1837,6 +2061,9 @@ export type Database = {
           provider_id?: string
           signature_hash?: string | null
           signature_on_file?: boolean
+          totp_enabled?: boolean | null
+          totp_secret_encrypted?: string | null
+          totp_verified_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -1853,6 +2080,9 @@ export type Database = {
           provider_id?: string
           signature_hash?: string | null
           signature_on_file?: boolean
+          totp_enabled?: boolean | null
+          totp_secret_encrypted?: string | null
+          totp_verified_at?: string | null
           updated_at?: string
         }
         Relationships: [

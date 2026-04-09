@@ -257,6 +257,11 @@ export function CascadingPrescriptionBuilder() {
       sigText: currentSig,
     })
 
+    // WO-86: Pass DEA schedule so margin builder can thread it to the session
+    if (selectedIngredient?.dea_schedule) {
+      params.set('deaSchedule', String(selectedIngredient.dea_schedule))
+    }
+
     router.push(`/new-prescription/margin?${params.toString()}`)
   }
 
