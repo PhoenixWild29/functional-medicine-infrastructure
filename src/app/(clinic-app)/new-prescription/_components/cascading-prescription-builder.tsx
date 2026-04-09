@@ -16,7 +16,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { usePrescriptionSession } from '../_context/prescription-session'
 import { StructuredSigBuilder } from './structured-sig-builder'
 import { QuickActionsPanel } from './quick-actions-panel'
@@ -525,6 +525,7 @@ function SaveFavoriteButton({
   providerId: string
   disabled: boolean
 }) {
+  const queryClient = useQueryClient()
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [showLabel, setShowLabel] = useState(false)
@@ -555,7 +556,13 @@ function SaveFavoriteButton({
     if (res.ok) {
       setSaved(true)
       setShowLabel(false)
+      queryClient.invalidateQueries({ queryKey: ['provider-favorites'] })
       setTimeout(() => setSaved(false), 3000)
+    } else {
+      // Surface the error so users see the failure
+      const err = await res.json().catch(() => ({ error: 'Unknown error' }))
+      console.error('Save favorite failed:', err)
+      alert(`Failed to save: ${err.error ?? 'Unknown error'}`)
     }
   }
 
