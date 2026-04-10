@@ -1,6 +1,6 @@
 # CompoundIQ — Clinic Onboarding Playbook
 
-**Version:** 1.0 | **Date:** April 5, 2026
+**Version:** 2.0 | **Date:** April 9, 2026
 **Audience:** CompoundIQ operations team, clinic administrators
 
 ---
@@ -168,18 +168,18 @@ Walk through the complete order flow to verify everything works:
    - Provider auto-selects (or select from the list)
    - Click "Continue to Pharmacy Search"
 
-2. **MA searches and prices:**
+2. **MA configures medication:**
    - Patient shipping state is auto-filled from the patient record
-   - Search for a medication (e.g., "Semaglutide") and select a pharmacy
-   - Set retail price using the 2x multiplier
-   - Enter prescription directions (Sig)
+   - **Option A (Quick):** Click a Provider Favorite for one-click load, or apply a Protocol Template to add multiple medications at once
+   - **Option B (Full):** Search by ingredient name → cascading dropdowns (salt form → formulation → dose/frequency/timing/duration) → select pharmacy → set retail price. The structured sig builder auto-generates prescription directions with unit conversion.
+   - For titration protocols (e.g., LDN): toggle Titration mode and set start dose, increment, interval, target
    - Choose one of three options:
      - **"Add & Search Another"** — to add more prescriptions for the same patient
      - **"Review & Send"** — to go to batch review and sign
      - **"Save as Draft"** — to save for the provider to sign later
 
 3. **Provider signs (two options):**
-   - **Option A (same session):** Click "Review & Send" → provider signs on the batch review page → all prescriptions sent at once
+   - **Option A (same session):** Click "Review & Send" → provider reviews drug interaction alerts (if any) → signs on the batch review page → if controlled substances present, completes EPCS 2FA (TOTP code from authenticator app) → all prescriptions sent at once
    - **Option B (draft flow):** MA clicks "Save as Draft" → provider logs in later → opens the "Drafts" tab on the dashboard → clicks the draft → clicks "Review & Sign This Prescription" → signs and sends
 
 4. **Verify order created:**
@@ -210,18 +210,24 @@ Walk through the complete order flow to verify everything works:
 
 Walk the MA through:
 1. Logging in and navigating the dashboard
-2. Creating a new prescription (search, price, send)
-3. Understanding status badges and SLA indicators
-4. Using the Kanban view
-5. What happens after they send the payment link (automated reminders, expiry)
+2. Using **Provider Favorites** — one-click reorder for common prescriptions
+3. Using **Protocol Templates** — one-click multi-medication bundles (e.g., "Weight Loss Protocol")
+4. Creating a new prescription via the cascading dropdown builder (ingredient → salt form → formulation → dose → frequency → timing → pharmacy → price)
+5. Using the **Structured Sig Builder** — timing, duration, titration mode, cycling mode
+6. Understanding status badges and SLA indicators
+7. Saving drafts for the provider to sign later
+8. What happens after they send the payment link (automated reminders, expiry)
 
-### Provider Training (5 minutes)
+### Provider Training (10 minutes)
 
 Walk the provider through:
 1. Receiving a signature request
-2. Reviewing order details
-3. Signing with the digital signature pad
-4. Understanding that their NPI and signature are locked after signing
+2. Reviewing order details and **drug interaction alerts**
+3. Understanding the **controlled substance warning banner** (DEA Schedule II-V)
+4. Signing with the digital signature pad
+5. Completing **EPCS Two-Factor Authentication** for controlled substances (set up TOTP authenticator app, enter 6-digit code)
+6. Understanding that their NPI and signature are locked after signing
+7. Saving configurations as **Provider Favorites** for one-click reorder
 
 ### Clinic Admin Training (10 minutes)
 

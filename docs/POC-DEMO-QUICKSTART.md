@@ -28,14 +28,17 @@
 
 1. Click **"+ New Prescription"**
 2. Select **Alex Demo** as patient → provider auto-selects → Continue
-3. Search **Sema** → Select **Semaglutide** → Select **Strive Pharmacy**
-4. Click **2x multiplier** → show margin math ($300 retail, $127.50 clinic payout)
-5. Enter Sig: `Take 0.5mg weekly` → Click **"Add & Search Another"**
-6. Search **Testo** → Select **Testosterone** → Select Strive → Click **1.5x** → Enter Sig → Click **"Review & Send (2)"**
-7. Show **batch review**: 2 prescription cards, combined totals, single signature pad
-8. **Sign** → **"Sign & Send All 2 Prescriptions"** → Confirm
+3. **Show Quick Actions Panel** — Favorites tab (4+ saved configs) and Protocols tab (2 templates). Click a favorite like "Semaglutide 0.5mg weekly" for one-click load, OR:
+4. Search **Sema** → Select **Semaglutide** → cascading dropdowns: salt form → formulation → dose/frequency/timing
+5. **Point out the Structured Sig Builder** — auto-generated sig with unit conversion. Show Titration/Cycling mode toggles.
+6. Select **Strive Pharmacy** → quantity → Click **"Continue — Set Retail Price"**
+7. Click **2x multiplier** → show margin math ($300 retail, $127.50 clinic payout). Sig is pre-filled.
+8. Click **"Add & Search Another"**
+9. Search **Test** → Select **Testosterone** → **Point out DEA Schedule 3 warning** → Cypionate → formulation → dose/frequency → Strive → set price → Click **"Review & Send (2)"**
+10. Show **batch review**: controlled substance banner (red), drug interaction alerts (if applicable), 2 prescription cards, combined totals, single signature pad
+11. **Sign** → **"Confirm & Send"** → **EPCS 2FA modal appears** (Testosterone is Schedule III) → QR code + 6-digit code entry
 
-**Say:** "Patient selected first. Two prescriptions in one session. One signature. 45 seconds for a multi-medication visit."
+**Say:** "Cascading dropdowns, structured sig builder, provider favorites, DEA-compliant 2FA. Patient selected first. Two prescriptions. One signature. 45 seconds for a multi-medication visit."
 
 ### Step 2B — Draft Flow (2 min)
 

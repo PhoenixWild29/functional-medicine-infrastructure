@@ -41,7 +41,7 @@ LegitScript will review your application and may come back with questions:
 
 - **Common questions they ask:**
   - How do you verify pharmacy state licensure? → "We maintain a pharmacy_state_licenses database table and filter search results at the query level. Unlicensed pharmacies never appear in results."
-  - How do you handle controlled substances? → "DEA-scheduled compounds are flagged at search time and forced to Tier 4 (manual fax) only. They cannot be routed through automated adapter tiers."
+  - How do you handle controlled substances? → "DEA-scheduled compounds (Schedule II-V) are flagged at search time with visual warnings. At the point of signing, EPCS two-factor authentication is required via TOTP authenticator app on a separate device (DEA 21 CFR 1311 compliant). All EPCS events are logged to an immutable audit trail with 2-year retention. Controlled substances are currently routed via Tier 4 (manual fax) only."
   - How do you handle PHI? → "Zero PHI touches Stripe. Row-Level Security on all 17 database tables. HIPAA-adjacent architecture with Supabase Vault for credential encryption."
   - What pharmacies are in your network? → List your pharmacy partners (Strive Pharmacy for POC, planned integrations with ReviveRX, Vios, LifeFile network, etc.)
 
@@ -187,7 +187,7 @@ This currently requires database access (Supabase dashboard). For each new pharm
    - regulatory_status: ACTIVE
 2. Add records to `pharmacy_state_licenses` for each state they're licensed in:
    - pharmacy_id, state_code, license_number, expiry_date
-3. Upload their catalog CSV via the ops dashboard
+3. Upload their catalog CSV via the ops dashboard (flat format) or provide hierarchical data (ingredients, salt forms, formulations, pricing per the WO-82 schema)
 
 **Note for development team:** We should build a pharmacy onboarding form in the ops dashboard so this doesn't require direct database access. This is part of the Clinic Onboarding Playbook workflow.
 

@@ -1,7 +1,7 @@
 # CompoundIQ — System Architecture Overview
 
-**Version:** 1.0 | **Date:** April 5, 2026
-**Status:** Production POC — 15 phases complete, 81 work orders (76 completed, 5 in backlog)
+**Version:** 2.0 | **Date:** April 9, 2026
+**Status:** Production POC — 19 phases complete, 86 work orders (86 completed)
 
 ---
 
@@ -262,7 +262,7 @@ All webhooks follow a 7-step processing pipeline: Receive -> Authenticate -> Ext
 
 ## 10. Database Schema
 
-### 17 Tables with Full Row-Level Security
+### 33 Tables with Full Row-Level Security
 
 **Core Entities (12 tables):**
 clinics, providers, patients, pharmacies, pharmacy_state_licenses, catalog, catalog_history, orders, order_status_history, webhook_events, order_sla_deadlines, inbound_fax_queue
@@ -270,15 +270,29 @@ clinics, providers, patients, pharmacies, pharmacy_state_licenses, catalog, cata
 **Pharmacy Adapter Layer (5 tables):**
 pharmacy_api_configs, pharmacy_portal_configs, adapter_submissions, normalized_catalog, pharmacy_webhook_events
 
+**Hierarchical Medication Catalog (8 tables — WO-82):**
+ingredients, salt_forms, dosage_forms, routes_of_administration, formulations, formulation_ingredients, pharmacy_formulations, sig_templates
+
+**Provider Speed Features (3 tables — WO-85):**
+provider_favorites, protocol_templates, protocol_items
+
+**Regulatory Compliance (5 tables — WO-86):**
+epcs_audit_log, drug_interactions, patient_protocol_phases, phase_advancement_history + TOTP columns on providers (totp_secret_encrypted, totp_enabled, totp_verified_at)
+
+**Views:**
+provider_prescribing_history (aggregates order data for adaptive shortlist)
+
 ### 10 Enum Types
 order_status_enum (23 values), stripe_connect_status_enum (4), cancellation_reason_enum (5), regulatory_status_enum (3), webhook_source_enum (4), sla_type_enum (10), inbound_fax_status_enum (5), integration_tier_enum (4), adapter_submission_status_enum (8), catalog_source_enum (3)
 
 ### Key Schema Principles
 - All monetary values: NUMERIC(10,2) — never floating point
 - Soft-delete on all tables (deleted_at + is_active) — no physical DELETEs
-- Append-only audit tables for all state transitions
+- Append-only audit tables for all state transitions (order_status_history, epcs_audit_log, phase_advancement_history)
+- TOTP secrets encrypted with AES-256-GCM at rest
 - Supabase Vault for all pharmacy credentials (UUID references, never plaintext)
 - Foreign keys enforced everywhere
+- Hierarchical catalog: ingredients → salt_forms → formulations → pharmacy_formulations
 
 ---
 
@@ -309,9 +323,12 @@ All cron endpoints are protected by CRON_SECRET bearer token authentication.
 | Data at rest | AES-256 encryption (Supabase-managed) |
 | Data in transit | TLS 1.2+ on all connections |
 | Credential storage | Supabase Vault (AES-256-GCM) — never plaintext |
-| Access control | Row-Level Security on all 17 tables |
+| Access control | Row-Level Security on all 33 tables |
+| EPCS 2FA | TOTP authenticator (DEA 21 CFR 1311) for controlled substances |
+| TOTP secrets | AES-256-GCM encrypted at rest (not plaintext) |
 | Session management | 30-min idle timeout, 12-hour absolute max |
-| Audit trail | Append-only tables for all state transitions |
+| Audit trail | Append-only tables for all state transitions + EPCS audit log |
+| Drug interactions | Known interaction pairs checked at review with severity alerts |
 | PHI in Stripe | ZERO — metadata contains order_id only |
 | PHI in SMS | Minimal — first name + URL only, never medication names |
 | PHI in monitoring | Sentry beforeSend scrubs all PHI before transmission |
@@ -343,18 +360,21 @@ All cron endpoints are protected by CRON_SECRET bearer token authentication.
 
 | Metric | Value |
 |--------|-------|
-| PostgreSQL tables | 17 |
+| PostgreSQL tables | 33 |
 | Enum types | 10 |
 | Order statuses | 23 (with 47 valid transitions) |
 | Hard constraints | 16 (HC-01 through HC-16) |
 | SLA types | 10 |
 | Integration tiers | 4 |
 | Cron jobs | 9 |
-| Build phases completed | 15 (Phases 14-16 in backlog) |
-| Work orders completed | 81 (76 completed, 5 in backlog) |
+| Build phases completed | 19 |
+| Work orders completed | 86 |
 | Applications | 3 |
 | User roles | 4 (+ patient anonymous) |
 | Webhook sources | 4 (Stripe, Documo, Twilio, Pharmacy APIs) |
+| Drug interaction pairs | 6 (seeded, expandable) |
+| Provider favorites | Per-provider saved prescription configs |
+| Protocol templates | Per-clinic multi-medication bundles |
 | Environment variables | 40+ across 8 categories |
 
 ---

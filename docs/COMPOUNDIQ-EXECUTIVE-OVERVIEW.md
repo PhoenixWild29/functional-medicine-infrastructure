@@ -46,13 +46,14 @@ Today, prescriptions are faxed to the pharmacy. Then everyone waits. There is no
 
 ### For the Medical Assistant (30 seconds per prescription)
 
-1. **Select patient & provider** — Search for the patient by name. The provider auto-selects if the clinic has only one. Both stay pinned at the top of every screen.
-2. **Search** — The patient's shipping state auto-fills. Search for the medication. See all licensed pharmacies with pricing.
-3. **Price** — Select a pharmacy, set the markup with one click. See the margin instantly.
-4. **Add more or send** — "Add & Search Another" to add more prescriptions for the same patient, or "Review & Send" to batch review everything. For a 3-medication visit, this takes about 45 seconds total.
-5. **Or save as draft** — If the provider isn't available, the MA saves the prescription as a draft. The provider logs in later, reviews from the Drafts tab, and signs with one tap.
-6. **Sign & send** — The provider signs once — a single signature covers all prescriptions in the session. Payment links fire automatically.
-7. **Done** — SMS reminders at 24 and 48 hours if the patient hasn't paid. Auto-cancellation at 72 hours. No follow-up needed.
+1. **Select patient & provider** — Search for the patient by name. The provider auto-selects if the clinic has only one. Both stay pinned at the top of every screen via a persistent session banner.
+2. **Configure medication** — Search by ingredient name. The system reveals options progressively: salt form (Cypionate vs Enanthate), formulation (concentration, oil base), then dose, frequency, timing, and duration. The structured sig builder auto-generates prescription directions with unit conversion (mg, mL, and syringe units for injectables). For titration protocols (like LDN), toggle Titration mode and enter start dose, increment, interval, and target — the sig generates automatically. For cycling protocols (like Thymosin Alpha-1), toggle Cycling mode with on/off day patterns.
+3. **Or use shortcuts** — Load a saved Provider Favorite in one click (pre-fills the entire prescription), or apply a Clinic Protocol Template to add multiple medications to the session at once (e.g., "Weight Loss Protocol" adds Semaglutide + BPC-157 + Lipo-Mino in one click).
+4. **Price** — Select a pharmacy (filtered by patient's state), set the markup with one click. See the margin instantly.
+5. **Add more or send** — "Add & Search Another" to add more prescriptions for the same patient, or "Review & Send" to batch review everything. For a 3-medication visit, this takes about 45 seconds total.
+6. **Or save as draft** — If the provider isn't available, the MA saves the prescription as a draft. The provider logs in later, reviews from the Drafts tab, and signs with one tap.
+7. **Review & sign** — The batch review page shows all prescriptions with drug interaction alerts if any known conflicts exist. The provider signs once — a single signature covers all prescriptions in the session. If any prescription contains a controlled substance (DEA Schedule II-V), EPCS two-factor authentication is required at the point of signing (TOTP authenticator app on a separate device, per DEA 21 CFR 1311).
+8. **Done** — Payment links fire automatically. SMS reminders at 24 and 48 hours if the patient hasn't paid. Auto-cancellation at 72 hours. No follow-up needed.
 
 ### For the Patient (60 seconds)
 
@@ -155,7 +156,7 @@ CompoundIQ handles protected health information (PHI) and is designed for HIPAA-
 | **E-Fax Services** | Send faxes | No intelligence, no tracking, no escalation, no payment |
 | **CompoundIQ** | End-to-end: search, price, pay, route, track, deliver | — |
 
-**No platform today provides:** cross-pharmacy search with state licensing compliance + integrated margin calculation + patient SMS checkout with multi-party payment routing + intelligent prescription routing across 4 submission methods + unified order lifecycle tracking with SLA enforcement.
+**No platform today provides:** cross-pharmacy search with state licensing compliance + cascading dropdown prescription builder with structured sig generation + titration and cycling protocol support + provider favorites and clinic protocol templates + EPCS two-factor authentication for controlled substances + drug interaction alerts + integrated margin calculation + patient SMS checkout with multi-party payment routing + intelligent prescription routing across 4 submission methods + unified order lifecycle tracking with SLA enforcement.
 
 ---
 
@@ -163,13 +164,16 @@ CompoundIQ handles protected health information (PHI) and is designed for HIPAA-
 
 | Milestone | Status |
 |-----------|--------|
-| Platform built | 15 phases, 81 work orders (76 completed, 5 in backlog) |
+| Platform built | 19 phases, 86 work orders (86 completed) |
 | All 3 applications functional | Clinic App, Ops Dashboard, Patient Checkout |
-| QA validated | 29 automated test checks pass across all applications |
-| Externally tested | Claude Cowork browser QA validated all screens |
-| Documentation | 26 specification documents fully updated in software factory |
+| Cascading prescription builder | Hierarchical catalog, structured sig, titration/cycling |
+| Provider speed features | Favorites (one-click reorder), protocol templates (multi-med bundles) |
+| Regulatory compliance | EPCS 2FA for controlled substances, drug interaction alerts |
+| QA validated | 50+ automated test checks pass across all applications |
+| Externally tested | Claude Cowork browser QA validated all phases |
+| Documentation | 60+ specification documents organized in software factory |
 | POC deployed | Live on Vercel, accessible for demonstration |
-| Security audit | All dependency vulnerabilities resolved (0 remaining) |
+| Security audit | AES-256 encrypted TOTP secrets, RLS on all tables |
 
 ---
 
@@ -196,10 +200,10 @@ CompoundIQ handles protected health information (PHI) and is designed for HIPAA-
 ## Key Talking Points
 
 **For investors:**
-> "CompoundIQ is the Expedia for compounding pharmacies — a B2B2C infrastructure layer that captures a 15% fee on every prescription transaction. The 4-tier adapter strategy means we can onboard any pharmacy regardless of their technology, and the LifeFile integration alone unlocks the largest compounding pharmacy network in the country."
+> "CompoundIQ is the Expedia for compounding pharmacies — a B2B2C infrastructure layer that captures a 15% fee on every prescription transaction. The 4-tier adapter strategy means we can onboard any pharmacy regardless of their technology, and the LifeFile integration alone unlocks the largest compounding pharmacy network in the country. Our cascading prescription builder with titration/cycling protocols, provider favorites, and clinic protocol templates is a market-first — no competitor has structured sig generation or one-click multi-medication bundles."
 
 **For clinic partners:**
-> "Your medical assistant searches, prices, and sends a payment link in under 30 seconds. The patient pays from their phone. You earn margin on every fill with full transparency. And you never touch a fax machine again."
+> "Your medical assistant configures a prescription in 30 seconds with cascading dropdowns — ingredient, form, dose, frequency, done. Save it as a favorite for one-click reorder. Build protocol templates that add 3-5 medications in a single click. The provider signs once for the whole batch. The patient pays from their phone. You earn margin on every fill with full transparency. And you never touch a fax machine again."
 
 **For pharmacy partners:**
 > "You receive structured, error-free orders instead of handwritten faxes. Real-time status updates flow back to the clinic automatically. And our standardized API spec means you can integrate once and receive orders from every clinic on the platform."

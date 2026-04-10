@@ -1,6 +1,6 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 1.0 | **Date:** April 3, 2026
+**Version:** 2.0 | **Date:** April 9, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
 
@@ -122,44 +122,71 @@
 9. Note the provider **Dr. Sarah Chen** is auto-selected
 10. Click **"Continue to Pharmacy Search"**
 
-### 3C — Pharmacy Search
+### 3C — Quick Actions: Favorites + Protocols (New in Phase 18)
 
 11. **Point out the session banner** at the top — Alex Demo + Dr. Sarah Chen pinned
-12. **Point out** the Patient Shipping State is already **TX** (auto-filled from Alex Demo's record)
-13. Type **"Sema"** in the medication search — select **Semaglutide**
-14. **Point out the pharmacy result card** (Strive Pharmacy, $150, Fax tier badge)
+12. **Point out the Quick Actions Panel** with two tabs: **Favorites** and **Protocols**
+13. **Favorites tab** — show the 4+ saved favorites (Semaglutide 0.5mg weekly, Standard TRT, LDN Starter, BPC-157). Note the titration/cycling badges on relevant favorites.
 
-> "The system only shows pharmacies licensed in the patient's state. Compliance at the query level — an unlicensed pharmacy never appears."
+> "Provider favorites let you reorder common prescriptions in one click. No searching, no configuring — just click and go straight to pricing."
 
-15. Click **Strive Pharmacy** to select it
+14. Click **Protocols tab** — show the protocol templates (Weight Loss Protocol, Mold/MCAS Support)
+15. Click **Weight Loss Protocol** to expand — show the 3 medications with phase labels and sig text
+16. **Point out** the "Load 3 Medications into Session" button
 
-### 3D — Dynamic Margin Builder + Multi-Prescription
+> "Protocol templates are a market-first feature. One click adds an entire multi-medication protocol to the session. The provider reviews and adjusts per patient before signing."
 
-16. **Point out the Margin Builder** — Wholesale: $150 (locked), multiplier buttons, Sig field
-17. Click **2x multiplier** — retail updates to $300, margin 50%, platform fee $22.50, clinic payout $127.50
+### 3D — Cascading Prescription Builder (New in Phase 17)
 
-> "Full transparency. The clinic sees exactly what they earn before committing."
+17. Go back to Configure Prescription. Type **"Sema"** in the medication search — select **Semaglutide**
+18. **Point out** the cascading dropdown flow: ingredient → salt form (auto-skips if only one) → formulation card (Semaglutide 5mg/mL Injectable)
+19. Select the formulation → **Point out the Structured Sig Builder**:
+    - Dose amount + unit + frequency dropdowns
+    - Timing dropdown (In the morning, At bedtime, etc.)
+    - Duration dropdown (For 30 days, Ongoing, etc.)
+    - Mode toggles: **Standard** / **Titration** / **Cycling**
+20. Set dose: **10 units**, frequency: **Once weekly**, timing: **In the morning**
+21. **Point out** the auto-generated sig: "Inject 10 units (0.10mL / 0.50mg) subcutaneous once weekly in the morning"
 
-18. Enter Sig: **"Take 0.5mg subcutaneous injection weekly"**
-19. **Point out the three action buttons:**
+> "The sig generates automatically with full unit conversion — mg, mL, and syringe units for injectables. No manual math. NCPDP-compliant with a 1,000-character limit counter."
+
+22. **Show Titration mode** — click "Titration" toggle. Point out the amber panel with Start/Increment/Interval/Target fields
+
+> "For titration protocols like LDN, the provider sets start dose, increment, interval, and target. The sig generates: 'Take 0.1mL by mouth at bedtime. Titrate up by 0.1mL every 3-4 days as tolerated up to 0.5mL.' No competitor has this."
+
+23. Click back to **Standard** mode. Select **Strive Pharmacy** in the Pharmacy & Pricing section
+24. Select quantity, refills. **Point out the star button** next to "Continue — Set Retail Price"
+
+> "The star saves this configuration as a provider favorite for one-click reorder next time."
+
+25. Click **"Continue — Set Retail Price"**
+
+### 3E — Dynamic Margin Builder + Multi-Prescription
+
+26. **Point out the Margin Builder** — Wholesale: $150 (locked), multiplier buttons, Sig field pre-filled
+27. Click **2x multiplier** — retail updates to $300, margin 50%, platform fee $22.50, clinic payout $127.50
+
+> "Full transparency. The clinic sees exactly what they earn before committing. The sig is already pre-filled from the builder."
+
+28. **Point out the three action buttons:**
     - **"Add & Search Another"** — add this prescription and search for another medication
     - **"Review & Send"** — go to batch review with all prescriptions
     - **"Save as Draft — Provider Signs Later"** — save without signing (WO-77)
 
-> "The MA has three choices. They can add more prescriptions for the same patient, go straight to review, or save it as a draft for the provider to sign later. Let me show the multi-prescription flow first."
+> "The MA has three choices. They can add more prescriptions for the same patient, go straight to review, or save it as a draft for the provider to sign later."
 
-20. Click **"Add & Search Another"**
-21. **Point out** — back on pharmacy search, session banner shows **"1 prescription in this session"**
+29. Click **"Add & Search Another"**
+30. **Point out** — back on configure page, session banner shows **"1 prescription in this session"**
 
-> "The patient and provider context is preserved. The MA can keep adding prescriptions without starting over."
+31. Search for **"Test"** → select **Testosterone** → **Point out DEA Schedule 3 warning banner**
+32. Select **Cypionate** salt form → select formulation → set dose + frequency
+33. Select Strive Pharmacy, set retail price, click **"Review & Send (2)"**
 
-22. Search for **"Testo"** → select **Testosterone** → select **Strive Pharmacy**
-23. Click **1.5x multiplier**, enter Sig: **"Apply topical cream daily"**
-24. Click **"Review & Send (2)"** — note the button shows the count
+### 3F — Batch Review, Interaction Alerts & EPCS 2FA (New in Phase 19)
 
-### 3E — Batch Review & Sign
-
-25. **Point out the batch review page:**
+34. **Point out the batch review page:**
+    - **Red banner: "Controlled Substance — EPCS 2FA Required"** (Testosterone is DEA Schedule 3)
+    - **Drug Interaction Alerts section** — if Ketotifen + Ketamine are both in session, an amber WARNING alert appears with clinical guidance
     - Session banner with "2 prescriptions in this session"
     - Two prescription cards with medication, pharmacy, pricing, and sig for each
     - Combined totals (total retail, platform fee, clinic payout)
@@ -167,10 +194,20 @@
     - "+ Add Another Prescription" button
     - Single provider signature pad
 
-> "The provider reviews all prescriptions at once and signs once. One signature covers everything. The combined totals show the full financial picture for this patient visit."
+> "The system automatically detects controlled substances and drug interactions. The red banner tells the provider that 2FA will be required at signing. The interaction alerts show known conflicts with clinical guidance — severity-colored: red for critical, amber for warning, blue for informational."
 
-26. **Sign** on the signature pad
-27. Click **"Sign & Send All 2 Prescriptions"**
+35. **Sign** on the signature pad
+36. Click **"Sign & Send All 2 Prescriptions"** → Click **"Confirm & Send"**
+37. **Point out the EPCS 2FA modal** that appears:
+    - Red header: "EPCS Two-Factor Authentication Required — DEA 21 CFR 1311"
+    - Lists controlled substances with DEA schedule badges
+    - QR code for authenticator app setup (first time only)
+    - 6-digit code input field
+    - "Verify & Sign" button
+
+> "This is DEA-compliant two-factor authentication. The provider scans the QR code with Google Authenticator or Authy on their phone, then enters the 6-digit code. The system verifies the code, logs the event to an immutable audit trail, and only then sends the prescription. No competitor in the compounding pharmacy space has this."
+
+38. **Cancel** the 2FA modal (for demo purposes, or verify with an actual TOTP code)
 28. **Point out the confirmation dialog** — total amount, prescription count, patient name, phone
 29. Click **"Confirm & Send"** — watch the progress messages
 30. Verify redirect to dashboard — both orders visible as "Awaiting Payment"

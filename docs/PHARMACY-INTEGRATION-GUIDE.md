@@ -1,6 +1,6 @@
 # CompoundIQ — Pharmacy Integration Guide
 
-**Version:** 1.0 | **Date:** April 5, 2026
+**Version:** 2.0 | **Date:** April 9, 2026
 **Audience:** Pharmacy technical teams, integration engineers, API developers
 
 ---
@@ -53,13 +53,19 @@ When CompoundIQ submits an order to your API, the payload contains:
 {
   "order_id": "uuid",
   "prescription": {
-    "medication_name": "Semaglutide",
-    "form": "Injectable",
-    "dose": "0.5mg/0.5mL",
-    "strength": "0.5mg",
+    "medication_name": "Semaglutide 5mg/mL Injectable",
+    "ingredient": "Semaglutide",
+    "salt_form": null,
+    "formulation": "Semaglutide 5mg/mL Injectable",
+    "dosage_form": "Injectable Solution",
+    "route": "Subcutaneous",
+    "dose": "10 units",
+    "strength": "5mg/mL",
     "quantity": 1,
-    "sig": "Take 0.5mg subcutaneous injection weekly",
-    "refills": 0
+    "sig": "Inject 10 units (0.10mL / 0.50mg) subcutaneous once weekly in the morning",
+    "sig_mode": "standard",
+    "refills": 0,
+    "dea_schedule": null
   },
   "patient": {
     "first_name": "Alex",
@@ -77,10 +83,17 @@ When CompoundIQ submits an order to your API, the payload contains:
     "name": "Dr. Sarah Chen",
     "npi": "1234567890",
     "dea_number": "AC1234567",
-    "clinic_name": "Sunrise Functional Medicine"
+    "clinic_name": "Sunrise Functional Medicine",
+    "epcs_verified": true
   },
-  "submitted_at": "2026-04-05T14:30:00.000Z"
+  "submitted_at": "2026-04-09T14:30:00.000Z"
 }
+```
+
+**Notes on the payload:**
+- `sig` is a structured, auto-generated string (NCPDP-compliant, max 1,000 characters) that includes dose with unit conversions, route, frequency, timing, and duration
+- `sig_mode` indicates whether this is a `standard`, `titration`, or `cycling` prescription. Titration sigs include dose escalation instructions; cycling sigs include on/off day patterns.
+- `dea_schedule` is `null` for non-controlled substances, or `2`–`5` for DEA-scheduled compounds. Orders with `dea_schedule >= 2` have been verified via EPCS two-factor authentication (TOTP) before submission, per DEA 21 CFR 1311. The `epcs_verified` flag on the provider confirms 2FA was completed.
 ```
 
 ### Webhook Events — Status Updates From Your Pharmacy
