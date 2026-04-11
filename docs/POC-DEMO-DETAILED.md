@@ -169,10 +169,10 @@
 
 ### 3E — Dynamic Margin Builder + Multi-Prescription
 
-26. **Point out the Margin Builder** — Wholesale: $150 (locked), multiplier buttons, Sig field pre-filled
-27. Click **2x multiplier** — retail updates to $300, margin 50%, platform fee $22.50, clinic payout $127.50
+26. **Point out the Margin Builder** — Wholesale: $150 (locked), retail price **pre-populated at $300** from the clinic's default markup, multiplier buttons, Sig field pre-filled
+27. Click **2x multiplier** — retail stays at $300, margin 50%, platform fee $22.50, clinic payout $127.50
 
-> "Full transparency. The clinic sees exactly what they earn before committing. The sig is already pre-filled from the builder."
+> "Full transparency. The retail price is pre-filled from the clinic's default markup setting, so the MA never types a number unless they want to override. Clicking 2x just confirms the default. The clinic sees exactly what they earn before committing. The sig is already pre-filled from the builder."
 
 28. **Point out the three action buttons:**
     - **"Add & Search Another"** — add this prescription and search for another medication
@@ -192,7 +192,7 @@
 
 34. **Point out the batch review page:**
     - **Red banner: "Controlled Substance — EPCS 2FA Required"** (Testosterone is DEA Schedule 3)
-    - **Drug Interaction Alerts section** — if Ketotifen + Ketamine are both in session, an amber WARNING alert appears with clinical guidance
+    - **Drug Interaction Alerts section** — the alerts are dynamic based on the medications in the current session. With Semaglutide + Testosterone (this walkthrough), an INFO-severity alert appears with clinical guidance. With Ketotifen + Ketamine (a different combination), an amber WARNING alert appears. The exact alert text depends on which pairs are seeded in the `drug_interactions` table.
     - Session banner with "2 prescriptions in this session"
     - Two prescription cards with medication, pharmacy, pricing, and sig for each
     - Combined totals (total retail, platform fee, clinic payout)
@@ -236,6 +236,8 @@
 37. **Sign out** of clinic admin
 38. **Log in as provider:** `dr.chen@sunrise-clinic.com` / `POCProvider2026!`
 39. Click the **"Drafts"** tab on the dashboard
+
+> "The Drafts tab lives on the shared dashboard and is visible to both clinic_admin and provider roles — anyone in the clinic can see what's pending signature, not just providers. The provider just happens to be the one who can act on it."
 40. Click on the draft order — **point out the amber "Awaiting Provider Signature" banner**
 41. Click **"Review & Sign This Prescription"**
 
