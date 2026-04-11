@@ -57,8 +57,13 @@ export default async function MarginPage({ searchParams }: PageProps) {
 
   const supabase = createServiceClient()
 
-  // WO-83: Support both catalog-based (old) and formulation-based (new) paths
-  let catalogItem: { item_id: string; medication_name: string; form: string; dose: string; wholesale_price: number; dea_schedule: number | null } | null = null
+  // WO-83/87: Support both catalog-based (old) and formulation-based (new) paths.
+  // catalogItem.item_id is now ALWAYS a real catalog.item_id when present (legacy
+  // flow). The formulation path keeps its formulation_id in resolvedFormulationId
+  // and leaves catalog item_id null so the downstream form posts the right ID
+  // to /api/orders.
+  let catalogItem: { item_id: string | null; medication_name: string; form: string; dose: string; wholesale_price: number; dea_schedule: number | null } | null = null
+  let resolvedFormulationId: string | null = null
 
   if (formulationId) {
     // New path: fetch from formulations + pharmacy_formulations
@@ -81,8 +86,9 @@ export default async function MarginPage({ searchParams }: PageProps) {
 
     if (formResult.data && priceResult.data) {
       const df = formResult.data.dosage_forms as Record<string, string> | null
+      resolvedFormulationId = formResult.data.formulation_id
       catalogItem = {
-        item_id: formResult.data.formulation_id,
+        item_id: null,
         medication_name: formResult.data.name,
         form: df?.name ?? '',
         dose: presetDose || formResult.data.concentration || '',
@@ -168,6 +174,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
       <MarginBuilderForm
         pharmacyId={pharmacyId}
         itemId={catalogItem.item_id}
+        formulationId={resolvedFormulationId}
         pharmacyName={pharmacy.name}
         medicationName={catalogItem.medication_name}
         form={catalogItem.form}

@@ -45,7 +45,10 @@ export interface SessionPrescription {
   id:              string   // client-side UUID for list key
   pharmacyId:      string
   pharmacyName:    string
-  itemId:          string
+  // WO-87: itemId is the legacy flat catalog ID; formulationId is the V3.0
+  // hierarchical catalog ID. Exactly one must be set per prescription.
+  itemId:          string | null
+  formulationId:   string | null
   medicationName:  string
   form:            string
   dose:            string

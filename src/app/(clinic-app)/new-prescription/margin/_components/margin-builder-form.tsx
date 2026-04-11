@@ -47,9 +47,12 @@ function defaultRetailCents(wholesaleCents: number, markupPct: number | null): n
 }
 
 // ── Props ─────────────────────────────────────────────────────
+// WO-87: itemId is the legacy flat catalog ID; formulationId is the V3.0
+// hierarchical catalog ID. Exactly one of the two will be set, never both.
 interface Props {
   pharmacyId:       string
-  itemId:           string
+  itemId:           string | null
+  formulationId:    string | null
   pharmacyName:     string
   medicationName:   string
   form:             string
@@ -71,6 +74,7 @@ const MULTIPLIERS = [
 export function MarginBuilderForm({
   pharmacyId,
   itemId,
+  formulationId,
   pharmacyName,
   medicationName,
   form,
@@ -146,6 +150,7 @@ export function MarginBuilderForm({
       pharmacyId,
       pharmacyName,
       itemId,
+      formulationId,
       medicationName,
       form,
       dose,
@@ -188,7 +193,10 @@ export function MarginBuilderForm({
         body: JSON.stringify({
           patientId:     rxSession.patient.patient_id,
           providerId:    rxSession.provider.provider_id,
+          // WO-87: send whichever ID this rx came from. /api/orders requires
+          // exactly one and rejects requests that set both or neither.
           catalogItemId: itemId,
+          formulationId,
           pharmacyId,
           retailCents,
           sigText:       sigTrimmed,

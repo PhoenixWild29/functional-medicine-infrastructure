@@ -150,9 +150,18 @@ export async function POST(
       .maybeSingle(),
   ])
 
+  // WO-87 (B1 hotfix): catalog_item_id is now nullable for V3.0 formulation
+  // orders. dea_schedule is always present in the medication_snapshot
+  // (populated at order creation), so the snapshot is the authoritative
+  // source post-creation regardless of which catalog backed it.
   const catalog = catalogItemId
     ? (await supabase.from('catalog').select('dea_schedule').eq('item_id', catalogItemId).maybeSingle()).data
     : null
+
+  const snapshotDeaSchedule =
+    typeof (order.medication_snapshot as Record<string, unknown> | null)?.['dea_schedule'] === 'number'
+      ? ((order.medication_snapshot as Record<string, number>)['dea_schedule'] as number)
+      : 0
 
   const provider = providerResult.data
   const pharmacy = pharmacyResult.data
@@ -163,7 +172,7 @@ export async function POST(
   const stripeActive = clinic?.stripe_connect_status === 'ACTIVE'
   const pharmacyOk   = !!pharmacy && pharmacy.is_active && !pharmacy.deleted_at && pharmacy.pharmacy_status !== 'BANNED'
   const licenseOk    = !!licenseResult.data
-  const deaSchedule  = catalog?.dea_schedule ?? 0
+  const deaSchedule  = catalog?.dea_schedule ?? snapshotDeaSchedule
   const deaOk        = deaSchedule < 2 || pharmacy?.integration_tier === 'TIER_4_FAX'
   // REQ-OAS-005, check 4 (retail >= wholesale) is enforced by DB CHECK at order creation
 

@@ -37,14 +37,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }
 
+  // WO-87 (B1 hotfix): Accept EITHER a legacy catalog item OR a V3.0
+  // formulation. The cascading prescription builder produces a
+  // formulationId; the legacy pharmacy-search flow produces a
+  // catalogItemId. Exactly one must be set.
   let body: {
-    patientId:     string
-    providerId:    string
-    catalogItemId: string
-    pharmacyId:    string
-    retailCents:   number
-    sigText:       string
-    patientState:  string
+    patientId:      string
+    providerId:     string
+    catalogItemId?: string | null
+    formulationId?: string | null
+    pharmacyId:     string
+    retailCents:    number
+    sigText:        string
+    patientState:   string
   }
 
   try {
@@ -53,10 +58,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { patientId, providerId, catalogItemId, pharmacyId, retailCents, sigText, patientState } = body
+  const { patientId, providerId, catalogItemId, formulationId, pharmacyId, retailCents, sigText, patientState } = body
 
-  if (!patientId || !providerId || !catalogItemId || !pharmacyId || !sigText || !patientState) {
+  if (!patientId || !providerId || !pharmacyId || !sigText || !patientState) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+  }
+
+  const hasCatalog     = typeof catalogItemId === 'string' && catalogItemId.length > 0
+  const hasFormulation = typeof formulationId === 'string' && formulationId.length > 0
+  if (hasCatalog === hasFormulation) {
+    return NextResponse.json(
+      { error: 'Exactly one of catalogItemId or formulationId is required' },
+      { status: 400 }
+    )
   }
 
   // NB-03: explicit typeof guard before Number.isInteger to catch string "500" vs number 500
@@ -75,23 +89,93 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const supabase = createServiceClient()
 
-  // Fetch catalog item — scoped to the pharmacy to prevent spoofing
-  const { data: catalogItem, error: catalogError } = await supabase
-    .from('catalog')
-    .select('item_id, medication_name, form, dose, wholesale_price, dea_schedule')
-    .eq('item_id', catalogItemId)
-    .eq('pharmacy_id', pharmacyId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .maybeSingle()
+  // ── Resolve medication source ─────────────────────────────────
+  // WO-87 (B1 hotfix): branch on which ID was provided. Both branches
+  // produce the same `medicationItem` shape so the rest of the
+  // handler is path-agnostic.
+  type MedicationItem = {
+    medication_name: string
+    form:            string
+    dose:            string
+    wholesale_price: number
+    dea_schedule:    number | null
+  }
 
-  if (catalogError || !catalogItem) {
-    console.error('[orders] catalog fetch failed:', catalogError?.message)
-    return NextResponse.json({ error: 'Catalog item not found' }, { status: 404 })
+  let medicationItem: MedicationItem | null = null
+
+  if (hasCatalog) {
+    // Legacy flat catalog — scoped to the pharmacy to prevent spoofing
+    const { data, error } = await supabase
+      .from('catalog')
+      .select('item_id, medication_name, form, dose, wholesale_price, dea_schedule')
+      .eq('item_id', catalogItemId as string)
+      .eq('pharmacy_id', pharmacyId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (error || !data) {
+      console.error('[orders] catalog fetch failed:', error?.message)
+      return NextResponse.json({ error: 'Catalog item not found' }, { status: 404 })
+    }
+    medicationItem = data
+  } else {
+    // V3.0 hierarchical catalog — formulations + pharmacy_formulations
+    const [formResult, priceResult] = await Promise.all([
+      supabase
+        .from('formulations')
+        .select('formulation_id, name, concentration, dosage_forms(name)')
+        .eq('formulation_id', formulationId as string)
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .maybeSingle(),
+      supabase
+        .from('pharmacy_formulations')
+        .select('wholesale_price')
+        .eq('formulation_id', formulationId as string)
+        .eq('pharmacy_id', pharmacyId)
+        .eq('is_available', true)
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .maybeSingle(),
+    ])
+
+    if (formResult.error || !formResult.data || priceResult.error || !priceResult.data) {
+      console.error(
+        '[orders] formulation fetch failed:',
+        formResult.error?.message ?? priceResult.error?.message ?? 'not found'
+      )
+      return NextResponse.json({ error: 'Formulation not found for this pharmacy' }, { status: 404 })
+    }
+
+    // Pull dea_schedule from the most prevalent ingredient (highest among any).
+    // For the POC, formulations are single-ingredient; we walk the join table to
+    // get the controlled-substance schedule deterministically.
+    const { data: ingredientRows } = await supabase
+      .from('formulation_ingredients')
+      .select('ingredients(dea_schedule)')
+      .eq('formulation_id', formulationId as string)
+
+    let deaSchedule: number | null = null
+    for (const row of ingredientRows ?? []) {
+      const ing = row.ingredients as { dea_schedule: number | null } | null
+      if (ing?.dea_schedule != null && (deaSchedule == null || ing.dea_schedule > deaSchedule)) {
+        deaSchedule = ing.dea_schedule
+      }
+    }
+
+    const df = formResult.data.dosage_forms as { name: string } | null
+    medicationItem = {
+      medication_name: formResult.data.name,
+      form:            df?.name ?? '',
+      dose:            formResult.data.concentration ?? '',
+      wholesale_price: priceResult.data.wholesale_price,
+      dea_schedule:    deaSchedule,
+    }
   }
 
   // Validate retail >= wholesale (belt + suspenders over the DB CHECK constraint)
-  const wholesaleCents = Math.round(catalogItem.wholesale_price * 100)
+  const wholesaleCents = Math.round(medicationItem.wholesale_price * 100)
   if (retailCents < wholesaleCents) {
     return NextResponse.json(
       { error: `retail price must be >= wholesale ($${(wholesaleCents / 100).toFixed(2)})` },
@@ -169,12 +253,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Build snapshot values (frozen at AWAITING_PAYMENT by trigger)
   const medicationSnapshot = {
-    item_id:         catalogItem.item_id,
-    medication_name: catalogItem.medication_name,
-    form:            catalogItem.form,
-    dose:            catalogItem.dose,
+    item_id:         hasCatalog ? catalogItemId : null,
+    formulation_id:  hasFormulation ? formulationId : null,
+    medication_name: medicationItem.medication_name,
+    form:            medicationItem.form,
+    dose:            medicationItem.dose,
     wholesale_price: wholesalePrice,
-    dea_schedule:    catalogItem.dea_schedule ?? 0,
+    dea_schedule:    medicationItem.dea_schedule ?? 0,
   }
 
   const pharmacySnapshot = {
@@ -190,7 +275,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .insert({
       patient_id:               patientId,
       provider_id:              providerId,
-      catalog_item_id:          catalogItemId,
+      catalog_item_id:          hasCatalog ? (catalogItemId as string) : null,
+      formulation_id:           hasFormulation ? (formulationId as string) : null,
       clinic_id:                clinicId,
       pharmacy_id:              pharmacyId,
       status:                   'DRAFT',

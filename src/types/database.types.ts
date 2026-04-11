@@ -1037,13 +1037,14 @@ export type Database = {
         Row: {
           adapter_submission_id: string | null
           carrier: string | null
-          catalog_item_id: string
+          catalog_item_id: string | null
           clinic_id: string
           created_at: string
           deleted_at: string | null
           documo_fax_id: string | null
           estimated_completion_at: string | null
           fax_attempt_count: number
+          formulation_id: string | null
           is_active: boolean
           locked_at: string | null
           medication_snapshot: Json | null
@@ -1075,13 +1076,14 @@ export type Database = {
         Insert: {
           adapter_submission_id?: string | null
           carrier?: string | null
-          catalog_item_id: string
+          catalog_item_id?: string | null
           clinic_id: string
           created_at?: string
           deleted_at?: string | null
           documo_fax_id?: string | null
           estimated_completion_at?: string | null
           fax_attempt_count?: number
+          formulation_id?: string | null
           is_active?: boolean
           locked_at?: string | null
           medication_snapshot?: Json | null
@@ -1113,13 +1115,14 @@ export type Database = {
         Update: {
           adapter_submission_id?: string | null
           carrier?: string | null
-          catalog_item_id?: string
+          catalog_item_id?: string | null
           clinic_id?: string
           created_at?: string
           deleted_at?: string | null
           documo_fax_id?: string | null
           estimated_completion_at?: string | null
           fax_attempt_count?: number
+          formulation_id?: string | null
           is_active?: boolean
           locked_at?: string | null
           medication_snapshot?: Json | null

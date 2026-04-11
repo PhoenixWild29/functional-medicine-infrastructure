@@ -158,7 +158,10 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
       session.addPrescription({
         pharmacyId: item.pharmacies.pharmacy_id,
         pharmacyName: item.pharmacies.name,
-        itemId: item.formulation_id,
+        // WO-87: protocol items come from the V3.0 hierarchical catalog,
+        // so they carry a formulationId, not a legacy catalog itemId.
+        itemId: null,
+        formulationId: item.formulation_id,
         medicationName: formName,
         form: item.formulations.dosage_forms?.name ?? '',
         dose: doseText,

@@ -109,7 +109,9 @@ export function BatchReviewForm() {
           body: JSON.stringify({
             patientId:     patient.patient_id,
             providerId:    provider.provider_id,
+            // WO-87: send whichever ID this rx came from (catalog or formulation)
             catalogItemId: rx.itemId,
+            formulationId: rx.formulationId,
             pharmacyId:    rx.pharmacyId,
             retailCents:   rx.retailCents,
             sigText:       rx.sigText,
