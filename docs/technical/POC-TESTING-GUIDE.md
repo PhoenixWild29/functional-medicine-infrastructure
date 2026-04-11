@@ -31,7 +31,7 @@ All accounts below are pre-configured test accounts for the POC environment.
 
 | Role | Email | Password | What they can do |
 |------|-------|----------|-----------------|
-| **Clinic Admin** | `admin@sunrise-clinic.com` | `POCAdmin2026!` | Full access — orders, settings, Stripe setup |
+| **Clinic Admin** | `admin@sunrise-clinic.com` | `POCClinic2026!` | Full access — orders, settings, Stripe setup |
 | **Provider (Doctor)** | `dr.chen@sunrise-clinic.com` | `POCProvider2026!` | Create prescriptions, view orders |
 | **Medical Assistant** | `ma@sunrise-clinic.com` | `POCMA2026!` | View orders, assist with prescriptions |
 
@@ -61,7 +61,7 @@ For ZIP code (if prompted): use any 5-digit number (e.g. `90210`).
 
 ## Surface 1 — Clinic App
 
-**Login as:** `admin@sunrise-clinic.com` / `POCAdmin2026!`
+**Login as:** `admin@sunrise-clinic.com` / `POCClinic2026!`
 
 ### Navigation
 The app has a sidebar on the left with three sections:
