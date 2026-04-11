@@ -63,13 +63,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     )
   }
   const [, , password, projectRef, , database] = directMatch
-  const regions = ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2', 'eu-west-1', 'eu-central-1']
+  const regions = ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2', 'ca-central-1', 'eu-west-1', 'eu-central-1', 'ap-southeast-1', 'ap-southeast-2', 'ap-northeast-1', 'sa-east-1']
+  const poolerPrefixes = ['aws-1', 'aws-0']
+
+  const attempts: Array<{ host: string; url: string }> = []
+  for (const region of regions) {
+    for (const prefix of poolerPrefixes) {
+      const host = `${prefix}-${region}.pooler.supabase.com`
+      attempts.push({
+        host,
+        url: `postgresql://postgres.${projectRef}:${password}@${host}:6543/${database}`,
+      })
+    }
+  }
 
   let lastError: string | null = null
-  for (const region of regions) {
-    const poolerUrl =
-      `postgresql://postgres.${projectRef}:${password}` +
-      `@aws-0-${region}.pooler.supabase.com:6543/${database}`
+  for (const { host, url: poolerUrl } of attempts) {
 
     const client = new Client({
       connectionString: poolerUrl,
@@ -93,11 +102,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({
         ok: true,
         ran_at: new Date().toISOString(),
-        region,
+        host,
         columns: verify.rows,
       })
     } catch (err) {
-      lastError = err instanceof Error ? `${region}: ${err.message}` : `${region}: ${String(err)}`
+      lastError = err instanceof Error ? `${host}: ${err.message}` : `${host}: ${String(err)}`
       console.error(`[run-migration-87] ${lastError}`)
       await client.end().catch(() => {})
     }
