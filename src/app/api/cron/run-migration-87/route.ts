@@ -1,6 +1,6 @@
 // ============================================================
 // One-shot migration runner — WO-87 (B1 hotfix)
-// POST /api/admin/run-migration-87
+// GET /api/cron/run-migration-87
 // ============================================================
 //
 // TEMPORARY endpoint: applies the orders.formulation_id schema
@@ -40,7 +40,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_formulation_id
   WHERE deleted_at IS NULL AND formulation_id IS NOT NULL;
 `
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env['CRON_SECRET']}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
