@@ -41,6 +41,10 @@
     {
       "path": "/api/cron/screenshot-cleanup",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/poc-credential-sync",
+      "schedule": "0 5 * * *"
     }
   ],
 

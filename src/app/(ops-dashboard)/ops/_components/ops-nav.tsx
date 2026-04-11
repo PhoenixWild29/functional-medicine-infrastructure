@@ -17,6 +17,7 @@ const NAV_TABS = [
   { href: '/ops/adapters', label: 'Adapters'  },
   { href: '/ops/fax',      label: 'Fax Queue' },
   { href: '/ops/catalog',  label: 'Catalog'   },
+  { href: '/ops/demo-tools', label: 'Demo Tools' },
 ] as const
 
 export function OpsNav() {

@@ -26,6 +26,7 @@
 // ⚠️  All data is fake — no real patients, no real credentials
 
 import { createClient } from '@supabase/supabase-js'
+import { POC_CANONICAL_USERS, userMetadataFor } from '../src/lib/poc/canonical-users'
 
 // ============================================================
 // CONFIG
@@ -79,33 +80,17 @@ const IDS = {
 // ============================================================
 // AUTH USERS
 // ============================================================
+//
+// Canonical user list lives in src/lib/poc/canonical-users.ts so the
+// cron route + in-app reset button can share the exact same values.
+// Keep all credential edits there, not here.
 
-const AUTH_USERS = [
-  {
-    email:    'ops@compoundiq-poc.com',
-    password: 'POCAdmin2026!',
-    user_metadata: { app_role: 'ops_admin' },
-    label: 'ops_admin',
-  },
-  {
-    email:    'admin@sunrise-clinic.com',
-    password: 'POCClinic2026!',
-    user_metadata: { app_role: 'clinic_admin', clinic_id: IDS.clinic },
-    label: 'clinic_admin',
-  },
-  {
-    email:    'dr.chen@sunrise-clinic.com',
-    password: 'POCProvider2026!',
-    user_metadata: { app_role: 'provider', clinic_id: IDS.clinic },
-    label: 'provider',
-  },
-  {
-    email:    'ma@sunrise-clinic.com',
-    password: 'POCMA2026!',
-    user_metadata: { app_role: 'medical_assistant', clinic_id: IDS.clinic },
-    label: 'medical_assistant',
-  },
-]
+const AUTH_USERS = POC_CANONICAL_USERS.map(u => ({
+  email:         u.email,
+  password:      u.password,
+  user_metadata: userMetadataFor(u),
+  label:         u.label,
+}))
 
 async function createAuthUsers() {
   console.log('\n── Auth Users ──')

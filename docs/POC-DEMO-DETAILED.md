@@ -23,6 +23,12 @@
 | Provider | `dr.chen@sunrise-clinic.com` | `POCProvider2026!` | `/dashboard` |
 | Medical Assistant | `ma@sunrise-clinic.com` | `POCMA2026!` | `/dashboard` |
 
+> **If a password above doesn't work** (credential drift after a Supabase rotation, manual reset, etc.):
+>
+> 1. **In-app fix:** log in as ops, go to `/ops/demo-tools`, click **Reset Demo Credentials**. All four accounts are forced back to the canonical passwords above.
+> 2. **Locked out of ops too:** open the Vercel dashboard → Crons tab → `/api/cron/poc-credential-sync` → **Run Now**. Same effect, no terminal required.
+> 3. The cron also runs automatically every day at 5 AM UTC, so drift never persists more than 24 hours unattended.
+
 ### POC Seed Data
 
 | Entity | Details |
