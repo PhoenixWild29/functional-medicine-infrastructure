@@ -34,7 +34,7 @@
 | Entity | Details |
 |--------|---------|
 | Clinic | Sunrise Functional Medicine |
-| Provider | Dr. Sarah Chen, NPI 1234567890, TX license |
+| Provider | Sarah Chen, NPI 1234567890, TX license |
 | Patient | Alex Demo, DOB 1985-06-15, TX, SMS opt-in |
 | Pharmacy | Strive Pharmacy, Tier 4 (Fax), TX licensed |
 | Medications | Semaglutide, Tirzepatide, Testosterone, Sermorelin, Naltrexone |

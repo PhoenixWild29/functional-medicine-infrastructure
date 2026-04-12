@@ -111,7 +111,7 @@ The flow has a 3-step progress indicator (Patient & Provider → Add Prescriptio
 
 **Step 2 — Margin & Pricing** (`/new-prescription/margin`)
 - Wholesale cost locked and read-only. Quick multiplier buttons (1.5x, 2x, 2.5x, 3x)
-- Real-time margin calculation: margin %, platform fee, clinic payout
+- Real-time margin calculation: margin %, platform fee, est. clinic margin
 - Enter prescription directions (Sig) — minimum 10 characters
 - Three action buttons:
   - **"Add & Search Another"** — saves this prescription and returns to Step 1 for another medication
@@ -120,7 +120,7 @@ The flow has a 3-step progress indicator (Patient & Provider → Add Prescriptio
 
 **Step 3 — Batch Review & Sign** (`/new-prescription/review`)
 - All prescriptions in the session displayed with medication, pharmacy, pricing, and sig
-- Combined totals: total retail, total platform fee, total clinic payout
+- Combined totals: total retail, total platform fee, total est. clinic margin
 - Single provider signature pad — one signature covers all prescriptions
 - "Sign & Send All" sends payment links for every prescription
 
@@ -176,7 +176,7 @@ The main order operations view. High-density table showing all active orders acr
 - **"Updated Xs ago"** counter in the top-right updates live every second
 - **Filter bar** at top: filter by clinic, pharmacy, integration tier, and date range
 - **Checkboxes** on rows enable bulk actions (e.g. "Retry Fax All" for a batch of failed fax orders)
-- Clicking an order ID opens a detail drawer with quick actions: Retry, Force Fax, Reroute, Add Tracking, Cancel, Claim/Release
+- Clicking an order ID opens a detail drawer with quick actions: Retry, Reroute, Add Tracking, Cancel, Claim/Release
 
 ---
 

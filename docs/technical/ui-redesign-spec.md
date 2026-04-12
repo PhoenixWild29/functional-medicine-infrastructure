@@ -295,7 +295,7 @@ Phase 15 introduced major UX changes to the prescription creation flow. These bu
    - Prescription cards: medication, pharmacy, form, dose, sig, wholesale, retail, clinic margin
    - "Remove" link per card
    - "+ Add Another Prescription" dashed border button
-   - Combined totals section: total retail, total platform fee (15%), total clinic payout
+   - Combined totals section: total retail, total platform fee (15%), total est. clinic margin
    - Single provider signature pad with "Signing N prescriptions for [Patient]" label
    - "Sign & Send All N Prescriptions" / "Sign & Send Payment Link" (adapts to count)
    - Confirmation dialog with total amount, count, patient name, phone, 72-hour warning
@@ -314,7 +314,7 @@ Phase 15 introduced major UX changes to the prescription creation flow. These bu
 7. **Provider Sign Page** (`/new-prescription/sign/[orderId]`)
    - Patient info card (left: name, DOB, state, phone / right: provider name, NPI)
    - Prescription detail card (medication, form, dose, pharmacy, sig)
-   - Financial summary card (wholesale, retail, platform fee, clinic payout)
+   - Financial summary card (wholesale, retail, platform fee, est. clinic margin)
    - Signature pad with provider name + NPI label
    - "Sign & Send Payment Link" button + confirmation dialog
    - "Back to Dashboard" secondary action

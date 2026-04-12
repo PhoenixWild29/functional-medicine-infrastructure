@@ -80,7 +80,7 @@ When CompoundIQ submits an order to your API, the payload contains:
     }
   },
   "provider": {
-    "name": "Dr. Sarah Chen",
+    "name": "Sarah Chen",
     "npi": "1234567890",
     "dea_number": "AC1234567",
     "clinic_name": "Sunrise Functional Medicine",

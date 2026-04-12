@@ -32,11 +32,13 @@
 4. Search **Sema** → Select **Semaglutide** → cascading dropdowns: salt form → formulation → dose/frequency/timing
 5. **Point out the Structured Sig Builder** — auto-generated sig with unit conversion. Show Titration/Cycling mode toggles.
 6. Select **Strive Pharmacy** → quantity → Click **"Continue — Set Retail Price"**
-7. Click **2x multiplier** → show margin math ($300 retail, $127.50 clinic payout). Sig is pre-filled.
+7. Click **2x multiplier** → show margin math ($300 retail, $127.50 est. clinic margin). Sig is pre-filled.
 8. Click **"Add & Search Another"**
 9. Search **Test** → Select **Testosterone** → **Point out DEA Schedule 3 warning** → Cypionate → formulation → dose/frequency → Strive → set price → Click **"Review & Send (2)"**
-10. Show **batch review**: controlled substance banner (red), drug interaction alerts (if applicable), 2 prescription cards, combined totals, single signature pad
-11. **Sign** → **"Confirm & Send"** → **EPCS 2FA modal appears** (Testosterone is Schedule III) → QR code + 6-digit code entry
+10. Show **batch review**: DEA schedule badges on controlled substance cards, drug interaction alerts (if applicable), 2 prescription cards, combined totals, single signature pad
+11. **Sign** → **"Confirm & Send"** → orders submit and redirect to dashboard
+
+> **EPCS 2FA Tip:** The EPCS 2FA modal (QR code + 6-digit TOTP) triggers from the single-Rx favorites flow with a controlled substance, not the batch path. Demo it separately if needed.
 
 **Say:** "Cascading dropdowns, structured sig builder, provider favorites, DEA-compliant 2FA. Patient selected first. Two prescriptions. One signature. 45 seconds for a multi-medication visit."
 

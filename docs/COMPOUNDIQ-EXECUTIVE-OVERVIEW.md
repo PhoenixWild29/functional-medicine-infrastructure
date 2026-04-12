@@ -26,7 +26,7 @@ When a patient needs a compounded medication, the medical assistant has to manua
 
 Most clinics mark up compounded medications (a legal and common practice in functional medicine), but they calculate margins manually. The medical assistant looks up a wholesale cost, picks a retail price, and does the math on paper or in their head. There are no tools to visualize margin in real time, no safeguards against selling below cost, and no transparency into platform fees.
 
-**What CompoundIQ does:** Our margin builder shows the wholesale cost (locked and read-only), lets the clinic set their retail price with one-click multiplier buttons (1.5x, 2x, 2.5x, 3x), and instantly calculates the margin percentage, platform fee, and estimated clinic payout. A database-level constraint prevents selling below cost. The clinic sees exactly what they earn before committing.
+**What CompoundIQ does:** Our margin builder shows the wholesale cost (locked and read-only), lets the clinic set their retail price with one-click multiplier buttons (1.5x, 2x, 2.5x, 3x), and instantly calculates the margin percentage, platform fee, and estimated clinic margin. A database-level constraint prevents selling below cost. The clinic sees exactly what they earn before committing.
 
 ### Payment Collection Is Disconnected from the Prescription
 
