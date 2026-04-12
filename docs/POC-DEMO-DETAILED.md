@@ -332,7 +332,7 @@ Copy the URL from the output.
 3. **Point out the dark-mode dashboard:**
    - Pipeline stage groups in the left sidebar (Payment, Submission, Pharmacy, Shipping, Errors)
    - Each stage has a count badge
-   - Order table with columns: Order #, Clinic, Patient, Medication, Status, Tier, SLA, Age
+   - Order table with columns: Order #, Clinic, Status, Tier, SLA, Assigned, Actions
 
 > "This is the operations nerve center. Every order across every clinic is visible here. The dark theme is intentional — ops teams monitor this all day, and dark mode reduces eye strain."
 
@@ -374,7 +374,7 @@ Copy the URL from the output.
     - Health indicator (traffic light)
     - Circuit breaker state
     - Submission success rate chart
-    - Quick action buttons (Disable Adapter, Force Fax, Health Check)
+    - Quick action button (Disable Adapter)
 
 > "Every pharmacy integration is monitored. If a pharmacy's API starts failing, the circuit breaker opens after 3 consecutive failures and auto-cascades to the next tier. The ops team can see exactly what's happening and take manual action if needed."
 
