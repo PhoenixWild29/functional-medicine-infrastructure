@@ -125,12 +125,12 @@
 > "The first thing the MA does is select the patient. The patient's shipping state auto-populates for all pharmacy searches — no manual entry. The provider is also selected upfront. Both stay pinned at the top of every screen throughout the flow."
 
 8. Search for **"Alex"** — select **Alex Demo** (TX state badge visible)
-9. Note the provider **Dr. Sarah Chen** is auto-selected
+9. Note the provider **Sarah Chen** is auto-selected
 10. Click **"Continue to Pharmacy Search"**
 
 ### 3C — Quick Actions: Favorites + Protocols (New in Phase 18)
 
-11. **Point out the session banner** at the top — Alex Demo + Dr. Sarah Chen pinned
+11. **Point out the session banner** at the top — Alex Demo + Sarah Chen pinned
 12. **Point out the Quick Actions Panel** with two tabs: **Favorites** and **Protocols**
 13. **Favorites tab** — show the 4+ saved favorites (Semaglutide 0.5mg weekly, Standard TRT, LDN Starter, BPC-157). Note the titration/cycling badges on relevant favorites.
 
@@ -156,7 +156,7 @@
 
 > "The sig generates automatically with full unit conversion — mg, mL, and syringe units for injectables. No manual math. NCPDP-compliant with a 1,000-character limit counter."
 
-22. **Show Titration mode** — click "Titration" toggle. Point out the amber panel with Start/Increment/Interval/Target fields
+22. **Show Titration mode** — click "Titration" toggle. Point out the amber panel with Start at / Increase by / Every / Up to fields
 
 > "For titration protocols like LDN, the provider sets start dose, increment, interval, and target. The sig generates: 'Take 0.1mL by mouth at bedtime. Titrate up by 0.1mL every 3-4 days as tolerated up to 0.5mL.' No competitor has this."
 
@@ -170,7 +170,7 @@
 ### 3E — Dynamic Margin Builder + Multi-Prescription
 
 26. **Point out the Margin Builder** — Wholesale: $150 (locked), retail price **pre-populated at $210** (1.4× wholesale, from the clinic's 40% default markup), multiplier buttons, Sig field pre-filled
-27. Click **2x multiplier** — retail updates to $300, margin 50%, platform fee $22.50, clinic payout $127.50
+27. Click **2x multiplier** — retail updates to $300, margin 50%, platform fee $22.50, est. clinic margin $127.50
 
 > "Full transparency. The retail price is pre-filled from the clinic's default markup setting (currently 40%), so the MA never types a number unless they want to override. Clicking 2x bumps it to a higher margin. The clinic sees exactly what they earn before committing. The sig is already pre-filled from the builder."
 
@@ -191,32 +191,22 @@
 ### 3F — Batch Review, Interaction Alerts & EPCS 2FA (New in Phase 19)
 
 34. **Point out the batch review page:**
-    - **Red banner: "Controlled Substance — EPCS 2FA Required"** (Testosterone is DEA Schedule 3)
+    - DEA schedule badges on controlled substance prescription cards (Testosterone shows Schedule 3)
     - **Drug Interaction Alerts section** — the alerts are dynamic based on the medications in the current session. With Semaglutide + Testosterone (this walkthrough), an INFO-severity alert appears with clinical guidance. With Ketotifen + Ketamine (a different combination), an amber WARNING alert appears. The exact alert text depends on which pairs are seeded in the `drug_interactions` table.
     - Session banner with "2 prescriptions in this session"
     - Two prescription cards with medication, pharmacy, pricing, and sig for each
-    - Combined totals (total retail, platform fee, clinic payout)
+    - Combined totals (total retail, platform fee, est. clinic margin)
     - "Remove" link on each card
     - "+ Add Another Prescription" button
     - Single provider signature pad
 
-> "The system automatically detects controlled substances and drug interactions. The red banner tells the provider that 2FA will be required at signing. The interaction alerts show known conflicts with clinical guidance — severity-colored: red for critical, amber for warning, blue for informational."
+> "The system automatically detects drug interactions and surfaces them with clinical guidance — severity-colored: red for critical, amber for warning, blue for informational. DEA-scheduled compounds are flagged on the prescription card with schedule badges."
 
 35. **Sign** on the signature pad
-36. Click **"Sign & Send All 2 Prescriptions"** → Click **"Confirm & Send"**
-37. **Point out the EPCS 2FA modal** that appears:
-    - Red header: "EPCS Two-Factor Authentication Required — DEA 21 CFR 1311"
-    - Lists controlled substances with DEA schedule badges
-    - QR code for authenticator app setup (first time only)
-    - 6-digit code input field
-    - "Verify & Sign" button
+36. Click **"Sign & Send All 2 Prescriptions"** → Click **"Confirm & Send"** — watch the progress messages
+37. Verify redirect to dashboard — both orders visible as "Awaiting Payment"
 
-> "This is DEA-compliant two-factor authentication. The provider scans the QR code with Google Authenticator or Authy on their phone, then enters the 6-digit code. The system verifies the code, logs the event to an immutable audit trail, and only then sends the prescription. No competitor in the compounding pharmacy space has this."
-
-38. **Cancel** the 2FA modal (for demo purposes, or verify with an actual TOTP code)
-28. **Point out the confirmation dialog** — total amount, prescription count, patient name, phone
-29. Click **"Confirm & Send"** — watch the progress messages
-30. Verify redirect to dashboard — both orders visible as "Awaiting Payment"
+> **EPCS 2FA Demo Tip:** The EPCS 2FA modal (QR code, 6-digit TOTP input, DEA 21 CFR 1311 citation) is triggered from the single-prescription favorites flow when a controlled substance is selected. To demo it: start a new session, use a Favorites card for a controlled substance (e.g. Testosterone), go through the margin builder, and click "Review & Send" → "Sign & Send" → "Confirm & Send". The modal appears with the red "EPCS Two-Factor Authentication Required" header, Schedule badge, QR code for authenticator app enrollment, and "Verify & Sign" / "Cancel" buttons. Cancel to exit without submitting a code.
 
 > "Two orders created, two payment links generated, three SLA timers each — all from one signature. The MA's workflow for a multi-medication visit: 45 seconds."
 
@@ -269,7 +259,7 @@ Copy the URL from the output.
 
 ### 4A — Checkout Page
 
-1. Open the **checkout URL** from Step 30 in a new tab (or on a mobile device for extra impact)
+1. Open the **checkout URL** from Step 46 in a new tab (or on a mobile device for extra impact)
 2. **Point out:**
    - Clinic branding: "Sunrise Functional Medicine" displayed prominently
    - Generic line item: "Prescription Service" — NOT the medication name
@@ -330,9 +320,9 @@ Copy the URL from the output.
 1. Open a new tab, navigate to `https://functional-medicine-infrastructure.vercel.app/login`
 2. Log in as **Ops Admin**: `ops@compoundiq-poc.com` / `POCAdmin2026!`
 3. **Point out the dark-mode dashboard:**
-   - Pipeline stage groups in the left sidebar (Payment, Submission, Pharmacy, Shipping, Errors)
+   - Pipeline stage groups in the left sidebar (Payment, Submission, Pharmacy, Shipping, Errors / Terminal)
    - Each stage has a count badge
-   - Order table with columns: Order #, Clinic, Status, Tier, SLA, Assigned, Actions
+   - Order table with columns: Order, Status, Clinic, Pharmacy / Tier, SLA, Assigned, Actions
 
 > "This is the operations nerve center. Every order across every clinic is visible here. The dark theme is intentional — ops teams monitor this all day, and dark mode reduces eye strain."
 
@@ -346,12 +336,12 @@ Copy the URL from the output.
 
 5. **Show the filter bar:**
    - Filter by Clinic, Pharmacy, Tier, Date range
-   - Show the "Clear Filters" button
+   - Filters reset by selecting "All" in each dropdown
 
 > "Multi-dimensional filtering lets ops isolate specific issues — show me all Tier 4 fax orders from this week, or all orders from a specific clinic."
 
 6. **Click an order** to open the detail drawer
-7. **Point out the tabs:** Detail, History, Submissions, SLA
+7. **Point out the tabs:** Detail, History, Submissions, Sla
 
 > "Full drill-down into any order. The History tab shows every state transition with timestamps and who triggered it. The Submissions tab shows every adapter attempt. The SLA tab shows all deadline tracking."
 
@@ -392,7 +382,7 @@ Copy the URL from the output.
 
 14. Click **"Catalog"** in the sidebar
 15. **Point out:**
-    - Medication table with columns (Medication, Form, Dose, Wholesale, Retail, Status)
+    - Medication table with columns (Medication, Form, Dose, Wholesale, Retail, Status, Pharmacy, PA)
     - CSV upload drag-and-drop area
     - Manual entry form
     - Tabs: Catalog, Versions, Normalized, API Sync
