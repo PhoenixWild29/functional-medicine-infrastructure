@@ -195,7 +195,7 @@
     - **Drug Interaction Alerts section** — the alerts are dynamic based on the medications in the current session. With Semaglutide + Testosterone (this walkthrough), an INFO-severity alert appears with clinical guidance. With Ketotifen + Ketamine (a different combination), an amber WARNING alert appears. The exact alert text depends on which pairs are seeded in the `drug_interactions` table.
     - Session banner with "2 prescriptions in this session"
     - Two prescription cards with medication, pharmacy, pricing, and sig for each
-    - Combined totals (total retail, platform fee, est. clinic margin)
+    - Combined totals (total retail, platform fee, total clinic payout)
     - "Remove" link on each card
     - "+ Add Another Prescription" button
     - Single provider signature pad
@@ -214,36 +214,36 @@
 
 > "Now let me show you the draft flow — where the MA saves a prescription for the provider to sign later."
 
-31. Click **"+ New Prescription"** again
-32. Select **Alex Demo** + provider auto-selects → Continue
-33. Search **"Sema"** → select **Semaglutide** → select **Strive Pharmacy**
-34. Click **2x multiplier**, enter Sig: **"Draft flow demo"**
-35. Click **"Save as Draft — Provider Signs Later"**
-36. Verify redirect to dashboard — order appears with **"Draft"** status
+38. Click **"+ New Prescription"** again
+39. Select **Alex Demo** + provider auto-selects → Continue
+40. Search **"Sema"** → select **Semaglutide** → select **Strive Pharmacy**
+41. Click **2x multiplier**, enter Sig: **"Draft flow demo"**
+42. Click **"Save as Draft — Provider Signs Later"**
+43. Verify redirect to dashboard — order appears with **"Draft"** status
 
 > "The MA saved this without the provider being present. No signature yet."
 
-37. **Sign out** of clinic admin
-38. **Log in as provider:** `dr.chen@sunrise-clinic.com` / `POCProvider2026!`
-39. Click the **"Drafts"** tab on the dashboard
+44. **Sign out** of clinic admin
+45. **Log in as provider:** `dr.chen@sunrise-clinic.com` / `POCProvider2026!`
+46. Click the **"Drafts"** tab on the dashboard
 
 > "The Drafts tab lives on the shared dashboard and is visible to both clinic_admin and provider roles — anyone in the clinic can see what's pending signature, not just providers. The provider just happens to be the one who can act on it."
-40. Click on the draft order — **point out the amber "Awaiting Provider Signature" banner**
-41. Click **"Review & Sign This Prescription"**
+47. Click on the draft order — **point out the amber "Awaiting Provider Signature" banner**
+48. Click **"Review & Sign This Prescription"**
 
 > "The provider sees a dedicated sign page with all the details the MA entered — medication, pharmacy, pricing, directions. They just review and sign."
 
-42. **Point out** the sign page: patient info, provider info, prescription details, financial summary, signature pad
-43. **Sign** on the pad → Click **"Sign & Send Payment Link"** → Confirm
-44. Verify redirect to dashboard — order now shows **"Awaiting Payment"**
+49. **Point out** the sign page: patient info, provider info, prescription details, financial summary, signature pad
+50. **Sign** on the pad → Click **"Sign & Send Payment Link"** → Confirm
+51. Verify redirect to dashboard — order now shows **"Awaiting Payment"**
 
 > "The MA prepared it, the provider signed it later. Different sessions, different logins, same result. This is how a real clinic works."
 
-45. **Sign out**
+52. **Sign out**
 
 ### 3G — Get the Checkout URL
 
-46. **Get the patient checkout URL** — In production, the patient receives this via SMS. For the POC demo:
+53. **Get the patient checkout URL** — In production, the patient receives this via SMS. For the POC demo:
 
 ```bash
 npx dotenv -e .env.local -- npx tsx scripts/get-checkout-url.ts
@@ -259,7 +259,7 @@ Copy the URL from the output.
 
 ### 4A — Checkout Page
 
-1. Open the **checkout URL** from Step 46 in a new tab (or on a mobile device for extra impact)
+1. Open the **checkout URL** from Step 53 in a new tab (or on a mobile device for extra impact)
 2. **Point out:**
    - Clinic branding: "Sunrise Functional Medicine" displayed prominently
    - Generic line item: "Prescription Service" — NOT the medication name
