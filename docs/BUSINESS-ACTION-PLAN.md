@@ -210,7 +210,7 @@ This currently requires database access (Supabase dashboard). For each new pharm
    - PHI handling across all 3 applications (clinic, ops, checkout)
    - BAA coverage matrix (which services have BAAs)
    - Sentry Auth/Cookie header redaction
-   - Row-Level Security enforcement on all 17 tables
+   - Row-Level Security enforcement on all 33 tables
    - Zero-PHI policy for Stripe metadata
 
 3. **Get sign-off:**

@@ -70,8 +70,15 @@ Vercel Dashboard → Project → Settings → Cron Jobs
 | Cron | Schedule | Purpose |
 |------|----------|---------|
 | `/api/cron/sla-check` | Every 5 min | Check SLA deadlines and escalate |
+| `/api/cron/sla-refire` | Every 5 min | Re-escalate stalled SLA deadlines |
 | `/api/cron/payment-expiry` | Every 15 min | Expire unpaid orders after timeout |
 | `/api/cron/adapter-health-check` | Every 10 min | Verify pharmacy adapter status |
+| `/api/cron/submission-reconciliation` | Every 30 min | Detect stuck submissions |
+| `/api/cron/portal-status-poll` | Every 30 min | Tier 2 portal status polling |
+| `/api/cron/fax-retry` | Every 5 min | Fax retry with exponential backoff |
+| `/api/cron/screenshot-cleanup` | Every hour | Remove expired Tier 2 screenshots |
+| `/api/cron/daily-digest` | 14:00 UTC daily | Ops pipeline health summary to Slack |
+| `/api/cron/poc-credential-sync` | 05:00 UTC daily | Reset POC demo accounts to canonical passwords |
 
 ## Step 6: Local Development Setup
 
@@ -135,11 +142,14 @@ npm run dev
 - [ ] `CIRCUIT_BREAKER_THRESHOLD`
 - [ ] `PLAYWRIGHT_HEADLESS`
 
+### Cron (1 var)
+- [ ] `CRON_SECRET` — bearer token for all 10 cron endpoints. Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+
 ### Next.js (2 vars)
 - [ ] `NEXT_TELEMETRY_DISABLED`
 - [ ] `NODE_ENV`
 
-**Total: 34 variables**
+**Total: 35 variables**
 
 > **Note on Sentry dual-config:** Both `SENTRY_DSN` (server-side) and `NEXT_PUBLIC_SENTRY_DSN` (client-side browser) are intentional — Sentry initializes separately in server components and client components in Next.js 14.
 >

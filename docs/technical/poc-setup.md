@@ -20,7 +20,7 @@ This document covers every step required to stand up a working POC environment. 
 2. Note your **Project Ref** (e.g. `abcdefghijklmnop`)
 3. Link the CLI: `supabase link --project-ref <ref>`
 4. Push all migrations: `supabase db push`
-   - Verify in the Supabase dashboard → Table Editor that all 26 tables exist
+   - Verify in the Supabase dashboard → Table Editor that all 33 tables exist
    - Verify RLS is enabled on each table (Database → Tables → each row shows "RLS Enabled")
 5. **Auth settings**: Supabase Dashboard → Authentication → Providers → Email
    - For POC: **disable** "Confirm email" so users from the seed script can log in immediately
@@ -292,3 +292,4 @@ All required vars with their sources:
 | `RETRY_MAX_ATTEMPTS` | ✅ | `3` |
 | `CIRCUIT_BREAKER_THRESHOLD` | ✅ | `0.5` |
 | `PLAYWRIGHT_HEADLESS` | ✅ | `true` |
+| `CRON_SECRET` | ✅ required | Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` — bearer token for all 10 cron endpoints |

@@ -1,7 +1,7 @@
 # CompoundIQ — System Architecture Overview
 
 **Version:** 2.0 | **Date:** April 9, 2026
-**Status:** Production POC — 19 phases complete, 86 work orders (86 completed)
+**Status:** Production POC — 19 phases, 86 work orders (81 completed, 5 backlog)
 
 ---
 
@@ -56,7 +56,7 @@ Each application has its own layout, auth guard, error boundaries, and loading s
 |                    API LAYER (Serverless)                          |
 |   +----------------+  +----------------+  +----------------+      |
 |   | Route Handlers |  |Webhook Handlers|  |   Cron Jobs    |      |
-|   | (20+ endpoints)|  | (4 sources)    |  | (9 scheduled)  |      |
+|   | (20+ endpoints)|  | (4 sources)    |  | (10 scheduled)  |      |
 |   +-------+--------+  +-------+--------+  +-------+--------+      |
 +-----------|--------------------|-------------------|---------------+
             |                    |                   |
@@ -76,7 +76,7 @@ Each application has its own layout, auth guard, error boundaries, and loading s
 | PHARMACY ADAPTER  |  | PAYMENT ENGINE    |  | SLA ENGINE        |
 | 4-Tier Routing    |  | Stripe Connect    |  | 10 SLA Types      |
 | Circuit Breaker   |  | Express           |  | 3-Tier Escalation |
-| Cascade on Fail   |  | Multi-Party Split |  | 9 Cron Jobs       |
+| Cascade on Fail   |  | Multi-Party Split |  | 10 Cron Jobs       |
 +-------------------+  +-------------------+  +-------------------+
       |                       |                       |
       v                       v                       v
@@ -91,7 +91,7 @@ Each application has its own layout, auth guard, error boundaries, and loading s
 |           v              DATA LAYER                                |
 |   +-----------------------------------------------------------+   |
 |   | Supabase (PostgreSQL 15+)                                 |   |
-|   | 17 Tables | 10 Enums | Row-Level Security on ALL tables   |   |
+|   | 33 Tables + 1 View | 10 Enums | Row-Level Security on ALL tables   |   |
 |   +-----------------------------------------------------------+   |
 |   | Supabase Vault    | Supabase Auth      | Supabase Storage |   |
 |   | AES-256-GCM       | JWT Custom Claims  | RLS-Gated Buckets|   |
@@ -108,14 +108,14 @@ Each application has its own layout, auth guard, error boundaries, and loading s
 |-------|-----------|----------------|
 | Frontend | Next.js (App Router) | 16+ with React 19, Server + Client Components |
 | UI Framework | Tailwind CSS + Shadcn/UI | Semantic design tokens, dark mode support |
-| Backend / Database | Supabase (PostgreSQL) | 15+ with RLS on all 17 tables, Supabase Auth |
+| Backend / Database | Supabase (PostgreSQL) | 15+ with RLS on all 33 tables, Supabase Auth |
 | Authentication | Supabase Auth + JWT | Custom claims: app_role, clinic_id in user_metadata |
 | Payments | Stripe Connect Express | Multi-party split: patient pays, clinic receives payout, platform captures fee |
 | Fax | Documo mFax REST API | HIPAA-compliant, Tier 4 fallback |
 | SMS | Twilio Programmable Messaging | Delivery tracking, opt-out handling |
 | Portal Automation | Playwright | Headless browser for Tier 2 pharmacy portals |
 | Credential Storage | Supabase Vault | AES-256-GCM encryption for all pharmacy credentials |
-| Cron Scheduling | Vercel Crons | 9 scheduled jobs defined in vercel.json |
+| Cron Scheduling | Vercel Crons | 10 scheduled jobs defined in vercel.json |
 | Deployment | Vercel | Serverless functions, atomic deploys, instant rollback |
 | Monitoring | Sentry + Slack + PagerDuty | Error tracking (PHI-scrubbed), ops alerts, critical escalation |
 
@@ -296,7 +296,7 @@ order_status_enum (23 values), stripe_connect_status_enum (4), cancellation_reas
 
 ---
 
-## 11. Infrastructure — 9 Vercel Cron Jobs
+## 11. Infrastructure — 10 Vercel Cron Jobs
 
 | Endpoint | Schedule | Purpose |
 |----------|----------|---------|
@@ -309,6 +309,7 @@ order_status_enum (23 values), stripe_connect_status_enum (4), cancellation_reas
 | /api/cron/fax-retry | Every 5 min | Fax retry with exponential backoff |
 | /api/cron/screenshot-cleanup | Every hour | Remove expired Tier 2 screenshots |
 | /api/cron/daily-digest | 14:00 UTC daily | Ops pipeline health summary to Slack |
+| /api/cron/poc-credential-sync | 05:00 UTC daily | Reset POC demo accounts to canonical passwords |
 
 All cron endpoints are protected by CRON_SECRET bearer token authentication.
 
@@ -366,9 +367,9 @@ All cron endpoints are protected by CRON_SECRET bearer token authentication.
 | Hard constraints | 16 (HC-01 through HC-16) |
 | SLA types | 10 |
 | Integration tiers | 4 |
-| Cron jobs | 9 |
+| Cron jobs | 10 |
 | Build phases completed | 19 |
-| Work orders completed | 86 |
+| Work orders completed | 81 (5 backlog) |
 | Applications | 3 |
 | User roles | 4 (+ patient anonymous) |
 | Webhook sources | 4 (Stripe, Documo, Twilio, Pharmacy APIs) |

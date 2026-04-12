@@ -337,6 +337,7 @@ All cron endpoints require `Authorization: Bearer {CRON_SECRET}` header.
 | POST /api/cron/fax-retry | */5 * * * * | Fax retry with backoff |
 | POST /api/cron/screenshot-cleanup | 0 * * * * | Tier 2 screenshot cleanup |
 | POST /api/cron/daily-digest | 0 14 * * * | Daily ops digest to Slack |
+| GET /api/cron/poc-credential-sync | 0 5 * * * | Reset POC demo accounts to canonical passwords |
 
 ---
 

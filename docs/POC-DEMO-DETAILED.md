@@ -419,7 +419,7 @@ Copy the URL from the output.
 ### Security & Compliance
 
 > "HIPAA compliance is enforced at the infrastructure level, not just application code:"
-- Row-Level Security on all 17 tables
+- Row-Level Security on all 33 tables
 - Zero PHI in Stripe (metadata contains order_id only)
 - Supabase Vault for all pharmacy credentials
 - 30-minute session timeout with warning modal
@@ -428,7 +428,7 @@ Copy the URL from the output.
 
 ### Technology Stack
 
-> "Built on Next.js 16, Supabase (PostgreSQL 15+), Stripe Connect Express, Twilio, and Documo mFax. Deployed on Vercel serverless. 9 cron jobs handle SLA enforcement, payment expiry, adapter health, and daily ops digest. Everything is atomic — Compare-And-Swap patterns on every state transition prevent race conditions."
+> "Built on Next.js 16, Supabase (PostgreSQL 15+), Stripe Connect Express, Twilio, and Documo mFax. Deployed on Vercel serverless. 10 cron jobs handle SLA enforcement, payment expiry, adapter health, and daily ops digest. Everything is atomic — Compare-And-Swap patterns on every state transition prevent race conditions."
 
 ---
 
@@ -440,9 +440,9 @@ Copy the URL from the output.
 |--------|-------|
 | Order states | 23-state machine with 47 valid transitions |
 | SLA types | 10 enforcement types with 3-tier escalation |
-| Database tables | 17 (PostgreSQL with full RLS) |
-| Cron jobs | 9 Vercel cron jobs |
-| Build phases completed | 13 phases, 75 work orders |
+| Database tables | 33 (PostgreSQL with full RLS) + 1 view |
+| Cron jobs | 10 Vercel cron jobs |
+| Build phases completed | 19 phases, 86 work orders (81 completed, 5 backlog) |
 | Hard constraints | 16 non-negotiable rules |
 | Test coverage | 21/21 QA checks pass (Cowork validated) |
 

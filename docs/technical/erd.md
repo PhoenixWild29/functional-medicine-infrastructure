@@ -1,6 +1,6 @@
 # CompoundIQ — Entity Relationship Diagram
 
-All 26 tables across the V1.0, V2.0, and incremental migration series.
+All 33 tables + 1 view across the V1.0, V2.0, V3.0 hierarchical catalog, and incremental migration series.
 
 **Legend**
 - `PK` — Primary Key
@@ -474,7 +474,11 @@ erDiagram
 | V2.0 (5) | pharmacy_api_configs, pharmacy_portal_configs, adapter_submissions, normalized_catalog, pharmacy_webhook_events |
 | Additional (4) | sms_log, sms_templates, transfer_failures, disputes |
 | Incremental (5) | clinic_notifications, ops_alert_queue, circuit_breaker_state, sla_notifications_log, catalog_upload_history |
-| **Total** | **26** |
+| V3.0 Hierarchical Catalog (8) | ingredients, salt_forms, dosage_forms, routes_of_administration, formulations, formulation_ingredients, pharmacy_formulations, sig_templates |
+| Provider Speed Features (3) | provider_favorites, clinic_protocol_templates, clinic_protocol_items |
+| Regulatory Compliance (5) | drug_interactions, patient_protocol_phases, phase_advancement_history, epcs_audit_log, prescription_dea_tracking |
+| **1 View** | provider_prescribing_history |
+| **Total** | **33 tables + 1 view** |
 
 ---
 

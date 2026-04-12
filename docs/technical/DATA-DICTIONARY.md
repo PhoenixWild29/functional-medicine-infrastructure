@@ -2,7 +2,7 @@
 
 **Version:** 1.0 | **Date:** April 5, 2026
 **Database:** Supabase PostgreSQL 15+
-**Tables:** 17 | **Enums:** 10 | **Row-Level Security:** Enabled on all tables
+**Tables:** 33 + 1 view | **Enums:** 10 | **Row-Level Security:** Enabled on all tables
 
 ---
 
@@ -459,4 +459,4 @@ Cross-pharmacy normalized medication catalog for comparison.
 
 ---
 
-*CompoundIQ — 17 tables. 10 enums. Zero tolerance for data integrity violations.*
+*CompoundIQ — 33 tables + 1 view. 10 enums. Zero tolerance for data integrity violations.*

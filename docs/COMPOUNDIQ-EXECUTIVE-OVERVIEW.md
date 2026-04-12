@@ -164,7 +164,7 @@ CompoundIQ handles protected health information (PHI) and is designed for HIPAA-
 
 | Milestone | Status |
 |-----------|--------|
-| Platform built | 19 phases, 86 work orders (86 completed) |
+| Platform built | 19 phases, 86 work orders (81 completed, 5 backlog) |
 | All 3 applications functional | Clinic App, Ops Dashboard, Patient Checkout |
 | Cascading prescription builder | Hierarchical catalog, structured sig, titration/cycling |
 | Provider speed features | Favorites (one-click reorder), protocol templates (multi-med bundles) |
