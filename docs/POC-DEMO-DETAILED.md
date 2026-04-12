@@ -169,10 +169,10 @@
 
 ### 3E — Dynamic Margin Builder + Multi-Prescription
 
-26. **Point out the Margin Builder** — Wholesale: $150 (locked), retail price **pre-populated at $300** from the clinic's default markup, multiplier buttons, Sig field pre-filled
-27. Click **2x multiplier** — retail stays at $300, margin 50%, platform fee $22.50, clinic payout $127.50
+26. **Point out the Margin Builder** — Wholesale: $150 (locked), retail price **pre-populated at $210** (1.4× wholesale, from the clinic's 40% default markup), multiplier buttons, Sig field pre-filled
+27. Click **2x multiplier** — retail updates to $300, margin 50%, platform fee $22.50, clinic payout $127.50
 
-> "Full transparency. The retail price is pre-filled from the clinic's default markup setting, so the MA never types a number unless they want to override. Clicking 2x just confirms the default. The clinic sees exactly what they earn before committing. The sig is already pre-filled from the builder."
+> "Full transparency. The retail price is pre-filled from the clinic's default markup setting (currently 40%), so the MA never types a number unless they want to override. Clicking 2x bumps it to a higher margin. The clinic sees exactly what they earn before committing. The sig is already pre-filled from the builder."
 
 28. **Point out the three action buttons:**
     - **"Add & Search Another"** — add this prescription and search for another medication
