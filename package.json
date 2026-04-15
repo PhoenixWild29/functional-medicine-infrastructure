@@ -18,7 +18,8 @@
     "seed:poc": "dotenv -e .env.local -- tsx scripts/seed-poc.ts",
     "docs:pdf": "npm run docs:pdf:batch1 && npm run docs:pdf:batch2",
     "docs:pdf:batch1": "npx --yes md-to-pdf docs/BUSINESS-ACTION-PLAN.md docs/CLINIC-ONBOARDING-PLAYBOOK.md docs/COMPOUNDIQ-EXECUTIVE-OVERVIEW.md docs/INVESTMENT-STRATEGY-MEMO.md",
-    "docs:pdf:batch2": "npx --yes md-to-pdf docs/PHARMACY-INTEGRATION-GUIDE.md docs/POC-DEMO-DETAILED.md docs/POC-DEMO-QUICKSTART.md docs/SYSTEM-ARCHITECTURE-OVERVIEW.md"
+    "docs:pdf:batch2": "npx --yes md-to-pdf docs/PHARMACY-INTEGRATION-GUIDE.md docs/POC-DEMO-DETAILED.md docs/POC-DEMO-QUICKSTART.md docs/SYSTEM-ARCHITECTURE-OVERVIEW.md",
+    "docs:docx": "bash scripts/md-to-docx.sh"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
