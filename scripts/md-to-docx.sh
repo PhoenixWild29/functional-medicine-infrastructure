@@ -28,30 +28,42 @@ if ! command -v pandoc >/dev/null 2>&1; then
   exit 1
 fi
 
+# Source layout after 2026-04-16 reorg:
+#   .md source lives in docs/archive/source/ (and docs/archive/source/launch-kit/)
+#   Rendered .pdf lives in docs/ root (for investor/demo docs — partner-facing)
+#   Rendered .docx for investor/demo docs is archived alongside source (kept for
+#   reference, not surfaced in the clean docs/ folder)
+#   Rendered .docx for launch-kit lives in docs/launch-kit/ (editable working docs)
+# Each entry is "source_path_without_ext|output_path_without_ext"
+
 DOCS=(
-  "docs/BUSINESS-ACTION-PLAN"
-  "docs/CLINIC-ONBOARDING-PLAYBOOK"
-  "docs/COMPOUNDIQ-EXECUTIVE-OVERVIEW"
-  "docs/INVESTMENT-STRATEGY-MEMO"
-  "docs/PHARMACY-INTEGRATION-GUIDE"
-  "docs/POC-DEMO-DETAILED"
-  "docs/POC-DEMO-QUICKSTART"
-  "docs/SYSTEM-ARCHITECTURE-OVERVIEW"
-  "docs/launch-kit/README"
-  "docs/launch-kit/clinic-outreach-email"
-  "docs/launch-kit/pharmacy-outreach-email"
-  "docs/launch-kit/legitscript-application-checklist"
-  "docs/launch-kit/design-partner-agreement"
+  "docs/archive/source/BUSINESS-ACTION-PLAN|docs/archive/source/BUSINESS-ACTION-PLAN"
+  "docs/archive/source/CLINIC-ONBOARDING-PLAYBOOK|docs/archive/source/CLINIC-ONBOARDING-PLAYBOOK"
+  "docs/archive/source/COMPOUNDIQ-EXECUTIVE-OVERVIEW|docs/archive/source/COMPOUNDIQ-EXECUTIVE-OVERVIEW"
+  "docs/archive/source/INVESTMENT-STRATEGY-MEMO|docs/archive/source/INVESTMENT-STRATEGY-MEMO"
+  "docs/archive/source/PHARMACY-INTEGRATION-GUIDE|docs/archive/source/PHARMACY-INTEGRATION-GUIDE"
+  "docs/archive/source/POC-DEMO-DETAILED|docs/archive/source/POC-DEMO-DETAILED"
+  "docs/archive/source/POC-DEMO-QUICKSTART|docs/archive/source/POC-DEMO-QUICKSTART"
+  "docs/archive/source/SYSTEM-ARCHITECTURE-OVERVIEW|docs/archive/source/SYSTEM-ARCHITECTURE-OVERVIEW"
+  "docs/archive/source/launch-kit/README|docs/launch-kit/README"
+  "docs/archive/source/launch-kit/clinic-outreach-email|docs/launch-kit/clinic-outreach-email"
+  "docs/archive/source/launch-kit/pharmacy-outreach-email|docs/launch-kit/pharmacy-outreach-email"
+  "docs/archive/source/launch-kit/legitscript-application-checklist|docs/launch-kit/legitscript-application-checklist"
+  "docs/archive/source/launch-kit/design-partner-agreement|docs/launch-kit/design-partner-agreement"
+  "docs/archive/source/launch-kit/pre-launch-checklist|docs/launch-kit/pre-launch-checklist"
 )
 
-for doc in "${DOCS[@]}"; do
-  if [[ -f "${doc}.md" ]]; then
-    pandoc "${doc}.md" -o "${doc}.docx"
-    echo "✓ ${doc}.docx"
+for entry in "${DOCS[@]}"; do
+  src="${entry%%|*}"
+  out="${entry##*|}"
+  if [[ -f "${src}.md" ]]; then
+    pandoc "${src}.md" -o "${out}.docx"
+    echo "✓ ${out}.docx"
   else
-    echo "⚠ ${doc}.md not found — skipping"
+    echo "⚠ ${src}.md not found — skipping"
   fi
 done
 
 echo ""
-echo "Done. $(ls -1 docs/*.docx docs/launch-kit/*.docx 2>/dev/null | wc -l) docx files generated."
+TOTAL=$(ls -1 docs/archive/source/*.docx docs/launch-kit/*.docx 2>/dev/null | wc -l)
+echo "Done. $TOTAL docx files generated (launch-kit in docs/launch-kit/, investor/demo in docs/archive/source/)."
