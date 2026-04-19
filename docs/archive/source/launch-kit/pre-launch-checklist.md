@@ -14,9 +14,9 @@
 |--------|-------|-----------|-------------|-------------|
 | 1. Business & Legal | 8 | 0 | 0 | 8 |
 | 2. Public Web Presence | 5 | 0 | 0 | 5 |
-| 3. Production Readiness | 7 | 0 | 0 | 7 |
+| 3. Production Readiness | 8 | 0 | 0 | 8 |
 | 4. 60-Day Nice-to-Haves | 8 | 0 | 0 | 8 |
-| **Total** | **28** | **0** | **0** | **28** |
+| **Total** | **29** | **0** | **0** | **29** |
 
 Update this table as you work. At a glance you see how close you are to launch-ready.
 
@@ -306,6 +306,17 @@ Items required before the first real prescription can flow through the platform 
 - **Timeline:** 15 min setup
 - **Dependencies:** Professional email (2.2)
 - **Notes:** Design Partner Agreement promises 2-hour response for critical issues — actually plan to honor this.
+
+### 3.8 Mobile Device Validation
+
+- [ ] **Status:** Not started
+- **What:** End-to-end patient checkout flow tested on a real iPhone (Safari) and a real Android phone (Chrome). Clinic app and ops dashboard tested on iPad Safari and iPhone Safari for graceful degradation.
+- **Why:** Patient checkout is mobile-first by design — patients receive SMS and tap the link on their phone. If Apple Pay / Google Pay doesn't render correctly on real iOS Safari or Android Chrome, the first real transaction fails silently. Zero rounds of Cowork QA ran on mobile; this is the single highest-risk validation gap before first production order.
+- **How:** Follow the full test plan in [`mobile-validation-test-plan.md`](mobile-validation-test-plan.md) — 30-minute execution with your phone + your wife's phone, covers all 3 applications on 4 device/browser combinations.
+- **Cost:** $0 (own devices) or ~$40/mo (BrowserStack / LambdaTest if no Android available)
+- **Timeline:** 30-45 min first pass; re-run whenever frontend changes ship to /checkout/* or any mobile-responsive component
+- **Dependencies:** Live deployment (already met)
+- **Notes:** Patient checkout is the blocking gate. Clinic app and ops dashboard failures on mobile are logged as Priority 2 bugs, not launch blockers.
 
 ---
 

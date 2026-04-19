@@ -51,6 +51,7 @@ DOCS=(
   "docs/archive/source/launch-kit/legitscript-application-checklist|docs/launch-kit/legitscript-application-checklist"
   "docs/archive/source/launch-kit/design-partner-agreement|docs/launch-kit/design-partner-agreement"
   "docs/archive/source/launch-kit/pre-launch-checklist|docs/launch-kit/pre-launch-checklist"
+  "docs/archive/source/launch-kit/mobile-validation-test-plan|docs/launch-kit/mobile-validation-test-plan"
 )
 
 for entry in "${DOCS[@]}"; do
