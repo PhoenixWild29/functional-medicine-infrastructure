@@ -298,12 +298,12 @@ export function StructuredSigBuilder({
           placeholder="Amount"
           value={doseAmount}
           onChange={e => onDoseAmountChange(e.target.value)}
-          className="w-24 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="w-24 rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         <select
           value={doseUnit}
           onChange={e => onDoseUnitChange(e.target.value)}
-          className="rounded-md border border-input bg-background px-2 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-md border border-input bg-background px-2 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <option value="">Unit</option>
           <option value="mg">mg</option>
@@ -317,7 +317,7 @@ export function StructuredSigBuilder({
         <select
           value={frequency}
           onChange={e => onFrequencyChange(e.target.value)}
-          className="flex-1 rounded-md border border-input bg-background px-2 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex-1 rounded-md border border-input bg-background px-2 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <option value="">Select frequency</option>
           {FREQUENCY_OPTIONS.map(f => (
@@ -331,7 +331,7 @@ export function StructuredSigBuilder({
         <select
           value={timing}
           onChange={e => setTiming(e.target.value)}
-          className="flex-1 rounded-md border border-input bg-background px-2 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex-1 rounded-md border border-input bg-background px-2 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {TIMING_OPTIONS.map(t => (
             <option key={t.code} value={t.code}>{t.display}</option>
@@ -340,7 +340,7 @@ export function StructuredSigBuilder({
         <select
           value={duration}
           onChange={e => setDuration(e.target.value)}
-          className="flex-1 rounded-md border border-input bg-background px-2 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex-1 rounded-md border border-input bg-background px-2 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {DURATION_OPTIONS.map(d => (
             <option key={d.code} value={d.code}>{d.display}</option>
@@ -353,7 +353,7 @@ export function StructuredSigBuilder({
             min={1}
             value={customDurationDays}
             onChange={e => setCustomDurationDays(e.target.value)}
-            className="w-20 rounded-md border border-input bg-background px-2 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="w-20 rounded-md border border-input bg-background px-2 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         )}
       </div>
@@ -391,12 +391,12 @@ export function StructuredSigBuilder({
               placeholder="0.1"
               value={titration.startDose}
               onChange={e => setTitration(t => ({ ...t, startDose: e.target.value }))}
-              className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <select
               value={titration.startUnit}
               onChange={e => setTitration(t => ({ ...t, startUnit: e.target.value }))}
-              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="mL">mL</option>
               <option value="mg">mg</option>
@@ -414,12 +414,12 @@ export function StructuredSigBuilder({
               placeholder="0.1"
               value={titration.increment}
               onChange={e => setTitration(t => ({ ...t, increment: e.target.value }))}
-              className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <select
               value={titration.incrementUnit}
               onChange={e => setTitration(t => ({ ...t, incrementUnit: e.target.value }))}
-              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="mL">mL</option>
               <option value="mg">mg</option>
@@ -434,7 +434,7 @@ export function StructuredSigBuilder({
             <select
               value={titration.interval}
               onChange={e => setTitration(t => ({ ...t, interval: e.target.value }))}
-              className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {TITRATION_INTERVALS.map(i => (
                 <option key={i.code} value={i.code}>{i.display}</option>
@@ -446,7 +446,7 @@ export function StructuredSigBuilder({
                 placeholder="e.g. every 5 days"
                 value={titration.customInterval}
                 onChange={e => setTitration(t => ({ ...t, customInterval: e.target.value }))}
-                className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             )}
           </div>
@@ -459,12 +459,12 @@ export function StructuredSigBuilder({
               placeholder="0.5"
               value={titration.targetDose}
               onChange={e => setTitration(t => ({ ...t, targetDose: e.target.value }))}
-              className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <select
               value={titration.targetUnit}
               onChange={e => setTitration(t => ({ ...t, targetUnit: e.target.value }))}
-              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="mL">mL</option>
               <option value="mg">mg</option>
@@ -490,7 +490,7 @@ export function StructuredSigBuilder({
               placeholder="5"
               value={cycling.onDays}
               onChange={e => setCycling(c => ({ ...c, onDays: e.target.value }))}
-              className="w-16 rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-16 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <span className="text-xs text-muted-foreground">days on /</span>
             <input
@@ -499,7 +499,7 @@ export function StructuredSigBuilder({
               placeholder="2"
               value={cycling.offDays}
               onChange={e => setCycling(c => ({ ...c, offDays: e.target.value }))}
-              className="w-16 rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-16 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <span className="text-xs text-muted-foreground">days off</span>
           </div>
@@ -513,12 +513,12 @@ export function StructuredSigBuilder({
               placeholder="6"
               value={cycling.cycleDuration}
               onChange={e => setCycling(c => ({ ...c, cycleDuration: e.target.value }))}
-              className="w-16 rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-16 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <select
               value={cycling.cycleDurationUnit}
               onChange={e => setCycling(c => ({ ...c, cycleDurationUnit: e.target.value }))}
-              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="days">days</option>
               <option value="weeks">weeks</option>
@@ -535,7 +535,7 @@ export function StructuredSigBuilder({
               placeholder="e.g. 2-4 weeks"
               value={cycling.restPeriod}
               onChange={e => setCycling(c => ({ ...c, restPeriod: e.target.value }))}
-              className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>
         </div>
@@ -572,7 +572,7 @@ export function StructuredSigBuilder({
               onChange={e => setSigOverride(e.target.value)}
               rows={3}
               maxLength={NCPDP_SIG_LIMIT}
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           ) : (
             <p className="mt-1 text-sm text-foreground italic">&ldquo;{computedSig}&rdquo;</p>

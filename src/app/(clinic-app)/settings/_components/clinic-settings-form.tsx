@@ -106,7 +106,7 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct }: Pr
             value={markupInput}
             onChange={e => setMarkupInput(e.target.value)}
             placeholder="e.g., 150"
-            className="w-36 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            className="w-36 rounded-md border border-input bg-background px-3 py-2 text-base shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
             // Disable scroll-to-change to prevent accidental input
             onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
             style={{ appearance: 'textfield' }}
@@ -130,7 +130,7 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct }: Pr
           value={logoInput}
           onChange={e => setLogoInput(e.target.value)}
           placeholder="https://…"
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-base shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
         {logoInput.trim() !== '' && (
           // Preview thumbnail

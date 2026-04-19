@@ -284,7 +284,7 @@ export function MarginBuilderForm({
             aria-describedby={isBelowWholesale ? 'retail-error' : undefined}
             // NB-07: suppress browser spinner arrows for currency input
             style={{ appearance: 'textfield' } as React.CSSProperties}
-            className={`w-full rounded-md border pl-7 pr-3 py-2 text-sm shadow-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring ${
+            className={`w-full rounded-md border pl-7 pr-3 py-2 text-base shadow-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring ${
               isBelowWholesale ? 'border-destructive' : 'border-input'
             }`}
           />
@@ -363,7 +363,7 @@ export function MarginBuilderForm({
           onChange={e => setSigText(e.target.value)}
           aria-invalid={isSigTooShort ? 'true' : undefined}
           aria-describedby="sig-hint"
-          className={`w-full rounded-md border px-3 py-2 text-sm shadow-sm bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none ${
+          className={`w-full rounded-md border px-3 py-2 text-base shadow-sm bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none ${
             isSigTooShort ? 'border-destructive' : 'border-input'
           }`}
         />

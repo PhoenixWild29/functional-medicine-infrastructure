@@ -94,7 +94,7 @@ export function OrderHistoryTable({ orders, isLoading = false }: Props) {
             id="status-filter"
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
-            className="rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            className="rounded-md border border-input bg-background px-3 py-1.5 text-base shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
             {STATUS_GROUPS.map(g => (
               <option key={g.value} value={g.value}>{g.label}</option>

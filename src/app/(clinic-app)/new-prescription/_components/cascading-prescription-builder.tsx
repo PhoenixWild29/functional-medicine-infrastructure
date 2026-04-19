@@ -310,7 +310,7 @@ export function CascadingPrescriptionBuilder() {
               setSelectedPharmacy(null)
             }
           }}
-          className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         {!selectedIngredient && searchQuery.length >= 2 && ingredients.length > 0 && (
           <div className="mt-1 max-h-48 overflow-y-auto rounded-md border border-border">
@@ -461,7 +461,7 @@ export function CascadingPrescriptionBuilder() {
               <select
                 value={quantity}
                 onChange={e => setQuantity(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <option value="">Select quantity</option>
                 {(selectedPharmacy.available_quantities as string[] | null)?.map(q => (
@@ -473,7 +473,7 @@ export function CascadingPrescriptionBuilder() {
               <select
                 value={refills}
                 onChange={e => setRefills(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {[0, 1, 2, 3, 4, 5].map(n => (
                   <option key={n} value={String(n)}>{n} refill{n !== 1 ? 's' : ''}</option>

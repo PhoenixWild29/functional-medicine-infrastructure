@@ -138,14 +138,14 @@ export function PatientProviderSelector({ patients, providers }: Props) {
             <button
               type="button"
               onClick={() => router.push('/new-prescription/search')}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+              className="min-h-[44px] rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
             >
               Continue Adding Prescriptions
             </button>
             <button
               type="button"
               onClick={() => router.push('/new-prescription/review')}
-              className="rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+              className="min-h-[44px] rounded-md border border-blue-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
             >
               Review & Send ({session.prescriptionCount})
             </button>
@@ -177,7 +177,7 @@ export function PatientProviderSelector({ patients, providers }: Props) {
             placeholder="Search by name, DOB, or phone..."
             value={patientSearch}
             onChange={e => setPatientSearch(e.target.value)}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Search patients"
           />
         </div>

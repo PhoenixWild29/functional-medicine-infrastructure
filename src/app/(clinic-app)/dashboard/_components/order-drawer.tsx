@@ -93,7 +93,7 @@ export function OrderDrawer({ order, onClose }: Props) {
         role="dialog"
         aria-modal="true"
         aria-label={`Order details — ${order.orderId.slice(0, 8)}`}
-        className="fixed inset-y-0 right-0 z-50 w-full max-w-md overflow-y-auto bg-card border-l border-border shadow-2xl"
+        className="fixed inset-y-0 right-0 z-50 w-full md:max-w-md overflow-y-auto bg-card border-l border-border shadow-2xl"
       >
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-5 py-4">
