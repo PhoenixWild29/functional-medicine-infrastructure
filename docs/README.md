@@ -12,6 +12,8 @@
 | `PHARMACY-INTEGRATION-GUIDE.pdf` | For pharmacy partners — API specs, webhooks, onboarding |
 | `CLINIC-ONBOARDING-PLAYBOOK.pdf` | Internal playbook for onboarding design partner clinics |
 | `BUSINESS-ACTION-PLAN.pdf` | LegitScript + catalog data + compliance parallel tracks |
+| `pre-launch-checklist.pdf` | 29-item checklist tracking every non-product task before first real order (entity, BAAs, marketing site, insurance, LegitScript, etc.) |
+| `mobile-validation-test-plan.pdf` | 30-min mobile QA test plan for iOS Safari + Android Chrome (patient checkout + Apple/Google Pay flows) |
 
 ## Subfolders
 
@@ -27,8 +29,8 @@
 After editing any `.md` source in `docs/archive/source/`:
 
 ```bash
-npm run docs:pdf    # regenerates all 8 partner-facing PDFs
-npm run docs:docx   # regenerates all 14 Word docs (launch-kit + archived copies)
+npm run docs:pdf    # regenerates all 10 PDFs (8 investor/demo + 2 launch-kit)
+npm run docs:docx   # regenerates all 15 Word docs (launch-kit + archived copies)
 ```
 
 Requires pandoc for DOCX (`scoop install pandoc` on Windows).

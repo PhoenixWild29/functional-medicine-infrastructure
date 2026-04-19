@@ -16,9 +16,7 @@
     "db:types": "supabase gen types typescript --project-id your-project-ref > src/types/database.types.ts",
     "db:migrate": "supabase db push",
     "seed:poc": "dotenv -e .env.local -- tsx scripts/seed-poc.ts",
-    "docs:pdf": "npm run docs:pdf:batch1 && npm run docs:pdf:batch2",
-    "docs:pdf:batch1": "npx --yes md-to-pdf docs/BUSINESS-ACTION-PLAN.md docs/CLINIC-ONBOARDING-PLAYBOOK.md docs/COMPOUNDIQ-EXECUTIVE-OVERVIEW.md docs/INVESTMENT-STRATEGY-MEMO.md",
-    "docs:pdf:batch2": "npx --yes md-to-pdf docs/PHARMACY-INTEGRATION-GUIDE.md docs/POC-DEMO-DETAILED.md docs/POC-DEMO-QUICKSTART.md docs/SYSTEM-ARCHITECTURE-OVERVIEW.md",
+    "docs:pdf": "bash scripts/md-to-pdf.sh",
     "docs:docx": "bash scripts/md-to-docx.sh"
   },
   "dependencies": {
