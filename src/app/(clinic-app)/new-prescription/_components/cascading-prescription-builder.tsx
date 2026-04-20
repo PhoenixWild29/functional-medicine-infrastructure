@@ -299,6 +299,7 @@ export function CascadingPrescriptionBuilder() {
         </label>
         <input
           type="text"
+          aria-label="Search medications"
           placeholder="Search medication name..."
           value={selectedIngredient ? selectedIngredient.common_name : searchQuery}
           onChange={e => {
