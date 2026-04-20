@@ -110,10 +110,17 @@ export function HipaaTimeout() {
     resetTimers()
   }
 
-  if (!showWarning) return null
+  // Always render a hidden sentinel so E2E can verify the component is
+  // mounted and its timers are active, without relying on a fake clock.
+  // Real timer semantics are covered by the unit test at
+  // src/components/__tests__/hipaa-timeout.test.tsx — E2E only asserts mount.
+  if (!showWarning) {
+    return <span data-testid="hipaa-timeout-root" hidden />
+  }
 
   return (
     <div
+      data-testid="hipaa-timeout-root"
       role="dialog"
       aria-modal="true"
       aria-labelledby="hipaa-timeout-title"
