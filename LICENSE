@@ -1,0 +1,25 @@
+Copyright (c) 2026 CompoundIQ Inc. (or its founders, pre-incorporation).
+
+All rights reserved.
+
+This repository and its contents — including but not limited to source code,
+documentation, configuration, schema specifications, and business artifacts
+— are the proprietary and confidential property of CompoundIQ Inc. and its
+founders.
+
+No license, express or implied, is granted to any third party to copy,
+modify, distribute, publish, sublicense, or otherwise use any portion of
+this repository without the prior written consent of CompoundIQ Inc.
+
+The inclusion of third-party open-source dependencies (listed in
+package.json, supabase migrations, or other dependency manifests) does not
+constitute a grant of rights under this license. Each third-party component
+remains governed by its own original license terms.
+
+Questions about licensing, commercial use, or partnership inquiries should
+be directed to the project maintainers via the contact information provided
+in README.md or docs/COMPOUNDIQ-EXECUTIVE-OVERVIEW.pdf.
+
+This license applies until a formal open-source or commercial licensing
+decision is adopted by the company. Future licensing changes, if any, will
+be recorded in this file with an effective date.
