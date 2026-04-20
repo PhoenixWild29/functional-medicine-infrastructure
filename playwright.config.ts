@@ -76,12 +76,15 @@ export default defineConfig({
     },
   ],
 
-  // Start local dev server if PLAYWRIGHT_BASE_URL is not set
+  // Start the production Next.js server if PLAYWRIGHT_BASE_URL is not set.
+  // CI must run `npm run build` before this step; `npm run start` cold-boots in
+  // under 10s and avoids next dev's HMR compilation flakiness that has
+  // previously hung the E2E job for 50+ minutes.
   ...(process.env['PLAYWRIGHT_BASE_URL']
     ? {}
     : {
         webServer: {
-          command: 'npm run dev',
+          command: 'npm run start',
           url: 'http://localhost:3000',
           reuseExistingServer: !isCI,
           timeout: 120_000,
