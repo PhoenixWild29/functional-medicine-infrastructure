@@ -227,6 +227,24 @@ jobs:
         env:
           E2E_DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
 
+      # Playwright's webServer runs `npm run start`, which requires a production
+      # build. We do NOT use `next dev` in CI — it previously hung 50+ minutes
+      # because of HMR compilation under CI resource constraints. Building here
+      # produces a deterministic artifact that `next start` can cold-boot in
+      # under 10 seconds. NEXT_PUBLIC_* vars are passed at build time as
+      # defence-in-depth: Next.js inlines any direct `process.env.NEXT_PUBLIC_*`
+      # references into client bundles at build, so these must be the E2E
+      # values — same values the runtime step below uses, so builds stay
+      # environment-consistent.
+      - name: Build Next.js app (for Playwright webServer)
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL:           ${{ secrets.E2E_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY:      ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_SENTRY_DSN:             ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
+          NEXT_TELEMETRY_DISABLED:            '1'
+
       - name: Run E2E tests
         run: npm run test:e2e
         env:
