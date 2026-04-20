@@ -13,11 +13,16 @@
 
 name: Deploy
 
+# DISABLED 2026-04-20 — Vercel's own GitHub integration handles production
+# deploys on every push to main. This custom workflow was never fully
+# configured (missing SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF,
+# VERCEL_TOKEN, SLACK_DEPLOY_WEBHOOK secrets) and has been failing on
+# every push since inception. Re-enable only after:
+#   1. Decision to run Supabase migrations via CI (vs manual)
+#   2. Adding the missing secrets: gh secret set ...
+#   3. Testing on develop branch before re-enabling main trigger
 on:
-  push:
-    branches:
-      - main     # → production
-      - develop  # → staging
+  workflow_dispatch:  # manual-only; no push trigger
 
 concurrency:
   group: deploy-${{ github.ref_name }}
