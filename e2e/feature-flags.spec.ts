@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
-import { seedStaticData, cleanupTestOrders, TEST_IDS, TEST_USERS } from './fixtures/seed'
+import { seedStaticData, cleanupTestOrders, TEST_IDS, TEST_USERS, TEST_CATALOG } from './fixtures/seed'
 import { generateCheckoutToken } from '../src/lib/auth/checkout-token'
 
 // ============================================================
@@ -10,9 +10,9 @@ import { generateCheckoutToken } from '../src/lib/auth/checkout-token'
 // correctly suppress external service calls in CI / POC environments.
 //
 // Twilio test:
-//   Goes through the full order creation wizard, signs & sends.
-//   Asserts NO sms_log row is created for the order — the sender
-//   returns early before any DB insert when TWILIO_ENABLED=false.
+//   Walks the cascading prescription builder (WO-80/82/83/85/86/87),
+//   signs & sends, then asserts NO sms_log row is created for the order
+//   — sendSms() returns early before any DB insert when TWILIO_ENABLED=false.
 //
 // Documo test (STRIPE_WEBHOOK_FORWARDING required):
 //   Creates a Tier 4 (fax) order via DB, completes Stripe checkout,
@@ -21,7 +21,7 @@ import { generateCheckoutToken } from '../src/lib/auth/checkout-token'
 //   tier4-fax adapter when DOCUMO_ENABLED=false.
 //
 // Required env vars:
-//   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY — all tests
+//   E2E_SUPABASE_URL, E2E_SUPABASE_SERVICE_ROLE_KEY — all tests
 //   JWT_SECRET, CHECKOUT_TOKEN_EXPIRY — Documo test (generateCheckoutToken)
 
 const STRIPE_TEST_CARD = {
@@ -54,29 +54,34 @@ test.describe('Feature Flags — External Service Suppression', () => {
     await page.getByRole('button', { name: 'Sign in' }).click()
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
 
-    // ── 2. Navigate the 3-step new prescription wizard ──────────
-    // Step 1: /new-prescription — medication + state + pharmacy
+    // ── 2. Walk the cascading prescription builder ─────────────
+    // Same flow as e2e/clinic-app.spec.ts navigateToReviewPage helper.
+    // Step 0: patient + provider selection.
     await page.goto('/new-prescription')
-    await page.locator('#medication-search').fill('Test Compound')
-    await expect(page.getByRole('option', { name: /Test Compound Injectable/i })).toBeVisible({ timeout: 10_000 })
-    await page.getByRole('option', { name: /Test Compound Injectable/i }).click()
-    await page.locator('#patient-state').selectOption('TX')
-    await page.getByRole('button', { name: 'Search Pharmacies' }).click()
-    await expect(page.getByRole('button', { name: /Test Pharmacy Tier1/ })).toBeVisible({ timeout: 10_000 })
-    await page.getByRole('button', { name: /Test Pharmacy Tier1/ }).click()
+    await page.getByLabel('Search patients').fill('Test')
+    await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
+    await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
 
-    // Step 2: /new-prescription/margin — retail price + sig text
+    // Step 1: cascading ingredient → formulation → pharmacy + structured sig.
+    await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
+    await page.getByLabel('Search medications').fill('Test Compound')
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.ingredientName, 'i') }).click()
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.formulationName, 'i') }).click()
+    await page.getByLabel('Dose amount').fill('10')
+    await page.getByLabel('Dose unit').selectOption('mg')
+    await page.getByLabel('Frequency').selectOption('QD')
+    await page.getByLabel('Timing').selectOption({ index: 1 })
+    await page.getByLabel('Duration').selectOption({ index: 1 })
+    await page.getByRole('button', { name: /Test Pharmacy Tier1/ }).click()
+    await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
+
+    // Step 2: margin.
     await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
     await page.locator('#retail-price').fill('200.00')
-    await page.locator('#sig-text').fill('Feature flag E2E — Twilio suppression check')
-    await page.getByRole('button', { name: 'Continue to Review' }).click()
+    await page.getByRole('button', { name: /Review & Send/ }).click()
 
-    // Step 3: /new-prescription/review — patient + provider + compliance
+    // Step 3: review page is reached; signature canvas ready.
     await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
-    await page.locator('#patient-select').selectOption(TEST_IDS.patient)
-    await page.locator('#provider-select').selectOption(TEST_IDS.provider)
-    await expect(page.getByText('Pre-Dispatch Compliance Checks')).toBeVisible()
-    await expect(page.getByText('Running compliance checks…')).not.toBeVisible({ timeout: 15_000 })
 
     // ── 3. Draw signature and send payment link ─────────────────
     const canvas = page.locator('canvas[aria-label="Provider signature pad"]').first()
@@ -91,8 +96,8 @@ test.describe('Feature Flags — External Service Suppression', () => {
     }
     await expect(page.getByText('✓ Signature captured')).toBeVisible()
 
-    await page.getByRole('button', { name: 'Sign & Send Payment Link' }).click()
-    await expect(page.getByRole('dialog', { name: /Confirm & Send/i })).toBeVisible()
+    // Confirmation UI is an inline section, not a role="dialog" modal.
+    await page.getByRole('button', { name: /Sign & Send/ }).click()
     await page.getByRole('button', { name: 'Confirm & Send' }).click()
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
 
