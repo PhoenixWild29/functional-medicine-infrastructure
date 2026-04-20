@@ -27,8 +27,8 @@ test.describe('Patient Checkout Flow', () => {
   test.beforeAll(async () => {
     // Create a test order in AWAITING_PAYMENT state using the service_role client directly
     const supabase = createClient(
-      process.env['SUPABASE_URL']!,
-      process.env['SUPABASE_SERVICE_ROLE_KEY']!
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
     )
 
     const { data: order, error } = await supabase

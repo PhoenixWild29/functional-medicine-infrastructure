@@ -14,10 +14,21 @@
 
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env['SUPABASE_URL']!,
-  process.env['SUPABASE_SERVICE_ROLE_KEY']!
-)
+// E2E tests MUST run against an isolated Supabase project — never production.
+// If these env vars are missing, fail loudly rather than silently falling back
+// to any ambient SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY that could point at prod.
+const E2E_SUPABASE_URL = process.env['E2E_SUPABASE_URL']
+const E2E_SUPABASE_SERVICE_ROLE_KEY = process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']
+
+if (!E2E_SUPABASE_URL || !E2E_SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error(
+    'E2E_SUPABASE_URL and E2E_SUPABASE_SERVICE_ROLE_KEY must be set. ' +
+    'E2E tests require an isolated Supabase project to avoid corrupting production data. ' +
+    'Locally: set these in .env.test.local. CI: populated from GitHub repo secrets.'
+  )
+}
+
+const supabase = createClient(E2E_SUPABASE_URL, E2E_SUPABASE_SERVICE_ROLE_KEY)
 
 // ── Deterministic test UUIDs ──────────────────────────────────
 export const TEST_IDS = {
@@ -164,8 +175,10 @@ export async function cleanupTestOrders(): Promise<void> {
   // Truncate all related rows for test orders
   await supabase.from('adapter_submissions').delete().in('order_id', orderIds)
   await supabase.from('webhook_events').delete().in('order_id', orderIds)
+  await supabase.from('pharmacy_webhook_events').delete().in('order_id', orderIds)
   await supabase.from('sms_log').delete().in('order_id', orderIds)
   await supabase.from('order_sla_deadlines').delete().in('order_id', orderIds)
+  await supabase.from('order_status_history').delete().in('order_id', orderIds)
   await supabase.from('clinic_notifications').delete().in('order_id', orderIds)
   await supabase.from('transfer_failures').delete().in('order_id', orderIds)
   await supabase.from('disputes').delete().in('order_id', orderIds)
