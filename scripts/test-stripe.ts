@@ -14,9 +14,9 @@ async function main() {
   } catch (err: unknown) {
     if (err instanceof Error) {
       console.error('STRIPE ERROR:', err.message)
-      // @ts-ignore
+      // @ts-expect-error — Stripe error objects extend Error with .type/.code at runtime
       console.error('Type:', err.type)
-      // @ts-ignore
+      // @ts-expect-error — Stripe error objects extend Error with .type/.code at runtime
       console.error('Code:', err.code)
     }
   }

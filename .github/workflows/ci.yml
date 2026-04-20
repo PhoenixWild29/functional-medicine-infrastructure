@@ -25,17 +25,9 @@ env:
 
 jobs:
   # ── Job 1: Lint ──────────────────────────────────────────────
-  # KNOWN BROKEN 2026-04-20 — ESLint 9 + FlatCompat wrapping
-  # next/core-web-vitals shared configs throws "Converting circular
-  # structure to JSON" on every run. Root cause is upstream config
-  # incompatibility between next-shareable configs and the
-  # @eslint/eslintrc compat layer on v9. continue-on-error keeps CI
-  # green while the underlying config is migrated off FlatCompat.
-  # Fix tracked as a backlog item; does not block deployment.
   lint:
     name: Lint (ESLint)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
