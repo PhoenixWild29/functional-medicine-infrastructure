@@ -125,8 +125,9 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
 
   return (
     <main className="flex min-h-screen flex-col items-center px-4 py-12">
-      {/* WO-73: CSS-only animated checkmark keyframes */}
-      {/* eslint-disable-next-line react/no-danger */}
+      {/* WO-73: CSS-only animated checkmark keyframes. dangerouslySetInnerHTML
+          is intentional — the CSS is a compile-time constant with no user
+          input, so there is no XSS surface. */}
       <style dangerouslySetInnerHTML={{ __html: CHECKMARK_STYLE }} />
 
       <div className="w-full max-w-sm space-y-6">

@@ -227,7 +227,7 @@ export async function GET(req: NextRequest) {
           return NextResponse.json({ error: 'formulation_id required' }, { status: 400 })
         }
 
-        let query = supabase
+        const query = supabase
           .from('pharmacy_formulations')
           .select(`
             pharmacy_formulation_id, wholesale_price, available_quantities,
