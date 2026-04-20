@@ -185,6 +185,7 @@ jobs:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
     continue-on-error: true
+    timeout-minutes: 15  # prevents hung dev server from blocking indefinitely (default GH timeout is 6h)
     needs: [test, build]
     # Skip on fork PRs — secrets are not available for external contributors
     if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
