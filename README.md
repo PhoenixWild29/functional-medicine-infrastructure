@@ -1,6 +1,13 @@
 # CompoundIQ
 
+[![CI](https://github.com/PhoenixWild29/functional-medicine-infrastructure/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/PhoenixWild29/functional-medicine-infrastructure/actions/workflows/ci.yml)
+[![License: Proprietary](https://img.shields.io/badge/license-proprietary-red.svg)](LICENSE)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)](https://nextjs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue?logo=typescript)](https://www.typescriptlang.org)
+
 Compounding pharmacy order management platform connecting clinics and pharmacies with automated routing, SLA monitoring, and HIPAA-compliant workflows.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and PR conventions.
 
 ## Tech Stack
 
