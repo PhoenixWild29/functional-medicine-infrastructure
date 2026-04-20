@@ -7,6 +7,9 @@ const config: Config = {
   // Use jsdom for component tests; individual files can override with @jest-environment node
   testEnvironment: 'jest-environment-jsdom',
 
+  // Extend expect() with @testing-library/jest-dom matchers (toBeInTheDocument, etc.)
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+
   // Test location patterns
   testMatch: [
     '**/__tests__/**/*.test.ts',
