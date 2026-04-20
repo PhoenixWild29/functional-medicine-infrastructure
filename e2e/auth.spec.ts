@@ -170,12 +170,19 @@ test.describe('Auth — HIPAA Idle Timeout', () => {
     // Install fake clock — freeze at "now"
     await page.clock.install({ time: Date.now() })
 
-    // Fast-forward 28 minutes → warning modal should appear
+    // Fast-forward 28 minutes → warning modal should appear.
+    // Uses getByRole('dialog', { name }) which resolves the accessible name
+    // via aria-labelledby (the dialog's <h2 id="hipaa-timeout-title">).
+    // This resolves to a single element, avoiding the strict-mode violation
+    // that occurs with .or() unions that match both the dialog and a
+    // descendant text node simultaneously.
     await page.clock.fastForward('28:00')
-    await expect(
-      page.getByRole('dialog').filter({ hasText: /Session Expiring Soon/i })
-        .or(page.getByText(/session will end due to inactivity/i))
-    ).toBeVisible({ timeout: 5_000 })
+    const warningDialog = page.getByRole('dialog', { name: /Session Expiring Soon/i })
+    await expect(warningDialog).toBeVisible({ timeout: 5_000 })
+
+    // Dialog should still be present before the final 2-minute advance —
+    // user hasn't interacted, so no reset can have fired.
+    await expect(warningDialog).toBeVisible()
 
     // Fast-forward remaining 2 minutes → auto-logout
     await page.clock.fastForward('2:00')
