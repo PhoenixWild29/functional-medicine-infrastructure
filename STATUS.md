@@ -1,6 +1,6 @@
 # Engineering Status — In-Flight Work
 
-**Last updated:** 2026-04-20
+**Last updated:** 2026-04-20 (PR #6 opened)
 **Purpose:** Durable record of outstanding work. Survives AI-assistant context compaction and is readable by any engineer picking up the repo. Update this as items complete.
 
 ---
@@ -36,7 +36,7 @@ Only after both reviews converge does implementation start. This prevents the "C
 | #4 | `fix(a11y): remove duplicate sonner Toaster` | ✅ **MERGED** | ~~fix/dedupe-toaster~~ | Accessibility bug + source of "2 alerts" strict-mode test failure |
 | #5 | `fix(lint): migrate ESLint off FlatCompat` | ✅ **MERGED** | ~~fix/eslint-flatcompat~~ | Lint gate is now genuinely enforcing. 48 warnings remain as backlog. |
 | #3 | Dependabot: next 16.2.4 + follow-redirects | ✅ **all checks green, pending human merge** | `dependabot/npm_and_yarn/npm_and_yarn-690c4e3fa7` | Had to populate Dependabot-specific secret store separately from repo secrets. |
-| PR 2 | Verify E2E Supabase project isolation | ⏳ **NEXT** | — | Is E2E test data writing to the same Supabase project as the production demo? Block re-enabling CI if yes. |
+| #6 | `chore(e2e): isolate E2E tests on dedicated Supabase project` | ⏳ **PR OPEN — awaiting checks + review** | `chore/e2e-supabase-isolation` | Option B executed: dedicated Supabase project `pythornowwddvkhwmsbd`, 37 migrations applied, 4 E2E_* secrets populated (repo + dependabot), all E2E-side code paths hard-fail without E2E_* env vars, CI has migration-sync step. |
 | PR 3 | Diagnose alert/dialog DOM via Playwright inspection | ⏳ | — | Temporary `page.evaluate()` to confirm what the "2 dialogs" in idle-timeout test actually are. Cowork flagged this as "no duplicate exists — investigate selector/clock interaction." |
 | PR 4 | Fix PHI seed + orders insert schema drift | ⏳ | — | Compare current `orders` table schema vs what `clinic-app.spec.ts` test payload inserts. Likely missing new NOT NULL columns (e.g. `formulation_id`). |
 | PR 5 | Rewrite `clinic-app.spec.ts` for cascading-builder architecture | ⏳ | — | **Full rewrite, 2-4 hours.** The old wizard flow no longer exists — WO-80/82/83/85 replaced it. Tests use selectors like `#medication-search`, `#patient-state`, `"Search Pharmacies"` button, `"Continue to Review"` button — NONE exist in current UI. |
