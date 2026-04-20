@@ -37,7 +37,12 @@ test.describe('Auth — Login and Role-Aware Redirect', () => {
     await page.getByLabel('Password').fill('WrongPassword!999')
     await page.getByRole('button', { name: /Sign in/i }).click()
 
-    await expect(page.getByRole('alert')).toContainText(/Invalid email or password/i)
+    // Filter required: Next.js App Router injects a hidden role="alert"
+    // route announcer (__next-route-announcer__) that causes strict-mode
+    // violations on bare getByRole('alert') queries.
+    await expect(
+      page.getByRole('alert').filter({ hasText: /Invalid email or password/i })
+    ).toBeVisible()
     await expect(page).toHaveURL('/login')
   })
 
@@ -160,15 +165,19 @@ test.describe('Auth — HIPAA Idle Timeout', () => {
   // This test verifies the idle timer modal EXISTS in the DOM and is triggered
   // by the inactivity mechanism when time is fast-forwarded via page.clock.
   test('idle timeout warning modal appears and auto-logout fires at 30 min', async ({ page }) => {
+    // Install the fake clock BEFORE any navigation. HipaaTimeout's useEffect
+    // runs at component mount and synchronously schedules setTimeout(WARNING_MS)
+    // against whatever timer implementation is active at that moment. If we
+    // install the clock after mount, the real setTimeout stays pending against
+    // real time and page.clock.fastForward() never triggers the warning.
+    await page.clock.install({ time: Date.now() })
+
     // Login as clinic admin
     await page.goto('/login')
     await page.getByLabel('Email').fill(TEST_USERS.clinicAdmin.email)
     await page.getByLabel('Password').fill(TEST_USERS.clinicAdmin.password)
     await page.getByRole('button', { name: /Sign in/i }).click()
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
-
-    // Install fake clock — freeze at "now"
-    await page.clock.install({ time: Date.now() })
 
     // Fast-forward 28 minutes → warning modal should appear.
     // Uses getByRole('dialog', { name }) which resolves the accessible name
