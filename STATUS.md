@@ -1,6 +1,6 @@
 # Engineering Status — In-Flight Work
 
-**Last updated:** 2026-04-20 (PR #6 opened)
+**Last updated:** 2026-04-20 (PRs #6 + #7 merged; PR 4 closed no-op; PR 5 next)
 **Purpose:** Durable record of outstanding work. Survives AI-assistant context compaction and is readable by any engineer picking up the repo. Update this as items complete.
 
 ---
@@ -36,10 +36,10 @@ Only after both reviews converge does implementation start. This prevents the "C
 | #4 | `fix(a11y): remove duplicate sonner Toaster` | ✅ **MERGED** | ~~fix/dedupe-toaster~~ | Accessibility bug + source of "2 alerts" strict-mode test failure |
 | #5 | `fix(lint): migrate ESLint off FlatCompat` | ✅ **MERGED** | ~~fix/eslint-flatcompat~~ | Lint gate is now genuinely enforcing. 48 warnings remain as backlog. |
 | #3 | Dependabot: next 16.2.4 + follow-redirects | ✅ **all checks green, pending human merge** | `dependabot/npm_and_yarn/npm_and_yarn-690c4e3fa7` | Had to populate Dependabot-specific secret store separately from repo secrets. |
-| #6 | `chore(e2e): isolate E2E tests on dedicated Supabase project` | ⏳ **PR OPEN — awaiting checks + review** | `chore/e2e-supabase-isolation` | Option B executed: dedicated Supabase project `pythornowwddvkhwmsbd`, 37 migrations applied, 4 E2E_* secrets populated (repo + dependabot), all E2E-side code paths hard-fail without E2E_* env vars, CI has migration-sync step. |
-| PR 3 | Diagnose alert/dialog DOM via Playwright inspection | ⏳ | — | Temporary `page.evaluate()` to confirm what the "2 dialogs" in idle-timeout test actually are. Cowork flagged this as "no duplicate exists — investigate selector/clock interaction." |
-| PR 4 | Fix PHI seed + orders insert schema drift | ⏳ | — | Compare current `orders` table schema vs what `clinic-app.spec.ts` test payload inserts. Likely missing new NOT NULL columns (e.g. `formulation_id`). |
-| PR 5 | Rewrite `clinic-app.spec.ts` for cascading-builder architecture | ⏳ | — | **Full rewrite, 2-4 hours.** The old wizard flow no longer exists — WO-80/82/83/85 replaced it. Tests use selectors like `#medication-search`, `#patient-state`, `"Search Pharmacies"` button, `"Continue to Review"` button — NONE exist in current UI. |
+| #6 | `chore(e2e): isolate E2E tests on dedicated Supabase project` | ✅ **MERGED** (83fdc8b) | ~~chore/e2e-supabase-isolation~~ | Dedicated Supabase project `pythornowwddvkhwmsbd`, 37 migrations applied, 4 E2E_* secrets populated, all E2E paths hard-fail without E2E_* env vars, CI has migration-sync step. |
+| #7 | `fix(e2e): idle-timeout warning selector no longer hits strict mode` | ✅ **MERGED** (c56459e) | ~~fix/idle-timeout-selector-strict-mode~~ | Replaced `.or()` union locator (matched dialog + inner `<p>` simultaneously) with `getByRole('dialog', { name: /Session Expiring Soon/i })`. Internal + cowork review both confirmed via static analysis — diagnostic PR skipped. |
+| PR 4 | Fix PHI seed + orders insert schema drift | ❌ **CLOSED, NO-OP** | — | Internal Explore agent + cowork both walked every `orders` migration and ran an empirical insert against the PR #6 E2E Supabase project: all NOT NULL columns provided, all CHECK constraints satisfied (retail ≥ wholesale, sig_text ≥ 10 chars, catalog_item_id XOR formulation_id), no removed columns. Original "missing formulation_id" / "pharmacy_id removed" hypotheses were wrong. The 5 original E2E failures are fully accounted for by #4/#5/#6/#7 + PR 5. |
+| PR 5 | Rewrite `clinic-app.spec.ts` for cascading-builder architecture | ⏳ **NEXT** | — | **Full rewrite, 2-4 hours.** The old wizard flow no longer exists — WO-80/82/83/85 replaced it. Tests use selectors like `#medication-search`, `#patient-state`, `"Search Pharmacies"` button, `"Continue to Review"` button — NONE exist in current UI. |
 | PR 6 | Decide Vercel preview URL vs dev server boot fix | ⏳ | — | Playwright currently boots a local `next dev` via `playwright.config.ts`'s `webServer`. This has hung in CI (50+ min). Options: (a) migrate to running Playwright against a Vercel preview URL via `PLAYWRIGHT_BASE_URL` (strongly recommended by cowork), (b) harden local dev server boot in CI. |
 | PR 7 | Re-enable E2E in CI with NO skip, NO continue-on-error | ⏳ | — | Remove `if: github.event_name == 'workflow_dispatch'` and `continue-on-error: true` from `e2e` job in `.github/workflows/ci.yml`. Runs only after PRs 2-6 land. |
 
