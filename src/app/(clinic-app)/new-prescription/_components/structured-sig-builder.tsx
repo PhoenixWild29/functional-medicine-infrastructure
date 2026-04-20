@@ -295,12 +295,14 @@ export function StructuredSigBuilder({
       <div className="flex gap-2">
         <input
           type="text"
+          aria-label="Dose amount"
           placeholder="Amount"
           value={doseAmount}
           onChange={e => onDoseAmountChange(e.target.value)}
           className="w-24 rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         <select
+          aria-label="Dose unit"
           value={doseUnit}
           onChange={e => onDoseUnitChange(e.target.value)}
           className="rounded-md border border-input bg-background px-2 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -315,6 +317,7 @@ export function StructuredSigBuilder({
           <option value="click">click(s)</option>
         </select>
         <select
+          aria-label="Frequency"
           value={frequency}
           onChange={e => onFrequencyChange(e.target.value)}
           className="flex-1 rounded-md border border-input bg-background px-2 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -329,6 +332,7 @@ export function StructuredSigBuilder({
       {/* Row 2: Timing + Duration */}
       <div className="flex gap-2">
         <select
+          aria-label="Timing"
           value={timing}
           onChange={e => setTiming(e.target.value)}
           className="flex-1 rounded-md border border-input bg-background px-2 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -338,6 +342,7 @@ export function StructuredSigBuilder({
           ))}
         </select>
         <select
+          aria-label="Duration"
           value={duration}
           onChange={e => setDuration(e.target.value)}
           className="flex-1 rounded-md border border-input bg-background px-2 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

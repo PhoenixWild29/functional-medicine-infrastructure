@@ -1,81 +1,88 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
-import { seedStaticData, cleanupTestOrders, TEST_IDS, TEST_USERS } from './fixtures/seed'
+import { seedStaticData, cleanupTestOrders, TEST_IDS, TEST_USERS, TEST_CATALOG } from './fixtures/seed'
 
 // ============================================================
-// Clinic App E2E — WO-65 (extends WO-42)
+// Clinic App E2E — cascading prescription builder (WO-80/82/83/85/86/87)
 // ============================================================
-// Tests the medical assistant order creation workflow:
-//   Step 1: /new-prescription  — medication search + pharmacy selection
-//   Step 2: /new-prescription/margin — retail price + sig text
-//   Step 3: /new-prescription/review — patient/provider, signature, send
+// The new-prescription flow is:
+//   Step 0: /new-prescription           — patient + provider selection
+//   Step 1: /new-prescription/search    — cascading ingredient → formulation →
+//                                         pharmacy, with structured sig builder
+//   Step 2: /new-prescription/margin    — retail price (sig pre-fills from Step 1)
+//   Step 3: /new-prescription/review    — batch review + signature + send
 //
-// Also includes the 8-step happy path for the full order lifecycle
-// up to the point of Stripe payment confirmation.
+// The Zero-PHI describe block below inserts directly into `orders` and does
+// NOT use the UI wizard.
 
 // ── Shared wizard navigation helper ──────────────────────────────────────────
 //
-// Navigates through all 3 steps of the new prescription wizard:
-//   1. Search medication, select state TX, click Search, click pharmacy card
-//   2. Set retail price, set sig text, click Continue to Review
-//   3. Select patient, select provider (compliance checks auto-run)
+// Walks Steps 0-2 and leaves the browser on /new-prescription/review with the
+// signature canvas ready to be drawn on. The seed ingredient has
+// dea_schedule=null, so no EPCS TOTP gate fires — callers can proceed straight
+// to canvas interaction.
 //
-// Leaves the browser on step 3 (/new-prescription/review) with patient + provider
-// selected and compliance checks running. Caller must await signature canvas and
-// click "Sign & Send Payment Link" / "Confirm & Send" to complete the flow.
-//
-// Prerequisites: test data seeded (seedStaticData must have run)
+// Prerequisites: seedStaticData must have run (seeds V3 hierarchical catalog).
 
 async function navigateToReviewPage(
   page: Page,
-  { retailPrice = '200.00', sigText = 'Inject 0.5mg subcutaneously weekly' }: {
-    retailPrice?: string
-    sigText?: string
-  } = {},
+  { retailPrice = '200.00' }: { retailPrice?: string } = {},
 ) {
-  // ── Step 1: Pharmacy search ───────────────────────────────
+  // ── Step 0: Patient + provider selection ──────────────────
   await page.goto('/new-prescription')
-  await expect(page.getByRole('heading', { name: /Find a Pharmacy/i })).toBeVisible()
 
-  // Type in medication autocomplete (fires at 3+ chars)
-  await page.locator('#medication-search').fill('Test Compound')
-  await expect(page.getByRole('option', { name: /Test Compound Injectable/i })).toBeVisible({ timeout: 10_000 })
-  await page.getByRole('option', { name: /Test Compound Injectable/i }).click()
+  // Patient: type first name into the search box, then click the result.
+  // The UI renders patient buttons as "{last_name}, {first_name}".
+  await page.getByLabel('Search patients').fill('Test')
+  await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
 
-  // Select patient shipping state
-  await page.locator('#patient-state').selectOption('TX')
+  // Provider: only one provider seeded per clinic, so the UI auto-selects
+  // it (patient-provider-selector.tsx handles this). No click needed — the
+  // Continue button becomes enabled as soon as patient is chosen.
+  await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
 
-  // Execute search
-  await page.getByRole('button', { name: 'Search Pharmacies' }).click()
+  // ── Step 1: Cascading prescription builder ────────────────
+  await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
 
-  // Click the pharmacy result card — it's a <button> with the pharmacy name
-  await expect(page.getByRole('button', { name: /Test Pharmacy Tier1/ })).toBeVisible({ timeout: 10_000 })
+  // Ingredient search — aria-label added in this PR for stable selection.
+  await page.getByLabel('Search medications').fill('Test Compound')
+  await page.getByRole('button', { name: new RegExp(TEST_CATALOG.ingredientName, 'i') }).click()
+
+  // Salt form: only one per ingredient, so the builder auto-selects and the
+  // salt-form picker section does not render (see cascading-prescription-
+  // builder.tsx — section is gated on saltForms.length > 1).
+
+  // Formulation.
+  await page.getByRole('button', { name: new RegExp(TEST_CATALOG.formulationName, 'i') }).click()
+
+  // Structured sig: dose 10 mg, daily, morning, 30 days. aria-labels added
+  // in this PR. Any valid combination that yields a ≥10-char sig preview
+  // satisfies the "Continue" button's canAdd gate.
+  await page.getByLabel('Dose amount').fill('10')
+  await page.getByLabel('Dose unit').selectOption('mg')
+  await page.getByLabel('Frequency').selectOption('QD')
+  // Timing defaults to the first option; explicitly set for determinism.
+  await page.getByLabel('Timing').selectOption({ index: 1 })
+  await page.getByLabel('Duration').selectOption({ index: 1 })
+
+  // Pharmacy — auto-populates once formulation is set; click by name.
   await page.getByRole('button', { name: /Test Pharmacy Tier1/ }).click()
+
+  // Advance to margin.
+  await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
 
   // ── Step 2: Margin builder ────────────────────────────────
   await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
-
-  // Set retail price (label: "Retail Price *")
   await page.locator('#retail-price').fill(retailPrice)
 
-  // Set sig text (label: "Sig (Prescription Directions) *")
-  await page.locator('#sig-text').fill(sigText)
+  // Sig was already computed in Step 1; it pre-fills on this page via URL
+  // param. We do not re-fill #sig-text here — just advance.
 
-  // Navigate to review
-  await page.getByRole('button', { name: 'Continue to Review' }).click()
+  // Button is "Review & Send" (or "Review & Send (N)" when batching).
+  await page.getByRole('button', { name: /Review & Send/ }).click()
 
-  // ── Step 3: Review page — patient + provider selection ────
+  // ── Step 3: Review page (signature canvas ready) ──────────
   await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
-
-  // Select patient by option value (patient UUID)
-  await page.locator('#patient-select').selectOption(TEST_IDS.patient)
-
-  // Select provider by option value (provider UUID)
-  await page.locator('#provider-select').selectOption(TEST_IDS.provider)
-
-  // Compliance checks auto-run when both are selected — wait for them to complete
-  await expect(page.getByText('Pre-Dispatch Compliance Checks')).toBeVisible()
-  await expect(page.getByText('Running compliance checks…')).not.toBeVisible({ timeout: 15_000 })
 }
 
 test.describe('Clinic App — Order Creation Flow', () => {
@@ -114,10 +121,14 @@ test.describe('Clinic App — Order Creation Flow', () => {
     // Wait for signature captured confirmation
     await expect(page.getByText('✓ Signature captured')).toBeVisible()
 
-    // ── 8. Click Sign & Send → confirm dialog ─────────────────
-    await page.getByRole('button', { name: 'Sign & Send Payment Link' }).click()
-    // Confirmation dialog: "Confirm & Send"
-    await expect(page.getByRole('dialog', { name: /Confirm & Send/i })).toBeVisible()
+    // ── 8. Click Sign & Send → inline confirmation ───────────
+    // The "Sign & Send..." button label varies between single-Rx and batch:
+    //   single: "Sign & Send Payment Link"
+    //   batch:  "Sign & Send All N Prescriptions"
+    // A regex catches both. The confirmation UI is an inline section (NOT a
+    // role="dialog" modal), so we click "Confirm & Send" directly without
+    // waiting for a dialog element.
+    await page.getByRole('button', { name: /Sign & Send/ }).click()
     await page.getByRole('button', { name: 'Confirm & Send' }).click()
 
     // ── 9. Verify redirect to dashboard ───────────────────────
@@ -132,15 +143,23 @@ test.describe('Clinic App — Order Creation Flow', () => {
     await page.getByRole('button', { name: 'Sign in' }).click()
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
 
-    // ── 2. Navigate to Step 1 and search ─────────────────────
+    // ── 2. Walk Steps 0-1 of the cascading builder ───────────
     await page.goto('/new-prescription')
-    await page.locator('#medication-search').fill('Test Compound')
-    await expect(page.getByRole('option', { name: /Test Compound Injectable/i })).toBeVisible({ timeout: 10_000 })
-    await page.getByRole('option', { name: /Test Compound Injectable/i }).click()
-    await page.locator('#patient-state').selectOption('TX')
-    await page.getByRole('button', { name: 'Search Pharmacies' }).click()
-    await expect(page.getByRole('button', { name: /Test Pharmacy Tier1/ })).toBeVisible({ timeout: 10_000 })
+    await page.getByLabel('Search patients').fill('Test')
+    await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
+    await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
+
+    await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
+    await page.getByLabel('Search medications').fill('Test Compound')
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.ingredientName, 'i') }).click()
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.formulationName, 'i') }).click()
+    await page.getByLabel('Dose amount').fill('10')
+    await page.getByLabel('Dose unit').selectOption('mg')
+    await page.getByLabel('Frequency').selectOption('QD')
+    await page.getByLabel('Timing').selectOption({ index: 1 })
+    await page.getByLabel('Duration').selectOption({ index: 1 })
     await page.getByRole('button', { name: /Test Pharmacy Tier1/ }).click()
+    await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
 
     // ── 3. On margin page: set retail BELOW wholesale ($100) ──
     await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
@@ -152,9 +171,9 @@ test.describe('Clinic App — Order Creation Flow', () => {
       page.getByText(/retail price must be at least/i)
     ).toBeVisible()
 
-    // "Continue to Review" button should be disabled
+    // "Review & Send" button should be disabled while retail < wholesale.
     await expect(
-      page.getByRole('button', { name: 'Continue to Review' })
+      page.getByRole('button', { name: /Review & Send/ })
     ).toBeDisabled()
   })
 })
@@ -202,10 +221,8 @@ test.describe('Clinic App — 8-Step Order Happy Path', () => {
     await page.getByRole('button', { name: 'Sign in' }).click()
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
 
-    // Navigate wizard to review page
-    await navigateToReviewPage(page, {
-      sigText: 'Step-8 happy path E2E test sig text 123',
-    })
+    // Navigate cascading builder to review page
+    await navigateToReviewPage(page)
 
     // Draw signature
     const canvas = page.locator('canvas[aria-label="Provider signature pad"]').first()
@@ -219,9 +236,8 @@ test.describe('Clinic App — 8-Step Order Happy Path', () => {
     }
     await expect(page.getByText('✓ Signature captured')).toBeVisible()
 
-    // Sign & send
-    await page.getByRole('button', { name: 'Sign & Send Payment Link' }).click()
-    await expect(page.getByRole('dialog', { name: /Confirm & Send/i })).toBeVisible()
+    // Sign & send — confirmation is an inline section, not a role="dialog" modal.
+    await page.getByRole('button', { name: /Sign & Send/ }).click()
     await page.getByRole('button', { name: 'Confirm & Send' }).click()
 
     // Verify Step 1 complete: redirected to dashboard
