@@ -218,20 +218,34 @@ jobs:
         run: npx playwright install-deps
         if: steps.playwright-cache.outputs.cache-hit == 'true'
 
+      # Keep the E2E Supabase project's schema in sync with supabase/migrations/.
+      # Uses the session-pooler connection string. E2E_DATABASE_URL must be a
+      # fully percent-encoded Postgres connection string (e.g. from `supabase db
+      # connection-string --linked` against the E2E project).
+      - name: Sync E2E Supabase schema (apply migrations)
+        run: npx supabase db push --db-url "$E2E_DATABASE_URL" --include-all --yes
+        env:
+          E2E_DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+
       - name: Run E2E tests
         run: npm run test:e2e
         env:
           CI: 'true'
+          # E2E runs against an ISOLATED Supabase project, never production.
+          # All browser-side, server-side, and test-side clients point at E2E_SUPABASE_*.
           # ── Next.js public vars (injected into browser bundle) ──
-          NEXT_PUBLIC_SUPABASE_URL:            ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY:       ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL:            ${{ secrets.E2E_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY:       ${{ secrets.E2E_SUPABASE_ANON_KEY }}
           NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:  ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
           NEXT_PUBLIC_SENTRY_DSN:              ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
-          # ── Server-side vars (used by Next.js API routes + test scripts) ──
-          SUPABASE_URL:                        ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_ANON_KEY:                   ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}  # same value as NEXT_PUBLIC_SUPABASE_ANON_KEY — anon key, not service role
-          SUPABASE_SERVICE_ROLE_KEY:           ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          DATABASE_URL:                        ${{ secrets.DATABASE_URL }}
+          # ── Server-side vars (used by Next.js API routes) ──
+          SUPABASE_URL:                        ${{ secrets.E2E_SUPABASE_URL }}
+          SUPABASE_ANON_KEY:                   ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY:           ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
+          # ── Playwright test-side vars (read directly by seed.ts + specs) ──
+          E2E_SUPABASE_URL:                    ${{ secrets.E2E_SUPABASE_URL }}
+          E2E_SUPABASE_SERVICE_ROLE_KEY:       ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
+          DATABASE_URL:                        ${{ secrets.E2E_DATABASE_URL }}
           STRIPE_SECRET_KEY:                   ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET:               ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           JWT_SECRET:                          ${{ secrets.JWT_SECRET }}

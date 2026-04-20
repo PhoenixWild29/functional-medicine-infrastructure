@@ -21,8 +21,8 @@ const CLINIC_B_USER = {
 
 async function seedClinicB(): Promise<void> {
   const supabase = createClient(
-    process.env['SUPABASE_URL']!,
-    process.env['SUPABASE_SERVICE_ROLE_KEY']!
+    process.env['E2E_SUPABASE_URL']!,
+    process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
   )
 
   await supabase.from('clinics').upsert({
@@ -62,8 +62,8 @@ test.describe('RBAC — Cross-Clinic Data Isolation', () => {
   test('Clinic A order is not visible to Clinic B user in pipeline', async ({ page }) => {
     // Create a Clinic A order via service_role
     const supabase = createClient(
-      process.env['SUPABASE_URL']!,
-      process.env['SUPABASE_SERVICE_ROLE_KEY']!
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
     )
 
     const { data: order } = await supabase
@@ -115,8 +115,8 @@ test.describe('RBAC — Cross-Clinic Data Isolation', () => {
   test('ops_admin can see orders from all clinics in pipeline', async ({ page }) => {
     // Create a Clinic A order
     const supabase = createClient(
-      process.env['SUPABASE_URL']!,
-      process.env['SUPABASE_SERVICE_ROLE_KEY']!
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
     )
 
     const { data: order } = await supabase
@@ -182,8 +182,8 @@ test.describe('RBAC — Checkout Token Scope', () => {
     //
     // This test verifies the UI shows the correct amount for the token's order.
     const supabase = createClient(
-      process.env['SUPABASE_URL']!,
-      process.env['SUPABASE_SERVICE_ROLE_KEY']!
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
     )
 
     // Create two orders with different prices

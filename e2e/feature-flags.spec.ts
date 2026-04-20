@@ -43,8 +43,8 @@ test.describe('Feature Flags — External Service Suppression', () => {
   // ── Twilio: TWILIO_ENABLED=false ──────────────────────────────
   test('TWILIO_ENABLED=false: no sms_log row created when payment link is sent', async ({ page }) => {
     const supabase = createClient(
-      process.env['SUPABASE_URL']!,
-      process.env['SUPABASE_SERVICE_ROLE_KEY']!
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
     )
 
     // ── 1. Login as clinic admin ────────────────────────────────
@@ -133,8 +133,8 @@ test.describe('Feature Flags — External Service Suppression', () => {
     test.setTimeout(90_000)
 
     const supabase = createClient(
-      process.env['SUPABASE_URL']!,
-      process.env['SUPABASE_SERVICE_ROLE_KEY']!
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
     )
 
     // ── 1. Create a Tier 4 (fax) order directly via DB ──────────

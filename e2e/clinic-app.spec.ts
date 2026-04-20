@@ -191,8 +191,8 @@ test.describe('Clinic App — 8-Step Order Happy Path', () => {
       test.skip(true, 'STRIPE_WEBHOOK_FORWARDING not set — Stripe CLI webhook forwarding required for this test')
     }
     const supabase = createClient(
-      process.env['SUPABASE_URL']!,
-      process.env['SUPABASE_SERVICE_ROLE_KEY']!
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
     )
 
     // ── Step 1: Clinic user creates order (AWAITING_PAYMENT) ──
@@ -305,10 +305,17 @@ test.describe('Clinic App — Order Zero-PHI Validation', () => {
   // medication name, dosage, or pharmacy name in patient-facing views.
   // This test verifies that the patient checkout page shows no PHI.
 
+  // seedStaticData is normally called by globalSetup, but this describe block
+  // inserts directly into `orders` referencing clinic/provider/patient/pharmacy/catalog
+  // rows by FK. Re-running ensures they exist even if global-setup rows were cleared.
+  test.beforeAll(async () => {
+    await seedStaticData()
+  })
+
   test('checkout page shows no medication name (zero-PHI compliance)', async ({ page }) => {
     const supabase = createClient(
-      process.env['SUPABASE_URL']!,
-      process.env['SUPABASE_SERVICE_ROLE_KEY']!
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
     )
 
     const { data: order } = await supabase

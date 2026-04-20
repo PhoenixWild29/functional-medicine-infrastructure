@@ -13,10 +13,18 @@ import { createClient } from '@supabase/supabase-js'
 import { TEST_USERS, TEST_IDS, seedStaticData } from './fixtures/seed'
 
 export default async function globalSetup(): Promise<void> {
-  const supabase = createClient(
-    process.env['SUPABASE_URL']!,
-    process.env['SUPABASE_SERVICE_ROLE_KEY']!
-  )
+  // Hard-fail if E2E env vars are missing. The seed.ts module will also throw
+  // on import, but we re-check here so the failure message is clear at the
+  // earliest possible point in the test lifecycle.
+  const url = process.env['E2E_SUPABASE_URL']
+  const key = process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']
+  if (!url || !key) {
+    throw new Error(
+      'globalSetup: E2E_SUPABASE_URL and E2E_SUPABASE_SERVICE_ROLE_KEY are required. ' +
+      'Refusing to run against any fallback project.'
+    )
+  }
+  const supabase = createClient(url, key)
 
   // Seed static reference data (clinic, pharmacy, catalog, patient)
   await seedStaticData()

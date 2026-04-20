@@ -33,8 +33,8 @@ test.describe('Ops Dashboard — Pipeline & Triage Flow', () => {
   test('ops admin can reroute a SUBMISSION_FAILED order', async ({ page }) => {
     // Seed a test order in SUBMISSION_FAILED state
     const supabase = createClient(
-      process.env['SUPABASE_URL']!,
-      process.env['SUPABASE_SERVICE_ROLE_KEY']!
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
     )
 
     const { data: order } = await supabase
