@@ -86,9 +86,11 @@ test.describe('Ops Dashboard — Pipeline & Triage Flow', () => {
     await orderRow.getByRole('button', { name: 'Reroute' }).click()
 
     // ── Verify order transitions to REROUTE_PENDING ──────────
-    // The row re-fetches on 10s polling interval; status badge shows "Reroute Pending".
+    // The row re-fetches on 10s polling interval; the StatusBadge renders
+    // the label from src/lib/orders/status-config.ts — which maps
+    // REROUTE_PENDING → "Rerouting" (not "Reroute Pending").
     await expect(
-      orderRow.getByText('Reroute Pending')
+      orderRow.getByText('Rerouting')
     ).toBeVisible({ timeout: 15_000 })
   })
 
