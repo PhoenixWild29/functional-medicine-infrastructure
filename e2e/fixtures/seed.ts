@@ -89,7 +89,11 @@ export async function seedStaticData(): Promise<void> {
     clinic_id:             TEST_IDS.clinic,
     name:                  'Test Clinic E2E',
     stripe_connect_status: 'ACTIVE',
-    stripe_connect_account_id: 'acct_test_e2e',
+    // `poc_placeholder` is the official sentinel in /api/checkout/payment-intent
+    // (see route.ts line 138) that bypasses Stripe Connect routing. This keeps
+    // the E2E API-level checkout test self-contained — it doesn't require a
+    // real Stripe Connect account to exist for the clinic.
+    stripe_connect_account_id: 'poc_placeholder',
     is_active:             true,
   }, { onConflict: 'clinic_id' })
 
