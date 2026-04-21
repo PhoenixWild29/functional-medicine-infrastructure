@@ -1,7 +1,10 @@
 # CompoundIQ POC Demo — Quick Start Guide
 
+**Version:** 2.1 | **Date:** April 21, 2026
 **Duration:** 10–15 minutes
 **URL:** https://functional-medicine-infrastructure.vercel.app
+
+> **CI status (as of v2.1):** Every merge to main is backed by 65 passing Playwright E2E tests across Chromium / Firefox / WebKit / mobile Chrome, plus 6 jest unit tests covering the HIPAA idle-timeout state machine. E2E blocks merges — no `continue-on-error` escape hatch.
 
 ---
 

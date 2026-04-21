@@ -164,16 +164,16 @@ CompoundIQ handles protected health information (PHI) and is designed for HIPAA-
 
 | Milestone | Status |
 |-----------|--------|
-| Platform built | 19 phases, 86 work orders (81 completed, 5 backlog) |
+| Platform built | 19 phases, 87 work orders — all merged to main |
 | All 3 applications functional | Clinic App, Ops Dashboard, Patient Checkout |
 | Cascading prescription builder | Hierarchical catalog, structured sig, titration/cycling |
 | Provider speed features | Favorites (one-click reorder), protocol templates (multi-med bundles) |
 | Regulatory compliance | EPCS 2FA for controlled substances, drug interaction alerts |
-| QA validated | 50+ automated test checks pass across all applications |
-| Externally tested | Claude Cowork browser QA validated all phases |
+| Automated test coverage | 65 Playwright E2E tests across Chromium / Firefox / WebKit / mobile Chrome, plus 6 jest unit tests. CI gates every merge to main — `continue-on-error` removed. |
+| Externally tested | Claude Cowork browser QA validated all phases + the full 45-minute demo walkthrough across 6 rounds with zero remaining findings |
 | Documentation | 60+ specification documents organized in software factory |
 | POC deployed | Live on Vercel, accessible for demonstration |
-| Security audit | AES-256 encrypted TOTP secrets, RLS on all tables |
+| Security audit | AES-256 encrypted TOTP secrets, RLS on all 33 tables |
 
 ---
 

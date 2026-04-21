@@ -1,8 +1,10 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 2.0 | **Date:** April 9, 2026
+**Version:** 2.1 | **Date:** April 21, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
+
+> **What's new in v2.1 (2026-04-21):** E2E test suite refresh campaign complete — every critical user flow (auth, cascading builder, checkout, ops, feature flags) is now gated on 65 passing Playwright tests + 6 jest unit tests that block merges to main. HIPAA idle-timeout state machine covered by dedicated unit tests. Signature canvas coverage split by layer (Option Z). Every merge to main is now backed by a full green CI pipeline. See the repo's `STATUS.md` for the full PR ledger.
 
 ---
 
@@ -432,9 +434,9 @@ Copy the URL from the output.
 | SLA types | 10 enforcement types with 3-tier escalation |
 | Database tables | 33 (PostgreSQL with full RLS) + 1 view |
 | Cron jobs | 10 Vercel cron jobs |
-| Build phases completed | 19 phases, 86 work orders (81 completed, 5 backlog) |
+| Build phases completed | 19 phases, 87 work orders (all merged; WO-87 formulation support in prod) |
 | Hard constraints | 16 non-negotiable rules |
-| Test coverage | 21/21 QA checks pass (Cowork validated) |
+| Test coverage | 65 Playwright E2E tests (all browsers) + 6 jest unit tests. CI gates every merge. Cowork validated the manual QA walkthrough across 6 rounds with zero remaining findings. |
 
 ### Common Questions
 
