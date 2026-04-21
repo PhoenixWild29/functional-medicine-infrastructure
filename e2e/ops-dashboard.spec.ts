@@ -85,13 +85,36 @@ test.describe('Ops Dashboard — Pipeline & Triage Flow', () => {
     // No modal is shown — the reroute fires immediately via the API.
     await orderRow.getByRole('button', { name: 'Reroute' }).click()
 
-    // ── Verify order transitions to REROUTE_PENDING ──────────
-    // The row re-fetches on 10s polling interval; the StatusBadge renders
-    // the label from src/lib/orders/status-config.ts — which maps
-    // REROUTE_PENDING → "Rerouting" (not "Reroute Pending").
-    await expect(
-      orderRow.getByText('Rerouting')
-    ).toBeVisible({ timeout: 15_000 })
+    // ── Verify order transitioned to REROUTE_PENDING ─────────
+    // Two observable outcomes to check:
+    //   1. The order row disappears from the current "Submission Failed"
+    //      filter view, because REROUTE_PENDING is no longer in that
+    //      filter's status set. The ops UI filters client-side by status
+    //      on each poll cycle, so a successful status change moves the
+    //      order out of the visible list.
+    //   2. The DB reflects the status change. This is the authoritative
+    //      signal that the /api/ops/orders/{id}/action handler performed
+    //      its atomic CAS UPDATE. We check it with a bounded poll in
+    //      case the handler defers the write briefly.
+    //
+    // Using DB as the source of truth (not UI text) avoids the circular
+    // problem of asserting a UI label that's only rendered in a filter
+    // view the order has just left.
+    await expect(orderRow).not.toBeVisible({ timeout: 15_000 })
+
+    // Reuse the `supabase` client created at the top of this test.
+    let status: string | null = null
+    for (let i = 0; i < 10; i++) {
+      const { data } = await supabase
+        .from('orders')
+        .select('status')
+        .eq('order_id', order.order_id)
+        .single()
+      status = data?.status ?? null
+      if (status === 'REROUTE_PENDING') break
+      await new Promise(r => setTimeout(r, 500))
+    }
+    expect(status).toBe('REROUTE_PENDING')
   })
 
   test('ops admin can view SLA heatmap', async ({ page }) => {

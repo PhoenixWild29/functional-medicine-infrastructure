@@ -88,8 +88,11 @@ test.describe('Patient Checkout Flow', () => {
   test('checkout page renders amount and hides PHI', async ({ page }) => {
     await page.goto(`/checkout/${checkoutToken}`)
 
-    // Amount + generic service name render server-side — no Stripe dependency
-    await expect(page.getByText('$200.00')).toBeVisible({ timeout: 10_000 })
+    // Amount + generic service name render server-side — no Stripe dependency.
+    // Scope by aria-label to avoid matching the "Pay $200.00" submit button,
+    // which is also rendered (as a fallback / always-present control) outside
+    // the Stripe iframe on non-Chromium browsers in headless CI.
+    await expect(page.getByLabel('Amount due: $200.00')).toBeVisible({ timeout: 10_000 })
     await expect(page.getByText(/Prescription Service/i)).toBeVisible()
 
     // Zero-PHI (REQ-HIPAA): medication + pharmacy names must NOT appear
