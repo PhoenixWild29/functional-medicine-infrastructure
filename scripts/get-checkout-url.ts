@@ -1,34 +1,26 @@
 // Get the checkout URL for the most recent AWAITING_PAYMENT order.
+//
+// DEPRECATED as the primary demo path — the clinic-app order drawer now
+// has a "Copy Payment Link" button (PR #1 of demo-readiness campaign).
+// Kept as a local-dev backup for debugging and for cases where operators
+// need terminal access (e.g., generating links for testing without going
+// through the UI).
+//
 // Usage: npx dotenv -e .env.local -- npx tsx scripts/get-checkout-url.ts
+//
+// NOTE: this imports `generateCheckoutToken` from src/lib/auth/checkout-token
+// rather than re-implementing the signing logic. Prevents drift between the
+// production token format and the backup script's format, which was a real
+// risk before PR #1. If you need to change the JWT schema, change it in one
+// place (the lib) and both paths stay in sync.
 
 import { createClient } from '@supabase/supabase-js'
-
-function bytesToBase64url(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
-}
-
-async function generateToken(orderId: string, patientId: string, clinicId: string): Promise<string> {
-  const secret = process.env.JWT_SECRET!
-  const encoder = new TextEncoder()
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw', encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-  )
-  const now = Math.floor(Date.now() / 1000)
-  const payload = { orderId, patientId, clinicId, iat: now, exp: now + 259200 } // 72h
-  const headerB64 = bytesToBase64url(encoder.encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })))
-  const payloadB64 = bytesToBase64url(encoder.encode(JSON.stringify(payload)))
-  const signingInput = `${headerB64}.${payloadB64}`
-  const sig = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(signingInput))
-  return `${signingInput}.${bytesToBase64url(new Uint8Array(sig))}`
-}
+import { generateCheckoutToken } from '@/lib/auth/checkout-token'
 
 async function main() {
   const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env['NEXT_PUBLIC_SUPABASE_URL']!,
+    process.env['SUPABASE_SERVICE_ROLE_KEY']!
   )
 
   const { data: order, error } = await supabase
@@ -50,8 +42,8 @@ async function main() {
   console.log(`Status:  ${order.status}`)
   console.log(`Created: ${order.created_at}`)
 
-  const baseUrl = (process.env.APP_BASE_URL ?? '').replace(/\/$/, '')
-  const token = await generateToken(order.order_id, order.patient_id, order.clinic_id)
+  const baseUrl = (process.env['APP_BASE_URL'] ?? '').replace(/\/$/, '')
+  const token = await generateCheckoutToken(order.order_id, order.patient_id, order.clinic_id)
 
   console.log('')
   console.log('=== CHECKOUT URL ===')

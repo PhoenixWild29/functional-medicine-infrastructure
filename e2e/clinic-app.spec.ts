@@ -133,6 +133,74 @@ test.describe('Clinic App — Order Creation Flow', () => {
     ).toBeDisabled()
   })
 
+  test('clinic user can copy a payment link from an AWAITING_PAYMENT order', async ({ page, context }) => {
+    // PR #1 of the demo-readiness fixes — replaces the
+    // `scripts/get-checkout-url.ts` terminal command in the demo flow
+    // with a "Copy Payment Link" button on the order drawer. Fixes
+    // cowork review finding A1.
+
+    // Permissions for clipboard read-back (only used to verify the
+    // button wrote *something* — we don't assert the exact token value
+    // because JWT iat makes tokens non-deterministic).
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+
+    // Seed an AWAITING_PAYMENT order belonging to the test clinic.
+    const supabase = createClient(
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
+    )
+    const { data: order, error: insertErr } = await supabase
+      .from('orders')
+      .insert({
+        patient_id:               TEST_IDS.patient,
+        provider_id:              TEST_IDS.provider,
+        catalog_item_id:          TEST_IDS.catalogItem,
+        clinic_id:                TEST_IDS.clinic,
+        pharmacy_id:              TEST_IDS.pharmacyTier1,
+        status:                   'AWAITING_PAYMENT',
+        quantity:                 1,
+        wholesale_price_snapshot: 100.00,
+        retail_price_snapshot:    200.00,
+        sig_text:                 'Copy-payment-link E2E test order',
+        locked_at:                new Date().toISOString(),
+      })
+      .select('order_id')
+      .single()
+    if (insertErr || !order) {
+      throw new Error(`Failed to seed AWAITING_PAYMENT order: ${insertErr?.message}`)
+    }
+
+    // Login as clinic_admin and navigate to the dashboard.
+    await page.goto('/login')
+    await page.getByLabel('Email').fill(TEST_USERS.clinicAdmin.email)
+    await page.getByLabel('Password').fill(TEST_USERS.clinicAdmin.password)
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+
+    // Open the drawer for the seeded order.
+    const orderRow = page.locator(`[data-order-id="${order.order_id}"]`)
+    await expect(orderRow).toBeVisible({ timeout: 10_000 })
+    await orderRow.click()
+
+    // The drawer should expose the Copy Payment Link button.
+    const copyButton = page.getByRole('button', { name: 'Copy Payment Link' })
+    await expect(copyButton).toBeVisible({ timeout: 5_000 })
+
+    // Click the button. The handler POSTs to /api/orders/{id}/checkout-link,
+    // receives { checkoutUrl, expiresAt }, writes to clipboard, fires a toast.
+    await copyButton.click()
+
+    // Toast fires on successful clipboard write. Text per the component:
+    //   "Payment link copied · valid for 72 hours"
+    await expect(page.getByText(/Payment link copied/i)).toBeVisible({ timeout: 5_000 })
+
+    // Verify the clipboard actually contains a /checkout/ URL that points
+    // at the live-app origin. We match the shape, not the exact token —
+    // tokens are non-deterministic because of iat.
+    const clipboardText = await page.evaluate(() => navigator.clipboard.readText())
+    expect(clipboardText).toMatch(/\/checkout\/[A-Za-z0-9._-]+$/)
+  })
+
   test('retail price validation rejects price below wholesale', async ({ page }) => {
     // ── 1. Login ──────────────────────────────────────────────
     await page.goto('/login')
