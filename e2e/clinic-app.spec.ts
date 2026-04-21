@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import { seedStaticData, cleanupTestOrders, TEST_IDS, TEST_USERS, TEST_CATALOG } from './fixtures/seed'
+import { drawTestSignature } from './fixtures/signature'
 
 // ============================================================
 // Clinic App E2E — cascading prescription builder (WO-80/82/83/85/86/87)
@@ -106,20 +107,10 @@ test.describe('Clinic App — Order Creation Flow', () => {
     await navigateToReviewPage(page)
 
     // ── 7. Draw signature on canvas ───────────────────────────
-    // Canvas appears only after all compliance checks (except provider_signature) pass.
-    // aria-label is "Provider signature pad".
-    const canvas = page.locator('canvas[aria-label="Provider signature pad"]').first()
-    await expect(canvas).toBeVisible({ timeout: 15_000 })
-    const box = await canvas.boundingBox()
-    if (box) {
-      await page.mouse.move(box.x + 50, box.y + 50)
-      await page.mouse.down()
-      await page.mouse.move(box.x + 100, box.y + 80)
-      await page.mouse.move(box.x + 150, box.y + 50)
-      await page.mouse.up()
-    }
-    // Wait for signature captured confirmation
-    await expect(page.getByText('✓ Signature captured')).toBeVisible()
+    // Uses pointer-event dispatch (see e2e/fixtures/signature.ts) because
+    // react-signature-canvas → signature_pad listens to pointerdown/move/up,
+    // not mouse events. Helper also asserts "Signature captured" text.
+    await drawTestSignature(page)
 
     // ── 8. Click Sign & Send → inline confirmation ───────────
     // The "Sign & Send..." button label varies between single-Rx and batch:
@@ -224,17 +215,8 @@ test.describe('Clinic App — 8-Step Order Happy Path', () => {
     // Navigate cascading builder to review page
     await navigateToReviewPage(page)
 
-    // Draw signature
-    const canvas = page.locator('canvas[aria-label="Provider signature pad"]').first()
-    await expect(canvas).toBeVisible({ timeout: 15_000 })
-    const box = await canvas.boundingBox()
-    if (box) {
-      await page.mouse.move(box.x + 50, box.y + 50)
-      await page.mouse.down()
-      await page.mouse.move(box.x + 100, box.y + 80)
-      await page.mouse.up()
-    }
-    await expect(page.getByText('✓ Signature captured')).toBeVisible()
+    // Draw signature via pointer-event dispatch (see drawTestSignature doc)
+    await drawTestSignature(page)
 
     // Sign & send — confirmation is an inline section, not a role="dialog" modal.
     await page.getByRole('button', { name: /Sign & Send/ }).click()

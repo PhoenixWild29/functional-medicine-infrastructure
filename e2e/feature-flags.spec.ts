@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import { seedStaticData, cleanupTestOrders, TEST_IDS, TEST_USERS, TEST_CATALOG } from './fixtures/seed'
+import { drawTestSignature } from './fixtures/signature'
 import { generateCheckoutToken } from '../src/lib/auth/checkout-token'
 
 // ============================================================
@@ -84,17 +85,8 @@ test.describe('Feature Flags — External Service Suppression', () => {
     await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
 
     // ── 3. Draw signature and send payment link ─────────────────
-    const canvas = page.locator('canvas[aria-label="Provider signature pad"]').first()
-    await expect(canvas).toBeVisible({ timeout: 15_000 })
-    const box = await canvas.boundingBox()
-    if (box) {
-      await page.mouse.move(box.x + 50, box.y + 50)
-      await page.mouse.down()
-      await page.mouse.move(box.x + 100, box.y + 80)
-      await page.mouse.move(box.x + 150, box.y + 50)
-      await page.mouse.up()
-    }
-    await expect(page.getByText('✓ Signature captured')).toBeVisible()
+    // Uses pointer-event dispatch (see e2e/fixtures/signature.ts).
+    await drawTestSignature(page)
 
     // Confirmation UI is an inline section, not a role="dialog" modal.
     await page.getByRole('button', { name: /Sign & Send/ }).click()
