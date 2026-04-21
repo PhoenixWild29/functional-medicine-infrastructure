@@ -97,22 +97,36 @@ test.describe('Patient Checkout Flow', () => {
     await expect(page.getByText(/test compound/i)).not.toBeVisible()
     await expect(page.getByText(/test pharmacy/i)).not.toBeVisible()
 
-    // Clinic branding renders
-    await expect(page.getByText('Test Clinic E2E')).toBeVisible()
+    // Clinic branding renders. The clinic name appears in TWO places on the
+    // checkout page (banner and the order-summary subtitle), so scope the
+    // selector to the banner to avoid a strict-mode multi-match.
+    await expect(page.getByRole('banner').getByText('Test Clinic E2E')).toBeVisible()
   })
 
-  // ── Test B — API-level PaymentIntent round-trip, browserless ──
-  // Scoped to a single project to avoid running the same non-browser logic
-  // once per browser configuration. The `chromium` project is the natural
-  // home because it also runs the rest of this spec via Test A.
-  test('checkout token creates a valid PaymentIntent and confirms', async ({
+  // ── Test B — API-level PaymentIntent, browserless ────────────
+  // Split into two phases:
+  //   Phase 1 — always runs: calls our /api/checkout/payment-intent route,
+  //     asserts it returns a valid client_secret. This is the part that
+  //     lives in OUR ownership boundary (our API, our auth, our Stripe
+  //     SDK configuration).
+  //   Phase 2 — test-mode only: if STRIPE_SECRET_KEY is a Stripe TEST
+  //     key (`sk_test_*`), also confirm the PaymentIntent with Stripe's
+  //     pm_card_visa test-card token. This covers Stripe's own test-mode
+  //     round-trip. Skipped when the CI env has a LIVE key (`sk_live_*`)
+  //     because pm_card_visa is rejected in livemode. To enable Phase 2
+  //     in CI, populate a TEST secret key as STRIPE_SECRET_KEY in the
+  //     E2E job env; the production Vercel env keeps the live key.
+  //
+  // Scoped to browserName === 'chromium' to avoid running the same
+  // non-browser logic 4x. The `chromium` project includes checkout.spec.ts
+  // per playwright.config.ts for exactly this reason.
+  test('checkout token produces a valid PaymentIntent client_secret', async ({
     baseURL,
     browserName,
   }) => {
     test.skip(browserName !== 'chromium', 'API-level test runs once per suite')
-    test.skip(!process.env['STRIPE_SECRET_KEY'], 'STRIPE_SECRET_KEY required for API confirmation')
 
-    // 1. POST to our API — same path the checkout page client uses
+    // Phase 1 — OUR ownership: call our API, verify the shape of the response.
     const response = await fetch(`${baseURL}/api/checkout/payment-intent`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -123,23 +137,33 @@ test.describe('Patient Checkout Flow', () => {
     const body = await response.json() as { clientSecret: string }
     expect(body.clientSecret).toMatch(/^pi_[a-zA-Z0-9]+_secret_/)
 
-    // Extract the PaymentIntent ID from the client secret
     const piId = body.clientSecret.split('_secret_')[0]
     if (!piId) throw new Error(`Unexpected client secret shape: ${body.clientSecret}`)
     expect(piId).toMatch(/^pi_/)
 
-    // 2. Confirm the PaymentIntent with Stripe's test card (succeeds immediately
-    //    in test mode — no 3DS challenge on pm_card_visa).
-    const stripe = new Stripe(process.env['STRIPE_SECRET_KEY']!)
+    // Phase 2 — Stripe's ownership: confirm the PI with a test-card token.
+    // Requires a test-mode secret key. Current CI populates STRIPE_SECRET_KEY
+    // from the production Vercel env (live key), so this phase skips in CI
+    // until a dedicated test key is provisioned. Follow-up tracked in
+    // STATUS.md §backlog.
+    const secretKey = process.env['STRIPE_SECRET_KEY']
+    if (!secretKey || !secretKey.startsWith('sk_test_')) {
+      test.info().annotations.push({
+        type: 'skip-phase-2',
+        description: 'STRIPE_SECRET_KEY is not a test key; Phase 2 PI confirmation skipped',
+      })
+      return
+    }
+
+    const stripe = new Stripe(secretKey)
     const intent = await stripe.paymentIntents.confirm(piId, {
       payment_method: 'pm_card_visa',
     })
     expect(intent.status).toBe('succeeded')
 
-    // 3. If Stripe CLI webhook forwarding is running (manual / STRIPE_WEBHOOK_FORWARDING=1),
-    //    poll the orders table for the expected status transition. Otherwise the
-    //    confirmed-PI assertion above is the terminal check — downstream webhook
-    //    handler coverage belongs to the 8-step happy path in clinic-app.spec.ts.
+    // Phase 3 — Webhook round-trip coverage. Only when Stripe CLI forwarding
+    // is active. Downstream webhook handler coverage otherwise lives in the
+    // 8-step happy path test in clinic-app.spec.ts.
     if (process.env['STRIPE_WEBHOOK_FORWARDING']) {
       const supabase = createClient(
         process.env['E2E_SUPABASE_URL']!,
