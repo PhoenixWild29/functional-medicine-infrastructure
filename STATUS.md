@@ -1,6 +1,6 @@
 # Engineering Status — In-Flight Work
 
-**Last updated:** 2026-04-21 (PRs through #15 merged — campaign at 4 failures left, all with named paths to green)
+**Last updated:** 2026-04-21 — **E2E REFRESH CAMPAIGN COMPLETE.** All 15 merged PRs + 1 closed no-op. E2E now runs on push/PR with `continue-on-error` removed. Last dispatch 65 passed / 0 failed / 5 skipped in 2.1 min. PR #20 (unskip) green on its own push-event run.
 **Purpose:** Durable record of outstanding work. Survives AI-assistant context compaction and is readable by any engineer picking up the repo. Update this as items complete.
 
 ---
@@ -15,9 +15,26 @@
 
 ---
 
-## Active campaign: E2E test refresh (PRs 1-7 sequence)
+## Completed campaign: E2E test refresh (PRs 1–7, 2026-04-20 → 2026-04-21)
 
-### Why this campaign exists
+**Result:** The entire Playwright E2E suite is green and gating merges on push/PR. `continue-on-error: true` removed. Last dispatch 65 passed / 0 failed / 5 skipped in 2.1 min.
+
+**Campaign principles that held up** (kept for future engineers working this repo):
+- Two-agent review chain (internal Explore + external cowork) before non-trivial code.
+- Dispatch-verify every PR before stacking the next.
+- Don't hide things: no `test.skip` without a clear follow-up note; no production-code test hooks.
+- Split coverage by layer when Playwright's abstraction fails (Option Z): unit-test state machines, E2E asserts mount + direct-DB downstream.
+- "One more dispatch" boundary: any Playwright-internal theory-driven fix gets ONE dispatch to verify; if it fails, pivot to pre-committed fallback.
+
+**What's left as post-launch polish** (see Backlog below):
+- Populate `sk_test_*` `STRIPE_SECRET_KEY` in CI secrets so checkout Test B Phase 2 exercises the full Stripe test-mode round-trip.
+- `storageState` auth pre-warm: replaces per-test logins with pre-authed session cookies. Eliminates rate-limit risk entirely. Durable long-term fix.
+- Unit test for `BatchReviewForm` signature state transitions.
+- API-level integration test for `/api/orders/{id}/sign` Twilio/Documo suppression.
+
+## Pre-campaign context (preserved for reference)
+
+### Why this campaign existed
 
 The 5 Playwright E2E tests in `e2e/` have been silently rotting for months because the CI pipeline was broken at earlier jobs (Lint / Build) and never reached the E2E job. Once those earlier issues got fixed (this session), E2E failures surfaced. Shortcut options (`continue-on-error`, `skip` on push) were applied and then explicitly rejected by the user: *"we do not hide things or skip over things, when we find an issue we fix it."*
 
