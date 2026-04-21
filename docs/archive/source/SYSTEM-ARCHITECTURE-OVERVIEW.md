@@ -369,7 +369,7 @@ All cron endpoints are protected by CRON_SECRET bearer token authentication.
 | Integration tiers | 4 |
 | Cron jobs | 10 |
 | Build phases completed | 19 |
-| Work orders completed | 81 (5 backlog) |
+| Work orders completed | 87 (all merged to main) |
 | Applications | 3 |
 | User roles | 4 (+ patient anonymous) |
 | Webhook sources | 4 (Stripe, Documo, Twilio, Pharmacy APIs) |
@@ -377,6 +377,7 @@ All cron endpoints are protected by CRON_SECRET bearer token authentication.
 | Provider favorites | Per-provider saved prescription configs |
 | Protocol templates | Per-clinic multi-medication bundles |
 | Environment variables | 40+ across 8 categories |
+| Automated tests | 65 Playwright E2E (Chromium / Firefox / WebKit / mobile Chrome) + 6 jest unit tests. E2E isolated on dedicated Supabase project. CI gates every merge. |
 
 ---
 
