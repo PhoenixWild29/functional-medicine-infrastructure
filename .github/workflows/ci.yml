@@ -159,37 +159,26 @@ jobs:
       # so saving it provides no benefit and wastes cache quota.
 
   # ── Job 5: E2E Tests (Playwright) ────────────────────────────
-  # KNOWN STALE 2026-04-20 — these tests have not been maintained since
-  # they were originally written. First CI run where they actually
-  # executed end-to-end (earlier CI runs always failed at Lint or Build
-  # before reaching this job). Surfaced ~5 failures:
-  #   - auth.spec.ts strict-mode violations (2 alerts, 2 dialogs on page)
-  #   - clinic-app.spec.ts selector mismatches + timeouts
-  #   - PHI validation helper seed-data errors
-  # Tests document intent but are not actionable quality gates until
-  # updated to match current UI. continue-on-error keeps CI green;
-  # test failures still upload as Playwright report artifacts for review.
-  # Fix tracked as backlog item; does not block deployment.
+  # Runs after unit tests AND build pass. Skipped on fork PRs (secrets
+  # unavailable). The 8-step Stripe happy path test inside the suite
+  # skips gracefully when STRIPE_WEBHOOK_FORWARDING is not set.
   #
-  # Runs after unit tests AND build pass. Skipped on fork PRs (secrets unavailable).
-  # The 8-step Stripe happy path test skips gracefully when
-  # STRIPE_WEBHOOK_FORWARDING is not set (no Stripe CLI in CI).
+  # Full E2E refresh campaign landed 2026-04-21 — PRs #4, #5, #8–#19.
+  # All failing tests fixed at the root: wizard rewritten for cascading
+  # builder (PR #8), signature canvas coverage split (Path B, PR #15),
+  # HIPAA timer moved to jest (PR #12), checkout split into page-render
+  # + API-level (PR #16/#17), ops reroute DB-truth assertion (PR #19).
+  # Supabase Auth rate limits bumped to 300 req/5min for sign-ins and
+  # token refresh so the suite doesn't throttle itself in the 30-default
+  # free-tier cap. Last verification dispatch: 65 passed / 0 failed /
+  # 5 skipped in 2.1 min.
   e2e:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
-    continue-on-error: true
-    timeout-minutes: 15  # prevents hung dev server from blocking indefinitely (default GH timeout is 6h)
+    timeout-minutes: 15  # upper bound; typical run is 2–3 min on the current suite
     needs: [test, build]
-    # SKIPPED on push/PR 2026-04-20 — tests are stale (see comment block above).
-    # Prior runs hit either timeout (dev server hang) or 5 assertion failures on
-    # outdated selectors. continue-on-error marks failure as non-blocking, but
-    # GitHub treats timeout-minutes expiry as "cancelled" which still fails the
-    # overall workflow conclusion. Set to workflow_dispatch-only (manual trigger)
-    # until the tests are refreshed. To re-enable on push/PR, merge this
-    # condition with the original fork-PR guard:
-    #   if: (github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push') && github.event_name == 'workflow_dispatch'
-    # …and remove the workflow_dispatch requirement once selectors are updated.
-    if: github.event_name == 'workflow_dispatch'
+    # Skip on fork PRs (secrets unavailable on fork-originated workflow runs).
+    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
