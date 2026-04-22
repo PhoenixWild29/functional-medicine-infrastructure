@@ -27,6 +27,16 @@ interface SyncReport {
   ran_at:  string
   ok:      boolean
   results: SyncResultRow[]
+  // Optional: since PR #7a the Reset Credentials endpoint's ok field
+  // reflects credential sync only (H2 decoupling). The background
+  // demo-data refresh outcome is exposed separately so operators can
+  // see both results on one button click without visiting the
+  // Refresh Demo Data card. Narrow inline shape — the full
+  // DemoDataRefreshReport type lives in src/lib/poc/refresh-demo-data.ts.
+  demo_data_refresh?: {
+    ok:       boolean
+    skipped?: 'not_poc_mode'
+  }
 }
 
 export function ResetCredentialsCard({ users }: { users: PocUserRow[] }) {
@@ -123,6 +133,37 @@ export function ResetCredentialsCard({ users }: { users: PocUserRow[] }) {
               </li>
             ))}
           </ul>
+
+          {/*
+           * Demo-data refresh sanity badge (PR #7b M2). The reset
+           * button runs credential sync AND demo-data refresh in the
+           * same backend call. After PR #7a decoupled the two signals,
+           * the banner above reflects credentials only — this line
+           * surfaces the second outcome so the presenter doesn't have
+           * to visit the Refresh Demo Data card to confirm it ran.
+           * Cron + Sentry is still the primary alert channel (PR #7a);
+           * this is secondary, for the 10-min-ahead pre-demo check.
+           */}
+          {report.demo_data_refresh && (
+            <p className="mt-2 flex items-center gap-2 text-xs">
+              <span
+                className={
+                  report.demo_data_refresh.ok
+                    ? 'inline-block h-2 w-2 rounded-full bg-emerald-500'
+                    : 'inline-block h-2 w-2 rounded-full bg-amber-500'
+                }
+                aria-hidden
+              />
+              <span className="text-muted-foreground">
+                Demo data refresh —{' '}
+                {report.demo_data_refresh.ok
+                  ? (report.demo_data_refresh.skipped === 'not_poc_mode'
+                      ? <span>skipped (POC_MODE off)</span>
+                      : <span className="text-emerald-700">synced</span>)
+                  : <span className="text-amber-700">failed — check cron logs / Sentry</span>}
+              </span>
+            </p>
+          )}
         </div>
       )}
     </section>

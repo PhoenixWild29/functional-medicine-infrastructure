@@ -276,12 +276,19 @@ export function BatchReviewForm() {
         </p>
 
         <div className="mt-3 rounded-lg border border-border bg-white">
+          {/*
+           * Fire "captured" on BOTH pointerdown (onBegin) and pointerup
+           * (onEnd). Kept consistent with draft-sign-form (F5 fix) so
+           * both signature surfaces behave identically. See draft-
+           * sign-form.tsx for the full F5 root-cause TODO.
+           */}
           <SignatureCanvas
             ref={sigCanvasRef}
             canvasProps={{
               className: 'w-full h-32 rounded-lg',
               'aria-label': 'Provider signature pad',
             }}
+            onBegin={() => setSignatureCaptured(true)}
             onEnd={() => setSignatureCaptured(true)}
           />
         </div>
