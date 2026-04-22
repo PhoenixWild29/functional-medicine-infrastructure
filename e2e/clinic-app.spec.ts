@@ -1,6 +1,8 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import { seedStaticData, cleanupTestOrders, TEST_IDS, TEST_USERS, TEST_CATALOG } from './fixtures/seed'
+import { decryptSecret } from '../src/lib/epcs/crypto'
+import { DEMO_TOTP_SECRET } from '../src/lib/poc/totp-enrollment'
 
 // ============================================================
 // Clinic App E2E — cascading prescription builder (WO-80/82/83/85/86/87)
@@ -241,6 +243,46 @@ test.describe('Clinic App — Order Creation Flow', () => {
     await expect(
       page.getByRole('button', { name: /Review & Send/ })
     ).toBeDisabled()
+  })
+
+  test('E2E provider is pre-enrolled with the canonical demo TOTP secret', async () => {
+    // PR #2 of the demo-readiness campaign — fixes cowork review finding A2
+    // (EPCS 2FA silent dependency). The seed pre-enrolls the provider row
+    // with a known secret + flips totp_enabled = true + totp_verified_at
+    // so a presenter's authenticator app just needs to enter the 6-digit
+    // code when the EPCS gate fires. No first-time setup flow, no QR scan
+    // mid-demo.
+    //
+    // This test verifies the FULL enrollment chain at the data layer:
+    //   1. The encrypted blob in providers.totp_secret_encrypted is
+    //      well-formed AES-256-GCM ciphertext that the shared crypto
+    //      helper can decrypt (same helper /api/epcs?action=verify uses).
+    //   2. The decrypted plaintext matches DEMO_TOTP_SECRET byte-for-byte.
+    //   3. totp_enabled and totp_verified_at are both flipped, matching
+    //      the post-verify state that /api/epcs?action=status checks.
+    //
+    // A controlled-substance UI flow test that exercises the EPCS modal
+    // end-to-end is blocked by the same signature_pad issue the prior
+    // E2E campaign hit; coverage for that path is via manual QA pre-demo.
+    const supabase = createClient(
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
+    )
+
+    const { data: provider } = await supabase
+      .from('providers')
+      .select('totp_secret_encrypted, totp_enabled, totp_verified_at')
+      .eq('provider_id', TEST_IDS.provider)
+      .single()
+
+    if (!provider) throw new Error('E2E test provider not found — seedStaticData must run first')
+
+    expect(provider.totp_enabled).toBe(true)
+    expect(provider.totp_verified_at).not.toBeNull()
+    expect(provider.totp_secret_encrypted).toMatch(/^[a-f0-9]{24}:[a-f0-9]{32}:[a-f0-9]+$/)
+
+    const decrypted = decryptSecret(provider.totp_secret_encrypted!)
+    expect(decrypted).toBe(DEMO_TOTP_SECRET)
   })
 })
 

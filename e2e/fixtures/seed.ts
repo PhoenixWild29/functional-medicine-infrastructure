@@ -13,6 +13,8 @@
 // HIPAA: All test data uses obviously fake values (no real patient data).
 
 import { createClient } from '@supabase/supabase-js'
+import { encryptSecret } from '../../src/lib/epcs/crypto'
+import { DEMO_TOTP_SECRET } from '../../src/lib/poc/totp-enrollment'
 
 // E2E tests MUST run against an isolated Supabase project — never production.
 // If these env vars are missing, fail loudly rather than silently falling back
@@ -44,6 +46,11 @@ export const TEST_IDS = {
   saltForm:           'aaaaaaaa-0000-0000-0000-000000000031',
   formulation:        'aaaaaaaa-0000-0000-0000-000000000032',
   pharmacyFormulation:'aaaaaaaa-0000-0000-0000-000000000033',
+  // Controlled-substance seed for EPCS 2FA E2E (Schedule III — triggers TOTP gate)
+  controlledIngredient:         'aaaaaaaa-0000-0000-0000-000000000040',
+  controlledSaltForm:           'aaaaaaaa-0000-0000-0000-000000000041',
+  controlledFormulation:        'aaaaaaaa-0000-0000-0000-000000000042',
+  controlledPharmacyFormulation:'aaaaaaaa-0000-0000-0000-000000000043',
 }
 
 // Display strings the cascading UI renders — tests reference these when
@@ -55,6 +62,12 @@ export const TEST_CATALOG = {
   formulationName: 'Test Compound E2E Injectable 10 mg/mL',
   dosageFormName:  'Injectable Solution',   // seeded by migration 20260408000002
   routeName:       'Subcutaneous',          // seeded by migration 20260408000002
+
+  // Schedule-III controlled substance — triggers EPCS 2FA gate at signing.
+  // Used by the TOTP-enrollment E2E test that proves A2 is fixed.
+  controlledIngredientName:  'Test Controlled E2E',
+  controlledSaltFormName:    'Test Controlled E2E Cypionate',
+  controlledFormulationName: 'Test Controlled E2E Injectable 100 mg/mL',
 }
 
 // ── Test users (Supabase Auth) ────────────────────────────────
@@ -251,9 +264,77 @@ export async function seedStaticData(): Promise<void> {
     is_active:                 true,
   }, { onConflict: 'pharmacy_formulation_id' })
 
+  // ── Schedule-III controlled-substance seed ──
+  //
+  // A second, parallel V3 cascade for tests that need to trigger the EPCS
+  // 2FA gate. dea_schedule = 3 satisfies the check at
+  // BatchReviewForm.handleSignAndSend: `rx.deaSchedule && rx.deaSchedule >= 2`.
+  await supabase.from('ingredients').upsert({
+    ingredient_id:        TEST_IDS.controlledIngredient,
+    common_name:          TEST_CATALOG.controlledIngredientName,
+    therapeutic_category: 'Testing — Controlled',
+    dea_schedule:         3,
+    is_hazardous:         false,
+    is_active:            true,
+  }, { onConflict: 'ingredient_id' })
+
+  await supabase.from('salt_forms').upsert({
+    salt_form_id:  TEST_IDS.controlledSaltForm,
+    ingredient_id: TEST_IDS.controlledIngredient,
+    salt_name:     TEST_CATALOG.controlledSaltFormName,
+    abbreviation:  'Cyp',
+    is_active:     true,
+  }, { onConflict: 'salt_form_id' })
+
+  await supabase.from('formulations').upsert({
+    formulation_id:      TEST_IDS.controlledFormulation,
+    name:                TEST_CATALOG.controlledFormulationName,
+    salt_form_id:        TEST_IDS.controlledSaltForm,
+    dosage_form_id:      dosageForm.dosage_form_id,
+    route_id:            route.route_id,
+    concentration:       '100 mg/mL',
+    concentration_value: 100,
+    concentration_unit:  'mg/mL',
+    is_combination:      false,
+    total_ingredients:   1,
+    is_active:           true,
+  }, { onConflict: 'formulation_id' })
+
+  await supabase.from('pharmacy_formulations').upsert({
+    pharmacy_formulation_id:   TEST_IDS.controlledPharmacyFormulation,
+    pharmacy_id:               TEST_IDS.pharmacyTier1,
+    formulation_id:            TEST_IDS.controlledFormulation,
+    wholesale_price:           150.00,
+    available_quantities:      ['1 vial', '2 vials'],
+    is_available:              true,
+    estimated_turnaround_days: 7,
+    is_active:                 true,
+  }, { onConflict: 'pharmacy_formulation_id' })
+
+  // ── Pre-enroll the E2E test provider with the canonical demo TOTP secret ──
+  //
+  // Writes directly to providers.totp_secret_encrypted using the shared
+  // encryptSecret helper. Does NOT go through enrollDemoProvider because
+  // that function hard-codes the POC demo provider UUID (a production
+  // guardrail — see src/lib/poc/totp-enrollment.ts). The E2E test clinic
+  // has its own provider row (TEST_IDS.provider) that needs the same secret
+  // so the EPCS gate can verify codes in the controlled-substance test.
+  await enrollE2eProviderTotp()
+
   // Smoke-test: walk the full cascade and fail loud if any level returns 0
   // rows. Turns a silent UI timeout into an actionable seed error.
   await assertV3CascadeVisible()
+}
+
+async function enrollE2eProviderTotp(): Promise<void> {
+  await supabase
+    .from('providers')
+    .update({
+      totp_secret_encrypted: encryptSecret(DEMO_TOTP_SECRET),
+      totp_enabled:          true,
+      totp_verified_at:      new Date().toISOString(),
+    })
+    .eq('provider_id', TEST_IDS.provider)
 }
 
 async function assertV3CascadeVisible(): Promise<void> {
