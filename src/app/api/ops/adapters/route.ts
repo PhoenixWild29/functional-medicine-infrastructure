@@ -33,7 +33,7 @@ export interface PharmacyHealthCard {
   pharmacyId:       string
   name:             string
   tier:             string
-  adapterStatus:    'green' | 'yellow' | 'red'
+  adapterStatus:    'green' | 'yellow' | 'red' | 'idle'
   isActive:         boolean
   // Circuit breaker — REQ-AHM-002
   circuitBreaker:   {
@@ -175,6 +175,7 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
       successRate,
       cbState,
       lastSuccessTs,
+      total,
     )
 
     // Hourly buckets

@@ -8,14 +8,25 @@
 import type { CircuitBreakerState } from '@/app/api/ops/adapters/route'
 
 // ── Health status computation ────────────────────────────────
-// Green: success rate >= 95%, no CB OPEN, last success < 15 min
+// Idle:   totalCount === 0 — no submissions in the window, nothing to grade
+// Green:  success rate >= 95%, no CB OPEN, last success < 15 min
 // Yellow: success rate 80-95%, or CB HALF_OPEN, or last success 15-60 min
-// Red: success rate < 80%, or CB OPEN, or last success > 60 min
+// Red:    success rate < 80%, or CB OPEN, or last success > 60 min
+//
+// The 'idle' branch is a demo-readiness fix (cowork review B1): a fresh
+// environment with zero submissions in the 24h window previously rendered
+// every pharmacy as Critical because `lastSuccessMs === Infinity` fell
+// through the red branch. That reads as "all integrations are broken"
+// during an investor Ops tour. Idle is the truthful state — nothing has
+// been sent, so nothing can be failing.
 export function computeAdapterStatus(
   successRate: number,
   cbState: CircuitBreakerState | null,
   lastSuccessAt: string | null,
-): 'green' | 'yellow' | 'red' {
+  totalCount: number,
+): 'green' | 'yellow' | 'red' | 'idle' {
+  if (totalCount === 0) return 'idle'
+
   const now = Date.now()
   const lastSuccessMs = lastSuccessAt ? now - new Date(lastSuccessAt).getTime() : Infinity
 
