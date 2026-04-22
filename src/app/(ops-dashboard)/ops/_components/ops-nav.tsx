@@ -11,13 +11,23 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
+// Demo Tools ops tab: gated by NEXT_PUBLIC_SHOW_DEMO_TOOLS. Hidden from the
+// nav by default so the investor Ops tour doesn't see a "Demo Tools" tab
+// that telegraphs POC (cowork review finding B4). The /ops/demo-tools page
+// itself stays reachable by direct URL for credential-reset workflows
+// — hiding the link doesn't remove the capability.
+//
+// To show the tab (e.g., during internal QA or a scripted demo rehearsal),
+// set NEXT_PUBLIC_SHOW_DEMO_TOOLS=true in the Vercel env.
+const SHOW_DEMO_TOOLS = process.env['NEXT_PUBLIC_SHOW_DEMO_TOOLS'] === 'true'
+
 const NAV_TABS = [
   { href: '/ops/pipeline', label: 'Pipeline'  },
   { href: '/ops/sla',      label: 'SLA'       },
   { href: '/ops/adapters', label: 'Adapters'  },
   { href: '/ops/fax',      label: 'Fax Queue' },
   { href: '/ops/catalog',  label: 'Catalog'   },
-  { href: '/ops/demo-tools', label: 'Demo Tools' },
+  ...(SHOW_DEMO_TOOLS ? [{ href: '/ops/demo-tools', label: 'Demo Tools' } as const] : []),
 ] as const
 
 export function OpsNav() {
