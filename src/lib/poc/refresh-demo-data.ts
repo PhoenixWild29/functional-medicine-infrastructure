@@ -32,11 +32,24 @@
 // Each invocation is idempotent: delete-then-insert with strict
 // guards so it cannot touch non-seeded rows.
 //
-// ── Guardrails (cowork review PR #5) ─────────────────────────
+// ── Guardrails (cowork review PR #5 + round-3 PR #7a) ────────
 //
 //   1. POC_MODE === 'true' required — refuses to run in prod env
-//   2. submission_id / documo_fax_id must start with 'poc-seed-'
-//   3. pharmacy_id must be one of the 5 seed UUIDs
+//   2. Seed marker MUST identify a seed row unambiguously:
+//        - adapter_submissions: metadata JSONB with
+//          `{ poc_seed: true, slug, idx, ymd }`. The marker lives
+//          in `metadata` — NOT in external_reference_id — because
+//          the pharmacy webhook resolver at
+//          src/app/api/webhooks/pharmacy/[pharmacySlug]/route.ts
+//          looks up orders by `(external_reference_id, pharmacy_id)`.
+//          A seed value in external_reference_id could collide with
+//          a real pharmacy-side ID and route a real webhook to the
+//          demo order (cowork + reviewer round-3 finding H1).
+//          submission_id is UUID-typed and auto-generated via
+//          crypto.randomUUID().
+//        - inbound_fax_queue: in documo_fax_id (TEXT) — no webhook
+//          resolver path, prefix match is safe.
+//   3. pharmacy_id must be one of the 5 seed UUIDs (submissions only)
 //   4. Pre-delete row count capped at SEED_ROW_CAP (500) — if
 //      the delete would affect more than 500 rows something is
 //      badly wrong and the safer action is to abort
@@ -428,13 +441,30 @@ export async function refreshFaxSeed(supabase: SupabaseClient): Promise<RefreshO
 const SUBMISSIONS_PER_PHARMACY = 40
 const YELLOW_FAILED_COUNT      = 6    // 6/40 = 15% failure → 85% success (yellow band)
 
+// Seed rows identify themselves via metadata->>'poc_seed' = 'true'.
+// Rationale (cowork + reviewer round-3 H1):
+//   - submission_id is UUID-typed and cannot hold a readable marker.
+//   - external_reference_id is read by the pharmacy webhook resolver
+//     at src/app/api/webhooks/pharmacy/[pharmacySlug]/route.ts — a
+//     seed value there could collide with a real pharmacy-side ID
+//     and route a production webhook to DEMO_ORDER_ID.
+//   - metadata JSONB is documented as "free-form JSONB for
+//     cascade_reason, ops_override, retry context" (WO-46). Adding
+//     a `poc_seed: true` key is additive, untouched by any prod code
+//     path, and scoped to POC concerns without requiring a schema
+//     change for a POC-only marker.
+// Matching shape: .contains('metadata', { poc_seed: true }).
+// Supported by a GIN index on adapter_submissions.metadata (added
+// in migration 20260422000001_wo_cowork_pr7a_metadata_gin_index).
+export const POC_SEED_METADATA_MARKER = { poc_seed: true } as const
+
 export async function refreshAdapterSubmissionsSeed(supabase: SupabaseClient): Promise<RefreshOpResult> {
   try {
     // ── Pre-delete count ─────────────────────────────────────
     const { count: preCount, error: countError } = await supabase
       .from('adapter_submissions')
       .select('submission_id', { count: 'exact', head: true })
-      .like('submission_id', 'poc-seed-%')
+      .contains('metadata', POC_SEED_METADATA_MARKER)
       .in('pharmacy_id', [...DEMO_PHARMACY_ID_SET])
 
     if (countError) {
@@ -453,12 +483,12 @@ export async function refreshAdapterSubmissionsSeed(supabase: SupabaseClient): P
       }
     }
 
-    // ── Delete (guarded by prefix + pharmacy_id allowlist) ───
+    // ── Delete (guarded by metadata marker + pharmacy_id allowlist) ───
     if (preDelete > 0) {
       const { error: deleteError } = await supabase
         .from('adapter_submissions')
         .delete()
-        .like('submission_id', 'poc-seed-%')
+        .contains('metadata', POC_SEED_METADATA_MARKER)
         .in('pharmacy_id', [...DEMO_PHARMACY_ID_SET])
 
       if (deleteError) {
@@ -541,7 +571,20 @@ export function buildSubmissionBatch(now: Date = new Date()): SubmissionInsert[]
       const acknowledgedAt = isFailure ? null : new Date(createdAt.getTime() + 4_500)
 
       rows.push({
-        submission_id:   `poc-seed-${pharmacy.slug}-${String(idx).padStart(3, '0')}-${yyyymmdd}`,
+        // submission_id: real UUID (column is UUID-typed, default
+        // gen_random_uuid — explicitly generating one here keeps the
+        // insert schema-stable even if the default ever changes).
+        submission_id: crypto.randomUUID(),
+        // metadata: the seed marker + human-readable context. The
+        // `poc_seed: true` key is what the delete-guard matches on.
+        // slug/idx/ymd are for debuggability — present in logs and
+        // queryable if needed but not part of the guard contract.
+        metadata: {
+          poc_seed: true,
+          slug:     pharmacy.slug,
+          idx,
+          ymd:      yyyymmdd,
+        },
         order_id:        DEMO_ORDER_ID,
         pharmacy_id:     pharmacy.id,
         tier:            pharmacy.tier,
@@ -561,18 +604,26 @@ export function buildSubmissionBatch(now: Date = new Date()): SubmissionInsert[]
 }
 
 export interface SubmissionInsert {
-  submission_id:      string
-  order_id:           string
-  pharmacy_id:        string
-  tier:               SeedPharmacy['tier']
-  status:             'CONFIRMED' | 'FAILED'
-  attempt_number:     number
-  created_at:         string
-  submitted_at:       string
-  completed_at:       string
-  acknowledged_at:    string | null
-  error_code:         string | null
-  error_message:      string | null
+  submission_id:   string                    // UUID (primary key, auto-gen)
+  metadata:        PocSeedMetadata            // seed marker lives here
+  order_id:        string
+  pharmacy_id:     string
+  tier:            SeedPharmacy['tier']
+  status:          'CONFIRMED' | 'FAILED'
+  attempt_number:  number
+  created_at:      string
+  submitted_at:    string
+  completed_at:    string
+  acknowledged_at: string | null
+  error_code:      string | null
+  error_message:   string | null
+}
+
+export interface PocSeedMetadata {
+  poc_seed: true
+  slug:     string
+  idx:      number
+  ymd:      string
 }
 
 function formatYmd(d: Date): string {

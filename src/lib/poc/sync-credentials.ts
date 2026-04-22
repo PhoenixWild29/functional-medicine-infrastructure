@@ -88,7 +88,14 @@ export async function syncPocCredentials(supabase: SupabaseClient): Promise<PocS
   // is the "Refresh Demo Data" button on /ops/demo-tools.
   const demoDataRefresh = await refreshDemoData(supabase)
 
-  const ok = results.every(r => !r.error) && demoDataRefresh.ok
+  // `ok` reflects CREDENTIAL SYNC success only (cowork round-3 F2).
+  // The Reset Demo Credentials button on /ops/demo-tools shows a
+  // "Reset failed" banner on non-200 responses, so coupling ok to
+  // demo-data-refresh.ok here inverts the signal: credentials can
+  // sync cleanly but a downstream seed failure flips the banner to
+  // red. Demo-data success is exposed separately via the
+  // demo_data_refresh payload field.
+  const ok = results.every(r => !r.error)
   return {
     ran_at:             ranAt,
     results,

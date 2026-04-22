@@ -79,8 +79,8 @@ describe('buildSubmissionBatch', () => {
     for (const pharmacy of DEMO_PHARMACIES) {
       const forPharmacy = rows.filter(r => r.pharmacy_id === pharmacy.id)
       // Batch layout: idx=0 is the first row for each pharmacy in
-      // insertion order. The submission_id encodes the idx.
-      const idx0 = forPharmacy.find(r => r.submission_id.includes(`-${pharmacy.slug}-000-`))
+      // insertion order. metadata.idx + metadata.slug identify the row.
+      const idx0 = forPharmacy.find(r => r.metadata.idx === 0 && r.metadata.slug === pharmacy.slug)
       expect(idx0).toBeDefined()
       expect(idx0!.status).toBe('CONFIRMED')
     }
@@ -89,7 +89,7 @@ describe('buildSubmissionBatch', () => {
   it('green pharmacy freshness anchor is within 15 minutes of now', () => {
     const rows = buildSubmissionBatch(NOW)
     for (const pharmacy of DEMO_PHARMACIES.filter(p => p.target === 'green')) {
-      const idx0 = rows.find(r => r.submission_id.includes(`-${pharmacy.slug}-000-`))!
+      const idx0 = rows.find(r => r.metadata.idx === 0 && r.metadata.slug === pharmacy.slug)!
       const ageMs = NOW.getTime() - new Date(idx0.created_at).getTime()
       // 2 minutes target. Allow a generous 15-min ceiling for the
       // adapter-health green threshold.
@@ -101,7 +101,7 @@ describe('buildSubmissionBatch', () => {
   it('yellow pharmacy freshness anchor lands in the 15-60 min band', () => {
     const rows = buildSubmissionBatch(NOW)
     const yellow = DEMO_PHARMACIES.find(p => p.target === 'yellow')!
-    const idx0 = rows.find(r => r.submission_id.includes(`-${yellow.slug}-000-`))!
+    const idx0 = rows.find(r => r.metadata.idx === 0 && r.metadata.slug === yellow.slug)!
     const ageMs = NOW.getTime() - new Date(idx0.created_at).getTime()
     // 25 min target — inside the yellow band (15-60 min).
     expect(ageMs).toBeGreaterThan(15 * 60_000)
@@ -118,19 +118,55 @@ describe('buildSubmissionBatch', () => {
     }
   })
 
-  it('submission_id matches poc-seed-<slug>-<idx>-<yyyymmdd> format', () => {
+  it('submission_id is a valid UUID (not the seed marker — cowork round-3 F3)', () => {
+    // Regression guard for the PR #5 mistake: submission_id is
+    // UUID-typed, so putting a string marker in it fails the DB
+    // insert. The marker lives in metadata JSONB instead.
     const rows = buildSubmissionBatch(NOW)
-    const pattern = /^poc-seed-[a-z][a-z0-9-]*-\d{3}-\d{8}$/
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     for (const row of rows) {
-      expect(row.submission_id).toMatch(pattern)
+      expect(row.submission_id).toMatch(uuidPattern)
     }
   })
 
-  it('submission_id encodes the correct yyyymmdd', () => {
+  it('every row carries metadata.poc_seed = true (delete-guard contract)', () => {
+    // The delete-guard matches on .contains('metadata', { poc_seed: true }).
+    // A row without that exact key would be orphaned across refreshes.
+    const rows = buildSubmissionBatch(NOW)
+    for (const row of rows) {
+      expect(row.metadata.poc_seed).toBe(true)
+    }
+  })
+
+  it('metadata.slug + metadata.idx are present and consistent with pharmacy_id', () => {
+    const rows = buildSubmissionBatch(NOW)
+    for (const row of rows) {
+      const expected = DEMO_PHARMACIES.find(p => p.id === row.pharmacy_id)
+      expect(expected).toBeDefined()
+      expect(row.metadata.slug).toBe(expected!.slug)
+      expect(row.metadata.idx).toBeGreaterThanOrEqual(0)
+      expect(row.metadata.idx).toBeLessThan(40)
+    }
+  })
+
+  it('metadata.ymd matches NOW date in yyyymmdd format', () => {
     const rows = buildSubmissionBatch(NOW)
     // NOW = 2026-04-22 UTC
     for (const row of rows) {
-      expect(row.submission_id.endsWith('-20260422')).toBe(true)
+      expect(row.metadata.ymd).toBe('20260422')
+    }
+  })
+
+  it('does NOT write to external_reference_id (H1: avoid webhook-resolver collision)', () => {
+    // external_reference_id is read by the pharmacy webhook resolver
+    // at src/app/api/webhooks/pharmacy/[pharmacySlug]/route.ts.
+    // Putting a seed value there risks routing a real webhook to
+    // DEMO_ORDER_ID — we deliberately leave the column unset on
+    // seed rows so the webhook resolver's `.eq(external_reference_id)`
+    // lookup can never match one of our rows.
+    const rows = buildSubmissionBatch(NOW)
+    for (const row of rows) {
+      expect((row as unknown as { external_reference_id?: string }).external_reference_id).toBeUndefined()
     }
   })
 
@@ -162,6 +198,16 @@ describe('buildSubmissionBatch', () => {
     const rows = buildSubmissionBatch(NOW)
     const ids = new Set(rows.map(r => r.submission_id))
     expect(ids.size).toBe(rows.length)
+  })
+
+  it('metadata.slug + metadata.idx pair is unique across the batch', () => {
+    // Each (slug, idx) pair identifies exactly one row per day.
+    // submission_id is the DB primary key — it auto-generates fresh
+    // UUIDs every call — so (slug, idx) uniqueness is the only
+    // human-traceable row identifier across refreshes.
+    const rows = buildSubmissionBatch(NOW)
+    const pairs = new Set(rows.map(r => `${r.metadata.slug}-${String(r.metadata.idx).padStart(3, '0')}`))
+    expect(pairs.size).toBe(rows.length)
   })
 })
 
