@@ -13,7 +13,36 @@
 
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import * as Sentry from '@sentry/nextjs'
 import SignatureCanvas from 'react-signature-canvas'
+
+// ── F5 diagnostic (PR #7c, self-reverts) ─────────────────────
+// Cowork round-3 observed that this canvas's `onEnd` never fires
+// on prod Vercel, while the batch-review-form canvas works on the
+// first dot. We don't know whether the bug is "onEnd never fires"
+// (event-binding problem, e.g., stale listener ref after a post-
+// mount re-render) or "onEnd fires but setSignatureCaptured never
+// flips state" (state-machine problem). Instrumenting BOTH events
+// on BOTH canvases captures the answer during the next walkthrough:
+//
+//   - console.log: visible via chrome MCP read_console_messages
+//   - Sentry.addBreadcrumb: visible in the Sentry crumb trail of
+//     any captured event (e.g., a network error or captureException
+//     call during the session), no browser-console access required
+//
+// REMOVE THIS INSTRUMENTATION once the walkthrough captures data
+// and the F5 root cause is identified. See PR #7b's TODO in the
+// canvas block for the full hypothesis.
+function logSignatureEvent(component: 'draft-sign-form' | 'batch-review-form', event: 'onBegin' | 'onEnd') {
+  // eslint-disable-next-line no-console
+  console.log(`[F5-diag] ${component} ${event} fired`)
+  Sentry.addBreadcrumb({
+    category: 'signature',
+    message:  `${component} ${event} fired`,
+    level:    'info',
+    data:     { component, event, ts: Date.now() },
+  })
+}
 
 function toCurrency(cents: number): string {
   return '$' + (cents / 100).toFixed(2)
@@ -192,8 +221,14 @@ export function DraftSignForm({
               className: 'w-full h-32 rounded-lg',
               'aria-label': 'Provider signature pad',
             }}
-            onBegin={() => setSignatureCaptured(true)}
-            onEnd={() => setSignatureCaptured(true)}
+            onBegin={() => {
+              logSignatureEvent('draft-sign-form', 'onBegin')
+              setSignatureCaptured(true)
+            }}
+            onEnd={() => {
+              logSignatureEvent('draft-sign-form', 'onEnd')
+              setSignatureCaptured(true)
+            }}
           />
         </div>
 
