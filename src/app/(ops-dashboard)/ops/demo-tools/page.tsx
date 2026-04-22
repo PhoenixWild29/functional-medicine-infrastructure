@@ -11,7 +11,8 @@
 // layout via session role check.
 
 import { POC_CANONICAL_USERS } from '@/lib/poc/canonical-users'
-import { ResetCredentialsCard } from './_components/reset-credentials-card'
+import { ResetCredentialsCard }   from './_components/reset-credentials-card'
+import { RefreshDemoDataCard }    from './_components/refresh-demo-data-card'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,6 +37,8 @@ export default function DemoToolsPage() {
       </header>
 
       <ResetCredentialsCard users={users} />
+
+      <RefreshDemoDataCard />
 
       <section className="rounded-lg border border-border bg-card p-5">
         <h2 className="text-base font-medium">Recovery path (no terminal required)</h2>

@@ -12,6 +12,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { POC_CANONICAL_USERS, userMetadataFor, type PocUserLabel } from './canonical-users'
 import { enrollDemoProvider, type DemoTotpEnrollmentResult } from './totp-enrollment'
+import { refreshDemoData, type DemoDataRefreshReport } from './refresh-demo-data'
 
 export interface PocSyncResult {
   label:   PocUserLabel
@@ -23,7 +24,8 @@ export interface PocSyncResult {
 export interface PocSyncReport {
   ran_at:  string
   results: PocSyncResult[]
-  totp_enrollment?: DemoTotpEnrollmentResult
+  totp_enrollment?:   DemoTotpEnrollmentResult
+  demo_data_refresh?: DemoDataRefreshReport
   ok:      boolean
 }
 
@@ -78,6 +80,20 @@ export async function syncPocCredentials(supabase: SupabaseClient): Promise<PocS
   // deployment.
   const totpEnrollment = await enrollDemoProvider(supabase)
 
-  const ok = results.every(r => !r.error)
-  return { ran_at: ranAt, results, totp_enrollment: totpEnrollment, ok }
+  // Refresh time-sensitive demo seed data: fax triage rows with
+  // "minutes ago" timestamps + 200 recent adapter submissions so
+  // the Adapter Health cards classify green/yellow, not idle (cowork
+  // review PR #5 finding B2). Also gated internally on POC_MODE.
+  // This is the daily safety-net path; the primary demo-time path
+  // is the "Refresh Demo Data" button on /ops/demo-tools.
+  const demoDataRefresh = await refreshDemoData(supabase)
+
+  const ok = results.every(r => !r.error) && demoDataRefresh.ok
+  return {
+    ran_at:             ranAt,
+    results,
+    totp_enrollment:    totpEnrollment,
+    demo_data_refresh:  demoDataRefresh,
+    ok,
+  }
 }
