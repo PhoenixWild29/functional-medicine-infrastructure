@@ -27,6 +27,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { POC_CANONICAL_USERS, userMetadataFor } from '../src/lib/poc/canonical-users'
+import { DEMO_PHARMACIES, refreshDemoData } from '../src/lib/poc/refresh-demo-data'
 
 // ============================================================
 // CONFIG
@@ -238,41 +239,64 @@ async function seedPatient() {
 }
 
 // ============================================================
-// PHARMACY
+// PHARMACIES
 // ============================================================
+// Seeds all 5 POC pharmacies: Strive (TIER_4_FAX) + 4 new (one
+// TIER_1_API demo-yellow, one TIER_1_API green, one TIER_2_PORTAL
+// green, one TIER_3_HYBRID green). The same 5 pharmacy UUIDs drive
+// refreshDemoData's adapter_submissions seed — keep the list in
+// sync via DEMO_PHARMACIES (src/lib/poc/refresh-demo-data.ts).
+//
+// WO-54 (original) seeded only Strive, which made the Ops adapter
+// health grid a single-card sliver during investor demos. PR #5
+// expands to 5 so cross-tier + within-tier comparisons are visible.
 
-async function seedPharmacy() {
-  console.log('\n── Pharmacy ──')
-
-  const { data: existing } = await supabase
-    .from('pharmacies')
-    .select('pharmacy_id')
-    .eq('pharmacy_id', IDS.pharmacy)
-    .maybeSingle()
-
-  if (existing) {
-    console.log('  ⏭  Strive Pharmacy — already exists, skipped')
-    return
-  }
+async function seedPharmacies() {
+  console.log('\n── Pharmacies ──')
 
   // NB-02: POC_FAX_NUMBER defaults to the demo patient's phone — intentional for
   // offline demos (fax goes nowhere real). For live fax testing, set POC_FAX_NUMBER
   // to an actual test fax endpoint (e.g. a Documo sandbox number).
-  const faxNumber = process.env['POC_FAX_NUMBER'] ?? '+15125550199'
+  const stridesFaxNumber = process.env['POC_FAX_NUMBER'] ?? '+15125550199'
 
-  const { error } = await supabase.from('pharmacies').insert({
-    pharmacy_id:       IDS.pharmacy,
-    name:              'Strive Pharmacy',
-    slug:              'strive',
-    integration_tier:  'TIER_4_FAX',
-    fax_number:        faxNumber,
-    is_active:         true,
-    adapter_status:    'green',
-    timezone:          'America/Chicago',
-  })
+  // Timezone is just cosmetic seed data; 3 plausible US timezones
+  // across the 5 pharmacies makes the adapter grid read realistic.
+  const TIMEZONES = ['America/Chicago', 'America/New_York', 'America/Los_Angeles', 'America/New_York', 'America/Denver']
 
-  if (error) throw new Error(`Failed to seed pharmacy: ${error.message}`)
-  console.log(`  ✅  Strive Pharmacy — created (fax: ${faxNumber})`)
+  for (let i = 0; i < DEMO_PHARMACIES.length; i++) {
+    const p  = DEMO_PHARMACIES[i]!
+    const tz = TIMEZONES[i]!
+
+    const { data: existing } = await supabase
+      .from('pharmacies')
+      .select('pharmacy_id')
+      .eq('pharmacy_id', p.id)
+      .maybeSingle()
+
+    if (existing) {
+      console.log(`  ⏭  ${p.name} — already exists, skipped`)
+      continue
+    }
+
+    const { error } = await supabase.from('pharmacies').insert({
+      pharmacy_id:      p.id,
+      name:             p.name,
+      slug:             p.slug,
+      integration_tier: p.tier,
+      // fax_number is only meaningful for the TIER_4_FAX pharmacy
+      // (Strive). The other 4 still need a value because the column
+      // is nullable but operational flows key on it being present.
+      fax_number:       p.slug === 'strive' ? stridesFaxNumber : '+15125550199',
+      is_active:        true,
+      // Initial adapter_status is cosmetic — the Ops page
+      // recomputes it from submissions every render.
+      adapter_status:   'green',
+      timezone:         tz,
+    })
+
+    if (error) throw new Error(`Failed to seed pharmacy ${p.name}: ${error.message}`)
+    console.log(`  ✅  ${p.name} (${p.tier}) — created`)
+  }
 }
 
 // ============================================================
@@ -388,6 +412,52 @@ async function verifySmsTemplates() {
 }
 
 // ============================================================
+// DEMO DATA (fax triage + adapter submissions)
+// ============================================================
+// Delegates to src/lib/poc/refresh-demo-data.ts — same helper
+// powers the /ops/demo-tools "Refresh Demo Data" button and the
+// daily cron. See that module for guardrails (POC_MODE, prefix
+// match, row cap) and the full row layout.
+//
+// Scaffolding (demo clinic + patient + provider + order) is
+// created on first run and left alone on re-runs. Fax + adapter
+// submission rows are delete-then-insert every time, so re-runs
+// yield fresh timestamps.
+
+async function seedDemoData() {
+  console.log('\n── Demo Data (fax + adapter submissions) ──')
+
+  // refreshDemoData short-circuits on POC_MODE !== 'true'. The seed
+  // script is only ever run against POC environments, but the local
+  // .env.local may not have POC_MODE set. Warn + skip instead of
+  // silently producing an empty Ops dashboard.
+  if (process.env['POC_MODE'] !== 'true') {
+    console.warn('  ⚠️   POC_MODE is not "true" — skipping fax + submissions seed.')
+    console.warn('     Set POC_MODE=true in .env.local to enable demo data seeding.')
+    return
+  }
+
+  const report = await refreshDemoData(supabase)
+
+  if (report.scaffolding.action === 'error') {
+    throw new Error(`Demo scaffolding: ${report.scaffolding.error}`)
+  }
+  console.log(`  ✅  Scaffolding — ${report.scaffolding.action}`)
+
+  if (report.fax_seed.error) {
+    console.warn(`  ⚠️   Fax seed: ${report.fax_seed.error}`)
+  } else {
+    console.log(`  ✅  Fax seed — ${report.fax_seed.action} (deleted ${report.fax_seed.pre_delete}, inserted ${report.fax_seed.inserted})`)
+  }
+
+  if (report.submission_seed.error) {
+    console.warn(`  ⚠️   Submissions seed: ${report.submission_seed.error}`)
+  } else {
+    console.log(`  ✅  Submissions seed — ${report.submission_seed.action} (deleted ${report.submission_seed.pre_delete}, inserted ${report.submission_seed.inserted})`)
+  }
+}
+
+// ============================================================
 // MAIN
 // ============================================================
 
@@ -403,10 +473,11 @@ async function main() {
     await seedClinic()
     await seedProvider()
     await seedPatient()
-    await seedPharmacy()
+    await seedPharmacies()
     await seedPharmacyLicense()
     await seedCatalog()
     await verifySmsTemplates()
+    await seedDemoData()
 
     console.log('\n✅  Seed complete. Test credentials:')
     console.log('   ops@compoundiq-poc.com      / POCAdmin2026!')
