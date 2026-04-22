@@ -16,31 +16,11 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
 import { TOTP, generateSecret, generateURI, verifySync } from 'otplib'
 import QRCode from 'qrcode'
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
+import { encryptSecret, decryptSecret } from '@/lib/epcs/crypto'
 
-// ── TOTP secret encryption (AES-256-GCM) ────────────────────
-// Uses SUPABASE_SERVICE_ROLE_KEY as key material (first 32 bytes).
-// In production, use a dedicated KMS or HSM.
-
-const ENC_KEY = Buffer.from(
-  (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').slice(0, 32).padEnd(32, '0')
-)
-
-function encryptSecret(plaintext: string): string {
-  const iv = randomBytes(12)
-  const cipher = createCipheriv('aes-256-gcm', ENC_KEY, iv)
-  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
-  const tag = cipher.getAuthTag()
-  return `${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`
-}
-
-function decryptSecret(ciphertext: string): string {
-  const [ivHex, tagHex, encHex] = ciphertext.split(':')
-  if (!ivHex || !tagHex || !encHex) throw new Error('Invalid encrypted format')
-  const decipher = createDecipheriv('aes-256-gcm', ENC_KEY, Buffer.from(ivHex, 'hex'))
-  decipher.setAuthTag(Buffer.from(tagHex, 'hex'))
-  return decipher.update(Buffer.from(encHex, 'hex')) + decipher.final('utf8')
-}
+// TOTP secret encryption (AES-256-GCM) lives in @/lib/epcs/crypto so the
+// demo pre-enrollment path in @/lib/poc/totp-enrollment can share exactly
+// one code path. See that module for format + key-derivation details.
 
 export async function GET(req: NextRequest) {
   const supabaseAuth = await createServerClient()

@@ -11,6 +11,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { POC_CANONICAL_USERS, userMetadataFor, type PocUserLabel } from './canonical-users'
+import { enrollDemoProvider, type DemoTotpEnrollmentResult } from './totp-enrollment'
 
 export interface PocSyncResult {
   label:   PocUserLabel
@@ -22,6 +23,7 @@ export interface PocSyncResult {
 export interface PocSyncReport {
   ran_at:  string
   results: PocSyncResult[]
+  totp_enrollment?: DemoTotpEnrollmentResult
   ok:      boolean
 }
 
@@ -69,6 +71,13 @@ export async function syncPocCredentials(supabase: SupabaseClient): Promise<PocS
     }
   }
 
+  // Pre-enroll the demo provider's EPCS TOTP so controlled-substance
+  // signings in investor demos never trigger the first-time enrollment
+  // UI (cowork review #6 finding A2). Gated internally on POC_MODE so
+  // this is a safe no-op if the cron ever runs against a non-POC
+  // deployment.
+  const totpEnrollment = await enrollDemoProvider(supabase)
+
   const ok = results.every(r => !r.error)
-  return { ran_at: ranAt, results, ok }
+  return { ran_at: ranAt, results, totp_enrollment: totpEnrollment, ok }
 }
