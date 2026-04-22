@@ -162,12 +162,37 @@ export function DraftSignForm({
         </p>
 
         <div className="mt-3 rounded-lg border border-border bg-white">
+          {/*
+           * Fire "captured" on BOTH pointerdown (onBegin) and pointerup
+           * (onEnd) so the button enables instantly on first pen contact,
+           * not only after stroke completion.
+           *
+           * TODO (F5 root-cause follow-up): cowork round-3 observed on
+           * PROD Vercel that this canvas's onEnd never fired after
+           * dispatched pointer events, while the visually identical
+           * canvas in batch-review-form.tsx correctly flipped state on
+           * the first dot. StrictMode dev-double-invoke was ruled out
+           * (F5 observed on prod, where React's dev-only double-invoke
+           * is disabled). Suspected structural delta: draft-sign-form
+           * renders the canvas unconditionally on first render, whereas
+           * batch-review-form returns a "No prescriptions" placeholder
+           * on first render and only mounts the canvas on the second
+           * render cycle after PrescriptionSessionProvider's
+           * sessionStorage-restore effect fires. A post-mount re-render
+           * here (hydration? HipaaTimeout's window listeners? unknown)
+           * may be leaving signature_pad's native mousedown/mouseup
+           * listeners bound to a stale canvas ref. onBegin defense
+           * masks whichever mechanism causes this; PR #7c adds a
+           * console.log + Sentry breadcrumb on onEnd to capture the
+           * actual event ordering in the next cowork walkthrough.
+           */}
           <SignatureCanvas
             ref={sigCanvasRef}
             canvasProps={{
               className: 'w-full h-32 rounded-lg',
               'aria-label': 'Provider signature pad',
             }}
+            onBegin={() => setSignatureCaptured(true)}
             onEnd={() => setSignatureCaptured(true)}
           />
         </div>
