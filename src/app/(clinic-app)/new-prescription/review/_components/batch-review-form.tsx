@@ -12,7 +12,7 @@
 // state machine, but they share a single provider signature
 // and the patient receives one combined payment notification.
 
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import SignatureCanvas from 'react-signature-canvas'
 import { usePrescriptionSession } from '../../_context/prescription-session'
