@@ -131,6 +131,7 @@ export default async function AdaptersPage() {
       successRate,
       cbState,
       lastSuccessTs,
+      total,
     )
 
     const hourlyBuckets: HourlyBucket[] = hourSlots.map(hourIso => {

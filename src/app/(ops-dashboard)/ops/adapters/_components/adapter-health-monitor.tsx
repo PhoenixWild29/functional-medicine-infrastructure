@@ -24,6 +24,9 @@ const STATUS_STYLES = {
   green:  { dot: 'bg-emerald-500', card: 'border-l-4 border-l-emerald-400', badge: 'bg-emerald-100 text-emerald-700' },
   yellow: { dot: 'bg-amber-500',   card: 'border-l-4 border-l-amber-400',   badge: 'bg-amber-100 text-amber-700' },
   red:    { dot: 'bg-red-500',     card: 'border-l-4 border-l-red-400',     badge: 'bg-red-100 text-red-700' },
+  // Idle = no submissions in the last 24h. Neutral styling — there's nothing
+  // to grade, so "Healthy" would be dishonest and "Critical" was the bug.
+  idle:   { dot: 'bg-slate-400',   card: 'border-l-4 border-l-slate-300',   badge: 'bg-muted text-muted-foreground' },
 }
 
 // WO-72: Plain English circuit-breaker labels
@@ -38,6 +41,7 @@ const STATUS_LABELS: Record<string, string> = {
   green:  'Healthy',
   yellow: 'Degraded',
   red:    'Critical',
+  idle:   'Idle',
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -52,7 +56,7 @@ const TIER_LABELS: Record<string, string> = {
 
 // NB-04: TIER_3_SPEC added to match TIER_LABELS map
 type TierFilter   = 'all' | 'TIER_1_API' | 'TIER_2_PORTAL' | 'TIER_3_HYBRID' | 'TIER_3_SPEC' | 'TIER_4_FAX'
-type StatusFilter = 'all' | 'green' | 'yellow' | 'red'
+type StatusFilter = 'all' | 'green' | 'yellow' | 'red' | 'idle'
 type CbFilter     = 'all' | 'CLOSED' | 'OPEN' | 'HALF_OPEN'
 
 // ── Props ────────────────────────────────────────────────────
