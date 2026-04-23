@@ -111,6 +111,28 @@ export const DEMO_PHARMACIES: ReadonlyArray<SeedPharmacy> = [
 
 const DEMO_PHARMACY_ID_SET = new Set(DEMO_PHARMACIES.map(p => p.id))
 
+// ── E2E fixture leak cleanup (PR #10) ────────────────────────
+// Pharmacy UUIDs seeded by `e2e/fixtures/seed.ts` into the
+// dedicated E2E Supabase project (pythornowwddvkhwmsbd). Cowork
+// round-4 observed three of these rows (Test Pharmacy Tier1/2/4)
+// rendering as Idle cards in the demo environment — meaning E2E
+// fixtures leaked across projects, likely because the E2E env
+// vars were set on a runtime that pointed at the demo DB OR an
+// older E2E run seeded against the demo project before the
+// isolation was set up.
+//
+// These UUIDs should NEVER appear in a POC env. When refresh-
+// DemoData() runs (gated on POC_MODE, so never against E2E), it
+// soft-deletes any row matching these IDs. Soft-delete is
+// reversible and the adapter API already filters `is('deleted_at',
+// null)`, so affected rows disappear from the grid without
+// violating any FK constraints.
+const E2E_FIXTURE_PHARMACY_IDS: ReadonlyArray<string> = [
+  'aaaaaaaa-0000-0000-0000-000000000010',  // Test Pharmacy Tier1 (TIER_1_API)
+  'aaaaaaaa-0000-0000-0000-000000000011',  // Test Pharmacy Tier2 (TIER_2_PORTAL)
+  'aaaaaaaa-0000-0000-0000-000000000013',  // Test Pharmacy Tier4 (TIER_4_FAX)
+] as const
+
 // Delete-guard sanity cap. If a delete would affect >500 rows
 // something has gone very wrong (e.g., the submission_id prefix
 // has collided with real prod data). Aborting is the safer move.
@@ -129,6 +151,14 @@ export interface DemoDataRefreshReport {
   scaffolding: {
     action: 'already_exists' | 'created' | 'error'
     error?: string
+  }
+  // E2E fixture leak cleanup (PR #10). Soft-deletes any rows
+  // matching the known E2E fixture UUIDs — idempotent; `soft_deleted`
+  // is zero on every run after the first unless a leak re-occurs.
+  e2e_leak_cleanup: {
+    action:       'clean' | 'soft_deleted' | 'error' | 'skipped'
+    soft_deleted: number
+    error?:       string
   }
   fax_seed: RefreshOpResult
   submission_seed: RefreshOpResult
@@ -170,13 +200,15 @@ export async function refreshDemoData(supabase: SupabaseClient): Promise<DemoDat
       ok:           false,
       skipped:      'not_poc_mode',
       scaffolding:  { action: 'already_exists' },
+      e2e_leak_cleanup: { action: 'skipped', soft_deleted: 0 },
       fax_seed:     { pre_delete: 0, post_delete: 0, inserted: 0, action: 'skipped' },
       submission_seed: { pre_delete: 0, post_delete: 0, inserted: 0, action: 'skipped' },
     }
   }
 
-  const scaffolding = await ensureDemoScaffolding(supabase)
-  const faxSeed     = await refreshFaxSeed(supabase)
+  const scaffolding    = await ensureDemoScaffolding(supabase)
+  const e2eLeakCleanup = await cleanupE2EFixtureLeaks(supabase)
+  const faxSeed        = await refreshFaxSeed(supabase)
   const submissionSeed = await refreshAdapterSubmissionsSeed(supabase)
 
   // ── PR #9 (cowork+reviewer round-4) ──────────────────────
@@ -191,19 +223,90 @@ export async function refreshDemoData(supabase: SupabaseClient): Promise<DemoDat
   // 'error'. A skipped sub-op is a WARN-level signal — surfaced
   // via `action: 'skipped'` in the report and the 428 response
   // status in the admin route.
+  //
+  // PR #10 addition: e2e_leak_cleanup errors also break ok. A
+  // "clean" or "soft_deleted" result is fine — both are healthy
+  // steady-states (no leak, or leak detected and handled).
   const ok = !scaffolding.error
     && !faxSeed.error
     && !submissionSeed.error
+    && !e2eLeakCleanup.error
     && scaffolding.action !== 'error'
+    && e2eLeakCleanup.action !== 'error'
     && faxSeed.action === 'refreshed'
     && submissionSeed.action === 'refreshed'
 
   return {
-    ran_at:      ranAt,
+    ran_at:            ranAt,
     ok,
     scaffolding,
-    fax_seed:    faxSeed,
-    submission_seed: submissionSeed,
+    e2e_leak_cleanup:  e2eLeakCleanup,
+    fax_seed:          faxSeed,
+    submission_seed:   submissionSeed,
+  }
+}
+
+// ============================================================
+// E2E FIXTURE LEAK CLEANUP (PR #10)
+// ============================================================
+//
+// Cowork round-4 observed three E2E fixture pharmacies rendering
+// as Idle cards during the demo walkthrough — they shouldn't have
+// been in the demo environment at all. This cleanup soft-deletes
+// any leaked E2E fixture rows on every refresh so the adapter
+// grid stays tidy.
+//
+// Properties:
+//   - POC_MODE-gated implicitly (only called from refreshDemoData,
+//     which gates on POC_MODE; never runs against E2E project
+//     where POC_MODE is unset)
+//   - Soft-delete only (sets `deleted_at = now()`) — reversible,
+//     doesn't violate FKs from any already-existing adapter
+//     submissions that reference these pharmacy_ids
+//   - Idempotent: returns { action: 'clean', soft_deleted: 0 } on
+//     every run after the first unless a new leak re-occurs
+//   - Adapter API already filters `is('deleted_at', null)`, so
+//     soft-deleted rows immediately stop rendering as cards
+
+export async function cleanupE2EFixtureLeaks(
+  supabase: SupabaseClient,
+): Promise<DemoDataRefreshReport['e2e_leak_cleanup']> {
+  try {
+    // Count how many leaked E2E fixture rows are NOT yet soft-
+    // deleted. This is the "work to do" signal — if zero, we're
+    // clean; otherwise we soft-delete that many.
+    const { data: leakedRows, error: countError } = await supabase
+      .from('pharmacies')
+      .select('pharmacy_id')
+      .in('pharmacy_id', [...E2E_FIXTURE_PHARMACY_IDS])
+      .is('deleted_at', null)
+
+    if (countError) {
+      return { action: 'error', soft_deleted: 0, error: `count: ${countError.message}` }
+    }
+
+    const leakCount = leakedRows?.length ?? 0
+
+    if (leakCount === 0) {
+      return { action: 'clean', soft_deleted: 0 }
+    }
+
+    // Soft-delete. Belt-and-suspenders: constrain both by explicit
+    // UUID list AND by `deleted_at IS NULL` so the update is a
+    // no-op on already-purged rows.
+    const { error: updateError } = await supabase
+      .from('pharmacies')
+      .update({ deleted_at: new Date().toISOString() })
+      .in('pharmacy_id', [...E2E_FIXTURE_PHARMACY_IDS])
+      .is('deleted_at', null)
+
+    if (updateError) {
+      return { action: 'error', soft_deleted: 0, error: `update: ${updateError.message}` }
+    }
+
+    return { action: 'soft_deleted', soft_deleted: leakCount }
+  } catch (err) {
+    return { action: 'error', soft_deleted: 0, error: err instanceof Error ? err.message : String(err) }
   }
 }
 
