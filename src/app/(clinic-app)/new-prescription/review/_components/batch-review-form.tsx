@@ -14,7 +14,24 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import * as Sentry from '@sentry/nextjs'
 import SignatureCanvas from 'react-signature-canvas'
+
+// ── F5 diagnostic (PR #7c, self-reverts) ─────────────────────
+// See draft-sign-form.tsx for the full rationale. This instrumented
+// control canvas produces breadcrumbs we can compare side-by-side
+// with the draft-sign canvas during the next cowork walkthrough.
+// REMOVE THIS INSTRUMENTATION once F5 is root-caused.
+function logSignatureEvent(component: 'draft-sign-form' | 'batch-review-form', event: 'onBegin' | 'onEnd') {
+  // eslint-disable-next-line no-console
+  console.log(`[F5-diag] ${component} ${event} fired`)
+  Sentry.addBreadcrumb({
+    category: 'signature',
+    message:  `${component} ${event} fired`,
+    level:    'info',
+    data:     { component, event, ts: Date.now() },
+  })
+}
 import { usePrescriptionSession } from '../../_context/prescription-session'
 import { EpcsTotpGate } from '../../_components/epcs-totp-gate'
 import { DrugInteractionAlerts } from '../../_components/drug-interaction-alerts'
@@ -288,8 +305,14 @@ export function BatchReviewForm() {
               className: 'w-full h-32 rounded-lg',
               'aria-label': 'Provider signature pad',
             }}
-            onBegin={() => setSignatureCaptured(true)}
-            onEnd={() => setSignatureCaptured(true)}
+            onBegin={() => {
+              logSignatureEvent('batch-review-form', 'onBegin')
+              setSignatureCaptured(true)
+            }}
+            onEnd={() => {
+              logSignatureEvent('batch-review-form', 'onEnd')
+              setSignatureCaptured(true)
+            }}
           />
         </div>
 
