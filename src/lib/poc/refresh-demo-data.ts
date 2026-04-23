@@ -156,10 +156,18 @@ export async function refreshDemoData(supabase: SupabaseClient): Promise<DemoDat
   // The button route already does a session check, but the cron
   // path is gated by CRON_SECRET only — if CRON_SECRET ever leaks
   // to a non-POC deployment, this is the backstop.
+  //
+  // ok: false (PR #9 cowork H1). A POC_MODE short-circuit is a
+  // configuration problem, NOT a benign no-op. Every downstream
+  // consumer (cron handler, admin route, UI card) used to treat
+  // the skip as healthy because ok: true — that's how F6 silently
+  // shipped to prod. Now the skip returns ok: false so the caller
+  // has a binary signal: either this refresh actually ran and
+  // seeded rows, or it didn't and demo data is stale.
   if (process.env['POC_MODE'] !== 'true') {
     return {
       ran_at:       ranAt,
-      ok:           true,
+      ok:           false,
       skipped:      'not_poc_mode',
       scaffolding:  { action: 'already_exists' },
       fax_seed:     { pre_delete: 0, post_delete: 0, inserted: 0, action: 'skipped' },
@@ -171,10 +179,24 @@ export async function refreshDemoData(supabase: SupabaseClient): Promise<DemoDat
   const faxSeed     = await refreshFaxSeed(supabase)
   const submissionSeed = await refreshAdapterSubmissionsSeed(supabase)
 
+  // ── PR #9 (cowork+reviewer round-4) ──────────────────────
+  // `ok` now requires BOTH sub-ops to have ACTUALLY refreshed.
+  // Before: `action: 'skipped'` counted as success → a silent
+  // POC_MODE short-circuit returned ok:true and every downstream
+  // consumer (cron handler, admin route, UI card) treated the
+  // skipped state as healthy. That's how F6 made it to prod.
+  //
+  // New rule: ok === true iff every sub-op actively refreshed
+  // AND no error surfaced AND scaffolding didn't fall back to
+  // 'error'. A skipped sub-op is a WARN-level signal — surfaced
+  // via `action: 'skipped'` in the report and the 428 response
+  // status in the admin route.
   const ok = !scaffolding.error
     && !faxSeed.error
     && !submissionSeed.error
     && scaffolding.action !== 'error'
+    && faxSeed.action === 'refreshed'
+    && submissionSeed.action === 'refreshed'
 
   return {
     ran_at:      ranAt,
@@ -360,6 +382,15 @@ const SEED_FAX_ROWS: ReadonlyArray<SeedFaxRow> = [
 ] as const
 
 export async function refreshFaxSeed(supabase: SupabaseClient): Promise<RefreshOpResult> {
+  // Defense-in-depth POC_MODE guard. The parent `refreshDemoData`
+  // already short-circuits on !POC_MODE, but exporting this sub-op
+  // means any future direct caller could bypass the parent check.
+  // Belt-and-suspenders so seed rows cannot land in a non-POC env
+  // even if someone refactors the parent guard out (cowork PR #9).
+  if (process.env['POC_MODE'] !== 'true') {
+    return { pre_delete: 0, post_delete: 0, inserted: 0, action: 'skipped' }
+  }
+
   try {
     // ── Pre-delete count ─────────────────────────────────────
     const { count: preCount, error: countError } = await supabase
@@ -459,6 +490,11 @@ const YELLOW_FAILED_COUNT      = 6    // 6/40 = 15% failure → 85% success (yel
 export const POC_SEED_METADATA_MARKER = { poc_seed: true } as const
 
 export async function refreshAdapterSubmissionsSeed(supabase: SupabaseClient): Promise<RefreshOpResult> {
+  // Defense-in-depth POC_MODE guard. See refreshFaxSeed for rationale.
+  if (process.env['POC_MODE'] !== 'true') {
+    return { pre_delete: 0, post_delete: 0, inserted: 0, action: 'skipped' }
+  }
+
   try {
     // ── Pre-delete count ─────────────────────────────────────
     const { count: preCount, error: countError } = await supabase
