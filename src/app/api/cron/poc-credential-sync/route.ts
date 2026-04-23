@@ -1,13 +1,27 @@
 // ============================================================
-// POC Credential Sync Cron — daily safety net
+// POC Sync Cron — hourly safety net
 // GET /api/cron/poc-credential-sync
-// Schedule: 0 5 * * * (5 AM UTC = 1 AM ET, before any work day)
+// Schedule: 0 * * * * (every hour, on the hour)
 // ============================================================
 //
-// Forces all 4 POC demo accounts back to their canonical passwords
-// AND refreshes time-sensitive demo seed data (fax triage + adapter
-// submissions) every 24 hours so drift/staleness cannot persist
-// between demos.
+// NAME LEGACY NOTE (PR #12): The path still reads
+// `poc-credential-sync` for backwards compatibility with the
+// /ops/demo-tools recovery instructions, the demo walkthrough doc
+// (docs/archive/source/POC-DEMO-DETAILED.md), and Vercel Cron
+// dashboard history. Despite the name, this cron now does:
+//
+//   1. Credential sync — the four POC Auth user passwords
+//   2. TOTP enrollment — seed the demo provider's EPCS TOTP so
+//      controlled-substance signings never hit first-time setup
+//   3. Demo-data refresh — fax triage rows, adapter submissions,
+//      scaffolding (clinic/patient/provider/order), and E2E
+//      fixture leak cleanup
+//
+// A rename to /api/cron/poc-sync would be cosmetically cleaner,
+// but renaming touches 12+ files (docs, card UI, STATUS, other
+// route comments) and forces investor-facing PDF regen. The
+// deferred rename is a cleanup PR scoped separately; this
+// header comment keeps the next reviewer oriented in the meantime.
 //
 // Triggered by:
 //   - Vercel cron (daily, automatic)
