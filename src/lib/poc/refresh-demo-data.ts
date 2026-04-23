@@ -562,7 +562,14 @@ const SEED_FAX_ROWS: ReadonlyArray<SeedFaxRow> = [
     status:              'PROCESSING',
     matched_pharmacy_id: 'a4000000-0000-0000-0000-000000000001',  // Strive
     matched_order_id:    DEMO_ORDER_ID,
-    received_offset_min: 75,
+    // PR #13 (cowork round-5 LOW finding): kept under 60 min so the
+    // UI's relative-time formatter renders this row in minutes ("55
+    // min ago") rather than crossing the 60-min boundary into hours
+    // ("1h ago"). Preserves the minutes-format story across all 4
+    // fax rows for the investor demo. The lifecycle staggering
+    // (Received 3m < Matched 18m < Unmatched 42m < Processing 55m)
+    // is preserved.
+    received_offset_min: 55,
   },
 ] as const
 
