@@ -1,9 +1,11 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 2.2 | **Date:** April 22, 2026
+**Version:** 2.3 | **Date:** April 22, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
 
+> **What's new in v2.3 (2026-04-22):** Cowork round-3 walkthrough fixes landed. Three PRs (#7a/#7b/#7c) address the five code + doc findings from the v2.2 fresh-agent re-review. The adapter_submissions seed now uses a real UUID + metadata JSONB marker so Refresh Demo Data actually succeeds and the Adapter Health grid renders 4 green + 1 yellow cards as advertised; the poc-credential-sync cron surfaces demo-data failures separately via Sentry; the signature pad on the draft-sign page enables on first pen contact; and this doc's `/api/health` payload + EPCS 2FA trigger copy are corrected. See `STATUS.md` for the full PR ledger.
+>
 > **What's new in v2.2 (2026-04-22):** Demo-readiness campaign complete. Six PRs address the five findings from the fresh-agent cowork review (A1/A2/B1/B2/B4) so the demo tour no longer requires a terminal: clinic-side **Copy Payment Link** button replaces the checkout-URL script (PR #1); the demo provider's EPCS TOTP is **pre-enrolled** via cron so controlled-substance signings never hit first-time setup (PR #2); Adapter Health cards have an **Idle** state instead of falsely flashing Critical on a fresh environment (PR #3); **Refresh Demo Data** button + daily cron seed the Fax Triage queue and Adapter Health grid with realistic data inside the 15-minute green-freshness window (PR #5); **Demo Tools** nav tab is hidden by default so the investor Ops tour never sees a "Demo Tools" link (PR #4). See `STATUS.md` for the full PR ledger.
 
 ---
@@ -15,7 +17,7 @@
 1. **Sync credentials + demo data (in-app):** Log in as ops (`ops@compoundiq-poc.com` / `POCAdmin2026!`), visit `/ops/demo-tools`, and click **both** buttons in order:
    - **Reset Demo Credentials** — forces all four POC passwords back to the canonical values in the table below
    - **Refresh Demo Data** — reseeds the Fax Triage queue (4 rows) and Adapter Health grid (5 pharmacies, 200 submissions) with timestamps inside the 15-minute "green" freshness window. **Click this within ~10 minutes of the demo start** — adapter cards classify green only when the most recent success was under 15 minutes ago, so stale data reads degraded.
-2. **Verify health:** Open `https://functional-medicine-infrastructure.vercel.app/api/health` — should return `{"status":"ok"}`
+2. **Verify health:** Open `https://functional-medicine-infrastructure.vercel.app/api/health` — should return a 200 JSON payload of the form `{"ok":true,"timestamp":"<ISO date>","version":"<git SHA>"}`
 3. **Authenticator app on your phone:** Dr. Chen's EPCS TOTP secret is pre-enrolled in the database (PR #2). To enter rolling 6-digit codes during the controlled-substance signing, add the same secret to your authenticator app **once** before the demo (any TOTP app: Google Authenticator, 1Password, Authy, Bitwarden). **Enrollment details are in the "Authenticator Setup" subsection below.**
 4. **Open browser tabs:** Prepare 3 tabs — one for clinic app, one for ops dashboard, one for patient checkout
 5. **Stripe test card ready:** `4242 4242 4242 4242` | Exp: `12/28` | CVC: `123` | ZIP: `78701`
@@ -231,7 +233,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 36. Click **"Sign & Send All 2 Prescriptions"** → Click **"Confirm & Send"** — watch the progress messages
 37. Verify redirect to dashboard — both orders visible as "Awaiting Payment"
 
-> **EPCS 2FA Demo Tip:** The EPCS 2FA modal (6-digit TOTP input, DEA 21 CFR 1311 citation) triggers on the single-prescription Favorites flow when a controlled substance is selected. The demo provider (Dr. Chen) is **pre-enrolled** — the TOTP secret is already seeded + verified in the database via the daily `poc-credential-sync` cron (PR #2), so the modal skips first-time QR enrollment and goes straight to the rolling 6-digit code prompt. To demo it: start a new session, use a Favorites card for a controlled substance (e.g. Testosterone), go through the margin builder, and click "Review & Send" → "Sign & Send" → "Confirm & Send". The modal appears with the red "EPCS Two-Factor Authentication Required" header, Schedule badge, and the "Verify & Sign" / "Cancel" buttons. Read the current 6-digit code from your authenticator app (see **Authenticator Setup** in Pre-Demo Setup) and enter it, or Cancel to exit without submitting.
+> **EPCS 2FA Demo Tip:** The EPCS 2FA modal (6-digit TOTP input, DEA 21 CFR 1311 citation) triggers on the **batch Review & Send flow** whenever any DEA-scheduled compound is present in the current prescription session — regardless of whether the controlled substance was added via a Favorites card, a Protocol template, or the normal cascading builder. The demo provider (Dr. Chen) is **pre-enrolled** — the TOTP secret is already seeded + verified in the database via the daily `poc-credential-sync` cron (PR #2), so the modal skips first-time QR enrollment and goes straight to the rolling 6-digit code prompt. To demo it: the walkthrough above (Steps 31–36, adding Testosterone to the session) already puts a Schedule 3 compound in batch review — clicking "Sign & Send All Prescriptions" → "Confirm & Send" surfaces the modal with the red "EPCS Two-Factor Authentication Required" header, Schedule badge, and the "Verify & Sign" / "Cancel" buttons. Read the current 6-digit code from your authenticator app (see **Authenticator Setup** in Pre-Demo Setup) and enter it, or Cancel to exit without submitting.
 
 > "Two orders created, two payment links generated, three SLA timers each — all from one signature. The MA's workflow for a multi-medication visit: 45 seconds."
 
