@@ -15,6 +15,7 @@
 
 import {
   buildSubmissionBatch,
+  cleanupE2EFixtureLeaks,
   refreshDemoData,
   DEMO_PHARMACIES,
   DEMO_ORDER_ID,
@@ -309,5 +310,140 @@ describe('SEED_ROW_CAP constant', () => {
   it('is a sane value (larger than nominal batch, smaller than prod signal)', () => {
     expect(SEED_ROW_CAP).toBeGreaterThan(200)  // > nominal batch of 200
     expect(SEED_ROW_CAP).toBeLessThan(10_000)  // <<< prod traffic volume
+  })
+})
+
+describe('cleanupE2EFixtureLeaks (PR #10)', () => {
+  const E2E_UUIDS = [
+    'aaaaaaaa-0000-0000-0000-000000000010',
+    'aaaaaaaa-0000-0000-0000-000000000011',
+    'aaaaaaaa-0000-0000-0000-000000000013',
+  ]
+
+  // Build a fluent supabase mock that records call order and yields
+  // configurable responses. Mirrors the fluent chain used in
+  // cleanupE2EFixtureLeaks: .from.select.in.is and .from.update.in.is.
+  function buildMockSupabase(opts: {
+    selectResult?: { data: { pharmacy_id: string }[] | null; error: { message: string } | null }
+    updateResult?: { error: { message: string } | null }
+  }) {
+    const calls: Array<{ op: string; args: unknown[] }> = []
+
+    const selectChain = {
+      in(col: string, values: unknown[]) {
+        calls.push({ op: 'select.in', args: [col, values] })
+        return this
+      },
+      is(col: string, value: unknown) {
+        calls.push({ op: 'select.is', args: [col, value] })
+        return Promise.resolve(opts.selectResult ?? { data: [], error: null })
+      },
+    }
+
+    const updateChain = {
+      in(col: string, values: unknown[]) {
+        calls.push({ op: 'update.in', args: [col, values] })
+        return this
+      },
+      is(col: string, value: unknown) {
+        calls.push({ op: 'update.is', args: [col, value] })
+        return Promise.resolve(opts.updateResult ?? { error: null })
+      },
+    }
+
+    const fromTable = {
+      select(_cols: string) {
+        calls.push({ op: 'select', args: [_cols] })
+        return selectChain
+      },
+      update(payload: Record<string, unknown>) {
+        calls.push({ op: 'update', args: [payload] })
+        return updateChain
+      },
+    }
+
+    const supabase = {
+      from(table: string) {
+        calls.push({ op: 'from', args: [table] })
+        return fromTable
+      },
+    } as unknown as Parameters<typeof cleanupE2EFixtureLeaks>[0]
+
+    return { supabase, calls }
+  }
+
+  it('returns clean with zero rows when nothing leaked', async () => {
+    const { supabase } = buildMockSupabase({
+      selectResult: { data: [], error: null },
+    })
+    const result = await cleanupE2EFixtureLeaks(supabase)
+    expect(result.action).toBe('clean')
+    expect(result.soft_deleted).toBe(0)
+    expect(result.error).toBeUndefined()
+  })
+
+  it('soft-deletes leaked rows and returns the count', async () => {
+    const { supabase, calls } = buildMockSupabase({
+      selectResult: {
+        data: [
+          { pharmacy_id: E2E_UUIDS[0]! },
+          { pharmacy_id: E2E_UUIDS[1]! },
+          { pharmacy_id: E2E_UUIDS[2]! },
+        ],
+        error: null,
+      },
+      updateResult: { error: null },
+    })
+    const result = await cleanupE2EFixtureLeaks(supabase)
+
+    expect(result.action).toBe('soft_deleted')
+    expect(result.soft_deleted).toBe(3)
+    expect(result.error).toBeUndefined()
+
+    // Verify the update was called with deleted_at, filtered by the
+    // E2E UUIDs + deleted_at IS NULL.
+    const updateCall = calls.find(c => c.op === 'update')
+    expect(updateCall).toBeDefined()
+    expect(updateCall!.args[0]).toHaveProperty('deleted_at')
+
+    const updateInCall = calls.find(c => c.op === 'update.in')
+    expect(updateInCall).toBeDefined()
+    expect(updateInCall!.args[1]).toEqual(E2E_UUIDS)
+
+    const updateIsCall = calls.find(c => c.op === 'update.is')
+    expect(updateIsCall).toBeDefined()
+    expect(updateIsCall!.args).toEqual(['deleted_at', null])
+  })
+
+  it('returns error when the select count query fails', async () => {
+    const { supabase } = buildMockSupabase({
+      selectResult: { data: null, error: { message: 'permission denied' } },
+    })
+    const result = await cleanupE2EFixtureLeaks(supabase)
+    expect(result.action).toBe('error')
+    expect(result.error).toContain('permission denied')
+  })
+
+  it('returns error when the update fails after detecting a leak', async () => {
+    const { supabase } = buildMockSupabase({
+      selectResult: { data: [{ pharmacy_id: E2E_UUIDS[0]! }], error: null },
+      updateResult: { error: { message: 'write conflict' } },
+    })
+    const result = await cleanupE2EFixtureLeaks(supabase)
+    expect(result.action).toBe('error')
+    expect(result.error).toContain('write conflict')
+  })
+
+  it('skips entirely when POC_MODE is unset (via refreshDemoData)', async () => {
+    // Cleanup is only reached through refreshDemoData, which gates
+    // on POC_MODE. This test confirms the chain short-circuits.
+    delete process.env['POC_MODE']
+    const supabase = new Proxy({}, {
+      get() { throw new Error('supabase must NOT be called when POC_MODE is unset') },
+    }) as unknown as Parameters<typeof refreshDemoData>[0]
+
+    const report = await refreshDemoData(supabase)
+    expect(report.e2e_leak_cleanup.action).toBe('skipped')
+    expect(report.e2e_leak_cleanup.soft_deleted).toBe(0)
   })
 })

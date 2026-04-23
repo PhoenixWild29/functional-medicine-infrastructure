@@ -37,6 +37,14 @@ interface DemoDataRefreshReport {
     action: 'already_exists' | 'created' | 'error'
     error?: string
   }
+  // PR #10: E2E fixture leak cleanup result. Optional in the type
+  // so the client doesn't break on older server responses during
+  // a deployment window.
+  e2e_leak_cleanup?: {
+    action:       'clean' | 'soft_deleted' | 'error' | 'skipped'
+    soft_deleted: number
+    error?:       string
+  }
   fax_seed:        RefreshOpResult
   submission_seed: RefreshOpResult
 }
@@ -154,6 +162,23 @@ export function RefreshDemoDataCard() {
                 <span className="text-xs text-destructive">({report.scaffolding.error})</span>
               )}
             </li>
+            {report.e2e_leak_cleanup && (
+              <li className="flex items-center gap-2">
+                {/* PR #10: E2E fixture leak cleanup. clean = no work needed (emerald),
+                    soft_deleted = leak detected and purged (amber — reportable but
+                    handled), error = hard fail (red), skipped = POC_MODE off. */}
+                <StatusDot state={e2eCleanupDotState(report.e2e_leak_cleanup.action)} />
+                <span className="text-xs">
+                  E2E leak cleanup — {report.e2e_leak_cleanup.action}
+                  {report.e2e_leak_cleanup.action === 'soft_deleted' && (
+                    ` (${report.e2e_leak_cleanup.soft_deleted} row${report.e2e_leak_cleanup.soft_deleted === 1 ? '' : 's'} soft-deleted)`
+                  )}
+                </span>
+                {report.e2e_leak_cleanup.error && (
+                  <span className="text-xs text-destructive">({report.e2e_leak_cleanup.error})</span>
+                )}
+              </li>
+            )}
             <li className="flex items-center gap-2">
               {/* PR #9: green ONLY when actually refreshed. skipped is a WARN, not a success. */}
               <StatusDot state={refreshOpDotState(report.fax_seed.action)} />
@@ -203,6 +228,18 @@ function StatusDot({ state }: { state: DotState }) {
 function refreshOpDotState(action: RefreshOpResult['action']): DotState {
   if (action === 'refreshed') return 'ok'
   if (action === 'skipped')   return 'warn'
+  return 'error'
+}
+
+function e2eCleanupDotState(action: 'clean' | 'soft_deleted' | 'error' | 'skipped'): DotState {
+  // 'clean' is the steady-state (no leak, nothing to do) and renders
+  // green. 'soft_deleted' is a successful-but-reportable action (leak
+  // was detected and handled this tick) and renders amber — present
+  // tense "we just fixed something" rather than "we're broken." 'error'
+  // is red; 'skipped' is amber (POC_MODE off).
+  if (action === 'clean')        return 'ok'
+  if (action === 'soft_deleted') return 'warn'
+  if (action === 'skipped')      return 'warn'
   return 'error'
 }
 
