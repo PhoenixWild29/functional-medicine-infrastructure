@@ -16,6 +16,7 @@
 import {
   buildSubmissionBatch,
   cleanupE2EFixtureLeaks,
+  ensureDemoScaffolding,
   refreshDemoData,
   DEMO_PHARMACIES,
   DEMO_ORDER_ID,
@@ -310,6 +311,119 @@ describe('SEED_ROW_CAP constant', () => {
   it('is a sane value (larger than nominal batch, smaller than prod signal)', () => {
     expect(SEED_ROW_CAP).toBeGreaterThan(200)  // > nominal batch of 200
     expect(SEED_ROW_CAP).toBeLessThan(10_000)  // <<< prod traffic volume
+  })
+})
+
+describe('ensureDemoScaffolding — pharmacies (PR #11)', () => {
+  // ── Mock helper ──────────────────────────────────────────────
+  // Scaffolding makes many fluent-chain calls against supabase.
+  // This builder returns a minimal mock that answers each
+  // .from(table).select(...).eq(col, val).maybeSingle() based on
+  // a table-scoped behavior map. For this test, every base-row
+  // (clinic/patient/provider/order) lookup returns an existing
+  // row (so those branches no-op), and every pharmacy lookup
+  // returns null (so the pharmacy insert path runs for all 5).
+  function buildScaffoldingMock() {
+    const calls: Array<{ op: string; args: unknown[] }> = []
+    let pharmacyInserts = 0
+
+    const chainForTable = (table: string) => ({
+      eq(col: string, val: unknown) {
+        calls.push({ op: `${table}.eq`, args: [col, val] })
+        return {
+          eq: (col2: string, val2: unknown) => {
+            calls.push({ op: `${table}.eq.eq`, args: [col2, val2] })
+            return this
+          },
+          maybeSingle: () => {
+            // clinic/patient/provider/order: return existing row
+            // (primary-key lookup — skip insert). Pharmacies: no
+            // row exists (insert runs).
+            if (table === 'pharmacies') {
+              return Promise.resolve({ data: null, error: null })
+            }
+            return Promise.resolve({ data: { id: val }, error: null })
+          },
+        }
+      },
+    })
+
+    const supabase = {
+      from(table: string) {
+        calls.push({ op: 'from', args: [table] })
+        return {
+          select() {
+            return chainForTable(table)
+          },
+          insert(_payload: Record<string, unknown>) {
+            calls.push({ op: `${table}.insert`, args: [_payload] })
+            if (table === 'pharmacies') pharmacyInserts++
+            return Promise.resolve({ error: null })
+          },
+        }
+      },
+    } as unknown as Parameters<typeof ensureDemoScaffolding>[0]
+
+    return {
+      supabase,
+      calls,
+      get pharmacyInserts() { return pharmacyInserts },
+    }
+  }
+
+  it('inserts all 5 DEMO_PHARMACIES when none exist', async () => {
+    const mock = buildScaffoldingMock()
+    const result = await ensureDemoScaffolding(mock.supabase)
+
+    expect(result.action).toBe('created')
+    // Access via the mock object (getter is live), not destructured —
+    // a destructure captures the value at destructure time (0) and
+    // misses the post-run increments.
+    expect(mock.pharmacyInserts).toBe(DEMO_PHARMACIES.length)
+  })
+
+  it('returns error when a slug collision is detected', async () => {
+    // Mock where the pharmacy_id lookup returns null (not in the
+    // DB by UUID) but the slug lookup returns an existing row
+    // (slug taken by a different pharmacy). This should short-
+    // circuit the scaffolding with action: 'error' so the caller
+    // can surface the conflict rather than insert-and-crash on the
+    // UNIQUE constraint.
+    let phCallCount = 0
+    const supabase = {
+      from(table: string) {
+        return {
+          select() {
+            return {
+              eq(col: string, _val: unknown) {
+                return {
+                  eq: () => this,
+                  maybeSingle: () => {
+                    if (table === 'pharmacies') {
+                      phCallCount++
+                      // 1st call: byId lookup → null. 2nd call:
+                      // bySlug lookup → existing row (conflict).
+                      if (phCallCount === 1) return Promise.resolve({ data: null, error: null })
+                      return Promise.resolve({
+                        data: { pharmacy_id: 'zzzzzzzz-0000-0000-0000-000000000001', slug: 'strive' },
+                        error: null,
+                      })
+                    }
+                    return Promise.resolve({ data: { id: _val }, error: null })
+                  },
+                }
+              },
+            }
+          },
+          insert() { return Promise.resolve({ error: null }) },
+        }
+      },
+    } as unknown as Parameters<typeof ensureDemoScaffolding>[0]
+
+    const result = await ensureDemoScaffolding(supabase)
+    expect(result.action).toBe('error')
+    expect(result.error).toContain('slug')
+    expect(result.error).toContain('strive')
   })
 })
 
