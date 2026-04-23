@@ -19,7 +19,7 @@
 // the Ops views are fresh. The daily cron (5 AM UTC) keeps the
 // data from going stale more than 24h unattended.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 interface RefreshOpResult {
   pre_delete:  number
@@ -41,10 +41,38 @@ interface DemoDataRefreshReport {
   submission_seed: RefreshOpResult
 }
 
+interface DemoDataStatus {
+  last_refresh_at: string | null
+  poc_mode:        boolean
+}
+
 export function RefreshDemoDataCard() {
   const [busy, setBusy]     = useState(false)
   const [report, setReport] = useState<DemoDataRefreshReport | null>(null)
   const [error, setError]   = useState<string | null>(null)
+  const [status, setStatus] = useState<DemoDataStatus | null>(null)
+
+  // ── Last-refresh freshness check (PR #9 F6) ───────────────
+  // The demo tour depends on seed data being ≤15 min old at
+  // demo start (computeAdapterStatus green threshold). Query the
+  // most recent seed row timestamp on mount + whenever a refresh
+  // completes so presenters see "Last refresh: Xm ago" at a
+  // glance. Previously the only signal was clicking the button
+  // and hoping — silent skips (e.g., POC_MODE unset) went
+  // unnoticed until the Ops dashboard rendered Idle cards.
+  async function fetchStatus() {
+    try {
+      const res = await fetch('/api/admin/refresh-demo-data', { method: 'GET' })
+      if (!res.ok) return
+      setStatus((await res.json()) as DemoDataStatus)
+    } catch {
+      // Non-fatal: the status line just shows "unknown"
+    }
+  }
+
+  useEffect(() => {
+    void fetchStatus()
+  }, [])
 
   async function handleRefresh() {
     setBusy(true)
@@ -54,8 +82,15 @@ export function RefreshDemoDataCard() {
       const res = await fetch('/api/admin/refresh-demo-data', { method: 'POST' })
       const data = (await res.json()) as DemoDataRefreshReport | { error: string }
       if (!res.ok) {
-        setError('error' in data ? data.error : 'Refresh failed')
-        if ('fax_seed' in data) setReport(data as DemoDataRefreshReport)
+        // Distinguish 428 (skipped — config problem) from 500
+        // (execution error). Both still render the report box
+        // below so the operator can see exactly what happened.
+        if (res.status === 428 && 'fax_seed' in data) {
+          setReport(data as DemoDataRefreshReport)
+        } else {
+          setError('error' in data ? data.error : `Refresh failed (HTTP ${res.status})`)
+          if ('fax_seed' in data) setReport(data as DemoDataRefreshReport)
+        }
         return
       }
       setReport(data as DemoDataRefreshReport)
@@ -63,6 +98,7 @@ export function RefreshDemoDataCard() {
       setError(err instanceof Error ? err.message : 'Network error')
     } finally {
       setBusy(false)
+      void fetchStatus()
     }
   }
 
@@ -82,6 +118,7 @@ export function RefreshDemoDataCard() {
             <li>Adapter submissions: 200 rows (4 healthy + 1 degraded pharmacy)</li>
             <li>Safe to click any time — idempotent, only touches rows with the poc-seed- prefix</li>
           </ul>
+          <LastRefreshLine status={status} />
         </div>
         <button
           type="button"
@@ -111,14 +148,15 @@ export function RefreshDemoDataCard() {
           </p>
           <ul className="mt-2 space-y-1 text-sm">
             <li className="flex items-center gap-2">
-              <StatusDot ok={report.scaffolding.action !== 'error'} />
+              <StatusDot state={report.scaffolding.action === 'error' ? 'error' : 'ok'} />
               <span className="text-xs">Scaffolding — {report.scaffolding.action}</span>
               {report.scaffolding.error && (
                 <span className="text-xs text-destructive">({report.scaffolding.error})</span>
               )}
             </li>
             <li className="flex items-center gap-2">
-              <StatusDot ok={report.fax_seed.action === 'refreshed' || report.fax_seed.action === 'skipped'} />
+              {/* PR #9: green ONLY when actually refreshed. skipped is a WARN, not a success. */}
+              <StatusDot state={refreshOpDotState(report.fax_seed.action)} />
               <span className="text-xs">
                 Fax seed — {report.fax_seed.action}
                 {report.fax_seed.action === 'refreshed' && (
@@ -130,7 +168,7 @@ export function RefreshDemoDataCard() {
               )}
             </li>
             <li className="flex items-center gap-2">
-              <StatusDot ok={report.submission_seed.action === 'refreshed' || report.submission_seed.action === 'skipped'} />
+              <StatusDot state={refreshOpDotState(report.submission_seed.action)} />
               <span className="text-xs">
                 Submissions seed — {report.submission_seed.action}
                 {report.submission_seed.action === 'refreshed' && (
@@ -148,15 +186,80 @@ export function RefreshDemoDataCard() {
   )
 }
 
-function StatusDot({ ok }: { ok: boolean }) {
+type DotState = 'ok' | 'warn' | 'error'
+
+function StatusDot({ state }: { state: DotState }) {
+  // 3-state dot: ok (emerald), warn (amber — e.g., skipped),
+  // error (destructive). Previously a boolean-green dot rendered
+  // next to a "skipped — POC_MODE not set" badge, visually
+  // contradicting itself (cowork PR #9).
+  const cls =
+    state === 'ok'    ? 'bg-emerald-500' :
+    state === 'warn'  ? 'bg-amber-500'   :
+                        'bg-destructive'
+  return <span className={`inline-block h-2 w-2 rounded-full ${cls}`} aria-hidden />
+}
+
+function refreshOpDotState(action: RefreshOpResult['action']): DotState {
+  if (action === 'refreshed') return 'ok'
+  if (action === 'skipped')   return 'warn'
+  return 'error'
+}
+
+// ── Last-refresh freshness line (PR #9 F6) ────────────────────
+// Renders above the Refresh button so presenters can see at a
+// glance whether the seed is fresh without clicking. Colours:
+//   green  — refresh within last 15 min (inside the adapter-
+//            health green freshness window)
+//   amber  — refresh within last 60 min
+//   red    — refresh > 60 min ago, never, or POC_MODE off
+function LastRefreshLine({ status }: { status: DemoDataStatus | null }) {
+  if (!status) {
+    return (
+      <p className="mt-3 text-xs text-muted-foreground">
+        Last refresh — <span className="font-mono">checking…</span>
+      </p>
+    )
+  }
+
+  if (!status.poc_mode) {
+    return (
+      <p className="mt-3 flex items-center gap-2 text-xs">
+        <StatusDot state="error" />
+        <span className="text-destructive">
+          POC_MODE not set in env — Refresh Demo Data will skip silently. Set <code className="rounded bg-muted px-1">POC_MODE=true</code> in Vercel before demo.
+        </span>
+      </p>
+    )
+  }
+
+  if (!status.last_refresh_at) {
+    return (
+      <p className="mt-3 flex items-center gap-2 text-xs">
+        <StatusDot state="error" />
+        <span className="text-destructive">Last refresh — never. Click Refresh Demo Data before demo.</span>
+      </p>
+    )
+  }
+
+  const ageMs      = Date.now() - new Date(status.last_refresh_at).getTime()
+  const ageMin     = Math.round(ageMs / 60_000)
+  const ageLabel   = ageMin < 1 ? 'just now' : ageMin === 1 ? '1 min ago' : `${ageMin} min ago`
+  const dotState: DotState =
+    ageMin <= 15 ? 'ok'   :
+    ageMin <= 60 ? 'warn' :
+                   'error'
+  const hint =
+    dotState === 'ok'   ? 'inside the 15-minute green-freshness window' :
+    dotState === 'warn' ? 'outside the green window — click Refresh before demo' :
+                          'stale — click Refresh Demo Data before demo'
   return (
-    <span
-      className={
-        ok
-          ? 'inline-block h-2 w-2 rounded-full bg-emerald-500'
-          : 'inline-block h-2 w-2 rounded-full bg-destructive'
-      }
-      aria-hidden
-    />
+    <p className="mt-3 flex items-center gap-2 text-xs">
+      <StatusDot state={dotState} />
+      <span className="text-muted-foreground">
+        Last refresh — <span className="font-mono">{ageLabel}</span> ({hint})
+      </span>
+    </p>
   )
 }
+

@@ -279,7 +279,12 @@ describe('refreshDemoData POC_MODE gate', () => {
     const report = await refreshDemoData(supabase)
 
     expect(report.skipped).toBe('not_poc_mode')
-    expect(report.ok).toBe(true)  // skipped is a deliberate no-op, not a failure
+    // PR #9 (cowork H1): skipped is a CONFIGURATION problem, not a
+    // success. `ok` must be false so the cron handler + admin route
+    // surface the config error. Previously `ok: true` on skip let
+    // F6 ship to prod silently — every downstream consumer treated
+    // the skip as healthy.
+    expect(report.ok).toBe(false)
     expect(report.fax_seed.action).toBe('skipped')
     expect(report.submission_seed.action).toBe('skipped')
   })
@@ -294,6 +299,8 @@ describe('refreshDemoData POC_MODE gate', () => {
 
       const report = await refreshDemoData(supabase)
       expect(report.skipped).toBe('not_poc_mode')
+      // Same PR #9 H1 contract for any non-'true' value.
+      expect(report.ok).toBe(false)
     }
   })
 })
