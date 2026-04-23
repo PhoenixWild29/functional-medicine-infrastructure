@@ -412,7 +412,89 @@ export async function ensureDemoScaffolding(
       if (error) return { action: 'error', error: `order insert: ${error.message}` }
     }
 
-    const anyCreated = !clinic || !patient || !provider || !order
+    // ── Pharmacies (PR #11) ──────────────────────────────────
+    // Ensures all 5 DEMO_PHARMACIES exist before the submissions
+    // seed tries to FK-reference them. Previously only
+    // scripts/seed-poc.ts inserted these rows (terminal-only, never
+    // re-run against prod after PR #5 merged), so environments
+    // bootstrapped pre-PR-#5 had only Strive and the submissions
+    // seed silently FK-failed for the 4 new pharmacies.
+    //
+    // Idempotent: check by pharmacy_id first (primary key), then by
+    // slug (UNIQUE constraint) to catch stale rows with the same
+    // slug but a different UUID. Both checks must show absent before
+    // we insert — otherwise a duplicate-slug error would abort the
+    // whole scaffolding step and block the entire refresh.
+    let anyPharmacyCreated = false
+    const stridesFaxNumber = process.env['POC_FAX_NUMBER'] ?? '+15125550199'
+    // Mirror seed-poc.ts timezones verbatim for parity with any
+    // previously-run local seed.
+    const PHARMACY_TIMEZONES = [
+      'America/Chicago',
+      'America/New_York',
+      'America/Los_Angeles',
+      'America/New_York',
+      'America/Denver',
+    ] as const
+
+    for (let i = 0; i < DEMO_PHARMACIES.length; i++) {
+      const p  = DEMO_PHARMACIES[i]!
+      const tz = PHARMACY_TIMEZONES[i]!
+
+      // Primary-key lookup.
+      const { data: byId } = await supabase
+        .from('pharmacies')
+        .select('pharmacy_id')
+        .eq('pharmacy_id', p.id)
+        .maybeSingle()
+
+      if (byId) continue
+
+      // Belt-and-suspenders slug lookup. Reviewer flagged this as
+      // load-bearing: a naive "check by pharmacy_id only → insert"
+      // pattern aborts the whole scaffolding step if another row
+      // already owns our slug (e.g., a hand-inserted test row). On
+      // a collision we prefer to leave the existing row in place
+      // and let the user resolve it manually rather than crash.
+      const { data: bySlug } = await supabase
+        .from('pharmacies')
+        .select('pharmacy_id, slug')
+        .eq('slug', p.slug)
+        .maybeSingle()
+
+      if (bySlug) {
+        // Log-shape: include the conflicting pharmacy_id so an
+        // operator reading the JSON report can investigate.
+        return {
+          action: 'error',
+          error:  `pharmacy insert skipped for slug '${p.slug}' — conflicting row ${bySlug.pharmacy_id} already exists. Resolve manually (rename slug or delete row) and re-run Refresh Demo Data.`,
+        }
+      }
+
+      const { error } = await supabase.from('pharmacies').insert({
+        pharmacy_id:      p.id,
+        name:             p.name,
+        slug:             p.slug,
+        integration_tier: p.tier,
+        // fax_number: meaningful for TIER_4_FAX (Strive) only.
+        // Other tiers get a placeholder — nullable column, but
+        // downstream operational flows key on it being present.
+        fax_number:       p.slug === 'strive' ? stridesFaxNumber : '+15125550199',
+        is_active:        true,
+        // adapter_status has a CHECK constraint ('green' | 'yellow' | 'red').
+        // This initial value is cosmetic — the Ops page recomputes
+        // status from submissions every render (adapter-health.ts).
+        adapter_status:   'green',
+        timezone:         tz,
+      })
+
+      if (error) {
+        return { action: 'error', error: `pharmacy '${p.slug}' insert: ${error.message}` }
+      }
+      anyPharmacyCreated = true
+    }
+
+    const anyCreated = !clinic || !patient || !provider || !order || anyPharmacyCreated
     return { action: anyCreated ? 'created' : 'already_exists' }
   } catch (err) {
     return { action: 'error', error: err instanceof Error ? err.message : String(err) }
