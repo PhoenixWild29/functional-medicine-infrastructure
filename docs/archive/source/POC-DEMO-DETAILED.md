@@ -1,27 +1,22 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 2.3 | **Date:** April 22, 2026
+**Version:** 2.4 | **Date:** April 23, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
 
-> **What's new in v2.3 (2026-04-22):** Cowork round-3 walkthrough fixes landed. Three PRs (#7a/#7b/#7c) address the five code + doc findings from the v2.2 fresh-agent re-review. The adapter_submissions seed now uses a real UUID + metadata JSONB marker so Refresh Demo Data actually succeeds and the Adapter Health grid renders 4 green + 1 yellow cards as advertised; the poc-credential-sync cron surfaces demo-data failures separately via Sentry; the signature pad on the draft-sign page enables on first pen contact; and this doc's `/api/health` payload + EPCS 2FA trigger copy are corrected. See `STATUS.md` for the full PR ledger.
->
-> **What's new in v2.2 (2026-04-22):** Demo-readiness campaign complete. Six PRs address the five findings from the fresh-agent cowork review (A1/A2/B1/B2/B4) so the demo tour no longer requires a terminal: clinic-side **Copy Payment Link** button replaces the checkout-URL script (PR #1); the demo provider's EPCS TOTP is **pre-enrolled** via cron so controlled-substance signings never hit first-time setup (PR #2); Adapter Health cards have an **Idle** state instead of falsely flashing Critical on a fresh environment (PR #3); **Refresh Demo Data** button + daily cron seed the Fax Triage queue and Adapter Health grid with realistic data inside the 15-minute green-freshness window (PR #5); **Demo Tools** nav tab is hidden by default so the investor Ops tour never sees a "Demo Tools" link (PR #4). See `STATUS.md` for the full PR ledger.
+> **What's new in v2.4 (2026-04-23):** This walkthrough is now a **live-demo script** — the presenter uses the app the way a real user would, and the investor sees whatever the app genuinely produces as a result of those actions. Prior versions asked the presenter to pre-stage specific visual states via a backstage `/ops/demo-tools` page right before the demo started; that pre-staging is gone. The demo no longer depends on clicking refresh buttons, setting timestamps, or forcing any screen into a specific colour state. Where earlier revisions predicted exact card counts, exact colours, or exact timestamp values on the Ops screens, those predictions have been replaced with descriptions of what each screen *is* — the specific state at demo time reflects the real activity the presenter creates during the walkthrough.
 
 ---
 
-## Pre-Demo Setup (5 minutes before)
+## Pre-Demo Setup
 
-> Zero-terminal flow — every step below is a browser click or a phone tap. No scripts, no shells.
+Three one-time items before demo day — no backstage pages, no state-staging, nothing to click "10 minutes before the demo."
 
-1. **Sync credentials + demo data (in-app):** Log in as ops (`ops@compoundiq-poc.com` / `POCAdmin2026!`), visit `/ops/demo-tools`, and click **both** buttons in order:
-   - **Reset Demo Credentials** — forces all four POC passwords back to the canonical values in the table below
-   - **Refresh Demo Data** — reseeds the Fax Triage queue (4 rows) and Adapter Health grid (5 pharmacies, 200 submissions) with timestamps inside the 15-minute "green" freshness window. **Click this within ~10 minutes of the demo start** — adapter cards classify green only when the most recent success was under 15 minutes ago, so stale data reads degraded.
-2. **Verify health:** Open `https://functional-medicine-infrastructure.vercel.app/api/health` — should return a 200 JSON payload of the form `{"ok":true,"timestamp":"<ISO date>","version":"<git SHA>"}`
-3. **Authenticator app on your phone:** Dr. Chen's EPCS TOTP secret is pre-enrolled in the database (PR #2). To enter rolling 6-digit codes during the controlled-substance signing, add the same secret to your authenticator app **once** before the demo (any TOTP app: Google Authenticator, 1Password, Authy, Bitwarden). **Enrollment details are in the "Authenticator Setup" subsection below.**
-4. **Open browser tabs:** Prepare 3 tabs — one for clinic app, one for ops dashboard, one for patient checkout
-5. **Stripe test card ready:** `4242 4242 4242 4242` | Exp: `12/28` | CVC: `123` | ZIP: `78701`
-6. **Mobile device (optional):** Have a phone ready to show the checkout page on a real mobile browser
+1. **Authenticator app on your phone.** The EPCS-controlled-substance signing step in Part 3F uses standard TOTP two-factor authentication per DEA 21 CFR 1311. The demo provider (Dr. Chen) has a TOTP secret already configured server-side. You need the same secret loaded into a TOTP app on your phone so you can enter the rolling 6-digit code during the signing step. Any TOTP app works (Google Authenticator, 1Password, Authy, Bitwarden). See the **Authenticator Setup** subsection below for the exact secret values.
+2. **Open browser tabs.** Prepare 3 tabs so you can switch roles quickly during the demo — one for the clinic app, one for the ops dashboard, one for the patient checkout link.
+3. **Stripe test card ready.** `4242 4242 4242 4242` | Exp: `12/28` | CVC: `123` | ZIP: `78701`. You'll type this into the real checkout page in Part 4B.
+
+**Optional:** a phone in your other hand to show the checkout page on a real mobile browser.
 
 ### Authenticator Setup (one-time, before demo day)
 
@@ -50,20 +45,14 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 | Provider | `dr.chen@sunrise-clinic.com` | `POCProvider2026!` | `/dashboard` |
 | Medical Assistant | `ma@sunrise-clinic.com` | `POCMA2026!` | `/dashboard` |
 
-> **If a password above doesn't work** (credential drift after a Supabase rotation, manual reset, etc.):
->
-> 1. **In-app fix:** log in as ops, go to `/ops/demo-tools`, click **Reset Demo Credentials**. All four accounts are forced back to the canonical passwords above.
-> 2. **Locked out of ops too:** open the Vercel dashboard → Crons tab → `/api/cron/poc-credential-sync` → **Run Now**. Same effect, no terminal required.
-> 3. The cron also runs automatically every day at 5 AM UTC, so drift never persists more than 24 hours unattended.
-
-### POC Seed Data
+### POC Seed Data (reference — what the app is pre-configured with)
 
 | Entity | Details |
 |--------|---------|
 | Clinic | Sunrise Functional Medicine |
 | Provider | Sarah Chen, NPI 1234567890, TX license |
 | Patient | Alex Demo, DOB 1985-06-15, TX, SMS opt-in |
-| Pharmacy | Strive Pharmacy, Tier 4 (Fax), TX licensed |
+| Pharmacies | 5 configured across all 4 tiers — Strive (Tier 4 Fax), Quick Rx + Express Digital Rx (Tier 1 API), Portal Plus (Tier 2 Portal), Hybrid Labs (Tier 3 Hybrid) |
 | Medications | Semaglutide, Tirzepatide, Testosterone, Sermorelin, Naltrexone |
 
 ---
@@ -134,12 +123,11 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 > "The medical assistant starts their day here. They can see all orders at a glance, filter by status, and switch between table and kanban views."
 
 4. **Point out the sidebar:**
-   - Navigation links with icons
+   - Navigation icons for Dashboard / New Prescription / Settings
    - Active page highlighted
-   - User info and role badge at the bottom
-5. Click the **collapse button** (chevron) on the sidebar — show it collapses to icon-only mode, click again to re-expand
+   - Sign-out control at the bottom
 
-> "The sidebar collapses for more screen real estate. The main content area adjusts automatically."
+> "The sidebar gives quick access to the core clinic flows."
 
 ### 3B — Patient & Provider Selection (New in Phase 15)
 
@@ -218,22 +206,22 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 ### 3F — Batch Review, Interaction Alerts & EPCS 2FA (New in Phase 19)
 
 34. **Point out the batch review page:**
-    - DEA schedule badges on controlled substance prescription cards (Testosterone shows Schedule 3)
-    - **Drug Interaction Alerts section** — the alerts are dynamic based on the medications in the current session. With Semaglutide + Testosterone (this walkthrough), an INFO-severity alert appears with clinical guidance. With Ketotifen + Ketamine (a different combination), an amber WARNING alert appears. The exact alert text depends on which pairs are seeded in the `drug_interactions` table.
-    - Session banner with "2 prescriptions in this session"
-    - Two prescription cards with medication, pharmacy, pricing, and sig for each
+    - **Controlled Substance banner** at the top when any prescription in the session is DEA-scheduled (appears because Testosterone is Schedule 3)
+    - **Drug Interaction Alerts section** — alerts are dynamic based on the medications in the current session. With Semaglutide + Testosterone (this walkthrough), an INFO-severity alert appears with clinical guidance. With different pairings (e.g. Ketotifen + Ketamine), a WARNING-severity alert appears instead. The alert text comes from the drug-interactions knowledge base.
+    - Session banner showing the prescription count
+    - One prescription card per medication with pharmacy, pricing, and sig
     - Combined totals (total retail, platform fee, total clinic payout)
     - "Remove" link on each card
     - "+ Add Another Prescription" button
     - Single provider signature pad
 
-> "The system automatically detects drug interactions and surfaces them with clinical guidance — severity-colored: red for critical, amber for warning, blue for informational. DEA-scheduled compounds are flagged on the prescription card with schedule badges."
+> "The system automatically detects drug interactions and surfaces them with clinical guidance — severity-coloured: red for critical, amber for warning, blue for informational. DEA-scheduled compounds trigger the red banner and force the EPCS 2FA step before signing."
 
 35. **Sign** on the signature pad
-36. Click **"Sign & Send All 2 Prescriptions"** → Click **"Confirm & Send"** — watch the progress messages
-37. Verify redirect to dashboard — both orders visible as "Awaiting Payment"
+36. Click **"Sign & Send All 2 Prescriptions"** → Click **"Confirm & Send"** — watch the progress messages. (The EPCS 2FA modal surfaces here because Testosterone is Schedule 3 — enter the 6-digit code from your authenticator app.)
+37. Navigate back to the dashboard to see the resulting orders — both should appear as "Awaiting Payment"
 
-> **EPCS 2FA Demo Tip:** The EPCS 2FA modal (6-digit TOTP input, DEA 21 CFR 1311 citation) triggers on the **batch Review & Send flow** whenever any DEA-scheduled compound is present in the current prescription session — regardless of whether the controlled substance was added via a Favorites card, a Protocol template, or the normal cascading builder. The demo provider (Dr. Chen) is **pre-enrolled** — the TOTP secret is already seeded + verified in the database via the daily `poc-credential-sync` cron (PR #2), so the modal skips first-time QR enrollment and goes straight to the rolling 6-digit code prompt. To demo it: the walkthrough above (Steps 31–36, adding Testosterone to the session) already puts a Schedule 3 compound in batch review — clicking "Sign & Send All Prescriptions" → "Confirm & Send" surfaces the modal with the red "EPCS Two-Factor Authentication Required" header, Schedule badge, and the "Verify & Sign" / "Cancel" buttons. Read the current 6-digit code from your authenticator app (see **Authenticator Setup** in Pre-Demo Setup) and enter it, or Cancel to exit without submitting.
+> **EPCS 2FA Demo Tip:** The EPCS 2FA modal (6-digit TOTP input, DEA 21 CFR 1311 citation) triggers on the batch Review & Send flow whenever any DEA-scheduled compound is present in the current prescription session. Because Steps 31–36 already added Testosterone (Schedule 3) to the session, clicking "Sign & Send All Prescriptions" → "Confirm & Send" will surface the modal with the red "EPCS Two-Factor Authentication Required" header, a Schedule badge, and "Verify & Sign" / "Cancel" buttons. Read the current 6-digit code from your authenticator app (the one you loaded via the Authenticator Setup subsection before demo day) and enter it.
 
 > "Two orders created, two payment links generated, three SLA timers each — all from one signature. The MA's workflow for a multi-medication visit: 45 seconds."
 
@@ -246,7 +234,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 40. Search **"Sema"** → select **Semaglutide** → select **Strive Pharmacy**
 41. Click **2x multiplier**, enter Sig: **"Draft flow demo"**
 42. Click **"Save as Draft — Provider Signs Later"**
-43. Verify redirect to dashboard — order appears with **"Draft"** status
+43. Navigate back to the dashboard — the new order appears with **"Draft"** status
 
 > "The MA saved this without the provider being present. No signature yet."
 
@@ -272,8 +260,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 53. **Copy the patient checkout URL** — still logged in as the provider (or switch back to the clinic admin), on the clinic dashboard:
     a. Click any order showing **"Awaiting Payment"** to open the order drawer
-    b. Click the emerald **"Copy Payment Link"** button
-    c. Success toast confirms: **"Payment link copied · valid for 72 hours"**
+    b. Click the emerald **"Copy Payment Link"** button — the checkout URL is now on your clipboard
 
 > "In production, the patient gets this link in a text message when the order is signed. They tap it on their phone and land directly on checkout. In a live clinic we'd never copy-paste the link — we're doing that here only because this is a demo. If the link ever expires, the same button changes to **Regenerate Payment Link** and mints a fresh 72-hour URL in one click."
 
@@ -371,7 +358,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 ### 5B — SLA Heatmap
 
-8. Click **"SLA"** in the sidebar
+8. Click **"SLA"** in the top nav
 9. **Point out:**
    - Filter pills (All Active, Breached, etc.)
    - SLA breach cards with countdown timers
@@ -382,45 +369,32 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 ### 5C — Adapter Health Monitor
 
-10. Click **"Adapters"** in the sidebar
-11. **Expected state after Refresh Demo Data** — 5 pharmacy cards spanning all 4 tiers, 4 green + 1 yellow:
-
-    | Card | Tier | Status | What to point at |
-    |------|------|--------|------------------|
-    | **Strive Pharmacy** | Tier 4 Fax | Green | The universal fallback — fax to any pharmacy |
-    | **Quick Rx Pharmacy** | Tier 1 API | Green | Healthy direct-API integration |
-    | **Express Digital Rx** | Tier 1 API | **Yellow** | Degraded — success rate ~85%, most-recent success in the 15-60 min band |
-    | **Portal Plus Pharmacy** | Tier 2 Portal | Green | Healthy portal-automation integration |
-    | **Hybrid Labs Pharmacy** | Tier 3 Hybrid | Green | Healthy standardized-spec integration |
-
-12. **Point out on each card:**
-    - Traffic-light health indicator
+10. Click **"Adapters"** in the top nav
+11. **Point out what the page is:** a card for every configured pharmacy across all 4 integration tiers (Tier 1 API, Tier 2 Portal, Tier 3 Hybrid, Tier 4 Fax). Each card shows:
+    - A traffic-light health indicator (green / yellow / red for Degraded or Critical / slate for Idle)
     - Circuit breaker state (CLOSED / HALF_OPEN / OPEN)
-    - 24-hour submission success-rate chart
-    - Quick-action buttons (Disable Adapter, etc.)
+    - 24-hour submission success rate + total submission count + failure count
+    - p50 / p95 / p99 latency percentiles
+    - A 24-hour submissions bar chart (green bars for successes, pink for failures)
+    - "Last success" relative timestamp
+    - Quick-action buttons (Disable Adapter, Force Tier 4)
 
-> "Every pharmacy integration is monitored in real time. The yellow card — Express Digital — is our intervention demo prop. Its success rate is in the 80-95% yellow band and the most recent success was in the 15-60 minute danger zone. In a live ops center this is where the team would investigate before it flips red. If a pharmacy's API fails outright, the circuit breaker opens after the configured threshold and auto-cascades to the next tier. A fresh pharmacy with zero traffic shows **Idle** — neutral slate — instead of falsely flashing Critical."
+> "Every pharmacy integration is monitored in real time. The card's colour reflects what that pharmacy has actually been doing in the last 24 hours — 95%+ success with recent activity is green, degraded performance shifts to yellow, and a circuit-breaker-open state flips it red. A pharmacy we've configured but haven't routed traffic through yet shows **Idle** — neutral slate — instead of falsely flashing Critical. What you see on the grid right now reflects today's real submission activity."
+
+> **Narrator cue:** whatever card is coloured however is fine. The page's value is that it reports reality — green pharmacies are healthy, yellow pharmacies are ones ops should look at, red pharmacies need intervention, and the circuit breaker auto-cascades traffic to the next-highest tier when something's down. Narrate the colours you see in front of you and explain what each state means.
 
 ### 5D — Fax Triage Queue
 
-13. Click **"Fax"** in the sidebar
-14. **Expected state after Refresh Demo Data** — 4 rows spread across the active fax lifecycle:
+13. Click **"Fax Queue"** in the top nav
+14. **Point out what the page is:**
+    - Status filter pills across the top (All, Received, Matched, Unmatched, Processed, Archived)
+    - Queue metrics in the header (`X new`, `Y unmatched`, total count)
+    - A list of inbound fax rows — each one shows status, from-number, page count, relative received-at timestamp, matched pharmacy/order if any
+    - Click any row to open a triage detail panel on the right with the available actions
 
-    | Row | Status | Age | What to point at |
-    |-----|--------|-----|------------------|
-    | 1 | **Received** | ~3 min ago | Fresh inbound — just landed, not yet auto-matched |
-    | 2 | **Matched** | ~18 min ago | System auto-matched this fax to an order + pharmacy |
-    | 3 | **Unmatched** | ~42 min ago | Couldn't match automatically — this is the "needs human triage" card |
-    | 4 | **Processing** | ~55 min ago | Ops has acknowledged and is actively working it |
+> "Tier 4 pharmacies respond via fax. Inbound faxes land here with an OCR text preview. The system attempts to auto-match each inbound fax to an open order. When it succeeds, the fax moves to Matched. When it can't, the fax sits in Unmatched until a human decides what to do with it — the right-hand triage panel gives ops the tools to manually match the fax to an order or archive it. Tier 1 and 2 pharmacies skip this entire page because their responses come back via API, not fax."
 
-15. **Point out:**
-    - Status filter pills (All, Received, Matched, Unmatched, Processed, Archived)
-    - Queue metrics in the header (`X new`, `Y unmatched`)
-    - Click the Unmatched row to show the triage detail panel on the right
-
-> "Tier 4 pharmacies respond via fax. Inbound faxes land here with OCR text preview. The system auto-matches against open orders — but when it can't, the fax sits in Unmatched until a human decides what to do with it. Ops picks a disposition — Acknowledge, Reject, Query, or Manual Match — and the fax moves forward. Tier 1 and 2 pharmacies skip this entirely because their responses come via API."
-
-> **Timestamps going stale?** Row timestamps are rendered relative ("3 min ago"). If they read "3 days ago" instead, the Refresh Demo Data button on /ops/demo-tools wasn't clicked within ~24 hours of demo start — re-click it to reset the clock. See Pre-Demo Setup, Step 1.
+> **Narrator cue:** whatever rows you see (including none) is what the queue genuinely contains today. The page's value is that it gives ops a single place to resolve fax-borne pharmacy responses — narrate whatever's in front of you.
 
 ### 5E — Catalog Manager
 
@@ -432,19 +406,6 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
     - Tabs: Catalog, Versions, Normalized, API Sync
 
 > "The medication catalog is the pricing foundation. Catalogs come in via CSV upload, API sync, or manual entry. Every change is versioned. Price changes over 10% get flagged for review. And the normalized view lets you compare the same medication across pharmacies."
-
-### 5F — Demo Tools (operator-only, hidden from the investor tour)
-
-> This section is **only visible to the presenter** when rehearsing. During a live investor demo the Demo Tools nav tab is hidden (env flag `NEXT_PUBLIC_SHOW_DEMO_TOOLS` left unset — PR #4), so the investor audience never sees a "Demo Tools" link that would telegraph POC. The page itself stays reachable by direct URL (`/ops/demo-tools`) for credential-reset workflows. To show the tab during internal QA or a scripted rehearsal, set `NEXT_PUBLIC_SHOW_DEMO_TOOLS=true` in Vercel env.
-
-The page exposes two operator-only buttons. Both are ops_admin session-gated and both are idempotent (safe to click repeatedly):
-
-| Button | What it does | When to use |
-|--------|--------------|-------------|
-| **Reset Demo Credentials** | Forces all four POC Supabase Auth accounts back to the canonical passwords shown in the Pre-Demo Setup credential table. | Any time a password is out of sync — usually after a Supabase project rotation or a manual reset. |
-| **Refresh Demo Data** | Re-inserts 4 fresh Fax Triage rows + 200 fresh Adapter submissions (across all 5 pharmacies) with `created_at` timestamps anchored inside the 15-minute "green" adapter-health freshness window. Idempotent via `poc-seed-*` ID prefix + pharmacy-UUID allowlist; safe to click any time. | Right before every demo (≤10 min ahead). Also runs automatically at 5 AM UTC daily as a safety net. |
-
-> **Recovery path — no terminal required:** If the ops_admin account itself is locked out (chicken-and-egg: can't log in to click Reset Demo Credentials), open the Vercel dashboard → Crons tab → `/api/cron/poc-credential-sync` → **Run Now**. That endpoint is CRON_SECRET-gated rather than session-gated, so it works even when every POC account is locked out. The same cron also invokes Refresh Demo Data, so a "Run Now" click handles both jobs in one step.
 
 ---
 
@@ -491,7 +452,7 @@ The page exposes two operator-only buttons. Both are ops_admin session-gated and
 | Cron jobs | 10 Vercel cron jobs |
 | Build phases completed | 19 phases, 87 work orders (all merged; WO-87 formulation support in prod) |
 | Hard constraints | 16 non-negotiable rules |
-| Test coverage | 65 Playwright E2E tests (all browsers) + 6 jest unit tests. CI gates every merge. Cowork validated the manual QA walkthrough across 6 rounds with zero remaining findings. |
+| Test coverage | 65 Playwright E2E tests (all browsers) + 87 jest unit tests. CI gates every merge. |
 
 ### Common Questions
 
