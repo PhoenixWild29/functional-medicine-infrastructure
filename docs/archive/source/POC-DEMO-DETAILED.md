@@ -411,7 +411,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
     | 1 | **Received** | ~3 min ago | Fresh inbound — just landed, not yet auto-matched |
     | 2 | **Matched** | ~18 min ago | System auto-matched this fax to an order + pharmacy |
     | 3 | **Unmatched** | ~42 min ago | Couldn't match automatically — this is the "needs human triage" card |
-    | 4 | **Processing** | ~75 min ago | Ops has acknowledged and is actively working it |
+    | 4 | **Processing** | ~55 min ago | Ops has acknowledged and is actively working it |
 
 15. **Point out:**
     - Status filter pills (All, Received, Matched, Unmatched, Processed, Archived)
