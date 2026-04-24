@@ -12,9 +12,10 @@
 //   sendPaymentLinkSms()       ← Stripe webhook (AWAITING_PAYMENT)
 //   sendReminder24hSms()       ← sla-check cron (SUBMISSION SLA breach)
 //   sendReminder48hSms()       ← sla-check cron (STATUS_UPDATE SLA breach)
-//   sendPaymentConfirmationSms()← Stripe webhook (PAID_PROCESSING)
 //   sendShippingNotificationSms()← Shipping webhook (SHIPPED)
 //   sendDeliveredSms()         ← Shipping webhook (DELIVERED)
+// (Post-payment communication is an email receipt via Stripe, not SMS —
+//  see PR #15 and receipt_email on PaymentIntent creation.)
 //
 // REQ-SPN-001 through REQ-SPN-005: Trigger logic per SLA type.
 // REQ-SPN-006: HIPAA — patient first name only, no medication names.
@@ -29,10 +30,8 @@ import {
   renderPaymentLinkSms,
   renderReminder24hSms,
   renderReminder48hSms,
-  buildPaymentConfirmationBody,
   renderShippingNotificationSms,
   renderDeliveredSms,
-  buildTierAwareClause,
 } from '@/lib/sms/templates'
 
 // ============================================================
@@ -283,32 +282,17 @@ export async function sendReminder48hSms(orderId: string): Promise<SendSmsResult
 // ============================================================
 // TRIGGER: PAYMENT CONFIRMATION
 // ============================================================
-
-/**
- * Fires on AWAITING_PAYMENT → PAID_PROCESSING (Stripe webhook).
- * Tier-aware content: real-time status vs 3-7 business days.
- * REQ-SPN-003.
- */
-export async function sendPaymentConfirmationSms(orderId: string): Promise<SendSmsResult> {
-  const ctx = await getOrderSmsContext(orderId)
-  if (!ctx) return skipResult('order_not_found')
-  if (!ctx.smsOptIn) return skipResult('sms_opt_out')
-  if (!ctx.patientPhone) return skipResult('no_phone_number')
-
-  const tierAwareMessage = buildTierAwareClause(ctx.supportsRealTimeStatus)
-  const body = buildPaymentConfirmationBody({
-    patientFirstName: ctx.patientFirstName,
-    tierAwareMessage,
-  })
-
-  return sendSms({
-    orderId,
-    patientId:    ctx.patientId,
-    toNumber:     ctx.patientPhone,
-    templateName: 'payment_confirmation',
-    body,
-  })
-}
+// NOTE: sendPaymentConfirmationSms was removed in PR #15.
+//
+// Previously this function was *defined* to fire on AWAITING_PAYMENT →
+// PAID_PROCESSING from the Stripe webhook, but it was never actually wired
+// into the webhook handler — it was dead code. The post-payment
+// communication to the patient is now a Stripe-generated email receipt
+// (receipt_email attached on PaymentIntent creation/update per PR #15),
+// not an SMS. The 'payment_confirmation' sms_templates row + the DB
+// migration that seeded it are intentionally preserved in case a future
+// iteration re-introduces a post-payment SMS path alongside email.
+// ============================================================
 
 // ============================================================
 // TRIGGER: SHIPPING NOTIFICATION
