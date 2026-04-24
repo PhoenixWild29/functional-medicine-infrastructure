@@ -239,7 +239,7 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
         )}
 
         <p className="text-center text-xs text-muted-foreground/60">
-          You will receive a text message with updates on your order.
+          A receipt has been emailed to you. You&rsquo;ll receive additional updates as your prescription moves through our pharmacy network.
         </p>
       </div>
     </main>

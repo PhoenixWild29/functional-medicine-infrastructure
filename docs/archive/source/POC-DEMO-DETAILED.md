@@ -275,8 +275,8 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
    - Clinic branding: "Sunrise Functional Medicine" displayed prominently
    - Generic line item: "Prescription Service" — NOT the medication name
    - Total: $300.00
-   - Stripe Elements payment form (card, Apple Pay, Google Pay options)
-   - Email field (required for receipt)
+   - **Email field** ("Email for receipt") — required, above the Stripe payment form. Stripe auto-emails a branded receipt to this address when the charge succeeds.
+   - Stripe Elements payment form below (card + whichever wallet options the patient's device supports — e.g., Apple Pay in Safari on iOS, Google Pay in Chrome on Android, Cash App Pay, Bank, Affirm, Amazon Pay)
    - Trust signals: "256-bit TLS Encryption", "Powered by Stripe"
    - Footer: "Your payment info is encrypted and never stored by CompoundIQ"
 
@@ -288,8 +288,8 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 ### 4B — Complete Payment
 
-4. Enter email: `test@example.com`
-5. Enter Stripe test card: `4242 4242 4242 4242` | Exp: `12/28` | CVC: `123` | ZIP: `78701`
+4. Enter email in the **"Email for receipt"** field: `test@example.com` (Stripe will email the branded receipt here)
+5. Enter Stripe test card in the Stripe Elements form below: `4242 4242 4242 4242` | Exp: `12/28` | CVC: `123` | ZIP: `78701`
 6. Click **"Pay $300.00"**
 7. Wait for the success page
 

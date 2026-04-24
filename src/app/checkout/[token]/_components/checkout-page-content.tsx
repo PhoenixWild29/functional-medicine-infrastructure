@@ -52,15 +52,21 @@ function toCurrency(cents: number): string {
 // ============================================================
 
 interface PaymentFormProps {
+  token:       string
   retailCents: number
   onError:     (msg: string | null) => void
   onReady:     () => void
 }
 
-function PaymentForm({ retailCents, onError, onReady }: PaymentFormProps) {
+function PaymentForm({ token, retailCents, onError, onReady }: PaymentFormProps) {
   const stripe   = useStripe()
   const elements = useElements()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // PR #15: patient-typed email for Stripe receipt. Required before
+  // confirmPayment — the submit handler attaches it to the PaymentIntent
+  // via the same /api/checkout/payment-intent endpoint (update path) so
+  // Stripe auto-emails a branded receipt when the charge succeeds.
+  const [email, setEmail] = useState('')
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -68,6 +74,28 @@ function PaymentForm({ retailCents, onError, onReady }: PaymentFormProps) {
 
     setIsSubmitting(true)
     onError(null)
+
+    // PR #15: attach the validated email to the existing PI's receipt_email
+    // before confirmPayment. Server re-validates syntax + rejects .invalid
+    // TLD; HTML5 type=email + required at the input level catches most
+    // malformed entries before we get here.
+    try {
+      const res = await fetch('/api/checkout/payment-intent', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ token, email }),
+      })
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({})) as { error?: string }
+        onError(errBody.error ?? 'Unable to prepare receipt email. Please check your email address and try again.')
+        setIsSubmitting(false)
+        return
+      }
+    } catch {
+      onError('Network error preparing payment. Please try again.')
+      setIsSubmitting(false)
+      return
+    }
 
     const { error } = await stripe.confirmPayment({
       elements,
@@ -94,6 +122,31 @@ function PaymentForm({ retailCents, onError, onReady }: PaymentFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* PR #15: patient email for Stripe receipt. type=email + required
+          + pattern triggers native mobile keyboard + HTML5 validation.
+          Placed ABOVE the Stripe iframe to match standard e-commerce
+          checkout patterns (Stripe Checkout, Shopify, etc.). */}
+      <div>
+        <label htmlFor="checkout-email" className="block text-sm font-medium text-foreground">
+          Email for receipt
+        </label>
+        <input
+          id="checkout-email"
+          type="email"
+          required
+          autoComplete="email"
+          inputMode="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@example.com"
+          disabled={isSubmitting}
+          className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          We&rsquo;ll send your payment receipt here — no account required.
+        </p>
+      </div>
+
       {/* Stripe PaymentElement — handles card, Apple Pay, Google Pay — REQ-PSR-003 */}
       <PaymentElement
         options={{
@@ -364,6 +417,7 @@ export function CheckoutPageContent({
                   }}
                 >
                   <PaymentForm
+                    token={token}
                     retailCents={retailCents}
                     onError={setPayError}
                     onReady={() => setStripeReady(true)}
