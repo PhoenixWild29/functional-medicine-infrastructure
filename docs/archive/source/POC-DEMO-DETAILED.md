@@ -398,7 +398,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 ### 5E — Catalog Manager
 
-16. Click **"Catalog"** in the sidebar
+16. Click **"Catalog"** in the top nav
 17. **Point out:**
     - Medication table with columns (Medication, Form, Dose, Wholesale, Retail, Status, Pharmacy, PA)
     - CSV upload drag-and-drop area
