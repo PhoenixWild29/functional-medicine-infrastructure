@@ -1,8 +1,23 @@
 // ============================================================
-// POC Sync Cron — hourly safety net
+// POC Sync Cron — demo-data freshness driver
 // GET /api/cron/poc-credential-sync
-// Schedule: 0 * * * * (every hour, on the hour)
+// Schedule: */10 * * * * (every 10 minutes)
 // ============================================================
+//
+// CADENCE NOTE (PR #18 / cowork F2): Schedule was bumped from
+// hourly (0 * * * *) to every-10-minutes after a demo-readiness
+// walkthrough caught every Adapter Health card rendering as
+// "Degraded" (yellow). Root cause: refresh-demo-data.ts anchors
+// the freshest adapter submission at `now − 2min` at every cron
+// fire, and computeAdapterStatus only classifies green when
+// last_success < 15min ago. With an hourly cron, cards crossed
+// the 15-min boundary 13 minutes after each tick and stayed
+// yellow for the remaining 47 minutes — i.e., yellow ~78% of
+// the demo window. At */10, max staleness right before the next
+// fire is 12 min < 15-min green threshold, so cards stay green
+// continuously. Production-ops semantics for the classifier
+// (real pharmacy silent for an hour → red) are intentionally
+// preserved; the fix is cadence, not classifier.
 //
 // NAME LEGACY NOTE (PR #12): The path still reads
 // `poc-credential-sync` for backwards compatibility with the
