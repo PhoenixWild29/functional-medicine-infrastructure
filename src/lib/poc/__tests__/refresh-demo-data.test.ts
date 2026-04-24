@@ -326,6 +326,10 @@ describe('ensureDemoScaffolding — pharmacies (PR #11)', () => {
   function buildScaffoldingMock() {
     const calls: Array<{ op: string; args: unknown[] }> = []
     let pharmacyInserts = 0
+    // PR #16: tracks the circuit_breaker_state upsert the new CB seed
+    // path triggers at the end of ensureDemoScaffolding. Separate from
+    // pharmacyInserts because upsert ≠ insert (distinct Supabase verb).
+    const cbUpsertCalls: Array<Record<string, unknown>[]> = []
 
     const chainForTable = (table: string) => ({
       eq(col: string, val: unknown) {
@@ -360,6 +364,13 @@ describe('ensureDemoScaffolding — pharmacies (PR #11)', () => {
             if (table === 'pharmacies') pharmacyInserts++
             return Promise.resolve({ error: null })
           },
+          upsert(payload: Record<string, unknown>[] | Record<string, unknown>, _opts?: unknown) {
+            calls.push({ op: `${table}.upsert`, args: [payload] })
+            if (table === 'circuit_breaker_state') {
+              cbUpsertCalls.push(Array.isArray(payload) ? payload : [payload])
+            }
+            return Promise.resolve({ error: null })
+          },
         }
       },
     } as unknown as Parameters<typeof ensureDemoScaffolding>[0]
@@ -368,6 +379,7 @@ describe('ensureDemoScaffolding — pharmacies (PR #11)', () => {
       supabase,
       calls,
       get pharmacyInserts() { return pharmacyInserts },
+      get cbUpsertCalls()   { return cbUpsertCalls },
     }
   }
 
@@ -416,6 +428,7 @@ describe('ensureDemoScaffolding — pharmacies (PR #11)', () => {
             }
           },
           insert() { return Promise.resolve({ error: null }) },
+          upsert() { return Promise.resolve({ error: null }) },
         }
       },
     } as unknown as Parameters<typeof ensureDemoScaffolding>[0]
@@ -424,6 +437,38 @@ describe('ensureDemoScaffolding — pharmacies (PR #11)', () => {
     expect(result.action).toBe('error')
     expect(result.error).toContain('slug')
     expect(result.error).toContain('strive')
+  })
+
+  it('upserts a CLOSED circuit_breaker_state row for all 5 pharmacies (PR #16 H3)', async () => {
+    // Regression guard for the demo-env-renders-no-chips bug. Without
+    // this seed, /ops/adapters shows zero CB chips on the 5 POC
+    // pharmacies because circuit_breaker_state rows only get written
+    // by the routing engine on real submission side-effects (which
+    // don't happen for POC pharmacies in isolation). Production
+    // pharmacies self-heal; POC pharmacies need the explicit seed.
+    const mock = buildScaffoldingMock()
+    const result = await ensureDemoScaffolding(mock.supabase)
+
+    expect(result.action).toBe('created')
+    expect(mock.cbUpsertCalls).toHaveLength(1)  // one batched upsert call, not 5 separate ones
+
+    const rows = mock.cbUpsertCalls[0]!
+    expect(rows).toHaveLength(DEMO_PHARMACIES.length)
+
+    const seededPharmacyIds = new Set(rows.map(r => r['pharmacy_id']))
+    for (const pharmacy of DEMO_PHARMACIES) {
+      expect(seededPharmacyIds.has(pharmacy.id)).toBe(true)
+    }
+
+    // Every row must be CLOSED — the demo narration points at healthy
+    // breakers ("if a pharmacy trips, you'd see Offline here"). If a
+    // future refactor ever seeds something else, this catches it.
+    for (const row of rows) {
+      expect(row['state']).toBe('CLOSED')
+      expect(row['failure_count']).toBe(0)
+      expect(row['last_failure_at']).toBeNull()
+      expect(row['cooldown_until']).toBeNull()
+    }
   })
 })
 

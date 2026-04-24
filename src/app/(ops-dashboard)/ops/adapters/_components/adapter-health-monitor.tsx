@@ -17,6 +17,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery }          from '@tanstack/react-query'
 import type { PharmacyHealthCard, AdaptersResponse } from '@/app/api/ops/adapters/route'
+import { CB_BADGE } from './adapter-health-constants'
 
 // ── Status color map ─────────────────────────────────────────
 
@@ -27,13 +28,6 @@ const STATUS_STYLES = {
   // Idle = no submissions in the last 24h. Neutral styling — there's nothing
   // to grade, so "Healthy" would be dishonest and "Critical" was the bug.
   idle:   { dot: 'bg-slate-400',   card: 'border-l-4 border-l-slate-300',   badge: 'bg-muted text-muted-foreground' },
-}
-
-// WO-72: Plain English circuit-breaker labels
-const CB_BADGE: Record<string, { label: string; cls: string }> = {
-  CLOSED:    { label: 'Online',   cls: 'bg-emerald-100 text-emerald-700' },
-  OPEN:      { label: 'Offline',  cls: 'bg-red-100 text-red-700 font-bold' },
-  HALF_OPEN: { label: 'Degraded', cls: 'bg-amber-100 text-amber-700' },
 }
 
 // WO-72: Plain English adapter status labels
@@ -104,7 +98,15 @@ export function AdapterHealthMonitor({ initialData }: Props) {
     return pharmacies.filter(p => {
       if (tierFilter   !== 'all' && p.tier           !== tierFilter)                    return false
       if (statusFilter !== 'all' && p.adapterStatus  !== statusFilter)                  return false
-      if (cbFilter     !== 'all' && (p.circuitBreaker?.state ?? 'CLOSED') !== cbFilter) return false
+      // PR #16: null circuitBreaker means "no telemetry yet" — don't
+      // silently fold it into CLOSED. Null only matches the 'all'
+      // filter; any specific state filter excludes nulls. This keeps
+      // the chip-vs-filter vocabulary honest: if the chip doesn't
+      // render for a pharmacy, that pharmacy shouldn't show up under
+      // any specific CB filter.
+      if (cbFilter !== 'all') {
+        if (!p.circuitBreaker || p.circuitBreaker.state !== cbFilter) return false
+      }
       return true
     })
   }, [pharmacies, tierFilter, statusFilter, cbFilter])
@@ -212,9 +214,12 @@ export function AdapterHealthMonitor({ initialData }: Props) {
             className="rounded border border-input bg-background px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value="all">All States</option>
-            <option value="CLOSED">Closed</option>
-            <option value="OPEN">Open</option>
-            <option value="HALF_OPEN">Half-Open</option>
+            {/* PR #16: filter labels driven from CB_BADGE so chips + filter
+                share one vocabulary source. Option values stay as the
+                technical enum for DB CHECK-constraint compatibility. */}
+            <option value="CLOSED">{CB_BADGE['CLOSED']!.label}</option>
+            <option value="HALF_OPEN">{CB_BADGE['HALF_OPEN']!.label}</option>
+            <option value="OPEN">{CB_BADGE['OPEN']!.label}</option>
           </select>
         </label>
 
@@ -294,8 +299,11 @@ function PharmacyCard({
           </div>
           <div className="mt-0.5 flex items-center gap-2">
             <span className="text-[10px] text-muted-foreground">{TIER_LABELS[p.tier] ?? p.tier}</span>
-            {cbBadge && (
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${cbBadge.cls}`}>
+            {cbBadge && cb && (
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${cbBadge.cls}`}
+                aria-label={`Circuit breaker state: ${cbBadge.label}`}
+              >
                 {cbBadge.label}
               </span>
             )}

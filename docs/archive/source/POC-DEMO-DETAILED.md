@@ -372,7 +372,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 10. Click **"Adapters"** in the top nav
 11. **Point out what the page is:** a card for every configured pharmacy across all 4 integration tiers (Tier 1 API, Tier 2 Portal, Tier 3 Hybrid, Tier 4 Fax). Each card shows:
     - A traffic-light health indicator (green / yellow / red for Degraded or Critical / slate for Idle)
-    - Circuit breaker state (CLOSED / HALF_OPEN / OPEN)
+    - Circuit breaker state as a plain-English chip: **Online** (green) / **Degraded** (amber) / **Offline** (red bold). Chip is only shown when the pharmacy has circuit-breaker telemetry — a freshly-configured adapter with no traffic yet omits the chip entirely.
     - 24-hour submission success rate + total submission count + failure count
     - p50 / p95 / p99 latency percentiles
     - A 24-hour submissions bar chart (green bars for successes, pink for failures)

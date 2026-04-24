@@ -494,6 +494,41 @@ export async function ensureDemoScaffolding(
       anyPharmacyCreated = true
     }
 
+    // ── Circuit breaker state (PR #16) ───────────────────────
+    // Upserts a CLOSED row per POC pharmacy so the Adapter Health
+    // cards render the "Online" chip consistently in the demo
+    // environment. Production pharmacies self-heal: the routing
+    // engine upserts a CLOSED row on every successful submission
+    // (routing-engine.ts). But POC pharmacies may never have had
+    // real traffic — no row, no chip — so the demo narration
+    // ("circuit breaker is online; if it trips you'd see Offline")
+    // has nothing to point at. Seed fixes that.
+    //
+    // Idempotent via upsert on pharmacy_id (PK). Matches the
+    // routing-engine's own write pattern for style consistency.
+    // Failure of this seed breaks scaffolding.action = 'error'
+    // and blocks the downstream sub-ops from returning ok (PR #9
+    // ok-tightening contract).
+    const nowIso = new Date().toISOString()
+    const { error: cbSeedError } = await supabase
+      .from('circuit_breaker_state')
+      .upsert(
+        DEMO_PHARMACIES.map(p => ({
+          pharmacy_id:              p.id,
+          state:                    'CLOSED' as const,
+          failure_count:            0,
+          last_failure_at:          null,
+          cooldown_until:           null,
+          tripped_by_submission_id: null,
+          updated_at:               nowIso,
+        })),
+        { onConflict: 'pharmacy_id', ignoreDuplicates: true },
+      )
+
+    if (cbSeedError) {
+      return { action: 'error', error: `circuit_breaker_state seed: ${cbSeedError.message}` }
+    }
+
     const anyCreated = !clinic || !patient || !provider || !order || anyPharmacyCreated
     return { action: anyCreated ? 'created' : 'already_exists' }
   } catch (err) {
