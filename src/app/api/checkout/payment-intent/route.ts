@@ -210,23 +210,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         description: 'CompoundIQ prescription service',
         // Automatic payment methods includes card, Apple Pay, Google Pay (REQ-PSR-003)
         automatic_payment_methods: { enabled: true },
-        // R7-Bucket-1: suppress the Stripe Link auto-fill panel. Without
-        // this, /checkout/[token] surfaces a Link card-saver populated
-        // from cookies of any prior browser session — which on a public
-        // patient-checkout page cross-contaminates an unrelated patient's
-        // email + saved card last-4 onto the current patient's view.
-        // `display: 'never'` hides the Link UI surface only; card,
-        // Apple Pay, Google Pay, and Cash App Pay remain available
-        // through automatic_payment_methods. Link is technically still
-        // a payable method server-side but has no programmatic
-        // invocation path in this codebase, so this is acceptable.
-        //
-        // SDK note: Stripe v14 types don't expose `display` on the Link
-        // interface yet, but the Stripe API accepts it per current docs.
-        // Localized cast keeps the rest of payment_method_options strict.
-        payment_method_options: {
-          link: { display: 'never' } as Record<string, unknown>,
-        },
         // PR #15: include receipt_email on create when the client supplied a
         // validated email. The initial page-load call typically omits email
         // (Elements needs to render before the patient types anything), so
