@@ -238,4 +238,14 @@ describe('POST /api/checkout/payment-intent — new PI create + email', () => {
     const createArgs = stripeCreateMock.mock.calls[0]![0] as Record<string, unknown>
     expect(createArgs).not.toHaveProperty('receipt_email')
   })
+
+  // R7-Bucket-1: regression guard for Stripe Link UI suppression
+  it('passes payment_method_options.link.display = "never" to suppress Link auto-fill panel', async () => {
+    const res = await POST(makeRequest({ token: 'ok' }))
+    expect(res.status).toBe(200)
+    const createArgs = stripeCreateMock.mock.calls[0]![0] as {
+      payment_method_options?: { link?: { display?: string } }
+    }
+    expect(createArgs.payment_method_options?.link?.display).toBe('never')
+  })
 })
