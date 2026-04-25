@@ -8,18 +8,17 @@
 // ============================================================
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
+import { redirectToLogin } from '@/lib/auth/redirect-to-login'
 
 export function NavSignOutButton() {
-  const router = useRouter()
   const [loading, setLoading] = useState(false)
 
   async function handleSignOut() {
     setLoading(true)
     const supabase = createBrowserClient()
     await supabase.auth.signOut()
-    router.push('/login')
+    redirectToLogin()
   }
 
   return (

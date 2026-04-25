@@ -26,7 +26,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createBrowserClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { redirectToLogin } from '@/lib/auth/redirect-to-login'
 
 interface NavItem {
   href:  string
@@ -47,7 +47,6 @@ interface Props {
 
 export function SidebarNav({ userEmail, userRole }: Props) {
   const pathname = usePathname()
-  const router   = useRouter()
 
   // Desktop collapse state — persisted to localStorage
   const [isCollapsed,    setIsCollapsed]    = useState(false)
@@ -76,7 +75,7 @@ export function SidebarNav({ userEmail, userRole }: Props) {
     setSigningOut(true)
     const supabase = createBrowserClient()
     await supabase.auth.signOut()
-    router.push('/login')
+    redirectToLogin()
   }
 
   const roleLabel = (role: string) => {
