@@ -14,7 +14,7 @@
 // Protocols add all medications to the WO-80 session at once.
 
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { usePrescriptionSession } from '../_context/prescription-session'
 
@@ -121,9 +121,16 @@ interface QuickActionsPanelProps {
 export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
   const router = useRouter()
   const session = usePrescriptionSession()
+  const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'favorites' | 'protocols' | 'recent'>('favorites')
   const [expandedProtocol, setExpandedProtocol] = useState<string | null>(null)
   const [loadingProtocol, setLoadingProtocol] = useState(false)
+  // Two-step delete confirm — matches the catalog rollback pattern
+  // (catalog-manager.tsx). Tracks which favorite row is currently
+  // showing [Confirm] / [Cancel] buttons; null = idle.
+  const [confirmDeleteFav, setConfirmDeleteFav] = useState<string | null>(null)
+  const [deletingFav, setDeletingFav] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const { data: favorites = [] } = useQuery({
     queryKey: ['provider-favorites'],
@@ -185,6 +192,25 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
     onLoadFavorite(fav)
   }
 
+  // ── Handle favorite delete (two-step confirm) ─────────
+  async function handleConfirmDelete(favoriteId: string) {
+    setDeletingFav(favoriteId)
+    setDeleteError(null)
+    try {
+      const res = await fetch(`/api/favorites?id=${favoriteId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json.error ?? `Delete failed (${res.status})`)
+      }
+      await queryClient.invalidateQueries({ queryKey: ['provider-favorites'] })
+      setConfirmDeleteFav(null)
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Delete failed')
+    } finally {
+      setDeletingFav(null)
+    }
+  }
+
   // ── No data yet? ─────────────────────────────────────
   const hasFavorites = favorites.length > 0
   const hasProtocols = protocols.length > 0
@@ -228,32 +254,97 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
         {/* ── Favorites Tab ──────────────────────────────── */}
         {activeTab === 'favorites' && (
           <div className="space-y-1.5">
-            {favorites.map(fav => (
-              <button
-                key={fav.favorite_id}
-                type="button"
-                onClick={() => handleFavoriteClick(fav)}
-                className="w-full text-left rounded-md border border-border px-3 py-2 transition-colors hover:bg-muted/50"
+            {deleteError && (
+              <p
+                role="alert"
+                className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
               >
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-foreground">{fav.label}</p>
-                  {fav.sig_mode !== 'standard' && (
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                      {fav.sig_mode}
-                    </span>
-                  )}
+                {deleteError}
+              </p>
+            )}
+            {favorites.map(fav => {
+              const isConfirming = confirmDeleteFav === fav.favorite_id
+              const isDeleting = deletingFav === fav.favorite_id
+              return (
+                <div
+                  key={fav.favorite_id}
+                  className="group flex items-stretch rounded-md border border-border transition-colors hover:bg-muted/50"
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleFavoriteClick(fav)}
+                    className="flex-1 text-left px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-l-md"
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-foreground">{fav.label}</p>
+                      {fav.sig_mode !== 'standard' && (
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                          {fav.sig_mode}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted-foreground truncate">
+                      {fav.formulations?.name}
+                      {fav.dose_amount && ` — ${fav.dose_amount} ${fav.dose_unit ?? ''}`}
+                    </p>
+                    {fav.use_count > 0 && (
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">
+                        Used {fav.use_count} time{fav.use_count !== 1 ? 's' : ''}
+                      </p>
+                    )}
+                  </button>
+                  {/* Delete affordance — two-step confirm pattern */}
+                  <div className="flex items-center pr-2">
+                    {isConfirming ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => { void handleConfirmDelete(fav.favorite_id) }}
+                          disabled={isDeleting}
+                          className="rounded bg-red-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                        >
+                          {isDeleting ? 'Deleting…' : 'Confirm'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteFav(null)}
+                          disabled={isDeleting}
+                          className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        aria-label={`Delete favorite ${fav.label}`}
+                        onClick={() => setConfirmDeleteFav(fav.favorite_id)}
+                        className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M3 6h18" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          <line x1="10" y1="11" x2="10" y2="17" />
+                          <line x1="14" y1="11" x2="14" y2="17" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <p className="mt-0.5 text-xs text-muted-foreground truncate">
-                  {fav.formulations?.name}
-                  {fav.dose_amount && ` — ${fav.dose_amount} ${fav.dose_unit ?? ''}`}
-                </p>
-                {fav.use_count > 0 && (
-                  <p className="mt-0.5 text-[10px] text-muted-foreground">
-                    Used {fav.use_count} time{fav.use_count !== 1 ? 's' : ''}
-                  </p>
-                )}
-              </button>
-            ))}
+              )
+            })}
           </div>
         )}
 

@@ -145,11 +145,31 @@ export async function DELETE(req: NextRequest) {
   const { data: { session } } = await supabaseAuth.auth.getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const clinicId = session.user.user_metadata?.clinic_id
+  if (!clinicId) return NextResponse.json({ error: 'No clinic context' }, { status: 403 })
+
   const { searchParams } = new URL(req.url)
   const favoriteId = searchParams.get('id')
   if (!favoriteId) return NextResponse.json({ error: 'Missing id param' }, { status: 400 })
 
   const supabase = createServiceClient()
+
+  // Clinic-scope guard: the favorite must belong to a provider in the
+  // caller's clinic. Without this, any logged-in user could delete any
+  // favorite by guessing its UUID. POST has the same scoping (line 82).
+  const { data: fav } = await supabase
+    .from('provider_favorites')
+    .select('provider_id')
+    .eq('favorite_id', favoriteId)
+    .single()
+
+  if (!fav) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const validProviderIds = await getClinicProviderIds(clinicId)
+  if (!validProviderIds.includes(fav.provider_id)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   const { error } = await supabase
     .from('provider_favorites')
     .delete()
