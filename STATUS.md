@@ -1,6 +1,8 @@
 # Engineering Status — In-Flight Work
 
-**Last updated:** 2026-04-21 — **E2E REFRESH CAMPAIGN COMPLETE.** All 15 merged PRs + 1 closed no-op. E2E now runs on push/PR with `continue-on-error` removed. Last dispatch 65 passed / 0 failed / 5 skipped in 2.1 min. PR #20 (unskip) green on its own push-event run.
+**Last updated:** 2026-04-25 — Demo-readiness round v2.4→v2.5 complete. PR #41 (cron cadence F2) + PR #42 (Favorites delete UI + DELETE clinic-scope guard F1) merged. Production Ketotifen residue (5 rows) cleared via UUID-targeted DELETE. Ready for the next browser-agent walkthrough on v2.5.
+
+**Prior: 2026-04-21** — **E2E REFRESH CAMPAIGN COMPLETE.** All 15 merged PRs + 1 closed no-op. E2E now runs on push/PR with `continue-on-error` removed. Last dispatch 65 passed / 0 failed / 5 skipped in 2.1 min. PR #20 (unskip) green on its own push-event run.
 **Purpose:** Durable record of outstanding work. Survives AI-assistant context compaction and is readable by any engineer picking up the repo. Update this as items complete.
 
 ---
@@ -177,6 +179,14 @@ git checkout -b chore/verify-e2e-supabase-isolation
 ---
 
 ## Recent context worth preserving
+
+### Session 2026-04-24/25 — Demo-readiness round v2.4→v2.5
+
+Browser-agent walkthrough of v2.4 surfaced two LOW findings; both closed.
+
+- **F2 (PR #41 / fee2a73's parent 9a785cb):** Every Adapter Health card rendered as "Degraded" because `refresh-demo-data` anchors the freshest row at `now − 2min` while the cron ran hourly — cards crossed the 15-min green threshold ~13 min after each tick. Fix: cron cadence `0 * * * *` → `*/10 * * * *` (one-line `vercel.json` change). Cowork rejected an earlier classifier-widening plan — that would have regressed real production alerting (a real pharmacy silent for an hour would no longer alarm). See [feedback_cadence_vs_classifier.md](../../.claude/projects/c--Users-ssham-OneDrive-Functional-Medicine/memory/feedback_cadence_vs_classifier.md).
+- **F1 (PR #42 / fee2a73):** 5 "Ketotifen QID test" / "QID retest" favorites in production from Phase 18 QA validation, no in-app way for the provider to remove them. Shipped: trash icon + two-step Confirm/Cancel pattern in `quick-actions-panel.tsx`, plus a clinic-scope guard on `DELETE /api/favorites` (was open to any logged-in user pre-PR). 6 new tests lock the 401/403/400/404/403/200 contract. Production residue cleaned by UUID-targeted DELETE 2026-04-25 — 4 canonical seeds (`c1000000-...0001..0004`) verified intact. See [feedback_qa_residue_pattern.md](../../.claude/projects/c--Users-ssham-OneDrive-Functional-Medicine/memory/feedback_qa_residue_pattern.md).
+- **Process:** Reviewer agent + cowork second opinion before code on both findings. Cowork's reviewer-line-citation drift flag (cited line 35 in a 34-line file, lines 694-700 in a 577-line file) is a recurring meta-issue worth an eventual retro item.
 
 ### Session 2026-04-20 highlights (pre-compaction)
 
