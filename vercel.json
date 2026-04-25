@@ -44,7 +44,7 @@
     },
     {
       "path": "/api/cron/poc-credential-sync",
-      "schedule": "0 * * * *"
+      "schedule": "*/10 * * * *"
     }
   ],
 
