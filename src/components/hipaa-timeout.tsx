@@ -15,7 +15,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createBrowserClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { redirectToLogin } from '@/lib/auth/redirect-to-login'
 
 const WARNING_MS  = 28 * 60 * 1000  // 28 minutes — show warning
 const TIMEOUT_MS  = 30 * 60 * 1000  // 30 minutes — force sign-out
@@ -23,7 +23,6 @@ const TIMEOUT_MS  = 30 * 60 * 1000  // 30 minutes — force sign-out
 const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'] as const
 
 export function HipaaTimeout() {
-  const router  = useRouter()
   const supabase = createBrowserClient()
 
   const [showWarning, setShowWarning] = useState(false)
@@ -41,8 +40,8 @@ export function HipaaTimeout() {
   const forceSignOut = useCallback(async () => {
     setShowWarning(false)
     await supabase.auth.signOut()
-    router.push('/login?reason=session_timeout')
-  }, [supabase, router])
+    redirectToLogin('session_timeout')
+  }, [supabase])
 
   // ── Reset all timers ──────────────────────────────────────────
   const resetTimers = useCallback(() => {

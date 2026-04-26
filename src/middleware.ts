@@ -3,6 +3,26 @@ import type { NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { verifyCheckoutToken } from '@/lib/auth/checkout-token'
 
+// PR R7-Bucket-1: Apply HIPAA-grade no-store cache headers to every response
+// that touches authenticated state OR PHI. Closes a CRITICAL bfcache leak
+// where pressing the browser Back button after sign-out restored the prior
+// authenticated page (with patient name, DOB, medication, financial split)
+// from the browser's bfcache without re-running middleware.
+//
+// Verbose directive list is intentional defense-in-depth against unknown
+// intermediate caches (corporate / hospital IT proxies). On modern
+// infrastructure `no-store` alone suffices, but the rest are HTTP/1.0-era
+// belt-and-suspenders for a healthcare context.
+//
+// MUST NOT be applied to /auth/callback — Supabase OAuth flows briefly
+// rely on caching the callback HTML during the code exchange.
+function applySecurityHeaders(res: NextResponse): NextResponse {
+  res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, private')
+  res.headers.set('Pragma', 'no-cache')
+  res.headers.set('Expires', '0')
+  return res
+}
+
 // Edge Middleware: runs on every request before page rendering
 // Handles auth verification for clinic-app and ops-dashboard route groups
 export async function middleware(request: NextRequest) {
@@ -32,7 +52,7 @@ export async function middleware(request: NextRequest) {
 
       if (!payload) {
         // Expired or invalid — redirect to the expired page
-        return NextResponse.redirect(new URL('/checkout/expired', request.url))
+        return applySecurityHeaders(NextResponse.redirect(new URL('/checkout/expired', request.url)))
       }
 
       // Attach decoded claims as REQUEST headers so Server Components can read
@@ -41,10 +61,13 @@ export async function middleware(request: NextRequest) {
       // response headers sent to the browser, not request headers visible to pages.
       // BLK-01 fix: copy existing request headers first, then append checkout claims.
       // NB-01: patient-id not forwarded — not consumed downstream (defense-in-depth).
+      // R7-Bucket-1: this branch renders patient PHI (name, medication, sig,
+      // financial split) — wrap with security headers so a patient hitting Back
+      // after navigating away doesn't bfcache-restore their own checkout PHI.
       const requestHeaders = new Headers(request.headers)
       requestHeaders.set('x-checkout-order-id',  payload.orderId)
       requestHeaders.set('x-checkout-clinic-id',  payload.clinicId)
-      return NextResponse.next({ request: { headers: requestHeaders } })
+      return applySecurityHeaders(NextResponse.next({ request: { headers: requestHeaders } }))
     }
 
     return response
@@ -88,23 +111,23 @@ export async function middleware(request: NextRequest) {
   if (!session) {
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('redirectTo', pathname)
-    return NextResponse.redirect(loginUrl)
+    return applySecurityHeaders(NextResponse.redirect(loginUrl))
   }
 
   const appRole = session.user.user_metadata['app_role'] as string | undefined
 
   // Ops dashboard: ops_admin only
   if (pathname.startsWith('/ops') && appRole !== 'ops_admin') {
-    return NextResponse.redirect(new URL('/unauthorized', request.url))
+    return applySecurityHeaders(NextResponse.redirect(new URL('/unauthorized', request.url)))
   }
 
   // Clinic app: clinic users only
   const clinicUserRoles = ['clinic_admin', 'provider', 'medical_assistant']
   if (!pathname.startsWith('/ops') && appRole && !clinicUserRoles.includes(appRole) && appRole !== 'ops_admin') {
-    return NextResponse.redirect(new URL('/unauthorized', request.url))
+    return applySecurityHeaders(NextResponse.redirect(new URL('/unauthorized', request.url)))
   }
 
-  return response
+  return applySecurityHeaders(response)
 }
 
 export const config = {

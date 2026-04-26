@@ -16,17 +16,21 @@ import { HipaaTimeout } from '../hipaa-timeout'
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
-const pushMock = jest.fn()
 const signOutMock = jest.fn().mockResolvedValue({ error: null })
-
-jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock }),
-}))
+const redirectToLoginMock = jest.fn()
 
 jest.mock('@/lib/supabase/client', () => ({
   createBrowserClient: () => ({
     auth: { signOut: signOutMock },
   }),
+}))
+
+// R7-Bucket-1: forceSignOut now calls redirectToLogin (hard nav wrapper)
+// instead of router.push. Mock the wrapper module so the redirect
+// assertion still works in jsdom (which blocks every direct mock of
+// window.location.replace).
+jest.mock('@/lib/auth/redirect-to-login', () => ({
+  redirectToLogin: (reason?: string) => redirectToLoginMock(reason),
 }))
 
 // ── Shared setup ───────────────────────────────────────────────────────
@@ -36,7 +40,7 @@ const TIMEOUT_MS = 30 * 60 * 1000
 
 beforeEach(() => {
   jest.useFakeTimers()
-  pushMock.mockClear()
+  redirectToLoginMock.mockClear()
   signOutMock.mockClear()
 })
 
@@ -78,14 +82,14 @@ describe('HipaaTimeout', () => {
       jest.advanceTimersByTime(TIMEOUT_MS)
     })
 
-    // forceSignOut is async (awaits supabase.auth.signOut) before pushing.
-    // Flush pending microtasks so the router.push lands before assertion.
+    // forceSignOut is async (awaits supabase.auth.signOut) before navigating.
+    // Flush pending microtasks so the hard-nav lands before assertion.
     await act(async () => {
       await Promise.resolve()
     })
 
     expect(signOutMock).toHaveBeenCalledTimes(1)
-    expect(pushMock).toHaveBeenCalledWith('/login?reason=session_timeout')
+    expect(redirectToLoginMock).toHaveBeenCalledWith('session_timeout')
   })
 
   it('counts down the remaining seconds while the warning is showing', () => {

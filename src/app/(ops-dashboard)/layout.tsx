@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { Providers } from '@/components/providers'
 import { NavSignOutButton } from '@/components/nav-sign-out-button'
+import { BfcacheGuard } from '@/components/bfcache-guard'
 
 // Ops Dashboard: auth required, app_role must be ops_admin
 // Cross-clinic access — restricted to operations team only
@@ -25,6 +26,7 @@ export default async function OpsDashboardLayout({
 
   return (
     <Providers>
+      <BfcacheGuard />
       {/* dark: scoped to ops subtree — does not affect clinic app or checkout */}
       <div className="dark min-h-screen bg-background">
         <header className="border-b border-border bg-card px-4 py-3 flex items-center justify-between">
