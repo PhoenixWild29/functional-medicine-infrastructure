@@ -1,6 +1,8 @@
 # Engineering Status — In-Flight Work
 
-**Last updated:** 2026-04-25 — Demo-readiness round v2.4→v2.5 complete. PR #41 (cron cadence F2) + PR #42 (Favorites delete UI + DELETE clinic-scope guard F1) merged. Production Ketotifen residue (5 rows) cleared via UUID-targeted DELETE. Ready for the next browser-agent walkthrough on v2.5.
+**Last updated:** 2026-04-26 — R7-Bucket-1 (HIPAA bfcache + sign-out hard-nav) shipped via PR #44 (commit `fac1de2`). Chrome browser-agent smoke verified PASS on both in-scope checks (PHI sign-page Back-after-sign-out + dashboard KPI Back-after-sign-out). Stripe Link finding deferred to follow-up WO with HIGH severity (correct fix is client-side `wallets: { link: 'never' }` + `@stripe/stripe-js` SDK upgrade from ^4 to ^7.5+; currently active in production).
+
+**Prior: 2026-04-25** — Demo-readiness round v2.4→v2.5 complete. PR #41 (cron cadence F2) + PR #42 (Favorites delete UI + DELETE clinic-scope guard F1) merged. Production Ketotifen residue (5 rows) cleared via UUID-targeted DELETE. Ready for the next browser-agent walkthrough on v2.5.
 
 **Prior: 2026-04-21** — **E2E REFRESH CAMPAIGN COMPLETE.** All 15 merged PRs + 1 closed no-op. E2E now runs on push/PR with `continue-on-error` removed. Last dispatch 65 passed / 0 failed / 5 skipped in 2.1 min. PR #20 (unskip) green on its own push-event run.
 **Purpose:** Durable record of outstanding work. Survives AI-assistant context compaction and is readable by any engineer picking up the repo. Update this as items complete.
@@ -179,6 +181,20 @@ git checkout -b chore/verify-e2e-supabase-isolation
 ---
 
 ## Recent context worth preserving
+
+### Session 2026-04-25/26 — R7-Bucket-1 HIPAA bfcache + sign-out hard-nav
+
+Round-7 browser-agent walkthrough surfaced 12 findings, triaged into four buckets. Bucket 1 (three HIPAA findings) shipped via PR #44 with one mid-flight scope adjustment.
+
+- **Shipped (PR #44 / fac1de2):** Three layers of bfcache defense — middleware `applySecurityHeaders` helper applied to 6 return paths sets `Cache-Control: no-store, no-cache, must-revalidate, private` + `Pragma: no-cache` + `Expires: 0` on every authenticated/PHI response while explicitly skipping `/login` + `/auth/callback` + `/api/webhooks` + `/api/cron` + `/api/health` + `/api/checkout` (Supabase OAuth code-exchange relies on auth-callback caching); new `BfcacheGuard` component with `pageshow` listener that reloads when `event.persisted === true` (Chrome's bfcache is more aggressive than no-store alone handles); new `redirectToLogin()` wrapper around `window.location.replace` threaded through all four sign-out call sites (NavSignOutButton, /unauthorized SignOutButton, SidebarNav, HipaaTimeout). Chrome smoke verified PASS post-merge.
+- **Mid-flight scope adjustment:** Original commit 3/3 attempted server-side Stripe Link suppression via `payment_method_options.link.display = 'never'` — Stripe API rejected it as unknown parameter. Forward-revert (no force-push, per repo convention). Cowork's post-failure review identified that the correct fix is client-side `PaymentElement.options.wallets.link: 'never'`, but our `@stripe/stripe-js@4.10.0` doesn't expose `link` in `PaymentWalletsOption` until ^7.5.0 — three-major-version SDK upgrade required. Walked back to DEFER, scoped as a follow-up WO. Cast-through-`Record<string, unknown>` was the warning sign neither pre-flight reviewer respected. See [feedback_stripe_api_verify_against_live.md](../../.claude/projects/c--Users-ssham-OneDrive-Functional-Medicine/memory/feedback_stripe_api_verify_against_live.md).
+- **Smoke-test mishap:** First Chrome smoke run reported FAIL because the smoke prompt pointed at production while PR #44 was still open. Production served pre-merge `main`, agent correctly reproduced the actual production bfcache leak. Re-run post-merge confirmed PASS. See [feedback_smoke_test_url_match_PR_state.md](../../.claude/projects/c--Users-ssham-OneDrive-Functional-Medicine/memory/feedback_smoke_test_url_match_PR_state.md).
+- **Open follow-ups (HIGH-priority HIPAA Link finding still active in prod):**
+  - Stripe Link client-side fix + `@stripe/stripe-js` SDK upgrade (HIGH severity, currently active in production)
+  - Lint guard against `as Record<string, unknown>` / `as any` in Stripe-touching files
+  - PR-template / CONTRIBUTING checklist requiring API-doc URL + parameter quote when SDK types don't expose a parameter
+  - Live Stripe test-mode CI smoke call (gated on a 30-min audit of secret authenticity, Connect-account state, fork-PR access, rate limits, flake handling, test location)
+  - Cosmetic polish: post-bfcache `?redirectTo=` value reflects last-served authenticated route rather than the back-target page (security correct, UX slightly stale)
 
 ### Session 2026-04-24/25 — Demo-readiness round v2.4→v2.5
 
