@@ -1,6 +1,8 @@
 # Engineering Status — In-Flight Work
 
-**Last updated:** 2026-04-27 — R7-Bucket-1 follow-up sequencing locked. PR #46 (WO-89 PR-template + CONTRIBUTING.md doc-citation rule) shipped (commit `37301cd`). Phase 0 audits revealed: WO-87 is Tier S (one-file SDK upgrade, no breaking changes against our usage), WO-90 must wontfix under the project constraint "Stripe live key only in CI; no `sk_test_*` provisioning," Bucket 2 is "4 cosmetic + 1 MEDIUM 'Tier —' split + 2 dropped non-bugs." WO-90 closed wontfix with reopen triggers; WO-92 filed as the type-check smoke replacement covering the same compile-time failure mode. WO-91 audit reduced scope to a 1-line BfcacheGuard change (foldable into Phase 3). Phase 2a (WO-87) starts next.
+**Last updated:** 2026-04-27 (PM) — **R7-BUCKET-1 FOLLOW-UP CAMPAIGN COMPLETE.** All six phases shipped (PRs #46, #48, dependabot #49, #50, #51, #52, #53; production at commit `add0cac`). R8 browser-agent walkthrough verdict: **PASS** with 1 LOW finding + 0 false-positives. R7's 28% false-positive rate dropped to 0% after the verify-before-report prompt update — process change paid for itself. All seven targeted regression checks PASS: bfcache PHI fix, bfcache KPI fix, Stripe Link suppression, Ops drawer Tier field, "SLA" tab capitalization, Fax Triage panel readability, clinic name in checkout header. WO statuses: WO-87, 88, 89, 91, 92 → completed; WO-90 → wontfix under live-key constraint; WO-93 (Fax panel overflow LOW) + WO-94 (seed needs API-routed order, observation) filed in backlog. Production verified live via curl headers + R8 walkthrough.
+
+**Prior: 2026-04-27 (AM)** — R7-Bucket-1 follow-up sequencing locked. PR #46 (WO-89 PR-template + CONTRIBUTING.md doc-citation rule) shipped (commit `37301cd`). Phase 0 audits revealed: WO-87 is Tier S, WO-90 must wontfix under the project constraint "Stripe live key only in CI; no `sk_test_*` provisioning," Bucket 2 is "4 cosmetic + 1 MEDIUM 'Tier —' split + 2 dropped non-bugs." WO-90 closed wontfix with reopen triggers; WO-92 filed as the type-check smoke replacement. WO-91 audit reduced scope to a 1-line BfcacheGuard change (folded into Phase 3).
 
 **Prior: 2026-04-26** — R7-Bucket-1 (HIPAA bfcache + sign-out hard-nav) shipped via PR #44 (commit `fac1de2`). Chrome browser-agent smoke verified PASS on both in-scope checks (PHI sign-page Back-after-sign-out + dashboard KPI Back-after-sign-out). Stripe Link finding deferred to follow-up WO with HIGH severity (correct fix is client-side `wallets: { link: 'never' }` + `@stripe/stripe-js` SDK upgrade from ^4 to ^7.5+; currently active in production).
 
@@ -184,7 +186,30 @@ git checkout -b chore/verify-e2e-supabase-isolation
 
 ## Recent context worth preserving
 
-### Session 2026-04-27 — R7-Bucket-1 follow-up sequencing + Stripe live-key constraint
+### Session 2026-04-27 (PM) — R7-Bucket-1 follow-up campaign COMPLETE
+
+Final phase batch (Phases 2b through 6) plus campaign-close audit. Shipped without blocking findings.
+
+**PRs landed:**
+- #50 (`911140c`) — WO-88 ESLint guard against type-bypass casts in Stripe-touching files. Fires correctly on `as Record<string, unknown>` / `as any` / `as unknown` patterns; three pre-existing webhook casts grandfathered with explicit doc-URL eslint-disable comments.
+- #51 (`758dc57`) — Bucket 2 polish bundle: Tier-— data-binding fix (MEDIUM) + 4 cosmetic items (Sla→SLA caps, fax panel readability, clinic-name truncation, p50/p95/p99 seed-data note) + WO-91 BfcacheGuard 1-line fold.
+- #52 (`8268ec1`) — R8 walkthrough prompt at `docs/qa-reports/qa-poc-demo-round8-prompt.md` with verify-before-report instruction targeting R7's 28% false-positive rate.
+- #53 (`add0cac`) — WO-92 Stripe SDK type-check smoke at `src/__type-checks__/stripe-payment-element-options.ts` running in the existing `tsc --noEmit` CI step (no new CI job; live-key-constraint-compatible substitute for the wontfixed WO-90).
+
+**Dependabot #49 (`2acd965`)** also landed during this batch: postcss 8.5.8→8.5.10 patch + uuid removal. Benign.
+
+**R8 walkthrough PASS:**
+- 7/7 targeted regression checks pass (bfcache PHI, bfcache KPI, Stripe Link, Tier field, SLA caps, fax panel readability, clinic name)
+- 0% false-positive rate (R7 was 28%) — verify-before-report instruction caught all three known non-bugs before the agent reported them
+- TOTP-from-Base32 path verified end-to-end (R7 only got the modal correct; R8 actually computed and submitted a valid code)
+- 1 LOW finding (Fax panel "PHARMACY_ACKNOWLEDGED" overflow → WO-93)
+- 1 observation (no API-routed order in seed; agent could only validate Tier fix on T4 fax → WO-94)
+
+**Process improvements that paid off:**
+- The "verify-before-report" guardrail in the R8 prompt explicitly forbade re-filing R7's two known non-bugs (KPI MTD vs all-time scope difference; post-EPCS `/dashboard?sent=N` redirect target). Both were correctly classified as observations in R8's report. **Recommend reusing this guardrail pattern in every future walkthrough prompt** — it's the cheapest false-positive-rate reduction available.
+- Phase 0 parallel-audits-first sequencing (cowork's recommendation in PR #44 retrospective) prevented multiple guess-driven scoping errors. WO-87 turned out to be Tier S in 20 minutes of audit; WO-90 turned out to be wontfix in 30 minutes; Bucket 2 turned out to be "5 items not 7" in 10 minutes. Total Phase 0 audit cost: ~1 hour. Without it, the campaign would have spent days on the wrong path before discovering the gates.
+
+### Session 2026-04-27 (AM) — R7-Bucket-1 follow-up sequencing + Stripe live-key constraint
 
 Phase 0 audits + reviewer-cowork sequencing review locked the post-PR-44 follow-up plan. Material outcomes:
 
