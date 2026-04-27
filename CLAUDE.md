@@ -23,6 +23,16 @@ This file contains the complete 10-step workflow that MUST be followed for every
 
 **`completed` status is ONLY set at step 10. Never before.**
 
+## QA Walkthrough Templates
+
+**For browser-agent walkthroughs of the live POC (rounds R7, R8, R9, …), start from the reusable template at:**
+
+`docs/qa-templates/walkthrough-prompt-base.md`
+
+The template includes the verify-before-report guardrail that dropped R7's 28% false-positive rate to R8's 0%. Each new round drops in round-specific deltas via HTML-comment placeholders; the guardrail and severity scale stay verbatim. See [`docs/qa-templates/README.md`](docs/qa-templates/README.md) for the assembly workflow (round-N prompt + concat with the canonical demo doc).
+
+Do NOT re-derive the prompt structure from scratch each round. The compounding payoff of the template is multi-hour savings per cycle in audit + triage work avoided. Filed under WO-95.
+
 <!-- VERCEL BEST PRACTICES START -->
 ## Best practices for developing on Vercel
 
