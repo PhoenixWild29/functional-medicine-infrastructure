@@ -78,6 +78,18 @@ export const DEMO_PATIENT_ID  = 'a3000000-0000-0000-0000-000000000002'
 export const DEMO_PROVIDER_ID = 'a2000000-0000-0000-0000-000000000002'
 export const DEMO_ORDER_ID    = 'a6000000-0000-0000-0000-00000000000d'
 
+// WO-94: cross-tier demo orders. R8 walkthrough flagged that all
+// pipeline orders routed to Strive (T4 fax) only, so the Ops drawer
+// Tier field could only be validated on T4. These give the demo
+// adapter-pipeline narrative something interesting to click into
+// across all four tiers (T1 API / T2 Portal / T3 Hybrid / T4 Fax).
+//
+// Each ID is in the same `a60.....-...d`-adjacent space as
+// DEMO_ORDER_ID so they cluster visually in the cleanup-allowlist.
+export const DEMO_ORDER_T1_ID = 'a6000000-0000-0000-0000-00000000000e'
+export const DEMO_ORDER_T2_ID = 'a6000000-0000-0000-0000-00000000000f'
+export const DEMO_ORDER_T3_ID = 'a6000000-0000-0000-0000-000000000010'
+
 // Catalog item used as the demo-order FK target. Any existing
 // Strive catalog item works — catalog is pharmacy-scoped, not
 // clinic-scoped, so re-using a Sunrise-seeded item is safe.
@@ -405,11 +417,65 @@ export async function ensureDemoScaffolding(
         provider_id:     DEMO_PROVIDER_ID,
         catalog_item_id: DEMO_CATALOG_ITEM_ID,
         clinic_id:       DEMO_CLINIC_ID,
+        // T4 (fax) demo order — referenced by the fax-seed MATCHED rows below.
+        pharmacy_id:     'a4000000-0000-0000-0000-000000000001',  // Strive
+        submission_tier: 'TIER_4_FAX',
         status:          'PHARMACY_ACKNOWLEDGED',
         quantity:        1,
         is_active:       false,
       })
       if (error) return { action: 'error', error: `order insert: ${error.message}` }
+    }
+
+    // ── WO-94: cross-tier demo orders (T1 + T2 + T3) ────────────
+    // R8 walkthrough flagged that the Ops drawer Tier-— fix could
+    // only be validated on T4 fax-routed orders because the seed
+    // had no API/Portal/Hybrid orders. These three orders make all
+    // four tiers clickable in the Ops pipeline so the demo
+    // adapter-pipeline narrative ("we route across four tiers") is
+    // actually visible. Idempotent same-pattern as the T4 order
+    // above.
+    //
+    // Each order's pharmacy_id matches a `DEMO_PHARMACIES` entry
+    // (verified in DEMO_PHARMACY_ID_SET). Statuses are mid-flight
+    // values that won't trip post-payment cron automation:
+    //   - T1: SUBMISSION_PENDING (API-routed, awaiting confirm)
+    //   - T2: SUBMISSION_PENDING (Portal automation in flight)
+    //   - T3: PHARMACY_ACKNOWLEDGED (Hybrid spec received)
+    // submission_tier is set explicitly so the Ops drawer Tier
+    // field renders the routing decision directly (not just the
+    // pharmacy fallback from the PR #51 join).
+    const CROSS_TIER_ORDERS: ReadonlyArray<{
+      id:              string
+      pharmacy_id:     string
+      submission_tier: 'TIER_1_API' | 'TIER_2_PORTAL' | 'TIER_3_HYBRID'
+      status:          'SUBMISSION_PENDING' | 'PHARMACY_ACKNOWLEDGED'
+    }> = [
+      { id: DEMO_ORDER_T1_ID, pharmacy_id: 'a4000000-0000-0000-0000-000000000002', submission_tier: 'TIER_1_API',    status: 'SUBMISSION_PENDING'    },  // Quick Rx
+      { id: DEMO_ORDER_T2_ID, pharmacy_id: 'a4000000-0000-0000-0000-000000000004', submission_tier: 'TIER_2_PORTAL', status: 'SUBMISSION_PENDING'    },  // Portal Plus
+      { id: DEMO_ORDER_T3_ID, pharmacy_id: 'a4000000-0000-0000-0000-000000000005', submission_tier: 'TIER_3_HYBRID', status: 'PHARMACY_ACKNOWLEDGED' },  // Hybrid Labs
+    ]
+
+    for (const co of CROSS_TIER_ORDERS) {
+      const { data: existing } = await supabase
+        .from('orders')
+        .select('order_id')
+        .eq('order_id', co.id)
+        .maybeSingle()
+      if (existing) continue
+      const { error } = await supabase.from('orders').insert({
+        order_id:        co.id,
+        patient_id:      DEMO_PATIENT_ID,
+        provider_id:     DEMO_PROVIDER_ID,
+        catalog_item_id: DEMO_CATALOG_ITEM_ID,
+        clinic_id:       DEMO_CLINIC_ID,
+        pharmacy_id:     co.pharmacy_id,
+        submission_tier: co.submission_tier,
+        status:          co.status,
+        quantity:        1,
+        is_active:       false,
+      })
+      if (error) return { action: 'error', error: `cross-tier order ${co.submission_tier} insert: ${error.message}` }
     }
 
     // ── Pharmacies (PR #11) ──────────────────────────────────
