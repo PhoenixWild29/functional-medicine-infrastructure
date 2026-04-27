@@ -208,7 +208,27 @@ The failure mode this rule catches:
 - Confidence-without-citation. Asserting a third-party API supports a parameter from memory or assumption, without docs evidence, lets unsupported parameters into PRs and past reviewers.
 - Cast-bypass through `as Record<string, unknown>` / `as any`. When a reviewer sees one of these casts near a third-party SDK call, the cast itself is a stop-and-think signal. The rule formalizes the stop-and-think — paste the URL, quote the parameter, prove it's real.
 
-**Companion guards:** an ESLint rule forbidding `as Record<string, unknown>` and `as any` in Stripe-touching files (filed separately as WO-88) catches the cast-bypass at write-time. A live Stripe test-mode CI smoke (filed separately as WO-90) catches the "SDK accepted it but API rejected it" failure mode at CI time. This documentation rule (WO-89) is the cheapest of the three layers and the only one that addresses confidence-without-citation directly.
+**Companion guards:** an ESLint rule forbidding `as Record<string, unknown>` and `as any` in Stripe-touching files (WO-88) catches the cast-bypass at write-time. A Stripe SDK type-check smoke (WO-92, files at `src/__type-checks__/`) catches "the SDK doesn't expose this field" at compile time during the existing `tsc --noEmit` CI step. This documentation rule (WO-89) is the cheapest of the three layers and the only one that addresses confidence-without-citation directly.
+
+> **Note on the live-API smoke layer:** WO-90 (live Stripe test-mode CI smoke) was filed as a fourth defense layer but closed wontfix under the project constraint "Stripe live key only in CI; no `sk_test_*` provisioning." See [`project_constraint_stripe_live_key_only.md`](../.claude/projects/...) for the constraint's reopen triggers. The type-check smoke at `src/__type-checks__/` is the constraint-compatible substitute — it catches SDK-type-mismatch failures (the WO-44 commit-3/3 pattern) at compile time without any API calls.
+
+**Adding a new type-check guard.** When you add a third-party API parameter that the SDK exposes natively (no cast needed), extend the relevant file under `src/__type-checks__/` with the new field shape. Example pattern from `src/__type-checks__/stripe-payment-element-options.ts`:
+
+```ts
+import type { StripePaymentElementOptions } from '@stripe/stripe-js'
+
+const _check: StripePaymentElementOptions = {
+  wallets: {
+    applePay:  'auto',
+    googlePay: 'auto',
+    link:      'never',  // SDK must expose PaymentWalletsOption.link
+  },
+}
+
+void _check
+```
+
+If the SDK ever stops exposing one of these fields (downgrade, migration, typo), `tsc --noEmit` fails the build before CI reaches E2E. New `src/__type-checks__/*.ts` files MUST live under `src/` so they share the production `tsconfig.json` — a standalone `scripts/` dir with its own tsconfig creates config-drift risk.
 
 **When the rule does NOT apply:**
 
