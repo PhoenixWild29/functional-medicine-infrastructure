@@ -183,5 +183,42 @@ Reviewers will check:
 4. **Documentation** — if the change affects architecture, schema, or partner-facing behavior, are the relevant docs updated?
 5. **Security** — no new secrets, no PHI exposure, no RLS bypass via service role without a comment explaining why.
 6. **Migration safety** — for schema changes, does the migration work for a non-empty production database? Are there irreversible steps flagged?
+7. **Third-party API parameters** — see the rule below. Reviewers must reject PRs that add such a parameter without doc citation, even if the unit test mocks pass.
 
 Approvals should not rubber-stamp. If a change raises questions about architecture or security, block the merge and discuss.
+
+---
+
+## Third-Party API Parameter Rule
+
+When adding any parameter to a third-party API call (Stripe, Supabase, Twilio, Documo, or any other external service), the following rule applies.
+
+**Rule:** if the parameter is NOT exposed in the SDK's TypeScript types, the PR description must include:
+
+1. The API doc URL (linked directly to the page documenting the parameter).
+2. A quote of the relevant parameter name + accepted values from the docs.
+3. Either (a) an SDK upgrade to a version that exposes the field natively, OR (b) a live test-mode CI smoke that confirms the live API accepts the parameter at the values being passed.
+
+The PR template's "Third-Party API Parameters" checklist enforces this at submission. Reviewers must reject PRs that add such a parameter without the citation, even if the unit test mocks pass.
+
+**Why the rule exists.** PR #44 commit 3/3 added `payment_method_options.link.display = 'never'` to a Stripe `paymentIntents.create()` call. The Stripe SDK v14 types didn't expose `display` on the `Link` interface, so the author cast through `as Record<string, unknown>` to bypass the type check. Both pre-flight reviewers signed off citing "Stripe documentation" without pasting a URL or quoting the parameter. The live Stripe API rejected the parameter as unknown; CI E2E broke; the commit was reverted.
+
+The failure mode this rule catches:
+
+- Confidence-without-citation. Asserting a third-party API supports a parameter from memory or assumption, without docs evidence, lets unsupported parameters into PRs and past reviewers.
+- Cast-bypass through `as Record<string, unknown>` / `as any`. When a reviewer sees one of these casts near a third-party SDK call, the cast itself is a stop-and-think signal. The rule formalizes the stop-and-think — paste the URL, quote the parameter, prove it's real.
+
+**Companion guards:** an ESLint rule forbidding `as Record<string, unknown>` and `as any` in Stripe-touching files (filed separately as WO-88) catches the cast-bypass at write-time. A live Stripe test-mode CI smoke (filed separately as WO-90) catches the "SDK accepted it but API rejected it" failure mode at CI time. This documentation rule (WO-89) is the cheapest of the three layers and the only one that addresses confidence-without-citation directly.
+
+**When the rule does NOT apply:**
+
+- The new parameter IS exposed in the SDK's TypeScript types (the SDK is the citation).
+- The PR doesn't add a new third-party API parameter (most PRs).
+
+**Concrete example of correct citation,** for a hypothetical PR adding `payment_method_options.afterpay_clearpay.capture_method` to a Stripe PaymentIntent:
+
+> **API doc URL:** https://stripe.com/docs/api/payment_intents/create#create_payment_intent-payment_method_options-afterpay_clearpay-capture_method
+>
+> **Quoted parameter:** "Controls when the funds will be captured from the customer's account. ... If provided, this parameter will override the top level behavior of `capture_method` when finalizing the payment with this payment method type."
+>
+> **Accepted values:** `manual`.
