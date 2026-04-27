@@ -106,6 +106,42 @@ test.describe('Patient Checkout Flow', () => {
     await expect(page.getByRole('banner').getByText('Test Clinic E2E')).toBeVisible()
   })
 
+  // ── Test A.2 — Stripe Link panel suppression (WO-87) ─────────
+  //
+  // Verifies the page loads cleanly with the new `wallets: { link: 'never' }`
+  // PaymentElement config. The Stripe Link panel itself renders inside a
+  // cross-origin iframe Playwright can't reliably introspect, so this test
+  // is intentionally structural — it asserts:
+  //   1. The page mounts without console errors after the SDK upgrade
+  //      (catches regressions where the new wallets option breaks
+  //      PaymentElement initialization in any browser project).
+  //   2. The clinic banner still renders (proxy for "page didn't crash").
+  //
+  // The actual visual verification that the Link auto-fill panel does NOT
+  // appear is covered by the manual preview smoke in WO-87's PR description
+  // (run on a Chrome profile that has Stripe Link cookies — Playwright's
+  // ephemeral contexts don't have them, so a passing Playwright assertion
+  // here would be theatrical).
+  test('checkout page loads cleanly with link: \'never\' wallets config', async ({ page }) => {
+    const consoleErrors: string[] = []
+    page.on('console', msg => {
+      if (msg.type() === 'error') consoleErrors.push(msg.text())
+    })
+
+    await page.goto(`/checkout/${checkoutToken}`)
+    await expect(page.getByLabel('Amount due: $200.00')).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByRole('banner').getByText('Test Clinic E2E')).toBeVisible()
+
+    // Filter out expected Stripe iframe noise (CSP warnings, etc.) and assert
+    // no React hydration mismatches or uncaught exceptions fired.
+    const appErrors = consoleErrors.filter(e =>
+      !e.includes('stripe.com') &&
+      !e.includes('CSP') &&
+      !e.includes('Content Security Policy'),
+    )
+    expect(appErrors).toEqual([])
+  })
+
   // ── Test B — API-level PaymentIntent, browserless ────────────
   // Split into two phases:
   //   Phase 1 — always runs: calls our /api/checkout/payment-intent route,
