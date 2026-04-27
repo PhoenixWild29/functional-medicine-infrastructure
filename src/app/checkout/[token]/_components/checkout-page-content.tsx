@@ -148,10 +148,19 @@ function PaymentForm({ token, retailCents, onError, onReady }: PaymentFormProps)
       </div>
 
       {/* Stripe PaymentElement — handles card, Apple Pay, Google Pay — REQ-PSR-003 */}
+      {/* WO-87: `link: 'never'` suppresses the Stripe Link auto-fill panel.
+          Without this, /checkout/[token] surfaces a Link card-saver populated
+          from cookies of any prior browser session — cross-contaminating an
+          unrelated patient's email + saved card last-4 onto the current
+          patient's view (HIPAA cross-patient PHI exposure surfaced in R7).
+          Card + Apple Pay + Google Pay still render through automatic_payment_
+          methods. SDK upgraded to @stripe/stripe-js@^7.5.0 to expose `link` in
+          PaymentWalletsOption natively (was not in v4 — the cast-through-
+          unknown that broke PR #44 commit 3/3 is not needed here). */}
       <PaymentElement
         options={{
           layout:  'tabs',
-          wallets: { applePay: 'auto', googlePay: 'auto' },
+          wallets: { applePay: 'auto', googlePay: 'auto', link: 'never' },
         }}
         onReady={onReady}
       />
