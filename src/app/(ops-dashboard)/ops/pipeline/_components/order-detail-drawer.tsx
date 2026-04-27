@@ -58,6 +58,7 @@ interface OrderDetail {
     clinicName:            string
     pharmacyName:          string | null
     submissionTier:        string | null
+    pharmacyTier:          string | null
     rerouteCount:          number
     trackingNumber:        string | null
     carrier:               string | null
@@ -182,7 +183,9 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
                   : 'border-transparent text-muted-foreground hover:text-foreground'}
               `}
             >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {/* R7 Bucket 2: render 'SLA' as the acronym, not the
+                  generic-capitalized 'Sla', to match the rest of the app. */}
+              {tab === 'sla' ? 'SLA' : tab.charAt(0).toUpperCase() + tab.slice(1)}
               {tab === 'sla' && detail?.slas.some(s => s.isBreached) && (
                 <span className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
                   {detail.slas.filter(s => s.isBreached).length}
@@ -258,7 +261,12 @@ function DetailTab({
           {o.pharmacyName ?? '—'}
         </Field>
         <Field label="Tier">
-          {o.submissionTier ?? '—'}
+          {/* R7 Bucket 2 split: submission_tier is NULL until adapter
+              submission completes (hours-long window for Tier 4 fax).
+              Fall back to the pharmacy's integration_tier so ops can
+              still see the declared routing capability during that
+              window — matches what the pipeline-list table renders. */}
+          {o.submissionTier ?? o.pharmacyTier ?? '—'}
         </Field>
         <Field label="Medication">
           {o.medicationName ?? '—'}

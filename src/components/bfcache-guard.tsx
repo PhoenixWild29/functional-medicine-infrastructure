@@ -26,7 +26,15 @@ import { useEffect } from 'react'
 export function BfcacheGuard() {
   useEffect(() => {
     const onPageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) window.location.reload()
+      // WO-91 polish: navigate directly to bare /login on bfcache restore
+      // (was: window.location.reload() which reloaded the prior authenticated
+      // URL, hit middleware, redirected to /login?redirectTo=<that-route>).
+      // The redirect-via-middleware dance produced a stale ?redirectTo=
+      // query string that pointed at the last-served authenticated route
+      // rather than the back-target. Cleaner UX: skip the dance, land
+      // directly on bare /login. Security guarantee unchanged: the
+      // bfcache-restored page is replaced before any user interaction.
+      if (e.persisted) window.location.replace('/login')
     }
     window.addEventListener('pageshow', onPageShow)
     return () => window.removeEventListener('pageshow', onPageShow)

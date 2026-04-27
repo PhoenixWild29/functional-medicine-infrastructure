@@ -249,8 +249,11 @@ export function FaxTriageQueue({ initialData }: Props) {
                         </div>
                       </td>
                       <td className="px-3 py-2 font-mono text-muted-foreground">{fax.fromNumber}</td>
-                      <td className="px-3 py-2 text-center">{fax.pageCount}</td>
-                      <td className="px-3 py-2">{fax.pharmacyName ?? <span className="text-muted-foreground">—</span>}</td>
+                      {/* R7 Bucket 2: explicit text-foreground on Pages
+                          + Pharmacy ensures values render in bright body text
+                          rather than inheriting muted/charcoal in dark mode. */}
+                      <td className="px-3 py-2 text-center text-foreground">{fax.pageCount}</td>
+                      <td className="px-3 py-2 text-foreground">{fax.pharmacyName ?? <span className="text-muted-foreground">—</span>}</td>
                       <td className="px-3 py-2">
                         {fax.orderNumber
                           ? <span className="font-mono">{fax.orderNumber}</span>
@@ -305,7 +308,12 @@ export function FaxTriageQueue({ initialData }: Props) {
           )}
 
           {/* Fax metadata */}
-          <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
+          {/* R7 Bucket 2: explicit text-foreground on the <dl> ensures the
+              values render in the bright body-text color in dark mode.
+              Without it, <dd> elements inherited a charcoal-on-dark color
+              that was barely legible. Labels stay text-muted-foreground via
+              their explicit class. */}
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] text-foreground">
             <dt className="text-muted-foreground">Status</dt>
             <dd>
               <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${STATUS_BADGE[selectedFaxLive.status]?.cls ?? ''}`}>
