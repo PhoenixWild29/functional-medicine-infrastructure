@@ -331,7 +331,11 @@ export function FaxTriageQueue({ initialData }: Props) {
             <dt className="text-muted-foreground">Matched order</dt>
             <dd className="font-mono">{selectedFaxLive.orderNumber ?? '—'}</dd>
             <dt className="text-muted-foreground">Order status</dt>
-            <dd>{selectedFaxLive.orderStatus ?? '—'}</dd>
+            {/* WO-93: long enum values like PHARMACY_ACKNOWLEDGED overflow the
+                160px column and force a horizontal scrollbar on the panel.
+                break-words allows the value to wrap; precedent at the Notes
+                field below already uses this pattern. */}
+            <dd className="break-words">{selectedFaxLive.orderStatus ?? '—'}</dd>
             <dt className="text-muted-foreground">Received</dt>
             <dd>{new Date(selectedFaxLive.createdAt).toLocaleString()}</dd>
             {selectedFaxLive.notes && (
