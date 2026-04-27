@@ -96,7 +96,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       case 'charge.dispute.created':
         await handleDisputeCreated(event.data.object as Stripe.Dispute)
         break
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // WO-88 grandfather: `transfer.failed` IS a real Stripe webhook event per
+      // https://docs.stripe.com/api/events/types#event_types-transfer.failed
+      // but the @types/stripe Event union in v14 doesn't include it. Cast is
+      // a TS-side workaround for SDK type lag, NOT bypass of a non-existent
+      // API parameter (the failure mode WO-88 catches).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, no-restricted-syntax
       case 'transfer.failed' as any:
         await handleTransferFailed(event.data.object as Stripe.Transfer)
         break
@@ -405,13 +410,20 @@ async function handleTransferFailed(transfer: Stripe.Transfer): Promise<void> {
   }
 
   // Insert into transfer_failures audit table
+  // WO-88 grandfather: failure_code + failure_message ARE real fields on
+  // Stripe Transfer per https://docs.stripe.com/api/transfers/object#transfer_object-failure_code
+  // and ...-failure_message but the SDK v14 Stripe.Transfer interface doesn't
+  // include them. Casts are TS-side workarounds for SDK type lag, NOT bypass
+  // of non-existent API fields (the failure mode WO-88 catches).
   await supabase.from('transfer_failures').insert({
     transfer_id: transfer.id,
     order_id: order.order_id,
     clinic_id: order.clinic_id,
     amount: transfer.amount,
     currency: transfer.currency,
+    // eslint-disable-next-line no-restricted-syntax
     failure_code: (transfer as unknown as { failure_code?: string }).failure_code ?? 'unknown',
+    // eslint-disable-next-line no-restricted-syntax
     failure_message: (transfer as unknown as { failure_message?: string }).failure_message ?? null,
   })
 

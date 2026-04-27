@@ -66,6 +66,80 @@ const config = [
       'react-hooks/purity': 'off',
     },
   },
+
+  // ── WO-88: type-bypass guard for Stripe-touching files ───────────
+  //
+  // Catches the failure mode that broke PR #44 commit 3/3 at write-
+  // time: an author casts through `unknown` or `any` to bypass the
+  // SDK's type system, asserting a parameter exists when the SDK
+  // doesn't expose it. The cast is the smoking-gun signal — if you
+  // need to bypass types to land a third-party API parameter, the
+  // parameter probably isn't real.
+  //
+  // Three patterns blocked:
+  //   - `x as any`                       (full type-system escape)
+  //   - `x as unknown` (or `as unknown as T`) (cast-through-unknown)
+  //   - `x as Record<string, unknown>`   (the specific cast that broke
+  //                                       PR #44 commit 3/3)
+  //
+  // Scope: ONLY files that make actual Stripe API calls or pass options
+  // to Stripe Elements. NOT post-Stripe surfaces (e.g.,
+  // `src/app/checkout/success/page.tsx` reads Supabase joined-query
+  // results, not Stripe — Supabase shape-coercion casts there are out
+  // of scope for this rule). Companion guards:
+  //   - WO-89 PR-template doc-citation rule (PR #46, shipped) — forces
+  //     reviewer-facing evidence at submission
+  //   - WO-92 SDK type-check smoke (queued) — compile-time regression
+  //     guard that this rule's blocked patterns can't be used to bypass
+  //
+  // Inline override allowed via `// eslint-disable-next-line` ONLY when
+  // accompanied by a comment that includes the third-party API doc URL
+  // (per CONTRIBUTING.md "Third-Party API Parameter Rule"). Reviewers
+  // must reject any inline disable that lacks the doc citation.
+  {
+    files: [
+      'src/lib/stripe/**',
+      'src/app/api/checkout/payment-intent/**',
+      'src/app/api/webhooks/stripe/**',
+      'src/app/checkout/[token]/_components/**',
+    ],
+    ignores: [
+      // Test files mock the Stripe SDK and use cast-through-unknown for fixture
+      // construction (NextRequest mocks, etc.). The WO-88 failure mode doesn't
+      // apply because mocked tests can't reach the live Stripe API.
+      '**/__tests__/**',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "TSAsExpression > TSAnyKeyword",
+          message:
+            "WO-88: `as any` forbidden in Stripe-touching files. " +
+            "If you're bypassing the SDK type system to land a third-party API parameter, " +
+            "stop and check the docs — the parameter may not exist. See CONTRIBUTING.md " +
+            "'Third-Party API Parameter Rule.'",
+        },
+        {
+          selector: "TSAsExpression > TSUnknownKeyword",
+          message:
+            "WO-88: `as unknown` (cast through unknown) forbidden in Stripe-touching files. " +
+            "This was the exact pattern that broke PR #44 commit 3/3 — author cast through " +
+            "unknown to bypass SDK types, live API rejected the parameter, CI E2E broke. " +
+            "See CONTRIBUTING.md 'Third-Party API Parameter Rule.'",
+        },
+        {
+          selector:
+            "TSAsExpression[typeAnnotation.type='TSTypeReference'][typeAnnotation.typeName.name='Record']",
+          message:
+            "WO-88: `as Record<string, unknown>` forbidden in Stripe-touching files. " +
+            "This is the specific cast that shipped a non-existent Stripe parameter in PR #44 " +
+            "commit 3/3. Quote the API doc URL + parameter in the PR description and use a " +
+            "properly-typed SDK upgrade instead. See CONTRIBUTING.md 'Third-Party API Parameter Rule.'",
+        },
+      ],
+    },
+  },
 ]
 
 export default config
