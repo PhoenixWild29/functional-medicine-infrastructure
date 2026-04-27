@@ -1,6 +1,8 @@
 # Engineering Status — In-Flight Work
 
-**Last updated:** 2026-04-26 — R7-Bucket-1 (HIPAA bfcache + sign-out hard-nav) shipped via PR #44 (commit `fac1de2`). Chrome browser-agent smoke verified PASS on both in-scope checks (PHI sign-page Back-after-sign-out + dashboard KPI Back-after-sign-out). Stripe Link finding deferred to follow-up WO with HIGH severity (correct fix is client-side `wallets: { link: 'never' }` + `@stripe/stripe-js` SDK upgrade from ^4 to ^7.5+; currently active in production).
+**Last updated:** 2026-04-27 — R7-Bucket-1 follow-up sequencing locked. PR #46 (WO-89 PR-template + CONTRIBUTING.md doc-citation rule) shipped (commit `37301cd`). Phase 0 audits revealed: WO-87 is Tier S (one-file SDK upgrade, no breaking changes against our usage), WO-90 must wontfix under the project constraint "Stripe live key only in CI; no `sk_test_*` provisioning," Bucket 2 is "4 cosmetic + 1 MEDIUM 'Tier —' split + 2 dropped non-bugs." WO-90 closed wontfix with reopen triggers; WO-92 filed as the type-check smoke replacement covering the same compile-time failure mode. WO-91 audit reduced scope to a 1-line BfcacheGuard change (foldable into Phase 3). Phase 2a (WO-87) starts next.
+
+**Prior: 2026-04-26** — R7-Bucket-1 (HIPAA bfcache + sign-out hard-nav) shipped via PR #44 (commit `fac1de2`). Chrome browser-agent smoke verified PASS on both in-scope checks (PHI sign-page Back-after-sign-out + dashboard KPI Back-after-sign-out). Stripe Link finding deferred to follow-up WO with HIGH severity (correct fix is client-side `wallets: { link: 'never' }` + `@stripe/stripe-js` SDK upgrade from ^4 to ^7.5+; currently active in production).
 
 **Prior: 2026-04-25** — Demo-readiness round v2.4→v2.5 complete. PR #41 (cron cadence F2) + PR #42 (Favorites delete UI + DELETE clinic-scope guard F1) merged. Production Ketotifen residue (5 rows) cleared via UUID-targeted DELETE. Ready for the next browser-agent walkthrough on v2.5.
 
@@ -31,7 +33,7 @@
 - "One more dispatch" boundary: any Playwright-internal theory-driven fix gets ONE dispatch to verify; if it fails, pivot to pre-committed fallback.
 
 **What's left as post-launch polish** (see Backlog below):
-- Populate `sk_test_*` `STRIPE_SECRET_KEY` in CI secrets so checkout Test B Phase 2 exercises the full Stripe test-mode round-trip.
+- ~~Populate `sk_test_*` `STRIPE_SECRET_KEY` in CI secrets so checkout Test B Phase 2 exercises the full Stripe test-mode round-trip.~~ **WONTFIX 2026-04-27** under the project constraint "Stripe live key only in CI; no `sk_test_*` provisioning." Replacement coverage via Stripe SDK type-check smoke (WO-92). See `project_constraint_stripe_live_key_only.md` for reopen triggers.
 - `storageState` auth pre-warm: replaces per-test logins with pre-authed session cookies. Eliminates rate-limit risk entirely. Durable long-term fix.
 - Unit test for `BatchReviewForm` signature state transitions.
 - API-level integration test for `/api/orders/{id}/sign` Twilio/Documo suppression.
@@ -181,6 +183,32 @@ git checkout -b chore/verify-e2e-supabase-isolation
 ---
 
 ## Recent context worth preserving
+
+### Session 2026-04-27 — R7-Bucket-1 follow-up sequencing + Stripe live-key constraint
+
+Phase 0 audits + reviewer-cowork sequencing review locked the post-PR-44 follow-up plan. Material outcomes:
+
+- **WO-89 shipped (PR #46 / `37301cd`):** PR template + CONTRIBUTING.md addition for the third-party API parameter doc-citation rule. Cheapest of three process-defense layers; docs-only.
+- **Project constraint surfaced + memorialized:** "Stripe live key only in CI; no `sk_test_*` provisioning" — clarified by user, saved as `project_constraint_stripe_live_key_only.md` with explicit reopen triggers.
+- **WO-90 closed wontfix** under that constraint. Original work-order content preserved in the WO description with reopen-trigger documentation.
+- **WO-92 filed** as type-check smoke replacement: a single TS file under `src/__type-checks__/` that imports the SDK type and asserts a representative parameter object compiles. Catches the WO-44 commit-3/3 compile-time failure mode without API calls or test-mode keys. Critical detail (cowork-flagged): file MUST live under `src/` with the production `tsconfig.json` to avoid type-config drift.
+- **WO-91 scope reduced** via 5-min code-read: the original "BfcacheGuard + auth middleware" framing was a guess; actual fix is a 1-line change at `src/components/bfcache-guard.tsx:29` (replace `window.location.reload()` with `window.location.replace('/login')` to bypass the middleware-redirect dance). Foldable into Phase 3 polish bundle.
+- **Bucket 2 right-sized to 5 items:** 4 cosmetic + 1 MEDIUM "Tier —" data-binding fix split. Two original findings dropped as non-bugs (KPI MTD-only is intentional scope; post-EPCS redirect goes to `/dashboard?sent=1` correctly per `draft-sign-form.tsx:126`). Documented in this file so the R8 walkthrough doesn't re-file them.
+- **STATUS.md backlog item "populate `sk_test_*`"** also closed wontfix under the same constraint. See the line above this section for the in-place strikethrough.
+- **Constrained-live-mode smoke (idempotency + metadata + cancel)** explicitly rejected on cowork's maintenance-liability analysis (Radar fraud-signal tuning, on-call docs, accounting reconciliation, cleanup-failure handling).
+
+**Locked execution sequence:**
+- Phase 1 ✅ WO-89 (PR #46)
+- Phase 2a — WO-87 SDK upgrade + wallets fix + Playwright assertion + manual preview smoke (DOM-only, no `confirmPayment` step to avoid live-account PI accumulation)
+- Phase 2b — WO-88 ESLint guard
+- Phase 3 — Bucket 2 PR (4 cosmetic + Tier-— split with PR-description hierarchy) + WO-91 1-line fold-in + non-bug docs
+- Phase 4 — R8 walkthrough prompt update (verify-before-report instruction to reduce 28% false-positive rate from R7)
+- Phase 5 — WO-92 type-check smoke (after WO-87 lands so the SDK upgrade is in place)
+
+### R7 walkthrough non-bugs (do NOT re-file in R8)
+
+- **KPI total vs. tab badge differ by N**: intentional. KPI is MTD-only filtered at `src/app/(clinic-app)/dashboard/page.tsx:152` (`createdAt >= mtdStart`). Tab counts all orders including prior months. Both correct.
+- **Post-EPCS-sign redirect**: lands on `/dashboard?sent=1` per `src/app/(clinic-app)/new-prescription/sign/[orderId]/_components/draft-sign-form.tsx:126`. R7 walkthrough observed the wrong code path; ignore that report line.
 
 ### Session 2026-04-25/26 — R7-Bucket-1 HIPAA bfcache + sign-out hard-nav
 
