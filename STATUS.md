@@ -1,6 +1,8 @@
 # Engineering Status — In-Flight Work
 
-**Last updated:** 2026-04-27 (PM) — **R7-BUCKET-1 FOLLOW-UP CAMPAIGN COMPLETE.** All six phases shipped (PRs #46, #48, dependabot #49, #50, #51, #52, #53; production at commit `add0cac`). R8 browser-agent walkthrough verdict: **PASS** with 1 LOW finding + 0 false-positives. R7's 28% false-positive rate dropped to 0% after the verify-before-report prompt update — process change paid for itself. All seven targeted regression checks PASS: bfcache PHI fix, bfcache KPI fix, Stripe Link suppression, Ops drawer Tier field, "SLA" tab capitalization, Fax Triage panel readability, clinic name in checkout header. WO statuses: WO-87, 88, 89, 91, 92 → completed; WO-90 → wontfix under live-key constraint; WO-93 (Fax panel overflow LOW) + WO-94 (seed needs API-routed order, observation) filed in backlog. Production verified live via curl headers + R8 walkthrough.
+**Last updated:** 2026-04-27 (Late) — **R7-BUCKET-1 FOLLOW-UP CAMPAIGN COMPLETE + R8 BACKLOG SHIPPED.** Production at commit `1cd99cc`. Both R8 backlog items (WO-93 Fax panel overflow + WO-94 cross-tier demo orders) and the meta-WO-95 walkthrough-prompt template all shipped (PRs #55, #56, #57). MCP statuses: WO-87, 88, 89, 91, 92, 93, 94, 95 → completed; WO-90 → wontfix under live-key constraint. Demo + production are in sync; partner-facing PDFs re-rendered to match. Demo doc fixed for the "Sla→SLA" tab caps that PR #51 introduced and a soft-update for cross-tier narration now that WO-94's seed exposes T1/T2/T3/T4 in the Ops pipeline. Ready for next-track planning (investor / clinic-onboarding tracks per the post-R8 sequencing review).
+
+**Prior: 2026-04-27 (PM)** — **R7-BUCKET-1 FOLLOW-UP CAMPAIGN COMPLETE.** All six phases shipped (PRs #46, #48, dependabot #49, #50, #51, #52, #53; production at commit `add0cac`). R8 browser-agent walkthrough verdict: **PASS** with 1 LOW finding + 0 false-positives. R7's 28% false-positive rate dropped to 0% after the verify-before-report prompt update — process change paid for itself. All seven targeted regression checks PASS: bfcache PHI fix, bfcache KPI fix, Stripe Link suppression, Ops drawer Tier field, "SLA" tab capitalization, Fax Triage panel readability, clinic name in checkout header. WO statuses (at-time): WO-87, 88, 89, 91, 92 → completed; WO-90 → wontfix under live-key constraint; WO-93 + WO-94 filed in backlog. Production verified live via curl headers + R8 walkthrough.
 
 **Prior: 2026-04-27 (AM)** — R7-Bucket-1 follow-up sequencing locked. PR #46 (WO-89 PR-template + CONTRIBUTING.md doc-citation rule) shipped (commit `37301cd`). Phase 0 audits revealed: WO-87 is Tier S, WO-90 must wontfix under the project constraint "Stripe live key only in CI; no `sk_test_*` provisioning," Bucket 2 is "4 cosmetic + 1 MEDIUM 'Tier —' split + 2 dropped non-bugs." WO-90 closed wontfix with reopen triggers; WO-92 filed as the type-check smoke replacement. WO-91 audit reduced scope to a 1-line BfcacheGuard change (folded into Phase 3).
 
@@ -185,6 +187,23 @@ git checkout -b chore/verify-e2e-supabase-isolation
 ---
 
 ## Recent context worth preserving
+
+### Session 2026-04-27 (Late) — R8 backlog + meta-WO walkthrough template shipped + docs sync
+
+Three small PRs landed after the R8 walkthrough campaign closed; brought all R8-surfaced findings to "completed" + captured the prompt-template process improvement:
+
+- **PR #55 (`56450a2`)** — WO-93 Fax Details panel overflow CSS fix. One-line `break-words` Tailwind class on the orderStatus `<dd>` so long enums like `PHARMACY_ACKNOWLEDGED` wrap instead of forcing a horizontal scrollbar.
+- **PR #56 (`08e1f2c`)** — WO-95 walkthrough-prompt template at `docs/qa-templates/walkthrough-prompt-base.md`. Captures R8's verify-before-report guardrail (the change that produced 0% false-positive rate) as a reusable structure for R9, R10, … rounds. Cross-referenced from CLAUDE.md so future agents discover it without re-deriving.
+- **PR #57 (`1cd99cc`)** — WO-94 cross-tier demo orders. Seeds T1 (Quick Rx), T2 (Portal Plus), T3 (Hybrid Labs) demo orders alongside the existing T4 (Strive) order in `ensureDemoScaffolding`. Closes R8's verification gap (Tier-— fix could only be validated on T4) AND retroactively adds `pharmacy_id` + `submission_tier` to the original T4 demo order which were missing — that's why the drawer rendered '—' for it even after PR #51's join fix.
+
+Plus a docs-sync pass:
+
+- STATUS.md header bumped to point production at `1cd99cc`
+- `docs/archive/source/POC-DEMO-DETAILED.md` line 355 fixed (Sla → SLA, matching PR #51's UI fix)
+- Demo doc line 343 narration softly updated to acknowledge cross-tier order diversity now that WO-94's seed exposes T1/T2/T3/T4 in the Ops pipeline (was "Tier icon (Fax)" implying single-tier)
+- `docs/POC-DEMO-DETAILED.docx` + `docs/POC-DEMO-DETAILED.pdf` re-rendered to match the markdown source
+
+**Open queue (post-R8 sequencing review, locked):** investor + clinic onboarding both in 4-6 week target window per user. Reviewer + cowork ruled "investor-first lead, clinic pre-track parallel for procurement only." Tracks 1/2/3 await user green-light on contractor option, bundling preference, ordering, mobile validation timing.
 
 ### Session 2026-04-27 (PM) — R7-Bucket-1 follow-up campaign COMPLETE
 

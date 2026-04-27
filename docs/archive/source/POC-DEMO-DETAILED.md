@@ -1,8 +1,10 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 2.4 | **Date:** April 23, 2026
+**Version:** 2.5 | **Date:** April 27, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
+
+> **What's new in v2.5 (2026-04-27):** Two minor doc-only updates to match the live app's current state. (a) The Ops detail drawer's SLA tab is rendered with the proper acronym capitalization ("SLA", not "Sla"); the script in Part 5A now matches. (b) The Ops pipeline now seeds demo orders across all four routing tiers (T1 API / T2 Portal / T3 Hybrid / T4 Fax), so the Tier-icon narration in Part 5A reflects the cross-tier diversity the presenter can actually click into. No flow changes; the live-demo script principle from v2.4 still holds.
 
 > **What's new in v2.4 (2026-04-23):** This walkthrough is now a **live-demo script** — the presenter uses the app the way a real user would, and the investor sees whatever the app genuinely produces as a result of those actions. Prior versions asked the presenter to pre-stage specific visual states via a backstage `/ops/demo-tools` page right before the demo started; that pre-staging is gone. The demo no longer depends on clicking refresh buttons, setting timestamps, or forcing any screen into a specific colour state. Where earlier revisions predicted exact card counts, exact colours, or exact timestamp values on the Ops screens, those predictions have been replaced with descriptions of what each screen *is* — the specific state at demo time reflects the real activity the presenter creates during the walkthrough.
 
@@ -340,7 +342,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 4. **Point out an order row:**
    - Status badge (colored)
    - SLA countdown or overdue indicator
-   - Tier icon (Fax)
+   - Tier icon (Tier 1 API / Tier 2 Portal / Tier 3 Hybrid / Tier 4 Fax — the demo seed has orders across all four tiers)
    - Claim button
 
 > "Each order shows its SLA status. If an order is overdue, it shows in red with the exact hours overdue. Ops can claim orders to prevent duplicate work."
@@ -352,7 +354,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 > "Multi-dimensional filtering lets ops isolate specific issues — show me all Tier 4 fax orders from this week, or all orders from a specific clinic."
 
 6. **Click an order** to open the detail drawer
-7. **Point out the tabs:** Detail, History, Submissions, Sla
+7. **Point out the tabs:** Detail, History, Submissions, SLA
 
 > "Full drill-down into any order. The History tab shows every state transition with timestamps and who triggered it. The Submissions tab shows every adapter attempt. The SLA tab shows all deadline tracking."
 
