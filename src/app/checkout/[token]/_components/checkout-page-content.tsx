@@ -300,7 +300,11 @@ export function CheckoutPageContent({
           </div>
           <span className="text-sm font-bold text-foreground">CompoundIQ</span>
         </div>
-        <span className="max-w-[160px] truncate text-sm text-muted-foreground">{clinicName}</span>
+        {/* R7 Bucket 2: relax max-width so longer clinic names like
+            "Sunrise Functional Medicine" render in full at typical desktop
+            widths. The `truncate` is preserved as a defensive fallback for
+            extremely-long names; sm:max-w-none lifts the cap above 640px. */}
+        <span className="max-w-[160px] truncate text-sm text-muted-foreground sm:max-w-none">{clinicName}</span>
       </header>
 
       <main className="flex flex-col items-center px-4 pb-10 pt-6" aria-label="Checkout">

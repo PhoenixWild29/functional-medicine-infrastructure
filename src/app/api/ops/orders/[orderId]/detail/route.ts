@@ -46,7 +46,7 @@ export async function GET(_request: NextRequest, { params }: Params): Promise<Ne
         created_at, updated_at, locked_at, ops_assignee,
         medication_snapshot,
         clinics(name),
-        pharmacies(name)
+        pharmacies(name, integration_tier)
       `)
       .eq('order_id', orderId)
       .is('deleted_at', null)
@@ -78,7 +78,7 @@ export async function GET(_request: NextRequest, { params }: Params): Promise<Ne
 
   const o      = orderResult.data as unknown as Record<string, unknown>
   const clinic   = o['clinics']    as { name: string } | null
-  const pharmacy = o['pharmacies'] as { name: string } | null
+  const pharmacy = o['pharmacies'] as { name: string; integration_tier?: string } | null
   const medSnap  = o['medication_snapshot'] as { medication_name?: string } | null
 
   // Calculate latency from created_at → completed_at for submissions
@@ -112,7 +112,15 @@ export async function GET(_request: NextRequest, { params }: Params): Promise<Ne
       status:                o['status'],
       clinicName:            clinic?.name ?? '—',
       pharmacyName:          pharmacy?.name ?? null,
+      // R7 Bucket 2 split: drawer shows "Tier —" because submission_tier is
+      // NULL until adapter submission completes (hours-long window for Tier 4
+      // fax). The pipeline-list table reads `integration_tier` from the
+      // pharmacy join — same data should populate the drawer. Expose both:
+      // submission_tier reflects the actual routing decision once made,
+      // integration_tier reflects the pharmacy's declared capability. Drawer
+      // falls back submission → integration → '—'.
       submissionTier:        o['submission_tier'] ?? null,
+      pharmacyTier:          pharmacy?.integration_tier ?? null,
       rerouteCount:          o['reroute_count'] ?? 0,
       trackingNumber:        o['tracking_number'] ?? null,
       carrier:               o['carrier'] ?? null,

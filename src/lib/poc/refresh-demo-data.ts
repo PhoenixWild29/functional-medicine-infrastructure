@@ -829,6 +829,18 @@ export function buildSubmissionBatch(now: Date = new Date()): SubmissionInsert[]
         : Math.round(freshnessOffsetMs + (idx / (SUBMISSIONS_PER_PHARMACY - 1)) * (23 * 3_600_000 - freshnessOffsetMs))
 
       const createdAt      = new Date(now.getTime() - offsetMs)
+      // R7 Bucket 2 / WO-91 sibling note: every seeded submission uses
+      // identical offsets (1s submitted, 5s completed, 4.5s acknowledged),
+      // which means the latency for every row is exactly 3500ms. The
+      // Adapter Health Monitor's p50/p95/p99 percentile aggregation is
+      // correct, but every percentile of a constant array is that
+      // constant — that's why the demo shows "p50: 3500ms · p95: 3500ms ·
+      // p99: 3500ms" identical across all percentiles and all pharmacies.
+      // Real production traffic with varied latencies will produce
+      // realistic distributions. Don't "fix" the percentile code unless
+      // you also vary these offsets, otherwise the seed becomes
+      // non-deterministic and the demo doc's "whatever you see is fine"
+      // narrator-cue stops being honest.
       const submittedAt    = new Date(createdAt.getTime() + 1_000)
       const completedAt    = new Date(createdAt.getTime() + 5_000)
       const acknowledgedAt = isFailure ? null : new Date(createdAt.getTime() + 4_500)
