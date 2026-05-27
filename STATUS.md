@@ -74,16 +74,17 @@ Only after both reviews converge does implementation start. This prevents the "C
 | #13 | `fix(e2e): signature canvas uses pointer events + correct text string` | ✅ **MERGED** (partial) | ~~fix/e2e-signature-canvas-pointer-events~~ | Text-string bug fixed (`'✓ Signature captured'` → `'Signature captured'`). Pointer-event dispatch did NOT work — superseded by #14. |
 | #14 | `fix(e2e): signature canvas uses native PointerEvent via page.evaluate` | ✅ **MERGED** (didn't fix root issue) | ~~fix/e2e-signature-canvas-native-pointerevent~~ | Per cowork review #5: Playwright's `locator.dispatchEvent('pointerdown')` creates a plain Event with coords discarded. Switched to `page.evaluate` + native `new PointerEvent()`. Still failed dispatch verification — headless signature_pad rejects even correctly-typed synthetic events. |
 | #15 | `fix(e2e): signature canvas path-B fallback — mount-only + direct insert` | ✅ **MERGED** | ~~fix/signature-canvas-path-b-unit-test-and-mount-only~~ | Hard-boundary pivot per cowork review #5: stop fighting Playwright's input synthesis. E2E walks cascading builder → asserts canvas mounted + Sign & Send disabled. 8-step Stripe test seeds AWAITING_PAYMENT directly (bypassing UI sign). Twilio test skipped with follow-up note to convert to API-level. |
-| PR 6.3 | Stripe Elements checkout cross-browser fix | ⏳ **NEXT** | — | Current failures: `checkout.spec.ts:67` on firefox / webkit / mobile-chrome (chromium passes). USER CONSTRAINT: keep all browsers covered (do NOT gate to Chromium-only — iPhone Safari is a real patient-facing target). Four options drafted for cowork review #6: (1) debug Stripe init in headless non-chromium, (2) page.route-stub js.stripe.com, (3) convert to API-level test of `/api/checkout/payment-intent`, (4) combo 2+3. Awaiting cowork verdict. |
-| PR 6.4 | Ops reroute status transition investigation | ⏳ | — | `ops-dashboard.spec.ts:40` (chromium only). Test inserts SUBMISSION_FAILED order, clicks Reroute, polls 15s for "Reroute Pending" status — never appears. Real application-layer issue, not a selector fix. Options: polling interval, RLS with service-role insert, API timing. Needs investigation before fixing. |
-| PR 7 | Re-enable E2E on push/PR (no skip, no continue-on-error) | ⏳ | — | Final PR. Remove `if: github.event_name == 'workflow_dispatch'` + `continue-on-error: true` from the `e2e` job. Only merges after PR 6.3 + 6.4 are green on dispatch. |
+| PR 6.3 | Stripe Elements checkout cross-browser fix | ✅ **RESOLVED** | — | Resolved during the E2E refresh campaign via Option 3 (convert to API-level test). Current `e2e/checkout.spec.ts` shape: Test A (server-rendered render check) runs on all 4 browsers; Test A.2 (Link suppression, structural) runs on all 4 browsers; Test B (PaymentIntent client_secret) is browserless + chromium-only by design (`test.skip(browserName !== 'chromium')`) since running browserless API logic 4× wastes CI minutes without coverage gain. Stripe's own iframe is Stripe's responsibility — not ours to drive in tests. iPhone Safari coverage of OUR code remains via Tests A / A.2 / C on `webkit` + `mobile-chrome`. Verified green on every post-campaign main run (latest: 71 passed / 0 failed / 5 skipped). |
+| PR 6.4 | Ops reroute status transition investigation | ✅ **RESOLVED** | — | Closed via PR #18 (`8bf19b5`) "fix(e2e): ops reroute assertion matches actual status label" + PR #19 (`47e8fb7`) "fix(e2e): ops reroute DB-truth + checkout amount aria-label (PR 6.4.1)". The rewrite shape: instead of polling 15s for "Reroute Pending" UI text, the test now asserts (a) the order row disappears from the SUBMISSION_FAILED filter view, and (b) the DB reflects `status === 'REROUTE_PENDING'` via a polling loop on `supabase.from('orders').select('status')` — DB as source of truth, not UI text. See `e2e/ops-dashboard.spec.ts:88-117`. Test runs green on every post-campaign main CI run. |
+| PR 7 | Re-enable E2E on push/PR (no skip, no continue-on-error) | ✅ **MERGED** | — | Shipped as PR #20 (campaign-close). E2E now runs on every push/PR with `continue-on-error: true` removed — see campaign-summary at top of this file ("Last dispatch 65 passed / 0 failed / 5 skipped in 2.1 min. PR #20 (unskip) green on its own push-event run.") |
 
-### Current dispatch state
+### Current dispatch state (post-campaign-close)
 
-Run 24723347780 (2026-04-21, post-PR #15):
-- 57 passed, 4 failed, 3 skipped
-- Delta from original (PR #10 first dispatch): 49→57 passed, 13→4 failed
-- Remaining 4 failures all have PRs planned (6.3 + 6.4 above)
+Most recent main-branch CI (2026-04-27, post-PR #58):
+- **71 passed, 0 failed, 5 skipped (1.6m)**
+- 5 skipped are by-design (Test B's non-chromium variants + signature-canvas Option Z mounts) — not regressions
+
+E2E refresh campaign closed 2026-04-21 with all planned PRs landed; no outstanding work in this section.
 
 ### Durable lessons captured during this campaign
 
