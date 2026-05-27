@@ -6,7 +6,16 @@ Reusable prompt structures for browser-agent walkthroughs of the live POC.
 
 | File | Purpose |
 |------|---------|
-| [`walkthrough-prompt-base.md`](walkthrough-prompt-base.md) | Stable base template for round-N walkthrough prompts. Includes the verify-before-report guardrail that dropped R7's 28% false-positive rate to R8's 0%. |
+| [`walkthrough-prompt-base.md`](walkthrough-prompt-base.md) | Stable base template for round-N full end-to-end walkthrough prompts (R7, R8, R9…). Includes the verify-before-report guardrail that dropped R7's 28% false-positive rate to R8's 0%. |
+| [`checkout-smoke-prompt-base.md`](checkout-smoke-prompt-base.md) | Focused **patient-checkout smoke** template for dependency campaigns and Stripe-touching PRs. ~10-minute scope: log in as Clinic Admin → copy payment link → inspect `/checkout/[token]`. Use this when you need a fast human-driven gate that CI doesn't cover (live Stripe Elements). |
+
+## Which template to use
+
+| Trigger | Template |
+|---------|----------|
+| Major monthly release round, multi-role behavior changed | `walkthrough-prompt-base.md` |
+| Dependency campaign (Next/Stripe/postcss/CSP), checkout-touching PR, pre-demo gate flagged by reviewer | `checkout-smoke-prompt-base.md` |
+| Both apply | Run the smoke first; if PASS, schedule the full walkthrough at the next cadence point |
 
 ## How to start a new walkthrough round
 
