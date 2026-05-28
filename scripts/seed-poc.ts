@@ -204,6 +204,46 @@ async function seedProvider() {
 }
 
 // ============================================================
+// PROVIDER ↔ AUTH USER LINK (F-1)
+// ============================================================
+//
+// providers.user_id ties the provider row to its Supabase Auth
+// identity. Auth UIDs are non-deterministic, so this link is
+// established here (after both rows exist), not in the migration.
+// Idempotent: re-running re-asserts the link.
+
+async function linkProviderToAuthUser() {
+  console.log('\n── Provider ↔ Auth Link ──')
+
+  const providerEmail = POC_CANONICAL_USERS.find(u => u.label === 'provider')?.email
+  if (!providerEmail) {
+    throw new Error('No canonical provider user defined — cannot link')
+  }
+
+  const { data: { users }, error: listError } = await supabase.auth.admin.listUsers({ perPage: 1000 })
+  if (listError) {
+    throw new Error(`Failed to list auth users for provider link: ${listError.message}`)
+  }
+
+  const providerUser = users.find(u => u.email === providerEmail)
+  if (!providerUser) {
+    console.log(`  ⚠  provider auth user (${providerEmail}) not found — skipping link`)
+    return
+  }
+
+  const { error } = await supabase
+    .from('providers')
+    .update({ user_id: providerUser.id })
+    .eq('provider_id', IDS.provider)
+
+  if (error) {
+    throw new Error(`Failed to link provider to auth user: ${error.message}`)
+  }
+
+  console.log(`  ✅  Dr. Sarah Chen ↔ auth user ${providerUser.id}`)
+}
+
+// ============================================================
 // PATIENT
 // ============================================================
 
@@ -472,6 +512,7 @@ async function main() {
     await createAuthUsers()
     await seedClinic()
     await seedProvider()
+    await linkProviderToAuthUser()
     await seedPatient()
     await seedPharmacies()
     await seedPharmacyLicense()

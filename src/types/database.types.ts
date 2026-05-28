@@ -2049,6 +2049,7 @@ export type Database = {
           totp_secret_encrypted: string | null
           totp_verified_at: string | null
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           clinic_id: string
@@ -2068,6 +2069,7 @@ export type Database = {
           totp_secret_encrypted?: string | null
           totp_verified_at?: string | null
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           clinic_id?: string
@@ -2087,6 +2089,7 @@ export type Database = {
           totp_secret_encrypted?: string | null
           totp_verified_at?: string | null
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: [
           {
