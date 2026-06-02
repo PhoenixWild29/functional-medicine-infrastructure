@@ -9,7 +9,17 @@
 //
 // Auth: ops_admin only — enforced by the parent (ops-dashboard)
 // layout via session role check.
+//
+// POC gate (audit X-1, docs/audits/ops-dashboard-gap-list.md):
+// This route renders plaintext POC credentials and offers a
+// destructive "Refresh Demo Data" button. It must NOT exist as
+// a live page in any non-POC deployment (e.g., once a real
+// clinic is onboarded). When `POC_MODE` is not exactly the
+// string 'true', the route returns 404 (mirrors the same
+// square-bracket env check used by the refresh-demo-data API
+// route handler).
 
+import { notFound } from 'next/navigation'
 import { POC_CANONICAL_USERS } from '@/lib/poc/canonical-users'
 import { ResetCredentialsCard }   from './_components/reset-credentials-card'
 import { RefreshDemoDataCard }    from './_components/refresh-demo-data-card'
@@ -21,6 +31,13 @@ export const metadata = {
 }
 
 export default function DemoToolsPage() {
+  // Audit X-1 gate: 404 unless POC_MODE === 'true'. notFound()
+  // throws (returns never), so the rest of the component is
+  // unreachable in non-POC deployments.
+  if (process.env['POC_MODE'] !== 'true') {
+    notFound()
+  }
+
   const users = POC_CANONICAL_USERS.map(u => ({
     label:    u.label,
     email:    u.email,
