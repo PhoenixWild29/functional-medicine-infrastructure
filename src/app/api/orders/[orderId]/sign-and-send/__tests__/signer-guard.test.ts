@@ -247,4 +247,82 @@ describe('POST /api/orders/[orderId]/sign-and-send — F-2 signer-identity guard
     // Should fail before any DB lookup
     expect(orderFetchMock).not.toHaveBeenCalled()
   })
+
+  // ── Codex Section 4 followup: precedence ───────────────────────
+  // Lock in that F-2 fires BEFORE the rest of the compliance lookups.
+  // After the followup refactor, provider is fetched first and the
+  // signer-identity guard runs before pharmacy/license/clinic lookups.
+  // If F-2 didn't fire first, an MA-signs-as-Dr-Chen request with a
+  // *separately* failing compliance check (e.g., bad NPI) could return
+  // the compliance error instead of the security 403 — muddying the
+  // audit trail and potentially leaking which compliance facts the
+  // attacker probed.
+  it('signer-mismatch precedence: 403 even when provider has a bad NPI that would also fail compliance', async () => {
+    mockClinicSession(MA_USER_ID, 'medical_assistant')
+    mockDraftOrder()
+    // Provider's user_id is Dr. Chen (not the MA caller) AND the NPI
+    // is malformed. Without F-2 precedence, the malformed NPI would
+    // produce a 422 compliance error. With F-2 precedence (after the
+    // refactor: provider fetched first, F-2 guard runs before
+    // pharmacy/clinic/license), the 403 fires first.
+    providerFetchMock.mockResolvedValue({
+      data: {
+        provider_id: TEST_PROVIDER_ID,
+        npi_number: 'not-a-real-npi',  // would trigger 422 in npiValid check
+        signature_hash: null,
+        clinic_id: TEST_CLINIC_ID,
+        user_id: PROVIDER_USER_ID,  // Dr. Chen, NOT the MA caller
+      },
+      error: null,
+    })
+    // Intentionally do NOT mock pharmacy/clinic/license. If F-2
+    // precedence is broken, the route will call them and the test
+    // will throw on the unexpected calls.
+
+    const res = await POST(makeRequest({ signatureDataUrl: VALID_SIG_DATA_URL }), makeParams())
+    expect(res.status).toBe(403)
+    const body = await res.json() as { error: string }
+    expect(body.error).toMatch(/Only the assigned provider/)
+
+    expect(pharmacyFetchMock).not.toHaveBeenCalled()
+    expect(clinicFetchMock).not.toHaveBeenCalled()
+    expect(licenseFetchMock).not.toHaveBeenCalled()
+  })
+
+  // Same precedence for the un-linked-provider case.
+  it('unlinked-provider precedence: 403 fires before pharmacy/clinic/license lookups', async () => {
+    mockClinicSession(PROVIDER_USER_ID, 'provider')
+    mockDraftOrder()
+    mockProvider(null) // un-linked provider
+
+    const res = await POST(makeRequest({ signatureDataUrl: VALID_SIG_DATA_URL }), makeParams())
+    expect(res.status).toBe(403)
+    const body = await res.json() as { error: string }
+    expect(body.error).toMatch(/not linked to a Supabase Auth user/)
+
+    expect(pharmacyFetchMock).not.toHaveBeenCalled()
+    expect(clinicFetchMock).not.toHaveBeenCalled()
+    expect(licenseFetchMock).not.toHaveBeenCalled()
+  })
+
+  // Verify the actor trace id (Codex Section 4 log-redaction follow-up)
+  // is a short hash, never the raw session.user.id.
+  it('logs an actor trace id (hash) instead of raw session.user.id on rejection', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    mockClinicSession(MA_USER_ID, 'medical_assistant')
+    mockDraftOrder()
+    mockProvider(PROVIDER_USER_ID)
+
+    await POST(makeRequest({ signatureDataUrl: VALID_SIG_DATA_URL }), makeParams())
+
+    const calls = warnSpy.mock.calls.map(args => String(args[0] ?? ''))
+    const mismatch = calls.find(s => /signer\/provider mismatch/.test(s))
+    expect(mismatch).toBeTruthy()
+    // The raw MA UID must NOT appear in the log
+    expect(mismatch).not.toContain(MA_USER_ID)
+    // The actor trace prefix MUST appear
+    expect(mismatch).toMatch(/actor=act_[a-f0-9]{12}/)
+
+    warnSpy.mockRestore()
+  })
 })
