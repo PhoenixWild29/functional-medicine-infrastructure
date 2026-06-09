@@ -132,3 +132,75 @@ describe('middleware applySecurityHeaders coverage', () => {
     expectNoSecurityHeaders(res)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────
+// F-3: /new-prescription/sign/[orderId] is provider-only
+// ─────────────────────────────────────────────────────────────────
+//
+// F-2 already enforces signer identity at the API layer. This
+// middleware redirect is the page-level UX equivalent so non-
+// providers never land on a dead-end signing UI. The middleware
+// must redirect to /unauthorized for clinic_admin and
+// medical_assistant sessions hitting this route, and pass through
+// for provider sessions.
+
+const PROVIDER_SESSION = {
+  data: {
+    session: { user: { user_metadata: { app_role: 'provider' } } },
+  },
+}
+
+const MA_SESSION = {
+  data: {
+    session: { user: { user_metadata: { app_role: 'medical_assistant' } } },
+  },
+}
+
+const TEST_SIGN_PATH = '/new-prescription/sign/00000000-0000-4000-8000-000000000001'
+
+describe('middleware F-3 — /new-prescription/sign/[orderId] provider-only', () => {
+  it('redirects medical_assistant to /unauthorized', async () => {
+    getSessionMock.mockResolvedValue(MA_SESSION)
+    const res = await middleware(makeReq(TEST_SIGN_PATH))
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toContain('/unauthorized')
+    expectSecurityHeaders(res)
+  })
+
+  it('redirects clinic_admin to /unauthorized', async () => {
+    getSessionMock.mockResolvedValue(CLINIC_SESSION)
+    const res = await middleware(makeReq(TEST_SIGN_PATH))
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toContain('/unauthorized')
+    expectSecurityHeaders(res)
+  })
+
+  it('lets a provider session through (no redirect to /unauthorized)', async () => {
+    getSessionMock.mockResolvedValue(PROVIDER_SESSION)
+    const res = await middleware(makeReq(TEST_SIGN_PATH))
+    // Provider passes the F-3 guard; no /unauthorized redirect
+    expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
+    expectSecurityHeaders(res)
+  })
+
+  it('does NOT block clinic_admin from the parent /new-prescription route (MA + clinic_admin can still prep drafts)', async () => {
+    getSessionMock.mockResolvedValue(CLINIC_SESSION)
+    const res = await middleware(makeReq('/new-prescription'))
+    expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
+    expectSecurityHeaders(res)
+  })
+
+  it('does NOT block medical_assistant from the parent /new-prescription route', async () => {
+    getSessionMock.mockResolvedValue(MA_SESSION)
+    const res = await middleware(makeReq('/new-prescription'))
+    expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
+    expectSecurityHeaders(res)
+  })
+
+  it('does NOT block /new-prescription/review (only /sign/ is provider-only)', async () => {
+    getSessionMock.mockResolvedValue(MA_SESSION)
+    const res = await middleware(makeReq('/new-prescription/review'))
+    expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
+    expectSecurityHeaders(res)
+  })
+})
