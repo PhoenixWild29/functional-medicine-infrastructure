@@ -31,6 +31,47 @@
 import { getTransformer, type OrderPayload } from '@/lib/adapters/transformers'
 import { getParser } from '@/lib/adapters/parsers'
 
+// ── Local shape lens ───────────────────────────────────────────────
+// Mirrors transformLifeFilePayload's documented nested-prescription
+// output so tests can dereference fields without tripping
+// `noUncheckedIndexedAccess`. PharmacyPayload is Record<string, unknown>
+// which would force every nested access through optional chaining +
+// casts — this typed lens is equivalent, more readable, and locks the
+// shape contract.
+
+interface LifeFilePayloadShape {
+  clientReferenceId: string
+  prescription: {
+    prescriber: {
+      firstName:    string
+      lastName:     string
+      npiNumber:    string
+      deaNumber?:   string
+      licenseState: string
+    }
+    patient: {
+      firstName:   string
+      lastName:    string
+      dateOfBirth: string
+      address: {
+        street1: string
+        street2: string
+        city:    string
+        state:   string
+        zipCode: string
+      }
+    }
+    drug: {
+      brandName:  string
+      dosageForm: string
+      strength:   string
+      quantity:   number
+      directions: string
+    }
+    clinic: string
+  }
+}
+
 // ── Canonical fixture: a well-formed OrderPayload ──────────────────
 
 function makePayload(overrides: Partial<OrderPayload> = {}): OrderPayload {
@@ -108,11 +149,9 @@ describe('transformLifeFilePayload — registry lookup + shape', () => {
 
   it('omits deaNumber when providerDea is null (non-controlled-substance prescriber)', () => {
     const transform = getTransformer('transformLifeFilePayload')
-    const out = transform(makePayload({ providerDea: null }))
-    const prescriber = (out as Record<string, Record<string, Record<string, unknown>>>)
-      .prescription.prescriber
+    const out = transform(makePayload({ providerDea: null })) as unknown as LifeFilePayloadShape
     // deaNumber is set to undefined, which JSON.stringify will drop entirely
-    expect(prescriber.deaNumber).toBeUndefined()
+    expect(out.prescription.prescriber.deaNumber).toBeUndefined()
   })
 
   it('null address fields are coerced to empty strings (LifeFile rejects null in address)', () => {
@@ -123,10 +162,8 @@ describe('transformLifeFilePayload — registry lookup + shape', () => {
       patientCity:         null,
       patientState:        null,
       patientZip:          null,
-    }))
-    const address = (out as Record<string, Record<string, Record<string, Record<string, unknown>>>>)
-      .prescription.patient.address
-    expect(address).toEqual({
+    })) as unknown as LifeFilePayloadShape
+    expect(out.prescription.patient.address).toEqual({
       street1: '',
       street2: '',
       city:    '',
@@ -137,10 +174,8 @@ describe('transformLifeFilePayload — registry lookup + shape', () => {
 
   it('null sigText becomes empty directions string', () => {
     const transform = getTransformer('transformLifeFilePayload')
-    const out = transform(makePayload({ sigText: null }))
-    const drug = (out as Record<string, Record<string, Record<string, unknown>>>)
-      .prescription.drug
-    expect(drug.directions).toBe('')
+    const out = transform(makePayload({ sigText: null })) as unknown as LifeFilePayloadShape
+    expect(out.prescription.drug.directions).toBe('')
   })
 })
 
@@ -233,5 +268,38 @@ describe('parseLifeFileResponse — registry lookup + outcome classification', (
     const result = parse(400, { error: 'Bad request' })
     expect(result.outcome).toBe('unknown')
     expect(result.errorCode).toBe('400')
+  })
+
+  // ── Codex-requested coverage (Section 5): 401/403/408/429 ─────
+  // These should all classify as unknown rather than rejected — a
+  // 'rejected' outcome means LifeFile explicitly refused the
+  // prescription. Auth/timeout/rate-limit are operational issues
+  // that should retry, not give up.
+  it('401 unauthorized classifies as unknown (operational, not refusal)', () => {
+    const parse = getParser('parseLifeFileResponse')
+    const result = parse(401, { reason: 'Invalid API key' })
+    expect(result.outcome).toBe('unknown')
+    expect(result.errorCode).toBe('401')
+  })
+
+  it('403 forbidden classifies as unknown (operational, not refusal)', () => {
+    const parse = getParser('parseLifeFileResponse')
+    const result = parse(403, { reason: 'Account suspended' })
+    expect(result.outcome).toBe('unknown')
+    expect(result.errorCode).toBe('403')
+  })
+
+  it('408 request-timeout classifies as unknown (retryable)', () => {
+    const parse = getParser('parseLifeFileResponse')
+    const result = parse(408, { reason: 'Request timeout' })
+    expect(result.outcome).toBe('unknown')
+    expect(result.errorCode).toBe('408')
+  })
+
+  it('429 rate-limit classifies as unknown (retryable with backoff)', () => {
+    const parse = getParser('parseLifeFileResponse')
+    const result = parse(429, { reason: 'Rate limit exceeded' })
+    expect(result.outcome).toBe('unknown')
+    expect(result.errorCode).toBe('429')
   })
 })
