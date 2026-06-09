@@ -13,7 +13,7 @@
     "test:e2e": "playwright test",
     "format:check": "prettier --check .",
     "format:write": "prettier --write .",
-    "db:types": "supabase gen types typescript --project-id your-project-ref > src/types/database.types.ts",
+    "db:types": "bash scripts/regen-db-types.sh",
     "db:migrate": "supabase db push",
     "seed:poc": "dotenv -e .env.local -- tsx scripts/seed-poc.ts",
     "docs:pdf": "bash scripts/md-to-pdf.sh",
