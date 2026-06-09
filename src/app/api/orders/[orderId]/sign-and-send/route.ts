@@ -34,6 +34,16 @@ async function sha256Hex(input: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+// Codex F-2 follow-up: don't log raw session.user.id alongside order
+// + provider IDs. The triple is operationally sensitive even though
+// no single piece is PHI. Short-hash the actor id for trace
+// correlation without exposing the underlying auth UID directly.
+// Truncated SHA-256 is non-reversible without a rainbow table.
+async function actorTraceId(userId: string): Promise<string> {
+  const full = await sha256Hex(userId)
+  return `act_${full.slice(0, 12)}`
+}
+
 interface RouteParams {
   params: Promise<{ orderId: string }>
 }
@@ -119,22 +129,53 @@ export async function POST(
   const providerId   = order.provider_id
   const catalogItemId = order.catalog_item_id
 
-  const [licenseResult, providerResult, pharmacyResult, clinicResult] = await Promise.all([
+  // ── F-2: fetch the provider FIRST, run the signer-identity guard
+  //         BEFORE any other compliance lookup (Codex Section 4
+  //         follow-up: don't waste DB lookups on an unauthorized
+  //         signer + lock guard precedence).
+  const providerResult = await supabase.from('providers')
+    .select('provider_id, npi_number, signature_hash, clinic_id, user_id')
+    .eq('provider_id', providerId)
+    .eq('clinic_id', clinicId)
+    .eq('is_active', true)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  const provider = providerResult.data
+
+  // F-2 (audit finding HIGH in docs/audits/role-audit-and-data-model.md):
+  // the calling auth user must be the provider on the order. Without
+  // this guard, any clinic staff session (e.g., a medical assistant)
+  // could submit a signed prescription as any provider in their clinic.
+  // providers.user_id (F-1 migration 20260528000001) is what makes the
+  // identity check possible; a null user_id means the provider isn't
+  // linked to a Supabase Auth identity and cannot sign.
+  if (!provider?.user_id) {
+    const traceId = await actorTraceId(session.user.id)
+    console.warn(`[sign-and-send] provider not linked to auth | order=${orderId} provider=${providerId} actor=${traceId}`)
+    return NextResponse.json(
+      { error: 'Provider account is not linked to a Supabase Auth user. Contact ops to complete provider onboarding before signing.' },
+      { status: 403 },
+    )
+  }
+  if (provider.user_id !== session.user.id) {
+    const traceId = await actorTraceId(session.user.id)
+    console.warn(`[sign-and-send] signer/provider mismatch | order=${orderId} provider=${providerId} actor=${traceId}`)
+    return NextResponse.json(
+      { error: 'Only the assigned provider can sign this prescription.' },
+      { status: 403 },
+    )
+  }
+
+  // Now that F-2 has passed, run the remaining compliance lookups in
+  // parallel. These are needed for an authorized signer only.
+  const [licenseResult, pharmacyResult, clinicResult] = await Promise.all([
     // Check 1: Pharmacy licensed in patient state
     supabase.from('pharmacy_state_licenses')
       .select('pharmacy_id')
       .eq('pharmacy_id', pharmacyId ?? '')
       .eq('state_code', patientState ?? '')
       .eq('is_active', true)
-      .maybeSingle(),
-
-    // Checks 2+3+F-2: Provider NPI + signature + auth-user link
-    supabase.from('providers')
-      .select('provider_id, npi_number, signature_hash, clinic_id, user_id')
-      .eq('provider_id', providerId)
-      .eq('clinic_id', clinicId)
-      .eq('is_active', true)
-      .is('deleted_at', null)
       .maybeSingle(),
 
     // Checks 5+6: Pharmacy status + tier
@@ -163,36 +204,8 @@ export async function POST(
       ? ((order.medication_snapshot as Record<string, number>)['dea_schedule'] as number)
       : 0
 
-  const provider = providerResult.data
   const pharmacy = pharmacyResult.data
   const clinic   = clinicResult.data
-
-  // ── F-2: signer identity must match the order's provider ─────
-  // Audit finding F-2 (HIGH) in docs/audits/role-audit-and-data-model.md:
-  // without this guard, any clinic staff session (e.g., a medical
-  // assistant) could submit a signed prescription as any provider in
-  // their clinic — the route previously only checked clinic_id + DRAFT
-  // status. providers.user_id was added by F-1 (migration
-  // 20260528000001) so we can now verify the calling auth user IS the
-  // provider on the order.
-  //
-  // user_id is nullable for backward compatibility, but a null value
-  // means the provider isn't linked to a Supabase Auth identity and
-  // cannot sign — they must complete provider-onboarding first.
-  if (!provider?.user_id) {
-    console.warn(`[sign-and-send] provider not linked to auth | order=${orderId} provider=${providerId}`)
-    return NextResponse.json(
-      { error: 'Provider account is not linked to a Supabase Auth user. Contact ops to complete provider onboarding before signing.' },
-      { status: 403 },
-    )
-  }
-  if (provider.user_id !== session.user.id) {
-    console.warn(`[sign-and-send] signer/provider mismatch | order=${orderId} provider=${providerId} signer=${session.user.id}`)
-    return NextResponse.json(
-      { error: 'Only the assigned provider can sign this prescription.' },
-      { status: 403 },
-    )
-  }
 
   // Evaluate checks
   const npiValid     = /^\d{10}$/.test(provider?.npi_number ?? '')
