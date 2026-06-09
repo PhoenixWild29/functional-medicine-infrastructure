@@ -1174,6 +1174,13 @@ export type Database = {
             referencedColumns: ["clinic_id"]
           },
           {
+            foreignKeyName: "orders_formulation_id_fkey"
+            columns: ["formulation_id"]
+            isOneToOne: false
+            referencedRelation: "formulations"
+            referencedColumns: ["formulation_id"]
+          },
+          {
             foreignKeyName: "orders_patient_id_fkey"
             columns: ["patient_id"]
             isOneToOne: false
