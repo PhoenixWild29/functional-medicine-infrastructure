@@ -229,7 +229,7 @@ API connection configuration for Tier 1 and Tier 3 pharmacies. Credentials are s
 |--------|------|-------------|
 | config_id | UUID (PK) | Configuration identifier |
 | pharmacy_id | UUID (FK→pharmacies, UNIQUE) | One config per pharmacy |
-| api_base_url | TEXT | Pharmacy's API base URL |
+| base_url | TEXT | Pharmacy's API base URL |
 | vault_secret_id | UUID | Reference to Supabase Vault entry for API bearer token |
 | webhook_secret_vault_id | UUID | Reference to Vault entry for webhook HMAC verification secret |
 | circuit_breaker_status | TEXT | CLOSED / OPEN / HALF_OPEN |
