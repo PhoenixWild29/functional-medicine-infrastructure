@@ -43,7 +43,7 @@ export async function POST(_request: NextRequest, { params }: Params): Promise<N
   // Verify pharmacy is Tier 1 or Tier 3 (API-capable)
   const { data: pharmacy, error: fetchErr } = await supabase
     .from('pharmacies')
-    .select('pharmacy_id, name, integration_tier, api_base_url')
+    .select('pharmacy_id, name, integration_tier')
     .eq('pharmacy_id', pharmacyId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -52,8 +52,7 @@ export async function POST(_request: NextRequest, { params }: Params): Promise<N
     return NextResponse.json({ error: 'Pharmacy not found' }, { status: 404 })
   }
 
-  const tier    = (pharmacy as unknown as Record<string, unknown>)['integration_tier'] as string
-  const apiBase = (pharmacy as unknown as Record<string, unknown>)['api_base_url'] as string | null
+  const tier = pharmacy.integration_tier
 
   if (!['TIER_1_API', 'TIER_3_SPEC', 'TIER_3_HYBRID'].includes(tier)) {
     return NextResponse.json({
@@ -61,11 +60,32 @@ export async function POST(_request: NextRequest, { params }: Params): Promise<N
     }, { status: 409 })
   }
 
-  if (!apiBase) {
+  // LF-1 fix (audit: docs/audits/role-audit-and-data-model.md + Codex review of
+  // LifeFile integration readiness): the base URL lives on pharmacy_api_configs,
+  // not on pharmacies. The previous read of `pharmacies.api_base_url` always
+  // resolved to undefined (the column does not exist) and was masked by a
+  // `as unknown as Record<string, unknown>` cast, causing every sync attempt
+  // to short-circuit with "Pharmacy has no API base URL configured". Load the
+  // active API config row instead.
+  const { data: apiConfig, error: configErr } = await supabase
+    .from('pharmacy_api_configs')
+    .select('base_url')
+    .eq('pharmacy_id', pharmacyId)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (configErr) {
+    console.error(`[ops/catalog/sync] api_config fetch failed | pharmacy=${pharmacyId}:`, configErr.message)
+    return NextResponse.json({ error: 'Failed to load API config' }, { status: 500 })
+  }
+
+  if (!apiConfig?.base_url) {
     return NextResponse.json({
-      error: 'Pharmacy has no API base URL configured',
+      error: 'Pharmacy has no active API config (pharmacy_api_configs)',
     }, { status: 409 })
   }
+
+  const apiBase = apiConfig.base_url
 
   // BLK-04: SSRF prevention — only allow HTTPS URLs
   if (!apiBase.startsWith('https://')) {
