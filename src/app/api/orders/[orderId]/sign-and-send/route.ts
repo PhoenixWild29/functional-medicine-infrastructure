@@ -128,9 +128,9 @@ export async function POST(
       .eq('is_active', true)
       .maybeSingle(),
 
-    // Checks 2+3: Provider NPI + signature
+    // Checks 2+3+F-2: Provider NPI + signature + auth-user link
     supabase.from('providers')
-      .select('provider_id, npi_number, signature_hash, clinic_id')
+      .select('provider_id, npi_number, signature_hash, clinic_id, user_id')
       .eq('provider_id', providerId)
       .eq('clinic_id', clinicId)
       .eq('is_active', true)
@@ -166,6 +166,33 @@ export async function POST(
   const provider = providerResult.data
   const pharmacy = pharmacyResult.data
   const clinic   = clinicResult.data
+
+  // ── F-2: signer identity must match the order's provider ─────
+  // Audit finding F-2 (HIGH) in docs/audits/role-audit-and-data-model.md:
+  // without this guard, any clinic staff session (e.g., a medical
+  // assistant) could submit a signed prescription as any provider in
+  // their clinic — the route previously only checked clinic_id + DRAFT
+  // status. providers.user_id was added by F-1 (migration
+  // 20260528000001) so we can now verify the calling auth user IS the
+  // provider on the order.
+  //
+  // user_id is nullable for backward compatibility, but a null value
+  // means the provider isn't linked to a Supabase Auth identity and
+  // cannot sign — they must complete provider-onboarding first.
+  if (!provider?.user_id) {
+    console.warn(`[sign-and-send] provider not linked to auth | order=${orderId} provider=${providerId}`)
+    return NextResponse.json(
+      { error: 'Provider account is not linked to a Supabase Auth user. Contact ops to complete provider onboarding before signing.' },
+      { status: 403 },
+    )
+  }
+  if (provider.user_id !== session.user.id) {
+    console.warn(`[sign-and-send] signer/provider mismatch | order=${orderId} provider=${providerId} signer=${session.user.id}`)
+    return NextResponse.json(
+      { error: 'Only the assigned provider can sign this prescription.' },
+      { status: 403 },
+    )
+  }
 
   // Evaluate checks
   const npiValid     = /^\d{10}$/.test(provider?.npi_number ?? '')
