@@ -31,6 +31,17 @@ export async function POST(): Promise<NextResponse> {
   const supabase = createServiceClient()
   const report = await syncPocCredentials(supabase)
 
-  const status = report.ok ? 200 : 500
+  // 428 Precondition Required when POC_MODE is not 'true' — mirrors the
+  // contract of /api/admin/refresh-demo-data so the demo-tools UI and
+  // any retry logic can distinguish "config problem, don't retry" from
+  // a real execution error.
+  let status: number
+  if (report.skipped === 'not_poc_mode') {
+    status = 428
+  } else if (report.ok) {
+    status = 200
+  } else {
+    status = 500
+  }
   return NextResponse.json(report, { status })
 }

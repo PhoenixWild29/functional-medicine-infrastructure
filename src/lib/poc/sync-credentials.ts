@@ -27,10 +27,34 @@ export interface PocSyncReport {
   totp_enrollment?:   DemoTotpEnrollmentResult
   demo_data_refresh?: DemoDataRefreshReport
   ok:      boolean
+  /**
+   * Populated when the sync was short-circuited rather than run.
+   * Currently the only value is 'not_poc_mode' (POC_MODE env is not 'true').
+   * Callers should map this to HTTP 428 Precondition Required, mirroring
+   * the established pattern in /api/admin/refresh-demo-data.
+   */
+  skipped?: 'not_poc_mode'
 }
 
 export async function syncPocCredentials(supabase: SupabaseClient): Promise<PocSyncReport> {
   const ranAt: string = new Date().toISOString()
+
+  // Audit X-1 follow-up (Codex Section 2): credential mutation must
+  // NEVER run in a non-POC deployment. In production we could otherwise
+  // (re)create known demo accounts whenever an ops admin clicks the
+  // button or the daily cron fires. Gate the helper itself so both
+  // callers (/api/admin/reset-poc-credentials, /api/cron/poc-credential-sync)
+  // are protected at once. Exact-string compare mirrors the precedent in
+  // /api/admin/refresh-demo-data — no truthy coercion.
+  if (process.env['POC_MODE'] !== 'true') {
+    return {
+      ran_at:  ranAt,
+      results: [],
+      ok:      false,
+      skipped: 'not_poc_mode',
+    }
+  }
+
   const results: PocSyncResult[] = []
 
   // NB-01: page size 1000 to avoid silent truncation (matches seed-poc.ts).

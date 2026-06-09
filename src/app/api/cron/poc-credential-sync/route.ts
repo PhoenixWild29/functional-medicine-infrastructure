@@ -69,6 +69,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = createServiceClient()
   const report = await syncPocCredentials(supabase)
 
+  // 428 Precondition Required when POC_MODE is not 'true' — mirrors the
+  // contract of /api/admin/refresh-demo-data. The cron should NOT page
+  // anyone if it's correctly no-opping in production. Log info-level so
+  // it's still visible in cron output.
+  if (report.skipped === 'not_poc_mode') {
+    console.info('[cron/poc-credential-sync] skipped: POC_MODE !== "true" — credential mutation gated off')
+    return NextResponse.json(report, { status: 428 })
+  }
+
   const credentialsOk = report.ok
   const demoDataOk    = report.demo_data_refresh?.ok !== false  // missing = treat as ok (legacy / skipped)
 
