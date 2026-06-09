@@ -232,7 +232,7 @@ erDiagram
 
   pharmacy_api_configs {
     uuid    pharmacy_id              PK_FK
-    text    api_base_url
+    text    base_url
     json    rate_limit
     text    auth_type
     text    payload_transformer
