@@ -22,7 +22,9 @@ import type { NextRequest } from 'next/server'
 const verifyTokenMock    = jest.fn()
 const orderFetchMock     = jest.fn()
 const clinicFetchMock    = jest.fn()
-const orderUpdateMock    = jest.fn().mockResolvedValue({ error: null })
+// Codex post-review sweep: stamp-back chain now ends with .select('order_id'),
+// returning rows. Default returns 1 row so the CAS-success path is the default.
+const orderUpdateMock    = jest.fn().mockResolvedValue({ data: [{ order_id: 'o-1' }], error: null })
 const stripeRetrieveMock = jest.fn()
 const stripeUpdateMock   = jest.fn().mockResolvedValue({})
 const stripeCreateMock   = jest.fn()
@@ -46,7 +48,16 @@ jest.mock('@/lib/supabase/service', () => ({
       }),
       update: () => ({
         eq: () => ({
-          eq: () => orderUpdateMock(),
+          eq: () => ({
+            // Codex post-review sweep: stamp-back now adds
+            // .is('payment_group_id', null).select('order_id')
+            is: () => ({
+              select: () => orderUpdateMock(),
+            }),
+            // Backwards-compat: existing tests still hit the 2-eq chain via
+            // an existing PI retrieve path that never goes through stamp.
+            then: undefined,
+          }),
         }),
       }),
     }),
@@ -77,6 +88,7 @@ const VALID_ORDER = {
   retail_price_snapshot:    300,
   wholesale_price_snapshot: 150,
   stripe_payment_intent_id: 'pi_existing',
+  payment_group_id:         null,
 }
 
 const VALID_CLINIC = {
@@ -91,6 +103,7 @@ beforeEach(() => {
   stripeRetrieveMock.mockReset()
   stripeUpdateMock.mockReset().mockResolvedValue({})
   stripeCreateMock.mockReset()
+  orderUpdateMock.mockReset().mockResolvedValue({ data: [{ order_id: 'o-1' }], error: null })
 
   verifyTokenMock.mockResolvedValue({ orderId: 'o-1', clinicId: 'c-1', patientId: 'p-1' })
   orderFetchMock.mockResolvedValue({ data: VALID_ORDER, error: null })
@@ -237,5 +250,66 @@ describe('POST /api/checkout/payment-intent — new PI create + email', () => {
     expect(res.status).toBe(200)
     const createArgs = stripeCreateMock.mock.calls[0]![0] as Record<string, unknown>
     expect(createArgs).not.toHaveProperty('receipt_email')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────
+// Codex post-review sweep — Phase C carryover (critical finding #1)
+// Solo route must reject orders that have been linked to a payment_group.
+// Without this guard, a patient's stale solo link could create a second
+// Stripe PaymentIntent and result in double charging.
+// ─────────────────────────────────────────────────────────────────────
+
+describe('POST /api/checkout/payment-intent — Phase C group carryover', () => {
+  it('returns 409 when the order has been linked to a payment_group', async () => {
+    orderFetchMock.mockResolvedValue({
+      data: { ...VALID_ORDER, payment_group_id: 'group-uuid-aaa' },
+      error: null,
+    })
+
+    const res = await POST(makeRequest({ token: 'ok' }))
+    expect(res.status).toBe(409)
+    const body = await res.json() as { error: string }
+    expect(body.error).toMatch(/payment group/i)
+    // No Stripe call should have been attempted
+    expect(stripeCreateMock).not.toHaveBeenCalled()
+    expect(stripeRetrieveMock).not.toHaveBeenCalled()
+  })
+
+  it('proceeds normally when payment_group_id is null (solo path)', async () => {
+    // Default mock has payment_group_id: null already; this test just locks in
+    // that the default path still works after the guard was added.
+    orderFetchMock.mockResolvedValue({
+      data: { ...VALID_ORDER, stripe_payment_intent_id: null, payment_group_id: null },
+      error: null,
+    })
+    stripeCreateMock.mockResolvedValue({
+      id:            'pi_new',
+      client_secret: 'pi_new_secret_xyz',
+    })
+    // CAS stamp succeeds (the new chain returns at least one row)
+    orderUpdateMock.mockResolvedValue({ data: [{ order_id: 'o-1' }], error: null })
+
+    const res = await POST(makeRequest({ token: 'ok' }))
+    expect(res.status).toBe(200)
+    expect(stripeCreateMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns 409 when CAS stamp loses (order just joined a group between fetch and stamp)', async () => {
+    orderFetchMock.mockResolvedValue({
+      data: { ...VALID_ORDER, stripe_payment_intent_id: null, payment_group_id: null },
+      error: null,
+    })
+    stripeCreateMock.mockResolvedValue({
+      id:            'pi_orphaned',
+      client_secret: 'pi_orphaned_secret_xyz',
+    })
+    // CAS stamp returns 0 rows — the order's payment_group_id is no longer null
+    orderUpdateMock.mockResolvedValue({ data: [], error: null })
+
+    const res = await POST(makeRequest({ token: 'ok' }))
+    expect(res.status).toBe(409)
+    const body = await res.json() as { error: string }
+    expect(body.error).toMatch(/group checkout link/i)
   })
 })

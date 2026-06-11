@@ -55,6 +55,20 @@ interface OrderRow {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  // ── 0. Feature flag — Codex 2026-06-09 sweep, critical finding #2 ────
+  // Group checkout requires (a) Stage 1 migration applied in the live DB,
+  // (b) Stage 3 webhook handling group PIs by transitioning all N member
+  // orders atomically, (c) solo route blocking grouped orders (Stage 2.5
+  // shipped alongside this gate). Until ALL of those are live in the
+  // target environment, refuse to create groups. Operators flip this
+  // env to 'true' only after verifying the full stack.
+  if (process.env['PHASE_C_GROUPS_ENABLED'] !== 'true') {
+    return NextResponse.json(
+      { error: 'Multi-prescription payment groups are not yet enabled in this environment.' },
+      { status: 503 },
+    )
+  }
+
   // ── 1. Auth gate ─────────────────────────────────────────────
   const supabaseAuth = await createServerClient()
   const { data: { session } } = await supabaseAuth.auth.getSession()
@@ -358,22 +372,51 @@ export function DELETE() { return new NextResponse(null, { status: 405 }) }
 // ── Rollback helper ──────────────────────────────────────────
 // Marks a payment_group as CANCELLED and unlinks any orders that
 // were tied to it. Called when the link step or Stripe step fails.
-// Each step is best-effort; failures are logged but do not propagate
-// because we're already in an error path returning to the caller.
+//
+// Codex 2026-06-09 sweep, high finding #3: a single-attempt unlink
+// that fails leaves orders permanently bound to a CANCELLED group,
+// blocking BOTH solo and group checkout. Retry the unlink up to 3x
+// with short backoffs to give transient transport errors room to
+// recover. If all retries fail, log a CRITICAL marker so ops can
+// run a manual repair query — but still cancel the group row so
+// future retries can detect the stranded state via
+//   SELECT order_id FROM orders
+//   WHERE payment_group_id IN
+//     (SELECT group_id FROM payment_groups WHERE status='CANCELLED')
 
 async function rollbackGroup(
   supabase: ReturnType<typeof createServiceClient>,
   groupId: string,
   orderIds: string[],
 ): Promise<void> {
-  const { error: unlinkErr } = await supabase
-    .from('orders')
-    .update({ payment_group_id: null, updated_at: new Date().toISOString() })
-    .in('order_id', orderIds)
-    .eq('payment_group_id', groupId)
+  const MAX_UNLINK_ATTEMPTS = 3
+  let unlinkSucceeded = false
+  for (let attempt = 1; attempt <= MAX_UNLINK_ATTEMPTS; attempt++) {
+    const { error: unlinkErr } = await supabase
+      .from('orders')
+      .update({ payment_group_id: null, updated_at: new Date().toISOString() })
+      .in('order_id', orderIds)
+      .eq('payment_group_id', groupId)
 
-  if (unlinkErr) {
-    console.error(`[payment-group rollback] order unlink failed for group=${groupId}:`, unlinkErr.message)
+    if (!unlinkErr) {
+      unlinkSucceeded = true
+      break
+    }
+
+    console.warn(`[payment-group rollback] unlink attempt ${attempt}/${MAX_UNLINK_ATTEMPTS} failed for group=${groupId}:`, unlinkErr.message)
+
+    if (attempt < MAX_UNLINK_ATTEMPTS) {
+      // Short backoff: 50ms, 150ms. Total worst-case ~200ms before we
+      // give up and log CRITICAL.
+      await new Promise(r => setTimeout(r, 50 * attempt))
+    }
+  }
+
+  if (!unlinkSucceeded) {
+    console.error(
+      `[payment-group rollback] CRITICAL: order unlink failed after ${MAX_UNLINK_ATTEMPTS} attempts | group=${groupId} orders=${orderIds.join(',')}`,
+      '— orders are stranded with payment_group_id pointing at a soon-to-be-CANCELLED group. Run ops repair query.',
+    )
   }
 
   const { error: cancelErr } = await supabase

@@ -91,7 +91,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Fetch order — must exist, belong to this clinic, and be awaiting payment
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('order_id, status, retail_price_snapshot, wholesale_price_snapshot, stripe_payment_intent_id')
+    .select('order_id, status, retail_price_snapshot, wholesale_price_snapshot, stripe_payment_intent_id, payment_group_id')
     .eq('order_id', orderId)
     .eq('clinic_id', clinicId)
     .is('deleted_at', null)
@@ -110,6 +110,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (order.status !== 'AWAITING_PAYMENT') {
     const statusCode = order.status === 'PAID_PROCESSING' || order.status === 'SHIPPED' || order.status === 'DELIVERED' ? 409 : 422
     return NextResponse.json({ error: `Order is not awaiting payment (status=${order.status})` }, { status: statusCode })
+  }
+
+  // ── Phase C carryover — Codex 2026-06-09 sweep, critical finding #1 ─────
+  // If the order has been linked to a payment_group, the patient MUST pay via
+  // the group's bundled link (Stage 2's /api/checkout/payment-group endpoint).
+  // Creating a solo PaymentIntent here would result in the patient paying
+  // TWICE for the same order — once via this solo link (still live from a
+  // stale URL or browser history), once via the group link. Reject with 409.
+  if (order.payment_group_id) {
+    console.warn(`[payment-intent] solo-checkout attempted on grouped order | order=${orderId} group=${order.payment_group_id}`)
+    return NextResponse.json(
+      { error: 'This order is part of a payment group. Use the group checkout link to pay for all bundled prescriptions at once.' },
+      { status: 409 },
+    )
   }
 
   // REQ-PSR-001: Idempotent — return existing PI if one already exists.
@@ -226,19 +240,39 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       throw new Error('PaymentIntent has no client_secret')
     }
 
-    // Store PI id on the order for idempotency and webhook matching (REQ-PSR-001)
-    const { error: updateError } = await supabase
+    // Store PI id on the order for idempotency and webhook matching (REQ-PSR-001).
+    // CAS guards (Codex 2026-06-09 sweep — defensive hardening):
+    //   status = 'AWAITING_PAYMENT'  → don't overwrite if already paid
+    //   payment_group_id IS NULL      → don't overwrite if a group-link landed
+    //                                   between this route's order-fetch and the
+    //                                   stamp. With this guard, a concurrent
+    //                                   group-creation request wins cleanly and
+    //                                   the solo PI we just created becomes an
+    //                                   un-stamped (and thus uncollectible)
+    //                                   Stripe PaymentIntent — easier to clean
+    //                                   up than a double-charged patient.
+    const { data: updatedRows, error: updateError } = await supabase
       .from('orders')
       .update({
         stripe_payment_intent_id: pi.id,
         updated_at:               new Date().toISOString(),
       })
       .eq('order_id', orderId)
-      .eq('status', 'AWAITING_PAYMENT') // CAS guard: don't overwrite if already paid
+      .eq('status', 'AWAITING_PAYMENT')
+      .is('payment_group_id', null)
+      .select('order_id')
 
     if (updateError) {
-      // Non-fatal: PI was created successfully; log and continue
       console.error('[payment-intent] failed to store stripe_payment_intent_id:', updateError.message)
+    } else if (!updatedRows || updatedRows.length === 0) {
+      // CAS lost: the order is no longer in solo-eligible state. The Stripe PI
+      // is orphaned (created but not stamped). Log loud so ops can reconcile;
+      // the patient should be redirected to the group checkout flow.
+      console.warn(`[payment-intent] CAS stamp lost — order=${orderId} pi=${pi.id} (likely just joined a payment group)`)
+      return NextResponse.json(
+        { error: 'This order just joined a payment group. Refresh to use the group checkout link.' },
+        { status: 409 },
+      )
     }
 
     console.info(`[payment-intent] created | pi=${pi.id} | order=${orderId} | clinic=${clinicId}`)
