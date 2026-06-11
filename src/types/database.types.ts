@@ -1191,6 +1191,13 @@ export type Database = {
             referencedColumns: ["patient_id"]
           },
           {
+            foreignKeyName: "orders_payment_group_id_fkey"
+            columns: ["payment_group_id"]
+            isOneToOne: false
+            referencedRelation: "payment_groups"
+            referencedColumns: ["group_id"]
+          },
+          {
             foreignKeyName: "orders_pharmacy_id_fkey"
             columns: ["pharmacy_id"]
             isOneToOne: false

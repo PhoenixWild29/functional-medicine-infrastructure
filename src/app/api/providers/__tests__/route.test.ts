@@ -45,6 +45,7 @@ function validBody(overrides: Record<string, unknown> = {}): Record<string, unkn
 
 const getSessionMock     = jest.fn()
 const npiCheckMock       = jest.fn()
+const clinicCheckMock    = jest.fn()
 const createUserMock     = jest.fn()
 const providerInsertMock = jest.fn()
 const deleteUserMock     = jest.fn()
@@ -74,6 +75,18 @@ jest.mock('@/lib/supabase/service', () => ({
           }),
         }
       }
+      if (table === 'clinics') {
+        // Codex post-review sweep: providers route now verifies clinic exists.
+        return {
+          select: () => ({
+            eq: () => ({
+              is: () => ({
+                maybeSingle: () => clinicCheckMock(),
+              }),
+            }),
+          }),
+        }
+      }
       throw new Error(`Unexpected table in test: ${table}`)
     },
     auth: {
@@ -88,12 +101,14 @@ jest.mock('@/lib/supabase/service', () => ({
 beforeEach(() => {
   getSessionMock.mockReset()
   npiCheckMock.mockReset()
+  clinicCheckMock.mockReset()
   createUserMock.mockReset()
   providerInsertMock.mockReset()
   deleteUserMock.mockReset()
 
   // Default happy-path mock state — individual tests override
   npiCheckMock.mockResolvedValue({ data: null, error: null })
+  clinicCheckMock.mockResolvedValue({ data: { clinic_id: TEST_CLINIC_ID, is_active: true }, error: null })
   createUserMock.mockResolvedValue({ data: { user: { id: NEW_PROVIDER_USER_ID } }, error: null })
   providerInsertMock.mockResolvedValue({
     data: {
@@ -343,5 +358,44 @@ describe('POST /api/providers — happy path', () => {
     expect(createUserMock).toHaveBeenCalledWith(expect.objectContaining({
       user_metadata: { app_role: 'provider', clinic_id: OTHER_CLINIC_ID },
     }))
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────
+// Codex post-review sweep — clinic existence pre-check
+// Fails fast (no auth user created) when targetClinicId doesn't resolve.
+// ─────────────────────────────────────────────────────────────────────
+
+describe('POST /api/providers — clinic existence pre-check', () => {
+  it('returns 404 when ops_admin targets a non-existent clinic (no auth user created)', async () => {
+    mockSession('ops_admin')
+    clinicCheckMock.mockResolvedValue({ data: null, error: null })
+
+    const res = await POST(makeRequest(validBody({ clinicId: OTHER_CLINIC_ID })))
+    expect(res.status).toBe(404)
+    // Critical: failed BEFORE auth.admin.createUser was called → no orphan to roll back
+    expect(createUserMock).not.toHaveBeenCalled()
+    expect(npiCheckMock).not.toHaveBeenCalled()  // NPI check is AFTER clinic check
+  })
+
+  it('returns 409 when the target clinic is inactive (no auth user created)', async () => {
+    mockSession('ops_admin')
+    clinicCheckMock.mockResolvedValue({
+      data: { clinic_id: OTHER_CLINIC_ID, is_active: false },
+      error: null,
+    })
+
+    const res = await POST(makeRequest(validBody({ clinicId: OTHER_CLINIC_ID })))
+    expect(res.status).toBe(409)
+    expect(createUserMock).not.toHaveBeenCalled()
+  })
+
+  it('still hits clinic check for clinic_admin (own clinic) before creating auth user', async () => {
+    mockSession('clinic_admin', TEST_CLINIC_ID)
+    clinicCheckMock.mockResolvedValue({ data: null, error: null })  // simulate the clinic was just soft-deleted
+
+    const res = await POST(makeRequest(validBody()))
+    expect(res.status).toBe(404)
+    expect(createUserMock).not.toHaveBeenCalled()
   })
 })

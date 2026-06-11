@@ -203,4 +203,28 @@ describe('middleware F-3 — /new-prescription/sign/[orderId] provider-only', ()
     expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
     expectSecurityHeaders(res)
   })
+
+  // Codex post-review sweep follow-up: the original guard used startsWith
+  // '/new-prescription/sign/' which would NOT match the exact path
+  // '/new-prescription/sign' (no trailing slash). Broaden the guard so
+  // both forms are blocked.
+  it('redirects medical_assistant from exact /new-prescription/sign (no trailing slash)', async () => {
+    getSessionMock.mockResolvedValue(MA_SESSION)
+    const res = await middleware(makeReq('/new-prescription/sign'))
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toContain('/unauthorized')
+  })
+
+  it('redirects clinic_admin from exact /new-prescription/sign (no trailing slash)', async () => {
+    getSessionMock.mockResolvedValue(CLINIC_SESSION)
+    const res = await middleware(makeReq('/new-prescription/sign'))
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toContain('/unauthorized')
+  })
+
+  it('does NOT block provider on exact /new-prescription/sign', async () => {
+    getSessionMock.mockResolvedValue(PROVIDER_SESSION)
+    const res = await middleware(makeReq('/new-prescription/sign'))
+    expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
+  })
 })

@@ -129,16 +129,20 @@ export async function middleware(request: NextRequest) {
 
   // F-3 (audit role-audit-and-data-model.md): provider-only screens
   // ──────────────────────────────────────────────────────────────
-  // /new-prescription/sign/[orderId] is the EPCS signing page. Only a
+  // /new-prescription/sign[/...] is the EPCS signing surface. Only a
   // provider should reach it. F-2 already enforces signer identity at
   // the API layer (sign-and-send POST) — this redirect is the page-
   // level UX equivalent so an MA or clinic_admin never lands on a
-  // dead-end signing UI. clinic_admin retains access in case a single
-  // person at the clinic holds both roles via separate accounts and
-  // is logged into the provider account, but a clinic_admin SESSION
-  // is blocked here too because their session does not have the
-  // provider's user_id → providers row link required by F-2.
-  if (pathname.startsWith('/new-prescription/sign/') && appRole !== 'provider') {
+  // dead-end signing UI.
+  //
+  // Codex 2026-06-09 sweep follow-up: original guard only matched
+  // '/new-prescription/sign/' (with trailing slash). A request for
+  // exactly '/new-prescription/sign' would skip the guard. Broaden the
+  // match so the exact path is also blocked.
+  if (
+    (pathname === '/new-prescription/sign' || pathname.startsWith('/new-prescription/sign/'))
+    && appRole !== 'provider'
+  ) {
     return applySecurityHeaders(NextResponse.redirect(new URL('/unauthorized', request.url)))
   }
 

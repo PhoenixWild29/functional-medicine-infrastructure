@@ -92,19 +92,21 @@ jest.mock('@/lib/supabase/service', () => ({
             const callNum = ordersUpdateCallNumber
             return {
               in: () => ({
-                eq: () => ({
-                  is: () => ({
-                    is: () => ({
-                      is: () => ({
-                        select: () => (callNum === 1 ? ordersLinkUpdateMock() : ordersRollbackMock()),
-                      }),
-                    }),
-                  }),
-                }),
-                eq2: () => ordersRollbackMock(),
+                // callNum === 1 → CAS link chain (.eq.is.is.is.select)
+                // callNum >= 2 → rollback chain (.eq returns the awaitable directly)
+                eq: () =>
+                  callNum === 1
+                    ? {
+                        is: () => ({
+                          is: () => ({
+                            is: () => ({
+                              select: () => ordersLinkUpdateMock(),
+                            }),
+                          }),
+                        }),
+                      }
+                    : ordersRollbackMock(),
               }),
-              // Simpler chain used by rollback (in + eq)
-              eq: () => ordersRollbackMock(),
             }
           },
         }
@@ -158,7 +160,21 @@ jest.mock('@/lib/stripe/client', () => ({
 
 // ── Setup ──────────────────────────────────────────────────────────
 
+const ORIGINAL_PHASE_C_FLAG = process.env['PHASE_C_GROUPS_ENABLED']
+
+afterAll(() => {
+  if (ORIGINAL_PHASE_C_FLAG === undefined) {
+    delete process.env['PHASE_C_GROUPS_ENABLED']
+  } else {
+    process.env['PHASE_C_GROUPS_ENABLED'] = ORIGINAL_PHASE_C_FLAG
+  }
+})
+
 beforeEach(() => {
+  // Codex post-review sweep: every test (except the gate-specific ones)
+  // assumes the feature flag is on. Gate tests override locally.
+  process.env['PHASE_C_GROUPS_ENABLED'] = 'true'
+
   getSessionMock.mockReset()
   ordersFetchMock.mockReset()
   ordersLinkUpdateMock.mockReset()
@@ -454,5 +470,70 @@ describe('POST /api/checkout/payment-group — happy path', () => {
       }),
       expect.objectContaining({ idempotencyKey: 'checkout-group-pi-v1-group-uuid-new' }),
     )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────
+// Codex post-review sweep — gate + Stripe-failure paths
+// ─────────────────────────────────────────────────────────────────────
+
+describe('POST /api/checkout/payment-group — PHASE_C_GROUPS_ENABLED gate', () => {
+  it('returns 503 when PHASE_C_GROUPS_ENABLED is unset', async () => {
+    delete process.env['PHASE_C_GROUPS_ENABLED']
+    mockClinicSession('clinic_admin')
+    const res = await POST(makeRequest({ orderIds: [ORDER_ID_A, ORDER_ID_B] }))
+    expect(res.status).toBe(503)
+    expect(getSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('returns 503 when PHASE_C_GROUPS_ENABLED is "false"', async () => {
+    process.env['PHASE_C_GROUPS_ENABLED'] = 'false'
+    mockClinicSession('clinic_admin')
+    const res = await POST(makeRequest({ orderIds: [ORDER_ID_A, ORDER_ID_B] }))
+    expect(res.status).toBe(503)
+  })
+
+  it('returns 503 when PHASE_C_GROUPS_ENABLED is "1" (no truthy coercion)', async () => {
+    process.env['PHASE_C_GROUPS_ENABLED'] = '1'
+    mockClinicSession('clinic_admin')
+    const res = await POST(makeRequest({ orderIds: [ORDER_ID_A, ORDER_ID_B] }))
+    expect(res.status).toBe(503)
+  })
+})
+
+describe('POST /api/checkout/payment-group — Stripe failure + rollback paths', () => {
+  beforeEach(() => mockClinicSession('clinic_admin'))
+
+  it('returns 502 and rolls back group + orders when Stripe paymentIntents.create throws', async () => {
+    ordersFetchMock.mockResolvedValue({
+      data: [makeOrder({ order_id: ORDER_ID_A }), makeOrder({ order_id: ORDER_ID_B })],
+      error: null,
+    })
+    stripeCreatePiMock.mockRejectedValue(new Error('Stripe API down'))
+
+    const res = await POST(makeRequest({ orderIds: [ORDER_ID_A, ORDER_ID_B] }))
+    expect(res.status).toBe(502)
+    // rollbackGroup should have been invoked — at least one orders mutation call
+    // happened (the rollback's unlink). Linking happens once, rollback once.
+    expect(ordersUpdateCallNumber).toBeGreaterThanOrEqual(2)
+    expect(groupRollbackMock).toHaveBeenCalled()
+  })
+
+  it('still returns 502 even if the rollback unlink fails (3 retries exhausted)', async () => {
+    ordersFetchMock.mockResolvedValue({
+      data: [makeOrder({ order_id: ORDER_ID_A }), makeOrder({ order_id: ORDER_ID_B })],
+      error: null,
+    })
+    stripeCreatePiMock.mockRejectedValue(new Error('Stripe API down'))
+    // After the first update (the CAS link, which succeeds), every subsequent
+    // update on `orders` is treated as a rollback attempt and fails.
+    ordersRollbackMock.mockResolvedValue({ error: { message: 'transient connection error' } })
+
+    const res = await POST(makeRequest({ orderIds: [ORDER_ID_A, ORDER_ID_B] }))
+    expect(res.status).toBe(502)
+    // CAS link + 3 unlink retries = at least 4 orders.update() invocations.
+    expect(ordersUpdateCallNumber).toBeGreaterThanOrEqual(4)
+    // Group is still marked CANCELLED so ops can find the stranded state.
+    expect(groupRollbackMock).toHaveBeenCalled()
   })
 })

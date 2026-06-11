@@ -144,8 +144,31 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const supabase = createServiceClient()
 
-  // 4. Pre-checks (best-effort — the DB has authoritative constraints)
-  //    NPI is globally unique among non-deleted providers (partial unique index).
+  // 4a. Codex post-review sweep follow-up: verify target clinic exists BEFORE
+  //     creating an auth user. Without this, an ops_admin passing a malformed
+  //     or stale clinicId would (a) succeed at auth.admin.createUser, then
+  //     (b) fail at providers.insert via FK violation, surfacing as a generic
+  //     500 with an orphan auth user requiring rollback. Failing fast here
+  //     means no auth user is created in the first place.
+  const { data: targetClinic, error: clinicCheckErr } = await supabase
+    .from('clinics')
+    .select('clinic_id, is_active')
+    .eq('clinic_id', targetClinicId)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (clinicCheckErr) {
+    console.error(`[providers POST] clinic pre-check failed:`, clinicCheckErr.message)
+    return NextResponse.json({ error: 'Pre-check failed' }, { status: 500 })
+  }
+  if (!targetClinic) {
+    return NextResponse.json({ error: `Clinic ${targetClinicId} not found or inactive` }, { status: 404 })
+  }
+  if (!targetClinic.is_active) {
+    return NextResponse.json({ error: `Clinic ${targetClinicId} is not active; cannot create providers` }, { status: 409 })
+  }
+
+  // 4b. NPI is globally unique among non-deleted providers (partial unique index).
   const { data: existingNpi, error: npiCheckErr } = await supabase
     .from('providers')
     .select('provider_id')
