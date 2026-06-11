@@ -25,13 +25,18 @@
 //
 // HIPAA:
 //   request_payload and response_payload are stored JSONB.
-//   Callers must scrub any patient PHI before passing payloads.
-//   The pharmacy API payloads (medication name, quantity, etc.) are
-//   clinical — store them encrypted or omit from payload fields if
-//   HIPAA policy requires. For now we store them in JSONB and rely
-//   on Supabase row-level security (service_role only) for access control.
+//   request_payload is redacted at write time by
+//   `src/lib/phi/redact-adapter-payload.ts` (Option B from
+//   `docs/audits/phi-policy-adapter-submissions.md`, decided 2026-06-11).
+//   Patient name/DOB/address, medication detail, sig text, DEA, etc.
+//   are stripped before persist; a SHA-256 fingerprint of the original
+//   payload is folded into `metadata.phi_fingerprint` for replay
+//   correlation. response_payload still flows through unredacted —
+//   that column has its own policy decision pending.
+//   Supabase row-level security (service_role only) governs access.
 
 import { createServiceClient } from '@/lib/supabase/service'
+import { redactAdapterRequestPayload } from '@/lib/phi/redact-adapter-payload'
 import type { Json } from '@/types/database.types'
 
 // ============================================================
@@ -121,12 +126,35 @@ export async function markSubmitted(
 ): Promise<void> {
   const supabase = createServiceClient()
 
+  // PHI Option B (2026-06-11): redact before persist + capture a stable
+  // fingerprint of the original payload. The pharmacy still receives the
+  // full unredacted payload upstream — only what we STORE here changes.
+  const { redactedPayload, fingerprint } = redactAdapterRequestPayload(
+    requestPayload ?? null
+  )
+
+  // Merge the fingerprint into metadata WITHOUT clobbering any existing
+  // keys the row already has (e.g. config_id, api_version set at
+  // createSubmissionRecord time). Re-read the current metadata, then
+  // overlay phi_fingerprint.
+  const { data: existing } = await supabase
+    .from('adapter_submissions')
+    .select('metadata')
+    .eq('submission_id', submissionId)
+    .single()
+
+  const mergedMetadata: Record<string, unknown> = {
+    ...((existing?.metadata as Record<string, unknown> | null) ?? {}),
+    phi_fingerprint: fingerprint,
+  }
+
   const { error } = await supabase
     .from('adapter_submissions')
     .update({
       status:          'SUBMITTED',
       submitted_at:    new Date().toISOString(),
-      request_payload: (requestPayload ?? null) as Json,
+      request_payload: redactedPayload as Json,
+      metadata:        mergedMetadata as Json,
     })
     .eq('submission_id', submissionId)
 

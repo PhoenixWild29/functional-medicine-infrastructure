@@ -87,3 +87,31 @@ This is a recommendation, not a decision. The user needs to confirm.
 2. Is there an internal retention/compliance doc this policy should be added to?
 3. Is Sentry already configured to scrub PII patterns? (`beforeSend` hook in `sentry.server.config.ts`?)
 4. What is the desired retention window for adapter_submissions (HIPAA min 6 yr, but does redacted metadata count as "retained" for that requirement)?
+
+## Implementation
+
+**Decision (2026-06-11):** Option B — redact at write time.
+
+**Redaction helper:** [`src/lib/phi/redact-adapter-payload.ts`](../../src/lib/phi/redact-adapter-payload.ts)
+
+- `redactAdapterRequestPayload(raw)` returns `{ redactedPayload, fingerprint }`.
+- Recursive key-based redaction: every PHI leaf (patient name/DOB/address/contact, medication name/form/dose/quantity/sig, provider DEA, MRN/SSN) is replaced with the literal token `"[REDACTED]"`. Container keys (`patient`, `prescriber`, `medication`, `body`, …) are preserved so the structural shape stays inspectable for ops.
+- Contextual rules cover ambiguous bare keys: `state` / `country` inside a `patient` container; `form` / `strength` / `route` / `frequency` inside a `medication` / `prescription` / `rx` container.
+- Fingerprint is a SHA-256 hex digest of a deterministic canonical (sorted-key) JSON encoding of the **original** payload. Stable across replays, distinct across distinct inputs — used by ops to correlate retries / disputes without re-reading PHI.
+
+**Persistence:**
+
+- Redacted payload → `adapter_submissions.request_payload` (existing JSONB column, unchanged shape).
+- Fingerprint → `adapter_submissions.metadata.phi_fingerprint` (existing JSONB column, new reserved key). **No schema migration needed.**
+
+**Wiring:** [`src/lib/adapters/audit-trail.ts:markSubmitted`](../../src/lib/adapters/audit-trail.ts) — the sole write site for `request_payload`. Tier 1 / Tier 2 / Tier 4 adapters all funnel through this helper.
+
+**What is unchanged:**
+
+- The outbound HTTP body sent to the pharmacy API is **identical** — redaction only affects what we store locally.
+- `response_payload` is unchanged. Its policy decision is separate and pending.
+- Historical rows are unchanged — Option B is forward-only by the memo's spirit. No backfill is required or performed in this PR.
+
+**Tests:** [`src/lib/phi/__tests__/redact-adapter-payload.test.ts`](../../src/lib/phi/__tests__/redact-adapter-payload.test.ts) — 19 tests covering all PHI categories, the four naming conventions (snake_case / camelCase / nested / flat), fingerprint determinism + uniqueness, and null / empty / deeply nested edge cases.
+
+**Carve-out from the original recommendation (24h ephemeral table) — deferred.** The original recommendation suggested a separate auto-purging table for 24h of full payload retention to preserve debuggability. That carve-out is deferred to a follow-up; in the meantime, the SHA-256 fingerprint + structural shape + non-PHI fields (URL, transformer name, HTTP method, order/pharmacy IDs) are enough to triage most adapter failures. Revisit if real pharmacy traffic shows the fingerprint-only audit trail is insufficient.
