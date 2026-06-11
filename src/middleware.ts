@@ -64,8 +64,16 @@ export async function middleware(request: NextRequest) {
       // R7-Bucket-1: this branch renders patient PHI (name, medication, sig,
       // financial split) — wrap with security headers so a patient hitting Back
       // after navigating away doesn't bfcache-restore their own checkout PHI.
+      //
+      // Phase C (Stage 4): payload may carry either orderId (solo) or groupId
+      // (multi-Rx bundle). Forward whichever is present.
       const requestHeaders = new Headers(request.headers)
-      requestHeaders.set('x-checkout-order-id',  payload.orderId)
+      if (payload.orderId) {
+        requestHeaders.set('x-checkout-order-id',  payload.orderId)
+      }
+      if (payload.groupId) {
+        requestHeaders.set('x-checkout-group-id',  payload.groupId)
+      }
       requestHeaders.set('x-checkout-clinic-id',  payload.clinicId)
       return applySecurityHeaders(NextResponse.next({ request: { headers: requestHeaders } }))
     }

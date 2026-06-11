@@ -85,7 +85,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 })
   }
 
-  const { orderId, clinicId } = payload
+  // Phase C Stage 5: this endpoint is the SOLO path. Group-flavor tokens
+  // (with groupId, no orderId) must go through /api/checkout/payment-group-intent.
+  if (!payload.orderId) {
+    return NextResponse.json(
+      { error: 'This token is a group checkout token — use the group intent endpoint.' },
+      { status: 400 },
+    )
+  }
+
+  const { orderId, clinicId } = payload as { orderId: string; clinicId: string }
   const supabase = createServiceClient()
 
   // Fetch order — must exist, belong to this clinic, and be awaiting payment

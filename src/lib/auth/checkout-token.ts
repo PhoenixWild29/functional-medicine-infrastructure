@@ -8,8 +8,22 @@ function base64urlToBytes(b64url: string): Uint8Array {
   return Uint8Array.from(binary, c => c.charCodeAt(0))
 }
 
+/**
+ * Patient checkout JWT payload.
+ *
+ * Two flavors:
+ *   SOLO   : { orderId,  patientId, clinicId, iat, exp }
+ *   GROUP  : { groupId,  patientId, clinicId, iat, exp }   (Phase C)
+ *
+ * Exactly one of `orderId` / `groupId` is present per token. The middleware
+ * forwards the present one to downstream components via either
+ * x-checkout-order-id or x-checkout-group-id request header.
+ */
 export interface CheckoutTokenPayload {
-  orderId: string
+  /** Solo-order checkout (existing flow). Mutually exclusive with groupId. */
+  orderId?: string
+  /** Group checkout (Phase C). Mutually exclusive with orderId. */
+  groupId?: string
   patientId: string
   clinicId: string
   iat: number
@@ -87,6 +101,24 @@ export async function generateCheckoutToken(
   patientId: string,
   clinicId: string
 ): Promise<string> {
+  return generateCheckoutTokenInternal({ orderId, patientId, clinicId })
+}
+
+/**
+ * Phase C: generate a checkout token for a payment_group instead of a
+ * single order. The patient checkout page recognizes either kind.
+ */
+export async function generateGroupCheckoutToken(
+  groupId: string,
+  patientId: string,
+  clinicId: string,
+): Promise<string> {
+  return generateCheckoutTokenInternal({ groupId, patientId, clinicId })
+}
+
+async function generateCheckoutTokenInternal(
+  fields: { orderId?: string; groupId?: string; patientId: string; clinicId: string },
+): Promise<string> {
   const secret = serverEnv.jwtSecret()
   const encoder = new TextEncoder()
 
@@ -101,9 +133,10 @@ export async function generateCheckoutToken(
   const now = Math.floor(Date.now() / 1000)
   const ttl = serverEnv.checkoutTokenExpiry()
   const payload: CheckoutTokenPayload = {
-    orderId,
-    patientId,
-    clinicId,
+    ...(fields.orderId ? { orderId: fields.orderId } : {}),
+    ...(fields.groupId ? { groupId: fields.groupId } : {}),
+    patientId: fields.patientId,
+    clinicId:  fields.clinicId,
     iat: now,
     exp: now + ttl,
   }

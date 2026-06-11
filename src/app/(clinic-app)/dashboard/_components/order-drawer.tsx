@@ -25,6 +25,20 @@ interface Props {
   onClose: () => void
 }
 
+interface BundlableSibling {
+  orderId:        string
+  medicationName: string
+  retailPrice:    number | null
+  createdAt:      string
+}
+interface BundlableState {
+  anchorBundlable: boolean
+  anchor?: BundlableSibling
+  siblings: BundlableSibling[]
+  reason?:  string
+  featureDisabled?: boolean
+}
+
 // NB-3: order_status_history uses old_status/new_status (not "status") per trigger schema
 interface StatusHistoryRow {
   old_status: string
@@ -60,6 +74,13 @@ export function OrderDrawer({ order, onClose }: Props) {
   const [isGeneratingLink,  setIsGeneratingLink]  = useState(false)
   const [fallbackUrl,       setFallbackUrl]       = useState<string | null>(null)
 
+  // Phase C Stage 4 — Combine and Send state
+  const [isLoadingSiblings,    setIsLoadingSiblings]    = useState(false)
+  const [bundlable,            setBundlable]            = useState<BundlableState | null>(null)
+  const [selectedSiblings,     setSelectedSiblings]     = useState<Set<string>>(new Set())
+  const [isCreatingGroup,      setIsCreatingGroup]      = useState(false)
+  const [groupFallbackUrl,     setGroupFallbackUrl]     = useState<string | null>(null)
+
   // Fetch status timeline when drawer opens (order.orderId changes)
   useEffect(() => {
     if (!order) {
@@ -79,6 +100,115 @@ export function OrderDrawer({ order, onClose }: Props) {
         setIsLoadingHistory(false)
       })
   }, [order?.orderId])
+
+  // Reset Combine and Send state whenever the drawer's anchor order changes.
+  // Intentionally keyed on order?.orderId only — the body doesn't touch other
+  // fields of `order`. Matches the existing timeline-effect pattern above.
+  useEffect(() => {
+    setBundlable(null)
+    setSelectedSiblings(new Set())
+    setGroupFallbackUrl(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.orderId])
+
+  async function fetchBundlableSiblings() {
+    if (!order || isLoadingSiblings) return
+
+    setIsLoadingSiblings(true)
+    try {
+      const res = await fetch(`/api/orders/${order.orderId}/bundlable-siblings`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      })
+
+      if (res.status === 503) {
+        setBundlable({ anchorBundlable: false, siblings: [], featureDisabled: true })
+        return
+      }
+
+      if (!res.ok) {
+        notify.error('Could not check for bundlable prescriptions', `HTTP ${res.status}`)
+        setBundlable({ anchorBundlable: false, siblings: [] })
+        return
+      }
+
+      const data = await res.json() as BundlableState
+      setBundlable(data)
+      // Pre-select all siblings — typical action is "bundle all outstanding".
+      setSelectedSiblings(new Set(data.siblings.map(s => s.orderId)))
+    } catch (err) {
+      notify.error(
+        'Could not check for bundlable prescriptions',
+        err instanceof Error ? err.message : 'Unexpected error',
+      )
+      setBundlable({ anchorBundlable: false, siblings: [] })
+    } finally {
+      setIsLoadingSiblings(false)
+    }
+  }
+
+  function toggleSibling(orderId: string) {
+    setSelectedSiblings(prev => {
+      const next = new Set(prev)
+      if (next.has(orderId)) next.delete(orderId)
+      else                   next.add(orderId)
+      return next
+    })
+  }
+
+  async function handleCombineAndSend() {
+    if (!order || isCreatingGroup || selectedSiblings.size === 0) return
+
+    setIsCreatingGroup(true)
+    setGroupFallbackUrl(null)
+
+    try {
+      const res = await fetch(`/api/orders/${order.orderId}/group-and-send`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ siblingOrderIds: Array.from(selectedSiblings) }),
+      })
+
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        const detail = body.error ?? `HTTP ${res.status}`
+        if (res.status === 409) {
+          notify.error('Orders changed', 'Refresh the dashboard and try again')
+        } else if (res.status === 403) {
+          notify.error('Not permitted', detail)
+        } else if (res.status === 503) {
+          notify.error('Feature disabled', 'Multi-prescription groups are not yet enabled')
+        } else {
+          notify.error('Failed to create group payment link', detail)
+        }
+        return
+      }
+
+      const { checkoutUrl, orderCount, totalCents } = (await res.json()) as {
+        checkoutUrl: string; orderCount: number; totalCents: number
+      }
+
+      try {
+        await navigator.clipboard.writeText(checkoutUrl)
+        notify.success(`Bundle link copied · ${orderCount} prescriptions · ${toCurrency(totalCents)}`)
+        // Refresh the dashboard so the bundled rows reflect their new
+        // payment_group_id (the row colors/filters can update).
+        router.refresh()
+        // Hide the picker — the orders are now grouped and can't be re-bundled.
+        setBundlable(null)
+        setSelectedSiblings(new Set())
+      } catch {
+        setGroupFallbackUrl(checkoutUrl)
+      }
+    } catch (err) {
+      notify.error(
+        'Failed to create group payment link',
+        err instanceof Error ? err.message : 'Unexpected error',
+      )
+    } finally {
+      setIsCreatingGroup(false)
+    }
+  }
 
   async function handleCopyPaymentLink() {
     if (!order || isGeneratingLink) return
@@ -192,6 +322,132 @@ export function OrderDrawer({ order, onClose }: Props) {
                     ? 'Regenerate Payment Link'
                     : 'Copy Payment Link'}
               </button>
+
+              {/* Phase C Stage 4 — Combine and Send (multi-Rx bundle) */}
+              {!isExpired && bundlable === null && (
+                <button
+                  type="button"
+                  onClick={fetchBundlableSiblings}
+                  disabled={isLoadingSiblings}
+                  className="mt-2 w-full rounded-md border border-emerald-600 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                >
+                  {isLoadingSiblings ? 'Checking…' : 'Combine with other prescriptions…'}
+                </button>
+              )}
+
+              {bundlable?.featureDisabled && (
+                <p className="mt-2 text-xs text-emerald-700">
+                  Multi-prescription bundling is not yet enabled in this environment.
+                </p>
+              )}
+
+              {bundlable && !bundlable.featureDisabled && bundlable.anchorBundlable && bundlable.siblings.length === 0 && (
+                <p className="mt-2 text-xs text-emerald-700">
+                  No other prescriptions awaiting payment for this patient + provider right now.
+                </p>
+              )}
+
+              {bundlable && !bundlable.featureDisabled && bundlable.anchorBundlable && bundlable.siblings.length > 0 && (
+                <div className="mt-3 rounded-md border border-emerald-300 bg-white p-3">
+                  <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wide">
+                    Combine into one payment link
+                  </p>
+                  <p className="mt-1 text-xs text-emerald-700">
+                    Select prescriptions to bundle with this one. The patient pays once for all selected items.
+                  </p>
+                  <ul className="mt-3 space-y-2">
+                    {bundlable.siblings.map(s => {
+                      const checked = selectedSiblings.has(s.orderId)
+                      return (
+                        <li key={s.orderId}>
+                          <label className="flex items-start gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleSibling(s.orderId)}
+                              className="mt-0.5 rounded border-emerald-400 text-emerald-600 focus-visible:ring-emerald-600"
+                            />
+                            <span className="flex-1 text-sm text-foreground">
+                              <span className="block font-medium">{s.medicationName}</span>
+                              <span className="block text-xs text-muted-foreground">
+                                {s.retailPrice !== null
+                                  ? `$${s.retailPrice.toFixed(2)}`
+                                  : '—'}
+                              </span>
+                            </span>
+                          </label>
+                        </li>
+                      )
+                    })}
+                  </ul>
+
+                  {(() => {
+                    const anchorCents = order.retailCents
+                    const sumSelectedCents = bundlable.siblings
+                      .filter(s => selectedSiblings.has(s.orderId))
+                      .reduce((acc, s) => acc + Math.round((s.retailPrice ?? 0) * 100), 0)
+                    const totalCents = anchorCents + sumSelectedCents
+                    const totalCount = 1 + selectedSiblings.size
+                    return (
+                      <div className="mt-3 flex items-center justify-between border-t border-emerald-200 pt-2 text-sm">
+                        <span className="text-muted-foreground">
+                          {totalCount} prescription{totalCount === 1 ? '' : 's'}
+                        </span>
+                        <span className="font-semibold text-foreground">
+                          {toCurrency(totalCents)}
+                        </span>
+                      </div>
+                    )
+                  })()}
+
+                  <button
+                    type="button"
+                    onClick={handleCombineAndSend}
+                    disabled={isCreatingGroup || selectedSiblings.size === 0}
+                    className="mt-3 w-full rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                  >
+                    {isCreatingGroup ? 'Creating bundle…' : 'Combine and Copy Payment Link'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setBundlable(null); setSelectedSiblings(new Set()) }}
+                    className="mt-2 w-full rounded-md border border-emerald-300 bg-white px-4 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Clipboard-failure fallback for the GROUP link */}
+          {groupFallbackUrl && (
+            <div
+              role="dialog"
+              aria-label="Bundle payment link (copy manually)"
+              className="rounded-lg border-2 border-emerald-400 bg-white p-4"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-semibold text-emerald-800">Copy the bundle link manually</p>
+                <button
+                  type="button"
+                  onClick={() => setGroupFallbackUrl(null)}
+                  aria-label="Dismiss"
+                  className="rounded p-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Auto-copy to clipboard failed. Select the URL below and copy with Cmd/Ctrl+C.
+              </p>
+              <textarea
+                readOnly
+                value={groupFallbackUrl}
+                onFocus={(e) => e.currentTarget.select()}
+                rows={3}
+                className="mt-2 w-full rounded-md border border-border bg-background p-2 text-xs font-mono text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+              />
             </div>
           )}
 
