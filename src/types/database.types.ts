@@ -1342,6 +1342,70 @@ export type Database = {
           },
         ]
       }
+      payment_groups: {
+        Row: {
+          clinic_id: string
+          created_at: string
+          deleted_at: string | null
+          group_id: string
+          is_active: boolean
+          patient_id: string
+          provider_id: string
+          status: string
+          stripe_payment_intent_id: string | null
+          total_cents: number
+          updated_at: string
+        }
+        Insert: {
+          clinic_id: string
+          created_at?: string
+          deleted_at?: string | null
+          group_id?: string
+          is_active?: boolean
+          patient_id: string
+          provider_id: string
+          status?: string
+          stripe_payment_intent_id?: string | null
+          total_cents: number
+          updated_at?: string
+        }
+        Update: {
+          clinic_id?: string
+          created_at?: string
+          deleted_at?: string | null
+          group_id?: string
+          is_active?: boolean
+          patient_id?: string
+          provider_id?: string
+          status?: string
+          stripe_payment_intent_id?: string | null
+          total_cents?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_groups_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+          {
+            foreignKeyName: "payment_groups_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["patient_id"]
+          },
+          {
+            foreignKeyName: "payment_groups_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "providers"
+            referencedColumns: ["provider_id"]
+          },
+        ]
+      }
       pharmacies: {
         Row: {
           adapter_status: string | null
@@ -2040,74 +2104,6 @@ export type Database = {
           },
           {
             foreignKeyName: "provider_favorites_provider_id_fkey"
-            columns: ["provider_id"]
-            isOneToOne: false
-            referencedRelation: "providers"
-            referencedColumns: ["provider_id"]
-          },
-        ]
-      }
-      // Manually stubbed for Phase C Stage 2 — payment_groups is created by
-      // supabase/migrations/20260609000001_phase_c_payment_groups.sql. Regen
-      // this file with `npm run db:types` once the migration is deployed to
-      // production; the stub here should match the regen output exactly.
-      payment_groups: {
-        Row: {
-          clinic_id: string
-          created_at: string
-          deleted_at: string | null
-          group_id: string
-          is_active: boolean
-          patient_id: string
-          provider_id: string
-          status: string
-          stripe_payment_intent_id: string | null
-          total_cents: number
-          updated_at: string
-        }
-        Insert: {
-          clinic_id: string
-          created_at?: string
-          deleted_at?: string | null
-          group_id?: string
-          is_active?: boolean
-          patient_id: string
-          provider_id: string
-          status?: string
-          stripe_payment_intent_id?: string | null
-          total_cents: number
-          updated_at?: string
-        }
-        Update: {
-          clinic_id?: string
-          created_at?: string
-          deleted_at?: string | null
-          group_id?: string
-          is_active?: boolean
-          patient_id?: string
-          provider_id?: string
-          status?: string
-          stripe_payment_intent_id?: string | null
-          total_cents?: number
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "payment_groups_clinic_id_fkey"
-            columns: ["clinic_id"]
-            isOneToOne: false
-            referencedRelation: "clinics"
-            referencedColumns: ["clinic_id"]
-          },
-          {
-            foreignKeyName: "payment_groups_patient_id_fkey"
-            columns: ["patient_id"]
-            isOneToOne: false
-            referencedRelation: "patients"
-            referencedColumns: ["patient_id"]
-          },
-          {
-            foreignKeyName: "payment_groups_provider_id_fkey"
             columns: ["provider_id"]
             isOneToOne: false
             referencedRelation: "providers"
