@@ -28,6 +28,7 @@ import { casTransition } from '@/lib/orders/cas-transition'
 import { serverEnv } from '@/lib/env'
 import { sendSlackAlert, buildAdapterFailureAlert } from '@/lib/slack/client'
 import { handleGroupPaymentSucceeded as handleGroupPaymentSucceededImpl } from './handle-group'
+import { handleGroupChargeDisputeCreated as handleGroupChargeDisputeCreatedImpl } from './handle-group-dispute'
 
 // ============================================================
 // ROUTE HANDLER
@@ -382,9 +383,52 @@ async function branchByTier(orderId: string, pharmacyId: string): Promise<void> 
 }
 
 // ------------------------------------------------------------
-// charge.dispute.created (AC-SWH-006)
+// charge.dispute.created (AC-SWH-006 + Phase C Stage 6)
 // ------------------------------------------------------------
+//
+// Two flavors of dispute are recognized — same branching shape as
+// payment_intent.succeeded:
+//
+//   SOLO  metadata = { order_id, clinic_id, platform }
+//         Resolves a single order via orders.stripe_payment_intent_id.
+//
+//   GROUP metadata = { payment_group_id, clinic_id, order_count, platform }
+//         Resolves a payment_groups row via
+//         payment_groups.stripe_payment_intent_id and marks the group
+//         DISPUTED. (Member orders are NOT state-transitioned — solo
+//         handler doesn't either; DISPUTED isn't reachable from most
+//         live states in the order state machine.)
+//
+// Stripe propagates PaymentIntent metadata onto the Charge + Dispute,
+// so the dispute event payload typically carries the same allow-listed
+// keys the original PI did. The HIPAA allow-list branches per flavor.
 async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
+  const isGroupDispute = typeof dispute.metadata?.['payment_group_id'] === 'string'
+
+  // HIPAA — per-flavor allow-list (mirrors handlePaymentIntentSucceeded).
+  // Stripe sometimes copies PI metadata onto the Charge but NOT onto the
+  // Dispute object itself; the allow-list still gates whatever keys did
+  // arrive.
+  const allowedMetadataKeys = isGroupDispute
+    ? new Set(['payment_group_id', 'clinic_id', 'order_count', 'platform'])
+    : new Set(['order_id', 'clinic_id', 'platform'])
+  const phiKeys = Object.keys(dispute.metadata ?? {}).filter(
+    k => !allowedMetadataKeys.has(k)
+  )
+  if (phiKeys.length > 0) {
+    console.error(
+      `[stripe-webhook] HIPAA violation: PHI keys detected in charge.dispute.created metadata: ${phiKeys.join(', ')} | dispute=${dispute.id} flavor=${isGroupDispute ? 'group' : 'solo'}`
+    )
+  }
+
+  if (isGroupDispute) {
+    await handleGroupChargeDisputeCreated(dispute)
+  } else {
+    await handleSoloChargeDisputeCreated(dispute)
+  }
+}
+
+async function handleSoloChargeDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
   const supabase = createServiceClient()
 
   // Resolve payment_intent_id from the dispute
@@ -398,7 +442,11 @@ async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
     return
   }
 
-  // Resolve order by payment_intent_id
+  // Resolve order by payment_intent_id. Solo-only lookup — group PIs
+  // intentionally don't stamp orders.stripe_payment_intent_id (see
+  // handle-group.ts). If no order is found AND no group flavor metadata
+  // was present, fall back to a group lookup defensively in case Stripe
+  // stripped metadata in transit.
   const { data: order } = await supabase
     .from('orders')
     .select('order_id')
@@ -406,6 +454,20 @@ async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
     .single()
 
   if (!order) {
+    // Defensive fallback: a group PI's dispute that lost its metadata
+    // would land here. Try the group path before giving up.
+    const { data: maybeGroup } = await supabase
+      .from('payment_groups')
+      .select('group_id')
+      .eq('stripe_payment_intent_id', paymentIntentId)
+      .maybeSingle()
+    if (maybeGroup) {
+      console.warn(
+        `[stripe-webhook] dispute ${dispute.id} routed solo but matched a group PI — falling back to group handler | pi=${paymentIntentId}`,
+      )
+      await handleGroupChargeDisputeCreated(dispute)
+      return
+    }
     console.error(
       `[stripe-webhook] order not found for dispute ${dispute.id} | pi=${paymentIntentId}`
     )
@@ -446,6 +508,19 @@ async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
   console.info(
     `[stripe-webhook] dispute ${dispute.id} recorded for order ${order.order_id}`
   )
+}
+
+// Thin wrapper that injects the route module's dependencies into the
+// extracted handler (handle-group-dispute.ts). Keeps unit-test isolation
+// clean, same pattern as handleGroupPaymentSucceeded.
+async function handleGroupChargeDisputeCreated(
+  dispute: Stripe.Dispute,
+): Promise<void> {
+  await handleGroupChargeDisputeCreatedImpl(dispute, {
+    supabase: createServiceClient(),
+    sendSlackAlert,
+    buildAdapterFailureAlert,
+  })
 }
 
 // ------------------------------------------------------------
