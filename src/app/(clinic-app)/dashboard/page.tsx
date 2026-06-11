@@ -19,7 +19,6 @@
 
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
-import { createServiceClient } from '@/lib/supabase/service'
 import { HipaaTimeout }      from '@/components/hipaa-timeout'
 import { RevenueSummary }    from './_components/revenue-summary'
 import { OrdersDashboard }   from './_components/orders-dashboard'
@@ -56,7 +55,14 @@ export default async function DashboardPage() {
 
   if (!clinicId) redirect('/login')
 
-  const supabase = createServiceClient()
+  // F-3 (Option A): SSR uses the session-scoped server client so the
+  // role-aware RLS policy on `orders` (migration 20260611000004) is
+  // honored at the DB tier. A provider will only see rows where
+  // orders.provider_id matches their providers.user_id; clinic_admin
+  // and medical_assistant see every clinic order; ops_admin sees all.
+  // The pre-F-3 dashboard used createServiceClient() which bypasses RLS
+  // — that's the gap this migration closes.
+  const supabase = supabaseAuth
 
   // MTD window: first day of current month 00:00:00 UTC
   const nowDate    = new Date()
