@@ -27,6 +27,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition } from '@/lib/orders/cas-transition'
 import { serverEnv } from '@/lib/env'
 import { sendSlackAlert, buildAdapterFailureAlert } from '@/lib/slack/client'
+import { handleGroupPaymentSucceeded as handleGroupPaymentSucceededImpl } from './handle-group'
 
 // ============================================================
 // ROUTE HANDLER
@@ -143,23 +144,54 @@ export function DELETE() { return new NextResponse(null, { status: 405 }) }
 // ============================================================
 
 // ------------------------------------------------------------
-// payment_intent.succeeded
-// AC-SWH-003: CAS guard + transfer + tier-aware branching
+// payment_intent.succeeded — entry point
+// AC-SWH-003 (solo) / Phase C Stage 3 (group)
 // ------------------------------------------------------------
+//
+// Two flavors of PaymentIntent are recognized:
+//
+//   SOLO (existing flow, /api/checkout/payment-intent):
+//     metadata = { order_id, clinic_id, platform }
+//     Resolves a single order via orders.stripe_payment_intent_id
+//
+//   GROUP (Phase C Stage 2, /api/checkout/payment-group):
+//     metadata = { payment_group_id, clinic_id, order_count, platform }
+//     Resolves a payment_groups row + transitions ALL member orders
+//     (idempotent per-order via CAS).
+//
+// The metadata allow-list branches by flavor so each flavor's expected
+// keys can be present without tripping the HIPAA PHI check.
+
 async function handlePaymentIntentSucceeded(
   paymentIntent: Stripe.PaymentIntent
 ): Promise<void> {
-  // AC-SWH-009: HIPAA — verify no PHI in Stripe metadata
-  const allowedMetadataKeys = new Set(['order_id', 'clinic_id', 'platform'])
+  const isGroupPi = typeof paymentIntent.metadata?.['payment_group_id'] === 'string'
+
+  // AC-SWH-009: HIPAA — verify no PHI in Stripe metadata. Per-flavor
+  // allow-list so group bundles can declare payment_group_id + order_count
+  // without being flagged.
+  const allowedMetadataKeys = isGroupPi
+    ? new Set(['payment_group_id', 'clinic_id', 'order_count', 'platform'])
+    : new Set(['order_id', 'clinic_id', 'platform'])
   const phiKeys = Object.keys(paymentIntent.metadata ?? {}).filter(
     k => !allowedMetadataKeys.has(k)
   )
   if (phiKeys.length > 0) {
     console.error(
-      `[stripe-webhook] HIPAA violation: PHI keys detected in payment_intent.metadata: ${phiKeys.join(', ')} | pi=${paymentIntent.id}`
+      `[stripe-webhook] HIPAA violation: PHI keys detected in payment_intent.metadata: ${phiKeys.join(', ')} | pi=${paymentIntent.id} flavor=${isGroupPi ? 'group' : 'solo'}`
     )
   }
 
+  if (isGroupPi) {
+    await handleGroupPaymentSucceeded(paymentIntent)
+  } else {
+    await handleSoloPaymentSucceeded(paymentIntent)
+  }
+}
+
+async function handleSoloPaymentSucceeded(
+  paymentIntent: Stripe.PaymentIntent
+): Promise<void> {
   const supabase = createServiceClient()
 
   // AC-SWH-003.1: Locate order by stripe_payment_intent_id
@@ -171,7 +203,7 @@ async function handlePaymentIntentSucceeded(
 
   if (orderError || !order) {
     console.error(
-      `[stripe-webhook] order not found for payment_intent ${paymentIntent.id}:`,
+      `[stripe-webhook] solo order not found for payment_intent ${paymentIntent.id}:`,
       orderError?.message
     )
     return
@@ -198,6 +230,38 @@ async function handlePaymentIntentSucceeded(
 
   // AC-SWH-005: V2.0 tier-aware fulfillment branching
   await branchByTier(order.order_id, order.pharmacy_id!)
+}
+
+// ------------------------------------------------------------
+// Phase C Stage 3 — group payment success handler
+// ------------------------------------------------------------
+//
+// Looks up the payment_groups row by group_id (and verifies the PI
+// matches), then atomically transitions every member order from
+// AWAITING_PAYMENT → PAID_PROCESSING. Each per-order CAS is idempotent
+// so redelivery of the webhook is a no-op.
+//
+// Stripe Connect transfers are NOT initiated per-order for groups: the
+// group PI was created with transfer_data.destination = clinic Connect
+// account, so the full bundled amount is transferred atomically at PI
+// confirmation by Stripe itself. (Solo flow calls
+// initiateStripeTransfer; the group case skips that step.) The
+// payment_groups row records the PI id; per-order
+// orders.stripe_payment_intent_id is intentionally NOT stamped to
+// avoid breaking the .single() lookup pattern in other handlers
+// (charge.dispute.created → find order by PI). Dispute handling for
+// groups needs its own follow-up (Stage 3 gap noted in PR).
+
+// Thin wrapper that injects the route module's dependencies into the
+// extracted handler (handle-group.ts). Keeps unit-test isolation clean.
+async function handleGroupPaymentSucceeded(
+  paymentIntent: Stripe.PaymentIntent
+): Promise<void> {
+  await handleGroupPaymentSucceededImpl(paymentIntent, {
+    supabase:      createServiceClient(),
+    casTransition,
+    branchByTier,
+  })
 }
 
 // ------------------------------------------------------------
