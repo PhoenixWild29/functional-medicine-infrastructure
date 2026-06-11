@@ -148,10 +148,21 @@ export async function handleGroupPaymentSucceeded(
 
     if (groupUpdateErr) {
       console.error(`[stripe-webhook] failed to mark group PAID | group=${groupId}:`, groupUpdateErr.message)
+      // Group is in inconsistent state — orders moved but group still
+      // AWAITING_PAYMENT. Throw so the route does NOT mark the event
+      // processed; a redelivery will re-attempt the group update.
+      throw new Error(`group ${groupId} member orders transitioned but group status update failed: ${groupUpdateErr.message}`)
     }
   } else {
+    // Codex 2026-06-11 sweep [CRITICAL]: partial failure must NOT silently
+    // leave the group in AWAITING_PAYMENT and tell the route to mark the
+    // event processed. The route's duplicate-skip would then drop every
+    // future delivery of this event on the floor. THROW so the route catch
+    // records the error + skips stamping processed_at, which makes the
+    // event eligible for re-processing on Stripe redelivery / manual replay.
     console.warn(
-      `[stripe-webhook] group ${groupId} left in AWAITING_PAYMENT due to ${casFailures} per-order failure(s); ${transitionedNow} succeeded, ${alreadyTransitioned} already transitioned. Webhook redelivery will retry.`,
+      `[stripe-webhook] group ${groupId} partial failure: ${casFailures} per-order failure(s); ${transitionedNow} succeeded, ${alreadyTransitioned} already transitioned. Throwing so the event stays retryable.`,
     )
+    throw new Error(`group ${groupId} payment_intent.succeeded: ${casFailures} per-order CAS failure(s)`)
   }
 }

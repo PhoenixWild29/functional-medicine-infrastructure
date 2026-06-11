@@ -101,14 +101,18 @@ export function OrderDrawer({ order, onClose }: Props) {
       })
   }, [order?.orderId])
 
-  // Reset Combine and Send state whenever the drawer's anchor order changes.
-  // Intentionally keyed on order?.orderId only — the body doesn't touch other
-  // fields of `order`. Matches the existing timeline-effect pattern above.
+  // Reset Combine and Send state whenever the drawer's anchor order changes,
+  // then proactively probe bundlable-siblings. We discover on open (not on
+  // click) so the button is only rendered when the feature flag is on AND
+  // siblings actually exist (Codex 2026-06-11 sweep [LOW]).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     setBundlable(null)
     setSelectedSiblings(new Set())
     setGroupFallbackUrl(null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!order) return
+    if (order.status !== 'AWAITING_PAYMENT') return
+    void fetchBundlableSiblings()
   }, [order?.orderId])
 
   async function fetchBundlableSiblings() {
@@ -323,30 +327,10 @@ export function OrderDrawer({ order, onClose }: Props) {
                     : 'Copy Payment Link'}
               </button>
 
-              {/* Phase C Stage 4 — Combine and Send (multi-Rx bundle) */}
-              {!isExpired && bundlable === null && (
-                <button
-                  type="button"
-                  onClick={fetchBundlableSiblings}
-                  disabled={isLoadingSiblings}
-                  className="mt-2 w-full rounded-md border border-emerald-600 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                >
-                  {isLoadingSiblings ? 'Checking…' : 'Combine with other prescriptions…'}
-                </button>
-              )}
-
-              {bundlable?.featureDisabled && (
-                <p className="mt-2 text-xs text-emerald-700">
-                  Multi-prescription bundling is not yet enabled in this environment.
-                </p>
-              )}
-
-              {bundlable && !bundlable.featureDisabled && bundlable.anchorBundlable && bundlable.siblings.length === 0 && (
-                <p className="mt-2 text-xs text-emerald-700">
-                  No other prescriptions awaiting payment for this patient + provider right now.
-                </p>
-              )}
-
+              {/* Phase C Stage 4 — Combine and Send (multi-Rx bundle).
+                  Codex 2026-06-11 sweep [LOW]: discover runs on drawer open;
+                  the picker only renders when the feature is on AND siblings
+                  exist. No speculative button. */}
               {bundlable && !bundlable.featureDisabled && bundlable.anchorBundlable && bundlable.siblings.length > 0 && (
                 <div className="mt-3 rounded-md border border-emerald-300 bg-white p-3">
                   <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wide">

@@ -22,7 +22,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }        from '@/lib/supabase/server'
 import { createServiceClient }       from '@/lib/supabase/service'
-import { createPaymentGroup }        from '@/lib/payment-group/create-group'
+import { createPaymentGroup, cancelPaymentGroup } from '@/lib/payment-group/create-group'
 import { generateGroupCheckoutToken } from '@/lib/auth/checkout-token'
 import { serverEnv }                 from '@/lib/env'
 
@@ -145,8 +145,20 @@ export async function POST(
       `[group-and-send] token generation failed | group=${result.groupId}:`,
       err instanceof Error ? err.message : err,
     )
-    // The group + PI exist; the caller can retry via the regular fetch.
-    return NextResponse.json({ error: 'Failed to generate payment link for group' }, { status: 500 })
+    // Codex 2026-06-11 sweep [HIGH]: previous behavior left the group + PI
+    // dangling; retrying group creation would hit "already part of another
+    // payment group." Cancel the PI + rollback the group so the operator
+    // can retry cleanly (orders return to solo-eligible state).
+    await cancelPaymentGroup({
+      supabase,
+      groupId: result.groupId,
+      orderIds: allIds,
+      stripePaymentIntentId: result.stripePaymentIntentId,
+    })
+    return NextResponse.json(
+      { error: 'Failed to generate payment link for group. The bundle was rolled back; please try again.' },
+      { status: 500 },
+    )
   }
 
   const checkoutUrl = `${serverEnv.appBaseUrl().replace(/\/$/, '')}/checkout/${token}`

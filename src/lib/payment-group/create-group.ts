@@ -220,12 +220,35 @@ export async function createPaymentGroup(input: CreateGroupInput): Promise<Creat
     }
     stripePaymentIntentId = pi.id
 
-    const { error: stampErr } = await supabase
-      .from('payment_groups')
-      .update({ stripe_payment_intent_id: pi.id, updated_at: new Date().toISOString() })
-      .eq('group_id', groupId)
-    if (stampErr) {
-      console.error('[payment-group create] failed to stamp group with stripe_payment_intent_id:', stampErr.message)
+    // Codex 2026-06-11 sweep [HIGH]: stamp failure used to log + continue,
+    // returning the group + URL. /api/checkout/payment-group-intent then
+    // 500s because payment_groups.stripe_payment_intent_id is null — patient
+    // hits a dead checkout. Fix: retry 3x; if still failing, cancel the PI
+    // and rollback the group + order links. Symmetric to the solo route.
+    const MAX_STAMP_ATTEMPTS = 3
+    let stampErrorMsg: string | null = null
+    for (let attempt = 1; attempt <= MAX_STAMP_ATTEMPTS; attempt++) {
+      const { error: stampErr } = await supabase
+        .from('payment_groups')
+        .update({ stripe_payment_intent_id: pi.id, updated_at: new Date().toISOString() })
+        .eq('group_id', groupId)
+      if (!stampErr) {
+        stampErrorMsg = null
+        break
+      }
+      stampErrorMsg = stampErr.message
+      console.warn(`[payment-group create] stamp attempt ${attempt}/${MAX_STAMP_ATTEMPTS} failed | group=${groupId} pi=${pi.id}:`, stampErr.message)
+      if (attempt < MAX_STAMP_ATTEMPTS) {
+        await new Promise(r => setTimeout(r, 50 * attempt))
+      }
+    }
+    if (stampErrorMsg) {
+      console.error(`[payment-group create] CRITICAL: stamp failed after ${MAX_STAMP_ATTEMPTS} attempts | group=${groupId} pi=${pi.id} — cancelling PI + rolling back group`)
+      try { await stripe.paymentIntents.cancel(pi.id) } catch (cancelErr) {
+        console.error(`[payment-group create] CRITICAL: failed to cancel orphan PI=${pi.id}:`, cancelErr instanceof Error ? cancelErr.message : cancelErr)
+      }
+      await rollbackGroup(supabase, groupId, orderIds)
+      return { ok: false, status: 502, error: 'Failed to finalize group payment setup' }
     }
   } catch (stripeErr) {
     console.error('[payment-group create] Stripe PaymentIntent creation failed:', stripeErr)
@@ -244,6 +267,31 @@ export async function createPaymentGroup(input: CreateGroupInput): Promise<Creat
     patientId: sharedPatientId,
     providerId: sharedProviderId,
   }
+}
+
+/**
+ * Public cancel-helper. Used by group-and-send when token generation fails
+ * AFTER the group + PI exist (Codex 2026-06-11 sweep [HIGH]). Cancels the
+ * Stripe PI (best-effort), unlinks the orders, marks the group CANCELLED.
+ * Idempotent enough to call again if the first attempt half-succeeds.
+ */
+export async function cancelPaymentGroup(input: {
+  supabase: ReturnType<typeof createServiceClient>
+  groupId: string
+  orderIds: string[]
+  stripePaymentIntentId?: string | null
+}): Promise<void> {
+  if (input.stripePaymentIntentId) {
+    try {
+      await createStripeClient().paymentIntents.cancel(input.stripePaymentIntentId)
+    } catch (err) {
+      console.error(
+        `[cancelPaymentGroup] failed to cancel PI=${input.stripePaymentIntentId} for group=${input.groupId}:`,
+        err instanceof Error ? err.message : err,
+      )
+    }
+  }
+  await rollbackGroup(input.supabase, input.groupId, input.orderIds)
 }
 
 // ── Rollback helper (Codex post-review hardening: 3 retries) ────

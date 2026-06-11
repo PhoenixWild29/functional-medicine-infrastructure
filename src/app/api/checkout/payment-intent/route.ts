@@ -260,24 +260,57 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     //                                   un-stamped (and thus uncollectible)
     //                                   Stripe PaymentIntent — easier to clean
     //                                   up than a double-charged patient.
-    const { data: updatedRows, error: updateError } = await supabase
-      .from('orders')
-      .update({
-        stripe_payment_intent_id: pi.id,
-        updated_at:               new Date().toISOString(),
-      })
-      .eq('order_id', orderId)
-      .eq('status', 'AWAITING_PAYMENT')
-      .is('payment_group_id', null)
-      .select('order_id')
+    // Codex 2026-06-11 sweep [HIGH]: stamp failure used to log + continue,
+    // returning the clientSecret. A transient DB error would then leave a
+    // chargeable PI that the webhook can't match back to an order — patient
+    // pays an "orphan" PI. Fix: retry the stamp up to 3x; if still failing,
+    // CANCEL the PI and return 502. CAS-lost (concurrent group-create won)
+    // stays a 409 — that's the documented race outcome.
+    let stampedRows: Array<{ order_id: string }> | null = null
+    let stampErrorMsg: string | null = null
+    const MAX_STAMP_ATTEMPTS = 3
+    for (let attempt = 1; attempt <= MAX_STAMP_ATTEMPTS; attempt++) {
+      const { data, error } = await supabase
+        .from('orders')
+        .update({
+          stripe_payment_intent_id: pi.id,
+          updated_at:               new Date().toISOString(),
+        })
+        .eq('order_id', orderId)
+        .eq('status', 'AWAITING_PAYMENT')
+        .is('payment_group_id', null)
+        .select('order_id')
 
-    if (updateError) {
-      console.error('[payment-intent] failed to store stripe_payment_intent_id:', updateError.message)
-    } else if (!updatedRows || updatedRows.length === 0) {
+      if (!error) {
+        stampedRows = data ?? []
+        stampErrorMsg = null
+        break
+      }
+      stampErrorMsg = error.message
+      console.warn(`[payment-intent] stamp attempt ${attempt}/${MAX_STAMP_ATTEMPTS} failed | order=${orderId} pi=${pi.id}:`, error.message)
+      if (attempt < MAX_STAMP_ATTEMPTS) {
+        await new Promise(r => setTimeout(r, 50 * attempt))
+      }
+    }
+
+    if (stampErrorMsg) {
+      console.error(`[payment-intent] CRITICAL: stamp failed after ${MAX_STAMP_ATTEMPTS} attempts | order=${orderId} pi=${pi.id} — cancelling PI`)
+      try {
+        await createStripeClient().paymentIntents.cancel(pi.id)
+        console.info(`[payment-intent] cancelled orphan PI=${pi.id}`)
+      } catch (cancelErr) {
+        console.error(`[payment-intent] CRITICAL: failed to cancel orphan PI=${pi.id} after stamp failure — run ops repair:`, cancelErr instanceof Error ? cancelErr.message : cancelErr)
+      }
+      return NextResponse.json({ error: 'Failed to finalize payment setup. Please try again.' }, { status: 502 })
+    }
+
+    if (!stampedRows || stampedRows.length === 0) {
       // CAS lost: the order is no longer in solo-eligible state. The Stripe PI
       // is orphaned (created but not stamped). Log loud so ops can reconcile;
       // the patient should be redirected to the group checkout flow.
       console.warn(`[payment-intent] CAS stamp lost — order=${orderId} pi=${pi.id} (likely just joined a payment group)`)
+      // Best-effort cancel the orphan PI so it doesn't sit chargeable.
+      try { await createStripeClient().paymentIntents.cancel(pi.id) } catch { /* ops will reconcile */ }
       return NextResponse.json(
         { error: 'This order just joined a payment group. Refresh to use the group checkout link.' },
         { status: 409 },

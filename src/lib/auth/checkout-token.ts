@@ -47,7 +47,22 @@ export async function verifyCheckoutToken(
 
     // Check expiry
     if (payload.exp < Math.floor(Date.now() / 1000)) {
-      console.warn('[checkout-token] verifyCheckoutToken failed: expired', { orderId: payload.orderId })
+      console.warn('[checkout-token] verifyCheckoutToken failed: expired', { orderId: payload.orderId, groupId: payload.groupId })
+      return null
+    }
+
+    // Codex 2026-06-11 sweep [MEDIUM]: enforce orderId XOR groupId at verify
+    // time. The public factories never produce both, but tightening at the
+    // verify layer makes the invariant explicit + catches any future bug
+    // (or hand-forged token) that would otherwise let middleware forward
+    // both x-checkout-order-id AND x-checkout-group-id headers.
+    const hasOrderId = typeof payload.orderId === 'string' && payload.orderId.length > 0
+    const hasGroupId = typeof payload.groupId === 'string' && payload.groupId.length > 0
+    if (hasOrderId === hasGroupId) {
+      // Either both absent (neither) or both present (XOR violation).
+      console.warn('[checkout-token] verifyCheckoutToken failed: must have exactly one of orderId or groupId', {
+        hasOrderId, hasGroupId,
+      })
       return null
     }
 

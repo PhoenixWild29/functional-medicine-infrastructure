@@ -103,7 +103,48 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
     .maybeSingle()
 
   if (!order) {
-    // PI not yet linked to an order (webhook lag) or unknown PI
+    // Codex 2026-06-11 sweep [CRITICAL]: group PIs are stamped on
+    // payment_groups, not orders. Fall back to a group lookup before
+    // showing the pending state, otherwise group checkouts never
+    // confirm. Group success state is PHI-free — only total, count,
+    // and clinic contact.
+    const { data: group } = await supabase
+      .from('payment_groups')
+      .select(`
+        group_id,
+        total_cents,
+        clinic_id,
+        clinics!inner (
+          name,
+          contact_phone,
+          contact_email
+        )
+      `)
+      .eq('stripe_payment_intent_id', paymentIntentId)
+      .maybeSingle()
+
+    if (group) {
+      const { count: orderCount } = await supabase
+        .from('orders')
+        .select('order_id', { count: 'exact', head: true })
+        .eq('payment_group_id', (group as unknown as { group_id: string }).group_id)
+        .is('deleted_at', null)
+
+      const groupRow = group as unknown as Record<string, unknown>
+      const groupClinic = groupRow['clinics'] as Record<string, unknown> | null
+      return (
+        <GroupBundleSuccessState
+          totalCents={Number(groupRow['total_cents'] ?? 0)}
+          orderCount={orderCount ?? 0}
+          groupId={String(groupRow['group_id'] ?? '')}
+          clinicName={groupClinic ? String(groupClinic['name'] ?? '') : 'your clinic'}
+          clinicPhone={groupClinic && groupClinic['contact_phone'] != null ? String(groupClinic['contact_phone']) : null}
+          clinicEmail={groupClinic && groupClinic['contact_email'] != null ? String(groupClinic['contact_email']) : null}
+        />
+      )
+    }
+
+    // PI not yet linked to an order or group (webhook lag) or unknown PI
     return <PendingConfirmationState />
   }
 
@@ -273,6 +314,104 @@ function PendingConfirmationState() {
         <p className="text-sm text-muted-foreground">
           Your payment was successful. Order confirmation is being processed —
           you will receive a text message shortly.
+        </p>
+      </div>
+    </main>
+  )
+}
+
+// Phase C Stage 5 (Codex 2026-06-11): bundle-flavor success state.
+// Same "Payment Received" surface as solo; copy explicitly says N prescriptions
+// were paid. Zero PHI — total + count + clinic contact only.
+function GroupBundleSuccessState({
+  totalCents, orderCount, groupId, clinicName, clinicPhone, clinicEmail,
+}: {
+  totalCents: number
+  orderCount: number
+  groupId: string
+  clinicName: string
+  clinicPhone: string | null
+  clinicEmail: string | null
+}) {
+  return (
+    <main className="flex min-h-screen flex-col items-center px-4 py-12">
+      <style dangerouslySetInnerHTML={{ __html: CHECKMARK_STYLE }} />
+      <div className="w-full max-w-sm space-y-6">
+        <div className="flex flex-col items-center space-y-3 text-center">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100" aria-hidden>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path className="checkmark-path" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-semibold text-foreground">Payment Received</h1>
+          <p className="text-3xl font-bold text-emerald-600">{toCurrency(totalCents)}</p>
+          <p className="text-base text-muted-foreground">
+            {orderCount > 0
+              ? `Your ${orderCount} prescription${orderCount === 1 ? '' : 's'} ${orderCount === 1 ? 'is' : 'are'} being processed.`
+              : 'Your prescriptions are being processed.'}
+          </p>
+          <p className="font-mono text-sm text-muted-foreground/60" aria-label="Bundle reference">
+            Reference: #{groupId.slice(0, 8)}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">What Happens Next</p>
+          <ol className="mt-3 space-y-3">
+            <li className="flex items-start gap-3">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold" aria-hidden>✓</span>
+              <div>
+                <p className="text-sm font-medium text-foreground">Payment confirmed</p>
+                <p className="text-xs text-muted-foreground">Your payment has been received for all prescriptions in this bundle.</p>
+              </div>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs" aria-label="Pending" aria-hidden>⏳</span>
+              <div>
+                <p className="text-sm font-medium text-foreground">Each prescription sent to pharmacy</p>
+                <p className="text-xs text-muted-foreground">Within a few minutes.</p>
+              </div>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs" aria-label="Pending" aria-hidden>⏳</span>
+              <div>
+                <p className="text-sm font-medium text-foreground">Pharmacy will contact you</p>
+                <p className="text-xs text-muted-foreground">
+                  You&rsquo;ll receive updates for each prescription separately as they ship.
+                </p>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        {(clinicPhone || clinicEmail) && (
+          <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Questions? Contact {clinicName}
+            </p>
+            <div className="mt-2 space-y-1.5">
+              {clinicPhone && (
+                <a href={`tel:${clinicPhone}`} className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                  </svg>
+                  {clinicPhone}
+                </a>
+              )}
+              {clinicEmail && (
+                <a href={`mailto:${clinicEmail}`} className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  {clinicEmail}
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
+        <p className="text-center text-xs text-muted-foreground/60">
+          A receipt has been emailed to you. You&rsquo;ll receive additional updates as each prescription moves through our pharmacy network.
         </p>
       </div>
     </main>

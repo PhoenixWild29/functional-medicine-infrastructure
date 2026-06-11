@@ -33,8 +33,11 @@ jest.mock('@/lib/supabase/service', () => ({
   createServiceClient: jest.fn().mockReturnValue({}),
 }))
 
+const cancelGroupMock = jest.fn()
+
 jest.mock('@/lib/payment-group/create-group', () => ({
-  createPaymentGroup: (input: unknown) => createGroupMock(input),
+  createPaymentGroup:  (input: unknown) => createGroupMock(input),
+  cancelPaymentGroup:  (input: unknown) => cancelGroupMock(input),
 }))
 
 jest.mock('@/lib/auth/checkout-token', () => ({
@@ -185,6 +188,37 @@ describe('POST /api/orders/[orderId]/group-and-send', () => {
       orderIds:      [ORDER_ID, SIBLING_ID],
     }))
     expect(generateTokenMock).toHaveBeenCalledWith('group-uuid-1', 'pat-uuid-1', TEST_CLINIC_ID)
+  })
+
+  // Codex 2026-06-11 sweep [HIGH]: token-generation failure must roll back
+  // the group + cancel the PI, otherwise the orders are orphan-linked to a
+  // group whose checkout URL can never be issued.
+  test('rolls back the group + cancels the PI when token generation fails', async () => {
+    createGroupMock.mockResolvedValueOnce({
+      ok: true,
+      groupId:               'group-uuid-1',
+      stripePaymentIntentId: 'pi_test',
+      totalCents:            17500,
+      orderCount:            2,
+      patientId:             'pat-uuid-1',
+      providerId:            'prov-uuid-1',
+    })
+    generateTokenMock.mockRejectedValueOnce(new Error('crypto.subtle unavailable'))
+    cancelGroupMock.mockResolvedValueOnce(undefined)
+
+    const res = await POST(
+      makeRequest({ siblingOrderIds: [SIBLING_ID] }, { 'sec-fetch-site': 'same-origin' }),
+      makeParams(ORDER_ID),
+    )
+
+    expect(res.status).toBe(500)
+    expect(cancelGroupMock).toHaveBeenCalledWith(expect.objectContaining({
+      groupId: 'group-uuid-1',
+      orderIds: [ORDER_ID, SIBLING_ID],
+      stripePaymentIntentId: 'pi_test',
+    }))
+    const body = await res.json()
+    expect(body.error).toMatch(/rolled back/)
   })
 
   test('passes through createPaymentGroup error', async () => {
