@@ -150,10 +150,13 @@ jest.mock('@/lib/supabase/service', () => ({
   }),
 }))
 
+const stripeCancelPiMock = jest.fn()
+
 jest.mock('@/lib/stripe/client', () => ({
   createStripeClient: jest.fn().mockReturnValue({
     paymentIntents: {
       create: (...args: unknown[]) => stripeCreatePiMock(...args),
+      cancel: (...args: unknown[]) => stripeCancelPiMock(...args),
     },
   }),
 }))
@@ -185,6 +188,7 @@ beforeEach(() => {
   groupStampMock.mockReset()
   groupRollbackMock.mockReset()
   stripeCreatePiMock.mockReset()
+  stripeCancelPiMock.mockReset()
   ordersUpdateCallNumber = 0
 
   // Sensible defaults that individual tests can override
@@ -535,5 +539,30 @@ describe('POST /api/checkout/payment-group — Stripe failure + rollback paths',
     expect(ordersUpdateCallNumber).toBeGreaterThanOrEqual(4)
     // Group is still marked CANCELLED so ops can find the stranded state.
     expect(groupRollbackMock).toHaveBeenCalled()
+  })
+
+  // Codex 2026-06-11 sweep [HIGH]: stamp-failure path.
+  it('returns 502, cancels the PI, and rolls back when the group PI stamp fails after 3 retries', async () => {
+    ordersFetchMock.mockResolvedValue({
+      data: [makeOrder({ order_id: ORDER_ID_A }), makeOrder({ order_id: ORDER_ID_B })],
+      error: null,
+    })
+    // Stripe PI create succeeds, then payment_groups.update().eq() — used for
+    // BOTH stamp (3 retries) AND rollback CANCELLED — fails the first 3 calls
+    // (stamp attempts) and succeeds on the 4th (rollback CANCELLED mark).
+    groupRollbackMock.mockReset()
+    groupRollbackMock
+      .mockResolvedValueOnce({ error: { message: 'transient db error 1' } })
+      .mockResolvedValueOnce({ error: { message: 'transient db error 2' } })
+      .mockResolvedValueOnce({ error: { message: 'transient db error 3' } })
+      .mockResolvedValue({ error: null })
+    stripeCancelPiMock.mockResolvedValue({ id: 'pi_test_123', status: 'canceled' })
+
+    const res = await POST(makeRequest({ orderIds: [ORDER_ID_A, ORDER_ID_B] }))
+    expect(res.status).toBe(502)
+    // 3 stamp attempts + 1 CANCELLED mark = at least 4 group updates
+    expect(groupRollbackMock).toHaveBeenCalledTimes(4)
+    // PI must be cancelled so it isn't sitting chargeable
+    expect(stripeCancelPiMock).toHaveBeenCalledWith('pi_test_123')
   })
 })

@@ -53,12 +53,14 @@ function toCurrency(cents: number): string {
 
 interface PaymentFormProps {
   token:       string
+  /** Endpoint to call for receipt_email attach: solo vs group. */
+  intentEndpoint: string
   retailCents: number
   onError:     (msg: string | null) => void
   onReady:     () => void
 }
 
-function PaymentForm({ token, retailCents, onError, onReady }: PaymentFormProps) {
+function PaymentForm({ token, intentEndpoint, retailCents, onError, onReady }: PaymentFormProps) {
   const stripe   = useStripe()
   const elements = useElements()
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -80,7 +82,7 @@ function PaymentForm({ token, retailCents, onError, onReady }: PaymentFormProps)
     // TLD; HTML5 type=email + required at the input level catches most
     // malformed entries before we get here.
     try {
-      const res = await fetch('/api/checkout/payment-intent', {
+      const res = await fetch(intentEndpoint, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ token, email }),
@@ -231,7 +233,10 @@ function CancelledState({ clinicName }: { clinicName: string }) {
 
 interface Props {
   token:         string
-  orderId:       string
+  /** 'solo' for a single-Rx order, 'group' for a multi-Rx bundle. */
+  kind:          'solo' | 'group'
+  /** Total prescriptions covered by this checkout; 1 for solo, N for group. */
+  orderCount:    number
   retailCents:   number
   clinicName:    string
   logoUrl:       string | null
@@ -240,7 +245,8 @@ interface Props {
 
 export function CheckoutPageContent({
   token,
-  orderId,
+  kind,
+  orderCount,
   retailCents,
   clinicName,
   logoUrl,
@@ -253,11 +259,19 @@ export function CheckoutPageContent({
   const [stripeReady,    setStripeReady]    = useState(false)
   const [stripeTimeout,  setStripeTimeout]  = useState(false)
 
+  // Solo: lazily create-or-retrieve the PI from /api/checkout/payment-intent.
+  // Group: PI already exists (clinic created it at bundle time); just fetch
+  //   its client_secret from /api/checkout/payment-group-intent. Same response
+  //   shape ({ clientSecret }) so the rest of this component is unchanged.
+  const intentEndpoint = kind === 'group'
+    ? '/api/checkout/payment-group-intent'
+    : '/api/checkout/payment-intent'
+
   // REQ-PSR-001: Fetch (or create) the PaymentIntent for this order
   useEffect(() => {
     if (checkoutState !== 'active') return
 
-    fetch('/api/checkout/payment-intent', {
+    fetch(intentEndpoint, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ token }),
@@ -274,7 +288,7 @@ export function CheckoutPageContent({
         console.error('[checkout] failed to load payment form:', err)
         setFetchError('Unable to load the payment form. Please try again or contact your clinic.')
       })
-  }, [token, checkoutState])
+  }, [token, checkoutState, intentEndpoint])
 
   // WO-73: 10-second timeout for Stripe Elements iframe — common on restricted Wi-Fi
   useEffect(() => {
@@ -324,9 +338,17 @@ export function CheckoutPageContent({
             </p>
             <div className="mt-2 flex items-start justify-between gap-4">
               <div>
-                {/* REQ-GCX-008: Generic description — no medication name or diagnosis */}
-                <p className="text-sm font-medium text-foreground">Prescription Service</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{clinicName}</p>
+                {/* REQ-GCX-008: Generic description — no medication name or diagnosis.
+                    Phase C Stage 5: for group bundles, swap label + show item count
+                    (count is a number, not PHI). */}
+                <p className="text-sm font-medium text-foreground">
+                  {kind === 'group' ? 'Prescription Bundle' : 'Prescription Service'}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {kind === 'group' && orderCount > 0
+                    ? `${clinicName} · ${orderCount} prescription${orderCount === 1 ? '' : 's'}`
+                    : clinicName}
+                </p>
               </div>
               <p
                 className="shrink-0 text-3xl font-bold text-foreground"
@@ -431,6 +453,7 @@ export function CheckoutPageContent({
                 >
                   <PaymentForm
                     token={token}
+                    intentEndpoint={intentEndpoint}
                     retailCents={retailCents}
                     onError={setPayError}
                     onReady={() => setStripeReady(true)}
