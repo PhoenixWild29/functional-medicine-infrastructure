@@ -157,7 +157,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .eq('event_id', internalEventRowId)
   }
 
-  // Step 7: Respond 200 — always, to prevent Stripe retry storms
+  // Step 7: Respond.
+  //
+  // Codex 2026-06-11 sweep, round 2 [CRITICAL]: the original "always 200"
+  // policy assumed processing errors were permanent. Combined with Step 4's
+  // duplicate dedup (now fixed to allow re-processing of errored events),
+  // it meant Stripe never scheduled an automatic redelivery — only manual
+  // replay would re-trigger the failed event.
+  //
+  // Fix: return 500 on processingError so Stripe schedules its built-in
+  // exponential-backoff retries (Stripe caps at ~3 days). Combined with
+  // handle-group's per-order CAS idempotency, this is safe:
+  //   - true partial-failure (transient DB blip): retry succeeds, no harm.
+  //   - permanent error (bug in our code): Stripe retries until it hits
+  //     max-age + then surfaces in the Stripe dashboard for ops triage.
+  // Successful processing still gets 200.
+  if (processingError) {
+    return NextResponse.json({ status: 'error', detail: 'processing failed; Stripe will retry' }, { status: 500 })
+  }
   return NextResponse.json({ status: 'ok' }, { status: 200 })
 }
 

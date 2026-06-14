@@ -103,9 +103,18 @@ export function OrderDrawer({ order, onClose }: Props) {
 
   // Reset Combine and Send state whenever the drawer's anchor order changes,
   // then proactively probe bundlable-siblings. We discover on open (not on
-  // click) so the button is only rendered when the feature flag is on AND
+  // click) so the picker only renders when the feature flag is on AND
   // siblings actually exist (Codex 2026-06-11 sweep [LOW]).
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  //
+  // Deps array is intentionally [order?.orderId] only:
+  //   - The body reads `order` (the optional check) and `order.status`, but
+  //     both are derived from the same anchor row — changes to other fields
+  //     don't warrant refetching the bundlable-siblings list.
+  //   - fetchBundlableSiblings is a stable closure that only depends on the
+  //     anchor orderId via the outer `order` capture. Same orderId → same
+  //     closure semantics, so the stale-read concern doesn't apply here.
+  // The disable comment sits on the deps-array line so eslint applies it to
+  // the actual exhaustive-deps warning location (Codex round 2 [LOW]).
   useEffect(() => {
     setBundlable(null)
     setSelectedSiblings(new Set())
@@ -113,6 +122,7 @@ export function OrderDrawer({ order, onClose }: Props) {
     if (!order) return
     if (order.status !== 'AWAITING_PAYMENT') return
     void fetchBundlableSiblings()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.orderId])
 
   async function fetchBundlableSiblings() {
