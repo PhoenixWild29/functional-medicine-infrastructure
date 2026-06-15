@@ -1289,6 +1289,7 @@ export type Database = {
           last_name: string
           patient_id: string
           phone: string
+          primary_provider_id: string | null
           sms_opt_in: boolean
           state: string | null
           updated_at: string
@@ -1308,6 +1309,7 @@ export type Database = {
           last_name: string
           patient_id?: string
           phone: string
+          primary_provider_id?: string | null
           sms_opt_in?: boolean
           state?: string | null
           updated_at?: string
@@ -1327,6 +1329,7 @@ export type Database = {
           last_name?: string
           patient_id?: string
           phone?: string
+          primary_provider_id?: string | null
           sms_opt_in?: boolean
           state?: string | null
           updated_at?: string
@@ -1339,6 +1342,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "clinics"
             referencedColumns: ["clinic_id"]
+          },
+          {
+            foreignKeyName: "patients_primary_provider_id_fkey"
+            columns: ["primary_provider_id"]
+            isOneToOne: false
+            referencedRelation: "providers"
+            referencedColumns: ["provider_id"]
           },
         ]
       }
