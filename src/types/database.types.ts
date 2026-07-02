@@ -397,6 +397,39 @@ export type Database = {
         }
         Relationships: []
       }
+      dispute_orders: {
+        Row: {
+          created_at: string
+          dispute_id: string
+          order_id: string
+        }
+        Insert: {
+          created_at?: string
+          dispute_id: string
+          order_id: string
+        }
+        Update: {
+          created_at?: string
+          dispute_id?: string
+          order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispute_orders_dispute_id_fkey"
+            columns: ["dispute_id"]
+            isOneToOne: false
+            referencedRelation: "disputes"
+            referencedColumns: ["dispute_id"]
+          },
+          {
+            foreignKeyName: "dispute_orders_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["order_id"]
+          },
+        ]
+      }
       disputes: {
         Row: {
           amount: number

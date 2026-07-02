@@ -5,7 +5,9 @@
 // ============================================================
 //
 // REQ-GDB-001: Filterable order table with Kanban toggle.
-//   Status filter tabs: All | Drafts | Awaiting Payment | Submitting | Processing | Shipped | Errors
+//   Status filter tabs: All | Drafts | Pending Payment | Submitting | Processing | Shipped | Errors
+//   Note: "Pending Payment" tab buckets both AWAITING_PAYMENT and PAYMENT_EXPIRED
+//   so the label matches the "Pending Payment" metric card on the same page.
 //   Polls every 30 seconds via TanStack Query (no Realtime — HIPAA).
 //   Default sort: most recently updated first.
 //
@@ -40,7 +42,7 @@ interface TabDef {
 const TABS: TabDef[] = [
   { id: 'all',             label: 'All',              statuses: null },
   { id: 'drafts',          label: 'Drafts',           statuses: ['DRAFT'] },
-  { id: 'awaiting_payment',label: 'Awaiting Payment', statuses: ['AWAITING_PAYMENT', 'PAYMENT_EXPIRED'] },
+  { id: 'awaiting_payment',label: 'Pending Payment', statuses: ['AWAITING_PAYMENT', 'PAYMENT_EXPIRED'] },
   { id: 'submitting',      label: 'Submitting',       statuses: ['SUBMISSION_PENDING', 'FAX_QUEUED', 'FAX_DELIVERED'] },
   { id: 'processing',      label: 'Processing',       statuses: [
       'PAID_PROCESSING', 'PHARMACY_ACKNOWLEDGED', 'PHARMACY_COMPOUNDING',
