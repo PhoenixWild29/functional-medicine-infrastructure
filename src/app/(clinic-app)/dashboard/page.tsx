@@ -22,11 +22,24 @@ import { createServerClient } from '@/lib/supabase/server'
 import { HipaaTimeout }      from '@/components/hipaa-timeout'
 import { RevenueSummary }    from './_components/revenue-summary'
 import { OrdersDashboard }   from './_components/orders-dashboard'
+import { ProviderViewToggle } from './_components/provider-view-toggle'
 import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.types'
 
 export const metadata = {
   title: 'Dashboard',
 }
+
+// F-3 follow-up (2026-06-14): provider opt-in clinic view toggle.
+// The dashboard reads ?view=clinic from the URL. When present AND the
+// session is a provider, we mint a Supabase server client that forwards
+// an `x-provider-view-mode: clinic` header on every query. The header
+// flips on the additive RLS policy added by migration
+// 20260614000003_f3_provider_clinic_view_opt_in.sql, broadening the
+// provider's SELECT visibility to all orders in their clinic for THIS
+// request only. Without the param, the existing role-aware policy
+// (migration 4) limits the provider to their own orders.
+type ProviderViewMode = 'mine' | 'clinic'
+const PROVIDER_VIEW_HEADER = 'x-provider-view-mode'
 
 // DashboardOrder: shared type used by all dashboard Client Components
 export interface DashboardOrder {
@@ -44,7 +57,10 @@ export interface DashboardOrder {
   isOverdue48h:      boolean          // AWAITING_PAYMENT + created > 48h ago
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage(
+  props: { searchParams?: Promise<{ view?: string }> } = {},
+) {
+  const { searchParams } = props
   const supabaseAuth = await createServerClient()
   const { data: { session } } = await supabaseAuth.auth.getSession()
   if (!session) redirect('/login')
@@ -55,14 +71,34 @@ export default async function DashboardPage() {
 
   if (!clinicId) redirect('/login')
 
-  // F-3 (Option A): SSR uses the session-scoped server client so the
-  // role-aware RLS policy on `orders` (migration 20260611000004) is
-  // honored at the DB tier. A provider will only see rows where
-  // orders.provider_id matches their providers.user_id; clinic_admin
-  // and medical_assistant see every clinic order; ops_admin sees all.
-  // The pre-F-3 dashboard used createServiceClient() which bypasses RLS
-  // — that's the gap this migration closes.
-  const supabase = supabaseAuth
+  const appRole = typeof session.user.user_metadata['app_role'] === 'string'
+    ? session.user.user_metadata['app_role'] as string
+    : undefined
+
+  // F-3 follow-up: provider opt-in clinic view toggle. Only providers
+  // can flip the view — for every other role, the toggle is meaningless
+  // (clinic_admin / medical_assistant already see all clinic orders;
+  // ops_admin sees everything cross-clinic). For non-providers we
+  // collapse view to 'mine' so the URL param is a no-op and the toggle
+  // UI is hidden.
+  const resolvedSearchParams = (await searchParams) ?? {}
+  const isProvider = appRole === 'provider'
+  const viewMode: ProviderViewMode =
+    isProvider && resolvedSearchParams.view === 'clinic' ? 'clinic' : 'mine'
+
+  // F-3 (Option A + 2026-06-14 follow-up): SSR uses the session-scoped
+  // server client so the role-aware RLS policy on `orders` (migration
+  // 20260611000004) is honored at the DB tier. When the provider opts
+  // into clinic view we mint a second client that ALSO forwards
+  // `x-provider-view-mode: clinic`, which activates the additive
+  // policy from migration 20260614000003. Cross-clinic isolation
+  // remains absolute in both modes.
+  const supabase =
+    viewMode === 'clinic'
+      ? await createServerClient({
+          extraHeaders: { [PROVIDER_VIEW_HEADER]: 'clinic' },
+        })
+      : supabaseAuth
 
   // MTD window: first day of current month 00:00:00 UTC
   const nowDate    = new Date()
@@ -183,11 +219,16 @@ export default async function DashboardPage() {
       <HipaaTimeout />
 
       <main className="mx-auto max-w-6xl px-4 py-8 space-y-8">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Revenue overview and order management for your clinic.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Revenue overview and order management for your clinic.
+            </p>
+          </div>
+
+          {/* F-3 follow-up: provider-only opt-in clinic view toggle */}
+          {isProvider && <ProviderViewToggle viewMode={viewMode} />}
         </div>
 
         {/* Metric cards — WO-71 */}

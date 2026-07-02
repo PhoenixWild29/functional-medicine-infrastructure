@@ -5,7 +5,16 @@ import type { Database } from '@/types/database.types'
 // Server Component client — uses RLS based on the user's JWT session.
 // Use in Server Components and Server Actions.
 // Never use the service role key here.
-export async function createServerClient() {
+//
+// Optional `extraHeaders` are forwarded on every Supabase request. This is
+// how the F-3 provider opt-in clinic view toggle (migration
+// 20260614000003) reaches the RLS policy: the dashboard SSR passes
+// `{ 'x-provider-view-mode': 'clinic' }` when `?view=clinic` is on the
+// URL and the session is a provider. The header surfaces to RLS via
+// PostgREST's `request.headers` GUC.
+export async function createServerClient(
+  options?: { extraHeaders?: Record<string, string> },
+) {
   const cookieStore = await cookies()
   return _createServerClient<Database>(
     process.env['NEXT_PUBLIC_SUPABASE_URL']!,
@@ -19,6 +28,9 @@ export async function createServerClient() {
           )
         },
       },
+      ...(options?.extraHeaders
+        ? { global: { headers: options.extraHeaders } }
+        : {}),
     }
   )
 }

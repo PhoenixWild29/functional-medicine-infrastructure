@@ -15,12 +15,13 @@
 //      cross-check against metadata.payment_group_id when present).
 //   2. Idempotent: if the group is already DISPUTED, no-op.
 //   3. Load all non-deleted member orders.
-//   4. Insert ONE row into `disputes`, keyed to the dispute_id (PK) and
-//      a representative member order. The `disputes` table PK is the
-//      Stripe dispute_id (TEXT, dp_xxx); we cannot fan out per-order
-//      without a schema change. Ops is alerted with the full member
-//      list so the dispute is investigated against every order in the
-//      bundle.
+//   4. Insert ONE row into `disputes` (event-level), keyed to
+//      dispute_id (PK), anchored to the first member order for the
+//      legacy `disputes.order_id` NOT NULL FK. Then fan out ONE row
+//      per member order into `dispute_orders` (the junction table
+//      added in migration 20260614000001). Ops can now correlate a
+//      group dispute to every prescription in the bundle via
+//      `SELECT FROM dispute_orders WHERE dispute_id = ...`.
 //   5. Mark `payment_groups.status = 'DISPUTED'` (terminal for the
 //      group; refund flow happens out-of-band via ops).
 //   6. Per-order state: matching solo-flow behavior, member orders are
@@ -124,12 +125,20 @@ export async function handleGroupChargeDisputeCreated(
 
   const members = memberOrders ?? []
 
-  // ── Insert disputes row ─────────────────────────────────────
-  // disputes.dispute_id is the PK; one row per Stripe dispute event.
-  // Use the first member's order_id as the representative orders FK
-  // (NOT NULL constraint). If there are no members (defense-in-depth)
-  // we still mark the group DISPUTED but skip the disputes insert
-  // since order_id cannot be null.
+  // ── Insert disputes row + fan out to dispute_orders ─────────
+  // `disputes` is event-level: ONE row per Stripe dispute event,
+  // keyed by dispute_id (TEXT PK, CHECK dp_%). disputes.order_id is
+  // NOT NULL by legacy v1 schema; we anchor it to the first member
+  // for backward compatibility with the solo path.
+  //
+  // `dispute_orders` (junction, added 20260614000001) carries the
+  // per-prescription correlation: N rows for an N-member group, 1
+  // row for solo. Composite PK (dispute_id, order_id) makes the
+  // fan-out upsert idempotent across redeliveries.
+  //
+  // If there are no members (defense-in-depth) we still mark the
+  // group DISPUTED but skip both inserts since disputes.order_id is
+  // NOT NULL.
   if (members.length > 0) {
     const representativeOrderId = members[0]!.order_id
     const { error: insertErr } = await supabase
@@ -150,8 +159,26 @@ export async function handleGroupChargeDisputeCreated(
         `[stripe-webhook] failed to insert dispute row | dispute=${dispute.id} group=${group.group_id}`,
         insertErr.message,
       )
-      // Continue — still mark the group DISPUTED and alert ops. We'd
-      // rather over-alert than silently swallow a Stripe dispute.
+      // Continue — still try the fan-out + mark group DISPUTED +
+      // alert ops. Over-alert beats silent drop on a Stripe dispute.
+    }
+
+    // Fan out one junction row per member order. The composite
+    // (dispute_id, order_id) PK + upsert keeps redeliveries idempotent.
+    const junctionRows = members.map(o => ({
+      dispute_id: dispute.id,
+      order_id: o.order_id,
+    }))
+    const { error: fanoutErr } = await supabase
+      .from('dispute_orders')
+      .upsert(junctionRows)
+
+    if (fanoutErr) {
+      console.error(
+        `[stripe-webhook] failed to fan out dispute_orders | dispute=${dispute.id} group=${group.group_id} members=${members.length}`,
+        fanoutErr.message,
+      )
+      // Continue — group DISPUTED + ops alert still fire.
     }
   } else {
     console.warn(

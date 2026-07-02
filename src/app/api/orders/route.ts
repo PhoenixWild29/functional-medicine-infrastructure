@@ -297,6 +297,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Failed to create order' }, { status: 500 })
   }
 
+  // F-5: lazy auto-default for patients.primary_provider_id. If this patient
+  // has never been assigned a PCP, set the order's provider as the default.
+  // The .is('primary_provider_id', null) filter makes this idempotent — a
+  // second order from the same patient with a different provider will NOT
+  // overwrite the existing assignment (reassignment is an explicit UX
+  // action, not an order-creation side-effect). See
+  // docs/audits/role-audit-and-data-model.md §F-5.
+  const { error: primaryProviderError } = await supabase
+    .from('patients')
+    .update({ primary_provider_id: providerId })
+    .eq('patient_id', patientId)
+    .eq('clinic_id', clinicId)
+    .is('primary_provider_id', null)
+
+  if (primaryProviderError) {
+    // Non-fatal: the order is already created. Log + continue.
+    console.warn(
+      '[orders] primary_provider_id auto-default failed (non-fatal):',
+      primaryProviderError.message,
+    )
+  }
+
   console.info(`[orders] DRAFT created | order=${order.order_id} | clinic=${clinicId}`)
 
   return NextResponse.json({ orderId: order.order_id }, { status: 201 })

@@ -77,13 +77,32 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .single()
 
   if (insertError) {
-    // Postgres unique violation on external_event_id = duplicate delivery
+    // Postgres unique violation on external_event_id = duplicate delivery.
+    //
+    // Codex 2026-06-11 sweep [CRITICAL]: prior code 200-skipped every
+    // duplicate, including events whose previous processing had failed
+    // partway (e.g., group payment_intent.succeeded that transitioned 2 of 3
+    // member orders before one threw). Those events left processed_at NULL
+    // and MUST be re-processed on redelivery / manual replay. Only true
+    // successes (processed_at IS NOT NULL with no error) are safe to skip.
     if (insertError.code === '23505') {
-      console.info(`[stripe-webhook] duplicate event ${externalEventId} — skipping`)
-      return NextResponse.json({ status: 'duplicate' }, { status: 200 })
+      const { data: existing } = await supabase
+        .from('webhook_events')
+        .select('event_id, processed_at, error')
+        .eq('external_event_id', externalEventId)
+        .maybeSingle()
+      if (existing && existing.processed_at != null && existing.error == null) {
+        console.info(`[stripe-webhook] duplicate event ${externalEventId} (already successful) — skipping`)
+        return NextResponse.json({ status: 'duplicate' }, { status: 200 })
+      }
+      // Allow re-processing of a previously-errored event. Use the existing
+      // row id so the outcome row is updated in place, not duplicated.
+      internalEventRowId = existing?.event_id ?? null
+      console.info(`[stripe-webhook] re-processing prior-errored event ${externalEventId}`)
+    } else {
+      // Non-duplicate insert error: log and continue — don't block on audit logging
+      console.error(`[stripe-webhook] failed to insert webhook_event ${externalEventId}`, insertError.message)
     }
-    // Non-duplicate insert error: log and continue — don't block on audit logging
-    console.error(`[stripe-webhook] failed to insert webhook_event ${externalEventId}`, insertError.message)
   } else {
     internalEventRowId = insertedRow?.event_id ?? null
   }
@@ -119,18 +138,43 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Processing errors do NOT cause a non-200 response — Stripe must not retry
   }
 
-  // Step 6: Record outcome on the webhook_events row
+  // Step 6: Record outcome on the webhook_events row.
+  //
+  // Codex 2026-06-11 sweep [CRITICAL]: only stamp processed_at on success.
+  // Leaving processed_at NULL on error is what lets the Step 4 dedup logic
+  // re-process the event on the next Stripe redelivery / manual replay.
+  // On a retry-success, we also clear the error field so a future delivery
+  // that arrives behind the scheduled processing isn't tricked into thinking
+  // the event is still in a failed state.
   if (internalEventRowId) {
     await supabase
       .from('webhook_events')
-      .update({
-        processed_at: new Date().toISOString(),
-        ...(processingError ? { error: processingError } : {}),
-      })
+      .update(
+        processingError
+          ? { error: processingError }
+          : { processed_at: new Date().toISOString(), error: null },
+      )
       .eq('event_id', internalEventRowId)
   }
 
-  // Step 7: Respond 200 — always, to prevent Stripe retry storms
+  // Step 7: Respond.
+  //
+  // Codex 2026-06-11 sweep, round 2 [CRITICAL]: the original "always 200"
+  // policy assumed processing errors were permanent. Combined with Step 4's
+  // duplicate dedup (now fixed to allow re-processing of errored events),
+  // it meant Stripe never scheduled an automatic redelivery — only manual
+  // replay would re-trigger the failed event.
+  //
+  // Fix: return 500 on processingError so Stripe schedules its built-in
+  // exponential-backoff retries (Stripe caps at ~3 days). Combined with
+  // handle-group's per-order CAS idempotency, this is safe:
+  //   - true partial-failure (transient DB blip): retry succeeds, no harm.
+  //   - permanent error (bug in our code): Stripe retries until it hits
+  //     max-age + then surfaces in the Stripe dashboard for ops triage.
+  // Successful processing still gets 200.
+  if (processingError) {
+    return NextResponse.json({ status: 'error', detail: 'processing failed; Stripe will retry' }, { status: 500 })
+  }
   return NextResponse.json({ status: 'ok' }, { status: 200 })
 }
 

@@ -115,3 +115,23 @@ This is a recommendation, not a decision. The user needs to confirm.
 **Tests:** [`src/lib/phi/__tests__/redact-adapter-payload.test.ts`](../../src/lib/phi/__tests__/redact-adapter-payload.test.ts) — 19 tests covering all PHI categories, the four naming conventions (snake_case / camelCase / nested / flat), fingerprint determinism + uniqueness, and null / empty / deeply nested edge cases.
 
 **Carve-out from the original recommendation (24h ephemeral table) — deferred.** The original recommendation suggested a separate auto-purging table for 24h of full payload retention to preserve debuggability. That carve-out is deferred to a follow-up; in the meantime, the SHA-256 fingerprint + structural shape + non-PHI fields (URL, transformer name, HTTP method, order/pharmacy IDs) are enough to triage most adapter failures. Revisit if real pharmacy traffic shows the fingerprint-only audit trail is insufficient.
+
+## Ephemeral debug payloads (2026-06-14)
+
+The 24h carve-out is now implemented but **off by default**. Ops can flip the env flag if and when the fingerprint-only triage proves insufficient.
+
+- **Table:** `adapter_submission_debug_payloads`
+  - Columns: `debug_id UUID PK`, `adapter_submission_id UUID FK → adapter_submissions(submission_id) ON DELETE CASCADE`, `raw_payload JSONB NOT NULL`, `created_at TIMESTAMPTZ DEFAULT now()`.
+  - Indexed on `created_at` (retention sweep) and `adapter_submission_id` (triage lookup).
+- **Migration:** [`supabase/migrations/20260614000002_adapter_submission_debug_payloads.sql`](../../supabase/migrations/20260614000002_adapter_submission_debug_payloads.sql)
+- **Access model — strict service-role only.** RLS is enabled and **no `TO authenticated` policies** are defined. Under PostgreSQL RLS that means every authenticated session — clinic admin, provider, MA, ops_admin via session client — sees zero rows and cannot insert / update / delete. `service_role` bypasses RLS, so the audit-trail writer and the retention cron work. **No clinic / provider / ops UI ever reads this table.** Ops triage flows through a service-role-only tool, not a dashboard.
+- **Write site:** [`src/lib/adapters/audit-trail.ts:markSubmitted`](../../src/lib/adapters/audit-trail.ts) — after the redacted `adapter_submissions` UPDATE succeeds, gated by `process.env.PHI_DEBUG_ENABLED === 'true'`. The debug insert is **best-effort**: failures log a warning and are swallowed; the primary submission write is unaffected.
+- **Feature flag:** `PHI_DEBUG_ENABLED` env var, strict string compare `=== 'true'`. Same pattern as `PHASE_C_GROUPS_ENABLED`. Stays **off** in production until ops needs the visibility. The migration can ship without flipping the flag — the side table just stays empty.
+- **Retention window:** 24 hours. Anything older is purged.
+- **Retention cron:** [`/api/cron/purge-phi-debug`](../../src/app/api/cron/purge-phi-debug/route.ts), scheduled **daily at 03:00 UTC** in [`vercel.json`](../../vercel.json). Authenticates via `Bearer ${CRON_SECRET}` (same pattern as every other cron handler). Runs `DELETE … WHERE created_at < now() - INTERVAL '24 hours'`; returns the deleted-row count for observability.
+- **No backfill.** Historical adapter_submissions rows do not get retroactive debug payloads. Forward-only from the moment the flag flips.
+- **Tests:** [`src/lib/adapters/__tests__/audit-trail-debug.test.ts`](../../src/lib/adapters/__tests__/audit-trail-debug.test.ts) — locks flag-off (no insert), flag-on (insert with PRE-redaction raw payload), debug-insert-failure (primary write still succeeds, warning logged), primary-write-failure (no orphan debug row), and undefined-payload (no insert) semantics.
+- **Deploy order (when ops asks for this):**
+  1. Apply migration `20260614000002_adapter_submission_debug_payloads.sql` to prod first (creates the empty side table).
+  2. Merge the code that writes / purges. With the flag still off this is a no-op.
+  3. Optionally set `PHI_DEBUG_ENABLED=true` in the Vercel env for the duration ops needs the visibility, then unset it. The cron continues to purge whatever was captured during the window.

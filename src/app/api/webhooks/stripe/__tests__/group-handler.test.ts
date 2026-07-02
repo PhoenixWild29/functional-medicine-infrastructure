@@ -204,17 +204,20 @@ describe('Phase C Stage 3 — handleGroupPaymentSucceeded', () => {
     expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/no member orders/))
   })
 
-  it('leaves group AWAITING_PAYMENT when a per-order CAS throws (for redelivery retry)', async () => {
+  it('throws on partial per-order CAS failure so the route does not stamp processed_at (Codex 2026-06-11 sweep [CRITICAL])', async () => {
     casTransitionMock
       .mockResolvedValueOnce({ wasAlreadyTransitioned: false })
       .mockRejectedValueOnce(new Error('simulated DB blip'))
 
-    await invoke(makeGroupPi())
+    // Handler must throw so the webhook route enters its catch path,
+    // records the error, and leaves processed_at NULL. The Step 4 dedup
+    // logic then re-processes the event on next Stripe redelivery.
+    await expect(invoke(makeGroupPi())).rejects.toThrow(/per-order CAS failure/)
 
     expect(casTransitionMock).toHaveBeenCalledTimes(2)
     expect(groupUpdateMock).not.toHaveBeenCalled()
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/left in AWAITING_PAYMENT due to 1 per-order failure/),
+      expect.stringMatching(/partial failure.+Throwing so the event stays retryable/),
     )
   })
 

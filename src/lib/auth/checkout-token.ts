@@ -8,8 +8,22 @@ function base64urlToBytes(b64url: string): Uint8Array {
   return Uint8Array.from(binary, c => c.charCodeAt(0))
 }
 
+/**
+ * Patient checkout JWT payload.
+ *
+ * Two flavors:
+ *   SOLO   : { orderId,  patientId, clinicId, iat, exp }
+ *   GROUP  : { groupId,  patientId, clinicId, iat, exp }   (Phase C)
+ *
+ * Exactly one of `orderId` / `groupId` is present per token. The middleware
+ * forwards the present one to downstream components via either
+ * x-checkout-order-id or x-checkout-group-id request header.
+ */
 export interface CheckoutTokenPayload {
-  orderId: string
+  /** Solo-order checkout (existing flow). Mutually exclusive with groupId. */
+  orderId?: string
+  /** Group checkout (Phase C). Mutually exclusive with orderId. */
+  groupId?: string
   patientId: string
   clinicId: string
   iat: number
@@ -33,7 +47,22 @@ export async function verifyCheckoutToken(
 
     // Check expiry
     if (payload.exp < Math.floor(Date.now() / 1000)) {
-      console.warn('[checkout-token] verifyCheckoutToken failed: expired', { orderId: payload.orderId })
+      console.warn('[checkout-token] verifyCheckoutToken failed: expired', { orderId: payload.orderId, groupId: payload.groupId })
+      return null
+    }
+
+    // Codex 2026-06-11 sweep [MEDIUM]: enforce orderId XOR groupId at verify
+    // time. The public factories never produce both, but tightening at the
+    // verify layer makes the invariant explicit + catches any future bug
+    // (or hand-forged token) that would otherwise let middleware forward
+    // both x-checkout-order-id AND x-checkout-group-id headers.
+    const hasOrderId = typeof payload.orderId === 'string' && payload.orderId.length > 0
+    const hasGroupId = typeof payload.groupId === 'string' && payload.groupId.length > 0
+    if (hasOrderId === hasGroupId) {
+      // Either both absent (neither) or both present (XOR violation).
+      console.warn('[checkout-token] verifyCheckoutToken failed: must have exactly one of orderId or groupId', {
+        hasOrderId, hasGroupId,
+      })
       return null
     }
 
@@ -87,6 +116,24 @@ export async function generateCheckoutToken(
   patientId: string,
   clinicId: string
 ): Promise<string> {
+  return generateCheckoutTokenInternal({ orderId, patientId, clinicId })
+}
+
+/**
+ * Phase C: generate a checkout token for a payment_group instead of a
+ * single order. The patient checkout page recognizes either kind.
+ */
+export async function generateGroupCheckoutToken(
+  groupId: string,
+  patientId: string,
+  clinicId: string,
+): Promise<string> {
+  return generateCheckoutTokenInternal({ groupId, patientId, clinicId })
+}
+
+async function generateCheckoutTokenInternal(
+  fields: { orderId?: string; groupId?: string; patientId: string; clinicId: string },
+): Promise<string> {
   const secret = serverEnv.jwtSecret()
   const encoder = new TextEncoder()
 
@@ -101,9 +148,10 @@ export async function generateCheckoutToken(
   const now = Math.floor(Date.now() / 1000)
   const ttl = serverEnv.checkoutTokenExpiry()
   const payload: CheckoutTokenPayload = {
-    orderId,
-    patientId,
-    clinicId,
+    ...(fields.orderId ? { orderId: fields.orderId } : {}),
+    ...(fields.groupId ? { groupId: fields.groupId } : {}),
+    patientId: fields.patientId,
+    clinicId:  fields.clinicId,
     iat: now,
     exp: now + ttl,
   }

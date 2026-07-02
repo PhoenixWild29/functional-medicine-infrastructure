@@ -8,10 +8,13 @@
  *   - group not found via PI lookup           → loud log, no writes
  *   - metadata.payment_group_id mismatches    → reject, no writes
  *   - already-DISPUTED group                  → idempotent no-op
- *   - empty members                           → still mark group DISPUTED, skip disputes insert
- *   - happy path                              → disputes insert, group DISPUTED, ops alert
+ *   - empty members                           → still mark group DISPUTED, skip disputes/junction inserts
+ *   - happy path                              → disputes insert + N junction rows, group DISPUTED, ops alert
  *   - some members terminal (SHIPPED)         → still mark DISPUTED, warn log
  *   - disputes insert failure                 → group still marked DISPUTED, ops still alerted
+ *   - 3-member group                          → 3 junction rows (dispute_orders fan-out)
+ *   - re-delivery before DISPUTED status      → junction upsert is idempotent on (dispute_id, order_id) PK
+ *   - dispute_orders fan-out failure          → group still marked DISPUTED, ops still alerted
  */
 
 import type Stripe from 'stripe'
@@ -19,12 +22,13 @@ import { handleGroupChargeDisputeCreated } from '../handle-group-dispute'
 
 // ── Mocks ──────────────────────────────────────────────────────────
 
-const groupFetchMock      = jest.fn()
-const groupUpdateMock     = jest.fn().mockResolvedValue({ error: null })
-const membersFetchMock    = jest.fn()
-const disputesUpsertMock  = jest.fn().mockResolvedValue({ error: null })
-const sendSlackAlertMock  = jest.fn().mockResolvedValue(undefined)
-const buildAlertMock      = jest.fn().mockReturnValue({ text: 'alert' })
+const groupFetchMock           = jest.fn()
+const groupUpdateMock          = jest.fn().mockResolvedValue({ error: null })
+const membersFetchMock         = jest.fn()
+const disputesUpsertMock       = jest.fn().mockResolvedValue({ error: null })
+const disputeOrdersUpsertMock  = jest.fn().mockResolvedValue({ error: null })
+const sendSlackAlertMock       = jest.fn().mockResolvedValue(undefined)
+const buildAlertMock           = jest.fn().mockReturnValue({ text: 'alert' })
 
 const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
 const warnSpy  = jest.spyOn(console, 'warn').mockImplementation(() => {})
@@ -58,6 +62,11 @@ const supabaseMock = {
     if (table === 'disputes') {
       return {
         upsert: (row: unknown) => disputesUpsertMock(row),
+      }
+    }
+    if (table === 'dispute_orders') {
+      return {
+        upsert: (rows: unknown) => disputeOrdersUpsertMock(rows),
       }
     }
     throw new Error(`Unexpected table in test: ${table}`)
@@ -97,6 +106,7 @@ beforeEach(() => {
   groupUpdateMock.mockReset().mockResolvedValue({ error: null })
   membersFetchMock.mockReset()
   disputesUpsertMock.mockReset().mockResolvedValue({ error: null })
+  disputeOrdersUpsertMock.mockReset().mockResolvedValue({ error: null })
   sendSlackAlertMock.mockReset().mockResolvedValue(undefined)
   buildAlertMock.mockReset().mockReturnValue({ text: 'alert' })
   errorSpy.mockClear()
@@ -130,14 +140,14 @@ afterAll(() => {
 // ── Tests ──────────────────────────────────────────────────────────
 
 describe('Phase C Stage 6 — handleGroupChargeDisputeCreated', () => {
-  it('happy path: inserts disputes row, marks group DISPUTED, alerts ops', async () => {
+  it('happy path: inserts disputes row, fans out N junction rows, marks group DISPUTED, alerts ops', async () => {
     await invoke(makeDispute())
 
     expect(disputesUpsertMock).toHaveBeenCalledTimes(1)
     expect(disputesUpsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
         dispute_id: 'dp_test_group_1',
-        order_id: 'o-1', // representative member
+        order_id: 'o-1', // representative member (legacy disputes.order_id NOT NULL)
         payment_intent_id: 'pi_test_group_1',
         reason: 'fraudulent',
         amount: 30000,
@@ -145,6 +155,13 @@ describe('Phase C Stage 6 — handleGroupChargeDisputeCreated', () => {
         status: 'needs_response',
       }),
     )
+    // Fan-out: one junction row per member, regardless of disputes
+    // row outcome. 2 members → 2 rows.
+    expect(disputeOrdersUpsertMock).toHaveBeenCalledTimes(1)
+    expect(disputeOrdersUpsertMock).toHaveBeenCalledWith([
+      { dispute_id: 'dp_test_group_1', order_id: 'o-1' },
+      { dispute_id: 'dp_test_group_1', order_id: 'o-2' },
+    ])
     expect(groupUpdateMock).toHaveBeenCalledTimes(1)
     expect(sendSlackAlertMock).toHaveBeenCalledTimes(1)
     expect(buildAlertMock).toHaveBeenCalledWith(
@@ -219,12 +236,13 @@ describe('Phase C Stage 6 — handleGroupChargeDisputeCreated', () => {
     expect(infoSpy).toHaveBeenCalledWith(expect.stringMatching(/already DISPUTED/))
   })
 
-  it('empty members: still marks group DISPUTED, skips disputes insert, still alerts ops', async () => {
+  it('empty members: still marks group DISPUTED, skips disputes + junction inserts, still alerts ops', async () => {
     membersFetchMock.mockResolvedValue({ data: [], error: null })
 
     await invoke(makeDispute())
 
     expect(disputesUpsertMock).not.toHaveBeenCalled()
+    expect(disputeOrdersUpsertMock).not.toHaveBeenCalled()
     expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/has no member orders/))
     expect(groupUpdateMock).toHaveBeenCalledTimes(1)
     expect(sendSlackAlertMock).toHaveBeenCalledTimes(1)
@@ -249,12 +267,16 @@ describe('Phase C Stage 6 — handleGroupChargeDisputeCreated', () => {
     )
   })
 
-  it('disputes insert failure: still marks group DISPUTED and alerts ops', async () => {
+  it('disputes insert failure: junction still attempted, group DISPUTED, ops alerted', async () => {
     disputesUpsertMock.mockResolvedValue({ error: { message: 'duplicate dispute_id' } })
 
     await invoke(makeDispute())
 
     expect(disputesUpsertMock).toHaveBeenCalledTimes(1)
+    // Junction fan-out still runs — its (dispute_id, order_id) upsert is
+    // independent and provides ops correlation even if the event row
+    // failed.
+    expect(disputeOrdersUpsertMock).toHaveBeenCalledTimes(1)
     // Group still marked DISPUTED + ops alerted — over-alert beats silent drop
     expect(groupUpdateMock).toHaveBeenCalledTimes(1)
     expect(sendSlackAlertMock).toHaveBeenCalledTimes(1)
@@ -307,5 +329,89 @@ describe('Phase C Stage 6 — handleGroupChargeDisputeCreated', () => {
     )
     // Ops alert still fires
     expect(sendSlackAlertMock).toHaveBeenCalledTimes(1)
+  })
+
+  // ── Phase C disputes fan-out (migration 20260614000001) ──────
+
+  it('3-member group: fans out exactly 3 rows into dispute_orders', async () => {
+    membersFetchMock.mockResolvedValue({
+      data: [
+        { order_id: 'o-1', status: 'PAID_PROCESSING' },
+        { order_id: 'o-2', status: 'PAID_PROCESSING' },
+        { order_id: 'o-3', status: 'PAID_PROCESSING' },
+      ],
+      error: null,
+    })
+
+    await invoke(makeDispute())
+
+    expect(disputeOrdersUpsertMock).toHaveBeenCalledTimes(1)
+    expect(disputeOrdersUpsertMock).toHaveBeenCalledWith([
+      { dispute_id: 'dp_test_group_1', order_id: 'o-1' },
+      { dispute_id: 'dp_test_group_1', order_id: 'o-2' },
+      { dispute_id: 'dp_test_group_1', order_id: 'o-3' },
+    ])
+    // disputes (event-level) still ONE row, anchored to first member
+    expect(disputesUpsertMock).toHaveBeenCalledTimes(1)
+    expect(disputesUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dispute_id: 'dp_test_group_1', order_id: 'o-1' }),
+    )
+  })
+
+  it('solo-flavor group (1 member): fan-out writes exactly 1 junction row (regression check)', async () => {
+    // A group with a single member — represents the degenerate
+    // "group of one" surface. Asserts we did not introduce a regression
+    // for the 1-member path; matches the solo-dispute table footprint
+    // of 1 disputes row + 1 junction row.
+    membersFetchMock.mockResolvedValue({
+      data: [{ order_id: 'o-only', status: 'PAID_PROCESSING' }],
+      error: null,
+    })
+
+    await invoke(makeDispute())
+
+    expect(disputesUpsertMock).toHaveBeenCalledTimes(1)
+    expect(disputesUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({ order_id: 'o-only' }),
+    )
+    expect(disputeOrdersUpsertMock).toHaveBeenCalledTimes(1)
+    expect(disputeOrdersUpsertMock).toHaveBeenCalledWith([
+      { dispute_id: 'dp_test_group_1', order_id: 'o-only' },
+    ])
+    expect(groupUpdateMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('idempotent on re-delivery: junction upsert is safe (relies on composite PK)', async () => {
+    // Stripe redelivers the same charge.dispute.created event before
+    // payment_groups.status flips to DISPUTED (eg. status update is
+    // racing the redelivery). The early-exit at "already DISPUTED"
+    // catches the post-flip case; the junction upsert covers the
+    // pre-flip race. Both insert paths are upserts keyed on their PKs,
+    // so re-delivery is a no-op at the DB layer.
+    await invoke(makeDispute())
+    await invoke(makeDispute())
+
+    expect(disputesUpsertMock).toHaveBeenCalledTimes(2)
+    // Both invocations sent the same payload — DB upsert dedupes on PK.
+    expect(disputesUpsertMock.mock.calls[0]).toEqual(disputesUpsertMock.mock.calls[1])
+    expect(disputeOrdersUpsertMock).toHaveBeenCalledTimes(2)
+    expect(disputeOrdersUpsertMock.mock.calls[0]).toEqual(disputeOrdersUpsertMock.mock.calls[1])
+  })
+
+  it('dispute_orders fan-out failure: still marks group DISPUTED + alerts ops', async () => {
+    disputeOrdersUpsertMock.mockResolvedValue({
+      error: { message: 'fk violation: orders.order_id not found' },
+    })
+
+    await invoke(makeDispute())
+
+    expect(disputeOrdersUpsertMock).toHaveBeenCalledTimes(1)
+    // Group transition + ops alert still fire — over-alert beats silent drop
+    expect(groupUpdateMock).toHaveBeenCalledTimes(1)
+    expect(sendSlackAlertMock).toHaveBeenCalledTimes(1)
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/failed to fan out dispute_orders/),
+      'fk violation: orders.order_id not found',
+    )
   })
 })
