@@ -1,7 +1,7 @@
 // ============================================================
 // PHI Debug Payload Retention Sweep — PR #88 follow-up
 // GET /api/cron/purge-phi-debug
-// Schedule: 0 3 * * * (daily at 03:00 UTC)
+// Schedule: 0 * * * * (hourly)
 // ============================================================
 //
 // Sweeps `adapter_submission_debug_payloads` of any rows older
@@ -11,7 +11,12 @@
 // "Ephemeral debug payloads" section of
 // `docs/audits/phi-policy-adapter-submissions.md`.
 //
-// Retention contract: nothing in that table stays past 24h.
+// Retention contract: rows older than 24h are deleted on the next
+// sweep. With the hourly cadence, worst-case residence is 24h
+// retention + <=1h sweep interval (~25h). The cadence was bumped
+// from daily 03:00 UTC after the 2026-07-02 batch review flagged
+// that a daily sweep allowed ~48h worst-case PHI residence —
+// double the documented promise.
 //
 // Auth: Bearer ${CRON_SECRET} — same pattern as every other cron
 // handler in this directory (e.g. sla-refire/route.ts).
