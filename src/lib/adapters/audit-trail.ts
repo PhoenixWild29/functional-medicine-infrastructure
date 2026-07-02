@@ -34,6 +34,15 @@
 //   correlation. response_payload still flows through unredacted —
 //   that column has its own policy decision pending.
 //   Supabase row-level security (service_role only) governs access.
+//
+//   PHI debug carve-out (2026-06-14): when env flag
+//   `PHI_DEBUG_ENABLED === 'true'`, markSubmitted ALSO writes the
+//   pre-redaction raw payload to `adapter_submission_debug_payloads`
+//   for 24h ops triage. That side table is service-role only (strict
+//   RLS, no `TO authenticated` policies) and is swept daily by
+//   /api/cron/purge-phi-debug. The flag stays off by default. The
+//   debug-table insert is best-effort — failures log + swallow and
+//   NEVER fail the primary submission write.
 
 import { createServiceClient } from '@/lib/supabase/service'
 import { redactAdapterRequestPayload } from '@/lib/phi/redact-adapter-payload'
@@ -163,6 +172,49 @@ export async function markSubmitted(
       `[audit-trail] markSubmitted failed for submission ${submissionId}:`,
       error.message
     )
+    // Don't write the debug row if the primary write failed — there's no
+    // useful FK target and we'd just be persisting PHI for no reason.
+    return
+  }
+
+  // ── PHI debug carve-out (2026-06-14) ───────────────────────
+  // When PHI_DEBUG_ENABLED is true, persist the PRE-redaction payload
+  // to the 24h ephemeral side table for ops triage. Strictly best-effort:
+  // any failure here must NOT fail the primary submission write (which
+  // already succeeded above). The table is service-role only; see the
+  // migration comment + the policy memo's "Ephemeral debug payloads"
+  // section. Cleanup is handled by /api/cron/purge-phi-debug.
+  if (process.env['PHI_DEBUG_ENABLED'] === 'true' && requestPayload !== undefined) {
+    try {
+      // The new table isn't in the generated Database typing yet
+      // (db:types regens from the live prod project, and per constraint
+      // this migration has not been applied to prod). Cast through the
+      // Supabase client surface so we can write to it without losing
+      // typing on the rest of the file. Once the migration is deployed
+      // to prod and `npm run db:types` runs, this cast can be removed.
+      const debugClient = supabase as unknown as {
+        from: (table: string) => {
+          insert: (row: Record<string, unknown>) => Promise<{ error: { message: string } | null }>
+        }
+      }
+      const { error: debugError } = await debugClient
+        .from('adapter_submission_debug_payloads')
+        .insert({
+          adapter_submission_id: submissionId,
+          raw_payload:           requestPayload as unknown as Json,
+        })
+      if (debugError) {
+        console.warn(
+          `[audit-trail] PHI debug insert failed for submission ${submissionId} (non-fatal):`,
+          debugError.message
+        )
+      }
+    } catch (err) {
+      console.warn(
+        `[audit-trail] PHI debug insert threw for submission ${submissionId} (non-fatal):`,
+        err instanceof Error ? err.message : String(err)
+      )
+    }
   }
 }
 
