@@ -52,7 +52,9 @@ const LANES: KanbanLane[] = [
   },
   {
     id:             'awaiting_payment',
-    label:          'Awaiting Payment',
+    // Bucket-style lane that holds both AWAITING_PAYMENT and PAYMENT_EXPIRED —
+    // labelled "Pending Payment" to match the metric card and tab filter.
+    label:          'Pending Payment',
     statuses:       new Set<OrderStatusEnum>(['AWAITING_PAYMENT', 'PAYMENT_EXPIRED']),
     acceptStatuses: new Set(),
   },
