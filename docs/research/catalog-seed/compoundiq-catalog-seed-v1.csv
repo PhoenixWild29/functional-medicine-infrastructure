@@ -1,0 +1,167 @@
+ingredient_common_name,therapeutic_category,dea_schedule,salt_name,formulation_name,dosage_form,route,concentration_value,concentration_unit,is_combination,combo_ingredients,wholesale_price_usd,available_quantities
+Estradiol,Women's Health,,,Estradiol Topical Cream 0.1%,Topical Cream,Topical,0.1,%,false,,24.50,30 g|60 g
+Estradiol,Women's Health,,,Estradiol Topical Cream 0.2%,Topical Cream,Topical,0.2,%,false,,27.00,30 g|60 g
+Estradiol,Women's Health,,,Estradiol Topical Gel 0.05%,Topical Gel,Topical,0.05,%,false,,26.00,30 g|60 g|100 g
+Estradiol,Women's Health,,,Estradiol Capsule 0.5mg,Capsule,Oral,0.5,mg,false,,19.00,30 caps|60 caps|90 caps
+Estradiol,Women's Health,,,Estradiol Capsule 1mg,Capsule,Oral,1,mg,false,,20.50,30 caps|60 caps|90 caps
+Estradiol,Women's Health,,,Estradiol Sublingual Tablet 0.5mg,Sublingual Tablet,Sublingual,0.5,mg,false,,18.00,30 tabs|60 tabs|90 tabs
+Estradiol,Women's Health,,,Estradiol Rapid Dissolve Tablet 1mg,Rapid Dissolve Tablet (RDT),Sublingual,1,mg,false,,21.00,30 tabs|60 tabs
+Estradiol,Women's Health,,,Estradiol Subcutaneous Pellet 25mg,Subcutaneous Pellet,Subcutaneous,25,mg,false,,42.00,1 pellet|3 pellets
+Estradiol,Women's Health,,,Estradiol Vaginal Suppository 0.5mg,Suppository,Intravaginal,0.5,mg,false,,23.00,30 supp|60 supp
+Estriol,Women's Health,,,Estriol Topical Cream 1mg/g,Topical Cream,Topical,1,mg/g,false,,25.00,30 g|60 g
+Biest,Women's Health,,,Biest 80/20 Topical Cream 2.5mg/g,Topical Cream,Topical,2.5,mg/g,true,Estriol 80%|Estradiol 20%,28.00,30 g|60 g
+Biest,Women's Health,,,Biest 80/20 Capsule 2.5mg,Capsule,Oral,2.5,mg,true,Estriol 80%|Estradiol 20%,22.00,30 caps|60 caps
+Triest,Women's Health,,,Triest 80/10/10 Sublingual Tablet 2mg,Sublingual Tablet,Sublingual,2,mg,true,Estriol 80%|Estrone 10%|Estradiol 10%,24.00,30 tabs|60 tabs
+Triest,Women's Health,,,Triest 80/10/10 Topical Cream 2mg/g,Topical Cream,Topical,2,mg/g,true,Estriol 80%|Estrone 10%|Estradiol 10%,29.00,30 g|60 g
+Progesterone,Women's Health,,,Progesterone Capsule 100mg,Capsule,Oral,100,mg,false,,18.50,30 caps|60 caps|90 caps
+Progesterone,Women's Health,,,Progesterone Capsule 200mg,Capsule,Oral,200,mg,false,,21.00,30 caps|60 caps|90 caps
+Progesterone,Women's Health,,,Progesterone Topical Cream 20mg/g,Topical Cream,Topical,20,mg/g,false,,26.00,30 g|60 g
+Progesterone,Women's Health,,,Progesterone Sublingual Tablet 100mg,Sublingual Tablet,Sublingual,100,mg,false,,19.50,30 tabs|60 tabs
+Progesterone,Women's Health,,,Progesterone Vaginal Suppository 100mg,Suppository,Intravaginal,100,mg,false,,24.00,30 supp|60 supp
+Progesterone,Women's Health,,,Progesterone Oral Solution 50mg/mL,Oral Solution,Oral,50,mg/mL,false,,32.00,30 mL bottle|60 mL bottle
+Testosterone Cypionate,Men's Health,3,Cypionate,Testosterone Cypionate Injectable 100mg/mL,Injectable Solution,Intramuscular,100,mg/mL,false,,35.00,5 mL vial|10 mL vial
+Testosterone Cypionate,Men's Health,3,Cypionate,Testosterone Cypionate Injectable 200mg/mL,Injectable Solution,Intramuscular,200,mg/mL,false,,48.00,5 mL vial|10 mL vial
+Testosterone Cypionate,Men's Health,3,Cypionate,Testosterone Cypionate Injectable 50mg/mL,Injectable Solution,Intramuscular,50,mg/mL,false,,28.00,5 mL vial|10 mL vial
+Testosterone Propionate,Men's Health,3,Propionate,Testosterone Propionate Injectable 100mg/mL,Injectable Solution,Intramuscular,100,mg/mL,false,,32.00,5 mL vial|10 mL vial
+Testosterone,Men's Health,3,,Testosterone Topical Cream 100mg/g (Men's),Topical Cream,Topical,100,mg/g,false,,34.00,30 g|60 g
+Testosterone,Women's Health,3,,Testosterone Topical Cream 10mg/g (Women's),Topical Cream,Topical,10,mg/g,false,,27.00,30 g|60 g
+Testosterone,Women's Health,3,,Testosterone Topical Cream 5mg/g (Women's),Topical Cream,Topical,5,mg/g,false,,25.00,30 g|60 g
+Testosterone,Men's Health,3,,Testosterone Sublingual Tablet 5mg,Sublingual Tablet,Sublingual,5,mg,false,,20.00,30 tabs|60 tabs
+Testosterone,Women's Health,3,,Testosterone Subcutaneous Pellet 37.5mg,Subcutaneous Pellet,Subcutaneous,37.5,mg,false,,38.00,1 pellet|3 pellets
+Testosterone,Men's Health,3,,Testosterone Subcutaneous Pellet 200mg,Subcutaneous Pellet,Subcutaneous,200,mg,false,,65.00,1 pellet|2 pellets
+DHEA,Men's Health,,,DHEA Capsule 25mg,Capsule,Oral,25,mg,false,,17.00,30 caps|60 caps|90 caps
+DHEA,Women's Health,,,DHEA Capsule 10mg,Capsule,Oral,10,mg,false,,16.00,30 caps|60 caps|90 caps
+DHEA,Women's Health,,,DHEA Sublingual Tablet 5mg,Sublingual Tablet,Sublingual,5,mg,false,,18.00,30 tabs|60 tabs
+Pregnenolone,Adrenal,,,Pregnenolone Capsule 50mg,Capsule,Oral,50,mg,false,,19.00,30 caps|60 caps|90 caps
+DHEA/Pregnenolone,Adrenal,,,DHEA 50mg/Pregnenolone 25mg Capsule,Capsule,Oral,,mg,true,DHEA 50mg|Pregnenolone 25mg,23.00,30 caps|60 caps
+Liothyronine,Thyroid,,,Liothyronine Capsule 5mcg,Capsule,Oral,5,mcg,false,,18.00,30 caps|60 caps|90 caps
+Liothyronine,Thyroid,,,Liothyronine Capsule 25mcg,Capsule,Oral,25,mcg,false,,20.00,30 caps|60 caps|90 caps
+Liothyronine,Thyroid,,,Liothyronine Sustained Release Capsule 5mcg,Capsule,Oral,5,mcg,false,,22.00,30 caps|60 caps
+Liothyronine,Thyroid,,,Liothyronine Sustained Release Capsule 10mcg,Capsule,Oral,10,mcg,false,,23.50,30 caps|60 caps
+Liothyronine,Thyroid,,,Liothyronine Sustained Release Capsule 25mcg,Capsule,Oral,25,mcg,false,,25.00,30 caps|60 caps
+Liothyronine,Thyroid,,,Liothyronine Rapid Dissolve Tablet 5mcg,Rapid Dissolve Tablet (RDT),Sublingual,5,mcg,false,,21.00,30 tabs|60 tabs
+Levothyroxine,Thyroid,,,Levothyroxine Capsule 50mcg,Capsule,Oral,50,mcg,false,,17.50,30 caps|60 caps|90 caps
+Levothyroxine,Thyroid,,,Levothyroxine Capsule 100mcg,Capsule,Oral,100,mcg,false,,18.50,30 caps|60 caps|90 caps
+Levothyroxine,Thyroid,,,Levothyroxine Oral Solution 25mcg/mL,Oral Solution,Oral,25,mcg/mL,false,,29.00,30 mL bottle|60 mL bottle
+Liothyronine/Levothyroxine,Thyroid,,,T3/T4 Combo Capsule 5mcg/50mcg,Capsule,Oral,,mcg,true,Liothyronine 5mcg|Levothyroxine 50mcg,24.00,30 caps|60 caps
+Liothyronine/Levothyroxine,Thyroid,,,T3/T4 Combo Capsule 10mcg/75mcg,Capsule,Oral,,mcg,true,Liothyronine 10mcg|Levothyroxine 75mcg,26.50,30 caps|60 caps
+Liothyronine/Levothyroxine,Thyroid,,,T3/T4 Sustained Release Combo Capsule 12.5mcg/100mcg,Capsule,Oral,,mcg,true,Liothyronine 12.5mcg|Levothyroxine 100mcg,28.00,30 caps|60 caps
+Desiccated Thyroid,Thyroid,,,Desiccated Thyroid Capsule 30mg,Capsule,Oral,30,mg,false,,19.00,30 caps|60 caps|90 caps
+Desiccated Thyroid,Thyroid,,,Desiccated Thyroid Capsule 60mg,Capsule,Oral,60,mg,false,,21.00,30 caps|60 caps|90 caps
+Desiccated Thyroid,Thyroid,,,Desiccated Thyroid Capsule 90mg,Capsule,Oral,90,mg,false,,23.00,30 caps|60 caps|90 caps
+Liothyronine,Thyroid,,,Liothyronine Troche 10mcg,Troche,Sublingual,10,mcg,false,,20.00,30 troches|60 troches
+Levothyroxine,Thyroid,,,Levothyroxine Rapid Dissolve Tablet 75mcg,Rapid Dissolve Tablet (RDT),Sublingual,75,mcg,false,,22.00,30 tabs|60 tabs
+Hydrocortisone,Adrenal,,,Hydrocortisone Capsule 5mg,Capsule,Oral,5,mg,false,,18.00,30 caps|60 caps|90 caps
+Hydrocortisone,Adrenal,,,Hydrocortisone Capsule 10mg,Capsule,Oral,10,mg,false,,19.50,30 caps|60 caps|90 caps
+Hydrocortisone,Adrenal,,,Hydrocortisone Capsule 20mg,Capsule,Oral,20,mg,false,,21.00,30 caps|60 caps|90 caps
+Hydrocortisone,Adrenal,,,Hydrocortisone Rapid Dissolve Tablet 5mg,Rapid Dissolve Tablet (RDT),Sublingual,5,mg,false,,20.00,30 tabs|60 tabs
+Pregnenolone,Adrenal,,,Pregnenolone Sublingual Tablet 25mg,Sublingual Tablet,Sublingual,25,mg,false,,20.00,30 tabs|60 tabs
+Adrenal Cortex Extract,Adrenal,,,Adrenal Cortex Extract Capsule 50mg,Capsule,Oral,50,mg,false,,26.00,30 caps|60 caps
+Semaglutide,Weight Management,,,Semaglutide Injectable 2.5 mg/mL,Injectable Solution,Subcutaneous,2.5,mg/mL,false,,68.00,1 mL vial|3 mL vial|5 mL vial
+Semaglutide,Weight Management,,,Semaglutide Injectable 5 mg/mL,Injectable Solution,Subcutaneous,5,mg/mL,false,,95.00,1 mL vial|3 mL vial
+Semaglutide,Weight Management,,,Semaglutide Injectable 10 mg/mL,Injectable Solution,Subcutaneous,10,mg/mL,false,,142.00,3 mL vial|5 mL vial
+Tirzepatide,Weight Management,,,Tirzepatide Injectable 10 mg/mL,Injectable Solution,Subcutaneous,10,mg/mL,false,,158.00,2 mL vial|3 mL vial
+Tirzepatide,Weight Management,,,Tirzepatide Injectable 20 mg/mL,Injectable Solution,Subcutaneous,20,mg/mL,false,,215.00,2 mL vial|3 mL vial
+Tirzepatide,Weight Management,,,Tirzepatide Injectable 30 mg/mL,Injectable Solution,Subcutaneous,30,mg/mL,false,,249.00,2 mL vial
+Semaglutide,Weight Management,,,Semaglutide + B12 Injectable,Injectable Solution,Subcutaneous,2.5,mg/mL,true,Semaglutide 2.5mg/mL|Cyanocobalamin 0.5mg/mL,78.00,3 mL vial|5 mL vial
+Tirzepatide,Weight Management,,,Tirzepatide + B12 Injectable,Injectable Solution,Subcutaneous,10,mg/mL,true,Tirzepatide 10mg/mL|Cyanocobalamin 0.5mg/mL,168.00,3 mL vial
+Semaglutide,Weight Management,,,Semaglutide Oral Capsule,Capsule,Oral,5,mg,false,,60.00,30 count|60 count
+Semaglutide,Weight Management,,,Semaglutide Sublingual Tablet,Sublingual Tablet,Sublingual,5,mg,false,,64.00,30 count|60 count
+Tirzepatide,Weight Management,,,Tirzepatide Sublingual Tablet,Sublingual Tablet,Sublingual,15,mg,false,,110.00,30 count|60 count
+Tirzepatide,Weight Management,,,Tirzepatide Rapid Dissolve Tablet,Rapid Dissolve Tablet (RDT),Sublingual,20,mg,false,,120.00,30 count|60 count
+Semaglutide,Weight Management,,,Semaglutide + Niacinamide Injectable,Injectable Solution,Subcutaneous,2.5,mg/mL,true,Semaglutide 2.5mg/mL|Niacinamide 5mg/mL,82.00,3 mL vial
+Tirzepatide,Weight Management,,,Tirzepatide + L-Carnitine Injectable,Injectable Solution,Subcutaneous,10,mg/mL,true,Tirzepatide 10mg/mL|L-Carnitine 20mg/mL,176.00,3 mL vial
+Sermorelin,Peptides,,Acetate,Sermorelin Injectable 6mg,Injectable Solution,Subcutaneous,2,mg/mL,false,,58.00,3 mL vial
+Sermorelin,Peptides,,Acetate,Sermorelin Injectable 9mg,Injectable Solution,Subcutaneous,3,mg/mL,false,,72.00,3 mL vial
+CJC-1295,Peptides,,Acetate,CJC-1295 (no DAC) Injectable,Injectable Solution,Subcutaneous,2,mg/mL,false,,85.00,2 mL vial|5 mg vial
+Ipamorelin,Peptides,,Acetate,Ipamorelin Injectable,Injectable Solution,Subcutaneous,5,mg/mL,false,,70.00,2 mL vial|5 mg vial
+CJC-1295/Ipamorelin,Peptides,,Acetate,CJC-1295/Ipamorelin Blend,Injectable Solution,Subcutaneous,5,mg/mL,true,CJC-1295 1mg/mL|Ipamorelin 2mg/mL,95.00,3 mL vial|5 mL vial
+Tesamorelin,Peptides,,Acetate,Tesamorelin Injectable,Injectable Solution,Subcutaneous,10,mg/mL,false,,165.00,1 vial|2 mg vial
+Tesamorelin/Ipamorelin,Peptides,,Acetate,Tesamorelin/Ipamorelin Blend,Injectable Solution,Subcutaneous,10,mg/mL,true,Tesamorelin 5mg/mL|Ipamorelin 5mg/mL,178.00,3 mL vial
+Sermorelin/Ipamorelin,Peptides,,Acetate,Sermorelin/Ipamorelin Blend,Injectable Solution,Subcutaneous,5,mg/mL,true,Sermorelin 2mg/mL|Ipamorelin 3mg/mL,89.00,3 mL vial|5 mL vial
+Hexarelin,Peptides,,Acetate,Hexarelin Injectable,Injectable Solution,Subcutaneous,5,mg/mL,false,,80.00,2 mL vial|5 mg vial
+GHRP-2,Peptides,,Acetate,GHRP-2 Injectable,Injectable Solution,Subcutaneous,5,mg/mL,false,,75.00,2 mL vial|5 mg vial
+GHRP-6,Peptides,,Acetate,GHRP-6 Injectable,Injectable Solution,Subcutaneous,5,mg/mL,false,,75.00,2 mL vial|5 mg vial
+Ipamorelin,Peptides,,Acetate,Ipamorelin Sublingual Tablet,Sublingual Tablet,Sublingual,300,mcg,false,,55.00,30 count
+BPC-157,Peptides,,Acetate,BPC-157 Injectable 5mg,Injectable Solution,Subcutaneous,1,mg/mL,false,,62.00,5 mg vial|10 mg vial
+BPC-157,Peptides,,Acetate,BPC-157 Injectable 10mg,Injectable Solution,Subcutaneous,2,mg/mL,false,,98.00,10 mg vial
+TB-500,Peptides,,Acetate,TB-500 Injectable 5mg,Injectable Solution,Subcutaneous,1,mg/mL,false,,88.00,5 mg vial|10 mg vial
+BPC-157/TB-500,Peptides,,Acetate,BPC-157/TB-500 Blend,Injectable Solution,Subcutaneous,5,mg/mL,true,BPC-157 2.5mg/mL|TB-500 2.5mg/mL,145.00,5 mL vial
+GHK-Cu,Peptides,,Copper Peptide,GHK-Cu Injectable,Injectable Solution,Subcutaneous,50,mg/mL,false,,92.00,2 mL vial|10 mL vial
+GHK-Cu,Longevity,,Copper Peptide,GHK-Cu Topical Serum,Topical Gel,Topical,2,%,false,,54.00,30 mL bottle|60 mL bottle
+KPV,Peptides,,Acetate,KPV Injectable,Injectable Solution,Subcutaneous,5,mg/mL,false,,80.00,2 mL vial|5 mg vial
+KPV,Peptides,,Acetate,KPV Capsule,Capsule,Oral,10,mg,false,,58.00,60 count
+PT-141,Peptides,,Acetate,PT-141 (Bremelanotide) Injectable,Injectable Solution,Subcutaneous,10,mg/mL,false,,110.00,2 mL vial|10 mg vial
+PT-141,Peptides,,Acetate,PT-141 Nasal Spray,Nasal Spray,Intranasal,10,mg/mL,false,,105.00,8 mL bottle
+MOTS-c,Longevity,,Acetate,MOTS-c Injectable,Injectable Solution,Subcutaneous,10,mg/mL,false,,135.00,2 mL vial|10 mg vial
+Epitalon,Longevity,,Acetate,Epitalon Injectable,Injectable Solution,Subcutaneous,10,mg/mL,false,,120.00,1 vial|10 mg vial
+NAD+,Longevity,,,NAD+ Injectable,Injectable Solution,Subcutaneous,100,mg/mL,false,,155.00,2 mL vial|5 mL vial
+Thymosin Alpha-1,Peptides,,Acetate,Thymosin Alpha-1 Injectable,Injectable Solution,Subcutaneous,5,mg/mL,false,,132.00,1 vial|5 mg vial
+Selank,Peptides,,Acetate,Selank Nasal Spray,Nasal Spray,Intranasal,5,mg/mL,false,,68.00,5 mL bottle
+Semax,Peptides,,Acetate,Semax Nasal Spray,Nasal Spray,Intranasal,3,mg/mL,false,,72.00,5 mL bottle
+DSIP,Peptides,,Acetate,DSIP Injectable,Injectable Solution,Subcutaneous,2,mg/mL,false,,66.00,2 mL vial|2 mg vial
+Kisspeptin-10,Peptides,,Acetate,Kisspeptin-10 Injectable,Injectable Solution,Subcutaneous,5,mg/mL,false,,90.00,2 mL vial|5 mg vial
+Glutathione,IV Therapy,,,Glutathione Injectable,Injectable Solution,Intravenous,200,mg/mL,false,,42.00,10 mL vial|20 mL vial
+Glutathione,IV Therapy,,,Glutathione IV Push,Injectable Solution,Intravenous,200,mg/mL,false,,48.00,20 mL vial
+Methylcobalamin,IV Therapy,,,Vitamin B12 Injectable,Injectable Solution,Intramuscular,1,mg/mL,false,,26.00,10 mL vial|30 mL vial
+Methylcobalamin,IV Therapy,,,Vitamin B12 IV Additive,Injectable Solution,Intravenous,5,mg/mL,false,,34.00,10 mL vial
+MIC,IV Therapy,,,Lipotropic (MIC) Injectable,Injectable Solution,Intramuscular,,mg/mL,true,Methionine 25mg/mL|Inositol 50mg/mL|Choline 50mg/mL,30.00,10 mL vial|30 mL vial
+MIC,IV Therapy,,,Lipotropic (MIC) + B12 Injectable,Injectable Solution,Intramuscular,,mg/mL,true,Methionine 25mg/mL|Inositol 50mg/mL|Choline 50mg/mL|Cyanocobalamin 1mg/mL,36.00,10 mL vial|30 mL vial
+Vitamin C,IV Therapy,,Ascorbic Acid,Vitamin C High-Dose IV Additive,Injectable Solution,Intravenous,500,mg/mL,false,,38.00,20 mL vial|50 mL vial
+Myers Cocktail,IV Therapy,,,Myers' Cocktail IV Bag,Injectable Solution,Intravenous,,mg/mL,true,Magnesium Chloride 20mg/mL|Calcium Gluconate 20mg/mL|Vitamin B Complex 2mg/mL|Vitamin C 100mg/mL,65.00,250 mL bag|500 mL bag
+NAD+,IV Therapy,,,NAD+ IV Infusion Bag,Injectable Solution,Intravenous,500,mg,false,,240.00,250 mL bag|500 mL bag
+Biotin,IV Therapy,,,Biotin Injectable,Injectable Solution,Intramuscular,10,mg/mL,false,,28.00,10 mL vial
+Zinc Sulfate,IV Therapy,,,Zinc IV Additive,Injectable Solution,Intravenous,1,mg/mL,false,,25.00,10 mL vial
+Amino Acid Blend,IV Therapy,,,Amino Acid IV Infusion Bag,Injectable Solution,Intravenous,,mg/mL,true,L-Arginine 50mg/mL|L-Ornithine 50mg/mL|L-Citrulline 50mg/mL,70.00,250 mL bag
+Taurine,Longevity,,,Taurine Injectable,Injectable Solution,Subcutaneous,50,mg/mL,false,,45.00,10 mL vial
+Sildenafil,Sexual Health,,Citrate,Sildenafil RDT 25mg,Rapid Dissolve Tablet (RDT),Sublingual,25,mg,false,,18.00,30 tabs|60 tabs|90 tabs
+Sildenafil,Sexual Health,,Citrate,Sildenafil RDT 50mg,Rapid Dissolve Tablet (RDT),Sublingual,50,mg,false,,22.00,30 tabs|60 tabs|90 tabs
+Sildenafil,Sexual Health,,Citrate,Sildenafil RDT 100mg,Rapid Dissolve Tablet (RDT),Sublingual,100,mg,false,,26.00,30 tabs|60 tabs|90 tabs
+Tadalafil,Sexual Health,,,Tadalafil Troche 10mg,Troche,Sublingual,10,mg,false,,24.00,30 troches|60 troches|90 troches
+Tadalafil,Sexual Health,,,Tadalafil Troche 20mg,Troche,Sublingual,20,mg,false,,28.00,30 troches|60 troches|90 troches
+Tadalafil,Sexual Health,,,Tadalafil Troche 80mg,Troche,Sublingual,80,mg,false,,38.00,10 troches|20 troches|30 troches
+Tadalafil,Sexual Health,,,Tadalafil RDT 20mg,Rapid Dissolve Tablet (RDT),Sublingual,20,mg,false,,27.00,30 tabs|60 tabs|90 tabs
+Sildenafil,Sexual Health,,Citrate,Sildenafil Troche 40mg,Troche,Sublingual,40,mg,false,,25.00,30 troches|60 troches|90 troches
+TriMix,Sexual Health,,,TriMix Injectable T-105,Injectable Solution,Subcutaneous,,mg/mL,true,Papaverine 30mg/mL|Phentolamine 1mg/mL|Alprostadil 10mcg/mL,45.00,5 mL vial|10 mL vial|20 mL vial
+TriMix,Sexual Health,,,TriMix Injectable T-106,Injectable Solution,Subcutaneous,,mg/mL,true,Papaverine 30mg/mL|Phentolamine 1mg/mL|Alprostadil 25mcg/mL,52.00,5 mL vial|10 mL vial|20 mL vial
+BiMix,Sexual Health,,,BiMix Injectable 30/1,Injectable Solution,Subcutaneous,,mg/mL,true,Papaverine 30mg/mL|Phentolamine 1mg/mL,38.00,5 mL vial|10 mL vial|20 mL vial
+QuadMix,Sexual Health,,,QuadMix Injectable Q-4,Injectable Solution,Subcutaneous,,mg/mL,true,Papaverine 3mg/mL|Phentolamine 3mg/mL|Alprostadil 300mcg/mL|Atropine 0.2mg/mL,78.00,5 mL vial|10 mL vial
+Alprostadil,Sexual Health,,,Alprostadil Injectable 20mcg/mL,Injectable Solution,Subcutaneous,20,mcg/mL,false,,42.00,5 mL vial|10 mL vial
+Oxytocin,Sexual Health,,,Oxytocin Troche 50IU,Troche,Sublingual,50,units,false,,20.00,30 troches|60 troches|90 troches
+Oxytocin,Sexual Health,,,Oxytocin Nasal Spray 40IU/mL,Nasal Spray,Intranasal,40,units/mL,false,,32.00,10 mL bottle|20 mL bottle
+Phentolamine,Sexual Health,,Mesylate,Phentolamine Injectable 1mg/mL,Injectable Solution,Subcutaneous,1,mg/mL,false,,35.00,5 mL vial|10 mL vial
+Scream Cream,Sexual Health,,,Scream Cream Arousal Blend,Topical Cream,Topical,,mg/mL,true,Sildenafil Citrate 10mg/mL|Testosterone 1mg/mL|Aminophylline 30mg/mL,38.00,15 g|30 g|60 g
+Feminine Arousal Cream,Sexual Health,,,Feminine Arousal Cream,Topical Cream,Topical,,mg/mL,true,Sildenafil 10mg/mL|Testosterone 0.5mg/mL|Oxytocin 20units/mL,42.00,15 g|30 g|60 g
+Testosterone,Sexual Health,3,,Testosterone Topical Cream 1%,Topical Cream,Topical,1,%,false,,30.00,15 g|30 g|60 g
+Vasodilator Arousal Cream,Sexual Health,,,Vasodilator Arousal Cream,Topical Cream,Topical,,mg/mL,true,Pentoxifylline 50mg/mL|Aminophylline 30mg/mL|Sildenafil Citrate 10mg/mL,40.00,15 g|30 g
+Oxytocin,Sexual Health,,,Oxytocin Vaginal Suppository 400IU,Suppository,Intravaginal,400,units,false,,28.00,10 supp|20 supp|30 supp
+DHEA,Sexual Health,,,DHEA Topical Cream 10%,Topical Cream,Topical,10,%,false,,26.00,15 g|30 g
+Testosterone,Sexual Health,3,,Testosterone Subcutaneous Pellet 100mg,Subcutaneous Pellet,Subcutaneous,100,mg,false,,55.00,1 pellet|2 pellets|4 pellets
+Tretinoin,Dermatology,,,Tretinoin Topical Cream 0.025%,Topical Cream,Topical,0.025,%,false,,22.00,15 g|30 g|45 g
+Tretinoin,Dermatology,,,Tretinoin Topical Cream 0.05%,Topical Cream,Topical,0.05,%,false,,25.00,15 g|30 g|45 g
+Tretinoin,Dermatology,,,Tretinoin Topical Cream 0.1%,Topical Cream,Topical,0.1,%,false,,28.00,15 g|30 g|45 g
+Hydroquinone,Dermatology,,,Hydroquinone Topical Cream 4%,Topical Cream,Topical,4,%,false,,24.00,15 g|30 g|60 g
+Hydroquinone,Dermatology,,,Hydroquinone Topical Cream 8%,Topical Cream,Topical,8,%,false,,29.00,15 g|30 g
+Triple Melasma Cream,Dermatology,,,Triple Melasma Cream,Topical Cream,Topical,,%,true,Hydroquinone 4%|Tretinoin 0.05%|Hydrocortisone 1%,34.00,15 g|30 g|45 g
+Azelaic Acid,Dermatology,,,Azelaic Acid Topical Cream 20%,Topical Cream,Topical,20,%,false,,27.00,15 g|30 g
+Acne Combo Gel,Dermatology,,,Acne Combo Gel,Topical Gel,Topical,,%,true,Clindamycin 1%|Benzoyl Peroxide 5%,26.00,30 g|45 g
+Acne Blend Cream,Dermatology,,,Acne Blend Cream,Topical Cream,Topical,,%,true,Clindamycin 1%|Tretinoin 0.025%|Niacinamide 4%,32.00,15 g|30 g
+Spironolactone,Dermatology,,,Spironolactone Topical Gel 5%,Topical Gel,Topical,5,%,false,,25.00,30 g|60 g
+Niacinamide,Dermatology,,,Niacinamide Topical Cream 5%,Topical Cream,Topical,5,%,false,,20.00,30 g|60 g
+Kojic Acid Blend,Dermatology,,,Kojic Acid Melasma Blend,Topical Cream,Topical,,%,true,Kojic Acid 2%|Hydroquinone 4%,31.00,15 g|30 g
+Minoxidil,Hair Restoration,,,Minoxidil Topical Solution 5%,Topical Gel,Topical,5,%,false,,24.00,60 mL|120 mL
+Minoxidil,Hair Restoration,,,Minoxidil Topical Foam 5%,Topical Cream,Topical,5,%,false,,27.00,60 g|120 g
+Minoxidil/Finasteride,Hair Restoration,,,Hair Growth Combo Topical Solution,Topical Gel,Topical,,%,true,Minoxidil 5%|Finasteride 0.1%,38.00,60 mL|120 mL
+Finasteride,Hair Restoration,,,Finasteride Topical Serum 0.25%,Topical Gel,Topical,0.25,%,false,,30.00,30 mL|60 mL
+Minoxidil/Finasteride/Biotin,Hair Restoration,,,Triple Hair Growth Serum,Topical Gel,Topical,,%,true,Minoxidil 5%|Finasteride 0.1%|Biotin 0.5%,42.00,30 mL|60 mL
+Finasteride,Hair Restoration,,,Finasteride Capsule 1mg,Capsule,Oral,1,mg,false,,18.00,30 caps|60 caps|90 caps
+Latanoprost,Hair Restoration,,,Latanoprost Hair Growth Solution 0.03%,Topical Gel,Topical,0.03,%,false,,33.00,30 mL
+Naltrexone,Other,,Hydrochloride,LDN Capsule 0.5mg,Capsule,Oral,0.5,mg,false,,14.00,30 caps|60 caps|90 caps
+Naltrexone,Other,,Hydrochloride,LDN Capsule 1.5mg,Capsule,Oral,1.5,mg,false,,15.00,30 caps|60 caps|90 caps
+Naltrexone,Other,,Hydrochloride,LDN Capsule 3mg,Capsule,Oral,3,mg,false,,17.00,30 caps|60 caps|90 caps
+Naltrexone,Other,,Hydrochloride,LDN Capsule 4.5mg,Capsule,Oral,4.5,mg,false,,19.00,30 caps|60 caps|90 caps
+Naltrexone,Other,,Hydrochloride,LDN Sustained Release Capsule 4.5mg,Capsule,Oral,4.5,mg,false,,24.00,30 caps|60 caps|90 caps
+Naltrexone,Other,,Hydrochloride,LDN Oral Solution 1mg/mL,Oral Solution,Oral,1,mg/mL,false,,28.00,30 mL bottle|60 mL bottle
+Ketamine,Mental Health,3,Hydrochloride,Ketamine RDT 100mg,Rapid Dissolve Tablet (RDT),Sublingual,100,mg,false,,55.00,10 tabs|20 tabs|30 tabs
+Ketamine,Mental Health,3,Hydrochloride,Ketamine Nasal Spray 100mg/mL,Nasal Spray,Intranasal,100,mg/mL,false,,65.00,5 mL bottle|10 mL bottle
+Ketamine,Mental Health,3,Hydrochloride,Ketamine Troche 200mg,Troche,Sublingual,200,mg,false,,60.00,10 troches|20 troches
