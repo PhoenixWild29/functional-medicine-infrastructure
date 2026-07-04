@@ -14,6 +14,35 @@ export type Database = {
   }
   public: {
     Tables: {
+      adapter_submission_debug_payloads: {
+        Row: {
+          adapter_submission_id: string
+          created_at: string
+          debug_id: string
+          raw_payload: Json
+        }
+        Insert: {
+          adapter_submission_id: string
+          created_at?: string
+          debug_id?: string
+          raw_payload: Json
+        }
+        Update: {
+          adapter_submission_id?: string
+          created_at?: string
+          debug_id?: string
+          raw_payload?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "adapter_submission_debug_payloads_adapter_submission_id_fkey"
+            columns: ["adapter_submission_id"]
+            isOneToOne: false
+            referencedRelation: "adapter_submissions"
+            referencedColumns: ["submission_id"]
+          },
+        ]
+      }
       adapter_submissions: {
         Row: {
           acknowledged_at: string | null
