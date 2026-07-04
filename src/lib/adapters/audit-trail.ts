@@ -186,22 +186,11 @@ export async function markSubmitted(
   // section. Cleanup is handled by /api/cron/purge-phi-debug.
   if (process.env['PHI_DEBUG_ENABLED'] === 'true' && requestPayload !== undefined) {
     try {
-      // The new table isn't in the generated Database typing yet
-      // (db:types regens from the live prod project, and per constraint
-      // this migration has not been applied to prod). Cast through the
-      // Supabase client surface so we can write to it without losing
-      // typing on the rest of the file. Once the migration is deployed
-      // to prod and `npm run db:types` runs, this cast can be removed.
-      const debugClient = supabase as unknown as {
-        from: (table: string) => {
-          insert: (row: Record<string, unknown>) => Promise<{ error: { message: string } | null }>
-        }
-      }
-      const { error: debugError } = await debugClient
+      const { error: debugError } = await supabase
         .from('adapter_submission_debug_payloads')
         .insert({
           adapter_submission_id: submissionId,
-          raw_payload:           requestPayload as unknown as Json,
+          raw_payload:           requestPayload as Json,
         })
       if (debugError) {
         console.warn(
