@@ -481,7 +481,7 @@ Queue for inbound faxes received from pharmacies (Tier 4 responses).
 
 #### normalized_catalog
 
-Cross-pharmacy normalized medication catalog for comparison. **Superseded by the V3 hierarchical catalog** and retained only for historical/reference purposes (excluded from the active table count in the ERD).
+Cross-pharmacy normalized medication catalog for comparison. A live V2 table (created in migration `20260317000003`), counted normally as one of the 44 tables. It coexists with the V3 hierarchical catalog rather than being replaced by it.
 
 | Column | Type | Description |
 |--------|------|-------------|
