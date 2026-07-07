@@ -3,11 +3,10 @@
 ## Deployment Architecture
 
 ```
-main branch push → GitHub Actions CI → Supabase migrate → Vercel deploy → Health check → Slack notify
-develop branch push → Same pipeline → staging environment
+main branch push → Vercel native GitHub integration → build + deploy → Health check
 ```
 
-Production and staging deployments are fully automated via `.github/workflows/deploy.yml`. No manual steps are required for a standard deployment.
+Production deploys automatically through **Vercel's native GitHub integration** on every push to `main`. The custom `.github/workflows/deploy.yml` GitHub Actions pipeline is **disabled** and does not run. GitHub Actions still runs CI (lint, type-check, test, build) on pull requests, but deployment is handled entirely by Vercel. Database migrations are applied **manually** with `supabase db push` — they are not automated by CI (see [Database Migration Execution](#database-migration-execution)).
 
 ## Pre-Deployment Checklist
 
@@ -22,17 +21,16 @@ Before merging to `main` (production) or `develop` (staging):
 
 ## Standard Deployment
 
-**Automatic** — push to `main` or `develop`:
+**Automatic** — push to `main`:
 
 > **Route authentication model:** `/api/cron/*` and `/api/health` are public (no Supabase session required). Cron jobs authenticate via `CRON_SECRET` bearer token inside the route handler. `/api/webhooks/*` and `/auth/callback` are also public. All other routes require a valid Supabase session cookie.
 
-1. GitHub Actions `deploy.yml` triggers
-2. **migrate** job: `supabase link` → `supabase db push` → type-check diff (fails if stale)
-3. **deploy** job: `vercel pull` → `vercel build` → `vercel deploy --prebuilt`
-4. **verify** job: GET `/api/health` — 5 retries, 10s apart
-5. **notify** job: Slack `#deployments` with status of all jobs
+1. Commits land on `main` (typically via a merged PR that has passed GitHub Actions CI)
+2. Vercel's native GitHub integration detects the push and starts a build
+3. Vercel builds and deploys the new version to production
+4. Verify: `GET https://functional-medicine-infrastructure.vercel.app/api/health` returns `{"ok":true,...}`
 
-If any job fails, the pipeline stops and Slack is notified with the failure.
+Migrations are **not** run by this flow. If the release includes schema changes, apply them manually with `supabase db push` **before** the deploy goes live (see [Database Migration Execution](#database-migration-execution)).
 
 ## Environment Variable Updates
 
@@ -61,10 +59,9 @@ For the full POC infrastructure setup see [docs/poc-setup.md](docs/poc-setup.md)
 After a production deployment:
 
 ```bash
-# 1. Health check — expected response: {"status":"ok","db":"ok","version":"<git-sha>"}
-curl https://app.compoundiq.com/api/health
-# If db is "error", the Supabase connection is down (check SUPABASE_URL and pooler config)
-# version field reflects VERCEL_GIT_COMMIT_SHA for the deployed build
+# 1. Health check — expected response: {"ok":true,"timestamp":"<ISO>","version":"<sha>"}
+curl https://functional-medicine-infrastructure.vercel.app/api/health
+# version field reflects the deployed 7-character git commit SHA
 
 # 2. Verify Stripe webhook delivery (Stripe dashboard → Webhooks → recent events)
 
@@ -100,7 +97,7 @@ supabase db execute \
   --file supabase/migrations/down/20260319000012_down.sql
 
 # 3. Verify health
-curl https://app.compoundiq.com/api/health
+curl https://functional-medicine-infrastructure.vercel.app/api/health
 ```
 
 > **Important:** Review [docs/migration-guide.md](docs/migration-guide.md) rollback caveats before running down migrations. Some migrations have ordering dependencies or permanent enum additions.
@@ -109,11 +106,11 @@ curl https://app.compoundiq.com/api/health
 
 ### Adding a new migration to production
 
-Migrations run automatically in the CI/CD pipeline. For emergency hotfix migrations:
+Migrations are **not** run by CI or the Vercel deploy. Applying them manually with `supabase db push` is the standard path for every schema change:
 
 ```bash
 # 1. Create migration file
-supabase/migrations/YYYYMMDDHHMMSS_hotfix_description.sql
+supabase/migrations/YYYYMMDDHHMMSS_description.sql
 
 # 2. Apply to production (requires DATABASE_URL)
 supabase link --project-ref your-project-ref
@@ -122,9 +119,11 @@ supabase db push
 # 3. Regenerate types and commit
 npm run db:types
 git add src/types/database.types.ts supabase/migrations/
-git commit -m "chore: hotfix migration + regen types"
+git commit -m "chore: add migration + regen types"
 git push origin main
 ```
+
+Apply the migration **before** the code that depends on it reaches production, so the deployed build never runs against a stale schema.
 
 ### Verifying migration status
 
@@ -143,7 +142,7 @@ git commit -m "chore: regen types"
 git push
 ```
 
-**Migration fails in CI**
+**Migration fails (`supabase db push`)**
 - Check Supabase project is accessible (verify `SUPABASE_ACCESS_TOKEN` and project ref)
 - Check for migration ordering issues (new migration references table not yet created)
 - Check for syntax errors: `supabase db lint`

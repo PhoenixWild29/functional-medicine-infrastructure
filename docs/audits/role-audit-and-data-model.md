@@ -275,3 +275,9 @@ For Phase C (multi-Rx cart) — **F-1 is a hard prerequisite.** The cart endpoin
 **Cross-clinic isolation:** asserted in the provider branch by requiring both `orders.clinic_id` to match the JWT `clinic_id` AND the linked `providers` row's `clinic_id` to match the same JWT — defence-in-depth in case a stale provider linkage spans clinics.
 
 **Deferred / non-goals:** the patient-detail view (F-4), provider-toggle UX (F-3 nice-to-have), and `patients.primary_provider_id` (F-5) are unchanged. F-1 (`providers.user_id`) and F-2 (sign-and-send signer enforcement) remain prerequisites and are already in place.
+
+## §11 — 2026-07-02 update
+
+- **F-3 (provider clinic-view toggle): SHIPPED (PR #92).** Providers now default to their own orders and can opt in to the full clinic view via a toggle. This **supersedes the §10 "no toggle" statement** — §10 chose Option A (RLS, no toggle); the shipped feature reintroduces the opt-in toggle the original §F-3 spec called for, gated by an explicit grant rather than an unconditional cross-provider view. §10 is retained above for historical context.
+- **F-5 (`patients.primary_provider_id`): SHIPPED (PR #93).** The nullable FK to `providers` now exists; order creation can default to a patient's primary provider.
+- **F-4 (patient-detail view): still OPEN.** No `/patients` / `/patients/[patientId]` route has shipped yet.
