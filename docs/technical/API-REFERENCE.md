@@ -152,6 +152,32 @@ GET /api/pharmacy-search?medication={name}&form={form}&dose={dose}&state={state}
 
 Only pharmacies with an active license in the specified state are returned. BANNED pharmacies are excluded entirely.
 
+> **Dual catalog:** Two catalog models coexist. The legacy flat `catalog` table (one denormalized row per pharmacy medication) backs `/api/pharmacy-search` and the ops catalog tools. The V3 **hierarchical** catalog (`ingredients → salt_forms → formulations → formulation_ingredients → pharmacy_formulations`, plus the reference tables `dosage_forms`, `routes_of_administration`, and `sig_templates`) backs `/api/formulations` (see below). New prescription flows use the V3 cascade; the flat `catalog` remains in place for legacy search and catalog management and is not being removed.
+
+---
+
+### Formulations (V3 Hierarchical Catalog)
+
+A single cascading endpoint drives the prescription builder against the V3 hierarchical catalog. It returns **one level at a time**, selected by the `level` query parameter, with each level narrowed by the IDs chosen at the previous levels. The builder walks `ingredients → salt_forms → dosage_forms → routes → formulations → pharmacy_options`.
+
+```
+GET /api/formulations?level={level}&...
+```
+
+**Auth:** Supabase JWT (clinic_user)
+
+**Levels:**
+| `level` | Additional params | Returns |
+|---------|-------------------|---------|
+| `ingredients` | `q` (optional search) | Base active ingredients (`ingredients`) |
+| `salt_forms` | `ingredient_id` | Salt forms (`salt_forms`) available for the chosen ingredient |
+| `dosage_forms` | `ingredient_id`, `salt_form_id` | Dosage forms available for the selection (reference: `dosage_forms`) |
+| `routes` | `ingredient_id`, `salt_form_id`, `dosage_form_id` | Routes of administration (reference: `routes_of_administration`) |
+| `formulations` | `ingredient_id`, `salt_form_id`, `dosage_form_id`, `route_id` | Concrete `formulations` matching the selection |
+| `pharmacy_options` | `formulation_id`, `state` | Pharmacies (via `pharmacy_formulations`) that offer the formulation and are licensed in the patient's state |
+
+The client auto-skips any level that resolves to a single option, filling it in and advancing to the next level. The `pharmacy_options` level applies the same state-licensing and BANNED-pharmacy exclusion rules as `/api/pharmacy-search`.
+
 ---
 
 ### Orders
@@ -242,6 +268,57 @@ Runs the 6 pre-dispatch compliance checks without actually sending.
 }
 ```
 
+#### Bundlable Siblings (Phase C)
+
+```
+GET /api/orders/{orderId}/bundlable-siblings
+```
+
+**Auth:** Supabase JWT (clinic_user)
+
+Returns other orders for the same patient that are eligible to be bundled with this order into a single combined payment group (same patient, compatible status, not already grouped). Used to offer "pay for everything at once" at sign-and-send time.
+
+**Response (200):**
+```json
+{
+  "siblings": [
+    {
+      "order_id": "uuid",
+      "medication_name": "Tirzepatide",
+      "retail_price": 450.00,
+      "status": "AWAITING_PAYMENT"
+    }
+  ],
+  "count": 1
+}
+```
+
+#### Group and Send (Phase C)
+
+```
+POST /api/orders/{orderId}/group-and-send
+```
+
+**Auth:** Supabase JWT (provider or clinic_admin)
+
+Bundles the specified sibling orders together with this order into a payment group and dispatches a single combined checkout link. Creates a `payment_groups` row and stamps `orders.payment_group_id` on every member order.
+
+**Body:**
+```json
+{
+  "sibling_order_ids": ["uuid", "uuid"]
+}
+```
+
+**Response (200):**
+```json
+{
+  "payment_group_id": "uuid",
+  "order_ids": ["uuid", "uuid", "uuid"],
+  "checkout_url": "https://functional-medicine-infrastructure.vercel.app/checkout/{jwt_token}"
+}
+```
+
 ---
 
 ### Checkout
@@ -269,6 +346,55 @@ Creates a Stripe PaymentIntent with Connect fee splitting.
 {
   "client_secret": "pi_xxx_secret_xxx",
   "amount": 30000,
+  "currency": "usd"
+}
+```
+
+#### Create Payment Group (Phase C)
+
+```
+POST /api/checkout/payment-group
+```
+
+**Auth:** Checkout JWT token (from URL)
+
+Resolves a `payment_groups` bundle for checkout, returning the combined line items and total across every member order so the patient pays once for multiple prescriptions.
+
+**Response (200):**
+```json
+{
+  "payment_group_id": "uuid",
+  "orders": [
+    { "order_id": "uuid", "medication_name": "Semaglutide", "amount": 30000 }
+  ],
+  "total_amount": 75000,
+  "currency": "usd"
+}
+```
+
+#### Create Payment Group Intent (Phase C)
+
+```
+POST /api/checkout/payment-group-intent
+```
+
+**Auth:** Checkout JWT token (from URL)
+
+Creates a single Stripe PaymentIntent covering every order in the payment group, with Connect fee splitting applied per member order.
+
+**Body:**
+```json
+{
+  "payment_group_id": "uuid",
+  "email": "patient@example.com"
+}
+```
+
+**Response (200):**
+```json
+{
+  "client_secret": "pi_xxx_secret_xxx",
+  "amount": 75000,
   "currency": "usd"
 }
 ```
@@ -331,13 +457,15 @@ All cron endpoints require `Authorization: Bearer {CRON_SECRET}` header.
 | POST /api/cron/sla-check | */5 * * * * | SLA breach scanning |
 | POST /api/cron/sla-refire | */5 * * * * | Re-escalate stalled SLAs |
 | POST /api/cron/payment-expiry | */15 * * * * | Auto-expire unpaid orders |
-| POST /api/cron/adapter-health-check | */10 * * * * | Circuit breaker health |
 | POST /api/cron/submission-reconciliation | */30 * * * * | Detect stuck submissions |
 | POST /api/cron/portal-status-poll | */30 * * * * | Tier 2 status polling |
 | POST /api/cron/fax-retry | */5 * * * * | Fax retry with backoff |
 | POST /api/cron/screenshot-cleanup | 0 * * * * | Tier 2 screenshot cleanup |
+| POST /api/cron/purge-phi-debug | 0 * * * * | Purge expired 24h PHI debug payloads (`adapter_submission_debug_payloads`) |
 | POST /api/cron/daily-digest | 0 14 * * * | Daily ops digest to Slack |
 | GET /api/cron/poc-credential-sync | 0 5 * * * | Reset POC demo accounts to canonical passwords |
+
+_10 cron jobs total. `adapter-health-check` was removed; `purge-phi-debug` runs hourly to enforce the 24-hour PHI debug retention window._
 
 ---
 
