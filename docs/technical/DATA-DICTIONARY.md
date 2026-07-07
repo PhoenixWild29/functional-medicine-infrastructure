@@ -2,7 +2,7 @@
 
 **Version:** 1.0 | **Date:** April 5, 2026
 **Database:** Supabase PostgreSQL 15+
-**Tables:** 33 + 1 view | **Enums:** 10 | **Row-Level Security:** Enabled on all tables
+**Tables:** 44 + 1 view | **Enums:** 10 | **Row-Level Security:** Enabled on all tables
 
 ---
 
@@ -179,6 +179,7 @@ Patient demographics and contact info. Scoped to a clinic.
 |--------|------|-------------|
 | patient_id | UUID (PK) | Unique patient identifier |
 | clinic_id | UUID (FK→clinics) | Which clinic this patient belongs to |
+| primary_provider_id | UUID (FK→providers) | Default/primary prescribing provider for this patient (F-5) — used to pre-select the provider in the prescription builder. Null if none assigned. |
 | first_name / last_name | TEXT | Patient name |
 | date_of_birth | DATE | DOB — used for identity verification |
 | phone | TEXT | Mobile phone for SMS checkout links and notifications |
@@ -273,6 +274,8 @@ Medication catalog entries. Each pharmacy has its own catalog items with pricing
 | is_active | BOOLEAN | Whether this item is currently available |
 | created_at / updated_at / deleted_at | — | Audit + soft-delete fields |
 
+> **Note — dual catalog:** This flat `catalog` table is the legacy denormalized model (one row per pharmacy medication) and still backs `/api/pharmacy-search` and the ops catalog tools. It coexists with the newer V3 **hierarchical** catalog (`ingredients → salt_forms → formulations → pharmacy_formulations`, plus reference tables), which backs `/api/formulations` and the cascading prescription builder. The flat `catalog` is not being removed.
+
 #### catalog_history
 
 Append-only audit log for every catalog change. Cannot be updated or deleted.
@@ -317,6 +320,7 @@ The central order table. Contains the prescription, pricing, and fulfillment sta
 | checkout_token_jwt | TEXT | JWT token embedded in patient checkout URL |
 | checkout_url | TEXT | Full checkout URL sent to patient |
 | checkout_expires_at | TIMESTAMPTZ | When the 72-hour payment window expires |
+| payment_group_id | UUID (FK→payment_groups) | Set when this order is bundled with sibling orders into one combined checkout (Phase C). Null for standalone orders. |
 | **Fulfillment fields:** | | |
 | fax_sid | TEXT | Documo fax job ID (for Tier 4) |
 | fax_retry_count | INTEGER | How many fax retry attempts (max 3) |
@@ -340,6 +344,37 @@ Append-only audit trail of every state transition. Cannot be updated or deleted.
 | change_reason | TEXT | Why the transition happened |
 | metadata | JSONB | Additional context (webhook event ID, adapter submission ID, etc.) |
 | created_at | TIMESTAMPTZ | When the transition occurred |
+
+### Payment Grouping Tables (Phase C)
+
+#### payment_groups
+
+Bundles multiple orders for the same patient into a single combined checkout so the patient pays once for several prescriptions. Introduced in Phase C.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| payment_group_id | UUID (PK) | Payment group identifier |
+| clinic_id | UUID (FK→clinics) | Which clinic owns the bundled orders |
+| patient_id | UUID (FK→patients) | Which patient the bundle is for |
+| status | ENUM | Group checkout status (mirrors the payment lifecycle: pending → paid / expired) |
+| total_amount | NUMERIC(10,2) | Combined patient-facing total across all member orders |
+| stripe_payment_intent_id | TEXT | Single Stripe PaymentIntent covering the whole group (pi_xxx) |
+| checkout_token_jwt | TEXT | JWT embedded in the combined checkout URL |
+| checkout_expires_at | TIMESTAMPTZ | When the combined 72-hour payment window expires |
+| created_at / updated_at / deleted_at / is_active | — | Standard audit + soft-delete fields |
+
+Member orders reference the group via `orders.payment_group_id`.
+
+#### dispute_orders
+
+Junction table linking a Stripe `disputes` record to the individual orders it covers. Because a payment group can be charged as a single PaymentIntent, one dispute may span multiple orders; this table allocates the disputed amount across them.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| dispute_id | UUID (FK→disputes, composite PK) | Which dispute |
+| order_id | UUID (FK→orders, composite PK) | Which order the dispute covers |
+| allocated_amount | NUMERIC(10,2) | Portion of the disputed amount attributed to this order |
+| created_at | TIMESTAMPTZ | When the linkage was recorded |
 
 ### Event & Monitoring Tables
 
@@ -413,6 +448,20 @@ Audit trail of every submission attempt to a pharmacy. Append-only — a new row
 | retry_count | INTEGER | Which retry attempt this is (0 = first attempt) |
 | created_at | TIMESTAMPTZ | When the submission was initiated |
 
+#### adapter_submission_debug_payloads
+
+Short-lived debug capture of the raw adapter request/response payloads for troubleshooting failed submissions. Contains PHI, so rows are readable by the **service role only** (no clinic or ops RLS access) and are automatically purged 24 hours after creation by the `purge-phi-debug` cron.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID (PK) | Debug payload identifier |
+| submission_id | UUID (FK→adapter_submissions) | Which submission attempt this payload belongs to |
+| order_id | UUID (FK→orders) | Associated order |
+| request_payload | JSONB | Full outbound request sent to the pharmacy (PHI) |
+| response_payload | JSONB | Full raw response received from the pharmacy (PHI) |
+| expires_at | TIMESTAMPTZ | When this row becomes eligible for purge (created_at + 24h) |
+| created_at | TIMESTAMPTZ | When the payload was captured |
+
 #### inbound_fax_queue
 
 Queue for inbound faxes received from pharmacies (Tier 4 responses).
@@ -432,7 +481,7 @@ Queue for inbound faxes received from pharmacies (Tier 4 responses).
 
 #### normalized_catalog
 
-Cross-pharmacy normalized medication catalog for comparison.
+Cross-pharmacy normalized medication catalog for comparison. **Superseded by the V3 hierarchical catalog** and retained only for historical/reference purposes (excluded from the active table count in the ERD).
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -453,10 +502,10 @@ Cross-pharmacy normalized medication catalog for comparison.
 2. **Snapshot immutability** — 7 fields on orders are frozen at DRAFT→AWAITING_PAYMENT via database trigger.
 3. **NUMERIC(10,2) for money** — Never floating point. Stripe uses integer cents (multiply by 100).
 4. **Atomic CAS** — All state transitions use `WHERE status = :expected` to prevent race conditions.
-5. **Append-only audit** — order_status_history, catalog_history, adapter_submissions, webhook_events cannot be updated.
-6. **RLS on everything** — Clinic users see only their clinic's data. Ops admins see all. Patients see one order.
+5. **Append-only audit** — order_status_history, catalog_history, adapter_submissions, adapter_submission_debug_payloads, webhook_events cannot be updated.
+6. **RLS on everything** — Clinic users see only their clinic's data. Ops admins see all. Patients see one order. PHI debug payloads (`adapter_submission_debug_payloads`) are service-role only.
 7. **Vault for credentials** — Pharmacy API keys and portal passwords reference Vault entries, never stored directly.
 
 ---
 
-*CompoundIQ — 33 tables + 1 view. 10 enums. Zero tolerance for data integrity violations.*
+*CompoundIQ — 44 tables + 1 view. 10 enums. Zero tolerance for data integrity violations.*
