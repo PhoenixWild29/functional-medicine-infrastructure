@@ -16,6 +16,7 @@
     "db:types": "bash scripts/regen-db-types.sh",
     "db:migrate": "supabase db push",
     "seed:poc": "dotenv -e .env.local -- tsx scripts/seed-poc.ts",
+    "seed:catalog": "dotenv -e .env.local -- tsx scripts/import-catalog-v3.ts",
     "docs:pdf": "bash scripts/md-to-pdf.sh",
     "docs:docx": "bash scripts/md-to-docx.sh"
   },
