@@ -518,18 +518,18 @@ erDiagram
 | Series | Tables |
 |--------|--------|
 | V1.0 (12) | clinics, providers, patients, pharmacies, pharmacy_state_licenses, catalog, catalog_history, orders, order_status_history, webhook_events, order_sla_deadlines, inbound_fax_queue |
-| V2.0 (4) | pharmacy_api_configs, pharmacy_portal_configs, adapter_submissions, pharmacy_webhook_events |
+| V2.0 (5) | pharmacy_api_configs, pharmacy_portal_configs, adapter_submissions, pharmacy_webhook_events, normalized_catalog |
 | Additional (4) | sms_log, sms_templates, transfer_failures, disputes |
 | Incremental (5) | clinic_notifications, ops_alert_queue, circuit_breaker_state, sla_notifications_log, catalog_upload_history |
 | V3.0 Hierarchical Catalog (8) | ingredients, salt_forms, dosage_forms, routes_of_administration, formulations, formulation_ingredients, pharmacy_formulations, sig_templates |
-| Provider Speed Features (3) | provider_favorites, clinic_protocol_templates, clinic_protocol_items |
-| Regulatory Compliance (5) | drug_interactions, patient_protocol_phases, phase_advancement_history, epcs_audit_log, prescription_dea_tracking |
+| Provider Speed Features (3) | provider_favorites, protocol_templates, protocol_items |
+| Regulatory Compliance (4) | drug_interactions, patient_protocol_phases, phase_advancement_history, epcs_audit_log |
 | Phase C Payment Grouping (2) | payment_groups, dispute_orders |
 | Adapter Debug (1) | adapter_submission_debug_payloads |
 | **1 View** | provider_prescribing_history |
 | **Total** | **44 tables + 1 view** |
 
-> **Count note:** The per-category breakdown above sums to exactly **44 tables** (12 + 4 + 4 + 5 + 8 + 3 + 5 + 2 + 1), plus 1 view. `normalized_catalog` (V2.0) has been superseded by the V3.0 hierarchical catalog and is therefore excluded from the active table count; it is retained in the Mermaid diagram above for historical reference. `adapter_submission_debug_payloads` stores 24-hour PHI debug payloads and is reachable by the service role only (no clinic/ops RLS access); it is purged hourly by the `purge-phi-debug` cron.
+> **Count note:** The per-category breakdown above sums to exactly **44 tables** (12 + 5 + 4 + 5 + 8 + 3 + 4 + 2 + 1), plus 1 view. `normalized_catalog` (V2.0, created in migration `20260317000003`) is a live table and is counted normally as one of the 44. `adapter_submission_debug_payloads` stores 24-hour PHI debug payloads and is reachable by the service role only (no clinic/ops RLS access); it is purged hourly by the `purge-phi-debug` cron.
 
 ---
 

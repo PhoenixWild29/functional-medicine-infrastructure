@@ -205,7 +205,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 31. Search for **"Testosterone"** → three results now appear (**Testosterone**, **Testosterone Cypionate**, **Testosterone Propionate** — topical/pellet testosterone is modelled as the bare "Testosterone", while the injectable esters are separate top-level ingredients). Select **Testosterone Cypionate** → **Point out DEA Schedule 3 warning banner**
 32. Cascade: salt form **Cypionate** (auto-skips as the only option) → dosage form **Injectable Solution** → route **Intramuscular** → formulation **"Testosterone Cypionate Injectable 200 mg/mL"** → set dose + frequency
-33. Select Strive Pharmacy, set retail price, click **"Review & Send (2)"**
+33. Select Strive Pharmacy, set retail price. The Testosterone Cypionate 200 mg/mL wholesale is **$48**, and the same **2x multiplier** the demo uses puts its retail at **$96.00**. Click **"Review & Send (2)"**
 
 ### 3F — Batch Review, Interaction Alerts & EPCS 2FA (New in Phase 19)
 
@@ -236,7 +236,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 37a. On the dashboard, both Alex Demo orders (Semaglutide + Testosterone) show **"Awaiting Payment."** Click either one to open the **order drawer**.
 37b. **Point out the "Combine into one payment link" picker** — it lists the sibling order (the other Awaiting-Payment Rx for the same patient + provider) with a selectable checkbox.
 37c. Select the sibling order, then click **"Combine and Copy Payment Link."**
-37d. **Point out** — the system generates **ONE bundled checkout link** covering both prescriptions and copies it to your clipboard. This is the link you'll paste in Part 4.
+37d. **Point out** — the system generates **ONE bundled checkout link** covering both prescriptions — patient checkout shows **"Prescription Bundle · 2 prescriptions · $286.00"** (Semaglutide $190.00 + Testosterone Cypionate $96.00) — and copies it to your clipboard. This is the link you'll paste in Part 4.
 
 > "One link, both prescriptions, one payment. The patient taps once and pays a single combined total instead of juggling two links. The per-order 'Copy Payment Link' button still exists for single-prescription orders — but when a patient has multiple prescriptions from one visit, Combine and Send is the default. This is the friction Phase C removed."
 
@@ -288,9 +288,9 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 1. Paste the **bundled checkout URL** copied in the Combine-and-Send step (Part 3F — Phase C) into a new tab (or into a mobile browser for extra impact)
 2. **Point out:**
    - Clinic branding: "Sunrise Functional Medicine" displayed prominently
-   - **"Prescription Bundle · 2 prescriptions"** — the two sibling Rx now share one checkout instead of two separate links
+   - **"Prescription Bundle · 2 prescriptions · $286.00"** — the two sibling Rx now share one checkout instead of two separate links
    - Two generic line items, each labeled "Prescription Service" — NOT the medication name
-   - A single **combined total** — the sum of the two retail prices set in Part 3E (the Semaglutide line is $190.00; the Testosterone line reflects the retail you set). The patient pays this one combined amount, once.
+   - A single **combined total of $286.00** — the sum of the two retail prices set in Part 3E (Semaglutide $190.00 + Testosterone Cypionate $96.00). The patient pays this one combined amount, once.
    - **Email field** ("Email for receipt") — required, above the Stripe payment form. Stripe auto-emails a branded receipt to this address when the charge succeeds.
    - Stripe Elements payment form below (card + whichever wallet options the patient's device supports — e.g., Apple Pay in Safari on iOS, Google Pay in Chrome on Android, Cash App Pay, Bank, Affirm, Amazon Pay)
    - Trust signals: "256-bit TLS Encryption", "Powered by Stripe"
@@ -306,7 +306,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 4. Enter email in the **"Email for receipt"** field: `test@example.com` (Stripe will email the branded receipt here)
 5. Enter Stripe test card in the Stripe Elements form below: `4242 4242 4242 4242` | Exp: `12/28` | CVC: `123` | ZIP: `78701`
-6. Click the **"Pay"** button — it shows the combined bundle total for the 2 prescriptions (the Semaglutide line contributes $190.00)
+6. Click the **"Pay"** button — it shows the combined bundle total of **$286.00** for the 2 prescriptions (Semaglutide $190.00 + Testosterone Cypionate $96.00)
 7. Wait for the success page
 
 ### 4C — Success Page
@@ -314,7 +314,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 8. **Point out:**
    - Animated green checkmark (CSS-only draw animation)
    - "Payment Received" heading
-   - The combined bundle amount in green
+   - The combined bundle amount (**$286.00**) in green
    - Order reference: `#213881c7` (first 8 chars of UUID, monospace font)
    - "What Happens Next" card with 3-step progress:
      - Payment confirmed (check)
