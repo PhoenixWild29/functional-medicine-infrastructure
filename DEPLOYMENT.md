@@ -92,8 +92,8 @@ npx vercel promote <previous-deployment-id> --scope=your-team
 ls supabase/migrations/down/
 
 # Execute the down migration
-supabase db execute \\
-  --db-url "$DATABASE_URL" \\
+supabase db execute \
+  --db-url "$DATABASE_URL" \
   --file supabase/migrations/down/20260319000012_down.sql
 
 # 3. Verify health
