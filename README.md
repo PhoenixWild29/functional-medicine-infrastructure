@@ -13,7 +13,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and PR co
 
 | Layer | Technology |
 |-------|-----------|
-| Framework | Next.js 14 (App Router, TypeScript) |
+| Framework | Next.js 16 (App Router, TypeScript) |
 | Database | Supabase (PostgreSQL 15, RLS, Auth, Vault, Storage) |
 | Payments | Stripe Connect Express |
 | SMS | Twilio Programmable Messaging |
@@ -21,7 +21,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and PR co
 | Monitoring | Sentry (PHI-scrubbed) |
 | Alerting | Slack + PagerDuty |
 | Hosting | Vercel |
-| CI/CD | GitHub Actions |
+| CI | GitHub Actions (lint, test, build) |
+| CD | Vercel native GitHub integration (deploy.yml disabled) |
 
 ## Prerequisites
 
@@ -81,6 +82,7 @@ The app runs at [http://localhost:3000](http://localhost:3000).
 | `npm run db:migrate` | Apply Supabase migrations |
 | `npm run db:types` | Regenerate database.types.ts |
 | `npm run seed:poc` | Seed POC demo data (clinic, users, pharmacies, catalog) |
+| `npm run seed:catalog` | Seed the V3 hierarchical catalog (166 products) |
 
 ## Environment Variables
 
@@ -186,9 +188,9 @@ docs/                   Technical documentation
 
 To run a proof-of-concept demo environment:
 
-1. **Infrastructure** — Follow `docs/poc-setup.md` for Supabase, Vercel, Stripe, and optional Twilio/Documo setup
+1. **Infrastructure** — Follow `docs/technical/poc-setup.md` for Supabase, Vercel, Stripe, and optional Twilio/Documo setup
 2. **Seed data** — Run `npm run seed:poc` to create test users, a demo clinic, pharmacy, and catalog
-3. **Validate** — Walk the happy path documented in `docs/poc-validation-log.md`
+3. **Validate** — Walk the happy path documented in `docs/qa-reports/poc-validation-log.md`
 
 **Test credentials (after seeding):**
 
@@ -199,11 +201,13 @@ To run a proof-of-concept demo environment:
 | `provider` | `dr.chen@sunrise-clinic.com` | `POCProvider2026!` |
 | `medical_assistant` | `ma@sunrise-clinic.com` | `POCMA2026!` |
 
-See [docs/poc-setup.md](docs/poc-setup.md) for full infrastructure runbook.
+See [docs/technical/poc-setup.md](docs/technical/poc-setup.md) for full infrastructure runbook.
 
 ## Architecture
 
-See [docs/system-architecture.md](docs/system-architecture.md) and [ARCHITECTURE.md](ARCHITECTURE.md).
+CompoundIQ runs a dual product catalog: the legacy flat `catalog` table and a V3 hierarchical catalog (`ingredients → salt_forms → formulations → formulation_ingredients → pharmacy_formulations`). Seed the V3 catalog (166 products) with `npm run seed:catalog`.
+
+See [docs/technical/erd.md](docs/technical/erd.md) and [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Contributing
 
