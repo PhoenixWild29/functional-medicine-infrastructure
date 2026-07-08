@@ -537,6 +537,25 @@ async function handleSoloChargeDisputeCreated(dispute: Stripe.Dispute): Promise<
     return
   }
 
+  // Fan out the single junction row into dispute_orders so ops JOIN
+  // queries through dispute_orders cover solo disputes too (LOW from the
+  // 2026-07-02 batch review of PR #91: the solo path previously wrote 0
+  // junction rows, so dispute_orders only covered group disputes).
+  // Composite (dispute_id, order_id) PK + upsert keeps redeliveries
+  // idempotent — mirrors the group fan-out in handle-group-dispute.ts.
+  // Junction failure is non-fatal: log and continue to the ops alert,
+  // same policy as the group handler.
+  const { error: junctionError } = await supabase
+    .from('dispute_orders')
+    .upsert({ dispute_id: dispute.id, order_id: order.order_id })
+
+  if (junctionError) {
+    console.error(
+      `[stripe-webhook] failed to upsert dispute_orders row | dispute=${dispute.id} order=${order.order_id}:`,
+      junctionError.message,
+    )
+  }
+
   // Alert ops — disputes require manual evidence submission
   await sendSlackAlert(
     buildAdapterFailureAlert({
