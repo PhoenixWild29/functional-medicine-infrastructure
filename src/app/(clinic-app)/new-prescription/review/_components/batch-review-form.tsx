@@ -11,6 +11,17 @@
 // Each prescription creates its own order record with its own
 // state machine, but they share a single provider signature
 // and the patient receives one combined payment notification.
+//
+// Sign-gating (cosmetic, UX only): only the assigned provider can
+// actually sign & send — the server enforces this in
+// /api/orders/[orderId]/sign-and-send, which returns 403 for any
+// non-provider signer. That 403 is the authoritative gate and is
+// unchanged. Here we hide the signature canvas + "Sign & Send" for
+// non-providers (medical_assistant, clinic_admin, ops_admin) and
+// offer the existing "Save as Draft — Provider Signs Later" action
+// instead, so an MA never sees a Sign button that would only 403 on
+// submit. isProvider is resolved server-side in page.tsx from the
+// session app_role claim.
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -46,9 +57,18 @@ function calcPlatformFeeCents(marginCents: number): number {
   return Math.round(marginCents * 15 / 100)
 }
 
+// ── Props ─────────────────────────────────────────────────────
+// isProvider is derived server-side (review/page.tsx) from the
+// session app_role claim. Providers get the sign-and-send UI;
+// everyone else gets "Save as Draft — Provider Signs Later". The
+// server 403 in sign-and-send remains the real gate regardless.
+interface Props {
+  isProvider: boolean
+}
+
 // ── Component ─────────────────────────────────────────────────
 
-export function BatchReviewForm() {
+export function BatchReviewForm({ isProvider }: Props) {
   const router = useRouter()
   const session = usePrescriptionSession()
   const sigCanvasRef = useRef<SignatureCanvas>(null)
@@ -59,6 +79,10 @@ export function BatchReviewForm() {
   const [submitProgress, setSubmitProgress] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [showEpcsGate, setShowEpcsGate] = useState(false)
+
+  // Non-provider "Save as Draft" flow (batched WO-77 pattern)
+  const [isSavingDraft, setIsSavingDraft] = useState(false)
+  const [draftError, setDraftError] = useState<string | null>(null)
 
   // Redirect if no session or no prescriptions
   useEffect(() => {
@@ -100,6 +124,8 @@ export function BatchReviewForm() {
   }
 
   const canSubmit = signatureCaptured && prescriptions.length > 0 && !isSubmitting
+  // Shared controls (Remove, Add Another) lock during either flow.
+  const isBusy = isSubmitting || isSavingDraft
 
   // ── Sign & Send all prescriptions ──────────────────────────
   async function handleSignAndSend() {
@@ -188,6 +214,65 @@ export function BatchReviewForm() {
     }
   }
 
+  // ── Save all prescriptions as drafts (non-provider) ─────────
+  // Mirrors handleSignAndSend but stops after DRAFT creation — no
+  // signature, no sign-and-send call. The assigned provider signs
+  // each draft later from the dashboard Drafts tab. Reuses the same
+  // POST /api/orders the provider flow and the margin builder use.
+  async function handleSaveDraftAll() {
+    if (!patient || !provider) return
+
+    setIsSavingDraft(true)
+    setDraftError(null)
+
+    try {
+      const totalCount = prescriptions.length
+      let savedCount = 0
+
+      for (let i = 0; i < prescriptions.length; i++) {
+        const rx = prescriptions[i]!
+        setSubmitProgress(`Saving draft ${i + 1} of ${totalCount}...`)
+
+        const orderRes = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            patientId:     patient.patient_id,
+            providerId:    provider.provider_id,
+            catalogItemId: rx.itemId,
+            formulationId: rx.formulationId,
+            pharmacyId:    rx.pharmacyId,
+            retailCents:   rx.retailCents,
+            sigText:       rx.sigText,
+            patientState:  patient.state ?? '',
+          }),
+        })
+
+        if (!orderRes.ok) {
+          const err = await orderRes.json()
+          throw new Error(
+            `Draft ${i + 1} (${rx.medicationName}) failed: ${err.error ?? 'Unknown error'}` +
+            (savedCount > 0 ? `. ${savedCount} of ${totalCount} already saved as drafts.` : '')
+          )
+        }
+
+        // BLK-01 pattern: drop each saved rx from the session so a later
+        // failure doesn't re-create earlier drafts when the user retries.
+        session.removePrescription(rx.id)
+        savedCount++
+      }
+
+      setSubmitProgress(null)
+      router.push(`/dashboard?draft=${totalCount}`)
+      setTimeout(() => session.clearSession(), 100)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'An unexpected error occurred'
+      setDraftError(msg)
+      setSubmitProgress(null)
+      setIsSavingDraft(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
 
@@ -246,7 +331,7 @@ export function BatchReviewForm() {
                 <button
                   type="button"
                   onClick={() => session.removePrescription(rx.id)}
-                  disabled={isSubmitting}
+                  disabled={isBusy}
                   className="text-[10px] text-red-500 underline hover:text-red-700 disabled:opacity-50"
                 >
                   Remove
@@ -261,7 +346,7 @@ export function BatchReviewForm() {
       <button
         type="button"
         onClick={() => router.push('/new-prescription/search')}
-        disabled={isSubmitting}
+        disabled={isBusy}
         className="w-full rounded-md border-2 border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
       >
         + Add Another Prescription
@@ -283,53 +368,56 @@ export function BatchReviewForm() {
         </div>
       </div>
 
-      {/* Provider signature */}
-      <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Provider Signature — {provider.first_name} {provider.last_name}
-        </h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          NPI: {provider.npi_number} — Signing {prescriptions.length} prescription{prescriptions.length !== 1 ? 's' : ''} for {patient.first_name} {patient.last_name}
-        </p>
+      {/* Provider signature — providers only. Non-providers can't sign
+          (server returns 403), so the canvas is hidden for them. */}
+      {isProvider && (
+        <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Provider Signature — {provider.first_name} {provider.last_name}
+          </h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            NPI: {provider.npi_number} — Signing {prescriptions.length} prescription{prescriptions.length !== 1 ? 's' : ''} for {patient.first_name} {patient.last_name}
+          </p>
 
-        <div className="mt-3 rounded-lg border border-border bg-white">
-          {/*
-           * Fire "captured" on BOTH pointerdown (onBegin) and pointerup
-           * (onEnd). Kept consistent with draft-sign-form (F5 fix) so
-           * both signature surfaces behave identically. See draft-
-           * sign-form.tsx for the full F5 root-cause TODO.
-           */}
-          <SignatureCanvas
-            ref={sigCanvasRef}
-            canvasProps={{
-              className: 'w-full h-32 rounded-lg',
-              'aria-label': 'Provider signature pad',
-            }}
-            onBegin={() => {
-              logSignatureEvent('batch-review-form', 'onBegin')
-              setSignatureCaptured(true)
-            }}
-            onEnd={() => {
-              logSignatureEvent('batch-review-form', 'onEnd')
-              setSignatureCaptured(true)
-            }}
-          />
-        </div>
+          <div className="mt-3 rounded-lg border border-border bg-white">
+            {/*
+             * Fire "captured" on BOTH pointerdown (onBegin) and pointerup
+             * (onEnd). Kept consistent with draft-sign-form (F5 fix) so
+             * both signature surfaces behave identically. See draft-
+             * sign-form.tsx for the full F5 root-cause TODO.
+             */}
+            <SignatureCanvas
+              ref={sigCanvasRef}
+              canvasProps={{
+                className: 'w-full h-32 rounded-lg',
+                'aria-label': 'Provider signature pad',
+              }}
+              onBegin={() => {
+                logSignatureEvent('batch-review-form', 'onBegin')
+                setSignatureCaptured(true)
+              }}
+              onEnd={() => {
+                logSignatureEvent('batch-review-form', 'onEnd')
+                setSignatureCaptured(true)
+              }}
+            />
+          </div>
 
-        <div className="mt-2 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={handleClearSignature}
-            disabled={isSubmitting}
-            className="text-xs text-muted-foreground underline hover:text-foreground disabled:opacity-50"
-          >
-            Clear Signature
-          </button>
-          {signatureCaptured && (
-            <span className="text-xs text-emerald-600 font-medium">Signature captured</span>
-          )}
+          <div className="mt-2 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={handleClearSignature}
+              disabled={isSubmitting}
+              className="text-xs text-muted-foreground underline hover:text-foreground disabled:opacity-50"
+            >
+              Clear Signature
+            </button>
+            {signatureCaptured && (
+              <span className="text-xs text-emerald-600 font-medium">Signature captured</span>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Error display */}
       {submitError && (
@@ -345,8 +433,8 @@ export function BatchReviewForm() {
         </div>
       )}
 
-      {/* Confirm dialog */}
-      {confirmOpen && (
+      {/* Confirm dialog — providers only */}
+      {isProvider && confirmOpen && (
         <div className="rounded-lg border-2 border-primary bg-primary/5 p-4">
           <p className="text-sm font-medium text-foreground">
             You are about to send {prescriptions.length} payment link{prescriptions.length !== 1 ? 's' : ''} totaling{' '}
@@ -385,8 +473,8 @@ export function BatchReviewForm() {
         </div>
       )}
 
-      {/* Sign & Send button */}
-      {!confirmOpen && (
+      {/* Sign & Send button — providers only */}
+      {isProvider && !confirmOpen && (
         <button
           type="button"
           onClick={() => setConfirmOpen(true)}
@@ -400,8 +488,42 @@ export function BatchReviewForm() {
           Sign & Send {prescriptions.length > 1 ? `All ${prescriptions.length} Prescriptions` : 'Payment Link'}
         </button>
       )}
-      {/* WO-86: EPCS 2FA Gate for controlled substances */}
-      {showEpcsGate && (
+
+      {/* Non-provider (MA / clinic_admin / ops_admin): signing is provider-only
+          (server returns 403). Offer the existing Save-as-Draft action instead
+          so the assigned provider can review and sign from the dashboard. */}
+      {!isProvider && (
+        <div className="space-y-3">
+          <div className="rounded-lg border border-border bg-muted/30 p-4">
+            <p className="text-sm font-medium text-foreground">
+              Only the assigned provider can sign and send.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Save {prescriptions.length > 1 ? 'these prescriptions' : 'this prescription'} as a draft for
+              provider review. {provider.first_name} {provider.last_name} can sign from the dashboard Drafts
+              tab, which sends the payment link.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSaveDraftAll}
+            disabled={isSavingDraft || prescriptions.length === 0}
+            className="w-full rounded-lg border border-border bg-background px-6 py-3 text-sm font-semibold text-foreground shadow-sm hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {isSavingDraft ? 'Saving...' : 'Save as Draft — Provider Signs Later'}
+          </button>
+          <p className="text-center text-[10px] text-muted-foreground">
+            Creates the order{prescriptions.length > 1 ? 's' : ''} without signing. The provider can review and sign from the dashboard.
+          </p>
+          {draftError && (
+            <p className="text-center text-xs text-red-600" role="alert">{draftError}</p>
+          )}
+        </div>
+      )}
+
+      {/* WO-86: EPCS 2FA Gate for controlled substances — providers only */}
+      {isProvider && showEpcsGate && (
         <EpcsTotpGate
           providerId={provider.provider_id}
           providerName={`${provider.first_name} ${provider.last_name}`}

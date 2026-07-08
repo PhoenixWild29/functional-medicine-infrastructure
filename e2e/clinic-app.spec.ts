@@ -96,7 +96,14 @@ test.describe('Clinic App — Order Creation Flow', () => {
     await cleanupTestOrders()
   })
 
-  test('MA can walk the cascading builder to the review page', async ({ page }) => {
+  test('non-provider (clinic admin) sees Save as Draft, not Sign & Send, on review', async ({ page }) => {
+    // Cosmetic sign-gating: a clinic_admin (non-provider) must NOT see the
+    // provider signature canvas or the "Sign & Send" button — the server
+    // rejects a non-provider signer with 403 at
+    // /api/orders/[orderId]/sign-and-send, so those controls would only
+    // dead-end on submit. Instead they get "Save as Draft — Provider Signs
+    // Later", which creates DRAFT orders for the assigned provider to sign.
+
     // ── 1. Login as clinic admin ──────────────────────────────
     await page.goto('/login')
     await page.getByLabel('Email').fill(TEST_USERS.clinicAdmin.email)
@@ -108,31 +115,59 @@ test.describe('Clinic App — Order Creation Flow', () => {
     // Patient → cascading builder → margin → review.
     await navigateToReviewPage(page)
 
-    // ── 3. Verify the review page is correctly initialised ───
-    // Coverage note — signature drawing is NOT E2E-tested:
+    // ── 3. Non-provider review UI ────────────────────────────
+    // The Save-as-Draft action + explanatory note render (wait for hydrate).
+    await expect(
+      page.getByRole('button', { name: /Save as Draft/ })
+    ).toBeVisible({ timeout: 15_000 })
+    await expect(
+      page.getByText(/Only the assigned provider can sign and send/i)
+    ).toBeVisible()
+    // The provider-only signing UI must NOT be present for a clinic_admin.
+    await expect(
+      page.locator('canvas[aria-label="Provider signature pad"]')
+    ).toHaveCount(0)
+    await expect(
+      page.getByRole('button', { name: /Sign & Send/ })
+    ).toHaveCount(0)
+  })
+
+  test('provider sees the signature canvas and Sign & Send on review', async ({ page }) => {
+    // The assigned provider keeps the sign-and-send UI unchanged.
+    //
+    // Coverage note — signature DRAWING itself is NOT E2E-tested:
     //   Playwright's input-synthesis layer cannot reliably trigger
     //   react-signature-canvas's underlying signature_pad in headless
     //   CI. page.mouse.* dispatches MouseEvents (signature_pad v4 only
     //   listens to pointer events); locator.dispatchEvent('pointerdown')
     //   constructs a plain Event instead of a PointerEvent (coords
     //   lost); page.evaluate with native PointerEvent also failed on
-    //   chromium after two dispatch verifications. Documented in
-    //   cowork review #5; decisive fallback is to split coverage by
-    //   layer:
-    //     - This E2E test: verify the canvas mounts + Sign & Send is
-    //       disabled without a signature (proves the state machine is
-    //       in its initial, safe state).
-    //     - Manual QA pre-launch: draw an actual signature on the live
-    //       demo and verify the order submit flow completes.
-    //     - Follow-up: component-level unit test of BatchReviewForm's
-    //       signature state transitions (mocks react-signature-canvas
-    //       so onEnd can be triggered deterministically).
+    //   chromium. Documented in cowork review #5; coverage is split by
+    //   layer — here we verify the canvas mounts + Sign & Send is
+    //   disabled without a signature (initial, safe state). Actual
+    //   drawing + submit is covered by manual QA pre-launch.
+
+    // ── 1. Login as provider ──────────────────────────────────
+    await page.goto('/login')
+    await page.getByLabel('Email').fill(TEST_USERS.provider.email)
+    await page.getByLabel('Password').fill(TEST_USERS.provider.password)
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+
+    // ── 2. Walk all 4 wizard steps to the review page ────────
+    await navigateToReviewPage(page)
+
+    // ── 3. Provider review UI (unchanged) ────────────────────
     await expect(
       page.locator('canvas[aria-label="Provider signature pad"]')
     ).toBeVisible({ timeout: 15_000 })
     await expect(
       page.getByRole('button', { name: /Sign & Send/ })
     ).toBeDisabled()
+    // The non-provider fallback must NOT render for a provider.
+    await expect(
+      page.getByRole('button', { name: /Save as Draft/ })
+    ).toHaveCount(0)
   })
 
   test('clinic user can copy a payment link from an AWAITING_PAYMENT order', async ({ page, context }) => {
