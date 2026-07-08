@@ -1,8 +1,10 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 2.6 | **Date:** July 7, 2026
+**Version:** 2.7 | **Date:** July 7, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
+
+> **What's new in v2.7 (2026-07-07):** Corrected retail-default vs 2× note and Semaglutide formulation count per live R9 walkthrough.
 
 > **What's new in v2.6 (2026-07-07):** Three substantive updates reflecting shipped changes. (a) **166-product catalog** — the POC seed now carries 166 compounded formulations across 79 ingredients and 13 therapeutic categories (replacing the prior five-medication seed), so the cascading builder and search steps name specific formulation cards. (b) **Phase C "Combine and Send"** — sibling prescriptions for the same patient + provider can be merged into a single bundled patient payment link (new sub-part in Part 3F), and the patient checkout renders them as one "Prescription Bundle · 2 prescriptions" instead of two separate links. (c) **Recomputed margin example** — the Semaglutide walkthrough now prices from a $95 wholesale ($95 → 2× → $190 retail; $14.25 platform fee; $80.75 clinic net margin), replacing the prior $150→$300 example.
 
@@ -164,7 +166,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 ### 3D — Cascading Prescription Builder (New in Phase 17)
 
 17. Go back to Configure Prescription. Type **"Sema"** in the medication search — select the ingredient **Semaglutide**
-18. **Point out** the cascading dropdown flow: ingredient **Semaglutide** → salt form **Semaglutide** (base — the builder auto-skips this level because it's the only salt option) → dosage form **Injectable Solution** → route **Subcutaneous** → formulation card. The catalog now carries **7 Semaglutide formulations** (2.5, 5, and 10 mg/mL injectables, +B12 and +Niacinamide combinations, an oral capsule, and a sublingual), so the presenter picks the specific **"Semaglutide Injectable 5 mg/mL"** card. Its wholesale is **$95**.
+18. **Point out** the cascading dropdown flow: ingredient **Semaglutide** → salt form **Semaglutide** (base — the builder auto-skips this level because it's the only salt option) → dosage form **Injectable Solution** → route **Subcutaneous** → formulation card. Selecting the single ingredient **Semaglutide** surfaces **5 formulations directly**: Injectable 2.5, 5, and 10 mg/mL, an Oral Capsule, and a Sublingual Tablet. (The two combination products, Semaglutide + B12 and Semaglutide + Niacinamide, are reached via the combination path by selecting one of their component ingredients, not from this single-ingredient formulation list.) The presenter picks the specific **"Semaglutide Injectable 5 mg/mL"** card. Its wholesale is **$95**.
 19. Select the **"Semaglutide Injectable 5 mg/mL"** card → **Point out the Structured Sig Builder**:
     - Dose amount + unit + frequency dropdowns
     - Timing dropdown (In the morning, At bedtime, etc.)
@@ -187,6 +189,8 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 25. Click **"Continue — Set Retail Price"**
 
 ### 3E — Dynamic Margin Builder + Multi-Prescription
+
+> **Set Retail Price note:** The retail field pre-fills at **$133.00** (the clinic's 40% Default Markup); the **$190.00** figures below assume the presenter taps the **2×** button. Without that tap, the retail stays at the $133.00 default and the platform fee, clinic margin, and $286.00 bundle total are all smaller.
 
 26. **Point out the Margin Builder** — Wholesale: $95 (locked), retail price **pre-populated at $133** (1.4× wholesale, from the clinic's 40% default markup), multiplier buttons, Sig field pre-filled
 27. Click **2x multiplier** — retail updates to $190, margin 50%, platform fee $14.25 (15% of the $95 spread), est. clinic margin $80.75
@@ -236,7 +240,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 37a. On the dashboard, both Alex Demo orders (Semaglutide + Testosterone) show **"Awaiting Payment."** Click either one to open the **order drawer**.
 37b. **Point out the "Combine into one payment link" picker** — it lists the sibling order (the other Awaiting-Payment Rx for the same patient + provider) with a selectable checkbox.
 37c. Select the sibling order, then click **"Combine and Copy Payment Link."**
-37d. **Point out** — the system generates **ONE bundled checkout link** covering both prescriptions — patient checkout shows **"Prescription Bundle · 2 prescriptions · $286.00"** (Semaglutide $190.00 + Testosterone Cypionate $96.00) — and copies it to your clipboard. This is the link you'll paste in Part 4.
+37d. **Point out** — the system generates **ONE bundled checkout link** covering both prescriptions — patient checkout shows **"Prescription Bundle · 2 prescriptions · $286.00"** (Semaglutide $190.00 + Testosterone Cypionate $96.00; the **$190.00** assumes the **2×** tap — it defaults to $133.00) — and copies it to your clipboard. This is the link you'll paste in Part 4.
 
 > "One link, both prescriptions, one payment. The patient taps once and pays a single combined total instead of juggling two links. The per-order 'Copy Payment Link' button still exists for single-prescription orders — but when a patient has multiple prescriptions from one visit, Combine and Send is the default. This is the friction Phase C removed."
 
@@ -290,7 +294,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
    - Clinic branding: "Sunrise Functional Medicine" displayed prominently
    - **"Prescription Bundle · 2 prescriptions · $286.00"** — the two sibling Rx now share one checkout instead of two separate links
    - Two generic line items, each labeled "Prescription Service" — NOT the medication name
-   - A single **combined total of $286.00** — the sum of the two retail prices set in Part 3E (Semaglutide $190.00 + Testosterone Cypionate $96.00). The patient pays this one combined amount, once.
+   - A single **combined total of $286.00** — the sum of the two retail prices set in Part 3E (Semaglutide $190.00 + Testosterone Cypionate $96.00; the **$190.00** assumes the **2×** tap — it defaults to $133.00). The patient pays this one combined amount, once.
    - **Email field** ("Email for receipt") — required, above the Stripe payment form. Stripe auto-emails a branded receipt to this address when the charge succeeds.
    - Stripe Elements payment form below (card + whichever wallet options the patient's device supports — e.g., Apple Pay in Safari on iOS, Google Pay in Chrome on Android, Cash App Pay, Bank, Affirm, Amazon Pay)
    - Trust signals: "256-bit TLS Encryption", "Powered by Stripe"
@@ -306,7 +310,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 4. Enter email in the **"Email for receipt"** field: `test@example.com` (Stripe will email the branded receipt here)
 5. Enter Stripe test card in the Stripe Elements form below: `4242 4242 4242 4242` | Exp: `12/28` | CVC: `123` | ZIP: `78701`
-6. Click the **"Pay"** button — it shows the combined bundle total of **$286.00** for the 2 prescriptions (Semaglutide $190.00 + Testosterone Cypionate $96.00)
+6. Click the **"Pay"** button — it shows the combined bundle total of **$286.00** for the 2 prescriptions (Semaglutide $190.00 + Testosterone Cypionate $96.00; the **$190.00** assumes the **2×** tap — it defaults to $133.00)
 7. Wait for the success page
 
 ### 4C — Success Page
