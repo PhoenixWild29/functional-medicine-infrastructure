@@ -46,24 +46,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = createServiceClient()
   const cutoffIso = new Date(Date.now() - RETENTION_HOURS * 60 * 60 * 1000).toISOString()
 
-  // The new table isn't in the generated Database typing yet (db:types
-  // regenerates from the live prod project, and this migration is
-  // gated on a deliberate prod deploy). Cast through the Supabase
-  // client surface to access it without weakening typing elsewhere.
-  // Once the migration is applied to prod and `npm run db:types` runs,
-  // this cast can be removed.
-  const debugClient = supabase as unknown as {
-    from: (table: string) => {
-      delete: (opts: { count: 'exact' }) => {
-        lt: (column: string, value: string) => Promise<{
-          error: { message: string } | null
-          count: number | null
-        }>
-      }
-    }
-  }
-
-  const { error, count } = await debugClient
+  const { error, count } = await supabase
     .from('adapter_submission_debug_payloads')
     .delete({ count: 'exact' })
     .lt('created_at', cutoffIso)

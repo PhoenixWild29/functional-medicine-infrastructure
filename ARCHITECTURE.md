@@ -64,9 +64,9 @@ No login required. Patients are never issued a Supabase session.
 | `/api/cron/*` | Vercel cron triggers use `CRON_SECRET` bearer token, not session cookies |
 | `/api/health` | CI/CD health check — no session in deploy pipeline |
 
-## Database Schema (26 tables, 10 enums)
+## Database Schema (44 tables, 10 enums)
 
-Full ERD: [docs/erd.md](docs/erd.md)
+Full ERD: [docs/technical/erd.md](docs/technical/erd.md)
 
 **V1.0 (12 tables):** clinics, providers, patients, pharmacies, pharmacy_state_licenses, catalog, catalog_history, orders, order_status_history, webhook_events, order_sla_deadlines, inbound_fax_queue
 
@@ -75,6 +75,18 @@ Full ERD: [docs/erd.md](docs/erd.md)
 **Additional (4):** sms_log, sms_templates, transfer_failures, disputes
 
 **Incremental (5):** clinic_notifications, ops_alert_queue, circuit_breaker_state, sla_notifications_log, catalog_upload_history
+
+**V3 hierarchical catalog (8 tables):** ingredients, salt_forms, formulations, formulation_ingredients, pharmacy_formulations, + 3 supporting tables. This hierarchy (`ingredients → salt_forms → formulations → formulation_ingredients → pharmacy_formulations`) runs **alongside** the legacy flat `catalog` table; a 166-product importer (`scripts/import-catalog-v3.ts`, `npm run seed:catalog`) seeds it.
+
+**Phase C multi-Rx (2 tables):** payment_groups, dispute_orders
+
+**Adapter debug (1 table):** adapter_submission_debug_payloads
+
+**Later Phase B/C (7 tables):** additional operational + audit tables added by migrations through 20260614000004 — see the ERD for the full list.
+
+**Phase C multi-Rx payment groups are LIVE:** multiple prescriptions can be bundled into a single patient checkout via `payment_groups`, with `dispute_orders` tracking per-order dispute state.
+
+**Role features F-3 / F-5 have shipped:** F-3 (provider opt-in clinic-view toggle) and F-5 (`patients.primary_provider_id`) are in production. See [docs/audits/role-audit-and-data-model.md](docs/audits/role-audit-and-data-model.md).
 
 ## Four-Tier Adapter Architecture
 

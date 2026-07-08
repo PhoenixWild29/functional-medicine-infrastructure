@@ -1,6 +1,6 @@
 # CompoundIQ — Entity Relationship Diagram
 
-All 33 tables + 1 view across the V1.0, V2.0, V3.0 hierarchical catalog, and incremental migration series.
+All 44 tables + 1 view across the V1.0, V2.0, V3.0 hierarchical catalog, Phase C, and incremental migration series.
 
 **Legend**
 - `PK` — Primary Key
@@ -18,7 +18,7 @@ All 33 tables + 1 view across the V1.0, V2.0, V3.0 hierarchical catalog, and inc
 ```mermaid
 erDiagram
 
-  %% ── V1.0 Core Tables ──────────────────────────────────────
+  %% ── V1.0 Core Tables ───────────────────────────
 
   clinics {
     uuid  clinic_id PK
@@ -56,6 +56,7 @@ erDiagram
   patients {
     uuid  patient_id PK
     uuid  clinic_id  FK
+    uuid  primary_provider_id FK
     text  first_name
     text  last_name
     date  date_of_birth
@@ -141,6 +142,7 @@ erDiagram
     uuid  catalog_item_id              FK
     uuid  clinic_id                    FK
     uuid  pharmacy_id                  FK
+    uuid  payment_group_id             FK
     enum  status
     int   quantity
     num   wholesale_price_snapshot
@@ -228,7 +230,7 @@ erDiagram
     bool  is_active
   }
 
-  %% ── V2.0 Adapter Tables ───────────────────────────────────
+  %% ── V2.0 Adapter Tables ──────────────────────
 
   pharmacy_api_configs {
     uuid    pharmacy_id              PK_FK
@@ -313,7 +315,7 @@ erDiagram
     ts    created_at
   }
 
-  %% ── Additional Tables ─────────────────────────────────────
+  %% ── Additional Tables ────────────────────────
 
   sms_log {
     uuid  id           PK
@@ -365,7 +367,7 @@ erDiagram
     ts    deleted_at
   }
 
-  %% ── Incremental Migration Tables ──────────────────────────
+  %% ── Incremental Migration Tables ──────────────────
 
   clinic_notifications {
     uuid  notification_id   PK
@@ -420,16 +422,53 @@ erDiagram
     text  notes
   }
 
-  %% ── Relationships ─────────────────────────────────────────
+  %% ── Phase C + Debug Tables ────────────────────
+
+  payment_groups {
+    uuid  payment_group_id PK
+    uuid  clinic_id        FK
+    uuid  patient_id       FK
+    enum  status
+    num   total_amount
+    text  stripe_payment_intent_id
+    text  checkout_token_jwt
+    ts    checkout_expires_at
+    ts    created_at
+    ts    updated_at
+    ts    deleted_at
+    bool  is_active
+  }
+
+  dispute_orders {
+    uuid  dispute_id  "PK,FK composite"
+    uuid  order_id    "PK,FK composite"
+    num   allocated_amount
+    ts    created_at
+  }
+
+  adapter_submission_debug_payloads {
+    uuid  id                PK
+    uuid  submission_id     FK
+    uuid  order_id          FK
+    json  request_payload
+    json  response_payload
+    ts    expires_at
+    ts    created_at
+  }
+
+  %% ── Relationships ──────────────────────────
 
   clinics              ||--o{ providers             : "has"
   clinics              ||--o{ patients              : "has"
   clinics              ||--o{ orders                : "places"
   clinics              ||--o{ transfer_failures     : "incurs"
   clinics              ||--o{ clinic_notifications  : "receives"
+  clinics              ||--o{ payment_groups        : "bills via"
 
   providers            ||--o{ orders                : "signs"
+  providers            ||--o{ patients              : "primary provider (primary_provider_id FK)"
   patients             ||--o{ orders                : "for"
+  patients             ||--o{ payment_groups        : "for"
 
   pharmacies           ||--o{ pharmacy_state_licenses : "licensed in"
   pharmacies           ||--o{ catalog               : "offers"
@@ -453,6 +492,14 @@ erDiagram
   orders               ||--o{ transfer_failures     : "may incur"
   orders               ||--o{ disputes              : "may have"
   orders               ||--o{ clinic_notifications  : "may trigger"
+  orders               ||--o{ dispute_orders        : "disputed in"
+  orders               ||--o{ adapter_submission_debug_payloads : "debug for"
+
+  payment_groups       ||--o{ orders                : "groups (payment_group_id FK on orders)"
+
+  disputes             ||--o{ dispute_orders        : "spans"
+
+  adapter_submissions  ||--o{ adapter_submission_debug_payloads : "🔐 debug (24h PHI)"
 
   inbound_fax_queue    }o--o{ pharmacies            : "matched to"
   inbound_fax_queue    }o--o{ orders                : "matched to"
@@ -471,14 +518,18 @@ erDiagram
 | Series | Tables |
 |--------|--------|
 | V1.0 (12) | clinics, providers, patients, pharmacies, pharmacy_state_licenses, catalog, catalog_history, orders, order_status_history, webhook_events, order_sla_deadlines, inbound_fax_queue |
-| V2.0 (5) | pharmacy_api_configs, pharmacy_portal_configs, adapter_submissions, normalized_catalog, pharmacy_webhook_events |
+| V2.0 (5) | pharmacy_api_configs, pharmacy_portal_configs, adapter_submissions, pharmacy_webhook_events, normalized_catalog |
 | Additional (4) | sms_log, sms_templates, transfer_failures, disputes |
 | Incremental (5) | clinic_notifications, ops_alert_queue, circuit_breaker_state, sla_notifications_log, catalog_upload_history |
 | V3.0 Hierarchical Catalog (8) | ingredients, salt_forms, dosage_forms, routes_of_administration, formulations, formulation_ingredients, pharmacy_formulations, sig_templates |
-| Provider Speed Features (3) | provider_favorites, clinic_protocol_templates, clinic_protocol_items |
-| Regulatory Compliance (5) | drug_interactions, patient_protocol_phases, phase_advancement_history, epcs_audit_log, prescription_dea_tracking |
+| Provider Speed Features (3) | provider_favorites, protocol_templates, protocol_items |
+| Regulatory Compliance (4) | drug_interactions, patient_protocol_phases, phase_advancement_history, epcs_audit_log |
+| Phase C Payment Grouping (2) | payment_groups, dispute_orders |
+| Adapter Debug (1) | adapter_submission_debug_payloads |
 | **1 View** | provider_prescribing_history |
-| **Total** | **33 tables + 1 view** |
+| **Total** | **44 tables + 1 view** |
+
+> **Count note:** The per-category breakdown above sums to exactly **44 tables** (12 + 5 + 4 + 5 + 8 + 3 + 4 + 2 + 1), plus 1 view. `normalized_catalog` (V2.0, created in migration `20260317000003`) is a live table and is counted normally as one of the 44. `adapter_submission_debug_payloads` stores 24-hour PHI debug payloads and is reachable by the service role only (no clinic/ops RLS access); it is purged hourly by the `purge-phi-debug` cron.
 
 ---
 
@@ -491,6 +542,7 @@ These tables use RLS DENY policies on UPDATE and DELETE. Mutations are permanent
 | `order_status_history` | log_status_change() trigger on orders |
 | `catalog_history` | Application layer on catalog UPDATE |
 | `adapter_submissions` | Routing engine on each submission attempt |
+| `adapter_submission_debug_payloads` | Adapter on each submission (auto-purged after 24h) |
 | `webhook_events` | Webhook handler on receipt |
 | `pharmacy_webhook_events` | Pharmacy webhook handler on receipt |
 | `sms_log` | SMS sender on each send/delivery event |

@@ -1,8 +1,12 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 2.5 | **Date:** April 27, 2026
+**Version:** 2.7 | **Date:** July 7, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
+
+> **What's new in v2.7 (2026-07-07):** Corrected retail-default vs 2× note and Semaglutide formulation count per live R9 walkthrough.
+
+> **What's new in v2.6 (2026-07-07):** Three substantive updates reflecting shipped changes. (a) **166-product catalog** — the POC seed now carries 166 compounded formulations across 79 ingredients and 13 therapeutic categories (replacing the prior five-medication seed), so the cascading builder and search steps name specific formulation cards. (b) **Phase C "Combine and Send"** — sibling prescriptions for the same patient + provider can be merged into a single bundled patient payment link (new sub-part in Part 3F), and the patient checkout renders them as one "Prescription Bundle · 2 prescriptions" instead of two separate links. (c) **Recomputed margin example** — the Semaglutide walkthrough now prices from a $95 wholesale ($95 → 2× → $190 retail; $14.25 platform fee; $80.75 clinic net margin), replacing the prior $150→$300 example.
 
 > **What's new in v2.5 (2026-04-27):** Two minor doc-only updates to match the live app's current state. (a) The Ops detail drawer's SLA tab is rendered with the proper acronym capitalization ("SLA", not "Sla"); the script in Part 5A now matches. (b) The Ops pipeline now seeds demo orders across all four routing tiers (T1 API / T2 Portal / T3 Hybrid / T4 Fax), so the Tier-icon narration in Part 5A reflects the cross-tier diversity the presenter can actually click into. No flow changes; the live-demo script principle from v2.4 still holds.
 
@@ -55,7 +59,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 | Provider | Sarah Chen, NPI 1234567890, TX license |
 | Patient | Alex Demo, DOB 1985-06-15, TX, SMS opt-in |
 | Pharmacies | 5 configured across all 4 tiers — Strive (Tier 4 Fax), Quick Rx + Express Digital Rx (Tier 1 API), Portal Plus (Tier 2 Portal), Hybrid Labs (Tier 3 Hybrid) |
-| Medications | Semaglutide, Tirzepatide, Testosterone, Sermorelin, Naltrexone |
+| Medications | 166 compounded formulations across 79 ingredients and 13 therapeutic categories — Women's Health/BHRT, Men's Health, Thyroid, Peptides, Weight Management (GLP-1), Sexual Health, Dermatology, Hair Restoration, LDN, IV Therapy, Longevity, Adrenal, Mental Health. |
 
 ---
 
@@ -161,9 +165,9 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 ### 3D — Cascading Prescription Builder (New in Phase 17)
 
-17. Go back to Configure Prescription. Type **"Sema"** in the medication search — select **Semaglutide**
-18. **Point out** the cascading dropdown flow: ingredient → salt form (auto-skips if only one) → formulation card (Semaglutide 5mg/mL Injectable)
-19. Select the formulation → **Point out the Structured Sig Builder**:
+17. Go back to Configure Prescription. Type **"Sema"** in the medication search — select the ingredient **Semaglutide**
+18. **Point out** the cascading dropdown flow: ingredient **Semaglutide** → salt form **Semaglutide** (base — the builder auto-skips this level because it's the only salt option) → dosage form **Injectable Solution** → route **Subcutaneous** → formulation card. Selecting the single ingredient **Semaglutide** surfaces **5 formulations directly**: Injectable 2.5, 5, and 10 mg/mL, an Oral Capsule, and a Sublingual Tablet. (The two combination products, Semaglutide + B12 and Semaglutide + Niacinamide, are reached via the combination path by selecting one of their component ingredients, not from this single-ingredient formulation list.) The presenter picks the specific **"Semaglutide Injectable 5 mg/mL"** card. Its wholesale is **$95**.
+19. Select the **"Semaglutide Injectable 5 mg/mL"** card → **Point out the Structured Sig Builder**:
     - Dose amount + unit + frequency dropdowns
     - Timing dropdown (In the morning, At bedtime, etc.)
     - Duration dropdown (For 30 days, Ongoing, etc.)
@@ -186,8 +190,10 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 ### 3E — Dynamic Margin Builder + Multi-Prescription
 
-26. **Point out the Margin Builder** — Wholesale: $150 (locked), retail price **pre-populated at $210** (1.4× wholesale, from the clinic's 40% default markup), multiplier buttons, Sig field pre-filled
-27. Click **2x multiplier** — retail updates to $300, margin 50%, platform fee $22.50, est. clinic margin $127.50
+> **Set Retail Price note:** The retail field pre-fills at **$133.00** (the clinic's 40% Default Markup); the **$190.00** figures below assume the presenter taps the **2×** button. Without that tap, the retail stays at the $133.00 default and the platform fee, clinic margin, and $286.00 bundle total are all smaller.
+
+26. **Point out the Margin Builder** — Wholesale: $95 (locked), retail price **pre-populated at $133** (1.4× wholesale, from the clinic's 40% default markup), multiplier buttons, Sig field pre-filled
+27. Click **2x multiplier** — retail updates to $190, margin 50%, platform fee $14.25 (15% of the $95 spread), est. clinic margin $80.75
 
 > "Full transparency. The retail price is pre-filled from the clinic's default markup setting (currently 40%), so the MA never types a number unless they want to override. Clicking 2x bumps it to a higher margin. The clinic sees exactly what they earn before committing. The sig is already pre-filled from the builder."
 
@@ -201,9 +207,9 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 29. Click **"Add & Search Another"**
 30. **Point out** — back on configure page, session banner shows **"1 prescription in this session"**
 
-31. Search for **"Test"** → select **Testosterone** → **Point out DEA Schedule 3 warning banner**
-32. Select **Cypionate** salt form → select formulation → set dose + frequency
-33. Select Strive Pharmacy, set retail price, click **"Review & Send (2)"**
+31. Search for **"Testosterone"** → three results now appear (**Testosterone**, **Testosterone Cypionate**, **Testosterone Propionate** — topical/pellet testosterone is modelled as the bare "Testosterone", while the injectable esters are separate top-level ingredients). Select **Testosterone Cypionate** → **Point out DEA Schedule 3 warning banner**
+32. Cascade: salt form **Cypionate** (auto-skips as the only option) → dosage form **Injectable Solution** → route **Intramuscular** → formulation **"Testosterone Cypionate Injectable 200 mg/mL"** → set dose + frequency
+33. Select Strive Pharmacy, set retail price. The Testosterone Cypionate 200 mg/mL wholesale is **$48**, and the same **2x multiplier** the demo uses puts its retail at **$96.00**. Click **"Review & Send (2)"**
 
 ### 3F — Batch Review, Interaction Alerts & EPCS 2FA (New in Phase 19)
 
@@ -225,7 +231,18 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 > **EPCS 2FA Demo Tip:** The EPCS 2FA modal (6-digit TOTP input, DEA 21 CFR 1311 citation) triggers on the batch Review & Send flow whenever any DEA-scheduled compound is present in the current prescription session. Because Steps 31–36 already added Testosterone (Schedule 3) to the session, clicking "Sign & Send All Prescriptions" → "Confirm & Send" will surface the modal with the red "EPCS Two-Factor Authentication Required" header, a Schedule badge, and "Verify & Sign" / "Cancel" buttons. Read the current 6-digit code from your authenticator app (the one you loaded via the Authenticator Setup subsection before demo day) and enter it.
 
-> "Two orders created, two payment links generated, three SLA timers each — all from one signature. The MA's workflow for a multi-medication visit: 45 seconds."
+> "Two orders created from one signature, three SLA timers each. In the next step we'll merge them into a single patient payment link with Phase C **Combine and Send** — that's the primary flow for a multi-prescription visit. (A per-order payment link still exists for single-prescription orders.) The MA's workflow for a multi-medication visit: 45 seconds."
+
+### 3F — Phase C: Combine and Send (New)
+
+> "Those two prescriptions we just signed are siblings — same patient (Alex Demo), same provider (Dr. Chen), both **Awaiting Payment**. Before Phase C, that meant two separate payment links the patient had to open and pay one at a time. Now we bundle them into a single checkout."
+
+37a. On the dashboard, both Alex Demo orders (Semaglutide + Testosterone) show **"Awaiting Payment."** Click either one to open the **order drawer**.
+37b. **Point out the "Combine into one payment link" picker** — it lists the sibling order (the other Awaiting-Payment Rx for the same patient + provider) with a selectable checkbox.
+37c. Select the sibling order, then click **"Combine and Copy Payment Link."**
+37d. **Point out** — the system generates **ONE bundled checkout link** covering both prescriptions — patient checkout shows **"Prescription Bundle · 2 prescriptions · $286.00"** (Semaglutide $190.00 + Testosterone Cypionate $96.00; the **$190.00** assumes the **2×** tap — it defaults to $133.00) — and copies it to your clipboard. This is the link you'll paste in Part 4.
+
+> "One link, both prescriptions, one payment. The patient taps once and pays a single combined total instead of juggling two links. The per-order 'Copy Payment Link' button still exists for single-prescription orders — but when a patient has multiple prescriptions from one visit, Combine and Send is the default. This is the friction Phase C removed."
 
 ### 3F — Provider Signature Queue (Draft Flow)
 
@@ -264,7 +281,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
     a. Click any order showing **"Awaiting Payment"** to open the order drawer
     b. Click the emerald **"Copy Payment Link"** button — the checkout URL is now on your clipboard
 
-> "In production, the patient gets this link in a text message when the order is signed. They tap it on their phone and land directly on checkout. In a live clinic we'd never copy-paste the link — we're doing that here only because this is a demo. If the link ever expires, the same button changes to **Regenerate Payment Link** and mints a fresh 72-hour URL in one click."
+> "In production, the patient gets this link in a text message when the order is signed. They tap it on their phone and land directly on checkout. In a live clinic we'd never copy-paste the link — we're doing that here only because this is a demo. If the link ever expires, the same button changes to **Regenerate Payment Link** and mints a fresh 72-hour URL in one click. (This per-order button is the single-order path; for a multi-prescription visit you'd instead use the combined link from Part 3F — Phase C, Combine and Send.)"
 
 ---
 
@@ -272,17 +289,18 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 ### 4A — Checkout Page
 
-1. Paste the **checkout URL** copied in Step 53 into a new tab (or into a mobile browser for extra impact)
+1. Paste the **bundled checkout URL** copied in the Combine-and-Send step (Part 3F — Phase C) into a new tab (or into a mobile browser for extra impact)
 2. **Point out:**
    - Clinic branding: "Sunrise Functional Medicine" displayed prominently
-   - Generic line item: "Prescription Service" — NOT the medication name
-   - Total: $300.00
+   - **"Prescription Bundle · 2 prescriptions · $286.00"** — the two sibling Rx now share one checkout instead of two separate links
+   - Two generic line items, each labeled "Prescription Service" — NOT the medication name
+   - A single **combined total of $286.00** — the sum of the two retail prices set in Part 3E (Semaglutide $190.00 + Testosterone Cypionate $96.00; the **$190.00** assumes the **2×** tap — it defaults to $133.00). The patient pays this one combined amount, once.
    - **Email field** ("Email for receipt") — required, above the Stripe payment form. Stripe auto-emails a branded receipt to this address when the charge succeeds.
    - Stripe Elements payment form below (card + whichever wallet options the patient's device supports — e.g., Apple Pay in Safari on iOS, Google Pay in Chrome on Android, Cash App Pay, Bank, Affirm, Amazon Pay)
    - Trust signals: "256-bit TLS Encryption", "Powered by Stripe"
    - Footer: "Your payment info is encrypted and never stored by CompoundIQ"
 
-> "This is what the patient sees. No login, no app download, no account creation. They tapped a link in a text message and landed here. Notice — no medication name anywhere. HIPAA compliance means zero Protected Health Information touches Stripe or appears on any patient-facing surface."
+> "This is what the patient sees. No login, no app download, no account creation. They tapped a link in a text message and landed here — and both prescriptions from today's visit are on one page as a single bundle. Notice — no medication name anywhere. HIPAA compliance means zero Protected Health Information touches Stripe or appears on any patient-facing surface."
 
 3. **Point out the white-labeling:**
 
@@ -292,7 +310,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 4. Enter email in the **"Email for receipt"** field: `test@example.com` (Stripe will email the branded receipt here)
 5. Enter Stripe test card in the Stripe Elements form below: `4242 4242 4242 4242` | Exp: `12/28` | CVC: `123` | ZIP: `78701`
-6. Click **"Pay $300.00"**
+6. Click the **"Pay"** button — it shows the combined bundle total of **$286.00** for the 2 prescriptions (Semaglutide $190.00 + Testosterone Cypionate $96.00; the **$190.00** assumes the **2×** tap — it defaults to $133.00)
 7. Wait for the success page
 
 ### 4C — Success Page
@@ -300,7 +318,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 8. **Point out:**
    - Animated green checkmark (CSS-only draw animation)
    - "Payment Received" heading
-   - Amount in green
+   - The combined bundle amount (**$286.00**) in green
    - Order reference: `#213881c7` (first 8 chars of UUID, monospace font)
    - "What Happens Next" card with 3-step progress:
      - Payment confirmed (check)
@@ -435,6 +453,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 - 30-minute session timeout with warning modal
 - Supabase Realtime DISABLED (hard HIPAA requirement)
 - All data at rest encrypted AES-256
+- Phase C multi-Rx payment groups (live) bundle sibling prescriptions into one patient payment link; PHI redaction (Option B) on logs and non-clinical surfaces; role features F-3 (provider clinic-view toggle) and F-5 (primary provider)
 
 ### Technology Stack
 
@@ -453,6 +472,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 | Database tables | 33 (PostgreSQL with full RLS) + 1 view |
 | Cron jobs | 10 Vercel cron jobs |
 | Build phases completed | 19 phases, 87 work orders (all merged; WO-87 formulation support in prod) |
+| Phase C & roles | Multi-Rx payment groups (live), PHI redaction (Option B), provider clinic-view toggle (F-3), primary provider (F-5) |
 | Hard constraints | 16 non-negotiable rules |
 | Test coverage | 65 Playwright E2E tests (all browsers) + 87 jest unit tests. CI gates every merge. |
 

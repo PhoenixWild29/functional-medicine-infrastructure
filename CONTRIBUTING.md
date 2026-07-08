@@ -95,7 +95,7 @@ All schema changes go through versioned migrations in `supabase/migrations/`.
 1. Write the `.sql` migration file (format: `YYYYMMDDHHMMSS_wo-XX_description.sql`)
 2. Apply locally: `npm run db:migrate`
 3. Regenerate TypeScript types: `npm run db:types` (then commit the regenerated `src/types/database.types.ts`)
-4. Update the ERD + Data Layer docs if the change affects the canonical schema (see `docs/archive/source/technical/erd.md`)
+4. Update the ERD + Data Layer docs if the change affects the canonical schema (see `docs/technical/erd.md`)
 
 **Do not** modify the database via the Supabase dashboard UI — every schema change must land in a migration file so staging + production stay reproducible.
 

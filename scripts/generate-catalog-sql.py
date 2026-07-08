@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+# ============================================================
+# generate-catalog-sql.py
+# ============================================================
+# Emits an idempotent SQL seed for the V3 hierarchical catalog
+# from docs/research/catalog-seed/compoundiq-catalog-seed-v1.csv.
+#
+# Run from repo root:
+#   python scripts/generate-catalog-sql.py
+# -> writes docs/research/catalog-seed/compoundiq-catalog-seed-v1.sql
+#
+# The .sql can be pasted into the Supabase SQL editor (no local node
+# needed). Same data model as scripts/import-catalog-v3.ts:
+#   - deterministic md5 UUIDs + ON CONFLICT for idempotency
+#   - dosage_form_id / route_id resolved BY NAME (never created)
+#   - single formulations get a salt_form (base salt if none) so they
+#     are reachable via ingredient -> salt_form -> formulation
+#   - combos have salt_form_id = NULL and link component ingredients
+#     via formulation_ingredients (the documented combo path)
+#   - pharmacy_formulations cross-join EVERY row in `pharmacies`
+# Wholesale prices are SYNTHETIC demo values.
+
+import csv, hashlib, json, io
+
+CSV = "docs/research/catalog-seed/compoundiq-catalog-seed-v1.csv"
+OUT = "docs/research/catalog-seed/compoundiq-catalog-seed-v1.sql"
+
+def uid(key: str) -> str:
+    h = hashlib.md5(key.encode('utf-8')).hexdigest()
+    return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
+
+def q(s):
+    if s is None:
+        return "NULL"
+    return "'" + str(s).replace("'", "''") + "'"
+
+def ing_id(name):
+    return uid("ingredient:" + name.strip().lower())
+
+def salt_id(iname, sname):
+    return uid("salt:" + iname.strip().lower() + ":" + sname.strip().lower())
+
+def form_id(name):
+    return uid("formulation:" + name.strip().lower())
+
+def parse_component(tok):
+    tok = tok.strip()
+    parts = tok.rsplit(" ", 1)
+    if len(parts) == 2 and any(ch.isdigit() for ch in parts[1]):
+        return parts[0].strip(), parts[1].strip()
+    return tok, None
+
+
+def main():
+    rows = list(csv.DictReader(open(CSV, encoding="utf-8")))
+
+    ingredients = {}
+
+    def add_ingredient(name, category=None, dea=None, authoritative=False):
+        name = name.strip()
+        if not name:
+            return
+        cur = ingredients.get(name)
+        if cur is None:
+            ingredients[name] = {"category": category or None, "dea": dea}
+        elif authoritative:
+            if category:
+                cur["category"] = category
+            if dea is not None:
+                cur["dea"] = dea
+        elif cur["category"] is None and category:
+            cur["category"] = category
+
+    salt_forms = {}
+    formulations = []
+    form_ingredients = []
+
+    for r in rows:
+        if r["is_combination"].strip().lower() != "true":
+            dea = r["dea_schedule"].strip()
+            add_ingredient(r["ingredient_common_name"], r["therapeutic_category"].strip(), int(dea) if dea else None, True)
+
+    for r in rows:
+        iname = r["ingredient_common_name"].strip()
+        cat = r["therapeutic_category"].strip()
+        dea = r["dea_schedule"].strip()
+        dea = int(dea) if dea else None
+        fname = r["formulation_name"].strip()
+        dosage = r["dosage_form"].strip()
+        route = r["route"].strip()
+        cval = r["concentration_value"].strip()
+        cunit = r["concentration_unit"].strip()
+        is_combo = r["is_combination"].strip().lower() == "true"
+        combo = r["combo_ingredients"].strip()
+        price = r["wholesale_price_usd"].strip()
+        quantities = [x.strip() for x in r["available_quantities"].split("|") if x.strip()]
+        conc_text = (cval + cunit) if cval else None
+
+        if is_combo:
+            comps = [parse_component(t) for t in combo.split("|") if t.strip()]
+            for i, (cn, cs) in enumerate(comps):
+                add_ingredient(cn, cat, None, False)
+                form_ingredients.append((fname, cn, cs or "", i))
+            formulations.append({"name": fname, "salt_form_id": None, "dosage": dosage, "route": route,
+                                 "conc_text": conc_text, "cval": cval or None, "cunit": cunit or None,
+                                 "is_combo": True, "total": max(1, len(comps)), "price": price, "qty": quantities})
+        else:
+            add_ingredient(iname, cat, dea, True)
+            sname = (r["salt_name"].strip() or iname)
+            sid = salt_id(iname, sname)
+            salt_forms[sid] = (iname, sname)
+            formulations.append({"name": fname, "salt_form_id": sid, "dosage": dosage, "route": route,
+                                 "conc_text": conc_text, "cval": cval or None, "cunit": cunit or None,
+                                 "is_combo": False, "total": 1, "price": price, "qty": quantities})
+
+    o = io.StringIO()
+    w = o.write
+    w("-- ============================================================\n")
+    w("-- CompoundIQ V3 Hierarchical Catalog Seed\n")
+    w("-- Generated by scripts/generate-catalog-sql.py. Idempotent.\n")
+    w("-- Paste into Supabase SQL Editor (prod project) and Run.\n")
+    w("-- Wholesale prices are SYNTHETIC demo values.\n")
+    w("-- ============================================================\n\n")
+    w("BEGIN;\n\n")
+
+    w("-- Ingredients (Tier 1)\n")
+    w("INSERT INTO ingredients (ingredient_id, common_name, therapeutic_category, dea_schedule, is_active) VALUES\n")
+    w(",\n".join(
+        f"  ({q(ing_id(n))}::uuid, {q(n)}, {q(ingredients[n]['category'])}, "
+        f"{ingredients[n]['dea'] if ingredients[n]['dea'] is not None else 'NULL'}, true)"
+        for n in sorted(ingredients)))
+    w("\nON CONFLICT (ingredient_id) DO NOTHING;\n\n")
+
+    w("-- Salt forms (Tier 2)\n")
+    w("INSERT INTO salt_forms (salt_form_id, ingredient_id, salt_name, is_active) VALUES\n")
+    w(",\n".join(
+        f"  ({q(sid)}::uuid, {q(ing_id(iname))}::uuid, {q(sname)}, true)"
+        for sid, (iname, sname) in sorted(salt_forms.items(), key=lambda kv: (kv[1][0].lower(), kv[1][1].lower()))))
+    w("\nON CONFLICT (salt_form_id) DO NOTHING;\n\n")
+
+    w("-- Formulations (Tier 3) - dosage_form_id/route_id resolved by name\n")
+    for f in formulations:
+        fid = form_id(f["name"])
+        salt_expr = f"{q(f['salt_form_id'])}::uuid" if f["salt_form_id"] else "NULL"
+        cval = f["cval"] if f["cval"] else "NULL"
+        w("INSERT INTO formulations (formulation_id, name, salt_form_id, dosage_form_id, route_id, "
+          "concentration, concentration_value, concentration_unit, is_combination, total_ingredients, is_active)\n"
+          f"SELECT {q(fid)}::uuid, {q(f['name'])}, {salt_expr}, df.dosage_form_id, r.route_id, "
+          f"{q(f['conc_text'])}, {cval}, {q(f['cunit'])}, {str(f['is_combo']).lower()}, {f['total']}, true\n"
+          "FROM dosage_forms df, routes_of_administration r\n"
+          f"WHERE df.name = {q(f['dosage'])} AND r.name = {q(f['route'])}\n"
+          "ON CONFLICT (formulation_id) DO NOTHING;\n")
+    w("\n")
+
+    w("-- Formulation ingredients (Tier 3a) - combo components\n")
+    if form_ingredients:
+        w("INSERT INTO formulation_ingredients (formulation_ingredient_id, formulation_id, ingredient_id, concentration_per_unit, role, sort_order) VALUES\n")
+        vals = []
+        for (fname, cn, strength, sort) in form_ingredients:
+            fid = form_id(fname)
+            fiid = uid("fi:" + fid + ":" + cn.strip().lower())
+            vals.append(f"  ({q(fiid)}::uuid, {q(fid)}::uuid, {q(ing_id(cn))}::uuid, {q(strength or 'n/a')}, 'primary', {sort})")
+        w(",\n".join(vals))
+        w("\nON CONFLICT (formulation_id, ingredient_id) DO NOTHING;\n\n")
+
+    w("-- Pharmacy formulations (Tier 4) - attach to every pharmacy, synthetic price\n")
+    w("INSERT INTO pharmacy_formulations (pharmacy_formulation_id, pharmacy_id, formulation_id, wholesale_price, available_quantities, is_available, is_active)\n")
+    w("SELECT md5('pf:' || p.pharmacy_id::text || ':' || v.fid)::uuid, p.pharmacy_id, v.fid::uuid, v.price, v.qty::jsonb, true, true\n")
+    w("FROM pharmacies p\n")
+    w("CROSS JOIN (VALUES\n")
+    w(",\n".join(f"  ({q(form_id(f['name']))}, {f['price']}, {q(json.dumps(f['qty']))})" for f in formulations))
+    w("\n) AS v(fid, price, qty)\n")
+    w("ON CONFLICT (pharmacy_id, formulation_id) DO UPDATE SET\n")
+    w("  wholesale_price = EXCLUDED.wholesale_price,\n")
+    w("  available_quantities = EXCLUDED.available_quantities,\n")
+    w("  is_available = true, is_active = true, deleted_at = NULL;\n\n")
+    w("COMMIT;\n")
+
+    open(OUT, "w", encoding="utf-8").write(o.getvalue())
+    print("WROTE", OUT)
+    print("ingredients:", len(ingredients), "salt_forms:", len(salt_forms),
+          "formulations:", len(formulations), "formulation_ingredients:", len(form_ingredients))
+
+
+if __name__ == "__main__":
+    main()

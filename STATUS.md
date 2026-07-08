@@ -1,6 +1,10 @@
 # Engineering Status — In-Flight Work
 
-**Last updated:** 2026-04-27 (Late) — **R7-BUCKET-1 FOLLOW-UP CAMPAIGN COMPLETE + R8 BACKLOG SHIPPED.** Production at commit `1cd99cc`. Both R8 backlog items (WO-93 Fax panel overflow + WO-94 cross-tier demo orders) and the meta-WO-95 walkthrough-prompt template all shipped (PRs #55, #56, #57). MCP statuses: WO-87, 88, 89, 91, 92, 93, 94, 95 → completed; WO-90 → wontfix under live-key constraint. Demo + production are in sync; partner-facing PDFs re-rendered to match. Demo doc fixed for the "Sla→SLA" tab caps that PR #51 introduced and a soft-update for cross-tier narration now that WO-94's seed exposes T1/T2/T3/T4 in the Ops pipeline. Ready for next-track planning (investor / clinic-onboarding tracks per the post-R8 sequencing review).
+**Last updated:** 2026-07-07 — **CATALOG SHIPPED + TYPES CLEANUP + DOC AUDIT.** Production at commit `e5d2bff`. Three PRs merged since the 07-02 batch: **#98** (166-product demo catalog CSV at `docs/research/catalog-seed/compoundiq-catalog-seed-v1.csv`), **#99** (completed `adapter_submission_debug_payloads` in `database.types.ts` + removed the two `as unknown as` casts — hand-completed from migration `20260614000002`; publish gotcha was CRLF-vs-LF line endings, not the code), **#100** (V3 hierarchical catalog importer: `scripts/import-catalog-v3.ts` / `npm run seed:catalog` + `scripts/generate-catalog-sql.py`). The catalog — 76 ingredients / 56 salt forms / 166 formulations (33 combos), synthetic demo pricing across BHRT, thyroid, peptides, GLP-1, sexual health, dermatology, LDN, IV therapy — loads into the V3 tables via `npm run seed:catalog` or a paste-ready SQL seed for the Supabase editor. A full documentation audit (`docs/handoff/documentation-audit-2026-07-07.md`) found the demo doc + technical refs stale for Phase C and the catalog. **⚠ Seed note:** the seed keys idempotency on deterministic UUIDs, not natural keys — if the V3 catalog already holds the older 5-med hand-seed, loading adds duplicate name rows; check before running. **Next:** load catalog into prod, then demo-doc rewrite + R9 walkthrough, then revenue tracks (clinic outreach still unsent; Lauren 503B email unblocks real pricing).
+
+**Last updated:** 2026-07-02 — **JUN-14 PR BATCH CLEARED + FULL PROJECT ASSESSMENT.** After ~7 weeks idle (last activity 2026-06-15), a full assessment ran (3 parallel agents + live GitHub/prod verification; report at `docs/handoff/project-assessment-2026-07-02.md`). The stalled 2026-06-14 batch was then reviewed per PR #95's prompt and merged: #90 (Pending Payment rename, PASS), #91 (dispute_orders fan-out, PASS-w/f — description corrected: solo path writes 0 junction rows), #92 (F-3 clinic-view toggle, PASS-w/f — cross-clinic isolation verified absolute), #93 (F-5 primary_provider_id, PASS), #94 (PHI debug table, PASS-w/f — **MEDIUM fixed on-branch:** purge cron daily→hourly; daily 03:00 sweep allowed ~48h worst-case PHI residence vs the documented 24h, now ~25h), #95 (review-prompt doc), dependabot #89 (esbuild security), and new #96 (removed orphan `adapter-health-check` cron that 404'd in prod every 10 min — no route ever existed). Root cause of the Jun-15 E2E failures on #92/#93/#94: **migration-history mismatch on the shared E2E Supabase project** — #91's run applied `20260614000001` remotely, so sibling branches lacking it failed `supabase db push` in ~70s; fixed by updating each branch from main and running CI serially. Production at commit `c9d79c1`. **Next:** regen `database.types.ts` (removes the hand-edits + 2 documented casts), then revenue tracks — clinic outreach (ready since 2026-05-27, nothing sent), LegitScript, 6 vendor BAAs — and the venture-studio partnership package (bracketed sections awaiting Lauren Perkins). **Security note (user action):** `.env.local` holds live Stripe/Supabase/DB/Sentry secrets in the OneDrive-synced folder — rotate keys and switch to `vercel env pull` on demand.
+
+**Prior: 2026-04-27 (Late)** — **R7-BUCKET-1 FOLLOW-UP CAMPAIGN COMPLETE + R8 BACKLOG SHIPPED.** Production at commit `1cd99cc`. Both R8 backlog items (WO-93 Fax panel overflow + WO-94 cross-tier demo orders) and the meta-WO-95 walkthrough-prompt template all shipped (PRs #55, #56, #57). MCP statuses: WO-87, 88, 89, 91, 92, 93, 94, 95 → completed; WO-90 → wontfix under live-key constraint. Demo + production are in sync; partner-facing PDFs re-rendered to match. Demo doc fixed for the "Sla→SLA" tab caps that PR #51 introduced and a soft-update for cross-tier narration now that WO-94's seed exposes T1/T2/T3/T4 in the Ops pipeline. Ready for next-track planning (investor / clinic-onboarding tracks per the post-R8 sequencing review).
 
 **Prior: 2026-04-27 (PM)** — **R7-BUCKET-1 FOLLOW-UP CAMPAIGN COMPLETE.** All six phases shipped (PRs #46, #48, dependabot #49, #50, #51, #52, #53; production at commit `add0cac`). R8 browser-agent walkthrough verdict: **PASS** with 1 LOW finding + 0 false-positives. R7's 28% false-positive rate dropped to 0% after the verify-before-report prompt update — process change paid for itself. All seven targeted regression checks PASS: bfcache PHI fix, bfcache KPI fix, Stripe Link suppression, Ops drawer Tier field, "SLA" tab capitalization, Fax Triage panel readability, clinic name in checkout header. WO statuses (at-time): WO-87, 88, 89, 91, 92 → completed; WO-90 → wontfix under live-key constraint; WO-93 + WO-94 filed in backlog. Production verified live via curl headers + R8 walkthrough.
 
@@ -18,10 +22,11 @@
 ## Quick state
 
 **Live app:** https://functional-medicine-infrastructure.vercel.app
-**Main branch:** commits `78735aa` (Toaster dedupe) + `cad82f6` (ESLint migration) + prior work through WO-87.
+**Main branch:** commit `e5d2bff` (2026-07-07) — through PR #100. Jun-14 batch + orphan-cron removal + types cleanup (#99) + 166-product V3 catalog importer (#100) all merged. Phase C multi-Rx groups live; F-3/F-5 role features shipped.
 **Demo doc:** `docs/POC-DEMO-DETAILED.pdf` — validated through 6 rounds of Cowork QA with zero remaining findings.
 **Mobile validation:** test plan at `docs/mobile-validation-test-plan.pdf`; user still needs to run on real iPhone + Android hardware.
 **Launch-kit:** clinic outreach templates ready at `docs/launch-kit/*.docx`; nothing sent yet.
+**Assessment:** `docs/handoff/project-assessment-2026-07-02.md` — current risks + recommended track order. Prior handoff: `docs/handoff/project-state-2026-06-14.md`.
 
 ---
 
@@ -136,7 +141,7 @@ These are cross-campaign principles surfaced by repeatedly being wrong about Pla
 | Global setup | `e2e/global-setup.ts` |
 | Current UI flow (for rewrite) | `src/app/(clinic-app)/new-prescription/` — patient selector → cascading builder → margin → review |
 | CI workflow | `.github/workflows/ci.yml` — `e2e` job at line ~168 |
-| Orders schema | `supabase/migrations/` (latest: `20260411000001_orders_formulation_support.sql`) |
+| Orders schema | `supabase/migrations/` (latest: `20260614000004_f5_patients_primary_provider_id.sql`) |
 
 ### Commands for the next engineer to pick this up
 
@@ -153,8 +158,8 @@ npm run test:e2e  # will likely fail locally same way as CI; that's the point
 # Check outstanding PR status
 gh pr list --repo PhoenixWild29/functional-medicine-infrastructure --state open
 
-# Create PR 2 branch (first up)
-git checkout -b chore/verify-e2e-supabase-isolation
+# Regenerate DB types (removes the hand-edits + casts from the Jun-14 batch)
+npm run db:types
 ```
 
 ---
@@ -163,6 +168,10 @@ git checkout -b chore/verify-e2e-supabase-isolation
 
 ### Short-term
 
+- **Regen `database.types.ts`** — all 4 Jun-14 migrations are live in prod and their PRs merged; `npm run db:types` then remove the two documented `as unknown as` casts in `src/lib/adapters/audit-trail.ts` + `src/app/api/cron/purge-phi-debug/route.ts`. Mechanical.
+- **Solo-path `dispute_orders` junction write** — LOW from the 2026-07-02 review of PR #91: `handleSoloChargeDisputeCreated` writes 0 junction rows, so ops JOIN queries through `dispute_orders` only cover group disputes. Small follow-up.
+- **Unit test for `/api/cron/purge-phi-debug`** — LOW from the PR #94 review: 0-row delete + `deleted` count surfacing untested.
+- **Rotate live secrets out of `.env.local`** (user action) — live `sk_live_`, Supabase service-role JWT, DB password, Sentry token sit in the OneDrive-synced project folder. Git-ignored, but cloud-synced. Rotate + use `vercel env pull` on demand.
 - **Refactor 11 React 19 Compiler findings** — `react-hooks/set-state-in-effect` (8 sites), `react-hooks/static-components` (3 in `sidebar-nav.tsx`). Currently downgraded to warnings via `eslint.config.mjs`. Files affected: `src/app/(clinic-app)/dashboard/_components/order-drawer.tsx`, `src/app/(clinic-app)/new-prescription/_context/prescription-session.tsx`, `src/app/(ops-dashboard)/ops/pipeline/_components/order-detail-drawer.tsx`, `src/components/main-content-offset.tsx`, `src/components/sidebar-nav.tsx`. Estimated 2-4 hrs careful work. Open a separate PR after PR 7 merges.
 - **Clean up 37 `no-unused-vars` warnings** — all cosmetic. Either remove or prefix with `_`. Mostly in test files, utility scripts, and a few components.
 - **Fix Foundry Data Layer blueprint edit-tool bug** — 8090.ai platform bug where `edit_blueprint` returns "old_text does not match" for all edits on blueprint ID `3a3f585a-eec5-4283-bbb6-040331dc6611`. Workaround used: paste-back from local file. Report to 8090.ai support so future updates don't hit the same wall.
@@ -174,6 +183,9 @@ git checkout -b chore/verify-e2e-supabase-isolation
 - **LegitScript certification application** — $975 + BAA paperwork. `docs/launch-kit/legitscript-application-checklist.docx`. 2-4 week turnaround.
 - **6 vendor BAA requests** — Supabase, Stripe, Twilio, Documo, Vercel, Sentry. See `docs/launch-kit/pre-launch-checklist.docx` bucket 1.6. Some take 1-2 weeks.
 - **Mobile validation on real devices** — `docs/mobile-validation-test-plan.pdf`. 30-min run on iPhone + Android. User side.
+- **E2E coverage for Phase C group checkout** — the payment-group flow (Stripe webhooks + disputes) has unit tests but zero Playwright coverage (flagged in the 2026-07-02 assessment).
+- **F-4 patient-detail view** — spec'd in `docs/audits/role-audit-and-data-model.md`, 2–3 day build, not started.
+- **Empirical PHI-redaction verification** — never run against real (non-seed) adapter traffic; blocked until a real pharmacy submission exists (LF-4..8 awaiting Lauren Perkins credentials + BAA).
 
 ---
 
@@ -188,6 +200,20 @@ git checkout -b chore/verify-e2e-supabase-isolation
 ---
 
 ## Recent context worth preserving
+
+### Session 2026-07-02 — Full project assessment + Jun-14 batch cleared
+
+Project had been idle since 2026-06-15 with 6 PRs staged for review. This session:
+
+- **Assessment first:** 3 parallel agents (codebase, docs/roadmap, CI/ops) + live GitHub/prod verification. Report: `docs/handoff/project-assessment-2026-07-02.md`. Reconstructed the May–June timeline (venture-studio strategy track, discovery-sprint audits, Phase C build + 2 Codex sweeps).
+- **Batch review executed** per PR #95's prompt (4 parallel review agents, verify-before-report guardrail): #90 PASS · #91 PASS-w/f · #92 PASS-w/f · #93 PASS · #94 PASS-w/f. Verdicts recorded as PR comments.
+- **MEDIUM fixed pre-merge (PR #94):** daily 03:00 UTC purge sweep allowed ~48h worst-case PHI residence vs the documented 24h. Cron bumped to hourly (`b879128`) — worst case now ~25h. Same cadence-over-classifier reasoning as PR #41's F2.
+- **PR #91 description corrected:** solo dispute path writes 0 `dispute_orders` rows (the old text claimed 1); follow-up filed in backlog.
+- **E2E failure root cause (Jun-15 runs on #92/#93/#94):** migration-history mismatch on the shared E2E Supabase project — #91's green run applied `20260614000001` remotely; sibling branches lacking it failed `supabase db push` in ~70s. **Durable lesson: parallel PRs that each carry a migration will break each other's E2E runs once the first one syncs. Update branches from main and run CI serially.**
+- **Merged (serial, CI-green each):** #90, #91, #94, #92, #93, #95, #89 (dependabot esbuild security), #96.
+- **PR #96 (new):** removed the orphan `adapter-health-check` cron from `vercel.json` — scheduled every 10 min since inception with no route handler (404s in prod). Adapter Health freshness is handled by `poc-credential-sync` (which also runs `refresh-demo-data`).
+- **Security flag (user action pending):** `.env.local` in the OneDrive-synced folder holds live Stripe secret key, Supabase service-role JWT, DB password, Sentry token. Git-ignored but cloud-synced — rotate and switch to `vercel env pull`.
+- **Not done here (needs local env):** `npm run db:types` regen — first item in Short-term backlog.
 
 ### Session 2026-04-27 (Late) — R8 backlog + meta-WO walkthrough template shipped + docs sync
 

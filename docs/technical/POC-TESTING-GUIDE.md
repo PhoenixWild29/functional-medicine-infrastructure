@@ -44,18 +44,22 @@ All accounts below are pre-configured test accounts for the POC environment.
 
 ---
 
-## Stripe Test Card Numbers
+## Stripe Checkout — Live Mode ⚠
 
-The checkout uses Stripe in **test mode** — no real charges are made. Use these card numbers in the payment form:
+> **⚠ Confirm with the team before exercising checkout.** The POC runs on Stripe **LIVE** keys — there is no test mode and no `sk_test_*` key in this environment. That means:
+>
+> - **Do NOT enter real card details.** A real card would create a real charge.
+> - The standard Stripe test cards (e.g. `4242 4242 4242 4242`) will **not** work against live keys, so there is no self-serve way to simulate a payment.
+> - If you need to exercise the payment flow end to end, **coordinate with the development team first** — do not attempt checkout on your own.
 
-| Scenario | Card Number | Exp | CVC |
+You can still fully review the checkout **UI** (layout, order summary, trust badges, responsive behavior, error states) without submitting a payment. The standard Stripe test card numbers are listed below **for reference only** — they illustrate the scenarios the UI is designed to handle, but will **not** process against the POC's live keys:
+
+| Scenario | Card Number (reference only — will NOT work on live keys) | Exp | CVC |
 |----------|------------|-----|-----|
 | **Successful payment** | `4242 4242 4242 4242` | Any future date (e.g. 12/28) | Any 3 digits |
 | **Card declined** | `4000 0000 0000 0002` | Any future date | Any 3 digits |
 | **Insufficient funds** | `4000 0000 0000 9995` | Any future date | Any 3 digits |
 | **Requires authentication (3DS)** | `4000 0025 0000 3155` | Any future date | Any 3 digits |
-
-For ZIP code (if prompted): use any 5-digit number (e.g. `90210`).
 
 ---
 
@@ -66,7 +70,7 @@ For ZIP code (if prompted): use any 5-digit number (e.g. `90210`).
 ### Navigation
 The app has a sidebar on the left with three sections:
 - **Dashboard** — order management
-- **New Prescription** — 3-step wizard to create orders
+- **New Prescription** — cascading prescription builder to create orders
 - **Settings** — clinic profile and Stripe setup
 
 The sidebar collapses to an icon-only rail on tablet. On mobile it becomes a hamburger menu.
@@ -77,7 +81,7 @@ The sidebar collapses to an icon-only rail on tablet. On mobile it becomes a ham
 
 **What to check:**
 - Orders table loads with all active orders
-- **Status filter tabs** at the top: All / Drafts / Awaiting Payment / Submitting / Processing / Shipped / Errors — clicking each filters the table
+- **Status filter tabs** at the top: All / Drafts / Pending Payment / Submitting / Processing / Shipped / Errors — clicking each filters the table
 - **Table view vs Kanban view** toggle (top right) — switches between a table and a card-based kanban board
 - **Kanban drag:** cards can be dragged between columns; dropping opens the order detail drawer
 - **Clicking any row** opens a slide-out drawer on the right with full order details
@@ -99,14 +103,16 @@ The flow has a 3-step progress indicator (Patient & Provider → Add Prescriptio
 
 **Step 0 — Select Patient & Provider** (`/new-prescription`)
 - Search for a patient by name, DOB, or phone
-- Select the prescribing provider (auto-selects if only one in the clinic)
+- Select the prescribing provider (auto-selects if only one in the clinic, or if the patient has a primary provider on file)
 - Both stay pinned in a session banner at the top of all subsequent screens
 - Patient's shipping state auto-populates for pharmacy search
 
-**Step 1 — Find Medication & Pharmacy** (`/new-prescription/search`)
+**Step 1 — Build the Prescription (Cascading Builder)** (`/new-prescription/search`)
 - Shipping state already filled from the patient record
-- Type a medication name in the search box (e.g. "Semaglutide", "Tirzepatide")
-- Results appear with pharmacy name, tier badge, price, and turnaround time
+- The medication is assembled with a **cascading builder** that walks the V3 catalog hierarchy one level at a time: **ingredient → salt form → dosage form → route → formulation**, then **pharmacy**
+- Start by searching for an active ingredient (e.g. "Semaglutide", "Tirzepatide"); each selection narrows the next dropdown
+- **Single-option levels are auto-skipped** — if an ingredient has only one salt form (or only one dosage form, route, etc.), the builder fills it in automatically and advances to the next real choice, so simple medications take just a couple of clicks
+- Once a formulation is chosen, matching pharmacies appear with pharmacy name, tier badge, price, and turnaround time (only pharmacies licensed in the patient's state are shown)
 - Select a pharmacy to proceed to pricing
 
 **Step 2 — Margin & Pricing** (`/new-prescription/margin`)
@@ -128,7 +134,7 @@ The flow has a 3-step progress indicator (Patient & Provider → Add Prescriptio
 - When an MA saves a draft, the order appears on the dashboard "Drafts" tab
 - Clicking a draft order shows an amber "Awaiting Provider Signature" banner
 - Provider clicks "Review & Sign" → dedicated sign page with pre-populated details
-- Provider signs and sends — order transitions from Draft to Awaiting Payment
+- Provider signs and sends — order transitions from Draft to Pending Payment
 
 ---
 
@@ -241,7 +247,7 @@ https://functional-medicine-infrastructure.vercel.app/checkout/[token]
 
 **To test this flow:**
 1. Log in as Clinic Admin or Provider
-2. Create a new prescription through the wizard and submit it
+2. Create a new prescription through the cascading builder and submit it
 3. The patient receives an SMS with a checkout link — for testing, check the order detail drawer which shows the payment link
 4. Open that link in a new browser window (no login required — this is the patient-facing page)
 
@@ -252,8 +258,8 @@ https://functional-medicine-infrastructure.vercel.app/checkout/[token]
 - **Pay button** shows "Pay $X.XX" with the actual amount — minimum 48px height for mobile touch
 - **Trust badges** at bottom: 🔒 256-bit TLS Encryption + ⚡ Powered by Stripe
   - Note: No HIPAA badge is shown (intentional — legal requirement until formal audit)
-- Use Stripe test card `4242 4242 4242 4242` for a successful payment
-- Use `4000 0000 0000 0002` to test a declined card — you should see an inline error message and be able to retry without leaving the page
+- **Do NOT submit a payment.** The POC uses Stripe **live** keys — do not enter real card details, and coordinate with the development team before exercising the payment flow (see the "Stripe Checkout — Live Mode" note above)
+- You can still verify the form renders correctly (card, Apple Pay, Google Pay options) and review the declined-card / error states with the team rather than by submitting test cards
 
 ### Success Page (`/checkout/success`)
 After a successful payment:
@@ -304,7 +310,7 @@ These are the main improvements from the most recent build sprint:
 ## Notes for Your Review
 
 - **Test data:** The POC environment has pre-seeded orders in various states. You should see orders across all status lanes without needing to create new ones first.
-- **Stripe test mode:** All payments are simulated — no real money moves.
+- **Stripe live mode ⚠:** The POC runs on Stripe **live** keys — there is no test mode and no real charges should be attempted. Do NOT enter real card details, and confirm with the development team before exercising checkout. You can review the entire checkout UI without submitting a payment.
 - **SMS in test mode:** In the POC environment, SMS messages go to a test sink (they are logged but not delivered to real phone numbers). You can access payment links directly from the order detail drawer.
 - **Data persistence:** The POC database is shared — anything created during testing will be visible to all testers.
 - **Browser support:** Chrome or Safari recommended. The checkout Apple Pay button only appears on Safari/iOS.
