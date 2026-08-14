@@ -17,7 +17,7 @@ import { DEMO_TOTP_SECRET } from '../src/lib/poc/totp-enrollment'
 // The Zero-PHI describe block below inserts directly into `orders` and does
 // NOT use the UI wizard.
 
-// ── Shared wizard navigation helper ──────────────────────────────────────────
+// ── Shared wizard navigation helper ────────────────────────────────────────
 //
 // Walks Steps 0-2 and leaves the browser on /new-prescription/review with the
 // signature canvas ready to be drawn on. The seed ingredient has
@@ -30,7 +30,7 @@ async function navigateToReviewPage(
   page: Page,
   { retailPrice = '200.00' }: { retailPrice?: string } = {},
 ) {
-  // ── Step 0: Patient + provider selection ──────────────────
+  // ── Step 0: Patient + provider selection ──────────────────────
   await page.goto('/new-prescription')
 
   // Patient: type first name into the search box, then click the result.
@@ -43,7 +43,7 @@ async function navigateToReviewPage(
   // Continue button becomes enabled as soon as patient is chosen.
   await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
 
-  // ── Step 1: Cascading prescription builder ────────────────
+  // ── Step 1: Cascading prescription builder ────────────────────
   await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
 
   // Ingredient search — aria-label added in this PR for stable selection.
@@ -111,11 +111,11 @@ test.describe('Clinic App — Order Creation Flow', () => {
     await page.getByRole('button', { name: 'Sign in' }).click()
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
 
-    // ── 2. Walk all 4 wizard steps ───────────────────────────
+    // ── 2. Walk all 4 wizard steps ───────────────────────
     // Patient → cascading builder → margin → review.
     await navigateToReviewPage(page)
 
-    // ── 3. Non-provider review UI ────────────────────────────
+    // ── 3. Non-provider review UI ────────────────────────
     // The Save-as-Draft action + explanatory note render (wait for hydrate).
     await expect(
       page.getByRole('button', { name: /Save as Draft/ })
@@ -164,6 +164,11 @@ test.describe('Clinic App — Order Creation Flow', () => {
     await expect(
       page.getByRole('button', { name: /Sign & Send/ })
     ).toBeDisabled()
+    // fix/review-send-flow: the disabled state must explain itself — a
+    // gray button with no hint reads as "broken" (user bug report).
+    await expect(
+      page.getByText(/Sign in the signature box above to enable sending/i)
+    ).toBeVisible()
     // The non-provider fallback must NOT render for a provider.
     await expect(
       page.getByRole('button', { name: /Save as Draft/ })
@@ -239,7 +244,7 @@ test.describe('Clinic App — Order Creation Flow', () => {
   })
 
   test('retail price validation rejects price below wholesale', async ({ page }) => {
-    // ── 1. Login ──────────────────────────────────────────────
+    // ── 1. Login ──────────────────────────────────────────
     await page.goto('/login')
     await page.getByLabel('Email').fill(TEST_USERS.clinicAdmin.email)
     await page.getByLabel('Password').fill(TEST_USERS.clinicAdmin.password)
@@ -268,7 +273,7 @@ test.describe('Clinic App — Order Creation Flow', () => {
     await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
     await page.locator('#retail-price').fill('50.00')
 
-    // ── 4. Verify inline error appears ───────────────────────
+    // ── 4. Verify inline error appears ─────────────────────
     // REQ-DMB-005: "Retail price must be at least the wholesale cost ($100.00)."
     await expect(
       page.getByText(/retail price must be at least/i)
