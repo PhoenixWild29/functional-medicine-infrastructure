@@ -8,7 +8,14 @@
 //
 // REQ-DMB-001: Locked wholesale cost display with pharmacy name.
 // REQ-DMB-003: Default markup pre-population from clinics.default_markup_pct.
+//
+// Stale-favorite hardening: when a favorite (or deep link) points at a
+// formulation that exists but is no longer orderable (deactivated /
+// soft-deleted / pharmacy offering removed — e.g. after a catalog
+// reseed), render a graceful inline state instead of notFound().
+// A true 404 (formulation row never existed) still calls notFound().
 
+import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -114,6 +121,55 @@ export default async function MarginPage({ searchParams }: PageProps) {
       redirect('/new-prescription/search')
     }
     catalogItem = data
+  }
+
+  if (!catalogItem && formulationId) {
+    // Stale-favorite check: distinguish "never existed" (hard 404) from
+    // "existed but was deactivated / offering removed" (graceful state).
+    // One unfiltered existence probe — no active/deleted filters.
+    const { data: staleFormulation } = await supabase
+      .from('formulations')
+      .select('formulation_id, name')
+      .eq('formulation_id', formulationId)
+      .maybeSingle()
+
+    if (staleFormulation) {
+      return (
+        <>
+        <HipaaTimeout />
+        <main className="mx-auto max-w-2xl px-4 py-8">
+          <SessionBanner />
+
+          <div className="mb-6">
+            <WizardProgress
+              steps={[
+                { number: 1, label: 'Patient & Provider', href: '/new-prescription' },
+                { number: 2, label: 'Add Prescriptions', href: '/new-prescription/search' },
+                { number: 3, label: 'Review & Send' },
+              ]}
+              currentStep={2}
+            />
+          </div>
+
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-6">
+            <h1 className="text-lg font-semibold text-amber-900">
+              {staleFormulation.name} is no longer available
+            </h1>
+            <p className="mt-2 text-sm text-amber-800">
+              This medication is no longer available in the catalog. Update or
+              remove the favorite, then choose a replacement.
+            </p>
+            <Link
+              href="/new-prescription/search"
+              className="mt-4 inline-block rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
+            >
+              Choose a Replacement
+            </Link>
+          </div>
+        </main>
+        </>
+      )
+    }
   }
 
   if (!catalogItem) notFound()

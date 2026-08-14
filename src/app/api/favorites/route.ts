@@ -1,6 +1,8 @@
 // ============================================================
 // Provider Favorites API — WO-85
 // GET  /api/favorites          → list favorites for current provider
+//   (each row carries formulation_active so the UI can gray out
+//   favorites whose formulation was deactivated by a catalog reseed)
 // POST /api/favorites          → save a new favorite
 // PATCH /api/favorites?id=xxx  → update use_count (on load)
 // DELETE /api/favorites?id=xxx → remove a favorite
@@ -17,6 +19,17 @@ async function getClinicProviderIds(clinicId: string): Promise<string[]> {
     .select('provider_id')
     .eq('clinic_id', clinicId)
   return data?.map(p => p.provider_id) ?? []
+}
+
+// Stale-favorite hardening: the formulations embed is intentionally
+// unfiltered (so dead favorites still render and can be deleted), but
+// each favorite surfaces a computed formulation_active flag so the UI
+// can disable the click-through instead of 404ing on the margin page.
+function isFormulationLive(f: unknown): boolean {
+  const row: unknown = Array.isArray(f) ? f[0] : f
+  if (!row || typeof row !== 'object') return false
+  const rec = row as { is_active?: boolean | null; deleted_at?: string | null }
+  return rec.is_active === true && rec.deleted_at === null
 }
 
 export async function GET(req: NextRequest) {
@@ -56,6 +69,8 @@ export async function GET(req: NextRequest) {
         concentration,
         concentration_value,
         concentration_unit,
+        is_active,
+        deleted_at,
         dosage_forms ( name ),
         routes_of_administration ( name, abbreviation, sig_prefix )
       )
@@ -64,7 +79,13 @@ export async function GET(req: NextRequest) {
     .order('use_count', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ data })
+
+  const favorites = (data ?? []).map(fav => ({
+    ...fav,
+    formulation_active: isFormulationLive(fav.formulations),
+  }))
+
+  return NextResponse.json({ data: favorites })
 }
 
 export async function POST(req: NextRequest) {
