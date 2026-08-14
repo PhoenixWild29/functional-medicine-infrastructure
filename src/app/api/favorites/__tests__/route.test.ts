@@ -10,9 +10,14 @@
  * The POST handler already had this scoping (route.ts:82); DELETE
  * now matches. These tests lock the contract in so a future refactor
  * can't quietly drop the cross-clinic check.
+ *
+ * Also covers the GET formulation_active flag (stale-favorite
+ * hardening): each favorite must surface whether its formulation is
+ * still live so the UI can gray out dead cards instead of letting a
+ * click-through 404 on the margin page.
  */
 
-import { DELETE } from '../route'
+import { GET, DELETE } from '../route'
 import { NextRequest } from 'next/server'
 
 // ── Mocks ────────────────────────────────────────────────────
@@ -39,6 +44,10 @@ function makeRequest(id?: string | null): NextRequest {
     ? 'http://localhost/api/favorites'
     : `http://localhost/api/favorites?id=${id}`
   return new NextRequest(new URL(url), { method: 'DELETE' })
+}
+
+function makeGetRequest(): NextRequest {
+  return new NextRequest(new URL('http://localhost/api/favorites'))
 }
 
 const FAV_ID         = 'fav-uuid-123'
@@ -167,5 +176,79 @@ describe('DELETE /api/favorites — clinic-scope guard', () => {
     const res = await DELETE(makeRequest(FAV_ID))
     expect(res.status).toBe(200)
     expect(deleteEqSpy).toHaveBeenCalledWith('favorite_id', FAV_ID)
+  })
+})
+
+describe('GET /api/favorites — formulation_active flag (stale-favorite hardening)', () => {
+  it('computes formulation_active from the embedded formulation liveness fields', async () => {
+    getSessionMock.mockResolvedValue(SESSION_IN_CLINIC)
+
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'providers') {
+        return {
+          select: () => ({
+            eq: () => Promise.resolve({
+              data: [{ provider_id: PROVIDER_IN }],
+              error: null,
+            }),
+          }),
+        }
+      }
+      if (table === 'provider_favorites') {
+        return {
+          select: () => ({
+            in: () => ({
+              order: () => Promise.resolve({
+                data: [
+                  {
+                    favorite_id: 'fav-live',
+                    formulations: { formulation_id: 'f1', name: 'Live', is_active: true, deleted_at: null },
+                  },
+                  {
+                    favorite_id: 'fav-inactive',
+                    formulations: { formulation_id: 'f2', name: 'Inactive', is_active: false, deleted_at: null },
+                  },
+                  {
+                    favorite_id: 'fav-deleted',
+                    formulations: { formulation_id: 'f3', name: 'Deleted', is_active: true, deleted_at: '2026-01-01T00:00:00Z' },
+                  },
+                  {
+                    favorite_id: 'fav-orphan',
+                    formulations: null,
+                  },
+                ],
+                error: null,
+              }),
+            }),
+          }),
+        }
+      }
+      throw new Error(`unexpected table ${table}`)
+    })
+
+    const res = await GET(makeGetRequest())
+    expect(res.status).toBe(200)
+
+    const json = await res.json()
+    const flags = Object.fromEntries(
+      json.data.map((f: { favorite_id: string; formulation_active: boolean }) => [
+        f.favorite_id,
+        f.formulation_active,
+      ])
+    )
+
+    expect(flags).toEqual({
+      'fav-live': true,
+      'fav-inactive': false,
+      'fav-deleted': false,
+      'fav-orphan': false,
+    })
+  })
+
+  it('returns 401 when no session', async () => {
+    getSessionMock.mockResolvedValue({ data: { session: null } })
+
+    const res = await GET(makeGetRequest())
+    expect(res.status).toBe(401)
   })
 })

@@ -11,12 +11,17 @@
 // 3. Recent   — last 10 prescriptions for quick reorder
 //
 // Favorites load all dropdown values + sig into the builder.
-// Protocols add all medications to the WO-80 session at once.
+// Protocols add all medications to the WO-80 session at once,
+// priced from the LIVE wholesale price + clinic default markup
+// (see protocol-pricing.ts) — never $0.00 stubs. If any item is
+// no longer available, the whole protocol load is blocked with
+// an inline error naming the unavailable item(s).
 
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { usePrescriptionSession } from '../_context/prescription-session'
+import { computeItemPricing, findUnavailableItems } from './protocol-pricing'
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -37,6 +42,10 @@ interface Favorite {
   default_refills: number
   use_count: number
   last_used_at: string | null
+  // Stale-favorite hardening: false when the referenced formulation has
+  // been deactivated or soft-deleted (e.g. by a catalog reseed). The card
+  // renders grayed out with the click-through disabled.
+  formulation_active: boolean
   formulations: {
     formulation_id: string
     name: string
@@ -69,6 +78,10 @@ interface ProtocolItem {
   default_quantity: string | null
   default_refills: number
   sort_order: number
+  // Live pricing resolved server-side by /api/protocols?id= — null when
+  // the pharmacy no longer actively offers this formulation.
+  wholesale_price: number | null
+  formulation_active: boolean
   formulations: {
     formulation_id: string
     name: string
@@ -85,6 +98,7 @@ interface ProtocolItem {
 
 interface ProtocolDetail extends Protocol {
   items: ProtocolItem[]
+  default_markup_pct: number | null
 }
 
 // ── Fetchers ────────────────────────────────────────────────
@@ -125,6 +139,7 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
   const [activeTab, setActiveTab] = useState<'favorites' | 'protocols' | 'recent'>('favorites')
   const [expandedProtocol, setExpandedProtocol] = useState<string | null>(null)
   const [loadingProtocol, setLoadingProtocol] = useState(false)
+  const [protocolLoadError, setProtocolLoadError] = useState<string | null>(null)
   // Two-step delete confirm — matches the catalog rollback pattern
   // (catalog-manager.tsx). Tracks which favorite row is currently
   // showing [Confirm] / [Cancel] buttons; null = idle.
@@ -149,18 +164,37 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
   })
 
   // ── Load protocol into session ────────────────────────
-  async function loadProtocolToSession(detail: ProtocolDetail) {
+  function loadProtocolToSession(detail: ProtocolDetail) {
     if (!session.patient || !session.provider) return
+    setProtocolLoadError(null)
+
+    // WO-85 fix: never load $0.00 stubs. Every item must have an active
+    // formulation AND a live wholesale price, or the whole protocol load
+    // is blocked with an error naming the unavailable item(s).
+    const unavailable = findUnavailableItems(detail.items.map(item => ({
+      name: item.formulations?.name ?? 'Unknown medication',
+      pharmacyName: item.pharmacies?.name ?? 'its pharmacy',
+      wholesalePrice: item.formulations && item.pharmacies ? item.wholesale_price : null,
+      formulationActive: !!item.formulations && !!item.pharmacies && item.formulation_active,
+    })))
+
+    if (unavailable.length > 0) {
+      setProtocolLoadError(`${unavailable.join('; ')} — protocol not loaded.`)
+      return
+    }
+
     setLoadingProtocol(true)
 
     for (const item of detail.items) {
-      if (!item.formulations || !item.pharmacies) continue
+      // The guard above ensures these never trip; they narrow the types.
+      if (!item.formulations || !item.pharmacies || item.wholesale_price === null) continue
 
-      // Navigate to margin builder for each item so provider can set retail price
-      // For POC: add all items to session with a default 2x markup
-      // In production, this would open the margin builder for each
       const formName = item.formulations.name
       const doseText = `${item.dose_amount ?? ''} ${item.dose_unit ?? ''}`.trim()
+      const { wholesaleCents, retailCents } = computeItemPricing(
+        item.wholesale_price,
+        detail.default_markup_pct
+      )
 
       session.addPrescription({
         pharmacyId: item.pharmacies.pharmacy_id,
@@ -172,21 +206,25 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
         medicationName: formName,
         form: item.formulations.dosage_forms?.name ?? '',
         dose: doseText,
-        wholesaleCents: 0, // Will be set when provider reviews
+        wholesaleCents,
         deaSchedule: null,
-        retailCents: 0,    // Will be set when provider reviews
+        retailCents,
         sigText: item.sig_text ?? '',
         integrationTier: item.pharmacies.integration_tier,
       })
     }
 
     setLoadingProtocol(false)
-    // Navigate to review page so provider can set prices for each
+    // Navigate to review page — every line already carries a real price;
+    // the provider can still adjust retail per line if needed.
     router.push('/new-prescription/review')
   }
 
   // ── Handle favorite load ──────────────────────────────
   function handleFavoriteClick(fav: Favorite) {
+    // Stale favorites are rendered grayed out with the button disabled;
+    // this guard also keeps a dead click from bumping use_count.
+    if (fav.formulation_active === false) return
     // Bump use timestamp
     fetch(`/api/favorites?id=${fav.favorite_id}`, { method: 'PATCH' }).catch(() => {})
     onLoadFavorite(fav)
@@ -265,28 +303,44 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
             {favorites.map(fav => {
               const isConfirming = confirmDeleteFav === fav.favorite_id
               const isDeleting = deletingFav === fav.favorite_id
+              const isUnavailable = fav.formulation_active === false
               return (
                 <div
                   key={fav.favorite_id}
-                  className="group flex items-stretch rounded-md border border-border transition-colors hover:bg-muted/50"
+                  className={`group flex items-stretch rounded-md border border-border transition-colors ${
+                    isUnavailable ? 'opacity-60' : 'hover:bg-muted/50'
+                  }`}
                 >
                   <button
                     type="button"
                     onClick={() => handleFavoriteClick(fav)}
-                    className="flex-1 text-left px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-l-md"
+                    disabled={isUnavailable}
+                    className="flex-1 text-left px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-l-md disabled:cursor-not-allowed"
                   >
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium text-foreground">{fav.label}</p>
-                      {fav.sig_mode !== 'standard' && (
-                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                          {fav.sig_mode}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {isUnavailable && (
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                            unavailable
+                          </span>
+                        )}
+                        {fav.sig_mode !== 'standard' && (
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                            {fav.sig_mode}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <p className="mt-0.5 text-xs text-muted-foreground truncate">
                       {fav.formulations?.name}
                       {fav.dose_amount && ` — ${fav.dose_amount} ${fav.dose_unit ?? ''}`}
                     </p>
+                    {isUnavailable && (
+                      <p className="mt-0.5 text-[10px] text-amber-700">
+                        No longer in the catalog — remove this favorite and choose a replacement.
+                      </p>
+                    )}
                     {fav.use_count > 0 && (
                       <p className="mt-0.5 text-[10px] text-muted-foreground">
                         Used {fav.use_count} time{fav.use_count !== 1 ? 's' : ''}
@@ -351,13 +405,24 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
         {/* ── Protocols Tab ─────────────────────────────── */}
         {activeTab === 'protocols' && (
           <div className="space-y-2">
+            {protocolLoadError && (
+              <p
+                role="alert"
+                className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+              >
+                {protocolLoadError}
+              </p>
+            )}
             {protocols.map(proto => (
               <div key={proto.protocol_id} className="rounded-md border border-border">
                 <button
                   type="button"
-                  onClick={() => setExpandedProtocol(
-                    expandedProtocol === proto.protocol_id ? null : proto.protocol_id
-                  )}
+                  onClick={() => {
+                    setProtocolLoadError(null)
+                    setExpandedProtocol(
+                      expandedProtocol === proto.protocol_id ? null : proto.protocol_id
+                    )
+                  }}
                   className="w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors"
                 >
                   <div className="flex items-center justify-between">
@@ -383,26 +448,34 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
                 {/* Expanded: show items + load button */}
                 {expandedProtocol === proto.protocol_id && protocolDetail && (
                   <div className="border-t border-border px-3 py-2 space-y-1.5">
-                    {protocolDetail.items.map((item, i) => (
-                      <div key={item.item_id ?? i} className="flex items-start gap-2 text-xs">
-                        <span className="mt-0.5 w-4 text-center font-medium text-muted-foreground">
-                          {i + 1}
-                        </span>
-                        <div className="flex-1">
-                          <p className="font-medium text-foreground">
-                            {item.formulations?.name ?? 'Unknown'}
-                          </p>
-                          <p className="text-muted-foreground truncate">
-                            {item.sig_text}
-                          </p>
-                          {item.phase_name && (
-                            <span className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
-                              {item.phase_name}
-                            </span>
-                          )}
+                    {protocolDetail.items.map((item, i) => {
+                      const itemUnavailable = !item.formulation_active || item.wholesale_price === null
+                      return (
+                        <div key={item.item_id ?? i} className="flex items-start gap-2 text-xs">
+                          <span className="mt-0.5 w-4 text-center font-medium text-muted-foreground">
+                            {i + 1}
+                          </span>
+                          <div className="flex-1">
+                            <p className="font-medium text-foreground">
+                              {item.formulations?.name ?? 'Unknown'}
+                              {itemUnavailable && (
+                                <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                                  unavailable
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-muted-foreground truncate">
+                              {item.sig_text}
+                            </p>
+                            {item.phase_name && (
+                              <span className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+                                {item.phase_name}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                     <button
                       type="button"
                       disabled={!session.patient || !session.provider || loadingProtocol}
