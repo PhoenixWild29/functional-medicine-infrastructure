@@ -57,6 +57,16 @@ function calcPlatformFeeCents(marginCents: number): number {
   return Math.round(marginCents * 15 / 100)
 }
 
+// fix/review-send-flow: a session line is un-sendable when it carries
+// no price or a too-short sig. Both are rejected by /api/orders (400:
+// "retailCents must be a positive integer" / "sigText must be at least
+// 10 characters"). Sessions persisted in sessionStorage BEFORE the
+// PR #109 protocol pricing fix can still contain $0.00 stub lines, so
+// surface these BEFORE the provider signs instead of failing mid-batch.
+function isUnsendable(rx: { retailCents: number; sigText: string }): boolean {
+  return rx.retailCents <= 0 || rx.sigText.trim().length < 10
+}
+
 // ── Props ─────────────────────────────────────────────────────
 // isProvider is derived server-side (review/page.tsx) from the
 // session app_role claim. Providers get the sign-and-send UI;
@@ -118,18 +128,33 @@ export function BatchReviewForm({ isProvider }: Props) {
   }, 0)
   const totalClinicPayoutCents = totalMarginCents - totalPlatformFeeCents
 
+  // fix/review-send-flow: pre-flight validation. These lines would 400
+  // at /api/orders, so block submission up front with a visible reason
+  // instead of failing after the provider has signed and confirmed.
+  const invalidItems = prescriptions.filter(isUnsendable)
+  const hasInvalidItems = invalidItems.length > 0
+
   function handleClearSignature() {
     sigCanvasRef.current?.clear()
     setSignatureCaptured(false)
   }
 
-  const canSubmit = signatureCaptured && prescriptions.length > 0 && !isSubmitting
+  const canSubmit = signatureCaptured && prescriptions.length > 0 && !isSubmitting && !hasInvalidItems
   // Shared controls (Remove, Add Another) lock during either flow.
   const isBusy = isSubmitting || isSavingDraft
 
   // ── Sign & Send all prescriptions ──────────────────────────
   async function handleSignAndSend() {
-    if (!sigCanvasRef.current || sigCanvasRef.current.isEmpty()) return
+    if (!sigCanvasRef.current || sigCanvasRef.current.isEmpty()) {
+      // fix/review-send-flow (F5 family): the canvas can lose its strokes
+      // (e.g. after a resize/re-render) while signatureCaptured is still
+      // true. The old silent `return` here made "Confirm & Send" look
+      // completely dead. Surface it and reset so the user can re-sign.
+      setSubmitError('Your signature did not register. Please sign in the signature box again, then retry.')
+      setSignatureCaptured(false)
+      setConfirmOpen(false)
+      return
+    }
     if (!patient || !provider) return
 
     setIsSubmitting(true)
@@ -302,9 +327,13 @@ export function BatchReviewForm({ isProvider }: Props) {
           const marginCents = rx.retailCents - rx.wholesaleCents
           const platformFeeCents = calcPlatformFeeCents(marginCents)
           const clinicMarginCents = marginCents - platformFeeCents
+          const invalid = isUnsendable(rx)
 
           return (
-            <div key={rx.id} className="rounded-lg border border-border bg-card p-4 shadow-sm">
+            <div
+              key={rx.id}
+              className={`rounded-lg border bg-card p-4 shadow-sm ${invalid ? 'border-amber-300' : 'border-border'}`}
+            >
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-medium text-foreground">
@@ -316,6 +345,11 @@ export function BatchReviewForm({ isProvider }: Props) {
                   <p className="mt-1 text-xs text-muted-foreground italic">
                     Sig: {rx.sigText}
                   </p>
+                  {invalid && (
+                    <p className="mt-1 text-xs font-medium text-amber-700">
+                      Missing {rx.retailCents <= 0 ? 'price' : 'directions'} — remove this line and re-add it from search or a protocol.
+                    </p>
+                  )}
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-bold text-foreground">{toCurrency(rx.retailCents)}</p>
@@ -367,6 +401,23 @@ export function BatchReviewForm({ isProvider }: Props) {
           <span>{toCurrency(totalClinicPayoutCents)}</span>
         </div>
       </div>
+
+      {/* fix/review-send-flow: pre-flight banner for un-sendable lines.
+          These would 400 at /api/orders, so block up front with the reason
+          visible instead of erroring mid-batch after the provider signed. */}
+      {hasInvalidItems && (
+        <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/20">
+          <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+            {invalidItems.length} prescription{invalidItems.length !== 1 ? 's' : ''} can&apos;t be sent yet
+          </p>
+          <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+            {invalidItems.map(rx => rx.medicationName).join(', ')} {invalidItems.length !== 1 ? 'are' : 'is'} missing a price
+            or prescription directions — usually leftovers from a protocol added before pricing was fixed. Remove the flagged
+            line{invalidItems.length !== 1 ? 's' : ''} above and re-add {invalidItems.length !== 1 ? 'them' : 'it'} from search
+            or the protocol, or use Start Over to clear the session.
+          </p>
+        </div>
+      )}
 
       {/* Provider signature — providers only. Non-providers can't sign
           (server returns 403), so the canvas is hidden for them. */}
@@ -475,18 +526,29 @@ export function BatchReviewForm({ isProvider }: Props) {
 
       {/* Sign & Send button — providers only */}
       {isProvider && !confirmOpen && (
-        <button
-          type="button"
-          onClick={() => setConfirmOpen(true)}
-          disabled={!canSubmit}
-          className={`w-full rounded-lg px-6 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-            canSubmit
-              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-              : 'bg-muted text-muted-foreground cursor-not-allowed'
-          }`}
-        >
-          Sign & Send {prescriptions.length > 1 ? `All ${prescriptions.length} Prescriptions` : 'Payment Link'}
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={() => setConfirmOpen(true)}
+            disabled={!canSubmit}
+            className={`w-full rounded-lg px-6 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              canSubmit
+                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                : 'bg-muted text-muted-foreground cursor-not-allowed'
+            }`}
+          >
+            Sign &amp; Send {prescriptions.length > 1 ? `All ${prescriptions.length} Prescriptions` : 'Payment Link'}
+          </button>
+          {/* fix/review-send-flow: a disabled button must say WHY it is
+              disabled — a gray button with no hint reads as "broken". */}
+          {!canSubmit && !isSubmitting && (
+            <p className="text-center text-xs text-muted-foreground">
+              {hasInvalidItems
+                ? 'Remove the flagged prescriptions above to enable sending.'
+                : 'Sign in the signature box above to enable sending.'}
+            </p>
+          )}
+        </>
       )}
 
       {/* Non-provider (MA / clinic_admin / ops_admin): signing is provider-only
@@ -508,11 +570,16 @@ export function BatchReviewForm({ isProvider }: Props) {
           <button
             type="button"
             onClick={handleSaveDraftAll}
-            disabled={isSavingDraft || prescriptions.length === 0}
+            disabled={isSavingDraft || prescriptions.length === 0 || hasInvalidItems}
             className="w-full rounded-lg border border-border bg-background px-6 py-3 text-sm font-semibold text-foreground shadow-sm hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {isSavingDraft ? 'Saving...' : 'Save as Draft — Provider Signs Later'}
           </button>
+          {hasInvalidItems && (
+            <p className="text-center text-xs text-amber-700">
+              Remove the flagged prescriptions above to enable saving drafts.
+            </p>
+          )}
           <p className="text-center text-[10px] text-muted-foreground">
             Creates the order{prescriptions.length > 1 ? 's' : ''} without signing. The provider can review and sign from the dashboard.
           </p>
