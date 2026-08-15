@@ -103,6 +103,7 @@ function buildDashboardOrder(o: Record<string, unknown>): DashboardOrder {
     platformFeeCents,
     clinicPayoutCents,
     isOverdue48h,
+    paymentGroupId:    (o['payment_group_id'] as string | null) ?? null,
   }
 }
 
@@ -124,7 +125,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId }
       const { data, error } = await supabase
         .from('orders')
         .select(`
-          order_id, status, created_at, updated_at,
+          order_id, status, created_at, updated_at, payment_group_id,
           retail_price_snapshot, wholesale_price_snapshot,
           medication_snapshot, pharmacy_snapshot,
           patients!inner(first_name, last_name)
