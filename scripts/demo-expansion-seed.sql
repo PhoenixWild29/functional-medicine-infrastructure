@@ -95,20 +95,23 @@ ON CONFLICT DO NOTHING;
 -- Only Dr. Chen (a2...01, seeded by seed-poc.ts) has an auth login;
 -- these rows have user_id NULL and exist for roster realism, the
 -- F-3 clinic-view toggle, and F-5 primary-provider assignment.
--- signature_on_file=true where seeded orders imply a prior signature;
--- Fletcher stays false (no seeded orders).
+-- signature_on_file stays false for ALL seeded providers: the UI and
+-- compliance checks key off providers.signature_hash (a real captured
+-- signature), which is NULL for these rows — the app captures it during
+-- review. Seeding true here made the provider picker's "No signature on
+-- file" hint look wrong when it was in fact correct.
 
 INSERT INTO providers (provider_id, clinic_id, first_name, last_name, npi_number,
                        license_state, license_number, dea_number, signature_on_file, is_active)
 VALUES
   ('a2000000-0000-0000-0000-000000000003', 'a1000000-0000-0000-0000-000000000001',
-   'Marcus', 'Patel',     '1234567891', 'TX', 'TX-MD-002345', 'BP7654321', true,  true),
+   'Marcus', 'Patel',     '1234567891', 'TX', 'TX-MD-002345', 'BP7654321', false, true),
   ('a2000000-0000-0000-0000-000000000004', 'a1000000-0000-0000-0000-000000000001',
-   'Elena',  'Rodriguez', '1234567892', 'TX', 'TX-MD-003456', NULL,        true,  true),
+   'Elena',  'Rodriguez', '1234567892', 'TX', 'TX-MD-003456', NULL,        false, true),
   ('a2000000-0000-0000-0000-000000000005', 'a1000000-0000-0000-0000-000000000001',
    'Jamie',  'Fletcher',  '1234567893', 'TX', 'TX-NP-004567', NULL,        false, true),
   ('a2000000-0000-0000-0000-000000000006', 'a1000000-0000-0000-0000-000000000003',
-   'Naomi',  'Osei',      '1234567894', 'NM', 'NM-MD-005678', NULL,        true,  true)
+   'Naomi',  'Osei',      '1234567894', 'NM', 'NM-MD-005678', NULL,        false, true)
 ON CONFLICT DO NOTHING;
 
 -- ============================================================

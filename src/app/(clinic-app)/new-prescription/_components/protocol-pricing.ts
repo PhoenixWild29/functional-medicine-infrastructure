@@ -58,3 +58,34 @@ export function findUnavailableItems(items: ProtocolItemAvailability[]): string[
     .filter(item => !item.formulationActive || item.wholesalePrice === null)
     .map(item => `${item.name} is not available at ${item.pharmacyName}`)
 }
+
+export interface ProtocolItemLicensure {
+  /** Display name of the medication (formulation). */
+  name: string
+  /** Display name of the pharmacy the item is routed to. */
+  pharmacyName: string
+  /**
+   * Whether the pinned pharmacy holds an ACTIVE license in the
+   * patient's shipping state. null = unknown (no patient state on
+   * file) — treated as loadable, matching the manual builder's
+   * unfiltered pharmacy_options behavior when state is absent.
+   */
+  pharmacyLicensed: boolean | null
+}
+
+/**
+ * Returns one human-readable message per item whose pinned pharmacy is
+ * NOT licensed in the patient's shipping state. Unlike the price check
+ * above (all-or-nothing), licensure failures skip only the affected
+ * items: licensed items in the protocol may still load, and the caller
+ * must surface which items were skipped.
+ */
+export function findUnlicensedItems(
+  items: ProtocolItemLicensure[],
+  patientState: string | null
+): string[] {
+  if (!patientState) return []
+  return items
+    .filter(item => item.pharmacyLicensed === false)
+    .map(item => `${item.name} — ${item.pharmacyName} is not licensed in ${patientState}`)
+}

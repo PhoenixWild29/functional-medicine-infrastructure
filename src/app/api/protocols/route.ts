@@ -5,6 +5,11 @@
 //   enriched with its LIVE pharmacy_formulations wholesale_price and
 //   a formulation_active flag, plus the clinic default_markup_pct —
 //   so the client can compute real prices instead of $0.00 stubs.
+// GET /api/protocols?id=xxx&patient_state=CA → additionally enriches
+//   each item with pharmacy_licensed: whether the item's pinned
+//   pharmacy holds an ACTIVE license in that state (null when no
+//   patient_state is provided). Same pharmacy_state_licenses lookup
+//   as the builder's pharmacy_options level (/api/formulations).
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -22,6 +27,11 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const protocolId = searchParams.get('id')
+
+  // Optional 2-letter patient shipping state — enables the per-item
+  // pharmacy_licensed enrichment. Invalid values are treated as absent.
+  const patientStateRaw = searchParams.get('patient_state')?.trim().toUpperCase() ?? ''
+  const patientState = /^[A-Z]{2}$/.test(patientStateRaw) ? patientStateRaw : null
 
   // Single protocol with items
   if (protocolId) {
@@ -121,11 +131,32 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // State-licensure enrichment: which pinned pharmacies hold an ACTIVE
+    // license in the patient's shipping state. Quick-loading a protocol
+    // must never route an unlicensed pharmacy for the selected patient
+    // (the manual builder already filters pharmacy_options this way).
+    const licensedPharmacyIds = new Set<string>()
+    if (patientState && pharmacyIds.length > 0) {
+      const { data: licenses, error: licErr } = await supabase
+        .from('pharmacy_state_licenses')
+        .select('pharmacy_id')
+        .in('pharmacy_id', pharmacyIds)
+        .eq('state_code', patientState)
+        .eq('is_active', true)
+
+      if (licErr) return NextResponse.json({ error: licErr.message }, { status: 500 })
+      for (const row of licenses ?? []) licensedPharmacyIds.add(row.pharmacy_id)
+    }
+
     const enrichedItems = protocolItems.map(item => ({
       ...item,
       wholesale_price: priceByKey.get(`${item.pharmacy_id}:${item.formulation_id}`) ?? null,
       formulation_active:
         typeof item.formulation_id === 'string' && liveFormulationIds.has(item.formulation_id),
+      // null = no patient_state provided (unknown); boolean otherwise.
+      pharmacy_licensed: patientState
+        ? typeof item.pharmacy_id === 'string' && licensedPharmacyIds.has(item.pharmacy_id)
+        : null,
     }))
 
     // Clinic default markup — lets the client derive a real retail price

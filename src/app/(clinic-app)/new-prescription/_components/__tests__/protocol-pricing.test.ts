@@ -14,7 +14,7 @@
  *    inactive formulation blocks the entire protocol load.
  */
 
-import { computeItemPricing, findUnavailableItems } from '../protocol-pricing'
+import { computeItemPricing, findUnavailableItems, findUnlicensedItems } from '../protocol-pricing'
 
 describe('computeItemPricing — wholesale → retail with clinic markup', () => {
   it('converts wholesale dollars to cents and applies the default markup', () => {
@@ -86,5 +86,46 @@ describe('findUnavailableItems — block-on-missing-price', () => {
     expect(result).toHaveLength(2)
     expect(result[0]).toContain('A is not available')
     expect(result[1]).toContain('B is not available')
+  })
+})
+
+describe('findUnlicensedItems — skip pinned pharmacies unlicensed in patient state', () => {
+  const licensed = {
+    name: 'Biest 80/20 Topical Cream 2.5mg/g',
+    pharmacyName: 'Strive Pharmacy',
+    pharmacyLicensed: true as boolean | null,
+  }
+
+  it('returns empty when every pinned pharmacy is licensed in the state', () => {
+    expect(findUnlicensedItems([licensed, { ...licensed, name: 'DHEA 10mg' }], 'CA')).toEqual([])
+  })
+
+  it('names the medication, pharmacy, AND state for each unlicensed item', () => {
+    const result = findUnlicensedItems([
+      licensed,
+      { name: 'Progesterone Capsule 100mg', pharmacyName: 'Portal Plus Pharmacy', pharmacyLicensed: false },
+    ], 'CA')
+    expect(result).toEqual([
+      'Progesterone Capsule 100mg — Portal Plus Pharmacy is not licensed in CA',
+    ])
+  })
+
+  it('treats unknown licensure (null) as loadable — matches the builder with no patient state', () => {
+    expect(findUnlicensedItems([{ ...licensed, pharmacyLicensed: null }], 'CA')).toEqual([])
+  })
+
+  it('returns empty when the patient has no shipping state on file', () => {
+    expect(findUnlicensedItems([{ ...licensed, pharmacyLicensed: false }], null)).toEqual([])
+  })
+
+  it('lists every unlicensed item so the provider sees the full picture', () => {
+    const result = findUnlicensedItems([
+      { ...licensed, name: 'A', pharmacyLicensed: false },
+      licensed,
+      { ...licensed, name: 'B', pharmacyName: 'Hybrid Labs Pharmacy', pharmacyLicensed: false },
+    ], 'NY')
+    expect(result).toHaveLength(2)
+    expect(result[0]).toBe('A — Strive Pharmacy is not licensed in NY')
+    expect(result[1]).toBe('B — Hybrid Labs Pharmacy is not licensed in NY')
   })
 })
