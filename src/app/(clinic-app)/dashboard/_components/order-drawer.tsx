@@ -39,6 +39,13 @@ interface BundlableState {
   featureDisabled?: boolean
 }
 
+// R10 fix — bundle-link recovery: shape of GET /api/orders/[orderId]/group-link
+interface GroupLinkInfo {
+  checkoutUrl: string
+  orderCount:  number
+  totalCents:  number
+}
+
 // NB-3: order_status_history uses old_status/new_status (not "status") per trigger schema
 interface StatusHistoryRow {
   old_status: string
@@ -81,6 +88,11 @@ export function OrderDrawer({ order, onClose }: Props) {
   const [isCreatingGroup,      setIsCreatingGroup]      = useState(false)
   const [groupFallbackUrl,     setGroupFallbackUrl]     = useState<string | null>(null)
 
+  // R10 fix — bundle-link recovery state (orders already in a payment group)
+  const [groupInfo,            setGroupInfo]            = useState<GroupLinkInfo | null>(null)
+  const [isLoadingGroupInfo,   setIsLoadingGroupInfo]   = useState(false)
+  const [isCopyingGroupLink,   setIsCopyingGroupLink]   = useState(false)
+
   // Fetch status timeline when drawer opens (order.orderId changes)
   useEffect(() => {
     if (!order) {
@@ -106,6 +118,10 @@ export function OrderDrawer({ order, onClose }: Props) {
   // click) so the picker only renders when the feature flag is on AND
   // siblings actually exist (Codex 2026-06-11 sweep [LOW]).
   //
+  // R10 fix: an order that is ALREADY in a payment group can never re-bundle
+  // — for those we fetch the group checkout link instead (display + recovery
+  // copy), skipping the sibling probe entirely.
+  //
   // Deps array is intentionally [order?.orderId] only:
   //   - The body reads `order` (the optional check) and `order.status`, but
   //     both are derived from the same anchor row — changes to other fields
@@ -119,9 +135,14 @@ export function OrderDrawer({ order, onClose }: Props) {
     setBundlable(null)
     setSelectedSiblings(new Set())
     setGroupFallbackUrl(null)
+    setGroupInfo(null)
     if (!order) return
     if (order.status !== 'AWAITING_PAYMENT') return
-    void fetchBundlableSiblings()
+    if (order.paymentGroupId) {
+      void fetchGroupLink()
+    } else {
+      void fetchBundlableSiblings()
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.orderId])
 
@@ -158,6 +179,72 @@ export function OrderDrawer({ order, onClose }: Props) {
       setBundlable({ anchorBundlable: false, siblings: [] })
     } finally {
       setIsLoadingSiblings(false)
+    }
+  }
+
+  // R10 fix — bundle-link recovery. GET the group checkout link for an order
+  // that is already part of a payment group. Side-effect free on the server
+  // (stateless JWT re-mint — no SMS, no Stripe, no DB writes), so it's safe
+  // to call on every drawer open AND again from the copy button.
+  async function fetchGroupLink(): Promise<GroupLinkInfo | null> {
+    if (!order) return null
+
+    setIsLoadingGroupInfo(true)
+    try {
+      const res = await fetch(`/api/orders/${order.orderId}/group-link`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      })
+
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        const detail = body.error ?? `HTTP ${res.status}`
+        if (res.status === 503) {
+          notify.error('Feature disabled', 'Multi-prescription groups are not yet enabled')
+        } else {
+          notify.error('Could not load bundle payment link', detail)
+        }
+        return null
+      }
+
+      const data = await res.json() as { checkoutUrl: string; orderCount: number; totalCents: number }
+      const info: GroupLinkInfo = {
+        checkoutUrl: data.checkoutUrl,
+        orderCount:  data.orderCount,
+        totalCents:  data.totalCents,
+      }
+      setGroupInfo(info)
+      return info
+    } catch (err) {
+      notify.error(
+        'Could not load bundle payment link',
+        err instanceof Error ? err.message : 'Unexpected error',
+      )
+      return null
+    } finally {
+      setIsLoadingGroupInfo(false)
+    }
+  }
+
+  async function handleCopyBundleLink() {
+    if (!order || isCopyingGroupLink) return
+
+    setIsCopyingGroupLink(true)
+    setGroupFallbackUrl(null)
+    try {
+      // Use the link fetched on drawer open; re-fetch if that load failed.
+      const info = groupInfo ?? await fetchGroupLink()
+      if (!info) return // fetchGroupLink already notified
+
+      try {
+        await navigator.clipboard.writeText(info.checkoutUrl)
+        notify.success(`Bundle link copied · ${info.orderCount} prescription${info.orderCount === 1 ? '' : 's'} · ${toCurrency(info.totalCents)}`)
+      } catch {
+        // Same clipboard-failure fallback as the combine flow.
+        setGroupFallbackUrl(info.checkoutUrl)
+      }
+    } finally {
+      setIsCopyingGroupLink(false)
     }
   }
 
@@ -201,6 +288,11 @@ export function OrderDrawer({ order, onClose }: Props) {
       const { checkoutUrl, orderCount, totalCents } = (await res.json()) as {
         checkoutUrl: string; orderCount: number; totalCents: number
       }
+
+      // R10 fix: keep the bundle link around so the new "Copy Bundle Payment
+      // Link" block can re-copy it without a refetch — the success toast is
+      // no longer the only holder of the link.
+      setGroupInfo({ checkoutUrl, orderCount, totalCents })
 
       try {
         await navigator.clipboard.writeText(checkoutUrl)
@@ -313,8 +405,36 @@ export function OrderDrawer({ order, onClose }: Props) {
 
         <div className="space-y-6 px-5 py-5">
 
-          {/* Copy Payment Link CTA — AWAITING_PAYMENT or PAYMENT_EXPIRED */}
-          {canIssuePaymentLink && (
+          {/* R10 fix — bundle-link recovery. Once an order is combined into a
+              payment group the solo link is rejected server-side (anti-double-
+              pay guard in /api/checkout/payment-intent), so the drawer must
+              offer the GROUP checkout link instead. Previously the one-time
+              "Bundle link copied" toast was the only way to ever obtain it. */}
+          {canIssuePaymentLink && order.paymentGroupId && (
+            <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 p-4">
+              <p className="text-sm font-semibold text-emerald-800">Part of a Payment Bundle</p>
+              <p className="mt-1 text-xs text-emerald-700">
+                {groupInfo
+                  ? `${groupInfo.orderCount} prescription${groupInfo.orderCount === 1 ? '' : 's'} · ${toCurrency(groupInfo.totalCents)} — the patient pays once for all bundled items.`
+                  : isLoadingGroupInfo
+                    ? 'Loading bundle details…'
+                    : 'The patient pays once for all bundled prescriptions.'}
+              </p>
+              <button
+                type="button"
+                onClick={handleCopyBundleLink}
+                disabled={isCopyingGroupLink || isLoadingGroupInfo}
+                className="mt-3 w-full rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+              >
+                {isCopyingGroupLink ? 'Copying…' : 'Copy Bundle Payment Link'}
+              </button>
+            </div>
+          )}
+
+          {/* Copy Payment Link CTA — AWAITING_PAYMENT or PAYMENT_EXPIRED.
+              R10 fix: only for orders NOT in a payment group — the solo link
+              is dead for grouped orders (server rejects it with 409). */}
+          {canIssuePaymentLink && !order.paymentGroupId && (
             <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 p-4">
               <p className="text-sm font-semibold text-emerald-800">
                 {isExpired ? 'Payment Link Expired' : 'Ready for Patient Payment'}
