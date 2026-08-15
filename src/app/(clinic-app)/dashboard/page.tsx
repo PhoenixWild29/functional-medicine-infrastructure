@@ -55,6 +55,7 @@ export interface DashboardOrder {
   platformFeeCents:  number
   clinicPayoutCents: number
   isOverdue48h:      boolean          // AWAITING_PAYMENT + created > 48h ago
+  paymentGroupId:    string | null    // Phase C: non-null when bundled into a payment group
 }
 
 export default async function DashboardPage(
@@ -119,7 +120,7 @@ export default async function DashboardPage(
     supabase
       .from('orders')
       .select(`
-        order_id, status, created_at, updated_at,
+        order_id, status, created_at, updated_at, payment_group_id,
         retail_price_snapshot, wholesale_price_snapshot,
         medication_snapshot, pharmacy_snapshot,
         patients!inner(first_name, last_name)
@@ -182,6 +183,7 @@ export default async function DashboardPage(
       platformFeeCents,
       clinicPayoutCents,
       isOverdue48h,
+      paymentGroupId:    o.payment_group_id,
     }
   })
 

@@ -74,7 +74,7 @@ jest.mock('@/lib/stripe/client', () => ({
   }),
 }))
 
-// ── Helpers ──────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────
 
 function makeRequest(body: Record<string, unknown>): NextRequest {
   return {
@@ -110,7 +110,7 @@ beforeEach(() => {
   clinicFetchMock.mockResolvedValue({ data: VALID_CLINIC, error: null })
 })
 
-// ── Auth / payload validation ────────────────────────────────
+// ── Auth / payload validation ────────────────────────────
 
 describe('POST /api/checkout/payment-intent — auth', () => {
   it('returns 400 when token is missing', async () => {
@@ -125,7 +125,7 @@ describe('POST /api/checkout/payment-intent — auth', () => {
   })
 })
 
-// ── Email validation (PR #15) ────────────────────────────────
+// ── Email validation (PR #15) ────────────────────────────
 
 describe('POST /api/checkout/payment-intent — email validation', () => {
   it('returns 400 on syntactically malformed email', async () => {
@@ -253,15 +253,17 @@ describe('POST /api/checkout/payment-intent — new PI create + email', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
 // Codex post-review sweep — Phase C carryover (critical finding #1)
 // Solo route must reject orders that have been linked to a payment_group.
 // Without this guard, a patient's stale solo link could create a second
 // Stripe PaymentIntent and result in double charging.
-// ─────────────────────────────────────────────────────────────────────
+// R10 fix: both 409 responses now carry code ORDER_IN_PAYMENT_GROUP so the
+// checkout page can render the specific "use the bundle link" state.
+// ─────────────────────────────────────────────────────────────
 
 describe('POST /api/checkout/payment-intent — Phase C group carryover', () => {
-  it('returns 409 when the order has been linked to a payment_group', async () => {
+  it('returns 409 + ORDER_IN_PAYMENT_GROUP when the order has been linked to a payment_group', async () => {
     orderFetchMock.mockResolvedValue({
       data: { ...VALID_ORDER, payment_group_id: 'group-uuid-aaa' },
       error: null,
@@ -269,8 +271,9 @@ describe('POST /api/checkout/payment-intent — Phase C group carryover', () => 
 
     const res = await POST(makeRequest({ token: 'ok' }))
     expect(res.status).toBe(409)
-    const body = await res.json() as { error: string }
+    const body = await res.json() as { error: string; code?: string }
     expect(body.error).toMatch(/payment group/i)
+    expect(body.code).toBe('ORDER_IN_PAYMENT_GROUP')
     // No Stripe call should have been attempted
     expect(stripeCreateMock).not.toHaveBeenCalled()
     expect(stripeRetrieveMock).not.toHaveBeenCalled()
@@ -295,7 +298,7 @@ describe('POST /api/checkout/payment-intent — Phase C group carryover', () => 
     expect(stripeCreateMock).toHaveBeenCalledTimes(1)
   })
 
-  it('returns 409 when CAS stamp loses (order just joined a group between fetch and stamp)', async () => {
+  it('returns 409 + ORDER_IN_PAYMENT_GROUP when CAS stamp loses (order just joined a group between fetch and stamp)', async () => {
     orderFetchMock.mockResolvedValue({
       data: { ...VALID_ORDER, stripe_payment_intent_id: null, payment_group_id: null },
       error: null,
@@ -309,7 +312,8 @@ describe('POST /api/checkout/payment-intent — Phase C group carryover', () => 
 
     const res = await POST(makeRequest({ token: 'ok' }))
     expect(res.status).toBe(409)
-    const body = await res.json() as { error: string }
+    const body = await res.json() as { error: string; code?: string }
     expect(body.error).toMatch(/group checkout link/i)
+    expect(body.code).toBe('ORDER_IN_PAYMENT_GROUP')
   })
 })

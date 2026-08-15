@@ -127,10 +127,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Creating a solo PaymentIntent here would result in the patient paying
   // TWICE for the same order — once via this solo link (still live from a
   // stale URL or browser history), once via the group link. Reject with 409.
+  // R10 fix: structured `code` lets the checkout page render a specific
+  // "use the bundle link" state instead of the generic load failure.
   if (order.payment_group_id) {
     console.warn(`[payment-intent] solo-checkout attempted on grouped order | order=${orderId} group=${order.payment_group_id}`)
     return NextResponse.json(
-      { error: 'This order is part of a payment group. Use the group checkout link to pay for all bundled prescriptions at once.' },
+      {
+        error: 'This order is part of a payment group. Use the group checkout link to pay for all bundled prescriptions at once.',
+        code:  'ORDER_IN_PAYMENT_GROUP',
+      },
       { status: 409 },
     )
   }
@@ -311,8 +316,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       console.warn(`[payment-intent] CAS stamp lost — order=${orderId} pi=${pi.id} (likely just joined a payment group)`)
       // Best-effort cancel the orphan PI so it doesn't sit chargeable.
       try { await createStripeClient().paymentIntents.cancel(pi.id) } catch { /* ops will reconcile */ }
+      // R10 fix: same structured code as the pre-flight guard above — the
+      // patient-facing fix is identical (use the bundle link).
       return NextResponse.json(
-        { error: 'This order just joined a payment group. Refresh to use the group checkout link.' },
+        {
+          error: 'This order just joined a payment group. Refresh to use the group checkout link.',
+          code:  'ORDER_IN_PAYMENT_GROUP',
+        },
         { status: 409 },
       )
     }
