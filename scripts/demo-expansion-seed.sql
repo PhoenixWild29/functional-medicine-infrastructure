@@ -40,8 +40,9 @@
 --     a4...01..05, Strive TX license.
 --   * V3 catalog imported (scripts/import-catalog-v3.ts /
 --     docs/research/catalog-seed/compoundiq-catalog-seed-v1.csv).
---     Formulation IDs are the importer's deterministic derivation:
---       formulation_id = md5('formulation:' || lower(<formulation name>))::uuid
+--     Formulation IDs use the deterministic derivation that matches
+--     the production SQL catalog seed:
+--       formulation_id = md5('form:' || lower(<formulation name>))::uuid
 --     This file computes them inline with the same expression, so it
 --     never hardcodes a formulation UUID. If a referenced formulation
 --     name is missing from the catalog, the FK fails loudly — that is
@@ -226,7 +227,7 @@ INSERT INTO orders (order_id, patient_id, provider_id, formulation_id, clinic_id
 VALUES (
   'd1000000-0000-4000-8000-000000000001',
   'a3000000-0000-0000-0000-000000000003', 'a2000000-0000-0000-0000-000000000001',
-  md5('formulation:' || lower('Semaglutide Injectable 5 mg/mL'))::uuid,
+  md5('form:' || lower('Semaglutide Injectable 5 mg/mL'))::uuid,
   'a1000000-0000-0000-0000-000000000001', 'a4000000-0000-0000-0000-000000000001',
   'DELIVERED', 1, 95.00, 133.00,
   jsonb_build_object('medication_name', 'Semaglutide Injectable 5 mg/mL', 'form', 'Injectable Solution',
@@ -250,7 +251,7 @@ INSERT INTO orders (order_id, patient_id, provider_id, formulation_id, clinic_id
 VALUES (
   'd1000000-0000-4000-8000-000000000002',
   'a3000000-0000-0000-0000-000000000005', 'a2000000-0000-0000-0000-000000000003',
-  md5('formulation:' || lower('Testosterone Cypionate Injectable 200mg/mL'))::uuid,
+  md5('form:' || lower('Testosterone Cypionate Injectable 200mg/mL'))::uuid,
   'a1000000-0000-0000-0000-000000000001', 'a4000000-0000-0000-0000-000000000001',
   'DELIVERED', 1, 48.00, 67.20,
   jsonb_build_object('medication_name', 'Testosterone Cypionate Injectable 200mg/mL', 'form', 'Injectable Solution',
@@ -273,7 +274,7 @@ INSERT INTO orders (order_id, patient_id, provider_id, formulation_id, clinic_id
 VALUES (
   'd1000000-0000-4000-8000-000000000003',
   'a3000000-0000-0000-0000-000000000006', 'a2000000-0000-0000-0000-000000000004',
-  md5('formulation:' || lower('Estradiol Topical Cream 0.1%'))::uuid,
+  md5('form:' || lower('Estradiol Topical Cream 0.1%'))::uuid,
   'a1000000-0000-0000-0000-000000000001', 'a4000000-0000-0000-0000-000000000004',
   'DELIVERED', 1, 24.50, 34.30,
   jsonb_build_object('medication_name', 'Estradiol Topical Cream 0.1%', 'form', 'Topical Cream',
@@ -296,7 +297,7 @@ INSERT INTO orders (order_id, patient_id, provider_id, formulation_id, clinic_id
 VALUES (
   'd1000000-0000-4000-8000-000000000004',
   'a3000000-0000-0000-0000-000000000009', 'a2000000-0000-0000-0000-000000000003',
-  md5('formulation:' || lower('Tadalafil Troche 10mg'))::uuid,
+  md5('form:' || lower('Tadalafil Troche 10mg'))::uuid,
   'a1000000-0000-0000-0000-000000000001', 'a4000000-0000-0000-0000-000000000003',
   'DELIVERED', 1, 24.00, 33.60,
   jsonb_build_object('medication_name', 'Tadalafil Troche 10mg', 'form', 'Troche',
@@ -319,7 +320,7 @@ INSERT INTO orders (order_id, patient_id, provider_id, formulation_id, clinic_id
 VALUES (
   'd1000000-0000-4000-8000-000000000005',
   'a3000000-0000-0000-0000-000000000007', 'a2000000-0000-0000-0000-000000000001',
-  md5('formulation:' || lower('NAD+ Injectable'))::uuid,
+  md5('form:' || lower('NAD+ Injectable'))::uuid,
   'a1000000-0000-0000-0000-000000000001', 'a4000000-0000-0000-0000-000000000002',
   'SHIPPED', 1, 155.00, 217.00,
   jsonb_build_object('medication_name', 'NAD+ Injectable', 'form', 'Injectable Solution',
@@ -342,7 +343,7 @@ INSERT INTO orders (order_id, patient_id, provider_id, formulation_id, clinic_id
 VALUES (
   'd1000000-0000-4000-8000-000000000006',
   'a3000000-0000-0000-0000-000000000010', 'a2000000-0000-0000-0000-000000000004',
-  md5('formulation:' || lower('LDN Capsule 4.5mg'))::uuid,
+  md5('form:' || lower('LDN Capsule 4.5mg'))::uuid,
   'a1000000-0000-0000-0000-000000000001', 'a4000000-0000-0000-0000-000000000004',
   'SHIPPED', 1, 19.00, 26.60,
   jsonb_build_object('medication_name', 'LDN Capsule 4.5mg', 'form', 'Capsule',
@@ -365,7 +366,7 @@ INSERT INTO orders (order_id, patient_id, provider_id, formulation_id, clinic_id
 VALUES (
   'd1000000-0000-4000-8000-000000000007',
   'a3000000-0000-0000-0000-000000000004', 'a2000000-0000-0000-0000-000000000001',
-  md5('formulation:' || lower('Progesterone Capsule 100mg'))::uuid,
+  md5('form:' || lower('Progesterone Capsule 100mg'))::uuid,
   'a1000000-0000-0000-0000-000000000001', 'a4000000-0000-0000-0000-000000000003',
   'PHARMACY_PROCESSING', 1, 18.50, 25.90,
   jsonb_build_object('medication_name', 'Progesterone Capsule 100mg', 'form', 'Capsule',
@@ -388,7 +389,7 @@ INSERT INTO orders (order_id, patient_id, provider_id, formulation_id, clinic_id
 VALUES (
   'd1000000-0000-4000-8000-000000000008',
   'a3000000-0000-0000-0000-000000000008', 'a2000000-0000-0000-0000-000000000004',
-  md5('formulation:' || lower('Biest 80/20 Topical Cream 2.5mg/g'))::uuid,
+  md5('form:' || lower('Biest 80/20 Topical Cream 2.5mg/g'))::uuid,
   'a1000000-0000-0000-0000-000000000001', 'a4000000-0000-0000-0000-000000000001',
   'PHARMACY_PROCESSING', 1, 28.00, 39.20,
   jsonb_build_object('medication_name', 'Biest 80/20 Topical Cream 2.5mg/g', 'form', 'Topical Cream',
@@ -411,7 +412,7 @@ INSERT INTO orders (order_id, patient_id, provider_id, formulation_id, clinic_id
 VALUES (
   'd1000000-0000-4000-8000-000000000009',
   'a3000000-0000-0000-0000-000000000003', 'a2000000-0000-0000-0000-000000000001',
-  md5('formulation:' || lower('BPC-157 Injectable 5mg'))::uuid,
+  md5('form:' || lower('BPC-157 Injectable 5mg'))::uuid,
   'a1000000-0000-0000-0000-000000000001', 'a4000000-0000-0000-0000-000000000002',
   'PAID_PROCESSING', 1, 62.00, 86.80,
   jsonb_build_object('medication_name', 'BPC-157 Injectable 5mg', 'form', 'Injectable Solution',
@@ -434,7 +435,7 @@ INSERT INTO orders (order_id, patient_id, provider_id, formulation_id, clinic_id
 VALUES (
   'd1000000-0000-4000-8000-000000000010',
   'a3000000-0000-0000-0000-000000000006', 'a2000000-0000-0000-0000-000000000004',
-  md5('formulation:' || lower('DHEA Capsule 10mg'))::uuid,
+  md5('form:' || lower('DHEA Capsule 10mg'))::uuid,
   'a1000000-0000-0000-0000-000000000001', 'a4000000-0000-0000-0000-000000000004',
   'PAID_PROCESSING', 1, 16.00, 22.40,
   jsonb_build_object('medication_name', 'DHEA Capsule 10mg', 'form', 'Capsule',
@@ -458,7 +459,7 @@ INSERT INTO orders (order_id, patient_id, provider_id, formulation_id, clinic_id
 VALUES (
   'd1000000-0000-4000-8000-000000000011',
   'a3000000-0000-0000-0000-000000000009', 'a2000000-0000-0000-0000-000000000003',
-  md5('formulation:' || lower('Semaglutide Injectable 5 mg/mL'))::uuid,
+  md5('form:' || lower('Semaglutide Injectable 5 mg/mL'))::uuid,
   'a1000000-0000-0000-0000-000000000001', 'a4000000-0000-0000-0000-000000000003',
   'SUBMISSION_FAILED', 1, 95.00, 133.00,
   jsonb_build_object('medication_name', 'Semaglutide Injectable 5 mg/mL', 'form', 'Injectable Solution',
@@ -482,7 +483,7 @@ INSERT INTO orders (order_id, patient_id, provider_id, formulation_id, clinic_id
 VALUES (
   'd1000000-0000-4000-8000-000000000012',
   'a3000000-0000-0000-0000-000000000011', 'a2000000-0000-0000-0000-000000000006',
-  md5('formulation:' || lower('Progesterone Capsule 100mg'))::uuid,
+  md5('form:' || lower('Progesterone Capsule 100mg'))::uuid,
   'a1000000-0000-0000-0000-000000000003', 'a4000000-0000-0000-0000-000000000005',
   'AWAITING_PAYMENT', 1, 18.50, 25.90,
   jsonb_build_object('medication_name', 'Progesterone Capsule 100mg', 'form', 'Capsule',
@@ -510,34 +511,34 @@ INSERT INTO provider_favorites (favorite_id, provider_id, formulation_id, pharma
 VALUES
   -- Dr. Chen
   ('e2000000-0000-4000-8000-000000000001', 'a2000000-0000-0000-0000-000000000001',
-   md5('formulation:' || lower('Biest 80/20 Topical Cream 2.5mg/g'))::uuid,
+   md5('form:' || lower('Biest 80/20 Topical Cream 2.5mg/g'))::uuid,
    'a4000000-0000-0000-0000-000000000001', 'Biest 80/20 — Menopause Std',
    '0.5', 'mL', 'QHS', 'at-bedtime', 'ongoing', 'standard',
    'Apply 0.5mL topically to inner wrist nightly.', '30 g', 2, 4, now() - interval '5 days'),
   ('e2000000-0000-4000-8000-000000000002', 'a2000000-0000-0000-0000-000000000001',
-   md5('formulation:' || lower('NAD+ Injectable'))::uuid,
+   md5('form:' || lower('NAD+ Injectable'))::uuid,
    'a4000000-0000-0000-0000-000000000002', 'NAD+ Longevity',
    '0.5', 'mL', 'BIW', 'morning', '90-days', 'standard',
    'Inject 0.5mL subcutaneously twice weekly.', '5 mL vial', 1, 3, now() - interval '9 days'),
   -- Dr. Patel
   ('e2000000-0000-4000-8000-000000000003', 'a2000000-0000-0000-0000-000000000003',
-   md5('formulation:' || lower('Testosterone Cypionate Injectable 200mg/mL'))::uuid,
+   md5('form:' || lower('Testosterone Cypionate Injectable 200mg/mL'))::uuid,
    'a4000000-0000-0000-0000-000000000001', 'TRT Cyp 200 — Weekly',
    '1', 'mL', 'QW', 'morning', 'ongoing', 'standard',
    'Inject 1mL (200mg) intramuscularly once weekly.', '10 mL vial', 0, 6, now() - interval '14 days'),
   ('e2000000-0000-4000-8000-000000000004', 'a2000000-0000-0000-0000-000000000003',
-   md5('formulation:' || lower('Tadalafil Troche 10mg'))::uuid,
+   md5('form:' || lower('Tadalafil Troche 10mg'))::uuid,
    'a4000000-0000-0000-0000-000000000003', 'Tadalafil 10 Troche',
    '1', 'troche', 'PRN', 'as-needed', '30-days', 'standard',
    'Dissolve one troche under the tongue 30 minutes before activity as needed.', '30 troches', 1, 2, now() - interval '16 days'),
   -- Dr. Rodriguez
   ('e2000000-0000-4000-8000-000000000005', 'a2000000-0000-0000-0000-000000000004',
-   md5('formulation:' || lower('Estradiol Topical Cream 0.1%'))::uuid,
+   md5('form:' || lower('Estradiol Topical Cream 0.1%'))::uuid,
    'a4000000-0000-0000-0000-000000000004', 'Estradiol 0.1% Cream',
    '1', 'g', 'QAM', 'morning', 'ongoing', 'standard',
    'Apply 1 gram topically to inner forearm once daily in the morning.', '30 g', 2, 5, now() - interval '12 days'),
   ('e2000000-0000-4000-8000-000000000006', 'a2000000-0000-0000-0000-000000000004',
-   md5('formulation:' || lower('LDN Capsule 4.5mg'))::uuid,
+   md5('form:' || lower('LDN Capsule 4.5mg'))::uuid,
    'a4000000-0000-0000-0000-000000000004', 'LDN 4.5 Maintenance',
    '1', 'capsule', 'QHS', 'at-bedtime', 'ongoing', 'standard',
    'Take one capsule by mouth at bedtime.', '90 caps', 3, 4, now() - interval '8 days')
@@ -565,17 +566,17 @@ INSERT INTO protocol_items (item_id, protocol_id, formulation_id, pharmacy_id, p
                             condition_description, sort_order)
 VALUES
   ('e3100000-0000-4000-8000-000000000001', 'e3000000-0000-4000-8000-000000000001',
-   md5('formulation:' || lower('Biest 80/20 Topical Cream 2.5mg/g'))::uuid,
+   md5('form:' || lower('Biest 80/20 Topical Cream 2.5mg/g'))::uuid,
    'a4000000-0000-0000-0000-000000000001', 'Foundation', 1, 12,
    '0.5', 'mL', 'QHS', 'at-bedtime', 'standard',
    'Apply 0.5mL topically to inner wrist nightly.', '30 g', 2, false, NULL, 1),
   ('e3100000-0000-4000-8000-000000000002', 'e3000000-0000-4000-8000-000000000001',
-   md5('formulation:' || lower('Progesterone Capsule 100mg'))::uuid,
+   md5('form:' || lower('Progesterone Capsule 100mg'))::uuid,
    'a4000000-0000-0000-0000-000000000004', 'Foundation', 1, 12,
    '1', 'capsule', 'QHS', 'at-bedtime', 'standard',
    'Take one capsule by mouth at bedtime.', '90 caps', 2, false, NULL, 2),
   ('e3100000-0000-4000-8000-000000000003', 'e3000000-0000-4000-8000-000000000001',
-   md5('formulation:' || lower('DHEA Capsule 10mg'))::uuid,
+   md5('form:' || lower('DHEA Capsule 10mg'))::uuid,
    'a4000000-0000-0000-0000-000000000004', 'Support', 1, 12,
    '1', 'capsule', 'QAM', 'morning', 'standard',
    'Take one capsule by mouth each morning with food.', '90 caps', 2, true,
