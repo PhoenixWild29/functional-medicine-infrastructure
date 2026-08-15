@@ -1,8 +1,10 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 2.8 | **Date:** August 15, 2026
+**Version:** 2.9 | **Date:** August 15, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
+
+> **What's new in v2.9 (2026-08-15):** **Demo data expansion: multi-provider, multi-state patients, lifecycle orders, second clinic** (`scripts/demo-expansion-seed.sql`, run against prod). Sunrise now has 4 providers (Dr. Chen remains the only login/signer; Dr. Marcus Patel, Dr. Elena Rodriguez, and Jamie Fletcher NP add roster realism and make the F-3 clinic-view toggle + F-5 primary-provider features demonstrable), plus a second clinic — **Blue Cedar Integrative Health** (Dr. Naomi Osei, patient Ruby Sandoval, NM) — for the ops multi-tenant view. 8 new multi-state Sunrise patients (CA/NY/FL/WA/CO/AZ/IL/GA), 17 pharmacy state licenses (every patient state covered; CA has exactly 2 licensed pharmacies for the state-filter beat), and 12 lifecycle orders `DEMO-1001`..`DEMO-1012` across the pipeline (delivered/shipped/processing/failed/awaiting payment) on new-catalog medications, plus 6 provider favorites and a new **"Menopause Foundation — BHRT"** protocol by Dr. Rodriguez. See the new **Demo Cast & Story Beats** subsection below the seed-data table, and the three new narration beats it introduces. Part 3B updated: the provider is now a real selection (4 providers), not auto-selected.
 
 > **What's new in v2.8 (2026-08-15):** Four updates reflecting the post-catalog-reseed fixes verified live in the R10 walkthrough (PRs #109/#110/#111). (a) **Protocol templates now price live** — loading a protocol pulls each medication's real wholesale price and applies the clinic's default markup, and the Mold/MCAS Support protocol now includes **Ketotifen Capsule 1mg** (see the live-pricing note in Part 3C). (b) **Bundle-link recovery** — after Combine and Send, the order drawer of any bundled order shows a **"Part of a Payment Bundle"** panel with a **Copy Bundle Payment Link** button, so the link is recoverable at any time rather than only from the one-time toast (new step 37e). (c) **Anti-double-pay messaging** — a patient opening an old solo payment link for an order that has since been bundled sees a specific "part of a combined payment bundle" message instead of a payable checkout (new step 37f). (d) **Review & Send affordance** — the send button shows the hint "Sign in the signature box above to enable sending" until the provider draws a signature (step 35).
 
@@ -57,11 +59,47 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 | Entity | Details |
 |--------|---------|
-| Clinic | Sunrise Functional Medicine |
-| Provider | Sarah Chen, NPI 1234567890, TX license |
-| Patient | Alex Demo, DOB 1985-06-15, TX, SMS opt-in |
-| Pharmacies | 5 configured across all 4 tiers — Strive (Tier 4 Fax), Quick Rx + Express Digital Rx (Tier 1 API), Portal Plus (Tier 2 Portal), Hybrid Labs (Tier 3 Hybrid) |
+| Clinics | 2 — Sunrise Functional Medicine (the demo clinic) + Blue Cedar Integrative Health (second tenant for cross-clinic ops realism) |
+| Providers | 5 across 2 clinics — Sarah Chen (NPI 1234567890, TX — the only auth login + signer), Marcus Patel, Elena Rodriguez, Jamie Fletcher NP (all Sunrise), Naomi Osei (Blue Cedar) |
+| Patients | 10 — Alex Demo (TX, DOB 1985-06-15, SMS opt-in — the live-checkout patient) + 8 multi-state Sunrise patients (CA/NY/FL/WA/CO/AZ/IL/GA) + Ruby Sandoval (NM, Blue Cedar) |
+| Pharmacies | 5 configured across all 4 tiers — Strive (Tier 4 Fax), Quick Rx + Express Digital Rx (Tier 1 API), Portal Plus (Tier 2 Portal), Hybrid Labs (Tier 3 Hybrid) — with 17 state licenses covering every patient state (CA deliberately has exactly 2 licensed pharmacies; TX has all 5) |
 | Medications | 166 compounded formulations across 79 ingredients and 13 therapeutic categories — Women's Health/BHRT, Men's Health, Thyroid, Peptides, Weight Management (GLP-1), Sexual Health, Dermatology, Hair Restoration, LDN, IV Therapy, Longevity, Adrenal, Mental Health. |
+| Orders | 12 lifecycle demo orders (`DEMO-1001`..`DEMO-1012`) spread over ~3 weeks — 4 Delivered, 2 Shipped (with tracking numbers), 2 Pharmacy Processing, 2 Paid Processing, 1 Submission Failed (the ops triage beat), 1 Awaiting Payment (Blue Cedar) — plus whatever live orders the presenter creates during walkthroughs |
+
+### Demo Cast & Story Beats (v2.9)
+
+The expanded seed gives the presenter named characters to point at. Every row below is real seeded data — pick these patients in the patient selector and the app behaves exactly as narrated.
+
+**Patients**
+
+| Patient | State | Primary Provider | Story beat |
+|---------|-------|------------------|------------|
+| Jordan Rivera | CA | Dr. Chen | **State-license filter demo** — pick Jordan and the pharmacy list filters down to the exactly 2 CA-licensed pharmacies (Strive + Quick Rx) |
+| Maya Thompson | NY | Dr. Chen | East-coast realism; Progesterone order currently in Pharmacy Processing |
+| Ethan Brooks | FL | Dr. Patel | **TRT story** — Testosterone Cypionate 200 with Dr. Patel (Schedule 3 → Tier 4 fax routing) |
+| Sofia Nguyen | WA | Dr. Rodriguez | **BHRT story** — Estradiol cream delivered, DHEA in flight; pairs with the "Menopause Foundation — BHRT" protocol |
+| Liam Carter | CO | Dr. Chen | **NAD+/longevity story** — NAD+ Injectable shipped with tracking |
+| Ava Martinez | AZ | Dr. Rodriguez | Biest 80/20 cream compounding at Strive |
+| Noah Kim | IL | Dr. Patel | Tadalafil delivered + the one **Submission Failed** order (ops triage beat) |
+| Grace O'Connor | GA | Dr. Rodriguez | LDN 4.5 maintenance, shipped |
+| Ruby Sandoval | NM | Dr. Osei (Blue Cedar) | Second-clinic patient — her Awaiting Payment order proves cross-clinic isolation in the clinic app + cross-clinic visibility in ops |
+| Alex Demo | TX | Dr. Chen | The original E2E checkout patient — unchanged; still the live-payment walkthrough subject |
+
+**Providers**
+
+| Provider | Clinic | Role in the demo |
+|----------|--------|------------------|
+| Dr. Sarah Chen | Sunrise | The only auth login + signer — every live signing flow goes through her |
+| Dr. Marcus Patel | Sunrise | Roster realism + F-3 "My patients / All clinic orders" toggle + F-5 primary-provider (owns the TRT storyline) |
+| Dr. Elena Rodriguez | Sunrise | Same, on the BHRT storyline; author of the "Menopause Foundation — BHRT" protocol |
+| Jamie Fletcher NP | Sunrise | Mid-level realism — no seeded orders, showing a roster that isn't 1:1 with order volume |
+| Dr. Naomi Osei | Blue Cedar | Second tenant — powers the ops multi-tenant view; Sunrise clinic users never see her data |
+
+**Three new narration beats**
+
+1. **Patient-state pharmacy filtering.** Start a new prescription, pick **Jordan Rivera (CA)**, and narrate the pharmacy list: only the two CA-licensed pharmacies (Strive + Quick Rx) appear. Switch to a TX patient (Alex Demo) and all five come back. "The system will never let a clinic send a prescription to a pharmacy that isn't licensed in the patient's state — that filter is the license table, live."
+2. **The provider toggle is now meaningful.** Log in as Dr. Chen and flip the F-3 **"My patients / All clinic orders"** toggle — with three prescribing providers at Sunrise the two views now genuinely differ (Chen's own patients vs. Patel's TRT and Rodriguez's BHRT orders appearing in the clinic-wide view).
+3. **A living pipeline.** The dashboard and ops pipeline now show a real spread — orders in Paid Processing, Pharmacy Processing, Shipped (with tracking numbers), Delivered, plus exactly one **Submission Failed** order (order numbers `DEMO-10xx`). Use the failed order as the ops triage beat: filter to Errors, claim it, walk the History tab. "This is what Tuesday morning looks like — not an empty demo database."
 
 ---
 
@@ -142,13 +180,13 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 6. Click **"+ New Prescription"** button
 7. **Point out the patient/provider selector page:**
    - Patient search with name filter
-   - Provider auto-selected (only one provider in this clinic)
+   - Provider selector (Sunrise now has 4 providers as of v2.9 — pick **Sarah Chen**, the login/signing provider)
    - "Continue to Pharmacy Search" button (disabled until both selected)
 
 > "The first thing the MA does is select the patient. The patient's shipping state auto-populates for all pharmacy searches — no manual entry. The provider is also selected upfront. Both stay pinned at the top of every screen throughout the flow."
 
 8. Search for **"Alex"** — select **Alex Demo** (TX state badge visible)
-9. Note the provider **Sarah Chen** is auto-selected
+9. Select provider **Sarah Chen** (the only provider with an auth login — Patel, Rodriguez, and Fletcher are seeded for roster realism and the F-3/F-5 features)
 10. Click **"Continue to Pharmacy Search"**
 
 ### 3C — Quick Actions: Favorites + Protocols (New in Phase 18)
@@ -159,7 +197,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 > "Provider favorites let you reorder common prescriptions in one click. No searching, no configuring — just click and go straight to pricing. Clicking a favorite lands directly on the margin page with the live wholesale price and the saved sig carried over."
 
-14. Click **Protocols tab** — show the protocol templates (Weight Loss Protocol, Mold/MCAS Support)
+14. Click **Protocols tab** — show the protocol templates (Weight Loss Protocol, Mold/MCAS Support, and as of v2.9 **Menopause Foundation — BHRT** by Dr. Rodriguez)
 15. Click **Weight Loss Protocol** to expand — show the 3 medications with phase labels and sig text
 16. **Point out** the "Load 3 Medications into Session" button
 
@@ -264,7 +302,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 > "Now let me show you the draft flow — where the MA saves a prescription for the provider to sign later."
 
 38. Click **"+ New Prescription"** again
-39. Select **Alex Demo** + provider auto-selects → Continue
+39. Select **Alex Demo** + provider **Sarah Chen** → Continue
 40. Search **"Sema"** → select **Semaglutide** → select **Strive Pharmacy**
 41. Click **2x multiplier**, enter Sig: **"Draft flow demo"**
 42. Click **"Save as Draft — Provider Signs Later"**
@@ -370,7 +408,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
    - Each stage has a count badge
    - Order table with columns: Order, Status, Clinic, Pharmacy / Tier, SLA, Assigned, Actions
 
-> "This is the operations nerve center. Every order across every clinic is visible here. The dark theme is intentional — ops teams monitor this all day, and dark mode reduces eye strain."
+> "This is the operations nerve center. Every order across every clinic is visible here — as of v2.9 that genuinely means two clinics: Sunrise and Blue Cedar Integrative Health. The dark theme is intentional — ops teams monitor this all day, and dark mode reduces eye strain."
 
 4. **Point out an order row:**
    - Status badge (colored)
@@ -384,7 +422,7 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
    - Filter by Clinic, Pharmacy, Tier, Date range
    - Filters reset by selecting "All" in each dropdown
 
-> "Multi-dimensional filtering lets ops isolate specific issues — show me all Tier 4 fax orders from this week, or all orders from a specific clinic."
+> "Multi-dimensional filtering lets ops isolate specific issues — show me all Tier 4 fax orders from this week, or all orders from a specific clinic. With two clinics and the DEMO-10xx lifecycle orders seeded, the clinic filter and the Errors stage both have real content to show."
 
 6. **Click an order** to open the detail drawer
 7. **Point out the tabs:** Detail, History, Submissions, SLA
