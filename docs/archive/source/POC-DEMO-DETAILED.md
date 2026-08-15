@@ -1,8 +1,10 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 2.7 | **Date:** July 7, 2026
+**Version:** 2.8 | **Date:** August 15, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
+
+> **What's new in v2.8 (2026-08-15):** Four updates reflecting the post-catalog-reseed fixes verified live in the R10 walkthrough (PRs #109/#110/#111). (a) **Protocol templates now price live** — loading a protocol pulls each medication's real wholesale price and applies the clinic's default markup, and the Mold/MCAS Support protocol now includes **Ketotifen Capsule 1mg** (see the live-pricing note in Part 3C). (b) **Bundle-link recovery** — after Combine and Send, the order drawer of any bundled order shows a **"Part of a Payment Bundle"** panel with a **Copy Bundle Payment Link** button, so the link is recoverable at any time rather than only from the one-time toast (new step 37e). (c) **Anti-double-pay messaging** — a patient opening an old solo payment link for an order that has since been bundled sees a specific "part of a combined payment bundle" message instead of a payable checkout (new step 37f). (d) **Review & Send affordance** — the send button shows the hint "Sign in the signature box above to enable sending" until the provider draws a signature (step 35).
 
 > **What's new in v2.7 (2026-07-07):** Corrected retail-default vs 2× note and Semaglutide formulation count per live R9 walkthrough.
 
@@ -155,13 +157,15 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 12. **Point out the Quick Actions Panel** with two tabs: **Favorites** and **Protocols**
 13. **Favorites tab** — show the 4+ saved favorites (Semaglutide 0.5mg weekly, Standard TRT, LDN Starter, BPC-157). Note the titration/cycling badges on relevant favorites.
 
-> "Provider favorites let you reorder common prescriptions in one click. No searching, no configuring — just click and go straight to pricing."
+> "Provider favorites let you reorder common prescriptions in one click. No searching, no configuring — just click and go straight to pricing. Clicking a favorite lands directly on the margin page with the live wholesale price and the saved sig carried over."
 
 14. Click **Protocols tab** — show the protocol templates (Weight Loss Protocol, Mold/MCAS Support)
 15. Click **Weight Loss Protocol** to expand — show the 3 medications with phase labels and sig text
 16. **Point out** the "Load 3 Medications into Session" button
 
 > "Protocol templates are a market-first feature. One click adds an entire multi-medication protocol to the session. The provider reviews and adjusts per patient before signing."
+
+> **Live pricing note (v2.8):** loaded protocol medications price from the live catalog — each line pre-fills its real wholesale cost with the clinic's default markup applied, not a placeholder. The **Mold/MCAS Support** protocol is the crisp example: it loads **Ketotifen Capsule 1mg** ($22 wholesale → $30.80 retail at the clinic's 40% default markup), **Low Dose Naltrexone** ($28 → $39.20), and **Thymosin Alpha-1** ($132 → $184.80). If you expand a protocol during the demo, the prices you see are the real ones the margin builder will show.
 
 ### 3D — Cascading Prescription Builder (New in Phase 17)
 
@@ -225,7 +229,10 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 > "The system automatically detects drug interactions and surfaces them with clinical guidance — severity-coloured: red for critical, amber for warning, blue for informational. DEA-scheduled compounds trigger the red banner and force the EPCS 2FA step before signing."
 
-35. **Sign** on the signature pad
+35. **Point out** that the send button starts disabled with the hint **"Sign in the signature box above to enable sending"** underneath it — then **sign** on the signature pad and watch the hint clear and the button enable
+
+> "No silent failures here. Until the provider actually draws a signature, the send button is disabled and says exactly why. The moment the signature lands, it lights up."
+
 36. Click **"Sign & Send All 2 Prescriptions"** → Click **"Confirm & Send"** — watch the progress messages. (The EPCS 2FA modal surfaces here because Testosterone is Schedule 3 — enter the 6-digit code from your authenticator app.)
 37. Navigate back to the dashboard to see the resulting orders — both should appear as "Awaiting Payment"
 
@@ -243,6 +250,14 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 37d. **Point out** — the system generates **ONE bundled checkout link** covering both prescriptions — patient checkout shows **"Prescription Bundle · 2 prescriptions · $286.00"** (Semaglutide $190.00 + Testosterone Cypionate $96.00; the **$190.00** assumes the **2×** tap — it defaults to $133.00) — and copies it to your clipboard. This is the link you'll paste in Part 4.
 
 > "One link, both prescriptions, one payment. The patient taps once and pays a single combined total instead of juggling two links. The per-order 'Copy Payment Link' button still exists for single-prescription orders — but when a patient has multiple prescriptions from one visit, Combine and Send is the default. This is the friction Phase C removed."
+
+37e. **Reopen the order drawer** for either bundled order — **point out the "Part of a Payment Bundle" panel** (prescription count + bundle total, e.g. "2 prescriptions · $286.00", with the note that the patient pays once for all bundled items) and the **"Copy Bundle Payment Link"** button.
+
+> "The bundle link isn't a one-shot copy. If the toast gets dismissed or the clipboard gets overwritten, open any bundled order's drawer and re-copy the same link — no re-bundling, no support ticket."
+
+37f. **Anti-double-pay talking point** (no extra clicks needed — narrate, or demo it if you kept an old solo link): if the patient opens an *old* per-order payment link for an order that has since been bundled, the checkout refuses it with a specific message that the prescription is now **part of a combined payment bundle** — not a payable page, not a generic error.
+
+> "That's deliberate. Once prescriptions are bundled, there's exactly one way to pay — the bundle link. A stale solo link can never produce a second charge for the same prescription."
 
 ### 3F — Provider Signature Queue (Draft Flow)
 
