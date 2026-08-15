@@ -3,6 +3,9 @@
 // GET  /api/favorites          → list favorites for current provider
 //   (each row carries formulation_active so the UI can gray out
 //   favorites whose formulation was deactivated by a catalog reseed)
+//   ?patient_state=CA additionally enriches each row with
+//   pharmacy_licensed: whether the pinned pharmacy holds an ACTIVE
+//   license in that state (null when no state or no pinned pharmacy)
 // POST /api/favorites          → save a new favorite
 // PATCH /api/favorites?id=xxx  → update use_count (on load)
 // DELETE /api/favorites?id=xxx → remove a favorite
@@ -44,6 +47,12 @@ export async function GET(req: NextRequest) {
 
   const providerIds = await getClinicProviderIds(clinicId)
 
+  // Optional 2-letter patient shipping state — enables the per-row
+  // pharmacy_licensed enrichment. Invalid values are treated as absent.
+  const { searchParams } = new URL(req.url)
+  const patientStateRaw = searchParams.get('patient_state')?.trim().toUpperCase() ?? ''
+  const patientState = /^[A-Z]{2}$/.test(patientStateRaw) ? patientStateRaw : null
+
   const { data, error } = await supabase
     .from('provider_favorites')
     .select(`
@@ -73,16 +82,47 @@ export async function GET(req: NextRequest) {
         deleted_at,
         dosage_forms ( name ),
         routes_of_administration ( name, abbreviation, sig_prefix )
-      )
+      ),
+      pharmacies ( pharmacy_id, name )
     `)
     .in('provider_id', providerIds)
     .order('use_count', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // State-licensure enrichment: which pinned pharmacies hold an ACTIVE
+  // license in the patient's shipping state. Loading a favorite must
+  // never route an unlicensed pharmacy for the selected patient (the
+  // manual builder already filters pharmacy_options this way).
+  const pinnedPharmacyIds = Array.from(new Set(
+    (data ?? [])
+      .map(f => f.pharmacy_id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+  ))
+
+  const licensedPharmacyIds = new Set<string>()
+  if (patientState && pinnedPharmacyIds.length > 0) {
+    const { data: licenses, error: licErr } = await supabase
+      .from('pharmacy_state_licenses')
+      .select('pharmacy_id')
+      .in('pharmacy_id', pinnedPharmacyIds)
+      .eq('state_code', patientState)
+      .eq('is_active', true)
+
+    if (licErr) return NextResponse.json({ error: licErr.message }, { status: 500 })
+    for (const row of licenses ?? []) licensedPharmacyIds.add(row.pharmacy_id)
+  }
+
   const favorites = (data ?? []).map(fav => ({
     ...fav,
     formulation_active: isFormulationLive(fav.formulations),
+    // null = unknown (no patient_state given) or no pinned pharmacy;
+    // boolean otherwise. The UI only blocks on an explicit false.
+    pharmacy_licensed: patientState
+      ? (typeof fav.pharmacy_id === 'string' && fav.pharmacy_id.length > 0
+          ? licensedPharmacyIds.has(fav.pharmacy_id)
+          : null)
+      : null,
   }))
 
   return NextResponse.json({ data: favorites })
