@@ -1,13 +1,15 @@
 # ============================================================
-# One-time cleanup: delete the stray `tmp-binary-safety-test`
-# branch. The GitHub MCP toolchain used to manage this repo has
-# no branch-delete tool, so this disposable workflow does it via
-# GITHUB_TOKEN. It runs once when this file lands on main (self-
-# path trigger below) and can be re-run via workflow_dispatch.
-# Delete this file once the branch is confirmed gone.
+# One-time cleanup: delete stale branches. For every branch
+# except main, this checks whether a MERGED pull request used it
+# as head; if yes, the branch's work is already in main and the
+# branch is deleted. Branches with no merged PR are kept and
+# listed in the log (except tmp-binary-safety-test, an old
+# experiment deleted explicitly). Runs once when this file lands
+# on main; re-runnable via workflow_dispatch. Delete this file
+# once the sweep is confirmed.
 # ============================================================
 
-name: Cleanup Temp Branch (one-time)
+name: Cleanup Stale Branches (one-time)
 
 on:
   workflow_dispatch:
@@ -18,15 +20,31 @@ on:
 
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
-  delete-tmp-branch:
-    name: Delete tmp-binary-safety-test
+  cleanup:
+    name: Delete merged + stray branches
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Delete stray branch (no-op if already gone)
+      - name: Delete stray experiment branch (no PR)
         run: git push origin --delete tmp-binary-safety-test || true
+
+      - name: Delete branches whose PRs are merged
+        run: |
+          for BR in $(git ls-remote --heads origin | awk '{print $2}' | sed 's#refs/heads/##'); do
+            if [ "$BR" = "main" ]; then continue; fi
+            MERGED=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BR" --state merged --json number --jq 'length' || echo 0)
+            if [ "${MERGED:-0}" -gt 0 ]; then
+              echo "DELETE (merged PR found): $BR"
+              git push origin --delete "$BR" || true
+            else
+              echo "KEEP  (no merged PR):    $BR"
+            fi
+          done
