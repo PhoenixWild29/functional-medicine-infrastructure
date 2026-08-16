@@ -1,0 +1,93 @@
+# ============================================================
+# CompoundIQ — Docs Build
+# ============================================================
+# Regenerates the committed partner-facing doc binaries (PDFs in
+# docs/, DOCX in docs/archive/source/ and docs/launch-kit/) from
+# the markdown source in docs/archive/source/ whenever the source
+# or the generator scripts change on main.
+#
+# Loop safety:
+#   - The push trigger paths cover ONLY the .md source, the two
+#     generator scripts, and this workflow file. The auto-commit
+#     below stages ONLY *.pdf / *.docx outputs, so it can never
+#     re-trigger this workflow — and its commit message carries
+#     [skip ci] as a second guard, which also keeps CI/E2E from
+#     running on the binary-only commit.
+#   - No pull_request trigger, so this never runs with write
+#     permissions against fork-originated code.
+
+name: Docs Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      # Markdown source only — the *.pdf / *.docx outputs committed
+      # by this workflow do NOT match any of these paths.
+      - 'docs/archive/source/**/*.md'
+      - 'scripts/md-to-pdf.sh'
+      - 'scripts/md-to-docx.sh'
+      # Self-path so the first run happens when this workflow lands
+      # on main (the auto-commit never touches this file — no loop).
+      - '.github/workflows/docs-build.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: docs-build-main
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Regenerate PDF/DOCX
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Ensure pandoc is installed
+        run: |
+          if ! command -v pandoc >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq pandoc
+          fi
+          pandoc --version | head -1
+
+      # ubuntu-24.04 images can restrict unprivileged user namespaces
+      # via AppArmor, which breaks puppeteer's Chromium sandbox. Relax
+      # it defensively; harmless no-op where already relaxed.
+      - name: Allow Chromium user namespaces (puppeteer)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
+      # md-to-pdf reads markdown from stdin when stdin is not a TTY,
+      # so redirect from /dev/null to keep it in file mode. npx pulls
+      # md-to-pdf + Chromium on the fly — no npm ci needed for docs.
+      - name: Generate PDFs (docs:pdf)
+        run: npm run docs:pdf < /dev/null
+
+      - name: Generate DOCX (docs:docx)
+        run: npm run docs:docx
+
+      - name: Commit regenerated binaries to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Stage ONLY the binary outputs — never .md, scripts, or
+          # workflows — so this commit cannot match the paths filter.
+          git add docs/*.pdf docs/archive/source/*.docx docs/launch-kit/*.docx
+          if git diff --cached --quiet; then
+            echo "Binaries unchanged — nothing to commit."
+            exit 0
+          fi
+          git commit -m "docs: regenerate PDF/DOCX [skip ci]"
+          # Tolerate a racing push to main.
+          git pull --rebase origin main
+          git push origin HEAD:main
