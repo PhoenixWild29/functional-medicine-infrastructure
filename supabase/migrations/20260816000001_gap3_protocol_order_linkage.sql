@@ -15,6 +15,14 @@
 -- model (protocol_dose_steps, protocol_step_conditions, dose_responses)
 -- is a separate, larger change and is deliberately NOT included here.
 -- orders.protocol_step_id is therefore also deferred.
+--
+-- patient_protocol_phases is left ENTIRELY untouched. Its
+-- unique_patient_protocol constraint does block a patient from
+-- re-running a protocol, but POST /api/patient-phases upserts with
+-- onConflict 'patient_id,protocol_id' and would break at runtime if
+-- it were dropped. protocol_instances below supports cycling natively
+-- via cycle_number, so the old table can keep its constraint until it
+-- is retired in the backfill/dual-write change.
 
 -- ── Protocol template versions ──────────────────────────────
 -- protocol_templates stays the editable working surface; a version
@@ -22,7 +30,7 @@
 -- tracked "by protocol version" rather than in aggregate.
 
 CREATE TABLE IF NOT EXISTS protocol_template_versions (
-  version_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  version_id       UUID NOT NULL DEFAULT gen_random_uuid(),
   protocol_id      UUID NOT NULL REFERENCES protocol_templates(protocol_id) ON DELETE CASCADE,
   version_number   INTEGER NOT NULL,
   status           TEXT NOT NULL DEFAULT 'draft'
@@ -33,43 +41,47 @@ CREATE TABLE IF NOT EXISTS protocol_template_versions (
   intent_snapshot  JSONB NOT NULL DEFAULT '{}',
   intent_hash      TEXT,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (version_id),
   CONSTRAINT uq_protocol_version UNIQUE (protocol_id, version_number),
+  -- Composite target so protocol_instances can enforce that a version
+  -- actually belongs to the protocol it is attached to.
+  CONSTRAINT uq_ptv_protocol_version UNIQUE (protocol_id, version_id),
   CONSTRAINT positive_version CHECK (version_number > 0)
 );
 
-CREATE INDEX idx_ptv_protocol ON protocol_template_versions(protocol_id, version_number DESC);
+CREATE INDEX IF NOT EXISTS idx_ptv_protocol
+  ON protocol_template_versions(protocol_id, version_number DESC);
 
 -- At most one published version per protocol at a time.
-CREATE UNIQUE INDEX idx_ptv_one_published ON protocol_template_versions(protocol_id)
-  WHERE status = 'published';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ptv_one_published
+  ON protocol_template_versions(protocol_id) WHERE status = 'published';
 
 ALTER TABLE protocol_template_versions ENABLE ROW LEVEL SECURITY;
 
+-- JWT path convention: per 20260329000001 / 20260329000002 / 20260611000004,
+-- clinic claims live under user_metadata and are read from the JWT, never by
+-- selecting auth.users (authenticated has no SELECT grant on that table).
+DROP POLICY IF EXISTS "Authenticated users can read protocol versions" ON protocol_template_versions;
 CREATE POLICY "Authenticated users can read protocol versions"
   ON protocol_template_versions FOR SELECT TO authenticated
   USING (
     protocol_id IN (
       SELECT protocol_id FROM protocol_templates
-      WHERE clinic_id = (
-        SELECT (raw_user_meta_data->>'clinic_id')::uuid
-        FROM auth.users WHERE id = auth.uid()
-      )
+      WHERE clinic_id = (auth.jwt() -> 'user_metadata' ->> 'clinic_id')::UUID
     )
   );
 
+DROP POLICY IF EXISTS "Service role full access to protocol versions" ON protocol_template_versions;
 CREATE POLICY "Service role full access to protocol versions"
   ON protocol_template_versions FOR ALL TO service_role
   USING (true) WITH CHECK (true);
 
 -- ── Protocol instances ──────────────────────────────────────
 -- "Patient X is on protocol Y, cycle N, pinned to version Z."
--- Supersedes patient_protocol_phases, which is left in place for
--- now — backfill and dual-write before retiring it.
---
--- cycle_number fixes the cycling bug: patient_protocol_phases has
--- UNIQUE (patient_id, protocol_id), which makes it impossible for a
--- patient to run the same protocol twice. Cycling protocols are an
--- explicit sig_mode, so that constraint is wrong.
+-- Supersedes patient_protocol_phases; backfill and dual-write before
+-- retiring that table. cycle_number is what makes cycling protocols
+-- expressible — an explicit sig_mode value that the old table's
+-- UNIQUE (patient_id, protocol_id) made impossible.
 
 CREATE TABLE IF NOT EXISTS protocol_instances (
   instance_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -89,31 +101,47 @@ CREATE TABLE IF NOT EXISTS protocol_instances (
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT uq_patient_protocol_cycle UNIQUE (patient_id, protocol_id, cycle_number),
-  CONSTRAINT positive_cycle CHECK (cycle_number > 0)
+  CONSTRAINT positive_cycle CHECK (cycle_number > 0),
+  -- last_activity_at is the sole input to the 90-day retention gate;
+  -- a future or pre-start value would make that metric nonsense.
+  CONSTRAINT activity_after_start CHECK (last_activity_at >= started_at),
+  -- The pinned version must belong to the pinned protocol.
+  CONSTRAINT fk_instance_protocol_version
+    FOREIGN KEY (protocol_id, version_id)
+    REFERENCES protocol_template_versions(protocol_id, version_id)
 );
 
-CREATE INDEX idx_instances_patient ON protocol_instances(patient_id, status);
-CREATE INDEX idx_instances_clinic_active ON protocol_instances(clinic_id) WHERE status = 'active';
-CREATE INDEX idx_instances_version ON protocol_instances(version_id);
+CREATE INDEX IF NOT EXISTS idx_instances_patient ON protocol_instances(patient_id, status);
+CREATE INDEX IF NOT EXISTS idx_instances_clinic_active ON protocol_instances(clinic_id) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_instances_version ON protocol_instances(version_id);
 
 ALTER TABLE protocol_instances ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Authenticated users can read clinic protocol instances" ON protocol_instances;
 CREATE POLICY "Authenticated users can read clinic protocol instances"
   ON protocol_instances FOR SELECT TO authenticated
-  USING (
-    clinic_id = (
-      SELECT (raw_user_meta_data->>'clinic_id')::uuid
-      FROM auth.users WHERE id = auth.uid()
-    )
-  );
+  USING (clinic_id = (auth.jwt() -> 'user_metadata' ->> 'clinic_id')::UUID);
 
+DROP POLICY IF EXISTS "Service role full access to protocol instances" ON protocol_instances;
 CREATE POLICY "Service role full access to protocol instances"
   ON protocol_instances FOR ALL TO service_role
   USING (true) WITH CHECK (true);
 
+-- updated_at maintenance, matching the set_updated_at() convention
+-- established in 20260317000004 and still in use at 20260609000001.
+DROP TRIGGER IF EXISTS set_updated_at_protocol_instances ON protocol_instances;
+CREATE TRIGGER set_updated_at_protocol_instances
+  BEFORE UPDATE ON protocol_instances
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 -- ── Order → protocol linkage ────────────────────────────────
 -- Both nullable. Ad-hoc single prescriptions stay first class and
 -- most orders will not belong to a protocol, especially early.
+--
+-- protocol_version_id is recorded independently of the instance's
+-- current version ON PURPOSE: it is the version the order was
+-- compiled from. If an instance is later migrated to a newer version,
+-- historical orders must keep pointing at what was actually sent.
 
 ALTER TABLE orders
   ADD COLUMN IF NOT EXISTS protocol_instance_id UUID REFERENCES protocol_instances(instance_id) ON DELETE SET NULL,
@@ -156,45 +184,45 @@ CREATE TABLE IF NOT EXISTS order_clarifications (
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_clarifications_order ON order_clarifications(order_id);
-CREATE INDEX idx_clarifications_open ON order_clarifications(raised_at DESC) WHERE resolved_at IS NULL;
-CREATE INDEX idx_clarifications_reason ON order_clarifications(reason_code, raised_at DESC);
+CREATE INDEX IF NOT EXISTS idx_clarifications_order ON order_clarifications(order_id);
+CREATE INDEX IF NOT EXISTS idx_clarifications_open ON order_clarifications(raised_at DESC) WHERE resolved_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_clarifications_reason ON order_clarifications(reason_code, raised_at DESC);
 
 ALTER TABLE order_clarifications ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Authenticated users can read clinic order clarifications" ON order_clarifications;
 CREATE POLICY "Authenticated users can read clinic order clarifications"
   ON order_clarifications FOR SELECT TO authenticated
   USING (
     order_id IN (
       SELECT order_id FROM orders
-      WHERE clinic_id = (
-        SELECT (raw_user_meta_data->>'clinic_id')::uuid
-        FROM auth.users WHERE id = auth.uid()
-      )
+      WHERE clinic_id = (auth.jwt() -> 'user_metadata' ->> 'clinic_id')::UUID
     )
   );
 
+DROP POLICY IF EXISTS "Service role full access to order clarifications" ON order_clarifications;
 CREATE POLICY "Service role full access to order clarifications"
   ON order_clarifications FOR ALL TO service_role
   USING (true) WITH CHECK (true);
 
--- ── Fix the cycling constraint on patient_protocol_phases ───
--- Constraint removal only; never invalidates an existing row.
-
-ALTER TABLE patient_protocol_phases
-  DROP CONSTRAINT IF EXISTS unique_patient_protocol;
-
--- ── Gate views ──────────────────────────────────────────────
--- security_invoker so the querying user's RLS applies rather than
--- the view owner's.
+-- ── Gate views ─────────────────────────────────────────────
+-- security_invoker so the querying user's RLS applies rather than the
+-- view owner's. NOTE: under orders_role_aware_select (20260611000004)
+-- a provider session sees only its own orders, so these clinic-labelled
+-- figures are only clinic-wide when read as ops_admin or service_role.
+-- Months are bucketed in UTC so the same data buckets identically
+-- regardless of the reader's session timezone.
 
 -- GATE: "at least 50% of repeat eligible orders reuse a protocol"
+-- Eligible = orders for patients who have at least one protocol
+-- instance. Counting every ad-hoc order in the denominator would make
+-- the gate unreachable by construction.
 CREATE OR REPLACE VIEW v_protocol_reuse
 WITH (security_invoker = true) AS
 SELECT
   o.clinic_id,
-  date_trunc('month', o.created_at)                                        AS month,
-  COUNT(*)::INTEGER                                                        AS orders_total,
+  date_trunc('month', o.created_at AT TIME ZONE 'UTC')                     AS month_utc,
+  COUNT(*)::INTEGER                                                        AS orders_eligible,
   COUNT(*) FILTER (WHERE o.protocol_instance_id IS NOT NULL)::INTEGER      AS orders_from_protocol,
   ROUND(
     100.0 * COUNT(*) FILTER (WHERE o.protocol_instance_id IS NOT NULL)
@@ -203,9 +231,11 @@ SELECT
 FROM orders o
 WHERE o.status <> 'CANCELLED'
   AND o.deleted_at IS NULL
-GROUP BY o.clinic_id, date_trunc('month', o.created_at);
+  AND EXISTS (SELECT 1 FROM protocol_instances pi WHERE pi.patient_id = o.patient_id)
+GROUP BY o.clinic_id, date_trunc('month', o.created_at AT TIME ZONE 'UTC');
 
 -- GATE: "pharmacy clarification rate declining by protocol version"
+-- Published versions only; drafts have no orders and add noise.
 CREATE OR REPLACE VIEW v_protocol_clarification_rate
 WITH (security_invoker = true) AS
 SELECT
@@ -224,30 +254,35 @@ LEFT JOIN orders o           ON o.protocol_version_id = ptv.version_id
                             AND o.status <> 'CANCELLED'
                             AND o.deleted_at IS NULL
 LEFT JOIN order_clarifications oc ON oc.order_id = o.order_id
+WHERE ptv.status <> 'draft'
 GROUP BY pt.clinic_id, ptv.protocol_id, pt.name, ptv.version_number;
 
 -- GATE: "repeat use at 90 days without concierge prompting"
+-- ONE cohort throughout: instances old enough to have reached the
+-- 90-day mark. Mixing cohorts across numerator and denominator can
+-- print a retention rate above 100%.
 CREATE OR REPLACE VIEW v_protocol_retention_90d
 WITH (security_invoker = true) AS
 SELECT
   pi.clinic_id,
-  COUNT(*)::INTEGER                                                        AS instances_total,
+  COUNT(*)::INTEGER                                                        AS instances_eligible,
   COUNT(*) FILTER (
     WHERE pi.last_activity_at >= pi.started_at + INTERVAL '90 days'
   )::INTEGER                                                               AS instances_active_at_90d,
   ROUND(
     100.0 * COUNT(*) FILTER (
       WHERE pi.last_activity_at >= pi.started_at + INTERVAL '90 days'
-    ) / NULLIF(COUNT(*) FILTER (
-      WHERE pi.started_at <= now() - INTERVAL '90 days'
-    ), 0)
+    ) / NULLIF(COUNT(*), 0)
   , 1)                                                                     AS retention_90d_pct
 FROM protocol_instances pi
+WHERE pi.started_at <= now() - INTERVAL '90 days'
 GROUP BY pi.clinic_id;
 
 COMMENT ON TABLE protocol_instances IS
   'A patient''s run of a protocol at a pinned version. cycle_number allows repeat runs (cycling protocols).';
 COMMENT ON COLUMN orders.protocol_instance_id IS
   'Nullable. Set when the order was generated from a protocol; null for ad-hoc prescriptions. Cannot be backfilled.';
+COMMENT ON COLUMN orders.protocol_version_id IS
+  'The protocol version this order was compiled from. Intentionally independent of the instance''s current version so history survives a version migration.';
 COMMENT ON TABLE order_clarifications IS
   'Pharmacy/ops send-backs. Joined via orders.protocol_version_id to compute clarification rate per protocol version.';
