@@ -28,7 +28,7 @@ import { join } from 'node:path'
 
 import { POST } from '../route'
 
-// ── Constants ──────────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────
 
 const TEST_CLINIC_ID    = 'a1000000-0000-0000-0000-000000000001'
 const TEST_PROVIDER_ID  = 'a2000000-0000-0000-0000-000000000001'
@@ -37,7 +37,7 @@ const TEST_PHARMACY_ID  = 'a4000000-0000-0000-0000-000000000001'
 const TEST_CATALOG_ID   = 'a5000000-0000-0000-0000-000000000001'
 const TEST_ORDER_ID     = 'a6000000-0000-0000-0000-000000000001'
 
-// ── Migration content tests ────────────────────────────────────────
+// ── Migration content tests ──────────────────────────────────────
 
 describe('F-5 migration: 20260614000004_f5_patients_primary_provider_id.sql', () => {
   const migrationPath = join(
@@ -223,6 +223,12 @@ function installHappyFixtures() {
       integration_tier: 'API',
       fax_number:       null,
     },
+    error: null,
+  })
+  // State-licensure defense-in-depth check in POST /api/orders: the
+  // happy path needs an ACTIVE license row for the patient's state.
+  fixtures['pharmacy_state_licenses:maybeSingle'] = () => ({
+    data: { pharmacy_id: TEST_PHARMACY_ID },
     error: null,
   })
   fixtures['providers:maybeSingle'] = () => ({

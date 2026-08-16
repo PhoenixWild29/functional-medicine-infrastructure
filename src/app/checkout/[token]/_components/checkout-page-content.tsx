@@ -278,15 +278,27 @@ export function CheckoutPageContent({
     })
       .then(async res => {
         if (!res.ok) {
-          const err = await res.json() as { error?: string }
-          throw new Error(err.error ?? `HTTP ${res.status}`)
+          const err = await res.json() as { error?: string; code?: string }
+          const failure: Error & { code?: string } = new Error(err.error ?? `HTTP ${res.status}`)
+          if (typeof err.code === 'string') failure.code = err.code
+          throw failure
         }
         return res.json() as Promise<{ clientSecret: string }>
       })
       .then(data => setClientSecret(data.clientSecret))
-      .catch(err => {
+      .catch((err: unknown) => {
         console.error('[checkout] failed to load payment form:', err)
-        setFetchError('Unable to load the payment form. Please try again or contact your clinic.')
+        // R10 fix: a stale SOLO link for an order that has since been bundled
+        // into a payment group fails with the structured ORDER_IN_PAYMENT_GROUP
+        // code (anti-double-pay guard in /api/checkout/payment-intent). Show
+        // the patient a specific explanation — the fix is "use the bundle
+        // link", not "try again". Everything else keeps the generic message.
+        const code = err instanceof Error ? (err as Error & { code?: string }).code : undefined
+        setFetchError(
+          code === 'ORDER_IN_PAYMENT_GROUP'
+            ? 'This prescription is now part of a combined payment bundle. Please use the bundle payment link your clinic sent, or contact the clinic for a new one.'
+            : 'Unable to load the payment form. Please try again or contact your clinic.',
+        )
       })
   }, [token, checkoutState, intentEndpoint])
 

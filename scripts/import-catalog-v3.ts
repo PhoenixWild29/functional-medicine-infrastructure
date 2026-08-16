@@ -37,14 +37,17 @@ import type { Json } from '@/types/database.types'
 
 const CSV_PATH = join(process.cwd(), 'docs', 'research', 'catalog-seed', 'compoundiq-catalog-seed-v1.csv')
 
+// ID prefixes ('ing:', 'salt:', 'form:', 'pf:') MUST match the production
+// SQL catalog seed's derivation — prod data was loaded with these prefixes;
+// changing them would fork the catalog into duplicate rows under new IDs.
 function uid(key: string): string {
   const h = createHash('md5').update(key).digest('hex')
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`
 }
-const ingId = (name: string): string => uid('ingredient:' + name.trim().toLowerCase())
+const ingId = (name: string): string => uid('ing:' + name.trim().toLowerCase())
 const saltId = (iname: string, sname: string): string =>
   uid('salt:' + iname.trim().toLowerCase() + ':' + sname.trim().toLowerCase())
-const formId = (name: string): string => uid('formulation:' + name.trim().toLowerCase())
+const formId = (name: string): string => uid('form:' + name.trim().toLowerCase())
 
 interface CsvRow {
   ingredient_common_name: string
@@ -290,7 +293,7 @@ async function main(): Promise<void> {
 
   const pfRows = formulations.flatMap((f) =>
     pharmacyIds.map((pid) => ({
-      pharmacy_formulation_id: uid('pf:' + pid + ':' + f.formulation_id),
+      pharmacy_formulation_id: uid('pf:' + pid + ':' + f.name.trim().toLowerCase()),
       pharmacy_id: pid,
       formulation_id: f.formulation_id,
       wholesale_price: f.price,

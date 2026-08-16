@@ -89,7 +89,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const supabase = createServiceClient()
 
-  // ── Resolve medication source ─────────────────────────────────
+  // ── Resolve medication source ─────────────────────────
   // WO-87 (B1 hotfix): branch on which ID was provided. Both branches
   // produce the same `medicationItem` shape so the rest of the
   // handler is path-agnostic.
@@ -195,6 +195,32 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (pharmacyError || !pharmacy) {
     console.error('[orders] pharmacy fetch failed:', pharmacyError?.message)
     return NextResponse.json({ error: 'Pharmacy not found' }, { status: 404 })
+  }
+
+  // Compliance (defense in depth): the pharmacy must hold an ACTIVE
+  // license in the patient's shipping state. The builder and quick-load
+  // UIs filter on this and sign-and-send re-checks at lock time, but the
+  // DRAFT creation path must also reject unlicensed routings outright —
+  // a protocol/favorite quick-load with a pinned pharmacy bypassed the
+  // builder's state-filtered pharmacy_options until this check existed.
+  const { data: stateLicense, error: licenseError } = await supabase
+    .from('pharmacy_state_licenses')
+    .select('pharmacy_id')
+    .eq('pharmacy_id', pharmacyId)
+    .eq('state_code', patientState)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (licenseError) {
+    console.error('[orders] state license fetch failed:', licenseError.message)
+    return NextResponse.json({ error: 'Pharmacy license lookup failed' }, { status: 500 })
+  }
+
+  if (!stateLicense) {
+    return NextResponse.json(
+      { error: `Pharmacy ${pharmacy.name} is not licensed in ${patientState}` },
+      { status: 400 }
+    )
   }
 
   // Fetch provider — must belong to this clinic
