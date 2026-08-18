@@ -23,6 +23,10 @@ import { notify } from '@/lib/notifications'
 interface Props {
   order: DashboardOrder | null
   onClose: () => void
+  /** QA post-combine fix: notify the parent that these orders joined a
+   *  payment group so it patches the polling cache immediately (drawer
+   *  block + list rows) instead of waiting for the 30s poll. */
+  onGroupCreated: (groupId: string, orderIds: string[]) => void
 }
 
 interface BundlableSibling {
@@ -69,7 +73,7 @@ function formatDateTime(iso: string): string {
 }
 
 
-export function OrderDrawer({ order, onClose }: Props) {
+export function OrderDrawer({ order, onClose, onGroupCreated }: Props) {
   const router = useRouter()
   // BLK-03: stable ref prevents stale closure + avoids re-running effect when client recreated
   const supabaseRef = useRef(createBrowserClient())
@@ -285,14 +289,22 @@ export function OrderDrawer({ order, onClose }: Props) {
         return
       }
 
-      const { checkoutUrl, orderCount, totalCents } = (await res.json()) as {
-        checkoutUrl: string; orderCount: number; totalCents: number
+      const { checkoutUrl, orderCount, totalCents, groupId } = (await res.json()) as {
+        checkoutUrl: string; orderCount: number; totalCents: number; groupId: string
       }
 
       // R10 fix: keep the bundle link around so the new "Copy Bundle Payment
       // Link" block can re-copy it without a refetch — the success toast is
       // no longer the only holder of the link.
       setGroupInfo({ checkoutUrl, orderCount, totalCents })
+
+      // QA post-combine fix: the group now exists server-side regardless of
+      // what the clipboard write below does, so patch the dashboard cache
+      // NOW. The parent sets paymentGroupId on the anchor + every selected
+      // sibling, which flips this drawer from the solo "Copy Payment Link"
+      // block (dead for grouped orders — server 409s it) to the bundle
+      // block, and updates the list rows — no 30s poll wait.
+      onGroupCreated(groupId, [order.orderId, ...Array.from(selectedSiblings)])
 
       try {
         await navigator.clipboard.writeText(checkoutUrl)
