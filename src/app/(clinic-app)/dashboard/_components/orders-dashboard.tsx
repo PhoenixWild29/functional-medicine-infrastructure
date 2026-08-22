@@ -20,7 +20,7 @@
 // REQ-GDB-004: Loading, empty, and offline states.
 
 import { useState, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
 import type { DashboardOrder } from '../page'
@@ -112,10 +112,15 @@ function buildDashboardOrder(o: Record<string, unknown>): DashboardOrder {
 export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId }: Props) {
   const router = useRouter()
   const supabase = createBrowserClient()
+  const queryClient = useQueryClient()
 
-  const [viewMode,       setViewMode]       = useState<'table' | 'kanban'>('table')
-  const [activeTab,      setActiveTab]      = useState<TabId>('all')
-  const [selectedOrder,  setSelectedOrder]  = useState<DashboardOrder | null>(null)
+  const [viewMode,        setViewMode]        = useState<'table' | 'kanban'>('table')
+  const [activeTab,       setActiveTab]       = useState<TabId>('all')
+  // QA post-combine fix: store only the selected order's ID and derive the
+  // full row from the polled query data below. Storing the whole object
+  // froze the drawer on a click-time snapshot — it never reflected poll
+  // updates or the post-combine cache patch (handleGroupCreated).
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
 
   // Poll orders every 30 seconds (REQ-GDB-001, no Realtime — HIPAA)
   const { data: ordersData, isError, isFetching, refetch } = useQuery({
@@ -149,6 +154,13 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId }
 
   const orders = ordersData ?? initialOrders
 
+  // Live-derived drawer order: always the current row from the query cache,
+  // so the drawer reacts to poll refreshes and combine-flow cache patches.
+  // If the order vanishes from the list, the drawer simply closes.
+  const selectedOrder = selectedOrderId !== null
+    ? orders.find(o => o.orderId === selectedOrderId) ?? null
+    : null
+
   // ── Filter by active tab ────────────────────────────────
   const activeTabDef = TABS.find(t => t.id === activeTab)!
   const filteredOrders = activeTabDef.statuses === null
@@ -162,12 +174,28 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId }
   }
 
   const handleRowClick = useCallback((order: DashboardOrder) => {
-    setSelectedOrder(order)
+    setSelectedOrderId(order.orderId)
   }, [])
 
   const handleCloseDrawer = useCallback(() => {
-    setSelectedOrder(null)
+    setSelectedOrderId(null)
   }, [])
+
+  // QA post-combine fix: when the drawer bundles orders into a payment
+  // group, patch payment_group_id onto every member row in the polling
+  // cache immediately so the drawer swaps to the bundle UI and the list
+  // rows update without waiting for the 30s poll. Then invalidate the
+  // query so the next authoritative snapshot arrives right away.
+  const handleGroupCreated = useCallback((groupId: string, orderIds: string[]) => {
+    const grouped = new Set(orderIds)
+    queryClient.setQueryData<DashboardOrder[]>(
+      ['dashboard-orders', clinicId],
+      prev => prev?.map(o =>
+        grouped.has(o.orderId) ? { ...o, paymentGroupId: groupId } : o,
+      ),
+    )
+    void queryClient.invalidateQueries({ queryKey: ['dashboard-orders', clinicId] })
+  }, [queryClient, clinicId])
 
   const isStripeActive = stripeConnectStatus === 'ACTIVE'
 
@@ -345,7 +373,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId }
       )}
 
       {/* ── Slide-out drawer — REQ-GDB-002 ── */}
-      <OrderDrawer order={selectedOrder} onClose={handleCloseDrawer} />
+      <OrderDrawer order={selectedOrder} onClose={handleCloseDrawer} onGroupCreated={handleGroupCreated} />
 
     </div>
   )
