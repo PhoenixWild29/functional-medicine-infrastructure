@@ -7,11 +7,16 @@ DROP VIEW IF EXISTS v_protocol_retention_90d;
 DROP VIEW IF EXISTS v_protocol_clarification_rate;
 DROP VIEW IF EXISTS v_protocol_reuse;
 
+DROP TRIGGER IF EXISTS touch_protocol_instance_activity ON orders;
+DROP FUNCTION IF EXISTS touch_protocol_instance_activity();
+
 DROP TRIGGER IF EXISTS set_updated_at_protocol_instances ON protocol_instances;
 
 DROP INDEX IF EXISTS idx_orders_protocol_version;
 DROP INDEX IF EXISTS idx_orders_protocol_instance;
 
+-- Dropping the columns also drops fk_orders_protocol_instance (the
+-- composite patient-binding FK) and the standalone version FK.
 ALTER TABLE orders
   DROP COLUMN IF EXISTS protocol_version_id,
   DROP COLUMN IF EXISTS protocol_instance_id;

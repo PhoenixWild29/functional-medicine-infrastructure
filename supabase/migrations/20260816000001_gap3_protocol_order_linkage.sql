@@ -101,6 +101,10 @@ CREATE TABLE IF NOT EXISTS protocol_instances (
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT uq_patient_protocol_cycle UNIQUE (patient_id, protocol_id, cycle_number),
+  -- Composite target for the orders patient-binding FK below: lets
+  -- orders reference (instance_id, patient_id) so an order can only
+  -- attach to a protocol instance belonging to the same patient.
+  CONSTRAINT uq_instance_patient UNIQUE (instance_id, patient_id),
   CONSTRAINT positive_cycle CHECK (cycle_number > 0),
   -- last_activity_at is the sole input to the 90-day retention gate;
   -- a future or pre-start value would make that metric nonsense.
@@ -144,14 +148,64 @@ CREATE TRIGGER set_updated_at_protocol_instances
 -- historical orders must keep pointing at what was actually sent.
 
 ALTER TABLE orders
-  ADD COLUMN IF NOT EXISTS protocol_instance_id UUID REFERENCES protocol_instances(instance_id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS protocol_instance_id UUID,
   ADD COLUMN IF NOT EXISTS protocol_version_id  UUID REFERENCES protocol_template_versions(version_id) ON DELETE SET NULL;
+
+-- Patient binding: the instance FK is composite on
+-- (protocol_instance_id, patient_id) → protocol_instances(instance_id,
+-- patient_id), so an order can never attach to ANOTHER patient's
+-- protocol instance. orders.patient_id is NOT NULL, and under the
+-- default MATCH SIMPLE semantics the constraint is only enforced when
+-- protocol_instance_id is non-null — ad-hoc orders (NULL instance) are
+-- unaffected, which is exactly the desired semantics.
+--
+-- ON DELETE SET NULL takes the PG15+ column-list form: only
+-- protocol_instance_id is nulled when the instance is deleted. A bare
+-- ON DELETE SET NULL on a composite FK would null orders.patient_id
+-- too, which must never happen.
+ALTER TABLE orders
+  ADD CONSTRAINT fk_orders_protocol_instance
+    FOREIGN KEY (protocol_instance_id, patient_id)
+    REFERENCES protocol_instances(instance_id, patient_id)
+    ON DELETE SET NULL (protocol_instance_id);
 
 CREATE INDEX IF NOT EXISTS idx_orders_protocol_instance ON orders(protocol_instance_id)
   WHERE protocol_instance_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_orders_protocol_version ON orders(protocol_version_id)
   WHERE protocol_version_id IS NOT NULL;
+
+-- ── last_activity_at writer ─────────────────────────────────
+-- The 90-day retention gate reads protocol_instances.last_activity_at;
+-- without a writer the column would freeze at its insert-time default
+-- and the gate would read pure noise. Order activity (creation or any
+-- update, e.g. a status transition) on a protocol-linked order bumps
+-- the instance's last_activity_at.
+--
+-- GREATEST() keeps the activity_after_start CHECK satisfiable and makes
+-- the write monotonic — it can never move last_activity_at backwards.
+-- Trigger conventions follow 20260317000004 / 20260318000001
+-- (CREATE OR REPLACE FUNCTION + DROP TRIGGER IF EXISTS before CREATE;
+-- CREATE TRIGGER IF NOT EXISTS would require PG17+).
+
+CREATE OR REPLACE FUNCTION touch_protocol_instance_activity()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.protocol_instance_id IS NOT NULL THEN
+    UPDATE protocol_instances
+    SET last_activity_at = GREATEST(last_activity_at, now())
+    WHERE instance_id = NEW.protocol_instance_id;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS touch_protocol_instance_activity ON orders;
+
+CREATE TRIGGER touch_protocol_instance_activity
+  AFTER INSERT OR UPDATE ON orders
+  FOR EACH ROW
+  EXECUTE FUNCTION touch_protocol_instance_activity();
 
 -- ── Order clarifications ────────────────────────────────────
 -- Pharmacy sends an order back for rewrite or clarification. Recorded
@@ -281,7 +335,7 @@ GROUP BY pi.clinic_id;
 COMMENT ON TABLE protocol_instances IS
   'A patient''s run of a protocol at a pinned version. cycle_number allows repeat runs (cycling protocols).';
 COMMENT ON COLUMN orders.protocol_instance_id IS
-  'Nullable. Set when the order was generated from a protocol; null for ad-hoc prescriptions. Cannot be backfilled.';
+  'Nullable. Set when the order was generated from a protocol; null for ad-hoc prescriptions. Cannot be backfilled. Composite FK with patient_id guarantees the instance belongs to the order''s patient.';
 COMMENT ON COLUMN orders.protocol_version_id IS
   'The protocol version this order was compiled from. Intentionally independent of the instance''s current version so history survives a version migration.';
 COMMENT ON TABLE order_clarifications IS
