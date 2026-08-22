@@ -57,6 +57,14 @@ export interface SessionPrescription {
   retailCents:     number   // integer cents
   sigText:         string
   integrationTier: string
+  // GAP-3: set when this line was quick-loaded from a protocol, so the
+  // order-creation API can link the order to a protocol_instance +
+  // published protocol version. Ad-hoc and favorite loads leave it
+  // unset. OPTIONAL ON PURPOSE — sessions persisted in sessionStorage
+  // before this field existed parse and submit exactly as before.
+  protocolId?:     string | null
+  // Display-only companion to protocolId (never sent to the API).
+  protocolName?:   string | null
 }
 
 interface PrescriptionSessionState {

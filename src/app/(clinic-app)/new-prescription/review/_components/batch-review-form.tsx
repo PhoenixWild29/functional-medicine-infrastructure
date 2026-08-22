@@ -143,7 +143,7 @@ export function BatchReviewForm({ isProvider }: Props) {
   // Shared controls (Remove, Add Another) lock during either flow.
   const isBusy = isSubmitting || isSavingDraft
 
-  // ── Sign & Send all prescriptions ──────────────────────────
+  // ── Sign & Send all prescriptions ──────────────────────
   async function handleSignAndSend() {
     if (!sigCanvasRef.current || sigCanvasRef.current.isEmpty()) {
       // fix/review-send-flow (F5 family): the canvas can lose its strokes
@@ -184,6 +184,9 @@ export function BatchReviewForm({ isProvider }: Props) {
             retailCents:   rx.retailCents,
             sigText:       rx.sigText,
             patientState:  patient.state ?? '',
+            // GAP-3: present only on lines quick-loaded from a protocol;
+            // the server links the order to a protocol_instance + version.
+            protocolId:    rx.protocolId ?? null,
           }),
         })
 
@@ -270,6 +273,9 @@ export function BatchReviewForm({ isProvider }: Props) {
             retailCents:   rx.retailCents,
             sigText:       rx.sigText,
             patientState:  patient.state ?? '',
+            // GAP-3: same linkage on the MA save-as-draft path — the
+            // draft IS the order row; sign-and-send only updates it.
+            protocolId:    rx.protocolId ?? null,
           }),
         })
 
