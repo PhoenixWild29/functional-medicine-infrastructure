@@ -143,7 +143,7 @@ export function BatchReviewForm({ isProvider }: Props) {
   // Shared controls (Remove, Add Another) lock during either flow.
   const isBusy = isSubmitting || isSavingDraft
 
-  // ── Sign & Send all prescriptions ──────────────────────
+  // ── Sign & Send all prescriptions ──────────────────────────
   async function handleSignAndSend() {
     if (!sigCanvasRef.current || sigCanvasRef.current.isEmpty()) {
       // fix/review-send-flow (F5 family): the canvas can lose its strokes

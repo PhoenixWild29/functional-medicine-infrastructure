@@ -93,7 +93,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const supabase = createServiceClient()
 
-  // ── Resolve medication source ─────────────────────
+  // ── Resolve medication source ─────────────────────────
   // WO-87 (B1 hotfix): branch on which ID was provided. Both branches
   // produce the same `medicationItem` shape so the rest of the
   // handler is path-agnostic.

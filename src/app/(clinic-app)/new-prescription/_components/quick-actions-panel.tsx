@@ -30,7 +30,7 @@ import { useRouter } from 'next/navigation'
 import { usePrescriptionSession } from '../_context/prescription-session'
 import { computeItemPricing, findUnavailableItems, findUnlicensedItems } from './protocol-pricing'
 
-// ── Types ─────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────
 
 interface Favorite {
   favorite_id: string
@@ -117,7 +117,7 @@ interface ProtocolDetail extends Protocol {
   default_markup_pct: number | null
 }
 
-// ── Fetchers ────────────────────────────────────────────
+// ── Fetchers ──────────────────────────────────────────
 
 async function fetchFavorites(patientState: string | null): Promise<Favorite[]> {
   const params = patientState ? `?patient_state=${encodeURIComponent(patientState)}` : ''
@@ -148,7 +148,7 @@ interface QuickActionsPanelProps {
   onLoadFavorite: (fav: Favorite) => void
 }
 
-// ── Component ─────────────────────────────────────────────
+// ── Component ───────────────────────────────────────────
 
 export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
   const router = useRouter()
@@ -278,7 +278,7 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
     router.push('/new-prescription/review')
   }
 
-  // ── Handle favorite load ──────────────
+  // ── Handle favorite load ──────────────────────
   function handleFavoriteClick(fav: Favorite) {
     // Stale favorites are rendered grayed out with the button disabled;
     // this guard also keeps a dead click from bumping use_count.
@@ -311,7 +311,7 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
     }
   }
 
-  // ── No data yet? ───────────────────────
+  // ── No data yet? ───────────────────────────────
   const hasFavorites = favorites.length > 0
   const hasProtocols = protocols.length > 0
 
@@ -351,7 +351,7 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
 
       {/* Tab content */}
       <div className="p-3">
-        {/* ── Favorites Tab ────────────────────────── */}
+        {/* ── Favorites Tab ────────────────────────────── */}
         {activeTab === 'favorites' && (
           <div className="space-y-1.5">
             {deleteError && (
@@ -475,7 +475,7 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
           </div>
         )}
 
-        {/* ── Protocols Tab ───────────────────────── */}
+        {/* ── Protocols Tab ───────────────────────────── */}
         {activeTab === 'protocols' && (
           <div className="space-y-2">
             {protocolLoadError && (
