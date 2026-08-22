@@ -1,5 +1,7 @@
 -- Down migration for 20260816000001_gap3_protocol_order_linkage.sql
 -- Atomic: either the whole rollback lands or none of it does.
+-- (Applied manually to the shared E2E project on 2026-08-22 to clear
+-- objects planted by a pre-amendment CI run of this branch.)
 
 BEGIN;
 
