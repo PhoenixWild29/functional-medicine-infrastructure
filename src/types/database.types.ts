@@ -1118,6 +1118,8 @@ export type Database = {
           payment_group_id: string | null
           pharmacy_id: string | null
           pharmacy_snapshot: Json | null
+          protocol_instance_id: string | null
+          protocol_version_id: string | null
           provider_id: string
           provider_npi_snapshot: string | null
           provider_signature_hash_snapshot: string | null
@@ -1158,6 +1160,8 @@ export type Database = {
           payment_group_id?: string | null
           pharmacy_id?: string | null
           pharmacy_snapshot?: Json | null
+          protocol_instance_id?: string | null
+          protocol_version_id?: string | null
           provider_id: string
           provider_npi_snapshot?: string | null
           provider_signature_hash_snapshot?: string | null
@@ -1198,6 +1202,8 @@ export type Database = {
           payment_group_id?: string | null
           pharmacy_id?: string | null
           pharmacy_snapshot?: Json | null
+          protocol_instance_id?: string | null
+          protocol_version_id?: string | null
           provider_id?: string
           provider_npi_snapshot?: string | null
           provider_signature_hash_snapshot?: string | null
@@ -1217,6 +1223,13 @@ export type Database = {
           wholesale_price_snapshot?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_orders_protocol_instance"
+            columns: ["protocol_instance_id", "patient_id"]
+            isOneToOne: false
+            referencedRelation: "protocol_instances"
+            referencedColumns: ["instance_id", "patient_id"]
+          },
           {
             foreignKeyName: "orders_adapter_submission_id_fkey"
             columns: ["adapter_submission_id"]
@@ -1265,6 +1278,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "pharmacies"
             referencedColumns: ["pharmacy_id"]
+          },
+          {
+            foreignKeyName: "orders_protocol_version_id_fkey"
+            columns: ["protocol_version_id"]
+            isOneToOne: false
+            referencedRelation: "protocol_template_versions"
+            referencedColumns: ["version_id"]
           },
           {
             foreignKeyName: "orders_provider_id_fkey"
@@ -1953,6 +1973,103 @@ export type Database = {
           },
         ]
       }
+      protocol_instances: {
+        Row: {
+          clinic_id: string
+          created_at: string
+          cycle_number: number
+          discontinue_reason: string | null
+          ended_at: string | null
+          individualization: Json
+          instance_id: string
+          last_activity_at: string
+          patient_id: string
+          protocol_id: string
+          provider_id: string
+          started_at: string
+          status: string
+          updated_at: string
+          version_id: string
+        }
+        Insert: {
+          clinic_id: string
+          created_at?: string
+          cycle_number?: number
+          discontinue_reason?: string | null
+          ended_at?: string | null
+          individualization?: Json
+          instance_id?: string
+          last_activity_at?: string
+          patient_id: string
+          protocol_id: string
+          provider_id: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+          version_id: string
+        }
+        Update: {
+          clinic_id?: string
+          created_at?: string
+          cycle_number?: number
+          discontinue_reason?: string | null
+          ended_at?: string | null
+          individualization?: Json
+          instance_id?: string
+          last_activity_at?: string
+          patient_id?: string
+          protocol_id?: string
+          provider_id?: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_instance_protocol_version"
+            columns: ["protocol_id", "version_id"]
+            isOneToOne: false
+            referencedRelation: "protocol_template_versions"
+            referencedColumns: ["protocol_id", "version_id"]
+          },
+          {
+            foreignKeyName: "protocol_instances_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+          {
+            foreignKeyName: "protocol_instances_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["patient_id"]
+          },
+          {
+            foreignKeyName: "protocol_instances_protocol_id_fkey"
+            columns: ["protocol_id"]
+            isOneToOne: false
+            referencedRelation: "protocol_templates"
+            referencedColumns: ["protocol_id"]
+          },
+          {
+            foreignKeyName: "protocol_instances_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "providers"
+            referencedColumns: ["provider_id"]
+          },
+          {
+            foreignKeyName: "protocol_instances_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "protocol_template_versions"
+            referencedColumns: ["version_id"]
+          },
+        ]
+      }
       protocol_items: {
         Row: {
           condition_description: string | null
@@ -2038,6 +2155,60 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "protocol_templates"
             referencedColumns: ["protocol_id"]
+          },
+        ]
+      }
+      protocol_template_versions: {
+        Row: {
+          change_note: string | null
+          created_at: string
+          intent_hash: string | null
+          intent_snapshot: Json
+          protocol_id: string
+          published_at: string | null
+          published_by: string | null
+          status: string
+          version_id: string
+          version_number: number
+        }
+        Insert: {
+          change_note?: string | null
+          created_at?: string
+          intent_hash?: string | null
+          intent_snapshot?: Json
+          protocol_id: string
+          published_at?: string | null
+          published_by?: string | null
+          status?: string
+          version_id?: string
+          version_number: number
+        }
+        Update: {
+          change_note?: string | null
+          created_at?: string
+          intent_hash?: string | null
+          intent_snapshot?: Json
+          protocol_id?: string
+          published_at?: string | null
+          published_by?: string | null
+          status?: string
+          version_id?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "protocol_template_versions_protocol_id_fkey"
+            columns: ["protocol_id"]
+            isOneToOne: false
+            referencedRelation: "protocol_templates"
+            referencedColumns: ["protocol_id"]
+          },
+          {
+            foreignKeyName: "protocol_template_versions_published_by_fkey"
+            columns: ["published_by"]
+            isOneToOne: false
+            referencedRelation: "providers"
+            referencedColumns: ["provider_id"]
           },
         ]
       }

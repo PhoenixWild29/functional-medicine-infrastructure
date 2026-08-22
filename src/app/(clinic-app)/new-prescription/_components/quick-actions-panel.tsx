@@ -252,6 +252,11 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
         retailCents,
         sigText: item.sig_text ?? '',
         integrationTier: item.pharmacies.integration_tier,
+        // GAP-3: stamp the source protocol so order creation can link
+        // the order to a protocol_instance + version. Favorites and
+        // ad-hoc builder lines never set this.
+        protocolId: detail.protocol_id,
+        protocolName: detail.name,
       })
     }
 

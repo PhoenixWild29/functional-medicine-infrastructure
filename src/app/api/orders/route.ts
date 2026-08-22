@@ -20,6 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { resolveProtocolLinkage, type ProtocolLinkage } from '@/lib/protocols/resolve-instance'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // Auth gate
@@ -50,6 +51,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     retailCents:    number
     sigText:        string
     patientState:   string
+    // GAP-3: optional — set only when the session line was quick-loaded
+    // from a protocol. Drives protocol_instance/version linkage below.
+    protocolId?:    string | null
   }
 
   try {
@@ -58,7 +62,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { patientId, providerId, catalogItemId, formulationId, pharmacyId, retailCents, sigText, patientState } = body
+  const { patientId, providerId, catalogItemId, formulationId, pharmacyId, retailCents, sigText, patientState, protocolId } = body
 
   if (!patientId || !providerId || !pharmacyId || !sigText || !patientState) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -295,6 +299,44 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     fax_number:        pharmacy.fax_number ?? null,
   }
 
+  // ── GAP-3: protocol → order linkage (instrumentation) ────────
+  // When the prescription line was quick-loaded from a protocol, link
+  // the order to the patient's protocol_instance and the protocol's
+  // published version so the pilot validation gates (protocol reuse,
+  // clarification rate by version, 90-day retention) have data.
+  //
+  // FAILURE POSTURE: linkage is instrumentation, not clinical flow.
+  // resolveProtocolLinkage never throws (and this is belt-and-
+  // suspenders wrapped anyway); on any failure the order is created
+  // WITHOUT linkage rather than blocking prescribing.
+  //
+  // Runs after the patient/provider/clinic guards above, so patientId,
+  // providerId and clinicId are already validated against the session
+  // clinic. The composite FK fk_orders_protocol_instance requires the
+  // instance to belong to this same patientId — guaranteed because the
+  // resolver looks up/creates the instance for exactly that patient.
+  let protocolLinkage: ProtocolLinkage | null = null
+  if (typeof protocolId === 'string' && protocolId.length > 0) {
+    try {
+      protocolLinkage = await resolveProtocolLinkage({
+        supabase,
+        protocolId,
+        patientId,
+        providerId,
+        clinicId,
+      })
+    } catch (err) {
+      protocolLinkage = null
+      console.warn(
+        '[orders] GAP-3 protocol linkage threw (non-fatal):',
+        err instanceof Error ? err.message : String(err),
+      )
+    }
+    if (!protocolLinkage) {
+      console.warn(`[orders] GAP-3 protocol linkage unresolved (non-fatal) | protocol=${protocolId}`)
+    }
+  }
+
   // Create DRAFT order — all snapshot fields set now, frozen at lock transition
   const { data: order, error: orderError } = await supabase
     .from('orders')
@@ -314,6 +356,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       provider_npi_snapshot:    provider.npi_number,
       pharmacy_snapshot:        pharmacySnapshot,
       sig_text:                 sigTrimmed,
+      // GAP-3: null for ad-hoc/favorite lines and on resolution failure.
+      protocol_instance_id:     protocolLinkage?.protocolInstanceId ?? null,
+      protocol_version_id:      protocolLinkage?.protocolVersionId ?? null,
     })
     .select('order_id')
     .single()
