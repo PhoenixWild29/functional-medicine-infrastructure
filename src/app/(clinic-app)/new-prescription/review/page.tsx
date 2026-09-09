@@ -15,6 +15,7 @@ import { WizardProgress } from '@/components/wizard-progress'
 import { HipaaTimeout }   from '@/components/hipaa-timeout'
 import { createServerClient } from '@/lib/supabase/server'
 import { SessionBanner }  from '../_components/session-banner'
+import { ProtocolLoadNotices } from './_components/protocol-load-notices'
 import { BatchReviewForm } from './_components/batch-review-form'
 
 const WIZARD_STEPS = [
@@ -55,11 +56,15 @@ export default async function ReviewPage() {
 
         <div className="mb-6">
           <WizardProgress steps={WIZARD_STEPS} currentStep={3} />
-          <h1 className="mt-4 text-2xl font-bold text-foreground">Review & Send</h1>
+          <h1 className="mt-4 text-2xl font-bold text-foreground">Review &amp; Send</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Review all prescriptions, sign once, and send the payment link.
           </p>
         </div>
+
+        {/* Non-blocking partial-load report carried over from a protocol
+            quick-load (e.g. items skipped by the state-licensure guard). */}
+        <ProtocolLoadNotices />
 
         <BatchReviewForm isProvider={isProvider} />
       </main>
