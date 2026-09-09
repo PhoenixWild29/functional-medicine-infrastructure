@@ -15,10 +15,16 @@
 // REQ-CTM-007: Normalized catalog view
 // REQ-CTM-008: Catalog rollback
 //
-// Auth: ops_admin required (defense-in-depth; layout also enforces this).
+// Auth: ops_admin only, enforced OUTSIDE this component — src/middleware.ts
+// rejects non-ops_admin on /ops before the page runs, and
+// (ops-dashboard)/layout.tsx re-checks the role server-side.
+//
+// Do NOT re-open a Supabase auth client here. A third getSession() inside the
+// streamed page body can rotate the refresh token from a context that cannot
+// persist cookies, and a redirect() raised from inside the loading.tsx
+// Suspense boundary can never be delivered — the boundary is left unresolved
+// and the route hangs on the spinner forever. That was this route's prod bug.
 
-import { redirect }            from 'next/navigation'
-import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { CatalogManager }      from './_components/catalog-manager'
 import type { CatalogResponse } from '@/app/api/ops/catalog/route'
@@ -33,13 +39,6 @@ export const metadata = {
 }
 
 export default async function CatalogPage() {
-  // Auth guard
-  const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session || session.user.user_metadata['app_role'] !== 'ops_admin') {
-    redirect('/unauthorized')
-  }
-
   const supabase = createServiceClient()
 
   const [itemsResult, versionsResult, normalizedResult, syncResult] = await Promise.all([
@@ -73,8 +72,19 @@ export default async function CatalogPage() {
       .order('name'),
   ])
 
+  // A failed query must degrade to an empty table, never to a hang.
+  // `?? []` below already guarantees that; log so ops can see why it is empty.
   if (itemsResult.error) {
     console.error('[ops/catalog/page] items fetch error:', itemsResult.error.message)
+  }
+  if (versionsResult.error) {
+    console.error('[ops/catalog/page] versions fetch error (non-fatal):', versionsResult.error.message)
+  }
+  if (normalizedResult.error) {
+    console.error('[ops/catalog/page] normalized fetch error (non-fatal):', normalizedResult.error.message)
+  }
+  if (syncResult.error) {
+    console.error('[ops/catalog/page] sync-status fetch error (non-fatal):', syncResult.error.message)
   }
 
   // ── Map rows using shared mappers (NB-01/02) ─────────────────

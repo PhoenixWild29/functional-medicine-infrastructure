@@ -15,10 +15,17 @@
 // REQ-AHM-007: Filtering support (tier, health status, CB state)
 //
 // Uses service client — circuit_breaker_state has RESTRICTIVE RLS.
-// Auth: ops_admin required (defense-in-depth; layout also enforces this).
+//
+// Auth: ops_admin only, enforced OUTSIDE this component — src/middleware.ts
+// rejects non-ops_admin on /ops before the page runs, and
+// (ops-dashboard)/layout.tsx re-checks the role server-side.
+//
+// Do NOT re-open a Supabase auth client here. A third getSession() inside the
+// streamed page body can rotate the refresh token from a context that cannot
+// persist cookies, and a redirect() raised from inside the loading.tsx
+// Suspense boundary can never be delivered — the boundary is left unresolved
+// and the route hangs on the spinner forever. That was this route's prod bug.
 
-import { redirect }            from 'next/navigation'
-import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { AdapterHealthMonitor } from './_components/adapter-health-monitor'
 import type { AdaptersResponse, PharmacyHealthCard, CircuitBreakerState, HourlyBucket } from '@/app/api/ops/adapters/route'
@@ -31,13 +38,6 @@ export const metadata = {
 }
 
 export default async function AdaptersPage() {
-  // Auth guard — defense-in-depth; layout enforces this too
-  const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session || session.user.user_metadata['app_role'] !== 'ops_admin') {
-    redirect('/unauthorized')
-  }
-
   const supabase = createServiceClient()
   const now      = new Date()
   const since24h = new Date(now.getTime() - 24 * 3_600_000).toISOString()
@@ -71,7 +71,7 @@ export default async function AdaptersPage() {
     console.error('[ops/adapters/page] submissions fetch error (non-fatal):', submissionsResult.error.message)
   }
 
-  // ── Build lookup maps ────────────────────────────────────────
+  // ── Build lookup maps ───────────────────────────────────
   const cbMap = new Map<string, NonNullable<typeof cbResult.data>[number]>()
   for (const cb of (cbResult.data ?? [])) {
     cbMap.set(cb.pharmacy_id, cb)
@@ -84,7 +84,7 @@ export default async function AdaptersPage() {
     subsByPharmacy.set(sub.pharmacy_id, list)
   }
 
-  // ── Build 24 hourly bucket slots ─────────────────────────────
+  // ── Build 24 hourly bucket slots ─────────────────────────
   const hourSlots: string[] = []
   for (let i = 23; i >= 0; i--) {
     const d = new Date(now.getTime() - i * 3_600_000)
@@ -92,7 +92,7 @@ export default async function AdaptersPage() {
     hourSlots.push(d.toISOString())
   }
 
-  // ── Build per-pharmacy health cards ──────────────────────────
+  // ── Build per-pharmacy health cards ───────────────────────
   const pharmacies: PharmacyHealthCard[] = (pharmaciesResult.data ?? []).map(p => {
     const subs = subsByPharmacy.get(p.pharmacy_id) ?? []
     const cb   = cbMap.get(p.pharmacy_id) ?? null
