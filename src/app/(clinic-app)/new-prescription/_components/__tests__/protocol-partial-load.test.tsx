@@ -29,9 +29,11 @@ import {
 import { ProtocolLoadNotices } from '../../review/_components/protocol-load-notices'
 import { QuickActionsPanel } from '../quick-actions-panel'
 
-const pushMock = jest.fn()
+// Must be named mock* — babel-plugin-jest-hoist hoists jest.mock() above
+// this declaration and only allows out-of-scope refs matching /^mock/i.
+const mockPush = jest.fn()
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock, replace: jest.fn(), refresh: jest.fn() }),
+  useRouter: () => ({ push: mockPush, replace: jest.fn(), refresh: jest.fn() }),
 }))
 
 const STORAGE_KEY = 'compoundiq-rx-session'
@@ -170,7 +172,7 @@ function jsonResponse(body: unknown) {
   })
 }
 
-const fetchMock = jest.fn((input: unknown) => {
+const mockFetch = jest.fn((input: unknown) => {
   const url = String(input)
   if (url.startsWith('/api/favorites')) return jsonResponse({ data: [] })
   if (url.startsWith('/api/protocols?id=')) {
@@ -236,7 +238,7 @@ async function openProtocol(): Promise<HTMLElement> {
 }
 
 beforeAll(() => {
-  global.fetch = fetchMock as unknown as typeof fetch
+  global.fetch = mockFetch as unknown as typeof fetch
 })
 
 beforeEach(() => {
@@ -254,7 +256,7 @@ describe('protocol quick-load — partial success advances', () => {
     fireEvent.click(await openProtocol())
 
     // Advanced — this is the whole point of the fix.
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/new-prescription/review'))
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/new-prescription/review'))
 
     // Only the licensed line entered the session; the guard still holds.
     expect(screen.getByTestId('rx-count')).toHaveTextContent('1')
@@ -279,7 +281,7 @@ describe('protocol quick-load — partial success advances', () => {
     renderPanel()
 
     fireEvent.click(await openProtocol())
-    await waitFor(() => expect(pushMock).toHaveBeenCalled())
+    await waitFor(() => expect(mockPush).toHaveBeenCalled())
 
     const notice = screen.getByRole('status')
     expect(notice).toHaveTextContent(/Loaded 1 of 2 medications/)
@@ -322,7 +324,7 @@ describe('protocol quick-load — total block stays on the page', () => {
     expect(error).toHaveTextContent(/Estradiol Cream 0.1%/)
     expect(error.className).toContain('red')
 
-    expect(pushMock).not.toHaveBeenCalled()
+    expect(mockPush).not.toHaveBeenCalled()
     expect(screen.getByTestId('rx-count')).toHaveTextContent('0')
     expect(screen.getByTestId('notice-count')).toHaveTextContent('0')
   })
@@ -337,8 +339,8 @@ describe('protocol quick-load — idempotency', () => {
     fireEvent.click(await openProtocol())
 
     await waitFor(() => expect(screen.getByTestId('rx-count')).toHaveTextContent('2'))
-    expect(pushMock).toHaveBeenCalledWith('/new-prescription/review')
-    expect(pushMock).toHaveBeenCalledTimes(1)
+    expect(mockPush).toHaveBeenCalledWith('/new-prescription/review')
+    expect(mockPush).toHaveBeenCalledTimes(1)
     // No skips, nothing pre-existing — no notice to carry.
     expect(screen.getByTestId('notice-count')).toHaveTextContent('0')
     // GAP-3 (#120) linkage preserved on every loaded line.
@@ -363,7 +365,7 @@ describe('protocol quick-load — idempotency', () => {
     )
     // Still two lines, and no second navigation for a no-op load.
     expect(screen.getByTestId('rx-count')).toHaveTextContent('2')
-    expect(pushMock).toHaveBeenCalledTimes(1)
+    expect(mockPush).toHaveBeenCalledTimes(1)
   })
 })
 
