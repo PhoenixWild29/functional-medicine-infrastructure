@@ -23,14 +23,26 @@
 // selected patient's shipping state. Unlicensed favorites are
 // blocked with an inline explanation; unlicensed protocol items are
 // SKIPPED (licensed items still load) and reported by name.
+//
+// Partial-load behavior: a load that placed at least one line in the
+// session is a SUCCESS and advances to the review step — the skip
+// report travels with the session (session.addNotice) and renders
+// there as a non-blocking amber notice. Only a load that placed
+// nothing stays on this page with a red error, because there would be
+// nothing to review. Loads are idempotent: lines already present in
+// the session are never added twice.
 
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import { usePrescriptionSession } from '../_context/prescription-session'
+import {
+  usePrescriptionSession,
+  prescriptionSignature,
+  type SessionPrescription,
+} from '../_context/prescription-session'
 import { computeItemPricing, findUnavailableItems, findUnlicensedItems } from './protocol-pricing'
 
-// ── Types ─────────────────────────────────────────────
+// ── Types ───────────────────────────────────
 
 interface Favorite {
   favorite_id: string
@@ -117,7 +129,7 @@ interface ProtocolDetail extends Protocol {
   default_markup_pct: number | null
 }
 
-// ── Fetchers ──────────────────────────────────────────
+// ── Fetchers ────────────────────────────────
 
 async function fetchFavorites(patientState: string | null): Promise<Favorite[]> {
   const params = patientState ? `?patient_state=${encodeURIComponent(patientState)}` : ''
@@ -142,13 +154,13 @@ async function fetchProtocolDetail(id: string, patientState: string | null): Pro
   return json.data ?? null
 }
 
-// ── Props ──────────────────────────────────────────────
+// ── Props ────────────────────────────────────
 
 interface QuickActionsPanelProps {
   onLoadFavorite: (fav: Favorite) => void
 }
 
-// ── Component ───────────────────────────────────────────
+// ── Component ───────────────────────────────────
 
 export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
   const router = useRouter()
@@ -158,6 +170,9 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
   const [expandedProtocol, setExpandedProtocol] = useState<string | null>(null)
   const [loadingProtocol, setLoadingProtocol] = useState(false)
   const [protocolLoadError, setProtocolLoadError] = useState<string | null>(null)
+  // Non-blocking counterpart to protocolLoadError: shown when a load was
+  // refused as a no-op because every line is already in the session.
+  const [protocolLoadNotice, setProtocolLoadNotice] = useState<string | null>(null)
   // Two-step delete confirm — matches the catalog rollback pattern
   // (catalog-manager.tsx). Tracks which favorite row is currently
   // showing [Confirm] / [Cancel] buttons; null = idle.
@@ -186,10 +201,11 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
     enabled: !!expandedProtocol,
   })
 
-  // ── Load protocol into session ────────────────────
+  // ── Load protocol into session ────────────────
   function loadProtocolToSession(detail: ProtocolDetail) {
     if (!session.patient || !session.provider) return
     setProtocolLoadError(null)
+    setProtocolLoadNotice(null)
 
     // State-licensure guard: items whose pinned pharmacy is not licensed
     // in the patient's shipping state are SKIPPED (never loaded), and
@@ -203,6 +219,8 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
     const loadableItems = detail.items.filter(item => item.pharmacy_licensed !== false)
 
     if (loadableItems.length === 0) {
+      // Total block: nothing would reach the review step, so there is
+      // nothing to advance to. Stay here with the full per-item reason.
       setProtocolLoadError(
         `No medications loaded for this ${patientState} patient — ${skippedMessages.join('; ')}.`
       )
@@ -226,6 +244,14 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
 
     setLoadingProtocol(true)
 
+    // Build every line first, then hand the batch to the session in one
+    // call. Lines already present are dropped rather than re-added, so
+    // clicking "Load N Medications into Session" twice can never
+    // duplicate a prescription.
+    const seen = new Set(session.prescriptions.map(prescriptionSignature))
+    const linesToLoad: Omit<SessionPrescription, 'id'>[] = []
+    const alreadyInSession: string[] = []
+
     for (const item of loadableItems) {
       // The guards above ensure these never trip; they narrow the types.
       if (!item.formulations || !item.pharmacies || item.wholesale_price === null) continue
@@ -237,7 +263,7 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
         detail.default_markup_pct
       )
 
-      session.addPrescription({
+      const line: Omit<SessionPrescription, 'id'> = {
         pharmacyId: item.pharmacies.pharmacy_id,
         pharmacyName: item.pharmacies.name,
         // WO-87: protocol items come from the V3.0 hierarchical catalog,
@@ -257,20 +283,50 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
         // ad-hoc builder lines never set this.
         protocolId: detail.protocol_id,
         protocolName: detail.name,
-      })
+      }
+
+      const signature = prescriptionSignature(line)
+      if (seen.has(signature)) {
+        alreadyInSession.push(formName)
+        continue
+      }
+      seen.add(signature)
+      linesToLoad.push(line)
+    }
+
+    if (linesToLoad.length > 0) {
+      session.addPrescriptions(linesToLoad)
     }
 
     setLoadingProtocol(false)
 
-    if (skippedMessages.length > 0) {
-      // Partial load: stay on this page so the provider sees exactly which
-      // items were skipped (navigating away would hide the report). The
-      // loaded lines are already in the session and reachable via Review.
-      setProtocolLoadError(
-        `Loaded ${loadableItems.length} of ${detail.items.length} medications. ` +
-        `Skipped for this ${patientState} patient: ${skippedMessages.join('; ')}.`
-      )
+    if (linesToLoad.length === 0 && alreadyInSession.length > 0) {
+      // Idempotent re-load. Nothing changed, so navigating would imply
+      // work happened; say so instead, in amber rather than red.
+      const parts = [
+        `All ${alreadyInSession.length} medication${alreadyInSession.length !== 1 ? 's' : ''} ` +
+        `from this protocol ${alreadyInSession.length !== 1 ? 'are' : 'is'} already in this session — nothing was added.`,
+      ]
+      if (skippedMessages.length > 0) {
+        parts.push(`Still skipped for this ${patientState} patient: ${skippedMessages.join('; ')}.`)
+      }
+      setProtocolLoadNotice(parts.join(' '))
       return
+    }
+
+    // Partial success is still success: the licensed lines are in the
+    // session, so advance. The skip report rides along on the session and
+    // renders on the review step as a non-blocking amber notice — it must
+    // not strand the provider on this page with no forward action.
+    if (skippedMessages.length > 0 || alreadyInSession.length > 0) {
+      session.addNotice({
+        protocolName: detail.name,
+        patientState,
+        loadedCount: linesToLoad.length,
+        totalCount: detail.items.length,
+        skipped: skippedMessages,
+        alreadyPresent: alreadyInSession,
+      })
     }
 
     // Navigate to review page — every line already carries a real price;
@@ -278,7 +334,7 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
     router.push('/new-prescription/review')
   }
 
-  // ── Handle favorite load ──────────────────────
+  // ── Handle favorite load ─────────────────────
   function handleFavoriteClick(fav: Favorite) {
     // Stale favorites are rendered grayed out with the button disabled;
     // this guard also keeps a dead click from bumping use_count.
@@ -287,6 +343,11 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
     // patient's shipping state. The card is disabled with an inline
     // explanation; this guard is the belt to that suspenders.
     if (fav.pharmacy_licensed === false) return
+    // NB: the favorites path does NOT add to the session here. It
+    // pre-fills the cascading builder, and the line only enters the
+    // session from the margin builder once a retail price and sig are
+    // confirmed — so there is no silent-duplication path to guard here.
+    // Duplicate protection for that path lives in addPrescriptions().
     // Bump use timestamp
     fetch(`/api/favorites?id=${fav.favorite_id}`, { method: 'PATCH' }).catch(() => {})
     onLoadFavorite(fav)
@@ -311,7 +372,7 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
     }
   }
 
-  // ── No data yet? ───────────────────────────────
+  // ── No data yet? ─────────────────────────────
   const hasFavorites = favorites.length > 0
   const hasProtocols = protocols.length > 0
 
@@ -351,7 +412,7 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
 
       {/* Tab content */}
       <div className="p-3">
-        {/* ── Favorites Tab ────────────────────────────── */}
+        {/* ── Favorites Tab ───────────────────────────── */}
         {activeTab === 'favorites' && (
           <div className="space-y-1.5">
             {deleteError && (
@@ -475,7 +536,7 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
           </div>
         )}
 
-        {/* ── Protocols Tab ───────────────────────────── */}
+        {/* ── Protocols Tab ─────────────────────────── */}
         {activeTab === 'protocols' && (
           <div className="space-y-2">
             {protocolLoadError && (
@@ -486,12 +547,21 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
                 {protocolLoadError}
               </p>
             )}
+            {protocolLoadNotice && (
+              <p
+                role="status"
+                className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+              >
+                {protocolLoadNotice}
+              </p>
+            )}
             {protocols.map(proto => (
               <div key={proto.protocol_id} className="rounded-md border border-border">
                 <button
                   type="button"
                   onClick={() => {
                     setProtocolLoadError(null)
+                    setProtocolLoadNotice(null)
                     setExpandedProtocol(
                       expandedProtocol === proto.protocol_id ? null : proto.protocol_id
                     )
