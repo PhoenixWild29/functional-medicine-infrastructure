@@ -67,10 +67,40 @@ export interface SessionPrescription {
   protocolName?:   string | null
 }
 
+/**
+ * A non-blocking report produced by a quick-load that only PARTIALLY
+ * succeeded — e.g. a protocol whose licensed items loaded while items
+ * pinned to a pharmacy unlicensed in the patient's state were skipped.
+ *
+ * Notices live on the session (not on a route param) so the report
+ * survives the navigation to the review step, which is where the
+ * provider actually sees the loaded lines.
+ *
+ * OPTIONAL ON PURPOSE: sessions persisted in sessionStorage before this
+ * field existed parse and submit exactly as before — restore normalises
+ * a missing `notices` array to [].
+ */
+export interface SessionLoadNotice {
+  id:             string   // client-side UUID for list key
+  /** Protocol the quick-load came from. Display only. */
+  protocolName:   string | null
+  /** Patient shipping state the licensure check ran against. */
+  patientState:   string | null
+  /** How many lines actually entered the session. */
+  loadedCount:    number
+  /** How many lines the source protocol contains in total. */
+  totalCount:     number
+  /** One human-readable message per item skipped by the licensure guard. */
+  skipped:        string[]
+  /** Names of items that were already in the session (idempotent re-load). */
+  alreadyPresent: string[]
+}
+
 interface PrescriptionSessionState {
   patient:       SessionPatient | null
   provider:      SessionProvider | null
   prescriptions: SessionPrescription[]
+  notices:       SessionLoadNotice[]
 }
 
 interface PrescriptionSessionContextValue extends PrescriptionSessionState {
@@ -80,8 +110,18 @@ interface PrescriptionSessionContextValue extends PrescriptionSessionState {
   setProvider:        (provider: SessionProvider) => void
   /** Add a configured prescription to the session */
   addPrescription:    (rx: Omit<SessionPrescription, 'id'>) => void
+  /**
+   * Add several prescriptions at once, skipping any line already in the
+   * session. Used by the protocol quick-load so loading the same
+   * protocol twice can never duplicate its lines.
+   */
+  addPrescriptions:   (list: Omit<SessionPrescription, 'id'>[]) => void
   /** Remove a prescription by its client-side ID */
   removePrescription: (id: string) => void
+  /** Record a partial-load report to show on the review step */
+  addNotice:          (notice: Omit<SessionLoadNotice, 'id'>) => void
+  /** Dismiss a partial-load report by its client-side ID */
+  dismissNotice:      (id: string) => void
   /** Clear the entire session (after successful send or cancel) */
   clearSession:       () => void
   /** Whether patient + provider are both selected */
@@ -95,7 +135,38 @@ interface PrescriptionSessionContextValue extends PrescriptionSessionState {
 const STORAGE_KEY = 'compoundiq-rx-session'
 
 function generateId(): string {
-  return crypto.randomUUID()
+  // crypto.randomUUID is available in every browser we support, but not
+  // in every test environment — fall back rather than throw.
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID()
+    }
+  } catch { /* fall through */ }
+  return `rx-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+/**
+ * Identity of a prescription line for duplicate detection.
+ *
+ * Two lines are "the same prescription" when they route the same
+ * medication to the same pharmacy with the same dose and the same
+ * directions. Retail price is deliberately NOT part of the signature:
+ * re-loading a protocol after a markup change must still be recognised
+ * as the same line rather than silently added twice.
+ */
+export function prescriptionSignature(rx: {
+  itemId:        string | null
+  formulationId: string | null
+  pharmacyId:    string
+  dose:          string
+  sigText:       string
+}): string {
+  return [
+    rx.formulationId ?? rx.itemId ?? '',
+    rx.pharmacyId,
+    rx.dose.trim().toLowerCase(),
+    rx.sigText.trim().toLowerCase(),
+  ].join('|')
 }
 
 // ── Default state ─────────────────────────────────────────────
@@ -104,6 +175,7 @@ const EMPTY_STATE: PrescriptionSessionState = {
   patient: null,
   provider: null,
   prescriptions: [],
+  notices: [],
 }
 
 // ── Context ───────────────────────────────────────────────────
@@ -120,9 +192,17 @@ export function PrescriptionSessionProvider({ children }: { children: ReactNode 
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY)
       if (saved) {
-        const parsed = JSON.parse(saved) as PrescriptionSessionState
+        // Partial<> on purpose: payloads written by older builds have no
+        // `notices` (and, older still, no `protocolId` on lines). Normalise
+        // rather than trust the shape, so old sessions keep working.
+        const parsed = JSON.parse(saved) as Partial<PrescriptionSessionState>
         if (parsed.patient && parsed.provider) {
-          setState(parsed)
+          setState({
+            patient:       parsed.patient,
+            provider:      parsed.provider,
+            prescriptions: parsed.prescriptions ?? [],
+            notices:       parsed.notices ?? [],
+          })
         }
       }
     } catch { /* ignore corrupt storage */ }
@@ -154,10 +234,41 @@ export function PrescriptionSessionProvider({ children }: { children: ReactNode 
     }))
   }, [])
 
+  const addPrescriptions = useCallback((list: Omit<SessionPrescription, 'id'>[]) => {
+    setState(prev => {
+      // Dedupe inside the reducer so a double-click (two calls before the
+      // first re-render) can't slip a duplicate past the caller's check.
+      const seen = new Set(prev.prescriptions.map(prescriptionSignature))
+      const additions: SessionPrescription[] = []
+      for (const rx of list) {
+        const signature = prescriptionSignature(rx)
+        if (seen.has(signature)) continue
+        seen.add(signature)
+        additions.push({ ...rx, id: generateId() })
+      }
+      if (additions.length === 0) return prev
+      return { ...prev, prescriptions: [...prev.prescriptions, ...additions] }
+    })
+  }, [])
+
   const removePrescription = useCallback((id: string) => {
     setState(prev => ({
       ...prev,
       prescriptions: prev.prescriptions.filter(rx => rx.id !== id),
+    }))
+  }, [])
+
+  const addNotice = useCallback((notice: Omit<SessionLoadNotice, 'id'>) => {
+    setState(prev => ({
+      ...prev,
+      notices: [...prev.notices, { ...notice, id: generateId() }],
+    }))
+  }, [])
+
+  const dismissNotice = useCallback((id: string) => {
+    setState(prev => ({
+      ...prev,
+      notices: prev.notices.filter(notice => notice.id !== id),
     }))
   }, [])
 
@@ -171,7 +282,10 @@ export function PrescriptionSessionProvider({ children }: { children: ReactNode 
     setPatient,
     setProvider,
     addPrescription,
+    addPrescriptions,
     removePrescription,
+    addNotice,
+    dismissNotice,
     clearSession,
     isSessionStarted: !!(state.patient && state.provider),
     prescriptionCount: state.prescriptions.length,

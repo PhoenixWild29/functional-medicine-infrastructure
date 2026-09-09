@@ -1,8 +1,10 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 2.9 | **Date:** August 15, 2026
+**Version:** 2.10 | **Date:** September 9, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
+
+> **What's new in v2.10 (2026-09-09):** **The state-licensure guard is now a scripted feature beat, and the partial-load behavior it produces has been corrected in the product.** (a) New **Part 3C-1** turns the per-state pharmacy licensure check into a headline selling point, run with **Jordan Rivera (CA)** against the Favorites tab, with the full pharmacy license matrix for reference. (b) New **safe-path warning box** at the top of Part 3: the scripted path uses **Alex Demo (TX)** because TX is the only state where all five pharmacies are licensed — improvising onto another patient can partially load or fully block a protocol, and the box names the specific traps. (c) **Partial protocol loads now advance.** Previously a protocol containing an item pinned to an unlicensed pharmacy loaded the licensed lines and then stranded the user on the quick-actions panel behind a red error. It now navigates to Review and carries a non-blocking **amber** notice naming each skipped medication and why; re-loading the same protocol no longer duplicates lines. (d) **Favorites and Protocols counts refreshed** — the Favorites tab reads **Favorites (10)** because `/api/favorites` is clinic-wide, and Protocols reads **Protocols (3)**. (e) **Post-#119 bundle wording** — the order drawer flips to the bundle panel in place the moment Combine succeeds; steps 37d/37e no longer tell the presenter to reopen the drawer. (f) **Table count corrected** from 33 to the verified **47 tables + 6 views** (PR #118 / GAP-3 added `protocol_template_versions`, `protocol_instances`, `order_clarifications` and three gate views).
 
 > **What's new in v2.9 (2026-08-15):** **Demo data expansion: multi-provider, multi-state patients, lifecycle orders, second clinic** (`scripts/demo-expansion-seed.sql`, run against prod). Sunrise now has 4 providers (Dr. Chen remains the only login/signer; Dr. Marcus Patel, Dr. Elena Rodriguez, and Jamie Fletcher NP add roster realism and make the F-3 clinic-view toggle + F-5 primary-provider features demonstrable), plus a second clinic — **Blue Cedar Integrative Health** (Dr. Naomi Osei, patient Ruby Sandoval, NM) — for the ops multi-tenant view. 8 new multi-state Sunrise patients (CA/NY/FL/WA/CO/AZ/IL/GA), 17 pharmacy state licenses (every patient state covered; CA has exactly 2 licensed pharmacies for the state-filter beat), and 12 lifecycle orders `DEMO-1001`..`DEMO-1012` across the pipeline (delivered/shipped/processing/failed/awaiting payment) on new-catalog medications, plus 6 provider favorites and a new **"Menopause Foundation — BHRT"** protocol by Dr. Rodriguez. See the new **Demo Cast & Story Beats** subsection below the seed-data table, and the three new narration beats it introduces. Part 3B updated: the provider is now a real selection (4 providers), not auto-selected.
 
@@ -157,6 +159,21 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 ## Part 3: The Clinic Workflow (15–20 minutes)
 
+> ### ⚠️ Stay on the safe path: Alex Demo (TX)
+>
+> **Everything from here to Part 4 is scripted against Alex Demo (TX), and that is deliberate. TX is the only state where all five pharmacies hold an active license** (Strive, Quick Rx, Express Digital, Portal Plus, Hybrid Labs). On Alex, every favorite is clickable and every protocol quick-load loads clean, all lines, first time.
+>
+> **If you improvise onto a different patient, expect the licensure guard to fire.** That is the product working correctly — but explain it rather than look surprised. The specific traps:
+>
+> - **"Menopause Foundation — BHRT" + Jordan Rivera (CA) → partial load.** The Portal Plus line is not licensed in CA, so it is skipped and the rest load.
+> - **Any protocol + Maya Thompson (NY), Sofia Nguyen (WA), Grace O'Connor (GA), Liam Carter (CO), or Noah Kim (IL) → full block.** None of those states has a licensed pharmacy for every pinned item, and for these patients no item survives the check.
+>
+> **What a partial load actually does (shipped behavior):** the licensed medications load into the session and the app **advances to the Review step exactly as a clean load does**. On Review you get a **non-blocking amber notice** at the top — "Loaded 2 of 3 medications from Menopause Foundation — BHRT" — listing each skipped medication and the reason, e.g. *"Progesterone Capsule 100mg — Portal Plus Pharmacy is not licensed in CA."* Amber, not red: nothing is blocked, the signature pad works, and you can sign and send the lines that did load. If you re-click the same protocol, it will not duplicate anything — it tells you the lines are already in the session.
+>
+> **What a full block does:** nothing is added, so the app stays on the quick-actions panel with a **red** error naming every skipped item. There is nothing to review, so there is nothing to advance to. Recover by choosing a different protocol, or by switching to Alex Demo.
+>
+> If a prospect asks you to try their own state, this is a great moment to lean in — see **Part 3C-1** for the scripted version of that beat.
+
 ### 3A — Dashboard Overview
 
 1. Log in as **Clinic Admin**: `admin@sunrise-clinic.com` / `POCClinic2026!`
@@ -187,23 +204,71 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 8. Search for **"Alex"** — select **Alex Demo** (TX state badge visible)
 9. Select provider **Sarah Chen** (the only provider with an auth login — Patel, Rodriguez, and Fletcher are seeded for roster realism and the F-3/F-5 features)
+
+> **Expect an amber hint on three of the four provider cards.** Dr. Patel, Dr. Rodriguez, and Jamie Fletcher NP each show **"No signature on file — will capture during review"** in amber underneath their name. That is correct and not an error: only Dr. Chen has a captured `signature_hash` on file, so her card is clean. The hint is telling the MA that if they pick one of the others, the signature will be drawn live at the review step rather than pulled from file. If a prospect asks, this is the honest answer: "we don't fake a signature we don't have — we tell you up front when one has to be captured."
+
 10. Click **"Continue to Pharmacy Search"**
 
 ### 3C — Quick Actions: Favorites + Protocols (New in Phase 18)
 
 11. **Point out the session banner** at the top — Alex Demo + Sarah Chen pinned
 12. **Point out the Quick Actions Panel** with two tabs: **Favorites** and **Protocols**
-13. **Favorites tab** — show the 4+ saved favorites (Semaglutide 0.5mg weekly, Standard TRT, LDN Starter, BPC-157). Note the titration/cycling badges on relevant favorites.
+13. **Favorites tab** — the tab header reads **Favorites (10)**. The list is ordered by use count, most-used first:
+
+    1. Semaglutide 0.5mg weekly
+    2. Standard TRT — Cyp 200mg
+    3. TRT Cyp 200 — Weekly
+    4. Estradiol 0.1% Cream
+    5. LDN Starter — Titration
+    6. Biest 80/20
+    7. LDN 4.5 Maintenance
+    8. BPC-157 daily cycling
+    9. NAD+ Longevity
+    10. Tadalafil 10 Troche
+
+    Note the titration/cycling badges on the relevant favorites (LDN Starter, BPC-157).
 
 > "Provider favorites let you reorder common prescriptions in one click. No searching, no configuring — just click and go straight to pricing. Clicking a favorite lands directly on the margin page with the live wholesale price and the saved sig carried over."
 
-14. Click **Protocols tab** — show the protocol templates (Weight Loss Protocol, Mold/MCAS Support, and as of v2.9 **Menopause Foundation — BHRT** by Dr. Rodriguez)
+> **Presenter line — say this before they ask:** "You'll notice favorites here that Dr. Chen didn't save. Favorites are **clinic-wide**, not per-doctor — Dr. Patel's TRT setups and Dr. Rodriguez's BHRT setups show up in Dr. Chen's list too, ordered by how often the clinic actually uses them. That's intentional. When a new provider joins a practice, they inherit the practice's prescribing patterns on day one instead of rebuilding them from scratch." (A prospect **will** ask why another doctor's favorite is on this screen. Answer it first.)
+
+14. Click **Protocols tab** — the tab header reads **Protocols (3)**: **Weight Loss Protocol**, **Mold/MCAS Support**, and **Menopause Foundation — BHRT** (added in v2.9, authored by Dr. Rodriguez)
 15. Click **Weight Loss Protocol** to expand — show the 3 medications with phase labels and sig text
 16. **Point out** the "Load 3 Medications into Session" button
 
 > "Protocol templates are a market-first feature. One click adds an entire multi-medication protocol to the session. The provider reviews and adjusts per patient before signing."
 
 > **Live pricing note (v2.8):** loaded protocol medications price from the live catalog — each line pre-fills its real wholesale cost with the clinic's default markup applied, not a placeholder. The **Mold/MCAS Support** protocol is the crisp example: it loads **Ketotifen Capsule 1mg** ($22 wholesale → $30.80 retail at the clinic's 40% default markup), **Low Dose Naltrexone** ($28 → $39.20), and **Thymosin Alpha-1** ($132 → $184.80). If you expand a protocol during the demo, the prices you see are the real ones the margin builder will show.
+
+### 3C-1 — The State-Licensure Guard (New in v2.10)
+
+> **Run this beat.** It is 90 seconds, it needs no setup, and it lands a compliance argument that no slide can. It is also the single most common objection-killer in this demo: every clinic owner in the room has either paid for this mistake or knows someone who has.
+
+16a. Open the patient selector again (**"+ New Prescription"**) and this time select **Jordan Rivera** — the **CA** state badge is visible on the card. Keep **Sarah Chen** as the provider and continue.
+
+16b. Land on the Quick Actions Panel and stay on the **Favorites** tab. Same 10 favorites as before — but **3 of the 10 are now grayed out and un-clickable**, each carrying a red **"not licensed in CA"** pill.
+
+16c. **Point at one of the grayed cards and read the line underneath it out loud.** It names the pharmacy explicitly — for example *"Portal Plus Pharmacy is not licensed in CA — choose a licensed pharmacy for this patient."* Read whatever the screen actually says; the three that gray out are the favorites pinned to a pharmacy with no active CA license.
+
+> "Watch what just happened. I didn't change a setting, I didn't run a report, I didn't ask anyone. I picked a patient who lives in California, and the platform immediately took three prescribing options off the table — and told me exactly why, by pharmacy name. The clinic **physically cannot** route this patient's prescription to a pharmacy that isn't licensed in her state. Not 'we'll warn you.' Not 'check the box to confirm.' The button is gone."
+
+16d. **Land the value.** "This is the failure mode that costs real clinics real money. A pharmacy fills across a state line it isn't licensed in, and now you're looking at a board complaint, a refund, an insurance problem, and a very bad week. The usual defense is a spreadsheet somebody updates when they remember to. Ours is a license table checked at the moment of prescribing, on every single line, for every single patient."
+
+16e. **Switch back to Alex Demo (TX)** and show the same Favorites tab with all 10 clickable. "Same clinic, same favorites, same provider. Texas patient — everything's open, because in Texas all five of our pharmacies are licensed. The guard isn't a blanket restriction; it's the actual license map, applied per patient."
+
+16f. **If they push on protocols:** expand **Menopause Foundation — BHRT** while Jordan Rivera is selected. The unlicensed line is flagged in the expanded list with **"not licensed in CA — will be skipped"** before you commit. Click **Load** and the app loads the licensed medications, advances to Review, and shows the amber notice naming what was skipped and why. "It doesn't refuse to help me. It does the part it's allowed to do, hands me the rest of the visit, and puts the compliance problem in writing."
+
+**Pharmacy license matrix (reference — keep this in your back pocket):**
+
+| Pharmacy | Tier | Licensed states |
+|----------|------|-----------------|
+| Strive | Tier 4 Fax | TX, CA, FL, AZ |
+| Quick Rx | Tier 1 API | TX, CA, CO |
+| Express Digital Rx | Tier 1 API | TX, NY, IL |
+| Portal Plus | Tier 2 Portal | TX, NY, WA, GA |
+| Hybrid Labs | Tier 3 Hybrid | TX, FL, CO, NM |
+
+> Read down the TX column: every pharmacy. That is why the scripted path uses a Texas patient. Read down CA: Strive and Quick Rx only — which is exactly why three favorites gray out for Jordan Rivera.
 
 ### 3D — Cascading Prescription Builder (New in Phase 17)
 
@@ -285,11 +350,11 @@ The expanded seed gives the presenter named characters to point at. Every row be
 37a. On the dashboard, both Alex Demo orders (Semaglutide + Testosterone) show **"Awaiting Payment."** Click either one to open the **order drawer**.
 37b. **Point out the "Combine into one payment link" picker** — it lists the sibling order (the other Awaiting-Payment Rx for the same patient + provider) with a selectable checkbox.
 37c. Select the sibling order, then click **"Combine and Copy Payment Link."**
-37d. **Point out** — the system generates **ONE bundled checkout link** covering both prescriptions — patient checkout shows **"Prescription Bundle · 2 prescriptions · $286.00"** (Semaglutide $190.00 + Testosterone Cypionate $96.00; the **$190.00** assumes the **2×** tap — it defaults to $133.00) — and copies it to your clipboard. This is the link you'll paste in Part 4.
+37d. **Watch the drawer flip in place — do not close it.** The moment Combine succeeds, the solo **"Copy Payment Link"** block disappears and is replaced, in the same open drawer, by the **"Part of a Payment Bundle"** panel showing the prescription count and bundle total (**"2 prescriptions · $286.00"**) with a **"Copy Bundle Payment Link"** button. The dashboard rows behind the drawer update immediately too. One bundled checkout link covering both prescriptions is already on your clipboard — Semaglutide $190.00 + Testosterone Cypionate $96.00; the **$190.00** assumes the **2×** tap, it defaults to $133.00. This is the link you'll paste in Part 4.
 
-> "One link, both prescriptions, one payment. The patient taps once and pays a single combined total instead of juggling two links. The per-order 'Copy Payment Link' button still exists for single-prescription orders — but when a patient has multiple prescriptions from one visit, Combine and Send is the default. This is the friction Phase C removed."
+> "One link, both prescriptions, one payment. The patient taps once and pays a single combined total instead of juggling two links. Notice the drawer rewrote itself the instant the bundle existed — there's no refresh, no reopen, no stale button sitting there offering to do something that's no longer valid. The per-order 'Copy Payment Link' button still exists for single-prescription orders — but when a patient has multiple prescriptions from one visit, Combine and Send is the default. This is the friction Phase C removed."
 
-37e. **Reopen the order drawer** for either bundled order — **point out the "Part of a Payment Bundle" panel** (prescription count + bundle total, e.g. "2 prescriptions · $286.00", with the note that the patient pays once for all bundled items) and the **"Copy Bundle Payment Link"** button.
+37e. **Bundle-link recovery (optional — narrate or demo).** The bundle panel is not a one-time state. Close the drawer, click **either** bundled order, and the same **"Part of a Payment Bundle"** panel and **"Copy Bundle Payment Link"** button are there — same link, same total.
 
 > "The bundle link isn't a one-shot copy. If the toast gets dismissed or the clipboard gets overwritten, open any bundled order's drawer and re-copy the same link — no re-bundling, no support ticket."
 
@@ -500,7 +565,8 @@ The expanded seed gives the presenter named characters to point at. Every row be
 ### Security & Compliance
 
 > "HIPAA compliance is enforced at the infrastructure level, not just application code:"
-- Row-Level Security on all 33 tables
+- Row-Level Security on all 47 tables
+- Per-state pharmacy licensure enforced at the point of prescribing — an unlicensed pharmacy cannot be selected, quick-loaded, or protocol-loaded for that patient (see Part 3C-1)
 - Zero PHI in Stripe (metadata contains order_id only)
 - Supabase Vault for all pharmacy credentials
 - 30-minute session timeout with warning modal
@@ -522,7 +588,7 @@ The expanded seed gives the presenter named characters to point at. Every row be
 |--------|-------|
 | Order states | 23-state machine with 47 valid transitions |
 | SLA types | 10 enforcement types with 3-tier escalation |
-| Database tables | 33 (PostgreSQL with full RLS) + 1 view |
+| Database tables | 47 (PostgreSQL with full RLS) + 6 views |
 | Cron jobs | 10 Vercel cron jobs |
 | Build phases completed | 19 phases, 87 work orders (all merged; WO-87 formulation support in prod) |
 | Phase C & roles | Multi-Rx payment groups (live), PHI redaction (Option B), provider clinic-view toggle (F-3), primary provider (F-5) |
@@ -536,6 +602,9 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 **Q: What about patient data privacy?**
 > "Zero PHI touches Stripe. The checkout page shows 'Prescription Service' — never the medication name. SMS messages contain only the patient's first name and a URL. Row-Level Security ensures clinics can never see each other's data."
+
+**Q: How do you stop a clinic from sending a prescription to a pharmacy that isn't licensed in the patient's state?**
+> "We don't warn them — we remove the option. Every pharmacy carries a state license table, and every prescribing surface checks it against the selected patient's shipping state: the pharmacy dropdown filters, favorites pinned to an unlicensed pharmacy gray out with the reason and the pharmacy name, and a protocol quick-load skips the unlicensed lines and tells the provider exactly which ones and why. There is no override checkbox. See it live in Part 3C-1."
 
 **Q: What's the revenue model?**
 > "Per-transaction platform fee. The spread between wholesale and retail is split: clinic keeps their margin, platform captures 15% of the spread. Stripe processing fees come out of the platform's portion."
