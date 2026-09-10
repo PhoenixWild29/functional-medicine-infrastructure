@@ -96,7 +96,34 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
-  // Verify Supabase session for protected routes
+  // ── Supabase session refresh ────────────────────────────────────────────
+  //
+  // Middleware is the ONLY place in this app that may rotate and persist the
+  // Supabase token pair: it is the only auth-aware context that can both read
+  // the incoming cookies and write Set-Cookie onto the outgoing response.
+  // Server Components read only (see src/lib/supabase/server.ts).
+  //
+  // 2026-09 prod-logout root cause — DO NOT reintroduce:
+  // the previous implementation rebuilt the response INSIDE the forEach:
+  //
+  //     cookiesToSet.forEach(({ name, value, options }) => {
+  //       request.cookies.set(name, value)
+  //       response = NextResponse.next({ request })   // <-- discards prior
+  //       response.cookies.set(name, value, options)  //     Set-Cookie headers
+  //     })
+  //
+  // Each iteration replaced `response` with a brand-new object, throwing away
+  // the Set-Cookie header written by the iteration before it. Only the LAST
+  // cookie of the batch ever reached the browser. Supabase stores the session
+  // as CHUNKED cookies (sb-<ref>-auth-token.0 and .1) because this app's JWT
+  // carries app_role/clinic_id in user_metadata, so a refresh emits two
+  // cookies. The browser therefore ended up with a fresh .1 chunk beside a
+  // stale .0 chunk — an unparseable pair — and the next request read no
+  // session at all and bounced to /login. Silent, mid-navigation, well inside
+  // the 1-hour access-token lifetime.
+  //
+  // The correct form is two phases: mutate the request cookies first, build
+  // the response ONCE, then write every cookie onto that single response.
   const supabase = createServerClient(
     process.env['NEXT_PUBLIC_SUPABASE_URL']!,
     process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY']!,
@@ -104,9 +131,15 @@ export async function middleware(request: NextRequest) {
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value, options }) => {
+          // Phase 1 — make the rotated tokens visible to downstream Server
+          // Components on THIS request (NextResponse.next({ request })
+          // forwards the mutated request headers).
+          cookiesToSet.forEach(({ name, value }) => {
             request.cookies.set(name, value)
-            response = NextResponse.next({ request })
+          })
+          // Phase 2 — one response, then every cookie onto it.
+          response = NextResponse.next({ request })
+          cookiesToSet.forEach(({ name, value, options }) => {
             response.cookies.set(name, value, options)
           })
         },
@@ -114,25 +147,44 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { session } } = await supabase.auth.getSession()
+  // getUser() revalidates the JWT against the Supabase auth server and
+  // performs the refresh when the access token has expired. getSession()
+  // only decodes the cookie and does not verify the signature, so the role
+  // claims below would be attacker-controllable if we trusted it here.
+  const { data: { user } } = await supabase.auth.getUser()
 
-  if (!session) {
-    const loginUrl = new URL('/login', request.url)
-    loginUrl.searchParams.set('redirectTo', pathname)
-    return applySecurityHeaders(NextResponse.redirect(loginUrl))
+  // Any early return MUST carry the cookies the refresh just wrote onto
+  // `response`. A bare NextResponse.redirect() is a fresh object with no
+  // Set-Cookie headers, so returning one silently discards the rotated pair
+  // and the browser keeps replaying a refresh token the server has already
+  // consumed. This applies on the failure branches too: when a refresh
+  // fails Supabase writes cookie REMOVALS, and those must reach the browser
+  // so the bad cookies are cleared instead of retried forever.
+  const redirectWithSessionCookies = (url: URL): NextResponse => {
+    const redirectResponse = NextResponse.redirect(url)
+    response.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie)
+    })
+    return redirectResponse
   }
 
-  const appRole = session.user.user_metadata['app_role'] as string | undefined
+  if (!user) {
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('redirectTo', pathname)
+    return applySecurityHeaders(redirectWithSessionCookies(loginUrl))
+  }
+
+  const appRole = user.user_metadata['app_role'] as string | undefined
 
   // Ops dashboard: ops_admin only
   if (pathname.startsWith('/ops') && appRole !== 'ops_admin') {
-    return applySecurityHeaders(NextResponse.redirect(new URL('/unauthorized', request.url)))
+    return applySecurityHeaders(redirectWithSessionCookies(new URL('/unauthorized', request.url)))
   }
 
   // Clinic app: clinic users only
   const clinicUserRoles = ['clinic_admin', 'provider', 'medical_assistant']
   if (!pathname.startsWith('/ops') && appRole && !clinicUserRoles.includes(appRole) && appRole !== 'ops_admin') {
-    return applySecurityHeaders(NextResponse.redirect(new URL('/unauthorized', request.url)))
+    return applySecurityHeaders(redirectWithSessionCookies(new URL('/unauthorized', request.url)))
   }
 
   // F-3 (audit role-audit-and-data-model.md): provider-only screens
@@ -151,7 +203,7 @@ export async function middleware(request: NextRequest) {
     (pathname === '/new-prescription/sign' || pathname.startsWith('/new-prescription/sign/'))
     && appRole !== 'provider'
   ) {
-    return applySecurityHeaders(NextResponse.redirect(new URL('/unauthorized', request.url)))
+    return applySecurityHeaders(redirectWithSessionCookies(new URL('/unauthorized', request.url)))
   }
 
   return applySecurityHeaders(response)

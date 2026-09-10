@@ -8,26 +8,30 @@ import { BfcacheGuard } from '@/components/bfcache-guard'
 
 // Clinic App: auth required, app_role must be clinic_user
 // Accessible to: clinic_admin, provider, medical_assistant
+//
+// Reads with getUser(), never getSession() — see the note in
+// (ops-dashboard)/layout.tsx. Token refresh and cookie persistence are
+// owned exclusively by src/middleware.ts.
 export default async function ClinicAppLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
   const supabase = await createServerClient()
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  if (!session) {
+  if (!user) {
     redirect('/login')
   }
 
-  const appRole = session.user.user_metadata['app_role'] as string | undefined
+  const appRole = user.user_metadata['app_role'] as string | undefined
   const clinicUserRoles = ['clinic_admin', 'provider', 'medical_assistant']
 
   if (!appRole || !clinicUserRoles.includes(appRole)) {
     redirect('/unauthorized')
   }
 
-  const userEmail = session.user.email ?? ''
+  const userEmail = user.email ?? ''
   const userRole  = appRole
 
   return (
