@@ -4,6 +4,13 @@
 // Catalog Manager — WO-37
 // ============================================================
 //
+// SCOPE: this component manages the LEGACY FLAT `catalog` table only — one
+// denormalized row per pharmacy medication, populated by the per-pharmacy
+// price-list CSV upload path. It is NOT the hierarchical product catalog that
+// the prescription builder cascades over; that one is summarized read-only by
+// <ProductCatalogSummary /> above this component (see ../page.tsx).
+// Keep the on-screen labels explicit about which catalog is being counted.
+//
 // REQ-CTM-001: CSV upload with validation (Papa Parse + react-dropzone)
 // REQ-CTM-002: Bulk insert via /api/ops/catalog/upload
 // REQ-CTM-003: Version history table with delta summaries
@@ -260,13 +267,21 @@ export function CatalogManager({ initialData }: Props) {
     <div className="space-y-4">
 
       {/* ── Header ── */}
-      <div className="flex items-center gap-4 flex-wrap">
-        <div className="text-base font-semibold text-foreground">Catalog Management</div>
-        {isFetching && <span className="text-[10px] text-muted-foreground">↻ refreshing</span>}
-        <div className="flex gap-3 text-xs text-muted-foreground">
-          <span>{data?.totalCount ?? items.length} items</span>
-          {versions.length > 0 && <span>{versions.length} versions</span>}
+      {/* Labels are deliberately explicit: this section counts the LEGACY flat
+          `catalog` table, not the hierarchical product catalog above. */}
+      <div className="space-y-1">
+        <div className="flex items-center gap-4 flex-wrap">
+          <h2 className="text-base font-semibold text-foreground">Legacy Pharmacy Price List (CSV upload)</h2>
+          {isFetching && <span className="text-[10px] text-muted-foreground">↻ refreshing</span>}
+          <div className="flex gap-3 text-xs text-muted-foreground">
+            <span>{data?.totalCount ?? items.length} price-list items</span>
+            {versions.length > 0 && <span>{versions.length} versions</span>}
+          </div>
         </div>
+        <p className="text-[11px] text-muted-foreground">
+          Flat per-pharmacy price-list import path — one row per pharmacy medication. Separate from the
+          hierarchical Product Catalog above, which is what the prescription builder uses.
+        </p>
       </div>
 
       {/* ── Error banners ── */}
@@ -285,7 +300,7 @@ export function CatalogManager({ initialData }: Props) {
 
       {/* ── Upload section ── */}
       <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-        <p className="text-sm font-medium text-foreground">Upload Catalog CSV — REQ-CTM-001</p>
+        <p className="text-sm font-medium text-foreground">Upload Pharmacy Price List CSV — REQ-CTM-001</p>
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <label className="flex items-center gap-1.5 text-muted-foreground">
             Pharmacy:
@@ -320,7 +335,7 @@ export function CatalogManager({ initialData }: Props) {
             <p className="text-sm text-primary">Drop the CSV here</p>
           ) : (
             <>
-              <p className="text-sm font-medium text-foreground">Drag & drop a CSV file, or click to select</p>
+              <p className="text-sm font-medium text-foreground">Drag &amp; drop a CSV file, or click to select</p>
               <p className="text-[11px] text-muted-foreground mt-1">Accepts .csv files only</p>
             </>
           )}
@@ -492,13 +507,13 @@ export function CatalogManager({ initialData }: Props) {
                 className="rounded border border-input bg-background px-2 py-1 text-xs w-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </label>
-            <span className="ml-auto text-muted-foreground">{items.length} items shown</span>
+            <span className="ml-auto text-muted-foreground">{items.length} price-list items shown</span>
           </div>
 
           {/* Table */}
           {items.length === 0 ? (
             <div className="flex items-center justify-center rounded-lg border border-dashed border-border bg-muted/20 py-12">
-              <p className="text-sm text-muted-foreground">No catalog items found</p>
+              <p className="text-sm text-muted-foreground">No price-list items found</p>
             </div>
           ) : (
             <div className="overflow-x-auto rounded-md border border-border">
