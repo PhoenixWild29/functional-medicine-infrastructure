@@ -71,6 +71,21 @@ The clinic_admin's `/dashboard` shows a "TOTAL ORDERS" KPI card and an "All N" t
 
 After EPCS-signing prescriptions in Part 3F, the user is redirected to `/dashboard?sent=N` (where N is the prescription count), NOT `/new-prescription`. The R7 walkthrough's agent reported the wrong code path. The correct redirect target is the dashboard with a `?sent=N` query string. If you see the dashboard after Confirm & Send, that's correct.
 
+### **DO NOT report:** "Page is stuck on a loading spinner" — unless you have verified BOTH conditions below
+
+A page that appears hung is a false positive far more often than it is a bug. Two independent causes produce a spinner that never seems to resolve:
+
+1. **Serverless cold start.** These routes run on Vercel Functions. The first request to a route after a deploy has been measured in production at **~37 seconds**; warm, the same routes return in **2–5 seconds**. A 20-second spinner on your first hit of `/ops/adapters` is a cold start, not a hang.
+2. **Background-tab `requestAnimationFrame` suppression.** Chrome does not fire `requestAnimationFrame` in a backgrounded tab. React uses it to reveal streamed content, so a page loading while its tab is hidden will sit on its spinner indefinitely and then paint instantly the moment the tab is fronted. The page was healthy the whole time.
+
+**Before you record any page as hung, you MUST:**
+
+- Evaluate `document.visibilityState` in the console and confirm it returns `'visible'`. If it returns `'hidden'`, front the tab, wait, and re-observe — do not file.
+- Wait **at least 45 seconds** from the start of navigation before concluding the page is stuck.
+- Re-navigate to the same route a second time. If the second (warm) load completes normally, the first was a cold start — narrate it as an observation, not a finding.
+
+Only file a hang if the tab is visible, 45+ seconds have elapsed, AND a warm re-navigation still fails to resolve.
+
 <!-- ROUND-N: Add additional "DO NOT report" entries here as future rounds
      surface new known non-bugs. Each entry should describe what the agent
      might see, why it's actually intentional, and the file:line of the
