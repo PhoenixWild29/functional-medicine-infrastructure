@@ -1,8 +1,10 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 2.10 | **Date:** September 9, 2026
+**Version:** 2.11 | **Date:** September 10, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
+
+> **What's new in v2.11 (2026-09-10):** **A "Before You Present" checklist now sits at the top of this document, and the Ops catalog screen no longer contradicts the product-count claim.** (a) New **Before You Present** section — five items to run in the five minutes before the audience joins: warm the routes (a cold serverless route measured **~37 seconds** on first hit after a deploy vs **2–5 seconds** warm), confirm all four logins, create any live prescription *during* the demo because payment links expire, don't deploy on demo day, and keep the demo tab in the foreground (a backgrounded Chrome tab does not fire `requestAnimationFrame`, which stalls React's reveal of streamed content and makes a healthy page look hung). (b) **Part 5E rewritten** — `/ops/catalog` now leads with a read-only **Product Catalog** block showing live ingredient / salt-form / formulation / pharmacy-offering counts from the hierarchical catalog the prescription builder actually uses, and the CSV uploader below it is retitled **"Legacy Pharmacy Price List (CSV upload)"** with its own item count. Previously the page read "Catalog Management — 6 items," where the 6 were rows in the legacy flat price-list table — a prospect clicking Ops → Catalog after hearing "167 products" saw an apparent contradiction.
 
 > **What's new in v2.10 (2026-09-09):** **The state-licensure guard is now a scripted feature beat, and the partial-load behavior it produces has been corrected in the product.** (a) New **Part 3C-1** turns the per-state pharmacy licensure check into a headline selling point, run with **Jordan Rivera (CA)** against the Favorites tab, with the full pharmacy license matrix for reference. (b) New **safe-path warning box** at the top of Part 3: the scripted path uses **Alex Demo (TX)** because TX is the only state where all five pharmacies are licensed — improvising onto another patient can partially load or fully block a protocol, and the box names the specific traps. (c) **Partial protocol loads now advance.** Previously a protocol containing an item pinned to an unlicensed pharmacy loaded the licensed lines and then stranded the user on the quick-actions panel behind a red error. It now navigates to Review and carries a non-blocking **amber** notice naming each skipped medication and why; re-loading the same protocol no longer duplicates lines. (d) **Favorites and Protocols counts refreshed** — the Favorites tab reads **Favorites (10)** because `/api/favorites` is clinic-wide, and Protocols reads **Protocols (3)**. (e) **Post-#119 bundle wording** — the order drawer flips to the bundle panel in place the moment Combine succeeds; steps 37d/37e no longer tell the presenter to reopen the drawer. (f) **Table count corrected** from 33 to the verified **47 tables + 6 views** (PR #118 / GAP-3 added `protocol_template_versions`, `protocol_instances`, `order_clarifications` and three gate views).
 
@@ -17,6 +19,44 @@
 > **What's new in v2.5 (2026-04-27):** Two minor doc-only updates to match the live app's current state. (a) The Ops detail drawer's SLA tab is rendered with the proper acronym capitalization ("SLA", not "Sla"); the script in Part 5A now matches. (b) The Ops pipeline now seeds demo orders across all four routing tiers (T1 API / T2 Portal / T3 Hybrid / T4 Fax), so the Tier-icon narration in Part 5A reflects the cross-tier diversity the presenter can actually click into. No flow changes; the live-demo script principle from v2.4 still holds.
 
 > **What's new in v2.4 (2026-04-23):** This walkthrough is now a **live-demo script** — the presenter uses the app the way a real user would, and the investor sees whatever the app genuinely produces as a result of those actions. Prior versions asked the presenter to pre-stage specific visual states via a backstage `/ops/demo-tools` page right before the demo started; that pre-staging is gone. The demo no longer depends on clicking refresh buttons, setting timestamps, or forcing any screen into a specific colour state. Where earlier revisions predicted exact card counts, exact colours, or exact timestamp values on the Ops screens, those predictions have been replaced with descriptions of what each screen *is* — the specific state at demo time reflects the real activity the presenter creates during the walkthrough.
+
+---
+
+## Before You Present
+
+> **Run this in the five minutes before the audience joins. Every time.** It is short, it is boring, and it is the difference between a demo that feels instant and a demo that opens with a 37-second spinner.
+
+### 1. Warm the routes (5 minutes before, non-negotiable)
+
+The app runs on Vercel serverless functions. A route that hasn't been hit recently — or that hasn't been hit *at all* since the last deploy — pays a **cold start** on its first request. Measured in production on 2026-09-09/10: the first request to an ops route after a deploy took **~37 seconds**. Once warm, the same routes returned in **2–5 seconds** (`/ops/pipeline` fastest, `/ops/adapters` 4.7s, `/ops/fax` 3.7s, `/ops/catalog` 2.0s).
+
+Visit each of these once, in a tab you then leave open:
+
+- [ ] The clinic dashboard (`/dashboard`)
+- [ ] `/new-prescription`
+- [ ] `/ops/pipeline`
+- [ ] `/ops/sla`
+- [ ] `/ops/adapters`
+- [ ] `/ops/fax`
+- [ ] `/ops/catalog`
+
+**If a page does lag mid-demo, say something true and move on:** *"That's a serverless cold start — the function hadn't been called yet, so the platform is spinning one up. It's a first-hit cost, not a per-request cost."* Do not freeze, and do not apologize for it as though it were a bug. It isn't one.
+
+### 2. Confirm all four logins work
+
+Before anyone joins, log in and out once as each of the four roles in the **POC Test Accounts** table below (Ops Admin, Clinic Admin, Provider, Medical Assistant). Use the credentials exactly as listed in that table — do not invent new ones. This doubles as route warming for the clinic app.
+
+### 3. Payment links expire — create the live prescription *during* the demo
+
+Patient payment links are valid for 72 hours, but demo state is refreshed by cron and a link minted hours early can be stale by the time you get to it. **Create the live prescription in Part 3 while the audience is watching**, then copy its link in Part 3F/3G. Do not pre-create it the night before and expect the "Copy Payment Link" beat to work.
+
+### 4. Do not deploy on demo day
+
+A deploy resets **every** route to cold and re-triggers the 30-second-plus first hit — including on routes you warmed ten minutes earlier. Freeze merges to `main` until the demo is over.
+
+### 5. Keep the demo tab in the foreground
+
+A backgrounded Chrome tab does not fire `requestAnimationFrame`. React uses it to reveal streamed content, so a page loading in a background tab can sit on its loading spinner indefinitely and then paint instantly the moment you switch back to it — the page was healthy the whole time. Keep the tab you are demoing in the foreground, and do not "pre-load the next screen in a background tab" while you talk. (This cost a full QA round to re-diagnose. One line here so nobody does it twice.)
 
 ---
 
@@ -537,13 +577,13 @@ The expanded seed gives the presenter named characters to point at. Every row be
 ### 5E — Catalog Manager
 
 16. Click **"Catalog"** in the top nav
-17. **Point out:**
-    - Medication table with columns (Medication, Form, Dose, Wholesale, Retail, Status, Pharmacy, PA)
-    - CSV upload drag-and-drop area
-    - Manual entry form
-    - Tabs: Catalog, Versions, Normalized, API Sync
+17. **Point out — two catalogs, clearly separated on one screen (new in v2.11):**
+    - At the top, a read-only **Product Catalog** block with live counts: **Ingredients**, **Salt Forms**, **Formulations**, and **Pharmacy Offerings**. These are the hierarchical catalog the prescription builder cascaded through in Part 3D — the same numbers the builder is working from. (Counts are live, so read whatever the screen says.)
+    - Below it, **"Legacy Pharmacy Price List (CSV upload)"** with its own **"N price-list items"** count, the CSV drag-and-drop area, the Manual Entry form, and the tabs: Catalog, Versions, Normalized, API Sync.
 
-> "The medication catalog is the pricing foundation. Catalogs come in via CSV upload, API sync, or manual entry. Every change is versioned. Price changes over 10% get flagged for review. And the normalized view lets you compare the same medication across pharmacies."
+> "Two things live on this screen and they do different jobs. The top block is the product catalog — ingredients, salt forms, formulations, and which pharmacies offer each one at what price. That's the tree the prescription builder walked down when I picked Semaglutide a few minutes ago. The bottom half is the pharmacy price-list importer: a pharmacy sends us a flat CSV of what they stock and what it costs, we version it, and we flag any price that moves more than 10%. Every change is versioned, and the normalized view lets you compare the same medication across pharmacies."
+
+> **Narrator cue:** if a prospect asks why the price-list item count is small, the honest answer is the right one: "That's the raw CSV import table, not the product catalog — it only has the rows a pharmacy has actually sent us a price sheet for. The product catalog is the block above it."
 
 ---
 
