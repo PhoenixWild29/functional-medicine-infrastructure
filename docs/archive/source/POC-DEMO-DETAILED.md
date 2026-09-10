@@ -1,20 +1,32 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 2.11 | **Date:** September 10, 2026
+**Version:** 2.12 | **Date:** September 10, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
+
+> **What's new in v2.12 (2026-09-10):** **Production runs on live Stripe keys, so the demo no longer enters a card; Part 3 is now run as the medical assistant; three missing beats added; and every number in the doc was re-verified against prod.**
+>
+> **(a) SAFETY — no card is ever entered.** Prod is on **live** Stripe keys. The old Pre-Demo item 3 told the presenter to type `4242 4242 4242 4242` into the real checkout page in Part 4B — on live keys that hard-declines on stage, and substituting a real card would put through a **real ~$286.00 charge with a real Connect payout split**. Every instruction to enter a card number has been removed from this document and from `POC-DEMO-QUICKSTART.md`. Pre-Demo item 3 is now a warning box. **Part 4B is "render and narrate"** with a scripted line that makes stopping look deliberate. **Part 4C** (`/checkout/success`) is unreachable without paying and is now marked **describe-only, not shown live**.
+>
+> **(b) Part 3 is performed as the medical assistant.** Previous versions narrated "the MA" while the presenter was signed in as `admin@sunrise-clinic.com` (clinic_admin). The prescribing flow now runs signed in as **`ma@sunrise-clinic.com`**, which is both honest and better theatre: the MA reaches Review and there is **no Sign & Send button** — only **"Save as Draft — Provider Signs Later"** — so the draft handoff to Dr. Chen is a genuine role switch rather than the same person logging out and back in. Clinic admin is retained for the work that is actually admin work (the new `/settings` stop).
+>
+> **(c) Three new beats.** **3G — Role Boundaries in Practice**: a clinic user navigating to `/ops/pipeline` lands on `/unauthorized`, pairing with the existing ops→clinic denial in Part 2; and **the MA cannot reach the signing route at all** — `/new-prescription/sign/<order-id>` bounces to `/unauthorized` in about a second, enforced in middleware rather than hidden in the UI. **3K — Clinic Settings**: a 60-second stop at `/settings`, which no prior version ever visited despite citing the clinic's default markup five times.
+>
+> **(d) Accuracy pass.** Catalog counts corrected to **77 Ingredients · 57 Salt Forms · 167 Formulations · 1,336 Pharmacy Offerings** (plus 6 legacy price-list items), replacing "166 formulations across 79 ingredients". DEMO-1012 (Ruby Sandoval, Blue Cedar) is **PAYMENT_EXPIRED**, not Awaiting Payment. Verified dashboard baseline added (**11 orders · $819 revenue · Pending Payment "—" · 4 completed**; tabs **All 11 / Processing 4 / Shipped 6**), with an explicit note that the **Drafts tab does not exist until a draft is saved**. Ops pipeline reads **16 of 16 orders**. Weight Loss Protocol totals **$270.20** for Alex Demo (TX). **Part 5B rewritten**: the SLA page shows **"0 SLA deadlines — All SLAs are on track or resolved"** and has no breach cards, countdown timers, escalation-tier indicators, or Acknowledge button; the empty state is now the point. Part 5A's "overdue orders show in red" claim softened to match a queue with no overdue rows.
+>
+> **(e) Structure.** Three consecutive sections all headed `### 3F` are renumbered **3F / 3H / 3I**; Part 3 and Part 5 step numbers are renumbered with no skips or reuse; a "confirm the session banner" checkpoint closes the Jordan-Rivera/Alex-Demo ambiguity after Part 3C-1; and the undescribed post-send "progress screen" instruction is gone.
 
 > **What's new in v2.11 (2026-09-10):** **A "Before You Present" checklist now sits at the top of this document, and the Ops catalog screen no longer contradicts the product-count claim.** (a) New **Before You Present** section — five items to run in the five minutes before the audience joins: warm the routes (a cold serverless route measured **~37 seconds** on first hit after a deploy vs **2–5 seconds** warm), confirm all four logins, create any live prescription *during* the demo because payment links expire, don't deploy on demo day, and keep the demo tab in the foreground (a backgrounded Chrome tab does not fire `requestAnimationFrame`, which stalls React's reveal of streamed content and makes a healthy page look hung). (b) **Part 5E rewritten** — `/ops/catalog` now leads with a read-only **Product Catalog** block showing live ingredient / salt-form / formulation / pharmacy-offering counts from the hierarchical catalog the prescription builder actually uses, and the CSV uploader below it is retitled **"Legacy Pharmacy Price List (CSV upload)"** with its own item count. Previously the page read "Catalog Management — 6 items," where the 6 were rows in the legacy flat price-list table — a prospect clicking Ops → Catalog after hearing "167 products" saw an apparent contradiction.
 
 > **What's new in v2.10 (2026-09-09):** **The state-licensure guard is now a scripted feature beat, and the partial-load behavior it produces has been corrected in the product.** (a) New **Part 3C-1** turns the per-state pharmacy licensure check into a headline selling point, run with **Jordan Rivera (CA)** against the Favorites tab, with the full pharmacy license matrix for reference. (b) New **safe-path warning box** at the top of Part 3: the scripted path uses **Alex Demo (TX)** because TX is the only state where all five pharmacies are licensed — improvising onto another patient can partially load or fully block a protocol, and the box names the specific traps. (c) **Partial protocol loads now advance.** Previously a protocol containing an item pinned to an unlicensed pharmacy loaded the licensed lines and then stranded the user on the quick-actions panel behind a red error. It now navigates to Review and carries a non-blocking **amber** notice naming each skipped medication and why; re-loading the same protocol no longer duplicates lines. (d) **Favorites and Protocols counts refreshed** — the Favorites tab reads **Favorites (10)** because `/api/favorites` is clinic-wide, and Protocols reads **Protocols (3)**. (e) **Post-#119 bundle wording** — the order drawer flips to the bundle panel in place the moment Combine succeeds; steps 37d/37e no longer tell the presenter to reopen the drawer. (f) **Table count corrected** from 33 to the verified **47 tables + 6 views** (PR #118 / GAP-3 added `protocol_template_versions`, `protocol_instances`, `order_clarifications` and three gate views).
 
-> **What's new in v2.9 (2026-08-15):** **Demo data expansion: multi-provider, multi-state patients, lifecycle orders, second clinic** (`scripts/demo-expansion-seed.sql`, run against prod). Sunrise now has 4 providers (Dr. Chen remains the only login/signer; Dr. Marcus Patel, Dr. Elena Rodriguez, and Jamie Fletcher NP add roster realism and make the F-3 clinic-view toggle + F-5 primary-provider features demonstrable), plus a second clinic — **Blue Cedar Integrative Health** (Dr. Naomi Osei, patient Ruby Sandoval, NM) — for the ops multi-tenant view. 8 new multi-state Sunrise patients (CA/NY/FL/WA/CO/AZ/IL/GA), 17 pharmacy state licenses (every patient state covered; CA has exactly 2 licensed pharmacies for the state-filter beat), and 12 lifecycle orders `DEMO-1001`..`DEMO-1012` across the pipeline (delivered/shipped/processing/failed/awaiting payment) on new-catalog medications, plus 6 provider favorites and a new **"Menopause Foundation — BHRT"** protocol by Dr. Rodriguez. See the new **Demo Cast & Story Beats** subsection below the seed-data table, and the three new narration beats it introduces. Part 3B updated: the provider is now a real selection (4 providers), not auto-selected.
+> **What's new in v2.9 (2026-08-15):** **Demo data expansion: multi-provider, multi-state patients, lifecycle orders, second clinic** (`scripts/demo-expansion-seed.sql`, run against prod). Sunrise now has 4 providers (Dr. Chen remains the only login/signer; Dr. Marcus Patel, Dr. Elena Rodriguez, and Jamie Fletcher NP add roster realism and make the F-3 clinic-view toggle + F-5 primary-provider features demonstrable), plus a second clinic — **Blue Cedar Integrative Health** (Dr. Naomi Osei, patient Ruby Sandoval, NM) — for the ops multi-tenant view. 8 new multi-state Sunrise patients (CA/NY/FL/WA/CO/AZ/IL/GA), 17 pharmacy state licenses (every patient state covered; CA has exactly 2 licensed pharmacies for the state-filter beat), and 12 lifecycle orders `DEMO-1001`..`DEMO-1012` across the pipeline (delivered/shipped/processing/failed/payment expired) on new-catalog medications, plus 6 provider favorites and a new **"Menopause Foundation — BHRT"** protocol by Dr. Rodriguez. See the new **Demo Cast & Story Beats** subsection below the seed-data table, and the three new narration beats it introduces. Part 3B updated: the provider is now a real selection (4 providers), not auto-selected.
 
-> **What's new in v2.8 (2026-08-15):** Four updates reflecting the post-catalog-reseed fixes verified live in the R10 walkthrough (PRs #109/#110/#111). (a) **Protocol templates now price live** — loading a protocol pulls each medication's real wholesale price and applies the clinic's default markup, and the Mold/MCAS Support protocol now includes **Ketotifen Capsule 1mg** (see the live-pricing note in Part 3C). (b) **Bundle-link recovery** — after Combine and Send, the order drawer of any bundled order shows a **"Part of a Payment Bundle"** panel with a **Copy Bundle Payment Link** button, so the link is recoverable at any time rather than only from the one-time toast (new step 37e). (c) **Anti-double-pay messaging** — a patient opening an old solo payment link for an order that has since been bundled sees a specific "part of a combined payment bundle" message instead of a payable checkout (new step 37f). (d) **Review & Send affordance** — the send button shows the hint "Sign in the signature box above to enable sending" until the provider draws a signature (step 35).
+> **What's new in v2.8 (2026-08-15):** Four updates reflecting the post-catalog-reseed fixes verified live in the R10 walkthrough (PRs #109/#110/#111). (a) **Protocol templates now price live** — loading a protocol pulls each medication's real wholesale price and applies the clinic's default markup, and the Mold/MCAS Support protocol now includes **Ketotifen Capsule 1mg** (see the live-pricing note in Part 3C). (b) **Bundle-link recovery** — after Combine and Send, the order drawer of any bundled order shows a **"Part of a Payment Bundle"** panel with a **Copy Bundle Payment Link** button, so the link is recoverable at any time rather than only from the one-time toast. (c) **Anti-double-pay messaging** — a patient opening an old solo payment link for an order that has since been bundled sees a specific "part of a combined payment bundle" message instead of a payable checkout. (d) **Review & Send affordance** — the send button shows the hint "Sign in the signature box above to enable sending" until the provider draws a signature.
 
 > **What's new in v2.7 (2026-07-07):** Corrected retail-default vs 2× note and Semaglutide formulation count per live R9 walkthrough.
 
-> **What's new in v2.6 (2026-07-07):** Three substantive updates reflecting shipped changes. (a) **166-product catalog** — the POC seed now carries 166 compounded formulations across 79 ingredients and 13 therapeutic categories (replacing the prior five-medication seed), so the cascading builder and search steps name specific formulation cards. (b) **Phase C "Combine and Send"** — sibling prescriptions for the same patient + provider can be merged into a single bundled patient payment link (new sub-part in Part 3F), and the patient checkout renders them as one "Prescription Bundle · 2 prescriptions" instead of two separate links. (c) **Recomputed margin example** — the Semaglutide walkthrough now prices from a $95 wholesale ($95 → 2× → $190 retail; $14.25 platform fee; $80.75 clinic net margin), replacing the prior $150→$300 example.
+> **What's new in v2.6 (2026-07-07):** Three substantive updates reflecting shipped changes. (a) **Full hierarchical catalog** — the POC seed replaced the prior five-medication seed with the full compounding catalog, so the cascading builder and search steps name specific formulation cards. (The counts quoted in this changelog originally read "166 formulations across 79 ingredients"; they were corrected in v2.12 to the verified **77 Ingredients · 57 Salt Forms · 167 Formulations · 1,336 Pharmacy Offerings**.) (b) **Phase C "Combine and Send"** — sibling prescriptions for the same patient + provider can be merged into a single bundled patient payment link, and the patient checkout renders them as one "Prescription Bundle · 2 prescriptions" instead of two separate links. (c) **Recomputed margin example** — the Semaglutide walkthrough now prices from a $95 wholesale ($95 → 2× → $190 retail; $14.25 platform fee; $80.75 clinic net margin), replacing the prior $150→$300 example.
 
 > **What's new in v2.5 (2026-04-27):** Two minor doc-only updates to match the live app's current state. (a) The Ops detail drawer's SLA tab is rendered with the proper acronym capitalization ("SLA", not "Sla"); the script in Part 5A now matches. (b) The Ops pipeline now seeds demo orders across all four routing tiers (T1 API / T2 Portal / T3 Hybrid / T4 Fax), so the Tier-icon narration in Part 5A reflects the cross-tier diversity the presenter can actually click into. No flow changes; the live-demo script principle from v2.4 still holds.
 
@@ -34,6 +46,7 @@ Visit each of these once, in a tab you then leave open:
 
 - [ ] The clinic dashboard (`/dashboard`)
 - [ ] `/new-prescription`
+- [ ] `/settings`
 - [ ] `/ops/pipeline`
 - [ ] `/ops/sla`
 - [ ] `/ops/adapters`
@@ -46,9 +59,11 @@ Visit each of these once, in a tab you then leave open:
 
 Before anyone joins, log in and out once as each of the four roles in the **POC Test Accounts** table below (Ops Admin, Clinic Admin, Provider, Medical Assistant). Use the credentials exactly as listed in that table — do not invent new ones. This doubles as route warming for the clinic app.
 
+> **v2.12 note:** the medical assistant login is now load-bearing, not a spare. Part 3 is run as `ma@sunrise-clinic.com`. Confirm that password works before you start.
+
 ### 3. Payment links expire — create the live prescription *during* the demo
 
-Patient payment links are valid for 72 hours, but demo state is refreshed by cron and a link minted hours early can be stale by the time you get to it. **Create the live prescription in Part 3 while the audience is watching**, then copy its link in Part 3F/3G. Do not pre-create it the night before and expect the "Copy Payment Link" beat to work.
+Patient payment links are valid for 72 hours, but demo state is refreshed by cron and a link minted hours early can be stale by the time you get to it. **Create the live prescription in Part 3 while the audience is watching**, then copy its link in Part 3I/3J. Do not pre-create it the night before and expect the "Copy Payment Link" beat to work.
 
 ### 4. Do not deploy on demo day
 
@@ -64,11 +79,22 @@ A backgrounded Chrome tab does not fire `requestAnimationFrame`. React uses it t
 
 Three one-time items before demo day — no backstage pages, no state-staging, nothing to click "10 minutes before the demo."
 
-1. **Authenticator app on your phone.** The EPCS-controlled-substance signing step in Part 3F uses standard TOTP two-factor authentication per DEA 21 CFR 1311. The demo provider (Dr. Chen) has a TOTP secret already configured server-side. You need the same secret loaded into a TOTP app on your phone so you can enter the rolling 6-digit code during the signing step. Any TOTP app works (Google Authenticator, 1Password, Authy, Bitwarden). See the **Authenticator Setup** subsection below for the exact secret values.
+1. **Authenticator app on your phone.** The EPCS-controlled-substance signing step in Part 3H uses standard TOTP two-factor authentication per DEA 21 CFR 1311. The demo provider (Dr. Chen) has a TOTP secret already configured server-side. You need the same secret loaded into a TOTP app on your phone so you can enter the rolling 6-digit code during the signing step. Any TOTP app works (Google Authenticator, 1Password, Authy, Bitwarden). See the **Authenticator Setup** subsection below for the exact secret values.
 2. **Open browser tabs.** Prepare 3 tabs so you can switch roles quickly during the demo — one for the clinic app, one for the ops dashboard, one for the patient checkout link.
-3. **Stripe test card ready.** `4242 4242 4242 4242` | Exp: `12/28` | CVC: `123` | ZIP: `78701`. You'll type this into the real checkout page in Part 4B.
+3. **No payment card. Not a test card, not a real card. Read the box below.**
 
-**Optional:** a phone in your other hand to show the checkout page on a real mobile browser.
+> ## 🛑 DO NOT ENTER A CARD NUMBER. EVER. THIS DEMO IS ON LIVE STRIPE KEYS.
+>
+> **Production runs on live Stripe keys.** There is no test mode on this deployment.
+>
+> - **A Stripe test card (`4242 …`) will hard-decline on stage.** Live keys reject test PANs outright. Earlier versions of this document told you to type one in. That instruction was wrong and has been removed everywhere it appeared.
+> - **A real card will actually charge.** Typing a personal or corporate card into the Part 4 checkout puts through a **real ~$286.00 payment**, against a **real Stripe Connect payout split** to the clinic's connected account. That is a real refund, a real reversal, and a real conversation you do not want to have after a sales call.
+>
+> **The rule for this demo, without exception: we render the checkout page, we narrate it, and we stop.** No card number is typed. No Pay button is clicked. There is nothing to "just try quickly."
+>
+> This is not a limitation to apologize for — Part 4B below gives you the line to say, and stopping deliberately reads as more professional than paying, not less. The checkout page proves everything worth proving (branding, PHI safety, bundling, trust marks) **before** any button is pressed.
+>
+> **Optional:** a phone in your other hand to show the checkout page rendering on a real mobile browser. Same rule applies there — render only.
 
 ### Authenticator Setup (one-time, before demo day)
 
@@ -90,12 +116,14 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 ### POC Test Accounts
 
-| Role | Email | Password | Redirects To |
-|------|-------|----------|-------------|
-| Ops Admin | `ops@compoundiq-poc.com` | `POCAdmin2026!` | `/ops/pipeline` |
-| Clinic Admin | `admin@sunrise-clinic.com` | `POCClinic2026!` | `/dashboard` |
-| Provider | `dr.chen@sunrise-clinic.com` | `POCProvider2026!` | `/dashboard` |
-| Medical Assistant | `ma@sunrise-clinic.com` | `POCMA2026!` | `/dashboard` |
+| Role | Email | Password | Redirects To | Used in |
+|------|-------|----------|-------------|---------|
+| Ops Admin | `ops@compoundiq-poc.com` | `POCAdmin2026!` | `/ops/pipeline` | Part 2, Part 5 |
+| Clinic Admin | `admin@sunrise-clinic.com` | `POCClinic2026!` | `/dashboard` | Part 2, Part 3K (Settings) |
+| Provider | `dr.chen@sunrise-clinic.com` | `POCProvider2026!` | `/dashboard` | Part 3H (signs the drafts) |
+| Medical Assistant | `ma@sunrise-clinic.com` | `POCMA2026!` | `/dashboard` | **Part 3A–3G (the whole prescribing flow)** |
+
+> **v2.12 — who you are actually signed in as matters.** Prior versions narrated "the MA does this" while the presenter was signed in as clinic_admin. The whole compliance story in Part 3G depends on genuinely being the medical assistant, so the flow now uses the MA login. Clinic admin still has a job — the `/settings` stop in Part 3K, which is real admin work.
 
 ### POC Seed Data (reference — what the app is pre-configured with)
 
@@ -105,8 +133,11 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 | Providers | 5 across 2 clinics — Sarah Chen (NPI 1234567890, TX — the only auth login + signer), Marcus Patel, Elena Rodriguez, Jamie Fletcher NP (all Sunrise), Naomi Osei (Blue Cedar) |
 | Patients | 10 — Alex Demo (TX, DOB 1985-06-15, SMS opt-in — the live-checkout patient) + 8 multi-state Sunrise patients (CA/NY/FL/WA/CO/AZ/IL/GA) + Ruby Sandoval (NM, Blue Cedar) |
 | Pharmacies | 5 configured across all 4 tiers — Strive (Tier 4 Fax), Quick Rx + Express Digital Rx (Tier 1 API), Portal Plus (Tier 2 Portal), Hybrid Labs (Tier 3 Hybrid) — with 17 state licenses covering every patient state (CA deliberately has exactly 2 licensed pharmacies; TX has all 5) |
-| Medications | 166 compounded formulations across 79 ingredients and 13 therapeutic categories — Women's Health/BHRT, Men's Health, Thyroid, Peptides, Weight Management (GLP-1), Sexual Health, Dermatology, Hair Restoration, LDN, IV Therapy, Longevity, Adrenal, Mental Health. |
-| Orders | 12 lifecycle demo orders (`DEMO-1001`..`DEMO-1012`) spread over ~3 weeks — 4 Delivered, 2 Shipped (with tracking numbers), 2 Pharmacy Processing, 2 Paid Processing, 1 Submission Failed (the ops triage beat), 1 Awaiting Payment (Blue Cedar) — plus whatever live orders the presenter creates during walkthroughs |
+| Product catalog | **77 Ingredients · 57 Salt Forms · 167 Formulations · 1,336 Pharmacy Offerings** across 13 therapeutic categories — Women's Health/BHRT, Men's Health, Thyroid, Peptides, Weight Management (GLP-1), Sexual Health, Dermatology, Hair Restoration, LDN, IV Therapy, Longevity, Adrenal, Mental Health. These are the counts the Ops → Catalog page reads back in Part 5E. |
+| Legacy price list | **6 price-list items** — a separate, flat CSV-import table, *not* the product catalog above. See the Part 5E narrator cue; this is the number that used to look like a contradiction. |
+| Orders | 12 lifecycle demo orders (`DEMO-1001`..`DEMO-1012`) spread over ~3 weeks — 4 Delivered, 2 Shipped (with tracking numbers), 2 Pharmacy Processing, 2 Paid Processing, 1 Submission Failed (the ops triage beat), **1 Payment Expired — `DEMO-1012`, Ruby Sandoval, Blue Cedar** — plus whatever live orders the presenter creates during walkthroughs |
+
+> **Corrected in v2.12 — DEMO-1012 is `PAYMENT_EXPIRED`, not "Awaiting Payment."** Verified in prod 2026-09-10. The cross-clinic isolation beat is unaffected and arguably lands harder: an expired payment link is a real operations story, not a tidy one. Narrate it as *"that's a Blue Cedar order whose 72-hour payment window lapsed — their problem to chase, and it is completely invisible to Sunrise in the clinic app while ops can see it clearly."*
 
 ### Demo Cast & Story Beats (v2.9)
 
@@ -124,8 +155,8 @@ The expanded seed gives the presenter named characters to point at. Every row be
 | Ava Martinez | AZ | Dr. Rodriguez | Biest 80/20 cream compounding at Strive |
 | Noah Kim | IL | Dr. Patel | Tadalafil delivered + the one **Submission Failed** order (ops triage beat) |
 | Grace O'Connor | GA | Dr. Rodriguez | LDN 4.5 maintenance, shipped |
-| Ruby Sandoval | NM | Dr. Osei (Blue Cedar) | Second-clinic patient — her Awaiting Payment order proves cross-clinic isolation in the clinic app + cross-clinic visibility in ops |
-| Alex Demo | TX | Dr. Chen | The original E2E checkout patient — unchanged; still the live-payment walkthrough subject |
+| Ruby Sandoval | NM | Dr. Osei (Blue Cedar) | Second-clinic patient — her **Payment Expired** order (`DEMO-1012`) proves cross-clinic isolation in the clinic app + cross-clinic visibility in ops |
+| Alex Demo | TX | Dr. Chen | The original E2E checkout patient — unchanged; still the live-payment-page walkthrough subject |
 
 **Providers**
 
@@ -137,7 +168,7 @@ The expanded seed gives the presenter named characters to point at. Every row be
 | Jamie Fletcher NP | Sunrise | Mid-level realism — no seeded orders, showing a roster that isn't 1:1 with order volume |
 | Dr. Naomi Osei | Blue Cedar | Second tenant — powers the ops multi-tenant view; Sunrise clinic users never see her data |
 
-**Three new narration beats**
+**Three narration beats**
 
 1. **Patient-state pharmacy filtering.** Start a new prescription, pick **Jordan Rivera (CA)**, and narrate the pharmacy list: only the two CA-licensed pharmacies (Strive + Quick Rx) appear. Switch to a TX patient (Alex Demo) and all five come back. "The system will never let a clinic send a prescription to a pharmacy that isn't licensed in the patient's state — that filter is the license table, live."
 2. **The provider toggle is now meaningful.** Log in as Dr. Chen and flip the F-3 **"My patients / All clinic orders"** toggle — with three prescribing providers at Sunrise the two views now genuinely differ (Chen's own patients vs. Patel's TRT and Rodriguez's BHRT orders appearing in the clinic-wide view).
@@ -183,21 +214,39 @@ The expanded seed gives the presenter named characters to point at. Every row be
 > "Clinic users — admins, providers, medical assistants — all land on the clinic dashboard. They can only see their own clinic's data. Row-Level Security is enforced at the PostgreSQL level, not just application code."
 
 5. Sign out
-6. Log in as **Ops Admin**: `ops@compoundiq-poc.com` / `POCAdmin2026!`
-7. **Point out:** Redirected to `/ops/pipeline` — the Ops Dashboard (dark mode)
+6. Log in as **Medical Assistant**: `ma@sunrise-clinic.com` / `POCMA2026!`
+7. **Point out:** the MA lands on the same `/dashboard`, with the same KPI cards and the same order table
+
+> "Same landing page, same data, different authority. The medical assistant sees everything the clinic admin sees — the difference shows up the moment someone tries to *do* something, not when they log in. We'll come back to that in a few minutes, and it's the most important thing in this demo."
+
+**This is the account we run the entire prescribing workflow on in Part 3.** Do not switch back to clinic admin to "make it easier" — the whole point of Part 3G is that we are genuinely the MA.
+
+8. Sign out
+9. Log in as **Ops Admin**: `ops@compoundiq-poc.com` / `POCAdmin2026!`
+10. **Point out:** Redirected to `/ops/pipeline` — the Ops Dashboard (dark mode)
 
 > "Ops admins see a completely different application — the dark-mode operations dashboard. They have cross-clinic visibility for monitoring the entire order pipeline."
 
-8. **RBAC Demo:** While logged in as ops, navigate to `/dashboard`
-9. **Point out:** "Access Denied" page — ops cannot see the clinic app
+11. **RBAC demo, direction 1 of 2 — ops cannot reach the clinic app.** While logged in as ops, navigate to `/dashboard`
+12. **Point out:** the `/unauthorized` **"Access Denied"** page, showing the signed-in email and role
 
-> "The access control works in both directions. Ops can't access clinic data through the clinic app, and clinic users can't access the ops dashboard. This is enforced at every level — middleware, RLS policies, and JWT claims."
+> "Ops can't read clinic data through the clinic app. Note what the denial page tells you: who you're signed in as and what role you hold. That's deliberate — a denial that doesn't say who it denied is a support ticket."
 
-10. Sign out
+> **The other direction is Part 3G.** Say so out loud here: *"And it works the other way too — I'll show you the clinic user hitting the ops dashboard in a few minutes."* Then actually do it. Prior versions of this script asserted both directions and only ever demonstrated one.
+
+13. Sign out
 
 ---
 
 ## Part 3: The Clinic Workflow (15–20 minutes)
+
+> ### 👤 You are the medical assistant for all of Part 3 (new in v2.12)
+>
+> **Sign in as `ma@sunrise-clinic.com` / `POCMA2026!` and stay there** through step 44. The narration says "the MA" because you *are* the MA.
+>
+> Why this matters: at the Review step the MA does **not** get a Sign & Send button. They get **"Save as Draft — Provider Signs Later."** That is not a UI quirk to work around — it is the product's central compliance claim, and it only lands if you are actually signed in as the medical assistant when it happens. Running this flow as clinic_admin (as versions up to v2.11 did) quietly skips the single strongest beat in the demo.
+>
+> The role switch to Dr. Chen happens at step 50, on purpose, in front of the audience.
 
 > ### ⚠️ Stay on the safe path: Alex Demo (TX)
 >
@@ -208,39 +257,50 @@ The expanded seed gives the presenter named characters to point at. Every row be
 > - **"Menopause Foundation — BHRT" + Jordan Rivera (CA) → partial load.** The Portal Plus line is not licensed in CA, so it is skipped and the rest load.
 > - **Any protocol + Maya Thompson (NY), Sofia Nguyen (WA), Grace O'Connor (GA), Liam Carter (CO), or Noah Kim (IL) → full block.** None of those states has a licensed pharmacy for every pinned item, and for these patients no item survives the check.
 >
-> **What a partial load actually does (shipped behavior):** the licensed medications load into the session and the app **advances to the Review step exactly as a clean load does**. On Review you get a **non-blocking amber notice** at the top — "Loaded 2 of 3 medications from Menopause Foundation — BHRT" — listing each skipped medication and the reason, e.g. *"Progesterone Capsule 100mg — Portal Plus Pharmacy is not licensed in CA."* Amber, not red: nothing is blocked, the signature pad works, and you can sign and send the lines that did load. If you re-click the same protocol, it will not duplicate anything — it tells you the lines are already in the session.
+> **What a partial load actually does (shipped behavior):** the licensed medications load into the session and the app **advances to the Review step exactly as a clean load does**. On Review you get a **non-blocking amber notice** at the top — "Loaded 2 of 3 medications from Menopause Foundation — BHRT" — listing each skipped medication and the reason, e.g. *"Progesterone Capsule 100mg — Portal Plus Pharmacy is not licensed in CA."* Amber, not red: nothing is blocked, and you can save the lines that did load. If you re-click the same protocol, it will not duplicate anything — it tells you the lines are already in the session.
 >
 > **What a full block does:** nothing is added, so the app stays on the quick-actions panel with a **red** error naming every skipped item. There is nothing to review, so there is nothing to advance to. Recover by choosing a different protocol, or by switching to Alex Demo.
 >
 > If a prospect asks you to try their own state, this is a great moment to lean in — see **Part 3C-1** for the scripted version of that beat.
 
-### 3A — Dashboard Overview
+### 3A — Dashboard Overview (as the Medical Assistant)
 
-1. Log in as **Clinic Admin**: `admin@sunrise-clinic.com` / `POCClinic2026!`
-2. **Point out the dashboard:**
-   - KPI cards at top (Total Orders, Revenue, Pending Payment, Completed)
-   - Order table with status badges (colored pills showing order state)
-   - Table/Kanban toggle in the top right
-3. Click the **Kanban toggle** to show the board view
+1. Log in as **Medical Assistant**: `ma@sunrise-clinic.com` / `POCMA2026!`
+2. **Point out the dashboard.** Verified live in prod on 2026-09-10, the MA sees exactly the same dashboard the clinic admin does:
 
-> "The medical assistant starts their day here. They can see all orders at a glance, filter by status, and switch between table and kanban views."
+   **KPI cards (verified baseline):**
 
-4. **Point out the sidebar:**
-   - Navigation icons for Dashboard / New Prescription / Settings
-   - Active page highlighted
-   - Sign-out control at the bottom
+   | KPI | Value |
+   |-----|-------|
+   | Total Orders | **11** |
+   | Revenue | **$819** |
+   | Pending Payment | **—** |
+   | Completed | **4** |
 
-> "The sidebar gives quick access to the core clinic flows."
+   > **The em dash in Pending Payment is the zero state, not a render failure.** Do not apologize for it. Sunrise currently has no order awaiting payment — the one order in that region of the lifecycle is `DEMO-1012`, it is **PAYMENT_EXPIRED**, and it belongs to **Blue Cedar**, so it could never count toward Sunrise's KPI in the first place. If anyone asks: *"That's a clean board. Nothing is sitting unpaid."* You are about to create orders during this demo, so this number will move on screen — which is a better outcome than pointing at a static tile.
 
-### 3B — Patient & Provider Selection (New in Phase 15)
+   **Order table tab bar (verified):** **All 11** · **Processing 4** · **Shipped 6**
 
-6. Click **"+ New Prescription"** button
+   > **⚠️ There is no "Drafts" tab right now, and that is correct.** The tabs are **count-conditional** — a tab renders only when it has at least one order in it. The Drafts tab **materializes the moment the MA saves the first draft** in step 43. Do not go hunting for it before then and do not tell the audience it's missing. When it appears mid-demo, that's a feature: *"That tab didn't exist ten seconds ago. The board only shows you states you actually have work in."*
+
+3. **Point out** the order table with status badges (colored pills showing order state), and the Table/Kanban toggle in the top right
+4. Click the **Kanban toggle** to show the board view
+
+> "The medical assistant starts their day here — this is literally my screen right now. All orders at a glance, filter by status, table or kanban."
+
+5. **Point out the sidebar:** navigation icons for Dashboard / New Prescription / Settings, the active page highlighted, and the sign-out control at the bottom
+
+> **If a prospect asks why the clinic shows 11 orders but the ops dashboard shows 16 (Part 5A):** answer it directly, because the numbers are both correct. **11 = Sunrise's own orders**, which is all a clinic user can ever see — that's Row-Level Security doing its job. **16 = every order in the platform**, which is what ops sees: the 12 seeded `DEMO-10xx` lifecycle orders across both clinics, plus 4 ops-scaffolding rows that exist to exercise the pipeline stages. *"The gap between those two numbers is the tenancy boundary. If a clinic user could ever see 16, we'd have a HIPAA incident."*
+
+### 3B — Patient & Provider Selection
+
+6. Click **"+ New Prescription"**
 7. **Point out the patient/provider selector page:**
    - Patient search with name filter
-   - Provider selector (Sunrise now has 4 providers as of v2.9 — pick **Sarah Chen**, the login/signing provider)
+   - Provider selector (Sunrise has 4 providers as of v2.9 — pick **Sarah Chen**, the login/signing provider)
    - "Continue to Pharmacy Search" button (disabled until both selected)
 
-> "The first thing the MA does is select the patient. The patient's shipping state auto-populates for all pharmacy searches — no manual entry. The provider is also selected upfront. Both stay pinned at the top of every screen throughout the flow."
+> "The first thing I do as the MA is select the patient. The patient's shipping state auto-populates for all pharmacy searches — no manual entry. The provider is also selected upfront, and note that I'm choosing *which physician this prescription belongs to* — I'm not choosing myself. Both stay pinned at the top of every screen throughout the flow."
 
 8. Search for **"Alex"** — select **Alex Demo** (TX state badge visible)
 9. Select provider **Sarah Chen** (the only provider with an auth login — Patel, Rodriguez, and Fletcher are seeded for roster realism and the F-3/F-5 features)
@@ -249,11 +309,11 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 10. Click **"Continue to Pharmacy Search"**
 
-### 3C — Quick Actions: Favorites + Protocols (New in Phase 18)
+### 3C — Quick Actions: Favorites + Protocols
 
 11. **Point out the session banner** at the top — Alex Demo + Sarah Chen pinned
 12. **Point out the Quick Actions Panel** with two tabs: **Favorites** and **Protocols**
-13. **Favorites tab** — the tab header reads **Favorites (10)**. The list is ordered by use count, most-used first:
+13. **Favorites tab** — the tab header reads **Favorites (10)** (verified live as the MA on 2026-09-10). The list is ordered by use count, most-used first:
 
     1. Semaglutide 0.5mg weekly
     2. Standard TRT — Cyp 200mg
@@ -270,33 +330,35 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 > "Provider favorites let you reorder common prescriptions in one click. No searching, no configuring — just click and go straight to pricing. Clicking a favorite lands directly on the margin page with the live wholesale price and the saved sig carried over."
 
-> **Presenter line — say this before they ask:** "You'll notice favorites here that Dr. Chen didn't save. Favorites are **clinic-wide**, not per-doctor — Dr. Patel's TRT setups and Dr. Rodriguez's BHRT setups show up in Dr. Chen's list too, ordered by how often the clinic actually uses them. That's intentional. When a new provider joins a practice, they inherit the practice's prescribing patterns on day one instead of rebuilding them from scratch." (A prospect **will** ask why another doctor's favorite is on this screen. Answer it first.)
+> **Presenter line — say this before they ask:** "You'll notice favorites here that Dr. Chen didn't save. Favorites are **clinic-wide**, not per-doctor — Dr. Patel's TRT setups and Dr. Rodriguez's BHRT setups show up here too, ordered by how often the clinic actually uses them. That's intentional. When a new provider joins a practice, they inherit the practice's prescribing patterns on day one instead of rebuilding them from scratch." (A prospect **will** ask why another doctor's favorite is on this screen. Answer it first.)
 
-14. Click **Protocols tab** — the tab header reads **Protocols (3)**: **Weight Loss Protocol**, **Mold/MCAS Support**, and **Menopause Foundation — BHRT** (added in v2.9, authored by Dr. Rodriguez)
+14. Click **Protocols tab** — the tab header reads **Protocols (3)** (verified live as the MA): **Weight Loss Protocol**, **Mold/MCAS Support**, and **Menopause Foundation — BHRT** (added in v2.9, authored by Dr. Rodriguez)
 15. Click **Weight Loss Protocol** to expand — show the 3 medications with phase labels and sig text
-16. **Point out** the "Load 3 Medications into Session" button
+16. **Point out** the **"Load 3 Medications into Session"** button and the protocol's priced total
 
-> "Protocol templates are a market-first feature. One click adds an entire multi-medication protocol to the session. The provider reviews and adjusts per patient before signing."
+> **Verified anchor (prod, 2026-09-10):** with **Alex Demo (TX)** selected, **Weight Loss Protocol loads 3 medications totalling $270.20.** That is the number to say out loud. It is a real total computed from live wholesale prices with the clinic's default markup applied — not a placeholder, and not a number this document made up.
 
-> **Live pricing note (v2.8):** loaded protocol medications price from the live catalog — each line pre-fills its real wholesale cost with the clinic's default markup applied, not a placeholder. The **Mold/MCAS Support** protocol is the crisp example: it loads **Ketotifen Capsule 1mg** ($22 wholesale → $30.80 retail at the clinic's 40% default markup), **Low Dose Naltrexone** ($28 → $39.20), and **Thymosin Alpha-1** ($132 → $184.80). If you expand a protocol during the demo, the prices you see are the real ones the margin builder will show.
+> "Protocol templates are a market-first feature. One click adds an entire multi-medication protocol to the session, priced. The provider reviews and adjusts per patient before signing."
 
-### 3C-1 — The State-Licensure Guard (New in v2.10)
+> **Live pricing note (v2.8):** loaded protocol medications price from the live catalog — each line pre-fills its real wholesale cost with the clinic's default markup applied. The **Mold/MCAS Support** protocol is the crisp example: it loads **Ketotifen Capsule 1mg** ($22 wholesale → $30.80 retail at the clinic's 40% default markup), **Low Dose Naltrexone** ($28 → $39.20), and **Thymosin Alpha-1** ($132 → $184.80). If you expand a protocol during the demo, the prices you see are the real ones the margin builder will show.
+
+### 3C-1 — The State-Licensure Guard
 
 > **Run this beat.** It is 90 seconds, it needs no setup, and it lands a compliance argument that no slide can. It is also the single most common objection-killer in this demo: every clinic owner in the room has either paid for this mistake or knows someone who has.
 
-16a. Open the patient selector again (**"+ New Prescription"**) and this time select **Jordan Rivera** — the **CA** state badge is visible on the card. Keep **Sarah Chen** as the provider and continue.
+17. Open the patient selector again (**"+ New Prescription"**) and this time select **Jordan Rivera** — the **CA** state badge is visible on the card. Keep **Sarah Chen** as the provider and continue.
 
-16b. Land on the Quick Actions Panel and stay on the **Favorites** tab. Same 10 favorites as before — but **3 of the 10 are now grayed out and un-clickable**, each carrying a red **"not licensed in CA"** pill.
+18. Land on the Quick Actions Panel and stay on the **Favorites** tab. Same 10 favorites as before — but **3 of the 10 are now grayed out and un-clickable**, each carrying a red **"not licensed in CA"** pill.
 
-16c. **Point at one of the grayed cards and read the line underneath it out loud.** It names the pharmacy explicitly — for example *"Portal Plus Pharmacy is not licensed in CA — choose a licensed pharmacy for this patient."* Read whatever the screen actually says; the three that gray out are the favorites pinned to a pharmacy with no active CA license.
+19. **Point at one of the grayed cards and read the line underneath it out loud.** It names the pharmacy explicitly — for example *"Portal Plus Pharmacy is not licensed in CA — choose a licensed pharmacy for this patient."* Read whatever the screen actually says; the three that gray out are the favorites pinned to a pharmacy with no active CA license.
 
 > "Watch what just happened. I didn't change a setting, I didn't run a report, I didn't ask anyone. I picked a patient who lives in California, and the platform immediately took three prescribing options off the table — and told me exactly why, by pharmacy name. The clinic **physically cannot** route this patient's prescription to a pharmacy that isn't licensed in her state. Not 'we'll warn you.' Not 'check the box to confirm.' The button is gone."
 
-16d. **Land the value.** "This is the failure mode that costs real clinics real money. A pharmacy fills across a state line it isn't licensed in, and now you're looking at a board complaint, a refund, an insurance problem, and a very bad week. The usual defense is a spreadsheet somebody updates when they remember to. Ours is a license table checked at the moment of prescribing, on every single line, for every single patient."
+20. **Land the value.** "This is the failure mode that costs real clinics real money. A pharmacy fills across a state line it isn't licensed in, and now you're looking at a board complaint, a refund, an insurance problem, and a very bad week. The usual defense is a spreadsheet somebody updates when they remember to. Ours is a license table checked at the moment of prescribing, on every single line, for every single patient."
 
-16e. **Switch back to Alex Demo (TX)** and show the same Favorites tab with all 10 clickable. "Same clinic, same favorites, same provider. Texas patient — everything's open, because in Texas all five of our pharmacies are licensed. The guard isn't a blanket restriction; it's the actual license map, applied per patient."
+21. **If they push on protocols (optional):** expand **Menopause Foundation — BHRT** while Jordan Rivera is selected. The unlicensed line is flagged in the expanded list with **"not licensed in CA — will be skipped"** before you commit. Click **Load** and the app loads the licensed medications, advances to Review, and shows the amber notice naming what was skipped and why. "It doesn't refuse to help me. It does the part it's allowed to do, hands me the rest of the visit, and puts the compliance problem in writing."
 
-16f. **If they push on protocols:** expand **Menopause Foundation — BHRT** while Jordan Rivera is selected. The unlicensed line is flagged in the expanded list with **"not licensed in CA — will be skipped"** before you commit. Click **Load** and the app loads the licensed medications, advances to Review, and shows the amber notice naming what was skipped and why. "It doesn't refuse to help me. It does the part it's allowed to do, hands me the rest of the visit, and puts the compliance problem in writing."
+22. **Switch back to Alex Demo (TX)** and show the same Favorites tab with all 10 clickable. "Same clinic, same favorites, same provider. Texas patient — everything's open, because in Texas all five of our pharmacies are licensed. The guard isn't a blanket restriction; it's the actual license map, applied per patient."
 
 **Pharmacy license matrix (reference — keep this in your back pocket):**
 
@@ -310,148 +372,222 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 > Read down the TX column: every pharmacy. That is why the scripted path uses a Texas patient. Read down CA: Strive and Quick Rx only — which is exactly why three favorites gray out for Jordan Rivera.
 
-### 3D — Cascading Prescription Builder (New in Phase 17)
+### 3D — Cascading Prescription Builder
 
-17. Go back to Configure Prescription. Type **"Sema"** in the medication search — select the ingredient **Semaglutide**
-18. **Point out** the cascading dropdown flow: ingredient **Semaglutide** → salt form **Semaglutide** (base — the builder auto-skips this level because it's the only salt option) → dosage form **Injectable Solution** → route **Subcutaneous** → formulation card. Selecting the single ingredient **Semaglutide** surfaces **5 formulations directly**: Injectable 2.5, 5, and 10 mg/mL, an Oral Capsule, and a Sublingual Tablet. (The two combination products, Semaglutide + B12 and Semaglutide + Niacinamide, are reached via the combination path by selecting one of their component ingredients, not from this single-ingredient formulation list.) The presenter picks the specific **"Semaglutide Injectable 5 mg/mL"** card. Its wholesale is **$95**.
-19. Select the **"Semaglutide Injectable 5 mg/mL"** card → **Point out the Structured Sig Builder**:
+> ### ✅ Checkpoint before you continue — read the session banner out loud
+>
+> **Part 3C-1 may have left you on Jordan Rivera (CA).** Everything from step 24 onward assumes **Alex Demo (TX)**. If you are still on Jordan, the Strive/Semaglutide path in step 30 may behave differently and the $190/$96/$286.00 pricing anchors will not match.
+>
+> **Look at the pinned session banner at the top of the screen. It must read `Alex Demo` and `Sarah Chen`.** If it does not, go back through **"+ New Prescription"**, reselect Alex Demo + Sarah Chen, and continue. Ten seconds now; a derailed pricing beat otherwise.
+
+23. Confirm the session banner reads **Alex Demo · Sarah Chen**, then go to Configure Prescription.
+24. Type **"Sema"** in the medication search — select the ingredient **Semaglutide**
+25. **Point out** the cascading dropdown flow: ingredient **Semaglutide** → salt form **Semaglutide** (base — the builder auto-skips this level because it's the only salt option) → dosage form **Injectable Solution** → route **Subcutaneous** → formulation card. Selecting the single ingredient **Semaglutide** surfaces **5 formulations directly**: Injectable 2.5, 5, and 10 mg/mL, an Oral Capsule, and a Sublingual Tablet. (The two combination products, Semaglutide + B12 and Semaglutide + Niacinamide, are reached via the combination path by selecting one of their component ingredients, not from this single-ingredient formulation list.) The presenter picks the specific **"Semaglutide Injectable 5 mg/mL"** card. Its wholesale is **$95**.
+26. Select the **"Semaglutide Injectable 5 mg/mL"** card → **Point out the Structured Sig Builder**:
     - Dose amount + unit + frequency dropdowns
     - Timing dropdown (In the morning, At bedtime, etc.)
     - Duration dropdown (For 30 days, Ongoing, etc.)
     - Mode toggles: **Standard** / **Titration** / **Cycling**
-20. Set dose: **10 units**, frequency: **Once weekly**, timing: **In the morning**
-21. **Point out** the auto-generated sig: "Inject 10 units (0.10mL / 0.50mg) subcutaneous once weekly in the morning"
+27. Set dose: **10 units**, frequency: **Once weekly**, timing: **In the morning**
+28. **Point out** the auto-generated sig: "Inject 10 units (0.10mL / 0.50mg) subcutaneous once weekly in the morning"
 
 > "The sig generates automatically with full unit conversion — mg, mL, and syringe units for injectables. No manual math. NCPDP-compliant with a 1,000-character limit counter."
 
-22. **Show Titration mode** — click "Titration" toggle. Point out the amber panel with Start at / Increase by / Every / Up to fields
+29. **Show Titration mode** — click "Titration" toggle. Point out the amber panel with Start at / Increase by / Every / Up to fields
 
 > "For titration protocols like LDN, the provider sets start dose, increment, interval, and target. The sig generates: 'Take 0.1mL by mouth at bedtime. Titrate up by 0.1mL every 3-4 days as tolerated up to 0.5mL.' No competitor has this."
 
-23. Click back to **Standard** mode. Select **Strive Pharmacy** in the Pharmacy & Pricing section
-24. Select quantity, refills. **Point out the star button** next to "Continue — Set Retail Price"
+30. Click back to **Standard** mode. Select **Strive Pharmacy** in the Pharmacy & Pricing section
+31. Select quantity, refills. **Point out the star button** next to "Continue — Set Retail Price"
 
 > "The star saves this configuration as a provider favorite for one-click reorder next time."
 
-25. Click **"Continue — Set Retail Price"**
+32. Click **"Continue — Set Retail Price"**
 
 ### 3E — Dynamic Margin Builder + Multi-Prescription
 
-> **Set Retail Price note:** The retail field pre-fills at **$133.00** (the clinic's 40% Default Markup); the **$190.00** figures below assume the presenter taps the **2×** button. Without that tap, the retail stays at the $133.00 default and the platform fee, clinic margin, and $286.00 bundle total are all smaller.
+> **Set Retail Price note:** The retail field pre-fills at **$133.00** (the clinic's 40% Default Markup); the **$190.00** figures below assume the presenter taps the **2×** button. Without that tap, the retail stays at the $133.00 default and the platform fee, clinic margin, and $286.00 bundle total are all smaller. **Tap 2× if you want the numbers in this script to match the screen.**
 
-26. **Point out the Margin Builder** — Wholesale: $95 (locked), retail price **pre-populated at $133** (1.4× wholesale, from the clinic's 40% default markup), multiplier buttons, Sig field pre-filled
-27. Click **2x multiplier** — retail updates to $190, margin 50%, platform fee $14.25 (15% of the $95 spread), est. clinic margin $80.75
+33. **Point out the Margin Builder** — Wholesale: $95 (locked), retail price **pre-populated at $133** (1.4× wholesale, from the clinic's 40% default markup), multiplier buttons, Sig field pre-filled
+34. Click **2x multiplier** — retail updates to $190, margin 50%, platform fee $14.25 (15% of the $95 spread), est. clinic margin $80.75
 
-> "Full transparency. The retail price is pre-filled from the clinic's default markup setting (currently 40%), so the MA never types a number unless they want to override. Clicking 2x bumps it to a higher margin. The clinic sees exactly what they earn before committing. The sig is already pre-filled from the builder."
+> "Full transparency. The retail price is pre-filled from the clinic's default markup setting — currently 40% — so I never type a number unless I want to override it. Clicking 2x bumps it to a higher margin. The clinic sees exactly what they earn before committing. The sig is already pre-filled from the builder."
 
-28. **Point out the three action buttons:**
+> **Forward-reference — say it here, deliver it in Part 3K:** *"That 40% isn't hard-coded, and it isn't something you call us to change. It's a field the clinic owns. I'll show you exactly where it lives before we're done."* Then actually show it (Part 3K). Every prior version of this script cited the 40% default five times and never once opened the page it comes from.
+
+35. **Point out the three action buttons:**
     - **"Add & Search Another"** — add this prescription and search for another medication
     - **"Review & Send"** — go to batch review with all prescriptions
     - **"Save as Draft — Provider Signs Later"** — save without signing (WO-77)
 
-> "The MA has three choices. They can add more prescriptions for the same patient, go straight to review, or save it as a draft for the provider to sign later."
+> "I have three choices. Add more prescriptions for this same patient, go to review, or save it as a draft for Dr. Chen to sign later. Hold that third one in your head — it's about to become the only one I'm allowed to use."
 
-29. Click **"Add & Search Another"**
-30. **Point out** — back on configure page, session banner shows **"1 prescription in this session"**
+36. Click **"Add & Search Another"**
+37. **Point out** — back on configure page, session banner shows **"1 prescription in this session"**
+38. Search for **"Testosterone"** → three results now appear (**Testosterone**, **Testosterone Cypionate**, **Testosterone Propionate** — topical/pellet testosterone is modelled as the bare "Testosterone", while the injectable esters are separate top-level ingredients). Select **Testosterone Cypionate** → **Point out DEA Schedule 3 warning banner**
+39. Cascade: salt form **Cypionate** (auto-skips as the only option) → dosage form **Injectable Solution** → route **Intramuscular** → formulation **"Testosterone Cypionate Injectable 200 mg/mL"** → set dose + frequency. Select Strive Pharmacy, set retail price. The Testosterone Cypionate 200 mg/mL wholesale is **$48**, and the same **2x multiplier** the demo uses puts its retail at **$96.00**. Click **"Review & Send (2)"**
 
-31. Search for **"Testosterone"** → three results now appear (**Testosterone**, **Testosterone Cypionate**, **Testosterone Propionate** — topical/pellet testosterone is modelled as the bare "Testosterone", while the injectable esters are separate top-level ingredients). Select **Testosterone Cypionate** → **Point out DEA Schedule 3 warning banner**
-32. Cascade: salt form **Cypionate** (auto-skips as the only option) → dosage form **Injectable Solution** → route **Intramuscular** → formulation **"Testosterone Cypionate Injectable 200 mg/mL"** → set dose + frequency
-33. Select Strive Pharmacy, set retail price. The Testosterone Cypionate 200 mg/mL wholesale is **$48**, and the same **2x multiplier** the demo uses puts its retail at **$96.00**. Click **"Review & Send (2)"**
+### 3F — Batch Review, Interaction Alerts & the MA Signing Wall
 
-### 3F — Batch Review, Interaction Alerts & EPCS 2FA (New in Phase 19)
-
-34. **Point out the batch review page:**
-    - **Controlled Substance banner** at the top when any prescription in the session is DEA-scheduled (appears because Testosterone is Schedule 3)
+40. **Point out the batch review page:**
+    - **Controlled Substance banner** at the top when any prescription in the session is DEA-scheduled (appears because Testosterone Cypionate is Schedule 3)
     - **Drug Interaction Alerts section** — alerts are dynamic based on the medications in the current session. With Semaglutide + Testosterone (this walkthrough), an INFO-severity alert appears with clinical guidance. With different pairings (e.g. Ketotifen + Ketamine), a WARNING-severity alert appears instead. The alert text comes from the drug-interactions knowledge base.
     - Session banner showing the prescription count
     - One prescription card per medication with pharmacy, pricing, and sig
     - Combined totals (total retail, platform fee, total clinic payout)
     - "Remove" link on each card
     - "+ Add Another Prescription" button
-    - Single provider signature pad
 
-> "The system automatically detects drug interactions and surfaces them with clinical guidance — severity-coloured: red for critical, amber for warning, blue for informational. DEA-scheduled compounds trigger the red banner and force the EPCS 2FA step before signing."
+> "The system automatically detects drug interactions and surfaces them with clinical guidance — severity-coloured: red for critical, amber for warning, blue for informational. DEA-scheduled compounds trigger the red banner."
 
-35. **Point out** that the send button starts disabled with the hint **"Sign in the signature box above to enable sending"** underneath it — then **sign** on the signature pad and watch the hint clear and the button enable
+41. **Now stop and point at what is NOT on this page.** Verified live as the MA on 2026-09-10: **there is no "Sign & Send" button.** In its place the page offers **"Save as Draft — Provider Signs Later"**, accompanied by an on-screen message that **only the assigned provider can sign this prescription.**
 
-> "No silent failures here. Until the provider actually draws a signature, the send button is disabled and says exactly why. The moment the signature lands, it lights up."
+> **Presenter line — slow down and deliver this one properly:**
+>
+> "I want you to look at this screen carefully, because this is the moment the whole product justifies itself.
+>
+> I've done the entire visit. I picked the patient, I checked the pharmacy licensure, I built two prescriptions with structured sigs and unit conversion, I priced them, I've got the interaction check in front of me. Everything a well-run clinic needs a medical assistant to do, I've done.
+>
+> And there is no send button. There is no sign button. The system will not let me finish, because I am not a prescriber. My only option is to hand it to Dr. Chen.
+>
+> That's not a setting somebody remembered to switch on for this demo. That's the role."
 
-36. Click **"Sign & Send All 2 Prescriptions"** → Click **"Confirm & Send"** — watch the progress messages. (The EPCS 2FA modal surfaces here because Testosterone is Schedule 3 — enter the 6-digit code from your authenticator app.)
-37. Navigate back to the dashboard to see the resulting orders — both should appear as "Awaiting Payment"
+42. **Point out** that the page does not merely hide the signing control — it explains it. Read the message naming the assigned provider out loud rather than paraphrasing it.
+43. Click **"Save as Draft — Provider Signs Later"**
+44. Navigate back to the dashboard.
 
-> **EPCS 2FA Demo Tip:** The EPCS 2FA modal (6-digit TOTP input, DEA 21 CFR 1311 citation) triggers on the batch Review & Send flow whenever any DEA-scheduled compound is present in the current prescription session. Because Steps 31–36 already added Testosterone (Schedule 3) to the session, clicking "Sign & Send All Prescriptions" → "Confirm & Send" will surface the modal with the red "EPCS Two-Factor Authentication Required" header, a Schedule badge, and "Verify & Sign" / "Cancel" buttons. Read the current 6-digit code from your authenticator app (the one you loaded via the Authenticator Setup subsection before demo day) and enter it.
+> **Watch the tab bar.** It read **All 11 / Processing 4 / Shipped 6** in step 2. A **Drafts** tab now exists, because there is now something in it. Point at it: *"That tab wasn't there when we started. The board only shows states you actually have work in — and now the clinic has work waiting on a physician."*
 
-> "Two orders created from one signature, three SLA timers each. In the next step we'll merge them into a single patient payment link with Phase C **Combine and Send** — that's the primary flow for a multi-prescription visit. (A per-order payment link still exists for single-prescription orders.) The MA's workflow for a multi-medication visit: 45 seconds."
+### 3G — Role Boundaries in Practice (RBAC, both directions + the signing wall)
 
-### 3F — Phase C: Combine and Send (New)
+> **Two 30-second navigations. Do both.** Up to v2.11 this document *asserted* that clinic users can't reach ops and that the MA can't sign, and demonstrated neither. Both are now verified live in prod (2026-09-10) and both take one URL each. This is the cheapest credibility in the entire demo.
 
-> "Those two prescriptions we just signed are siblings — same patient (Alex Demo), same provider (Dr. Chen), both **Awaiting Payment**. Before Phase C, that meant two separate payment links the patient had to open and pay one at a time. Now we bundle them into a single checkout."
+45. **Direction 2 of 2 — a clinic user cannot reach the ops dashboard.** Still signed in as the MA, type `/ops/pipeline` into the address bar.
+46. **Point out:** you land on **`/unauthorized`**, showing **"Access Denied"**, **"Signed in as `ma@sunrise-clinic.com`"**, and **"Role: medical_assistant"**.
 
-37a. On the dashboard, both Alex Demo orders (Semaglutide + Testosterone) show **"Awaiting Payment."** Click either one to open the **order drawer**.
-37b. **Point out the "Combine into one payment link" picker** — it lists the sibling order (the other Awaiting-Payment Rx for the same patient + provider) with a selectable checkbox.
-37c. Select the sibling order, then click **"Combine and Copy Payment Link."**
-37d. **Watch the drawer flip in place — do not close it.** The moment Combine succeeds, the solo **"Copy Payment Link"** block disappears and is replaced, in the same open drawer, by the **"Part of a Payment Bundle"** panel showing the prescription count and bundle total (**"2 prescriptions · $286.00"**) with a **"Copy Bundle Payment Link"** button. The dashboard rows behind the drawer update immediately too. One bundled checkout link covering both prescriptions is already on your clipboard — Semaglutide $190.00 + Testosterone Cypionate $96.00; the **$190.00** assumes the **2×** tap, it defaults to $133.00. This is the link you'll paste in Part 4.
+> "In Part 2 you watched the ops admin get bounced out of the clinic app. This is the mirror. Same enforcement, opposite direction. And again — the page tells me who I am and what role I hold, so a real user files a useful ticket instead of 'the site is broken.'"
 
-> "One link, both prescriptions, one payment. The patient taps once and pays a single combined total instead of juggling two links. Notice the drawer rewrote itself the instant the bundle existed — there's no refresh, no reopen, no stale button sitting there offering to do something that's no longer valid. The per-order 'Copy Payment Link' button still exists for single-prescription orders — but when a patient has multiple prescriptions from one visit, Combine and Send is the default. This is the friction Phase C removed."
+> **Verified for both clinic roles.** `clinic_admin` (`admin@sunrise-clinic.com`) and `medical_assistant` (`ma@sunrise-clinic.com`) both land on `/unauthorized` from `/ops/pipeline`. If a prospect says "sure, but the *admin* can probably get in" — that is the answer, and you can run it live in ten seconds.
 
-37e. **Bundle-link recovery (optional — narrate or demo).** The bundle panel is not a one-time state. Close the drawer, click **either** bundled order, and the same **"Part of a Payment Bundle"** panel and **"Copy Bundle Payment Link"** button are there — same link, same total.
+47. **The hard stop — the MA cannot reach the signing route at all.** Still the MA, take the order ID of any order (the draft you just saved works, or any order ID visible on the dashboard) and navigate directly to `/new-prescription/sign/<order-id>`.
+48. **Point out:** bounced to **`/unauthorized`** in about a second. Your session is intact — you are still signed in, you are still the MA, you simply cannot be on that page.
+
+> **Presenter line:**
+>
+> "This is the part that separates us from software that just hides buttons.
+>
+> A minute ago you saw there was no Sign button on my screen. A sceptical engineer in your practice would say: fine, the button's hidden, but what happens if I know the URL? So let's find out. I'm going to type the signing page's address directly.
+>
+> [navigate] Access Denied. One second, and I'm out. I'm still logged in — my session is fine — I just can't be there.
+>
+> That check isn't in the page. It's in the middleware, in front of the route, before any prescription data is loaded. **A medical assistant on this platform can prepare absolutely everything and physically cannot sign a prescription.** There's no hidden button to un-hide, no browser trick, no 'just this once.'
+>
+> And that is exactly why the draft queue exists. If the MA can't sign, the work has to go somewhere — so it goes to the physician's queue, with an audit trail. Let me log in as Dr. Chen and pick it up."
+
+> **Verified in prod 2026-09-10:** both `/new-prescription/sign` and `/new-prescription/sign/<uuid>` redirected the MA to `/unauthorized` in ~1–2.3 seconds, with the session intact. If it takes 3 seconds on stage that's a cold start, not a failure — say so and carry on.
+
+49. **Sign out** of the medical assistant account.
+
+### 3H — Provider Signature Queue (the draft handoff)
+
+> "The MA prepared it. The MA could not sign it. Now the physician picks it up — different person, different login, different authority, same clinic."
+
+50. **Log in as provider:** `dr.chen@sunrise-clinic.com` / `POCProvider2026!`
+51. Click the **"Drafts"** tab on the dashboard
+
+> **The Drafts tab exists now because the MA saved a draft in step 43.** It is count-conditional (see step 2). If you skipped step 43, there is no tab and nothing to sign — go back and save the draft.
+
+> "The Drafts tab lives on the shared dashboard and is visible to both clinic_admin and provider roles — anyone in the clinic can see what's pending signature, not just providers. The provider just happens to be the one who can act on it. The MA can watch the queue; she just can't clear it."
+
+52. Click the draft order — **point out the amber "Awaiting Provider Signature" banner**
+53. Click **"Review & Sign This Prescription"**
+
+> "Same URL that bounced the MA out thirty seconds ago. Dr. Chen walks straight in."
+
+54. **Point out** the sign page: patient info, provider info, prescription details, financial summary, signature pad. Note the send control starts disabled with the hint **"Sign in the signature box above to enable sending"** underneath it.
+
+> "No silent failures. Until the provider actually draws a signature, the send control is disabled and says exactly why."
+
+55. **Sign** on the pad — watch the hint clear and the button enable. Click **"Sign & Send Payment Link"** → Confirm.
+
+> **EPCS 2FA:** the EPCS two-factor modal surfaces here for the **Testosterone Cypionate** prescription because it is DEA Schedule 3 — a red **"EPCS Two-Factor Authentication Required"** header, a Schedule badge, a 6-digit TOTP input citing DEA 21 CFR 1311, and **"Verify & Sign"** / **"Cancel"** buttons. Read the current 6-digit code from the authenticator app you set up before demo day and enter it. The Semaglutide prescription is not scheduled and does not trigger the modal.
+
+> "Controlled substance, so the platform asks the physician for a second factor before it will accept the signature. This is DEA 21 CFR 1311, and it is not optional — there's no way to sign a Schedule 3 on this platform without it."
+
+56. Repeat for the second draft prescription if it was saved separately, so that **both** Alex Demo orders reach **Awaiting Payment**. Confirm on the dashboard that both show **"Awaiting Payment."**
+
+> **Presenter note — don't narrate mechanics you can't see.** Depending on how the session was saved, the two prescriptions may appear as one draft or two. Sign whatever is in the Drafts tab until both Alex Demo orders read Awaiting Payment, and say plainly what you're doing. Do not promise the audience a specific screen between clicking Confirm and landing back on the dashboard.
+
+> "The MA prepared it, the provider signed it later. Different sessions, different logins, one audit trail. This is how a real clinic actually works — and now it's how the software works too."
+
+### 3I — Phase C: Combine and Send
+
+> "Those two prescriptions are siblings — same patient (Alex Demo), same provider (Dr. Chen), both **Awaiting Payment**. Before Phase C, that meant two separate payment links the patient had to open and pay one at a time. Now we bundle them into a single checkout."
+
+57. On the dashboard, both Alex Demo orders (Semaglutide + Testosterone Cypionate) show **"Awaiting Payment."** Click either one to open the **order drawer**.
+58. **Point out the "Combine into one payment link" picker** — it lists the sibling order (the other Awaiting-Payment Rx for the same patient + provider) with a selectable checkbox.
+59. Select the sibling order, then click **"Combine and Copy Payment Link."**
+60. **Watch the drawer flip in place — do not close it.** The moment Combine succeeds, the solo **"Copy Payment Link"** block disappears and is replaced, in the same open drawer, by the **"Part of a Payment Bundle"** panel showing the prescription count and bundle total (**"2 prescriptions · $286.00"**) with a **"Copy Bundle Payment Link"** button. The dashboard rows behind the drawer update immediately too. One bundled checkout link covering both prescriptions is now on your clipboard — Semaglutide $190.00 + Testosterone Cypionate $96.00; the **$190.00** assumes the **2×** tap, it defaults to $133.00. This is the link you'll paste in Part 4.
+
+> "One link, both prescriptions, one payment. The patient taps once and pays a single combined total instead of juggling two links. Notice the drawer rewrote itself the instant the bundle existed — there's no refresh, no reopen, no stale button sitting there offering to do something that's no longer valid. The per-order 'Copy Payment Link' button still exists for single-prescription orders — but when a patient has multiple prescriptions from one visit, Combine and Send is the default."
+
+61. **Bundle-link recovery (optional — narrate or demo).** The bundle panel is not a one-time state. Close the drawer, click **either** bundled order, and the same **"Part of a Payment Bundle"** panel and **"Copy Bundle Payment Link"** button are there — same link, same total.
 
 > "The bundle link isn't a one-shot copy. If the toast gets dismissed or the clipboard gets overwritten, open any bundled order's drawer and re-copy the same link — no re-bundling, no support ticket."
 
-37f. **Anti-double-pay talking point** (no extra clicks needed — narrate, or demo it if you kept an old solo link): if the patient opens an *old* per-order payment link for an order that has since been bundled, the checkout refuses it with a specific message that the prescription is now **part of a combined payment bundle** — not a payable page, not a generic error.
+62. **Anti-double-pay talking point** (no extra clicks needed — narrate, or demo it if you kept an old solo link): if the patient opens an *old* per-order payment link for an order that has since been bundled, the checkout refuses it with a specific message that the prescription is now **part of a combined payment bundle** — not a payable page, not a generic error.
 
 > "That's deliberate. Once prescriptions are bundled, there's exactly one way to pay — the bundle link. A stale solo link can never produce a second charge for the same prescription."
 
-### 3F — Provider Signature Queue (Draft Flow)
+### 3J — Get the Checkout URL (in-app, no terminal)
 
-> "Now let me show you the draft flow — where the MA saves a prescription for the provider to sign later."
+63. **Copy the patient checkout URL.** For the bundled pair you already have it from step 60. For any single order: on the clinic dashboard, click an order showing **"Awaiting Payment"** to open the order drawer, then click the emerald **"Copy Payment Link"** button — the checkout URL is on your clipboard.
 
-38. Click **"+ New Prescription"** again
-39. Select **Alex Demo** + provider **Sarah Chen** → Continue
-40. Search **"Sema"** → select **Semaglutide** → select **Strive Pharmacy**
-41. Click **2x multiplier**, enter Sig: **"Draft flow demo"**
-42. Click **"Save as Draft — Provider Signs Later"**
-43. Navigate back to the dashboard — the new order appears with **"Draft"** status
+> "In production, the patient gets this link in a text message when the order is signed. They tap it on their phone and land directly on checkout. In a live clinic we'd never copy-paste the link — we're doing that here only because this is a demo. If the link ever expires, the same button changes to **Regenerate Payment Link** and mints a fresh 72-hour URL in one click."
 
-> "The MA saved this without the provider being present. No signature yet."
+### 3K — Clinic Settings: where the markup and the money live (60 seconds, as Clinic Admin)
 
-44. **Sign out** of clinic admin
-45. **Log in as provider:** `dr.chen@sunrise-clinic.com` / `POCProvider2026!`
-46. Click the **"Drafts"** tab on the dashboard
+> **Do not skip this.** You have now quoted the clinic's **40% default markup** four or five times without ever showing where it comes from. It takes one minute, it answers the "can we change that?" question before it's asked, and it is the natural place to explain how the clinic actually gets paid. This is also the one part of the demo that is genuinely **clinic-admin** work — the MA does not administer the clinic's payout account.
 
-> "The Drafts tab lives on the shared dashboard and is visible to both clinic_admin and provider roles — anyone in the clinic can see what's pending signature, not just providers. The provider just happens to be the one who can act on it."
-47. Click on the draft order — **point out the amber "Awaiting Provider Signature" banner**
-48. Click **"Review & Sign This Prescription"**
+64. **Sign out** and log in as **Clinic Admin**: `admin@sunrise-clinic.com` / `POCClinic2026!`. Navigate to **`/settings`** (Settings in the sidebar).
+65. **Point out the page shell:** the heading **"Clinic Settings"**, the subtitle *"Manage your clinic profile, Stripe payout account, and default pricing."*, and the **sticky section nav** down the left with three anchors: **Stripe Connect**, **Clinic Profile**, **Notifications**.
+66. **Stripe Connect** — the section renders as **"Stripe Payout Account"** with the subtitle *"Required to receive clinic payouts from patient payments."* and a **status badge** in the top-right reading one of **Pending / Onboarding / Active / Restricted / Deactivated**. Read whatever badge is actually showing. If the account is not yet fully verified, a **"Start Onboarding"** / **"Continue Onboarding"** button appears; if it is verified you get a green **"Payouts active"** panel with the connected account ID.
 
-> "The provider sees a dedicated sign page with all the details the MA entered — medication, pharmacy, pricing, directions. They just review and sign."
+> "This is how the clinic gets paid, and it is the clinic's own Stripe account — not ours. We use Stripe Connect Express, which means when a patient pays, the money splits at the moment of the charge: the clinic's margin lands in the clinic's account, our platform fee lands in ours. We are never holding your money and remitting it to you later. There is no float, no monthly settlement, no invoice from us.
+>
+> And note what the banners say when onboarding isn't finished: **order intake is blocked.** We won't let a clinic take a patient's money into an account that can't legally receive it. That's a guardrail, not a bug."
 
-49. **Point out** the sign page: patient info, provider info, prescription details, financial summary, signature pad
-50. **Sign** on the pad → Click **"Sign & Send Payment Link"** → Confirm
-51. Verify redirect to dashboard — order now shows **"Awaiting Payment"**
+67. **Clinic Profile** — the section shows the **Clinic Name** (display only — "Sunrise Functional Medicine"), the **Default Markup %** field, the **Logo URL** field with a live preview thumbnail, and a **Save Settings** button.
 
-> "The MA prepared it, the provider signed it later. Different sessions, different logins, same result. This is how a real clinic works."
+68. **Point at Default Markup % and connect it back to Part 3E.** This is the field that pre-filled the retail price in the Margin Builder. The helper text under the input states the convention explicitly: *"Pre-fills the retail price in the Margin Builder. Example: 150 = 150% of wholesale (1.5× markup)."* **Read the number the field actually contains** — Sunrise's value is the one that produced the $133.00 pre-fill on a $95 wholesale in step 33.
 
-52. **Sign out**
+> "Remember that retail price that appeared already filled in when I got to the margin screen? It came from here. One number, set once by the practice, applied to every prescription every clinician writes — and any of them can still override it per-prescription, which is what I did when I tapped 2×.
+>
+> That's the difference between a pricing *policy* and a pricing *argument*. The practice owner sets the floor, and nobody has to remember it."
 
-### 3G — Get the Checkout URL (in-app, no terminal)
+69. **Logo URL** — note the preview: this logo is what the patient sees at the top of the checkout page in Part 4.
 
-53. **Copy the patient checkout URL** — still logged in as the provider (or switch back to the clinic admin), on the clinic dashboard:
-    a. Click any order showing **"Awaiting Payment"** to open the order drawer
-    b. Click the emerald **"Copy Payment Link"** button — the checkout URL is now on your clipboard
+> "White-labeling isn't a professional-services engagement. It's a field."
 
-> "In production, the patient gets this link in a text message when the order is signed. They tap it on their phone and land directly on checkout. In a live clinic we'd never copy-paste the link — we're doing that here only because this is a demo. If the link ever expires, the same button changes to **Regenerate Payment Link** and mints a fresh 72-hour URL in one click. (This per-order button is the single-order path; for a multi-prescription visit you'd instead use the combined link from Part 3F — Phase C, Combine and Send.)"
+70. **Notifications** — the third section is honest about not being built yet. It reads: *"Email and SMS notification preferences are not yet configurable. Order status updates are sent automatically based on your clinic's registered contact email,"* with a **"Coming soon — configurable preferences"** chip.
+
+> **Do not skip past this or apologize for it.** Say it plainly: *"Notifications go out today on the clinic's registered contact email; per-user preferences are on the roadmap and the page says so. We'd rather show you a labelled gap than a screen that pretends."* Prospects trust a product that admits its edges. This one costs you nothing and buys you credibility for everything else you just claimed.
 
 ---
 
-## Part 4: Patient Checkout (5–7 minutes)
+## Part 4: Patient Checkout (4–5 minutes)
+
+> ## 🛑 Reminder before you open this tab: production is on LIVE Stripe keys.
+>
+> **No card number is entered in Part 4. None.** A test card will hard-decline; a real card will really charge ~$286.00 with a real Connect payout split. **We render the page, we narrate it, and we stop.** Part 4B gives you the words.
 
 ### 4A — Checkout Page
 
-1. Paste the **bundled checkout URL** copied in the Combine-and-Send step (Part 3F — Phase C) into a new tab (or into a mobile browser for extra impact)
+1. Paste the **bundled checkout URL** copied in the Combine-and-Send step (Part 3I) into a new tab (or into a mobile browser for extra impact)
 2. **Point out:**
-   - Clinic branding: "Sunrise Functional Medicine" displayed prominently
+   - Clinic branding: "Sunrise Functional Medicine" displayed prominently — the logo from the Logo URL field you just saw in Part 3K
    - **"Prescription Bundle · 2 prescriptions · $286.00"** — the two sibling Rx now share one checkout instead of two separate links
-   - Two generic line items, each labeled "Prescription Service" — NOT the medication name
+   - Two generic line items, each labeled **"Prescription Service"** — NOT the medication name
    - A single **combined total of $286.00** — the sum of the two retail prices set in Part 3E (Semaglutide $190.00 + Testosterone Cypionate $96.00; the **$190.00** assumes the **2×** tap — it defaults to $133.00). The patient pays this one combined amount, once.
    - **Email field** ("Email for receipt") — required, above the Stripe payment form. Stripe auto-emails a branded receipt to this address when the charge succeeds.
    - Stripe Elements payment form below (card + whichever wallet options the patient's device supports — e.g., Apple Pay in Safari on iOS, Google Pay in Chrome on Android, Cash App Pay, Bank, Affirm, Amazon Pay)
@@ -464,41 +600,54 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 > "The patient sees their clinic's name and branding. They don't know CompoundIQ exists. This is a branded checkout experience for the clinic."
 
-### 4B — Complete Payment
+### 4B — Render and Narrate (we deliberately stop here)
 
-4. Enter email in the **"Email for receipt"** field: `test@example.com` (Stripe will email the branded receipt here)
-5. Enter Stripe test card in the Stripe Elements form below: `4242 4242 4242 4242` | Exp: `12/28` | CVC: `123` | ZIP: `78701`
-6. Click the **"Pay"** button — it shows the combined bundle total of **$286.00** for the 2 prescriptions (Semaglutide $190.00 + Testosterone Cypionate $96.00; the **$190.00** assumes the **2×** tap — it defaults to $133.00)
-7. Wait for the success page
+> **This is a narration beat, not a transaction beat. Nothing is typed into the payment form. The Pay button is never clicked.**
 
-### 4C — Success Page
+4. **Leave the form empty and say this — out loud, unhurried, as a deliberate choice rather than an apology:**
 
-8. **Point out:**
-   - Animated green checkmark (CSS-only draw animation)
-   - "Payment Received" heading
-   - The combined bundle amount (**$286.00**) in green
-   - Order reference: `#213881c7` (first 8 chars of UUID, monospace font)
-   - "What Happens Next" card with 3-step progress:
-     - Payment confirmed (check)
-     - Prescription sent to pharmacy (pending)
-     - Pharmacy will contact you — "Within 3–7 business days" (Tier 4 fax timing)
+> "Now — I'm going to stop right here, and I want to tell you exactly why.
+>
+> This is our production environment on live payment credentials. That Pay button is real. If I click it, a real card gets charged two hundred and eighty-six dollars, and Stripe really splits that money into a clinic's payout account. **I'm not going to run a live charge on somebody's real payment rail to decorate a demo.** If I were willing to do that here, you should wonder what else I'd be willing to do in your practice.
+>
+> And I don't need to click it, because everything worth proving is already on this screen. Look at what this page is telling you:
+>
+> **Your name is on it, not ours.** Sunrise Functional Medicine, your logo, your colors. The patient has no idea we exist.
+>
+> **There's no medication name anywhere.** Two line items, both say 'Prescription Service.' That is not cosmetic — it means no Protected Health Information ever reaches Stripe, ever lands in a payment processor's logs, and never shows up on a card statement that a spouse or an employer might read. This is the single most common way healthcare software leaks PHI, and we designed it out.
+>
+> **One total, one payment.** Two prescriptions from one visit, two hundred eighty-six dollars, paid once — not two links and two charges and a confused patient calling your front desk.
+>
+> **Receipt email is required** before the form will submit, so the patient always gets documentation and your staff never fields 'did it go through?'
+>
+> **And it's Stripe.** Card, Apple Pay, Google Pay — whatever their phone supports. TLS encryption and Powered by Stripe right there at the bottom, which is the trust mark patients already recognize. We are not building a payment processor. We're not touching card data at all.
+>
+> That's the checkout. It works — we run it end to end in automated tests on every single merge. I'm just not going to spend your money to show you a green checkmark."
 
-> "The patient gets immediate confirmation with clear next-step expectations. The messaging adapts to the pharmacy's integration tier — API-connected pharmacies show '24–48 hours' because they have real-time status. Fax pharmacies show the longer timeline. No false promises."
+5. **If someone asks to see the payment actually complete:** the honest answer, and it lands well — *"Happy to. Not on live keys in a meeting. Give me a sandbox and a scheduled follow-up and I'll walk you through a completed transaction, the success page, the webhook, and the order flipping to Paid in the ops pipeline."* Then book it. This is a second meeting you've just earned, not an objection you've dodged.
 
-9. **Point out:** No medication name on the success page either
+### 4C — Success Page (NOT SHOWN LIVE — describe only)
 
-> "Still zero PHI. The patient knows their payment went through and roughly when to expect their medication. That's all they need."
+> ## ℹ️ Do not navigate here. This screen is unreachable without completing a real payment.
+>
+> `/checkout/success` renders only after a successful charge. Because Part 4B never charges anything, **there is nothing to click through to.** Do not attempt to visit the URL and do not tell the audience you're about to show it. Describe it in one sentence and move on to Part 5.
+>
+> **What the patient sees after paying** (for narration only): an animated green checkmark, a "Payment Received" heading, the combined bundle amount in green, an order reference (first 8 characters of the order UUID, monospace), and a "What Happens Next" card with a 3-step progress indicator — Payment confirmed (check), Prescription sent to pharmacy (pending), Pharmacy will contact you, with a timing estimate that adapts to the pharmacy's integration tier ("Within 3–7 business days" for a Tier 4 fax pharmacy; "24–48 hours" for an API-connected Tier 1). **There is no medication name on the success page either** — zero PHI, same as the checkout page.
+>
+> **One-line version for the demo:** *"After they pay, they get a confirmation page with the amount, an order reference, and a realistic timeline that depends on which pharmacy tier the order routed to — API pharmacies quote 24 to 48 hours, fax pharmacies quote 3 to 7 days. No false promises, and still no medication name."*
 
-### 4D — Expired Link Page (Optional)
+### 4D — Expired Link Page (safe to show live)
 
-10. Navigate to `https://functional-medicine-infrastructure.vercel.app/checkout/expired`
-11. **Point out:**
+6. Navigate to `https://functional-medicine-infrastructure.vercel.app/checkout/expired`
+7. **Point out:**
     - Clock icon, friendly message
     - "Payment links expire after 72 hours for security"
     - Instructions to contact clinic
     - No order details revealed
 
-> "If a patient waits too long, they see this. No PHI exposed. The clinic can reissue a new order — the expired one stays as a permanent record."
+> "If a patient waits too long, they see this. No PHI exposed. The clinic can reissue — the expired order stays as a permanent record. And this isn't hypothetical: there's a real expired order in the system right now, `DEMO-1012` over at Blue Cedar. That's a Tuesday-morning problem for their front desk, and it's completely invisible to Sunrise."
+
+> **This page is a static route with no order attached, so it is safe to visit at any time.** It is the only Part 4 screen besides the checkout page itself that you can show live.
 
 ---
 
@@ -512,16 +661,21 @@ The expanded seed gives the presenter named characters to point at. Every row be
    - Pipeline stage groups in the left sidebar (Payment, Submission, Pharmacy, Shipping, Errors / Terminal)
    - Each stage has a count badge
    - Order table with columns: Order, Status, Clinic, Pharmacy / Tier, SLA, Assigned, Actions
+   - **Verified count (prod, 2026-09-10): the pipeline reads "16 of 16 orders"** — the 12 seeded `DEMO-10xx` lifecycle orders plus 4 ops-scaffolding rows that exist to populate the pipeline stages. Plus whatever you created live in Part 3.
 
 > "This is the operations nerve center. Every order across every clinic is visible here — as of v2.9 that genuinely means two clinics: Sunrise and Blue Cedar Integrative Health. The dark theme is intentional — ops teams monitor this all day, and dark mode reduces eye strain."
 
+> **The 11-vs-16 question, answered before it's asked:** *"The clinic dashboard showed 11 orders. This one shows 16. That's not a bug — that's the tenancy boundary. Sunrise sees Sunrise's 11. Ops sees everything: both clinics' lifecycle orders plus the scaffolding rows. If those numbers ever matched, we'd have a problem."*
+
 4. **Point out an order row:**
    - Status badge (colored)
-   - SLA countdown or overdue indicator
+   - SLA column — a countdown to the next deadline, or the resolved state
    - Tier icon (Tier 1 API / Tier 2 Portal / Tier 3 Hybrid / Tier 4 Fax — the demo seed has orders across all four tiers)
    - Claim button
 
-> "Each order shows its SLA status. If an order is overdue, it shows in red with the exact hours overdue. Ops can claim orders to prevent duplicate work."
+> "Each order shows its SLA status. Ops can claim orders to prevent duplicate work."
+
+> **Corrected in v2.12 — do not promise red overdue rows.** Earlier versions told the presenter to point at orders showing "in red with the exact hours overdue." **There are no overdue orders in the queue today.** Do not go looking for a red row; you will not find one and the hunt reads badly. Describe the capability in the conditional and let the empty case be the good news: *"When an order breaches its deadline, this column turns red and shows exactly how many hours late it is. Nothing's red today, which is what a healthy queue looks like."*
 
 5. **Show the filter bar:**
    - Filter by Clinic, Pharmacy, Tier, Date range
@@ -534,16 +688,30 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 > "Full drill-down into any order. The History tab shows every state transition with timestamps and who triggered it. The Submissions tab shows every adapter attempt. The SLA tab shows all deadline tracking."
 
-### 5B — SLA Heatmap
+> **Good order to click:** the one **Submission Failed** order (Noah Kim's Tadalafil). Filter to Errors, claim it, walk the History tab. *"This is what Tuesday morning looks like — not an empty demo database."* And `DEMO-1012` (Ruby Sandoval, Blue Cedar, **Payment Expired**) is the cross-tenant proof: visible here, invisible in the Sunrise clinic app.
+
+### 5B — SLA Monitor
+
+> **Rewritten in v2.12 — the old script did not match this page.** It told the presenter to point at "SLA breach cards with countdown timers," "escalation tier indicators," and an "Acknowledge button." **None of those are on screen, because nothing is breached.** Verified in prod 2026-09-10, the page reads **"0 SLA deadlines"** and **"All SLAs are on track or resolved."** Walking a prospect toward elements that aren't there is the fastest way to lose a room. The empty state is the story — tell that one.
 
 8. Click **"SLA"** in the top nav
-9. **Point out:**
-   - Filter pills (All Active, Breached, etc.)
-   - SLA breach cards with countdown timers
-   - Escalation tier indicators
-   - Acknowledge button
+9. **Point out what is actually on the page:**
+   - The filter pills across the top (All Active, Breached, and the rest) — the controls that scope the view
+   - The current state: **"0 SLA deadlines — All SLAs are on track or resolved"**
 
-> "The SLA engine runs every 5 minutes. When a deadline is breached, it appears here with a countdown to the next escalation. Three tiers: Slack alert, DM to ops lead, PagerDuty page. Acknowledging stops the escalation — it tells the system 'I'm on it.'"
+> **Presenter line — lean into the empty state, do not apologize for it:**
+>
+> "This is the SLA monitor, and right now it is empty. I want to be straight with you about that rather than wishing a fire onto the screen: **zero SLA deadlines, everything on track or already resolved.**
+>
+> That is the outcome the whole system exists to produce.
+>
+> Here's what stands behind that empty page. Every order carries deadlines — time to submit to the pharmacy, time for the pharmacy to acknowledge, time to ship. A job runs every five minutes and checks all of them. When one is at risk, it appears on this page and escalation starts: a Slack alert, then a direct message to the ops lead, then a PagerDuty page. Acknowledging a breach stops the escalation — it tells the system a human has it.
+>
+> The reason there's nothing here is that nothing has gone late. In the operations tools most clinics have today, 'nothing is late' and 'nobody is watching' look identical — both are a silent inbox. Here they're different: this page is watching, and it's telling you the queue is clean.
+>
+> If you want to see it populated, that's a five-minute conversation in a sandbox where I can let a deadline lapse on purpose. I'm not going to break a production order to give you a red screen."
+
+> **Narrator cue:** if a deadline *has* gone at-risk by the time you present, narrate what is genuinely on screen instead. Either state is a good beat — the failure mode is describing the state that isn't there.
 
 ### 5C — Adapter Health Monitor
 
@@ -563,8 +731,8 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 ### 5D — Fax Triage Queue
 
-13. Click **"Fax Queue"** in the top nav
-14. **Point out what the page is:**
+12. Click **"Fax Queue"** in the top nav
+13. **Point out what the page is:**
     - Status filter pills across the top (All, Received, Matched, Unmatched, Processed, Archived)
     - Queue metrics in the header (`X new`, `Y unmatched`, total count)
     - A list of inbound fax rows — each one shows status, from-number, page count, relative received-at timestamp, matched pharmacy/order if any
@@ -576,14 +744,18 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 ### 5E — Catalog Manager
 
-16. Click **"Catalog"** in the top nav
-17. **Point out — two catalogs, clearly separated on one screen (new in v2.11):**
-    - At the top, a read-only **Product Catalog** block with live counts: **Ingredients**, **Salt Forms**, **Formulations**, and **Pharmacy Offerings**. These are the hierarchical catalog the prescription builder cascaded through in Part 3D — the same numbers the builder is working from. (Counts are live, so read whatever the screen says.)
+14. Click **"Catalog"** in the top nav
+15. **Point out — two catalogs, clearly separated on one screen:**
+    - At the top, a read-only **Product Catalog** block with live counts: **Ingredients**, **Salt Forms**, **Formulations**, and **Pharmacy Offerings**. These are the hierarchical catalog the prescription builder cascaded through in Part 3D — the same numbers the builder is working from.
     - Below it, **"Legacy Pharmacy Price List (CSV upload)"** with its own **"N price-list items"** count, the CSV drag-and-drop area, the Manual Entry form, and the tabs: Catalog, Versions, Normalized, API Sync.
 
-> "Two things live on this screen and they do different jobs. The top block is the product catalog — ingredients, salt forms, formulations, and which pharmacies offer each one at what price. That's the tree the prescription builder walked down when I picked Semaglutide a few minutes ago. The bottom half is the pharmacy price-list importer: a pharmacy sends us a flat CSV of what they stock and what it costs, we version it, and we flag any price that moves more than 10%. Every change is versioned, and the normalized view lets you compare the same medication across pharmacies."
+> **Verified counts (prod, 2026-09-10) — read these aloud:** **77 Ingredients · 57 Salt Forms · 167 Formulations · 1,336 Pharmacy Offerings**, and **6** legacy price-list items in the CSV importer below. The counts are live, so if the screen disagrees, **read the screen** — but these are what it showed on 2026-09-10. (Earlier versions of this document said "166 formulations across 79 ingredients," which was wrong in both numbers and omitted salt forms and pharmacy offerings entirely.)
 
-> **Narrator cue:** if a prospect asks why the price-list item count is small, the honest answer is the right one: "That's the raw CSV import table, not the product catalog — it only has the rows a pharmacy has actually sent us a price sheet for. The product catalog is the block above it."
+> "Two things live on this screen and they do different jobs. The top block is the product catalog — 77 ingredients, 57 salt forms, 167 finished formulations, and 1,336 pharmacy offerings, which is every combination of *this pharmacy sells this formulation at this price*. That's the tree the prescription builder walked down when I picked Semaglutide a few minutes ago, and that 1,336 is the number that actually matters commercially: it's the size of the sourcing market this platform can price against in real time.
+>
+> The bottom half is the pharmacy price-list importer: a pharmacy sends us a flat CSV of what they stock and what it costs, we version it, and we flag any price that moves more than 10%. Every change is versioned, and the normalized view lets you compare the same medication across pharmacies."
+
+> **Narrator cue:** if a prospect asks why the price-list item count is only 6, the honest answer is the right one: *"That's the raw CSV import table, not the product catalog — it only has the rows a pharmacy has actually sent us a price sheet for. The product catalog is the block above it, and it has 167 formulations across 1,336 pharmacy offerings."*
 
 ---
 
@@ -606,6 +778,7 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 > "HIPAA compliance is enforced at the infrastructure level, not just application code:"
 - Row-Level Security on all 47 tables
+- **Role enforcement in middleware, not in the UI** — a medical assistant cannot reach `/new-prescription/sign/*` even by typing the URL, and a clinic user of any role cannot reach `/ops/*` (both demonstrated live in Part 3G)
 - Per-state pharmacy licensure enforced at the point of prescribing — an unlicensed pharmacy cannot be selected, quick-loaded, or protocol-loaded for that patient (see Part 3C-1)
 - Zero PHI in Stripe (metadata contains order_id only)
 - Supabase Vault for all pharmacy credentials
@@ -616,7 +789,9 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 ### Technology Stack
 
-> "Built on Next.js 16, Supabase (PostgreSQL 15+), Stripe Connect Express, Twilio, and Documo mFax. Deployed on Vercel serverless. 10 cron jobs handle SLA enforcement, payment expiry, adapter health, and daily ops digest. Everything is atomic — Compare-And-Swap patterns on every state transition prevent race conditions."
+> "Built on Next.js 16, Supabase (PostgreSQL 15+), Stripe Connect Express, Twilio, and Documo mFax. Deployed on Vercel serverless. **10 scheduled cron jobs** handle SLA enforcement and re-firing, payment expiry, submission reconciliation, adapter/portal polling, fax retry, screenshot cleanup, PHI debug purge, credential sync, and the daily ops digest. Everything is atomic — Compare-And-Swap patterns on every state transition prevent race conditions."
+
+> **Verified 2026-09-10:** `vercel.json` declares exactly **10** entries under `crons`, and `src/app/api/cron/` contains exactly **10** route directories — they match one-for-one (`sla-check`, `sla-refire`, `payment-expiry`, `submission-reconciliation`, `daily-digest`, `fax-retry`, `portal-status-poll`, `screenshot-cleanup`, `poc-credential-sync`, `purge-phi-debug`). If anyone claims a different number, this is the source of truth.
 
 ---
 
@@ -629,7 +804,8 @@ The expanded seed gives the presenter named characters to point at. Every row be
 | Order states | 23-state machine with 47 valid transitions |
 | SLA types | 10 enforcement types with 3-tier escalation |
 | Database tables | 47 (PostgreSQL with full RLS) + 6 views |
-| Cron jobs | 10 Vercel cron jobs |
+| Cron jobs | **10** Vercel cron jobs (verified against `vercel.json`) |
+| Product catalog | **77 ingredients · 57 salt forms · 167 formulations · 1,336 pharmacy offerings** |
 | Build phases completed | 19 phases, 87 work orders (all merged; WO-87 formulation support in prod) |
 | Phase C & roles | Multi-Rx payment groups (live), PHI redaction (Option B), provider clinic-view toggle (F-3), primary provider (F-5) |
 | Hard constraints | 16 non-negotiable rules |
@@ -638,16 +814,25 @@ The expanded seed gives the presenter named characters to point at. Every row be
 ### Common Questions
 
 **Q: How do you handle controlled substances?**
-> "DEA-scheduled compounds are explicitly excluded from the adapter layer. They're flagged at search time and forced to Tier 4 (manual fax) only."
+> "DEA-scheduled compounds are explicitly excluded from the adapter layer. They're flagged at search time and forced to Tier 4 (manual fax) only. And signing one requires TOTP two-factor from the prescriber, per DEA 21 CFR 1311 — you saw that in Part 3H."
+
+**Q: Can a medical assistant sign a prescription?**
+> "No, and not in the 'we hid the button' sense. The MA can prepare the entire visit — patient, pharmacy licensure check, structured sigs, pricing, interaction review — and the review screen offers her exactly one action: save as a draft for the provider. If she types the signing URL directly, middleware bounces her to Access Denied before any prescription data loads. That's why the draft queue exists. We showed it live in Part 3G."
 
 **Q: What about patient data privacy?**
-> "Zero PHI touches Stripe. The checkout page shows 'Prescription Service' — never the medication name. SMS messages contain only the patient's first name and a URL. Row-Level Security ensures clinics can never see each other's data."
+> "Zero PHI touches Stripe. The checkout page shows 'Prescription Service' — never the medication name. SMS messages contain only the patient's first name and a URL. Row-Level Security ensures clinics can never see each other's data — the clinic dashboard shows 11 orders while the ops dashboard shows 16, and that gap *is* the tenancy boundary."
 
 **Q: How do you stop a clinic from sending a prescription to a pharmacy that isn't licensed in the patient's state?**
 > "We don't warn them — we remove the option. Every pharmacy carries a state license table, and every prescribing surface checks it against the selected patient's shipping state: the pharmacy dropdown filters, favorites pinned to an unlicensed pharmacy gray out with the reason and the pharmacy name, and a protocol quick-load skips the unlicensed lines and tells the provider exactly which ones and why. There is no override checkbox. See it live in Part 3C-1."
 
 **Q: What's the revenue model?**
-> "Per-transaction platform fee. The spread between wholesale and retail is split: clinic keeps their margin, platform captures 15% of the spread. Stripe processing fees come out of the platform's portion."
+> "Per-transaction platform fee. The spread between wholesale and retail is split: clinic keeps their margin, platform captures 15% of the spread. Stripe processing fees come out of the platform's portion. The split happens at the moment of the charge through Stripe Connect Express — we never hold the clinic's money."
+
+**Q: Can we set our own markup?**
+> "Yes, and it's a field you control, not a support ticket. `/settings` → Clinic Profile → Default Markup %. It pre-fills the retail price on every prescription your clinicians write, and any of them can still override it per-prescription. Shown in Part 3K."
+
+**Q: Why didn't you complete the payment in the demo?**
+> "Because that's our production environment on live Stripe keys — clicking Pay would put a real charge through a real payout account. The checkout page proves the branding, the PHI redaction, the bundling, and the trust marks without spending anyone's money. Happy to walk a completed transaction end to end in a sandbox on a follow-up."
 
 **Q: How long to integrate a new pharmacy?**
 > "Tier 4 (fax) works immediately — just add the fax number. Tier 1 (API) requires their REST endpoint and credentials. Tier 2 (portal) requires Playwright selectors for their web portal. Tier 3 is our published spec that pharmacies can adopt."
@@ -660,3 +845,4 @@ The expanded seed gives the presenter named characters to point at. Every row be
 - [ ] Share POC URL if appropriate
 - [ ] Note any feedback or feature requests
 - [ ] Schedule follow-up if interest
+- [ ] If you promised a sandbox walkthrough of the completed payment (Part 4B), book it before you leave the call
