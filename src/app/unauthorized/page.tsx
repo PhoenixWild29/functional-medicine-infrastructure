@@ -7,6 +7,30 @@
 // requested route (e.g. clinic user attempting to access /ops).
 // Displays the user's current role so they know who they are
 // signed in as, and offers a sign-out link.
+//
+// 2026-09 prod silent-logout root cause — READ BEFORE EDITING.
+//
+// This page used to call `auth.getSession()` while /unauthorized was
+// listed in middleware's publicRoutes. Middleware therefore returned
+// BEFORE its refresh block, and this call became the first and only auth
+// read of the request. On an expired access token it rotated the refresh
+// token from a Server Component — a context that cannot persist cookies
+// (src/lib/supabase/server.ts swallows setAll by design) — so Supabase
+// spent the refresh token server-side and the rotated pair was dropped.
+// The next navigation had no session and bounced to /login.
+//
+// /unauthorized is the shared destination of every gate in middleware, so
+// this killed the session after ANY permission denial.
+//
+// Two things now hold and must keep holding:
+//   1. /unauthorized is NOT in publicRoutes. Middleware runs the refresh
+//      for this path and persists the rotated cookies; it only exempts
+//      the path from the ROLE gates (which would otherwise loop).
+//   2. This page reads with getUser(), never getSession(). getUser()
+//      validates against the token middleware just wrote, so it cannot
+//      itself trigger a rotation this context is unable to persist.
+//
+// Enforced by src/app/__tests__/no-inline-page-auth.test.ts.
 
 import { createServerClient } from '@/lib/supabase/server'
 import { SignOutButton } from './_components/sign-out-button'
@@ -17,10 +41,10 @@ export const metadata = {
 
 export default async function UnauthorizedPage() {
   const supabase = await createServerClient()
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  const email   = session?.user.email
-  const appRole = session?.user.user_metadata['app_role'] as string | undefined
+  const email   = user?.email
+  const appRole = user?.user_metadata['app_role'] as string | undefined
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
@@ -52,7 +76,7 @@ export default async function UnauthorizedPage() {
         </div>
 
         {/* Current session info */}
-        {session && (
+        {user && (
           <div className="rounded-md border border-border bg-muted/40 px-4 py-3 text-left text-sm space-y-1">
             <p className="text-muted-foreground">
               Signed in as{' '}

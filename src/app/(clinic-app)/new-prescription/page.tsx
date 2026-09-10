@@ -14,11 +14,11 @@
 //   Step 2 — /new-prescription/margin    (margin builder — add to session)
 //   Step 3 — /new-prescription/review    (batch review — sign all + send)
 
-import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { WizardProgress } from '@/components/wizard-progress'
 import { HipaaTimeout } from '@/components/hipaa-timeout'
+import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { PatientProviderSelector } from './_components/patient-provider-selector'
 
 const WIZARD_STEPS = [
@@ -32,15 +32,25 @@ export const metadata = {
 }
 
 export default async function NewPrescriptionPage() {
+  // getUser(), never getSession() — middleware owns token rotation.
+  // No redirect() from this streamed page body — see
+  // @/components/session-guard-notice for why.
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) redirect('/login')
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) return <SessionGuardNotice />
 
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
     : undefined
 
-  if (!clinicId) redirect('/login')
+  if (!clinicId) {
+    return (
+      <SessionGuardNotice
+        title="No clinic linked"
+        message="Your account is not linked to a clinic. Contact your administrator."
+      />
+    )
+  }
 
   const supabase = createServiceClient()
 

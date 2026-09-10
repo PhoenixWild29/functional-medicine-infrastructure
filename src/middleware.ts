@@ -91,7 +91,11 @@ export async function middleware(request: NextRequest) {
   //     with no session cookie — redirect would break the deploy gate.
   // NB-05: /auth/callback must be public — Supabase email-verification links arrive
   //   as cold visits (no session) and must reach the route handler to exchange the code.
-  const publicRoutes = ['/login', '/unauthorized', '/auth/callback', '/api/webhooks', '/api/cron', '/api/health', '/api/checkout']
+  //
+  // 2026-09 prod-logout root cause — '/unauthorized' USED TO BE IN THIS LIST.
+  // DO NOT put it back. See the exemption block further down: /unauthorized
+  // needs the refresh, it only needs to skip the ROLE gates.
+  const publicRoutes = ['/login', '/auth/callback', '/api/webhooks', '/api/cron', '/api/health', '/api/checkout']
   if (publicRoutes.some(route => pathname.startsWith(route))) {
     return response
   }
@@ -153,6 +157,33 @@ export async function middleware(request: NextRequest) {
   // claims below would be attacker-controllable if we trusted it here.
   const { data: { user } } = await supabase.auth.getUser()
 
+  // ── /unauthorized: refreshed, but never role-gated ──────────────────────
+  //
+  // 2026-09 prod silent-logout ROOT CAUSE (the one #122 and #124 both
+  // missed). /unauthorized used to sit in publicRoutes above, so middleware
+  // returned before the refresh block ever ran. That made the page's own
+  // `auth.getSession()` the FIRST AND ONLY auth read on the request. When the
+  // access token had expired, that read rotated the refresh token from a
+  // Server Component — a context that cannot write cookies, because
+  // src/lib/supabase/server.ts swallows setAll() by design. Supabase consumed
+  // the refresh token server-side and the rotated pair was discarded. The
+  // browser was left replaying a token the server had already spent, and the
+  // NEXT navigation read no session at all and bounced to /login.
+  //
+  // Because /unauthorized is the shared destination of every gate below, this
+  // fired after ANY permission denial — but only once the access token had
+  // aged out, which is exactly why it presented as a random, unreproducible
+  // logout minutes after a successful denial on the same session.
+  //
+  // The refresh above has now already run and its cookies are on `response`.
+  // We only skip the ROLE gates: gating /unauthorized would send a session
+  // whose app_role is outside the known set from /unauthorized to
+  // /unauthorized forever. Unauthenticated visitors also fall through here
+  // and get the generic denial page rather than a bounce.
+  if (pathname === '/unauthorized') {
+    return applySecurityHeaders(response)
+  }
+
   // Any early return MUST carry the cookies the refresh just wrote onto
   // `response`. A bare NextResponse.redirect() is a fresh object with no
   // Set-Cookie headers, so returning one silently discards the rotated pair
@@ -199,6 +230,12 @@ export async function middleware(request: NextRequest) {
   // '/new-prescription/sign/' (with trailing slash). A request for
   // exactly '/new-prescription/sign' would skip the guard. Broaden the
   // match so the exact path is also blocked.
+  //
+  // 2026-09: this branch was NEVER the leak. It goes through
+  // redirectWithSessionCookies exactly like the /ops gate does
+  // (asserted in src/__tests__/middleware.test.ts). The session died on
+  // the DESTINATION page, not on this hop — see the /unauthorized block
+  // above.
   if (
     (pathname === '/new-prescription/sign' || pathname.startsWith('/new-prescription/sign/'))
     && appRole !== 'provider'

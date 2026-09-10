@@ -10,9 +10,9 @@
 // REQ-CAD-006: Clinic logo management.
 // REQ-CAD-007: Default markup percentage configuration.
 
-import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { ClinicSettingsForm } from './_components/clinic-settings-form'
 import { StripeStatusSection } from './_components/stripe-status-section'
 
@@ -21,15 +21,25 @@ export const metadata = {
 }
 
 export default async function SettingsPage() {
+  // getUser(), never getSession() — middleware owns token rotation.
+  // No redirect() from this streamed page body — see
+  // @/components/session-guard-notice for why.
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) redirect('/login')
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) return <SessionGuardNotice />
 
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
     : undefined
 
-  if (!clinicId) redirect('/login')
+  if (!clinicId) {
+    return (
+      <SessionGuardNotice
+        title="No clinic linked"
+        message="Your account is not linked to a clinic. Contact your administrator."
+      />
+    )
+  }
 
   const supabase = createServiceClient()
 
@@ -40,7 +50,14 @@ export default async function SettingsPage() {
     .is('deleted_at', null)
     .maybeSingle()
 
-  if (!clinic) redirect('/login')
+  if (!clinic) {
+    return (
+      <SessionGuardNotice
+        title="Clinic not found"
+        message="Your clinic record could not be loaded. Contact your administrator."
+      />
+    )
+  }
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">

@@ -17,9 +17,9 @@
 //   retail_price_snapshot / wholesale_price_snapshot are NUMERIC(10,2)
 //   (dollars) in the DB → converted with Math.round(n * 100).
 
-import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { HipaaTimeout }      from '@/components/hipaa-timeout'
+import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { RevenueSummary }    from './_components/revenue-summary'
 import { OrdersDashboard }   from './_components/orders-dashboard'
 import { ProviderViewToggle } from './_components/provider-view-toggle'
@@ -31,7 +31,7 @@ export const metadata = {
 
 // F-3 follow-up (2026-06-14): provider opt-in clinic view toggle.
 // The dashboard reads ?view=clinic from the URL. When present AND the
-// session is a provider, we mint a Supabase server client that forwards
+// user is a provider, we mint a Supabase server client that forwards
 // an `x-provider-view-mode: clinic` header on every query. The header
 // flips on the additive RLS policy added by migration
 // 20260614000003_f3_provider_clinic_view_opt_in.sql, broadening the
@@ -62,18 +62,32 @@ export default async function DashboardPage(
   props: { searchParams?: Promise<{ view?: string }> } = {},
 ) {
   const { searchParams } = props
-  const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) redirect('/login')
 
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  // 2026-09 sweep: getUser(), never getSession(). src/middleware.ts has
+  // already refreshed and PERSISTED the token pair for this request and
+  // forwarded the rotated cookies onto it, so this read validates a
+  // current token and cannot start a rotation this context is unable to
+  // write back. No redirect() from this streamed page body either — see
+  // @/components/session-guard-notice.
+  const supabaseAuth = await createServerClient()
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) return <SessionGuardNotice />
+
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
     : undefined
 
-  if (!clinicId) redirect('/login')
+  if (!clinicId) {
+    return (
+      <SessionGuardNotice
+        title="No clinic linked"
+        message="Your account is not linked to a clinic. Contact your administrator."
+      />
+    )
+  }
 
-  const appRole = typeof session.user.user_metadata['app_role'] === 'string'
-    ? session.user.user_metadata['app_role'] as string
+  const appRole = typeof user.user_metadata['app_role'] === 'string'
+    ? user.user_metadata['app_role'] as string
     : undefined
 
   // F-3 follow-up: provider opt-in clinic view toggle. Only providers
@@ -140,7 +154,14 @@ export default async function DashboardPage(
   ])
 
   const clinicData = clinicResult.data as { stripe_connect_status: string } | null
-  if (!clinicData) redirect('/login')
+  if (!clinicData) {
+    return (
+      <SessionGuardNotice
+        title="Clinic not found"
+        message="Your clinic record could not be loaded. Contact your administrator."
+      />
+    )
+  }
 
   const stripeConnectStatus = clinicData.stripe_connect_status as StripeConnectStatusEnum
 

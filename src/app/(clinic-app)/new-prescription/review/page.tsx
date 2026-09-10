@@ -10,7 +10,6 @@
 // The old URL-parameter-based flow (pharmacyId, itemId, retailCents,
 // sigText) is no longer used — all data comes from the session context.
 
-import { redirect } from 'next/navigation'
 import { WizardProgress } from '@/components/wizard-progress'
 import { HipaaTimeout }   from '@/components/hipaa-timeout'
 import { createServerClient } from '@/lib/supabase/server'
@@ -29,22 +28,32 @@ export const metadata = {
 }
 
 export default async function ReviewPage() {
-  // ── Cosmetic sign-gating (UX only) ──────────────────────────
+  // ── Cosmetic sign-gating (UX only) ───────────────────────
   // Only the assigned provider can sign & send — the server enforces
   // this in /api/orders/[orderId]/sign-and-send, which returns 403 for
   // any non-provider signer (that 403 is the real, unchanged gate).
-  // Read app_role from the session server-side — the same mechanism the
-  // dashboard page and middleware already use — and pass a boolean so a
-  // medical_assistant / clinic_admin never sees a Sign & Send button
-  // that would only 403 on submit. Non-providers get the existing
-  // "Save as Draft — Provider Signs Later" action instead.
+  // Read app_role server-side and pass a boolean so a medical_assistant /
+  // clinic_admin never sees a Sign & Send button that would only 403 on
+  // submit. Non-providers get the existing "Save as Draft — Provider
+  // Signs Later" action instead.
+  //
+  // 2026-09 sweep: getUser(), never getSession(). src/middleware.ts has
+  // already refreshed the token pair for this request and forwarded the
+  // rotated cookies onto it, so this read validates a current token and
+  // cannot start a rotation a Server Component is unable to persist.
+  //
+  // No redirect() here either. This page body streams inside the Suspense
+  // boundary created by (clinic-app)/loading.tsx, so a redirect raised
+  // after the shell has flushed would leave the boundary unresolved and
+  // the route spinning forever. Auth is already enforced by middleware
+  // and (clinic-app)/layout.tsx before this runs — and the fallback here
+  // fails CLOSED: no verified user means isProvider is false, so the
+  // Sign & Send action is not offered.
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) redirect('/login')
+  const { data: { user } } = await supabaseAuth.auth.getUser()
 
-  const appRole = typeof session.user.user_metadata['app_role'] === 'string'
-    ? (session.user.user_metadata['app_role'] as string)
-    : undefined
+  const rawRole = user ? user.user_metadata['app_role'] : undefined
+  const appRole = typeof rawRole === 'string' ? rawRole : undefined
   const isProvider = appRole === 'provider'
 
   return (

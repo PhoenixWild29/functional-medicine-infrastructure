@@ -9,11 +9,17 @@
 //
 // This page is the provider's entry point for signing orders that
 // were saved as drafts by the MA (WO-77 flow).
+//
+// NOTE: there is deliberately NO page at /new-prescription/sign (no
+// orderId). The F-3 gate in src/middleware.ts matches BOTH the exact
+// path and the /sign/ prefix, so a non-provider hitting either form is
+// redirected to /unauthorized before Next ever resolves a route.
 
 import { notFound, redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { HipaaTimeout } from '@/components/hipaa-timeout'
+import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { DraftSignForm } from './_components/draft-sign-form'
 
 export const metadata = {
@@ -29,14 +35,51 @@ export default async function SignDraftPage({ params }: PageProps) {
 
   if (!orderId) redirect('/dashboard')
 
+  // 2026-09 sweep: getUser(), never getSession(). src/middleware.ts has
+  // already refreshed and persisted the token pair for this request, so
+  // this read validates a current token and cannot start a rotation this
+  // context is unable to write back. No auth redirect() from this
+  // streamed page body — see @/components/session-guard-notice.
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) redirect('/login')
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) return <SessionGuardNotice />
 
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  const appRole = typeof user.user_metadata['app_role'] === 'string'
+    ? user.user_metadata['app_role'] as string
     : undefined
-  if (!clinicId) redirect('/login')
+
+  // F-3 defence-in-depth. The PRIMARY gate is src/middleware.ts, which
+  // redirects every non-provider to /unauthorized with the refreshed
+  // cookies attached (asserted in src/__tests__/middleware.test.ts), and
+  // F-2 enforces signer identity again at the API layer on the
+  // sign-and-send POST. This page-level check is the belt behind those
+  // braces: if the middleware matcher is ever narrowed, an MA still
+  // cannot see a signing surface. It renders a terminal denial instead
+  // of redirecting, because a redirect from inside the (clinic-app)
+  // Suspense boundary would hang rather than navigate.
+  if (appRole !== 'provider') {
+    return (
+      <main className="mx-auto max-w-md px-4 py-16 text-center">
+        <h1 className="text-xl font-semibold text-foreground">Provider signature required</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Only the prescribing provider can sign this prescription. Ask a
+          provider at your clinic to open it from their dashboard.
+        </p>
+      </main>
+    )
+  }
+
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
+    : undefined
+  if (!clinicId) {
+    return (
+      <SessionGuardNotice
+        title="No clinic linked"
+        message="Your account is not linked to a clinic. Contact your administrator."
+      />
+    )
+  }
 
   const supabase = createServiceClient()
 
@@ -99,7 +142,7 @@ export default async function SignDraftPage({ params }: PageProps) {
       <HipaaTimeout />
       <main className="mx-auto max-w-2xl px-4 py-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-foreground">Review & Sign Prescription</h1>
+          <h1 className="text-2xl font-bold text-foreground">Review &amp; Sign Prescription</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Review the draft prescription and sign to send the payment link to the patient.
           </p>

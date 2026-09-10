@@ -21,6 +21,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { WizardProgress }    from '@/components/wizard-progress'
 import { HipaaTimeout }      from '@/components/hipaa-timeout'
+import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { MarginBuilderForm } from './_components/margin-builder-form'
 import { SessionBanner }     from '../_components/session-banner'
 
@@ -54,12 +55,17 @@ export default async function MarginPage({ searchParams }: PageProps) {
     redirect('/new-prescription/search')
   }
 
+  // 2026-09 sweep: getUser(), never getSession(). src/middleware.ts has
+  // already refreshed and persisted the token pair for this request, so
+  // this read validates a current token and cannot start a rotation this
+  // context is unable to write back. No auth redirect() from this
+  // streamed page body — see @/components/session-guard-notice.
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) redirect('/login')
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) return <SessionGuardNotice />
 
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
     : undefined
 
   const supabase = createServiceClient()

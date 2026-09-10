@@ -23,6 +23,12 @@
  *      EXISTS clause checks the providers row's clinic_id AGAINST the
  *      JWT clinic_id, not just the auth.uid match).
  *
+ * 2026-09 prod-logout sweep: the page now reads identity with
+ * auth.getUser() rather than auth.getSession(). Only src/middleware.ts
+ * may rotate and persist the Supabase token pair; a Server Component
+ * must never trigger a rotation it cannot write back. Enforced app-wide
+ * by src/app/__tests__/no-inline-page-auth.test.ts.
+ *
  * Full RLS verification happens during deploy:
  *   supabase db push staging
  *   psql staging -c "set role authenticated; … select … from orders …"
@@ -33,10 +39,10 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-// ── 1. SSR uses the session client (not service-role) ──────────────
+// ── 1. SSR uses the session client (not service-role) ──────────────────
 
 const fromSpy = jest.fn()
-const getSessionMock = jest.fn()
+const getUserMock = jest.fn()
 
 jest.mock('next/navigation', () => ({
   redirect: (_url: string) => { throw new Error('REDIRECT') },
@@ -44,7 +50,7 @@ jest.mock('next/navigation', () => ({
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: { getUser: () => getUserMock() },
     from: (...args: unknown[]) => fromSpy(...args),
   }),
 }))
@@ -64,23 +70,21 @@ jest.mock('@/lib/supabase/service', () => ({
 
 beforeEach(() => {
   fromSpy.mockReset()
-  getSessionMock.mockReset()
+  getUserMock.mockReset()
   serviceClientShouldNeverBeCalled.mockClear()
 })
 
 describe('F-3 SSR client wiring', () => {
   it('dashboard page uses session-scoped client, not service-role', async () => {
-    // Arrange: a clinic_admin session, supabase.from() returns a chain
+    // Arrange: a clinic_admin user, supabase.from() returns a chain
     // that yields empty results so the page can render.
-    getSessionMock.mockResolvedValue({
+    getUserMock.mockResolvedValue({
       data: {
-        session: {
-          user: {
-            id: 'auth-uid-clinic-admin',
-            user_metadata: {
-              clinic_id: 'a1000000-0000-0000-0000-000000000001',
-              app_role:  'clinic_admin',
-            },
+        user: {
+          id: 'auth-uid-clinic-admin',
+          user_metadata: {
+            clinic_id: 'a1000000-0000-0000-0000-000000000001',
+            app_role:  'clinic_admin',
           },
         },
       },
@@ -114,7 +118,7 @@ describe('F-3 SSR client wiring', () => {
   })
 })
 
-// ── 2. Migration content encodes the visibility matrix ─────────────
+// ── 2. Migration content encodes the visibility matrix ─────────────────
 
 describe('F-3 migration: 20260611000004_f3_dashboard_rls_filter.sql', () => {
   const migrationPath = join(
