@@ -6,19 +6,26 @@ import { BfcacheGuard } from '@/components/bfcache-guard'
 
 // Ops Dashboard: auth required, app_role must be ops_admin
 // Cross-clinic access — restricted to operations team only
+//
+// Reads with getUser(), never getSession(). By the time this layout runs,
+// src/middleware.ts has already refreshed the token and forwarded the
+// rotated cookies onto this request, so getUser() validates against a
+// current access token and does not itself rotate anything. A Server
+// Component cannot persist a rotated pair (src/lib/supabase/server.ts
+// swallows the write), so triggering a rotation here would drop it.
 export default async function OpsDashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
   const supabase = await createServerClient()
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  if (!session) {
+  if (!user) {
     redirect('/login')
   }
 
-  const appRole = session.user.user_metadata['app_role'] as string | undefined
+  const appRole = user.user_metadata['app_role'] as string | undefined
 
   if (appRole !== 'ops_admin') {
     redirect('/unauthorized')
