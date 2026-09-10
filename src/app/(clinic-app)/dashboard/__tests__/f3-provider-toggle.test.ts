@@ -17,7 +17,11 @@
  *      policy still scopes by JWT clinic_id.
  *   3. The dashboard SSR forwards `x-provider-view-mode: clinic` to the
  *      Supabase client when `?view=clinic` is on the URL AND the
- *      session is a provider — and NOT otherwise.
+ *      user is a provider — and NOT otherwise.
+ *
+ * 2026-09 prod-logout sweep: the page reads identity with auth.getUser()
+ * rather than auth.getSession(). Only src/middleware.ts may rotate and
+ * persist the Supabase token pair.
  *
  * The full RLS verification (does the policy actually broaden visibility
  * in Supabase?) happens at deploy time against staging.
@@ -26,7 +30,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-// ── 1. Migration content ───────────────────────────────────────────
+// ── 1. Migration content ───────────────────────────────────────
 
 describe('F-3 follow-up migration: 20260614000003_f3_provider_clinic_view_opt_in.sql', () => {
   const migrationPath = join(
@@ -95,10 +99,10 @@ describe('F-3 follow-up migration: 20260614000003_f3_provider_clinic_view_opt_in
   })
 })
 
-// ── 2. SSR header forwarding ──────────────────────────────────────
+// ── 2. SSR header forwarding ───────────────────────────────────
 
 const fromSpy = jest.fn()
-const getSessionMock = jest.fn()
+const getUserMock = jest.fn()
 const createServerClientMock = jest.fn()
 
 jest.mock('next/navigation', () => ({
@@ -135,14 +139,14 @@ function makeChain() {
 
 function makeSupabaseStub() {
   return {
-    auth: { getSession: () => getSessionMock() },
+    auth: { getUser: () => getUserMock() },
     from: (...args: unknown[]) => fromSpy(...args),
   }
 }
 
 beforeEach(() => {
   fromSpy.mockReset()
-  getSessionMock.mockReset()
+  getUserMock.mockReset()
   createServerClientMock.mockReset()
   serviceClientShouldNeverBeCalled.mockClear()
 
@@ -156,15 +160,13 @@ beforeEach(() => {
 
 describe('F-3 follow-up SSR: ?view=clinic forwards the opt-in header', () => {
   it('provider session + ?view=clinic mints a second client with x-provider-view-mode header', async () => {
-    getSessionMock.mockResolvedValue({
+    getUserMock.mockResolvedValue({
       data: {
-        session: {
-          user: {
-            id: 'auth-uid-provider',
-            user_metadata: {
-              clinic_id: 'a1000000-0000-0000-0000-000000000001',
-              app_role:  'provider',
-            },
+        user: {
+          id: 'auth-uid-provider',
+          user_metadata: {
+            clinic_id: 'a1000000-0000-0000-0000-000000000001',
+            app_role:  'provider',
           },
         },
       },
@@ -175,7 +177,7 @@ describe('F-3 follow-up SSR: ?view=clinic forwards the opt-in header', () => {
       searchParams: Promise.resolve({ view: 'clinic' }),
     })
 
-    // First call: bare client used for getSession() (no extraHeaders).
+    // First call: bare client used for getUser() (no extraHeaders).
     // Second call: opt-in client with the x-provider-view-mode header.
     expect(createServerClientMock.mock.calls.length).toBeGreaterThanOrEqual(2)
     const firstArgs  = createServerClientMock.mock.calls[0]?.[0]
@@ -189,15 +191,13 @@ describe('F-3 follow-up SSR: ?view=clinic forwards the opt-in header', () => {
   })
 
   it('provider session WITHOUT ?view=clinic does NOT send the header', async () => {
-    getSessionMock.mockResolvedValue({
+    getUserMock.mockResolvedValue({
       data: {
-        session: {
-          user: {
-            id: 'auth-uid-provider',
-            user_metadata: {
-              clinic_id: 'a1000000-0000-0000-0000-000000000001',
-              app_role:  'provider',
-            },
+        user: {
+          id: 'auth-uid-provider',
+          user_metadata: {
+            clinic_id: 'a1000000-0000-0000-0000-000000000001',
+            app_role:  'provider',
           },
         },
       },
@@ -222,15 +222,13 @@ describe('F-3 follow-up SSR: ?view=clinic forwards the opt-in header', () => {
     // those roles avoids creating a privilege confusion if a URL is
     // shared. (The RLS policy itself also requires app_role='provider'
     // — this is defence-in-depth at the app tier.)
-    getSessionMock.mockResolvedValue({
+    getUserMock.mockResolvedValue({
       data: {
-        session: {
-          user: {
-            id: 'auth-uid-clinic-admin',
-            user_metadata: {
-              clinic_id: 'a1000000-0000-0000-0000-000000000001',
-              app_role:  'clinic_admin',
-            },
+        user: {
+          id: 'auth-uid-clinic-admin',
+          user_metadata: {
+            clinic_id: 'a1000000-0000-0000-0000-000000000001',
+            app_role:  'clinic_admin',
           },
         },
       },
