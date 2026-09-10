@@ -22,6 +22,11 @@
  *
  * Auth for /ops is enforced in two places that CAN do it safely:
  * src/middleware.ts and (ops-dashboard)/layout.tsx. Page bodies must not.
+ *
+ * 2026-09 follow-up: the layout now reads with getUser() rather than
+ * getSession(). Only src/middleware.ts may rotate and persist tokens; the
+ * layout must never trigger a rotation it cannot write back. The refreshed
+ * cookies themselves are covered in src/__tests__/middleware.test.ts.
  */
 
 import { readFileSync, existsSync } from 'node:fs'
@@ -87,8 +92,13 @@ describe('ops route pages', () => {
     expect(middleware).toMatch(/ops_admin/)
 
     const layout = readFileSync(join(OPS_DIR, 'layout.tsx'), 'utf8')
-    expect(layout).toMatch(/auth\.getSession\(\)/)
+    expect(layout).toMatch(/auth\.getUser\(\)/)
     expect(layout).toMatch(/ops_admin/)
     expect(layout).toMatch(/redirect\('\/unauthorized'\)/)
+  })
+
+  it('never calls auth.getSession() in the ops layout — middleware owns rotation', () => {
+    const layout = stripComments(readFileSync(join(OPS_DIR, 'layout.tsx'), 'utf8'))
+    expect(layout).not.toMatch(/auth\s*\.\s*getSession/)
   })
 })
