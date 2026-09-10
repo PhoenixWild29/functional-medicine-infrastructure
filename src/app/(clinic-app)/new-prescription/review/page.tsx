@@ -52,9 +52,8 @@ export default async function ReviewPage() {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
 
-  const appRole = typeof user?.user_metadata['app_role'] === 'string'
-    ? (user.user_metadata['app_role'] as string)
-    : undefined
+  const rawRole = user ? user.user_metadata['app_role'] : undefined
+  const appRole = typeof rawRole === 'string' ? rawRole : undefined
   const isProvider = appRole === 'provider'
 
   return (
