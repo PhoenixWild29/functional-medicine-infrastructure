@@ -6,13 +6,22 @@
 // here. Three callers consume this list:
 //
 //   1. scripts/seed-poc.ts                          — local seeding
-//   2. /api/cron/poc-credential-sync                — daily Vercel cron
+//   2. /api/cron/poc-credential-sync                — unscheduled since
+//                                                      2026-09-11; manual
+//                                                      invocation only,
+//                                                      metadata-only
 //   3. /api/admin/reset-poc-credentials             — ops dashboard button
 //
-// If any password ever drifts in Supabase Auth, the cron + button will
-// re-upsert these values via supabase.auth.admin.updateUserById(). The
-// demo doc (docs/POC-DEMO-DETAILED.md) credential table must mirror
-// this list.
+// Only the ops dashboard button (3) forces passwords back to these
+// values, via supabase.auth.admin.updateUserById() with
+// `resetPasswords: true`. That revokes every active session for the
+// four accounts, so it is a deliberate, operator-confirmed action and
+// must never run on a schedule (the former 10-minute cron doing exactly
+// that was the root cause of the recurring mid-demo silent logout).
+// The cron route and the seed script only ensure the accounts exist
+// with the canonical metadata. The demo doc
+// (docs/archive/source/POC-DEMO-DETAILED.md) credential table must
+// mirror this list.
 
 export type PocUserLabel =
   | 'ops_admin'

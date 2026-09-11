@@ -60,14 +60,12 @@ export default function DemoToolsPage() {
       <section className="rounded-lg border border-border bg-card p-5">
         <h2 className="text-base font-medium">Recovery path (no terminal required)</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          If no one can log in as ops_admin, trigger
-          {' '}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">/api/cron/poc-credential-sync</code>
-          {' '}
-          from the Vercel dashboard&apos;s Crons tab via the &ldquo;Run Now&rdquo; button.
-          That endpoint is gated by <code className="rounded bg-muted px-1 py-0.5 text-xs">CRON_SECRET</code>,
-          not session auth, so it works even when every account is locked out. The daily cron
-          (5 AM UTC) also keeps drift from persisting more than 24 hours unattended.
+          If no one can log in as ops_admin, reset the account password from the Supabase
+          dashboard (Authentication &rarr; Users) to the canonical value shown above. The
+          scheduled credential-sync cron was removed on 2026-09-11: it reset passwords every
+          10 minutes and every password reset through the admin API signs out that user, which
+          was the cause of the recurring mid-demo logouts. Passwords are now only reset by the
+          button above, and doing so signs out every demo user.
         </p>
       </section>
     </div>

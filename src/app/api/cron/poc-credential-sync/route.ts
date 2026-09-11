@@ -1,48 +1,40 @@
 // ============================================================
-// POC Sync Cron — demo-data freshness driver
-// GET /api/cron/poc-credential-sync
-// Schedule: */10 * * * * (every 10 minutes)
+// POC Sync — GET /api/cron/poc-credential-sync
+// Schedule: NONE (unscheduled since 2026-09-11; callable manually)
 // ============================================================
 //
-// CADENCE NOTE (PR #18 / cowork F2): Schedule was bumped from
-// hourly (0 * * * *) to every-10-minutes after a demo-readiness
-// walkthrough caught every Adapter Health card rendering as
-// "Degraded" (yellow). Root cause: refresh-demo-data.ts anchors
-// the freshest adapter submission at `now − 2min` at every cron
-// fire, and computeAdapterStatus only classifies green when
-// last_success < 15min ago. With an hourly cron, cards crossed
-// the 15-min boundary 13 minutes after each tick and stayed
-// yellow for the remaining 47 minutes — i.e., yellow ~78% of
-// the demo window. At */10, max staleness right before the next
-// fire is 12 min < 15-min green threshold, so cards stay green
-// continuously. Production-ops semantics for the classifier
-// (real pharmacy silent for an hour → red) are intentionally
-// preserved; the fix is cadence, not classifier.
+// REMOVED FROM vercel.json ON 2026-09-11 — ROOT CAUSE OF THE SILENT
+// LOGOUT. This route ran every 10 minutes and, via syncPocCredentials(),
+// sent `password` in auth.admin.updateUserById() for all four POC
+// accounts on every fire. A Supabase admin user update that includes
+// a password revokes every existing session for that user, even when
+// the value is unchanged. Production auth logs showed `user_modified`
+// by `service_role` for every demo user every 10 minutes, and every
+// signed-in demo user was logged out within 10 minutes. PRs #122, #124,
+// #125 and #129 could not fix this because it was never a cookie or
+// refresh-token problem.
 //
-// NAME LEGACY NOTE (PR #12): The path still reads
-// `poc-credential-sync` for backwards compatibility with the
-// /ops/demo-tools recovery instructions, the demo walkthrough doc
-// (docs/archive/source/POC-DEMO-DETAILED.md), and Vercel Cron
-// dashboard history. Despite the name, this cron now does:
+// The route is kept (not deleted) so nothing that references the path
+// breaks, and so it can still be invoked by hand with CRON_SECRET. It
+// is now metadata-only: syncPocCredentials() is called WITHOUT
+// `resetPasswords`, so it no longer revokes sessions. Do NOT re-add a
+// schedule for this route in vercel.json; a static guard test
+// (src/__tests__/poc-credential-sync-static-guard.test.ts) fails if
+// one appears.
 //
-//   1. Credential sync — the four POC Auth user passwords
+// What a manual invocation still does:
+//   1. Ensures the four POC Auth users exist with canonical metadata
+//      (creates missing ones with the canonical password; existing
+//      ones get user_metadata only)
 //   2. TOTP enrollment — seed the demo provider's EPCS TOTP so
 //      controlled-substance signings never hit first-time setup
 //   3. Demo-data refresh — fax triage rows, adapter submissions,
 //      scaffolding (clinic/patient/provider/order), and E2E
 //      fixture leak cleanup
 //
-// A rename to /api/cron/poc-sync would be cosmetically cleaner,
-// but renaming touches 12+ files (docs, card UI, STATUS, other
-// route comments) and forces investor-facing PDF regen. The
-// deferred rename is a cleanup PR scoped separately; this
-// header comment keeps the next reviewer oriented in the meantime.
-//
-// Triggered by:
-//   - Vercel cron (daily, automatic)
-//   - Vercel dashboard "Run Now" button on the Crons tab (manual,
-//     no terminal required — this is the recovery path when
-//     someone can't log in to use the in-app reset button)
+// Demo-time freshness (Adapter Health cards green, fax triage
+// "minutes ago") is now driven by the "Refresh Demo Data" button on
+// /ops/demo-tools, which does not touch auth users at all.
 //
 // Auth: Vercel cron Bearer secret. Same pattern as every other cron
 // route in this project.
@@ -50,10 +42,8 @@
 // ── PR #7a (cowork round-3 H2) — separate alerting paths ─────
 // The report's top-level `ok` reflects CREDENTIAL SYNC only. Demo-
 // data refresh success is exposed separately as `demo_data_refresh.ok`.
-// This cron is the last-mile alert channel for BOTH jobs — check
-// each independently and 500 (plus Sentry.captureException) if
-// either fails. A silent 200 with a failed demo-data refresh is how
-// a week of stale-data demos can slip through unnoticed.
+// Check each independently and 500 (plus Sentry.captureException) if
+// either fails.
 
 import { NextRequest, NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
@@ -67,12 +57,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   const supabase = createServiceClient()
+  // Metadata-only by design. Never pass resetPasswords here.
   const report = await syncPocCredentials(supabase)
 
   // 428 Precondition Required when POC_MODE is not 'true' — mirrors the
-  // contract of /api/admin/refresh-demo-data. The cron should NOT page
+  // contract of /api/admin/refresh-demo-data. The route should NOT page
   // anyone if it's correctly no-opping in production. Log info-level so
-  // it's still visible in cron output.
+  // it's still visible in the function output.
   if (report.skipped === 'not_poc_mode') {
     console.info('[cron/poc-credential-sync] skipped: POC_MODE !== "true" — credential mutation gated off')
     return NextResponse.json(report, { status: 428 })
@@ -90,7 +81,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     console.error('[cron/poc-credential-sync] errors:', JSON.stringify(summary))
     Sentry.captureException(
       new Error(
-        `poc-credential-sync cron failed — credentials_ok=${credentialsOk} demo_data_ok=${demoDataOk}`
+        `poc-credential-sync failed — credentials_ok=${credentialsOk} demo_data_ok=${demoDataOk}`
       ),
       { extra: summary },
     )
@@ -98,7 +89,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   // Log BOTH on the success path so the ops operator can verify
-  // each job ran cleanly from the cron output alone.
+  // each job ran cleanly from the function output alone.
   console.log('[cron/poc-credential-sync] ok:', JSON.stringify(summary))
   return NextResponse.json(report)
 }
