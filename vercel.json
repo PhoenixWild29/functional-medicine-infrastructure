@@ -39,10 +39,6 @@
       "schedule": "0 * * * *"
     },
     {
-      "path": "/api/cron/poc-credential-sync",
-      "schedule": "*/10 * * * *"
-    },
-    {
       "path": "/api/cron/purge-phi-debug",
       "schedule": "0 * * * *"
     }
