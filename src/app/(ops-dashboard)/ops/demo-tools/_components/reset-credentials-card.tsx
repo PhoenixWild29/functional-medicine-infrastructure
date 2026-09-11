@@ -7,6 +7,12 @@
 // Renders the canonical POC credential table and a button that
 // POSTs to /api/admin/reset-poc-credentials. The endpoint forces
 // every POC account back to the password shown in the table.
+//
+// SESSION WARNING (2026-09-11): a password reset through the Supabase
+// admin API revokes every active session for that user. Pressing this
+// button signs out all four demo accounts, including the ops_admin
+// pressing it. The warning below and the confirm() are deliberate;
+// do not remove them. Never trigger this endpoint on a schedule.
 
 import { useState } from 'react'
 
@@ -27,6 +33,10 @@ interface SyncReport {
   ran_at:  string
   ok:      boolean
   results: SyncResultRow[]
+  // Set by the endpoint when passwords were forced (always true for
+  // this button). Every session for the four accounts was revoked.
+  passwords_reset?: boolean
+  message?: string
   // Optional: since PR #7a the Reset Credentials endpoint's ok field
   // reflects credential sync only (H2 decoupling). The background
   // demo-data refresh outcome is exposed separately so operators can
@@ -39,12 +49,17 @@ interface SyncReport {
   }
 }
 
+const CONFIRM_TEXT =
+  'Reset Demo Credentials signs out EVERY demo user immediately, including you. ' +
+  'Do not do this during a live demo. Continue?'
+
 export function ResetCredentialsCard({ users }: { users: PocUserRow[] }) {
   const [busy, setBusy] = useState(false)
   const [report, setReport] = useState<SyncReport | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   async function handleReset() {
+    if (!window.confirm(CONFIRM_TEXT)) return
     setBusy(true)
     setError(null)
     setReport(null)
@@ -71,17 +86,26 @@ export function ResetCredentialsCard({ users }: { users: PocUserRow[] }) {
           <h2 className="text-base font-medium">Reset Demo Credentials</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Forces all four POC accounts back to the canonical passwords below. Use this
-            before a demo if anything is out of sync, or after a Supabase project rotation.
+            only if a password has actually drifted, or after a Supabase project rotation.
           </p>
         </div>
         <button
           type="button"
           onClick={handleReset}
           disabled={busy}
-          className="shrink-0 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="shrink-0 rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy ? 'Resetting…' : 'Reset Credentials'}
         </button>
+      </div>
+
+      <div
+        role="alert"
+        className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive"
+      >
+        Warning: resetting passwords revokes every active session for all four demo accounts.
+        Everyone currently signed in, including you, is logged out immediately. Do not press this
+        during a live demo.
       </div>
 
       <div className="mt-4 overflow-hidden rounded-md border border-border">
@@ -116,6 +140,11 @@ export function ResetCredentialsCard({ users }: { users: PocUserRow[] }) {
           <p className="text-xs text-muted-foreground">
             Ran at {new Date(report.ran_at).toLocaleString()}
           </p>
+          {report.passwords_reset && (
+            <p className="mt-2 text-sm font-medium text-destructive">
+              {report.message ?? 'Passwords were reset. All sessions for the four POC accounts were revoked; everyone must sign in again.'}
+            </p>
+          )}
           <ul className="mt-2 space-y-1 text-sm">
             {report.results.map(r => (
               <li key={r.email} className="flex items-center gap-2">
@@ -141,8 +170,6 @@ export function ResetCredentialsCard({ users }: { users: PocUserRow[] }) {
            * the banner above reflects credentials only — this line
            * surfaces the second outcome so the presenter doesn't have
            * to visit the Refresh Demo Data card to confirm it ran.
-           * Cron + Sentry is still the primary alert channel (PR #7a);
-           * this is secondary, for the 10-min-ahead pre-demo check.
            */}
           {report.demo_data_refresh && (
             <p className="mt-2 flex items-center gap-2 text-xs">
@@ -160,7 +187,7 @@ export function ResetCredentialsCard({ users }: { users: PocUserRow[] }) {
                   ? (report.demo_data_refresh.skipped === 'not_poc_mode'
                       ? <span>skipped (POC_MODE off)</span>
                       : <span className="text-emerald-700">synced</span>)
-                  : <span className="text-amber-700">failed — check cron logs / Sentry</span>}
+                  : <span className="text-amber-700">failed — check logs / Sentry</span>}
               </span>
             </p>
           )}

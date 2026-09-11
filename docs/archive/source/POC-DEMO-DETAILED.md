@@ -1,8 +1,10 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 2.14 | **Date:** September 10, 2026
+**Version:** 2.15 | **Date:** September 11, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
+
+> **What's new in v2.15 (2026-09-11):** **Root cause of the recurring mid-demo silent logout found and fixed.** The every-10-minutes `poc-credential-sync` Vercel cron re-set the four POC account passwords via the Supabase admin API on every fire, and an admin user update that includes a password revokes every existing session for that user, even when the password value is unchanged. The cron is removed and the credential sync is now metadata-only unless passwords are explicitly reset. Sessions now persist for the full token lifetime. The cron count in the tech overview drops from **10 to 9**. The **Reset Demo Credentials** button on `/ops/demo-tools` still resets passwords but now warns that it signs out every demo user, including the presenter. Do not press it during a demo. Docs only otherwise.
 
 > **What's new in v2.14 (2026-09-10):** **Accuracy correction** — the Part 7 Q&A answer about signing three prescriptions no longer asserts that a "sign all" button was deliberately not built (an unverified design-intent claim); it now states the observed behaviour and tells the presenter to treat batch signing as roadmap/feedback. The same unverified-intent wording was softened in the post-save KPI note after step 44.
 
@@ -807,9 +809,9 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 ### Technology Stack
 
-> "Built on Next.js 16, Supabase (PostgreSQL 15+), Stripe Connect Express, Twilio, and Documo mFax. Deployed on Vercel serverless. **10 scheduled cron jobs** handle SLA enforcement and re-firing, payment expiry, submission reconciliation, adapter/portal polling, fax retry, screenshot cleanup, PHI debug purge, credential sync, and the daily ops digest. Everything is atomic — Compare-And-Swap patterns on every state transition prevent race conditions."
+> "Built on Next.js 16, Supabase (PostgreSQL 15+), Stripe Connect Express, Twilio, and Documo mFax. Deployed on Vercel serverless. **9 scheduled cron jobs** handle SLA enforcement and re-firing, payment expiry, submission reconciliation, adapter/portal polling, fax retry, screenshot cleanup, PHI debug purge, and the daily ops digest. Everything is atomic — Compare-And-Swap patterns on every state transition prevent race conditions."
 
-> **Verified 2026-09-10:** `vercel.json` declares exactly **10** entries under `crons`, and `src/app/api/cron/` contains exactly **10** route directories — they match one-for-one (`sla-check`, `sla-refire`, `payment-expiry`, `submission-reconciliation`, `daily-digest`, `fax-retry`, `portal-status-poll`, `screenshot-cleanup`, `poc-credential-sync`, `purge-phi-debug`). If anyone claims a different number, this is the source of truth.
+> **Verified 2026-09-11:** `vercel.json` declares exactly **9** entries under `crons` (`sla-check`, `sla-refire`, `payment-expiry`, `submission-reconciliation`, `daily-digest`, `fax-retry`, `portal-status-poll`, `screenshot-cleanup`, `purge-phi-debug`). The tenth, `poc-credential-sync`, was removed on 2026-09-11 (v2.15): every fire re-set the four demo passwords through the Supabase admin API, which revoked every active demo session, so it was the cause of the recurring mid-demo silent logout. Demo credentials are now reset only by the manual **Reset Demo Credentials** button on `/ops/demo-tools`, and that button signs every demo user out, including the presenter. If anyone claims a different number, this is the source of truth.
 
 ---
 
@@ -822,7 +824,7 @@ The expanded seed gives the presenter named characters to point at. Every row be
 | Order states | 23-state machine with 47 valid transitions |
 | SLA types | 10 enforcement types with 3-tier escalation |
 | Database tables | 47 (PostgreSQL with full RLS) + 6 views |
-| Cron jobs | **10** Vercel cron jobs (verified against `vercel.json`) |
+| Cron jobs | **9** Vercel cron jobs (verified against `vercel.json`) |
 | Product catalog | **77 ingredients · 57 salt forms · 167 formulations · 1,336 pharmacy offerings** |
 | Build phases completed | 19 phases, 87 work orders (all merged; WO-87 formulation support in prod) |
 | Phase C & roles | Multi-Rx payment groups (live), PHI redaction (Option B), provider clinic-view toggle (F-3), primary provider (F-5) |
