@@ -23,11 +23,77 @@ function applySecurityHeaders(res: NextResponse): NextResponse {
   return res
 }
 
+// ── Next.js App Router prefetch detection ─────────────────────────────────
+//
+// Next sends `Next-Router-Prefetch: 1` on App Router <Link> prefetches, and
+// `purpose: prefetch` / `x-purpose: prefetch` on the browser-level form.
+// `x-middleware-prefetch: 1` is the internal flag Next sets when it asks
+// middleware about a prefetch target.
+//
+// A client-side NAVIGATION sends `RSC: 1` but NONE of these headers, so real
+// navigations are deliberately NOT matched here and still run the full gate.
+function isPrefetchRequest(request: NextRequest): boolean {
+  return (
+    request.headers.get('next-router-prefetch') === '1' ||
+    request.headers.get('x-middleware-prefetch') === '1' ||
+    request.headers.get('purpose') === 'prefetch' ||
+    request.headers.get('x-purpose') === 'prefetch'
+  )
+}
+
 // Edge Middleware: runs on every request before page rendering
 // Handles auth verification for clinic-app and ops-dashboard route groups
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request })
   const { pathname } = request.nextUrl
+
+  // ── Prefetch short-circuit — 2026-09 prod silent-logout ROOT CAUSE #3 ───
+  //
+  // PR #122 removed in-page getSession(). PR #124 fixed setAll() cookie
+  // loss. PR #125 de-publiced /unauthorized. Users were STILL logged out on
+  // the #125 build, ~8 minutes into a session, with no /unauthorized visit
+  // and no gate denial — nowhere near the 3600s access-token lifetime.
+  //
+  // What all three missed: REFRESH FAN-OUT.
+  //
+  // The `matcher` at the bottom of this file filters by PATH ONLY. An App
+  // Router prefetch of /dashboard has the path /dashboard, so it matched and
+  // re-entered this middleware exactly like a navigation. Every authenticated
+  // clinic page renders SidebarNav, which mounts three <Link>s TWICE (once
+  // for the xl sidebar, once for the md icon-rail — see
+  // src/components/sidebar-nav.tsx), all of them in the viewport. App Router
+  // prefetches links as they enter the viewport, so one page paint fired up
+  // to three extra RSC requests within milliseconds of the navigation that
+  // triggered them, and each ran its own `supabase.auth.getUser()`.
+  //
+  // When the access token is at or near expiry, every one of those
+  // concurrent invocations presents the SAME refresh token, because none of
+  // them has seen the others' Set-Cookie yet. Supabase rotates the refresh
+  // token on first use: the winner receives a new pair, the losers replay a
+  // token the server has already spent. With refresh-token rotation enabled
+  // and a reuse interval of 0, Supabase classifies that replay as token
+  // theft and REVOKES THE ENTIRE SESSION FAMILY — every tab, immediately,
+  // with no gate denial and no relation to elapsed time. That is precisely
+  // the reported symptom, and it gets MORE likely the faster you navigate,
+  // which is why automation reproduced it and manual clicking did not.
+  //
+  // A prefetch is speculative. It is never a navigation the user sees, and
+  // it must never be allowed to rotate a token. Short-circuit it with 204
+  // BEFORE the Supabase client is even constructed: no auth read, no
+  // rotation, no render.
+  //
+  // This is NOT an auth bypass:
+  //   - nothing is rendered and no data leaves the server on this branch;
+  //   - the real navigation that follows the click is not a prefetch, so it
+  //     falls through to the full gate below;
+  //   - both route-group layouts independently re-check auth and role
+  //     (src/app/(clinic-app)/layout.tsx, src/app/(ops-dashboard)/layout.tsx).
+  //
+  // Belt and braces: src/components/sidebar-nav.tsx now also sets
+  // prefetch={false} so the dominant fan-out never leaves the browser.
+  if (isPrefetchRequest(request)) {
+    return applySecurityHeaders(new NextResponse(null, { status: 204 }))
+  }
 
   // Patient checkout: validate JWT token before page render
   //
@@ -128,6 +194,11 @@ export async function middleware(request: NextRequest) {
   //
   // The correct form is two phases: mutate the request cookies first, build
   // the response ONCE, then write every cookie onto that single response.
+  //
+  // 2026-09 (this PR): correctness here was never enough on its own. Getting
+  // the cookie write right does not help if N concurrent requests each run
+  // this block against the same refresh token — see the prefetch
+  // short-circuit at the top of this function.
   const supabase = createServerClient(
     process.env['NEXT_PUBLIC_SUPABASE_URL']!,
     process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY']!,
@@ -248,7 +319,14 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Match all routes except static files and Next.js internals
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // Match all routes except static files and Next.js internals.
+    //
+    // 2026-09: this filter is PATH-ONLY and can never distinguish a prefetch
+    // from a navigation — a prefetch of /dashboard has the path /dashboard.
+    // Prefetch suppression is therefore done by header inside middleware()
+    // (see isPrefetchRequest); this list only trims requests that never
+    // needed the gate in the first place, so the auth round-trip is not
+    // spent on them.
+    '/((?!_next/static|_next/image|_next/data|favicon\\.ico|robots\\.txt|sitemap\\.xml|manifest\\.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|css|js|mjs|map|txt|xml|woff|woff2|ttf|otf)$).*)',
   ],
 }
