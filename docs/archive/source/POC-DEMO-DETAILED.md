@@ -1,8 +1,10 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 2.12 | **Date:** September 10, 2026
+**Version:** 2.13 | **Date:** September 10, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
+
+> **What's new in v2.13 (2026-09-10):** **The draft-save behaviour is now pinned down: a session of N prescriptions saves as N separate draft orders, and the provider signs each one.** Verified in a live prod dry run signed in as `ma@sunrise-clinic.com` on 2026-09-10. (a) **Step 43 and Part 3H** — v2.12 deliberately hedged ("the two prescriptions may appear as one draft or two… sign whatever is in the Drafts tab"). They appear as **two**. The hedge is replaced with the verified rule and the exact count this script produces, so the presenter knows how many times they are about to sign. (b) **Protocol quick-load may not auto-advance** — after clicking "Load N Medications into Session" the app sometimes stays on `/new-prescription/search` with the session banner showing; the presenter clicks **Review & Send** to continue (Part 3C, step 16). (c) **Verified post-save dashboard state added** — Total Orders rises by one per draft, **Revenue does not move** (drafts are excluded from revenue until signed and paid), and the **Drafts tab materializes**. (d) **GAP-3 confirmed in the database** — protocol-sourced orders share a `protocol_instance_id` and `protocol_version_id`, which is what makes the pilot's reuse, clarification-rate, and 90-day-retention metrics measurable. **The stated baseline is unchanged: the dashboard still starts at 11 orders · $819 · no Drafts tab.**
 
 > **What's new in v2.12 (2026-09-10):** **Production runs on live Stripe keys, so the demo no longer enters a card; Part 3 is now run as the medical assistant; three missing beats added; and every number in the doc was re-verified against prod.**
 >
@@ -281,7 +283,7 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
    **Order table tab bar (verified):** **All 11** · **Processing 4** · **Shipped 6**
 
-   > **⚠️ There is no "Drafts" tab right now, and that is correct.** The tabs are **count-conditional** — a tab renders only when it has at least one order in it. The Drafts tab **materializes the moment the MA saves the first draft** in step 43. Do not go hunting for it before then and do not tell the audience it's missing. When it appears mid-demo, that's a feature: *"That tab didn't exist ten seconds ago. The board only shows you states you actually have work in."*
+   > **⚠️ There is no "Drafts" tab right now, and that is correct.** The tabs are **count-conditional** — a tab renders only when it has at least one order in it. The Drafts tab **materializes the moment the MA saves in step 43**, and it arrives with a count (**Drafts 2** on the scripted path — one per prescription). Do not go hunting for it before then and do not tell the audience it's missing. When it appears mid-demo, that's a feature: *"That tab didn't exist ten seconds ago. The board only shows you states you actually have work in."*
 
 3. **Point out** the order table with status badges (colored pills showing order state), and the Table/Kanban toggle in the top right
 4. Click the **Kanban toggle** to show the board view
@@ -338,9 +340,13 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 > **Verified anchor (prod, 2026-09-10):** with **Alex Demo (TX)** selected, **Weight Loss Protocol loads 3 medications totalling $270.20.** That is the number to say out loud. It is a real total computed from live wholesale prices with the clinic's default markup applied — not a placeholder, and not a number this document made up.
 
+> **If you click Load, expect that it may not auto-advance — and that is fine.** Verified in prod on 2026-09-10 as the MA: after clicking **"Load 3 Medications into Session"** the app stayed on `/new-prescription/search` with the session banner showing the loaded medications, rather than jumping straight to Review. On an earlier run as the provider it advanced on its own. Handle it the same way either time: **if it doesn't advance automatically, click "Review & Send"** to reach `/new-prescription/review`. Do not click Load a second time — the lines are already in the session and the app will tell you so.
+
 > "Protocol templates are a market-first feature. One click adds an entire multi-medication protocol to the session, priced. The provider reviews and adjusts per patient before signing."
 
 > **Live pricing note (v2.8):** loaded protocol medications price from the live catalog — each line pre-fills its real wholesale cost with the clinic's default markup applied. The **Mold/MCAS Support** protocol is the crisp example: it loads **Ketotifen Capsule 1mg** ($22 wholesale → $30.80 retail at the clinic's 40% default markup), **Low Dose Naltrexone** ($28 → $39.20), and **Thymosin Alpha-1** ($132 → $184.80). If you expand a protocol during the demo, the prices you see are the real ones the margin builder will show.
+
+> **What a protocol leaves behind in the data (GAP-3 — a credibility point, not a screen to show).** Verified in prod on 2026-09-10: every order created from a protocol load is linked back to the protocol, carrying the same `protocol_instance_id` and `protocol_version_id`, with the template auto-published at **version 1** on first use. That linkage is what makes the pilot's protocol-reuse rate, clarification rate, and 90-day retention measurable per protocol *and per version*, rather than estimated. One sentence is enough for a practitioner or investor: *"Every prescription written from a protocol stays attached to that protocol and that exact version, so we can tell you which of your protocols actually get reused and which ones generate pharmacy callbacks."*
 
 ### 3C-1 — The State-Licensure Guard
 
@@ -454,9 +460,16 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 42. **Point out** that the page does not merely hide the signing control — it explains it. Read the message naming the assigned provider out loud rather than paraphrasing it.
 43. Click **"Save as Draft — Provider Signs Later"**
-44. Navigate back to the dashboard.
 
-> **Watch the tab bar.** It read **All 11 / Processing 4 / Shipped 6** in step 2. A **Drafts** tab now exists, because there is now something in it. Point at it: *"That tab wasn't there when we started. The board only shows states you actually have work in — and now the clinic has work waiting on a physician."*
+> **Expect two drafts, not one — this is verified, not assumed.** A session of **N prescriptions saves as N separate draft orders**, one per medication. This script has the MA build **2** (Semaglutide + Testosterone Cypionate), so you get **2 drafts**, and the app redirects to `/dashboard?draft=2`. Confirmed in a live prod dry run on 2026-09-10, where a 3-medication protocol session produced **3** separate draft orders and redirected to `/dashboard?draft=3`. Say the count out loud before the audience counts the rows: *"Two prescriptions, two drafts. Each one gets its own signature — a physician signs prescriptions, not shopping carts."*
+
+44. Navigate back to the dashboard (the save has already taken you there).
+
+> **Watch the tab bar.** It read **All 11 · Processing 4 · Shipped 6** in step 2. It now reads **All 13 · Drafts 2 · Processing 4 · Shipped 6** — a **Drafts** tab exists, because there is now something in it. Point at it: *"That tab wasn't there when we started. The board only shows states you actually have work in — and now the clinic has work waiting on a physician."*
+
+> **Then point at the KPI cards, because one of them deliberately did not move.** **Total Orders** goes **11 → 13** (it rises by one per draft). **Revenue is still $819 — unchanged.** **Completed** is still **4**, and **Pending Payment** is still **"—"**; both stay put until the provider signs in Part 3H. Narrate the gap, it is a good detail: *"Notice the order count moved and the revenue didn't. A draft isn't money. Nothing counts as revenue on this board until a physician has signed it and the patient has paid."*
+>
+> **Verified in prod 2026-09-10** with a 3-draft save from the Weight Loss Protocol: the dashboard read **All 14 · Drafts 3 · Processing 4 · Shipped 6**, **Total Orders 14**, **Revenue still $819**, **Completed 4** — three Draft rows, all "Demo, Alex", one per protocol medication, all method Fax. Same rule, different N.
 
 ### 3G — Role Boundaries in Practice (RBAC, both directions + the signing wall)
 
@@ -469,7 +482,7 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 > **Verified for both clinic roles.** `clinic_admin` (`admin@sunrise-clinic.com`) and `medical_assistant` (`ma@sunrise-clinic.com`) both land on `/unauthorized` from `/ops/pipeline`. If a prospect says "sure, but the *admin* can probably get in" — that is the answer, and you can run it live in ten seconds.
 
-47. **The hard stop — the MA cannot reach the signing route at all.** Still the MA, take the order ID of any order (the draft you just saved works, or any order ID visible on the dashboard) and navigate directly to `/new-prescription/sign/<order-id>`.
+47. **The hard stop — the MA cannot reach the signing route at all.** Still the MA, take the order ID of any order (either draft you just saved works, or any order ID visible on the dashboard) and navigate directly to `/new-prescription/sign/<order-id>`.
 48. **Point out:** bounced to **`/unauthorized`** in about a second. Your session is intact — you are still signed in, you are still the MA, you simply cannot be on that page.
 
 > **Presenter line:**
@@ -492,14 +505,16 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 > "The MA prepared it. The MA could not sign it. Now the physician picks it up — different person, different login, different authority, same clinic."
 
-50. **Log in as provider:** `dr.chen@sunrise-clinic.com` / `POCProvider2026!`
-51. Click the **"Drafts"** tab on the dashboard
+> **Know before you log in: there are two drafts and you will sign each one.** An N-prescription session saves as N separate draft orders (see step 43), so the scripted flow leaves **2** drafts in the queue — Semaglutide and Testosterone Cypionate — and Dr. Chen signs them one at a time. That is two passes through steps 52–55. Budget the time and say it out loud rather than letting the audience discover a second row after you thought you were finished.
 
-> **The Drafts tab exists now because the MA saved a draft in step 43.** It is count-conditional (see step 2). If you skipped step 43, there is no tab and nothing to sign — go back and save the draft.
+50. **Log in as provider:** `dr.chen@sunrise-clinic.com` / `POCProvider2026!`
+51. Click the **"Drafts"** tab on the dashboard — it reads **Drafts 2** and holds one draft order per prescription the MA built
+
+> **The Drafts tab exists now because the MA saved in step 43.** It is count-conditional (see step 2). If you skipped step 43, there is no tab and nothing to sign — go back and save the drafts.
 
 > "The Drafts tab lives on the shared dashboard and is visible to both clinic_admin and provider roles — anyone in the clinic can see what's pending signature, not just providers. The provider just happens to be the one who can act on it. The MA can watch the queue; she just can't clear it."
 
-52. Click the draft order — **point out the amber "Awaiting Provider Signature" banner**
+52. Click the **first** draft order — **point out the amber "Awaiting Provider Signature" banner**
 53. Click **"Review & Sign This Prescription"**
 
 > "Same URL that bounced the MA out thirty seconds ago. Dr. Chen walks straight in."
@@ -514,9 +529,9 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 > "Controlled substance, so the platform asks the physician for a second factor before it will accept the signature. This is DEA 21 CFR 1311, and it is not optional — there's no way to sign a Schedule 3 on this platform without it."
 
-56. Repeat for the second draft prescription if it was saved separately, so that **both** Alex Demo orders reach **Awaiting Payment**. Confirm on the dashboard that both show **"Awaiting Payment."**
+56. **Sign the second draft the same way.** Return to the **Drafts** tab, open the remaining draft, and repeat steps 52–55. There are exactly **2** drafts and each is signed individually — **one signature per prescription**. The EPCS two-factor modal appears only on the **Testosterone Cypionate** draft; the Semaglutide draft signs without it. When both are signed the Drafts tab empties and disappears, and both Alex Demo orders read **"Awaiting Payment."** Confirm that on the dashboard before moving on.
 
-> **Presenter note — don't narrate mechanics you can't see.** Depending on how the session was saved, the two prescriptions may appear as one draft or two. Sign whatever is in the Drafts tab until both Alex Demo orders read Awaiting Payment, and say plainly what you're doing. Do not promise the audience a specific screen between clicking Confirm and landing back on the dashboard.
+> **Say the count; don't hedge it.** Verified in prod 2026-09-10: an N-prescription session saves as N separate drafts and the provider signs each one — this is settled behaviour, not something to discover on stage. Narrate it as the design rather than as a surprise: *"One signature per prescription. That isn't friction we forgot to remove — it's what a signature means."* Do still avoid promising the audience a specific screen between clicking Confirm and landing back on the dashboard.
 
 > "The MA prepared it, the provider signed it later. Different sessions, different logins, one audit trail. This is how a real clinic actually works — and now it's how the software works too."
 
@@ -780,6 +795,7 @@ The expanded seed gives the presenter named characters to point at. Every row be
 - Row-Level Security on all 47 tables
 - **Role enforcement in middleware, not in the UI** — a medical assistant cannot reach `/new-prescription/sign/*` even by typing the URL, and a clinic user of any role cannot reach `/ops/*` (both demonstrated live in Part 3G)
 - Per-state pharmacy licensure enforced at the point of prescribing — an unlicensed pharmacy cannot be selected, quick-loaded, or protocol-loaded for that patient (see Part 3C-1)
+- **Protocol provenance** — orders created from a protocol are linked to the protocol instance and the exact published template version (GAP-3), so reuse, clarification rate, and retention are measurable rather than estimated (see Part 3C)
 - Zero PHI in Stripe (metadata contains order_id only)
 - Supabase Vault for all pharmacy credentials
 - 30-minute session timeout with warning modal
@@ -818,6 +834,9 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 **Q: Can a medical assistant sign a prescription?**
 > "No, and not in the 'we hid the button' sense. The MA can prepare the entire visit — patient, pharmacy licensure check, structured sigs, pricing, interaction review — and the review screen offers her exactly one action: save as a draft for the provider. If she types the signing URL directly, middleware bounces her to Access Denied before any prescription data loads. That's why the draft queue exists. We showed it live in Part 3G."
+
+**Q: If the assistant prepares three prescriptions, does the doctor sign once or three times?**
+> "Three times. A session of N prescriptions saves as N separate draft orders, and each one is signed on its own — with its own EPCS two-factor step if it's a controlled substance. We deliberately didn't build a 'sign all' button. A signature is a legal attestation about one prescription for one patient, and batching them would be the first thing a board investigator asked about."
 
 **Q: What about patient data privacy?**
 > "Zero PHI touches Stripe. The checkout page shows 'Prescription Service' — never the medication name. SMS messages contain only the patient's first name and a URL. Row-Level Security ensures clinics can never see each other's data — the clinic dashboard shows 11 orders while the ops dashboard shows 16, and that gap *is* the tenancy boundary."
