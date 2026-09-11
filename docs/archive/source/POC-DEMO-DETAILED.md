@@ -1,8 +1,10 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 2.13 | **Date:** September 10, 2026
+**Version:** 2.14 | **Date:** September 10, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
+
+> **What's new in v2.14 (2026-09-10):** **Accuracy correction** — the Part 7 Q&A answer about signing three prescriptions no longer asserts that a "sign all" button was deliberately not built (an unverified design-intent claim); it now states the observed behaviour and tells the presenter to treat batch signing as roadmap/feedback. The same unverified-intent wording was softened in the post-save KPI note after step 44.
 
 > **What's new in v2.13 (2026-09-10):** **The draft-save behaviour is now pinned down: a session of N prescriptions saves as N separate draft orders, and the provider signs each one.** Verified in a live prod dry run signed in as `ma@sunrise-clinic.com` on 2026-09-10. (a) **Step 43 and Part 3H** — v2.12 deliberately hedged ("the two prescriptions may appear as one draft or two… sign whatever is in the Drafts tab"). They appear as **two**. The hedge is replaced with the verified rule and the exact count this script produces, so the presenter knows how many times they are about to sign. (b) **Protocol quick-load may not auto-advance** — after clicking "Load N Medications into Session" the app sometimes stays on `/new-prescription/search` with the session banner showing; the presenter clicks **Review & Send** to continue (Part 3C, step 16). (c) **Verified post-save dashboard state added** — Total Orders rises by one per draft, **Revenue does not move** (drafts are excluded from revenue until signed and paid), and the **Drafts tab materializes**. (d) **GAP-3 confirmed in the database** — protocol-sourced orders share a `protocol_instance_id` and `protocol_version_id`, which is what makes the pilot's reuse, clarification-rate, and 90-day-retention metrics measurable. **The stated baseline is unchanged: the dashboard still starts at 11 orders · $819 · no Drafts tab.**
 
@@ -467,7 +469,7 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 > **Watch the tab bar.** It read **All 11 · Processing 4 · Shipped 6** in step 2. It now reads **All 13 · Drafts 2 · Processing 4 · Shipped 6** — a **Drafts** tab exists, because there is now something in it. Point at it: *"That tab wasn't there when we started. The board only shows states you actually have work in — and now the clinic has work waiting on a physician."*
 
-> **Then point at the KPI cards, because one of them deliberately did not move.** **Total Orders** goes **11 → 13** (it rises by one per draft). **Revenue is still $819 — unchanged.** **Completed** is still **4**, and **Pending Payment** is still **"—"**; both stay put until the provider signs in Part 3H. Narrate the gap, it is a good detail: *"Notice the order count moved and the revenue didn't. A draft isn't money. Nothing counts as revenue on this board until a physician has signed it and the patient has paid."*
+> **Then point at the KPI cards, because one of them did not move.** **Total Orders** goes **11 → 13** (it rises by one per draft). **Revenue is still $819 — unchanged.** **Completed** is still **4**, and **Pending Payment** is still **"—"**; both stay put until the provider signs in Part 3H. Narrate the gap, it is a good detail: *"Notice the order count moved and the revenue didn't. A draft isn't money. Nothing counts as revenue on this board until a physician has signed it and the patient has paid."*
 >
 > **Verified in prod 2026-09-10** with a 3-draft save from the Weight Loss Protocol: the dashboard read **All 14 · Drafts 3 · Processing 4 · Shipped 6**, **Total Orders 14**, **Revenue still $819**, **Completed 4** — three Draft rows, all "Demo, Alex", one per protocol medication, all method Fax. Same rule, different N.
 
@@ -836,7 +838,9 @@ The expanded seed gives the presenter named characters to point at. Every row be
 > "No, and not in the 'we hid the button' sense. The MA can prepare the entire visit — patient, pharmacy licensure check, structured sigs, pricing, interaction review — and the review screen offers her exactly one action: save as a draft for the provider. If she types the signing URL directly, middleware bounces her to Access Denied before any prescription data loads. That's why the draft queue exists. We showed it live in Part 3G."
 
 **Q: If the assistant prepares three prescriptions, does the doctor sign once or three times?**
-> "Three times. A session of N prescriptions saves as N separate draft orders, and each one is signed on its own — with its own EPCS two-factor step if it's a controlled substance. We deliberately didn't build a 'sign all' button. A signature is a legal attestation about one prescription for one patient, and batching them would be the first thing a board investigator asked about."
+> "Three times. A session of N prescriptions saves as N separate draft orders, and each one is signed on its own — with its own EPCS two-factor step if it's a controlled substance. Today each prescription is signed individually — one signature per prescription — and there is no 'sign all' action in the product. A signature is a legal attestation about one prescription for one patient, so batch signing isn't something we'd add without walking it through with your compliance team first."
+>
+> *Presenter note: if they press on whether batch signing is coming, treat it as roadmap and feedback — "it isn't built today, and I'll take that back as a request." Do not claim we ruled it out on purpose; that has never been confirmed as a product decision.*
 
 **Q: What about patient data privacy?**
 > "Zero PHI touches Stripe. The checkout page shows 'Prescription Service' — never the medication name. SMS messages contain only the patient's first name and a URL. Row-Level Security ensures clinics can never see each other's data — the clinic dashboard shows 11 orders while the ops dashboard shows 16, and that gap *is* the tenancy boundary."
