@@ -87,7 +87,7 @@ export function SidebarNav({ userEmail, userRole }: Props) {
     return map[role] ?? role
   }
 
-  // ── Nav item ────────────────────────────────────────────
+  // ── Nav item ───────────────────────────────────────
 
   function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
     const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
@@ -95,6 +95,31 @@ export function SidebarNav({ userEmail, userRole }: Props) {
     return (
       <Link
         href={item.href}
+        // 2026-09 prod silent-logout fix — DO NOT REMOVE.
+        //
+        // This component is mounted on EVERY authenticated clinic page and
+        // renders these three links TWICE (once in the xl sidebar, once in
+        // the md icon-rail), all six inside the viewport from first paint.
+        // With App Router's default prefetching, each page paint fired up to
+        // three extra RSC requests within milliseconds of the navigation
+        // that caused them. src/middleware.ts matches on PATH, so every one
+        // of those re-entered the auth middleware and ran its own
+        // supabase.auth.getUser().
+        //
+        // At/near access-token expiry those concurrent requests all present
+        // the SAME refresh token — none has seen the others' Set-Cookie yet.
+        // Supabase rotates on first use, so the winner gets a new pair and
+        // the losers replay a spent token. With rotation on and a reuse
+        // interval of 0, Supabase reads that replay as token theft and
+        // revokes the whole session family: instant silent logout, every
+        // tab, no gate denial, unrelated to elapsed time. It got worse the
+        // faster you navigated, which is why automation reproduced it.
+        //
+        // Prefetch is a latency optimisation on three links that are one
+        // click away on a desktop app; the session is not negotiable.
+        // src/middleware.ts also short-circuits any prefetch that does
+        // reach the server (from anywhere in the app) with a 204.
+        prefetch={false}
         onClick={() => setMobileOpen(false)}
         className={cn(
           'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-[var(--duration-fast)]',
@@ -113,7 +138,7 @@ export function SidebarNav({ userEmail, userRole }: Props) {
     )
   }
 
-  // ── Sidebar content ─────────────────────────────────────
+  // ── Sidebar content ──────────────────────────────────
 
   function SidebarContent({ collapsed }: { collapsed: boolean }) {
     return (
