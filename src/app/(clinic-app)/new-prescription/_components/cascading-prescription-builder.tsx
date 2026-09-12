@@ -237,6 +237,10 @@ export function CascadingPrescriptionBuilder() {
       dose: `${fav.dose_amount ?? ''} ${fav.dose_unit ?? ''}`.trim(),
       frequency: fav.frequency_code ?? '',
       sigText: fav.sig_text ?? '',
+      // WO-96: quantity + refills feed the derived days supply / dispense
+      // and the defaulted refills on the margin page.
+      quantity: fav.default_quantity ?? '',
+      refills: String(fav.refills ?? 0),
     })
 
     router.push(`/new-prescription/margin?${params.toString()}`)
@@ -255,6 +259,10 @@ export function CascadingPrescriptionBuilder() {
       dose: `${doseAmount} ${doseUnit}`.trim(),
       frequency: selectedFrequency,
       sigText: currentSig,
+      // WO-96: the margin page derives days supply + dispense from
+      // dose × frequency × quantity and defaults refills from here.
+      quantity,
+      refills,
     })
 
     // WO-86: Pass DEA schedule so margin builder can thread it to the session

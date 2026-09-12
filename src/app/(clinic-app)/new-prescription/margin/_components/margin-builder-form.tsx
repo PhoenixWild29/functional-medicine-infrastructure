@@ -13,10 +13,26 @@
 // REQ-DMB-007: <$10 clinic margin amber warning.
 // REQ-DMB-008: HC-01 — all arithmetic in integer cents; never floating-point.
 // REQ-DMB-009: Sig text 10-character minimum (trimmed — whitespace-only not accepted).
+//
+// WO-96: days supply + dispense are derived from dose × frequency ×
+// quantity and shown read-only next to the sig (overridable); the
+// per-Rx detail fields are pre-filled from the formulation defaults and
+// travel to the Review card on the session line.
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePrescriptionSession } from '../../_context/prescription-session'
+import {
+  computeDispense,
+  defaultRxDetails,
+  missingRxDetails,
+  MISSING_RX_DETAIL_LABEL,
+  rulesFromFormulation,
+  type RxDetails,
+  type RxRules,
+} from '@/lib/orders/rx-details'
+import type { RxFormulationDefaults } from '@/lib/orders/rx-defaults-loader'
+import { DerivedDispense, EMPTY_OVERRIDE, resolveDispense, type DispenseOverride } from '../../_components/derived-dispense'
 
 // ── Cent arithmetic helpers — HC-01 ──────────────────────────
 // Convert a NUMERIC(10,2) server value (JS float64) to integer cents once.
@@ -61,6 +77,22 @@ interface Props {
   deaSchedule:      number
   defaultMarkupPct: number | null  // NUMERIC(5,2) from DB — e.g. 50.00 = 50%
   presetSigText?:   string | undefined  // WO-83: Pre-filled sig from cascading builder
+  // WO-96 — inputs for the derived fields + formulation defaults.
+  presetFrequency?:    string | undefined   // structured-sig frequency code (QD, QW, …)
+  presetQuantity?:     string | undefined   // pharmacy quantity label ("5mL vial")
+  presetRefills?:      number | undefined   // builder refills (default 0)
+  formulationDetails?: {
+    concentrationValue: number | null
+    concentrationUnit:  string | null
+    dosageFormName:     string | null
+  } | null
+  rxDefaults?:         RxFormulationDefaults | null
+}
+
+/** "10 units" → { amount: '10', unit: 'units' }; "0.5 mg" → { amount: '0.5', unit: 'mg' }. */
+export function splitDose(dose: string): { amount: string; unit: string } {
+  const m = /^\s*(\d+(?:\.\d+)?)\s*([A-Za-z]+)?/.exec(dose)
+  return { amount: m?.[1] ?? '', unit: m?.[2] ?? '' }
 }
 
 // ── Multiplier buttons ────────────────────────────────────────
@@ -83,9 +115,47 @@ export function MarginBuilderForm({
   deaSchedule,
   defaultMarkupPct,
   presetSigText,
+  presetFrequency,
+  presetQuantity,
+  presetRefills,
+  formulationDetails,
+  rxDefaults,
 }: Props) {
   const router = useRouter()
   const rxSession = usePrescriptionSession()
+
+  // ── WO-96: derived days supply + dispense ─────────────────────
+  const derived = useMemo(() => {
+    if (!formulationDetails) return null
+    const { amount, unit } = splitDose(dose)
+    return computeDispense({
+      doseAmount:         amount,
+      doseUnit:           unit,
+      frequencyCode:      presetFrequency ?? null,
+      quantityLabel:      presetQuantity ?? null,
+      concentrationValue: formulationDetails.concentrationValue,
+      concentrationUnit:  formulationDetails.concentrationUnit,
+      dosageFormName:     formulationDetails.dosageFormName,
+    })
+  }, [dose, presetFrequency, presetQuantity, formulationDetails])
+  const [dispenseOverride, setDispenseOverride] = useState<DispenseOverride>(EMPTY_OVERRIDE)
+
+  // ── WO-96: pre-filled Rx details + the rules that govern them ──
+  const rxRules: RxRules = useMemo(
+    () => rulesFromFormulation(rxDefaults?.defaults ?? null, deaSchedule || null),
+    [rxDefaults, deaSchedule],
+  )
+  const rxDetails: RxDetails = useMemo(() => {
+    const base = defaultRxDetails(rxDefaults?.defaults ?? null, {
+      refills:       presetRefills ?? 0,
+      diagnosisCode: rxDefaults?.suggestedDiagnosis?.code ?? null,
+      diagnosisText: rxDefaults?.suggestedDiagnosis?.text ?? null,
+    })
+    return { ...base, ...resolveDispense(derived, dispenseOverride) }
+  }, [rxDefaults, presetRefills, derived, dispenseOverride])
+  // Rule-required fields the Review card will ask the provider to confirm.
+  // The draft path below can't collect them here, so it points at Review.
+  const missingForDraft = missingRxDetails(rxDetails, rxRules)
 
   const wholesaleCents = useMemo(() => toCents(wholesalePrice), [wholesalePrice])
 
@@ -159,6 +229,11 @@ export function MarginBuilderForm({
       retailCents,
       sigText: sigTrimmed,
       integrationTier: '',
+      // WO-96
+      rxDetails,
+      rxRules,
+      frequencyCode: presetFrequency ?? null,
+      quantityLabel: presetQuantity ?? null,
     })
   }
 
@@ -182,6 +257,13 @@ export function MarginBuilderForm({
     e.preventDefault()
     if (!canContinue) return
     if (!rxSession.patient || !rxSession.provider) return
+    if (missingForDraft.length > 0) {
+      setDraftError(
+        `This prescription needs ${missingForDraft.map(m => MISSING_RX_DETAIL_LABEL[m]).join(' and ')} — ` +
+        'use Review & Send to fill in Rx details before saving a draft.',
+      )
+      return
+    }
 
     setIsSavingDraft(true)
     setDraftError(null)
@@ -201,6 +283,8 @@ export function MarginBuilderForm({
           retailCents,
           sigText:       sigTrimmed,
           patientState:  rxSession.patient.state ?? '',
+          // WO-96: derived + defaulted detail fields
+          rxDetails,
         }),
       })
 
@@ -382,6 +466,17 @@ export function MarginBuilderForm({
             ? 'Minimum 10 characters required'
             : `${sigTrimmed.length} characters${sigTrimmed.length < 10 ? ' — minimum 10 required' : ''}`}
         </p>
+
+        {/* WO-96: derived days supply + dispense, read-only with override.
+            Only the V3.0 formulation path has the inputs to derive from. */}
+        {formulationDetails && (
+          <DerivedDispense
+            derived={derived}
+            noQuantity={!presetQuantity}
+            override={dispenseOverride}
+            onChange={setDispenseOverride}
+          />
+        )}
       </div>
 
       {/* ── WO-80: Session-aware action buttons ── */}
