@@ -20,6 +20,7 @@
 //   4. Provider signs all prescriptions at once → session cleared
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
+import type { RxDetails, RxRules } from '@/lib/orders/rx-details'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -65,6 +66,20 @@ export interface SessionPrescription {
   protocolId?:     string | null
   // Display-only companion to protocolId (never sent to the API).
   protocolName?:   string | null
+  // WO-96: per-Rx detail fields (days supply, dispense, refills,
+  // substitution, syringe kit, shipping, clinical difference, diagnosis,
+  // special instructions) and the rules that govern them (controlled →
+  // diagnosis, requires_clinical_difference → statement). Set by the
+  // margin builder; lines that enter the session another way (protocol
+  // quick-load, favorites, sessions persisted before WO-96) leave both
+  // unset and the Review card resolves them from
+  // /api/formulations?level=rx_defaults. OPTIONAL ON PURPOSE.
+  rxDetails?:      RxDetails | null
+  rxRules?:        RxRules | null
+  // WO-96: structured inputs the details were derived from. Display and
+  // re-derivation only — never sent to the API.
+  frequencyCode?:  string | null
+  quantityLabel?:  string | null
 }
 
 /**
@@ -118,6 +133,12 @@ interface PrescriptionSessionContextValue extends PrescriptionSessionState {
   addPrescriptions:   (list: Omit<SessionPrescription, 'id'>[]) => void
   /** Remove a prescription by its client-side ID */
   removePrescription: (id: string) => void
+  /**
+   * Patch a prescription in place (WO-96 Rx details edits on the Review
+   * card; WO-98 edit-at-review builds on the same primitive). Unknown ids
+   * are ignored.
+   */
+  updatePrescription: (id: string, patch: Partial<Omit<SessionPrescription, 'id'>>) => void
   /** Record a partial-load report to show on the review step */
   addNotice:          (notice: Omit<SessionLoadNotice, 'id'>) => void
   /** Dismiss a partial-load report by its client-side ID */
@@ -258,6 +279,16 @@ export function PrescriptionSessionProvider({ children }: { children: ReactNode 
     }))
   }, [])
 
+  const updatePrescription = useCallback((id: string, patch: Partial<Omit<SessionPrescription, 'id'>>) => {
+    setState(prev => {
+      const index = prev.prescriptions.findIndex(rx => rx.id === id)
+      if (index === -1) return prev
+      const next = [...prev.prescriptions]
+      next[index] = { ...next[index]!, ...patch, id }
+      return { ...prev, prescriptions: next }
+    })
+  }, [])
+
   const addNotice = useCallback((notice: Omit<SessionLoadNotice, 'id'>) => {
     setState(prev => ({
       ...prev,
@@ -284,6 +315,7 @@ export function PrescriptionSessionProvider({ children }: { children: ReactNode 
     addPrescription,
     addPrescriptions,
     removePrescription,
+    updatePrescription,
     addNotice,
     dismissNotice,
     clearSession,

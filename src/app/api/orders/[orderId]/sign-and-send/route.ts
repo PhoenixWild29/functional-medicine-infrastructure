@@ -23,6 +23,7 @@ import { generateCheckoutToken } from '@/lib/auth/checkout-token'
 import { createSlasForTransition } from '@/lib/sla/creator'
 import { sendPaymentLinkSms } from '@/lib/sms/triggers'
 import { serverEnv } from '@/lib/env'
+import { missingRxDetails, MISSING_RX_DETAIL_LABEL, rxDetailsFromRow } from '@/lib/orders/rx-details'
 
 // ── SHA-256 helper — Web Crypto API (Edge runtime compatible) ──
 
@@ -96,9 +97,10 @@ export async function POST(
     .from('orders')
     .select(`
       order_id, status, clinic_id,
-      patient_id, provider_id, catalog_item_id, pharmacy_id,
+      patient_id, provider_id, catalog_item_id, formulation_id, pharmacy_id,
       retail_price_snapshot, wholesale_price_snapshot,
-      shipping_state_snapshot, medication_snapshot, pharmacy_snapshot
+      shipping_state_snapshot, medication_snapshot, pharmacy_snapshot,
+      clinical_difference, diagnosis_code, diagnosis_text
     `)
     .eq('order_id', orderId)
     .eq('clinic_id', clinicId)
@@ -230,6 +232,33 @@ export async function POST(
   }
   if (!deaOk) {
     return NextResponse.json({ error: `Compliance: DEA Schedule ${deaSchedule} requires Tier 4 fax pharmacy` }, { status: 422 })
+  }
+
+  // ── WO-96: rule-required Rx details ──────────────────────────
+  // Controlled substance → a diagnosis (code or text); formulation with
+  // requires_clinical_difference → a clinical difference statement. The
+  // Review card pre-fills both and blocks Sign & Send client-side; this
+  // is the authoritative gate for drafts saved before the field was set.
+  let requiresClinicalDifference = false
+  if (order.formulation_id) {
+    const { data: formulationRules } = await supabase
+      .from('formulations')
+      .select('requires_clinical_difference')
+      .eq('formulation_id', order.formulation_id)
+      .maybeSingle()
+    requiresClinicalDifference = formulationRules?.requires_clinical_difference === true
+  }
+  const missingDetails = missingRxDetails(rxDetailsFromRow(order), {
+    isControlled: deaSchedule >= 2,
+    requiresClinicalDifference,
+    clinicalDifferenceOptions: [],
+  })
+  if (missingDetails.length > 0) {
+    const what = missingDetails.map(m => MISSING_RX_DETAIL_LABEL[m]).join(' and ')
+    return NextResponse.json(
+      { error: `This prescription needs ${what} before it can be sent. Open Rx details on the Review step to add it.` },
+      { status: 422 },
+    )
   }
   // Check 3 (signature) — validated above (format + length guards replace the open accept).
 

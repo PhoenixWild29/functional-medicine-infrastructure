@@ -43,9 +43,20 @@ function logSignatureEvent(component: 'draft-sign-form' | 'batch-review-form', e
     data:     { component, event, ts: Date.now() },
   })
 }
-import { usePrescriptionSession } from '../../_context/prescription-session'
+import { usePrescriptionSession, type SessionPrescription } from '../../_context/prescription-session'
 import { EpcsTotpGate } from '../../_components/epcs-totp-gate'
 import { DrugInteractionAlerts } from '../../_components/drug-interaction-alerts'
+import { RxDetailsRow } from './rx-details-row'
+import {
+  defaultRxDetails,
+  missingRxDetails,
+  MISSING_RX_DETAIL_LABEL,
+  rulesFromFormulation,
+  type MissingRxDetail,
+  type RxDetails,
+  type RxRules,
+} from '@/lib/orders/rx-details'
+import type { RxFormulationDefaults } from '@/lib/orders/rx-defaults-loader'
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -65,6 +76,27 @@ function calcPlatformFeeCents(marginCents: number): number {
 // surface these BEFORE the provider signs instead of failing mid-batch.
 function isUnsendable(rx: { retailCents: number; sigText: string }): boolean {
   return rx.retailCents <= 0 || rx.sigText.trim().length < 10
+}
+
+// ── WO-96: per-line Rx details + rules ────────────────────────
+// Lines added by the margin builder carry both. Lines that entered the
+// session another way (protocol quick-load, favorites, sessions
+// persisted before WO-96) carry neither until the resolution effect
+// below patches them from /api/formulations?level=rx_defaults. Until
+// then they render with the plain defaults and no rule.
+
+function effectiveRules(rx: SessionPrescription): RxRules {
+  if (rx.rxRules) return rx.rxRules
+  return rulesFromFormulation(null, rx.deaSchedule)
+}
+
+function effectiveDetails(rx: SessionPrescription): RxDetails {
+  return rx.rxDetails ?? defaultRxDetails(null)
+}
+
+/** Lines whose rules are unknown and can be resolved (V3.0 formulation lines). */
+function needsRxResolution(rx: SessionPrescription): boolean {
+  return !rx.rxRules && !!rx.formulationId
 }
 
 // ── Props ─────────────────────────────────────────────────────
@@ -101,6 +133,58 @@ export function BatchReviewForm({ isProvider }: Props) {
     }
   }, [session.isSessionStarted, router])
 
+  // ── WO-96: resolve defaults + rules for lines that lack them ──
+  // Keyed on the unresolved formulation ids so a patch that adds
+  // rxRules does not re-trigger the fetch for the same lines.
+  const unresolvedKey = session.prescriptions
+    .filter(needsRxResolution)
+    .map(rx => rx.formulationId as string)
+    .sort()
+    .join(',')
+  const { updatePrescription } = session
+  const prescriptionsRef = useRef(session.prescriptions)
+  prescriptionsRef.current = session.prescriptions
+  useEffect(() => {
+    if (!unresolvedKey) return
+    const ids = [...new Set(unresolvedKey.split(','))]
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(`/api/formulations?level=rx_defaults&ids=${encodeURIComponent(ids.join(','))}`)
+        if (!res.ok) return
+        const json = await res.json() as { data?: Record<string, RxFormulationDefaults> }
+        if (cancelled || !json.data) return
+        for (const rx of prescriptionsRef.current) {
+          if (!needsRxResolution(rx)) continue
+          const entry = json.data[rx.formulationId as string]
+          if (!entry) continue
+          const existing = rx.rxDetails
+          const defaults = defaultRxDetails(entry.defaults, {
+            refills:       existing?.refills ?? 0,
+            diagnosisCode: existing?.diagnosisCode ?? entry.suggestedDiagnosis?.code ?? null,
+            diagnosisText: existing?.diagnosisText ?? entry.suggestedDiagnosis?.text ?? null,
+          })
+          updatePrescription(rx.id, {
+            rxDetails: {
+              ...defaults,
+              ...(existing ?? {}),
+              clinicalDifference: existing?.clinicalDifference ?? defaults.clinicalDifference,
+              diagnosisCode:      defaults.diagnosisCode,
+              diagnosisText:      defaults.diagnosisText,
+            },
+            rxRules:     rulesFromFormulation(entry.defaults, entry.deaSchedule ?? rx.deaSchedule),
+            deaSchedule: entry.deaSchedule ?? rx.deaSchedule,
+          })
+        }
+      } catch (err) {
+        // Non-fatal: the row renders with plain defaults; sign-and-send
+        // remains the authoritative gate for rule-required fields.
+        console.warn('[batch-review] rx defaults resolution failed:', err instanceof Error ? err.message : err)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [unresolvedKey, updatePrescription])
+
   if (!session.patient || !session.provider || session.prescriptions.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-card p-8 text-center">
@@ -134,12 +218,24 @@ export function BatchReviewForm({ isProvider }: Props) {
   const invalidItems = prescriptions.filter(isUnsendable)
   const hasInvalidItems = invalidItems.length > 0
 
+  // WO-96: rule-required Rx details still empty (controlled → diagnosis,
+  // requires_clinical_difference → statement). Blocks both Sign & Send
+  // and Save as Draft; the row auto-expands with the field focused.
+  const missingByLine = new Map<string, MissingRxDetail[]>(
+    prescriptions.map(rx => [rx.id, missingRxDetails(effectiveDetails(rx), effectiveRules(rx))]),
+  )
+  const linesMissingDetails = prescriptions.filter(rx => (missingByLine.get(rx.id) ?? []).length > 0)
+  const hasMissingDetails = linesMissingDetails.length > 0
+  const missingDetailsHint = linesMissingDetails
+    .map(rx => `${rx.medicationName} needs ${(missingByLine.get(rx.id) ?? []).map(m => MISSING_RX_DETAIL_LABEL[m]).join(' and ')}`)
+    .join('; ')
+
   function handleClearSignature() {
     sigCanvasRef.current?.clear()
     setSignatureCaptured(false)
   }
 
-  const canSubmit = signatureCaptured && prescriptions.length > 0 && !isSubmitting && !hasInvalidItems
+  const canSubmit = signatureCaptured && prescriptions.length > 0 && !isSubmitting && !hasInvalidItems && !hasMissingDetails
   // Shared controls (Remove, Add Another) lock during either flow.
   const isBusy = isSubmitting || isSavingDraft
 
@@ -187,6 +283,8 @@ export function BatchReviewForm({ isProvider }: Props) {
             // GAP-3: present only on lines quick-loaded from a protocol;
             // the server links the order to a protocol_instance + version.
             protocolId:    rx.protocolId ?? null,
+            // WO-96: derived + defaulted detail fields
+            rxDetails:     effectiveDetails(rx),
           }),
         })
 
@@ -276,6 +374,8 @@ export function BatchReviewForm({ isProvider }: Props) {
             // GAP-3: same linkage on the MA save-as-draft path — the
             // draft IS the order row; sign-and-send only updates it.
             protocolId:    rx.protocolId ?? null,
+            // WO-96: derived + defaulted detail fields
+            rxDetails:     effectiveDetails(rx),
           }),
         })
 
@@ -367,6 +467,18 @@ export function BatchReviewForm({ isProvider }: Props) {
                   </p>
                 </div>
               </div>
+              {/* WO-96: collapsed Rx details row — auto-expands only when a
+                  rule requires confirmation. */}
+              <RxDetailsRow
+                lineId={rx.id}
+                details={effectiveDetails(rx)}
+                rules={effectiveRules(rx)}
+                missing={missingByLine.get(rx.id) ?? []}
+                disabled={isBusy}
+                onChange={patch => session.updatePrescription(rx.id, {
+                  rxDetails: { ...effectiveDetails(rx), ...patch },
+                })}
+              />
               <div className="mt-2 flex justify-end">
                 <button
                   type="button"
@@ -551,7 +663,9 @@ export function BatchReviewForm({ isProvider }: Props) {
             <p className="text-center text-xs text-muted-foreground">
               {hasInvalidItems
                 ? 'Remove the flagged prescriptions above to enable sending.'
-                : 'Sign in the signature box above to enable sending.'}
+                : hasMissingDetails
+                  ? `Complete Rx details to enable sending: ${missingDetailsHint}.`
+                  : 'Sign in the signature box above to enable sending.'}
             </p>
           )}
         </>
@@ -576,7 +690,7 @@ export function BatchReviewForm({ isProvider }: Props) {
           <button
             type="button"
             onClick={handleSaveDraftAll}
-            disabled={isSavingDraft || prescriptions.length === 0 || hasInvalidItems}
+            disabled={isSavingDraft || prescriptions.length === 0 || hasInvalidItems || hasMissingDetails}
             className="w-full rounded-lg border border-border bg-background px-6 py-3 text-sm font-semibold text-foreground shadow-sm hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {isSavingDraft ? 'Saving...' : 'Save as Draft — Provider Signs Later'}
@@ -584,6 +698,11 @@ export function BatchReviewForm({ isProvider }: Props) {
           {hasInvalidItems && (
             <p className="text-center text-xs text-amber-700">
               Remove the flagged prescriptions above to enable saving drafts.
+            </p>
+          )}
+          {!hasInvalidItems && hasMissingDetails && (
+            <p className="text-center text-xs text-amber-700">
+              Complete Rx details to enable saving drafts: {missingDetailsHint}.
             </p>
           )}
           <p className="text-center text-[10px] text-muted-foreground">

@@ -34,6 +34,7 @@ import { createHash } from 'node:crypto'
 import Papa from 'papaparse'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { Json } from '@/types/database.types'
+import { formulationRxDefaults } from '@/lib/orders/rx-details'
 
 const CSV_PATH = join(process.cwd(), 'docs', 'research', 'catalog-seed', 'compoundiq-catalog-seed-v1.csv')
 
@@ -98,6 +99,10 @@ interface FormOut {
   total_ingredients: number
   price: number
   qty: string[]
+  // WO-96 inputs for formulationRxDefaults
+  dosage_form_name: string
+  route_name: string
+  ingredient_names: string[]
 }
 interface FormIngRow {
   formulation_ingredient_id: string
@@ -227,6 +232,9 @@ async function main(): Promise<void> {
         total_ingredients: Math.max(1, comps.length),
         price,
         qty,
+        dosage_form_name: dosage,
+        route_name: route,
+        ingredient_names: comps.map((c) => c.name),
       })
     } else {
       addIng(iname, cat, dea, true)
@@ -246,6 +254,9 @@ async function main(): Promise<void> {
         total_ingredients: 1,
         price,
         qty,
+        dosage_form_name: dosage,
+        route_name: route,
+        ingredient_names: [iname],
       })
     }
   }
@@ -280,6 +291,12 @@ async function main(): Promise<void> {
     is_combination: f.is_combination,
     total_ingredients: f.total_ingredients,
     is_active: true,
+    // WO-96: syringe kit / shipping / clinical-difference defaults
+    ...formulationRxDefaults({
+      dosageFormName:  f.dosage_form_name,
+      routeName:       f.route_name,
+      ingredientNames: f.ingredient_names,
+    }),
   }))
   const { error: e3 } = await supabase.from('formulations').upsert(formRows, { onConflict: 'formulation_id' })
   if (e3) throw e3

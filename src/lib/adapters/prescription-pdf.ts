@@ -42,12 +42,47 @@ export interface PrescriptionPdfData {
   medicationDose: string
   quantity: number
   sigText: string | null       // directions
+  // WO-96 Rx detail fields — optional so callers written before WO-96
+  // (and tests) keep compiling; the printed lines are skipped when unset.
+  daysSupply?: number | null
+  dispenseQuantity?: number | null
+  dispenseUnit?: string | null
+  refills?: number | null
+  substitutionAllowed?: boolean | null
+  syringeOption?: string | null
+  shippingType?: string | null
+  clinicalDifference?: string | null
+  diagnosisCode?: string | null
+  diagnosisText?: string | null
+  specialInstructions?: string | null
   // Order metadata
   orderNumber: string | null
   orderDate: string            // ISO date string
   clinicName: string
   // Recipient
   pharmacyName: string
+}
+
+// ── WO-96 display helpers (kept local: this module has no deps) ──
+
+const SYRINGE_LABEL: Record<string, string> = {
+  sc_kit:          'SubQ syringe kit',
+  im_kit:          'IM syringe kit',
+  insulin_syringe: 'Insulin syringes',
+  none:            'None',
+}
+
+const SHIPPING_LABEL: Record<string, string> = {
+  standard:   'Standard',
+  cold_chain: 'Cold chain (refrigerated)',
+}
+
+function dispenseLine(qty: number | null | undefined, unit: string | null | undefined): string | null {
+  if (qty == null) return null
+  const q = Number.isInteger(qty) ? String(qty) : String(Math.round(qty * 100) / 100)
+  if (!unit) return q
+  const plural = qty !== 1 && /^(capsule|tablet|troche|vial|bottle|tube|pen|kit|unit)$/.test(unit)
+  return `${q} ${unit}${plural ? 's' : ''}`
 }
 
 // ============================================================
@@ -133,6 +168,31 @@ function buildContentStream(d: PrescriptionPdfData): string {
   lines.push(v(`Quantity: ${d.quantity}`))
   if (d.sigText) {
     lines.push(v(`Sig: ${d.sigText}`))
+  }
+
+  // ── WO-96 Rx details ──────────────────────────────────────
+  const dispense = dispenseLine(d.dispenseQuantity, d.dispenseUnit)
+  const daysSupply = d.daysSupply != null ? `${d.daysSupply} days` : null
+  if (dispense || daysSupply) {
+    lines.push(v(`Dispense: ${dispense ?? '-'}    Days supply: ${daysSupply ?? '-'}`))
+  }
+  const refills = d.refills ?? 0
+  const daw = d.substitutionAllowed === false ? 'Dispense as written (DAW)' : 'Substitution permitted'
+  lines.push(v(`Refills: ${refills}    ${daw}`))
+  if (d.syringeOption || d.shippingType) {
+    const syringe = d.syringeOption ? (SYRINGE_LABEL[d.syringeOption] ?? d.syringeOption) : 'None'
+    const shipping = d.shippingType ? (SHIPPING_LABEL[d.shippingType] ?? d.shippingType) : 'Standard'
+    lines.push(v(`Syringe option: ${syringe}    Shipping: ${shipping}`))
+  }
+  const diagnosis = [d.diagnosisCode, d.diagnosisText].filter(Boolean).join(' - ')
+  if (diagnosis) {
+    lines.push(v(`Diagnosis: ${diagnosis}`))
+  }
+  if (d.clinicalDifference) {
+    lines.push(v(`Clinical difference: ${d.clinicalDifference}`))
+  }
+  if (d.specialInstructions) {
+    lines.push(v(`Special instructions: ${d.specialInstructions}`))
   }
   lines.push(sp(-10))
 

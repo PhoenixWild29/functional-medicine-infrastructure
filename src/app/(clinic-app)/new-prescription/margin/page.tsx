@@ -24,6 +24,7 @@ import { HipaaTimeout }      from '@/components/hipaa-timeout'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { MarginBuilderForm } from './_components/margin-builder-form'
 import { SessionBanner }     from '../_components/session-banner'
+import { loadRxDefaults, type RxFormulationDefaults } from '@/lib/orders/rx-defaults-loader'
 
 export const metadata = {
   title: 'New Prescription — Set Price',
@@ -38,6 +39,9 @@ interface PageProps {
     frequency?: string
     sigText?: string
     deaSchedule?: string
+    // WO-96: selected pharmacy quantity label + refills from the builder
+    quantity?: string
+    refills?: string
   }>
 }
 
@@ -49,6 +53,8 @@ export default async function MarginPage({ searchParams }: PageProps) {
   const presetDose     = (resolvedParams.dose ?? '').trim()
   const presetFreq     = (resolvedParams.frequency ?? '').trim()
   const presetSig      = (resolvedParams.sigText ?? '').trim()
+  const presetQuantity = (resolvedParams.quantity ?? '').trim()
+  const presetRefills  = parseInt(resolvedParams.refills ?? '0', 10)
 
   // Need pharmacyId + (itemId OR formulation_id)
   if (!pharmacyId || (!itemId && !formulationId)) {
@@ -77,12 +83,16 @@ export default async function MarginPage({ searchParams }: PageProps) {
   // to /api/orders.
   let catalogItem: { item_id: string | null; medication_name: string; form: string; dose: string; wholesale_price: number; dea_schedule: number | null } | null = null
   let resolvedFormulationId: string | null = null
+  // WO-96: inputs for the derived days supply / dispense, and the
+  // formulation-level defaults + rules for the Rx details row.
+  let formulationDetails: { concentrationValue: number | null; concentrationUnit: string | null; dosageFormName: string | null } | null = null
+  let rxDefaults: RxFormulationDefaults | null = null
 
   if (formulationId) {
     // New path: fetch from formulations + pharmacy_formulations
     const [formResult, priceResult] = await Promise.all([
       supabase.from('formulations')
-        .select('formulation_id, name, concentration, dosage_forms(name), routes_of_administration(name)')
+        .select('formulation_id, name, concentration, concentration_value, concentration_unit, dosage_forms(name), routes_of_administration(name)')
         .eq('formulation_id', formulationId)
         .eq('is_active', true)
         .is('deleted_at', null)
@@ -100,13 +110,34 @@ export default async function MarginPage({ searchParams }: PageProps) {
     if (formResult.data && priceResult.data) {
       const df = formResult.data.dosage_forms as Record<string, string> | null
       resolvedFormulationId = formResult.data.formulation_id
+
+      // WO-96: defaults + rules + most-common diagnosis for this
+      // formulation. Non-fatal — a lookup failure leaves rxDefaults null
+      // and the Review card resolves them on mount instead.
+      if (clinicId) {
+        try {
+          const map = await loadRxDefaults(supabase, clinicId, [formulationId])
+          rxDefaults = map[formulationId] ?? null
+        } catch (err) {
+          console.warn('[margin-page] rx defaults lookup failed (non-fatal):', err instanceof Error ? err.message : err)
+        }
+      }
+
+      formulationDetails = {
+        concentrationValue: formResult.data.concentration_value,
+        concentrationUnit:  formResult.data.concentration_unit,
+        dosageFormName:     df?.name ?? null,
+      }
       catalogItem = {
         item_id: null,
         medication_name: formResult.data.name,
         form: df?.name ?? '',
         dose: presetDose || formResult.data.concentration || '',
         wholesale_price: priceResult.data.wholesale_price,
-        dea_schedule: resolvedParams.deaSchedule ? parseInt(resolvedParams.deaSchedule, 10) : null,
+        // The loader's DEA schedule (max across ingredients) is authoritative;
+        // the URL param is the builder's best effort and stays as fallback.
+        dea_schedule: rxDefaults?.deaSchedule
+          ?? (resolvedParams.deaSchedule ? parseInt(resolvedParams.deaSchedule, 10) : null),
       }
     }
   }
@@ -245,6 +276,11 @@ export default async function MarginPage({ searchParams }: PageProps) {
         deaSchedule={catalogItem.dea_schedule ?? 0}
         defaultMarkupPct={defaultMarkupPct}
         presetSigText={presetSig || undefined}
+        presetFrequency={presetFreq || undefined}
+        presetQuantity={presetQuantity || undefined}
+        presetRefills={Number.isFinite(presetRefills) ? presetRefills : 0}
+        formulationDetails={formulationDetails}
+        rxDefaults={rxDefaults}
       />
     </main>
     </>

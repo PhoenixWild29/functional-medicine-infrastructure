@@ -51,6 +51,13 @@ export const TEST_IDS = {
   controlledSaltForm:           'aaaaaaaa-0000-0000-0000-000000000041',
   controlledFormulation:        'aaaaaaaa-0000-0000-0000-000000000042',
   controlledPharmacyFormulation:'aaaaaaaa-0000-0000-0000-000000000043',
+  // WO-96: GLP-1-style seed — requires_clinical_difference = true, cold chain.
+  // Drives the "Semaglutide cannot be sent without a clinical difference"
+  // acceptance path without depending on the production catalog seed.
+  glp1Ingredient:         'aaaaaaaa-0000-0000-0000-000000000050',
+  glp1SaltForm:           'aaaaaaaa-0000-0000-0000-000000000051',
+  glp1Formulation:        'aaaaaaaa-0000-0000-0000-000000000052',
+  glp1PharmacyFormulation:'aaaaaaaa-0000-0000-0000-000000000053',
 }
 
 // Display strings the cascading UI renders — tests reference these when
@@ -68,6 +75,15 @@ export const TEST_CATALOG = {
   controlledIngredientName:  'Test Controlled E2E',
   controlledSaltFormName:    'Test Controlled E2E Cypionate',
   controlledFormulationName: 'Test Controlled E2E Injectable 100 mg/mL',
+
+  // WO-96 GLP-1 analogue — requires a clinical difference statement.
+  glp1IngredientName:  'Test GLP1 E2E',
+  glp1SaltFormName:    'Test GLP1 E2E Base',
+  glp1FormulationName: 'Test GLP1 E2E Injectable 5 mg/mL',
+  glp1ClinicalDifferenceOptions: [
+    'Patient requires a dose or strength not commercially available',
+    'Commercial product is unavailable or on national shortage',
+  ],
 }
 
 // ── Test users (Supabase Auth) ────────────────────────────────
@@ -249,6 +265,14 @@ export async function seedStaticData(): Promise<void> {
     is_combination:      false,
     total_ingredients:   1,
     is_active:           true,
+    // WO-96: injectable → SubQ kit, standard shipping, no clinical
+    // difference. Set explicitly because migration 20260912000001 only
+    // back-fills rows that existed when it ran; this upsert may create
+    // the row afterwards on a fresh E2E project.
+    default_syringe_option:       'sc_kit',
+    default_shipping_type:        'standard',
+    clinical_difference_options:  [],
+    requires_clinical_difference: false,
   }, { onConflict: 'formulation_id' })
 
   // Pharmacy formulation — wholesale price $100 matches the inline retail-
@@ -298,6 +322,11 @@ export async function seedStaticData(): Promise<void> {
     is_combination:      false,
     total_ingredients:   1,
     is_active:           true,
+    // WO-96 defaults (see note on the plain formulation above).
+    default_syringe_option:       'sc_kit',
+    default_shipping_type:        'standard',
+    clinical_difference_options:  [],
+    requires_clinical_difference: false,
   }, { onConflict: 'formulation_id' })
 
   await supabase.from('pharmacy_formulations').upsert({
@@ -308,6 +337,59 @@ export async function seedStaticData(): Promise<void> {
     available_quantities:      ['1 vial', '2 vials'],
     is_available:              true,
     estimated_turnaround_days: 7,
+    is_active:                 true,
+  }, { onConflict: 'pharmacy_formulation_id' })
+
+  // ── WO-96: GLP-1 analogue seed (requires clinical difference) ──
+  //
+  // Mirrors what migration 20260912000001 assigns to Semaglutide /
+  // Tirzepatide in the production catalog: cold-chain shipping and a
+  // required 503A clinical-difference statement with a picklist whose
+  // first entry is the pre-selected default. dea_schedule = null so the
+  // EPCS gate stays out of the way.
+  await supabase.from('ingredients').upsert({
+    ingredient_id:        TEST_IDS.glp1Ingredient,
+    common_name:          TEST_CATALOG.glp1IngredientName,
+    therapeutic_category: 'Testing — GLP-1',
+    dea_schedule:         null,
+    is_hazardous:         false,
+    is_active:            true,
+  }, { onConflict: 'ingredient_id' })
+
+  await supabase.from('salt_forms').upsert({
+    salt_form_id:  TEST_IDS.glp1SaltForm,
+    ingredient_id: TEST_IDS.glp1Ingredient,
+    salt_name:     TEST_CATALOG.glp1SaltFormName,
+    abbreviation:  'base',
+    is_active:     true,
+  }, { onConflict: 'salt_form_id' })
+
+  await supabase.from('formulations').upsert({
+    formulation_id:      TEST_IDS.glp1Formulation,
+    name:                TEST_CATALOG.glp1FormulationName,
+    salt_form_id:        TEST_IDS.glp1SaltForm,
+    dosage_form_id:      dosageForm.dosage_form_id,
+    route_id:            route.route_id,
+    concentration:       '5 mg/mL',
+    concentration_value: 5,
+    concentration_unit:  'mg/mL',
+    is_combination:      false,
+    total_ingredients:   1,
+    is_active:           true,
+    default_syringe_option:       'sc_kit',
+    default_shipping_type:        'cold_chain',
+    clinical_difference_options:  TEST_CATALOG.glp1ClinicalDifferenceOptions,
+    requires_clinical_difference: true,
+  }, { onConflict: 'formulation_id' })
+
+  await supabase.from('pharmacy_formulations').upsert({
+    pharmacy_formulation_id:   TEST_IDS.glp1PharmacyFormulation,
+    pharmacy_id:               TEST_IDS.pharmacyTier1,
+    formulation_id:            TEST_IDS.glp1Formulation,
+    wholesale_price:           95.00,
+    available_quantities:      ['5mL vial', '2.5mL vial'],
+    is_available:              true,
+    estimated_turnaround_days: 5,
     is_active:                 true,
   }, { onConflict: 'pharmacy_formulation_id' })
 
