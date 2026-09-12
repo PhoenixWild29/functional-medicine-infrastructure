@@ -9,6 +9,7 @@
 // and AFTER the migration (dosage_forms + routes seeded).
 
 import { createClient } from '@supabase/supabase-js'
+import { formulationRxDefaults } from '../src/lib/orders/rx-details'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -99,7 +100,21 @@ async function main() {
     { formulation_id: 'b3000000-0000-4000-8000-000000000022', name: 'Lipo-Mino Mix C 30mL Multi-Dose Vial', salt_form_id: null, dosage_form_id: df('Injectable Solution'), route_id: rt('Intramuscular'), concentration: 'Multi-ingredient', concentration_value: null, concentration_unit: null, is_combination: true, total_ingredients: 6, description: 'Lipotropic + B vitamins + MIC' },
   ]
 
-  for (const f of formulations) {
+  // WO-96: formulation-level Rx defaults (syringe kit, shipping, clinical
+  // difference). Same rule as migration 20260912000001 so a reseed after
+  // the migration lands the identical values.
+  const dfName = (id: string | undefined) => dosageForms.find(d => d.dosage_form_id === id)?.name ?? null
+  const rtName = (id: string | undefined) => routes.find(r => r.route_id === id)?.name ?? null
+
+  for (const base of formulations) {
+    const f = {
+      ...base,
+      ...formulationRxDefaults({
+        dosageFormName:  dfName(base.dosage_form_id),
+        routeName:       rtName(base.route_id),
+        ingredientNames: base.name.split(/[\s/]+/),
+      }),
+    }
     const { error } = await supabase.from('formulations').upsert(f, { onConflict: 'formulation_id' })
     if (error) {
       console.error(`  ✗ ${f.name}: ${error.message}`)

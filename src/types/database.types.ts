@@ -708,10 +708,13 @@ export type Database = {
       }
       formulations: {
         Row: {
+          clinical_difference_options: string[]
           concentration: string | null
           concentration_unit: string | null
           concentration_value: number | null
           created_at: string
+          default_shipping_type: string | null
+          default_syringe_option: string | null
           deleted_at: string | null
           description: string | null
           dosage_form_id: string
@@ -720,16 +723,20 @@ export type Database = {
           is_active: boolean
           is_combination: boolean
           name: string
+          requires_clinical_difference: boolean
           route_id: string
           salt_form_id: string | null
           total_ingredients: number
           updated_at: string
         }
         Insert: {
+          clinical_difference_options?: string[]
           concentration?: string | null
           concentration_unit?: string | null
           concentration_value?: number | null
           created_at?: string
+          default_shipping_type?: string | null
+          default_syringe_option?: string | null
           deleted_at?: string | null
           description?: string | null
           dosage_form_id: string
@@ -738,16 +745,20 @@ export type Database = {
           is_active?: boolean
           is_combination?: boolean
           name: string
+          requires_clinical_difference: boolean
           route_id: string
           salt_form_id?: string | null
           total_ingredients?: number
           updated_at?: string
         }
         Update: {
+          clinical_difference_options?: string[]
           concentration?: string | null
           concentration_unit?: string | null
           concentration_value?: number | null
           created_at?: string
+          default_shipping_type?: string | null
+          default_syringe_option?: string | null
           deleted_at?: string | null
           description?: string | null
           dosage_form_id?: string
@@ -756,6 +767,7 @@ export type Database = {
           is_active?: boolean
           is_combination?: boolean
           name?: string
+          requires_clinical_difference?: boolean
           route_id?: string
           salt_form_id?: string | null
           total_ingredients?: number
@@ -1102,7 +1114,13 @@ export type Database = {
           catalog_item_id: string | null
           clinic_id: string
           created_at: string
+          clinical_difference: string | null
+          days_supply: number | null
           deleted_at: string | null
+          diagnosis_code: string | null
+          diagnosis_text: string | null
+          dispense_quantity: number | null
+          dispense_unit: string | null
           documo_fax_id: string | null
           estimated_completion_at: string | null
           fax_attempt_count: number
@@ -1124,16 +1142,21 @@ export type Database = {
           provider_npi_snapshot: string | null
           provider_signature_hash_snapshot: string | null
           quantity: number
+          refills: number
           reroute_count: number
           retail_price_snapshot: number | null
           shipping_state_snapshot: string | null
+          shipping_type: string | null
           sig_text: string | null
+          special_instructions: string | null
           status: Database["public"]["Enums"]["order_status_enum"]
           stripe_payment_intent_id: string | null
           stripe_transfer_id: string | null
           submission_tier:
             | Database["public"]["Enums"]["integration_tier_enum"]
             | null
+          substitution_allowed: boolean
+          syringe_option: string | null
           tracking_number: string | null
           updated_at: string
           wholesale_price_snapshot: number | null
@@ -1144,7 +1167,13 @@ export type Database = {
           catalog_item_id?: string | null
           clinic_id: string
           created_at?: string
+          clinical_difference?: string | null
+          days_supply?: number | null
           deleted_at?: string | null
+          diagnosis_code?: string | null
+          diagnosis_text?: string | null
+          dispense_quantity?: number | null
+          dispense_unit?: string | null
           documo_fax_id?: string | null
           estimated_completion_at?: string | null
           fax_attempt_count?: number
@@ -1166,16 +1195,21 @@ export type Database = {
           provider_npi_snapshot?: string | null
           provider_signature_hash_snapshot?: string | null
           quantity: number
+          refills?: number
           reroute_count?: number
           retail_price_snapshot?: number | null
           shipping_state_snapshot?: string | null
+          shipping_type?: string | null
           sig_text?: string | null
+          special_instructions?: string | null
           status?: Database["public"]["Enums"]["order_status_enum"]
           stripe_payment_intent_id?: string | null
           stripe_transfer_id?: string | null
           submission_tier?:
             | Database["public"]["Enums"]["integration_tier_enum"]
             | null
+          substitution_allowed?: boolean
+          syringe_option?: string | null
           tracking_number?: string | null
           updated_at?: string
           wholesale_price_snapshot?: number | null
@@ -1186,7 +1220,13 @@ export type Database = {
           catalog_item_id?: string | null
           clinic_id?: string
           created_at?: string
+          clinical_difference?: string | null
+          days_supply?: number | null
           deleted_at?: string | null
+          diagnosis_code?: string | null
+          diagnosis_text?: string | null
+          dispense_quantity?: number | null
+          dispense_unit?: string | null
           documo_fax_id?: string | null
           estimated_completion_at?: string | null
           fax_attempt_count?: number
@@ -1208,16 +1248,21 @@ export type Database = {
           provider_npi_snapshot?: string | null
           provider_signature_hash_snapshot?: string | null
           quantity?: number
+          refills?: number
           reroute_count?: number
           retail_price_snapshot?: number | null
           shipping_state_snapshot?: string | null
+          shipping_type?: string | null
           sig_text?: string | null
+          special_instructions?: string | null
           status?: Database["public"]["Enums"]["order_status_enum"]
           stripe_payment_intent_id?: string | null
           stripe_transfer_id?: string | null
           submission_tier?:
             | Database["public"]["Enums"]["integration_tier_enum"]
             | null
+          substitution_allowed?: boolean
+          syringe_option?: string | null
           tracking_number?: string | null
           updated_at?: string
           wholesale_price_snapshot?: number | null
