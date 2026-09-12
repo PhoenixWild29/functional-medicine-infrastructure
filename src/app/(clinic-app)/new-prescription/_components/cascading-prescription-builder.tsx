@@ -468,6 +468,7 @@ export function CascadingPrescriptionBuilder() {
           <div className="mt-1 flex gap-3">
             <div className="flex-1">
               <select
+                aria-label="Quantity"
                 value={quantity}
                 onChange={e => setQuantity(e.target.value)}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -480,6 +481,7 @@ export function CascadingPrescriptionBuilder() {
             </div>
             <div className="w-24">
               <select
+                aria-label="Refills"
                 value={refills}
                 onChange={e => setRefills(e.target.value)}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

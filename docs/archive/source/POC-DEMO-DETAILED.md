@@ -1,8 +1,10 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 2.15 | **Date:** September 11, 2026
+**Version:** 2.16 | **Date:** September 12, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
+
+> **What's new in v2.16 (2026-09-12):** **WO-96 — Rx detail fields, derived and defaulted (Phase 21, practitioner feedback round 1).** The prescription flow still has the same three steps, but two screens gained content. (a) **Margin page (step 33)** — under the sig, **Days supply** and **Dispense** now appear as computed read-only values, derived from dose × frequency × the quantity chosen in step 31 (Semaglutide 10 units weekly from a 5 mL vial reads **350 days · 5 mL**; the number is the arithmetic, not a clinical recommendation, and an **Override** link lets the provider change it). Selecting a quantity in step 31 is therefore no longer optional if you want the derived values to show. (b) **Review page (step 40)** — every prescription card carries a collapsed **Rx details** row: refills (0), substitution (allowed), syringe option and shipping (pre-selected per formulation — Semaglutide ships **cold chain**), clinical difference, diagnosis, special instructions. The row **opens by itself only when a rule needs confirmation**: **Semaglutide** opens with the 503A clinical-difference picklist **already set to its first option** (nothing to type), and **Testosterone Cypionate** opens asking for a **diagnosis** and **keeps "Save as Draft" disabled until one is entered** — see the new box after step 42. BPC-157 and the other non-controlled, non-GLP-1 items never open the row. (c) All of these fields flow to the Rx PDF and to every pharmacy submission payload. (d) The prescriber line on the Rx PDF and all new copy say **provider**, never "doctor".
 
 > **What's new in v2.15 (2026-09-11):** **Root cause of the recurring mid-demo silent logout found and fixed.** The every-10-minutes `poc-credential-sync` Vercel cron re-set the four POC account passwords via the Supabase admin API on every fire, and an admin user update that includes a password revokes every existing session for that user, even when the password value is unchanged. The cron is removed and the credential sync is now metadata-only unless passwords are explicitly reset. Sessions now persist for the full token lifetime. The cron count in the tech overview drops from **10 to 9**. The **Reset Demo Credentials** button on `/ops/demo-tools` still resets passwords but now warns that it signs out every demo user, including the presenter. Do not press it during a demo. Docs only otherwise.
 
@@ -408,7 +410,9 @@ The expanded seed gives the presenter named characters to point at. Every row be
 > "For titration protocols like LDN, the provider sets start dose, increment, interval, and target. The sig generates: 'Take 0.1mL by mouth at bedtime. Titrate up by 0.1mL every 3-4 days as tolerated up to 0.5mL.' No competitor has this."
 
 30. Click back to **Standard** mode. Select **Strive Pharmacy** in the Pharmacy & Pricing section
-31. Select quantity, refills. **Point out the star button** next to "Continue — Set Retail Price"
+31. Select quantity (**"5mL vial"**) and refills. **Point out the star button** next to "Continue — Set Retail Price"
+
+> **v2.16 — pick the quantity, don't skip it.** The next screen derives **Days supply** and **Dispense** from dose × frequency × this quantity. With no quantity selected it shows a dash and explains why.
 
 > "The star saves this configuration as a provider favorite for one-click reorder next time."
 
@@ -418,7 +422,9 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 > **Set Retail Price note:** The retail field pre-fills at **$133.00** (the clinic's 40% Default Markup); the **$190.00** figures below assume the presenter taps the **2×** button. Without that tap, the retail stays at the $133.00 default and the platform fee, clinic margin, and $286.00 bundle total are all smaller. **Tap 2× if you want the numbers in this script to match the screen.**
 
-33. **Point out the Margin Builder** — Wholesale: $95 (locked), retail price **pre-populated at $133** (1.4× wholesale, from the clinic's 40% default markup), multiplier buttons, Sig field pre-filled
+33. **Point out the Margin Builder** — Wholesale: $95 (locked), retail price **pre-populated at $133** (1.4× wholesale, from the clinic's 40% default markup), multiplier buttons, Sig field pre-filled, and — **new in v2.16** — under the sig, **Days supply: 350 days · Dispense: 5 mL**, computed from 10 units once weekly out of a 5 mL vial, with an **Override** link.
+
+> "Nothing on this screen was typed that the app could have worked out. Days supply and dispense are arithmetic on the sig and the vial — the provider only touches them to override."
 34. Click **2x multiplier** — retail updates to $190, margin 50%, platform fee $14.25 (15% of the $95 spread), est. clinic margin $80.75
 
 > "Full transparency. The retail price is pre-filled from the clinic's default markup setting — currently 40% — so I never type a number unless I want to override it. Clicking 2x bumps it to a higher margin. The clinic sees exactly what they earn before committing. The sig is already pre-filled from the builder."
@@ -446,6 +452,7 @@ The expanded seed gives the presenter named characters to point at. Every row be
     - One prescription card per medication with pharmacy, pricing, and sig
     - Combined totals (total retail, platform fee, total clinic payout)
     - "Remove" link on each card
+    - **v2.16 — an "Rx details" row on each card.** Semaglutide's is **open** with the clinical-difference picklist already set to its first option and **Cold chain** shipping pre-selected; Testosterone Cypionate's is **open** asking for a diagnosis (see the box after step 42). Expand either to show refills, substitution, syringe kit, shipping, diagnosis and special instructions all pre-filled.
     - "+ Add Another Prescription" button
 
 > "The system automatically detects drug interactions and surfaces them with clinical guidance — severity-coloured: red for critical, amber for warning, blue for informational. DEA-scheduled compounds trigger the red banner."
@@ -463,6 +470,9 @@ The expanded seed gives the presenter named characters to point at. Every row be
 > That's not a setting somebody remembered to switch on for this demo. That's the role."
 
 42. **Point out** that the page does not merely hide the signing control — it explains it. Read the message naming the assigned provider out loud rather than paraphrasing it.
+
+> **v2.16 — enter a diagnosis for Testosterone Cypionate before step 43.** Testosterone is Schedule III, so its **Rx details** row opens on its own with the **Diagnosis code** field focused and an amber note, and **"Save as Draft" stays disabled** with the hint *"Complete Rx details to enable saving drafts: Testosterone Cypionate … needs a diagnosis (controlled substance)"* until one is entered. Type **E29.1** (or any diagnosis text). The field is pre-filled automatically once the clinic has a prior order for the same formulation with a diagnosis on it — on a fresh seed it is empty. Semaglutide needs nothing: its clinical-difference statement is already selected. Narrate it: *"A controlled substance leaves here with a diagnosis on it, and the compounded GLP-1 leaves with its 503A statement — the pharmacy stops calling back for either."*
+
 43. Click **"Save as Draft — Provider Signs Later"**
 
 > **Expect two drafts, not one — this is verified, not assumed.** A session of **N prescriptions saves as N separate draft orders**, one per medication. This script has the MA build **2** (Semaglutide + Testosterone Cypionate), so you get **2 drafts**, and the app redirects to `/dashboard?draft=2`. Confirmed in a live prod dry run on 2026-09-10, where a 3-medication protocol session produced **3** separate draft orders and redirected to `/dashboard?draft=3`. Say the count out loud before the audience counts the rows: *"Two prescriptions, two drafts. Each one gets its own signature — a physician signs prescriptions, not shopping carts."*

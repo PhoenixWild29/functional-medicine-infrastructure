@@ -521,3 +521,206 @@ test.describe('Clinic App — Order Zero-PHI Validation', () => {
       .eq('order_id', order.order_id)
   })
 })
+
+// ============================================================
+// WO-96 — Rx detail fields (derived + defaulted)
+// ============================================================
+// Phase 21 acceptance criteria covered here (browser layer):
+//   - days supply + dispense computed on the margin page, nothing typed
+//   - Review card shows "Rx details" collapsed; expanding shows fields
+//   - controlled substance → row auto-expands, diagnosis focused, send
+//     blocked until a diagnosis is entered
+//   - requires_clinical_difference → row auto-expands, picklist
+//     pre-selected with the first option, nothing to type
+//   - a line with neither rule saves with zero interaction with the row
+//     and the defaults land on the order row
+//   - no new page or step: the same three wizard URLs as before
+
+type BuilderChoice = {
+  ingredientName: string
+  formulationName: string
+  doseAmount: string
+  doseUnit: string
+  frequency: string
+  quantity: string
+}
+
+async function loginAs(page: Page, user: { email: string; password: string }) {
+  await page.goto('/login')
+  await page.getByLabel('Email').fill(user.email)
+  await page.getByLabel('Password').fill(user.password)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+}
+
+/** Steps 0–1 of the wizard with an explicit quantity, landing on the margin page. */
+async function walkBuilderToMargin(page: Page, choice: BuilderChoice) {
+  await page.goto('/new-prescription')
+  await page.getByLabel('Search patients').fill('Test')
+  await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
+  await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
+
+  await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
+  await page.getByLabel('Search medications').fill(choice.ingredientName)
+  await page.getByRole('button', { name: new RegExp(choice.ingredientName, 'i') }).click()
+  await page.getByRole('button', { name: new RegExp(choice.formulationName, 'i') }).click()
+  await page.getByLabel('Dose amount').fill(choice.doseAmount)
+  await page.getByLabel('Dose unit').selectOption(choice.doseUnit)
+  await page.getByLabel('Frequency').selectOption(choice.frequency)
+  await page.getByLabel('Timing').selectOption({ index: 1 })
+  await page.getByRole('button', { name: /Test Pharmacy Tier1/ }).click()
+  await page.getByLabel('Quantity').selectOption(choice.quantity)
+  await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
+  await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
+}
+
+const PLAIN: BuilderChoice = {
+  ingredientName:  TEST_CATALOG.ingredientName,
+  formulationName: TEST_CATALOG.formulationName,
+  doseAmount: '10', doseUnit: 'mg', frequency: 'QD',
+  quantity: '30',   // bare number on an injectable → 30 mL
+}
+const GLP1: BuilderChoice = {
+  ingredientName:  TEST_CATALOG.glp1IngredientName,
+  formulationName: TEST_CATALOG.glp1FormulationName,
+  doseAmount: '10', doseUnit: 'units', frequency: 'QW',
+  quantity: '5mL vial',
+}
+const CONTROLLED: BuilderChoice = {
+  ingredientName:  TEST_CATALOG.controlledIngredientName,
+  formulationName: TEST_CATALOG.controlledFormulationName,
+  doseAmount: '0.5', doseUnit: 'mL', frequency: 'QW',
+  quantity: '1 vial',
+}
+
+test.describe('Clinic App — WO-96 Rx detail fields', () => {
+  test.beforeAll(async () => {
+    await seedStaticData()
+  })
+
+  test.afterEach(async () => {
+    await cleanupTestOrders()
+  })
+
+  test('margin page shows days supply and dispense computed from dose × frequency × quantity', async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+    await walkBuilderToMargin(page, PLAIN)
+
+    // 10 mg of a 10 mg/mL injectable = 1 mL daily; 30 mL lasts 30 days.
+    await expect(page.getByTestId('days-supply-value')).toHaveText('30 days')
+    await expect(page.getByTestId('dispense-value')).toHaveText('30 mL')
+    await expect(page.getByText(/Computed from dose × frequency × quantity/)).toBeVisible()
+    // Read-only until the provider opts in to override.
+    await expect(page.getByLabel('Days supply')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Override' }).click()
+    await page.getByLabel('Days supply').fill('28')
+    await expect(page.getByTestId('days-supply-value')).toHaveText('28 days')
+  })
+
+  test('GLP-1 analogue: 10 units weekly from a 5 mL vial derives 350 days / 5 mL; Review pre-selects the clinical difference', async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+    await walkBuilderToMargin(page, GLP1)
+
+    await expect(page.getByTestId('days-supply-value')).toHaveText('350 days')
+    await expect(page.getByTestId('dispense-value')).toHaveText('5 mL')
+
+    await page.locator('#retail-price').fill('200.00')
+    await page.getByRole('button', { name: /Review & Send/ }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
+
+    // Row auto-expands because the formulation requires a clinical difference…
+    const row = page.locator('[data-testid^="rx-details-"]').first()
+    await expect(row).toHaveAttribute('data-expanded', 'true', { timeout: 15_000 })
+    // …with the picklist already on the first option and cold-chain shipping pre-selected.
+    await expect(row.getByLabel(/Clinical difference \(required\)/)).toHaveValue(TEST_CATALOG.glp1ClinicalDifferenceOptions[0]!)
+    await expect(row.getByLabel('Shipping')).toHaveValue('cold_chain')
+    await expect(row.getByLabel('Syringe option')).toHaveValue('sc_kit')
+    await expect(row.getByLabel('Refills')).toHaveValue('0')
+    // Nothing is missing — only the signature stands between the provider and Send.
+    await expect(page.getByText(/Sign in the signature box above to enable sending/)).toBeVisible()
+  })
+
+  test('controlled substance: Review row auto-expands with the diagnosis focused and blocks Send until it is entered', async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+    await walkBuilderToMargin(page, CONTROLLED)
+
+    // "1 vial" carries no volume → dispense derived, days supply not (no typing either way).
+    await expect(page.getByTestId('dispense-value')).toHaveText('1 vial')
+
+    await page.locator('#retail-price').fill('300.00')
+    await page.getByRole('button', { name: /Review & Send/ }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
+
+    const row = page.locator('[data-testid^="rx-details-"]').first()
+    await expect(row).toHaveAttribute('data-expanded', 'true', { timeout: 15_000 })
+    const dxCode = row.getByLabel(/Diagnosis code \(required\)/)
+    await expect(dxCode).toBeFocused()
+    await expect(row.getByRole('alert')).toContainText(/A diagnosis is required for a controlled substance/)
+    await expect(page.getByRole('button', { name: /Sign & Send/ })).toBeDisabled()
+    await expect(page.getByText(/needs a diagnosis \(controlled substance\)/)).toBeVisible()
+
+    await dxCode.fill('E29.1')
+    await expect(page.getByText(/Sign in the signature box above to enable sending/)).toBeVisible()
+    await expect(row.getByRole('alert')).toHaveCount(0)
+  })
+
+  test('no rule applies: Rx details stays collapsed, Save as Draft needs no interaction with it, defaults land on the order', async ({ page }) => {
+    await loginAs(page, TEST_USERS.clinicAdmin)
+    await walkBuilderToMargin(page, PLAIN)
+    await page.locator('#retail-price').fill('200.00')
+    await page.getByRole('button', { name: /Review & Send/ }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
+
+    const row = page.locator('[data-testid^="rx-details-"]').first()
+    await expect(row).toHaveAttribute('data-expanded', 'false', { timeout: 15_000 })
+    await expect(row).toContainText('30-day supply · dispense 30 mL · 0 refills · substitution OK · SubQ syringe kit · Standard')
+
+    // Expanding shows the pre-filled fields; collapse again without touching anything.
+    await row.getByRole('button', { name: /Rx details/ }).click()
+    await expect(row.getByLabel('Syringe option')).toHaveValue('sc_kit')
+    await expect(row.getByLabel('Shipping')).toHaveValue('standard')
+    await row.getByRole('button', { name: /Rx details/ }).click()
+    await expect(row).toHaveAttribute('data-expanded', 'false')
+
+    await page.getByRole('button', { name: /Save as Draft/ }).click()
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+
+    // The derived + defaulted values are on the order row.
+    const supabase = createClient(
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
+    )
+    const { data: order } = await supabase
+      .from('orders')
+      .select('days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, special_instructions')
+      .eq('clinic_id', TEST_IDS.clinic)
+      .eq('formulation_id', TEST_IDS.formulation)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    expect(order).toEqual({
+      days_supply:          30,
+      dispense_quantity:    30,
+      dispense_unit:        'mL',
+      refills:              0,
+      substitution_allowed: true,
+      syringe_option:       'sc_kit',
+      shipping_type:        'standard',
+      clinical_difference:  null,
+      diagnosis_code:       null,
+      special_instructions: null,
+    })
+  })
+
+  test('no new page or step: the wizard still has exactly three steps', async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+    await walkBuilderToMargin(page, PLAIN)
+    // The step indicator on the margin page lists the same three labels as before WO-96.
+    await expect(page.getByText('Patient & Provider')).toBeVisible()
+    await expect(page.getByText('Add Prescriptions')).toBeVisible()
+    // Both the wizard step label and the submit button read "Review & Send".
+    await expect(page.getByText('Review & Send', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText(/Rx details/)).toHaveCount(0)
+  })
+})
