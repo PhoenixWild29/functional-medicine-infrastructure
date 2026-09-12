@@ -131,15 +131,22 @@ SET default_shipping_type = 'standard'
 WHERE default_shipping_type IS NULL;
 
 -- Injectables → sc_kit; Intramuscular route → im_kit.
+-- The dosage form / route lookup is a self-contained subquery: Postgres
+-- does not allow the UPDATE target alias to be referenced inside the
+-- FROM clause's JOIN conditions (42P01).
 UPDATE formulations f
 SET default_syringe_option = CASE
-  WHEN r.name = 'Intramuscular' THEN 'im_kit'
+  WHEN x.route_name = 'Intramuscular' THEN 'im_kit'
   ELSE 'sc_kit'
 END
-FROM dosage_forms d
-LEFT JOIN routes_of_administration r ON r.route_id = f.route_id
-WHERE d.dosage_form_id = f.dosage_form_id
-  AND (d.requires_injection_supplies = true OR d.name ILIKE '%Injectable%')
+FROM (
+  SELECT f2.formulation_id, r.name AS route_name
+  FROM formulations f2
+  JOIN dosage_forms d ON d.dosage_form_id = f2.dosage_form_id
+  LEFT JOIN routes_of_administration r ON r.route_id = f2.route_id
+  WHERE d.requires_injection_supplies = true OR d.name ILIKE '%Injectable%'
+) x
+WHERE x.formulation_id = f.formulation_id
   AND f.default_syringe_option = 'none';
 
 -- GLP-1 receptor agonists → cold chain + clinical difference required.
