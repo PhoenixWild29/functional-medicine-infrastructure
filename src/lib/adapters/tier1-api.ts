@@ -29,7 +29,7 @@
 
 import { createServiceClient } from '@/lib/supabase/service'
 import { getVaultSecret, buildAuthHeaders } from '@/lib/adapters/vault'
-import { getTransformer, type OrderPayload } from '@/lib/adapters/transformers'
+import { getTransformer, rxDetailPayloadFields, type OrderPayload } from '@/lib/adapters/transformers'
 import { getParser } from '@/lib/adapters/parsers'
 import {
   createSubmissionRecord,
@@ -189,7 +189,7 @@ export async function submitTier1Api(
   // ── 5. Load order data for payload transformation ─────────
   const { data: order, error: orderError } = await (supabase
     .from('orders')
-    .select('order_id, order_number, provider_id, patient_id, clinic_id, medication_snapshot, provider_npi_snapshot, quantity, sig_text')
+    .select('order_id, order_number, provider_id, patient_id, clinic_id, medication_snapshot, provider_npi_snapshot, quantity, sig_text, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions')
     .eq('order_id', orderId)
     .single() as unknown as Promise<{
       data: {
@@ -202,6 +202,18 @@ export async function submitTier1Api(
         provider_npi_snapshot: string | null
         quantity: number | null
         sig_text: string | null
+        // WO-96
+        days_supply: number | null
+        dispense_quantity: number | null
+        dispense_unit: string | null
+        refills: number | null
+        substitution_allowed: boolean | null
+        syringe_option: string | null
+        shipping_type: string | null
+        clinical_difference: string | null
+        diagnosis_code: string | null
+        diagnosis_text: string | null
+        special_instructions: string | null
       } | null
       error: Error | null
     }>)
@@ -259,6 +271,8 @@ export async function submitTier1Api(
     medicationDose:     String(med?.dose ?? ''),
     quantity:           order.quantity ?? 1,
     sigText:            order.sig_text ?? null,
+    // WO-96 Rx detail fields
+    ...rxDetailPayloadFields(order),
     clinicName:         clinic?.name ?? 'CompoundIQ Clinic',
   }
 

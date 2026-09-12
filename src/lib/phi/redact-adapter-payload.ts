@@ -96,6 +96,16 @@ const PHI_KEY_PATTERNS: ReadonlyArray<RegExp> = [
   /^dose$/i,
   /^strength$/i,
   /^quantity$/i,
+  // WO-96 Rx detail clinical narrative (diagnosis, 503A statement,
+  // free-text pharmacy instructions). Structural fields (refills, DAW,
+  // syringe kit, shipping type, days supply, dispense) are not PHI on
+  // their own and stay inspectable for ops.
+  /^diagnosis[_-]?code$/i,
+  /^diagnosis[_-]?text$/i,
+  /^diagnosis$/i,
+  /^icd[_-]?10$/i,
+  /^clinical[_-]?difference$/i,
+  /^special[_-]?instructions$/i,
   // Provider controlled-substance identifiers
   /^provider[_-]?dea$/i,
   /^dea$/i,
@@ -113,6 +123,8 @@ const KNOWN_CONTAINER_KEYS = new Set([
   'medication',
   'prescription',
   'rx',
+  'rxdetails',   // WO-96 LifeFile block
+  'rxinfo',      // WO-96 MediVera block
   'body',
 ])
 

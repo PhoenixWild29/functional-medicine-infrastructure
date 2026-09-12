@@ -68,6 +68,7 @@ interface LifeFilePayloadShape {
       quantity:   number
       directions: string
     }
+    rxDetails: Record<string, unknown>
     clinic: string
   }
 }
@@ -96,6 +97,18 @@ function makePayload(overrides: Partial<OrderPayload> = {}): OrderPayload {
     medicationDose:        '200mg/mL',
     quantity:              30,
     sigText:               'Inject 0.5mL weekly',
+    // WO-96 Rx detail fields
+    daysSupply:            30,
+    dispenseQuantity:      5,
+    dispenseUnit:          'mL',
+    refills:               0,
+    substitutionAllowed:   true,
+    syringeOption:         'sc_kit',
+    shippingType:          'standard',
+    clinicalDifference:    null,
+    diagnosisCode:         null,
+    diagnosisText:         null,
+    specialInstructions:   null,
     clinicName:            'Sunrise Functional Medicine',
     ...overrides,
   }
@@ -141,6 +154,19 @@ describe('transformLifeFilePayload — registry lookup + shape', () => {
           strength:   '200mg/mL',
           quantity:   30,
           directions: 'Inject 0.5mL weekly',
+        },
+        rxDetails: {
+          daysSupply:          30,
+          dispenseQuantity:    5,
+          dispenseUnit:        'mL',
+          refills:             0,
+          dispenseAsWritten:   false,
+          syringeOption:       'sc_kit',
+          shippingType:        'standard',
+          clinicalDifference:  '',
+          diagnosisCode:       '',
+          diagnosisText:       '',
+          specialInstructions: '',
         },
         clinic: 'Sunrise Functional Medicine',
       },

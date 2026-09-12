@@ -49,8 +49,59 @@ export interface OrderPayload {
   medicationDose:       string
   quantity:             number
   sigText:              string | null
+  // WO-96 Rx detail fields (all tiers). Derived + defaulted at order
+  // creation; null/false-y only for orders written before WO-96.
+  daysSupply:           number | null
+  dispenseQuantity:     number | null
+  dispenseUnit:         string | null
+  refills:              number
+  substitutionAllowed:  boolean
+  syringeOption:        string | null    // sc_kit | im_kit | insulin_syringe | none
+  shippingType:         string | null    // standard | cold_chain
+  clinicalDifference:   string | null
+  diagnosisCode:        string | null
+  diagnosisText:        string | null
+  specialInstructions:  string | null
   // Clinic
   clinicName:           string
+}
+
+/**
+ * WO-96: read the Rx detail columns off an `orders` row into the
+ * canonical payload fields. Shared by every tier so a column added later
+ * lands in one place.
+ */
+export function rxDetailPayloadFields(order: {
+  days_supply?:          number | null
+  dispense_quantity?:    number | string | null
+  dispense_unit?:        string | null
+  refills?:              number | null
+  substitution_allowed?: boolean | null
+  syringe_option?:       string | null
+  shipping_type?:        string | null
+  clinical_difference?:  string | null
+  diagnosis_code?:       string | null
+  diagnosis_text?:       string | null
+  special_instructions?: string | null
+}): Pick<OrderPayload,
+  'daysSupply' | 'dispenseQuantity' | 'dispenseUnit' | 'refills' | 'substitutionAllowed' |
+  'syringeOption' | 'shippingType' | 'clinicalDifference' | 'diagnosisCode' | 'diagnosisText' | 'specialInstructions'
+> {
+  const dq = order.dispense_quantity
+  const dispenseQuantity = typeof dq === 'string' ? Number(dq) : dq ?? null
+  return {
+    daysSupply:          order.days_supply ?? null,
+    dispenseQuantity:    dispenseQuantity != null && Number.isFinite(dispenseQuantity) ? dispenseQuantity : null,
+    dispenseUnit:        order.dispense_unit ?? null,
+    refills:             order.refills ?? 0,
+    substitutionAllowed: order.substitution_allowed !== false,
+    syringeOption:       order.syringe_option ?? null,
+    shippingType:        order.shipping_type ?? null,
+    clinicalDifference:  order.clinical_difference ?? null,
+    diagnosisCode:       order.diagnosis_code ?? null,
+    diagnosisText:       order.diagnosis_text ?? null,
+    specialInstructions: order.special_instructions ?? null,
+  }
 }
 
 // Output of a transformer — pharmacy-native JSON to POST
@@ -94,6 +145,18 @@ function transformViosPayload(p: OrderPayload): PharmacyPayload {
       dose:      p.medicationDose,
       quantity:  p.quantity,
       sig:       p.sigText,
+      // WO-96
+      days_supply:          p.daysSupply,
+      dispense_quantity:    p.dispenseQuantity,
+      dispense_unit:        p.dispenseUnit,
+      refills:              p.refills,
+      substitution_allowed: p.substitutionAllowed,
+      syringe_option:       p.syringeOption,
+      shipping_type:        p.shippingType,
+      clinical_difference:  p.clinicalDifference,
+      diagnosis_code:       p.diagnosisCode,
+      diagnosis_text:       p.diagnosisText,
+      special_instructions: p.specialInstructions,
     },
     clinic_name: p.clinicName,
   }
@@ -135,6 +198,21 @@ function transformLifeFilePayload(p: OrderPayload): PharmacyPayload {
         quantity:    p.quantity,
         directions:  p.sigText ?? '',
       },
+      // WO-96 — LifeFile mandates a clinical-difference statement and
+      // takes refills / DAW / days supply on the prescription block.
+      rxDetails: {
+        daysSupply:          p.daysSupply,
+        dispenseQuantity:    p.dispenseQuantity,
+        dispenseUnit:        p.dispenseUnit ?? '',
+        refills:             p.refills,
+        dispenseAsWritten:   !p.substitutionAllowed,
+        syringeOption:       p.syringeOption ?? 'none',
+        shippingType:        p.shippingType ?? 'standard',
+        clinicalDifference:  p.clinicalDifference ?? '',
+        diagnosisCode:       p.diagnosisCode ?? '',
+        diagnosisText:       p.diagnosisText ?? '',
+        specialInstructions: p.specialInstructions ?? '',
+      },
       clinic: p.clinicName,
     },
   }
@@ -173,6 +251,18 @@ function transformMediVeraPayload(p: OrderPayload): PharmacyPayload {
       Dose:           p.medicationDose,
       Qty:            p.quantity,
       SigText:        p.sigText ?? '',
+      // WO-96
+      DaysSupply:          p.daysSupply ?? '',
+      DispenseQty:         p.dispenseQuantity ?? '',
+      DispenseUnit:        p.dispenseUnit ?? '',
+      Refills:             p.refills,
+      DAW:                 p.substitutionAllowed ? 'N' : 'Y',
+      SyringeOption:       p.syringeOption ?? 'none',
+      ShippingType:        p.shippingType ?? 'standard',
+      ClinicalDifference:  p.clinicalDifference ?? '',
+      DiagnosisCode:       p.diagnosisCode ?? '',
+      DiagnosisText:       p.diagnosisText ?? '',
+      SpecialInstructions: p.specialInstructions ?? '',
     },
     ClinicName: p.clinicName,
   }
