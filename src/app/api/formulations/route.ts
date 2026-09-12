@@ -14,12 +14,17 @@
 //   ?level=routes&dosage_form_id=xxx → routes for a dosage form
 //   ?level=formulations&ingredient_id=xxx&dosage_form_id=xxx&route_id=xxx → matching formulations
 //   ?level=pharmacy_options&formulation_id=xxx&state=TX → pharmacies offering this formulation in state
+//   ?level=rx_defaults&ids=a,b,c → WO-96 Rx detail defaults + rules per formulation
 //
 // Auth: Supabase JWT (clinic_user or ops_admin)
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
+import { loadRxDefaults } from '@/lib/orders/rx-defaults-loader'
+
+/** Upper bound on formulation ids per rx_defaults request. */
+const RX_DEFAULTS_MAX_IDS = 50
 
 export async function GET(req: NextRequest) {
   // Auth check
@@ -269,6 +274,32 @@ export async function GET(req: NextRequest) {
         }
 
         return NextResponse.json({ level: 'pharmacy_options', data: filtered })
+      }
+
+      // ── WO-96: Rx detail defaults + rules for a set of formulations ──
+      // Used by the Review card for lines that entered the session without
+      // passing through the margin page (protocol quick-load, favorites,
+      // sessions persisted before WO-96). The margin page calls the same
+      // loader server-side.
+      case 'rx_defaults': {
+        const ids = (searchParams.get('ids') ?? '')
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean)
+        if (ids.length === 0) {
+          return NextResponse.json({ error: 'ids required' }, { status: 400 })
+        }
+        if (ids.length > RX_DEFAULTS_MAX_IDS) {
+          return NextResponse.json({ error: `at most ${RX_DEFAULTS_MAX_IDS} ids per request` }, { status: 400 })
+        }
+        const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
+          ? session.user.user_metadata['clinic_id'] as string
+          : null
+        if (!clinicId) {
+          return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
+        }
+        const data = await loadRxDefaults(supabase, clinicId, ids)
+        return NextResponse.json({ level: 'rx_defaults', data })
       }
 
       default:

@@ -9,7 +9,15 @@
 //
 // Request body:
 //   { patientId, providerId, catalogItemId, pharmacyId,
-//     retailCents, sigText, patientState }
+//     retailCents, sigText, patientState, rxDetails? }
+//
+// WO-96: rxDetails carries the per-Rx detail fields (days supply,
+// dispense, refills, substitution, syringe kit, shipping, clinical
+// difference, diagnosis, special instructions). Absent → defaults, so
+// older clients keep working. Rule enforcement (controlled → diagnosis,
+// requires_clinical_difference → clinical difference) happens at
+// sign-and-send; a DRAFT may be saved incomplete for the provider to
+// finish.
 //
 // Response: { orderId: string }
 //
@@ -21,6 +29,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { resolveProtocolLinkage, type ProtocolLinkage } from '@/lib/protocols/resolve-instance'
+import { rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // Auth gate
@@ -54,6 +63,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // GAP-3: optional — set only when the session line was quick-loaded
     // from a protocol. Drives protocol_instance/version linkage below.
     protocolId?:    string | null
+    // WO-96: optional — validated by validateRxDetailsBody.
+    rxDetails?:     unknown
   }
 
   try {
@@ -62,7 +73,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { patientId, providerId, catalogItemId, formulationId, pharmacyId, retailCents, sigText, patientState, protocolId } = body
+  const { patientId, providerId, catalogItemId, formulationId, pharmacyId, retailCents, sigText, patientState, protocolId, rxDetails } = body
 
   if (!patientId || !providerId || !pharmacyId || !sigText || !patientState) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -90,6 +101,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!/^[A-Z]{2}$/.test(patientState)) {
     return NextResponse.json({ error: 'patientState must be a 2-letter US state code' }, { status: 400 })
   }
+
+  // WO-96: per-Rx detail fields. Missing object → defaults.
+  const rxDetailsValidation = validateRxDetailsBody(rxDetails)
+  if (!rxDetailsValidation.ok) {
+    return NextResponse.json({ error: rxDetailsValidation.error }, { status: 400 })
+  }
+  const rxDetailColumns = rxDetailsToColumns(rxDetailsValidation.details)
 
   const supabase = createServiceClient()
 
@@ -359,6 +377,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // GAP-3: null for ad-hoc/favorite lines and on resolution failure.
       protocol_instance_id:     protocolLinkage?.protocolInstanceId ?? null,
       protocol_version_id:      protocolLinkage?.protocolVersionId ?? null,
+      // WO-96: derived + defaulted Rx detail fields.
+      ...rxDetailColumns,
     })
     .select('order_id')
     .single()
