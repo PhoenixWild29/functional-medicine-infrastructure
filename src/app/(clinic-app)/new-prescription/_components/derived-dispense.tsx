@@ -92,8 +92,8 @@ export function DerivedDispense({ derived, basis, override, onChange }: Props) {
               ? `Days supply is the ${basis.days}-day duration; dispense is ${basis.doses} dose${basis.doses === 1 ? '' : 's'} × the dose.`
               : `Days supply is the ${basis.days}-day duration; dispense is the package (as-needed doses cannot be counted).`
             : derived?.daysSupply == null
-              ? `Dispense is the ${basis.label || 'selected'} package; days supply could not be derived from this sig (as-needed or unmatched units).`
-              : `Computed from dose × frequency × the ${basis.label} package. Pick a duration on the dose step to base it on days instead.`}
+              ? `Dispense is the selected quantity (${basis.label || '1'}); days supply could not be derived from this sig (as-needed or unmatched units).`
+              : `Computed from dose × frequency × quantity (${basis.label}). Pick a duration on the dose step to base it on days instead.`}
       </p>
 
       {editing && (

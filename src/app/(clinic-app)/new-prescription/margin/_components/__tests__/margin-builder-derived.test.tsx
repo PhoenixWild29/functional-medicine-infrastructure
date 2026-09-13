@@ -99,7 +99,7 @@ describe('MarginBuilderForm — derived days supply + dispense', () => {
     renderMargin()
     expect(screen.getByTestId('days-supply-value')).toHaveTextContent('350 days')
     expect(screen.getByTestId('dispense-value')).toHaveTextContent('5 mL')
-    expect(screen.getByText(/Computed from dose × frequency × the 5mL vial package/)).toBeInTheDocument()
+    expect(screen.getByText(/Computed from dose × frequency × quantity \(5mL vial\)/)).toBeInTheDocument()
     // Read-only until the provider chooses to override.
     expect(screen.queryByLabelText('Days supply')).not.toBeInTheDocument()
   })
