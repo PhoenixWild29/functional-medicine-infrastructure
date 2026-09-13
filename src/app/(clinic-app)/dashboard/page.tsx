@@ -18,6 +18,8 @@
 //   (dollars) in the DB → converted with Math.round(n * 100).
 
 import { createServerClient } from '@/lib/supabase/server'
+import { resolveCurrentProvider } from '@/lib/auth/current-provider'
+import type { DraftViewer } from '@/lib/orders/draft-edit-access'
 import { HipaaTimeout }      from '@/components/hipaa-timeout'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { RevenueSummary }    from './_components/revenue-summary'
@@ -56,6 +58,10 @@ export interface DashboardOrder {
   clinicPayoutCents: number
   isOverdue48h:      boolean          // AWAITING_PAYMENT + created > 48h ago
   paymentGroupId:    string | null    // Phase C: non-null when bundled into a payment group
+  // WO-98 × WO-100: the order's provider, so the drawer can require Sign as
+  // me before a provider edits another provider's draft. Optional so
+  // existing fixtures and cached rows without it keep working.
+  providerId?:       string | null
 }
 
 export default async function DashboardPage(
@@ -134,7 +140,7 @@ export default async function DashboardPage(
     supabase
       .from('orders')
       .select(`
-        order_id, status, created_at, updated_at, payment_group_id,
+        order_id, status, created_at, updated_at, payment_group_id, provider_id,
         retail_price_snapshot, wholesale_price_snapshot,
         medication_snapshot, pharmacy_snapshot,
         patients!inner(first_name, last_name)
@@ -167,6 +173,19 @@ export default async function DashboardPage(
 
   // Build DashboardOrder rows with HC-01 integer-cent arithmetic
   const now = Date.now()
+
+  // WO-98 × WO-100: a provider may only edit / add to their OWN drafts;
+  // the drawer offers "Sign as me to edit" on anyone else's. Resolved via
+  // providers.user_id on the SESSION client — dashboard SSR never uses the
+  // service role (F-3; see __tests__/f3-*.test.ts). providers_clinic_user_select
+  // lets a clinic user read their clinic's provider rows, which includes
+  // their own. Non-providers: no lookup.
+  const viewer: DraftViewer = {
+    isProvider,
+    providerId: isProvider
+      ? (await resolveCurrentProvider(supabaseAuth, { userId: user.id, clinicId }))?.provider_id ?? null
+      : null,
+  }
 
   const orders: DashboardOrder[] = (ordersResult.data ?? []).map(o => {
     const retailCents     = Math.round((o.retail_price_snapshot     ?? 0) * 100)
@@ -205,6 +224,7 @@ export default async function DashboardPage(
       clinicPayoutCents,
       isOverdue48h,
       paymentGroupId:    o.payment_group_id,
+      providerId:        o.provider_id ?? null,
     }
   })
 
@@ -269,6 +289,7 @@ export default async function DashboardPage(
           initialOrders={orders}
           stripeConnectStatus={stripeConnectStatus}
           clinicId={clinicId}
+          viewer={viewer}
         />
       </main>
     </>

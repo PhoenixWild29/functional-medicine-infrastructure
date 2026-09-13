@@ -32,6 +32,7 @@ import { resolveProtocolLinkage, type ProtocolLinkage } from '@/lib/protocols/re
 import { rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
 import { lineSourceKind, resolveLine } from '@/lib/orders/resolve-line'
 import { writeDraftAudit } from '@/lib/orders/draft-edit'
+import { checkProviderOwnsDraft } from '@/lib/orders/provider-draft-guard'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // Auth gate
@@ -124,6 +125,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const rxDetailColumns = rxDetailsToColumns(rxDetailsValidation.details)
 
   const supabase = createServiceClient()
+
+  // ── WO-100: a provider prescribes as themself ─────────────
+  // A provider-role session may only create orders under its own
+  // provider row (providers.user_id = auth user — the same linkage F-2
+  // enforces at sign-and-send). Any other providerId is 403, and an
+  // unlinked provider login cannot create drafts at all (fail closed —
+  // it could never sign them either). MA / clinic_admin sessions are
+  // unaffected: they choose the provider.
+  // Every order this route creates is a DRAFT, so a provider naming
+  // another provider would create a draft under someone else's name —
+  // including "+ Add prescription" on another provider's draft (WO-98).
+  // Shared with PATCH / DELETE /api/orders/[orderId].
+  const ownership = await checkProviderOwnsDraft(supabase, {
+    appRole:         session.user.user_metadata['app_role'],
+    userId:          session.user.id,
+    clinicId,
+    draftProviderId: providerId,
+  })
+  if (!ownership.ok) {
+    if (ownership.reason === 'other_provider') {
+      console.warn(`[orders] provider-role session attempted to prescribe as another provider | clinic=${clinicId}${appendedToOrderId ? ' | append-to-draft' : ''}`)
+    }
+    return NextResponse.json(ownership.body, { status: ownership.status })
+  }
 
   // ── Resolve medication + pharmacy (+ state licence) ──────
   // WO-98: shared with PATCH /api/orders/[orderId] so editing a draft

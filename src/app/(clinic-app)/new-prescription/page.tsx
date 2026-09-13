@@ -1,5 +1,5 @@
 // ============================================================
-// New Prescription — Step 0: Select Patient & Provider — WO-80
+// New Prescription — Step 0: Select Patient (& Provider) — WO-80 + WO-100
 // /new-prescription
 // ============================================================
 //
@@ -8,27 +8,30 @@
 // pharmacy search or pricing. Both stay pinned on screen
 // throughout the entire session.
 //
+// WO-100: when the signed-in user IS a provider, the provider step is
+// skipped — they are the prescribing provider. The page shows only the
+// patient selector, the step is labelled "Patient", and the session
+// provider is resolved server-side from providers.user_id (the same
+// linkage the F-2 signer guard enforces at sign-and-send). MAs and
+// clinic admins keep the patient + provider selector unchanged.
+//
 // Flow:
-//   Step 0 — /new-prescription           (this page — select patient + provider)
+//   Step 0 — /new-prescription           (this page — select patient [+ provider])
 //   Step 1 — /new-prescription/search    (pharmacy search — patient state auto-filled)
 //   Step 2 — /new-prescription/margin    (margin builder — add to session)
 //   Step 3 — /new-prescription/review    (batch review — sign all + send)
 
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provider'
 import { WizardProgress } from '@/components/wizard-progress'
 import { HipaaTimeout } from '@/components/hipaa-timeout'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { PatientProviderSelector } from './_components/patient-provider-selector'
-
-const WIZARD_STEPS = [
-  { number: 1, label: 'Patient & Provider' },
-  { number: 2, label: 'Add Prescriptions'  },
-  { number: 3, label: 'Review & Send'      },
-]
+import { getWizardSteps } from './_lib/wizard-steps'
 
 export const metadata = {
-  title: 'New Prescription — Select Patient & Provider',
+  title: 'New Prescription — Select Patient',
 }
 
 export default async function NewPrescriptionPage() {
@@ -53,9 +56,10 @@ export default async function NewPrescriptionPage() {
   }
 
   const supabase = createServiceClient()
+  const providerIsSelf = isProviderRole(user.user_metadata['app_role'])
 
-  // Fetch patients + providers for this clinic in parallel
-  const [patientsResult, providersResult] = await Promise.all([
+  // Fetch patients (+ providers for the MA path) for this clinic in parallel
+  const [patientsResult, providersResult, selfProvider] = await Promise.all([
     supabase
       .from('patients')
       // WO-97: allergies / nkda drive the chip on each patient card.
@@ -64,17 +68,36 @@ export default async function NewPrescriptionPage() {
       .eq('is_active', true)
       .is('deleted_at', null)
       .order('last_name', { ascending: true }),
-    supabase
-      .from('providers')
-      .select('provider_id, first_name, last_name, npi_number, signature_hash')
-      .eq('clinic_id', clinicId)
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .order('last_name', { ascending: true }),
+    providerIsSelf
+      ? Promise.resolve({ data: [] })
+      : supabase
+          .from('providers')
+          .select('provider_id, first_name, last_name, npi_number, signature_hash')
+          .eq('clinic_id', clinicId)
+          .eq('is_active', true)
+          .is('deleted_at', null)
+          .order('last_name', { ascending: true }),
+    providerIsSelf
+      ? resolveCurrentProvider(supabase, { userId: user.id, clinicId })
+      : Promise.resolve(null),
   ])
+
+  // WO-100: a provider-role login with no linked provider row cannot
+  // prescribe as anyone — sign-and-send would refuse the signature (F-2)
+  // and POST /api/orders refuses the draft. Fail closed with a clear
+  // message rather than offering a provider list they cannot use.
+  if (providerIsSelf && !selfProvider) {
+    return (
+      <SessionGuardNotice
+        title="Provider record not linked"
+        message="Your login is not linked to a provider record for this clinic, so prescriptions cannot be started under your name. Contact ops to complete provider onboarding."
+      />
+    )
+  }
 
   const patients  = patientsResult.data ?? []
   const providers = providersResult.data ?? []
+  const WIZARD_STEPS = getWizardSteps({ providerIsSelf })
 
   return (
     <>
@@ -84,11 +107,23 @@ export default async function NewPrescriptionPage() {
           <WizardProgress steps={WIZARD_STEPS} currentStep={1} />
           <h1 className="mt-4 text-2xl font-bold text-foreground">New Prescription</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Select the patient and prescribing provider to begin.
+            {selfProvider
+              ? `Prescribing as ${selfProvider.first_name} ${selfProvider.last_name}. Select the patient to begin.`
+              : 'Select the patient and prescribing provider to begin.'}
           </p>
         </div>
 
-        <PatientProviderSelector patients={patients} providers={providers} />
+        <PatientProviderSelector
+          patients={patients}
+          providers={providers}
+          selfProvider={selfProvider ? {
+            provider_id:    selfProvider.provider_id,
+            first_name:     selfProvider.first_name,
+            last_name:      selfProvider.last_name,
+            npi_number:     selfProvider.npi_number,
+            signature_hash: selfProvider.signature_hash,
+          } : null}
+        />
       </main>
     </>
   )

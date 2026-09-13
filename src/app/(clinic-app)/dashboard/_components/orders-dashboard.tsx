@@ -27,6 +27,7 @@ import type { DashboardOrder } from '../page'
 import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.types'
 import { OrdersTable }  from './orders-table'
 import { OrdersKanban } from './orders-kanban'
+import type { DraftViewer } from '@/lib/orders/draft-edit-access'
 import { OrderDrawer }  from './order-drawer'
 
 // ── Status tab definitions ──────────────────────────────────
@@ -63,6 +64,8 @@ interface Props {
   initialOrders:       DashboardOrder[]
   stripeConnectStatus: StripeConnectStatusEnum
   clinicId:            string   // BLK-01: passed from Server Component for defensive query filter
+  /** WO-98 × WO-100: who is looking — gates draft Edit / + Add in the drawer. */
+  viewer?:             DraftViewer | undefined
 }
 
 // ── Query function (Supabase browser client) ────────────────
@@ -104,12 +107,13 @@ function buildDashboardOrder(o: Record<string, unknown>): DashboardOrder {
     clinicPayoutCents,
     isOverdue48h,
     paymentGroupId:    (o['payment_group_id'] as string | null) ?? null,
+    providerId:        (o['provider_id'] as string | null) ?? null,
   }
 }
 
 // ── Component ───────────────────────────────────────────────
 
-export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId }: Props) {
+export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, viewer }: Props) {
   const router = useRouter()
   const supabase = createBrowserClient()
   const queryClient = useQueryClient()
@@ -130,7 +134,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId }
       const { data, error } = await supabase
         .from('orders')
         .select(`
-          order_id, status, created_at, updated_at, payment_group_id,
+          order_id, status, created_at, updated_at, payment_group_id, provider_id,
           retail_price_snapshot, wholesale_price_snapshot,
           medication_snapshot, pharmacy_snapshot,
           patients!inner(first_name, last_name)
@@ -373,7 +377,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId }
       )}
 
       {/* ── Slide-out drawer — REQ-GDB-002 ── */}
-      <OrderDrawer order={selectedOrder} onClose={handleCloseDrawer} onGroupCreated={handleGroupCreated} />
+      <OrderDrawer order={selectedOrder} onClose={handleCloseDrawer} onGroupCreated={handleGroupCreated} viewer={viewer} />
 
     </div>
   )

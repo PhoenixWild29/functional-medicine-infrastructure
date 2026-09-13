@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
-import { seedStaticData, cleanupTestOrders, TEST_IDS, TEST_USERS, TEST_CATALOG, TEST_PATIENTS } from './fixtures/seed'
+import { seedStaticData, cleanupTestOrders, seedSecondProvider, retireSecondProvider, TEST_IDS, TEST_USERS, TEST_CATALOG, TEST_PATIENTS } from './fixtures/seed'
 import { decryptSecret } from '../src/lib/epcs/crypto'
 import { DEMO_TOTP_SECRET } from '../src/lib/poc/totp-enrollment'
 
@@ -38,9 +38,11 @@ async function navigateToReviewPage(
   await page.getByLabel('Search patients').fill('Test')
   await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
 
-  // Provider: only one provider seeded per clinic, so the UI auto-selects
-  // it (patient-provider-selector.tsx handles this). No click needed — the
-  // Continue button becomes enabled as soon as patient is chosen.
+  // Provider (WO-100): a provider login never sees a provider list — they
+  // are the provider. An MA / clinic-admin login sees the clinic's providers;
+  // with one it auto-selects, with two (while the WO-100 block has its
+  // second provider active) we pick the one with a login by name.
+  await pickProviderIfListed(page)
   await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
 
   // ── Step 1: Cascading prescription builder ────────────────────
@@ -255,6 +257,7 @@ test.describe('Clinic App — Order Creation Flow', () => {
     await page.goto('/new-prescription')
     await page.getByLabel('Search patients').fill('Test')
     await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
+    await pickProviderIfListed(page)   // WO-100: tolerate a second active provider (pick by name)
     await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
 
     await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
@@ -545,6 +548,17 @@ type BuilderChoice = {
   quantity: string
 }
 
+/**
+ * WO-100: the provider list only renders for MA / clinic-admin logins. When
+ * it does, choose the seeded provider that has an auth login ("Provider,
+ * Test") by name — never rely on auto-select, which only happens with
+ * exactly one active provider. A provider login has nothing to pick.
+ */
+async function pickProviderIfListed(page: Page) {
+  const providerButton = page.getByRole('button', { name: /Provider,\s*Test/i })
+  if (await providerButton.count() > 0) await providerButton.click()
+}
+
 async function loginAs(page: Page, user: { email: string; password: string }) {
   await page.goto('/login')
   await page.getByLabel('Email').fill(user.email)
@@ -558,6 +572,7 @@ async function walkBuilderToMargin(page: Page, choice: BuilderChoice) {
   await page.goto('/new-prescription')
   await page.getByLabel('Search patients').fill('Test')
   await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
+  await pickProviderIfListed(page)
   await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
 
   await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
@@ -716,8 +731,9 @@ test.describe('Clinic App — WO-96 Rx detail fields', () => {
   test('no new page or step: the wizard still has exactly three steps', async ({ page }) => {
     await loginAs(page, TEST_USERS.provider)
     await walkBuilderToMargin(page, PLAIN)
-    // The step indicator on the margin page lists the same three labels as before WO-96.
-    await expect(page.getByText('Patient & Provider')).toBeVisible()
+    // The step indicator on the margin page lists the same three labels as
+    // before WO-96 (WO-100 renames step 1 to "Patient" for a provider login).
+    await expect(page.getByText('Patient', { exact: true }).first()).toBeVisible()
     await expect(page.getByText('Add Prescriptions')).toBeVisible()
     // Both the wizard step label and the submit button read "Review & Send".
     await expect(page.getByText('Review & Send', { exact: true }).first()).toBeVisible()
@@ -1131,5 +1147,176 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
     expect((await page.request.patch(`/api/orders/${inserted.order_id}`, { data: body })).status()).toBe(200)
     const { data: row } = await supabase.from('orders').select('sig_text, is_active').eq('order_id', inserted.order_id).single()
     expect(row).toEqual({ sig_text: 'Inject 12 mg subcutaneously once daily', is_active: true })
+  })
+})
+
+// ============================================================
+// WO-100 — Provider defaults to self + draft reassignment
+// ============================================================
+// Phase 21 acceptance criteria covered here (browser layer):
+//   - provider → + New Prescription → no provider list; banner shows the
+//     provider's own name
+//   - clinic admin → + New Prescription → provider list present
+//   - a draft saved for provider B: provider A opens it, clicks Sign as me,
+//     the order now shows provider = A and the audit trail records the
+//     reassignment from B (signature drawing itself is not automatable —
+//     see the coverage note on the WO-77 provider test above)
+//   - the server rejects a provider creating an order under a different
+//     provider_id (403) while accepting their own (201)
+
+test.describe('Clinic App — WO-100 provider defaults to self', () => {
+  // The second provider is shared state on the E2E project: activate it only
+  // for this block and retire it afterwards so other specs (and other
+  // branches' runs) keep a single auto-selecting provider.
+  test.beforeAll(async () => {
+    await seedStaticData()
+    await seedSecondProvider()
+  })
+
+  test.afterEach(async () => {
+    await cleanupTestOrders()
+  })
+
+  test.afterAll(async () => {
+    await retireSecondProvider()
+  })
+
+  test('provider: no provider list, step 1 reads "Patient", banner shows the signed-in provider', async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+    await page.goto('/new-prescription')
+
+    await expect(page.getByText('Select Patient')).toBeVisible()
+    await expect(page.getByText('Patient', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('Patient & Provider')).toHaveCount(0)
+    await expect(page.getByText('Select Provider')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /Provider,\s*(Test|Other)/i })).toHaveCount(0)
+    await expect(page.getByText(/Prescribing as Test Provider/)).toBeVisible()
+
+    await page.getByLabel('Search patients').fill('Test')
+    await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
+    await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
+
+    // Session banner: patient on the left, the signed-in provider on the right.
+    await expect(page.getByText('Test Provider', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('NPI: 1234567890').first()).toBeVisible()
+    await expect(page.getByText('Patient', { exact: true }).first()).toBeVisible()
+  })
+
+  test('clinic admin: provider list present with both seeded providers', async ({ page }) => {
+    await loginAs(page, TEST_USERS.clinicAdmin)
+    await page.goto('/new-prescription')
+
+    await expect(page.getByText('Select Provider')).toBeVisible()
+    await expect(page.getByText('Patient & Provider')).toBeVisible()
+    await expect(page.getByRole('button', { name: /Provider,\s*Test/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Provider,\s*Other/i })).toBeVisible()
+
+    // Two providers → nothing auto-selects; Continue needs both picks.
+    await page.getByLabel('Search patients').fill('Test')
+    await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
+    await expect(page.getByRole('button', { name: 'Continue to Pharmacy Search' })).toBeDisabled()
+    await page.getByRole('button', { name: /Provider,\s*Other/i }).click()
+    await expect(page.getByRole('button', { name: 'Continue to Pharmacy Search' })).toBeEnabled()
+  })
+
+  test('Sign as me: provider A takes over a draft saved for provider B; order + audit reflect the reassignment', async ({ page }) => {
+    const supabase = createClient(
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
+    )
+
+    // A draft for provider B (as the MA would save it). Two lines, so the
+    // take-over has a sibling to carry along.
+    const draftLine = (sig: string) => ({
+      patient_id:               TEST_IDS.patient,
+      provider_id:              TEST_IDS.providerB,
+      catalog_item_id:          TEST_IDS.catalogItem,
+      clinic_id:                TEST_IDS.clinic,
+      pharmacy_id:              TEST_IDS.pharmacyTier1,
+      status:                   'DRAFT',
+      quantity:                 1,
+      wholesale_price_snapshot: 100.00,
+      retail_price_snapshot:    200.00,
+      provider_npi_snapshot:    '1987654321',
+      sig_text:                 sig,
+    })
+    const { data: drafts, error } = await supabase
+      .from('orders')
+      .insert([draftLine('WO-100 reassignment line one'), draftLine('WO-100 reassignment line two')])
+      .select('order_id')
+    if (error || !drafts || drafts.length !== 2) throw new Error(`Failed to seed drafts: ${error?.message}`)
+    const [first, second] = drafts
+
+    await loginAs(page, TEST_USERS.provider)
+    await page.goto(`/new-prescription/sign/${first!.order_id}`)
+
+    // Not mine → the Sign as me panel, not a signature pad.
+    const panel = page.getByTestId('sign-as-me-panel')
+    await expect(panel).toBeVisible({ timeout: 15_000 })
+    await expect(panel).toContainText('This draft is assigned to Other Provider')
+    await expect(panel).toContainText('signed in as Test Provider')
+    await expect(panel).toContainText('all 2 prescriptions in this draft')
+    await expect(page.locator('canvas[aria-label="Provider signature pad"]')).toHaveCount(0)
+
+    await panel.getByRole('button', { name: 'Sign as me' }).click()
+
+    // Same URL re-renders as the signing form under my name, up to the
+    // point of drawing the signature.
+    await expect(page.locator('canvas[aria-label="Provider signature pad"]')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId('sign-as-me-panel')).toHaveCount(0)
+    await expect(page.getByText('Test Provider').first()).toBeVisible()
+    await expect(page.getByText('Other Provider')).toHaveCount(0)
+
+    // Both lines now belong to provider A with A's NPI snapshot…
+    const { data: rows } = await supabase
+      .from('orders')
+      .select('order_id, provider_id, provider_npi_snapshot, status')
+      .in('order_id', [first!.order_id, second!.order_id])
+    expect(rows).toHaveLength(2)
+    for (const row of rows ?? []) {
+      expect(row.provider_id).toBe(TEST_IDS.provider)
+      expect(row.provider_npi_snapshot).toBe('1234567890')
+      expect(row.status).toBe('DRAFT')
+    }
+
+    // …and the audit trail records the reassignment from B on each line.
+    const { data: audit } = await supabase
+      .from('order_status_history')
+      .select('order_id, old_status, new_status, metadata')
+      .in('order_id', [first!.order_id, second!.order_id])
+    expect(audit).toHaveLength(2)
+    for (const row of audit ?? []) {
+      expect(row.old_status).toBe('DRAFT')
+      expect(row.new_status).toBe('DRAFT')
+      expect(row.metadata).toEqual(expect.objectContaining({
+        actor:            'provider_reassign_to_self',
+        from_provider_id: TEST_IDS.providerB,
+        to_provider_id:   TEST_IDS.provider,
+      }))
+    }
+  })
+
+  test('server rejects a provider creating an order under a different provider_id (403)', async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+
+    const body = (providerId: string) => ({
+      patientId:     TEST_IDS.patient,
+      providerId,
+      formulationId: TEST_IDS.formulation,
+      pharmacyId:    TEST_IDS.pharmacyTier1,
+      retailCents:   20000,
+      sigText:       'WO-100 server guard: inject 10 mg subcutaneously daily',
+      patientState:  'TX',
+    })
+
+    const rejected = await page.request.post('/api/orders', { data: body(TEST_IDS.providerB) })
+    expect(rejected.status()).toBe(403)
+    const rejectedBody = await rejected.json()
+    expect(rejectedBody.error).toMatch(/belongs to another provider.*Sign as me/i)
+    expect(rejectedBody.code).toBe('DRAFT_BELONGS_TO_OTHER_PROVIDER')
+
+    const accepted = await page.request.post('/api/orders', { data: body(TEST_IDS.provider) })
+    expect(accepted.status()).toBe(201)
   })
 })

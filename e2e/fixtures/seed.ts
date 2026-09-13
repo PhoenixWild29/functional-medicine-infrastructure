@@ -36,6 +36,10 @@ const supabase = createClient(E2E_SUPABASE_URL, E2E_SUPABASE_SERVICE_ROLE_KEY)
 export const TEST_IDS = {
   clinic:        'aaaaaaaa-0000-0000-0000-000000000001',
   provider:      'aaaaaaaa-0000-0000-0000-000000000002',
+  // WO-100: a second provider row with NO auth login, seeded ONLY by the
+  // WO-100 describe block (seedSecondProvider / retireSecondProvider) so
+  // the shared clinic keeps a single active provider for every other spec.
+  providerB:     'aaaaaaaa-0000-0000-0000-000000000004',
   patient:       'aaaaaaaa-0000-0000-0000-000000000003',
   // WO-97: one patient per allergy chip state. `patient` above is the
   // "not recorded" case (amber chip + non-blocking Review notice); these
@@ -151,6 +155,11 @@ export async function seedStaticData(): Promise<void> {
     signature_on_file: true,
     is_active:       true,
   }, { onConflict: 'provider_id' })
+
+  // WO-100: the second provider is NOT part of the shared seed. Retire it
+  // if a previous run left it active, so every other spec keeps seeing a
+  // single provider that auto-selects.
+  await retireSecondProvider()
 
   // Patients — one per WO-97 allergy chip state. The upsert re-asserts the
   // allergy columns on every run, so a test that edits them (the banner
@@ -456,9 +465,60 @@ export async function seedStaticData(): Promise<void> {
   // so the EPCS gate can verify codes in the controlled-substance test.
   await enrollE2eProviderTotp()
 
+  // WO-100: providers.user_id is what makes "I am this provider" resolvable
+  // (F-1). Link the E2E provider row to its auth user when that user exists
+  // (globalSetup creates the users AFTER the first seed call and links again).
+  await linkE2eProviderToAuthUser()
+
   // Smoke-test: walk the full cascade and fail loud if any level returns 0
   // rows. Turns a silent UI timeout into an actionable seed error.
   await assertV3CascadeVisible()
+}
+
+/**
+ * WO-100: activates a second provider (no login, renders as "Provider,
+ * Other") in the E2E clinic. Call from a describe's beforeAll and pair
+ * with retireSecondProvider() in afterAll — the row is shared state on
+ * the E2E project and other specs assume a single active provider.
+ */
+export async function seedSecondProvider(): Promise<void> {
+  const { error } = await supabase.from('providers').upsert({
+    provider_id:     TEST_IDS.providerB,
+    clinic_id:       TEST_IDS.clinic,
+    first_name:      'Other',
+    last_name:       'Provider',
+    npi_number:      '1987654321',
+    license_state:   'TX',
+    license_number:  'TEST-LICENSE-002',
+    signature_on_file: false,
+    is_active:       true,
+    deleted_at:      null,
+  }, { onConflict: 'provider_id' })
+  if (error) throw new Error(`seedSecondProvider: ${error.message}`)
+}
+
+/** WO-100: soft-retires the second provider (idempotent; no-op if absent). */
+export async function retireSecondProvider(): Promise<void> {
+  await supabase
+    .from('providers')
+    .update({ is_active: false, deleted_at: new Date().toISOString() })
+    .eq('provider_id', TEST_IDS.providerB)
+}
+
+/**
+ * Sets providers.user_id on TEST_IDS.provider to the auth user behind
+ * TEST_USERS.provider. Idempotent; a no-op until that auth user exists.
+ * The same link is made for the POC demo provider by scripts/seed-poc.ts.
+ */
+export async function linkE2eProviderToAuthUser(): Promise<void> {
+  const { data } = await supabase.auth.admin.listUsers()
+  const providerUser = data?.users.find(u => u.email === TEST_USERS.provider.email)
+  if (!providerUser) return
+  const { error } = await supabase
+    .from('providers')
+    .update({ user_id: providerUser.id })
+    .eq('provider_id', TEST_IDS.provider)
+  if (error) throw new Error(`linkE2eProviderToAuthUser: ${error.message}`)
 }
 
 async function enrollE2eProviderTotp(): Promise<void> {

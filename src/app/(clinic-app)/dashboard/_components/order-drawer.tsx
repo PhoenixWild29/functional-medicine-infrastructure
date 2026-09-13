@@ -19,6 +19,7 @@ import { createBrowserClient } from '@/lib/supabase/client'
 import type { DashboardOrder } from '../page'
 import { getStatusConfig } from '@/lib/orders/status-config'
 import { notify } from '@/lib/notifications'
+import { draftEditMode, type DraftViewer } from '@/lib/orders/draft-edit-access'
 
 interface Props {
   order: DashboardOrder | null
@@ -27,6 +28,8 @@ interface Props {
    *  payment group so it patches the polling cache immediately (drawer
    *  block + list rows) instead of waiting for the 30s poll. */
   onGroupCreated: (groupId: string, orderIds: string[]) => void
+  /** WO-98 × WO-100: the signed-in viewer. Absent → WO-98 behaviour. */
+  viewer?: DraftViewer | undefined
 }
 
 interface BundlableSibling {
@@ -111,7 +114,7 @@ function formatDateTime(iso: string): string {
 }
 
 
-export function OrderDrawer({ order, onClose, onGroupCreated }: Props) {
+export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
   const router = useRouter()
   // BLK-03: stable ref prevents stale closure + avoids re-running effect when client recreated
   const supabaseRef = useRef(createBrowserClient())
@@ -665,9 +668,26 @@ export function OrderDrawer({ order, onClose, onGroupCreated }: Props) {
               </button>
               {/* WO-98: edit this draft line / add another line to the
                   draft — both reopen the existing builder with the
-                  draft's patient and provider pinned. Providers can edit
-                  any clinic draft; other roles only drafts they created
-                  (the server returns 403 otherwise). */}
+                  draft's patient and provider pinned. Other roles only
+                  edit drafts they created (the server returns 403
+                  otherwise).
+                  WO-100: a provider looking at ANOTHER provider's draft
+                  must take it over first, so both actions collapse into
+                  one "Sign as me to edit" that opens the Sign as me
+                  panel (the sign page renders it for exactly this case). */}
+              {draftEditMode(viewer, order.providerId) === 'sign-as-me' ? (
+                <button
+                  type="button"
+                  data-testid="drawer-sign-as-me-to-edit"
+                  onClick={() => {
+                    onClose()
+                    router.push(`/new-prescription/sign/${order.orderId}`)
+                  }}
+                  className="mt-2 w-full rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
+                >
+                  Sign as me to edit
+                </button>
+              ) : (
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
@@ -690,6 +710,7 @@ export function OrderDrawer({ order, onClose, onGroupCreated }: Props) {
                   + Add prescription
                 </button>
               </div>
+              )}
             </div>
           )}
 

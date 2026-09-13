@@ -26,6 +26,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { RX_DETAIL_COLUMN_LIST, rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
 import { resolveLine, lineSourceKind } from '@/lib/orders/resolve-line'
 import { canEditDraft, diffDraftRows, writeDraftAudit } from '@/lib/orders/draft-edit'
+import { checkProviderOwnsDraft } from '@/lib/orders/provider-draft-guard'
 
 interface RouteContext {
   params: Promise<{ orderId: string }>
@@ -91,6 +92,23 @@ async function loadEditableDraft(orderId: string): Promise<
   }
   if (draft.status !== 'DRAFT') {
     return { ok: false, response: NextResponse.json({ error: 'Only DRAFT orders can be edited' }, { status: 409 }) }
+  }
+
+  // WO-100: a provider may only edit / remove lines on a draft under their
+  // own name; another provider's draft must be reassigned via Sign as me
+  // first. Same check as POST /api/orders. MA / clinic admin: not affected
+  // here — WO-98's creator rule below still applies to them.
+  const ownership = await checkProviderOwnsDraft(supabase, {
+    appRole:         role,
+    userId:          actor.userId,
+    clinicId,
+    draftProviderId: (draft as { provider_id?: string | null }).provider_id ?? null,
+  })
+  if (!ownership.ok) {
+    if (ownership.reason === 'other_provider') {
+      console.warn(`[orders/edit] provider-role session attempted to change another provider's draft | order=${orderId}`)
+    }
+    return { ok: false, response: NextResponse.json(ownership.body, { status: ownership.status }) }
   }
 
   const allowed = await canEditDraft(supabase, orderId, { userId: actor.userId, role: actor.role })

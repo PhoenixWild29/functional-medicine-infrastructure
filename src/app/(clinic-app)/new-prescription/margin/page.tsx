@@ -29,6 +29,8 @@ import { loadRxDefaults, type RxFormulationDefaults } from '@/lib/orders/rx-defa
 import { loadDraftContext, type DraftContext } from '@/lib/orders/load-draft-context'
 import { draftReturnPath } from '@/lib/orders/draft-edit'
 import { editTargetFromParams } from '../_lib/edit-target'
+import { isProviderRole } from '@/lib/auth/current-provider'
+import { getWizardSteps } from '../_lib/wizard-steps'
 
 export const metadata = {
   title: 'New Prescription — Set Price',
@@ -82,6 +84,12 @@ export default async function MarginPage({ searchParams }: PageProps) {
     ? user.user_metadata['clinic_id'] as string
     : undefined
   const isProvider = user.user_metadata['app_role'] === 'provider'
+
+  // WO-100: a provider's step 1 is just "Patient" — they are the provider.
+  const WIZARD_STEPS = getWizardSteps({
+    providerIsSelf: isProviderRole(user.user_metadata['app_role']),
+    hrefs: { 1: '/new-prescription', 2: '/new-prescription/search' },
+  })
 
   const supabase = createServiceClient()
 
@@ -197,11 +205,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
 
           <div className="mb-6">
             <WizardProgress
-              steps={[
-                { number: 1, label: 'Patient & Provider', href: '/new-prescription' },
-                { number: 2, label: 'Add Prescriptions', href: '/new-prescription/search' },
-                { number: 3, label: 'Review & Send' },
-              ]}
+              steps={WIZARD_STEPS}
               currentStep={2}
             />
           </div>
@@ -267,11 +271,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
       {/* Step indicator */}
       <div className="mb-6">
         <WizardProgress
-          steps={[
-            { number: 1, label: 'Patient & Provider', href: '/new-prescription' },
-            { number: 2, label: 'Add Prescriptions', href: '/new-prescription/search' },
-            { number: 3, label: 'Review & Send' },
-          ]}
+          steps={WIZARD_STEPS}
           currentStep={2}
         />
         <h1 className="mt-4 text-2xl font-bold text-foreground">

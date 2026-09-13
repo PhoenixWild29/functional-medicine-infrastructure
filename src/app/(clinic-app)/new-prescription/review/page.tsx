@@ -16,12 +16,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { SessionBanner }  from '../_components/session-banner'
 import { ProtocolLoadNotices } from './_components/protocol-load-notices'
 import { BatchReviewForm } from './_components/batch-review-form'
-
-const WIZARD_STEPS = [
-  { number: 1, label: 'Patient & Provider', href: '/new-prescription' },
-  { number: 2, label: 'Add Prescriptions',  href: '/new-prescription/search' },
-  { number: 3, label: 'Review & Send' },
-]
+import { getWizardSteps } from '../_lib/wizard-steps'
 
 export const metadata = {
   title: 'New Prescription — Review & Send',
@@ -55,6 +50,12 @@ export default async function ReviewPage() {
   const rawRole = user ? user.user_metadata['app_role'] : undefined
   const appRole = typeof rawRole === 'string' ? rawRole : undefined
   const isProvider = appRole === 'provider'
+
+  // WO-100: a provider's step 1 is just "Patient" — they are the provider.
+  const WIZARD_STEPS = getWizardSteps({
+    providerIsSelf: isProvider,
+    hrefs: { 1: '/new-prescription', 2: '/new-prescription/search' },
+  })
 
   return (
     <>
