@@ -71,12 +71,8 @@ export default async function PharmacySearchPage({ searchParams }: PageProps) {
       ? 'Add Prescription to Draft'
       : 'Configure Prescription'
 
-  return (
+  const body = (
     <>
-      <HipaaTimeout />
-      <main className="mx-auto max-w-2xl px-4 py-8">
-        {draft && <DraftSessionPin patient={draft.patient} provider={draft.provider} />}
-
         {/* Session banner — patient + provider pinned at top */}
         <SessionBanner />
 
@@ -101,6 +97,18 @@ export default async function PharmacySearchPage({ searchParams }: PageProps) {
           editTarget={editTarget}
           initial={draft && editTarget?.kind === 'draft' ? draft.initial : null}
         />
+    </>
+  )
+
+  return (
+    <>
+      <HipaaTimeout />
+      <main className="mx-auto max-w-2xl px-4 py-8">
+        {/* WO-98: a draft target pins its patient/provider on the session
+            before the banner + builder mount (see DraftSessionPin). */}
+        {draft
+          ? <DraftSessionPin patient={draft.patient} provider={draft.provider}>{body}</DraftSessionPin>
+          : body}
       </main>
     </>
   )

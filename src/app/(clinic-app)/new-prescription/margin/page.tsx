@@ -259,10 +259,8 @@ export default async function MarginPage({ searchParams }: PageProps) {
     defaultMarkupPct = clinic?.default_markup_pct ?? null
   }
 
-  return (
+  const body = (
     <>
-    <HipaaTimeout />
-    <main className="mx-auto max-w-2xl px-4 py-8">
       {/* WO-80: Session banner — patient + provider pinned at top */}
       <SessionBanner />
 
@@ -285,8 +283,6 @@ export default async function MarginPage({ searchParams }: PageProps) {
             : 'Set the price your patient will pay and add prescription directions.'}
         </p>
       </div>
-
-      {draft && <DraftSessionPin patient={draft.patient} provider={draft.provider} />}
 
       <MarginBuilderForm
         pharmacyId={pharmacyId}
@@ -312,6 +308,18 @@ export default async function MarginPage({ searchParams }: PageProps) {
         draftReturnTo={draft ? draftReturnPath(draft.orderId, isProvider) : null}
         presetDose={presetDose || undefined}
       />
+    </>
+  )
+
+  return (
+    <>
+    <HipaaTimeout />
+    <main className="mx-auto max-w-2xl px-4 py-8">
+      {/* WO-98: a draft target pins its patient/provider on the session
+          before the banner + form mount (see DraftSessionPin). */}
+      {draft
+        ? <DraftSessionPin patient={draft.patient} provider={draft.provider}>{body}</DraftSessionPin>
+        : body}
     </main>
     </>
   )

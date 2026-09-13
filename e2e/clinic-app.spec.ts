@@ -971,7 +971,8 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
     // ── Back lands on search with the session intact ──────────
     await page.getByRole('button', { name: 'Back', exact: true }).click()
     await expect(page).toHaveURL(/\/new-prescription\/search$/, { timeout: 10_000 })
-    await expect(page.getByText('2 prescriptions in this session')).toBeVisible()
+    // Banner badge + label are separate spans: "2" · "prescriptions in this session".
+    await expect(page.locator('p').filter({ hasText: 'prescriptions in this session' })).toContainText('2')
     await page.getByRole('button', { name: 'Review & Send' }).click()
     await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
     await expect(page.getByText('Prescriptions (2)')).toBeVisible()
