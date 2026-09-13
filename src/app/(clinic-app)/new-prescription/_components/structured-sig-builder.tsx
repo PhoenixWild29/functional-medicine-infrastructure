@@ -39,6 +39,38 @@ interface StructuredSigBuilderProps {
   onDoseUnitChange: (val: string) => void
   onFrequencyChange: (val: string) => void
   onSigChange: (sigText: string) => void
+  /**
+   * WO-98 edit-at-review: the sig the line currently carries. Used only
+   * to seed timing + duration (which are not part of the line's
+   * structured inputs) so re-editing a dose regenerates a sig with the
+   * same "in the morning for 30 days" tail. Dose + frequency come from
+   * the controlled props.
+   */
+  initialSigText?: string | undefined
+}
+
+/** Recover the timing + duration codes from a previously generated sig. */
+export function timingAndDurationFromSig(sig: string | null | undefined): { timing: string; duration: string; customDurationDays: string } {
+  const lower = (sig ?? '').toLowerCase()
+  if (!lower) return { timing: '', duration: '', customDurationDays: '' }
+  // Longest fragment first so "30 minutes before meals" beats "with food" style overlaps.
+  const timing = [...TIMING_OPTIONS]
+    .filter(t => t.sig)
+    .sort((a, b) => b.sig.length - a.sig.length)
+    .find(t => lower.includes(t.sig.toLowerCase()))
+  let duration = ''
+  let customDurationDays = ''
+  if (lower.includes(', ongoing')) {
+    duration = 'ONGOING'
+  } else {
+    const m = /for (\d+) days/.exec(lower)
+    if (m?.[1]) {
+      const known = DURATION_OPTIONS.find(d => d.code === m[1])
+      if (known) duration = known.code
+      else { duration = 'CUSTOM'; customDurationDays = m[1] }
+    }
+  }
+  return { timing: timing?.code ?? '', duration, customDurationDays }
 }
 
 // ── Unit conversion helpers ─────────────────────────────────
@@ -127,12 +159,14 @@ export function StructuredSigBuilder({
   onDoseUnitChange,
   onFrequencyChange,
   onSigChange,
+  initialSigText,
 }: StructuredSigBuilderProps) {
 
   // ── Internal state ──────────────────────────────────────
-  const [timing, setTiming] = useState('')
-  const [duration, setDuration] = useState('')
-  const [customDurationDays, setCustomDurationDays] = useState('')
+  const [initial] = useState(() => timingAndDurationFromSig(initialSigText))
+  const [timing, setTiming] = useState(initial.timing)
+  const [duration, setDuration] = useState(initial.duration)
+  const [customDurationDays, setCustomDurationDays] = useState(initial.customDurationDays)
 
   // Modes — mutually exclusive
   const [sigMode, setSigMode] = useState<'standard' | 'titration' | 'cycling'>('standard')

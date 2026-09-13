@@ -48,6 +48,7 @@ import { EpcsTotpGate } from '../../_components/epcs-totp-gate'
 import { DrugInteractionAlerts } from '../../_components/drug-interaction-alerts'
 import { RxDetailsRow } from './rx-details-row'
 import { AllergyNotice } from './allergy-notice'
+import { builderHref } from '../../_lib/edit-target'
 import {
   defaultRxDetails,
   missingRxDetails,
@@ -503,11 +504,23 @@ export function BatchReviewForm({ isProvider }: Props) {
                   rxDetails: { ...effectiveDetails(rx), ...patch },
                 })}
               />
-              <div className="mt-2 flex justify-end">
+              <div className="mt-2 flex justify-end gap-3">
+                {/* WO-98: Edit reopens the existing builder with this line's
+                    values; saving updates the line in place (same id). */}
+                <button
+                  type="button"
+                  onClick={() => router.push(builderHref({ kind: 'session', lineId: rx.id }))}
+                  disabled={isBusy}
+                  aria-label={`Edit ${rx.medicationName}`}
+                  className="text-[10px] font-medium text-primary underline hover:text-primary/80 disabled:opacity-50"
+                >
+                  Edit
+                </button>
                 <button
                   type="button"
                   onClick={() => session.removePrescription(rx.id)}
                   disabled={isBusy}
+                  aria-label={`Remove ${rx.medicationName}`}
                   className="text-[10px] text-red-500 underline hover:text-red-700 disabled:opacity-50"
                 >
                   Remove
@@ -518,15 +531,25 @@ export function BatchReviewForm({ isProvider }: Props) {
         })}
       </div>
 
-      {/* Add another button */}
-      <button
-        type="button"
-        onClick={() => router.push('/new-prescription/search')}
-        disabled={isBusy}
-        className="w-full rounded-md border-2 border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
-      >
-        + Add Another Prescription
-      </button>
+      {/* Add another / Back — both return to search with the session intact (WO-98) */}
+      <div className="flex gap-3">
+        <button
+          type="button"
+          onClick={() => router.push('/new-prescription/search')}
+          disabled={isBusy}
+          className="rounded-md border border-border px-4 py-3 text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors disabled:opacity-50"
+        >
+          Back
+        </button>
+        <button
+          type="button"
+          onClick={() => router.push('/new-prescription/search')}
+          disabled={isBusy}
+          className="flex-1 rounded-md border-2 border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
+        >
+          + Add Another Prescription
+        </button>
+      </div>
 
       {/* Totals */}
       <div className="rounded-lg border border-border bg-muted/30 p-4">

@@ -21,6 +21,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { HipaaTimeout } from '@/components/hipaa-timeout'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { DraftSignForm } from './_components/draft-sign-form'
+import type { DraftLineView } from './_components/draft-lines'
 
 export const metadata = {
   title: 'Sign Prescription',
@@ -130,6 +131,39 @@ export default async function SignDraftPage({ params }: PageProps) {
 
   if (!patient || !provider) notFound()
 
+  // WO-98: every DRAFT line for this patient + provider (the one being
+  // signed first, then its siblings) — Edit / Remove / + Add prescription
+  // act on these. An N-line session saves as N draft orders, so "the
+  // draft" the provider sees is this set.
+  const { data: siblingRows } = await supabase
+    .from('orders')
+    .select('order_id, medication_snapshot, pharmacy_snapshot, sig_text, retail_price_snapshot, days_supply, refills, created_at')
+    .eq('clinic_id', clinicId)
+    .eq('patient_id', order.patient_id)
+    .eq('provider_id', order.provider_id)
+    .eq('status', 'DRAFT')
+    .eq('is_active', true)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+
+  const draftLines: DraftLineView[] = (siblingRows ?? [])
+    .sort((a, b) => (a.order_id === orderId ? -1 : b.order_id === orderId ? 1 : 0))
+    .map(row => {
+      const med = row.medication_snapshot as Record<string, unknown> | null
+      const ph  = row.pharmacy_snapshot as Record<string, unknown> | null
+      return {
+        orderId:        row.order_id,
+        medicationName: (med?.['medication_name'] as string) ?? 'Unknown medication',
+        form:           (med?.['form'] as string) ?? '',
+        dose:           (med?.['prescribed_dose'] as string) ?? (med?.['dose'] as string) ?? '',
+        pharmacyName:   (ph?.['name'] as string) ?? 'Unknown pharmacy',
+        sigText:        row.sig_text ?? '',
+        retailCents:    Math.round((row.retail_price_snapshot ?? 0) * 100),
+        daysSupply:     row.days_supply ?? null,
+        refills:        row.refills ?? 0,
+      }
+    })
+
   // Parse snapshots
   const medication = order.medication_snapshot as Record<string, unknown> | null
   const pharmacy = order.pharmacy_snapshot as Record<string, unknown> | null
@@ -163,6 +197,7 @@ export default async function SignDraftPage({ params }: PageProps) {
           wholesaleCents={wholesaleCents}
           retailCents={retailCents}
           sigText={order.sig_text ?? ''}
+          draftLines={draftLines}
         />
       </main>
     </>
