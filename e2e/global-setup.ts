@@ -10,7 +10,7 @@
 // so re-runs are safe even if users already exist.
 
 import { createClient } from '@supabase/supabase-js'
-import { TEST_USERS, TEST_IDS, seedStaticData } from './fixtures/seed'
+import { TEST_USERS, TEST_IDS, seedStaticData, linkE2eProviderToAuthUser } from './fixtures/seed'
 
 export default async function globalSetup(): Promise<void> {
   // Hard-fail if E2E env vars are missing. The seed.ts module will also throw
@@ -59,4 +59,9 @@ export default async function globalSetup(): Promise<void> {
       }
     }
   }
+
+  // WO-100: now that the provider auth user exists, link providers.user_id
+  // so the provider-role flows (provider = self, Sign as me, F-2 signing)
+  // can resolve "which provider am I".
+  await linkE2eProviderToAuthUser()
 }

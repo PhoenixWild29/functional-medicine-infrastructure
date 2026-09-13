@@ -36,6 +36,10 @@ const supabase = createClient(E2E_SUPABASE_URL, E2E_SUPABASE_SERVICE_ROLE_KEY)
 export const TEST_IDS = {
   clinic:        'aaaaaaaa-0000-0000-0000-000000000001',
   provider:      'aaaaaaaa-0000-0000-0000-000000000002',
+  // WO-100: a second provider row with NO auth login. Gives the MA /
+  // clinic-admin path a real provider list to choose from, and is the
+  // "other provider" a draft is reassigned away from in "Sign as me".
+  providerB:     'aaaaaaaa-0000-0000-0000-000000000004',
   patient:       'aaaaaaaa-0000-0000-0000-000000000003',
   // WO-97: one patient per allergy chip state. `patient` above is the
   // "not recorded" case (amber chip + non-blocking Review notice); these
@@ -149,6 +153,19 @@ export async function seedStaticData(): Promise<void> {
     license_state:   'TX',
     license_number:  'TEST-LICENSE-001',
     signature_on_file: true,
+    is_active:       true,
+  }, { onConflict: 'provider_id' })
+
+  // WO-100: second provider (no login). Renders as "Provider, Other".
+  await supabase.from('providers').upsert({
+    provider_id:     TEST_IDS.providerB,
+    clinic_id:       TEST_IDS.clinic,
+    first_name:      'Other',
+    last_name:       'Provider',
+    npi_number:      '1987654321',
+    license_state:   'TX',
+    license_number:  'TEST-LICENSE-002',
+    signature_on_file: false,
     is_active:       true,
   }, { onConflict: 'provider_id' })
 
@@ -456,9 +473,30 @@ export async function seedStaticData(): Promise<void> {
   // so the EPCS gate can verify codes in the controlled-substance test.
   await enrollE2eProviderTotp()
 
+  // WO-100: providers.user_id is what makes "I am this provider" resolvable
+  // (F-1). Link the E2E provider row to its auth user when that user exists
+  // (globalSetup creates the users AFTER the first seed call and links again).
+  await linkE2eProviderToAuthUser()
+
   // Smoke-test: walk the full cascade and fail loud if any level returns 0
   // rows. Turns a silent UI timeout into an actionable seed error.
   await assertV3CascadeVisible()
+}
+
+/**
+ * Sets providers.user_id on TEST_IDS.provider to the auth user behind
+ * TEST_USERS.provider. Idempotent; a no-op until that auth user exists.
+ * The same link is made for the POC demo provider by scripts/seed-poc.ts.
+ */
+export async function linkE2eProviderToAuthUser(): Promise<void> {
+  const { data } = await supabase.auth.admin.listUsers()
+  const providerUser = data?.users.find(u => u.email === TEST_USERS.provider.email)
+  if (!providerUser) return
+  const { error } = await supabase
+    .from('providers')
+    .update({ user_id: providerUser.id })
+    .eq('provider_id', TEST_IDS.provider)
+  if (error) throw new Error(`linkE2eProviderToAuthUser: ${error.message}`)
 }
 
 async function enrollE2eProviderTotp(): Promise<void> {
