@@ -20,7 +20,11 @@ jest.mock('next/navigation', () => ({
 const STORAGE_KEY = 'compoundiq-rx-session'
 
 const PATIENTS = [
-  { patient_id: 'p-alex', first_name: 'Alex', last_name: 'Demo', date_of_birth: '1985-06-15', phone: '+15125550000', state: 'TX', sms_opt_in: true },
+  {
+    patient_id: 'p-alex', first_name: 'Alex', last_name: 'Demo', date_of_birth: '1985-06-15', phone: '+15125550000', state: 'TX', sms_opt_in: true,
+    // WO-97 allergy columns (required on the selector's Patient type since #135)
+    allergies: [], nkda: true, allergies_updated_at: '2026-09-13T00:00:00Z',
+  },
 ]
 const CHEN  = { provider_id: 'prov-chen',  first_name: 'Sarah',  last_name: 'Chen',  npi_number: '1234567890', signature_hash: 'abc' }
 const PATEL = { provider_id: 'prov-patel', first_name: 'Marcus', last_name: 'Patel', npi_number: '0987654321', signature_hash: null }
