@@ -32,6 +32,7 @@ import { resolveProtocolLinkage, type ProtocolLinkage } from '@/lib/protocols/re
 import { rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
 import { lineSourceKind, resolveLine } from '@/lib/orders/resolve-line'
 import { writeDraftAudit } from '@/lib/orders/draft-edit'
+import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provider'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // Auth gate
@@ -124,6 +125,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const rxDetailColumns = rxDetailsToColumns(rxDetailsValidation.details)
 
   const supabase = createServiceClient()
+
+  // ── WO-100: a provider prescribes as themself ─────────────
+  // A provider-role session may only create orders under its own
+  // provider row (providers.user_id = auth user — the same linkage F-2
+  // enforces at sign-and-send). Any other providerId is 403, and an
+  // unlinked provider login cannot create drafts at all (fail closed —
+  // it could never sign them either). MA / clinic_admin sessions are
+  // unaffected: they choose the provider.
+  if (isProviderRole(session.user.user_metadata['app_role'])) {
+    const me = await resolveCurrentProvider(supabase, { userId: session.user.id, clinicId })
+    if (!me) {
+      return NextResponse.json(
+        { error: 'Provider account is not linked to a Supabase Auth user. Contact ops to complete provider onboarding before prescribing.' },
+        { status: 403 },
+      )
+    }
+    if (me.provider_id !== providerId) {
+      console.warn(`[orders] provider-role session attempted to prescribe as another provider | clinic=${clinicId}`)
+      return NextResponse.json(
+        { error: 'A provider can only create prescriptions under their own name.' },
+        { status: 403 },
+      )
+    }
+  }
 
   // ── Resolve medication + pharmacy (+ state licence) ──────
   // WO-98: shared with PATCH /api/orders/[orderId] so editing a draft

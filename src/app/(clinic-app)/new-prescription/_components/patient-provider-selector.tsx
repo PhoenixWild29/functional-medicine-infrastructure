@@ -11,6 +11,10 @@
 //
 // If the clinic has only one provider, it auto-selects.
 // Patient search filters by name as the MA types.
+//
+// WO-100: when `selfProvider` is set (the signed-in user IS a provider),
+// the provider section is not rendered at all — the session provider is
+// the caller, and the only thing left to pick is the patient.
 
 import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -44,6 +48,11 @@ interface Provider {
 interface Props {
   patients:  Patient[]
   providers: Provider[]
+  /**
+   * WO-100: the signed-in user's own provider row. When present the
+   * provider list is hidden and this provider is pinned to the session.
+   */
+  selfProvider?: Provider | null
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -59,7 +68,7 @@ function formatDob(iso: string): string {
 
 // ── Component ─────────────────────────────────────────────────
 
-export function PatientProviderSelector({ patients: initialPatients, providers }: Props) {
+export function PatientProviderSelector({ patients: initialPatients, providers, selfProvider = null }: Props) {
   const router = useRouter()
   const session = usePrescriptionSession()
 
@@ -75,25 +84,34 @@ export function PatientProviderSelector({ patients: initialPatients, providers }
 
   const [patientSearch, setPatientSearch] = useState('')
   const [selectedPatientId, setSelectedPatientId] = useState<string>(session.patient?.patient_id ?? '')
-  const [selectedProviderId, setSelectedProviderId] = useState<string>(session.provider?.provider_id ?? '')
+  const [selectedProviderId, setSelectedProviderId] = useState<string>(
+    selfProvider?.provider_id ?? session.provider?.provider_id ?? ''
+  )
 
-  // Auto-select provider if only one exists
+  // Auto-select provider if only one exists (MA path)
   useEffect(() => {
+    if (selfProvider) return
     const single = providers.length === 1 ? providers[0] : undefined
     if (single && !selectedProviderId) {
       setSelectedProviderId(single.provider_id)
     }
-  }, [providers, selectedProviderId])
+  }, [providers, selectedProviderId, selfProvider])
 
-  // If session already has patient + provider, pre-select them
+  // If session already has patient + provider, pre-select them. A provider
+  // is always themself (WO-100), even if a restored session named someone
+  // else — e.g. a shared workstation.
   useEffect(() => {
     if (session.patient && !selectedPatientId) {
       setSelectedPatientId(session.patient.patient_id)
     }
+    if (selfProvider) {
+      if (selectedProviderId !== selfProvider.provider_id) setSelectedProviderId(selfProvider.provider_id)
+      return
+    }
     if (session.provider && !selectedProviderId) {
       setSelectedProviderId(session.provider.provider_id)
     }
-  }, [session.patient, session.provider, selectedPatientId, selectedProviderId])
+  }, [session.patient, session.provider, selectedPatientId, selectedProviderId, selfProvider])
 
   // Filter patients by search query
   const filteredPatients = useMemo(() => {
@@ -108,7 +126,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers }
   }, [patients, patientSearch])
 
   const selectedPatient = patients.find(p => p.patient_id === selectedPatientId) ?? null
-  const selectedProvider = providers.find(p => p.provider_id === selectedProviderId) ?? null
+  const selectedProvider = selfProvider ?? providers.find(p => p.provider_id === selectedProviderId) ?? null
 
   const canProceed = !!(selectedPatient && selectedProvider)
 
@@ -291,7 +309,9 @@ export function PatientProviderSelector({ patients: initialPatients, providers }
         )}
       </div>
 
-      {/* Provider selection */}
+      {/* Provider selection — MA / clinic admin only. A provider is the
+          prescribing provider (WO-100) and never sees this list. */}
+      {!selfProvider && (
       <div className="rounded-lg border border-border bg-card p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Select Provider
@@ -345,6 +365,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers }
           </p>
         )}
       </div>
+      )}
 
       {/* Continue button */}
       <div className="flex items-center justify-between">

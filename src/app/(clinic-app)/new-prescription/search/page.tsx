@@ -22,16 +22,12 @@ import { HipaaTimeout }      from '@/components/hipaa-timeout'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { loadDraftContext, type DraftContext } from '@/lib/orders/load-draft-context'
+import { isProviderRole }    from '@/lib/auth/current-provider'
 import { SessionBanner }      from '../_components/session-banner'
 import { DraftSessionPin }    from '../_components/draft-session-pin'
 import { CascadingPrescriptionBuilder } from '../_components/cascading-prescription-builder'
 import { editTargetFromParams } from '../_lib/edit-target'
-
-const WIZARD_STEPS = [
-  { number: 1, label: 'Patient & Provider', href: '/new-prescription' },
-  { number: 2, label: 'Add Prescriptions' },
-  { number: 3, label: 'Review & Send'     },
-]
+import { getWizardSteps }    from '../_lib/wizard-steps'
 
 export const metadata = {
   title: 'New Prescription — Find a Pharmacy',
@@ -48,13 +44,22 @@ export default async function PharmacySearchPage({ searchParams }: PageProps) {
   const params = await searchParams
   let editTarget = editTargetFromParams(params)
 
+  // One auth read for the page. getUser(), never getSession() — middleware
+  // owns token rotation. No redirect() from this streamed page body; a
+  // missing user just falls back to the MA label and the plain flow.
+  const supabaseAuth = await createServerClient()
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+
+  // WO-100: step 1 is labelled "Patient" for a provider (they ARE the
+  // provider) and "Patient & Provider" for everyone else.
+  const providerIsSelf = isProviderRole(user?.user_metadata['app_role'])
+  const WIZARD_STEPS = getWizardSteps({ providerIsSelf, hrefs: { 1: '/new-prescription' } })
+
   // WO-98: draft targets need the order's patient/provider pinned and
   // the line's current values. Resolved here (service role, clinic-
   // scoped); a missing / non-draft order falls back to the plain flow.
   let draft: DraftContext | null = null
   if (editTarget && editTarget.kind !== 'session') {
-    const supabaseAuth = await createServerClient()
-    const { data: { user } } = await supabaseAuth.auth.getUser()
     const clinicId = typeof user?.user_metadata['clinic_id'] === 'string'
       ? user.user_metadata['clinic_id'] as string
       : null
