@@ -134,6 +134,25 @@ export function BatchReviewForm({ isProvider }: Props) {
     }
   }, [session.isSessionStarted, router])
 
+  // ── Clear the session only once we have actually left this page ──
+  //
+  // Both Sign & Send and Save as Draft navigate to /dashboard and then
+  // clear the session. Clearing while the dashboard navigation is still
+  // pending flips isSessionStarted to false on a page that is still
+  // mounted, and the redirect effect above (plus SessionBanner's) fires
+  // router.replace('/new-prescription'), which supersedes the dashboard
+  // push. A timer (the previous "clear after a tick") only wins that
+  // race when the dashboard RSC comes back within the tick, which CI
+  // does not guarantee. Arming this ref and clearing in the unmount
+  // cleanup is deterministic: the cleanup runs when the new route has
+  // committed and no /new-prescription page can redirect any more.
+  const clearSessionOnUnmountRef = useRef(false)
+  const clearSessionRef = useRef(session.clearSession)
+  clearSessionRef.current = session.clearSession
+  useEffect(() => () => {
+    if (clearSessionOnUnmountRef.current) clearSessionRef.current()
+  }, [])
+
   // ── WO-96: resolve defaults + rules for lines that lack them ──
   // Keyed on the unresolved formulation ids so a patch that adds
   // rxRules does not re-trigger the fetch for the same lines.
@@ -324,14 +343,13 @@ export function BatchReviewForm({ isProvider }: Props) {
         sentCount++
       }
 
-      // Navigate to dashboard FIRST, then clear session.
-      // Order matters: clearSession() triggers SessionBanner's redirect to
-      // /new-prescription via useEffect. Navigating first prevents the race.
+      // Navigate to dashboard; the session is cleared in the unmount
+      // cleanup once that navigation has committed (see
+      // clearSessionOnUnmountRef) — clearing any earlier lets the
+      // SessionBanner redirect race the dashboard push.
       setSubmitProgress(null)
+      clearSessionOnUnmountRef.current = true
       router.push(`/dashboard?sent=${totalCount}`)
-
-      // Clear session after a tick to avoid the SessionBanner redirect race
-      setTimeout(() => session.clearSession(), 100)
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'An unexpected error occurred'
@@ -395,8 +413,9 @@ export function BatchReviewForm({ isProvider }: Props) {
       }
 
       setSubmitProgress(null)
+      // Same as Sign & Send: clear on unmount, never before the navigation lands.
+      clearSessionOnUnmountRef.current = true
       router.push(`/dashboard?draft=${totalCount}`)
-      setTimeout(() => session.clearSession(), 100)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'An unexpected error occurred'
       setDraftError(msg)

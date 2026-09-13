@@ -96,8 +96,10 @@ export function AllergyChip({ patient, onClick, expanded, className = '' }: Alle
       data-allergy-status={status.kind}
       title={`${label} — click to edit`}
     >
+      {/* Label only — no decorative glyph, so the button's text IS the
+          chip state (tests and screen readers read it verbatim). The
+          edit affordance is the hover underline + title + aria-expanded. */}
       {label}
-      <span aria-hidden className="text-[10px] opacity-70">✎</span>
     </button>
   )
 }
