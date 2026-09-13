@@ -13,6 +13,11 @@
  *   - DELETE never hard-deletes: is_active=false + deleted_at, plus an
  *     audit row.
  *
+ * WO-100 (shared guard with POST /api/orders): a provider may only edit or
+ * remove lines on a draft under their own name — another provider's draft
+ * is refused with 403 DRAFT_BELONGS_TO_OTHER_PROVIDER until it is
+ * reassigned via Sign as me. MA / clinic admin are unaffected by that check.
+ *
  * Mocking pattern reused from ../../__tests__/wo96-rx-details.test.ts.
  */
 
@@ -124,8 +129,22 @@ function patchBody(extra: Record<string, unknown> = {}) {
   }
 }
 
+const MY_PROVIDER_ID    = 'prov'            // DRAFT_ROW.provider_id
+const OTHER_PROVIDER_ID = 'prov-someone-else'
+
+/** The signed-in provider's own provider row (resolveCurrentProvider). */
+function signedInProviderIs(providerId: string | null) {
+  fixtures['providers:maybeSingle'] = () => ({
+    data: providerId
+      ? { provider_id: providerId, clinic_id: CLINIC_ID, first_name: 'Sarah', last_name: 'Chen', npi_number: '1234567890', signature_hash: null }
+      : null,
+    error: null,
+  })
+}
+
 function installHappyFixtures(row: Record<string, unknown> = DRAFT_ROW) {
   fixtures['orders:maybeSingle'] = () => ({ data: row, error: null })
+  signedInProviderIs(MY_PROVIDER_ID)
   fixtures['formulations:maybeSingle'] = () => ({
     data: { formulation_id: FORM_ID, name: 'Semaglutide 5mg/mL Injectable', concentration: '5mg/mL', dosage_forms: { name: 'Injectable Solution' } },
     error: null,
@@ -288,5 +307,66 @@ describe('DELETE /api/orders/[orderId] — WO-98 remove a draft line', () => {
     fixtures['order_status_history:limit'] = () => ({ data: [], error: null })
     expect((await DELETE(makeRequest(), ctx)).status).toBe(403)
     expect(updatedRows).toEqual([])
+  })
+})
+
+describe('WO-100 — PATCH / DELETE apply the provider-owns-draft rule (shared with POST /api/orders)', () => {
+  const REASSIGN_MESSAGE =
+    'This draft belongs to another provider. Reassign it to yourself with Sign as me before adding or editing prescriptions.'
+
+  const send = {
+    PATCH:  () => PATCH(makeRequest(patchBody()), ctx),
+    DELETE: () => DELETE(makeRequest(), ctx),
+  } as const
+
+  describe.each(['PATCH', 'DELETE'] as const)('%s', (method) => {
+    it("403 DRAFT_BELONGS_TO_OTHER_PROVIDER on another provider's draft — nothing changed, no audit row", async () => {
+      signedInProviderIs(OTHER_PROVIDER_ID)
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const res = await send[method]()
+      expect(res.status).toBe(403)
+      await expect(res.json()).resolves.toEqual({
+        error: REASSIGN_MESSAGE,
+        code:  'DRAFT_BELONGS_TO_OTHER_PROVIDER',
+      })
+      expect(updatedRows).toEqual([])
+      expect(auditRows()).toEqual([])
+      // The line was never re-resolved either (PATCH) — refused before any work.
+      expect(queryFilters.find(q => q.table === 'pharmacy_formulations')).toBeUndefined()
+      // Resolved by the caller's auth user, scoped to the clinic.
+      const lookup = queryFilters.find(q => q.table === 'providers')
+      expect(lookup!.filters).toEqual(expect.arrayContaining([['user_id', 'auth-provider'], ['clinic_id', CLINIC_ID]]))
+      warn.mockRestore()
+    })
+
+    it('403 when the provider login is not linked to a provider row — nothing changed', async () => {
+      signedInProviderIs(null)
+      const res = await send[method]()
+      expect(res.status).toBe(403)
+      expect((await res.json()).error).toMatch(/not linked/)
+      expect(updatedRows).toEqual([])
+      expect(auditRows()).toEqual([])
+    })
+
+    it("succeeds on the provider's own draft", async () => {
+      signedInProviderIs(MY_PROVIDER_ID)
+      const res = await send[method]()
+      expect(res.status).toBe(200)
+      expect(updatedRows.find(u => u.table === 'orders')).toBeDefined()
+      expect(auditRows()).toHaveLength(1)
+    })
+
+    it.each(['medical_assistant', 'clinic_admin'])('a %s who created the draft still succeeds (provider check not applied)', async (role) => {
+      sessionAs(role, `auth-${role}`)
+      // Even if a provider row lookup would say "someone else", staff are not providers.
+      signedInProviderIs(OTHER_PROVIDER_ID)
+      fixtures['order_status_history:limit'] = () => ({ data: [{ history_id: 'h1' }], error: null })
+
+      const res = await send[method]()
+      expect(res.status).toBe(200)
+      expect(updatedRows.find(u => u.table === 'orders')).toBeDefined()
+      expect(queryFilters.find(q => q.table === 'providers')).toBeUndefined()
+    })
   })
 })

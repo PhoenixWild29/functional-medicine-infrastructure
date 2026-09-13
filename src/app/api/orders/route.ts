@@ -32,8 +32,7 @@ import { resolveProtocolLinkage, type ProtocolLinkage } from '@/lib/protocols/re
 import { rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
 import { lineSourceKind, resolveLine } from '@/lib/orders/resolve-line'
 import { writeDraftAudit } from '@/lib/orders/draft-edit'
-import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provider'
-import { DRAFT_BELONGS_TO_OTHER_PROVIDER_CODE, DRAFT_BELONGS_TO_OTHER_PROVIDER_ERROR } from '@/lib/orders/draft-edit-access'
+import { checkProviderOwnsDraft } from '@/lib/orders/provider-draft-guard'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // Auth gate
@@ -134,24 +133,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // unlinked provider login cannot create drafts at all (fail closed —
   // it could never sign them either). MA / clinic_admin sessions are
   // unaffected: they choose the provider.
-  if (isProviderRole(session.user.user_metadata['app_role'])) {
-    const me = await resolveCurrentProvider(supabase, { userId: session.user.id, clinicId })
-    if (!me) {
-      return NextResponse.json(
-        { error: 'Provider account is not linked to a Supabase Auth user. Contact ops to complete provider onboarding before prescribing.' },
-        { status: 403 },
-      )
-    }
-    if (me.provider_id !== providerId) {
-      // Every order this route creates is a DRAFT, so the order would be a
-      // draft under another provider — including "+ Add prescription" to
-      // another provider's draft (WO-98). Reassign first via Sign as me.
+  // Every order this route creates is a DRAFT, so a provider naming
+  // another provider would create a draft under someone else's name —
+  // including "+ Add prescription" on another provider's draft (WO-98).
+  // Shared with PATCH / DELETE /api/orders/[orderId].
+  const ownership = await checkProviderOwnsDraft(supabase, {
+    appRole:         session.user.user_metadata['app_role'],
+    userId:          session.user.id,
+    clinicId,
+    draftProviderId: providerId,
+  })
+  if (!ownership.ok) {
+    if (ownership.reason === 'other_provider') {
       console.warn(`[orders] provider-role session attempted to prescribe as another provider | clinic=${clinicId}${appendedToOrderId ? ' | append-to-draft' : ''}`)
-      return NextResponse.json(
-        { error: DRAFT_BELONGS_TO_OTHER_PROVIDER_ERROR, code: DRAFT_BELONGS_TO_OTHER_PROVIDER_CODE },
-        { status: 403 },
-      )
     }
+    return NextResponse.json(ownership.body, { status: ownership.status })
   }
 
   // ── Resolve medication + pharmacy (+ state licence) ──────
