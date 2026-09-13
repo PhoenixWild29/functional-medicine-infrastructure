@@ -47,6 +47,7 @@ import { usePrescriptionSession, type SessionPrescription } from '../../_context
 import { EpcsTotpGate } from '../../_components/epcs-totp-gate'
 import { DrugInteractionAlerts } from '../../_components/drug-interaction-alerts'
 import { RxDetailsRow } from './rx-details-row'
+import { AllergyNotice } from './allergy-notice'
 import {
   defaultRxDetails,
   missingRxDetails,
@@ -422,6 +423,10 @@ export function BatchReviewForm({ isProvider }: Props) {
 
       {/* WO-86: Drug Interaction Alerts */}
       <DrugInteractionAlerts medicationNames={prescriptions.map(rx => rx.medicationName)} />
+
+      {/* WO-97: allergies not recorded → amber notice with an inline
+          "Confirm NKDA". Never blocks Sign & Send or Save as Draft. */}
+      <AllergyNotice patient={patient} onSaved={session.updatePatient} />
 
       {/* Prescription list */}
       <div className="space-y-3">

@@ -32,6 +32,14 @@ export interface SessionPatient {
   phone:         string
   state:         string | null
   sms_opt_in:    boolean
+  // WO-97: allergies live on the patient and ride along in the session
+  // so the banner chip and the Review notice need no extra fetch.
+  // OPTIONAL ON PURPOSE — sessions persisted in sessionStorage before
+  // WO-97 have neither; the banner hydrates them from
+  // GET /api/patients/[id]/allergies when `allergies` is undefined.
+  allergies?:            string[] | null
+  nkda?:                 boolean
+  allergies_updated_at?: string | null
 }
 
 export interface SessionProvider {
@@ -123,6 +131,11 @@ interface PrescriptionSessionContextValue extends PrescriptionSessionState {
   setPatient:         (patient: SessionPatient) => void
   /** Set the provider for this session (step 1) */
   setProvider:        (provider: SessionProvider) => void
+  /**
+   * Patch the session patient in place (WO-97: allergies saved from the
+   * banner chip or the Review notice). No-op when no patient is set.
+   */
+  updatePatient:      (patch: Partial<Omit<SessionPatient, 'patient_id'>>) => void
   /** Add a configured prescription to the session */
   addPrescription:    (rx: Omit<SessionPrescription, 'id'>) => void
   /**
@@ -248,6 +261,13 @@ export function PrescriptionSessionProvider({ children }: { children: ReactNode 
     setState(prev => ({ ...prev, provider }))
   }, [])
 
+  const updatePatient = useCallback((patch: Partial<Omit<SessionPatient, 'patient_id'>>) => {
+    setState(prev => {
+      if (!prev.patient) return prev
+      return { ...prev, patient: { ...prev.patient, ...patch, patient_id: prev.patient.patient_id } }
+    })
+  }, [])
+
   const addPrescription = useCallback((rx: Omit<SessionPrescription, 'id'>) => {
     setState(prev => ({
       ...prev,
@@ -312,6 +332,7 @@ export function PrescriptionSessionProvider({ children }: { children: ReactNode 
     ...state,
     setPatient,
     setProvider,
+    updatePatient,
     addPrescription,
     addPrescriptions,
     removePrescription,
