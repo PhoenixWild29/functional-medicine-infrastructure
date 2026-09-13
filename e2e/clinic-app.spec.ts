@@ -875,3 +875,257 @@ test.describe('Clinic App — WO-97 patient allergies / NKDA', () => {
     expect(row?.allergies_updated_at).not.toBeNull()
   })
 })
+
+// ============================================================
+// WO-98 — Edit at Review, Edit Draft, Add to Draft
+// ============================================================
+//
+// Signature drawing cannot be automated in Playwright (see the WO-96
+// block above), so the draft scenarios stop at the draft state and
+// assert the rows directly; nothing here signs an order.
+
+/** Steps 1 of the wizard only — assumes the browser is already on /new-prescription/search. */
+async function fillBuilder(page: Page, choice: BuilderChoice) {
+  await page.getByLabel('Search medications').fill(choice.ingredientName)
+  await page.getByRole('button', { name: new RegExp(choice.ingredientName, 'i') }).click()
+  await page.getByRole('button', { name: new RegExp(choice.formulationName, 'i') }).click()
+  await page.getByLabel('Dose amount').fill(choice.doseAmount)
+  await page.getByLabel('Dose unit').selectOption(choice.doseUnit)
+  await page.getByLabel('Frequency').selectOption(choice.frequency)
+  await page.getByLabel('Timing').selectOption({ index: 1 })
+  await page.getByRole('button', { name: /Test Pharmacy Tier1/ }).click()
+  await page.getByLabel('Quantity').selectOption(choice.quantity)
+  await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
+  await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
+}
+
+function e2eSupabase() {
+  return createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
+}
+
+test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft', () => {
+  test.beforeAll(async () => {
+    await seedStaticData()
+  })
+
+  test.afterEach(async () => {
+    await cleanupTestOrders()
+  })
+
+  test('changing a dose at Review updates the card in place and recomputes totals; Back keeps both Rx in session', async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+
+    // Two lines in the session: PLAIN ($200) then GLP1 ($200).
+    await walkBuilderToMargin(page, PLAIN)
+    await page.locator('#retail-price').fill('200.00')
+    await page.getByRole('button', { name: /Review & Send/ }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
+    await page.getByRole('button', { name: '+ Add Another Prescription' }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
+    await fillBuilder(page, GLP1)
+    await page.locator('#retail-price').fill('200.00')
+    await page.getByRole('button', { name: /Review & Send/ }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
+
+    await expect(page.getByText('Prescriptions (2)')).toBeVisible()
+    await expect(page.getByText('$400.00')).toBeVisible()
+    const glp1Card = page.locator('[data-testid^="rx-details-"]').nth(1).locator('..')
+    await expect(glp1Card).toContainText('10 units')
+    const glp1LineId = (await page.locator('[data-testid^="rx-details-"]').nth(1).getAttribute('data-testid'))!.replace('rx-details-', '')
+
+    // ── Edit the second (GLP-1) line ──────────────────────────
+    await page.getByRole('button', { name: `Edit ${TEST_CATALOG.glp1FormulationName}` }).click()
+    await expect(page).toHaveURL(new RegExp(`/new-prescription/search\\?editId=${glp1LineId}`), { timeout: 10_000 })
+    await expect(page.getByRole('heading', { name: 'Edit Prescription' })).toBeVisible()
+
+    // The existing builder reopens with the line's values pre-selected — no re-entry.
+    await expect(page.getByLabel('Dose amount')).toHaveValue('10', { timeout: 15_000 })
+    await expect(page.getByLabel('Dose unit')).toHaveValue('units')
+    await expect(page.getByLabel('Frequency')).toHaveValue('QW')
+    await expect(page.getByLabel('Quantity')).toHaveValue('5mL vial', { timeout: 15_000 })
+
+    await page.getByLabel('Dose amount').fill('15')
+    await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/margin\?.*editId=/, { timeout: 10_000 })
+
+    // Margin page: price carried over from the line; the derived days supply follows the new dose.
+    await expect(page.locator('#retail-price')).toHaveValue('200.00')
+    await expect(page.getByTestId('days-supply-value')).toHaveText('233 days')   // 5 mL vial / (15 u = 0.15 mL weekly)
+    await expect(page.getByRole('button', { name: 'Add & Search Another' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /Save as Draft/ })).toHaveCount(0)
+    await page.locator('#retail-price').fill('250.00')
+    await page.getByRole('button', { name: 'Save Changes — Back to Review' }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/review$/, { timeout: 10_000 })
+
+    // Same card (same line id, still second), new dose, totals recomputed: 200 + 250.
+    await expect(page.getByText('Prescriptions (2)')).toBeVisible()
+    const editedCard = page.getByTestId(`rx-details-${glp1LineId}`).locator('..')
+    await expect(editedCard).toContainText(`2. ${TEST_CATALOG.glp1FormulationName}`)
+    await expect(editedCard).toContainText('15 units')
+    await expect(editedCard).toContainText('$250.00')
+    await expect(editedCard).toContainText('233-day supply')
+    await expect(page.getByText('$450.00')).toBeVisible()
+
+    // ── Back lands on search with the session intact ──────────
+    await page.getByRole('button', { name: 'Back', exact: true }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/search$/, { timeout: 10_000 })
+    await expect(page.getByText('2 prescriptions in this session')).toBeVisible()
+    await page.getByRole('button', { name: 'Review & Send' }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
+    await expect(page.getByText('Prescriptions (2)')).toBeVisible()
+    await expect(page.getByText('$450.00')).toBeVisible()
+  })
+
+  test('provider opens a draft, edits the dose, adds a second line, removes it: same order id, audit rows, soft delete', async ({ page }) => {
+    // ── The MA (clinic admin) saves a draft ───────────────────
+    await loginAs(page, TEST_USERS.clinicAdmin)
+    await walkBuilderToMargin(page, PLAIN)
+    await page.locator('#retail-price').fill('200.00')
+    await page.getByRole('button', { name: /Review & Send/ }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
+    await page.getByRole('button', { name: /Save as Draft/ }).click()
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+
+    const supabase = e2eSupabase()
+    const { data: draft } = await supabase
+      .from('orders')
+      .select('order_id, sig_text')
+      .eq('clinic_id', TEST_IDS.clinic)
+      .eq('status', 'DRAFT')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+    const anchorId = draft!.order_id
+    expect(draft!.sig_text).toContain('10 mg')
+
+    // The MA can edit the draft they created — the creator rule, server-side.
+    const ownEdit = await page.request.patch(`/api/orders/${anchorId}`, {
+      data: { formulationId: TEST_IDS.formulation, pharmacyId: TEST_IDS.pharmacyTier1, retailCents: 20000, sigText: 'Inject 10 mg (1.00mL) subcutaneously once daily at bedtime', dose: '10 mg', frequencyCode: 'QD', quantityLabel: '30' },
+    })
+    expect(ownEdit.status()).toBe(200)
+
+    // ── The provider takes over ───────────────────────────────
+    await page.context().clearCookies()
+    await loginAs(page, TEST_USERS.provider)
+    await page.goto(`/new-prescription/sign/${anchorId}`)
+    const lines = page.getByTestId('draft-lines')
+    await expect(lines).toContainText('Draft lines (1)')
+
+    // Edit → the existing builder, patient/provider pinned, values pre-selected.
+    await lines.getByRole('button', { name: 'Edit' }).click()
+    await expect(page).toHaveURL(new RegExp(`/new-prescription/search\\?editOrder=${anchorId}`), { timeout: 10_000 })
+    await expect(page.getByTestId('draft-edit-notice')).toContainText(TEST_CATALOG.formulationName)
+    // The draft's patient is pinned on the session banner.
+    await expect(page.getByText('Test Patient').first()).toBeVisible()
+    await expect(page.getByLabel('Dose amount')).toHaveValue('10', { timeout: 15_000 })
+    await expect(page.getByLabel('Quantity')).toHaveValue('30', { timeout: 15_000 })
+    await page.getByLabel('Dose amount').fill('12')
+    await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/margin\?.*editOrder=/, { timeout: 10_000 })
+    await expect(page.locator('#retail-price')).toHaveValue('200.00')
+    await page.getByRole('button', { name: 'Save Changes to Draft' }).click()
+    await expect(page).toHaveURL(new RegExp(`/new-prescription/sign/${anchorId}`), { timeout: 15_000 })
+    await expect(page.getByTestId('draft-lines')).toContainText('12 mg')
+
+    // + Add prescription → builder pinned to the draft's patient/provider, appends a line.
+    await page.getByRole('button', { name: '+ Add prescription' }).click()
+    await expect(page).toHaveURL(new RegExp(`/new-prescription/search\\?addToOrder=${anchorId}`), { timeout: 10_000 })
+    await expect(page.getByRole('heading', { name: 'Add Prescription to Draft' })).toBeVisible()
+    await fillBuilder(page, GLP1)
+    await page.locator('#retail-price').fill('200.00')
+    await page.getByRole('button', { name: 'Add to Draft' }).click()
+    await expect(page).toHaveURL(new RegExp(`/new-prescription/sign/${anchorId}`), { timeout: 15_000 })
+    await expect(page.getByTestId('draft-lines')).toContainText('Draft lines (2)')
+    await expect(page.getByTestId('draft-lines')).toContainText(TEST_CATALOG.glp1FormulationName)
+
+    // ── Rows: same order id, 2 draft lines, audit trail with actor + diff ──
+    const { data: anchor } = await supabase
+      .from('orders')
+      .select('order_id, status, sig_text, medication_snapshot, days_supply')
+      .eq('order_id', anchorId)
+      .single()
+    expect(anchor!.status).toBe('DRAFT')
+    expect(anchor!.sig_text).toContain('12 mg')
+    expect((anchor!.medication_snapshot as { prescribed_dose?: string }).prescribed_dose).toBe('12 mg')
+
+    const { data: drafts } = await supabase
+      .from('orders')
+      .select('order_id')
+      .eq('clinic_id', TEST_IDS.clinic)
+      .eq('patient_id', TEST_IDS.patient)
+      .eq('status', 'DRAFT')
+      .eq('is_active', true)
+      .is('deleted_at', null)
+    expect(drafts).toHaveLength(2)
+    const addedId = drafts!.map(d => d.order_id).find(id => id !== anchorId)!
+
+    const { data: audit } = await supabase
+      .from('order_status_history')
+      .select('order_id, old_status, new_status, changed_by, metadata')
+      .in('order_id', [anchorId, addedId])
+      .order('created_at', { ascending: true })
+    type Audit = { order_id: string; old_status: string; new_status: string; changed_by: string | null; metadata: { event: string; actor: { user_id: string; role: string | null }; diff?: Record<string, { from: unknown; to: unknown }>; appended_to_order_id?: string | null } }
+    const rows = audit as Audit[]
+    const events = rows.filter(r => r.order_id === anchorId).map(r => r.metadata.event)
+    expect(events).toEqual(['draft_created', 'draft_edited', 'draft_edited'])
+    for (const row of rows) {
+      expect(row.old_status).toBe('DRAFT')
+      expect(row.new_status).toBe('DRAFT')
+      expect(row.changed_by).toBe(row.metadata.actor.user_id)
+    }
+    const providerEdit = rows.filter(r => r.order_id === anchorId && r.metadata.event === 'draft_edited').at(-1)!
+    expect(providerEdit.metadata.actor.role).toBe('provider')
+    expect(providerEdit.metadata.diff!['sig_text']).toMatchObject({ to: expect.stringContaining('12 mg') })
+    expect(providerEdit.metadata.diff!['medication_snapshot.prescribed_dose']).toEqual({ from: '10 mg', to: '12 mg' })
+    const added = rows.find(r => r.order_id === addedId)!
+    expect(added.metadata).toMatchObject({ event: 'draft_created', appended_to_order_id: anchorId })
+
+    // ── Remove the added line: soft delete, never a hard delete ──
+    await page.getByTestId(`draft-line-${addedId}`).getByRole('button', { name: 'Remove' }).click()
+    await expect(page.getByTestId('draft-lines')).toContainText('Draft lines (1)', { timeout: 15_000 })
+    const { data: removed } = await supabase
+      .from('orders')
+      .select('order_id, is_active, deleted_at, status')
+      .eq('order_id', addedId)
+      .single()
+    expect(removed).toMatchObject({ order_id: addedId, is_active: false, status: 'DRAFT' })
+    expect(removed!.deleted_at).not.toBeNull()
+    const { data: removedAudit } = await supabase
+      .from('order_status_history')
+      .select('metadata')
+      .eq('order_id', addedId)
+      .contains('metadata', { event: 'draft_line_removed' })
+    expect(removedAudit).toHaveLength(1)
+  })
+
+  test('server enforces who may edit a draft: a non-provider gets 403 on a draft they did not create', async ({ page }) => {
+    const supabase = e2eSupabase()
+    // A draft with no draft_created row by the clinic admin (inserted directly).
+    const { data: inserted, error } = await supabase
+      .from('orders')
+      .insert({
+        patient_id: TEST_IDS.patient, provider_id: TEST_IDS.provider, clinic_id: TEST_IDS.clinic,
+        pharmacy_id: TEST_IDS.pharmacyTier1, formulation_id: TEST_IDS.formulation,
+        status: 'DRAFT', quantity: 1,
+        wholesale_price_snapshot: 100, retail_price_snapshot: 200,
+        medication_snapshot: { medication_name: TEST_CATALOG.formulationName, form: 'Injectable Solution', dose: '10 mg/mL', wholesale_price: 100, dea_schedule: 0 },
+        pharmacy_snapshot: { pharmacy_id: TEST_IDS.pharmacyTier1, name: 'Test Pharmacy Tier1', integration_tier: 'TIER_1_API', fax_number: null },
+        shipping_state_snapshot: 'TX', sig_text: 'Inject 10 mg subcutaneously once daily',
+      })
+      .select('order_id')
+      .single()
+    if (error || !inserted) throw new Error(`Failed to seed draft: ${error?.message}`)
+    const body = { formulationId: TEST_IDS.formulation, pharmacyId: TEST_IDS.pharmacyTier1, retailCents: 20000, sigText: 'Inject 12 mg subcutaneously once daily', dose: '12 mg', frequencyCode: 'QD' }
+
+    await loginAs(page, TEST_USERS.clinicAdmin)
+    expect((await page.request.patch(`/api/orders/${inserted.order_id}`, { data: body })).status()).toBe(403)
+    expect((await page.request.delete(`/api/orders/${inserted.order_id}`)).status()).toBe(403)
+
+    await page.context().clearCookies()
+    await loginAs(page, TEST_USERS.provider)
+    expect((await page.request.patch(`/api/orders/${inserted.order_id}`, { data: body })).status()).toBe(200)
+    const { data: row } = await supabase.from('orders').select('sig_text, is_active').eq('order_id', inserted.order_id).single()
+    expect(row).toEqual({ sig_text: 'Inject 12 mg subcutaneously once daily', is_active: true })
+  })
+})
