@@ -145,7 +145,7 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
   // ── 5. Load patient ────────────────────────────────────────
   const { data: patient } = await (supabase
     .from('patients')
-    .select('first_name, last_name, date_of_birth, address_line1, address_line2, city, state, zip')
+    .select('first_name, last_name, date_of_birth, address_line1, address_line2, city, state, zip, allergies, nkda')
     .eq('patient_id', order.patient_id)
     .single() as unknown as Promise<{
       data: {
@@ -157,6 +157,9 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
         city: string | null
         state: string | null
         zip: string | null
+        // WO-97
+        allergies: string[] | null
+        nkda: boolean
       } | null
       error: Error | null
     }>)
@@ -192,6 +195,9 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
       patientCity:        patient.city ?? null,
       patientState:       patient.state ?? null,
       patientZip:         patient.zip ?? null,
+      // WO-97 allergies line
+      patientAllergies:   patient.allergies,
+      patientNkda:        patient.nkda,
       medicationName:     String(med?.medication_name ?? 'Compounded Medication'),
       medicationForm:     String(med?.form ?? ''),
       medicationDose:     String(med?.dose ?? ''),

@@ -18,6 +18,8 @@
 // the pharmacy API over HTTPS. They are never logged.
 // Transformers must not add any logging of PHI fields.
 
+import { allergiesForPayload } from '@/lib/patients/allergies'
+
 // ============================================================
 // CANONICAL ORDER PAYLOAD
 // ============================================================
@@ -43,6 +45,10 @@ export interface OrderPayload {
   patientCity:          string | null
   patientState:         string | null
   patientZip:           string | null
+  // WO-97: allergies live on the patient and are loaded at submission
+  // time like the address. Empty list + nkda false = not recorded.
+  patientAllergies:     string[]
+  patientNkda:          boolean
   // Medication (frozen snapshot)
   medicationName:       string
   medicationForm:       string
@@ -104,6 +110,25 @@ export function rxDetailPayloadFields(order: {
   }
 }
 
+/**
+ * WO-97: read the allergy columns off a `patients` row into the
+ * canonical payload fields. Shared by every tier.
+ */
+export function patientAllergyPayloadFields(patient: {
+  allergies?: readonly string[] | null
+  nkda?:      boolean | null
+}): Pick<OrderPayload, 'patientAllergies' | 'patientNkda'> {
+  return {
+    patientAllergies: Array.isArray(patient.allergies) ? [...patient.allergies] : [],
+    patientNkda:      patient.nkda === true,
+  }
+}
+
+/** WO-97: the single-string form pharmacies print — "NKDA" / "penicillin, sulfa" / "Not recorded". */
+function allergiesText(p: Pick<OrderPayload, 'patientAllergies' | 'patientNkda'>): string {
+  return allergiesForPayload({ allergies: p.patientAllergies, nkda: p.patientNkda })
+}
+
 // Output of a transformer — pharmacy-native JSON to POST
 export type PharmacyPayload = Record<string, unknown>
 
@@ -138,6 +163,9 @@ function transformViosPayload(p: OrderPayload): PharmacyPayload {
         state: p.patientState,
         zip:   p.patientZip,
       },
+      // WO-97
+      allergies: p.patientAllergies,
+      nkda:      p.patientNkda,
     },
     medication: {
       name:      p.medicationName,
@@ -190,6 +218,9 @@ function transformLifeFilePayload(p: OrderPayload): PharmacyPayload {
           state:   p.patientState ?? '',
           zipCode: p.patientZip ?? '',
         },
+        // WO-97 — LifeFile takes allergies as one free-text field.
+        allergies: allergiesText(p),
+        nkda:      p.patientNkda,
       },
       drug: {
         brandName:   p.medicationName,
@@ -244,6 +275,9 @@ function transformMediVeraPayload(p: OrderPayload): PharmacyPayload {
       City:         p.patientCity ?? '',
       State:        p.patientState ?? '',
       PostalCode:   p.patientZip ?? '',
+      // WO-97
+      Allergies:    allergiesText(p),
+      NKDA:         p.patientNkda ? 'Y' : 'N',
     },
     RxInfo: {
       MedicationName: p.medicationName,

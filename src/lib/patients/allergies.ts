@@ -23,8 +23,11 @@
 
 /** The allergy columns as they come off a `patients` row (or a session copy). */
 export interface PatientAllergyFields {
-  allergies?: readonly string[] | null
-  nkda?:      boolean | null
+  // `| undefined` spelled out: the repo compiles with
+  // exactOptionalPropertyTypes, and callers pass `{ allergies: d.x }`
+  // where d.x is itself optional.
+  allergies?: readonly string[] | null | undefined
+  nkda?:      boolean | null | undefined
 }
 
 export type AllergyStatus =

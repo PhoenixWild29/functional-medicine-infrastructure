@@ -106,6 +106,16 @@ const PHI_KEY_PATTERNS: ReadonlyArray<RegExp> = [
   /^icd[_-]?10$/i,
   /^clinical[_-]?difference$/i,
   /^special[_-]?instructions$/i,
+  // WO-97 patient allergies — clinical detail in every tier shape
+  // (Vios array, LifeFile string, MediVera PascalCase, Tier 3 canonical).
+  // NKDA is redacted too: "no known drug allergies" is still a health
+  // fact about an identified patient.
+  /^patient[_-]?allergies$/i,
+  /^allergies$/i,
+  /^allergy[_-]?list$/i,
+  /^drug[_-]?allergies$/i,
+  /^patient[_-]?nkda$/i,
+  /^nkda$/i,
   // Provider controlled-substance identifiers
   /^provider[_-]?dea$/i,
   /^dea$/i,

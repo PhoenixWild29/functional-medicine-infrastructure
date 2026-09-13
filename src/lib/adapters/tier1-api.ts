@@ -29,7 +29,7 @@
 
 import { createServiceClient } from '@/lib/supabase/service'
 import { getVaultSecret, buildAuthHeaders } from '@/lib/adapters/vault'
-import { getTransformer, rxDetailPayloadFields, type OrderPayload } from '@/lib/adapters/transformers'
+import { getTransformer, rxDetailPayloadFields, patientAllergyPayloadFields, type OrderPayload } from '@/lib/adapters/transformers'
 import { getParser } from '@/lib/adapters/parsers'
 import {
   createSubmissionRecord,
@@ -232,7 +232,7 @@ export async function submitTier1Api(
 
   const { data: patient } = await supabase
     .from('patients')
-    .select('first_name, last_name, date_of_birth, address_line1, address_line2, city, state, zip')
+    .select('first_name, last_name, date_of_birth, address_line1, address_line2, city, state, zip, allergies, nkda')
     .eq('patient_id', order.patient_id)
     .single()
 
@@ -266,6 +266,8 @@ export async function submitTier1Api(
     patientCity:        patient.city ?? null,
     patientState:       patient.state ?? null,
     patientZip:         patient.zip ?? null,
+    // WO-97 allergies (stored once on the patient)
+    ...patientAllergyPayloadFields(patient),
     medicationName:     String(med?.medication_name ?? 'Compounded Medication'),
     medicationForm:     String(med?.form ?? ''),
     medicationDose:     String(med?.dose ?? ''),
