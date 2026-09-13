@@ -59,6 +59,9 @@ import {
   type RxRules,
 } from '@/lib/orders/rx-details'
 import type { RxFormulationDefaults } from '@/lib/orders/rx-defaults-loader'
+import { SaveFavoriteButton } from '../../_components/save-favorite-button'
+import { splitDose } from '@/lib/orders/split-dose'
+import { formatDoseWithMg } from '@/lib/orders/dose-display'
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -99,6 +102,18 @@ function effectiveDetails(rx: SessionPrescription): RxDetails {
 /** Lines whose rules are unknown and can be resolved (V3.0 formulation lines). */
 function needsRxResolution(rx: SessionPrescription): boolean {
   return !rx.rxRules && !!rx.formulationId
+}
+
+// WO-103: "10 units (0.5 mg)" when the line carries its formulation's
+// mg/mL concentration (set by the margin builder); the plain dose otherwise.
+function doseWithMg(rx: SessionPrescription): string {
+  if (rx.concentrationValue == null) return rx.dose
+  const { amount, unit } = splitDose(rx.dose)
+  if (!amount) return rx.dose
+  return formatDoseWithMg(amount, unit, {
+    concentration_value: rx.concentrationValue,
+    concentration_unit:  rx.concentrationUnit,
+  })
 }
 
 // ── Props ─────────────────────────────────────────────────────
@@ -471,7 +486,7 @@ export function BatchReviewForm({ isProvider }: Props) {
                     {index + 1}. {rx.medicationName}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {rx.form} — {rx.dose} — {rx.pharmacyName}
+                    {rx.form} — <span data-testid={`dose-display-${rx.id}`}>{doseWithMg(rx)}</span> — {rx.pharmacyName}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground italic">
                     Sig: {rx.sigText}
@@ -504,27 +519,44 @@ export function BatchReviewForm({ isProvider }: Props) {
                   rxDetails: { ...effectiveDetails(rx), ...patch },
                 })}
               />
-              <div className="mt-2 flex justify-end gap-3">
-                {/* WO-98: Edit reopens the existing builder with this line's
-                    values; saving updates the line in place (same id). */}
-                <button
-                  type="button"
-                  onClick={() => router.push(builderHref({ kind: 'session', lineId: rx.id }))}
+              <div className="mt-2 flex items-center justify-between gap-2">
+                {/* WO-103: ☆ Save as favorite — V3.0 formulation lines only */}
+                <SaveFavoriteButton
+                  idSuffix={rx.id}
+                  providerId={provider.provider_id}
+                  formulationId={rx.formulationId}
+                  pharmacyId={rx.pharmacyId}
+                  medicationName={rx.medicationName}
+                  doseAmount={splitDose(rx.dose).amount}
+                  doseUnit={splitDose(rx.dose).unit}
+                  frequencyCode={rx.frequencyCode ?? null}
+                  sigText={rx.sigText}
+                  quantity={rx.quantityLabel ?? null}
+                  refills={effectiveDetails(rx).refills}
                   disabled={isBusy}
-                  aria-label={`Edit ${rx.medicationName}`}
-                  className="text-[10px] font-medium text-primary underline hover:text-primary/80 disabled:opacity-50"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => session.removePrescription(rx.id)}
-                  disabled={isBusy}
-                  aria-label={`Remove ${rx.medicationName}`}
-                  className="text-[10px] text-red-500 underline hover:text-red-700 disabled:opacity-50"
-                >
-                  Remove
-                </button>
+                />
+                <div className="ml-auto flex items-center gap-3">
+                  {/* WO-98: Edit reopens the existing builder with this line's
+                      values; saving updates the line in place (same id). */}
+                  <button
+                    type="button"
+                    onClick={() => router.push(builderHref({ kind: 'session', lineId: rx.id }))}
+                    disabled={isBusy}
+                    aria-label={`Edit ${rx.medicationName}`}
+                    className="text-[10px] font-medium text-primary underline hover:text-primary/80 disabled:opacity-50"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => session.removePrescription(rx.id)}
+                    disabled={isBusy}
+                    aria-label={`Remove ${rx.medicationName}`}
+                    className="text-[10px] text-red-500 underline hover:text-red-700 disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
             </div>
           )
