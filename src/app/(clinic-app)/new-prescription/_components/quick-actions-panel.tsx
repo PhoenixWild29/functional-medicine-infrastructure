@@ -49,7 +49,7 @@ import {
   DOSE_UNITS,
   formatFavoriteDose,
 } from '@/lib/orders/dose-display'
-import { splitDose } from '@/lib/orders/split-dose'
+import { splitDose } from '@/lib/orders/dose'
 
 // ── Types ───────────────────────────────────
 

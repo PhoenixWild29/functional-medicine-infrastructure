@@ -60,7 +60,7 @@ import {
 } from '@/lib/orders/rx-details'
 import type { RxFormulationDefaults } from '@/lib/orders/rx-defaults-loader'
 import { SaveFavoriteButton } from '../../_components/save-favorite-button'
-import { splitDose } from '@/lib/orders/split-dose'
+import { splitDose } from '@/lib/orders/dose'
 import { formatDoseWithMg } from '@/lib/orders/dose-display'
 
 // ── Helpers ───────────────────────────────────────────────────
