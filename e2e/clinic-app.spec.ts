@@ -1351,6 +1351,7 @@ test.describe('Clinic App — WO-103 search bar, favorites/protocols panels, sav
     await page.goto('/new-prescription')
     await page.getByLabel('Search patients').fill('Test')
     await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
+    await pickProviderIfListed(page)
     await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
     await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
 
