@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
-import { seedStaticData, cleanupTestOrders, TEST_IDS, TEST_USERS, TEST_CATALOG } from './fixtures/seed'
+import { seedStaticData, cleanupTestOrders, TEST_IDS, TEST_USERS, TEST_CATALOG, TEST_PATIENTS } from './fixtures/seed'
 import { decryptSecret } from '../src/lib/epcs/crypto'
 import { DEMO_TOTP_SECRET } from '../src/lib/poc/totp-enrollment'
 
@@ -722,5 +722,155 @@ test.describe('Clinic App — WO-96 Rx detail fields', () => {
     // Both the wizard step label and the submit button read "Review & Send".
     await expect(page.getByText('Review & Send', { exact: true }).first()).toBeVisible()
     await expect(page.getByText(/Rx details/)).toHaveCount(0)
+  })
+})
+
+// ============================================================
+// WO-97 — Patient allergies / NKDA
+// ============================================================
+// Allergies live on the patient. The seed carries one patient per chip
+// state (see e2e/fixtures/seed.ts): "Patient, Test" not recorded,
+// "Nkda, Test" NKDA, "Allergic, Test" sulfa + penicillin. The tests that
+// write allergies do so on "Patient, Test" and reset the row afterwards
+// so the WO-96 block (and any other branch's run on the shared E2E
+// project) still meets the seeded "not recorded" state.
+
+test.describe('Clinic App — WO-97 patient allergies / NKDA', () => {
+  const supabase = () => createClient(
+    process.env['E2E_SUPABASE_URL']!,
+    process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
+  )
+
+  async function resetTestPatientAllergies() {
+    await supabase()
+      .from('patients')
+      .update({ allergies: null, nkda: false, allergies_updated_at: null })
+      .eq('patient_id', TEST_IDS.patient)
+  }
+
+  async function readTestPatientAllergies() {
+    const { data } = await supabase()
+      .from('patients')
+      .select('allergies, nkda, allergies_updated_at')
+      .eq('patient_id', TEST_IDS.patient)
+      .single()
+    return data
+  }
+
+  test.beforeAll(async () => {
+    await seedStaticData()
+  })
+
+  test.afterEach(async () => {
+    await resetTestPatientAllergies()
+    await cleanupTestOrders()
+  })
+
+  test('chip is visible on patient selection and in the session banner for all three states', async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+    await page.goto('/new-prescription')
+    await page.getByLabel('Search patients').fill('Test')
+
+    const notRecorded = page.getByRole('button', { name: /Patient,\s*Test/i })
+    const nkda        = page.getByRole('button', { name: new RegExp(`${TEST_PATIENTS.nkdaLastName},\\s*Test`, 'i') })
+    const allergic    = page.getByRole('button', { name: new RegExp(`${TEST_PATIENTS.allergiesLastName},\\s*Test`, 'i') })
+
+    // Selector cards — one chip each, the not-recorded one amber.
+    await expect(notRecorded.getByTestId('allergy-chip')).toHaveText('Allergies: not recorded')
+    await expect(notRecorded.getByTestId('allergy-chip')).toHaveAttribute('data-allergy-status', 'not_recorded')
+    await expect(nkda.getByTestId('allergy-chip')).toHaveText('NKDA')
+    await expect(allergic.getByTestId('allergy-chip')).toHaveText(`Allergies: ${TEST_PATIENTS.allergies.join(', ')}`)
+
+    // Selecting shows the clickable chip on the selected-patient card…
+    await nkda.click()
+    const card = page.getByTestId('selected-patient-card')
+    await expect(card.getByRole('button', { name: /NKDA/ })).toBeVisible()
+
+    // …and the session banner carries the same chip on the next step.
+    await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
+    const banner = page.getByTestId('session-banner')
+    await expect(banner.getByTestId('allergy-chip')).toHaveText('NKDA')
+    await expect(banner.getByTestId('allergy-chip')).toHaveAttribute('data-allergy-status', 'nkda')
+  })
+
+  test('editing allergies from the banner updates the patient and every subsequent Rx in the session', async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+    await walkBuilderToMargin(page, PLAIN)
+
+    const banner = page.getByTestId('session-banner')
+    await expect(banner.getByTestId('allergy-chip')).toHaveText('Allergies: not recorded')
+
+    // Inline editor — no navigation away from the margin page.
+    await banner.getByRole('button', { name: /Allergies: not recorded/ }).click()
+    const editor = banner.getByTestId('allergy-editor')
+    await editor.getByLabel('Drug allergies').fill('latex, Penicillin')
+    await editor.getByRole('button', { name: 'Save allergies' }).click()
+    await expect(banner.getByTestId('allergy-chip')).toHaveText('Allergies: latex, Penicillin')
+    await expect(editor).toHaveCount(0)
+    await expect(page).toHaveURL(/\/new-prescription\/margin/)
+
+    // Stored once, on the patient.
+    const row = await readTestPatientAllergies()
+    expect(row?.allergies).toEqual(['latex', 'Penicillin'])
+    expect(row?.nkda).toBe(false)
+    expect(row?.allergies_updated_at).not.toBeNull()
+
+    // The Rx added after the edit sees it: Review shows the chip, no notice.
+    await page.locator('#retail-price').fill('200.00')
+    await page.getByRole('button', { name: /Review & Send/ }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
+    await expect(page.getByTestId('session-banner').getByTestId('allergy-chip')).toHaveText('Allergies: latex, Penicillin')
+    await expect(page.getByTestId('allergy-notice')).toHaveCount(0)
+  })
+
+  test('not recorded: Review shows the amber notice but Save as Draft still goes through', async ({ page }) => {
+    await loginAs(page, TEST_USERS.clinicAdmin)
+    await walkBuilderToMargin(page, PLAIN)
+    await page.locator('#retail-price').fill('200.00')
+    await page.getByRole('button', { name: /Review & Send/ }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
+
+    const notice = page.getByTestId('allergy-notice')
+    await expect(notice).toBeVisible()
+    await expect(notice).toContainText('Allergies not recorded for Test Patient')
+    await expect(notice.getByRole('button', { name: 'Confirm NKDA' })).toBeEnabled()
+
+    // Non-blocking: the draft saves without touching the notice.
+    await expect(page.getByRole('button', { name: /Save as Draft/ })).toBeEnabled()
+    await page.getByRole('button', { name: /Save as Draft/ }).click()
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+
+    const { data: order } = await supabase()
+      .from('orders')
+      .select('order_id, status')
+      .eq('clinic_id', TEST_IDS.clinic)
+      .eq('patient_id', TEST_IDS.patient)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    expect(order?.status).toBe('DRAFT')
+    // Still not recorded — the notice never wrote anything by itself.
+    expect((await readTestPatientAllergies())?.allergies_updated_at).toBeNull()
+  })
+
+  test('not recorded: "Confirm NKDA" on Review writes to the patient inline and clears the notice', async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+    await walkBuilderToMargin(page, PLAIN)
+    await page.locator('#retail-price').fill('200.00')
+    await page.getByRole('button', { name: /Review & Send/ }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
+
+    const notice = page.getByTestId('allergy-notice')
+    await notice.getByRole('button', { name: 'Confirm NKDA' }).click()
+    await expect(notice).toHaveCount(0)
+    await expect(page.getByTestId('session-banner').getByTestId('allergy-chip')).toHaveText('NKDA')
+    await expect(page).toHaveURL(/\/new-prescription\/review/)
+
+    const row = await readTestPatientAllergies()
+    expect(row?.nkda).toBe(true)
+    expect(row?.allergies).toEqual([])
+    expect(row?.allergies_updated_at).not.toBeNull()
   })
 })

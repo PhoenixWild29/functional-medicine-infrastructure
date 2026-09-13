@@ -1,9 +1,11 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 2.16 | **Date:** September 12, 2026
+**Version:** 2.17 | **Date:** September 13, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
 
+> **What's new in v2.17 (2026-09-13):** **WO-97 — Patient allergies / NKDA (Phase 21, practitioner feedback round 1).** Allergies are entered once on the patient and attached to every prescription automatically — no per-Rx typing, no new step. (a) **Patient selector (step 8)** — every patient card carries a small chip: **NKDA** (green), **Allergies: sulfa** (red), or **Allergies: not recorded** (amber). The seed is deliberate: **Alex Demo reads NKDA**, **Jordan Rivera reads "Allergies: sulfa"**, every other patient reads **not recorded**. On the selected-patient card the chip is clickable and opens an **inline editor** (comma-separated list or an NKDA checkbox — the two are mutually exclusive); Save writes to the patient record. (b) **Session banner (step 11)** — the same chip sits under the patient's name on every page of the flow, and editing it there updates the patient and everything you add afterwards. (c) **Review page (step 40)** — when nothing is recorded, an **amber notice** offers a one-click **Confirm NKDA**; it never blocks Sign & Send or Save as Draft. Alex Demo and Jordan Rivera never show it. (d) The Rx PDF now prints an **Allergies:** line in the PATIENT block (NKDA / the list / "Not recorded") and every pharmacy submission payload carries the same value. (e) Migration `20260912000002` must be applied before the chip can render — it lands with the WO-97 PR, after WO-96.
+>
 > **What's new in v2.16 (2026-09-12):** **WO-96 — Rx detail fields, derived and defaulted (Phase 21, practitioner feedback round 1).** The prescription flow still has the same three steps, but two screens gained content. (a) **Margin page (step 33)** — under the sig, **Days supply** and **Dispense** now appear as computed read-only values, derived from dose × frequency × the quantity chosen in step 31 (Semaglutide 10 units weekly from a 5 mL vial reads **350 days · 5 mL**; the number is the arithmetic, not a clinical recommendation, and an **Override** link lets the provider change it). Selecting a quantity in step 31 is therefore no longer optional if you want the derived values to show. (b) **Review page (step 40)** — every prescription card carries a collapsed **Rx details** row: refills (0), substitution (allowed), syringe option and shipping (pre-selected per formulation — Semaglutide ships **cold chain**), clinical difference, diagnosis, special instructions. The row **opens by itself only when a rule needs confirmation**: **Semaglutide** opens with the 503A clinical-difference picklist **already set to its first option** (nothing to type), and **Testosterone Cypionate** opens asking for a **diagnosis** and **keeps "Save as Draft" disabled until one is entered** — see the new box after step 42. BPC-157 and the other non-controlled, non-GLP-1 items never open the row. (c) All of these fields flow to the Rx PDF and to every pharmacy submission payload. (d) The prescriber line on the Rx PDF and all new copy say **provider**, never "doctor".
 
 > **What's new in v2.15 (2026-09-11):** **Root cause of the recurring mid-demo silent logout found and fixed.** The every-10-minutes `poc-credential-sync` Vercel cron re-set the four POC account passwords via the Supabase admin API on every fire, and an admin user update that includes a password revokes every existing session for that user, even when the password value is unchanged. The cron is removed and the credential sync is now metadata-only unless passwords are explicitly reset. Sessions now persist for the full token lifetime. The cron count in the tech overview drops from **10 to 9**. The **Reset Demo Credentials** button on `/ops/demo-tools` still resets passwords but now warns that it signs out every demo user, including the presenter. Do not press it during a demo. Docs only otherwise.
@@ -310,7 +312,10 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 > "The first thing I do as the MA is select the patient. The patient's shipping state auto-populates for all pharmacy searches — no manual entry. The provider is also selected upfront, and note that I'm choosing *which physician this prescription belongs to* — I'm not choosing myself. Both stay pinned at the top of every screen throughout the flow."
 
-8. Search for **"Alex"** — select **Alex Demo** (TX state badge visible)
+8. Search for **"Alex"** — select **Alex Demo** (TX state badge visible, and a green **NKDA** chip beside it — v2.17)
+
+> **Point at the allergy chips while the list is open (v2.17).** Every patient card carries one: Alex Demo reads **NKDA**, Jordan Rivera reads **Allergies: sulfa**, and every other patient reads **Allergies: not recorded** in amber. Once Alex is selected, the chip on the selected-patient card is clickable — click it to show the **inline editor** (a comma-separated list or an NKDA checkbox; Save writes straight to the patient record), then **Cancel** so the demo data stays as scripted. The line to say: "Allergies live on the patient, entered once. Every prescription we send from here carries them — on the PDF and in the pharmacy's feed — without anyone retyping them."
+
 9. Select provider **Sarah Chen** (the only provider with an auth login — Patel, Rodriguez, and Fletcher are seeded for roster realism and the F-3/F-5 features)
 
 > **Expect an amber hint on three of the four provider cards.** Dr. Patel, Dr. Rodriguez, and Jamie Fletcher NP each show **"No signature on file — will capture during review"** in amber underneath their name. That is correct and not an error: only Dr. Chen has a captured `signature_hash` on file, so her card is clean. The hint is telling the MA that if they pick one of the others, the signature will be drawn live at the review step rather than pulled from file. If a prospect asks, this is the honest answer: "we don't fake a signature we don't have — we tell you up front when one has to be captured."
@@ -319,7 +324,7 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 ### 3C — Quick Actions: Favorites + Protocols
 
-11. **Point out the session banner** at the top — Alex Demo + Sarah Chen pinned
+11. **Point out the session banner** at the top — Alex Demo + Sarah Chen pinned, with the **NKDA** chip under Alex's name (v2.17). The chip is the same control as on the selector card: click it to edit allergies from any page of the flow. Leave it as is for the scripted path.
 12. **Point out the Quick Actions Panel** with two tabs: **Favorites** and **Protocols**
 13. **Favorites tab** — the tab header reads **Favorites (10)** (verified live as the MA on 2026-09-10). The list is ordered by use count, most-used first:
 
@@ -358,7 +363,7 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 > **Run this beat.** It is 90 seconds, it needs no setup, and it lands a compliance argument that no slide can. It is also the single most common objection-killer in this demo: every clinic owner in the room has either paid for this mistake or knows someone who has.
 
-17. Open the patient selector again (**"+ New Prescription"**) and this time select **Jordan Rivera** — the **CA** state badge is visible on the card. Keep **Sarah Chen** as the provider and continue.
+17. Open the patient selector again (**"+ New Prescription"**) and this time select **Jordan Rivera** — the **CA** state badge is visible on the card, next to a red **Allergies: sulfa** chip (v2.17). Keep **Sarah Chen** as the provider and continue.
 
 18. Land on the Quick Actions Panel and stay on the **Favorites** tab. Same 10 favorites as before — but **3 of the 10 are now grayed out and un-clickable**, each carrying a red **"not licensed in CA"** pill.
 
@@ -448,7 +453,8 @@ The expanded seed gives the presenter named characters to point at. Every row be
 40. **Point out the batch review page:**
     - **Controlled Substance banner** at the top when any prescription in the session is DEA-scheduled (appears because Testosterone Cypionate is Schedule 3)
     - **Drug Interaction Alerts section** — alerts are dynamic based on the medications in the current session. With Semaglutide + Testosterone (this walkthrough), an INFO-severity alert appears with clinical guidance. With different pairings (e.g. Ketotifen + Ketamine), a WARNING-severity alert appears instead. The alert text comes from the drug-interactions knowledge base.
-    - Session banner showing the prescription count
+    - Session banner showing the prescription count (and the **NKDA** chip — v2.17)
+    - **v2.17 — no allergy notice for Alex Demo.** If a patient with nothing recorded were pinned here, an **amber "Allergies not recorded" notice** would sit above the cards with a one-click **Confirm NKDA**; it never blocks Save as Draft or Sign & Send. Alex (NKDA) and Jordan (sulfa) never show it — mention it, don't demo it.
     - One prescription card per medication with pharmacy, pricing, and sig
     - Combined totals (total retail, platform fee, total clinic payout)
     - "Remove" link on each card
