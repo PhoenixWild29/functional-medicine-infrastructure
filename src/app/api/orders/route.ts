@@ -33,6 +33,7 @@ import { rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-detai
 import { lineSourceKind, resolveLine } from '@/lib/orders/resolve-line'
 import { writeDraftAudit } from '@/lib/orders/draft-edit'
 import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provider'
+import { DRAFT_BELONGS_TO_OTHER_PROVIDER_CODE, DRAFT_BELONGS_TO_OTHER_PROVIDER_ERROR } from '@/lib/orders/draft-edit-access'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // Auth gate
@@ -142,9 +143,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       )
     }
     if (me.provider_id !== providerId) {
-      console.warn(`[orders] provider-role session attempted to prescribe as another provider | clinic=${clinicId}`)
+      // Every order this route creates is a DRAFT, so the order would be a
+      // draft under another provider — including "+ Add prescription" to
+      // another provider's draft (WO-98). Reassign first via Sign as me.
+      console.warn(`[orders] provider-role session attempted to prescribe as another provider | clinic=${clinicId}${appendedToOrderId ? ' | append-to-draft' : ''}`)
       return NextResponse.json(
-        { error: 'A provider can only create prescriptions under their own name.' },
+        { error: DRAFT_BELONGS_TO_OTHER_PROVIDER_ERROR, code: DRAFT_BELONGS_TO_OTHER_PROVIDER_CODE },
         { status: 403 },
       )
     }

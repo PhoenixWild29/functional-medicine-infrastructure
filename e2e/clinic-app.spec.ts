@@ -1312,7 +1312,9 @@ test.describe('Clinic App — WO-100 provider defaults to self', () => {
 
     const rejected = await page.request.post('/api/orders', { data: body(TEST_IDS.providerB) })
     expect(rejected.status()).toBe(403)
-    expect((await rejected.json()).error).toMatch(/under their own name/i)
+    const rejectedBody = await rejected.json()
+    expect(rejectedBody.error).toMatch(/belongs to another provider.*Sign as me/i)
+    expect(rejectedBody.code).toBe('DRAFT_BELONGS_TO_OTHER_PROVIDER')
 
     const accepted = await page.request.post('/api/orders', { data: body(TEST_IDS.provider) })
     expect(accepted.status()).toBe(201)

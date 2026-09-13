@@ -157,7 +157,25 @@ describe('POST /api/orders — WO-100 provider prescribes as themself', () => {
     const res = await POST(makeRequest(body(PROVIDER_PATEL_ID)))
     expect(res.status).toBe(403)
     const json = await res.json()
-    expect(json.error).toMatch(/only create prescriptions under their own name/i)
+    expect(json.error).toBe(
+      'This draft belongs to another provider. Reassign it to yourself with Sign as me before adding or editing prescriptions.',
+    )
+    expect(json.code).toBe('DRAFT_BELONGS_TO_OTHER_PROVIDER')
+    expect(json.error).not.toMatch(/doctor/i)
+    expect(insertedRows.filter(r => r.table === 'orders')).toHaveLength(0)
+  })
+
+  it("403 with the reassign-first message: a provider adding a line to another provider's draft (WO-98 + Add prescription)", async () => {
+    getSessionMock.mockResolvedValue(session('provider'))
+    const res = await POST(makeRequest({
+      ...body(PROVIDER_PATEL_ID),
+      appendedToOrderId: '99999999-9999-4999-8999-999999999999',
+    }))
+    expect(res.status).toBe(403)
+    const json = await res.json()
+    expect(json.code).toBe('DRAFT_BELONGS_TO_OTHER_PROVIDER')
+    expect(json.error).toMatch(/belongs to another provider/)
+    expect(json.error).toMatch(/Sign as me/)
     expect(insertedRows.filter(r => r.table === 'orders')).toHaveLength(0)
   })
 
