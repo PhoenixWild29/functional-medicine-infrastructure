@@ -289,6 +289,13 @@ export interface DispenseInput {
   concentrationValue: number | null | undefined
   concentrationUnit:  string | null | undefined   // "mg/mL" enables mg/mcg ↔ mL
   dosageFormName:     string | null | undefined
+  /**
+   * Duration the provider picked on the dose step ("For 30 days" → 30).
+   * When set it IS the days supply and dispense is computed from it;
+   * null/absent ("Ongoing", "(no duration)") falls back to deriving days
+   * supply from the quantity. See durationDaysFromSig.
+   */
+  durationDays?:      number | null | undefined
 }
 
 export interface DerivedDispense {
@@ -333,13 +340,78 @@ function perDoseInDispenseUnit(input: DispenseInput, qty: ParsedQuantity): numbe
 }
 
 /**
- * Days supply and dispense quantity from dose × frequency × quantity.
- * Returns null when the quantity label carries no number. Days supply is
- * null (dispense still returned) when the frequency is PRN or the dose
- * cannot be expressed in the dispense unit.
+ * The unit a line is dispensed in, from its dosage form and dose unit:
+ * count doses (capsule / tablet / troche) dispense as that count;
+ * injectables, solutions and sprays in mL; creams and gels in g.
+ */
+export function dispenseUnitFor(dosageFormName: string | null | undefined, doseUnit: string | null | undefined): string {
+  const unit = (doseUnit ?? '').toLowerCase()
+  if (unit === 'capsule' || unit === 'tablet' || unit === 'troche') return unit
+  const form = (dosageFormName ?? '').toLowerCase()
+  if (/capsule/.test(form)) return 'capsule'
+  if (/tablet|rdt/.test(form)) return 'tablet'
+  if (/troche/.test(form)) return 'troche'
+  if (/injectable|solution|spray/.test(form)) return 'mL'
+  if (/cream|gel/.test(form)) return 'g'
+  return unit === 'ml' ? 'mL' : (unit || 'unit')
+}
+
+/**
+ * The duration the structured sig builder wrote into the sig: "for 30
+ * days" → 30 (the Duration dropdown and "Custom..." both produce this
+ * form). "ongoing", no duration, and titration / cycling sigs ("for 6
+ * weeks then reassess") → null. The sig is the one place the duration
+ * travels on every path (URL, session line, draft sig_text, favorites),
+ * which is how WO-98's edit path already recovers it.
+ */
+export function durationDaysFromSig(sig: string | null | undefined): number | null {
+  const lower = (sig ?? '').toLowerCase()
+  if (!lower || /titrate/.test(lower)) return null
+  const m = /\bfor (\d{1,4}) days?\b(?! then)/.exec(lower)
+  if (!m) return null
+  const days = parseInt(m[1]!, 10)
+  return days > 0 ? days : null
+}
+
+/** Number of doses taken over `days` at `frequencyCode`; null when not computable (PRN). */
+export function dosesInDays(days: number, frequencyCode: string | null | undefined): number | null {
+  const perDay = dosesPerDay(frequencyCode)
+  if (perDay == null || days <= 0) return null
+  return Math.max(1, Math.floor(days * perDay + 1e-9))
+}
+
+/**
+ * Days supply and dispense quantity.
+ *
+ * Duration set (WO-96 fix): days supply = the duration; dispense =
+ * doses in that many days × dose, in the formulation's dispense unit —
+ * 10 units weekly for 30 days at 5 mg/mL → 4 doses → 0.4 mL.
+ *
+ * No duration: days supply from dose × frequency × quantity, dispense =
+ * the quantity. Returns null only when there is neither a duration nor a
+ * quantity with a number in it. Days supply is null when the frequency
+ * is PRN or the dose cannot be expressed in the dispense unit.
  */
 export function computeDispense(input: DispenseInput): DerivedDispense | null {
   const qty = parseQuantityLabel(input.quantityLabel, input.dosageFormName)
+  const duration = typeof input.durationDays === 'number' && input.durationDays > 0 ? Math.floor(input.durationDays) : null
+
+  if (duration != null) {
+    const unit = dispenseUnitFor(input.dosageFormName, input.doseUnit)
+    const perDose = perDoseInDispenseUnit(input, { value: 1, unit, isContainer: false })
+    const doses = dosesInDays(duration, input.frequencyCode)
+    if (perDose != null && perDose > 0 && doses != null) {
+      return { daysSupply: duration, dispenseQuantity: round2(doses * perDose), dispenseUnit: unit }
+    }
+    // Duration known but the dose can't be converted (PRN, clicks, …):
+    // the days supply is still the duration; dispense is the package.
+    return {
+      daysSupply:       duration,
+      dispenseQuantity: qty ? round2(qty.value) : 1,
+      dispenseUnit:     qty ? qty.unit : unit,
+    }
+  }
+
   if (!qty) return null
 
   const result: DerivedDispense = {
@@ -357,6 +429,50 @@ export function computeDispense(input: DispenseInput): DerivedDispense | null {
   if (dailyUse <= 0) return result
   result.daysSupply = Math.max(1, Math.floor(qty.value / dailyUse + 1e-9))
   return result
+}
+
+/**
+ * Default quantity for the Quantity dropdown (WO-96 fix, rule 2 — no
+ * required field without a default). From the labels the selected
+ * pharmacy already lists ("2.5mL vial", "5mL vial"):
+ *   - with a computed dispense quantity: the smallest package in the same
+ *     unit that covers it; if none covers it, the largest such package
+ *   - without one: the smallest package in the dispense unit
+ *   - labels that name only containers ("1 vial"): the smallest count
+ *   - no usable label at all: the first label, or "1" when the pharmacy
+ *     lists nothing
+ * This reads the existing available_quantities strings only; package
+ * pricing is WO-101.
+ */
+export function defaultQuantityLabel(
+  labels: ReadonlyArray<string> | null | undefined,
+  dispense: { quantity: number | null | undefined; unit: string | null | undefined } | null,
+  dosageFormName: string | null | undefined,
+): string {
+  const list = (labels ?? []).filter(l => typeof l === 'string' && l.trim())
+  if (list.length === 0) return '1'
+
+  const parsed = list
+    .map(label => ({ label, q: parseQuantityLabel(label, dosageFormName) }))
+    .filter((x): x is { label: string; q: ParsedQuantity } => x.q != null)
+
+  const unit = dispense?.unit ?? null
+  const measured = parsed
+    .filter(x => !x.q.isContainer && (unit == null || x.q.unit === unit))
+    .sort((a, b) => a.q.value - b.q.value)
+
+  if (measured.length > 0) {
+    const need = dispense?.quantity
+    if (typeof need === 'number' && need > 0) {
+      const covering = measured.find(x => x.q.value + 1e-9 >= need)
+      return (covering ?? measured[measured.length - 1]!).label
+    }
+    return measured[0]!.label
+  }
+
+  const containers = parsed.filter(x => x.q.isContainer).sort((a, b) => a.q.value - b.q.value)
+  if (containers.length > 0) return containers[0]!.label
+  return list[0]!
 }
 
 // ── API body validation + column mapping ────────────────────
