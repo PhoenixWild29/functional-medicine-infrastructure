@@ -256,6 +256,7 @@ test.describe('Clinic App — Order Creation Flow', () => {
     await page.goto('/new-prescription')
     await page.getByLabel('Search patients').fill('Test')
     await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
+    await pickProviderIfListed(page)   // WO-100: two seeded providers → clinic admin must pick one
     await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
 
     await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
