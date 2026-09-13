@@ -37,6 +37,11 @@ export const TEST_IDS = {
   clinic:        'aaaaaaaa-0000-0000-0000-000000000001',
   provider:      'aaaaaaaa-0000-0000-0000-000000000002',
   patient:       'aaaaaaaa-0000-0000-0000-000000000003',
+  // WO-97: one patient per allergy chip state. `patient` above is the
+  // "not recorded" case (amber chip + non-blocking Review notice); these
+  // two mirror the demo seed (Alex Demo → NKDA, Jordan Rivera → sulfa).
+  patientNkda:      'aaaaaaaa-0000-0000-0000-000000000004',
+  patientAllergies: 'aaaaaaaa-0000-0000-0000-000000000005',
   pharmacyTier1: 'aaaaaaaa-0000-0000-0000-000000000010',
   pharmacyTier2: 'aaaaaaaa-0000-0000-0000-000000000011',
   pharmacyTier4: 'aaaaaaaa-0000-0000-0000-000000000013',
@@ -84,6 +89,14 @@ export const TEST_CATALOG = {
     'Patient requires a dose or strength not commercially available',
     'Commercial product is unavailable or on national shortage',
   ],
+}
+
+// WO-97 patients by allergy state. Last names render as "{last}, Test"
+// in the selector; chip text is what the app derives from the columns.
+export const TEST_PATIENTS = {
+  nkdaLastName:      'Nkda',
+  allergiesLastName: 'Allergic',
+  allergies:         ['sulfa', 'penicillin'],
 }
 
 // ── Test users (Supabase Auth) ────────────────────────────────
@@ -139,19 +152,59 @@ export async function seedStaticData(): Promise<void> {
     is_active:       true,
   }, { onConflict: 'provider_id' })
 
-  // Patient
-  await supabase.from('patients').upsert({
-    patient_id:   TEST_IDS.patient,
-    clinic_id:    TEST_IDS.clinic,
-    first_name:   'Test',
-    last_name:    'Patient',
-    date_of_birth: '1980-01-01',
-    phone:        '+15550000001',
-    email:        'test-patient@compoundiq.test',
-    state:        'TX',
-    sms_opt_in:   true,
-    is_active:    true,
-  }, { onConflict: 'patient_id' })
+  // Patients — one per WO-97 allergy chip state. The upsert re-asserts the
+  // allergy columns on every run, so a test that edits them (the banner
+  // editor / the Review "Confirm NKDA" beat) starts from a known state.
+  // The wizard helpers search "Test" and click "Patient, Test"; the two
+  // extra last names deliberately do not match that regex.
+  await supabase.from('patients').upsert([
+    {
+      patient_id:   TEST_IDS.patient,
+      clinic_id:    TEST_IDS.clinic,
+      first_name:   'Test',
+      last_name:    'Patient',
+      date_of_birth: '1980-01-01',
+      phone:        '+15550000001',
+      email:        'test-patient@compoundiq.test',
+      state:        'TX',
+      sms_opt_in:   true,
+      is_active:    true,
+      // not recorded
+      allergies:            null,
+      nkda:                 false,
+      allergies_updated_at: null,
+    },
+    {
+      patient_id:   TEST_IDS.patientNkda,
+      clinic_id:    TEST_IDS.clinic,
+      first_name:   'Test',
+      last_name:    TEST_PATIENTS.nkdaLastName,
+      date_of_birth: '1981-01-01',
+      phone:        '+15550000002',
+      email:        'test-nkda@compoundiq.test',
+      state:        'TX',
+      sms_opt_in:   true,
+      is_active:    true,
+      allergies:            [],
+      nkda:                 true,
+      allergies_updated_at: new Date().toISOString(),
+    },
+    {
+      patient_id:   TEST_IDS.patientAllergies,
+      clinic_id:    TEST_IDS.clinic,
+      first_name:   'Test',
+      last_name:    TEST_PATIENTS.allergiesLastName,
+      date_of_birth: '1982-01-01',
+      phone:        '+15550000003',
+      email:        'test-allergic@compoundiq.test',
+      state:        'TX',
+      sms_opt_in:   true,
+      is_active:    true,
+      allergies:            TEST_PATIENTS.allergies,
+      nkda:                 false,
+      allergies_updated_at: new Date().toISOString(),
+    },
+  ], { onConflict: 'patient_id' })
 
   // Pharmacies (Tier 1, 2, 4)
   await supabase.from('pharmacies').upsert([

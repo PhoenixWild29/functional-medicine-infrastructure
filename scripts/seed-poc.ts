@@ -272,6 +272,13 @@ async function seedPatient() {
     state:         'TX',
     sms_opt_in:    true,
     is_active:     true,
+    // WO-97: Alex Demo is the NKDA demo patient (Jordan Rivera carries
+    // "sulfa" in scripts/demo-expansion-seed.sql; everyone else stays
+    // "not recorded"). Migration 20260912000002 back-fills the same
+    // values on a database where this row already existed.
+    allergies:            [],
+    nkda:                 true,
+    allergies_updated_at: new Date().toISOString(),
   })
 
   if (error) throw new Error(`Failed to seed patient: ${error.message}`)

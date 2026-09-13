@@ -162,6 +162,19 @@ VALUES
    'a2000000-0000-0000-0000-000000000006', true)
 ON CONFLICT DO NOTHING;
 
+-- WO-97 allergies: Jordan Rivera → "sulfa"; the other seven stay "not
+-- recorded" (amber chip). Alex Demo (NKDA) is set in scripts/seed-poc.ts.
+-- Separate UPDATE (not part of the INSERT) so a database where the rows
+-- already exist — ON CONFLICT DO NOTHING above — still picks it up, and
+-- guarded on allergies_updated_at so a value entered in the app wins.
+-- Requires migration 20260912000002_wo97_patient_allergies.sql.
+UPDATE patients
+SET allergies            = ARRAY['sulfa'],
+    nkda                 = false,
+    allergies_updated_at = now()
+WHERE patient_id = 'a3000000-0000-0000-0000-000000000003'
+  AND allergies_updated_at IS NULL;
+
 -- ============================================================
 -- 4. PHARMACY STATE LICENSES — 17 rows
 -- ============================================================
