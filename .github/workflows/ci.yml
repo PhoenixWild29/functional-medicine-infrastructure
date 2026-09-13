@@ -177,6 +177,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15  # upper bound; typical run is 2–3 min on the current suite
     needs: [test, build]
+    # Serialize E2E across ALL branches/PRs: the job seeds and cleans one
+    # shared E2E Supabase project, so concurrent runs corrupt each other's
+    # fixtures. Queue, never cancel (cancel-in-progress: false).
+    concurrency:
+      group: e2e-shared-supabase-project
+      cancel-in-progress: false
     # Skip on fork PRs (secrets unavailable on fork-originated workflow runs).
     if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
