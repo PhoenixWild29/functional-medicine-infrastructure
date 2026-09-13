@@ -56,6 +56,44 @@ interface StatusHistoryRow {
   new_status: string
   changed_by: string | null
   created_at: string
+  // WO-98: draft edits/removals are DRAFT → DRAFT rows carrying
+  // { event, actor, diff } — rendered as their own timeline entries.
+  metadata?:  { event?: string; diff?: Record<string, unknown> } | null
+}
+
+const DRAFT_EVENT_LABEL: Record<string, string> = {
+  draft_created:      'Draft created',
+  draft_edited:       'Draft edited',
+  draft_line_removed: 'Draft line removed',
+}
+
+const DIFF_FIELD_LABEL: Record<string, string> = {
+  'medication_snapshot.prescribed_dose':  'dose',
+  'medication_snapshot.frequency_code':   'frequency',
+  'medication_snapshot.quantity_label':   'quantity',
+  'medication_snapshot.medication_name':  'medication',
+  'pharmacy_snapshot.name':               'pharmacy',
+  retail_price_snapshot:                  'retail price',
+  wholesale_price_snapshot:               'wholesale',
+  sig_text:                               'sig',
+  days_supply:                            'days supply',
+  dispense_quantity:                      'dispense',
+  dispense_unit:                          'dispense unit',
+  refills:                                'refills',
+  substitution_allowed:                   'substitution',
+  syringe_option:                         'syringe option',
+  shipping_type:                          'shipping',
+  clinical_difference:                    'clinical difference',
+  diagnosis_code:                         'diagnosis code',
+  diagnosis_text:                         'diagnosis',
+  special_instructions:                   'special instructions',
+}
+
+function describeDiff(diff: Record<string, unknown> | undefined): string {
+  const keys = Object.keys(diff ?? {})
+    .filter(k => k !== 'formulation_id' && k !== 'catalog_item_id' && k !== 'pharmacy_id')
+    .map(k => DIFF_FIELD_LABEL[k] ?? k)
+  return keys.length ? `changed ${keys.join(', ')}` : 'no field changes'
 }
 
 function toCurrency(cents: number): string {
@@ -108,11 +146,11 @@ export function OrderDrawer({ order, onClose, onGroupCreated }: Props) {
     // NB-3: select old_status, new_status, changed_by — there is no "status" or "note" column
     supabaseRef.current
       .from('order_status_history')
-      .select('old_status, new_status, changed_by, created_at')
+      .select('old_status, new_status, changed_by, created_at, metadata')
       .eq('order_id', order.orderId)
       .order('created_at', { ascending: true })
       .then(({ data }) => {
-        setHistory(data ?? [])
+        setHistory((data ?? []) as StatusHistoryRow[])
         setIsLoadingHistory(false)
       })
   }, [order?.orderId])
@@ -625,6 +663,33 @@ export function OrderDrawer({ order, onClose, onGroupCreated }: Props) {
               >
                 Review & Sign This Prescription
               </button>
+              {/* WO-98: edit this draft line / add another line to the
+                  draft — both reopen the existing builder with the
+                  draft's patient and provider pinned. Providers can edit
+                  any clinic draft; other roles only drafts they created
+                  (the server returns 403 otherwise). */}
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose()
+                    router.push(`/new-prescription/search?editOrder=${order.orderId}`)
+                  }}
+                  className="flex-1 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
+                >
+                  Edit prescription
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose()
+                    router.push(`/new-prescription/search?addToOrder=${order.orderId}`)
+                  }}
+                  className="flex-1 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
+                >
+                  + Add prescription
+                </button>
+              </div>
             </div>
           )}
 
@@ -697,13 +762,27 @@ export function OrderDrawer({ order, onClose, onGroupCreated }: Props) {
                   <li key={idx} className="relative">
                     <span className="absolute -left-[1.125rem] top-1 h-3 w-3 rounded-full border-2 border-border bg-background" />
                     {/* NB-3: show transition label using new_status (the status transitioned TO) */}
-                    <p className="text-sm font-medium text-foreground">
-                      {getStatusConfig(row.new_status).label}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      from {getStatusConfig(row.old_status).label}
-                      {row.changed_by && ` · ${row.changed_by}`}
-                    </p>
+                    {row.metadata?.event && DRAFT_EVENT_LABEL[row.metadata.event] ? (
+                      <>
+                        <p className="text-sm font-medium text-foreground">
+                          {DRAFT_EVENT_LABEL[row.metadata.event]}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {row.metadata.event === 'draft_edited' ? describeDiff(row.metadata.diff) : 'still a draft'}
+                          {row.changed_by && ` · ${row.changed_by}`}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm font-medium text-foreground">
+                          {getStatusConfig(row.new_status).label}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          from {getStatusConfig(row.old_status).label}
+                          {row.changed_by && ` · ${row.changed_by}`}
+                        </p>
+                      </>
+                    )}
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {formatDateTime(row.created_at)}
                     </p>

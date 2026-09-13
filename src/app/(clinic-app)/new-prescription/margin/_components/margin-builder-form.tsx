@@ -21,7 +21,8 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { usePrescriptionSession } from '../../_context/prescription-session'
+import { usePrescriptionSession, type SessionPrescription } from '../../_context/prescription-session'
+import type { EditTarget } from '../../_lib/edit-target'
 import {
   computeDispense,
   defaultRxDetails,
@@ -32,6 +33,7 @@ import {
   type RxRules,
 } from '@/lib/orders/rx-details'
 import type { RxFormulationDefaults } from '@/lib/orders/rx-defaults-loader'
+import { splitDose } from '@/lib/orders/dose'
 import { DerivedDispense, EMPTY_OVERRIDE, resolveDispense, type DispenseOverride } from '../../_components/derived-dispense'
 
 // ── Cent arithmetic helpers — HC-01 ──────────────────────────
@@ -87,13 +89,19 @@ interface Props {
     dosageFormName:     string | null
   } | null
   rxDefaults?:         RxFormulationDefaults | null
+  // WO-98 — which existing line this form saves back to. Absent → add a
+  // new session line (the original flow).
+  editTarget?:         EditTarget | null
+  /** Current values of the draft line being edited (editTarget.kind === 'draft'). */
+  draftLine?:          { retailCents: number; rxDetails: RxDetails } | null
+  /** Where to land after a draft edit / add (provider → the draft, others → dashboard). */
+  draftReturnTo?:      string | null
+  /** The builder's dose string ("15 units") — stored on the order for reopening. */
+  presetDose?:         string | undefined
 }
 
-/** "10 units" → { amount: '10', unit: 'units' }; "0.5 mg" → { amount: '0.5', unit: 'mg' }. */
-export function splitDose(dose: string): { amount: string; unit: string } {
-  const m = /^\s*(\d+(?:\.\d+)?)\s*([A-Za-z]+)?/.exec(dose)
-  return { amount: m?.[1] ?? '', unit: m?.[2] ?? '' }
-}
+// splitDose moved to @/lib/orders/dose (WO-98) — re-exported for existing imports.
+export { splitDose }
 
 // ── Multiplier buttons ────────────────────────────────────────
 const MULTIPLIERS = [
@@ -120,9 +128,29 @@ export function MarginBuilderForm({
   presetRefills,
   formulationDetails,
   rxDefaults,
+  editTarget = null,
+  draftLine = null,
+  draftReturnTo = null,
+  presetDose,
 }: Props) {
   const router = useRouter()
   const rxSession = usePrescriptionSession()
+
+  // ── WO-98: the line being edited, if any ─────────────────────
+  // Session line: read from the session (restored after mount, so the
+  // seed values below re-resolve once it is present). Draft line: the
+  // server page passed its current values.
+  const sessionLine: SessionPrescription | null = editTarget?.kind === 'session'
+    ? rxSession.prescriptions.find(rx => rx.id === editTarget.lineId) ?? null
+    : null
+  const existingRetailCents = editTarget?.kind === 'draft'
+    ? draftLine?.retailCents ?? null
+    : sessionLine?.retailCents ?? null
+  const existingDetails: RxDetails | null = editTarget?.kind === 'draft'
+    ? draftLine?.rxDetails ?? null
+    : sessionLine?.rxDetails ?? null
+  const isEditing   = editTarget?.kind === 'session' || editTarget?.kind === 'draft'
+  const isDraftMode = editTarget?.kind === 'draft' || editTarget?.kind === 'draft-add'
 
   // ── WO-96: derived days supply + dispense ─────────────────────
   const derived = useMemo(() => {
@@ -151,18 +179,44 @@ export function MarginBuilderForm({
       diagnosisCode: rxDefaults?.suggestedDiagnosis?.code ?? null,
       diagnosisText: rxDefaults?.suggestedDiagnosis?.text ?? null,
     })
-    return { ...base, ...resolveDispense(derived, dispenseOverride) }
-  }, [rxDefaults, presetRefills, derived, dispenseOverride])
+    // WO-98: when editing, the line's confirmed fields (diagnosis,
+    // clinical difference, special instructions, syringe, shipping,
+    // substitution) carry over; refills follow the builder; days supply
+    // and dispense are re-derived from the (possibly changed) dose unless
+    // there is nothing to derive from.
+    const carried: Partial<RxDetails> = existingDetails
+      ? {
+          substitutionAllowed: existingDetails.substitutionAllowed,
+          syringeOption:       existingDetails.syringeOption,
+          shippingType:        existingDetails.shippingType,
+          clinicalDifference:  existingDetails.clinicalDifference ?? base.clinicalDifference,
+          diagnosisCode:       existingDetails.diagnosisCode ?? base.diagnosisCode,
+          diagnosisText:       existingDetails.diagnosisText ?? base.diagnosisText,
+          specialInstructions: existingDetails.specialInstructions,
+        }
+      : {}
+    const dispense = derived || !existingDetails
+      ? resolveDispense(derived, dispenseOverride)
+      : { daysSupply: existingDetails.daysSupply, dispenseQuantity: existingDetails.dispenseQuantity, dispenseUnit: existingDetails.dispenseUnit }
+    return { ...base, ...carried, ...dispense }
+  }, [rxDefaults, presetRefills, derived, dispenseOverride, existingDetails])
   // Rule-required fields the Review card will ask the provider to confirm.
   // The draft path below can't collect them here, so it points at Review.
   const missingForDraft = missingRxDetails(rxDetails, rxRules)
 
   const wholesaleCents = useMemo(() => toCents(wholesalePrice), [wholesalePrice])
 
-  // Retail price input — stored as formatted string so user can type freely
+  // Retail price input — stored as formatted string so user can type freely.
+  // WO-98: an edited line keeps its price until the user changes it.
   const [retailInput, setRetailInput] = useState<string>(() =>
-    toCurrency(defaultRetailCents(wholesaleCents, defaultMarkupPct))
+    toCurrency(existingRetailCents ?? defaultRetailCents(wholesaleCents, defaultMarkupPct))
   )
+  const [retailSeededFromLine, setRetailSeededFromLine] = useState(existingRetailCents != null)
+  if (!retailSeededFromLine && existingRetailCents != null) {
+    // Session line arrived after mount (sessionStorage restore) — seed once.
+    setRetailSeededFromLine(true)
+    setRetailInput(toCurrency(existingRetailCents))
+  }
   // WO-83: Pre-fill sig from cascading builder if available
   const [sigText, setSigText] = useState(presetSigText ?? '')
   // REQ-DMB-006: soft-block for >5x wholesale — requires explicit acknowledgment
@@ -214,9 +268,8 @@ export function MarginBuilderForm({
   }
 
   // ── WO-80: Add prescription to session ─────────────────────────
-  function addToSession() {
-    if (!canContinue) return
-    rxSession.addPrescription({
+  function lineFromForm(): Omit<SessionPrescription, 'id'> {
+    return {
       pharmacyId,
       pharmacyName,
       itemId,
@@ -234,7 +287,12 @@ export function MarginBuilderForm({
       rxRules,
       frequencyCode: presetFrequency ?? null,
       quantityLabel: presetQuantity ?? null,
-    })
+    }
+  }
+
+  function addToSession() {
+    if (!canContinue) return
+    rxSession.addPrescription(lineFromForm())
   }
 
   function handleAddAnother(e: React.MouseEvent) {
@@ -243,8 +301,70 @@ export function MarginBuilderForm({
     router.push('/new-prescription/search')
   }
 
-  function handleReviewAll(e: React.FormEvent) {
+  // WO-98: the line body PATCH /api/orders/[id] and POST /api/orders share.
+  function lineBody() {
+    return {
+      catalogItemId: itemId,
+      formulationId,
+      pharmacyId,
+      retailCents,
+      sigText:       sigTrimmed,
+      rxDetails,
+      dose:          presetDose ?? null,
+      frequencyCode: presetFrequency ?? null,
+      quantityLabel: presetQuantity ?? null,
+    }
+  }
+
+  const [isSavingLine, setIsSavingLine] = useState(false)
+  const [lineError, setLineError] = useState<string | null>(null)
+
+  async function handleReviewAll(e: React.FormEvent) {
     e.preventDefault()
+    if (!canContinue) return
+
+    // WO-98: edit at Review — patch the same session line, same id.
+    if (editTarget?.kind === 'session') {
+      rxSession.updatePrescription(editTarget.lineId, lineFromForm())
+      router.push('/new-prescription/review')
+      return
+    }
+
+    // WO-98: draft edit / add — server round-trip, then back to the draft.
+    if (editTarget?.kind === 'draft' || editTarget?.kind === 'draft-add') {
+      if (!rxSession.patient || !rxSession.provider) return
+      setIsSavingLine(true)
+      setLineError(null)
+      try {
+        const res = editTarget.kind === 'draft'
+          ? await fetch(`/api/orders/${editTarget.orderId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(lineBody()),
+            })
+          : await fetch('/api/orders', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...lineBody(),
+                patientId:         rxSession.patient.patient_id,
+                providerId:        rxSession.provider.provider_id,
+                patientState:      rxSession.patient.state ?? '',
+                appendedToOrderId: editTarget.orderId,
+              }),
+            })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          throw new Error((err as { error?: string }).error ?? 'Failed to save the draft line')
+        }
+        router.push(draftReturnTo ?? '/dashboard?draft=1')
+      } catch (err) {
+        setLineError(err instanceof Error ? err.message : 'An unexpected error occurred')
+        setIsSavingLine(false)
+      }
+      return
+    }
+
     addToSession()
     router.push('/new-prescription/review')
   }
@@ -480,32 +600,58 @@ export function MarginBuilderForm({
       </div>
 
       {/* ── WO-80: Session-aware action buttons ── */}
+      {/* WO-98: editing a line offers exactly one action — save it back
+          where it came from. Adding to a draft likewise. */}
       <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={handleAddAnother}
-          disabled={!canContinue}
-          className="flex-1 rounded-md border border-primary bg-background px-4 py-2 text-sm font-medium text-primary shadow-sm hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          Add & Search Another
-        </button>
+        {!isEditing && !isDraftMode && (
+          <button
+            type="button"
+            onClick={handleAddAnother}
+            disabled={!canContinue}
+            className="flex-1 rounded-md border border-primary bg-background px-4 py-2 text-sm font-medium text-primary shadow-sm hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Add & Search Another
+          </button>
+        )}
+        {(isEditing || isDraftMode) && (
+          <button
+            type="button"
+            onClick={() => router.push(editTarget?.kind === 'session' ? '/new-prescription/review' : (draftReturnTo ?? '/dashboard'))}
+            disabled={isSavingLine}
+            className="rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted/50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Cancel
+          </button>
+        )}
         <button
           type="submit"
-          disabled={!canContinue}
+          disabled={!canContinue || isSavingLine}
           className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          {rxSession.prescriptionCount > 0
-            ? `Review & Send (${rxSession.prescriptionCount + 1})`
-            : 'Review & Send'}
+          {isSavingLine
+            ? 'Saving...'
+            : editTarget?.kind === 'session'
+              ? 'Save Changes — Back to Review'
+              : editTarget?.kind === 'draft'
+                ? 'Save Changes to Draft'
+                : editTarget?.kind === 'draft-add'
+                  ? 'Add to Draft'
+                  : rxSession.prescriptionCount > 0
+                    ? `Review & Send (${rxSession.prescriptionCount + 1})`
+                    : 'Review & Send'}
         </button>
       </div>
-      {rxSession.prescriptionCount > 0 && (
+      {lineError && (
+        <p className="text-center text-xs text-red-600" role="alert">{lineError}</p>
+      )}
+      {!isEditing && !isDraftMode && rxSession.prescriptionCount > 0 && (
         <p className="text-center text-xs text-muted-foreground">
           {rxSession.prescriptionCount} prescription{rxSession.prescriptionCount !== 1 ? 's' : ''} already in session — this will add one more
         </p>
       )}
 
       {/* WO-77: Save as Draft — for provider to sign later */}
+      {!isEditing && !isDraftMode && (
       <div className="border-t border-border pt-4">
         <button
           type="button"
@@ -522,6 +668,7 @@ export function MarginBuilderForm({
           <p className="mt-2 text-center text-xs text-red-600">{draftError}</p>
         )}
       </div>
+      )}
     </form>
   )
 }

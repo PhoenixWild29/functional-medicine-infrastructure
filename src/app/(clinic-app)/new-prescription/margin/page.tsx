@@ -24,7 +24,11 @@ import { HipaaTimeout }      from '@/components/hipaa-timeout'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { MarginBuilderForm } from './_components/margin-builder-form'
 import { SessionBanner }     from '../_components/session-banner'
+import { DraftSessionPin }   from '../_components/draft-session-pin'
 import { loadRxDefaults, type RxFormulationDefaults } from '@/lib/orders/rx-defaults-loader'
+import { loadDraftContext, type DraftContext } from '@/lib/orders/load-draft-context'
+import { draftReturnPath } from '@/lib/orders/draft-edit'
+import { editTargetFromParams } from '../_lib/edit-target'
 
 export const metadata = {
   title: 'New Prescription — Set Price',
@@ -42,6 +46,10 @@ interface PageProps {
     // WO-96: selected pharmacy quantity label + refills from the builder
     quantity?: string
     refills?: string
+    // WO-98: which existing line this page saves back to (see _lib/edit-target)
+    editId?: string
+    editOrder?: string
+    addToOrder?: string
   }>
 }
 
@@ -73,8 +81,18 @@ export default async function MarginPage({ searchParams }: PageProps) {
   const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
     ? user.user_metadata['clinic_id'] as string
     : undefined
+  const isProvider = user.user_metadata['app_role'] === 'provider'
 
   const supabase = createServiceClient()
+
+  // WO-98: edit / add-to-draft target. Draft targets are re-validated
+  // here (clinic-scoped DRAFT) and their patient/provider pinned.
+  let editTarget = editTargetFromParams(resolvedParams)
+  let draft: DraftContext | null = null
+  if (editTarget && editTarget.kind !== 'session') {
+    draft = clinicId ? await loadDraftContext(supabase, clinicId, editTarget.orderId) : null
+    if (!draft) editTarget = null
+  }
 
   // WO-83/87: Support both catalog-based (old) and formulation-based (new) paths.
   // catalogItem.item_id is now ALWAYS a real catalog.item_id when present (legacy
@@ -241,10 +259,8 @@ export default async function MarginPage({ searchParams }: PageProps) {
     defaultMarkupPct = clinic?.default_markup_pct ?? null
   }
 
-  return (
+  const body = (
     <>
-    <HipaaTimeout />
-    <main className="mx-auto max-w-2xl px-4 py-8">
       {/* WO-80: Session banner — patient + provider pinned at top */}
       <SessionBanner />
 
@@ -258,9 +274,13 @@ export default async function MarginPage({ searchParams }: PageProps) {
           ]}
           currentStep={2}
         />
-        <h1 className="mt-4 text-2xl font-bold text-foreground">Set Retail Price</h1>
+        <h1 className="mt-4 text-2xl font-bold text-foreground">
+          {editTarget && editTarget.kind !== 'draft-add' ? 'Edit Prescription — Price & Directions' : 'Set Retail Price'}
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Set the price your patient will pay and add prescription directions.
+          {editTarget && editTarget.kind !== 'draft-add'
+            ? 'Confirm the price and directions, then save to update the line in place.'
+            : 'Set the price your patient will pay and add prescription directions.'}
         </p>
       </div>
 
@@ -281,7 +301,25 @@ export default async function MarginPage({ searchParams }: PageProps) {
         presetRefills={Number.isFinite(presetRefills) ? presetRefills : 0}
         formulationDetails={formulationDetails}
         rxDefaults={rxDefaults}
+        editTarget={editTarget}
+        draftLine={draft && editTarget?.kind === 'draft'
+          ? { retailCents: draft.retailCents, rxDetails: draft.rxDetails }
+          : null}
+        draftReturnTo={draft ? draftReturnPath(draft.orderId, isProvider) : null}
+        presetDose={presetDose || undefined}
       />
+    </>
+  )
+
+  return (
+    <>
+    <HipaaTimeout />
+    <main className="mx-auto max-w-2xl px-4 py-8">
+      {/* WO-98: a draft target pins its patient/provider on the session
+          before the banner + form mount (see DraftSessionPin). */}
+      {draft
+        ? <DraftSessionPin patient={draft.patient} provider={draft.provider}>{body}</DraftSessionPin>
+        : body}
     </main>
     </>
   )

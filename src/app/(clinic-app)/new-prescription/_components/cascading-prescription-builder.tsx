@@ -14,12 +14,14 @@
 //
 // Outputs to the WO-80 PrescriptionSession via addPrescription().
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { usePrescriptionSession } from '../_context/prescription-session'
 import { StructuredSigBuilder } from './structured-sig-builder'
 import { QuickActionsPanel } from './quick-actions-panel'
+import { builderStateFromLine, editTargetToParams, type EditTarget } from '../_lib/edit-target'
+import type { BuilderInitialState } from '@/lib/orders/draft-edit'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -112,24 +114,54 @@ async function fetchLevel<T>(level: string, params: Record<string, string> = {})
   return json.data ?? []
 }
 
-// ── Component ─────────────────────────────────────────────────
+// ── Props ─────────────────────────────────────────────────────
+//
+// WO-98: the builder can reopen an existing line. `editTarget` says
+// which line (session line at Review, draft order, or "append to
+// draft") and travels to the margin page in the URL; `initial` is the
+// line's current values for a draft (resolved server-side). For a
+// session line the values come from the session itself.
+interface Props {
+  editTarget?: EditTarget | null
+  initial?:    BuilderInitialState | null
+}
 
-export function CascadingPrescriptionBuilder() {
+interface FormulationContext {
+  formulation: Formulation | null
+  salt_form:   SaltForm | null
+  ingredient:  Ingredient | null
+}
+
+export function CascadingPrescriptionBuilder({ editTarget = null, initial = null }: Props = {}) {
   const router = useRouter()
   const session = usePrescriptionSession()
+
+  // WO-98: values to reopen with. Session lines are read from the
+  // session (restored from sessionStorage after mount, hence the memo).
+  const sessionLine = editTarget?.kind === 'session'
+    ? session.prescriptions.find(rx => rx.id === editTarget.lineId) ?? null
+    : null
+  const effectiveInitial = useMemo<BuilderInitialState | null>(
+    () => initial ?? (sessionLine ? builderStateFromLine(sessionLine) : null),
+    [initial, sessionLine],
+  )
 
   // ── Selection state ─────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedIngredient, setSelectedIngredient] = useState<Ingredient | null>(null)
   const [selectedSaltForm, setSelectedSaltForm] = useState<SaltForm | null>(null)
   const [selectedFormulation, setSelectedFormulation] = useState<Formulation | null>(null)
-  const [selectedPharmacy, setSelectedPharmacy] = useState<PharmacyOption | null>(null)
+  const [selectedPharmacyState, setSelectedPharmacy] = useState<PharmacyOption | null>(null)
   const [selectedFrequency, setSelectedFrequency] = useState('')
   const [doseAmount, setDoseAmount] = useState('')
   const [doseUnit, setDoseUnit] = useState('')
   const [quantity, setQuantity] = useState('')
   const [refills, setRefills] = useState('0')
   const [currentSig, setCurrentSig] = useState('')
+  // WO-98: pharmacy of the reopened line. Until the user picks one, the
+  // matching option (once pharmacy_options load) counts as selected.
+  const [pendingPharmacyId, setPendingPharmacyId] = useState<string | null>(null)
+  const hydratedRef = useRef(false)
 
   // ── Cascading queries ───────────────────────────────────
 
@@ -176,6 +208,42 @@ export function CascadingPrescriptionBuilder() {
     }
   }, [saltForms, selectedSaltForm])
 
+  // ── WO-98: reopen an existing line with the cascade pre-selected ──
+  // One fetch resolves formulation + salt form + ingredient; the
+  // pharmacy is matched once pharmacy_options arrive (effect below).
+  useEffect(() => {
+    if (!effectiveInitial || hydratedRef.current) return
+    hydratedRef.current = true
+    if (!effectiveInitial.formulationId) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(`/api/formulations?level=formulation&formulation_id=${encodeURIComponent(effectiveInitial.formulationId as string)}`)
+        if (!res.ok) return
+        const json = await res.json() as { data?: FormulationContext }
+        if (cancelled || !json.data?.formulation) return
+        const { formulation, salt_form, ingredient } = json.data
+        if (ingredient) setSelectedIngredient(ingredient)
+        if (salt_form) setSelectedSaltForm(salt_form)
+        setSelectedFormulation(formulation)
+        setDoseAmount(effectiveInitial.doseAmount)
+        setDoseUnit(effectiveInitial.doseUnit)
+        setSelectedFrequency(effectiveInitial.frequency)
+        setQuantity(effectiveInitial.quantity)
+        setRefills(String(effectiveInitial.refills))
+        setPendingPharmacyId(effectiveInitial.pharmacyId || null)
+      } catch (err) {
+        console.warn('[builder] could not reopen line (non-fatal):', err instanceof Error ? err.message : err)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [effectiveInitial])
+
+  const selectedPharmacy: PharmacyOption | null = selectedPharmacyState
+    ?? (pendingPharmacyId
+      ? pharmacyOptions.find(po => po.pharmacies?.pharmacy_id === pendingPharmacyId) ?? null
+      : null)
+
   // ── Stable callback for sig changes from StructuredSigBuilder ──
   const handleSigChange = useCallback((sig: string) => {
     setCurrentSig(sig)
@@ -187,6 +255,7 @@ export function CascadingPrescriptionBuilder() {
     setSelectedSaltForm(null)
     setSelectedFormulation(null)
     setSelectedPharmacy(null)
+    setPendingPharmacyId(null)
     setDoseAmount('')
     setDoseUnit('')
     setSelectedFrequency('')
@@ -203,6 +272,7 @@ export function CascadingPrescriptionBuilder() {
   function selectFormulation(f: Formulation) {
     setSelectedFormulation(f)
     setSelectedPharmacy(null)
+    setPendingPharmacyId(null)
     // Set default dose unit based on dosage form
     if (f.dosage_forms?.name.includes('Injectable')) {
       setDoseUnit('units')
@@ -241,6 +311,8 @@ export function CascadingPrescriptionBuilder() {
       // and the defaulted refills on the margin page.
       quantity: fav.default_quantity ?? '',
       refills: String(fav.refills ?? 0),
+      // WO-98: keep the edit / add-to-draft target through the margin page.
+      ...editTargetToParams(editTarget),
     })
 
     router.push(`/new-prescription/margin?${params.toString()}`)
@@ -263,6 +335,8 @@ export function CascadingPrescriptionBuilder() {
       // dose × frequency × quantity and defaults refills from here.
       quantity,
       refills,
+      // WO-98: keep the edit / add-to-draft target through the margin page.
+      ...editTargetToParams(editTarget),
     })
 
     // WO-86: Pass DEA schedule so margin builder can thread it to the session
@@ -417,6 +491,7 @@ export function CascadingPrescriptionBuilder() {
           onDoseUnitChange={setDoseUnit}
           onFrequencyChange={setSelectedFrequency}
           onSigChange={handleSigChange}
+          initialSigText={effectiveInitial?.sigText}
         />
       )}
 

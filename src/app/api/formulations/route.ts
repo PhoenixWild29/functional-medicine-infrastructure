@@ -223,6 +223,56 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ level: 'formulations', data })
       }
 
+      // ── WO-98: one formulation + its ingredient + salt form ──
+      // Used by the builder to reopen an existing line (edit at Review,
+      // edit a draft) with the cascade pre-selected. Same row shapes as
+      // the 'ingredients' / 'salt_forms' / 'formulations' levels.
+      case 'formulation': {
+        const formulationId = searchParams.get('formulation_id')
+        if (!formulationId) {
+          return NextResponse.json({ error: 'formulation_id required' }, { status: 400 })
+        }
+        const { data: formulation, error } = await supabase
+          .from('formulations')
+          .select(`
+            formulation_id, name, concentration, concentration_value, concentration_unit,
+            excipient_base, is_combination, total_ingredients, description, salt_form_id,
+            dosage_forms(name, is_sterile, requires_injection_supplies),
+            routes_of_administration(name, abbreviation, sig_prefix),
+            formulation_ingredients(
+              ingredient_id, concentration_per_unit, concentration_value, concentration_unit, role,
+              ingredients(common_name, dea_schedule, fda_alert_status)
+            )
+          `)
+          .eq('formulation_id', formulationId)
+          .eq('is_active', true)
+          .is('deleted_at', null)
+          .maybeSingle()
+        if (error) throw error
+        if (!formulation) {
+          return NextResponse.json({ error: 'Formulation not found' }, { status: 404 })
+        }
+        const saltFormId = (formulation as { salt_form_id?: string | null }).salt_form_id ?? null
+        const { data: saltForm } = saltFormId
+          ? await supabase
+              .from('salt_forms')
+              .select('salt_form_id, salt_name, abbreviation, ingredient_id')
+              .eq('salt_form_id', saltFormId)
+              .maybeSingle()
+          : { data: null }
+        const ingredientId = saltForm?.ingredient_id
+          ?? (formulation.formulation_ingredients as Array<{ ingredient_id: string }> | null)?.[0]?.ingredient_id
+          ?? null
+        const { data: ingredient } = ingredientId
+          ? await supabase
+              .from('ingredients')
+              .select('ingredient_id, common_name, therapeutic_category, dea_schedule, fda_alert_status, fda_alert_message, description')
+              .eq('ingredient_id', ingredientId)
+              .maybeSingle()
+          : { data: null }
+        return NextResponse.json({ level: 'formulation', data: { formulation, salt_form: saltForm ?? null, ingredient: ingredient ?? null } })
+      }
+
       // ── Level 6: Pharmacy options for a formulation ──────
       case 'pharmacy_options': {
         const formulationId = searchParams.get('formulation_id')

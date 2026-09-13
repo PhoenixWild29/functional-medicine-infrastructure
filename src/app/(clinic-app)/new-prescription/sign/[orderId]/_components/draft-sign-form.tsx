@@ -15,6 +15,7 @@ import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import * as Sentry from '@sentry/nextjs'
 import SignatureCanvas from 'react-signature-canvas'
+import { DraftLines, type DraftLineView } from './draft-lines'
 
 // ── F5 diagnostic (PR #7c, self-reverts) ─────────────────────
 // Cowork round-3 observed that this canvas's `onEnd` never fires
@@ -67,6 +68,8 @@ interface Props {
   wholesaleCents: number
   retailCents:    number
   sigText:        string
+  /** WO-98: this line plus its sibling drafts, with Edit / Remove / Add. */
+  draftLines?:    DraftLineView[]
 }
 
 export function DraftSignForm({
@@ -84,6 +87,7 @@ export function DraftSignForm({
   wholesaleCents,
   retailCents,
   sigText,
+  draftLines,
 }: Props) {
   const router = useRouter()
   const sigCanvasRef = useRef<SignatureCanvas>(null)
@@ -150,13 +154,19 @@ export function DraftSignForm({
         </div>
       </div>
 
-      {/* Prescription details */}
-      <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Prescription</p>
-        <p className="mt-1 text-sm font-semibold text-foreground">{medicationName}</p>
-        <p className="text-xs text-muted-foreground">{form} — {dose} — {pharmacyName}</p>
-        <p className="mt-2 text-xs text-muted-foreground italic">Sig: {sigText}</p>
-      </div>
+      {/* Prescription details — WO-98: the draft's lines with Edit /
+          Remove / + Add prescription. Falls back to the single-line
+          block when no line list was provided. */}
+      {draftLines && draftLines.length > 0 ? (
+        <DraftLines anchorOrderId={orderId} lines={draftLines} />
+      ) : (
+        <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Prescription</p>
+          <p className="mt-1 text-sm font-semibold text-foreground">{medicationName}</p>
+          <p className="text-xs text-muted-foreground">{form} — {dose} — {pharmacyName}</p>
+          <p className="mt-2 text-xs text-muted-foreground italic">Sig: {sigText}</p>
+        </div>
+      )}
 
       {/* Financial summary */}
       <div className="rounded-lg border border-border bg-muted/40 p-4 space-y-1.5 text-sm">
