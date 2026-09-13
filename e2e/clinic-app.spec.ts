@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
-import { seedStaticData, cleanupTestOrders, TEST_IDS, TEST_USERS, TEST_CATALOG, TEST_PATIENTS } from './fixtures/seed'
+import { seedStaticData, cleanupTestOrders, seedSecondProvider, retireSecondProvider, TEST_IDS, TEST_USERS, TEST_CATALOG, TEST_PATIENTS } from './fixtures/seed'
 import { decryptSecret } from '../src/lib/epcs/crypto'
 import { DEMO_TOTP_SECRET } from '../src/lib/poc/totp-enrollment'
 
@@ -39,8 +39,9 @@ async function navigateToReviewPage(
   await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
 
   // Provider (WO-100): a provider login never sees a provider list — they
-  // are the provider. MA / clinic-admin logins see the clinic's two seeded
-  // providers and pick the one with a login.
+  // are the provider. An MA / clinic-admin login sees the clinic's providers;
+  // with one it auto-selects, with two (while the WO-100 block has its
+  // second provider active) we pick the one with a login by name.
   await pickProviderIfListed(page)
   await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
 
@@ -256,7 +257,7 @@ test.describe('Clinic App — Order Creation Flow', () => {
     await page.goto('/new-prescription')
     await page.getByLabel('Search patients').fill('Test')
     await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
-    await pickProviderIfListed(page)   // WO-100: two seeded providers → clinic admin must pick one
+    await pickProviderIfListed(page)   // WO-100: tolerate a second active provider (pick by name)
     await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
 
     await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
@@ -550,7 +551,8 @@ type BuilderChoice = {
 /**
  * WO-100: the provider list only renders for MA / clinic-admin logins. When
  * it does, choose the seeded provider that has an auth login ("Provider,
- * Test"); a provider login has nothing to pick.
+ * Test") by name — never rely on auto-select, which only happens with
+ * exactly one active provider. A provider login has nothing to pick.
  */
 async function pickProviderIfListed(page: Page) {
   const providerButton = page.getByRole('button', { name: /Provider,\s*Test/i })
@@ -1163,12 +1165,20 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
 //     provider_id (403) while accepting their own (201)
 
 test.describe('Clinic App — WO-100 provider defaults to self', () => {
+  // The second provider is shared state on the E2E project: activate it only
+  // for this block and retire it afterwards so other specs (and other
+  // branches' runs) keep a single auto-selecting provider.
   test.beforeAll(async () => {
     await seedStaticData()
+    await seedSecondProvider()
   })
 
   test.afterEach(async () => {
     await cleanupTestOrders()
+  })
+
+  test.afterAll(async () => {
+    await retireSecondProvider()
   })
 
   test('provider: no provider list, step 1 reads "Patient", banner shows the signed-in provider', async ({ page }) => {

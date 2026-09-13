@@ -36,9 +36,9 @@ const supabase = createClient(E2E_SUPABASE_URL, E2E_SUPABASE_SERVICE_ROLE_KEY)
 export const TEST_IDS = {
   clinic:        'aaaaaaaa-0000-0000-0000-000000000001',
   provider:      'aaaaaaaa-0000-0000-0000-000000000002',
-  // WO-100: a second provider row with NO auth login. Gives the MA /
-  // clinic-admin path a real provider list to choose from, and is the
-  // "other provider" a draft is reassigned away from in "Sign as me".
+  // WO-100: a second provider row with NO auth login, seeded ONLY by the
+  // WO-100 describe block (seedSecondProvider / retireSecondProvider) so
+  // the shared clinic keeps a single active provider for every other spec.
   providerB:     'aaaaaaaa-0000-0000-0000-000000000004',
   patient:       'aaaaaaaa-0000-0000-0000-000000000003',
   // WO-97: one patient per allergy chip state. `patient` above is the
@@ -156,18 +156,10 @@ export async function seedStaticData(): Promise<void> {
     is_active:       true,
   }, { onConflict: 'provider_id' })
 
-  // WO-100: second provider (no login). Renders as "Provider, Other".
-  await supabase.from('providers').upsert({
-    provider_id:     TEST_IDS.providerB,
-    clinic_id:       TEST_IDS.clinic,
-    first_name:      'Other',
-    last_name:       'Provider',
-    npi_number:      '1987654321',
-    license_state:   'TX',
-    license_number:  'TEST-LICENSE-002',
-    signature_on_file: false,
-    is_active:       true,
-  }, { onConflict: 'provider_id' })
+  // WO-100: the second provider is NOT part of the shared seed. Retire it
+  // if a previous run left it active, so every other spec keeps seeing a
+  // single provider that auto-selects.
+  await retireSecondProvider()
 
   // Patients — one per WO-97 allergy chip state. The upsert re-asserts the
   // allergy columns on every run, so a test that edits them (the banner
@@ -481,6 +473,36 @@ export async function seedStaticData(): Promise<void> {
   // Smoke-test: walk the full cascade and fail loud if any level returns 0
   // rows. Turns a silent UI timeout into an actionable seed error.
   await assertV3CascadeVisible()
+}
+
+/**
+ * WO-100: activates a second provider (no login, renders as "Provider,
+ * Other") in the E2E clinic. Call from a describe's beforeAll and pair
+ * with retireSecondProvider() in afterAll — the row is shared state on
+ * the E2E project and other specs assume a single active provider.
+ */
+export async function seedSecondProvider(): Promise<void> {
+  const { error } = await supabase.from('providers').upsert({
+    provider_id:     TEST_IDS.providerB,
+    clinic_id:       TEST_IDS.clinic,
+    first_name:      'Other',
+    last_name:       'Provider',
+    npi_number:      '1987654321',
+    license_state:   'TX',
+    license_number:  'TEST-LICENSE-002',
+    signature_on_file: false,
+    is_active:       true,
+    deleted_at:      null,
+  }, { onConflict: 'provider_id' })
+  if (error) throw new Error(`seedSecondProvider: ${error.message}`)
+}
+
+/** WO-100: soft-retires the second provider (idempotent; no-op if absent). */
+export async function retireSecondProvider(): Promise<void> {
+  await supabase
+    .from('providers')
+    .update({ is_active: false, deleted_at: new Date().toISOString() })
+    .eq('provider_id', TEST_IDS.providerB)
 }
 
 /**
