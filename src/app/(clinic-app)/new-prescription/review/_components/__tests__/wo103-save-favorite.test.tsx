@@ -128,7 +128,11 @@ describe('Review card — WO-103', () => {
         default_refills: 1,
       },
     })
-    expect(await screen.findByRole('status')).toHaveTextContent('Saved to favorites')
+    // Scoped by name: since WO-97 the Review page also renders the allergy
+    // notice with role="status" when the patient has none recorded.
+    // (role="status" gets no accessible name from its text, so find the text
+    // and assert it sits in a status region.)
+    expect((await screen.findByText('Saved to favorites')).closest('[role="status"]')).not.toBeNull()
   })
 
   it('cancel closes the name field without saving', async () => {
