@@ -804,7 +804,8 @@ test.describe('Clinic App — WO-97 patient allergies / NKDA', () => {
     // Inline editor — no navigation away from the margin page.
     await banner.getByRole('button', { name: /Allergies: not recorded/ }).click()
     const editor = banner.getByTestId('allergy-editor')
-    await editor.getByLabel('Drug allergies').fill('latex, Penicillin')
+    // exact: the NKDA checkbox's label also contains "drug allergies".
+    await editor.getByLabel('Drug allergies', { exact: true }).fill('latex, Penicillin')
     await editor.getByRole('button', { name: 'Save allergies' }).click()
     await expect(banner.getByTestId('allergy-chip')).toHaveText('Allergies: latex, Penicillin')
     await expect(editor).toHaveCount(0)
