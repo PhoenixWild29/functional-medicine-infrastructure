@@ -924,7 +924,9 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
     await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
     await fillBuilder(page, GLP1)
     await page.locator('#retail-price').fill('200.00')
-    await page.getByRole('button', { name: /Review & Send/ }).click()
+    // One line is already in the session, so the banner carries a "Review & Send"
+    // link too — click the form's submit ("Review & Send (2)").
+    await page.getByRole('button', { name: 'Review & Send (2)' }).click()
     await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
 
     await expect(page.getByText('Prescriptions (2)')).toBeVisible()
@@ -997,7 +999,8 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
       .limit(1)
       .single()
     const anchorId = draft!.order_id
-    expect(draft!.sig_text).toContain('10 mg')
+    // 10 mg of a 10 mg/mL injectable → "Inject 100 units (1.00mL / 10mg) …"
+    expect(draft!.sig_text).toContain('10mg')
 
     // The MA can edit the draft they created — the creator rule, server-side.
     const ownEdit = await page.request.patch(`/api/orders/${anchorId}`, {
@@ -1046,7 +1049,7 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
       .eq('order_id', anchorId)
       .single()
     expect(anchor!.status).toBe('DRAFT')
-    expect(anchor!.sig_text).toContain('12 mg')
+    expect(anchor!.sig_text).toContain('12mg')
     expect((anchor!.medication_snapshot as { prescribed_dose?: string }).prescribed_dose).toBe('12 mg')
 
     const { data: drafts } = await supabase
@@ -1076,7 +1079,7 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
     }
     const providerEdit = rows.filter(r => r.order_id === anchorId && r.metadata.event === 'draft_edited').at(-1)!
     expect(providerEdit.metadata.actor.role).toBe('provider')
-    expect(providerEdit.metadata.diff!['sig_text']).toMatchObject({ to: expect.stringContaining('12 mg') })
+    expect(providerEdit.metadata.diff!['sig_text']).toMatchObject({ to: expect.stringContaining('12mg') })
     expect(providerEdit.metadata.diff!['medication_snapshot.prescribed_dose']).toEqual({ from: '10 mg', to: '12 mg' })
     const added = rows.find(r => r.order_id === addedId)!
     expect(added.metadata).toMatchObject({ event: 'draft_created', appended_to_order_id: anchorId })
