@@ -27,6 +27,7 @@ import {
   type TitrationConfig,
   type CyclingConfig,
 } from './structured-sig-builder.types'
+import { computeDoseDisplay } from '@/lib/orders/dose-display'
 
 // ── Props ───────────────────────────────────────────────────
 
@@ -74,55 +75,8 @@ export function timingAndDurationFromSig(sig: string | null | undefined): { timi
 }
 
 // ── Unit conversion helpers ─────────────────────────────────
-
-function computeDoseDisplay(
-  doseAmount: string,
-  doseUnit: string,
-  formulation: FormulationSigData,
-): string {
-  const doseNum = parseFloat(doseAmount)
-  if (!doseAmount || isNaN(doseNum)) return `${doseAmount} ${doseUnit}`.trim()
-
-  const concVal = formulation.concentration_value
-  const concUnit = formulation.concentration_unit
-  const isInjectable = formulation.dosage_forms?.name?.includes('Injectable') ?? false
-  const isOralSolution = (formulation.dosage_forms?.name?.includes('Solution') ?? false) && !isInjectable
-
-  if (concVal && concUnit === 'mg/mL') {
-    if (isInjectable) {
-      // Injectable: show 3-way units (mL / mg)
-      if (doseUnit === 'mg') {
-        const mL = doseNum / concVal
-        const units = Math.round(mL * 100)
-        return `${units} units (${mL.toFixed(2)}mL / ${doseNum}mg)`
-      } else if (doseUnit === 'units') {
-        const mL = doseNum / 100
-        const mg = mL * concVal
-        return `${doseNum} units (${mL.toFixed(2)}mL / ${mg.toFixed(2)}mg)`
-      } else if (doseUnit === 'mL') {
-        const mg = doseNum * concVal
-        const units = Math.round(doseNum * 100)
-        return `${units} units (${doseNum}mL / ${mg.toFixed(2)}mg)`
-      }
-    } else if (isOralSolution) {
-      // Oral solution: show 2-way mL (mg) — no syringe units
-      if (doseUnit === 'mg') {
-        const mL = doseNum / concVal
-        return `${mL.toFixed(1)}mL (${doseNum}mg)`
-      } else if (doseUnit === 'mL') {
-        const mg = doseNum * concVal
-        return `${doseNum}mL (${mg.toFixed(2)}mg)`
-      }
-    }
-  }
-
-  // Fallback: plain dose display
-  const unitLabel = doseUnit === 'tablet' ? (doseNum === 1 ? 'tablet' : 'tablets')
-    : doseUnit === 'capsule' ? (doseNum === 1 ? 'capsule' : 'capsules')
-    : doseUnit === 'click' ? (doseNum === 1 ? 'click' : 'clicks')
-    : doseUnit
-  return `${doseAmount} ${unitLabel}`.trim()
-}
+// WO-103: computeDoseDisplay moved to the shared pure lib so the
+// margin page, Review card and Favorites panel use the same arithmetic.
 
 function computeTargetDoseDisplay(
   targetDose: string,
