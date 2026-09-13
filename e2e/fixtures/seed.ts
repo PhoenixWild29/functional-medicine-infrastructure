@@ -614,3 +614,20 @@ export async function cleanupTestOrders(): Promise<void> {
   await supabase.from('transfer_failures').delete().in('order_id', orderIds)
   await supabase.from('disputes').delete().in('order_id', orderIds)
 }
+
+/**
+ * WO-103: remove favorites and protocols the E2E provider created
+ * (save-as-favorite / "+ New" protocol flows). Hard delete — these are
+ * clinic templates, not PHI.
+ */
+export async function cleanupTestFavorites(): Promise<void> {
+  await supabase.from('provider_favorites').delete().eq('provider_id', TEST_IDS.provider)
+  const { data: protocols } = await supabase
+    .from('protocol_templates')
+    .select('protocol_id')
+    .eq('clinic_id', TEST_IDS.clinic)
+  const ids = (protocols ?? []).map(p => p.protocol_id)
+  if (ids.length === 0) return
+  await supabase.from('protocol_items').delete().in('protocol_id', ids)
+  await supabase.from('protocol_templates').delete().in('protocol_id', ids)
+}

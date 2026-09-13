@@ -5,6 +5,7 @@
 //   enriched with its LIVE pharmacy_formulations wholesale_price and
 //   a formulation_active flag, plus the clinic default_markup_pct —
 //   so the client can compute real prices instead of $0.00 stubs.
+// POST /api/protocols        → WO-103: create a protocol from session lines
 // GET /api/protocols?id=xxx&patient_state=CA → additionally enriches
 //   each item with pharmacy_licensed: whether the item's pinned
 //   pharmacy holds an ACTIVE license in that state (null when no
@@ -195,4 +196,119 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ data })
+}
+
+// ── WO-103: "+ New" protocol from the current session ────────
+// POST /api/protocols
+//   { name, description?, created_by?, items: [{ formulation_id,
+//     pharmacy_id, dose_amount, dose_unit, frequency_code, sig_text,
+//     default_quantity, default_refills }] }
+// Creates a clinic protocol template from the prescriptions already in
+// the session — no new page, no re-typing. created_by must be a
+// provider in the caller's clinic when given.
+
+const PROTOCOL_NAME_MAX = 120
+const PROTOCOL_ITEMS_MAX = 20
+
+interface ProtocolItemBody {
+  formulation_id:   string
+  pharmacy_id:      string | null
+  dose_amount:      string | null
+  dose_unit:        string | null
+  frequency_code:   string | null
+  sig_text:         string | null
+  default_quantity: string | null
+  default_refills:  number
+}
+
+function optionalStr(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v.trim() : null
+}
+
+export async function POST(req: NextRequest) {
+  const supabaseAuth = await createServerClient()
+  const { data: { session } } = await supabaseAuth.auth.getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const clinicId = session.user.user_metadata?.clinic_id
+  if (!clinicId) return NextResponse.json({ error: 'No clinic context' }, { status: 403 })
+
+  let body: Record<string, unknown>
+  try { body = await req.json() as Record<string, unknown> } catch { body = {} }
+
+  const name = optionalStr(body['name'])
+  if (!name) return NextResponse.json({ error: 'name is required' }, { status: 400 })
+  if (name.length > PROTOCOL_NAME_MAX) return NextResponse.json({ error: `name must be at most ${PROTOCOL_NAME_MAX} characters` }, { status: 400 })
+
+  const rawItems = body['items']
+  if (!Array.isArray(rawItems) || rawItems.length === 0) {
+    return NextResponse.json({ error: 'items must be a non-empty array' }, { status: 400 })
+  }
+  if (rawItems.length > PROTOCOL_ITEMS_MAX) {
+    return NextResponse.json({ error: `items must have at most ${PROTOCOL_ITEMS_MAX} entries` }, { status: 400 })
+  }
+  const items: ProtocolItemBody[] = []
+  for (const raw of rawItems) {
+    if (!raw || typeof raw !== 'object') return NextResponse.json({ error: 'each item must be an object' }, { status: 400 })
+    const r = raw as Record<string, unknown>
+    const formulationId = optionalStr(r['formulation_id'])
+    if (!formulationId) return NextResponse.json({ error: 'each item needs a formulation_id' }, { status: 400 })
+    const refills = r['default_refills']
+    items.push({
+      formulation_id:   formulationId,
+      pharmacy_id:      optionalStr(r['pharmacy_id']),
+      dose_amount:      optionalStr(r['dose_amount']),
+      dose_unit:        optionalStr(r['dose_unit']),
+      frequency_code:   optionalStr(r['frequency_code']),
+      sig_text:         optionalStr(r['sig_text']),
+      default_quantity: optionalStr(r['default_quantity']),
+      default_refills:  typeof refills === 'number' && Number.isInteger(refills) && refills >= 0 ? refills : 0,
+    })
+  }
+
+  const supabase = createServiceClient()
+
+  const createdBy = optionalStr(body['created_by'])
+  if (createdBy) {
+    const { data: provider } = await supabase
+      .from('providers')
+      .select('provider_id')
+      .eq('provider_id', createdBy)
+      .eq('clinic_id', clinicId)
+      .maybeSingle()
+    if (!provider) return NextResponse.json({ error: 'Provider not in clinic' }, { status: 403 })
+  }
+
+  const { data: protocol, error: protoErr } = await supabase
+    .from('protocol_templates')
+    .insert({
+      clinic_id:   clinicId,
+      created_by:  createdBy,
+      name,
+      description: optionalStr(body['description']),
+      is_active:   true,
+    })
+    .select('protocol_id, name')
+    .single()
+
+  if (protoErr || !protocol) {
+    return NextResponse.json({ error: protoErr?.message ?? 'Failed to create protocol' }, { status: 500 })
+  }
+
+  const { error: itemsErr } = await supabase
+    .from('protocol_items')
+    .insert(items.map((item, i) => ({
+      protocol_id: protocol.protocol_id,
+      ...item,
+      sig_mode:    'standard',
+      sort_order:  i,
+    })))
+
+  if (itemsErr) {
+    // Keep the template out of the list rather than leaving an empty one.
+    await supabase.from('protocol_templates').delete().eq('protocol_id', protocol.protocol_id)
+    return NextResponse.json({ error: itemsErr.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ data: { ...protocol, item_count: items.length } }, { status: 201 })
 }

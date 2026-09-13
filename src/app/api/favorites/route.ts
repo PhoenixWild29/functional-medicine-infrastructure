@@ -7,13 +7,15 @@
 //   pharmacy_licensed: whether the pinned pharmacy holds an ACTIVE
 //   license in that state (null when no state or no pinned pharmacy)
 // POST /api/favorites          → save a new favorite
-// PATCH /api/favorites?id=xxx  → update use_count (on load)
+// PATCH /api/favorites?id=xxx  → update use_count (on load) — WO-103:
+//   with a JSON body, edits label / dose / frequency / pharmacy instead
 // DELETE /api/favorites?id=xxx → remove a favorite
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
+import { validateFavoriteEdit, FAVORITE_EDITABLE_FIELDS } from '@/lib/orders/favorite-edit'
 
 async function getClinicProviderIds(clinicId: string): Promise<string[]> {
   const supabase = createServiceClient()
@@ -171,34 +173,88 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ data }, { status: 201 })
 }
 
+// ── WO-103: editable favorites ───────────────────────────────
+// PATCH with no body (or no editable field) keeps the WO-85 behaviour:
+// bump use_count + last_used_at on load. PATCH with a JSON body of
+// {label, dose_amount, dose_unit, frequency_code, pharmacy_id, sig_text,
+// default_quantity} edits the favorite in place — clinic-scoped like
+// DELETE, and the pharmacy must actively offer the formulation.
+
 export async function PATCH(req: NextRequest) {
   const supabaseAuth = await createServerClient()
   const { data: { session } } = await supabaseAuth.auth.getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const clinicId = session.user.user_metadata?.clinic_id
+  if (!clinicId) return NextResponse.json({ error: 'No clinic context' }, { status: 403 })
+
   const { searchParams } = new URL(req.url)
   const favoriteId = searchParams.get('id')
   if (!favoriteId) return NextResponse.json({ error: 'Missing id param' }, { status: 400 })
 
+  // The body is optional (the panel's use-count bump sends none).
+  let body: unknown = null
+  try { body = await req.json() } catch { body = null }
+  const validation = validateFavoriteEdit(body)
+  if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 })
+  const isEdit = FAVORITE_EDITABLE_FIELDS.some(k => k in validation.patch)
+
   const supabase = createServiceClient()
 
-  // Read current use_count, then increment + update last_used_at
+  // Clinic-scope guard (same as DELETE): the favorite must belong to a
+  // provider in the caller's clinic. Favorites are clinic-wide, so any
+  // clinic member may edit any of the clinic's favorites.
   const { data: current } = await supabase
     .from('provider_favorites')
-    .select('use_count')
+    .select('provider_id, formulation_id, use_count')
     .eq('favorite_id', favoriteId)
     .single()
 
-  const newCount = (current?.use_count ?? 0) + 1
+  if (!current) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const { error } = await supabase
+  const validProviderIds = await getClinicProviderIds(clinicId)
+  if (!validProviderIds.includes(current.provider_id)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  if (!isEdit) {
+    // WO-85 behaviour: record a load.
+    const newCount = (current.use_count ?? 0) + 1
+    const { error } = await supabase
+      .from('provider_favorites')
+      .update({ use_count: newCount, last_used_at: new Date().toISOString() })
+      .eq('favorite_id', favoriteId)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true })
+  }
+
+  // A re-pinned pharmacy must actively offer this favorite's formulation;
+  // otherwise loading the favorite would 404 on the margin page.
+  const newPharmacyId = validation.patch['pharmacy_id']
+  if (typeof newPharmacyId === 'string') {
+    const { data: offering } = await supabase
+      .from('pharmacy_formulations')
+      .select('pharmacy_formulation_id')
+      .eq('pharmacy_id', newPharmacyId)
+      .eq('formulation_id', current.formulation_id)
+      .eq('is_available', true)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .maybeSingle()
+    if (!offering) {
+      return NextResponse.json({ error: 'That pharmacy does not offer this formulation' }, { status: 400 })
+    }
+  }
+
+  const { data, error } = await supabase
     .from('provider_favorites')
-    .update({ use_count: newCount, last_used_at: new Date().toISOString() })
+    .update({ ...validation.patch, updated_at: new Date().toISOString() })
     .eq('favorite_id', favoriteId)
+    .select()
+    .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ data })
 }
 
 export async function DELETE(req: NextRequest) {

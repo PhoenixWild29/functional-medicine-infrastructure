@@ -88,6 +88,11 @@ export interface SessionPrescription {
   // re-derivation only — never sent to the API.
   frequencyCode?:  string | null
   quantityLabel?:  string | null
+  // WO-103: formulation concentration so the Review card can show the
+  // computed mg equivalent next to the dose ("10 units (0.5 mg)").
+  // Display only — never sent to the API. OPTIONAL ON PURPOSE.
+  concentrationValue?: number | null
+  concentrationUnit?:  string | null
 }
 
 /**

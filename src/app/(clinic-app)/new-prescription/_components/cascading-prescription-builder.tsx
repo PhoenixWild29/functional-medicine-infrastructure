@@ -13,13 +13,18 @@
 //          Quantity → Pharmacy
 //
 // Outputs to the WO-80 PrescriptionSession via addPrescription().
+//
+// WO-103: the medication search is the first element under the session
+// banner, with Favorites (N) / Protocols (N) buttons beside it that
+// open panels (see quick-actions-panel.tsx).
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { usePrescriptionSession } from '../_context/prescription-session'
 import { StructuredSigBuilder } from './structured-sig-builder'
-import { QuickActionsPanel } from './quick-actions-panel'
+import { QuickActionsPanel, type Favorite } from './quick-actions-panel'
+import { SaveFavoriteButton } from './save-favorite-button'
 import { builderStateFromLine, editTargetToParams, type EditTarget } from '../_lib/edit-target'
 import type { BuilderInitialState } from '@/lib/orders/draft-edit'
 
@@ -162,6 +167,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   // matching option (once pharmacy_options load) counts as selected.
   const [pendingPharmacyId, setPendingPharmacyId] = useState<string | null>(null)
   const hydratedRef = useRef(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   // ── Cascading queries ───────────────────────────────────
 
@@ -296,8 +302,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   )
 
   // ── Load from favorite (WO-85) ──────────────────────────
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function handleLoadFavorite(fav: any) {
+  function handleLoadFavorite(fav: Favorite) {
     if (!fav.formulation_id || !fav.pharmacy_id) return
 
     // Navigate directly to margin builder with favorite's saved config
@@ -310,7 +315,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       // WO-96: quantity + refills feed the derived days supply / dispense
       // and the defaulted refills on the margin page.
       quantity: fav.default_quantity ?? '',
-      refills: String(fav.refills ?? 0),
+      refills: String(fav.default_refills ?? 0),
       // WO-98: keep the edit / add-to-draft target through the margin page.
       ...editTargetToParams(editTarget),
     })
@@ -352,34 +357,15 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   return (
     <div className="space-y-4">
 
-      {/* Quick Actions: Favorites + Protocols (WO-85) */}
-      <QuickActionsPanel onLoadFavorite={handleLoadFavorite} />
-
-      {/* FDA Alert */}
-      {selectedIngredient?.fda_alert_status && (
-        <div className="rounded-lg border-2 border-amber-400 bg-amber-50 p-4">
-          <p className="text-sm font-semibold text-amber-800">
-            FDA Alert: {selectedIngredient.fda_alert_status}
-          </p>
-          <p className="mt-1 text-xs text-amber-700">{selectedIngredient.fda_alert_message}</p>
-        </div>
-      )}
-
-      {/* DEA Schedule Warning */}
-      {selectedIngredient?.dea_schedule && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
-          <p className="text-xs font-medium text-red-700">
-            DEA Schedule {selectedIngredient.dea_schedule} — Controlled substance. EPCS requirements apply at signing.
-          </p>
-        </div>
-      )}
-
-      {/* Level 1: Ingredient Search */}
-      <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
-        <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Medication
-        </label>
+      {/* WO-103: Level 1 — medication search FIRST, with the Favorites /
+          Protocols buttons beside it (WO-85 quick actions as panels). */}
+      <QuickActionsPanel
+        onLoadFavorite={handleLoadFavorite}
+        onNewFavorite={() => searchInputRef.current?.focus()}
+      >
         <input
+          id="medication-search"
+          ref={searchInputRef}
           type="text"
           aria-label="Search medications"
           placeholder="Search medication name..."
@@ -393,7 +379,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
               setSelectedPharmacy(null)
             }
           }}
-          className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         {!selectedIngredient && searchQuery.length >= 2 && ingredients.length > 0 && (
           <div className="mt-1 max-h-48 overflow-y-auto rounded-md border border-border">
@@ -422,7 +408,26 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
             ))}
           </div>
         )}
-      </div>
+      </QuickActionsPanel>
+
+      {/* FDA Alert */}
+      {selectedIngredient?.fda_alert_status && (
+        <div className="rounded-lg border-2 border-amber-400 bg-amber-50 p-4">
+          <p className="text-sm font-semibold text-amber-800">
+            FDA Alert: {selectedIngredient.fda_alert_status}
+          </p>
+          <p className="mt-1 text-xs text-amber-700">{selectedIngredient.fda_alert_message}</p>
+        </div>
+      )}
+
+      {/* DEA Schedule Warning */}
+      {selectedIngredient?.dea_schedule && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+          <p className="text-xs font-medium text-red-700">
+            DEA Schedule {selectedIngredient.dea_schedule} — Controlled substance. EPCS requirements apply at signing.
+          </p>
+        </div>
+      )}
 
       {/* Level 2: Salt Form (if multiple) */}
       {selectedIngredient && saltForms.length > 1 && (
@@ -574,15 +579,17 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       {selectedPharmacy && (
         <div className="flex gap-2">
           <SaveFavoriteButton
-            formulation={selectedFormulation}
+            compact
+            providerId={session.provider?.provider_id ?? ''}
+            formulationId={selectedFormulation?.formulation_id ?? null}
             pharmacyId={selectedPharmacy.pharmacies?.pharmacy_id ?? null}
+            medicationName={selectedFormulation?.name ?? ''}
             doseAmount={doseAmount}
             doseUnit={doseUnit}
             frequencyCode={selectedFrequency}
             sigText={currentSig}
             quantity={quantity}
             refills={parseInt(refills, 10)}
-            providerId={session.provider?.provider_id ?? ''}
             disabled={!canAdd}
           />
           <button
@@ -596,115 +603,5 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
         </div>
       )}
     </div>
-  )
-}
-
-// ── Save as Favorite Button (WO-85) ─────────────────────────
-
-function SaveFavoriteButton({
-  formulation, pharmacyId, doseAmount, doseUnit,
-  frequencyCode, sigText, quantity, refills, providerId, disabled,
-}: {
-  formulation: Formulation | null
-  pharmacyId: string | null
-  doseAmount: string
-  doseUnit: string
-  frequencyCode: string
-  sigText: string
-  quantity: string
-  refills: number
-  providerId: string
-  disabled: boolean
-}) {
-  const queryClient = useQueryClient()
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [showLabel, setShowLabel] = useState(false)
-  const [label, setLabel] = useState('')
-
-  async function handleSave() {
-    if (!formulation || !providerId || !label.trim()) return
-    setSaving(true)
-
-    const res = await fetch('/api/favorites', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider_id: providerId,
-        formulation_id: formulation.formulation_id,
-        pharmacy_id: pharmacyId,
-        label: label.trim(),
-        dose_amount: doseAmount,
-        dose_unit: doseUnit,
-        frequency_code: frequencyCode,
-        sig_text: sigText,
-        default_quantity: quantity,
-        default_refills: refills,
-      }),
-    })
-
-    setSaving(false)
-    if (res.ok) {
-      setSaved(true)
-      setShowLabel(false)
-      queryClient.invalidateQueries({ queryKey: ['provider-favorites'] })
-      setTimeout(() => setSaved(false), 3000)
-    } else {
-      // Surface the error so users see the failure
-      const err = await res.json().catch(() => ({ error: 'Unknown error' }))
-      console.error('Save favorite failed:', err)
-      alert(`Failed to save: ${err.error ?? 'Unknown error'}`)
-    }
-  }
-
-  if (saved) {
-    return (
-      <span className="flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs font-medium text-green-700">
-        Saved
-      </span>
-    )
-  }
-
-  if (showLabel) {
-    return (
-      <div className="flex gap-1">
-        <input
-          type="text"
-          placeholder="Favorite name..."
-          value={label}
-          onChange={e => setLabel(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSave()}
-          autoFocus
-          className="w-40 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        />
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={!label.trim() || saving}
-          className="rounded-md bg-primary/10 px-2 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 disabled:opacity-50"
-        >
-          {saving ? '...' : 'Save'}
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowLabel(false)}
-          className="rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted/50"
-        >
-          Cancel
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={() => setShowLabel(true)}
-      disabled={disabled}
-      title="Save as Favorite"
-      className="rounded-md border border-border px-3 py-2 text-sm transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      &#9734;
-    </button>
   )
 }

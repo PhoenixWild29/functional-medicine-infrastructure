@@ -1,14 +1,16 @@
 'use client'
 
 // ============================================================
-// WO-85: Quick Actions Panel — Favorites, Protocols, Recent
+// WO-85 / WO-103: Quick Actions — Favorites + Protocols
 // ============================================================
 //
-// Tabbed panel above the ingredient search in the cascading
-// prescription builder. Three tabs:
-// 1. Favorites — one-click load saved prescription configs
-// 2. Protocols — one-click load multi-medication templates
-// 3. Recent   — last 10 prescriptions for quick reorder
+// WO-103 layout: the medication search (passed in as `children`) is
+// the FIRST element under the session banner, with two buttons beside
+// it — "Favorites (N)" and "Protocols (N)" — each opening a panel
+// below. Each panel has a "+ New" action. Favorites are clinic-wide
+// (WO-85) with a "Mine" filter, show units and the computed mg
+// ("10 units (0.5 mg) weekly"), and are editable in place (name, dose,
+// frequency, pharmacy). Delete keeps the two-step confirm.
 //
 // Favorites load all dropdown values + sig into the builder.
 // Protocols add all medications to the WO-80 session at once,
@@ -32,7 +34,7 @@
 // nothing to review. Loads are idempotent: lines already present in
 // the session are never added twice.
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import {
@@ -41,10 +43,17 @@ import {
   type SessionPrescription,
 } from '../_context/prescription-session'
 import { computeItemPricing, findUnavailableItems, findUnlicensedItems } from './protocol-pricing'
+import { FREQUENCY_OPTIONS } from './structured-sig-builder.types'
+import {
+  buildStandardSig,
+  DOSE_UNITS,
+  formatFavoriteDose,
+} from '@/lib/orders/dose-display'
+import { splitDose } from '@/lib/orders/dose'
 
 // ── Types ───────────────────────────────────
 
-interface Favorite {
+export interface Favorite {
   favorite_id: string
   provider_id: string
   formulation_id: string
@@ -129,6 +138,12 @@ interface ProtocolDetail extends Protocol {
   default_markup_pct: number | null
 }
 
+interface PharmacyOption {
+  pharmacy_formulation_id: string
+  wholesale_price: number
+  pharmacies: { pharmacy_id: string; name: string } | null
+}
+
 // ── Fetchers ────────────────────────────────
 
 async function fetchFavorites(patientState: string | null): Promise<Favorite[]> {
@@ -154,19 +169,34 @@ async function fetchProtocolDetail(id: string, patientState: string | null): Pro
   return json.data ?? null
 }
 
+async function fetchPharmacyOptions(formulationId: string, patientState: string | null): Promise<PharmacyOption[]> {
+  const search = new URLSearchParams({ level: 'pharmacy_options', formulation_id: formulationId })
+  if (patientState) search.set('state', patientState)
+  const res = await fetch(`/api/formulations?${search.toString()}`)
+  if (!res.ok) return []
+  const json = await res.json()
+  return json.data ?? []
+}
+
 // ── Props ────────────────────────────────────
+
+export type QuickActionsPanelName = 'favorites' | 'protocols'
 
 interface QuickActionsPanelProps {
   onLoadFavorite: (fav: Favorite) => void
+  /** The medication search control — rendered first, buttons beside it. */
+  children?: ReactNode
+  /** Favorites "+ New": close the panel and put the provider in the search. */
+  onNewFavorite?: () => void
 }
 
 // ── Component ───────────────────────────────────
 
-export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
+export function QuickActionsPanel({ onLoadFavorite, children, onNewFavorite }: QuickActionsPanelProps) {
   const router = useRouter()
   const session = usePrescriptionSession()
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState<'favorites' | 'protocols' | 'recent'>('favorites')
+  const [activePanel, setActivePanel] = useState<QuickActionsPanelName | null>(null)
   const [expandedProtocol, setExpandedProtocol] = useState<string | null>(null)
   const [loadingProtocol, setLoadingProtocol] = useState(false)
   const [protocolLoadError, setProtocolLoadError] = useState<string | null>(null)
@@ -179,6 +209,16 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
   const [confirmDeleteFav, setConfirmDeleteFav] = useState<string | null>(null)
   const [deletingFav, setDeletingFav] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  // WO-103: "Mine" filter (clinic-wide list narrowed to the session
+  // provider's own favorites) and in-place edit.
+  const [mineOnly, setMineOnly] = useState(false)
+  const [editingFav, setEditingFav] = useState<string | null>(null)
+  // WO-103: "+ New" protocol from the session lines.
+  const [newProtocolOpen, setNewProtocolOpen] = useState(false)
+  const [newProtocolName, setNewProtocolName] = useState('')
+  const [savingProtocol, setSavingProtocol] = useState(false)
+  const [protocolSaveError, setProtocolSaveError] = useState<string | null>(null)
+  const [protocolSaved, setProtocolSaved] = useState<string | null>(null)
 
   // Selected patient's shipping state — drives the licensure enrichment
   // on both quick-load APIs. Part of the query keys so switching patients
@@ -200,6 +240,10 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
     queryFn: () => fetchProtocolDetail(expandedProtocol!, patientState),
     enabled: !!expandedProtocol,
   })
+
+  function togglePanel(name: QuickActionsPanelName) {
+    setActivePanel(prev => (prev === name ? null : name))
+  }
 
   // ── Load protocol into session ────────────────
   function loadProtocolToSession(detail: ProtocolDetail) {
@@ -283,6 +327,8 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
         // ad-hoc builder lines never set this.
         protocolId: detail.protocol_id,
         protocolName: detail.name,
+        frequencyCode: item.frequency_code,
+        quantityLabel: item.default_quantity,
       }
 
       const signature = prescriptionSignature(line)
@@ -372,277 +418,668 @@ export function QuickActionsPanel({ onLoadFavorite }: QuickActionsPanelProps) {
     }
   }
 
-  // ── No data yet? ─────────────────────────────
-  const hasFavorites = favorites.length > 0
-  const hasProtocols = protocols.length > 0
+  // ── WO-103: "+ New" protocol from the session ─────────
+  const protocolLines = session.prescriptions.filter(rx => !!rx.formulationId)
 
-  if (!hasFavorites && !hasProtocols) return null
+  async function handleSaveProtocol() {
+    const name = newProtocolName.trim()
+    if (!name || protocolLines.length === 0 || savingProtocol) return
+    setSavingProtocol(true)
+    setProtocolSaveError(null)
+    try {
+      const res = await fetch('/api/protocols', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          created_by: session.provider?.provider_id ?? null,
+          items: protocolLines.map(rx => {
+            const { amount, unit } = splitDose(rx.dose)
+            return {
+              formulation_id:   rx.formulationId,
+              pharmacy_id:      rx.pharmacyId,
+              dose_amount:      amount || null,
+              dose_unit:        unit || null,
+              frequency_code:   rx.frequencyCode ?? null,
+              sig_text:         rx.sigText,
+              default_quantity: rx.quantityLabel ?? null,
+              default_refills:  rx.rxDetails?.refills ?? 0,
+            }
+          }),
+        }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(json.error ?? `Save failed (${res.status})`)
+      }
+      await queryClient.invalidateQueries({ queryKey: ['clinic-protocols'] })
+      setNewProtocolOpen(false)
+      setNewProtocolName('')
+      setProtocolSaved(name)
+    } catch (err) {
+      setProtocolSaveError(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setSavingProtocol(false)
+    }
+  }
+
+  const providerId = session.provider?.provider_id ?? null
+  const visibleFavorites = mineOnly && providerId
+    ? favorites.filter(fav => fav.provider_id === providerId)
+    : favorites
+
+  const buttonClass = (name: QuickActionsPanelName) =>
+    `whitespace-nowrap rounded-md border px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+      activePanel === name
+        ? 'border-primary bg-primary/10 text-primary'
+        : 'border-border bg-background text-foreground hover:bg-muted/50'
+    }`
 
   return (
-    <div className="rounded-lg border border-border bg-card shadow-sm">
-      {/* Tab headers */}
-      <div className="flex border-b border-border">
-        {hasFavorites && (
-          <button
-            type="button"
-            onClick={() => setActiveTab('favorites')}
-            className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
-              activeTab === 'favorites'
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Favorites ({favorites.length})
-          </button>
-        )}
-        {hasProtocols && (
-          <button
-            type="button"
-            onClick={() => setActiveTab('protocols')}
-            className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
-              activeTab === 'protocols'
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Protocols ({protocols.length})
-          </button>
-        )}
+    <div className="space-y-3">
+      {/* Search first, Favorites / Protocols buttons beside it */}
+      <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+        <label htmlFor="medication-search" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Medication
+        </label>
+        <div className="mt-1 flex items-start gap-2">
+          <div className="min-w-0 flex-1">{children}</div>
+          <div className="flex shrink-0 gap-2" role="group" aria-label="Quick actions">
+            <button
+              type="button"
+              onClick={() => togglePanel('favorites')}
+              aria-expanded={activePanel === 'favorites'}
+              aria-controls="favorites-panel"
+              className={buttonClass('favorites')}
+            >
+              Favorites ({favorites.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => togglePanel('protocols')}
+              aria-expanded={activePanel === 'protocols'}
+              aria-controls="protocols-panel"
+              className={buttonClass('protocols')}
+            >
+              Protocols ({protocols.length})
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Tab content */}
-      <div className="p-3">
-        {/* ── Favorites Tab ───────────────────────────── */}
-        {activeTab === 'favorites' && (
-          <div className="space-y-1.5">
-            {deleteError && (
-              <p
-                role="alert"
-                className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
-              >
-                {deleteError}
+      {/* ── Favorites panel ───────────────────────────── */}
+      {activePanel === 'favorites' && (
+        <section
+          id="favorites-panel"
+          aria-label="Favorites"
+          data-testid="favorites-panel"
+          className="rounded-lg border border-border bg-card p-3 shadow-sm space-y-2"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Favorites ({visibleFavorites.length})
               </p>
-            )}
-            {favorites.map(fav => {
-              const isConfirming = confirmDeleteFav === fav.favorite_id
-              const isDeleting = deletingFav === fav.favorite_id
-              const isUnavailable = fav.formulation_active === false
-              const isUnlicensed = fav.pharmacy_licensed === false
-              return (
-                <div
+              <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={mineOnly}
+                  onChange={e => setMineOnly(e.target.checked)}
+                  disabled={!providerId}
+                  className="rounded border-border"
+                />
+                Mine
+              </label>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setActivePanel(null)
+                onNewFavorite?.()
+              }}
+              className="rounded-md border border-primary/40 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/5"
+            >
+              + New
+            </button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Clinic-wide. New favorites are saved with ☆ from the builder, the price page, or any Review card.
+          </p>
+          {deleteError && (
+            <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {deleteError}
+            </p>
+          )}
+          {visibleFavorites.length === 0 && (
+            <p className="rounded-md border border-dashed border-border px-3 py-3 text-center text-xs text-muted-foreground">
+              {mineOnly ? 'No favorites of yours yet.' : 'No favorites yet.'} Search a medication, set the dose, and click ☆ Save as favorite.
+            </p>
+          )}
+          <div className="space-y-1.5">
+            {visibleFavorites.map(fav => (
+              editingFav === fav.favorite_id ? (
+                <FavoriteEditForm
                   key={fav.favorite_id}
-                  className={`group flex items-stretch rounded-md border border-border transition-colors ${
-                    isUnavailable || isUnlicensed ? 'opacity-60' : 'hover:bg-muted/50'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => handleFavoriteClick(fav)}
-                    disabled={isUnavailable || isUnlicensed}
-                    className="flex-1 text-left px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-l-md disabled:cursor-not-allowed"
-                  >
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-foreground">{fav.label}</p>
-                      <div className="flex items-center gap-1">
-                        {isUnavailable && (
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                            unavailable
-                          </span>
-                        )}
-                        {!isUnavailable && isUnlicensed && (
-                          <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">
-                            not licensed in {patientState}
-                          </span>
-                        )}
-                        {fav.sig_mode !== 'standard' && (
-                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                            {fav.sig_mode}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground truncate">
-                      {fav.formulations?.name}
-                      {fav.dose_amount && ` — ${fav.dose_amount} ${fav.dose_unit ?? ''}`}
-                    </p>
-                    {isUnavailable && (
-                      <p className="mt-0.5 text-[10px] text-amber-700">
-                        No longer in the catalog — remove this favorite and choose a replacement.
-                      </p>
+                  favorite={fav}
+                  patientState={patientState}
+                  onCancel={() => setEditingFav(null)}
+                  onSaved={async () => {
+                    await queryClient.invalidateQueries({ queryKey: ['provider-favorites'] })
+                    setEditingFav(null)
+                  }}
+                />
+              ) : (
+                <FavoriteRow
+                  key={fav.favorite_id}
+                  favorite={fav}
+                  patientState={patientState}
+                  isConfirming={confirmDeleteFav === fav.favorite_id}
+                  isDeleting={deletingFav === fav.favorite_id}
+                  onLoad={() => handleFavoriteClick(fav)}
+                  onEdit={() => { setConfirmDeleteFav(null); setEditingFav(fav.favorite_id) }}
+                  onAskDelete={() => setConfirmDeleteFav(fav.favorite_id)}
+                  onConfirmDelete={() => { void handleConfirmDelete(fav.favorite_id) }}
+                  onCancelDelete={() => setConfirmDeleteFav(null)}
+                />
+              )
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Protocols panel ─────────────────────────── */}
+      {activePanel === 'protocols' && (
+        <section
+          id="protocols-panel"
+          aria-label="Protocols"
+          data-testid="protocols-panel"
+          className="rounded-lg border border-border bg-card p-3 shadow-sm space-y-2"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Protocols ({protocols.length})
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setProtocolSaved(null)
+                setProtocolSaveError(null)
+                setNewProtocolOpen(v => !v)
+              }}
+              aria-expanded={newProtocolOpen}
+              className="rounded-md border border-primary/40 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/5"
+            >
+              + New
+            </button>
+          </div>
+
+          {newProtocolOpen && (
+            <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2" data-testid="new-protocol-form">
+              {protocolLines.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Add prescriptions to this session first, then come back here to save them as a protocol.
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Saves the {protocolLines.length} prescription{protocolLines.length !== 1 ? 's' : ''} in this session
+                    ({protocolLines.map(rx => rx.medicationName).join(', ')}) as a clinic protocol.
+                  </p>
+                  <div className="flex gap-1">
+                    <label htmlFor="new-protocol-name" className="sr-only">Protocol name</label>
+                    <input
+                      id="new-protocol-name"
+                      type="text"
+                      placeholder="Protocol name…"
+                      value={newProtocolName}
+                      onChange={e => setNewProtocolName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void handleSaveProtocol() } }}
+                      autoFocus
+                      className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { void handleSaveProtocol() }}
+                      disabled={!newProtocolName.trim() || savingProtocol}
+                      className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {savingProtocol ? 'Saving…' : 'Save protocol'}
+                    </button>
+                  </div>
+                </>
+              )}
+              {protocolSaveError && (
+                <p role="alert" className="text-xs text-red-600">{protocolSaveError}</p>
+              )}
+            </div>
+          )}
+          {protocolSaved && (
+            <p role="status" className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
+              Protocol &ldquo;{protocolSaved}&rdquo; saved.
+            </p>
+          )}
+
+          {protocolLoadError && (
+            <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {protocolLoadError}
+            </p>
+          )}
+          {protocolLoadNotice && (
+            <p role="status" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {protocolLoadNotice}
+            </p>
+          )}
+          {protocols.length === 0 && !newProtocolOpen && (
+            <p className="rounded-md border border-dashed border-border px-3 py-3 text-center text-xs text-muted-foreground">
+              No protocols yet. Add prescriptions to the session, then use + New to save them as one.
+            </p>
+          )}
+          {protocols.map(proto => (
+            <div key={proto.protocol_id} className="rounded-md border border-border">
+              <button
+                type="button"
+                onClick={() => {
+                  setProtocolLoadError(null)
+                  setProtocolLoadNotice(null)
+                  setExpandedProtocol(
+                    expandedProtocol === proto.protocol_id ? null : proto.protocol_id
+                  )
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{proto.name}</p>
+                    <p className="text-xs text-muted-foreground">{proto.description}</p>
+                  </div>
+                  <div className="text-right">
+                    {proto.therapeutic_category && (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                        {proto.therapeutic_category}
+                      </span>
                     )}
-                    {!isUnavailable && isUnlicensed && (
-                      <p className="mt-0.5 text-[10px] text-red-700">
-                        {fav.pharmacies?.name ?? 'The pinned pharmacy'} is not licensed in {patientState} — choose a licensed pharmacy for this patient.
-                      </p>
-                    )}
-                    {fav.use_count > 0 && (
+                    {proto.total_duration_weeks && (
                       <p className="mt-0.5 text-[10px] text-muted-foreground">
-                        Used {fav.use_count} time{fav.use_count !== 1 ? 's' : ''}
+                        {proto.total_duration_weeks} weeks
                       </p>
-                    )}
-                  </button>
-                  {/* Delete affordance — two-step confirm pattern */}
-                  <div className="flex items-center pr-2">
-                    {isConfirming ? (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => { void handleConfirmDelete(fav.favorite_id) }}
-                          disabled={isDeleting}
-                          className="rounded bg-red-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                        >
-                          {isDeleting ? 'Deleting…' : 'Confirm'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteFav(null)}
-                          disabled={isDeleting}
-                          className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        aria-label={`Delete favorite ${fav.label}`}
-                        onClick={() => setConfirmDeleteFav(fav.favorite_id)}
-                        className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M3 6h18" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          <line x1="10" y1="11" x2="10" y2="17" />
-                          <line x1="14" y1="11" x2="14" y2="17" />
-                        </svg>
-                      </button>
                     )}
                   </div>
                 </div>
-              )
-            })}
-          </div>
-        )}
+              </button>
 
-        {/* ── Protocols Tab ─────────────────────────── */}
-        {activeTab === 'protocols' && (
-          <div className="space-y-2">
-            {protocolLoadError && (
-              <p
-                role="alert"
-                className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
-              >
-                {protocolLoadError}
-              </p>
-            )}
-            {protocolLoadNotice && (
-              <p
-                role="status"
-                className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800"
-              >
-                {protocolLoadNotice}
-              </p>
-            )}
-            {protocols.map(proto => (
-              <div key={proto.protocol_id} className="rounded-md border border-border">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setProtocolLoadError(null)
-                    setProtocolLoadNotice(null)
-                    setExpandedProtocol(
-                      expandedProtocol === proto.protocol_id ? null : proto.protocol_id
-                    )
-                  }}
-                  className="w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{proto.name}</p>
-                      <p className="text-xs text-muted-foreground">{proto.description}</p>
-                    </div>
-                    <div className="text-right">
-                      {proto.therapeutic_category && (
-                        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
-                          {proto.therapeutic_category}
+              {/* Expanded: show items + load button */}
+              {expandedProtocol === proto.protocol_id && protocolDetail && (
+                <div className="border-t border-border px-3 py-2 space-y-1.5">
+                  {protocolDetail.items.map((item, i) => {
+                    const itemUnlicensed = item.pharmacy_licensed === false
+                    const itemUnavailable =
+                      !itemUnlicensed && (!item.formulation_active || item.wholesale_price === null)
+                    return (
+                      <div key={item.item_id ?? i} className="flex items-start gap-2 text-xs">
+                        <span className="mt-0.5 w-4 text-center font-medium text-muted-foreground">
+                          {i + 1}
                         </span>
-                      )}
-                      {proto.total_duration_weeks && (
-                        <p className="mt-0.5 text-[10px] text-muted-foreground">
-                          {proto.total_duration_weeks} weeks
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </button>
-
-                {/* Expanded: show items + load button */}
-                {expandedProtocol === proto.protocol_id && protocolDetail && (
-                  <div className="border-t border-border px-3 py-2 space-y-1.5">
-                    {protocolDetail.items.map((item, i) => {
-                      const itemUnlicensed = item.pharmacy_licensed === false
-                      const itemUnavailable =
-                        !itemUnlicensed && (!item.formulation_active || item.wholesale_price === null)
-                      return (
-                        <div key={item.item_id ?? i} className="flex items-start gap-2 text-xs">
-                          <span className="mt-0.5 w-4 text-center font-medium text-muted-foreground">
-                            {i + 1}
-                          </span>
-                          <div className="flex-1">
-                            <p className="font-medium text-foreground">
-                              {item.formulations?.name ?? 'Unknown'}
-                              {itemUnavailable && (
-                                <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
-                                  unavailable
-                                </span>
-                              )}
-                              {itemUnlicensed && (
-                                <span className="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">
-                                  not licensed in {patientState} — will be skipped
-                                </span>
-                              )}
-                            </p>
-                            <p className="text-muted-foreground truncate">
-                              {item.sig_text}
-                            </p>
-                            {item.phase_name && (
-                              <span className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
-                                {item.phase_name}
+                        <div className="flex-1">
+                          <p className="font-medium text-foreground">
+                            {item.formulations?.name ?? 'Unknown'}
+                            {itemUnavailable && (
+                              <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                                unavailable
                               </span>
                             )}
-                          </div>
+                            {itemUnlicensed && (
+                              <span className="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">
+                                not licensed in {patientState} — will be skipped
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-muted-foreground truncate">
+                            {item.sig_text}
+                          </p>
+                          {item.phase_name && (
+                            <span className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+                              {item.phase_name}
+                            </span>
+                          )}
                         </div>
-                      )
-                    })}
-                    <button
-                      type="button"
-                      disabled={!session.patient || !session.provider || loadingProtocol}
-                      onClick={() => loadProtocolToSession(protocolDetail)}
-                      className="mt-2 w-full rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {loadingProtocol
-                        ? 'Loading...'
-                        : `Load ${protocolDetail.items.length} Medications into Session`}
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
+                      </div>
+                    )
+                  })}
+                  <button
+                    type="button"
+                    disabled={!session.patient || !session.provider || loadingProtocol}
+                    onClick={() => loadProtocolToSession(protocolDetail)}
+                    className="mt-2 w-full rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {loadingProtocol
+                      ? 'Loading...'
+                      : `Load ${protocolDetail.items.length} Medications into Session`}
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
+    </div>
+  )
+}
+
+// ── Favorite row ───────────────────────────────
+
+interface FavoriteRowProps {
+  favorite: Favorite
+  patientState: string | null
+  isConfirming: boolean
+  isDeleting: boolean
+  onLoad: () => void
+  onEdit: () => void
+  onAskDelete: () => void
+  onConfirmDelete: () => void
+  onCancelDelete: () => void
+}
+
+function FavoriteRow({
+  favorite: fav, patientState, isConfirming, isDeleting,
+  onLoad, onEdit, onAskDelete, onConfirmDelete, onCancelDelete,
+}: FavoriteRowProps) {
+  const isUnavailable = fav.formulation_active === false
+  const isUnlicensed = fav.pharmacy_licensed === false
+  const doseLine = formatFavoriteDose({
+    doseAmount: fav.dose_amount,
+    doseUnit: fav.dose_unit,
+    frequencyCode: fav.frequency_code,
+    concentration: fav.formulations,
+  })
+
+  return (
+    <div
+      data-testid={`favorite-${fav.favorite_id}`}
+      className={`group flex items-stretch rounded-md border border-border transition-colors ${
+        isUnavailable || isUnlicensed ? 'opacity-60' : 'hover:bg-muted/50'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onLoad}
+        disabled={isUnavailable || isUnlicensed}
+        className="flex-1 text-left px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-l-md disabled:cursor-not-allowed"
+      >
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium text-foreground">{fav.label}</p>
+          <div className="flex items-center gap-1">
+            {isUnavailable && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                unavailable
+              </span>
+            )}
+            {!isUnavailable && isUnlicensed && (
+              <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">
+                not licensed in {patientState}
+              </span>
+            )}
+            {fav.sig_mode !== 'standard' && (
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                {fav.sig_mode}
+              </span>
+            )}
           </div>
+        </div>
+        <p className="mt-0.5 text-xs text-muted-foreground truncate">
+          {fav.formulations?.name}
+          {fav.pharmacies?.name && ` · ${fav.pharmacies.name}`}
+        </p>
+        {doseLine && (
+          <p className="mt-0.5 text-xs text-foreground" data-testid="favorite-dose">
+            {doseLine}
+          </p>
+        )}
+        {isUnavailable && (
+          <p className="mt-0.5 text-[10px] text-amber-700">
+            No longer in the catalog — remove this favorite and choose a replacement.
+          </p>
+        )}
+        {!isUnavailable && isUnlicensed && (
+          <p className="mt-0.5 text-[10px] text-red-700">
+            {fav.pharmacies?.name ?? 'The pinned pharmacy'} is not licensed in {patientState} — choose a licensed pharmacy for this patient.
+          </p>
+        )}
+        {fav.use_count > 0 && (
+          <p className="mt-0.5 text-[10px] text-muted-foreground">
+            Used {fav.use_count} time{fav.use_count !== 1 ? 's' : ''}
+          </p>
+        )}
+      </button>
+      {/* Edit + delete affordances — delete keeps the two-step confirm */}
+      <div className="flex items-center gap-1 pr-2">
+        {isConfirming ? (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onConfirmDelete}
+              disabled={isDeleting}
+              className="rounded bg-red-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            >
+              {isDeleting ? 'Deleting…' : 'Confirm'}
+            </button>
+            <button
+              type="button"
+              onClick={onCancelDelete}
+              disabled={isDeleting}
+              className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <>
+            <button
+              type="button"
+              aria-label={`Edit favorite ${fav.label}`}
+              onClick={onEdit}
+              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              aria-label={`Delete favorite ${fav.label}`}
+              onClick={onAskDelete}
+              className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 6h18" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                <line x1="10" y1="11" x2="10" y2="17" />
+                <line x1="14" y1="11" x2="14" y2="17" />
+              </svg>
+            </button>
+          </>
         )}
       </div>
     </div>
+  )
+}
+
+// ── Favorite edit form (WO-103) ────────────────
+// Name, dose (amount + unit), frequency and pharmacy. The mg preview
+// updates as the dose is typed; on save the stored sig is regenerated
+// for standard-mode favorites so it follows the new dose.
+
+interface FavoriteEditFormProps {
+  favorite: Favorite
+  patientState: string | null
+  onCancel: () => void
+  onSaved: () => Promise<void> | void
+}
+
+function FavoriteEditForm({ favorite: fav, patientState, onCancel, onSaved }: FavoriteEditFormProps) {
+  const [label, setLabel] = useState(fav.label)
+  const [doseAmount, setDoseAmount] = useState(fav.dose_amount ?? '')
+  const [doseUnit, setDoseUnit] = useState(fav.dose_unit ?? '')
+  const [frequency, setFrequency] = useState(fav.frequency_code ?? '')
+  const [pharmacyId, setPharmacyId] = useState(fav.pharmacy_id ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const { data: pharmacyOptions = [] } = useQuery({
+    queryKey: ['formulation-pharmacies', fav.formulation_id, patientState],
+    queryFn: () => fetchPharmacyOptions(fav.formulation_id, patientState),
+  })
+  // Keep the current pharmacy selectable even if it is not (or no longer)
+  // in the licensed list, so opening the form never silently changes it.
+  const pharmacyChoices = pharmacyOptions
+    .map(po => po.pharmacies)
+    .filter((p): p is { pharmacy_id: string; name: string } => !!p)
+  if (fav.pharmacies && !pharmacyChoices.some(p => p.pharmacy_id === fav.pharmacies?.pharmacy_id)) {
+    pharmacyChoices.unshift(fav.pharmacies)
+  }
+
+  const preview = formatFavoriteDose({
+    doseAmount, doseUnit, frequencyCode: frequency, concentration: fav.formulations,
+  })
+  const doseValid = Number.isFinite(parseFloat(doseAmount)) && parseFloat(doseAmount) > 0
+  const canSave = !!label.trim() && doseValid && !!doseUnit && !saving
+
+  async function handleSave() {
+    if (!canSave) return
+    setSaving(true)
+    setError(null)
+    const doseChanged =
+      doseAmount !== (fav.dose_amount ?? '') || doseUnit !== (fav.dose_unit ?? '') || frequency !== (fav.frequency_code ?? '')
+    const body: Record<string, string | null> = {
+      label: label.trim(),
+      dose_amount: doseAmount,
+      dose_unit: doseUnit,
+      pharmacy_id: pharmacyId || null,
+    }
+    if (frequency) body['frequency_code'] = frequency
+    if (doseChanged && fav.sig_mode === 'standard' && fav.formulations) {
+      const sig = buildStandardSig({
+        doseAmount, doseUnit, frequencyCode: frequency || fav.frequency_code,
+        timingCode: fav.timing_code, formulation: fav.formulations,
+      })
+      if (sig) body['sig_text'] = sig
+    }
+    try {
+      const res = await fetch(`/api/favorites?id=${fav.favorite_id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(json.error ?? `Save failed (${res.status})`)
+      }
+      await onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form
+      data-testid={`favorite-edit-${fav.favorite_id}`}
+      aria-label={`Edit favorite ${fav.label}`}
+      onSubmit={e => { e.preventDefault(); void handleSave() }}
+      className="rounded-md border border-primary/40 bg-primary/5 p-3 space-y-2"
+    >
+      <p className="text-xs text-muted-foreground truncate">{fav.formulations?.name}</p>
+      <div>
+        <label htmlFor={`fav-name-${fav.favorite_id}`} className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          Favorite name
+        </label>
+        <input
+          id={`fav-name-${fav.favorite_id}`}
+          type="text"
+          value={label}
+          onChange={e => setLabel(e.target.value)}
+          className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <div>
+          <label htmlFor={`fav-dose-${fav.favorite_id}`} className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            Favorite dose amount
+          </label>
+          <input
+            id={`fav-dose-${fav.favorite_id}`}
+            type="text"
+            inputMode="decimal"
+            value={doseAmount}
+            onChange={e => setDoseAmount(e.target.value)}
+            className="mt-0.5 w-20 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
+        <div>
+          <label htmlFor={`fav-unit-${fav.favorite_id}`} className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            Favorite dose unit
+          </label>
+          <select
+            id={`fav-unit-${fav.favorite_id}`}
+            value={doseUnit}
+            onChange={e => setDoseUnit(e.target.value)}
+            className="mt-0.5 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value="">Unit</option>
+            {DOSE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+          </select>
+        </div>
+        <div className="min-w-[10rem] flex-1">
+          <label htmlFor={`fav-freq-${fav.favorite_id}`} className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            Favorite frequency
+          </label>
+          <select
+            id={`fav-freq-${fav.favorite_id}`}
+            value={frequency}
+            onChange={e => setFrequency(e.target.value)}
+            className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value="">Select frequency</option>
+            {FREQUENCY_OPTIONS.map(f => <option key={f.code} value={f.code}>{f.display}</option>)}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label htmlFor={`fav-pharmacy-${fav.favorite_id}`} className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          Favorite pharmacy
+        </label>
+        <select
+          id={`fav-pharmacy-${fav.favorite_id}`}
+          value={pharmacyId}
+          onChange={e => setPharmacyId(e.target.value)}
+          className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <option value="">No pinned pharmacy</option>
+          {pharmacyChoices.map(p => <option key={p.pharmacy_id} value={p.pharmacy_id}>{p.name}</option>)}
+        </select>
+      </div>
+      <p className="text-xs text-foreground" data-testid="favorite-dose-preview">
+        {preview || 'Enter a dose to see the mg equivalent'}
+      </p>
+      {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
+      <div className="flex gap-1">
+        <button
+          type="submit"
+          disabled={!canSave}
+          className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save changes'}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={saving}
+          className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted/50 disabled:opacity-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
   )
 }

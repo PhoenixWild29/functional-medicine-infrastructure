@@ -18,6 +18,9 @@
 // quantity and shown read-only next to the sig (overridable); the
 // per-Rx detail fields are pre-filled from the formulation defaults and
 // travel to the Review card on the session line.
+//
+// WO-103: the dose line shows the computed mg equivalent
+// ("10 units (0.5 mg)") and carries a ☆ Save as favorite action.
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
@@ -35,6 +38,8 @@ import {
 import type { RxFormulationDefaults } from '@/lib/orders/rx-defaults-loader'
 import { splitDose } from '@/lib/orders/dose'
 import { DerivedDispense, EMPTY_OVERRIDE, resolveDispense, type DispenseOverride } from '../../_components/derived-dispense'
+import { SaveFavoriteButton } from '../../_components/save-favorite-button'
+import { formatDoseWithMg } from '@/lib/orders/dose-display'
 
 // ── Cent arithmetic helpers — HC-01 ──────────────────────────
 // Convert a NUMERIC(10,2) server value (JS float64) to integer cents once.
@@ -100,7 +105,7 @@ interface Props {
   presetDose?:         string | undefined
 }
 
-// splitDose moved to @/lib/orders/dose (WO-98) — re-exported for existing imports.
+// splitDose moved to @/lib/orders/dose (WO-98; WO-103 uses the same helper) — re-exported for existing imports.
 export { splitDose }
 
 // ── Multiplier buttons ────────────────────────────────────────
@@ -206,6 +211,14 @@ export function MarginBuilderForm({
 
   const wholesaleCents = useMemo(() => toCents(wholesalePrice), [wholesalePrice])
 
+  // WO-103: dose with its computed mg equivalent, when the formulation
+  // has an mg/mL concentration ("10 units (0.5 mg)").
+  const concentration = formulationDetails
+    ? { concentration_value: formulationDetails.concentrationValue, concentration_unit: formulationDetails.concentrationUnit }
+    : null
+  const doseParts = splitDose(dose)
+  const doseDisplay = formulationDetails ? formatDoseWithMg(doseParts.amount, doseParts.unit, concentration) : dose
+
   // Retail price input — stored as formatted string so user can type freely.
   // WO-98: an edited line keeps its price until the user changes it.
   const [retailInput, setRetailInput] = useState<string>(() =>
@@ -287,6 +300,9 @@ export function MarginBuilderForm({
       rxRules,
       frequencyCode: presetFrequency ?? null,
       quantityLabel: presetQuantity ?? null,
+      // WO-103: lets the Review card show the mg equivalent
+      concentrationValue: formulationDetails?.concentrationValue ?? null,
+      concentrationUnit:  formulationDetails?.concentrationUnit ?? null,
     }
   }
 
@@ -436,8 +452,24 @@ export function MarginBuilderForm({
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="font-semibold text-foreground">{medicationName}</p>
-            <p className="text-sm text-muted-foreground">{form} · {dose}</p>
+            <p className="text-sm text-muted-foreground">{form} · <span data-testid="dose-display">{doseDisplay}</span></p>
             <p className="text-xs text-muted-foreground mt-0.5">via {pharmacyName}</p>
+            {/* WO-103: ☆ Save as favorite — name defaults to "<Drug> <dose> <freq>" */}
+            <div className="mt-2">
+              <SaveFavoriteButton
+                providerId={rxSession.provider?.provider_id ?? ''}
+                formulationId={formulationId}
+                pharmacyId={pharmacyId}
+                medicationName={medicationName}
+                doseAmount={doseParts.amount}
+                doseUnit={doseParts.unit}
+                frequencyCode={presetFrequency ?? null}
+                sigText={sigTrimmed}
+                quantity={presetQuantity ?? null}
+                refills={rxDetails.refills}
+                disabled={sigTrimmed.length < 10}
+              />
+            </div>
           </div>
           <div className="text-right shrink-0">
             <p className="text-xl font-bold text-foreground">${toCurrency(wholesaleCents)}</p>
