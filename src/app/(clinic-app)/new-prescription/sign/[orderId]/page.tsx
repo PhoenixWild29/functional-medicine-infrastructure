@@ -10,6 +10,12 @@
 // This page is the provider's entry point for signing orders that
 // were saved as drafts by the MA (WO-77 flow).
 //
+// WO-100: if the draft is assigned to a different provider than the
+// signed-in one, the signing form is replaced by a "Sign as me" panel.
+// Taking it over reassigns every line of the draft to the caller (with
+// an audit row) and re-renders this page as the signing form. WO-99
+// will redirect this route to the batch sign page.
+//
 // NOTE: there is deliberately NO page at /new-prescription/sign (no
 // orderId). The F-3 gate in src/middleware.ts matches BOTH the exact
 // path and the /sign/ prefix, so a non-provider hitting either form is
@@ -20,8 +26,10 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { HipaaTimeout } from '@/components/hipaa-timeout'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
+import { resolveCurrentProvider } from '@/lib/auth/current-provider'
 import { DraftSignForm } from './_components/draft-sign-form'
 import type { DraftLineView } from './_components/draft-lines'
+import { SignAsMePanel } from './_components/sign-as-me-panel'
 
 export const metadata = {
   title: 'Sign Prescription',
@@ -112,8 +120,8 @@ export default async function SignDraftPage({ params }: PageProps) {
     redirect('/dashboard')
   }
 
-  // Fetch patient + provider names for display
-  const [patientResult, providerResult] = await Promise.all([
+  // Fetch patient + provider names for display, and who I am (WO-100)
+  const [patientResult, providerResult, me] = await Promise.all([
     supabase
       .from('patients')
       .select('first_name, last_name, date_of_birth, phone, state')
@@ -124,12 +132,47 @@ export default async function SignDraftPage({ params }: PageProps) {
       .select('first_name, last_name, npi_number')
       .eq('provider_id', order.provider_id)
       .maybeSingle(),
+    resolveCurrentProvider(supabase, { userId: user.id, clinicId }),
   ])
 
   const patient = patientResult.data
   const provider = providerResult.data
 
   if (!patient || !provider) notFound()
+
+  // WO-100: draft belongs to another provider → offer Sign as me instead
+  // of a signing form that sign-and-send would refuse (F-2).
+  if (me && me.provider_id !== order.provider_id) {
+    const { count } = await supabase
+      .from('orders')
+      .select('order_id', { count: 'exact', head: true })
+      .eq('clinic_id', clinicId)
+      .eq('patient_id', order.patient_id)
+      .eq('provider_id', order.provider_id)
+      .eq('status', 'DRAFT')
+      .eq('is_active', true)
+      .is('deleted_at', null)
+
+    return (
+      <>
+        <HipaaTimeout />
+        <main className="mx-auto max-w-2xl px-4 py-8">
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-foreground">Review &amp; Sign Prescription</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Patient: {patient.first_name} {patient.last_name}
+            </p>
+          </div>
+          <SignAsMePanel
+            orderId={order.order_id}
+            assignedProviderName={`${provider.first_name} ${provider.last_name}`}
+            myProviderName={`${me.first_name} ${me.last_name}`}
+            lineCount={Math.max(1, count ?? 1)}
+          />
+        </main>
+      </>
+    )
+  }
 
   // WO-98: every DRAFT line for this patient + provider (the one being
   // signed first, then its siblings) — Edit / Remove / + Add prescription
