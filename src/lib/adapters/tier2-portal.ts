@@ -38,6 +38,7 @@ import { getVaultSecret } from '@/lib/adapters/vault'
 import { getBrowserLaunchOptions, getBrowserContextOptions, SCREENSHOT_BUCKET } from '@/lib/playwright/config'
 import { executeFlow } from '@/lib/adapters/portal-flow-executor'
 import type { FlowStep, FlowFieldValues } from '@/lib/adapters/portal-flow-executor'
+import { allergiesForPayload } from '@/lib/patients/allergies'
 import {
   createSubmissionRecord,
   markSubmitted,
@@ -253,7 +254,7 @@ export async function submitTier2Portal(
 
   const { data: patient } = await supabase
     .from('patients')
-    .select('first_name, last_name, date_of_birth, address_line1, address_line2, city, state, zip')
+    .select('first_name, last_name, date_of_birth, address_line1, address_line2, city, state, zip, allergies, nkda')
     .eq('patient_id', order.patient_id)
     .single()
 
@@ -301,6 +302,9 @@ export async function submitTier2Portal(
     patientCity:      patient.city ?? '',
     patientState:     patient.state ?? '',
     patientZip:       patient.zip ?? '',
+    // WO-97 — {patientAllergies} = "NKDA" / "penicillin, sulfa" / "Not recorded"
+    patientAllergies: allergiesForPayload(patient),
+    patientNkda:      patient.nkda === true ? 'Y' : 'N',
     // Provider
     providerFirstName: provider.first_name,
     providerLastName:  provider.last_name,

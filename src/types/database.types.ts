@@ -1405,6 +1405,9 @@ export type Database = {
         Row: {
           address_line1: string | null
           address_line2: string | null
+          // WO-97: hand-extended (patient allergies / NKDA)
+          allergies: string[] | null
+          allergies_updated_at: string | null
           city: string | null
           clinic_id: string
           created_at: string
@@ -1414,6 +1417,7 @@ export type Database = {
           first_name: string
           is_active: boolean
           last_name: string
+          nkda: boolean
           patient_id: string
           phone: string
           primary_provider_id: string | null
@@ -1425,6 +1429,9 @@ export type Database = {
         Insert: {
           address_line1?: string | null
           address_line2?: string | null
+          // WO-97: hand-extended (patient allergies / NKDA)
+          allergies?: string[] | null
+          allergies_updated_at?: string | null
           city?: string | null
           clinic_id: string
           created_at?: string
@@ -1434,6 +1441,7 @@ export type Database = {
           first_name: string
           is_active?: boolean
           last_name: string
+          nkda?: boolean
           patient_id?: string
           phone: string
           primary_provider_id?: string | null
@@ -1445,6 +1453,9 @@ export type Database = {
         Update: {
           address_line1?: string | null
           address_line2?: string | null
+          // WO-97: hand-extended (patient allergies / NKDA)
+          allergies?: string[] | null
+          allergies_updated_at?: string | null
           city?: string | null
           clinic_id?: string
           created_at?: string
@@ -1454,6 +1465,7 @@ export type Database = {
           first_name?: string
           is_active?: boolean
           last_name?: string
+          nkda?: boolean
           patient_id?: string
           phone?: string
           primary_provider_id?: string | null

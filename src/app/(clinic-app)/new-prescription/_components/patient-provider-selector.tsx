@@ -15,6 +15,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePrescriptionSession, type SessionPatient, type SessionProvider } from '../_context/prescription-session'
+import { AllergyChip, EditableAllergyChip, type SavedAllergies } from './allergy-chip'
 
 // ── Types (match server query) ────────────────────────────────
 
@@ -26,6 +27,10 @@ interface Patient {
   phone:         string
   state:         string | null
   sms_opt_in:    boolean
+  // WO-97
+  allergies:            string[] | null
+  nkda:                 boolean
+  allergies_updated_at: string | null
 }
 
 interface Provider {
@@ -54,9 +59,19 @@ function formatDob(iso: string): string {
 
 // ── Component ─────────────────────────────────────────────────
 
-export function PatientProviderSelector({ patients, providers }: Props) {
+export function PatientProviderSelector({ patients: initialPatients, providers }: Props) {
   const router = useRouter()
   const session = usePrescriptionSession()
+
+  // WO-97: allergy saves from the selected-patient card are overlaid on
+  // the server list so the chip updates in place without a round-trip
+  // (and without an effect mirroring props into state).
+  type AllergyPatch = Pick<Patient, 'allergies' | 'nkda' | 'allergies_updated_at'>
+  const [allergyPatches, setAllergyPatches] = useState<Record<string, AllergyPatch>>({})
+  const patients = useMemo(
+    () => initialPatients.map(p => (allergyPatches[p.patient_id] ? { ...p, ...allergyPatches[p.patient_id] } : p)),
+    [initialPatients, allergyPatches],
+  )
 
   const [patientSearch, setPatientSearch] = useState('')
   const [selectedPatientId, setSelectedPatientId] = useState<string>(session.patient?.patient_id ?? '')
@@ -97,6 +112,18 @@ export function PatientProviderSelector({ patients, providers }: Props) {
 
   const canProceed = !!(selectedPatient && selectedProvider)
 
+  // WO-97: the inline editor saved to the patient — mirror it locally and,
+  // if this patient is already pinned in the session, there too.
+  function handleAllergiesSaved(patientId: string, saved: SavedAllergies) {
+    const patch = {
+      allergies:            saved.allergies,
+      nkda:                 saved.nkda,
+      allergies_updated_at: saved.allergiesUpdatedAt,
+    }
+    setAllergyPatches(prev => ({ ...prev, [patientId]: patch }))
+    if (session.patient?.patient_id === patientId) session.updatePatient(patch)
+  }
+
   function handleContinue() {
     if (!selectedPatient || !selectedProvider) return
 
@@ -109,6 +136,10 @@ export function PatientProviderSelector({ patients, providers }: Props) {
       phone:         selectedPatient.phone,
       state:         selectedPatient.state,
       sms_opt_in:    selectedPatient.sms_opt_in,
+      // WO-97
+      allergies:            selectedPatient.allergies,
+      nkda:                 selectedPatient.nkda,
+      allergies_updated_at: selectedPatient.allergies_updated_at,
     })
     session.setProvider({
       provider_id:    selectedProvider.provider_id,
@@ -213,6 +244,8 @@ export function PatientProviderSelector({ patients, providers }: Props) {
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
+                    {/* WO-97: allergy chip — plain span here (inside a button) */}
+                    <AllergyChip patient={patient} />
                     {patient.state && (
                       <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                         {patient.state}
@@ -235,16 +268,25 @@ export function PatientProviderSelector({ patients, providers }: Props) {
 
         {/* Selected patient summary */}
         {selectedPatient && (
-          <div className="mt-3 flex items-center gap-2 rounded-md bg-primary/5 px-3 py-2 text-sm">
-            <svg className="h-4 w-4 text-primary" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-            </svg>
-            <span className="font-medium text-foreground">
-              {selectedPatient.first_name} {selectedPatient.last_name}
-            </span>
-            <span className="text-muted-foreground">
-              — {selectedPatient.state ?? 'No state'} — DOB: {formatDob(selectedPatient.date_of_birth)}
-            </span>
+          <div className="mt-3 rounded-md bg-primary/5 px-3 py-2 text-sm" data-testid="selected-patient-card">
+            <div className="flex items-center gap-2">
+              <svg className="h-4 w-4 text-primary" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+              <span className="font-medium text-foreground">
+                {selectedPatient.first_name} {selectedPatient.last_name}
+              </span>
+              <span className="text-muted-foreground">
+                — {selectedPatient.state ?? 'No state'} — DOB: {formatDob(selectedPatient.date_of_birth)}
+              </span>
+            </div>
+            {/* WO-97: clickable chip → inline editor, saves to the patient */}
+            <EditableAllergyChip
+              className="mt-1.5 pl-6"
+              patientId={selectedPatient.patient_id}
+              patient={selectedPatient}
+              onSaved={saved => handleAllergiesSaved(selectedPatient.patient_id, saved)}
+            />
           </div>
         )}
       </div>

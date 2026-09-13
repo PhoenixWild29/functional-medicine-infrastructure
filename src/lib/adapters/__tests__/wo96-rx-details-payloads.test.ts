@@ -44,6 +44,9 @@ function makePayload(overrides: Partial<OrderPayload> = {}): OrderPayload {
     patientCity:          'Austin',
     patientState:         'TX',
     patientZip:           '78701',
+    // WO-97
+    patientAllergies:     [],
+    patientNkda:          true,
     medicationName:       'Semaglutide 5mg/mL Injectable',
     medicationForm:       'Injectable Solution',
     medicationDose:       '5mg/mL',

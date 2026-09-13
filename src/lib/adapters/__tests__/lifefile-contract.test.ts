@@ -92,6 +92,9 @@ function makePayload(overrides: Partial<OrderPayload> = {}): OrderPayload {
     patientCity:           'Austin',
     patientState:          'TX',
     patientZip:            '78701',
+    // WO-97
+    patientAllergies:      ['sulfa'],
+    patientNkda:           false,
     medicationName:        'Compounded Test Med',
     medicationForm:        'Injectable',
     medicationDose:        '200mg/mL',
@@ -147,6 +150,9 @@ describe('transformLifeFilePayload — registry lookup + shape', () => {
             state:   'TX',
             zipCode: '78701',
           },
+          // WO-97
+          allergies: 'sulfa',
+          nkda:      false,
         },
         drug: {
           brandName:  'Compounded Test Med',

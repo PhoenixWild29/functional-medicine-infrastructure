@@ -58,7 +58,8 @@ export default async function NewPrescriptionPage() {
   const [patientsResult, providersResult] = await Promise.all([
     supabase
       .from('patients')
-      .select('patient_id, first_name, last_name, date_of_birth, phone, state, sms_opt_in')
+      // WO-97: allergies / nkda drive the chip on each patient card.
+      .select('patient_id, first_name, last_name, date_of_birth, phone, state, sms_opt_in, allergies, nkda, allergies_updated_at')
       .eq('clinic_id', clinicId)
       .eq('is_active', true)
       .is('deleted_at', null)

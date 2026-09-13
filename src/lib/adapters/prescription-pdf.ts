@@ -16,6 +16,8 @@
 // PHI (patient name, DOB, address) is present because this is
 // the prescription document itself — Documo is BAA-covered.
 
+import { allergiesForPayload } from '@/lib/patients/allergies'
+
 // ============================================================
 // TYPES
 // ============================================================
@@ -36,6 +38,10 @@ export interface PrescriptionPdfData {
   patientCity: string | null
   patientState: string | null
   patientZip: string | null
+  // WO-97 allergies (from patient row) — optional so callers written
+  // before WO-97 keep compiling; unset prints "Allergies: Not recorded".
+  patientAllergies?: readonly string[] | null
+  patientNkda?: boolean | null
   // Medication (from medication_snapshot JSONB)
   medicationName: string
   medicationForm: string
@@ -159,6 +165,9 @@ function buildContentStream(d: PrescriptionPdfData): string {
   if (addrParts.length > 0) {
     lines.push(v(`Address: ${addrParts.join(', ')}`))
   }
+  // WO-97: always printed — a pharmacy must see "Not recorded" as
+  // clearly as "NKDA" or the list.
+  lines.push(v(`Allergies: ${allergiesForPayload({ allergies: d.patientAllergies, nkda: d.patientNkda })}`))
   lines.push(sp(-10))
 
   // ── Medication ────────────────────────────────────────────
