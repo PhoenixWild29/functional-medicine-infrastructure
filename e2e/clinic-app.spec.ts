@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
-import { seedStaticData, cleanupTestOrders, seedSecondProvider, retireSecondProvider, TEST_IDS, TEST_USERS, TEST_CATALOG, TEST_PATIENTS } from './fixtures/seed'
+import { seedStaticData, cleanupTestOrders, cleanupTestFavorites, seedSecondProvider, retireSecondProvider, TEST_IDS, TEST_USERS, TEST_CATALOG, TEST_PATIENTS } from './fixtures/seed'
 import { decryptSecret } from '../src/lib/epcs/crypto'
 import { DEMO_TOTP_SECRET } from '../src/lib/poc/totp-enrollment'
 
@@ -1318,5 +1318,150 @@ test.describe('Clinic App — WO-100 provider defaults to self', () => {
 
     const accepted = await page.request.post('/api/orders', { data: body(TEST_IDS.provider) })
     expect(accepted.status()).toBe(201)
+  })
+})
+
+// ============================================================
+// WO-103 — Search bar to top + Favorites/Protocols as buttons +
+//          Save-as-favorite + mg display
+// ============================================================
+// Phase 21 acceptance criteria covered here (browser layer):
+//   - the medication search input is visible without scrolling at 1366×768
+//   - Favorites (N) and Protocols (N) open as panels; counts still shown
+//   - Save Semaglutide-style line (10 units weekly, 5 mg/mL) from Review →
+//     it appears in Favorites as "<name> · 10 units (0.5 mg) weekly"
+//   - edit that favorite's dose to 20 units → the list shows "(1.0 mg)"
+//   - delete removes it clinic-wide with a confirm
+
+test.describe('Clinic App — WO-103 search bar, favorites/protocols panels, save-as-favorite, mg', () => {
+  test.beforeAll(async () => {
+    await seedStaticData()
+    await cleanupTestFavorites()
+  })
+
+  test.afterEach(async () => {
+    await cleanupTestOrders()
+    await cleanupTestFavorites()
+  })
+
+  test('search input is visible without scrolling at 1366×768; Favorites / Protocols open as panels with counts', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 })
+    await loginAs(page, TEST_USERS.provider)
+
+    await page.goto('/new-prescription')
+    await page.getByLabel('Search patients').fill('Test')
+    await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
+    await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
+
+    // The search input is the first element under the session banner and
+    // sits inside the initial viewport — no scrolling.
+    const search = page.getByLabel('Search medications')
+    await expect(search).toBeVisible()
+    await expect(search).toBeInViewport({ ratio: 1 })
+    expect(await page.evaluate(() => window.scrollY)).toBe(0)
+    const box = await search.boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.y + box!.height).toBeLessThanOrEqual(768)
+
+    // Favorites (N) / Protocols (N) are buttons beside the search that open panels.
+    const favButton = page.getByRole('button', { name: /^Favorites \(\d+\)$/ })
+    const protoButton = page.getByRole('button', { name: /^Protocols \(\d+\)$/ })
+    await expect(favButton).toBeVisible()
+    await expect(protoButton).toBeVisible()
+    await expect(favButton).toBeInViewport()
+    await expect(page.getByTestId('favorites-panel')).toHaveCount(0)
+
+    await favButton.click()
+    await expect(page.getByTestId('favorites-panel')).toBeVisible()
+    await expect(favButton).toHaveAttribute('aria-expanded', 'true')
+    await expect(page.getByTestId('favorites-panel').getByRole('button', { name: '+ New' })).toBeVisible()
+
+    await protoButton.click()
+    await expect(page.getByTestId('protocols-panel')).toBeVisible()
+    await expect(page.getByTestId('favorites-panel')).toHaveCount(0)
+    await expect(page.getByTestId('protocols-panel').getByRole('button', { name: '+ New' })).toBeVisible()
+
+    // "+ New" in Favorites hands focus to the search.
+    await favButton.click()
+    await page.getByTestId('favorites-panel').getByRole('button', { name: '+ New' }).click()
+    await expect(page.getByTestId('favorites-panel')).toHaveCount(0)
+    await expect(search).toBeFocused()
+  })
+
+  test('save a GLP-1 line from Review → Favorites shows "10 units (0.5 mg) weekly"; edit to 20 units → "(1.0 mg)"; delete with confirm', async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+    await walkBuilderToMargin(page, GLP1)
+
+    // mg is computed from units × concentration on the margin page …
+    await expect(page.getByTestId('dose-display')).toHaveText('10 units (0.5 mg)')
+    await page.locator('#retail-price').fill('200.00')
+    await page.getByRole('button', { name: /Review & Send/ }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
+
+    // … and on the Review card.
+    await expect(page.locator('[data-testid^="dose-display-"]').first()).toHaveText('10 units (0.5 mg)')
+
+    // ☆ Save as favorite — name defaults to "<Drug> <dose> <freq>".
+    await page.getByRole('button', { name: '☆ Save as favorite' }).click()
+    const nameInput = page.getByLabel('Favorite name')
+    await expect(nameInput).toHaveValue(`${TEST_CATALOG.glp1FormulationName} 10 units weekly`)
+    const favoriteName = 'E2E GLP1 10 units weekly'
+    await nameInput.fill(favoriteName)
+    await page.getByRole('button', { name: 'Save favorite' }).click()
+    await expect(page.getByText('Saved to favorites')).toBeVisible()
+
+    // Back to the search page with the session intact; open the Favorites panel.
+    await page.getByRole('button', { name: '+ Add Another Prescription' }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
+    await page.getByRole('button', { name: /^Favorites \(\d+\)$/ }).click()
+    const panel = page.getByTestId('favorites-panel')
+    const row = panel.locator('[data-testid^="favorite-"]').filter({ hasText: favoriteName })
+    await expect(row).toHaveCount(1)
+    await expect(row.getByTestId('favorite-dose')).toHaveText('10 units (0.5 mg) weekly')
+
+    // Edit the dose to 20 units → the mg follows.
+    await page.getByRole('button', { name: `Edit favorite ${favoriteName}` }).click()
+    await page.getByLabel('Favorite dose amount').fill('20')
+    await expect(page.getByTestId('favorite-dose-preview')).toHaveText('20 units (1.0 mg) weekly')
+    await page.getByRole('button', { name: 'Save changes' }).click()
+    await expect(row.getByTestId('favorite-dose')).toHaveText('20 units (1.0 mg) weekly', { timeout: 10_000 })
+
+    const supabase = createClient(
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
+    )
+    const { data: saved } = await supabase
+      .from('provider_favorites')
+      .select('label, dose_amount, dose_unit, frequency_code, pharmacy_id, formulation_id, sig_text, default_quantity')
+      .eq('provider_id', TEST_IDS.provider)
+      .eq('label', favoriteName)
+      .maybeSingle()
+    expect(saved).toEqual(expect.objectContaining({
+      dose_amount:      '20',
+      dose_unit:        'units',
+      frequency_code:   'QW',
+      pharmacy_id:      TEST_IDS.pharmacyTier1,
+      formulation_id:   TEST_IDS.glp1Formulation,
+      default_quantity: '5mL vial',
+    }))
+    // The stored sig follows the edited dose (nothing typed).
+    expect(saved?.sig_text).toMatch(/20 units \(0\.20mL \/ 1\.00mg\)/)
+
+    // Delete — two-step confirm, removes it clinic-wide.
+    await page.getByRole('button', { name: `Delete favorite ${favoriteName}` }).click()
+    await expect(row.getByRole('button', { name: 'Confirm' })).toBeVisible()
+    await row.getByRole('button', { name: 'Cancel' }).click()
+    await expect(row).toHaveCount(1)
+    await page.getByRole('button', { name: `Delete favorite ${favoriteName}` }).click()
+    await row.getByRole('button', { name: 'Confirm' }).click()
+    await expect(row).toHaveCount(0, { timeout: 10_000 })
+
+    const { count } = await supabase
+      .from('provider_favorites')
+      .select('*', { count: 'exact', head: true })
+      .eq('provider_id', TEST_IDS.provider)
+      .eq('label', favoriteName)
+    expect(count ?? 0).toBe(0)
   })
 })
