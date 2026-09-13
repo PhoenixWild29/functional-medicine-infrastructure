@@ -27,6 +27,12 @@ import { QuickActionsPanel, type Favorite } from './quick-actions-panel'
 import { SaveFavoriteButton } from './save-favorite-button'
 import { builderStateFromLine, editTargetToParams, type EditTarget } from '../_lib/edit-target'
 import type { BuilderInitialState } from '@/lib/orders/draft-edit'
+import {
+  computeDispense,
+  defaultQuantityLabel,
+  dispenseUnitFor,
+  durationDaysFromSig,
+} from '@/lib/orders/rx-details'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -160,7 +166,11 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   const [selectedFrequency, setSelectedFrequency] = useState('')
   const [doseAmount, setDoseAmount] = useState('')
   const [doseUnit, setDoseUnit] = useState('')
+  // WO-96 fix: `quantity` is the provider's explicit pick. Until they pick
+  // one (quantityPicked), the dropdown shows a computed default package
+  // instead of an empty "Select quantity" (rule 2).
   const [quantity, setQuantity] = useState('')
+  const [quantityPicked, setQuantityPicked] = useState(false)
   const [refills, setRefills] = useState('0')
   const [currentSig, setCurrentSig] = useState('')
   // WO-98: pharmacy of the reopened line. Until the user picks one, the
@@ -236,6 +246,9 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
         setDoseUnit(effectiveInitial.doseUnit)
         setSelectedFrequency(effectiveInitial.frequency)
         setQuantity(effectiveInitial.quantity)
+        // WO-96 fix: a reopened line keeps its own quantity rather than
+        // being re-defaulted.
+        setQuantityPicked(!!effectiveInitial.quantity)
         setRefills(String(effectiveInitial.refills))
         setPendingPharmacyId(effectiveInitial.pharmacyId || null)
       } catch (err) {
@@ -266,6 +279,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     setDoseUnit('')
     setSelectedFrequency('')
     setQuantity('')
+    setQuantityPicked(false)
     setCurrentSig('')
   }
 
@@ -279,6 +293,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     setSelectedFormulation(f)
     setSelectedPharmacy(null)
     setPendingPharmacyId(null)
+    setQuantityPicked(false)
     // Set default dose unit based on dosage form
     if (f.dosage_forms?.name.includes('Injectable')) {
       setDoseUnit('units')
@@ -291,6 +306,43 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       setDoseUnit('')
     }
   }
+
+  // ── WO-96 fix: default quantity from what the pharmacy lists ──
+  // The duration the provider picked is in the generated sig ("for 30
+  // days"). With it, dispense = doses in that many days × dose, and the
+  // default package is the smallest listed one that covers it. Without
+  // it, the smallest package in the dispense unit. Recomputed whenever
+  // dose, frequency, duration (sig), formulation or pharmacy change.
+  const durationDays = durationDaysFromSig(currentSig)
+  const pharmacyQuantities = (selectedPharmacy?.available_quantities as string[] | null) ?? []
+  const defaultQuantity = useMemo(() => {
+    if (!selectedFormulation) return ''
+    const dosageFormName = selectedFormulation.dosage_forms?.name ?? null
+    const fromDuration = durationDays != null
+      ? computeDispense({
+          doseAmount,
+          doseUnit,
+          frequencyCode:      selectedFrequency,
+          quantityLabel:      null,
+          concentrationValue: selectedFormulation.concentration_value,
+          concentrationUnit:  selectedFormulation.concentration_unit,
+          dosageFormName,
+          durationDays,
+        })
+      : null
+    return defaultQuantityLabel(
+      pharmacyQuantities,
+      fromDuration
+        ? { quantity: fromDuration.dispenseQuantity, unit: fromDuration.dispenseUnit }
+        : { quantity: null, unit: dispenseUnitFor(dosageFormName, doseUnit) },
+      dosageFormName,
+    )
+    // pharmacyQuantities is derived from selectedPharmacy each render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFormulation, selectedPharmacy, doseAmount, doseUnit, selectedFrequency, durationDays])
+  const effectiveQuantity = quantityPicked && quantity ? quantity : defaultQuantity
+  const quantityOptions = pharmacyQuantities.length > 0 ? [...pharmacyQuantities] : ['1']
+  if (effectiveQuantity && !quantityOptions.includes(effectiveQuantity)) quantityOptions.push(effectiveQuantity)
 
   // ── Can add to session? ─────────────────────────────────
   const canAdd = !!(
@@ -336,9 +388,10 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       dose: `${doseAmount} ${doseUnit}`.trim(),
       frequency: selectedFrequency,
       sigText: currentSig,
-      // WO-96: the margin page derives days supply + dispense from
-      // dose × frequency × quantity and defaults refills from here.
-      quantity,
+      // WO-96: the margin page derives days supply + dispense (from the
+      // duration in the sig, else dose × frequency × quantity) and
+      // defaults refills from here. Never empty: the default package.
+      quantity: effectiveQuantity,
       refills,
       // WO-98: keep the edit / add-to-draft target through the margin page.
       ...editTargetToParams(editTarget),
@@ -511,7 +564,11 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
               <button
                 key={po.pharmacy_formulation_id}
                 type="button"
-                onClick={() => setSelectedPharmacy(po)}
+                onClick={() => {
+                  setSelectedPharmacy(po)
+                  // Package labels are per pharmacy — re-default.
+                  setQuantityPicked(false)
+                }}
                 className={`w-full text-left rounded-md border px-3 py-2.5 transition-colors ${
                   selectedPharmacy?.pharmacy_formulation_id === po.pharmacy_formulation_id
                     ? 'border-primary bg-primary/10'
@@ -549,15 +606,24 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
             <div className="flex-1">
               <select
                 aria-label="Quantity"
-                value={quantity}
-                onChange={e => setQuantity(e.target.value)}
+                value={effectiveQuantity}
+                onChange={e => {
+                  setQuantity(e.target.value)
+                  setQuantityPicked(true)
+                }}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <option value="">Select quantity</option>
-                {(selectedPharmacy.available_quantities as string[] | null)?.map(q => (
+                {quantityOptions.map(q => (
                   <option key={q} value={q}>{q}</option>
                 ))}
               </select>
+              {!quantityPicked && (
+                <p className="mt-1 text-[10px] text-muted-foreground" data-testid="quantity-default-hint">
+                  {durationDays != null
+                    ? `Smallest package that covers ${durationDays} days — change if needed.`
+                    : 'Smallest package listed — change if needed.'}
+                </p>
+              )}
             </div>
             <div className="w-24">
               <select
@@ -588,7 +654,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
             doseUnit={doseUnit}
             frequencyCode={selectedFrequency}
             sigText={currentSig}
-            quantity={quantity}
+            quantity={effectiveQuantity}
             refills={parseInt(refills, 10)}
             disabled={!canAdd}
           />

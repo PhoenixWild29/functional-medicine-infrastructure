@@ -99,7 +99,7 @@ describe('MarginBuilderForm — derived days supply + dispense', () => {
     renderMargin()
     expect(screen.getByTestId('days-supply-value')).toHaveTextContent('350 days')
     expect(screen.getByTestId('dispense-value')).toHaveTextContent('5 mL')
-    expect(screen.getByText(/Computed from dose × frequency × quantity/)).toBeInTheDocument()
+    expect(screen.getByText(/Computed from dose × frequency × the 5mL vial package/)).toBeInTheDocument()
     // Read-only until the provider chooses to override.
     expect(screen.queryByLabelText('Days supply')).not.toBeInTheDocument()
   })
@@ -158,10 +158,18 @@ describe('MarginBuilderForm — derived days supply + dispense', () => {
     expect(screen.getByTestId('days-supply-value')).toHaveTextContent('350 days')
   })
 
-  it('explains itself when no quantity was selected upstream', () => {
-    renderMargin({ presetQuantity: undefined })
-    expect(screen.getByTestId('days-supply-value')).toHaveTextContent('—')
-    expect(screen.getByText(/Computed once a quantity is selected/)).toBeInTheDocument()
+  it('never shows "—" when no quantity came upstream: defaults to the smallest listed package', () => {
+    renderMargin({ presetQuantity: undefined, availableQuantities: ['5mL vial', '2.5mL vial'] })
+    // No duration in this sig → derived from the smallest package, 2.5 mL.
+    expect(screen.getByTestId('days-supply-value')).toHaveTextContent('175 days')
+    expect(screen.getByTestId('dispense-value')).toHaveTextContent('2.5 mL')
+    expect(screen.queryByText(/Computed once a quantity is selected/)).not.toBeInTheDocument()
+  })
+
+  it('with no quantity and no package list, still computes from one package ("1")', () => {
+    renderMargin({ presetQuantity: undefined, availableQuantities: [] })
+    expect(screen.getByTestId('days-supply-value')).toHaveTextContent('70 days')
+    expect(screen.getByTestId('dispense-value')).toHaveTextContent('1 mL')
   })
 
   it('carries the builder refills and the clinic’s suggested diagnosis', async () => {
@@ -191,5 +199,80 @@ describe('MarginBuilderForm — derived days supply + dispense', () => {
   it('does not render the derived block for legacy catalog items', () => {
     renderMargin({ formulationDetails: null, rxDefaults: null, itemId: 'legacy-item', formulationId: null })
     expect(screen.queryByTestId('derived-dispense')).not.toBeInTheDocument()
+  })
+})
+
+// ============================================================
+// WO-96 fix — duration-based derivation (Gina Rooks, 2026-09-11 items 1-2)
+// ============================================================
+
+describe('MarginBuilderForm — WO-96 fix: days supply from the duration the provider picked', () => {
+  const GINA_SIG = 'Inject 10 units (0.10mL / 0.50mg) subcutaneous once weekly in the morning for 30 days'
+  const STRIVE_PACKAGES = ['5mL vial', '2.5mL vial', '1mL vial']
+
+  it("Gina's scenario with no quantity picked: 30 days / 0.4 mL, never '—'", () => {
+    renderMargin({ presetSigText: GINA_SIG, presetQuantity: undefined, availableQuantities: STRIVE_PACKAGES })
+    expect(screen.getByTestId('days-supply-value')).toHaveTextContent('30 days')
+    expect(screen.getByTestId('dispense-value')).toHaveTextContent('0.4 mL')
+    expect(screen.getByText(/Days supply is the 30-day duration; dispense is 4 doses × the dose/)).toBeInTheDocument()
+    expect(screen.queryByText('—')).not.toBeInTheDocument()
+  })
+
+  it('the session line carries the derived values and the default package (smallest covering 0.4 mL)', async () => {
+    renderMargin({ presetSigText: GINA_SIG, presetQuantity: undefined, availableQuantities: STRIVE_PACKAGES })
+    fireEvent.click(screen.getByRole('button', { name: /^Review & Send/ }))
+    await waitFor(() => expect(lastSession?.prescriptions).toHaveLength(1))
+    const rx = lastSession!.prescriptions[0]!
+    expect(rx.quantityLabel).toBe('1mL vial')
+    expect(rx.rxDetails).toEqual(expect.objectContaining({ daysSupply: 30, dispenseQuantity: 0.4, dispenseUnit: 'mL' }))
+  })
+
+  it('a quantity the provider picked upstream is kept, and the duration still sets the days supply', async () => {
+    renderMargin({ presetSigText: GINA_SIG, presetQuantity: '5mL vial', availableQuantities: STRIVE_PACKAGES })
+    expect(screen.getByTestId('days-supply-value')).toHaveTextContent('30 days')
+    fireEvent.click(screen.getByRole('button', { name: /^Review & Send/ }))
+    await waitFor(() => expect(lastSession?.prescriptions).toHaveLength(1))
+    expect(lastSession!.prescriptions[0]!.quantityLabel).toBe('5mL vial')
+  })
+
+  it('recomputes when the duration in the sig changes', () => {
+    renderMargin({ presetSigText: GINA_SIG, presetQuantity: undefined, availableQuantities: STRIVE_PACKAGES })
+    fireEvent.change(screen.getByLabelText(/Sig \(Prescription Directions\)/), {
+      target: { value: 'Inject 10 units (0.10mL / 0.50mg) subcutaneous once weekly in the morning for 90 days' },
+    })
+    expect(screen.getByTestId('days-supply-value')).toHaveTextContent('90 days')
+    expect(screen.getByTestId('dispense-value')).toHaveTextContent('1.2 mL')   // 12 doses × 0.1 mL
+  })
+
+  it('an override still wins and persists as sent', async () => {
+    renderMargin({ presetSigText: GINA_SIG, presetQuantity: undefined, availableQuantities: STRIVE_PACKAGES })
+    fireEvent.click(screen.getByRole('button', { name: 'Override' }))
+    fireEvent.change(screen.getByLabelText('Days supply'), { target: { value: '28' } })
+    fireEvent.change(screen.getByLabelText('Dispense qty'), { target: { value: '1' } })
+    expect(screen.getByTestId('days-supply-value')).toHaveTextContent('28 days')
+    expect(screen.getByText(/Provider override in effect/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^Review & Send/ }))
+    await waitFor(() => expect(lastSession?.prescriptions).toHaveLength(1))
+    expect(lastSession!.prescriptions[0]!.rxDetails).toEqual(expect.objectContaining({
+      daysSupply: 28, dispenseQuantity: 1, dispenseUnit: 'mL',
+    }))
+  })
+
+  it('Save as Draft posts the default quantity and the overridden values (they round-trip on edit)', async () => {
+    renderMargin({
+      presetSigText: GINA_SIG, presetQuantity: undefined, availableQuantities: STRIVE_PACKAGES, presetDose: '10 units',
+      rxDefaults: { ...SEMAGLUTIDE_DEFAULTS },
+    })
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ orderId: 'order-1' }) })
+    global.fetch = fetchMock as unknown as typeof fetch
+    fireEvent.click(screen.getByRole('button', { name: 'Override' }))
+    fireEvent.change(screen.getByLabelText('Days supply'), { target: { value: '28' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /Save as Draft/ }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    const body = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string)
+    expect(body).toEqual(expect.objectContaining({ dose: '10 units', frequencyCode: 'QW', quantityLabel: '1mL vial' }))
+    expect(body.rxDetails).toEqual(expect.objectContaining({ daysSupply: 28, dispenseQuantity: 0.4, dispenseUnit: 'mL' }))
   })
 })

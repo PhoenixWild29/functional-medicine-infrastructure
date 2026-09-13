@@ -5,9 +5,11 @@
 // ============================================================
 //
 // Phase 21 rule 3: nothing on screen the app could have computed. Days
-// supply and dispense are derived from dose × frequency × quantity and
-// shown read-only next to the sig; a click opens inline override inputs.
-// The provider never types them unless the derivation is wrong.
+// supply comes from the duration the provider picked (else from dose ×
+// frequency × quantity) and dispense from dose × frequency × days
+// supply; both are shown read-only next to the sig and a click opens
+// inline override inputs. The provider never types them unless the
+// derivation is wrong.
 
 import { useId, useState } from 'react'
 import { formatDispense, type DerivedDispense } from '@/lib/orders/rx-details'
@@ -20,12 +22,16 @@ export interface DispenseOverride {
 
 export const EMPTY_OVERRIDE: DispenseOverride = { daysSupply: '', dispenseQuantity: '', dispenseUnit: '' }
 
+/** What the derived values were computed from — drives the explanation line. */
+export type DerivedBasis =
+  | { kind: 'duration'; days: number; doses: number | null }
+  | { kind: 'quantity'; label: string }
+
 interface Props {
-  derived:    DerivedDispense | null
-  /** True when no quantity was chosen upstream — nothing to derive from. */
-  noQuantity: boolean
-  override:   DispenseOverride
-  onChange:   (next: DispenseOverride) => void
+  derived:  DerivedDispense | null
+  basis:    DerivedBasis
+  override: DispenseOverride
+  onChange: (next: DispenseOverride) => void
 }
 
 /** Apply the override on top of the derived values → the values actually sent. */
@@ -43,7 +49,7 @@ export function resolveDispense(
   }
 }
 
-export function DerivedDispense({ derived, noQuantity, override, onChange }: Props) {
+export function DerivedDispense({ derived, basis, override, onChange }: Props) {
   const [editing, setEditing] = useState(false)
   const daysId = useId()
   const qtyId = useId()
@@ -79,13 +85,15 @@ export function DerivedDispense({ derived, noQuantity, override, onChange }: Pro
       </div>
 
       <p className="mt-1 text-[11px] text-muted-foreground">
-        {noQuantity
-          ? 'Computed once a quantity is selected. Override to enter values directly.'
-          : derived?.daysSupply == null
-            ? 'Dispense computed from the selected quantity; days supply could not be derived from this sig (as-needed or unmatched units).'
-            : isOverridden
-              ? 'Provider override in effect.'
-              : 'Computed from dose × frequency × quantity.'}
+        {isOverridden
+          ? 'Provider override in effect.'
+          : basis.kind === 'duration'
+            ? basis.doses != null
+              ? `Days supply is the ${basis.days}-day duration; dispense is ${basis.doses} dose${basis.doses === 1 ? '' : 's'} × the dose.`
+              : `Days supply is the ${basis.days}-day duration; dispense is the package (as-needed doses cannot be counted).`
+            : derived?.daysSupply == null
+              ? `Dispense is the ${basis.label || 'selected'} package; days supply could not be derived from this sig (as-needed or unmatched units).`
+              : `Computed from dose × frequency × the ${basis.label} package. Pick a duration on the dose step to base it on days instead.`}
       </p>
 
       {editing && (

@@ -316,3 +316,77 @@ describe('Save as Draft (non-provider) carries rxDetails', () => {
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/dashboard?draft=2'))
   })
 })
+
+// ============================================================
+// WO-96 fix — quantity round-trips on the edit path
+// ============================================================
+// A draft saved from Review used to omit the builder inputs, so the
+// order's medication_snapshot had no quantity_label and a reopened draft
+// lost its quantity (dose and frequency survived only by re-parsing the
+// sig). Both Review POSTs now send dose, frequencyCode and quantityLabel.
+
+describe('WO-96 fix — Review POSTs carry dose, frequency and quantity', () => {
+  const GLP1_LINE = line({
+    id: 'line-rt',
+    formulationId: 'formulation-sema',
+    medicationName: 'Semaglutide 5mg/mL Injectable',
+    dose: '10 units',
+    frequencyCode: 'QW',
+    quantityLabel: '1mL vial',
+    sigText: 'Inject 10 units (0.10mL / 0.50mg) subcutaneous once weekly in the morning for 30 days',
+    rxDetails: defaultRxDetails(PLAIN_DEFAULTS, { derived: { daysSupply: 30, dispenseQuantity: 0.4, dispenseUnit: 'mL' } }),
+    rxRules: { isControlled: false, requiresClinicalDifference: false, clinicalDifferenceOptions: [] },
+  })
+
+  it('Save as Draft sends the line quantity with dose and frequency', async () => {
+    seedSession([GLP1_LINE])
+    renderReview(false)
+    ;(global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({ orderId: 'order-1' }) })
+
+    fireEvent.click(await screen.findByRole('button', { name: /Save as Draft/ }))
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
+    const body = JSON.parse(((global.fetch as jest.Mock).mock.calls[0]![1] as RequestInit).body as string)
+    expect(body).toEqual(expect.objectContaining({
+      dose:          '10 units',
+      frequencyCode: 'QW',
+      quantityLabel: '1mL vial',
+    }))
+    expect(body.rxDetails).toEqual(expect.objectContaining({ daysSupply: 30, dispenseQuantity: 0.4, dispenseUnit: 'mL' }))
+  })
+
+  it('the Review card shows the derived values, not "—"', async () => {
+    seedSession([GLP1_LINE])
+    renderReview()
+    const row = await screen.findByTestId('rx-details-line-rt')
+    expect(within(row).getByText(/30-day supply · dispense 0.4 mL/)).toBeInTheDocument()
+  })
+
+  it('a quick-loaded line with no derived values is computed from its sig duration once defaults resolve', async () => {
+    const unresolved = line({
+      id: 'line-proto-rt',
+      formulationId: 'formulation-sema',
+      medicationName: 'Semaglutide (protocol)',
+      dose: '10 units',
+      frequencyCode: 'QW',
+      sigText: 'Inject 10 units (0.10mL / 0.50mg) subcutaneous once weekly for 30 days',
+    })
+    seedSession([unresolved])
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          'formulation-sema': {
+            formulationId: 'formulation-sema',
+            defaults: PLAIN_DEFAULTS,
+            deaSchedule: null,
+            suggestedDiagnosis: null,
+            dispenseInputs: { concentrationValue: 5, concentrationUnit: 'mg/mL', dosageFormName: 'Injectable Solution' },
+          },
+        },
+      }),
+    })
+    renderReview()
+    const row = await screen.findByTestId('rx-details-line-proto-rt')
+    await waitFor(() => expect(within(row).getByText(/30-day supply · dispense 0.4 mL/)).toBeInTheDocument())
+  })
+})

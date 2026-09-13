@@ -209,3 +209,19 @@ describe('POST /api/orders — WO-96 Rx detail fields', () => {
     expect(tablesTouched).toEqual([])
   })
 })
+
+describe('POST /api/orders — WO-96 fix: builder inputs are stored for the edit path', () => {
+  it('stores dose, frequency and quantity on medication_snapshot so a reopened draft keeps them', async () => {
+    const res = await POST(makeRequest(formulationBody({
+      dose:          '10 units',
+      frequencyCode: 'QW',
+      quantityLabel: '1mL vial',
+    })))
+    expect(res.status).toBe(201)
+    expect(orderInsert()['medication_snapshot']).toEqual(expect.objectContaining({
+      prescribed_dose: '10 units',
+      frequency_code:  'QW',
+      quantity_label:  '1mL vial',
+    }))
+  })
+})

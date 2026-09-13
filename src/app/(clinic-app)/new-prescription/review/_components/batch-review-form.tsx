@@ -50,6 +50,10 @@ import { RxDetailsRow } from './rx-details-row'
 import { AllergyNotice } from './allergy-notice'
 import { builderHref } from '../../_lib/edit-target'
 import {
+  computeDispense,
+  defaultQuantityLabel,
+  durationDaysFromSig,
+  type DerivedDispense,
   defaultRxDetails,
   missingRxDetails,
   MISSING_RX_DETAIL_LABEL,
@@ -97,6 +101,29 @@ function effectiveRules(rx: SessionPrescription): RxRules {
 
 function effectiveDetails(rx: SessionPrescription): RxDetails {
   return rx.rxDetails ?? defaultRxDetails(null)
+}
+
+/**
+ * WO-96 fix: days supply + dispense for a session line from its own sig,
+ * dose, frequency and quantity. No quantity → one package ("1"); no
+ * pharmacy package list is available on this page.
+ */
+function derivedForLine(
+  rx: SessionPrescription,
+  inputs: RxFormulationDefaults['dispenseInputs'] | undefined,
+): DerivedDispense | null {
+  if (!inputs) return null
+  const { amount, unit } = splitDose(rx.dose)
+  return computeDispense({
+    doseAmount:         amount,
+    doseUnit:           unit,
+    frequencyCode:      rx.frequencyCode ?? null,
+    quantityLabel:      rx.quantityLabel || defaultQuantityLabel([], null, inputs.dosageFormName),
+    concentrationValue: inputs.concentrationValue,
+    concentrationUnit:  inputs.concentrationUnit,
+    dosageFormName:     inputs.dosageFormName,
+    durationDays:       durationDaysFromSig(rx.sigText),
+  })
 }
 
 /** Lines whose rules are unknown and can be resolved (V3.0 formulation lines). */
@@ -200,10 +227,17 @@ export function BatchReviewForm({ isProvider }: Props) {
             diagnosisCode: existing?.diagnosisCode ?? entry.suggestedDiagnosis?.code ?? null,
             diagnosisText: existing?.diagnosisText ?? entry.suggestedDiagnosis?.text ?? null,
           })
+          // WO-96 fix: a quick-loaded line arrives without days supply /
+          // dispense — derive them here (duration in the sig first, else the
+          // line's quantity, else one package) rather than show "—".
+          const derived = derivedForLine(rx, entry.dispenseInputs)
           updatePrescription(rx.id, {
             rxDetails: {
               ...defaults,
               ...(existing ?? {}),
+              ...(existing?.daysSupply == null && existing?.dispenseQuantity == null && derived
+                ? { daysSupply: derived.daysSupply, dispenseQuantity: derived.dispenseQuantity, dispenseUnit: derived.dispenseUnit }
+                : {}),
               clinicalDifference: existing?.clinicalDifference ?? defaults.clinicalDifference,
               diagnosisCode:      defaults.diagnosisCode,
               diagnosisText:      defaults.diagnosisText,
@@ -321,6 +355,12 @@ export function BatchReviewForm({ isProvider }: Props) {
             protocolId:    rx.protocolId ?? null,
             // WO-96: derived + defaulted detail fields
             rxDetails:     effectiveDetails(rx),
+            // WO-96 fix / WO-98: the builder inputs, stored on
+            // medication_snapshot so a reopened draft keeps its dose,
+            // frequency AND quantity (quantity cannot be re-parsed from the sig).
+            dose:          rx.dose || null,
+            frequencyCode: rx.frequencyCode ?? null,
+            quantityLabel: rx.quantityLabel ?? null,
           }),
         })
 
@@ -411,6 +451,12 @@ export function BatchReviewForm({ isProvider }: Props) {
             protocolId:    rx.protocolId ?? null,
             // WO-96: derived + defaulted detail fields
             rxDetails:     effectiveDetails(rx),
+            // WO-96 fix / WO-98: the builder inputs, stored on
+            // medication_snapshot so a reopened draft keeps its dose,
+            // frequency AND quantity (quantity cannot be re-parsed from the sig).
+            dose:          rx.dose || null,
+            frequencyCode: rx.frequencyCode ?? null,
+            quantityLabel: rx.quantityLabel ?? null,
           }),
         })
 

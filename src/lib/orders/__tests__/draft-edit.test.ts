@@ -158,3 +158,19 @@ describe('canEditDraft', () => {
     await expect(canEditDraft(other.client, 'o1', { userId: 'u-ma', role: 'clinic_admin' })).resolves.toBe(false)
   })
 })
+
+// ── WO-96 fix: quantity round-trip on the edit path ───────────
+describe('WO-96 fix — a reopened draft keeps its quantity', () => {
+  it('builderStateFromOrder reads the quantity the save stored on medication_snapshot', () => {
+    const state = builderStateFromOrder({
+      formulation_id: 'f1',
+      pharmacy_id:    'p1',
+      sig_text:       'Inject 10 units (0.10mL / 0.50mg) subcutaneous once weekly in the morning for 30 days',
+      refills:        0,
+      medication_snapshot: { prescribed_dose: '10 units', frequency_code: 'QW', quantity_label: '1mL vial' },
+    })
+    expect(state).toEqual(expect.objectContaining({
+      doseAmount: '10', doseUnit: 'units', frequency: 'QW', quantity: '1mL vial',
+    }))
+  })
+})
