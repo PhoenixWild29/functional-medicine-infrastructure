@@ -13,7 +13,14 @@ import { useEffect } from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { PrescriptionSessionProvider, usePrescriptionSession } from '../../../_context/prescription-session'
 import { MarginBuilderForm, splitDose } from '../margin-builder-form'
-import { STANDARD_CLINICAL_DIFFERENCE_OPTIONS } from '@/lib/orders/rx-details'
+import { STANDARD_CLINICAL_DIFFERENCE_OPTIONS, type PackageOption } from '@/lib/orders/rx-details'
+
+// WO-101b: the default quantity comes from the pharmacy's priced packages
+// (never pharmacy_formulations.available_quantities). One priced package
+// keeps these tests on the default-quantity path; two or more would hand
+// the line to the WO-101 package suggestion instead.
+const onePackage = (label: string, qty: number): PackageOption[] =>
+  [{ id: `pkg-${label}`, label, qty, unit: 'mL', wholesalePrice: 95, isDefault: true }]
 
 const mockPush = jest.fn()
 jest.mock('next/navigation', () => ({
@@ -158,16 +165,16 @@ describe('MarginBuilderForm — derived days supply + dispense', () => {
     expect(screen.getByTestId('days-supply-value')).toHaveTextContent('350 days')
   })
 
-  it('never shows "—" when no quantity came upstream: defaults to the smallest listed package', () => {
-    renderMargin({ presetQuantity: undefined, availableQuantities: ['5mL vial', '2.5mL vial'] })
-    // No duration in this sig → derived from the smallest package, 2.5 mL.
+  it('never shows "—" when no quantity came upstream: defaults to the pharmacy\'s priced package', () => {
+    renderMargin({ presetQuantity: undefined, packages: onePackage('2.5mL vial', 2.5) })
+    // No duration in this sig → derived from the priced 2.5 mL package.
     expect(screen.getByTestId('days-supply-value')).toHaveTextContent('175 days')
     expect(screen.getByTestId('dispense-value')).toHaveTextContent('2.5 mL')
     expect(screen.queryByText(/Computed once a quantity is selected/)).not.toBeInTheDocument()
   })
 
   it('with no quantity and no package list, still computes from one package ("1")', () => {
-    renderMargin({ presetQuantity: undefined, availableQuantities: [] })
+    renderMargin({ presetQuantity: undefined, packages: [] })
     expect(screen.getByTestId('days-supply-value')).toHaveTextContent('70 days')
     expect(screen.getByTestId('dispense-value')).toHaveTextContent('1 mL')
   })
@@ -208,10 +215,10 @@ describe('MarginBuilderForm — derived days supply + dispense', () => {
 
 describe('MarginBuilderForm — WO-96 fix: days supply from the duration the provider picked', () => {
   const GINA_SIG = 'Inject 10 units (0.10mL / 0.50mg) subcutaneous once weekly in the morning for 30 days'
-  const STRIVE_PACKAGES = ['5mL vial', '2.5mL vial', '1mL vial']
+  const ONE_ML = onePackage('1mL vial', 1)
 
   it("Gina's scenario with no quantity picked: 30 days / 0.4 mL, never '—'", () => {
-    renderMargin({ presetSigText: GINA_SIG, presetQuantity: undefined, availableQuantities: STRIVE_PACKAGES })
+    renderMargin({ presetSigText: GINA_SIG, presetQuantity: undefined, packages: ONE_ML })
     expect(screen.getByTestId('days-supply-value')).toHaveTextContent('30 days')
     expect(screen.getByTestId('dispense-value')).toHaveTextContent('0.4 mL')
     expect(screen.getByText(/Days supply is the 30-day duration selected on the dose step. Dispense is 4 doses over those days × the dose./)).toBeInTheDocument()
@@ -219,7 +226,7 @@ describe('MarginBuilderForm — WO-96 fix: days supply from the duration the pro
   })
 
   it('the session line carries the derived values and the default package (smallest covering 0.4 mL)', async () => {
-    renderMargin({ presetSigText: GINA_SIG, presetQuantity: undefined, availableQuantities: STRIVE_PACKAGES })
+    renderMargin({ presetSigText: GINA_SIG, presetQuantity: undefined, packages: ONE_ML })
     fireEvent.click(screen.getByRole('button', { name: /^Review & Send/ }))
     await waitFor(() => expect(lastSession?.prescriptions).toHaveLength(1))
     const rx = lastSession!.prescriptions[0]!
@@ -228,7 +235,7 @@ describe('MarginBuilderForm — WO-96 fix: days supply from the duration the pro
   })
 
   it('a quantity the provider picked upstream is kept, and the duration still sets the days supply', async () => {
-    renderMargin({ presetSigText: GINA_SIG, presetQuantity: '5mL vial', availableQuantities: STRIVE_PACKAGES })
+    renderMargin({ presetSigText: GINA_SIG, presetQuantity: '5mL vial', packages: onePackage('5mL vial', 5) })
     expect(screen.getByTestId('days-supply-value')).toHaveTextContent('30 days')
     fireEvent.click(screen.getByRole('button', { name: /^Review & Send/ }))
     await waitFor(() => expect(lastSession?.prescriptions).toHaveLength(1))
@@ -239,7 +246,7 @@ describe('MarginBuilderForm — WO-96 fix: days supply from the duration the pro
   // the sig that link carried once — editing the sig on the page no longer
   // changes the derived values (the structured duration never did, WO-101).
   it('a legacy link reads the duration from the sig it carried; editing the sig does not change it', () => {
-    renderMargin({ presetSigText: GINA_SIG, presetQuantity: undefined, availableQuantities: STRIVE_PACKAGES })
+    renderMargin({ presetSigText: GINA_SIG, presetQuantity: undefined, packages: ONE_ML })
     expect(screen.getByTestId('days-supply-value')).toHaveTextContent('30 days')
     fireEvent.change(screen.getByLabelText(/Sig \(Prescription Directions\)/), {
       target: { value: 'Inject 10 units (0.10mL / 0.50mg) subcutaneous once weekly in the morning for 90 days' },
@@ -249,13 +256,13 @@ describe('MarginBuilderForm — WO-96 fix: days supply from the duration the pro
   })
 
   it('a structured duration from the builder is used as is', () => {
-    renderMargin({ presetSigText: GINA_SIG, presetDurationDays: 90, presetQuantity: undefined, availableQuantities: STRIVE_PACKAGES })
+    renderMargin({ presetSigText: GINA_SIG, presetDurationDays: 90, presetQuantity: undefined, packages: ONE_ML })
     expect(screen.getByTestId('days-supply-value')).toHaveTextContent('90 days')
     expect(screen.getByTestId('dispense-value')).toHaveTextContent('1.2 mL')   // 12 doses × 0.1 mL
   })
 
   it('an override still wins and persists as sent', async () => {
-    renderMargin({ presetSigText: GINA_SIG, presetQuantity: undefined, availableQuantities: STRIVE_PACKAGES })
+    renderMargin({ presetSigText: GINA_SIG, presetQuantity: undefined, packages: ONE_ML })
     fireEvent.click(screen.getByRole('button', { name: 'Override' }))
     fireEvent.change(screen.getByLabelText('Days supply'), { target: { value: '28' } })
     fireEvent.change(screen.getByLabelText('Dispense qty'), { target: { value: '1' } })
@@ -271,7 +278,7 @@ describe('MarginBuilderForm — WO-96 fix: days supply from the duration the pro
 
   it('Save as Draft posts the default quantity and the overridden values (they round-trip on edit)', async () => {
     renderMargin({
-      presetSigText: GINA_SIG, presetQuantity: undefined, availableQuantities: STRIVE_PACKAGES, presetDose: '10 units',
+      presetSigText: GINA_SIG, presetQuantity: undefined, packages: ONE_ML, presetDose: '10 units',
       rxDefaults: { ...SEMAGLUTIDE_DEFAULTS },
     })
     const fetchMock = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ orderId: 'order-1' }) })

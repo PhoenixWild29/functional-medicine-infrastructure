@@ -286,7 +286,7 @@ export async function GET(req: NextRequest) {
         const query = supabase
           .from('pharmacy_formulations')
           .select(`
-            pharmacy_formulation_id, wholesale_price, available_quantities,
+            pharmacy_formulation_id, wholesale_price,
             available_supply_durations, estimated_turnaround_days,
             pharmacies(
               pharmacy_id, name, slug, integration_tier,

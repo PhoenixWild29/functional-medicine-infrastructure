@@ -61,6 +61,7 @@ import {
   rulesFromFormulation,
   type RxDetails,
   type RxRules,
+  pharmacySizeLabels,
 } from '@/lib/orders/rx-details'
 import type { RxFormulationDefaults } from '@/lib/orders/rx-defaults-loader'
 import { splitDose } from '@/lib/orders/dose'
@@ -123,8 +124,6 @@ interface Props {
     dosageFormName:     string | null
   } | null
   rxDefaults?:         RxFormulationDefaults | null
-  /** WO-96 fix: package labels the pharmacy lists — defaults an empty quantity. */
-  availableQuantities?: string[] | null
   // WO-98 — which existing line this form saves back to. Absent → add a
   // new session line (the original flow).
   editTarget?:         EditTarget | null
@@ -191,7 +190,6 @@ export function MarginBuilderForm({
   presetQuantity,
   presetRefills,
   formulationDetails,
-  availableQuantities = null,
   rxDefaults,
   editTarget = null,
   draftLine = null,
@@ -285,9 +283,13 @@ export function MarginBuilderForm({
       ?? (usingCarriedPackage && carriedPackageCount ? carriedPackageCount : packageCountFor(selectedPackage, suggestion.dispenseQuantity))
   const packageIsSuggested = !!suggestion && selectedPackage?.id === suggestion.package.id && packageCount === suggestion.count
 
+  // WO-96 fix / WO-101b: the quantity defaults from the pharmacy's priced
+  // packages (never pharmacy_formulations.available_quantities). A preset
+  // label the pharmacy does not price is not used.
+  const sizeLabels = pharmacySizeLabels(packages)
   const effectiveQuantity = useMemo(() => {
     if (selectedPackage) return selectedPackage.label
-    if (presetQuantity) return presetQuantity
+    if (presetQuantity && (sizeLabels.length === 0 || sizeLabels.includes(presetQuantity))) return presetQuantity
     if (!formulationDetails) return ''
     const { amount, unit } = splitDose(dose)
     const fromDuration = durationDays != null
@@ -300,13 +302,15 @@ export function MarginBuilderForm({
         })
       : null
     return defaultQuantityLabel(
-      availableQuantities,
+      sizeLabels,
       fromDuration
         ? { quantity: fromDuration.dispenseQuantity, unit: fromDuration.dispenseUnit }
         : { quantity: null, unit: dispenseUnitFor(formulationDetails.dosageFormName, unit) },
       formulationDetails.dosageFormName,
     )
-  }, [selectedPackage, presetQuantity, formulationDetails, dose, durationDays, presetFrequency, availableQuantities])
+    // sizeLabels is derived from packages each render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPackage, presetQuantity, formulationDetails, dose, durationDays, presetFrequency, packages])
 
   const derived = useMemo(() => {
     if (!formulationDetails) return null

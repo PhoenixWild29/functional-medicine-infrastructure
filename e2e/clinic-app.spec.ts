@@ -1725,10 +1725,13 @@ test.describe('Clinic App — WO-96 fix: days supply and dispense are never "—
     await page.getByLabel('Duration').selectOption('30')
     await page.getByRole('button', { name: /Test Pharmacy Tier1/ }).click()
 
-    // Quantity is defaulted, not "Select quantity": the smallest listed
-    // package that covers 0.4 mL is the 2.5 mL vial.
+    // Quantity is defaulted, not "Select quantity": the smallest priced
+    // package that covers 0.4 mL. WO-101b: Tier1 prices only its 5 mL vial
+    // (its "2.5mL vial" is listed in available_quantities with no price, so
+    // it is no longer offered).
     const quantity = page.getByLabel('Quantity')
-    await expect(quantity).toHaveValue('2.5mL vial')
+    await expect(quantity).toHaveValue('5mL vial')
+    await expect(quantity.locator('option')).toHaveCount(1)
     await expect(page.getByRole('option', { name: 'Select quantity' })).toHaveCount(0)
     await expect(page.getByTestId('quantity-default-hint')).toContainText('covers 30 days')
 
@@ -2118,5 +2121,63 @@ test.describe('Clinic App — WO-102: shipping once per pharmacy per order', () 
     await expect(page.getByLabel('Amount due: $215.00')).toBeVisible({ timeout: 15_000 })
     await expect(page.getByTestId('checkout-subtotal')).toHaveText('$190.00')
     await expect(page.getByTestId('checkout-shipping')).toHaveText('$25.00')
+  })
+})
+
+// ============================================================
+// WO-101b — a pharmacy option lists only the sizes it prices
+// ============================================================
+// Prod, dr.chen, Alex Demo, Semaglutide Injectable 5 mg/mL, 20 units once
+// weekly for 90 days (2.4 mL): Quick Rx's card read "3 × 1 mL vials ·
+// Available: 1 mL vial, 3 mL vial" while no 3 mL vial was priced.
+// "Test Pharmacy QuickRx" reproduces it: available_quantities lists 1 mL
+// and 3 mL, one package row prices the 1 mL vial at $95.
+
+test.describe('Clinic App — WO-101b: pharmacy sizes come from priced packages only', () => {
+  test.beforeAll(async () => {
+    await seedStaticData()
+  })
+
+  test.afterEach(async () => {
+    await cleanupTestOrders()
+  })
+
+  test('the QuickRx card never offers the unpriced 3 mL vial; it prices three 1 mL vials, and "Strive" its 2.5 mL vial', async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+    await page.goto('/new-prescription')
+    await page.getByLabel('Search patients').fill('Test')
+    await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
+    await pickProviderIfListed(page)
+    await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
+
+    await page.getByLabel('Search medications').fill(TEST_CATALOG.glp1IngredientName)
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.glp1IngredientName, 'i') }).click()
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.glp1FormulationName, 'i') }).click()
+    await page.getByLabel('Dose amount').fill('20')
+    await page.getByLabel('Dose unit').selectOption('units')
+    await page.getByLabel('Frequency').selectOption('QW')
+    await page.getByLabel('Timing').selectOption('MORNING')
+    await page.getByLabel('Duration').selectOption('90')
+
+    const quickRx = page.getByRole('button', { name: /Test Pharmacy QuickRx/ })
+    await expect(quickRx.getByTestId('pharmacy-suggested-package')).toHaveText('3 × 1 mL vials')
+    await expect(quickRx).toContainText('$285.00')
+    await expect(quickRx.getByTestId('pharmacy-sizes')).toHaveText('Available: 1 mL vial')
+    await expect(quickRx).not.toContainText('3 mL vial')
+
+    const strive = page.getByRole('button', { name: /Test Pharmacy Tier2/ })
+    await expect(strive.getByTestId('pharmacy-suggested-package')).toHaveText('2.5 mL vial')
+    await expect(strive).toContainText('$165.00')
+
+    // On the price step the package dropdown offers only what QuickRx prices.
+    await quickRx.click()
+    await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
+    await expect(page.getByTestId('package-summary')).toHaveText('Package: 3 × 1 mL vials (suggested for 90 days) · $285.00')
+    const packageOptions = page.getByLabel('Package', { exact: true }).locator('option')
+    await expect(packageOptions).toHaveCount(1)
+    await expect(packageOptions).toHaveText(['1 mL vial — $95.00 (suggested)'])
+    await expect(page.getByText(/3 mL vial/)).toHaveCount(0)
   })
 })

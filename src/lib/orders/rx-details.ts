@@ -459,9 +459,10 @@ export function computeDispense(input: DispenseInput): DerivedDispense | null {
  *   - labels that name only containers ("1 vial"): the smallest count
  *   - no usable label at all: the first label, or "1" when the pharmacy
  *     lists nothing
- * This reads the existing available_quantities strings only. Formulations
- * a pharmacy sells in more than one priced package use suggestPackage
- * (WO-101) instead.
+ * WO-101b: the labels are the pharmacy's active priced packages
+ * (pharmacySizeLabels) — never pharmacy_formulations.available_quantities,
+ * which can list sizes that have no price. Formulations a pharmacy sells in
+ * more than one priced package use suggestPackage (WO-101) instead.
  */
 export function defaultQuantityLabel(
   labels: ReadonlyArray<string> | null | undefined,
@@ -561,6 +562,21 @@ export function formatDispenseWithPackage(
   const n = typeof packageCount === 'number' && packageCount > 1 ? Math.trunc(packageCount) : 1
   const packaging = n === 1 ? `1 × ${label}` : formatPackageCount(label, n)
   return base ? `${base} (${packaging})` : packaging
+}
+
+/**
+ * WO-101b: the sizes a pharmacy option offers, for every place the
+ * prescribing flow lists them — its active priced packages, smallest
+ * first. pharmacy_formulations.available_quantities is not a display
+ * source: it can name sizes that have no package row and so no known
+ * wholesale price, and a size with no price is never shown, selectable or
+ * suggested (phase rule 4: the sizes a pharmacy sells are stated once, on
+ * pharmacy_formulation_packages).
+ */
+export function pharmacySizeLabels(packages: ReadonlyArray<Pick<PackageOption, 'label' | 'qty'>> | null | undefined): string[] {
+  return [...(packages ?? [])]
+    .sort((a, b) => a.qty - b.qty || a.label.localeCompare(b.label))
+    .map(p => p.label)
 }
 
 /** Snake-case package rows (API / Supabase) → PackageOption, active only, smallest first. */

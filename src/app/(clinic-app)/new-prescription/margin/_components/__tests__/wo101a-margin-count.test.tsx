@@ -82,7 +82,6 @@ function renderMargin(overrides: Partial<React.ComponentProps<typeof MarginBuild
         presetDose="10 units"
         presetDurationDays={30}
         packages={STRIVE_VIALS}
-        availableQuantities={['1 mL vial', '2.5 mL vial', '5 mL vial']}
         presetRefills={0}
         formulationDetails={{ concentrationValue: 5, concentrationUnit: 'mg/mL', dosageFormName: 'Injectable Solution' }}
         rxDefaults={SEMAGLUTIDE_DEFAULTS}
