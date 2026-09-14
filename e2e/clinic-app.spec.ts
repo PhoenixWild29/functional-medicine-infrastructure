@@ -948,7 +948,8 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
     await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
 
     await expect(page.getByText('Prescriptions (2)')).toBeVisible()
-    await expect(page.getByText('$400.00')).toBeVisible()
+    // WO-102: Subtotal and Patient total both read $400.00 here (Tier1 ships free) — read the subtotal by test id.
+    await expect(page.getByTestId('review-subtotal')).toHaveText('$400.00')
     const glp1Card = page.locator('[data-testid^="rx-details-"]').nth(1).locator('..')
     await expect(glp1Card).toContainText('10 units')
     const glp1LineId = (await page.locator('[data-testid^="rx-details-"]').nth(1).getAttribute('data-testid'))!.replace('rx-details-', '')
@@ -984,7 +985,7 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
     await expect(editedCard).toContainText('15 units')
     await expect(editedCard).toContainText('$250.00')
     await expect(editedCard).toContainText('233-day supply')
-    await expect(page.getByText('$450.00')).toBeVisible()
+    await expect(page.getByTestId('review-subtotal')).toHaveText('$450.00')
 
     // ── Back lands on search with the session intact ──────────
     await page.getByRole('button', { name: 'Back', exact: true }).click()
@@ -994,7 +995,7 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
     await page.getByRole('button', { name: 'Review & Send' }).click()
     await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
     await expect(page.getByText('Prescriptions (2)')).toBeVisible()
-    await expect(page.getByText('$450.00')).toBeVisible()
+    await expect(page.getByTestId('review-subtotal')).toHaveText('$450.00')
   })
 
   test('provider opens a draft, edits the dose, adds a second line, removes it: same order id, audit rows, soft delete', async ({ page }) => {
