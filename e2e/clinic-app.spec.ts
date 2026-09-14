@@ -1796,7 +1796,9 @@ test.describe('Clinic App — WO-102: shipping once per pharmacy per order', () 
     await expect(page.getByTestId('shipping-line')).toContainText(`Shipping (standard): $${TEST_SHIPPING.tier2.standard}.00`)
     await expect(page.getByTestId('shipping-line')).toContainText('not part of the margin')
     await page.locator('#retail-price').fill('200.00')
-    await page.getByRole('button', { name: /Review & Send/ }).click()
+    // One line is already in the session, so the banner carries a "Review & Send"
+    // link too — click the form's submit.
+    await page.getByRole('button', { name: 'Review & Send (2)' }).click()
     await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
   }
 
