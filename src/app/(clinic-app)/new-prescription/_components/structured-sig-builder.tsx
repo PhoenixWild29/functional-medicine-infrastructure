@@ -54,7 +54,9 @@ interface StructuredSigBuilderProps {
    * to seed timing + duration (which are not part of the line's
    * structured inputs) so re-editing a dose regenerates a sig with the
    * same "in the morning for 30 days" tail. Dose + frequency come from
-   * the controlled props.
+   * the controlled props. The parent passes it only while the dose step
+   * shows that line's own formulation and nothing else has been loaded,
+   * so it never seeds a different medication.
    */
   initialSigText?: string | undefined
   /**
