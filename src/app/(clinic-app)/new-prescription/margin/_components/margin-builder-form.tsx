@@ -28,6 +28,10 @@ import { usePrescriptionSession, type SessionPrescription } from '../../_context
 import type { EditTarget } from '../../_lib/edit-target'
 import {
   computeDispense,
+  defaultQuantityLabel,
+  dispenseUnitFor,
+  dosesInDays,
+  durationDaysFromSig,
   defaultRxDetails,
   missingRxDetails,
   MISSING_RX_DETAIL_LABEL,
@@ -94,6 +98,8 @@ interface Props {
     dosageFormName:     string | null
   } | null
   rxDefaults?:         RxFormulationDefaults | null
+  /** WO-96 fix: package labels the pharmacy lists — defaults an empty quantity. */
+  availableQuantities?: string[] | null
   // WO-98 — which existing line this form saves back to. Absent → add a
   // new session line (the original flow).
   editTarget?:         EditTarget | null
@@ -132,6 +138,7 @@ export function MarginBuilderForm({
   presetQuantity,
   presetRefills,
   formulationDetails,
+  availableQuantities = null,
   rxDefaults,
   editTarget = null,
   draftLine = null,
@@ -157,7 +164,39 @@ export function MarginBuilderForm({
   const isEditing   = editTarget?.kind === 'session' || editTarget?.kind === 'draft'
   const isDraftMode = editTarget?.kind === 'draft' || editTarget?.kind === 'draft-add'
 
+  // WO-83: Pre-fill sig from cascading builder if available. Declared
+  // before the derivation: the duration the provider picked lives in it.
+  const [sigText, setSigText] = useState(presetSigText ?? '')
+
   // ── WO-96: derived days supply + dispense ─────────────────────
+  // WO-96 fix: days supply = the duration in the sig ("for 30 days");
+  // dispense = doses in that many days × dose. With no duration, both
+  // come from the quantity — which is never empty: an absent one
+  // defaults to the smallest listed package (or "1"). Recomputes when the
+  // dose, frequency, sig (duration), quantity or formulation change.
+  const durationDays = durationDaysFromSig(sigText)
+  const effectiveQuantity = useMemo(() => {
+    if (presetQuantity) return presetQuantity
+    if (!formulationDetails) return ''
+    const { amount, unit } = splitDose(dose)
+    const fromDuration = durationDays != null
+      ? computeDispense({
+          doseAmount: amount, doseUnit: unit, frequencyCode: presetFrequency ?? null, quantityLabel: null,
+          concentrationValue: formulationDetails.concentrationValue,
+          concentrationUnit:  formulationDetails.concentrationUnit,
+          dosageFormName:     formulationDetails.dosageFormName,
+          durationDays,
+        })
+      : null
+    return defaultQuantityLabel(
+      availableQuantities,
+      fromDuration
+        ? { quantity: fromDuration.dispenseQuantity, unit: fromDuration.dispenseUnit }
+        : { quantity: null, unit: dispenseUnitFor(formulationDetails.dosageFormName, unit) },
+      formulationDetails.dosageFormName,
+    )
+  }, [presetQuantity, formulationDetails, dose, durationDays, presetFrequency, availableQuantities])
+
   const derived = useMemo(() => {
     if (!formulationDetails) return null
     const { amount, unit } = splitDose(dose)
@@ -165,12 +204,16 @@ export function MarginBuilderForm({
       doseAmount:         amount,
       doseUnit:           unit,
       frequencyCode:      presetFrequency ?? null,
-      quantityLabel:      presetQuantity ?? null,
+      quantityLabel:      effectiveQuantity || null,
       concentrationValue: formulationDetails.concentrationValue,
       concentrationUnit:  formulationDetails.concentrationUnit,
       dosageFormName:     formulationDetails.dosageFormName,
+      durationDays,
     })
-  }, [dose, presetFrequency, presetQuantity, formulationDetails])
+  }, [dose, presetFrequency, effectiveQuantity, formulationDetails, durationDays])
+  const derivedBasis = durationDays != null
+    ? { kind: 'duration' as const, days: durationDays, doses: dosesInDays(durationDays, presetFrequency ?? null) }
+    : { kind: 'quantity' as const, label: effectiveQuantity }
   const [dispenseOverride, setDispenseOverride] = useState<DispenseOverride>(EMPTY_OVERRIDE)
 
   // ── WO-96: pre-filled Rx details + the rules that govern them ──
@@ -230,8 +273,6 @@ export function MarginBuilderForm({
     setRetailSeededFromLine(true)
     setRetailInput(toCurrency(existingRetailCents))
   }
-  // WO-83: Pre-fill sig from cascading builder if available
-  const [sigText, setSigText] = useState(presetSigText ?? '')
   // REQ-DMB-006: soft-block for >5x wholesale — requires explicit acknowledgment
   const [highMarkupAcknowledged, setHighMarkupAcknowledged] = useState(false)
 
@@ -299,7 +340,7 @@ export function MarginBuilderForm({
       rxDetails,
       rxRules,
       frequencyCode: presetFrequency ?? null,
-      quantityLabel: presetQuantity ?? null,
+      quantityLabel: effectiveQuantity || null,
       // WO-103: lets the Review card show the mg equivalent
       concentrationValue: formulationDetails?.concentrationValue ?? null,
       concentrationUnit:  formulationDetails?.concentrationUnit ?? null,
@@ -328,7 +369,7 @@ export function MarginBuilderForm({
       rxDetails,
       dose:          presetDose ?? null,
       frequencyCode: presetFrequency ?? null,
-      quantityLabel: presetQuantity ?? null,
+      quantityLabel: effectiveQuantity || null,
     }
   }
 
@@ -421,6 +462,11 @@ export function MarginBuilderForm({
           patientState:  rxSession.patient.state ?? '',
           // WO-96: derived + defaulted detail fields
           rxDetails,
+          // WO-96 fix / WO-98: builder inputs stored on medication_snapshot
+          // so a reopened draft keeps dose, frequency and quantity.
+          dose:          presetDose ?? null,
+          frequencyCode: presetFrequency ?? null,
+          quantityLabel: effectiveQuantity || null,
         }),
       })
 
@@ -624,7 +670,7 @@ export function MarginBuilderForm({
         {formulationDetails && (
           <DerivedDispense
             derived={derived}
-            noQuantity={!presetQuantity}
+            basis={derivedBasis}
             override={dispenseOverride}
             onChange={setDispenseOverride}
           />

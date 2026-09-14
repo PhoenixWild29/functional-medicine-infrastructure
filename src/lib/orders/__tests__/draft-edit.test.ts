@@ -4,6 +4,7 @@
  */
 
 import {
+  structuredLineInputs,
   builderStateFromOrder,
   canEditDraft,
   diffDraftRows,
@@ -156,5 +157,69 @@ describe('canEditDraft', () => {
 
     const other = makeClient({ creatorRows: [] })
     await expect(canEditDraft(other.client, 'o1', { userId: 'u-ma', role: 'clinic_admin' })).resolves.toBe(false)
+  })
+})
+
+// ── WO-96 fix: quantity round-trip on the edit path ───────────
+describe('WO-96 fix — a reopened draft keeps its quantity', () => {
+  it('builderStateFromOrder reads the quantity the save stored on medication_snapshot', () => {
+    const state = builderStateFromOrder({
+      formulation_id: 'f1',
+      pharmacy_id:    'p1',
+      sig_text:       'Inject 10 units (0.10mL / 0.50mg) subcutaneous once weekly in the morning for 30 days',
+      refills:        0,
+      medication_snapshot: { prescribed_dose: '10 units', frequency_code: 'QW', quantity_label: '1mL vial' },
+    })
+    expect(state).toEqual(expect.objectContaining({
+      doseAmount: '10', doseUnit: 'units', frequency: 'QW', quantity: '1mL vial',
+    }))
+  })
+})
+
+// ── WO-96 fix: structured inputs win over the sig ─────────────
+describe('structuredLineInputs — dose, frequency and quantity are structured, not re-parsed', () => {
+  // The provider hand-edited the sig on the price step: it now says 20 units
+  // twice daily for 90 days. The builder's structured values are 10 units
+  // once weekly from a 1 mL vial — those are what must be stored.
+  const HAND_EDITED_SIG = 'Inject 20 units (0.20mL / 1.00mg) subcutaneously twice daily for 90 days'
+
+  it('a manually edited sig does not change the stored dose, frequency or quantity', () => {
+    expect(structuredLineInputs({
+      dose:          '10 units',
+      frequencyCode: 'QW',
+      quantityLabel: '1mL vial',
+      sigText:       HAND_EDITED_SIG,
+    })).toEqual({ dose: '10 units', frequencyCode: 'QW', quantityLabel: '1mL vial' })
+  })
+
+  it('normalises the structured dose unit', () => {
+    expect(structuredLineInputs({ dose: '0.5mg', frequencyCode: 'QW', quantityLabel: null, sigText: HAND_EDITED_SIG }).dose).toBe('0.5 mg')
+  })
+
+  it('falls back to the sig only for a legacy line with no structured values', () => {
+    expect(structuredLineInputs({ dose: null, frequencyCode: null, quantityLabel: null, sigText: HAND_EDITED_SIG }))
+      .toEqual({ dose: '20 units', frequencyCode: 'BID', quantityLabel: null })
+  })
+
+  it('falls back per field: a structured frequency still wins when only the dose is missing', () => {
+    expect(structuredLineInputs({ dose: '', frequencyCode: 'QW', quantityLabel: '1mL vial', sigText: HAND_EDITED_SIG }))
+      .toEqual({ dose: '20 units', frequencyCode: 'QW', quantityLabel: '1mL vial' })
+  })
+
+  it('a strength-shaped dose ("5mg/mL", the formulation concentration) is not treated as a prescribed dose', () => {
+    expect(structuredLineInputs({ dose: '5mg/mL', frequencyCode: 'QW', quantityLabel: null, sigText: 'Inject 10 units subcutaneously once weekly' }).dose)
+      .toBe('10 units')
+  })
+
+  it('never parses a quantity out of the sig', () => {
+    expect(structuredLineInputs({ dose: null, frequencyCode: null, quantityLabel: null, sigText: 'Take 1 capsule daily, dispense 30 capsules' }).quantityLabel)
+      .toBeNull()
+  })
+
+  it('builderStateFromOrder applies the same rule: stored snapshot values beat a hand-edited sig', () => {
+    expect(builderStateFromOrder({
+      formulation_id: 'f1', pharmacy_id: 'p1', refills: 0, sig_text: HAND_EDITED_SIG,
+      medication_snapshot: { prescribed_dose: '10 units', frequency_code: 'QW', quantity_label: '1mL vial' },
+    })).toEqual(expect.objectContaining({ doseAmount: '10', doseUnit: 'units', frequency: 'QW', quantity: '1mL vial' }))
   })
 })

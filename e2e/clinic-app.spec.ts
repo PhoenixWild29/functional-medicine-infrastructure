@@ -617,14 +617,15 @@ test.describe('Clinic App — WO-96 Rx detail fields', () => {
     await cleanupTestOrders()
   })
 
-  test('margin page shows days supply and dispense computed from dose × frequency × quantity', async ({ page }) => {
+  test('margin page with no duration selected: days supply and dispense computed from the selected package', async ({ page }) => {
     await loginAs(page, TEST_USERS.provider)
     await walkBuilderToMargin(page, PLAIN)
 
     // 10 mg of a 10 mg/mL injectable = 1 mL daily; 30 mL lasts 30 days.
     await expect(page.getByTestId('days-supply-value')).toHaveText('30 days')
     await expect(page.getByTestId('dispense-value')).toHaveText('30 mL')
-    await expect(page.getByText(/Computed from dose × frequency × quantity/)).toBeVisible()
+    // No duration on this sig, so the explanation names the fallback basis.
+    await expect(page.getByText('No duration selected, so days supply is how long the 30 mL package lasts at this dose and frequency.', { exact: false })).toBeVisible()
     // Read-only until the provider opts in to override.
     await expect(page.getByLabel('Days supply')).toHaveCount(0)
     await page.getByRole('button', { name: 'Override' }).click()
@@ -1464,5 +1465,72 @@ test.describe('Clinic App — WO-103 search bar, favorites/protocols panels, sav
       .eq('provider_id', TEST_IDS.provider)
       .eq('label', favoriteName)
     expect(count ?? 0).toBe(0)
+  })
+})
+
+// ============================================================
+// WO-96 fix — derived days supply + dispense (Gina Rooks, 2026-09-11)
+// ============================================================
+// Production rendered Days supply and Dispense as "—" for this exact
+// scenario because the derivation needed a quantity nobody was made to
+// pick. The E2E seed's GLP-1 analogue stands in for Semaglutide 5 mg/mL
+// (same concentration, packages 5 mL / 2.5 mL vial). Nothing is typed
+// into Quantity; the duration picked on the dose step drives both values.
+
+test.describe('Clinic App — WO-96 fix: days supply and dispense are never "—" when a duration is set', () => {
+  test.beforeAll(async () => {
+    await seedStaticData()
+  })
+
+  test.afterEach(async () => {
+    await cleanupTestOrders()
+  })
+
+  test("Gina's scenario: 10 units once weekly for 30 days → 30 days / 0.4 mL on the price step and the Review card", async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+
+    await page.goto('/new-prescription')
+    await page.getByLabel('Search patients').fill('Test')
+    await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
+    await pickProviderIfListed(page)
+    await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
+
+    await page.getByLabel('Search medications').fill(TEST_CATALOG.glp1IngredientName)
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.glp1IngredientName, 'i') }).click()
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.glp1FormulationName, 'i') }).click()
+    await page.getByLabel('Dose amount').fill('10')
+    await page.getByLabel('Dose unit').selectOption('units')
+    await page.getByLabel('Frequency').selectOption('QW')
+    await page.getByLabel('Timing').selectOption('MORNING')
+    await page.getByLabel('Duration').selectOption('30')
+    await page.getByRole('button', { name: /Test Pharmacy Tier1/ }).click()
+
+    // Quantity is defaulted, not "Select quantity": the smallest listed
+    // package that covers 0.4 mL is the 2.5 mL vial.
+    const quantity = page.getByLabel('Quantity')
+    await expect(quantity).toHaveValue('2.5mL vial')
+    await expect(page.getByRole('option', { name: 'Select quantity' })).toHaveCount(0)
+    await expect(page.getByTestId('quantity-default-hint')).toContainText('covers 30 days')
+
+    await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
+
+    // Price step: populated, not "—".
+    await expect(page.getByTestId('days-supply-value')).toHaveText('30 days')
+    await expect(page.getByTestId('dispense-value')).toHaveText('0.4 mL')
+    await expect(page.getByText('Computed once a quantity is selected', { exact: false })).toHaveCount(0)
+
+    await page.locator('#retail-price').fill('200.00')
+    await page.getByRole('button', { name: /Review & Send/ }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
+
+    // Review card: the Rx details summary carries both values.
+    const row = page.locator('[data-testid^="rx-details-"]').first()
+    await expect(row).toBeVisible({ timeout: 15_000 })
+    await expect(row.getByRole('button', { name: /Rx details/ })).toContainText('30-day supply · dispense 0.4 mL')
+    await expect(row).toContainText('Days supply: 30 days')
+    await expect(row).toContainText('Dispense: 0.4 mL')
+    await expect(row.getByText('—', { exact: true })).toHaveCount(0)
   })
 })

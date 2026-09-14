@@ -316,3 +316,130 @@ describe('Save as Draft (non-provider) carries rxDetails', () => {
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/dashboard?draft=2'))
   })
 })
+
+// ============================================================
+// WO-96 fix — quantity round-trips on the edit path
+// ============================================================
+// A draft saved from Review used to omit the builder inputs, so the
+// order's medication_snapshot had no quantity_label and a reopened draft
+// lost its quantity (dose and frequency survived only by re-parsing the
+// sig). Both Review POSTs now send dose, frequencyCode and quantityLabel.
+
+describe('WO-96 fix — Review POSTs carry dose, frequency and quantity', () => {
+  const GLP1_LINE = line({
+    id: 'line-rt',
+    formulationId: 'formulation-sema',
+    medicationName: 'Semaglutide 5mg/mL Injectable',
+    dose: '10 units',
+    frequencyCode: 'QW',
+    quantityLabel: '1mL vial',
+    sigText: 'Inject 10 units (0.10mL / 0.50mg) subcutaneous once weekly in the morning for 30 days',
+    rxDetails: defaultRxDetails(PLAIN_DEFAULTS, { derived: { daysSupply: 30, dispenseQuantity: 0.4, dispenseUnit: 'mL' } }),
+    rxRules: { isControlled: false, requiresClinicalDifference: false, clinicalDifferenceOptions: [] },
+  })
+
+  it('Save as Draft sends the line quantity with dose and frequency', async () => {
+    seedSession([GLP1_LINE])
+    renderReview(false)
+    ;(global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({ orderId: 'order-1' }) })
+
+    fireEvent.click(await screen.findByRole('button', { name: /Save as Draft/ }))
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
+    const body = JSON.parse(((global.fetch as jest.Mock).mock.calls[0]![1] as RequestInit).body as string)
+    expect(body).toEqual(expect.objectContaining({
+      dose:          '10 units',
+      frequencyCode: 'QW',
+      quantityLabel: '1mL vial',
+    }))
+    expect(body.rxDetails).toEqual(expect.objectContaining({ daysSupply: 30, dispenseQuantity: 0.4, dispenseUnit: 'mL' }))
+  })
+
+  it('the Review card shows the derived values, not "—"', async () => {
+    seedSession([GLP1_LINE])
+    renderReview()
+    const row = await screen.findByTestId('rx-details-line-rt')
+    expect(within(row).getByText(/30-day supply · dispense 0.4 mL/)).toBeInTheDocument()
+  })
+
+  it('a quick-loaded line with no derived values is computed from its sig duration once defaults resolve', async () => {
+    const unresolved = line({
+      id: 'line-proto-rt',
+      formulationId: 'formulation-sema',
+      medicationName: 'Semaglutide (protocol)',
+      dose: '10 units',
+      frequencyCode: 'QW',
+      sigText: 'Inject 10 units (0.10mL / 0.50mg) subcutaneous once weekly for 30 days',
+    })
+    seedSession([unresolved])
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          'formulation-sema': {
+            formulationId: 'formulation-sema',
+            defaults: PLAIN_DEFAULTS,
+            deaSchedule: null,
+            suggestedDiagnosis: null,
+            dispenseInputs: { concentrationValue: 5, concentrationUnit: 'mg/mL', dosageFormName: 'Injectable Solution' },
+          },
+        },
+      }),
+    })
+    renderReview()
+    const row = await screen.findByTestId('rx-details-line-proto-rt')
+    await waitFor(() => expect(within(row).getByText(/30-day supply · dispense 0.4 mL/)).toBeInTheDocument())
+  })
+})
+
+// ============================================================
+// WO-96 fix — structured dose / frequency / quantity in both POST bodies
+// ============================================================
+// Sign & Send and Save as Draft both build their body with orderPostBody,
+// which sends the line's structured dose, frequencyCode and quantityLabel.
+// A sig the provider edited by hand never changes what is stored.
+
+describe('WO-96 fix — orderPostBody (Sign & Send and Save as Draft)', () => {
+  const HAND_EDITED_DETAILS = defaultRxDetails(PLAIN_DEFAULTS, { derived: { daysSupply: 30, dispenseQuantity: 0.4, dispenseUnit: 'mL' } })
+  const HAND_EDITED = line({
+    id: 'line-hand-edited',
+    formulationId: 'formulation-sema',
+    medicationName: 'Semaglutide 5mg/mL Injectable',
+    dose: '10 units',
+    frequencyCode: 'QW',
+    quantityLabel: '1mL vial',
+    // Edited by hand on the price step: different dose, frequency and duration.
+    sigText: 'Inject 20 units (0.20mL / 1.00mg) subcutaneously twice daily for 90 days',
+    rxDetails: HAND_EDITED_DETAILS,
+    rxRules: { isControlled: false, requiresClinicalDifference: false, clinicalDifferenceOptions: [] },
+  })
+
+  it('carries the structured dose, frequency and quantity, not values parsed from a hand-edited sig', async () => {
+    const { orderPostBody } = await import('../batch-review-form')
+    const body = orderPostBody(HAND_EDITED as never, PATIENT, PROVIDER, HAND_EDITED_DETAILS)
+    expect(body).toEqual(expect.objectContaining({
+      dose:          '10 units',
+      frequencyCode: 'QW',
+      quantityLabel: '1mL vial',
+      sigText:       'Inject 20 units (0.20mL / 1.00mg) subcutaneously twice daily for 90 days',
+    }))
+  })
+
+  it('falls back to the sig only for a legacy line with no structured values', async () => {
+    const { orderPostBody } = await import('../batch-review-form')
+    const legacy = { ...HAND_EDITED, dose: '', frequencyCode: null, quantityLabel: null }
+    expect(orderPostBody(legacy as never, PATIENT, PROVIDER, HAND_EDITED_DETAILS)).toEqual(expect.objectContaining({
+      dose: '20 units', frequencyCode: 'BID', quantityLabel: null,
+    }))
+  })
+
+  it('Save as Draft sends the structured values for a line whose sig was hand-edited', async () => {
+    seedSession([HAND_EDITED])
+    renderReview(false)
+    ;(global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({ orderId: 'order-1' }) })
+
+    fireEvent.click(await screen.findByRole('button', { name: /Save as Draft/ }))
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
+    const body = JSON.parse(((global.fetch as jest.Mock).mock.calls[0]![1] as RequestInit).body as string)
+    expect(body).toEqual(expect.objectContaining({ dose: '10 units', frequencyCode: 'QW', quantityLabel: '1mL vial' }))
+  })
+})

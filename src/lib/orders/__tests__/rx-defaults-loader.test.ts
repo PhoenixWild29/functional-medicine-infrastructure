@@ -87,6 +87,8 @@ describe('loadRxDefaults', () => {
       },
       deaSchedule: null,
       suggestedDiagnosis: null,
+      // WO-96 fix: what the Review card derives days supply / dispense from
+      dispenseInputs: { concentrationValue: null, concentrationUnit: null, dosageFormName: 'Injectable Solution' },
     })
     expect(out[TEST]).toEqual({
       formulationId: TEST,
@@ -98,6 +100,7 @@ describe('loadRxDefaults', () => {
       },
       deaSchedule: 3,
       suggestedDiagnosis: { code: 'E29.1', text: 'Testicular hypofunction' },
+      dispenseInputs: { concentrationValue: null, concentrationUnit: null, dosageFormName: 'Injectable Solution' },
     })
 
     // Deduplicated ids reach the query, scoped to the clinic.

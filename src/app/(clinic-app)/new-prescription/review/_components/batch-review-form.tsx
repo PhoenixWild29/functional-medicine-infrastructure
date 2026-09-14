@@ -50,6 +50,10 @@ import { RxDetailsRow } from './rx-details-row'
 import { AllergyNotice } from './allergy-notice'
 import { builderHref } from '../../_lib/edit-target'
 import {
+  computeDispense,
+  defaultQuantityLabel,
+  durationDaysFromSig,
+  type DerivedDispense,
   defaultRxDetails,
   missingRxDetails,
   MISSING_RX_DETAIL_LABEL,
@@ -59,6 +63,7 @@ import {
   type RxRules,
 } from '@/lib/orders/rx-details'
 import type { RxFormulationDefaults } from '@/lib/orders/rx-defaults-loader'
+import { structuredLineInputs } from '@/lib/orders/draft-edit'
 import { SaveFavoriteButton } from '../../_components/save-favorite-button'
 import { splitDose } from '@/lib/orders/dose'
 import { formatDoseWithMg } from '@/lib/orders/dose-display'
@@ -97,6 +102,66 @@ function effectiveRules(rx: SessionPrescription): RxRules {
 
 function effectiveDetails(rx: SessionPrescription): RxDetails {
   return rx.rxDetails ?? defaultRxDetails(null)
+}
+
+/**
+ * The POST /api/orders body for one session line. Shared by Sign & Send
+ * and Save as Draft so the two paths can never drift apart.
+ *
+ * Dose, frequency and quantity go as structured fields from the line
+ * (the values the builder set), never re-parsed from the sig — a sig the
+ * provider edited by hand does not change what is stored. The sig is read
+ * only as a fallback for a legacy line that has no structured value
+ * (see structuredLineInputs).
+ */
+export function orderPostBody(
+  rx: SessionPrescription,
+  patient: { patient_id: string; state: string | null },
+  provider: { provider_id: string },
+  rxDetails: RxDetails,
+) {
+  return {
+    patientId:     patient.patient_id,
+    providerId:    provider.provider_id,
+    // WO-87: send whichever ID this rx came from (catalog or formulation)
+    catalogItemId: rx.itemId,
+    formulationId: rx.formulationId,
+    pharmacyId:    rx.pharmacyId,
+    retailCents:   rx.retailCents,
+    sigText:       rx.sigText,
+    patientState:  patient.state ?? '',
+    // GAP-3: present only on lines quick-loaded from a protocol; the server
+    // links the order to a protocol_instance + version.
+    protocolId:    rx.protocolId ?? null,
+    // WO-96: derived + defaulted detail fields
+    rxDetails,
+    // WO-96 fix / WO-98: structured builder inputs, stored on
+    // medication_snapshot so a reopened draft keeps them.
+    ...structuredLineInputs(rx),
+  }
+}
+
+/**
+ * WO-96 fix: days supply + dispense for a session line from its own sig,
+ * dose, frequency and quantity. No quantity → one package ("1"); no
+ * pharmacy package list is available on this page.
+ */
+function derivedForLine(
+  rx: SessionPrescription,
+  inputs: RxFormulationDefaults['dispenseInputs'] | undefined,
+): DerivedDispense | null {
+  if (!inputs) return null
+  const { amount, unit } = splitDose(rx.dose)
+  return computeDispense({
+    doseAmount:         amount,
+    doseUnit:           unit,
+    frequencyCode:      rx.frequencyCode ?? null,
+    quantityLabel:      rx.quantityLabel || defaultQuantityLabel([], null, inputs.dosageFormName),
+    concentrationValue: inputs.concentrationValue,
+    concentrationUnit:  inputs.concentrationUnit,
+    dosageFormName:     inputs.dosageFormName,
+    durationDays:       durationDaysFromSig(rx.sigText),
+  })
 }
 
 /** Lines whose rules are unknown and can be resolved (V3.0 formulation lines). */
@@ -200,10 +265,17 @@ export function BatchReviewForm({ isProvider }: Props) {
             diagnosisCode: existing?.diagnosisCode ?? entry.suggestedDiagnosis?.code ?? null,
             diagnosisText: existing?.diagnosisText ?? entry.suggestedDiagnosis?.text ?? null,
           })
+          // WO-96 fix: a quick-loaded line arrives without days supply /
+          // dispense — derive them here (duration in the sig first, else the
+          // line's quantity, else one package) rather than show "—".
+          const derived = derivedForLine(rx, entry.dispenseInputs)
           updatePrescription(rx.id, {
             rxDetails: {
               ...defaults,
               ...(existing ?? {}),
+              ...(existing?.daysSupply == null && existing?.dispenseQuantity == null && derived
+                ? { daysSupply: derived.daysSupply, dispenseQuantity: derived.dispenseQuantity, dispenseUnit: derived.dispenseUnit }
+                : {}),
               clinicalDifference: existing?.clinicalDifference ?? defaults.clinicalDifference,
               diagnosisCode:      defaults.diagnosisCode,
               diagnosisText:      defaults.diagnosisText,
@@ -306,22 +378,7 @@ export function BatchReviewForm({ isProvider }: Props) {
         const orderRes = await fetch('/api/orders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            patientId:     patient.patient_id,
-            providerId:    provider.provider_id,
-            // WO-87: send whichever ID this rx came from (catalog or formulation)
-            catalogItemId: rx.itemId,
-            formulationId: rx.formulationId,
-            pharmacyId:    rx.pharmacyId,
-            retailCents:   rx.retailCents,
-            sigText:       rx.sigText,
-            patientState:  patient.state ?? '',
-            // GAP-3: present only on lines quick-loaded from a protocol;
-            // the server links the order to a protocol_instance + version.
-            protocolId:    rx.protocolId ?? null,
-            // WO-96: derived + defaulted detail fields
-            rxDetails:     effectiveDetails(rx),
-          }),
+          body: JSON.stringify(orderPostBody(rx, patient, provider, effectiveDetails(rx))),
         })
 
         if (!orderRes.ok) {
@@ -397,21 +454,7 @@ export function BatchReviewForm({ isProvider }: Props) {
         const orderRes = await fetch('/api/orders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            patientId:     patient.patient_id,
-            providerId:    provider.provider_id,
-            catalogItemId: rx.itemId,
-            formulationId: rx.formulationId,
-            pharmacyId:    rx.pharmacyId,
-            retailCents:   rx.retailCents,
-            sigText:       rx.sigText,
-            patientState:  patient.state ?? '',
-            // GAP-3: same linkage on the MA save-as-draft path — the
-            // draft IS the order row; sign-and-send only updates it.
-            protocolId:    rx.protocolId ?? null,
-            // WO-96: derived + defaulted detail fields
-            rxDetails:     effectiveDetails(rx),
-          }),
+          body: JSON.stringify(orderPostBody(rx, patient, provider, effectiveDetails(rx))),
         })
 
         if (!orderRes.ok) {

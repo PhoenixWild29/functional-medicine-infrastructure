@@ -205,6 +205,51 @@ export function parseSigForBuilder(sig: string | null | undefined): { doseAmount
   }
 }
 
+/** A dose string that is exactly a dose ("10 units", "0.5 mg") — not a strength like "5mg/mL". */
+const PURE_DOSE_RE = /^\s*(\d+(?:\.\d+)?)\s*(units?|mg|mL|mcg|tablets?|capsules?|clicks?)\s*$/i
+
+export interface StructuredLineInputs {
+  /** "10 units" — the prescribed dose */
+  dose:          string | null
+  /** structured-sig frequency code ("QW") */
+  frequencyCode: string | null
+  /** pharmacy package label ("1mL vial") */
+  quantityLabel: string | null
+}
+
+/**
+ * The builder inputs for an order line: dose, frequency and quantity.
+ *
+ * Structured values always win. The builder sets them explicitly and they
+ * travel as fields (session line, POST body, medication_snapshot), so a
+ * sig the provider edited by hand on the price step can never change what
+ * is stored. The sig is parsed ONLY for a legacy line that carries no
+ * structured value for that field (sessions and drafts created before the
+ * inputs were stored). Quantity is never parsed from the sig — there is
+ * nothing reliable to parse — so a legacy line without one stays null.
+ */
+export function structuredLineInputs(line: {
+  dose?:          string | null | undefined
+  frequencyCode?: string | null | undefined
+  quantityLabel?: string | null | undefined
+  sigText?:       string | null | undefined
+}): StructuredLineInputs {
+  const doseMatch = PURE_DOSE_RE.exec(line.dose ?? '')
+  const structuredDose = doseMatch ? `${doseMatch[1]} ${normaliseUnit(doseMatch[2]!)}` : null
+  const structuredFrequency = typeof line.frequencyCode === 'string' && line.frequencyCode.trim() ? line.frequencyCode.trim() : null
+  const structuredQuantity = typeof line.quantityLabel === 'string' && line.quantityLabel.trim() ? line.quantityLabel.trim() : null
+
+  // Legacy fallback — only for the fields that have no structured value.
+  const parsed = structuredDose && structuredFrequency ? null : parseSigForBuilder(line.sigText)
+  const parsedDose = parsed?.doseAmount && parsed.doseUnit ? `${parsed.doseAmount} ${parsed.doseUnit}` : null
+
+  return {
+    dose:          structuredDose ?? parsedDose,
+    frequencyCode: structuredFrequency ?? (parsed?.frequency || null),
+    quantityLabel: structuredQuantity,
+  }
+}
+
 /**
  * Rebuild the builder's inputs from an orders row. Drafts created after
  * WO-98 carry the structured inputs in medication_snapshot
@@ -219,16 +264,22 @@ export function builderStateFromOrder(order: {
   medication_snapshot: unknown
 }): BuilderInitialState {
   const snap = (order.medication_snapshot ?? {}) as Record<string, unknown>
-  const parsed = parseSigForBuilder(order.sig_text)
-  const prescribed = typeof snap['prescribed_dose'] === 'string' ? snap['prescribed_dose'] : ''
-  const prescribedMatch = DOSE_RE.exec(prescribed)
+  // Same rule as the POST bodies: the stored structured inputs win; the
+  // sig is parsed only for a legacy draft that has none.
+  const inputs = structuredLineInputs({
+    dose:          typeof snap['prescribed_dose'] === 'string' ? snap['prescribed_dose'] : null,
+    frequencyCode: typeof snap['frequency_code'] === 'string' ? snap['frequency_code'] : null,
+    quantityLabel: typeof snap['quantity_label'] === 'string' ? snap['quantity_label'] : null,
+    sigText:       order.sig_text,
+  })
+  const doseMatch = inputs.dose ? DOSE_RE.exec(inputs.dose) : null
   return {
     formulationId: order.formulation_id,
     pharmacyId:    order.pharmacy_id ?? '',
-    doseAmount:    prescribedMatch?.[1] ?? parsed.doseAmount,
-    doseUnit:      prescribedMatch?.[2] ? normaliseUnit(prescribedMatch[2]) : parsed.doseUnit,
-    frequency:     typeof snap['frequency_code'] === 'string' && snap['frequency_code'] ? snap['frequency_code'] : parsed.frequency,
-    quantity:      typeof snap['quantity_label'] === 'string' ? snap['quantity_label'] : '',
+    doseAmount:    doseMatch?.[1] ?? '',
+    doseUnit:      doseMatch?.[2] ? normaliseUnit(doseMatch[2]) : '',
+    frequency:     inputs.frequencyCode ?? '',
+    quantity:      inputs.quantityLabel ?? '',
     refills:       typeof order.refills === 'number' ? order.refills : 0,
     sigText:       order.sig_text ?? '',
   }

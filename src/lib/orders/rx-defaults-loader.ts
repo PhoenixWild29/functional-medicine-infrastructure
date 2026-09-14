@@ -40,6 +40,16 @@ export interface RxFormulationDefaults {
   defaults:           FormulationRxDefaults
   deaSchedule:        number | null
   suggestedDiagnosis: SuggestedDiagnosis | null
+  /**
+   * WO-96 fix: what days supply / dispense derive from, so a line that
+   * reaches Review without them (protocol or favorite quick-load) is
+   * computed there instead of showing "—".
+   */
+  dispenseInputs?:    {
+    concentrationValue: number | null
+    concentrationUnit:  string | null
+    dosageFormName:     string | null
+  } | undefined
 }
 
 interface IngredientRow {
@@ -49,6 +59,8 @@ interface IngredientRow {
 
 interface FormulationRow {
   formulation_id:               string
+  concentration_value?:         number | null
+  concentration_unit?:          string | null
   default_syringe_option:       string | null
   default_shipping_type:        string | null
   clinical_difference_options:  string[] | null
@@ -80,7 +92,7 @@ export async function loadRxDefaults(
     supabase
       .from('formulations')
       .select(`
-        formulation_id,
+        formulation_id, concentration_value, concentration_unit,
         default_syringe_option, default_shipping_type,
         clinical_difference_options, requires_clinical_difference,
         dosage_forms(name, requires_injection_supplies),
@@ -130,6 +142,11 @@ export async function loadRxDefaults(
       defaults:           resolveDefaults(raw, ingredients.map(i => i.common_name)),
       deaSchedule,
       suggestedDiagnosis: suggestions[raw.formulation_id] ?? null,
+      dispenseInputs: {
+        concentrationValue: raw.concentration_value ?? null,
+        concentrationUnit:  raw.concentration_unit ?? null,
+        dosageFormName:     raw.dosage_forms?.name ?? null,
+      },
     }
   }
   return out

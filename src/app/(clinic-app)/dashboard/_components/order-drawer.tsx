@@ -20,6 +20,7 @@ import type { DashboardOrder } from '../page'
 import { getStatusConfig } from '@/lib/orders/status-config'
 import { notify } from '@/lib/notifications'
 import { draftEditMode, type DraftViewer } from '@/lib/orders/draft-edit-access'
+import { actorDisplayName, type TimelineActor } from '@/lib/orders/timeline-actors'
 
 interface Props {
   order: DashboardOrder | null
@@ -121,6 +122,9 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
 
   const [history,           setHistory]           = useState<StatusHistoryRow[]>([])
   const [isLoadingHistory,  setIsLoadingHistory]  = useState(false)
+  // Timeline actor names (auth user id → provider / staff name). Until
+  // they resolve — or when a user is outside the clinic — the id shows.
+  const [actors,            setActors]            = useState<Record<string, TimelineActor>>({})
 
   // Copy Payment Link state (AWAITING_PAYMENT + PAYMENT_EXPIRED)
   const [isGeneratingLink,  setIsGeneratingLink]  = useState(false)
@@ -153,8 +157,17 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
       .eq('order_id', order.orderId)
       .order('created_at', { ascending: true })
       .then(({ data }) => {
-        setHistory((data ?? []) as StatusHistoryRow[])
+        const rows = (data ?? []) as StatusHistoryRow[]
+        setHistory(rows)
         setIsLoadingHistory(false)
+        setActors({})
+        if (!rows.some(r => r.changed_by)) return
+        fetch(`/api/orders/${order.orderId}/timeline-actors`)
+          .then(res => (res.ok ? res.json() : null))
+          .then((json: { actors?: Record<string, TimelineActor> } | null) => {
+            if (json?.actors) setActors(json.actors)
+          })
+          .catch(() => { /* non-fatal: ids stay visible */ })
       })
   }, [order?.orderId])
 
@@ -790,7 +803,7 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
                         </p>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {row.metadata.event === 'draft_edited' ? describeDiff(row.metadata.diff) : 'still a draft'}
-                          {row.changed_by && ` · ${row.changed_by}`}
+                          {row.changed_by && ` · ${actorDisplayName(actors, row.changed_by)}`}
                         </p>
                       </>
                     ) : (
@@ -800,7 +813,7 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
                         </p>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           from {getStatusConfig(row.old_status).label}
-                          {row.changed_by && ` · ${row.changed_by}`}
+                          {row.changed_by && ` · ${actorDisplayName(actors, row.changed_by)}`}
                         </p>
                       </>
                     )}

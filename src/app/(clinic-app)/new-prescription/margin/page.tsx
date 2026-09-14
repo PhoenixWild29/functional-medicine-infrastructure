@@ -112,6 +112,9 @@ export default async function MarginPage({ searchParams }: PageProps) {
   // WO-96: inputs for the derived days supply / dispense, and the
   // formulation-level defaults + rules for the Rx details row.
   let formulationDetails: { concentrationValue: number | null; concentrationUnit: string | null; dosageFormName: string | null } | null = null
+  // WO-96 fix: the pharmacy's listed packages, so a line that arrives with
+  // no quantity (favorite / deep link) still gets a default one.
+  let availableQuantities: string[] = []
   let rxDefaults: RxFormulationDefaults | null = null
 
   if (formulationId) {
@@ -124,7 +127,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
         .is('deleted_at', null)
         .maybeSingle(),
       supabase.from('pharmacy_formulations')
-        .select('wholesale_price')
+        .select('wholesale_price, available_quantities')
         .eq('formulation_id', formulationId)
         .eq('pharmacy_id', pharmacyId)
         .eq('is_available', true)
@@ -149,6 +152,9 @@ export default async function MarginPage({ searchParams }: PageProps) {
         }
       }
 
+      availableQuantities = Array.isArray(priceResult.data.available_quantities)
+        ? (priceResult.data.available_quantities as unknown[]).filter((q): q is string => typeof q === 'string')
+        : []
       formulationDetails = {
         concentrationValue: formResult.data.concentration_value,
         concentrationUnit:  formResult.data.concentration_unit,
@@ -300,6 +306,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
         presetQuantity={presetQuantity || undefined}
         presetRefills={Number.isFinite(presetRefills) ? presetRefills : 0}
         formulationDetails={formulationDetails}
+        availableQuantities={availableQuantities}
         rxDefaults={rxDefaults}
         editTarget={editTarget}
         draftLine={draft && editTarget?.kind === 'draft'
