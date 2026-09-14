@@ -82,6 +82,11 @@ export const TEST_IDS = {
   glp1Tier4PharmacyFormulation:  'aaaaaaaa-0000-0000-0000-000000000055',
   plainTier2PharmacyFormulation: 'aaaaaaaa-0000-0000-0000-000000000034',
   plainTier4PharmacyFormulation: 'aaaaaaaa-0000-0000-0000-000000000035',
+  // WO-101b: stand-in for prod's Quick Rx — lists "1 mL vial, 3 mL vial"
+  // in available_quantities but prices only the 1 mL vial (one package row,
+  // exactly what the WO-101 backfill left in prod).
+  pharmacyQuickRx:                'aaaaaaaa-0000-0000-0000-000000000014',
+  glp1QuickRxPharmacyFormulation: 'aaaaaaaa-0000-0000-0000-000000000056',
 }
 
 // WO-102: E2E shipping rates (dollars), mirroring the demo seed.
@@ -275,6 +280,16 @@ export async function seedStaticData(): Promise<void> {
       shipping_fee_cold_chain: 25.00,
       free_shipping_threshold: null,
     },
+    {
+      pharmacy_id:     TEST_IDS.pharmacyQuickRx,
+      name:            'Test Pharmacy QuickRx',
+      slug:            'test-quickrx',
+      integration_tier: 'TIER_1_API',
+      is_active:       true,
+      shipping_fee_standard:   0,
+      shipping_fee_cold_chain: 0,
+      free_shipping_threshold: null,
+    },
   ], { onConflict: 'pharmacy_id' })
 
   // State licenses for TX (required for state-compliance search)
@@ -282,6 +297,7 @@ export async function seedStaticData(): Promise<void> {
     { pharmacy_id: TEST_IDS.pharmacyTier1, state_code: 'TX', license_number: 'TX-TEST-001', expiration_date: '2030-12-31', is_active: true },
     { pharmacy_id: TEST_IDS.pharmacyTier2, state_code: 'TX', license_number: 'TX-TEST-002', expiration_date: '2030-12-31', is_active: true },
     { pharmacy_id: TEST_IDS.pharmacyTier4, state_code: 'TX', license_number: 'TX-TEST-004', expiration_date: '2030-12-31', is_active: true },
+    { pharmacy_id: TEST_IDS.pharmacyQuickRx, state_code: 'TX', license_number: 'TX-TEST-014', expiration_date: '2030-12-31', is_active: true },
   ], { onConflict: 'pharmacy_id, state_code' })
 
   // Legacy flat catalog — kept for the Zero-PHI describe block which inserts
@@ -529,6 +545,16 @@ export async function seedStaticData(): Promise<void> {
       is_active:                 true,
     },
     {
+      pharmacy_formulation_id:   TEST_IDS.glp1QuickRxPharmacyFormulation,
+      pharmacy_id:               TEST_IDS.pharmacyQuickRx,
+      formulation_id:            TEST_IDS.glp1Formulation,
+      wholesale_price:           95.00,
+      available_quantities:      ['1 mL vial', '3 mL vial'],
+      is_available:              true,
+      estimated_turnaround_days: 3,
+      is_active:                 true,
+    },
+    {
       pharmacy_formulation_id:   TEST_IDS.plainTier4PharmacyFormulation,
       pharmacy_id:               TEST_IDS.pharmacyTier4,
       formulation_id:            TEST_IDS.formulation,
@@ -540,7 +566,17 @@ export async function seedStaticData(): Promise<void> {
     },
   ], { onConflict: 'pharmacy_formulation_id' })
 
+  // WO-101b: every seeded offer gets the default package the WO-101
+  // backfill gives existing rows (first available_quantities entry, same
+  // deterministic id), so a fresh E2E project matches the shared one. The
+  // prescribing flow lists sizes from these rows only.
   const glp1Packages = [
+    ...packageRowsFor(TEST_IDS.pharmacyFormulation, '', { price: 100, availableQuantities: ['30', '60', '90'] }),
+    ...packageRowsFor(TEST_IDS.controlledPharmacyFormulation, '', { price: 150, availableQuantities: ['1 vial', '2 vials'] }),
+    ...packageRowsFor(TEST_IDS.glp1Tier4PharmacyFormulation, '', { price: 95, availableQuantities: ['5mL vial'] }),
+    ...packageRowsFor(TEST_IDS.plainTier2PharmacyFormulation, '', { price: 100, availableQuantities: ['30', '60', '90'] }),
+    ...packageRowsFor(TEST_IDS.plainTier4PharmacyFormulation, '', { price: 110, availableQuantities: ['30', '60', '90'] }),
+    ...packageRowsFor(TEST_IDS.glp1QuickRxPharmacyFormulation, '', { price: 95, availableQuantities: ['1 mL vial', '3 mL vial'] }),
     ...packageRowsFor(TEST_IDS.glp1PharmacyFormulation, '', { price: 95, availableQuantities: ['5mL vial', '2.5mL vial'] }),
     ...packageRowsFor(TEST_IDS.glp1PackagedPharmacyFormulation, TEST_GLP1_PACKAGES_CELL, { price: 95, availableQuantities: [] }),
   ]

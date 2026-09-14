@@ -48,6 +48,7 @@ import {
   dispenseUnitFor,
   suggestPackage,
   formatPackageCount,
+  pharmacySizeLabels,
   type PackageOption,
 } from '@/lib/orders/rx-details'
 
@@ -108,9 +109,11 @@ interface Formulation {
 interface PharmacyOption {
   pharmacy_formulation_id: string
   wholesale_price: number
-  available_quantities: string[] | null
   estimated_turnaround_days: number | null
-  /** WO-101: active packages (vial sizes) with their own prices, smallest first. */
+  /**
+   * WO-101: active packages (vial sizes) with their own prices, smallest
+   * first. WO-101b: the ONLY source for the sizes this option shows.
+   */
   packages?: PackageOption[]
   pharmacies: {
     pharmacy_id: string
@@ -360,12 +363,14 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     }
   }
 
-  // ── WO-96 fix: default quantity from what the pharmacy lists ──
+  // ── WO-96 fix: default quantity from what the pharmacy sells ──
   // With a duration, dispense = doses in that many days × dose, and the
-  // default package is the smallest listed one that covers it. Without
-  // it, the smallest package in the dispense unit. Recomputed whenever
-  // dose, frequency, duration, formulation or pharmacy change.
-  const pharmacyQuantities = (selectedPharmacy?.available_quantities as string[] | null) ?? []
+  // default package is the smallest one that covers it. Without it, the
+  // smallest package in the dispense unit. Recomputed whenever dose,
+  // frequency, duration, formulation or pharmacy change.
+  // WO-101b: the pharmacy's priced packages only — a size with no package
+  // row has no known price and is never offered.
+  const pharmacyQuantities = pharmacySizeLabels(selectedPharmacy?.packages)
   const defaultQuantity = useMemo(() => {
     if (!selectedFormulation) return ''
     const dosageFormName = selectedFormulation.dosage_forms?.name ?? null
@@ -414,11 +419,12 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     return s
   }
   const selectedSuggestion = packageSuggestionFor(selectedPharmacy)
+  const quantityOptions = pharmacyQuantities.length > 0 ? [...pharmacyQuantities] : ['1']
+  // WO-101b: a picked (or reopened) quantity counts only while this
+  // pharmacy still prices that size; otherwise the computed default.
   const effectiveQuantity = selectedSuggestion
     ? selectedSuggestion.package.label
-    : quantityPicked && quantity ? quantity : defaultQuantity
-  const quantityOptions = pharmacyQuantities.length > 0 ? [...pharmacyQuantities] : ['1']
-  if (effectiveQuantity && !quantityOptions.includes(effectiveQuantity)) quantityOptions.push(effectiveQuantity)
+    : quantityPicked && quantity && quantityOptions.includes(quantity) ? quantity : defaultQuantity
 
   // ── Can add to session? ─────────────────────────────────
   const canAdd = !!(
@@ -711,13 +717,14 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
                     )}
                   </div>
                 </div>
+                {/* WO-101b: sizes come from the priced packages only. */}
                 {po.packages && po.packages.length > 1 ? (
                   <p className="mt-1 text-[10px] text-muted-foreground" data-testid="pharmacy-package-prices">
                     {po.packages.map(p => `${p.label} ${toCurrency(p.wholesalePrice)}`).join(' · ')}
                   </p>
-                ) : po.available_quantities && (
-                  <p className="mt-1 text-[10px] text-muted-foreground">
-                    Available: {(po.available_quantities as string[]).join(', ')}
+                ) : pharmacySizeLabels(po.packages).length === 1 && (
+                  <p className="mt-1 text-[10px] text-muted-foreground" data-testid="pharmacy-sizes">
+                    Available: {pharmacySizeLabels(po.packages).join(', ')}
                   </p>
                 )}
               </button>
