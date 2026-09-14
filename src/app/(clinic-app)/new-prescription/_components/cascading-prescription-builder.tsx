@@ -32,6 +32,7 @@ import {
   defaultQuantityLabel,
   dispenseUnitFor,
   suggestPackage,
+  formatPackageCount,
   type PackageOption,
 } from '@/lib/orders/rx-details'
 
@@ -352,8 +353,8 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   // the interim Quantity dropdown.
   function packageSuggestionFor(po: PharmacyOption | null) {
     const pkgs = po?.packages ?? []
-    if (!selectedFormulation || pkgs.length < 2) return null
-    return suggestPackage(pkgs, {
+    if (!selectedFormulation || pkgs.length === 0) return null
+    const s = suggestPackage(pkgs, {
       doseAmount,
       doseUnit,
       frequencyCode:      selectedFrequency,
@@ -362,6 +363,9 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       dosageFormName:     selectedFormulation.dosage_forms?.name ?? null,
       durationDays,
     })
+    // WO-101a: a single package matters only when more than one is needed.
+    if (!s || (pkgs.length < 2 && s.count <= 1)) return null
+    return s
   }
   const selectedSuggestion = packageSuggestionFor(selectedPharmacy)
   const effectiveQuantity = selectedSuggestion
@@ -592,7 +596,8 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
           <div className="mt-1 space-y-2">
             {pharmacyOptions.map(po => {
               const suggestion = packageSuggestionFor(po)
-              const shownPrice = suggestion ? suggestion.package.wholesalePrice : po.wholesale_price
+              // WO-101a: the suggested package × how many of it.
+              const shownPrice = suggestion ? Math.round(suggestion.package.wholesalePrice * 100) * suggestion.count / 100 : po.wholesale_price
               return (
               <button
                 key={po.pharmacy_formulation_id}
@@ -620,7 +625,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
                     <p className="text-lg font-bold text-foreground">{toCurrency(shownPrice)}</p>
                     {suggestion && (
                       <p className="text-[10px] text-muted-foreground" data-testid="pharmacy-suggested-package">
-                        {suggestion.package.label}
+                        {formatPackageCount(suggestion.package.label, suggestion.count)}
                       </p>
                     )}
                   </div>
