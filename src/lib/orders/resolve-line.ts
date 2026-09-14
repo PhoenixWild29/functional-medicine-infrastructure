@@ -16,9 +16,13 @@
 // must be an active package of THIS pharmacy's formulation, and its price
 // — never the client's — becomes the wholesale price. No package → the
 // pharmacy_formulations price, which is the default package's price.
+//
+// WO-101a: and how many of it. packageCount (1..MAX_PACKAGE_COUNT, default
+// 1) multiplies the package price; it is meaningless without a package.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/types/database.types'
+import { MAX_PACKAGE_COUNT } from './rx-details'
 
 type ServiceClient = SupabaseClient<Database>
 
@@ -47,6 +51,8 @@ export interface MedicationSnapshot {
   quantity_label?:  string | null
   // WO-101: label of the package the line was priced from.
   package_label?:   string | null
+  // WO-101a: how many of that package.
+  package_count?:   number
 }
 
 export interface PharmacySnapshot {
@@ -68,12 +74,15 @@ export interface ResolveLineInput {
   quantityLabel?:  string | null | undefined
   /** WO-101: pharmacy_formulation_packages.id the provider sent (formulation lines only). */
   packageId?:      string | null | undefined
+  /** WO-101a: how many of the package (integer 1..MAX_PACKAGE_COUNT; absent → 1). */
+  packageCount?:   number | null | undefined
 }
 
 /** WO-101: the package an order was priced from (orders.package_id / package_label). */
 export interface LinePackage {
   package_id:    string | null
   package_label: string | null
+  package_count: number
 }
 
 export type ResolveLineResult =
@@ -96,10 +105,17 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
   const { pharmacyId, patientState } = input
 
   let medicationItem: MedicationItem | null = null
-  let linePackage: LinePackage = { package_id: null, package_label: null }
+  let linePackage: LinePackage = { package_id: null, package_label: null, package_count: 1 }
   const requestedPackageId = typeof input.packageId === 'string' && input.packageId.trim() ? input.packageId.trim() : null
   if (requestedPackageId && kind !== 'formulation') {
     return { ok: false, status: 400, error: 'packageId applies to formulation lines only' }
+  }
+  const requestedCount = input.packageCount ?? 1
+  if (typeof requestedCount !== 'number' || !Number.isInteger(requestedCount) || requestedCount < 1 || requestedCount > MAX_PACKAGE_COUNT) {
+    return { ok: false, status: 400, error: `packageCount must be an integer between 1 and ${MAX_PACKAGE_COUNT}` }
+  }
+  if (requestedCount > 1 && !requestedPackageId) {
+    return { ok: false, status: 400, error: 'packageCount requires packageId' }
   }
 
   if (kind === 'catalog') {
@@ -179,8 +195,9 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
       if (!pkg) {
         return { ok: false, status: 400, error: 'Package is not offered by this pharmacy for this formulation' }
       }
-      wholesalePrice = pkg.wholesale_price
-      linePackage = { package_id: pkg.id, package_label: pkg.package_label }
+      // WO-101a: package price × count, in cents.
+      wholesalePrice = (Math.round(Number(pkg.wholesale_price) * 100) * requestedCount) / 100
+      linePackage = { package_id: pkg.id, package_label: pkg.package_label, package_count: requestedCount }
     }
 
     const df = formResult.data.dosage_forms as { name: string } | null
@@ -247,6 +264,7 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
   if (linePackage.package_label) {
     medicationSnapshot.quantity_label = linePackage.package_label
     medicationSnapshot.package_label  = linePackage.package_label
+    medicationSnapshot.package_count  = linePackage.package_count
   }
 
   const pharmacySnapshot: PharmacySnapshot = {

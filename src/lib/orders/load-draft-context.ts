@@ -42,6 +42,8 @@ export interface DraftContext {
   initial:        BuilderInitialState
   /** WO-101: the package (vial size) the draft line was priced from. */
   packageId:      string | null
+  /** WO-101a: how many of that package. */
+  packageCount:   number
 }
 
 export async function loadDraftContext(
@@ -52,7 +54,7 @@ export async function loadDraftContext(
   const { data: order, error } = await supabase
     .from('orders')
     .select(`order_id, status, patient_id, provider_id, formulation_id, pharmacy_id, sig_text,
-      retail_price_snapshot, medication_snapshot, package_id, ${RX_DETAIL_COLUMN_LIST}`)
+      retail_price_snapshot, medication_snapshot, package_id, package_count, ${RX_DETAIL_COLUMN_LIST}`)
     .eq('order_id', orderId)
     .eq('clinic_id', clinicId)
     .eq('is_active', true)
@@ -106,5 +108,6 @@ export async function loadDraftContext(
     rxDetails:      rxDetailsFromRow(order),
     initial:        builderStateFromOrder(order),
     packageId:      typeof order.package_id === 'string' ? order.package_id : null,
+    packageCount:   typeof order.package_count === 'number' && order.package_count > 0 ? order.package_count : 1,
   }
 }
