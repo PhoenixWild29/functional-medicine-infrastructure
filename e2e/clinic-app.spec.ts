@@ -1663,7 +1663,12 @@ test.describe('Clinic App — WO-104 favorites: doses as chips, dose step, Recen
     expect(pinned?.patient_id).toBe(TEST_IDS.patient)
 
     await page.goto('/new-prescription/search')
-    await page.getByRole('button', { name: /^Favorites \(\d+\)$/ }).click()
+    // Wait for the session (restored from sessionStorage after load) to
+    // bring the patient back: 3 practice favorites + this patient's 1. The
+    // other patient's favorite is never counted.
+    const favButton = page.getByRole('button', { name: 'Favorites (4)', exact: true })
+    await expect(favButton).toBeVisible({ timeout: 10_000 })
+    await favButton.click()
     const panel = page.getByTestId('favorites-panel')
     const groups = panel.locator('[data-testid^="favorite-group-"]')
     await expect(groups).toHaveCount(3)
