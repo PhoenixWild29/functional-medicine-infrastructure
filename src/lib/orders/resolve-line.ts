@@ -11,6 +11,11 @@
 //
 // Extracted verbatim from src/app/api/orders/route.ts so editing a draft
 // re-validates a changed medication/pharmacy exactly like creating one.
+//
+// WO-101: a formulation line may name a package (vial size). The package
+// must be an active package of THIS pharmacy's formulation, and its price
+// — never the client's — becomes the wholesale price. No package → the
+// pharmacy_formulations price, which is the default package's price.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/types/database.types'
@@ -40,6 +45,8 @@ export interface MedicationSnapshot {
   prescribed_dose?: string | null
   frequency_code?:  string | null
   quantity_label?:  string | null
+  // WO-101: label of the package the line was priced from.
+  package_label?:   string | null
 }
 
 export interface PharmacySnapshot {
@@ -59,10 +66,18 @@ export interface ResolveLineInput {
   prescribedDose?: string | null | undefined
   frequencyCode?:  string | null | undefined
   quantityLabel?:  string | null | undefined
+  /** WO-101: pharmacy_formulation_packages.id the provider sent (formulation lines only). */
+  packageId?:      string | null | undefined
+}
+
+/** WO-101: the package an order was priced from (orders.package_id / package_label). */
+export interface LinePackage {
+  package_id:    string | null
+  package_label: string | null
 }
 
 export type ResolveLineResult =
-  | { ok: true; medicationItem: MedicationItem; wholesaleCents: number; medicationSnapshot: MedicationSnapshot; pharmacySnapshot: PharmacySnapshot }
+  | { ok: true; medicationItem: MedicationItem; wholesaleCents: number; medicationSnapshot: MedicationSnapshot; pharmacySnapshot: PharmacySnapshot; package: LinePackage }
   | { ok: false; status: 400 | 404 | 500; error: string }
 
 /** Exactly one of catalogItemId / formulationId must be set. */
@@ -81,6 +96,11 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
   const { pharmacyId, patientState } = input
 
   let medicationItem: MedicationItem | null = null
+  let linePackage: LinePackage = { package_id: null, package_label: null }
+  const requestedPackageId = typeof input.packageId === 'string' && input.packageId.trim() ? input.packageId.trim() : null
+  if (requestedPackageId && kind !== 'formulation') {
+    return { ok: false, status: 400, error: 'packageId applies to formulation lines only' }
+  }
 
   if (kind === 'catalog') {
     // Legacy flat catalog — scoped to the pharmacy to prevent spoofing
@@ -111,7 +131,7 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
         .maybeSingle(),
       supabase
         .from('pharmacy_formulations')
-        .select('wholesale_price')
+        .select('pharmacy_formulation_id, wholesale_price')
         .eq('formulation_id', formulationId)
         .eq('pharmacy_id', pharmacyId)
         .eq('is_available', true)
@@ -142,12 +162,33 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
       }
     }
 
+    // WO-101: price from the chosen package when one is named.
+    let wholesalePrice = priceResult.data.wholesale_price
+    if (requestedPackageId) {
+      const { data: pkg, error: pkgError } = await supabase
+        .from('pharmacy_formulation_packages')
+        .select('id, package_label, wholesale_price')
+        .eq('id', requestedPackageId)
+        .eq('pharmacy_formulation_id', priceResult.data.pharmacy_formulation_id)
+        .eq('active', true)
+        .maybeSingle()
+      if (pkgError) {
+        console.error('[orders] package fetch failed:', pkgError.message)
+        return { ok: false, status: 500, error: 'Package lookup failed' }
+      }
+      if (!pkg) {
+        return { ok: false, status: 400, error: 'Package is not offered by this pharmacy for this formulation' }
+      }
+      wholesalePrice = pkg.wholesale_price
+      linePackage = { package_id: pkg.id, package_label: pkg.package_label }
+    }
+
     const df = formResult.data.dosage_forms as { name: string } | null
     medicationItem = {
       medication_name: formResult.data.name,
       form:            df?.name ?? '',
       dose:            formResult.data.concentration ?? '',
-      wholesale_price: priceResult.data.wholesale_price,
+      wholesale_price: wholesalePrice,
       dea_schedule:    deaSchedule,
     }
   }
@@ -201,6 +242,12 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
   if (typeof input.prescribedDose === 'string' && input.prescribedDose.trim()) medicationSnapshot.prescribed_dose = input.prescribedDose.trim()
   if (typeof input.frequencyCode === 'string' && input.frequencyCode.trim())   medicationSnapshot.frequency_code  = input.frequencyCode.trim()
   if (typeof input.quantityLabel === 'string' && input.quantityLabel.trim())   medicationSnapshot.quantity_label  = input.quantityLabel.trim()
+  // WO-101: the package IS the quantity dispensed — the stored quantity
+  // follows it whatever label the client sent.
+  if (linePackage.package_label) {
+    medicationSnapshot.quantity_label = linePackage.package_label
+    medicationSnapshot.package_label  = linePackage.package_label
+  }
 
   const pharmacySnapshot: PharmacySnapshot = {
     pharmacy_id:      pharmacy.pharmacy_id,
@@ -209,5 +256,5 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
     fax_number:       pharmacy.fax_number ?? null,
   }
 
-  return { ok: true, medicationItem, wholesaleCents, medicationSnapshot, pharmacySnapshot }
+  return { ok: true, medicationItem, wholesaleCents, medicationSnapshot, pharmacySnapshot, package: linePackage }
 }

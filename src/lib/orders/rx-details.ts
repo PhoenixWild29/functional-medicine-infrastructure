@@ -441,8 +441,9 @@ export function computeDispense(input: DispenseInput): DerivedDispense | null {
  *   - labels that name only containers ("1 vial"): the smallest count
  *   - no usable label at all: the first label, or "1" when the pharmacy
  *     lists nothing
- * This reads the existing available_quantities strings only; package
- * pricing is WO-101.
+ * This reads the existing available_quantities strings only. Formulations
+ * a pharmacy sells in more than one priced package use suggestPackage
+ * (WO-101) instead.
  */
 export function defaultQuantityLabel(
   labels: ReadonlyArray<string> | null | undefined,
@@ -473,6 +474,89 @@ export function defaultQuantityLabel(
   const containers = parsed.filter(x => x.q.isContainer).sort((a, b) => a.q.value - b.q.value)
   if (containers.length > 0) return containers[0]!.label
   return list[0]!
+}
+
+// ── WO-101: package (vial size) suggestion ──────────────────
+
+/** An active pharmacy_formulation_packages row, as the builder and margin page use it. */
+export interface PackageOption {
+  id:             string
+  label:          string
+  qty:            number
+  unit:           string
+  wholesalePrice: number
+  isDefault:      boolean
+}
+
+export type PackageSuggestion =
+  | { package: PackageOption; reason: 'covers'; daysSupply: number | null }
+  | { package: PackageOption; reason: 'largest'; daysSupply: number | null }
+  | { package: PackageOption; reason: 'default'; daysSupply: null }
+
+/** Snake-case package rows (API / Supabase) → PackageOption, active only, smallest first. */
+export function packageOptionsFromRows(rows: ReadonlyArray<{
+  id: string
+  package_label: string
+  package_qty: number | string
+  package_unit: string
+  wholesale_price: number | string
+  is_default: boolean
+  active: boolean
+}> | null | undefined): PackageOption[] {
+  return (rows ?? [])
+    .filter(r => r.active)
+    .map(r => ({
+      id:             r.id,
+      label:          r.package_label,
+      qty:            Number(r.package_qty),
+      unit:           r.package_unit,
+      wholesalePrice: Number(r.wholesale_price),
+      isDefault:      r.is_default,
+    }))
+    .sort((a, b) => a.qty - b.qty || a.label.localeCompare(b.label))
+}
+
+/**
+ * Which package to suggest (Gina Rooks 2026-09-11 item 3, WO-101).
+ *
+ * The dispense quantity comes from computeDispense — the WO-96 fix
+ * derivation (doses in the selected duration × dose, in the dispense
+ * unit). The suggestion is the smallest active package, in that unit,
+ * whose package_qty is ≥ the dispense quantity. If no package is big
+ * enough, the largest one. With no duration, or a dose that can't be
+ * counted (PRN, unmatched units), the pharmacy's default package.
+ */
+export function suggestPackage(
+  packages: ReadonlyArray<PackageOption>,
+  input: Omit<DispenseInput, 'quantityLabel'>,
+): PackageSuggestion | null {
+  if (packages.length === 0) return null
+  const fallback = packages.find(p => p.isDefault) ?? packages[0]!
+
+  const duration = typeof input.durationDays === 'number' && input.durationDays > 0 ? input.durationDays : null
+  if (duration == null || dosesInDays(duration, input.frequencyCode) == null) {
+    return { package: fallback, reason: 'default', daysSupply: null }
+  }
+  // Only a dose computeDispense can count (it otherwise falls back to
+  // "one package", which says nothing about size).
+  const unit = dispenseUnitFor(input.dosageFormName, input.doseUnit)
+  const perDose = perDoseInDispenseUnit({ ...input, quantityLabel: null }, { value: 1, unit, isContainer: false })
+  if (perDose == null || perDose <= 0) return { package: fallback, reason: 'default', daysSupply: null }
+  const dispense = computeDispense({ ...input, quantityLabel: null })
+  if (!dispense) return { package: fallback, reason: 'default', daysSupply: null }
+
+  // Compare in the dispense unit: "1 mL" packages against mL, "30 count"
+  // capsule packages against capsules (parseQuantityLabel infers the unit
+  // from the dosage form when the label's token isn't one it knows).
+  const sameUnit = packages
+    .filter(p => parseQuantityLabel(`${p.qty} ${p.unit}`, input.dosageFormName)?.unit === dispense.dispenseUnit)
+    .sort((a, b) => a.qty - b.qty)
+  if (sameUnit.length === 0) return { package: fallback, reason: 'default', daysSupply: null }
+
+  const covering = sameUnit.find(p => p.qty + 1e-9 >= dispense.dispenseQuantity)
+  return covering
+    ? { package: covering, reason: 'covers', daysSupply: dispense.daysSupply }
+    : { package: sameUnit[sameUnit.length - 1]!, reason: 'largest', daysSupply: dispense.daysSupply }
 }
 
 // ── API body validation + column mapping ────────────────────

@@ -22,6 +22,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
 import { loadRxDefaults } from '@/lib/orders/rx-defaults-loader'
+import { packageOptionsFromRows } from '@/lib/orders/rx-details'
 
 /** Upper bound on formulation ids per rx_defaults request. */
 const RX_DEFAULTS_MAX_IDS = 50
@@ -290,6 +291,10 @@ export async function GET(req: NextRequest) {
             pharmacies(
               pharmacy_id, name, slug, integration_tier,
               fax_number, supports_real_time_status
+            ),
+            pharmacy_formulation_packages(
+              id, package_label, package_qty, package_unit,
+              wholesale_price, is_default, active
             )
           `)
           .eq('formulation_id', formulationId)
@@ -323,7 +328,14 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        return NextResponse.json({ level: 'pharmacy_options', data: filtered })
+        // WO-101: each option carries its active packages (vial sizes and
+        // their prices), smallest first, as `packages`.
+        const withPackages = filtered.map(({ pharmacy_formulation_packages, ...pf }) => ({
+          ...pf,
+          packages: packageOptionsFromRows(pharmacy_formulation_packages),
+        }))
+
+        return NextResponse.json({ level: 'pharmacy_options', data: withPackages })
       }
 
       // ── WO-96: Rx detail defaults + rules for a set of formulations ──
