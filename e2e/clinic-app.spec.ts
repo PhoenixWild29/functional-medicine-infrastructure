@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import { seedStaticData, cleanupTestOrders, cleanupTestFavorites, seedSecondProvider, retireSecondProvider, TEST_IDS, TEST_USERS, TEST_CATALOG, TEST_PATIENTS } from './fixtures/seed'
+import { packageId } from '../src/lib/catalog/packages'
 import { decryptSecret } from '../src/lib/epcs/crypto'
 import { DEMO_TOTP_SECRET } from '../src/lib/poc/totp-enrollment'
 
@@ -1532,5 +1533,151 @@ test.describe('Clinic App — WO-96 fix: days supply and dispense are never "—
     await expect(row).toContainText('Days supply: 30 days')
     await expect(row).toContainText('Dispense: 0.4 mL')
     await expect(row.getByText('—', { exact: true })).toHaveCount(0)
+  })
+})
+
+// ============================================================
+// WO-101 — package / vial size (Gina Rooks, 2026-09-11, item 3)
+// ============================================================
+// "Injectable vials come in various sizes so you also need to select vial
+// size and cost varies based on that. Having some kind of calculation
+// built in to help auto select vial size based on inputted Rx would be
+// nice."
+//
+// E2E stand-in for Strive Semaglutide 5 mg/mL: the GLP-1 analogue at
+// Test Pharmacy Tier2 with 1 mL $95 / 2.5 mL $165 / 5 mL $285 vials
+// (e2e/fixtures/seed.ts). Tier1 sells the same formulation in a single
+// package. Nothing is typed but the dose; the vial and its price follow.
+
+test.describe('Clinic App — WO-101: vial size is suggested from the Rx and priced per vial', () => {
+  test.beforeAll(async () => {
+    await seedStaticData()
+  })
+
+  test.afterEach(async () => {
+    await cleanupTestOrders()
+  })
+
+  async function buildGlp1(page: Page, units: string) {
+    await loginAs(page, TEST_USERS.provider)
+    await page.goto('/new-prescription')
+    await page.getByLabel('Search patients').fill('Test')
+    await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
+    await pickProviderIfListed(page)
+    await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
+
+    await page.getByLabel('Search medications').fill(TEST_CATALOG.glp1IngredientName)
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.glp1IngredientName, 'i') }).click()
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.glp1FormulationName, 'i') }).click()
+    await page.getByLabel('Dose amount').fill(units)
+    await page.getByLabel('Dose unit').selectOption('units')
+    await page.getByLabel('Frequency').selectOption('QW')
+    await page.getByLabel('Timing').selectOption('MORNING')
+    await page.getByLabel('Duration').selectOption('30')
+  }
+
+  async function latestDraft() {
+    const supabase = createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
+    const { data } = await supabase
+      .from('orders')
+      .select('package_id, package_label, wholesale_price_snapshot, retail_price_snapshot, medication_snapshot, days_supply, dispense_quantity')
+      .eq('clinic_id', TEST_IDS.clinic)
+      .eq('pharmacy_id', TEST_IDS.pharmacyTier2)
+      .eq('formulation_id', TEST_IDS.glp1Formulation)
+      .eq('status', 'DRAFT')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    return data
+  }
+
+  test('10 units weekly for 30 days → 1 mL vial at $95.00; switching to the 5 mL vial reprices and is what the order stores', async ({ page }) => {
+    await buildGlp1(page, '10')
+
+    // Pharmacy row: suggested vial and its price, every vial priced.
+    const tier2 = page.getByRole('button', { name: /Test Pharmacy Tier2/ })
+    await expect(tier2.getByTestId('pharmacy-suggested-package')).toHaveText('1 mL vial')
+    await expect(tier2).toContainText('$95.00')
+    await expect(tier2.getByTestId('pharmacy-package-prices')).toHaveText('1 mL vial $95.00 · 2.5 mL vial $165.00 · 5 mL vial $285.00')
+    await tier2.click()
+
+    // No interim Quantity dropdown for a priced-package pharmacy.
+    await expect(page.getByLabel('Quantity')).toHaveCount(0)
+
+    await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
+
+    await expect(page.getByTestId('package-summary')).toHaveText('Package: 1 mL vial (suggested for 30 days) · $95.00')
+    await expect(page.getByTestId('days-supply-value')).toHaveText('30 days')
+    await expect(page.getByTestId('dispense-value')).toHaveText('0.4 mL')
+
+    const retail = page.locator('#retail-price')
+    const retailAt95 = Number(await retail.inputValue())
+    expect(retailAt95).toBeGreaterThan(95)
+    const summary = page.getByText('Margin Summary').locator('..')
+
+    // a) the provider selects the vial size; b) cost changes with it.
+    await page.getByLabel('Package').selectOption({ label: '5 mL vial — $285.00' })
+    await expect(page.getByTestId('package-summary')).toHaveText('Package: 5 mL vial (changed by provider) · $285.00')
+    const retailAt285 = Math.round(retailAt95 * 285 / 95 * 100) / 100
+    await expect(retail).toHaveValue(retailAt285.toFixed(2))
+    // Same integer-cent rule as the form: 15% of the margin, rounded to the cent.
+    const feeAt285 = Math.round((Math.round(retailAt285 * 100) - 28500) * 15 / 100) / 100
+    await expect(summary).toContainText(`$${feeAt285.toFixed(2)}`)
+    // Days supply / dispense still follow the Rx.
+    await expect(page.getByTestId('dispense-value')).toHaveText('0.4 mL')
+
+    await page.getByRole('button', { name: /Save as Draft/ }).click()
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+
+    await expect.poll(latestDraft, { timeout: 15_000 }).toEqual(expect.objectContaining({
+      package_id:               packageId(TEST_IDS.glp1PackagedPharmacyFormulation, '5 mL vial'),
+      package_label:            '5 mL vial',
+      wholesale_price_snapshot: 285,
+      retail_price_snapshot:    retailAt285,
+      days_supply:              30,
+      dispense_quantity:        0.4,
+      medication_snapshot:      expect.objectContaining({ quantity_label: '5 mL vial', wholesale_price: 285 }),
+    }))
+  })
+
+  test('40 units weekly for 30 days → suggests the 2.5 mL vial and the price is $165.00', async ({ page }) => {
+    await buildGlp1(page, '40')
+
+    const tier2 = page.getByRole('button', { name: /Test Pharmacy Tier2/ })
+    await expect(tier2.getByTestId('pharmacy-suggested-package')).toHaveText('2.5 mL vial')
+    await expect(tier2).toContainText('$165.00')
+    await tier2.click()
+    await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
+
+    await expect(page.getByTestId('package-summary')).toHaveText('Package: 2.5 mL vial (suggested for 30 days) · $165.00')
+    await expect(page.getByTestId('dispense-value')).toHaveText('1.6 mL')
+    const retail = Number(await page.locator('#retail-price').inputValue())
+    expect(retail).toBeGreaterThanOrEqual(165)
+
+    await page.getByRole('button', { name: /Save as Draft/ }).click()
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    await expect.poll(latestDraft, { timeout: 15_000 }).toEqual(expect.objectContaining({
+      package_id:               packageId(TEST_IDS.glp1PackagedPharmacyFormulation, '2.5 mL vial'),
+      package_label:            '2.5 mL vial',
+      wholesale_price_snapshot: 165,
+      medication_snapshot:      expect.objectContaining({ quantity_label: '2.5 mL vial' }),
+    }))
+  })
+
+  test('a pharmacy with a single package shows no package control', async ({ page }) => {
+    await buildGlp1(page, '40')
+    const tier1 = page.getByRole('button', { name: /Test Pharmacy Tier1/ })
+    await expect(tier1.getByTestId('pharmacy-suggested-package')).toHaveCount(0)
+    await expect(tier1).toContainText('$95.00')
+    await tier1.click()
+    await expect(page.getByLabel('Quantity')).toBeVisible()
+    await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
+    await expect(page.getByTestId('package-control')).toHaveCount(0)
+    await expect(page.getByLabel('Package')).toHaveCount(0)
   })
 })

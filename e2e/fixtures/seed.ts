@@ -15,6 +15,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { encryptSecret } from '../../src/lib/epcs/crypto'
 import { DEMO_TOTP_SECRET } from '../../src/lib/poc/totp-enrollment'
+import { packageRowsFor } from '../../src/lib/catalog/packages'
 
 // E2E tests MUST run against an isolated Supabase project — never production.
 // If these env vars are missing, fail loudly rather than silently falling back
@@ -67,6 +68,11 @@ export const TEST_IDS = {
   glp1SaltForm:           'aaaaaaaa-0000-0000-0000-000000000051',
   glp1Formulation:        'aaaaaaaa-0000-0000-0000-000000000052',
   glp1PharmacyFormulation:'aaaaaaaa-0000-0000-0000-000000000053',
+  // WO-101: the same GLP-1 analogue at Tier2, sold in three priced vials —
+  // the E2E stand-in for Strive Semaglutide 5 mg/mL (migration
+  // 20260914000001). Tier1 keeps a single package, so every other spec
+  // that picks Tier1 sees no package control.
+  glp1PackagedPharmacyFormulation: 'aaaaaaaa-0000-0000-0000-000000000054',
 }
 
 // Display strings the cascading UI renders — tests reference these when
@@ -94,6 +100,10 @@ export const TEST_CATALOG = {
     'Commercial product is unavailable or on national shortage',
   ],
 }
+
+// WO-101: Tier2's GLP-1 packages, in the importer's `packages` cell format.
+// Same sizes and prices as the Strive demo seed.
+export const TEST_GLP1_PACKAGES_CELL = '1 mL vial@95.00*|2.5 mL vial@165.00|5 mL vial@285.00'
 
 // WO-97 patients by allergy state. Last names render as "{last}, Test"
 // in the selector; chip text is what the app derives from the columns.
@@ -454,6 +464,30 @@ export async function seedStaticData(): Promise<void> {
     estimated_turnaround_days: 5,
     is_active:                 true,
   }, { onConflict: 'pharmacy_formulation_id' })
+
+  // ── WO-101: packages ──
+  // Tier1: one default package at today's price (what migration
+  // 20260914000001 backfills) → no package control.
+  // Tier2: three priced vials → suggestion + dropdown.
+  await supabase.from('pharmacy_formulations').upsert({
+    pharmacy_formulation_id:   TEST_IDS.glp1PackagedPharmacyFormulation,
+    pharmacy_id:               TEST_IDS.pharmacyTier2,
+    formulation_id:            TEST_IDS.glp1Formulation,
+    wholesale_price:           95.00,
+    available_quantities:      ['1 mL vial', '2.5 mL vial', '5 mL vial'],
+    is_available:              true,
+    estimated_turnaround_days: 5,
+    is_active:                 true,
+  }, { onConflict: 'pharmacy_formulation_id' })
+
+  const glp1Packages = [
+    ...packageRowsFor(TEST_IDS.glp1PharmacyFormulation, '', { price: 95, availableQuantities: ['5mL vial', '2.5mL vial'] }),
+    ...packageRowsFor(TEST_IDS.glp1PackagedPharmacyFormulation, TEST_GLP1_PACKAGES_CELL, { price: 95, availableQuantities: [] }),
+  ]
+  const { error: packagesError } = await supabase
+    .from('pharmacy_formulation_packages')
+    .upsert(glp1Packages, { onConflict: 'id' })
+  if (packagesError) throw new Error(`seed pharmacy_formulation_packages: ${packagesError.message}`)
 
   // ── Pre-enroll the E2E test provider with the canonical demo TOTP secret ──
   //
