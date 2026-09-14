@@ -88,9 +88,11 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
     .select(`
       order_id,
       retail_price_snapshot,
+      shipping_fee,
       clinic_id,
       clinics!inner (
         name,
+        absorb_shipping,
         contact_phone,
         contact_email
       ),
@@ -150,7 +152,10 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
 
   // HC-01: retail_price_snapshot is stored as NUMERIC(10,2) dollars in the DB
   // (e.g., 49.99), convert to integer cents for toCurrency() display.
-  const retailCents = Math.round(((order as unknown as { retail_price_snapshot: number }).retail_price_snapshot ?? 0) * 100)
+  // WO-102: what was paid = retail + shipping (unless the clinic absorbs it).
+  const paid = order as unknown as { retail_price_snapshot: number; shipping_fee?: number | null; clinics?: { absorb_shipping?: boolean } | null }
+  const retailCents = Math.round((paid.retail_price_snapshot ?? 0) * 100)
+    + (paid.clinics?.absorb_shipping === true ? 0 : Math.round((paid.shipping_fee ?? 0) * 100))
 
   const orderRow    = order as unknown as Record<string, unknown>
   const clinic      = orderRow['clinics']    as Record<string, unknown> | null

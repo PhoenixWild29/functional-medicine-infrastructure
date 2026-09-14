@@ -339,6 +339,9 @@ async function seedPharmacies() {
       // recomputes it from submissions every render.
       adapter_status:   'green',
       timezone:         tz,
+      // WO-102: Quick Rx $12 / $25, Strive $9 / $22
+      shipping_fee_standard:   p.shippingStandard,
+      shipping_fee_cold_chain: p.shippingColdChain,
     })
 
     if (error) throw new Error(`Failed to seed pharmacy ${p.name}: ${error.message}`)

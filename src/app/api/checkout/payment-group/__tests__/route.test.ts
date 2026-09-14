@@ -64,6 +64,7 @@ const groupInsertMock        = jest.fn()
 const groupStampMock         = jest.fn()
 const groupRollbackMock      = jest.fn()
 const stripeCreatePiMock     = jest.fn()
+const pharmaciesFetchMock    = jest.fn((): Promise<{ data: unknown[]; error: null }> => Promise.resolve({ data: [], error: null }))
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
@@ -133,11 +134,19 @@ jest.mock('@/lib/supabase/service', () => ({
           }),
         }
       }
+      // WO-102: shipping rates for the group's pharmacies (none on file → $0).
+      if (table === 'pharmacies') {
+        return {
+          select: () => ({
+            in: () => pharmaciesFetchMock(),
+          }),
+        }
+      }
       if (table === 'payment_groups') {
         return {
-          insert: () => ({
+          insert: (row: Record<string, unknown>) => ({
             select: () => ({
-              single: () => groupInsertMock(),
+              single: () => groupInsertMock(row),
             }),
           }),
           update: () => ({
@@ -564,5 +573,76 @@ describe('POST /api/checkout/payment-group — Stripe failure + rollback paths',
     expect(groupRollbackMock).toHaveBeenCalledTimes(4)
     // PI must be cancelled so it isn't sitting chargeable
     expect(stripeCancelPiMock).toHaveBeenCalledWith('pi_test_123')
+  })
+})
+
+// ── WO-102: group shipping — once per pharmacy, never per Rx ───────
+
+describe('POST /api/checkout/payment-group — WO-102 shipping', () => {
+  beforeEach(() => mockClinicSession('clinic_admin'))
+
+  const STRIVE = 'a4000000-0000-0000-0000-000000000001'
+  const QUICK_RX = 'a4000000-0000-0000-0000-000000000002'
+  const RATES = [
+    { pharmacy_id: STRIVE,   name: 'Strive Pharmacy',   shipping_fee_standard: 9,  shipping_fee_cold_chain: 22, free_shipping_threshold: null },
+    { pharmacy_id: QUICK_RX, name: 'Quick Rx Pharmacy', shipping_fee_standard: 12, shipping_fee_cold_chain: 25, free_shipping_threshold: null },
+  ]
+
+  it('Semaglutide via Quick Rx (cold) + BPC-157 via Strive (standard): amount = subtotal + $25 + $9; fee not charged on shipping', async () => {
+    pharmaciesFetchMock.mockResolvedValue({ data: RATES, error: null })
+    ordersFetchMock.mockResolvedValue({
+      data: [
+        makeOrder({ order_id: ORDER_ID_A, retail_price_snapshot: 190, wholesale_price_snapshot: 95, pharmacy_id: QUICK_RX, shipping_type: 'cold_chain' }),
+        makeOrder({ order_id: ORDER_ID_B, retail_price_snapshot: 130, wholesale_price_snapshot: 65, pharmacy_id: STRIVE,   shipping_type: 'standard' }),
+      ],
+      error: null,
+    })
+
+    const res = await POST(makeRequest({ orderIds: [ORDER_ID_A, ORDER_ID_B] }))
+    expect(res.status).toBe(201)
+    expect((await res.json() as { totalCents: number }).totalCents).toBe(32000 + 3400)
+
+    expect(groupInsertMock).toHaveBeenCalledWith(expect.objectContaining({ total_cents: 35400, shipping_total: 34 }))
+    // application fee = wholesale (16000) + 15% of margin (1425 + 975) + shipping at cost (3400)
+    expect(stripeCreatePiMock).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 35400, application_fee_amount: 16000 + 2400 + 3400 }),
+      expect.anything(),
+    )
+  })
+
+  it('both via Strive: $22 once — cold chain covers the standard item', async () => {
+    pharmaciesFetchMock.mockResolvedValue({ data: RATES, error: null })
+    ordersFetchMock.mockResolvedValue({
+      data: [
+        makeOrder({ order_id: ORDER_ID_A, retail_price_snapshot: 190, wholesale_price_snapshot: 95, pharmacy_id: STRIVE, shipping_type: 'cold_chain' }),
+        makeOrder({ order_id: ORDER_ID_B, retail_price_snapshot: 130, wholesale_price_snapshot: 65, pharmacy_id: STRIVE, shipping_type: 'standard' }),
+      ],
+      error: null,
+    })
+
+    const res = await POST(makeRequest({ orderIds: [ORDER_ID_A, ORDER_ID_B] }))
+    expect(res.status).toBe(201)
+    expect(groupInsertMock).toHaveBeenCalledWith(expect.objectContaining({ total_cents: 34200, shipping_total: 22 }))
+    expect(stripeCreatePiMock).toHaveBeenCalledWith(expect.objectContaining({ amount: 34200 }), expect.anything())
+  })
+
+  it('clinic absorbs shipping: the patient is charged the subtotal only', async () => {
+    pharmaciesFetchMock.mockResolvedValue({ data: RATES, error: null })
+    clinicFetchMock.mockResolvedValue({ data: { stripe_connect_account_id: 'acct_test_123', stripe_connect_status: 'ACTIVE', absorb_shipping: true }, error: null })
+    ordersFetchMock.mockResolvedValue({
+      data: [
+        makeOrder({ order_id: ORDER_ID_A, retail_price_snapshot: 190, wholesale_price_snapshot: 95, pharmacy_id: STRIVE, shipping_type: 'cold_chain' }),
+        makeOrder({ order_id: ORDER_ID_B, retail_price_snapshot: 130, wholesale_price_snapshot: 65, pharmacy_id: STRIVE, shipping_type: 'standard' }),
+      ],
+      error: null,
+    })
+
+    const res = await POST(makeRequest({ orderIds: [ORDER_ID_A, ORDER_ID_B] }))
+    expect(res.status).toBe(201)
+    expect(groupInsertMock).toHaveBeenCalledWith(expect.objectContaining({ total_cents: 32000, shipping_total: 22 }))
+    expect(stripeCreatePiMock).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 32000, application_fee_amount: 16000 + 2400 + 2200 }),
+      expect.anything(),
+    )
   })
 })

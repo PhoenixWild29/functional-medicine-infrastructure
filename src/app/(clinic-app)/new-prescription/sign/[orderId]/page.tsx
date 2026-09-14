@@ -106,7 +106,8 @@ export default async function SignDraftPage({ params }: PageProps) {
       medication_snapshot,
       pharmacy_snapshot,
       sig_text,
-      shipping_state_snapshot
+      shipping_state_snapshot,
+      shipping_fee
     `)
     .eq('order_id', orderId)
     .eq('clinic_id', clinicId)
@@ -213,6 +214,14 @@ export default async function SignDraftPage({ params }: PageProps) {
 
   const wholesaleCents = Math.round((order.wholesale_price_snapshot ?? 0) * 100)
   const retailCents = Math.round((order.retail_price_snapshot ?? 0) * 100)
+  // WO-102: this draft's share of shipping (once per pharmacy across the
+  // patient's draft lines) and whether the clinic absorbs it.
+  const shippingCents = Math.round((order.shipping_fee ?? 0) * 100)
+  const { data: clinicShipping } = await supabase
+    .from('clinics')
+    .select('absorb_shipping')
+    .eq('clinic_id', clinicId)
+    .maybeSingle()
 
   return (
     <>
@@ -239,6 +248,8 @@ export default async function SignDraftPage({ params }: PageProps) {
           pharmacyName={(pharmacy?.['name'] as string) ?? 'Unknown pharmacy'}
           wholesaleCents={wholesaleCents}
           retailCents={retailCents}
+          shippingCents={shippingCents}
+          absorbShipping={clinicShipping?.absorb_shipping === true}
           sigText={order.sig_text ?? ''}
           draftLines={draftLines}
         />

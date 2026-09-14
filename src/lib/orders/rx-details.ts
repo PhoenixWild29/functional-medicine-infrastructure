@@ -600,17 +600,35 @@ export function suggestPackage(
   if (perDose == null || perDose <= 0) return fallback
   const dispense = computeDispense({ ...input, quantityLabel: null })
   if (!dispense) return fallback
+  return suggestPackageForDispense(packages, dispense, input.dosageFormName)
+}
+
+/**
+ * The sizing half of suggestPackage, from a dispense quantity already
+ * known (WO-102 re-route prices a Review line at another pharmacy from the
+ * line's stored dispense). Same rule: smallest covering package, else the
+ * fewest whole units / cheapest total / smaller package, capped.
+ */
+export function suggestPackageForDispense(
+  packages: ReadonlyArray<PackageOption>,
+  dispense: Pick<DerivedDispense, 'dispenseQuantity' | 'dispenseUnit'> & { daysSupply?: number | null },
+  dosageFormName: string | null | undefined,
+): PackageSuggestion | null {
+  if (packages.length === 0) return null
+  const fallbackPackage = packages.find(p => p.isDefault) ?? packages[0]!
+  const fallback: PackageSuggestion = { package: fallbackPackage, count: 1, reason: 'default', daysSupply: null, dispenseQuantity: null }
+  if (!(dispense.dispenseQuantity > 0)) return fallback
 
   // Compare in the dispense unit: "1 mL" packages against mL, "30 count"
   // capsule packages against capsules (parseQuantityLabel infers the unit
   // from the dosage form when the label's token isn't one it knows).
   const sameUnit = packages
-    .filter(p => parseQuantityLabel(`${p.qty} ${p.unit}`, input.dosageFormName)?.unit === dispense.dispenseUnit)
+    .filter(p => parseQuantityLabel(`${p.qty} ${p.unit}`, dosageFormName)?.unit === dispense.dispenseUnit)
     .sort((a, b) => a.qty - b.qty)
   if (sameUnit.length === 0) return fallback
 
   const need = dispense.dispenseQuantity
-  const base = { daysSupply: dispense.daysSupply, dispenseQuantity: need }
+  const base = { daysSupply: dispense.daysSupply ?? null, dispenseQuantity: need }
 
   const covering = sameUnit.find(p => p.qty + 1e-9 >= need)
   if (covering) return { ...base, package: covering, count: 1, reason: 'covers' }

@@ -12,6 +12,8 @@
 
 import type { createServiceClient } from '@/lib/supabase/service'
 import { createStripeClient }       from '@/lib/stripe/client'
+import { computeBundleShipping, dollarsToCents, stripeSplit } from '@/lib/orders/shipping'
+import { loadShippingRates }        from '@/lib/orders/apply-bundle-shipping'
 
 export interface CreateGroupInput {
   supabase:  ReturnType<typeof createServiceClient>
@@ -40,6 +42,9 @@ interface OrderRow {
   provider_id:               string
   retail_price_snapshot:     number | null
   wholesale_price_snapshot:  number | null
+  // WO-102
+  pharmacy_id:               string | null
+  shipping_type:             string | null
   payment_group_id:          string | null
   stripe_payment_intent_id:  string | null
 }
@@ -53,6 +58,7 @@ export async function createPaymentGroup(input: CreateGroupInput): Promise<Creat
     .select(`
       order_id, status, clinic_id, patient_id, provider_id,
       retail_price_snapshot, wholesale_price_snapshot,
+      pharmacy_id, shipping_type,
       payment_group_id, stripe_payment_intent_id
     `)
     .in('order_id', orderIds)
@@ -120,16 +126,55 @@ export async function createPaymentGroup(input: CreateGroupInput): Promise<Creat
   }
 
   // ── Compute totals ──────────────────────────────────────────
-  let totalCents = 0
-  let totalApplicationFeeCents = 0
+  let retailTotalCents = 0
+  let wholesaleTotalCents = 0
+  let platformFeeTotalCents = 0
   for (const o of ordersTyped) {
     const retailCents    = Math.round((o.retail_price_snapshot    ?? 0) * 100)
     const wholesaleCents = Math.round((o.wholesale_price_snapshot ?? 0) * 100)
     const marginCents    = Math.max(0, retailCents - wholesaleCents)
-    const orderFee = wholesaleCents + Math.round(marginCents * 15 / 100)
-    totalCents               += retailCents
-    totalApplicationFeeCents += orderFee
+    retailTotalCents      += retailCents
+    wholesaleTotalCents   += wholesaleCents
+    platformFeeTotalCents += Math.round(marginCents * 15 / 100)
   }
+
+  // WO-102: the group ships once per pharmacy across its orders (cold
+  // chain covers a pharmacy's items when any needs it; the free-shipping
+  // threshold applies to that pharmacy's subtotal). The patient pays it at
+  // cost unless the clinic absorbs it; it passes through the application
+  // fee with the wholesale and never carries the 15%.
+  let shippingTotalCents = 0
+  let absorbShipping = false
+  try {
+    const rates = await loadShippingRates(supabase, ordersTyped.map(o => o.pharmacy_id ?? ''))
+    shippingTotalCents = computeBundleShipping(
+      ordersTyped.map(o => ({
+        pharmacyId:     o.pharmacy_id ?? '',
+        shippingType:   o.shipping_type,
+        wholesaleCents: dollarsToCents(o.wholesale_price_snapshot),
+      })),
+      rates,
+    ).totalCents
+    const { data: clinicShipping } = await supabase
+      .from('clinics')
+      .select('absorb_shipping')
+      .eq('clinic_id', clinicId)
+      .maybeSingle()
+    absorbShipping = (clinicShipping as { absorb_shipping?: boolean } | null)?.absorb_shipping === true
+  } catch (err) {
+    console.error('[payment-group create] shipping lookup failed:', err instanceof Error ? err.message : err)
+    return { ok: false, status: 500, error: 'Shipping lookup failed' }
+  }
+
+  const split = stripeSplit({
+    retailCents:      retailTotalCents,
+    wholesaleCents:   wholesaleTotalCents,
+    shippingCents:    shippingTotalCents,
+    absorbShipping,
+    platformFeeCents: platformFeeTotalCents,
+  })
+  const totalCents = split.amountCents
+  const totalApplicationFeeCents = split.applicationFeeCents
 
   if (totalCents <= 0) {
     return { ok: false, status: 400, error: 'Group total must be greater than zero' }
@@ -143,6 +188,8 @@ export async function createPaymentGroup(input: CreateGroupInput): Promise<Creat
       patient_id:  sharedPatientId,
       provider_id: sharedProviderId,
       total_cents: totalCents,
+      // WO-102
+      shipping_total: shippingTotalCents / 100,
       status:      'AWAITING_PAYMENT',
     })
     .select('group_id')

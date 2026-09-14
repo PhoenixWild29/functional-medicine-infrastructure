@@ -107,6 +107,11 @@ export interface SeedPharmacy {
   name:  string
   slug:  string
   tier:  'TIER_1_API' | 'TIER_2_PORTAL' | 'TIER_3_HYBRID' | 'TIER_4_FAX'
+  // WO-102: shipping rates (dollars). Quick Rx $12 / $25, Strive $9 / $22;
+  // the others ship free in the demo. Migration 20260916000001 sets the
+  // same values on existing rows.
+  shippingStandard:  number
+  shippingColdChain: number
   // Target adapter health status after refresh — determines
   // success-rate + recency shape. All five pharmacies target
   // either 'green' or 'yellow' — no red at rest, per cowork Q4.
@@ -114,11 +119,11 @@ export interface SeedPharmacy {
 }
 
 export const DEMO_PHARMACIES: ReadonlyArray<SeedPharmacy> = [
-  { id: 'a4000000-0000-0000-0000-000000000001', name: 'Strive Pharmacy',     slug: 'strive',          tier: 'TIER_4_FAX',    target: 'green'  },
-  { id: 'a4000000-0000-0000-0000-000000000002', name: 'Quick Rx Pharmacy',    slug: 'quick-rx',        tier: 'TIER_1_API',    target: 'green'  },
-  { id: 'a4000000-0000-0000-0000-000000000003', name: 'Express Digital Rx',   slug: 'express-digital', tier: 'TIER_1_API',    target: 'yellow' },
-  { id: 'a4000000-0000-0000-0000-000000000004', name: 'Portal Plus Pharmacy', slug: 'portal-plus',     tier: 'TIER_2_PORTAL', target: 'green'  },
-  { id: 'a4000000-0000-0000-0000-000000000005', name: 'Hybrid Labs Pharmacy', slug: 'hybrid-labs',     tier: 'TIER_3_HYBRID', target: 'green'  },
+  { id: 'a4000000-0000-0000-0000-000000000001', name: 'Strive Pharmacy',     slug: 'strive',          tier: 'TIER_4_FAX',    target: 'green',  shippingStandard: 9,  shippingColdChain: 22 },
+  { id: 'a4000000-0000-0000-0000-000000000002', name: 'Quick Rx Pharmacy',    slug: 'quick-rx',        tier: 'TIER_1_API',    target: 'green',  shippingStandard: 12, shippingColdChain: 25 },
+  { id: 'a4000000-0000-0000-0000-000000000003', name: 'Express Digital Rx',   slug: 'express-digital', tier: 'TIER_1_API',    target: 'yellow', shippingStandard: 0,  shippingColdChain: 0 },
+  { id: 'a4000000-0000-0000-0000-000000000004', name: 'Portal Plus Pharmacy', slug: 'portal-plus',     tier: 'TIER_2_PORTAL', target: 'green',  shippingStandard: 0,  shippingColdChain: 0 },
+  { id: 'a4000000-0000-0000-0000-000000000005', name: 'Hybrid Labs Pharmacy', slug: 'hybrid-labs',     tier: 'TIER_3_HYBRID', target: 'green',  shippingStandard: 0,  shippingColdChain: 0 },
 ] as const
 
 const DEMO_PHARMACY_ID_SET = new Set(DEMO_PHARMACIES.map(p => p.id))
@@ -552,6 +557,9 @@ export async function ensureDemoScaffolding(
         // status from submissions every render (adapter-health.ts).
         adapter_status:   'green',
         timezone:         tz,
+        // WO-102
+        shipping_fee_standard:   p.shippingStandard,
+        shipping_fee_cold_chain: p.shippingColdChain,
       })
 
       if (error) {

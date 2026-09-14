@@ -27,6 +27,7 @@ import { SessionBanner }     from '../_components/session-banner'
 import { DraftSessionPin }   from '../_components/draft-session-pin'
 import { loadRxDefaults, type RxFormulationDefaults } from '@/lib/orders/rx-defaults-loader'
 import { packageOptionsFromRows, type PackageOption } from '@/lib/orders/rx-details'
+import { ratesFromPharmacyRow } from '@/lib/orders/shipping'
 import { loadDraftContext, type DraftContext } from '@/lib/orders/load-draft-context'
 import { draftReturnPath } from '@/lib/orders/draft-edit'
 import { editTargetFromParams } from '../_lib/edit-target'
@@ -258,7 +259,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
   // appear in active prescription flows even if is_active was not yet flipped.
   const { data: pharmacy, error: pharmacyError } = await supabase
     .from('pharmacies')
-    .select('pharmacy_id, name')
+    .select('pharmacy_id, name, shipping_fee_standard, shipping_fee_cold_chain, free_shipping_threshold')
     .eq('pharmacy_id', pharmacyId)
     .eq('is_active', true)
     .is('deleted_at', null)
@@ -273,14 +274,17 @@ export default async function MarginPage({ searchParams }: PageProps) {
 
   // Fetch clinic default markup — non-fatal if missing
   let defaultMarkupPct: number | null = null
+  // WO-102: patient pays shipping at cost unless the clinic absorbs it.
+  let absorbShipping = false
   if (clinicId) {
     const { data: clinic } = await supabase
       .from('clinics')
-      .select('default_markup_pct')
+      .select('default_markup_pct, absorb_shipping')
       .eq('clinic_id', clinicId)
       .eq('is_active', true)
       .maybeSingle()
     defaultMarkupPct = clinic?.default_markup_pct ?? null
+    absorbShipping = clinic?.absorb_shipping === true
   }
 
   const body = (
@@ -325,6 +329,8 @@ export default async function MarginPage({ searchParams }: PageProps) {
         presetDurationDays={presetDurationDays}
         existingPackageId={draft && editTarget?.kind === 'draft' ? draft.packageId : null}
         existingPackageCount={draft && editTarget?.kind === 'draft' ? draft.packageCount : null}
+        shippingRates={ratesFromPharmacyRow(pharmacy)}
+        absorbShipping={absorbShipping}
         rxDefaults={rxDefaults}
         editTarget={editTarget}
         draftLine={draft && editTarget?.kind === 'draft'

@@ -380,6 +380,7 @@ export type Database = {
       }
       clinics: {
         Row: {
+          absorb_shipping: boolean
           clinic_id: string
           contact_email: string | null
           contact_phone: string | null
@@ -395,6 +396,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          absorb_shipping?: boolean
           clinic_id?: string
           contact_email?: string | null
           contact_phone?: string | null
@@ -410,6 +412,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          absorb_shipping?: boolean
           clinic_id?: string
           contact_email?: string | null
           contact_phone?: string | null
@@ -1148,6 +1151,7 @@ export type Database = {
           refills: number
           reroute_count: number
           retail_price_snapshot: number | null
+          shipping_fee: number
           shipping_state_snapshot: string | null
           shipping_type: string | null
           sig_text: string | null
@@ -1204,6 +1208,7 @@ export type Database = {
           refills?: number
           reroute_count?: number
           retail_price_snapshot?: number | null
+          shipping_fee?: number
           shipping_state_snapshot?: string | null
           shipping_type?: string | null
           sig_text?: string | null
@@ -1260,6 +1265,7 @@ export type Database = {
           refills?: number
           reroute_count?: number
           retail_price_snapshot?: number | null
+          shipping_fee?: number
           shipping_state_snapshot?: string | null
           shipping_type?: string | null
           sig_text?: string | null
@@ -1516,6 +1522,7 @@ export type Database = {
           is_active: boolean
           patient_id: string
           provider_id: string
+          shipping_total: number
           status: string
           stripe_payment_intent_id: string | null
           total_cents: number
@@ -1529,6 +1536,7 @@ export type Database = {
           is_active?: boolean
           patient_id: string
           provider_id: string
+          shipping_total?: number
           status?: string
           stripe_payment_intent_id?: string | null
           total_cents: number
@@ -1542,6 +1550,7 @@ export type Database = {
           is_active?: boolean
           patient_id?: string
           provider_id?: string
+          shipping_total?: number
           status?: string
           stripe_payment_intent_id?: string | null
           total_cents?: number
@@ -1584,6 +1593,7 @@ export type Database = {
           deleted_at: string | null
           email: string | null
           fax_number: string | null
+          free_shipping_threshold: number | null
           integration_tier: Database["public"]["Enums"]["integration_tier_enum"]
           is_active: boolean
           name: string
@@ -1591,6 +1601,8 @@ export type Database = {
           pharmacy_status: string
           phone: string | null
           portal_config_id: string | null
+          shipping_fee_cold_chain: number
+          shipping_fee_standard: number
           slug: string
           state: string | null
           supports_real_time_status: boolean
@@ -1612,6 +1624,7 @@ export type Database = {
           deleted_at?: string | null
           email?: string | null
           fax_number?: string | null
+          free_shipping_threshold?: number | null
           integration_tier?: Database["public"]["Enums"]["integration_tier_enum"]
           is_active?: boolean
           name: string
@@ -1619,6 +1632,8 @@ export type Database = {
           pharmacy_status?: string
           phone?: string | null
           portal_config_id?: string | null
+          shipping_fee_cold_chain?: number
+          shipping_fee_standard?: number
           slug: string
           state?: string | null
           supports_real_time_status?: boolean
@@ -1640,6 +1655,7 @@ export type Database = {
           deleted_at?: string | null
           email?: string | null
           fax_number?: string | null
+          free_shipping_threshold?: number | null
           integration_tier?: Database["public"]["Enums"]["integration_tier_enum"]
           is_active?: boolean
           name?: string
@@ -1647,6 +1663,8 @@ export type Database = {
           pharmacy_status?: string
           phone?: string | null
           portal_config_id?: string | null
+          shipping_fee_cold_chain?: number
+          shipping_fee_standard?: number
           slug?: string
           state?: string | null
           supports_real_time_status?: boolean

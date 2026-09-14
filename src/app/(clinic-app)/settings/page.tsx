@@ -45,7 +45,7 @@ export default async function SettingsPage() {
 
   const { data: clinic } = await supabase
     .from('clinics')
-    .select('clinic_id, name, logo_url, default_markup_pct, stripe_connect_status, stripe_connect_account_id')
+    .select('clinic_id, name, logo_url, default_markup_pct, absorb_shipping, stripe_connect_status, stripe_connect_account_id')
     .eq('clinic_id', clinicId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -112,6 +112,7 @@ export default async function SettingsPage() {
               clinicName={clinic.name}
               logoUrl={clinic.logo_url ?? null}
               defaultMarkupPct={clinic.default_markup_pct ?? null}
+              absorbShipping={clinic.absorb_shipping === true}
             />
           </div>
 

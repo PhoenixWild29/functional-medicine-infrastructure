@@ -112,7 +112,8 @@ describe('WO-98 — Edit at Review', () => {
     renderReview()
     await screen.findByText(/1\. Semaglutide/)
     expect(screen.getByTestId('rx-details-line-sema').parentElement).toHaveTextContent('10 units')
-    expect(screen.getByText('$310.00')).toBeInTheDocument()   // 190 + 120
+    // WO-102: Subtotal and Patient total (no shipping here) both read $310.00.
+    expect(screen.getByTestId('review-subtotal')).toHaveTextContent('$310.00')   // 190 + 120
 
     // What the margin page does on "Save Changes — Back to Review".
     act(() => {
@@ -134,9 +135,10 @@ describe('WO-98 — Edit at Review', () => {
     expect(card).toHaveTextContent('233-day supply')
     expect(card).not.toHaveTextContent('10 units')
     // Totals: 210 + 120 = 330; margin 115 + 25 = 140 → fee 21.00 → payout 119.00
-    expect(screen.getByText('$330.00')).toBeInTheDocument()
-    expect(screen.getByText('$21.00')).toBeInTheDocument()
-    expect(screen.getByText('$119.00')).toBeInTheDocument()
+    expect(screen.getByTestId('review-subtotal')).toHaveTextContent('$330.00')
+    expect(screen.getByTestId('review-platform-fee')).toHaveTextContent('$21.00')
+    expect(screen.getByTestId('review-clinic-payout')).toHaveTextContent('$119.00')
+    expect(screen.getByTestId('review-patient-total')).toHaveTextContent('$330.00')
     expect(screen.getByText(/2\. BPC-157/)).toBeInTheDocument()
   })
 })

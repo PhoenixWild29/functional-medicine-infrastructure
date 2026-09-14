@@ -237,7 +237,12 @@ interface Props {
   kind:          'solo' | 'group'
   /** Total prescriptions covered by this checkout; 1 for solo, N for group. */
   orderCount:    number
+  /** Amount due — what the payment intent charges (subtotal + shipping). */
   retailCents:   number
+  /** WO-102: prescriptions before shipping. Defaults to the amount due. */
+  subtotalCents?: number
+  /** WO-102: shipping the patient pays (once per pharmacy). 0 hides the line. */
+  shippingCents?: number
   clinicName:    string
   logoUrl:       string | null
   checkoutState: 'active' | 'paid' | 'cancelled_expired'
@@ -248,6 +253,8 @@ export function CheckoutPageContent({
   kind,
   orderCount,
   retailCents,
+  subtotalCents,
+  shippingCents = 0,
   clinicName,
   logoUrl,
   checkoutState,
@@ -369,6 +376,19 @@ export function CheckoutPageContent({
                 {toCurrency(retailCents)}
               </p>
             </div>
+            {/* WO-102: shipping as its own line item */}
+            {shippingCents > 0 && (
+              <dl className="mt-3 space-y-1 border-t border-border pt-3 text-sm" data-testid="checkout-line-items">
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">{kind === 'group' ? 'Prescriptions' : 'Prescription'}</dt>
+                  <dd className="text-foreground" data-testid="checkout-subtotal">{toCurrency(subtotalCents ?? retailCents - shippingCents)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Shipping</dt>
+                  <dd className="text-foreground" data-testid="checkout-shipping">{toCurrency(shippingCents)}</dd>
+                </div>
+              </dl>
+            )}
           </div>
 
           {/* State-specific content */}

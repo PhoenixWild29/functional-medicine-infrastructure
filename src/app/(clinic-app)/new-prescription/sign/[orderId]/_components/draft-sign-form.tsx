@@ -67,6 +67,9 @@ interface Props {
   pharmacyName:   string
   wholesaleCents: number
   retailCents:    number
+  /** WO-102: orders.shipping_fee — 0 when another line of the draft carries its pharmacy's shipping. */
+  shippingCents?:  number
+  absorbShipping?: boolean
   sigText:        string
   /** WO-98: this line plus its sibling drafts, with Edit / Remove / Add. */
   draftLines?:    DraftLineView[]
@@ -86,6 +89,8 @@ export function DraftSignForm({
   pharmacyName,
   wholesaleCents,
   retailCents,
+  shippingCents = 0,
+  absorbShipping = false,
   sigText,
   draftLines,
 }: Props) {
@@ -99,7 +104,9 @@ export function DraftSignForm({
 
   const marginCents = retailCents - wholesaleCents
   const platformFeeCents = calcPlatformFeeCents(marginCents)
-  const clinicMarginCents = marginCents - platformFeeCents
+  // WO-102: shipping is outside the margin; absorbed shipping comes out of the payout.
+  const clinicMarginCents = marginCents - platformFeeCents - (absorbShipping ? shippingCents : 0)
+  const patientTotalCents = retailCents + (absorbShipping ? 0 : shippingCents)
 
   function handleClearSignature() {
     sigCanvasRef.current?.clear()
@@ -178,6 +185,14 @@ export function DraftSignForm({
         <div className="flex justify-between">
           <span className="text-muted-foreground">Patient retail price</span>
           <span className="font-medium text-foreground">{toCurrency(retailCents)}</span>
+        </div>
+        <div className="flex justify-between" data-testid="draft-shipping">
+          <span className="text-muted-foreground">Shipping{absorbShipping ? ' (absorbed by the clinic)' : ' (passed to the patient at cost)'}</span>
+          <span className="text-foreground">{toCurrency(shippingCents)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Patient total</span>
+          <span className="font-medium text-foreground" data-testid="draft-patient-total">{toCurrency(patientTotalCents)}</span>
         </div>
         <div className="border-t border-border pt-1.5">
           <div className="flex justify-between">

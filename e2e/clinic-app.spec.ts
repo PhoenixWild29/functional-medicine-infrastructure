@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
-import { seedStaticData, cleanupTestOrders, cleanupTestFavorites, seedSecondProvider, retireSecondProvider, TEST_IDS, TEST_USERS, TEST_CATALOG, TEST_PATIENTS } from './fixtures/seed'
+import { seedStaticData, cleanupTestOrders, cleanupTestFavorites, seedSecondProvider, retireSecondProvider, TEST_IDS, TEST_USERS, TEST_CATALOG, TEST_PATIENTS, TEST_SHIPPING } from './fixtures/seed'
 import { packageId } from '../src/lib/catalog/packages'
 import { decryptSecret } from '../src/lib/epcs/crypto'
 import { DEMO_TOTP_SECRET } from '../src/lib/poc/totp-enrollment'
@@ -948,7 +948,8 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
     await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
 
     await expect(page.getByText('Prescriptions (2)')).toBeVisible()
-    await expect(page.getByText('$400.00')).toBeVisible()
+    // WO-102: Subtotal and Patient total both read $400.00 here (Tier1 ships free) — read the subtotal by test id.
+    await expect(page.getByTestId('review-subtotal')).toHaveText('$400.00')
     const glp1Card = page.locator('[data-testid^="rx-details-"]').nth(1).locator('..')
     await expect(glp1Card).toContainText('10 units')
     const glp1LineId = (await page.locator('[data-testid^="rx-details-"]').nth(1).getAttribute('data-testid'))!.replace('rx-details-', '')
@@ -984,7 +985,7 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
     await expect(editedCard).toContainText('15 units')
     await expect(editedCard).toContainText('$250.00')
     await expect(editedCard).toContainText('233-day supply')
-    await expect(page.getByText('$450.00')).toBeVisible()
+    await expect(page.getByTestId('review-subtotal')).toHaveText('$450.00')
 
     // ── Back lands on search with the session intact ──────────
     await page.getByRole('button', { name: 'Back', exact: true }).click()
@@ -994,7 +995,7 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
     await page.getByRole('button', { name: 'Review & Send' }).click()
     await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
     await expect(page.getByText('Prescriptions (2)')).toBeVisible()
-    await expect(page.getByText('$450.00')).toBeVisible()
+    await expect(page.getByTestId('review-subtotal')).toHaveText('$450.00')
   })
 
   test('provider opens a draft, edits the dose, adds a second line, removes it: same order id, audit rows, soft delete', async ({ page }) => {
@@ -1715,5 +1716,190 @@ test.describe('Clinic App — WO-101: vial size is suggested from the Rx and pri
     await expect(page.getByTestId('package-control')).toHaveCount(0)
     await expect(page.getByLabel('Package', { exact: true })).toHaveCount(0)
     await expect(page.getByLabel('Number of packages')).toHaveCount(0)
+  })
+})
+
+// ============================================================
+// WO-102 — shipping (Gina Rooks, 2026-09-11)
+// ============================================================
+// "I don't see [shipping] listed anywhere with the med pricing or when you
+// get to review and sign … you pay shipping more than once."
+//
+// E2E stand-ins (e2e/fixtures/seed.ts TEST_SHIPPING): Test Pharmacy Tier2
+// = "Strive" ($9 standard / $22 cold chain), Test Pharmacy Tier4 = "Quick
+// Rx" ($12 / $25). The GLP-1 analogue ships cold chain; the plain compound
+// ships standard. Signing can't be driven in headless CI (see the coverage
+// note near the top of this file), so the send path is exercised through
+// Save as Draft, which creates the drafts and allocates shipping across
+// them exactly as Sign & Send does before it signs.
+
+test.describe('Clinic App — WO-102: shipping once per pharmacy per order', () => {
+  test.beforeAll(async () => {
+    await seedStaticData()
+  })
+
+  test.afterEach(async () => {
+    await cleanupTestOrders()
+  })
+
+  const TIER2 = TEST_IDS.pharmacyTier2
+  const TIER4 = TEST_IDS.pharmacyTier4
+
+  async function startSession(page: Page) {
+    await loginAs(page, TEST_USERS.clinicAdmin)
+    await page.goto('/new-prescription')
+    await page.getByLabel('Search patients').fill('Test')
+    await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
+    await pickProviderIfListed(page)
+    await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
+  }
+
+  async function buildGlp1(page: Page, units: string, pharmacy: RegExp) {
+    await page.getByLabel('Search medications').fill(TEST_CATALOG.glp1IngredientName)
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.glp1IngredientName, 'i') }).click()
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.glp1FormulationName, 'i') }).click()
+    await page.getByLabel('Dose amount').fill(units)
+    await page.getByLabel('Dose unit').selectOption('units')
+    await page.getByLabel('Frequency').selectOption('QW')
+    await page.getByLabel('Timing').selectOption('MORNING')
+    await page.getByLabel('Duration').selectOption('30')
+    await page.getByRole('button', { name: pharmacy }).click()
+    await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
+  }
+
+  async function buildPlain(page: Page, pharmacy: RegExp) {
+    await page.getByLabel('Search medications').fill(TEST_CATALOG.ingredientName)
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.ingredientName, 'i') }).click()
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.formulationName, 'i') }).click()
+    await page.getByLabel('Dose amount').fill('10')
+    await page.getByLabel('Dose unit').selectOption('mg')
+    await page.getByLabel('Frequency').selectOption('QD')
+    await page.getByLabel('Timing').selectOption({ index: 1 })
+    await page.getByLabel('Duration').selectOption({ index: 1 })
+    await page.getByRole('button', { name: pharmacy }).click()
+    await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
+  }
+
+  /** GLP-1 at Tier4 ("Quick Rx", cold chain) + plain at Tier2 ("Strive", standard), on to Review. */
+  async function splitSession(page: Page, glp1Units = '10') {
+    await startSession(page)
+    await buildGlp1(page, glp1Units, /Test Pharmacy Tier4/)
+    await expect(page.getByTestId('shipping-line')).toContainText(`Shipping (cold chain): $${TEST_SHIPPING.tier4.coldChain}.00`)
+    await page.locator('#retail-price').fill('190.00')
+    await page.getByRole('button', { name: 'Add & Search Another' }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
+
+    await buildPlain(page, /Test Pharmacy Tier2/)
+    await expect(page.getByTestId('shipping-line')).toContainText(`Shipping (standard): $${TEST_SHIPPING.tier2.standard}.00`)
+    await expect(page.getByTestId('shipping-line')).toContainText('not part of the margin')
+    await page.locator('#retail-price').fill('200.00')
+    // One line is already in the session, so the banner carries a "Review & Send"
+    // link too — click the form's submit.
+    await page.getByRole('button', { name: 'Review & Send (2)' }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
+  }
+
+  async function drafts() {
+    const supabase = createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
+    const { data } = await supabase
+      .from('orders')
+      .select('formulation_id, pharmacy_id, shipping_fee, wholesale_price_snapshot, package_label')
+      .eq('clinic_id', TEST_IDS.clinic)
+      .eq('patient_id', TEST_IDS.patient)
+      .eq('status', 'DRAFT')
+      .eq('is_active', true)
+      .order('created_at', { ascending: true })
+    return (data ?? []).map(r => ({ ...r, shipping_fee: Number(r.shipping_fee), wholesale_price_snapshot: Number(r.wholesale_price_snapshot) }))
+  }
+
+  test('GLP-1 via "Quick Rx" (cold) + plain via "Strive" (standard) → $25 + $9 on Review and on the saved orders', async ({ page }) => {
+    await splitSession(page)
+
+    await expect(page.getByTestId(`shipping-${TIER4}`)).toContainText('$25.00', { timeout: 15_000 })
+    await expect(page.getByTestId(`shipping-${TIER4}`)).toContainText('Test Pharmacy Tier4 (cold chain)')
+    await expect(page.getByTestId(`shipping-${TIER2}`)).toContainText('$9.00')
+    await expect(page.getByTestId('review-subtotal')).toHaveText('$390.00')
+    // 15% of the ($95 + $100) margin — shipping never carries the fee.
+    await expect(page.getByTestId('review-platform-fee')).toHaveText('$29.25')
+    await expect(page.getByTestId('review-patient-total')).toHaveText('$424.00')
+    await expect(page.getByTestId('multi-pharmacy-message')).toHaveText(
+      '2 pharmacies → 2 shipping charges ($34.00). Route all to Test Pharmacy Tier2 to save $12.00.',
+    )
+
+    await page.getByRole('button', { name: /Save as Draft/ }).click()
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    await expect.poll(drafts, { timeout: 15_000 }).toEqual([
+      expect.objectContaining({ formulation_id: TEST_IDS.glp1Formulation, pharmacy_id: TIER4, shipping_fee: 25 }),
+      expect.objectContaining({ formulation_id: TEST_IDS.formulation,     pharmacy_id: TIER2, shipping_fee: 9 }),
+    ])
+  })
+
+  test('re-route all to "Strive" → $22 once (cold chain covers both); the saved orders carry it once', async ({ page }) => {
+    await splitSession(page)
+
+    const reroute = page.getByRole('button', { name: 'Route all to Test Pharmacy Tier2' })
+    await expect(reroute).toBeVisible({ timeout: 15_000 })
+    await reroute.click()
+
+    await expect(page.getByTestId(`shipping-${TIER2}`)).toContainText('$22.00')
+    await expect(page.getByTestId(`shipping-${TIER2}`)).toContainText('cold chain, 2 items in one shipment')
+    await expect(page.getByTestId(`shipping-${TIER4}`)).toHaveCount(0)
+    await expect(page.getByTestId('multi-pharmacy-notice')).toHaveCount(0)
+    await expect(page.getByTestId('review-patient-total')).toHaveText('$412.00')
+
+    await page.getByRole('button', { name: /Save as Draft/ }).click()
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    await expect.poll(drafts, { timeout: 15_000 }).toEqual([
+      // Re-priced at Tier2: the 1 mL vial this dose needs, still $95.
+      expect.objectContaining({ formulation_id: TEST_IDS.glp1Formulation, pharmacy_id: TIER2, shipping_fee: 22, wholesale_price_snapshot: 95, package_label: '1 mL vial' }),
+      expect.objectContaining({ formulation_id: TEST_IDS.formulation,     pharmacy_id: TIER2, shipping_fee: 0 }),
+    ])
+  })
+
+  test('when re-routing would change a medication price, the notice says so with the net and offers no losing re-route', async ({ page }) => {
+    // 40 units weekly: at Tier2 the dose needs the 2.5 mL vial ($165); at
+    // Tier4 the plain compound is $110. Neither saves overall.
+    await splitSession(page, '40')
+
+    await expect(page.getByTestId('multi-pharmacy-message')).toHaveText(
+      '2 pharmacies → 2 shipping charges ($34.00). Routing all to Test Pharmacy Tier4 would save $9.00 on shipping, ' +
+      `but medication prices would rise $20.00 (${TEST_CATALOG.formulationName} $200.00 → $220.00) — $11.00 more overall, so it is not suggested.`,
+      { timeout: 15_000 },
+    )
+    await expect(page.getByRole('button', { name: /Route all to/ })).toHaveCount(0)
+  })
+
+  test('checkout shows Shipping as its own line and the amount due is subtotal + shipping', async ({ page }) => {
+    const supabase = createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
+    const { data: inserted, error } = await supabase
+      .from('orders')
+      .insert({
+        patient_id:               TEST_IDS.patient,
+        provider_id:              TEST_IDS.provider,
+        formulation_id:           TEST_IDS.glp1Formulation,
+        clinic_id:                TEST_IDS.clinic,
+        pharmacy_id:              TIER4,
+        status:                   'AWAITING_PAYMENT',
+        quantity:                 1,
+        wholesale_price_snapshot: 95.00,
+        retail_price_snapshot:    190.00,
+        shipping_type:            'cold_chain',
+        shipping_fee:             25.00,
+        sig_text:                 'WO-102 checkout shipping E2E sig text',
+        locked_at:                new Date().toISOString(),
+      })
+      .select('order_id')
+      .single()
+    if (error || !inserted) throw new Error(`Failed to seed WO-102 checkout order: ${error?.message}`)
+
+    const { generateCheckoutToken } = await import('../src/lib/auth/checkout-token')
+    const token = await generateCheckoutToken(inserted.order_id, TEST_IDS.patient, TEST_IDS.clinic)
+    await page.goto(`/checkout/${token}`)
+    await expect(page.getByLabel('Amount due: $215.00')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId('checkout-subtotal')).toHaveText('$190.00')
+    await expect(page.getByTestId('checkout-shipping')).toHaveText('$25.00')
   })
 })
