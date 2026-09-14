@@ -99,7 +99,7 @@ describe('MarginBuilderForm — derived days supply + dispense', () => {
     renderMargin()
     expect(screen.getByTestId('days-supply-value')).toHaveTextContent('350 days')
     expect(screen.getByTestId('dispense-value')).toHaveTextContent('5 mL')
-    expect(screen.getByText(/Computed from dose × frequency × quantity \(5mL vial\)/)).toBeInTheDocument()
+    expect(screen.getByText(/No duration selected, so days supply is how long the 5 mL package lasts at this dose and frequency/)).toBeInTheDocument()
     // Read-only until the provider chooses to override.
     expect(screen.queryByLabelText('Days supply')).not.toBeInTheDocument()
   })
@@ -214,7 +214,7 @@ describe('MarginBuilderForm — WO-96 fix: days supply from the duration the pro
     renderMargin({ presetSigText: GINA_SIG, presetQuantity: undefined, availableQuantities: STRIVE_PACKAGES })
     expect(screen.getByTestId('days-supply-value')).toHaveTextContent('30 days')
     expect(screen.getByTestId('dispense-value')).toHaveTextContent('0.4 mL')
-    expect(screen.getByText(/Days supply is the 30-day duration; dispense is 4 doses × the dose/)).toBeInTheDocument()
+    expect(screen.getByText(/Days supply is the 30-day duration selected on the dose step. Dispense is 4 doses over those days × the dose./)).toBeInTheDocument()
     expect(screen.queryByText('—')).not.toBeInTheDocument()
   })
 
@@ -274,5 +274,26 @@ describe('MarginBuilderForm — WO-96 fix: days supply from the duration the pro
     const body = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string)
     expect(body).toEqual(expect.objectContaining({ dose: '10 units', frequencyCode: 'QW', quantityLabel: '1mL vial' }))
     expect(body.rxDetails).toEqual(expect.objectContaining({ daysSupply: 28, dispenseQuantity: 0.4, dispenseUnit: 'mL' }))
+  })
+})
+
+describe('MarginBuilderForm — WO-96 fix: a hand-edited sig does not change the structured inputs', () => {
+  it('session line and Save as Draft keep the builder dose, frequency and quantity after the sig is edited', async () => {
+    renderMargin({ presetDose: '10 units', presetQuantity: '5mL vial', rxDefaults: { ...SEMAGLUTIDE_DEFAULTS } })
+    fireEvent.change(screen.getByLabelText(/Sig \(Prescription Directions\)/), {
+      target: { value: 'Inject 20 units (0.20mL / 1.00mg) subcutaneously twice daily' },
+    })
+
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ orderId: 'order-1' }) })
+    global.fetch = fetchMock as unknown as typeof fetch
+    fireEvent.click(screen.getByRole('button', { name: /Save as Draft/ }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    const body = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string)
+    expect(body).toEqual(expect.objectContaining({
+      sigText:       'Inject 20 units (0.20mL / 1.00mg) subcutaneously twice daily',
+      dose:          '10 units',
+      frequencyCode: 'QW',
+      quantityLabel: '5mL vial',
+    }))
   })
 })

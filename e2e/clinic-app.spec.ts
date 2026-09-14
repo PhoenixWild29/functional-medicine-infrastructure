@@ -617,14 +617,15 @@ test.describe('Clinic App — WO-96 Rx detail fields', () => {
     await cleanupTestOrders()
   })
 
-  test('margin page shows days supply and dispense computed from dose × frequency × quantity', async ({ page }) => {
+  test('margin page with no duration selected: days supply and dispense computed from the selected package', async ({ page }) => {
     await loginAs(page, TEST_USERS.provider)
     await walkBuilderToMargin(page, PLAIN)
 
     // 10 mg of a 10 mg/mL injectable = 1 mL daily; 30 mL lasts 30 days.
     await expect(page.getByTestId('days-supply-value')).toHaveText('30 days')
     await expect(page.getByTestId('dispense-value')).toHaveText('30 mL')
-    await expect(page.getByText(/Computed from dose × frequency × quantity/)).toBeVisible()
+    // No duration on this sig, so the explanation names the fallback basis.
+    await expect(page.getByText('No duration selected, so days supply is how long the 30 mL package lasts at this dose and frequency.', { exact: false })).toBeVisible()
     // Read-only until the provider opts in to override.
     await expect(page.getByLabel('Days supply')).toHaveCount(0)
     await page.getByRole('button', { name: 'Override' }).click()

@@ -58,6 +58,9 @@ export function DerivedDispense({ derived, basis, override, onChange }: Props) {
   const resolved = resolveDispense(derived, override)
   const isOverridden = override.daysSupply !== '' || override.dispenseQuantity !== '' || override.dispenseUnit !== ''
 
+  // The package the no-duration fallback was computed from ("30 mL", "1 vial").
+  const packageText = formatDispense(derived?.dispenseQuantity ?? null, derived?.dispenseUnit ?? null)
+    ?? (basis.kind === 'quantity' && basis.label ? basis.label : 'selected')
   const daysText = resolved.daysSupply != null ? `${resolved.daysSupply} days` : '—'
   const dispenseText = formatDispense(resolved.dispenseQuantity, resolved.dispenseUnit) ?? '—'
 
@@ -89,11 +92,11 @@ export function DerivedDispense({ derived, basis, override, onChange }: Props) {
           ? 'Provider override in effect.'
           : basis.kind === 'duration'
             ? basis.doses != null
-              ? `Days supply is the ${basis.days}-day duration; dispense is ${basis.doses} dose${basis.doses === 1 ? '' : 's'} × the dose.`
-              : `Days supply is the ${basis.days}-day duration; dispense is the package (as-needed doses cannot be counted).`
+              ? `Days supply is the ${basis.days}-day duration selected on the dose step. Dispense is ${basis.doses} dose${basis.doses === 1 ? '' : 's'} over those days × the dose.`
+              : `Days supply is the ${basis.days}-day duration selected on the dose step. As-needed doses can't be counted, so dispense is the selected package.`
             : derived?.daysSupply == null
-              ? `Dispense is the selected quantity (${basis.label || '1'}); days supply could not be derived from this sig (as-needed or unmatched units).`
-              : `Computed from dose × frequency × quantity (${basis.label}). Pick a duration on the dose step to base it on days instead.`}
+              ? `No duration selected, and this dose can't be counted per day (as-needed or unmatched units). Dispense is the ${packageText}; use Override to set days supply.`
+              : `No duration selected, so days supply is how long the ${packageText} package lasts at this dose and frequency. Select a duration on the dose step to set it directly.`}
       </p>
 
       {editing && (
