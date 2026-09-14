@@ -73,6 +73,21 @@ export const TEST_IDS = {
   // 20260914000001). Tier1 keeps a single package, so every other spec
   // that picks Tier1 sees no package control.
   glp1PackagedPharmacyFormulation: 'aaaaaaaa-0000-0000-0000-000000000054',
+  // WO-102: shipping scenarios. Tier2 stands in for Strive ($9 standard /
+  // $22 cold chain), Tier4 for Quick Rx ($12 / $25); Tier1 ships free so
+  // every existing spec's amounts are unchanged. The GLP-1 analogue (cold
+  // chain) is also sold at Tier4, and the plain compound (standard) at
+  // Tier2 ($100, same as Tier1) and Tier4 ($110 — a re-route there changes
+  // its price).
+  glp1Tier4PharmacyFormulation:  'aaaaaaaa-0000-0000-0000-000000000055',
+  plainTier2PharmacyFormulation: 'aaaaaaaa-0000-0000-0000-000000000034',
+  plainTier4PharmacyFormulation: 'aaaaaaaa-0000-0000-0000-000000000035',
+}
+
+// WO-102: E2E shipping rates (dollars), mirroring the demo seed.
+export const TEST_SHIPPING = {
+  tier2: { standard: 9,  coldChain: 22 },   // "Strive"
+  tier4: { standard: 12, coldChain: 25 },   // "Quick Rx"
 }
 
 // Display strings the cascading UI renders — tests reference these when
@@ -233,6 +248,11 @@ export async function seedStaticData(): Promise<void> {
       slug:            'test-tier1',
       integration_tier: 'TIER_1_API',
       is_active:       true,
+      // WO-102: Tier1 ships free so existing specs' amounts are unchanged.
+      // Every row in this bulk upsert names the same columns.
+      shipping_fee_standard:   0,
+      shipping_fee_cold_chain: 0,
+      free_shipping_threshold: null,
     },
     {
       pharmacy_id:     TEST_IDS.pharmacyTier2,
@@ -240,6 +260,9 @@ export async function seedStaticData(): Promise<void> {
       slug:            'test-tier2',
       integration_tier: 'TIER_2_PORTAL',
       is_active:       true,
+      shipping_fee_standard:   9.00,
+      shipping_fee_cold_chain: 22.00,
+      free_shipping_threshold: null,
     },
     {
       pharmacy_id:     TEST_IDS.pharmacyTier4,
@@ -248,6 +271,9 @@ export async function seedStaticData(): Promise<void> {
       integration_tier: 'TIER_4_FAX',
       fax_number:      '+15550000099',
       is_active:       true,
+      shipping_fee_standard:   12.00,
+      shipping_fee_cold_chain: 25.00,
+      free_shipping_threshold: null,
     },
   ], { onConflict: 'pharmacy_id' })
 
@@ -479,6 +505,40 @@ export async function seedStaticData(): Promise<void> {
     estimated_turnaround_days: 5,
     is_active:                 true,
   }, { onConflict: 'pharmacy_formulation_id' })
+
+  // ── WO-102: offers for the shipping scenarios ──
+  await supabase.from('pharmacy_formulations').upsert([
+    {
+      pharmacy_formulation_id:   TEST_IDS.glp1Tier4PharmacyFormulation,
+      pharmacy_id:               TEST_IDS.pharmacyTier4,
+      formulation_id:            TEST_IDS.glp1Formulation,
+      wholesale_price:           95.00,
+      available_quantities:      ['5mL vial'],
+      is_available:              true,
+      estimated_turnaround_days: 5,
+      is_active:                 true,
+    },
+    {
+      pharmacy_formulation_id:   TEST_IDS.plainTier2PharmacyFormulation,
+      pharmacy_id:               TEST_IDS.pharmacyTier2,
+      formulation_id:            TEST_IDS.formulation,
+      wholesale_price:           100.00,
+      available_quantities:      ['30', '60', '90'],
+      is_available:              true,
+      estimated_turnaround_days: 5,
+      is_active:                 true,
+    },
+    {
+      pharmacy_formulation_id:   TEST_IDS.plainTier4PharmacyFormulation,
+      pharmacy_id:               TEST_IDS.pharmacyTier4,
+      formulation_id:            TEST_IDS.formulation,
+      wholesale_price:           110.00,
+      available_quantities:      ['30', '60', '90'],
+      is_available:              true,
+      estimated_turnaround_days: 5,
+      is_active:                 true,
+    },
+  ], { onConflict: 'pharmacy_formulation_id' })
 
   const glp1Packages = [
     ...packageRowsFor(TEST_IDS.glp1PharmacyFormulation, '', { price: 95, availableQuantities: ['5mL vial', '2.5mL vial'] }),
