@@ -52,6 +52,8 @@ interface PageProps {
     refills?: string
     // WO-101: the duration selected on the dose step ('' = none)
     durationDays?: string
+    // WO-104: the timing selected on the dose step ('' = none)
+    timing?: string
     // WO-98: which existing line this page saves back to (see _lib/edit-target)
     editId?: string
     editOrder?: string
@@ -69,8 +71,9 @@ export default async function MarginPage({ searchParams }: PageProps) {
   const presetSig      = (resolvedParams.sigText ?? '').trim()
   const presetQuantity = (resolvedParams.quantity ?? '').trim()
   const presetRefills  = parseInt(resolvedParams.refills ?? '0', 10)
-  // WO-101: structured duration from the builder. Absent (favorites, older
-  // links) → undefined, and the form falls back as it did before.
+  // WO-101: structured duration from the builder. Absent only on a legacy
+  // saved link (WO-104: favorites load onto the dose step and carry it) →
+  // undefined, and the form falls back to that link's sig.
   const presetDurationDays: number | null | undefined = resolvedParams.durationDays === undefined
     ? undefined
     : (() => {
@@ -327,6 +330,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
         availableQuantities={availableQuantities}
         packages={packages}
         presetDurationDays={presetDurationDays}
+        presetTiming={(resolvedParams.timing ?? '').trim() || undefined}
         existingPackageId={draft && editTarget?.kind === 'draft' ? draft.packageId : null}
         existingPackageCount={draft && editTarget?.kind === 'draft' ? draft.packageCount : null}
         shippingRates={ratesFromPharmacyRow(pharmacy)}

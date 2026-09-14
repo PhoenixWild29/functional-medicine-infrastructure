@@ -257,24 +257,28 @@ Four small UI items from the meeting that were already committed to.
 **Status:** ready
 
 ### Description
-A favorite is a drug + formulation + pharmacy. Under it, the clinic's common doses as chips. This replaces one-row-per-dose and keeps the list short.
+A favorite is a drug + formulation + pharmacy. Under it, the clinic's common doses as chips. This replaces one-row-per-dose and keeps the list short. A favorite is saved for the practice (clinic-wide, the existing behaviour) or pinned to one patient (2026-09-11 meeting: a clinic saves its standard doses for the practice AND a favorite for a specific patient).
+
+> **Spec amendment (2026-09-14, built in WO-104).** The original text said clicking a dose chip "pre-fills the builder and lands on the margin page". That is the free-text sig screen Gina's email asks to get away from: *"On the favorites, when selected, it would be nice to still be able to revert to the Rx builder drop downs rather than editing a free text box."* A chip therefore lands on the **dose step** with the builder dropdowns populated (amount, unit, frequency, timing, duration) and the sig generated from them; the provider then continues to price as normal. No step is added — the dose step is already step 2. Because a favorite now reaches the price step through the builder like every other line, it always carries a structured duration, and the price step's sig-parsing fallback is kept only for legacy saved links. A preset also carries `duration`, which the original shape omitted but the dose step needs.
 
 ### Schema
-- `provider_favorites`: add `dose_presets jsonb` — array of `{dose, unit, frequency, timing, label}`; `category text`.
-- Migration collapses existing favorites with the same formulation+pharmacy into one row with multiple presets.
+- `provider_favorites`: add `dose_presets jsonb` — array of `{dose, unit, frequency, timing, duration, label}` (builder values: dose unit, frequency / timing codes, duration in days or `ONGOING`); `category text`, derived from the formulation's ingredient `therapeutic_category` (Women's / Men's Health → Hormones, Weight Loss → Weight Management); `patient_id uuid NULL` (NULL = for the practice).
+- Migration collapses existing favorites with the same clinic + formulation + pharmacy (+ patient) into one row with multiple presets. The most used row survives (its provider keeps "Mine"), the card is named for the drug, each dose keeps its old name as its label. The rule is a SQL function (`collapse_provider_favorites()`) so the demo and E2E seeds use the same code.
 
 ### UI
-- Favorites panel: grouped by category (Peptides, Hormones, Weight Management…), A–Z within group. **Recent** strip at top: last 8 formulations prescribed by this provider.
-- Each favorite card: name, formulation, pharmacy, then dose chips (10 units · 20 units · 40 units · Custom). Clicking a chip pre-fills the builder and lands on the margin page. Custom lands on the dose step with the formulation pre-selected.
-- Dose chips also appear on the dose step for any formulation that has presets (from favorites or from `sig_templates`), with free entry still available.
-- **Make favorite** on any Recent item.
+- Favorites panel: grouped by category in a fixed order (Peptides, Hormones, Weight Management…; others A–Z, Other last), A–Z within group. The selected patient's own favorites come first; favorites pinned to another patient are not shown. **Recent** strip at top: last 8 formulations prescribed by this provider. The "Mine" filter still applies.
+- Each favorite card: name, formulation, pharmacy, then dose chips (10 units (0.5 mg) weekly · 20 units (1.0 mg) weekly · 40 units (2.0 mg) weekly · Custom). Clicking a chip opens the **dose step** with the formulation, pharmacy and every dose dropdown populated from the preset. Custom lands on the dose step with the formulation (and pharmacy) pre-selected and the dose fields empty.
+- Dose chips also appear on the dose step for any formulation that has presets (from the clinic's favorites), with free entry still available. (`sig_templates` is not used: the table has no clinic scope and nothing writes it.)
+- **Make favorite** on any Recent item. ☆ Save as favorite (builder, price step, Review card) adds the dose to the existing card for that drug + pharmacy, or creates one; it offers "For the practice" (default) or "Only for <patient>".
 
 ### Acceptance Criteria
 - [ ] Migrated seed: Semaglutide favorites collapse to one card with presets 10/20/40 units.
-- [ ] Clicking "20 units" chip → margin page with sig "Inject 20 units (1.0 mg)…".
+- [ ] Clicking "20 units" chip → dose step with amount 20, units, once weekly, timing and duration populated; Continue → margin page with sig "Inject 20 units (0.20mL / 1.00mg) subcutaneous once weekly…" and dose "20 units (1.0 mg)".
 - [ ] Custom chip → dose step, formulation pre-selected, dropdowns live.
 - [ ] Recent strip shows last prescribed formulations; Make favorite creates a card.
 - [ ] Groups sorted A–Z, categories in fixed order.
+- [ ] A favorite saved "Only for <patient>" appears first when that patient is selected, and not for other patients.
+- [ ] A favorite never goes through sig parsing (timing / duration are structured end to end).
 
 ---
 

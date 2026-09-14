@@ -49,7 +49,7 @@ import {
   defaultQuantityLabel,
   dispenseUnitFor,
   dosesInDays,
-  durationDaysFromSig,
+  durationDaysForLink,
   suggestPackage,
   packageCountFor,
   formatPackageCount,
@@ -67,6 +67,7 @@ import { splitDose } from '@/lib/orders/dose'
 import { DerivedDispense, EMPTY_OVERRIDE, resolveDispense, type DispenseOverride } from '../../_components/derived-dispense'
 import { SaveFavoriteButton } from '../../_components/save-favorite-button'
 import { formatDoseWithMg } from '@/lib/orders/dose-display'
+import { presetDurationFromDays } from '@/lib/orders/favorite-presets'
 import { computeBundleShipping, type PharmacyShippingRates } from '@/lib/orders/shipping'
 
 // ── Cent arithmetic helpers — HC-01 ──────────────────────────
@@ -136,10 +137,12 @@ interface Props {
   /** WO-101: the pharmacy's active packages for this formulation, smallest first. */
   packages?:           PackageOption[]
   /**
-   * WO-101: duration selected on the dose step (structured). undefined when
-   * the link didn't carry one (favorites, older links); null = no duration.
+   * WO-101: duration selected on the dose step (structured). undefined only
+   * for a legacy saved link that predates the parameter; null = no duration.
    */
   presetDurationDays?: number | null | undefined
+  /** WO-104: timing selected on the dose step (structured), for ☆ Save as favorite. */
+  presetTiming?:       string | undefined
   /** WO-101: package the draft line being edited was priced from. */
   existingPackageId?:  string | null
   /** WO-101a: how many of that package the draft line carries. */
@@ -196,6 +199,7 @@ export function MarginBuilderForm({
   presetDose,
   packages = [],
   presetDurationDays,
+  presetTiming,
   existingPackageId = null,
   existingPackageCount = null,
   shippingRates = null,
@@ -231,13 +235,16 @@ export function MarginBuilderForm({
   // package (or "1"). Recomputes when the dose, frequency, duration,
   // quantity, package or formulation change.
   //
-  // WO-101: the builder now sends the selected duration as a structured
-  // value, and when present it is used as is — editing the sig text on
-  // this page cannot change it. A link without one (a favorite, an older
-  // deep link) keeps the WO-96 fix behaviour unchanged.
-  const durationDays = presetDurationDays !== undefined
-    ? presetDurationDays
-    : durationDaysFromSig(sigText)
+  // WO-101: the builder sends the selected duration as a structured value,
+  // used as is — editing the sig text on this page cannot change it.
+  // WO-104: favorites now load onto the builder's dose step, so they
+  // always arrive with it too. Only a legacy saved link without the
+  // parameter falls back, to the sig that link carried (never the sig
+  // being edited here) — see durationDaysForLink.
+  const durationDays = useMemo(
+    () => durationDaysForLink(presetDurationDays, presetSigText),
+    [presetDurationDays, presetSigText],
+  )
 
   // ── WO-101: package (vial size) ───────────────────────────────
   const doseForPackages = splitDose(dose)
@@ -745,9 +752,10 @@ export function MarginBuilderForm({
                 doseAmount={doseParts.amount}
                 doseUnit={doseParts.unit}
                 frequencyCode={presetFrequency ?? null}
-                sigText={sigTrimmed}
-                quantity={presetQuantity ?? null}
+                timingCode={presetTiming ?? ''}
+                duration={presetDurationFromDays(durationDays)}
                 refills={rxDetails.refills}
+                patient={rxSession.patient ? { patientId: rxSession.patient.patient_id, name: `${rxSession.patient.first_name} ${rxSession.patient.last_name}` } : null}
                 disabled={sigTrimmed.length < 10}
               />
             </div>

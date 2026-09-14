@@ -96,21 +96,24 @@ describe('margin page — WO-103', () => {
     }))
   })
 
-  it('☆ Save as favorite posts the configured line with the default name', async () => {
-    renderMargin({ presetRefills: 2 })
+  // WO-104: a favorite is the drug; the dose (with the structured timing
+  // and duration from the dose step) is saved as a preset under it.
+  it('☆ Save as favorite posts the configured dose as a structured preset', async () => {
+    renderMargin({ presetRefills: 2, presetTiming: 'MORNING', presetDurationDays: 30 })
     fireEvent.click(screen.getByRole('button', { name: '☆ Save as favorite' }))
     const form = screen.getByTestId('save-favorite-form')
-    expect(within(form).getByLabelText('Favorite name')).toHaveValue('Semaglutide 5mg/mL Injectable 10 units weekly')
+    expect(within(form).getByLabelText('Favorite name')).toHaveValue('Semaglutide 5mg/mL Injectable')
     fireEvent.keyDown(within(form).getByLabelText('Favorite name'), { key: 'Enter' })
 
     await waitFor(() => expect(calls).toHaveLength(1))
     expect(calls[0]!.method).toBe('POST')
-    expect(calls[0]!.body).toEqual(expect.objectContaining({
+    expect(calls[0]!.body).toEqual({
       provider_id: PROVIDER_ID, formulation_id: 'formulation-sema', pharmacy_id: 'pharmacy-strive',
-      label: 'Semaglutide 5mg/mL Injectable 10 units weekly',
-      dose_amount: '10', dose_unit: 'units', frequency_code: 'QW', default_quantity: '5mL vial', default_refills: 2,
-      sig_text: 'Inject 10 units (0.10mL / 0.50mg) subcutaneously once weekly',
-    }))
+      patient_id: null,
+      label: 'Semaglutide 5mg/mL Injectable',
+      dose_presets: [{ dose: '10', unit: 'units', frequency: 'QW', timing: 'MORNING', duration: '30', label: null }],
+      default_refills: 2,
+    })
     expect(await screen.findByRole('status')).toHaveTextContent('Saved to favorites')
     // Nothing was added to the session by saving a favorite.
     expect(lastSession?.prescriptions).toHaveLength(0)

@@ -1,15 +1,19 @@
 'use client'
 
 // ============================================================
-// WO-103: ☆ Save as favorite — shared by the builder, the margin
-// page and every Review card
+// WO-103 / WO-104: ☆ Save as favorite — shared by the builder, the
+// margin page and every Review card
 // ============================================================
 //
-// One click opens a name field pre-filled with "<Drug> <dose> <freq>"
-// (defaultFavoriteName); Save POSTs to /api/favorites. Favorites are
-// clinic-wide (WO-85), saved under the session provider. The button
-// only renders for V3.0 formulation lines — legacy catalog lines have
-// no formulation_id to pin.
+// One click opens a name field and a scope choice; Save POSTs the dose
+// as a structured preset to /api/favorites. WO-104: a favorite is the
+// drug + formulation + pharmacy, so the name defaults to the medication
+// (the dose is a chip under it), and saving a dose for a card the clinic
+// already has adds the dose to that card instead of creating a second
+// one. Scope defaults to the practice; when a patient is selected the
+// provider may pin the favorite to that patient instead. The button only
+// renders for V3.0 formulation lines — legacy catalog lines have no
+// formulation_id to pin.
 //
 // react-query is optional here: the Review card renders outside a
 // QueryClientProvider in its unit tests, so the favorites cache is
@@ -17,7 +21,6 @@
 
 import { useContext, useState } from 'react'
 import { QueryClientContext } from '@tanstack/react-query'
-import { defaultFavoriteName } from '@/lib/orders/dose-display'
 
 export interface SaveFavoriteInput {
   providerId:     string
@@ -27,9 +30,13 @@ export interface SaveFavoriteInput {
   doseAmount:     string
   doseUnit:       string
   frequencyCode:  string | null | undefined
-  sigText:        string
-  quantity:       string | null | undefined
+  /** WO-104: builder timing code, when the caller knows it structurally */
+  timingCode?:    string | null | undefined
+  /** WO-104: preset duration — days as a string, "ONGOING" or '' */
+  duration?:      string | null | undefined
   refills:        number
+  /** WO-104: the session patient, offered as "Only for <name>" */
+  patient?:       { patientId: string; name: string } | null | undefined
 }
 
 interface Props extends SaveFavoriteInput {
@@ -42,23 +49,25 @@ interface Props extends SaveFavoriteInput {
 
 export function SaveFavoriteButton({
   providerId, formulationId, pharmacyId, medicationName,
-  doseAmount, doseUnit, frequencyCode, sigText, quantity, refills,
+  doseAmount, doseUnit, frequencyCode, timingCode, duration, refills, patient,
   disabled = false, compact = false, idSuffix,
 }: Props) {
   const queryClient = useContext(QueryClientContext)
   const [open, setOpen] = useState(false)
   const [label, setLabel] = useState('')
+  const [forPatient, setForPatient] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [saved, setSaved] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   if (!formulationId) return null
 
-  const suggested = defaultFavoriteName(medicationName, doseAmount, doseUnit, frequencyCode)
-  const inputId = `favorite-name${idSuffix ? `-${idSuffix}` : ''}`
+  const suffix = idSuffix ? `-${idSuffix}` : ''
+  const inputId = `favorite-name${suffix}`
 
   function openForm() {
-    setLabel(suggested)
+    setLabel(medicationName.trim())
+    setForPatient(false)
     setError(null)
     setOpen(true)
   }
@@ -73,26 +82,28 @@ export function SaveFavoriteButton({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          provider_id:      providerId,
-          formulation_id:   formulationId,
-          pharmacy_id:      pharmacyId,
-          label:            name,
-          dose_amount:      doseAmount,
-          dose_unit:        doseUnit,
-          frequency_code:   frequencyCode ?? null,
-          sig_text:         sigText,
-          default_quantity: quantity ?? null,
-          default_refills:  refills,
+          provider_id:     providerId,
+          formulation_id:  formulationId,
+          pharmacy_id:     pharmacyId,
+          patient_id:      forPatient && patient ? patient.patientId : null,
+          label:           name,
+          dose_presets:    [{
+            dose:      doseAmount,
+            unit:      doseUnit,
+            frequency: frequencyCode ?? '',
+            timing:    timingCode ?? '',
+            duration:  duration ?? '',
+            label:     null,
+          }],
+          default_refills: refills,
         }),
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(err.error ?? `Save failed (${res.status})`)
-      }
+      const json = await res.json().catch(() => ({})) as { error?: string; merged?: boolean; data?: { label?: string } }
+      if (!res.ok) throw new Error(json.error ?? `Save failed (${res.status})`)
       setOpen(false)
-      setSaved(true)
+      setSaved(json.merged && json.data?.label ? `Dose added to ${json.data.label}` : 'Saved to favorites')
       void queryClient?.invalidateQueries({ queryKey: ['provider-favorites'] })
-      setTimeout(() => setSaved(false), 3000)
+      setTimeout(() => setSaved(null), 3000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
     } finally {
@@ -103,7 +114,7 @@ export function SaveFavoriteButton({
   if (saved) {
     return (
       <span role="status" className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700">
-        Saved to favorites
+        {saved}
       </span>
     )
   }
@@ -125,6 +136,19 @@ export function SaveFavoriteButton({
           autoFocus
           className="w-56 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
+        {patient && (
+          <fieldset className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+            <legend className="sr-only">Save for</legend>
+            <label className="flex items-center gap-1">
+              <input type="radio" name={`favorite-scope${suffix}`} checked={!forPatient} onChange={() => setForPatient(false)} />
+              For the practice
+            </label>
+            <label className="flex items-center gap-1">
+              <input type="radio" name={`favorite-scope${suffix}`} checked={forPatient} onChange={() => setForPatient(true)} />
+              Only for {patient.name}
+            </label>
+          </fieldset>
+        )}
         <button
           type="button"
           onClick={() => { void handleSave() }}

@@ -102,15 +102,17 @@ describe('Review card — WO-103', () => {
     expect(screen.getAllByRole('button', { name: '☆ Save as favorite' })).toHaveLength(1)
   })
 
-  it('saves Semaglutide 10 units weekly with the default name, then confirms', async () => {
+  // WO-104: the name defaults to the drug (the dose is a chip under it);
+  // the dose is posted as a structured preset, for the practice by default.
+  it('saves Semaglutide 10 units weekly as a dose preset under the drug, then confirms', async () => {
     renderReview([SEMAGLUTIDE])
     fireEvent.click(await screen.findByRole('button', { name: '☆ Save as favorite' }))
 
     const form = screen.getByTestId('save-favorite-form')
     const name = within(form).getByLabelText('Favorite name')
-    // "<Drug> <dose> <freq>"
-    expect(name).toHaveValue('Semaglutide 5mg/mL Injectable 10 units weekly')
-    fireEvent.change(name, { target: { value: 'Semaglutide 10 units weekly' } })
+    expect(name).toHaveValue('Semaglutide 5mg/mL Injectable')
+    expect(within(form).getByLabelText('For the practice')).toBeChecked()
+    fireEvent.change(name, { target: { value: 'Semaglutide' } })
     fireEvent.click(within(form).getByRole('button', { name: 'Save favorite' }))
 
     await waitFor(() => expect(calls).toHaveLength(1))
@@ -121,12 +123,9 @@ describe('Review card — WO-103', () => {
         provider_id: PROVIDER_ID,
         formulation_id: 'formulation-sema',
         pharmacy_id: 'pharmacy-strive',
-        label: 'Semaglutide 10 units weekly',
-        dose_amount: '10',
-        dose_unit: 'units',
-        frequency_code: 'QW',
-        sig_text: 'Inject 10 units (0.10mL / 0.50mg) subcutaneously once weekly',
-        default_quantity: '5mL vial',
+        patient_id: null,
+        label: 'Semaglutide',
+        dose_presets: [{ dose: '10', unit: 'units', frequency: 'QW', timing: '', duration: '', label: null }],
         default_refills: 1,
       },
     })

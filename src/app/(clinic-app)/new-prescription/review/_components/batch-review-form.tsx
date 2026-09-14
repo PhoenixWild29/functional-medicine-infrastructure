@@ -639,9 +639,8 @@ export function BatchReviewForm({ isProvider }: Props) {
                   doseAmount={splitDose(rx.dose).amount}
                   doseUnit={splitDose(rx.dose).unit}
                   frequencyCode={rx.frequencyCode ?? null}
-                  sigText={rx.sigText}
-                  quantity={rx.quantityLabel ?? null}
                   refills={effectiveDetails(rx).refills}
+                  patient={{ patientId: patient.patient_id, name: `${patient.first_name} ${patient.last_name}` }}
                   disabled={isBusy}
                 />
                 <div className="ml-auto flex items-center gap-3">
