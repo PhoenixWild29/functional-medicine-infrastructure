@@ -1,14 +1,15 @@
 /**
  * @jest-environment node
  *
- * WO-103: PATCH /api/favorites?id=xxx edits a favorite in place.
+ * WO-103 / WO-104: PATCH /api/favorites?id=xxx edits a favorite in place.
  *
  *   - no body → the WO-85 use-count bump, unchanged
- *   - body with label / dose / frequency / pharmacy → those columns are
- *     updated (dose is stored as the canonical numeric string)
+ *   - body with label / pharmacy / dose_presets / patient_id → those
+ *     columns are updated (WO-104: the doses are structured presets,
+ *     stored canonically; no sig is stored or regenerated)
  *   - malformed body → 400 before any DB access
  *   - clinic-scope guard: a favorite owned by another clinic's provider
- *     is 403, unknown id is 404
+ *     is 403, unknown id is 404; a patient outside the clinic is 403
  *   - re-pinning to a pharmacy that does not offer the formulation → 400
  *
  * Mocking pattern reused from src/app/api/orders/__tests__/wo96-rx-details.test.ts.
@@ -32,9 +33,16 @@ let tablesTouched: string[] = []
 const fixtures: Record<string, () => unknown> = {}
 
 const getSessionMock = jest.fn()
+// WO-104: the route verifies the user with getUser(). The session-shaped
+// fixtures below are unwrapped to the user they carry.
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: {
+      getUser: async () => {
+        const r = await getSessionMock() as { data: { session: { user: unknown } | null } }
+        return { data: { user: r.data.session?.user ?? null } }
+      },
+    },
   }),
 }))
 
@@ -108,18 +116,40 @@ describe('PATCH /api/favorites — WO-103 edits', () => {
     expect(favoriteUpdate()).not.toHaveProperty('label')
   })
 
-  it('updates name, dose and frequency, storing the canonical dose string', async () => {
-    const res = await PATCH(makeRequest({ label: '  Semaglutide 20 units weekly ', dose_amount: '20.0', dose_unit: 'units', frequency_code: 'qw', sig_text: 'Inject 20 units (0.20mL / 1.00mg) subcutaneous once weekly' }))
+  it('updates the name and the dose presets, storing canonical builder values', async () => {
+    const res = await PATCH(makeRequest({
+      label: '  Semaglutide ',
+      dose_presets: [
+        { dose: '40', unit: 'units', frequency: 'qw', timing: 'morning', duration: '30', label: null },
+        { dose: '10.0', unit: 'units', frequency: 'QW', timing: '', duration: '', label: 'Starter' },
+      ],
+    }))
     expect(res.status).toBe(200)
     expect(favoriteUpdate()).toEqual(expect.objectContaining({
-      label:          'Semaglutide 20 units weekly',
-      dose_amount:    '20',
-      dose_unit:      'units',
-      frequency_code: 'QW',
-      sig_text:       'Inject 20 units (0.20mL / 1.00mg) subcutaneous once weekly',
+      label: 'Semaglutide',
+      dose_presets: [
+        { dose: '10', unit: 'units', frequency: 'QW', timing: '', duration: '', label: 'Starter' },
+        { dose: '40', unit: 'units', frequency: 'QW', timing: 'MORNING', duration: '30', label: null },
+      ],
     }))
     expect(favoriteUpdate()).not.toHaveProperty('use_count')
+    expect(favoriteUpdate()).not.toHaveProperty('sig_text')
     expect(typeof favoriteUpdate()['updated_at']).toBe('string')
+  })
+
+  it('pins to a patient in the clinic, and back to the practice with null', async () => {
+    fixtures['patients:maybeSingle'] = () => ({ data: { patient_id: 'patient-1' }, error: null })
+    expect((await PATCH(makeRequest({ patient_id: 'patient-1' }))).status).toBe(200)
+    expect(favoriteUpdate()).toEqual(expect.objectContaining({ patient_id: 'patient-1' }))
+
+    updates = []
+    expect((await PATCH(makeRequest({ patient_id: null }))).status).toBe(200)
+    expect(favoriteUpdate()).toEqual(expect.objectContaining({ patient_id: null }))
+
+    updates = []
+    fixtures['patients:maybeSingle'] = () => ({ data: null, error: null })
+    expect((await PATCH(makeRequest({ patient_id: 'patient-other-clinic' }))).status).toBe(403)
+    expect(updates).toEqual([])
   })
 
   it('re-pins the pharmacy only when it offers the formulation', async () => {
@@ -136,12 +166,16 @@ describe('PATCH /api/favorites — WO-103 edits', () => {
   })
 
   it.each([
-    [{ label: '' },               /label/],
-    [{ dose_amount: '-1' },       /dose_amount/],
-    [{ dose_amount: 'ten' },      /dose_amount/],
-    [{ dose_unit: 'drops' },      /dose_unit/],
-    [{ frequency_code: 'Q5H' },   /frequency_code/],
-    [{ pharmacy_id: 42 },         /pharmacy_id/],
+    [{ label: '' },                                                   /label/],
+    [{ dose_presets: [] },                                            /at least one dose/],
+    [{ dose_presets: [{ dose: '-1', unit: 'units' }] },               /dose/],
+    [{ dose_presets: [{ dose: 'ten', unit: 'units' }] },              /dose/],
+    [{ dose_presets: [{ dose: '10', unit: 'drops' }] },               /unit/],
+    [{ dose_presets: [{ dose: '10', unit: 'units', frequency: 'Q5H' }] }, /frequency/],
+    [{ dose_presets: [{ dose: '10', unit: 'units', timing: 'NOON' }] },   /timing/],
+    [{ dose_presets: 'x' },                                           /array/],
+    [{ pharmacy_id: 42 },                                             /pharmacy_id/],
+    [{ patient_id: 42 },                                              /patient_id/],
   ])('rejects %j with 400 before touching the database', async (body, pattern) => {
     const res = await PATCH(makeRequest(body))
     expect(res.status).toBe(400)
@@ -180,10 +214,11 @@ describe('validateFavoriteEdit', () => {
     expect(validateFavoriteEdit({ use_count: 99, favorite_id: 'x' })).toEqual({ ok: true, patch: {} })
   })
 
-  it('normalises blanks to null for optional text', () => {
-    expect(validateFavoriteEdit({ sig_text: '   ', default_quantity: '' })).toEqual({
-      ok: true, patch: { sig_text: null, default_quantity: null },
-    })
-    expect(validateFavoriteEdit({ pharmacy_id: null })).toEqual({ ok: true, patch: { pharmacy_id: null } })
+  it('treats null ids as "none" (no pharmacy / for the practice)', () => {
+    expect(validateFavoriteEdit({ pharmacy_id: null, patient_id: null })).toEqual({ ok: true, patch: { pharmacy_id: null, patient_id: null } })
+  })
+
+  it('ignores the WO-103 per-dose columns — doses are presets now', () => {
+    expect(validateFavoriteEdit({ dose_amount: '20', dose_unit: 'units', sig_text: 'x' })).toEqual({ ok: true, patch: {} })
   })
 })

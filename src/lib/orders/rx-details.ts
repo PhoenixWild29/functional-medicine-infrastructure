@@ -373,6 +373,24 @@ export function durationDaysFromSig(sig: string | null | undefined): number | nu
   return days > 0 ? days : null
 }
 
+/**
+ * WO-104: the duration a price-step (margin page) link carries.
+ *
+ * Every path into the price step now sends the duration as a structured
+ * value: the builder's Continue (WO-101) and — since WO-104 — favorites,
+ * whose dose presets land on the builder's dose step instead of jumping
+ * to the price step with a sig. The sig fallback remains ONLY for a
+ * legacy saved link that predates the structured parameter, and it reads
+ * the sig that link carried, once — never sig text edited on the page.
+ */
+export function durationDaysForLink(
+  structuredDays: number | null | undefined,
+  legacyLinkSig: string | null | undefined,
+): number | null {
+  if (structuredDays !== undefined) return structuredDays
+  return durationDaysFromSig(legacyLinkSig)
+}
+
 /** Number of doses taken over `days` at `frequencyCode`; null when not computable (PRN). */
 export function dosesInDays(days: number, frequencyCode: string | null | undefined): number | null {
   const perDay = dosesPerDay(frequencyCode)
