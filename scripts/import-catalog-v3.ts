@@ -26,6 +26,17 @@
  *     documented path the API uses to surface combos for an ingredient.
  *
  * Wholesale prices are SYNTHETIC demo values.
+ *
+ * WO-101 packages (vial sizes): an optional `packages` column —
+ * "1 mL vial@95.00*|2.5 mL vial@165.00|5 mL vial@285.00" ("*" = default;
+ * see src/lib/catalog/packages.ts). A row WITH packages replaces that
+ * pharmacy formulation's package set and its wholesale_price becomes the
+ * default package's price. A row WITHOUT packages gets one default
+ * package at wholesale_price_usd — only when the pharmacy formulation has
+ * no packages yet, so packages seeded elsewhere (migration 20260914000001's
+ * Strive vials) survive a re-import. Package ids are deterministic:
+ * pkg:<pharmacy_formulation_id>:<label>. scripts/export-catalog-v3.ts
+ * writes the same cells back out.
  */
 
 import { readFileSync } from 'node:fs'
@@ -35,6 +46,7 @@ import Papa from 'papaparse'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { Json } from '@/types/database.types'
 import { formulationRxDefaults } from '@/lib/orders/rx-details'
+import { defaultPackagePrice, packageRowsFor, pharmacyFormulationId, type PackageRow } from '@/lib/catalog/packages'
 
 const CSV_PATH = join(process.cwd(), 'docs', 'research', 'catalog-seed', 'compoundiq-catalog-seed-v1.csv')
 
@@ -64,6 +76,8 @@ interface CsvRow {
   combo_ingredients: string
   wholesale_price_usd: string
   available_quantities: string
+  /** WO-101, optional: "<label>@<price>[*]|…" */
+  packages?: string
 }
 
 function parseComponent(tok: string): { name: string; strength: string | null } {
@@ -99,6 +113,8 @@ interface FormOut {
   total_ingredients: number
   price: number
   qty: string[]
+  /** WO-101: raw packages cell ('' when the column is absent or empty) */
+  packages: string
   // WO-96 inputs for formulationRxDefaults
   dosage_form_name: string
   route_name: string
@@ -232,6 +248,7 @@ async function main(): Promise<void> {
         total_ingredients: Math.max(1, comps.length),
         price,
         qty,
+        packages: (r.packages ?? '').trim(),
         dosage_form_name: dosage,
         route_name: route,
         ingredient_names: comps.map((c) => c.name),
@@ -254,6 +271,7 @@ async function main(): Promise<void> {
         total_ingredients: 1,
         price,
         qty,
+        packages: (r.packages ?? '').trim(),
         dosage_form_name: dosage,
         route_name: route,
         ingredient_names: [iname],
@@ -308,16 +326,25 @@ async function main(): Promise<void> {
     if (e4) throw e4
   }
 
+  // WO-101: packages per pharmacy formulation, computed first so the
+  // pharmacy formulation's wholesale_price is the default package's price.
+  const withPackages: PackageRow[] = []
+  const defaultOnly: PackageRow[] = []
   const pfRows = formulations.flatMap((f) =>
-    pharmacyIds.map((pid) => ({
-      pharmacy_formulation_id: uid('pf:' + pid + ':' + f.name.trim().toLowerCase()),
-      pharmacy_id: pid,
-      formulation_id: f.formulation_id,
-      wholesale_price: f.price,
-      available_quantities: f.qty as unknown as Json,
-      is_available: true,
-      is_active: true,
-    })),
+    pharmacyIds.map((pid) => {
+      const pfId = pharmacyFormulationId(pid, f.name)
+      const pkgs = packageRowsFor(pfId, f.packages, { price: f.price, availableQuantities: f.qty })
+      ;(f.packages ? withPackages : defaultOnly).push(...pkgs)
+      return {
+        pharmacy_formulation_id: pfId,
+        pharmacy_id: pid,
+        formulation_id: f.formulation_id,
+        wholesale_price: defaultPackagePrice(pkgs) ?? f.price,
+        available_quantities: f.qty as unknown as Json,
+        is_available: true,
+        is_active: true,
+      }
+    }),
   )
   if (pfRows.length > 0) {
     const { error: e5 } = await supabase
@@ -326,10 +353,52 @@ async function main(): Promise<void> {
     if (e5) throw e5
   }
 
+  const CHUNK = 100
+  const chunks = <T,>(list: T[]): T[][] =>
+    Array.from({ length: Math.ceil(list.length / CHUNK) }, (_, i) => list.slice(i * CHUNK, (i + 1) * CHUNK))
+
+  // Rows with a packages cell own their package set: clear the old
+  // default/active flags first (one default per pharmacy formulation is a
+  // unique index), then upsert the cell's packages.
+  const ownedPfIds = [...new Set(withPackages.map((p) => p.pharmacy_formulation_id))]
+  for (const ids of chunks(ownedPfIds)) {
+    const { error } = await supabase
+      .from('pharmacy_formulation_packages')
+      .update({ is_default: false, active: false })
+      .in('pharmacy_formulation_id', ids)
+    if (error) throw error
+  }
+  for (const rows of chunks(withPackages)) {
+    const { error } = await supabase
+      .from('pharmacy_formulation_packages')
+      .upsert(rows, { onConflict: 'id' })
+    if (error) throw error
+  }
+
+  // Rows without: a default package only where none exists yet.
+  const defaultPfIds = [...new Set(defaultOnly.map((p) => p.pharmacy_formulation_id))]
+  const hasPackages = new Set<string>()
+  for (const ids of chunks(defaultPfIds)) {
+    const { data, error } = await supabase
+      .from('pharmacy_formulation_packages')
+      .select('pharmacy_formulation_id')
+      .in('pharmacy_formulation_id', ids)
+    if (error) throw error
+    for (const row of data ?? []) hasPackages.add(row.pharmacy_formulation_id)
+  }
+  const newDefaults = defaultOnly.filter((p) => !hasPackages.has(p.pharmacy_formulation_id))
+  for (const rows of chunks(newDefaults)) {
+    const { error } = await supabase
+      .from('pharmacy_formulation_packages')
+      .upsert(rows, { onConflict: 'id' })
+    if (error) throw error
+  }
+
   console.info(
     `[import-catalog] done. ingredients=${ingRows.length} salt_forms=${saltRows.length} ` +
       `formulations=${formRows.length} formulation_ingredients=${formIngs.size} ` +
-      `pharmacy_formulations=${pfRows.length} (pharmacies=${pharmacyIds.length})`,
+      `pharmacy_formulations=${pfRows.length} (pharmacies=${pharmacyIds.length}) ` +
+      `packages=${withPackages.length + newDefaults.length}`,
   )
 }
 
