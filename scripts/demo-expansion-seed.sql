@@ -560,6 +560,12 @@ VALUES
    'Take one capsule by mouth at bedtime.', '90 caps', 3, 4, now() - interval '8 days')
 ON CONFLICT DO NOTHING;
 
+-- WO-104: these rows use the one-row-per-dose shape; give each its dose
+-- presets and category, and merge any that share clinic + formulation +
+-- pharmacy (migration 20260917000001, which must be applied first).
+-- Idempotent.
+SELECT collapse_provider_favorites();
+
 -- ============================================================
 -- 7. PROTOCOL — "Menopause Foundation — BHRT" (Dr. Rodriguez)
 -- ============================================================

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
-import { seedStaticData, cleanupTestOrders, cleanupTestFavorites, seedSecondProvider, retireSecondProvider, TEST_IDS, TEST_USERS, TEST_CATALOG, TEST_PATIENTS, TEST_SHIPPING } from './fixtures/seed'
+import { seedStaticData, cleanupTestOrders, cleanupTestFavorites, seedSecondProvider, retireSecondProvider, seedLegacySemaglutideFavorites, insertRecentOrder, TEST_IDS, TEST_USERS, TEST_CATALOG, TEST_PATIENTS, TEST_SHIPPING } from './fixtures/seed'
 import { packageId } from '../src/lib/catalog/packages'
 import { decryptSecret } from '../src/lib/epcs/crypto'
 import { DEMO_TOTP_SECRET } from '../src/lib/poc/totp-enrollment'
@@ -1332,8 +1332,9 @@ test.describe('Clinic App — WO-100 provider defaults to self', () => {
 //   - the medication search input is visible without scrolling at 1366×768
 //   - Favorites (N) and Protocols (N) open as panels; counts still shown
 //   - Save Semaglutide-style line (10 units weekly, 5 mg/mL) from Review →
-//     it appears in Favorites as "<name> · 10 units (0.5 mg) weekly"
-//   - edit that favorite's dose to 20 units → the list shows "(1.0 mg)"
+//     it appears in Favorites as "<name>" with a "10 units (0.5 mg) weekly"
+//     dose chip (WO-104: the dose is a chip under the drug)
+//   - edit that favorite's dose to 20 units → the chip shows "(1.0 mg)"
 //   - delete removes it clinic-wide with a confirm
 
 test.describe('Clinic App — WO-103 search bar, favorites/protocols panels, save-as-favorite, mg', () => {
@@ -1406,10 +1407,11 @@ test.describe('Clinic App — WO-103 search bar, favorites/protocols panels, sav
     // … and on the Review card.
     await expect(page.locator('[data-testid^="dose-display-"]').first()).toHaveText('10 units (0.5 mg)')
 
-    // ☆ Save as favorite — name defaults to "<Drug> <dose> <freq>".
+    // ☆ Save as favorite — WO-104: the name defaults to the drug; the dose
+    // is saved as a chip under it.
     await page.getByRole('button', { name: '☆ Save as favorite' }).click()
     const nameInput = page.getByLabel('Favorite name')
-    await expect(nameInput).toHaveValue(`${TEST_CATALOG.glp1FormulationName} 10 units weekly`)
+    await expect(nameInput).toHaveValue(TEST_CATALOG.glp1FormulationName)
     const favoriteName = 'E2E GLP1 10 units weekly'
     await nameInput.fill(favoriteName)
     await page.getByRole('button', { name: 'Save favorite' }).click()
@@ -1420,16 +1422,18 @@ test.describe('Clinic App — WO-103 search bar, favorites/protocols panels, sav
     await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
     await page.getByRole('button', { name: /^Favorites \(\d+\)$/ }).click()
     const panel = page.getByTestId('favorites-panel')
-    const row = panel.locator('[data-testid^="favorite-"]').filter({ hasText: favoriteName })
+    // WO-104: cards sit inside category groups (favorite-group-*); match the card itself.
+    const row = panel.locator('[data-testid^="favorite-"]:not([data-testid^="favorite-group-"])').filter({ hasText: favoriteName })
+      .filter({ has: page.getByTestId('favorite-custom') })
     await expect(row).toHaveCount(1)
-    await expect(row.getByTestId('favorite-dose')).toHaveText('10 units (0.5 mg) weekly')
+    await expect(row.getByTestId('favorite-preset')).toHaveText('10 units (0.5 mg) weekly')
 
     // Edit the dose to 20 units → the mg follows.
     await page.getByRole('button', { name: `Edit favorite ${favoriteName}` }).click()
-    await page.getByLabel('Favorite dose amount').fill('20')
-    await expect(page.getByTestId('favorite-dose-preview')).toHaveText('20 units (1.0 mg) weekly')
+    await page.getByLabel('Favorite dose amount 1', { exact: true }).fill('20')
+    await expect(page.getByTestId('favorite-dose-preview-1')).toHaveText('20 units (1.0 mg) weekly')
     await page.getByRole('button', { name: 'Save changes' }).click()
-    await expect(row.getByTestId('favorite-dose')).toHaveText('20 units (1.0 mg) weekly', { timeout: 10_000 })
+    await expect(row.getByTestId('favorite-preset')).toHaveText('20 units (1.0 mg) weekly', { timeout: 10_000 })
 
     const supabase = createClient(
       process.env['E2E_SUPABASE_URL']!,
@@ -1437,20 +1441,20 @@ test.describe('Clinic App — WO-103 search bar, favorites/protocols panels, sav
     )
     const { data: saved } = await supabase
       .from('provider_favorites')
-      .select('label, dose_amount, dose_unit, frequency_code, pharmacy_id, formulation_id, sig_text, default_quantity')
+      .select('label, dose_presets, pharmacy_id, formulation_id, patient_id, category, sig_text')
       .eq('provider_id', TEST_IDS.provider)
       .eq('label', favoriteName)
       .maybeSingle()
     expect(saved).toEqual(expect.objectContaining({
-      dose_amount:      '20',
-      dose_unit:        'units',
-      frequency_code:   'QW',
-      pharmacy_id:      TEST_IDS.pharmacyTier1,
-      formulation_id:   TEST_IDS.glp1Formulation,
-      default_quantity: '5mL vial',
+      pharmacy_id:    TEST_IDS.pharmacyTier1,
+      formulation_id: TEST_IDS.glp1Formulation,
+      patient_id:     null,
+      // Derived from the ingredient's therapeutic_category, nothing typed.
+      category:       'Testing — GLP-1',
+      dose_presets:   [{ dose: '20', unit: 'units', frequency: 'QW', timing: '', duration: '', label: null }],
     }))
-    // The stored sig follows the edited dose (nothing typed).
-    expect(saved?.sig_text).toMatch(/20 units \(0\.20mL \/ 1\.00mg\)/)
+    // WO-104: doses are structured; no sig is stored on a favorite.
+    expect(saved?.sig_text).toBeNull()
 
     // Delete — two-step confirm, removes it clinic-wide.
     await page.getByRole('button', { name: `Delete favorite ${favoriteName}` }).click()
@@ -1467,6 +1471,212 @@ test.describe('Clinic App — WO-103 search bar, favorites/protocols panels, sav
       .eq('provider_id', TEST_IDS.provider)
       .eq('label', favoriteName)
     expect(count ?? 0).toBe(0)
+  })
+})
+
+// ============================================================
+// WO-104 — Favorites model: drug → common doses; sorting; Recent;
+//          patient favorites (Gina Rooks, 2026-09-11)
+// ============================================================
+// Phase 21 acceptance criteria covered here (browser layer):
+//   - migrated seed: the one-row-per-dose Semaglutide favorites collapse
+//     (collapse_provider_favorites(), the migration's own function) to one
+//     card with 10 / 20 / 40 units presets
+//   - "20 units" chip → the DOSE STEP with amount, unit, frequency, timing
+//     and duration populated; Continue → price step with the sig
+//     "Inject 20 units (0.20mL / 1.00mg) subcutaneous once weekly…" and
+//     the dose "20 units (1.0 mg)"
+//   - Custom chip → dose step, formulation pre-selected, dropdowns live
+//   - Recent strip shows last prescribed formulations; Make favorite
+//     creates a card
+//   - groups sorted in a fixed category order, A–Z within a group; a
+//     favorite pinned to the selected patient surfaces first
+// The GLP-1 analogue (5 mg/mL) stands in for Semaglutide.
+
+async function startSearchAsProvider(page: Page, patientButton: RegExp = /Patient,\s*Test/i) {
+  await loginAs(page, TEST_USERS.provider)
+  await page.goto('/new-prescription')
+  await page.getByLabel('Search patients').fill('Test')
+  await page.getByRole('button', { name: patientButton }).click()
+  await pickProviderIfListed(page)
+  await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
+  await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
+}
+
+// The collapse keeps the most used of the three rows (the 10-unit one).
+const SEMA_CARD_ID = 'aaaaaaaa-0000-4000-8000-000000000100'
+
+test.describe('Clinic App — WO-104 favorites: doses as chips, dose step, Recent, categories, patient favorites', () => {
+  test.beforeAll(async () => {
+    await seedStaticData()
+  })
+
+  test.beforeEach(async () => {
+    await cleanupTestFavorites()
+  })
+
+  test.afterEach(async () => {
+    await cleanupTestOrders()
+    await cleanupTestFavorites()
+  })
+
+  test('legacy Semaglutide favorites collapse to one card with 10 / 20 / 40 units; "20 units" opens the dose step, then prices', async ({ page }) => {
+    const merged = await seedLegacySemaglutideFavorites()
+    expect(merged).toBeGreaterThanOrEqual(2)
+
+    const supabase = createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
+    const { data: rows } = await supabase
+      .from('provider_favorites')
+      .select('favorite_id, label, category, dose_presets, use_count')
+      .eq('provider_id', TEST_IDS.provider)
+      .eq('formulation_id', TEST_IDS.glp1Formulation)
+    expect(rows).toHaveLength(1)
+    expect(rows![0]).toEqual(expect.objectContaining({
+      favorite_id: SEMA_CARD_ID,
+      label:       TEST_CATALOG.glp1IngredientName,
+      category:    'Testing — GLP-1',
+      use_count:   6,
+    }))
+    // Legacy "morning" / "30-days" normalised to the builder's codes.
+    expect(rows![0]!.dose_presets).toEqual(['10', '20', '40'].map(dose => ({
+      dose, unit: 'units', frequency: 'QW', timing: 'MORNING', duration: '30', label: `Semaglutide ${dose} units weekly`,
+    })))
+
+    await startSearchAsProvider(page)
+    await page.getByRole('button', { name: /^Favorites \(\d+\)$/ }).click()
+    const card = page.getByTestId(`favorite-${SEMA_CARD_ID}`)
+    await expect(card.getByTestId('favorite-preset')).toHaveText([
+      '10 units (0.5 mg) weekly', '20 units (1.0 mg) weekly', '40 units (2.0 mg) weekly',
+    ])
+    await expect(card.getByTestId('favorite-custom')).toBeVisible()
+
+    // "20 units" → the dose step with the builder dropdowns, not the price step.
+    await card.getByTestId('favorite-preset').filter({ hasText: /^20 units/ }).click()
+    await expect(page.getByLabel('Dose amount')).toHaveValue('20', { timeout: 10_000 })
+    await expect(page).toHaveURL(/\/new-prescription\/search/)
+    await expect(page.getByLabel('Dose unit')).toHaveValue('units')
+    await expect(page.getByLabel('Frequency')).toHaveValue('QW')
+    await expect(page.getByLabel('Timing')).toHaveValue('MORNING')
+    await expect(page.getByLabel('Duration')).toHaveValue('30')
+    await expect(page.getByText('“Inject 20 units (0.20mL / 1.00mg) subcutaneous once weekly in the morning for 30 days”')).toBeVisible()
+
+    // The pinned pharmacy is selected; continue to price as normal.
+    const cont = page.getByRole('button', { name: /Continue.*Set Retail Price/i })
+    await expect(cont).toBeEnabled({ timeout: 10_000 })
+    await cont.click()
+    await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
+    await expect(page).toHaveURL(/durationDays=30/)
+    await expect(page.getByTestId('dose-display')).toHaveText('20 units (1.0 mg)')
+    await expect(page.getByLabel(/Sig \(Prescription Directions\)/)).toHaveValue(
+      'Inject 20 units (0.20mL / 1.00mg) subcutaneous once weekly in the morning for 30 days',
+    )
+    await expect(page.getByTestId('days-supply-value')).toHaveText('30 days')
+  })
+
+  test('Custom opens the dose step with the formulation pre-selected and the dropdowns live', async ({ page }) => {
+    await seedLegacySemaglutideFavorites()
+    await startSearchAsProvider(page)
+    await page.getByRole('button', { name: /^Favorites \(\d+\)$/ }).click()
+    await page.getByTestId(`favorite-${SEMA_CARD_ID}`).getByTestId('favorite-custom').click()
+
+    await expect(page.getByTestId('dose-step')).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByLabel('Search medications')).toHaveValue(TEST_CATALOG.glp1IngredientName)
+    await expect(page.getByLabel('Dose amount')).toHaveValue('')
+    await expect(page.getByLabel('Frequency')).toHaveValue('')
+    // The clinic's common doses are offered on the dose step too.
+    await expect(page.getByTestId('dose-step-presets').getByRole('button')).toHaveCount(3)
+
+    await page.getByLabel('Dose amount').fill('15')
+    await page.getByLabel('Frequency').selectOption('QW')
+    await expect(page.getByText('“Inject 15 units (0.15mL / 0.75mg) subcutaneous once weekly”')).toBeVisible()
+    await expect(page.getByRole('button', { name: /Continue.*Set Retail Price/i })).toBeEnabled({ timeout: 10_000 })
+  })
+
+  test('Recent shows the last prescribed formulations; Make favorite creates a card', async ({ page }) => {
+    await insertRecentOrder({
+      formulationId: TEST_IDS.formulation, medicationName: TEST_CATALOG.formulationName,
+      prescribedDose: '10 mg', frequencyCode: 'QD',
+    })
+    await startSearchAsProvider(page)
+    await page.getByRole('button', { name: /^Favorites \(\d+\)$/ }).click()
+
+    const item = page.getByTestId('favorites-recent').getByTestId(`recent-${TEST_IDS.formulation}`)
+    await expect(item).toContainText(TEST_CATALOG.formulationName, { timeout: 10_000 })
+    await expect(item).toContainText('10 mg daily · Test Pharmacy Tier1')
+    await item.getByRole('button', { name: `Make ${TEST_CATALOG.formulationName} a favorite` }).click()
+    await expect(item).toContainText('★ Favorite', { timeout: 10_000 })
+
+    const card = page.getByTestId('favorites-panel').locator('[data-testid^="favorite-"]:not([data-testid^="favorite-group-"])').filter({ hasText: TEST_CATALOG.formulationName })
+      .filter({ has: page.getByTestId('favorite-custom') })
+    await expect(card).toHaveCount(1)
+    await expect(card.getByTestId('favorite-preset')).toHaveText('10 mg daily')
+
+    const supabase = createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
+    const { data: saved } = await supabase
+      .from('provider_favorites')
+      .select('label, pharmacy_id, patient_id, dose_presets')
+      .eq('provider_id', TEST_IDS.provider)
+      .eq('formulation_id', TEST_IDS.formulation)
+      .maybeSingle()
+    expect(saved).toEqual({
+      label: TEST_CATALOG.formulationName, pharmacy_id: TEST_IDS.pharmacyTier1, patient_id: null,
+      dose_presets: [{ dose: '10', unit: 'mg', frequency: 'QD', timing: '', duration: '', label: null }],
+    })
+
+    // Clicking the Recent item opens its last dose on the dose step.
+    await item.getByText(TEST_CATALOG.formulationName).click()
+    await expect(page.getByLabel('Dose amount')).toHaveValue('10', { timeout: 10_000 })
+    await expect(page.getByLabel('Dose unit')).toHaveValue('mg')
+    await expect(page.getByLabel('Frequency')).toHaveValue('QD')
+  })
+
+  test('categories in a fixed order, A–Z within a group; a favorite saved for this patient surfaces first', async ({ page }) => {
+    const supabase = createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
+    const card = (label: string, category: string, formulationId: string, pharmacyId: string, patientId: string | null) => ({
+      provider_id: TEST_IDS.provider, formulation_id: formulationId, pharmacy_id: pharmacyId, patient_id: patientId,
+      label, category, sig_mode: 'standard',
+      dose_presets: [{ dose: '1', unit: 'mL', frequency: 'QW', timing: '', duration: '', label: null }],
+    })
+    const { error } = await supabase.from('provider_favorites').insert([
+      card('Zeta Peptide', 'Peptides', TEST_IDS.formulation, TEST_IDS.pharmacyTier1, null),
+      card('Beta Hormone', 'Hormones', TEST_IDS.glp1Formulation, TEST_IDS.pharmacyTier2, null),
+      card('Alpha Hormone', 'Hormones', TEST_IDS.controlledFormulation, TEST_IDS.pharmacyTier1, null),
+      // Pinned to a different patient: never shown for this one.
+      card('Other Patient Only', 'Peptides', TEST_IDS.glp1Formulation, TEST_IDS.pharmacyTier4, TEST_IDS.patientNkda),
+    ])
+    expect(error).toBeNull()
+
+    // Save a dose for THIS patient from the price step.
+    await loginAs(page, TEST_USERS.provider)
+    await walkBuilderToMargin(page, GLP1)
+    await page.getByRole('button', { name: '☆ Save as favorite' }).click()
+    await page.getByLabel('Favorite name').fill('E2E For Test Patient')
+    await page.getByLabel(/^Only for /).check()
+    await page.getByRole('button', { name: 'Save favorite' }).click()
+    await expect(page.getByText('Saved to favorites')).toBeVisible()
+    const { data: pinned } = await supabase
+      .from('provider_favorites')
+      .select('patient_id, dose_presets')
+      .eq('provider_id', TEST_IDS.provider)
+      .eq('label', 'E2E For Test Patient')
+      .maybeSingle()
+    expect(pinned?.patient_id).toBe(TEST_IDS.patient)
+
+    await page.goto('/new-prescription/search')
+    await page.getByRole('button', { name: /^Favorites \(\d+\)$/ }).click()
+    const panel = page.getByTestId('favorites-panel')
+    const groups = panel.locator('[data-testid^="favorite-group-"]')
+    await expect(groups).toHaveCount(3)
+    await expect(groups.nth(0)).toHaveAttribute('data-testid', /^favorite-group-For Test /)
+    await expect(groups.nth(0)).toContainText('E2E For Test Patient')
+    await expect(groups.nth(1)).toHaveAttribute('data-testid', 'favorite-group-Peptides')
+    await expect(groups.nth(2)).toHaveAttribute('data-testid', 'favorite-group-Hormones')
+    await expect(groups.nth(2).locator('[data-testid^="favorite-"] p.text-sm')).toHaveText(['Alpha Hormone', 'Beta Hormone'])
+    await expect(panel.getByText('Other Patient Only')).toHaveCount(0)
+
+    // "Mine" keeps working: every card here is the test provider's own.
+    await panel.getByLabel('Mine').check()
+    await expect(groups).toHaveCount(3)
   })
 })
 

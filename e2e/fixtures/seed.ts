@@ -710,6 +710,73 @@ export async function cleanupTestOrders(): Promise<void> {
 }
 
 /**
+ * WO-104: the one-row-per-dose favorites the old model needed for
+ * Semaglutide — the GLP-1 analogue (5 mg/mL) at Tier1, 10 / 20 / 40
+ * units weekly — inserted in the LEGACY shape (dose columns, no
+ * dose_presets), then collapsed by the migration's own function
+ * collapse_provider_favorites(). Every row has the same keys (bulk insert
+ * sends NULL for missing columns). Returns how many rows were merged.
+ */
+export async function seedLegacySemaglutideFavorites(): Promise<number> {
+  const rows = ['10', '20', '40'].map((dose, i) => ({
+    favorite_id:      `aaaaaaaa-0000-4000-8000-0000000001${i}0`,
+    provider_id:      TEST_IDS.provider,
+    formulation_id:   TEST_IDS.glp1Formulation,
+    pharmacy_id:      TEST_IDS.pharmacyTier1,
+    label:            `Semaglutide ${dose} units weekly`,
+    dose_amount:      dose,
+    dose_unit:        'units',
+    frequency_code:   'QW',
+    timing_code:      'morning',
+    duration_code:    '30-days',
+    sig_mode:         'standard',
+    sig_text:         `Inject ${dose} units subcutaneous once weekly in the morning for 30 days`,
+    default_quantity: '5mL vial',
+    default_refills:  1,
+    use_count:        3 - i,
+  }))
+  const { error } = await supabase.from('provider_favorites').insert(rows)
+  if (error) throw new Error(`seedLegacySemaglutideFavorites insert: ${error.message}`)
+  const { data, error: rpcError } = await supabase.rpc('collapse_provider_favorites')
+  if (rpcError) throw new Error(`collapse_provider_favorites: ${rpcError.message}`)
+  return typeof data === 'number' ? data : 0
+}
+
+/**
+ * WO-104: a prescription by the E2E provider, inserted directly (signature
+ * drawing cannot be driven in CI), carrying the structured dose the
+ * builder stores on medication_snapshot. Feeds the Recent strip.
+ */
+export async function insertRecentOrder(input: {
+  formulationId: string
+  medicationName: string
+  prescribedDose: string
+  frequencyCode: string
+}): Promise<void> {
+  const { error } = await supabase.from('orders').insert({
+    patient_id:               TEST_IDS.patient,
+    provider_id:              TEST_IDS.provider,
+    catalog_item_id:          null,
+    formulation_id:           input.formulationId,
+    clinic_id:                TEST_IDS.clinic,
+    pharmacy_id:              TEST_IDS.pharmacyTier1,
+    status:                   'DRAFT',
+    quantity:                 1,
+    wholesale_price_snapshot: 100.00,
+    retail_price_snapshot:    200.00,
+    medication_snapshot:      {
+      formulation_id:  input.formulationId,
+      medication_name: input.medicationName,
+      prescribed_dose: input.prescribedDose,
+      frequency_code:  input.frequencyCode,
+    },
+    pharmacy_snapshot:        { pharmacy_id: TEST_IDS.pharmacyTier1, name: 'Test Pharmacy Tier1' },
+    sig_text:                 'E2E recent order',
+  })
+  if (error) throw new Error(`insertRecentOrder: ${error.message}`)
+}
+
+/**
  * WO-103: remove favorites and protocols the E2E provider created
  * (save-as-favorite / "+ New" protocol flows). Hard delete — these are
  * clinic templates, not PHI.

@@ -6,6 +6,12 @@
 //
 // Seeds sample favorites for Dr. Sarah Chen and a Weight Loss
 // protocol template for Sunrise Clinic. Idempotent via upsert.
+//
+// WO-104: favorites are written in the one-row-per-dose shape (the three
+// Semaglutide doses as three rows), then collapse_provider_favorites()
+// (migration 20260917000001) turns them into one card per drug +
+// formulation + pharmacy with the doses as presets — the same rule the
+// migration applied to existing data.
 
 import { createClient } from '@supabase/supabase-js'
 
@@ -34,6 +40,9 @@ const IDS = {
   fav2:       'c1000000-0000-4000-8000-000000000002',
   fav3:       'c1000000-0000-4000-8000-000000000003',
   fav4:       'c1000000-0000-4000-8000-000000000004',
+  // WO-104: Semaglutide's other standard doses (same ids as the migration)
+  fav5:       'c1000000-0000-4000-8000-000000000005',
+  fav6:       'c1000000-0000-4000-8000-000000000006',
   // Protocols
   proto1:     'c2000000-0000-4000-8000-000000000001',
   proto2:     'c2000000-0000-4000-8000-000000000002',
@@ -112,6 +121,27 @@ async function main() {
     },
   ]
 
+  // WO-104: the clinic's other two Semaglutide doses, as the old model
+  // stored them — one row each. Collapsed into the 10-unit card below.
+  for (const [id, dose, mg] of [[IDS.fav5, '20', '1.0'], [IDS.fav6, '40', '2.0']] as const) {
+    favorites.push({
+      favorite_id: id,
+      provider_id: IDS.provider,
+      formulation_id: IDS.sema5,
+      pharmacy_id: IDS.pharmacy,
+      label: `Semaglutide ${mg}mg weekly`,
+      dose_amount: dose,
+      dose_unit: 'units',
+      frequency_code: 'QW',
+      timing_code: 'MORNING',
+      sig_mode: 'standard',
+      sig_text: `Inject ${dose} units subcutaneous once weekly in the morning`,
+      default_quantity: '5mL vial',
+      default_refills: 2,
+      use_count: 0,
+    })
+  }
+
   for (const fav of favorites) {
     const { error } = await supabase.from('provider_favorites').upsert(fav, { onConflict: 'favorite_id' })
     if (error) {
@@ -119,6 +149,13 @@ async function main() {
     } else {
       console.log(`  OK: ${fav.label}`)
     }
+  }
+
+  const { data: merged, error: collapseError } = await supabase.rpc('collapse_provider_favorites')
+  if (collapseError) {
+    console.error(`  FAIL: collapse_provider_favorites — ${collapseError.message}`)
+  } else {
+    console.log(`  OK: collapsed ${merged ?? 0} one-dose favorites into their drug cards`)
   }
 
   // ── 2. Protocol Templates ──────────────────────────────
