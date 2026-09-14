@@ -1619,7 +1619,9 @@ test.describe('Clinic App — WO-101: vial size is suggested from the Rx and pri
     const summary = page.getByText('Margin Summary').locator('..')
 
     // a) the provider selects the vial size; b) cost changes with it.
-    await page.getByLabel('Package').selectOption({ label: '5 mL vial — $285.00' })
+    // exact: WO-101a added "Number of packages" beside this dropdown, and
+    // getByLabel matches substrings by default.
+    await page.getByLabel('Package', { exact: true }).selectOption({ label: '5 mL vial — $285.00' })
     await expect(page.getByTestId('package-summary')).toHaveText('Package: 5 mL vial (changed by provider) · $285.00')
     const retailAt285 = Math.round(retailAt95 * 285 / 95 * 100) / 100
     await expect(retail).toHaveValue(retailAt285.toFixed(2))
@@ -1711,6 +1713,7 @@ test.describe('Clinic App — WO-101: vial size is suggested from the Rx and pri
     await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
     await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
     await expect(page.getByTestId('package-control')).toHaveCount(0)
-    await expect(page.getByLabel('Package')).toHaveCount(0)
+    await expect(page.getByLabel('Package', { exact: true })).toHaveCount(0)
+    await expect(page.getByLabel('Number of packages')).toHaveCount(0)
   })
 })
