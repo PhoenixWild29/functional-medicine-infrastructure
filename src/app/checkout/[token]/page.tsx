@@ -64,14 +64,14 @@ async function renderSoloCheckout({
   const [orderResult, clinicResult] = await Promise.all([
     supabase
       .from('orders')
-      .select('order_id, status, retail_price_snapshot')
+      .select('order_id, status, retail_price_snapshot, shipping_fee')
       .eq('order_id', orderId)
       .is('deleted_at', null)
       .maybeSingle(),
 
     supabase
       .from('clinics')
-      .select('name, logo_url')
+      .select('name, logo_url, absorb_shipping')
       .eq('clinic_id', clinicId)
       .is('deleted_at', null)
       .maybeSingle(),
@@ -84,7 +84,10 @@ async function renderSoloCheckout({
   const order  = orderResult.data
   const clinic = clinicResult.data
 
-  const retailCents = Math.round((order.retail_price_snapshot ?? 0) * 100)
+  // WO-102: shipping as its own line; the amount due is what the payment
+  // intent charges (retail + shipping, unless the clinic absorbs it).
+  const retailCents   = Math.round((order.retail_price_snapshot ?? 0) * 100)
+  const shippingCents = clinic.absorb_shipping === true ? 0 : Math.round((order.shipping_fee ?? 0) * 100)
 
   const checkoutState: ActiveState = mapOrderStatusToState(order.status)
 
@@ -93,7 +96,9 @@ async function renderSoloCheckout({
       token={token}
       kind="solo"
       orderCount={1}
-      retailCents={retailCents}
+      retailCents={retailCents + shippingCents}
+      subtotalCents={retailCents}
+      shippingCents={shippingCents}
       clinicName={clinic.name}
       logoUrl={clinic.logo_url ?? null}
       checkoutState={checkoutState}
@@ -120,14 +125,14 @@ async function renderGroupCheckout({
   const [groupResult, clinicResult, countResult] = await Promise.all([
     supabase
       .from('payment_groups')
-      .select('group_id, status, total_cents')
+      .select('group_id, status, total_cents, shipping_total')
       .eq('group_id', groupId)
       .eq('clinic_id', clinicId)
       .maybeSingle(),
 
     supabase
       .from('clinics')
-      .select('name, logo_url')
+      .select('name, logo_url, absorb_shipping')
       .eq('clinic_id', clinicId)
       .is('deleted_at', null)
       .maybeSingle(),
@@ -145,6 +150,8 @@ async function renderGroupCheckout({
 
   const group  = groupResult.data
   const clinic = clinicResult.data
+  // WO-102: total_cents already includes shipping the patient pays.
+  const groupShippingCents = clinic.absorb_shipping === true ? 0 : Math.round((group.shipping_total ?? 0) * 100)
 
   let checkoutState: ActiveState
   if (group.status === 'AWAITING_PAYMENT') {
@@ -161,6 +168,8 @@ async function renderGroupCheckout({
       kind="group"
       orderCount={countResult.count ?? 0}
       retailCents={group.total_cents}
+      subtotalCents={group.total_cents - groupShippingCents}
+      shippingCents={groupShippingCents}
       clinicName={clinic.name}
       logoUrl={clinic.logo_url ?? null}
       checkoutState={checkoutState}

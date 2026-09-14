@@ -19,9 +19,12 @@ interface Props {
   clinicName:       string
   logoUrl:          string | null
   defaultMarkupPct: number | null
+  /** WO-102: clinics.absorb_shipping (default false = patient pays shipping at cost). */
+  absorbShipping?:  boolean
 }
 
-export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct }: Props) {
+export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, absorbShipping = false }: Props) {
+  const [absorbInput, setAbsorbInput] = useState(absorbShipping)
   const [markupInput, setMarkupInput] = useState(
     defaultMarkupPct !== null ? defaultMarkupPct.toString() : ''
   )
@@ -45,6 +48,11 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct }: Pr
         return
       }
       body['default_markup_pct'] = parsed
+    }
+
+    // WO-102: include absorb_shipping when changed
+    if (absorbInput !== absorbShipping) {
+      body['absorb_shipping'] = absorbInput
     }
 
     // Include logo_url if it has changed from the prop value
@@ -113,6 +121,24 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct }: Pr
           />
           <span className="text-sm text-muted-foreground">%</span>
         </div>
+      </div>
+
+      {/* WO-102: who pays shipping */}
+      <div className="space-y-1">
+        <label className="flex items-start gap-2 text-sm font-medium text-foreground">
+          <input
+            type="checkbox"
+            checked={absorbInput}
+            onChange={e => setAbsorbInput(e.target.checked)}
+            className="mt-0.5 rounded border-input"
+          />
+          <span>Absorb shipping costs</span>
+        </label>
+        <p className="text-xs text-muted-foreground">
+          Off (default): pharmacy shipping is passed to the patient at cost, once per pharmacy per order.
+          On: the clinic pays it out of its payout and the patient is not charged shipping.
+          Shipping is never part of the margin or the platform fee.
+        </p>
       </div>
 
       {/* Logo URL — REQ-CAD-006 */}

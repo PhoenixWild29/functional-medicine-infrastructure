@@ -33,6 +33,12 @@
 // $570.00" — and a number control beside the dropdown changes the count.
 // Wholesale is package price × count. The control stays hidden only when
 // the pharmacy has one package and one of it covers the Rx.
+//
+// WO-102: shipping shows as a line under wholesale, outside the margin
+// calculation (the platform fee is never charged on it). It is what this
+// line adds to the session's shipping — once per pharmacy, so a second
+// prescription to the same pharmacy adds nothing unless it upgrades the
+// shipment to cold chain.
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
@@ -61,6 +67,7 @@ import { splitDose } from '@/lib/orders/dose'
 import { DerivedDispense, EMPTY_OVERRIDE, resolveDispense, type DispenseOverride } from '../../_components/derived-dispense'
 import { SaveFavoriteButton } from '../../_components/save-favorite-button'
 import { formatDoseWithMg } from '@/lib/orders/dose-display'
+import { computeBundleShipping, type PharmacyShippingRates } from '@/lib/orders/shipping'
 
 // ── Cent arithmetic helpers — HC-01 ──────────────────────────
 // Convert a NUMERIC(10,2) server value (JS float64) to integer cents once.
@@ -137,6 +144,10 @@ interface Props {
   existingPackageId?:  string | null
   /** WO-101a: how many of that package the draft line carries. */
   existingPackageCount?: number | null
+  /** WO-102: this pharmacy's shipping rates (stored on the pharmacy). */
+  shippingRates?:      PharmacyShippingRates | null
+  /** WO-102: clinics.absorb_shipping */
+  absorbShipping?:     boolean
 }
 
 // splitDose moved to @/lib/orders/dose (WO-98; WO-103 uses the same helper) — re-exported for existing imports.
@@ -187,6 +198,8 @@ export function MarginBuilderForm({
   presetDurationDays,
   existingPackageId = null,
   existingPackageCount = null,
+  shippingRates = null,
+  absorbShipping = false,
 }: Props) {
   const router = useRouter()
   const rxSession = usePrescriptionSession()
@@ -349,6 +362,28 @@ export function MarginBuilderForm({
     () => selectedPackage ? toCents(selectedPackage.wholesalePrice) * packageCount : toCents(wholesalePrice),
     [selectedPackage, packageCount, wholesalePrice],
   )
+
+  // ── WO-102: shipping this line adds to the session ────────────
+  // The session's other lines (not the one being edited) plus this one,
+  // once per pharmacy; the difference is what this line adds.
+  const shippingLine = useMemo(() => {
+    if (!shippingRates) return null
+    const rates = new Map([[shippingRates.pharmacyId, shippingRates]])
+    const others = rxSession.prescriptions
+      .filter(rx => rx.id !== sessionLine?.id && rx.pharmacyId === pharmacyId)
+      .map(rx => ({ pharmacyId: rx.pharmacyId, shippingType: rx.rxDetails?.shippingType ?? null, wholesaleCents: rx.wholesaleCents }))
+    const self = { pharmacyId, shippingType: rxDetails.shippingType, wholesaleCents }
+    const without = computeBundleShipping(others, rates).totalCents
+    const withLine = computeBundleShipping([...others, self], rates)
+    const pharmacyShipping = withLine.byPharmacy[0]!
+    return {
+      addsCents:    withLine.totalCents - without,
+      totalCents:   withLine.totalCents,
+      coldChain:    pharmacyShipping.shippingType === 'cold_chain',
+      sharedWith:   others.length,
+      waived:       pharmacyShipping.waived,
+    }
+  }, [shippingRates, rxSession.prescriptions, sessionLine?.id, pharmacyId, rxDetails.shippingType, wholesaleCents])
 
   // WO-103: dose with its computed mg equivalent, when the formulation
   // has an mg/mL concentration ("10 units (0.5 mg)").
@@ -682,6 +717,23 @@ export function MarginBuilderForm({
                   </select>
                 </div>
               </div>
+            )}
+            {/* WO-102: shipping — under wholesale, outside the margin */}
+            {shippingLine && (
+              <p className="mt-2 text-xs text-muted-foreground" data-testid="shipping-line">
+                Shipping ({shippingLine.coldChain ? 'cold chain' : 'standard'}):{' '}
+                <span className="font-medium text-foreground" data-testid="shipping-line-amount">${toCurrency(shippingLine.addsCents)}</span>
+                {' — '}
+                {shippingLine.waived
+                  ? `free: this pharmacy's order meets its $${toCurrency(shippingRates?.freeShippingThresholdCents ?? 0)} free-shipping threshold`
+                  : shippingLine.sharedWith > 0 && shippingLine.addsCents === 0
+                    ? `ships with the other ${pharmacyName} prescription${shippingLine.sharedWith > 1 ? 's' : ''} in this session ($${toCurrency(shippingLine.totalCents)} once)`
+                    : shippingLine.sharedWith > 0
+                      ? `upgrades this session's ${pharmacyName} shipment to cold chain ($${toCurrency(shippingLine.totalCents)} once)`
+                      : `charged once for ${pharmacyName}, however many prescriptions it ships`}
+                {'. '}
+                {absorbShipping ? 'Absorbed by the clinic.' : 'Passed to the patient at cost; not part of the margin.'}
+              </p>
             )}
             {/* WO-103: ☆ Save as favorite — name defaults to "<Drug> <dose> <freq>" */}
             <div className="mt-2">

@@ -12,6 +12,15 @@ import { PrescriptionSessionProvider } from '../../../_context/prescription-sess
 import { BatchReviewForm } from '../batch-review-form'
 import { defaultRxDetails } from '@/lib/orders/rx-details'
 
+// WO-102: the Review page also looks up shipping rates (GET
+// /api/pharmacies/shipping) and allocates shipping on send (POST
+// /api/orders/shipping). These tests are about the other calls.
+const SHIPPING_URL = /\/api\/(pharmacies|orders)\/shipping/
+function nonShippingCalls(): unknown[][] {
+  return (global.fetch as jest.Mock).mock.calls.filter(c => !SHIPPING_URL.test(String(c[0])))
+}
+
+
 const mockPush = jest.fn()
 const mockReplace = jest.fn()
 jest.mock('next/navigation', () => ({
@@ -141,6 +150,6 @@ describe('Review & Send — allergies recorded', () => {
     renderReview()
     await screen.findByTestId('rx-details-line-bpc')
     expect(screen.queryByTestId('allergy-notice')).not.toBeInTheDocument()
-    expect(global.fetch).not.toHaveBeenCalled()
+    expect(nonShippingCalls()).toHaveLength(0)
   })
 })

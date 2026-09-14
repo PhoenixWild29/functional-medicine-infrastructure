@@ -22,6 +22,14 @@
 // instead, so an MA never sees a Sign button that would only 403 on
 // submit. isProvider is resolved server-side in page.tsx from the
 // session app_role claim.
+//
+// WO-102: totals show Subtotal, Shipping per pharmacy (once per pharmacy,
+// never per prescription), Platform fee, Clinic payout and Patient total.
+// Sending creates every draft first, has the server allocate shipping
+// across the send (POST /api/orders/shipping), and only then signs — so
+// each pharmacy's shipping sits on one order before any payment link goes
+// out. A session spanning pharmacies shows what the split costs and, when
+// it is a genuine net saving, offers to route everything to one pharmacy.
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -67,6 +75,8 @@ import { structuredLineInputs } from '@/lib/orders/draft-edit'
 import { SaveFavoriteButton } from '../../_components/save-favorite-button'
 import { splitDose } from '@/lib/orders/dose'
 import { formatDoseWithMg } from '@/lib/orders/dose-display'
+import { bundleTotals } from '@/lib/orders/shipping'
+import { useBundleShipping, ShippingLines, MultiPharmacyNoticeBanner } from './bundle-shipping'
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -212,6 +222,17 @@ export function BatchReviewForm({ isProvider }: Props) {
   const [isSavingDraft, setIsSavingDraft] = useState(false)
   const [draftError, setDraftError] = useState<string | null>(null)
 
+  // WO-102: shipping rates, absorb setting, per-pharmacy breakdown and the
+  // multi-pharmacy notice. Called before any early return (hook order).
+  const bundle = useBundleShipping(session.prescriptions, session.patient?.state ?? null)
+
+  // WO-102: drafts created by a send that has not finished, by session line
+  // id, and the order ids shipping was allocated across — a retry signs the
+  // existing drafts instead of re-creating them, and never re-allocates a
+  // pharmacy's shipping that already went out on a signed order.
+  const createdOrderIdsRef = useRef<Map<string, string>>(new Map())
+  const allocatedOrderIdsRef = useRef<Set<string>>(new Set())
+
   // Redirect if no session or no prescriptions
   useEffect(() => {
     if (!session.isSessionStarted) {
@@ -314,15 +335,12 @@ export function BatchReviewForm({ isProvider }: Props) {
 
   const { patient, provider, prescriptions } = session
 
-  // Calculate totals
-  const totalRetailCents = prescriptions.reduce((sum, rx) => sum + rx.retailCents, 0)
-  const totalWholesaleCents = prescriptions.reduce((sum, rx) => sum + rx.wholesaleCents, 0)
-  const totalMarginCents = totalRetailCents - totalWholesaleCents
-  const totalPlatformFeeCents = prescriptions.reduce((sum, rx) => {
-    const margin = rx.retailCents - rx.wholesaleCents
-    return sum + calcPlatformFeeCents(margin)
-  }, 0)
-  const totalClinicPayoutCents = totalMarginCents - totalPlatformFeeCents
+  // Calculate totals — WO-102: shipping once per pharmacy, outside the
+  // margin (the platform fee is never charged on it).
+  const totals = bundleTotals(prescriptions, bundle.shipping.totalCents, { absorbShipping: bundle.absorbShipping })
+  const totalRetailCents = totals.subtotalCents
+  const totalPlatformFeeCents = totals.platformFeeCents
+  const totalClinicPayoutCents = totals.clinicPayoutCents
 
   // fix/review-send-flow: pre-flight validation. These lines would 400
   // at /api/orders, so block submission up front with a visible reason
@@ -374,30 +392,16 @@ export function BatchReviewForm({ isProvider }: Props) {
       const totalCount = prescriptions.length
       let sentCount = 0
 
+      // Step 1 (WO-102): create every DRAFT, then Step 2: allocate shipping
+      // across the send, before any payment link goes out.
+      const orderIds = await createDrafts('Creating order')
+      await allocateShipping(orderIds)
+
       for (let i = 0; i < prescriptions.length; i++) {
         const rx = prescriptions[i]!
-        setSubmitProgress(`Creating order ${i + 1} of ${totalCount}...`)
+        const orderId = createdOrderIdsRef.current.get(rx.id)!
 
-        // Step 1: Create DRAFT order
-        const orderRes = await fetch('/api/orders', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(orderPostBody(rx, patient, provider, effectiveDetails(rx))),
-        })
-
-        if (!orderRes.ok) {
-          const err = await orderRes.json()
-          // BLK-01 fix: Remove successfully sent prescriptions from session
-          // so retry won't duplicate them
-          throw new Error(
-            `Order ${i + 1} (${rx.medicationName}) failed: ${err.error ?? 'Unknown error'}` +
-            (sentCount > 0 ? `. ${sentCount} of ${totalCount} already sent successfully.` : '')
-          )
-        }
-
-        const { orderId } = await orderRes.json() as { orderId: string }
-
-        // Step 2: Sign & Send
+        // Step 3: Sign & Send
         setSubmitProgress(`Signing order ${i + 1} of ${totalCount}...`)
 
         const sendRes = await fetch(`/api/orders/${orderId}/sign-and-send`, {
@@ -417,6 +421,7 @@ export function BatchReviewForm({ isProvider }: Props) {
         // BLK-01 fix: This prescription succeeded — remove it from the session
         // so if a later prescription fails, retrying won't re-submit this one
         session.removePrescription(rx.id)
+        createdOrderIdsRef.current.delete(rx.id)
         sentCount++
       }
 
@@ -436,6 +441,71 @@ export function BatchReviewForm({ isProvider }: Props) {
     }
   }
 
+  // ── WO-102: create (or reuse) a DRAFT per session line ───────
+  async function createDrafts(progressLabel: string): Promise<string[]> {
+    if (!patient || !provider) return []
+    const ids: string[] = []
+    for (let i = 0; i < prescriptions.length; i++) {
+      const rx = prescriptions[i]!
+      const existing = createdOrderIdsRef.current.get(rx.id)
+      if (existing) { ids.push(existing); continue }
+      setSubmitProgress(`${progressLabel} ${i + 1} of ${prescriptions.length}...`)
+      const orderRes = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderPostBody(rx, patient, provider, effectiveDetails(rx))),
+      })
+      if (!orderRes.ok) {
+        const err = await orderRes.json()
+        throw new Error(`Order ${i + 1} (${rx.medicationName}) failed: ${err.error ?? 'Unknown error'}`)
+      }
+      const { orderId } = await orderRes.json() as { orderId: string }
+      createdOrderIdsRef.current.set(rx.id, orderId)
+      ids.push(orderId)
+    }
+    return ids
+  }
+
+  // ── WO-102: shipping once per pharmacy across this send ──────
+  async function allocateShipping(orderIds: string[]) {
+    if (orderIds.length === 0) return
+    // A retry after some orders were already signed: those orders already
+    // carry their pharmacy's shipping — do not charge it again.
+    if (orderIds.every(id => allocatedOrderIdsRef.current.has(id))) return
+    setSubmitProgress('Calculating shipping...')
+    const res = await fetch('/api/orders/shipping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderIds }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(`Shipping could not be calculated: ${(err as { error?: string }).error ?? 'Unknown error'}. Nothing has been sent.`)
+    }
+    for (const id of orderIds) allocatedOrderIdsRef.current.add(id)
+  }
+
+  // ── WO-102: one-click re-route to a single pharmacy ─────────
+  function handleReroute() {
+    const plan = bundle.notice?.plan
+    if (!plan || !bundle.notice?.offerReroute) return
+    for (const line of plan.lines) {
+      const rx = prescriptions.find(p => p.id === line.lineId)
+      if (!rx || rx.pharmacyId === line.pharmacyId) continue
+      session.updatePrescription(line.lineId, {
+        pharmacyId:      line.pharmacyId,
+        pharmacyName:    line.pharmacyName,
+        integrationTier: line.integrationTier ?? rx.integrationTier,
+        wholesaleCents:  line.wholesaleCents,
+        retailCents:     line.retailCents,
+        packageId:       line.packageId,
+        packageLabel:    line.packageLabel,
+        packageCount:    line.packageCount,
+        quantityLabel:   line.packageLabel ?? rx.quantityLabel ?? null,
+      })
+    }
+  }
+
   // ── Save all prescriptions as drafts (non-provider) ─────────
   // Mirrors handleSignAndSend but stops after DRAFT creation — no
   // signature, no sign-and-send call. The assigned provider signs
@@ -449,30 +519,14 @@ export function BatchReviewForm({ isProvider }: Props) {
 
     try {
       const totalCount = prescriptions.length
-      let savedCount = 0
 
-      for (let i = 0; i < prescriptions.length; i++) {
-        const rx = prescriptions[i]!
-        setSubmitProgress(`Saving draft ${i + 1} of ${totalCount}...`)
-
-        const orderRes = await fetch('/api/orders', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(orderPostBody(rx, patient, provider, effectiveDetails(rx))),
-        })
-
-        if (!orderRes.ok) {
-          const err = await orderRes.json()
-          throw new Error(
-            `Draft ${i + 1} (${rx.medicationName}) failed: ${err.error ?? 'Unknown error'}` +
-            (savedCount > 0 ? `. ${savedCount} of ${totalCount} already saved as drafts.` : '')
-          )
-        }
-
-        // BLK-01 pattern: drop each saved rx from the session so a later
-        // failure doesn't re-create earlier drafts when the user retries.
+      // WO-102: create every draft (a retry reuses drafts already created),
+      // then allocate shipping once per pharmacy across them.
+      const orderIds = await createDrafts('Saving draft')
+      await allocateShipping(orderIds)
+      for (const rx of prescriptions) {
         session.removePrescription(rx.id)
-        savedCount++
+        createdOrderIdsRef.current.delete(rx.id)
       }
 
       setSubmitProgress(null)
@@ -509,6 +563,12 @@ export function BatchReviewForm({ isProvider }: Props) {
       {/* WO-97: allergies not recorded → amber notice with an inline
           "Confirm NKDA". Never blocks Sign & Send or Save as Draft. */}
       <AllergyNotice patient={patient} onSaved={session.updatePatient} />
+
+      {/* WO-102: more than one pharmacy → what the split costs, and a
+          re-route only when it is a genuine net saving. */}
+      {bundle.notice && (
+        <MultiPharmacyNoticeBanner notice={bundle.notice} disabled={isBusy} onReroute={handleReroute} />
+      )}
 
       {/* Prescription list */}
       <div className="space-y-3">
@@ -633,18 +693,24 @@ export function BatchReviewForm({ isProvider }: Props) {
       </div>
 
       {/* Totals */}
-      <div className="rounded-lg border border-border bg-muted/30 p-4">
+      <div className="rounded-lg border border-border bg-muted/30 p-4" data-testid="review-totals">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Total ({prescriptions.length} prescription{prescriptions.length !== 1 ? 's' : ''})</span>
-          <span className="text-lg font-bold text-foreground">{toCurrency(totalRetailCents)}</span>
+          <span className="text-sm text-muted-foreground">Subtotal ({prescriptions.length} prescription{prescriptions.length !== 1 ? 's' : ''})</span>
+          <span className="text-sm font-semibold text-foreground" data-testid="review-subtotal">{toCurrency(totalRetailCents)}</span>
         </div>
+        {/* WO-102: shipping per pharmacy — once per pharmacy, not per Rx */}
+        <ShippingLines shipping={bundle.shipping} absorbShipping={bundle.absorbShipping} rates={bundle.rates} />
         <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-          <span>Platform fee (15%)</span>
-          <span>{toCurrency(totalPlatformFeeCents)}</span>
+          <span>Platform fee (15% of margin, not charged on shipping)</span>
+          <span data-testid="review-platform-fee">{toCurrency(totalPlatformFeeCents)}</span>
         </div>
         <div className="flex items-center justify-between text-xs text-emerald-600 font-medium">
-          <span>Total clinic payout</span>
-          <span>{toCurrency(totalClinicPayoutCents)}</span>
+          <span>Clinic payout</span>
+          <span data-testid="review-clinic-payout">{toCurrency(totalClinicPayoutCents)}</span>
+        </div>
+        <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
+          <span className="text-sm font-medium text-foreground">Patient total</span>
+          <span className="text-lg font-bold text-foreground" data-testid="review-patient-total">{toCurrency(totals.patientTotalCents)}</span>
         </div>
       </div>
 
@@ -735,7 +801,8 @@ export function BatchReviewForm({ isProvider }: Props) {
         <div className="rounded-lg border-2 border-primary bg-primary/5 p-4">
           <p className="text-sm font-medium text-foreground">
             You are about to send {prescriptions.length} payment link{prescriptions.length !== 1 ? 's' : ''} totaling{' '}
-            <strong>{toCurrency(totalRetailCents)}</strong> to{' '}
+            <strong>{toCurrency(totals.patientTotalCents)}</strong>
+            {totals.patientShippingCents > 0 && <> (including {toCurrency(totals.patientShippingCents)} shipping)</>} to{' '}
             <strong>{patient.first_name} {patient.last_name}</strong> at <strong>{patient.phone || 'no phone'}</strong>.
           </p>
           <p className="mt-1 text-xs text-muted-foreground">

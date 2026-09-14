@@ -22,6 +22,15 @@ import { PrescriptionSessionProvider } from '../../../_context/prescription-sess
 import { BatchReviewForm } from '../batch-review-form'
 import { defaultRxDetails, STANDARD_CLINICAL_DIFFERENCE_OPTIONS } from '@/lib/orders/rx-details'
 
+// WO-102: the Review page also looks up shipping rates (GET
+// /api/pharmacies/shipping) and allocates shipping on send (POST
+// /api/orders/shipping). These tests are about the other calls.
+const SHIPPING_URL = /\/api\/(pharmacies|orders)\/shipping/
+function nonShippingCalls(): unknown[][] {
+  return (global.fetch as jest.Mock).mock.calls.filter(c => !SHIPPING_URL.test(String(c[0])))
+}
+
+
 const mockPush = jest.fn()
 const mockReplace = jest.fn()
 jest.mock('next/navigation', () => ({
@@ -156,7 +165,7 @@ describe('Rx details row — BPC-157 (no rule applies)', () => {
     expect(within(row).getByText(/350-day supply · dispense 5 mL · 0 refills · substitution OK · SubQ syringe kit · Standard/)).toBeInTheDocument()
 
     // Nothing to resolve — the line already carries its rules.
-    expect(global.fetch).not.toHaveBeenCalled()
+    expect(nonShippingCalls()).toHaveLength(0)
 
     // The only thing standing between the provider and Send is the signature.
     expect(screen.getByText(/Sign in the signature box above to enable sending/)).toBeInTheDocument()
@@ -265,8 +274,8 @@ describe('Rx details row — lines without rules resolve from /api/formulations'
     await waitFor(() => expect(row).toHaveAttribute('data-expanded', 'true'))
 
     // Only the unresolved line's formulation was requested.
-    expect(global.fetch).toHaveBeenCalledTimes(1)
-    const url = String((global.fetch as jest.Mock).mock.calls[0]![0])
+    expect(nonShippingCalls()).toHaveLength(1)
+    const url = String(nonShippingCalls()[0]![0])
     expect(url).toContain('level=rx_defaults')
     expect(url).toContain(encodeURIComponent('formulation-sema'))
     expect(url).not.toContain('formulation-bpc')
@@ -294,8 +303,8 @@ describe('Save as Draft (non-provider) carries rxDetails', () => {
     ;(global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({ orderId: 'order-1' }) })
     fireEvent.click(draftButton)
 
-    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2))
-    const bodies = (global.fetch as jest.Mock).mock.calls.map(c => JSON.parse((c[1] as RequestInit).body as string))
+    await waitFor(() => expect(nonShippingCalls()).toHaveLength(2))
+    const bodies = nonShippingCalls().map(c => JSON.parse((c[1] as RequestInit).body as string))
     const testBody = bodies.find(b => b.formulationId === 'formulation-test')
     expect(testBody.rxDetails).toEqual(expect.objectContaining({
       refills: 2,
@@ -344,8 +353,8 @@ describe('WO-96 fix — Review POSTs carry dose, frequency and quantity', () => 
     ;(global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({ orderId: 'order-1' }) })
 
     fireEvent.click(await screen.findByRole('button', { name: /Save as Draft/ }))
-    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
-    const body = JSON.parse(((global.fetch as jest.Mock).mock.calls[0]![1] as RequestInit).body as string)
+    await waitFor(() => expect(nonShippingCalls()).toHaveLength(1))
+    const body = JSON.parse((nonShippingCalls()[0]![1] as RequestInit).body as string)
     expect(body).toEqual(expect.objectContaining({
       dose:          '10 units',
       frequencyCode: 'QW',
@@ -438,8 +447,8 @@ describe('WO-96 fix — orderPostBody (Sign & Send and Save as Draft)', () => {
     ;(global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({ orderId: 'order-1' }) })
 
     fireEvent.click(await screen.findByRole('button', { name: /Save as Draft/ }))
-    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
-    const body = JSON.parse(((global.fetch as jest.Mock).mock.calls[0]![1] as RequestInit).body as string)
+    await waitFor(() => expect(nonShippingCalls()).toHaveLength(1))
+    const body = JSON.parse((nonShippingCalls()[0]![1] as RequestInit).body as string)
     expect(body).toEqual(expect.objectContaining({ dose: '10 units', frequencyCode: 'QW', quantityLabel: '1mL vial' }))
   })
 })
