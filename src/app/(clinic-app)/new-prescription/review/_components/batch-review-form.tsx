@@ -138,6 +138,8 @@ export function orderPostBody(
     // WO-96 fix / WO-98: structured builder inputs, stored on
     // medication_snapshot so a reopened draft keeps them.
     ...structuredLineInputs(rx),
+    // WO-101: the package the line is priced from (server re-prices).
+    packageId:     rx.packageId ?? null,
   }
 }
 

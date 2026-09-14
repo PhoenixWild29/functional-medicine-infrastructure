@@ -41,6 +41,13 @@ interface StructuredSigBuilderProps {
   onFrequencyChange: (val: string) => void
   onSigChange: (sigText: string) => void
   /**
+   * WO-101: the selected duration in days ("For 30 days" / Custom → the
+   * number), or null for no duration, "Ongoing", titration and cycling.
+   * A structured value, so the parent never has to read it back out of
+   * the sig text.
+   */
+  onDurationDaysChange?: (days: number | null) => void
+  /**
    * WO-98 edit-at-review: the sig the line currently carries. Used only
    * to seed timing + duration (which are not part of the line's
    * structured inputs) so re-editing a dose regenerates a sig with the
@@ -113,6 +120,7 @@ export function StructuredSigBuilder({
   onDoseUnitChange,
   onFrequencyChange,
   onSigChange,
+  onDurationDaysChange,
   initialSigText,
 }: StructuredSigBuilderProps) {
 
@@ -258,6 +266,16 @@ export function StructuredSigBuilder({
   useEffect(() => {
     onSigChange(computedSig)
   }, [computedSig, onSigChange])
+
+  // ── WO-101: propagate the structured duration ───────────
+  const durationDays = useMemo(() => {
+    if (sigMode !== 'standard') return null
+    const days = parseInt(duration === 'CUSTOM' ? customDurationDays : duration, 10)
+    return Number.isFinite(days) && days > 0 ? days : null
+  }, [sigMode, duration, customDurationDays])
+  useEffect(() => {
+    onDurationDaysChange?.(durationDays)
+  }, [durationDays, onDurationDaysChange])
 
   // ── Character count ─────────────────────────────────────
   const charCount = computedSig.length

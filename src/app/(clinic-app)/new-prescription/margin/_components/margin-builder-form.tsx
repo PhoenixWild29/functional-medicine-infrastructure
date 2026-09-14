@@ -21,6 +21,12 @@
 //
 // WO-103: the dose line shows the computed mg equivalent
 // ("10 units (0.5 mg)") and carries a ☆ Save as favorite action.
+//
+// WO-101: when the pharmacy sells the formulation in more than one priced
+// package (vial size), "Package: 2.5 mL vial (suggested for 30 days)"
+// sits under the formulation line with its price and a dropdown. The
+// package drives wholesale, and with it retail, platform fee, clinic
+// margin and the quantity the order stores. One package → no control.
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
@@ -32,6 +38,8 @@ import {
   dispenseUnitFor,
   dosesInDays,
   durationDaysFromSig,
+  suggestPackage,
+  type PackageOption,
   defaultRxDetails,
   missingRxDetails,
   MISSING_RX_DETAIL_LABEL,
@@ -109,10 +117,26 @@ interface Props {
   draftReturnTo?:      string | null
   /** The builder's dose string ("15 units") — stored on the order for reopening. */
   presetDose?:         string | undefined
+  /** WO-101: the pharmacy's active packages for this formulation, smallest first. */
+  packages?:           PackageOption[]
+  /**
+   * WO-101: duration selected on the dose step (structured). undefined when
+   * the link didn't carry one (favorites, older links); null = no duration.
+   */
+  presetDurationDays?: number | null | undefined
+  /** WO-101: package the draft line being edited was priced from. */
+  existingPackageId?:  string | null
 }
 
 // splitDose moved to @/lib/orders/dose (WO-98; WO-103 uses the same helper) — re-exported for existing imports.
 export { splitDose }
+
+// WO-101: why this package is the suggestion.
+function packageSuggestionText(s: NonNullable<ReturnType<typeof suggestPackage>>): string {
+  if (s.reason === 'covers') return s.daysSupply != null ? `suggested for ${s.daysSupply} days` : 'suggested'
+  if (s.reason === 'largest') return s.daysSupply != null ? `largest available — does not cover ${s.daysSupply} days` : 'largest available'
+  return 'default package — no duration selected'
+}
 
 // ── Multiplier buttons ────────────────────────────────────────
 const MULTIPLIERS = [
@@ -144,6 +168,9 @@ export function MarginBuilderForm({
   draftLine = null,
   draftReturnTo = null,
   presetDose,
+  packages = [],
+  presetDurationDays,
+  existingPackageId = null,
 }: Props) {
   const router = useRouter()
   const rxSession = usePrescriptionSession()
@@ -169,13 +196,46 @@ export function MarginBuilderForm({
   const [sigText, setSigText] = useState(presetSigText ?? '')
 
   // ── WO-96: derived days supply + dispense ─────────────────────
-  // WO-96 fix: days supply = the duration in the sig ("for 30 days");
-  // dispense = doses in that many days × dose. With no duration, both
-  // come from the quantity — which is never empty: an absent one
-  // defaults to the smallest listed package (or "1"). Recomputes when the
-  // dose, frequency, sig (duration), quantity or formulation change.
-  const durationDays = durationDaysFromSig(sigText)
+  // WO-96 fix: days supply = the selected duration; dispense = doses in
+  // that many days × dose. With no duration, both come from the quantity
+  // — which is never empty: an absent one defaults to the smallest listed
+  // package (or "1"). Recomputes when the dose, frequency, duration,
+  // quantity, package or formulation change.
+  //
+  // WO-101: the builder now sends the selected duration as a structured
+  // value, and when present it is used as is — editing the sig text on
+  // this page cannot change it. A link without one (a favorite, an older
+  // deep link) keeps the WO-96 fix behaviour unchanged.
+  const durationDays = presetDurationDays !== undefined
+    ? presetDurationDays
+    : durationDaysFromSig(sigText)
+
+  // ── WO-101: package (vial size) ───────────────────────────────
+  const doseForPackages = splitDose(dose)
+  const suggestion = useMemo(() => {
+    if (packages.length < 2 || !formulationDetails) return null
+    return suggestPackage(packages, {
+      doseAmount:         doseForPackages.amount,
+      doseUnit:           doseForPackages.unit,
+      frequencyCode:      presetFrequency ?? null,
+      concentrationValue: formulationDetails.concentrationValue,
+      concentrationUnit:  formulationDetails.concentrationUnit,
+      dosageFormName:     formulationDetails.dosageFormName,
+      durationDays,
+    })
+  }, [packages, formulationDetails, doseForPackages.amount, doseForPackages.unit, presetFrequency, durationDays])
+  // The line being edited keeps its package when it is still offered.
+  const carriedPackageId = editTarget?.kind === 'draft'
+    ? existingPackageId
+    : sessionLine?.packageId ?? null
+  const [pickedPackageId, setPickedPackageId] = useState<string | null>(null)
+  const selectedPackage: PackageOption | null = suggestion
+    ? packages.find(p => p.id === (pickedPackageId ?? carriedPackageId)) ?? suggestion.package
+    : null
+  const packageIsSuggested = !!suggestion && selectedPackage?.id === suggestion.package.id
+
   const effectiveQuantity = useMemo(() => {
+    if (selectedPackage) return selectedPackage.label
     if (presetQuantity) return presetQuantity
     if (!formulationDetails) return ''
     const { amount, unit } = splitDose(dose)
@@ -195,7 +255,7 @@ export function MarginBuilderForm({
         : { quantity: null, unit: dispenseUnitFor(formulationDetails.dosageFormName, unit) },
       formulationDetails.dosageFormName,
     )
-  }, [presetQuantity, formulationDetails, dose, durationDays, presetFrequency, availableQuantities])
+  }, [selectedPackage, presetQuantity, formulationDetails, dose, durationDays, presetFrequency, availableQuantities])
 
   const derived = useMemo(() => {
     if (!formulationDetails) return null
@@ -252,7 +312,12 @@ export function MarginBuilderForm({
   // The draft path below can't collect them here, so it points at Review.
   const missingForDraft = missingRxDetails(rxDetails, rxRules)
 
-  const wholesaleCents = useMemo(() => toCents(wholesalePrice), [wholesalePrice])
+  // WO-101: the selected package's price, else the pharmacy formulation's
+  // (= its default package's).
+  const wholesaleCents = useMemo(
+    () => toCents(selectedPackage ? selectedPackage.wholesalePrice : wholesalePrice),
+    [selectedPackage, wholesalePrice],
+  )
 
   // WO-103: dose with its computed mg equivalent, when the formulation
   // has an mg/mL concentration ("10 units (0.5 mg)").
@@ -313,6 +378,23 @@ export function MarginBuilderForm({
     (!isHighMarkup || highMarkupAcknowledged) &&
     sigTrimmed.length >= 10
 
+  // ── WO-101: package change ───────────────────────────────────
+  // Wholesale follows the package; retail keeps the markup the provider
+  // had (retail ÷ wholesale), so platform fee and clinic margin recompute
+  // with it.
+  function changePackage(nextId: string) {
+    const next = packages.find(p => p.id === nextId)
+    if (!next) return
+    const nextWholesaleCents = toCents(next.wholesalePrice)
+    if (wholesaleCents > 0 && retailCents > 0) {
+      setRetailInput(toCurrency(Math.round(retailCents * nextWholesaleCents / wholesaleCents)))
+    } else {
+      setRetailInput(toCurrency(defaultRetailCents(nextWholesaleCents, defaultMarkupPct)))
+    }
+    setHighMarkupAcknowledged(false)
+    setPickedPackageId(next.id)
+  }
+
   // ── Multiplier handler ────────────────────────────────────────
   function applyMultiplier(factor: number) {
     // factor = 150 → 1.5× → Math.round(wholesaleCents * 150 / 100)
@@ -344,6 +426,9 @@ export function MarginBuilderForm({
       // WO-103: lets the Review card show the mg equivalent
       concentrationValue: formulationDetails?.concentrationValue ?? null,
       concentrationUnit:  formulationDetails?.concentrationUnit ?? null,
+      // WO-101
+      packageId:    selectedPackage?.id ?? null,
+      packageLabel: selectedPackage?.label ?? null,
     }
   }
 
@@ -370,6 +455,7 @@ export function MarginBuilderForm({
       dose:          presetDose ?? null,
       frequencyCode: presetFrequency ?? null,
       quantityLabel: effectiveQuantity || null,
+      packageId:     selectedPackage?.id ?? null,
     }
   }
 
@@ -467,6 +553,8 @@ export function MarginBuilderForm({
           dose:          presetDose ?? null,
           frequencyCode: presetFrequency ?? null,
           quantityLabel: effectiveQuantity || null,
+          // WO-101: priced server-side from the package.
+          packageId:     selectedPackage?.id ?? null,
         }),
       })
 
@@ -500,6 +588,34 @@ export function MarginBuilderForm({
             <p className="font-semibold text-foreground">{medicationName}</p>
             <p className="text-sm text-muted-foreground">{form} · <span data-testid="dose-display">{doseDisplay}</span></p>
             <p className="text-xs text-muted-foreground mt-0.5">via {pharmacyName}</p>
+            {/* WO-101: package (vial size) — only when there is a choice */}
+            {suggestion && selectedPackage && (
+              <div className="mt-2 space-y-1" data-testid="package-control">
+                <p className="text-sm text-foreground" data-testid="package-summary">
+                  Package: <span className="font-medium">{selectedPackage.label}</span>
+                  {' '}
+                  <span className="text-muted-foreground">
+                    {packageIsSuggested
+                      ? `(${packageSuggestionText(suggestion)})`
+                      : '(changed by provider)'}
+                  </span>
+                  {' · '}
+                  <span className="font-medium" data-testid="package-price">${toCurrency(toCents(selectedPackage.wholesalePrice))}</span>
+                </p>
+                <select
+                  aria-label="Package"
+                  value={selectedPackage.id}
+                  onChange={e => changePackage(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {packages.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.label} — ${toCurrency(toCents(p.wholesalePrice))}{p.id === suggestion.package.id ? ' (suggested)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {/* WO-103: ☆ Save as favorite — name defaults to "<Drug> <dose> <freq>" */}
             <div className="mt-2">
               <SaveFavoriteButton
