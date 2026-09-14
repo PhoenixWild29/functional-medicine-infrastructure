@@ -17,16 +17,31 @@
 // WO-103: the medication search is the first element under the session
 // banner, with Favorites (N) / Protocols (N) buttons beside it that
 // open panels (see quick-actions-panel.tsx).
+//
+// WO-104: a favorite's dose chip, its Custom chip and a Recent item load
+// HERE, on the dose step, with the cascade and every dropdown populated
+// from structured values (amount, unit, frequency, timing, duration) —
+// never the margin page with a free-text sig. The provider then continues
+// to price as normal. The clinic's common doses for the selected
+// formulation also show as chips on the dose step.
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { usePrescriptionSession } from '../_context/prescription-session'
 import { StructuredSigBuilder } from './structured-sig-builder'
-import { QuickActionsPanel, type Favorite } from './quick-actions-panel'
+import { QuickActionsPanel, useClinicFavorites, type Favorite, type RecentItem } from './quick-actions-panel'
 import { SaveFavoriteButton } from './save-favorite-button'
 import { builderStateFromLine, editTargetToParams, type EditTarget } from '../_lib/edit-target'
 import type { BuilderInitialState } from '@/lib/orders/draft-edit'
+import type { SigTimingAndDuration } from '../_lib/sig-recovery'
+import {
+  builderLoadFromFavorite,
+  mergePresets,
+  presetDurationFromBuilder,
+  type DosePreset,
+  type FavoriteBuilderLoad,
+} from '@/lib/orders/favorite-presets'
 import {
   computeDispense,
   defaultQuantityLabel,
@@ -119,6 +134,15 @@ function toCents(dollars: number): number {
   return Math.round(dollars * 100)
 }
 
+/** Default dose unit for a dosage form — what picking a formulation pre-selects. */
+function defaultUnitFor(f: Formulation): string {
+  const form = f.dosage_forms?.name ?? ''
+  if (form.includes('Injectable')) return 'units'
+  if (form.includes('Capsule') || form.includes('Tablet')) return 'tablet'
+  if (form.includes('Solution')) return 'mL'
+  return ''
+}
+
 // ── Fetcher ───────────────────────────────────────────────────
 
 async function fetchLevel<T>(level: string, params: Record<string, string> = {}): Promise<T[]> {
@@ -185,6 +209,14 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   const [pendingPharmacyId, setPendingPharmacyId] = useState<string | null>(null)
   const hydratedRef = useRef(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  // WO-104: a favorite / Recent load re-mounts the sig builder with its
+  // timing + duration as structured initial values (loadNonce is part of
+  // the sig builder's key), and the dose step is scrolled into view.
+  const [structuredInit, setStructuredInit] = useState<SigTimingAndDuration | null>(null)
+  const [loadNonce, setLoadNonce] = useState(0)
+  const [timingDuration, setTimingDuration] = useState<SigTimingAndDuration>({ timing: '', duration: '', customDurationDays: '' })
+  const doseStepRef = useRef<HTMLDivElement>(null)
+  const pendingScrollRef = useRef(false)
 
   // ── Cascading queries ───────────────────────────────────
 
@@ -223,6 +255,15 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     }),
     enabled: !!selectedFormulation,
   })
+
+  // ── WO-104: the clinic's common doses for the selected formulation ──
+  const { favorites } = useClinicFavorites()
+  const doseStepPresets = useMemo<DosePreset[]>(() => {
+    if (!selectedFormulation) return []
+    return favorites
+      .filter(f => f.formulation_id === selectedFormulation.formulation_id)
+      .reduce<DosePreset[]>((acc, f) => mergePresets(acc, f.dose_presets), [])
+  }, [favorites, selectedFormulation])
 
   // ── Auto-select salt form if only one ───────────────────
   useEffect(() => {
@@ -274,9 +315,19 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   const handleSigChange = useCallback((sig: string) => {
     setCurrentSig(sig)
   }, [])
+  const handleTimingDurationChange = useCallback((value: SigTimingAndDuration) => {
+    setTimingDuration(value)
+  }, [])
+
+  useEffect(() => {
+    if (!pendingScrollRef.current || !selectedFormulation) return
+    pendingScrollRef.current = false
+    doseStepRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+  }, [selectedFormulation, loadNonce])
 
   // ── Reset downstream selections ─────────────────────────
   function selectIngredient(ing: Ingredient) {
+    setStructuredInit(null)
     setSelectedIngredient(ing)
     setSelectedSaltForm(null)
     setSelectedFormulation(null)
@@ -297,20 +348,15 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   }
 
   function selectFormulation(f: Formulation) {
+    setStructuredInit(null)
     setSelectedFormulation(f)
     setSelectedPharmacy(null)
     setPendingPharmacyId(null)
     setQuantityPicked(false)
     // Set default dose unit based on dosage form
-    if (f.dosage_forms?.name.includes('Injectable')) {
-      setDoseUnit('units')
-    } else if (f.dosage_forms?.name.includes('Capsule') || f.dosage_forms?.name.includes('Tablet')) {
-      setDoseUnit('tablet')
+    setDoseUnit(defaultUnitFor(f))
+    if (f.dosage_forms?.name.includes('Capsule') || f.dosage_forms?.name.includes('Tablet')) {
       setDoseAmount('1')
-    } else if (f.dosage_forms?.name.includes('Solution')) {
-      setDoseUnit('mL')
-    } else {
-      setDoseUnit('')
     }
   }
 
@@ -383,26 +429,52 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     currentSig.length >= 10
   )
 
-  // ── Load from favorite (WO-85) ──────────────────────────
-  function handleLoadFavorite(fav: Favorite) {
-    if (!fav.formulation_id || !fav.pharmacy_id) return
+  // ── WO-104: load a favorite / Recent item onto the dose step ──
+  // Everything comes from structured values: the formulation context is
+  // fetched (as the WO-98 reopen does), the pharmacy is matched once
+  // pharmacy_options arrive, and timing + duration go to the sig builder
+  // as initialStructured. The sig is generated there, never parsed. The
+  // quantity is left to the computed default package.
+  async function loadOntoDoseStep(load: FavoriteBuilderLoad) {
+    try {
+      const res = await fetch(`/api/formulations?level=formulation&formulation_id=${encodeURIComponent(load.formulationId)}`)
+      if (!res.ok) return
+      const json = await res.json() as { data?: FormulationContext }
+      if (!json.data?.formulation) return
+      const { formulation, salt_form, ingredient } = json.data
+      setSearchQuery('')
+      setSelectedIngredient(ingredient)
+      setSelectedSaltForm(salt_form)
+      setSelectedFormulation(formulation)
+      setSelectedPharmacy(null)
+      setPendingPharmacyId(load.pharmacyId || null)
+      // Custom (no dose): the unit defaults from the dosage form exactly as
+      // picking the formulation by hand does; amount and frequency stay empty.
+      setDoseAmount(load.doseAmount)
+      setDoseUnit(load.doseUnit || defaultUnitFor(formulation))
+      setSelectedFrequency(load.frequency)
+      setQuantity('')
+      setQuantityPicked(false)
+      setRefills(String(load.refills))
+      setCurrentSig('')
+      setStructuredInit({ timing: load.timing, duration: load.duration, customDurationDays: load.customDurationDays })
+      setLoadNonce(n => n + 1)
+      pendingScrollRef.current = true
+    } catch (err) {
+      console.warn('[builder] could not load favorite (non-fatal):', err instanceof Error ? err.message : err)
+    }
+  }
 
-    // Navigate directly to margin builder with favorite's saved config
-    const params = new URLSearchParams({
-      pharmacyId: fav.pharmacy_id,
-      formulation_id: fav.formulation_id,
-      dose: `${fav.dose_amount ?? ''} ${fav.dose_unit ?? ''}`.trim(),
-      frequency: fav.frequency_code ?? '',
-      sigText: fav.sig_text ?? '',
-      // WO-96: quantity + refills feed the derived days supply / dispense
-      // and the defaulted refills on the margin page.
-      quantity: fav.default_quantity ?? '',
-      refills: String(fav.default_refills ?? 0),
-      // WO-98: keep the edit / add-to-draft target through the margin page.
-      ...editTargetToParams(editTarget),
-    })
+  function handleLoadFavorite(fav: Favorite, preset: DosePreset | null) {
+    if (!fav.formulation_id) return
+    void loadOntoDoseStep(builderLoadFromFavorite(fav, preset))
+  }
 
-    router.push(`/new-prescription/margin?${params.toString()}`)
+  function handleLoadRecent(item: RecentItem) {
+    void loadOntoDoseStep(builderLoadFromFavorite(
+      { formulation_id: item.formulation_id, pharmacy_id: item.pharmacy_id, default_refills: 0 },
+      item.preset,
+    ))
   }
 
   // ── Navigate to margin builder (where retail price is set) ──
@@ -426,6 +498,9 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       // WO-101: the selected duration, structured, for the package
       // suggestion and days supply on the price step ('' = no duration).
       durationDays: durationDays != null ? String(durationDays) : '',
+      // WO-104: the selected timing, structured, so Save as favorite on
+      // the price step stores it with the dose.
+      timing: timingDuration.timing,
       // WO-98: keep the edit / add-to-draft target through the margin page.
       ...editTargetToParams(editTarget),
     })
@@ -447,6 +522,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
           Protocols buttons beside it (WO-85 quick actions as panels). */}
       <QuickActionsPanel
         onLoadFavorite={handleLoadFavorite}
+        onLoadRecent={handleLoadRecent}
         onNewFavorite={() => searchInputRef.current?.focus()}
       >
         <input
@@ -572,8 +648,9 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
 
       {/* Level 4: Dose + Frequency + Sig Builder (WO-84) */}
       {selectedFormulation && (
+        <div ref={doseStepRef} data-testid="dose-step">
         <StructuredSigBuilder
-          key={selectedFormulation.formulation_id}
+          key={`${selectedFormulation.formulation_id}:${loadNonce}`}
           formulation={selectedFormulation}
           doseAmount={doseAmount}
           doseUnit={doseUnit}
@@ -583,8 +660,12 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
           onFrequencyChange={setSelectedFrequency}
           onSigChange={handleSigChange}
           onDurationDaysChange={setDurationDays}
+          onTimingDurationChange={handleTimingDurationChange}
           initialSigText={effectiveInitial?.sigText}
+          initialStructured={structuredInit}
+          presets={doseStepPresets}
         />
+        </div>
       )}
 
       {/* Level 5: Pharmacy Selection */}
@@ -708,9 +789,10 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
             doseAmount={doseAmount}
             doseUnit={doseUnit}
             frequencyCode={selectedFrequency}
-            sigText={currentSig}
-            quantity={effectiveQuantity}
+            timingCode={timingDuration.timing}
+            duration={presetDurationFromBuilder(timingDuration.duration, timingDuration.customDurationDays)}
             refills={parseInt(refills, 10)}
+            patient={session.patient ? { patientId: session.patient.patient_id, name: `${session.patient.first_name} ${session.patient.last_name}` } : null}
             disabled={!canAdd}
           />
           <button

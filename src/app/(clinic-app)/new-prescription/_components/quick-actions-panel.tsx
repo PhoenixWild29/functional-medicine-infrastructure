@@ -1,18 +1,26 @@
 'use client'
 
 // ============================================================
-// WO-85 / WO-103: Quick Actions — Favorites + Protocols
+// WO-85 / WO-103 / WO-104: Quick Actions — Favorites + Protocols
 // ============================================================
 //
 // WO-103 layout: the medication search (passed in as `children`) is
 // the FIRST element under the session banner, with two buttons beside
 // it — "Favorites (N)" and "Protocols (N)" — each opening a panel
 // below. Each panel has a "+ New" action. Favorites are clinic-wide
-// (WO-85) with a "Mine" filter, show units and the computed mg
-// ("10 units (0.5 mg) weekly"), and are editable in place (name, dose,
-// frequency, pharmacy). Delete keeps the two-step confirm.
+// (WO-85) with a "Mine" filter, show units and the computed mg, and are
+// editable in place. Delete keeps the two-step confirm.
 //
-// Favorites load all dropdown values + sig into the builder.
+// WO-104 (Gina Rooks, 2026-09-11): a favorite is a drug + formulation +
+// pharmacy with the clinic's common doses as chips under it ("10 units
+// (0.5 mg) weekly · 20 units … · Custom"), not one row per dose. A chip
+// or Custom opens the builder's DOSE STEP with the dropdowns populated —
+// not the price step with a free-text sig. The list is grouped by
+// category in a fixed order, A–Z inside each group; the selected
+// patient's own favorites come first. A Recent strip at the top shows
+// the last 8 formulations the session provider prescribed, each with
+// "Make favorite".
+//
 // Protocols add all medications to the WO-80 session at once,
 // priced from the LIVE wholesale price + clinic default markup
 // (see protocol-pricing.ts) — never $0.00 stubs. If any item is
@@ -44,12 +52,14 @@ import {
 } from '../_context/prescription-session'
 import { computeItemPricing, findUnavailableItems, findUnlicensedItems } from './protocol-pricing'
 import { FREQUENCY_OPTIONS } from './structured-sig-builder.types'
-import {
-  buildStandardSig,
-  DOSE_UNITS,
-  formatFavoriteDose,
-} from '@/lib/orders/dose-display'
+import { DOSE_UNITS, formatFavoriteDose } from '@/lib/orders/dose-display'
 import { splitDose } from '@/lib/orders/dose'
+import {
+  groupFavorites,
+  presetChipText,
+  presetKey,
+  type DosePreset,
+} from '@/lib/orders/favorite-presets'
 
 // ── Types ───────────────────────────────────
 
@@ -58,15 +68,14 @@ export interface Favorite {
   provider_id: string
   formulation_id: string
   pharmacy_id: string | null
+  /** WO-104: null = for the practice; set = pinned to that patient */
+  patient_id: string | null
   label: string
-  dose_amount: string | null
-  dose_unit: string | null
-  frequency_code: string | null
-  timing_code: string | null
-  duration_code: string | null
+  /** WO-104: derived from the formulation's ingredient */
+  category: string | null
+  /** WO-104: the clinic's common doses for this drug + formulation + pharmacy */
+  dose_presets: DosePreset[]
   sig_mode: string
-  sig_text: string | null
-  default_quantity: string | null
   default_refills: number
   use_count: number
   last_used_at: string | null
@@ -87,6 +96,23 @@ export interface Favorite {
     concentration_unit: string | null
     dosage_forms: { name: string } | null
     routes_of_administration: { name: string; abbreviation: string; sig_prefix: string } | null
+  } | null
+}
+
+/** WO-104: one entry of the Recent strip (GET /api/favorites/recent). */
+export interface RecentItem {
+  formulation_id: string
+  pharmacy_id: string | null
+  medication_name: string
+  formulation_name: string
+  pharmacy_name: string | null
+  last_prescribed_at: string
+  formulation_active: boolean
+  preset: DosePreset | null
+  formulations: {
+    concentration_value: number | null
+    concentration_unit: string | null
+    dosage_forms: { name: string } | null
   } | null
 }
 
@@ -146,12 +172,38 @@ interface PharmacyOption {
 
 // ── Fetchers ────────────────────────────────
 
-async function fetchFavorites(patientState: string | null): Promise<Favorite[]> {
-  const params = patientState ? `?patient_state=${encodeURIComponent(patientState)}` : ''
-  const res = await fetch(`/api/favorites${params}`)
+async function fetchFavorites(patientState: string | null, patientId: string | null): Promise<Favorite[]> {
+  const search = new URLSearchParams()
+  if (patientState) search.set('patient_state', patientState)
+  if (patientId) search.set('patient_id', patientId)
+  const qs = search.toString()
+  const res = await fetch(`/api/favorites${qs ? `?${qs}` : ''}`)
   if (!res.ok) return []
   const json = await res.json()
   return json.data ?? []
+}
+
+async function fetchRecent(providerId: string): Promise<RecentItem[]> {
+  const res = await fetch(`/api/favorites/recent?provider_id=${encodeURIComponent(providerId)}`)
+  if (!res.ok) return []
+  const json = await res.json()
+  return json.data ?? []
+}
+
+/**
+ * WO-104: the clinic's favorites for this session — clinic-wide plus the
+ * selected patient's own — shared by the panel and the builder's dose
+ * step (react-query dedupes the request).
+ */
+export function useClinicFavorites(): { favorites: Favorite[]; patientState: string | null } {
+  const session = usePrescriptionSession()
+  const patientState = session.patient?.state ?? null
+  const patientId = session.patient?.patient_id ?? null
+  const { data: favorites = [] } = useQuery({
+    queryKey: ['provider-favorites', patientState, patientId],
+    queryFn: () => fetchFavorites(patientState, patientId),
+  })
+  return { favorites, patientState }
 }
 
 async function fetchProtocols(): Promise<Protocol[]> {
@@ -183,7 +235,10 @@ async function fetchPharmacyOptions(formulationId: string, patientState: string 
 export type QuickActionsPanelName = 'favorites' | 'protocols'
 
 interface QuickActionsPanelProps {
-  onLoadFavorite: (fav: Favorite) => void
+  /** WO-104: a dose chip (preset) or Custom (null) — opens the builder's dose step. */
+  onLoadFavorite: (fav: Favorite, preset: DosePreset | null) => void
+  /** WO-104: a Recent item — opens the builder's dose step with its last dose. */
+  onLoadRecent?: (item: RecentItem) => void
   /** The medication search control — rendered first, buttons beside it. */
   children?: ReactNode
   /** Favorites "+ New": close the panel and put the provider in the search. */
@@ -192,7 +247,7 @@ interface QuickActionsPanelProps {
 
 // ── Component ───────────────────────────────────
 
-export function QuickActionsPanel({ onLoadFavorite, children, onNewFavorite }: QuickActionsPanelProps) {
+export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNewFavorite }: QuickActionsPanelProps) {
   const router = useRouter()
   const session = usePrescriptionSession()
   const queryClient = useQueryClient()
@@ -223,11 +278,16 @@ export function QuickActionsPanel({ onLoadFavorite, children, onNewFavorite }: Q
   // Selected patient's shipping state — drives the licensure enrichment
   // on both quick-load APIs. Part of the query keys so switching patients
   // refetches with the right state.
-  const patientState = session.patient?.state ?? null
+  const { favorites, patientState } = useClinicFavorites()
+  const providerId = session.provider?.provider_id ?? null
+  // WO-104: "Make favorite" on a Recent item.
+  const [makingFavorite, setMakingFavorite] = useState<string | null>(null)
+  const [recentError, setRecentError] = useState<string | null>(null)
 
-  const { data: favorites = [] } = useQuery({
-    queryKey: ['provider-favorites', patientState],
-    queryFn: () => fetchFavorites(patientState),
+  const { data: recent = [] } = useQuery({
+    queryKey: ['provider-recent', providerId],
+    queryFn: () => fetchRecent(providerId!),
+    enabled: !!providerId && activePanel === 'favorites',
   })
 
   const { data: protocols = [] } = useQuery({
@@ -380,23 +440,60 @@ export function QuickActionsPanel({ onLoadFavorite, children, onNewFavorite }: Q
     router.push('/new-prescription/review')
   }
 
-  // ── Handle favorite load ─────────────────────
-  function handleFavoriteClick(fav: Favorite) {
-    // Stale favorites are rendered grayed out with the button disabled;
+  // ── Handle favorite load (WO-104: a dose chip or Custom) ──────
+  function handleFavoriteClick(fav: Favorite, preset: DosePreset | null) {
+    // Stale favorites are rendered grayed out with the chips disabled;
     // this guard also keeps a dead click from bumping use_count.
     if (fav.formulation_active === false) return
     // State-licensure: the pinned pharmacy is not licensed in the selected
     // patient's shipping state. The card is disabled with an inline
     // explanation; this guard is the belt to that suspenders.
     if (fav.pharmacy_licensed === false) return
-    // NB: the favorites path does NOT add to the session here. It
-    // pre-fills the cascading builder, and the line only enters the
-    // session from the margin builder once a retail price and sig are
+    // NB: the favorites path does NOT add to the session here. It opens
+    // the builder's dose step with the dropdowns populated, and the line
+    // only enters the session from the price step once a retail price is
     // confirmed — so there is no silent-duplication path to guard here.
     // Duplicate protection for that path lives in addPrescriptions().
     // Bump use timestamp
     fetch(`/api/favorites?id=${fav.favorite_id}`, { method: 'PATCH' }).catch(() => {})
-    onLoadFavorite(fav)
+    setActivePanel(null)
+    onLoadFavorite(fav, preset)
+  }
+
+  function handleRecentClick(item: RecentItem) {
+    if (!item.formulation_active || !onLoadRecent) return
+    setActivePanel(null)
+    onLoadRecent(item)
+  }
+
+  // ── WO-104: Recent → favorite card ─────────────────────
+  async function handleMakeFavorite(item: RecentItem) {
+    if (!providerId || !item.preset || makingFavorite) return
+    setMakingFavorite(item.formulation_id)
+    setRecentError(null)
+    try {
+      const res = await fetch('/api/favorites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider_id:    providerId,
+          formulation_id: item.formulation_id,
+          pharmacy_id:    item.pharmacy_id,
+          patient_id:     null,
+          label:          item.formulation_name,
+          dose_presets:   [item.preset],
+        }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(json.error ?? `Save failed (${res.status})`)
+      }
+      await queryClient.invalidateQueries({ queryKey: ['provider-favorites'] })
+    } catch (err) {
+      setRecentError(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setMakingFavorite(null)
+    }
   }
 
   // ── Handle favorite delete (two-step confirm) ─────────
@@ -463,10 +560,22 @@ export function QuickActionsPanel({ onLoadFavorite, children, onNewFavorite }: Q
     }
   }
 
-  const providerId = session.provider?.provider_id ?? null
   const visibleFavorites = mineOnly && providerId
     ? favorites.filter(fav => fav.provider_id === providerId)
     : favorites
+  // WO-104: the selected patient's own favorites first, then categories
+  // in a fixed order, A–Z inside each group.
+  const favoriteGroups = groupFavorites(
+    visibleFavorites,
+    session.patient ? { patientId: session.patient.patient_id, name: `${session.patient.first_name} ${session.patient.last_name}` } : null,
+  )
+  // A Recent item is already a favorite when a practice card for that
+  // formulation + pharmacy carries its dose.
+  function recentIsFavorite(item: RecentItem): boolean {
+    return favorites.some(f =>
+      f.patient_id === null && f.formulation_id === item.formulation_id && (f.pharmacy_id ?? null) === (item.pharmacy_id ?? null)
+      && (!item.preset || f.dose_presets.some(p => presetKey(p) === presetKey(item.preset!))))
+  }
 
   const buttonClass = (name: QuickActionsPanelName) =>
     `whitespace-nowrap rounded-md border px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
@@ -543,8 +652,55 @@ export function QuickActionsPanel({ onLoadFavorite, children, onNewFavorite }: Q
             </button>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Clinic-wide. New favorites are saved with ☆ from the builder, the price page, or any Review card.
+            Click a dose to open it on the dose step, or Custom to enter your own. Saved for the practice unless pinned to a patient; new favorites are saved with ☆ from the builder, the price page, or any Review card.
           </p>
+
+          {/* WO-104: Recent — the last formulations this provider prescribed */}
+          {recent.length > 0 && (
+            <div data-testid="favorites-recent" className="rounded-md border border-border bg-muted/20 p-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Recent</p>
+              {recentError && <p role="alert" className="mt-1 text-xs text-red-600">{recentError}</p>}
+              <ul className="mt-1 flex flex-wrap gap-1.5">
+                {recent.map(item => {
+                  const text = item.preset ? presetChipText(item.preset, item.formulations) : null
+                  const isFavorite = recentIsFavorite(item)
+                  return (
+                    <li
+                      key={item.formulation_id}
+                      data-testid={`recent-${item.formulation_id}`}
+                      className="flex items-stretch rounded-md border border-border bg-background"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleRecentClick(item)}
+                        disabled={!item.formulation_active}
+                        className="px-2 py-1 text-left text-xs hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <span className="block font-medium text-foreground">{item.formulation_name}</span>
+                        <span className="block text-[10px] text-muted-foreground">
+                          {[text ? `${text.primary} ${text.secondary}`.trim() : null, item.pharmacy_name].filter(Boolean).join(' · ')}
+                        </span>
+                      </button>
+                      {isFavorite ? (
+                        <span className="flex items-center border-l border-border px-2 text-[10px] text-muted-foreground">★ Favorite</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => { void handleMakeFavorite(item) }}
+                          disabled={!item.preset || !item.formulation_active || makingFavorite === item.formulation_id}
+                          aria-label={`Make ${item.formulation_name} a favorite`}
+                          className="border-l border-border px-2 text-[10px] font-medium text-primary hover:bg-primary/5 disabled:opacity-50"
+                        >
+                          {makingFavorite === item.formulation_id ? 'Saving…' : 'Make favorite'}
+                        </button>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+
           {deleteError && (
             <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
               {deleteError}
@@ -555,35 +711,39 @@ export function QuickActionsPanel({ onLoadFavorite, children, onNewFavorite }: Q
               {mineOnly ? 'No favorites of yours yet.' : 'No favorites yet.'} Search a medication, set the dose, and click ☆ Save as favorite.
             </p>
           )}
-          <div className="space-y-1.5">
-            {visibleFavorites.map(fav => (
-              editingFav === fav.favorite_id ? (
-                <FavoriteEditForm
-                  key={fav.favorite_id}
-                  favorite={fav}
-                  patientState={patientState}
-                  onCancel={() => setEditingFav(null)}
-                  onSaved={async () => {
-                    await queryClient.invalidateQueries({ queryKey: ['provider-favorites'] })
-                    setEditingFav(null)
-                  }}
-                />
-              ) : (
-                <FavoriteRow
-                  key={fav.favorite_id}
-                  favorite={fav}
-                  patientState={patientState}
-                  isConfirming={confirmDeleteFav === fav.favorite_id}
-                  isDeleting={deletingFav === fav.favorite_id}
-                  onLoad={() => handleFavoriteClick(fav)}
-                  onEdit={() => { setConfirmDeleteFav(null); setEditingFav(fav.favorite_id) }}
-                  onAskDelete={() => setConfirmDeleteFav(fav.favorite_id)}
-                  onConfirmDelete={() => { void handleConfirmDelete(fav.favorite_id) }}
-                  onCancelDelete={() => setConfirmDeleteFav(null)}
-                />
-              )
-            ))}
-          </div>
+          {favoriteGroups.map(group => (
+            <div key={group.key} data-testid={`favorite-group-${group.title}`} className="space-y-1.5">
+              <p className="pt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{group.title}</p>
+              {group.favorites.map(fav => (
+                editingFav === fav.favorite_id ? (
+                  <FavoriteEditForm
+                    key={fav.favorite_id}
+                    favorite={fav}
+                    patientState={patientState}
+                    patient={session.patient ? { patientId: session.patient.patient_id, name: `${session.patient.first_name} ${session.patient.last_name}` } : null}
+                    onCancel={() => setEditingFav(null)}
+                    onSaved={async () => {
+                      await queryClient.invalidateQueries({ queryKey: ['provider-favorites'] })
+                      setEditingFav(null)
+                    }}
+                  />
+                ) : (
+                  <FavoriteCard
+                    key={fav.favorite_id}
+                    favorite={fav}
+                    patientState={patientState}
+                    isConfirming={confirmDeleteFav === fav.favorite_id}
+                    isDeleting={deletingFav === fav.favorite_id}
+                    onLoad={preset => handleFavoriteClick(fav, preset)}
+                    onEdit={() => { setConfirmDeleteFav(null); setEditingFav(fav.favorite_id) }}
+                    onAskDelete={() => setConfirmDeleteFav(fav.favorite_id)}
+                    onConfirmDelete={() => { void handleConfirmDelete(fav.favorite_id) }}
+                    onCancelDelete={() => setConfirmDeleteFav(null)}
+                  />
+                )
+              ))}
+            </div>
+          ))}
         </section>
       )}
 
@@ -765,49 +925,45 @@ export function QuickActionsPanel({ onLoadFavorite, children, onNewFavorite }: Q
   )
 }
 
-// ── Favorite row ───────────────────────────────
+// ── Favorite card (WO-104) ─────────────────────
+// Name, formulation · pharmacy, then the clinic's common doses as chips
+// and a Custom chip. Chip text is computed ("20 units" + "(1.0 mg)
+// weekly"), never typed.
 
-interface FavoriteRowProps {
+interface FavoriteCardProps {
   favorite: Favorite
   patientState: string | null
   isConfirming: boolean
   isDeleting: boolean
-  onLoad: () => void
+  onLoad: (preset: DosePreset | null) => void
   onEdit: () => void
   onAskDelete: () => void
   onConfirmDelete: () => void
   onCancelDelete: () => void
 }
 
-function FavoriteRow({
+function FavoriteCard({
   favorite: fav, patientState, isConfirming, isDeleting,
   onLoad, onEdit, onAskDelete, onConfirmDelete, onCancelDelete,
-}: FavoriteRowProps) {
+}: FavoriteCardProps) {
   const isUnavailable = fav.formulation_active === false
   const isUnlicensed = fav.pharmacy_licensed === false
-  const doseLine = formatFavoriteDose({
-    doseAmount: fav.dose_amount,
-    doseUnit: fav.dose_unit,
-    frequencyCode: fav.frequency_code,
-    concentration: fav.formulations,
-  })
+  const blocked = isUnavailable || isUnlicensed
 
   return (
     <div
       data-testid={`favorite-${fav.favorite_id}`}
-      className={`group flex items-stretch rounded-md border border-border transition-colors ${
-        isUnavailable || isUnlicensed ? 'opacity-60' : 'hover:bg-muted/50'
-      }`}
+      className={`rounded-md border border-border px-3 py-2 transition-colors ${blocked ? 'opacity-60' : ''}`}
     >
-      <button
-        type="button"
-        onClick={onLoad}
-        disabled={isUnavailable || isUnlicensed}
-        className="flex-1 text-left px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-l-md disabled:cursor-not-allowed"
-      >
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-medium text-foreground">{fav.label}</p>
-          <div className="flex items-center gap-1">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1">
+            <p className="text-sm font-medium text-foreground">{fav.label}</p>
+            {fav.patient_id && (
+              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800">
+                this patient only
+              </span>
+            )}
             {isUnavailable && (
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
                 unavailable
@@ -824,105 +980,136 @@ function FavoriteRow({
               </span>
             )}
           </div>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {fav.formulations?.name}
+            {fav.pharmacies?.name && ` · ${fav.pharmacies.name}`}
+          </p>
         </div>
-        <p className="mt-0.5 text-xs text-muted-foreground truncate">
-          {fav.formulations?.name}
-          {fav.pharmacies?.name && ` · ${fav.pharmacies.name}`}
-        </p>
-        {doseLine && (
-          <p className="mt-0.5 text-xs text-foreground" data-testid="favorite-dose">
-            {doseLine}
-          </p>
-        )}
-        {isUnavailable && (
-          <p className="mt-0.5 text-[10px] text-amber-700">
-            No longer in the catalog — remove this favorite and choose a replacement.
-          </p>
-        )}
-        {!isUnavailable && isUnlicensed && (
-          <p className="mt-0.5 text-[10px] text-red-700">
-            {fav.pharmacies?.name ?? 'The pinned pharmacy'} is not licensed in {patientState} — choose a licensed pharmacy for this patient.
-          </p>
-        )}
-        {fav.use_count > 0 && (
-          <p className="mt-0.5 text-[10px] text-muted-foreground">
-            Used {fav.use_count} time{fav.use_count !== 1 ? 's' : ''}
-          </p>
-        )}
-      </button>
-      {/* Edit + delete affordances — delete keeps the two-step confirm */}
-      <div className="flex items-center gap-1 pr-2">
-        {isConfirming ? (
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={onConfirmDelete}
-              disabled={isDeleting}
-              className="rounded bg-red-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-            >
-              {isDeleting ? 'Deleting…' : 'Confirm'}
-            </button>
-            <button
-              type="button"
-              onClick={onCancelDelete}
-              disabled={isDeleting}
-              className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <>
-            <button
-              type="button"
-              aria-label={`Edit favorite ${fav.label}`}
-              onClick={onEdit}
-              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M12 20h9" />
-                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              aria-label={`Delete favorite ${fav.label}`}
-              onClick={onAskDelete}
-              className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M3 6h18" />
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                <line x1="10" y1="11" x2="10" y2="17" />
-                <line x1="14" y1="11" x2="14" y2="17" />
-              </svg>
-            </button>
-          </>
-        )}
+        {/* Edit + delete affordances — delete keeps the two-step confirm */}
+        <div className="flex shrink-0 items-center gap-1">
+          {isConfirming ? (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={onConfirmDelete}
+                disabled={isDeleting}
+                className="rounded bg-red-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              >
+                {isDeleting ? 'Deleting…' : 'Confirm'}
+              </button>
+              <button
+                type="button"
+                onClick={onCancelDelete}
+                disabled={isDeleting}
+                className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                aria-label={`Edit favorite ${fav.label}`}
+                onClick={onEdit}
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                aria-label={`Delete favorite ${fav.label}`}
+                onClick={onAskDelete}
+                className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 6h18" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  <line x1="10" y1="11" x2="10" y2="17" />
+                  <line x1="14" y1="11" x2="14" y2="17" />
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Common doses + Custom */}
+      <div className="mt-1.5 flex flex-wrap gap-1.5" role="group" aria-label={`Doses for ${fav.label}`}>
+        {fav.dose_presets.map(preset => {
+          const text = presetChipText(preset, fav.formulations)
+          return (
+            <button
+              key={presetKey(preset)}
+              type="button"
+              data-testid="favorite-preset"
+              onClick={() => onLoad(preset)}
+              disabled={blocked}
+              title={preset.label ?? undefined}
+              className="rounded-full border border-primary/40 bg-background px-2.5 py-1 text-xs text-primary hover:bg-primary/5 disabled:cursor-not-allowed"
+            >
+              <span className="font-medium">{text.primary}</span>
+              {text.secondary && <span className="text-muted-foreground">{' '}{text.secondary}</span>}
+            </button>
+          )
+        })}
+        <button
+          type="button"
+          data-testid="favorite-custom"
+          onClick={() => onLoad(null)}
+          disabled={blocked}
+          className="rounded-full border border-dashed border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted/50 disabled:cursor-not-allowed"
+        >
+          Custom
+        </button>
+      </div>
+
+      {isUnavailable && (
+        <p className="mt-1 text-[10px] text-amber-700">
+          No longer in the catalog — remove this favorite and choose a replacement.
+        </p>
+      )}
+      {!isUnavailable && isUnlicensed && (
+        <p className="mt-1 text-[10px] text-red-700">
+          {fav.pharmacies?.name ?? 'The pinned pharmacy'} is not licensed in {patientState} — choose a licensed pharmacy for this patient.
+        </p>
+      )}
+      {fav.use_count > 0 && (
+        <p className="mt-1 text-[10px] text-muted-foreground">
+          Used {fav.use_count} time{fav.use_count !== 1 ? 's' : ''}
+        </p>
+      )}
     </div>
   )
 }
 
-// ── Favorite edit form (WO-103) ────────────────
-// Name, dose (amount + unit), frequency and pharmacy. The mg preview
-// updates as the dose is typed; on save the stored sig is regenerated
-// for standard-mode favorites so it follows the new dose.
+// ── Favorite edit form (WO-103 / WO-104) ───────
+// Name, pharmacy, who it is for, and the common doses (amount, unit,
+// frequency per dose; add or remove doses). Each dose previews its mg as
+// it is typed. A dose's timing and duration are kept as saved — they are
+// set from the builder's dose step when the dose is saved there.
 
 interface FavoriteEditFormProps {
   favorite: Favorite
   patientState: string | null
+  patient: { patientId: string; name: string } | null
   onCancel: () => void
   onSaved: () => Promise<void> | void
 }
 
-function FavoriteEditForm({ favorite: fav, patientState, onCancel, onSaved }: FavoriteEditFormProps) {
+const EMPTY_PRESET: DosePreset = { dose: '', unit: '', frequency: '', timing: '', duration: '', label: null }
+
+function FavoriteEditForm({ favorite: fav, patientState, patient, onCancel, onSaved }: FavoriteEditFormProps) {
   const [label, setLabel] = useState(fav.label)
-  const [doseAmount, setDoseAmount] = useState(fav.dose_amount ?? '')
-  const [doseUnit, setDoseUnit] = useState(fav.dose_unit ?? '')
-  const [frequency, setFrequency] = useState(fav.frequency_code ?? '')
+  const [presets, setPresets] = useState<DosePreset[]>(fav.dose_presets.length > 0 ? fav.dose_presets : [{ ...EMPTY_PRESET, unit: 'units' }])
   const [pharmacyId, setPharmacyId] = useState(fav.pharmacy_id ?? '')
+  // Only the selected patient can be offered; a favorite pinned to them
+  // stays pinned unless moved back to the practice.
+  const [forPatient, setForPatient] = useState(fav.patient_id !== null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -939,32 +1126,24 @@ function FavoriteEditForm({ favorite: fav, patientState, onCancel, onSaved }: Fa
     pharmacyChoices.unshift(fav.pharmacies)
   }
 
-  const preview = formatFavoriteDose({
-    doseAmount, doseUnit, frequencyCode: frequency, concentration: fav.formulations,
-  })
-  const doseValid = Number.isFinite(parseFloat(doseAmount)) && parseFloat(doseAmount) > 0
-  const canSave = !!label.trim() && doseValid && !!doseUnit && !saving
+  function updatePreset(index: number, patch: Partial<DosePreset>) {
+    setPresets(list => list.map((p, i) => (i === index ? { ...p, ...patch } : p)))
+  }
+
+  const presetsValid = presets.length > 0 && presets.every(p => Number.isFinite(parseFloat(p.dose)) && parseFloat(p.dose) > 0 && !!p.unit)
+  const canSave = !!label.trim() && presetsValid && !saving
+  const pinnedElsewhere = fav.patient_id !== null && fav.patient_id !== patient?.patientId
 
   async function handleSave() {
     if (!canSave) return
     setSaving(true)
     setError(null)
-    const doseChanged =
-      doseAmount !== (fav.dose_amount ?? '') || doseUnit !== (fav.dose_unit ?? '') || frequency !== (fav.frequency_code ?? '')
-    const body: Record<string, string | null> = {
+    const body: Record<string, unknown> = {
       label: label.trim(),
-      dose_amount: doseAmount,
-      dose_unit: doseUnit,
       pharmacy_id: pharmacyId || null,
+      dose_presets: presets,
     }
-    if (frequency) body['frequency_code'] = frequency
-    if (doseChanged && fav.sig_mode === 'standard' && fav.formulations) {
-      const sig = buildStandardSig({
-        doseAmount, doseUnit, frequencyCode: frequency || fav.frequency_code,
-        timingCode: fav.timing_code, formulation: fav.formulations,
-      })
-      if (sig) body['sig_text'] = sig
-    }
+    if (!pinnedElsewhere) body['patient_id'] = forPatient && patient ? patient.patientId : null
     try {
       const res = await fetch(`/api/favorites?id=${fav.favorite_id}`, {
         method: 'PATCH',
@@ -1002,49 +1181,74 @@ function FavoriteEditForm({ favorite: fav, patientState, onCancel, onSaved }: Fa
           className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
-      <div className="flex flex-wrap gap-2">
-        <div>
-          <label htmlFor={`fav-dose-${fav.favorite_id}`} className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            Favorite dose amount
-          </label>
-          <input
-            id={`fav-dose-${fav.favorite_id}`}
-            type="text"
-            inputMode="decimal"
-            value={doseAmount}
-            onChange={e => setDoseAmount(e.target.value)}
-            className="mt-0.5 w-20 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </div>
-        <div>
-          <label htmlFor={`fav-unit-${fav.favorite_id}`} className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            Favorite dose unit
-          </label>
-          <select
-            id={`fav-unit-${fav.favorite_id}`}
-            value={doseUnit}
-            onChange={e => setDoseUnit(e.target.value)}
-            className="mt-0.5 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="">Unit</option>
-            {DOSE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-          </select>
-        </div>
-        <div className="min-w-[10rem] flex-1">
-          <label htmlFor={`fav-freq-${fav.favorite_id}`} className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            Favorite frequency
-          </label>
-          <select
-            id={`fav-freq-${fav.favorite_id}`}
-            value={frequency}
-            onChange={e => setFrequency(e.target.value)}
-            className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="">Select frequency</option>
-            {FREQUENCY_OPTIONS.map(f => <option key={f.code} value={f.code}>{f.display}</option>)}
-          </select>
-        </div>
-      </div>
+
+      <fieldset className="space-y-1.5">
+        <legend className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Common doses</legend>
+        {presets.map((preset, i) => {
+          const n = i + 1
+          return (
+            <div key={i} className="flex flex-wrap items-end gap-2" data-testid={`favorite-edit-preset-${n}`}>
+              <div>
+                <label htmlFor={`fav-dose-${fav.favorite_id}-${n}`} className="sr-only">Favorite dose amount {n}</label>
+                <input
+                  id={`fav-dose-${fav.favorite_id}-${n}`}
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Amount"
+                  value={preset.dose}
+                  onChange={e => updatePreset(i, { dose: e.target.value })}
+                  className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+              <div>
+                <label htmlFor={`fav-unit-${fav.favorite_id}-${n}`} className="sr-only">Favorite dose unit {n}</label>
+                <select
+                  id={`fav-unit-${fav.favorite_id}-${n}`}
+                  value={preset.unit}
+                  onChange={e => updatePreset(i, { unit: e.target.value })}
+                  className="rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="">Unit</option>
+                  {DOSE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
+              <div className="min-w-[9rem] flex-1">
+                <label htmlFor={`fav-freq-${fav.favorite_id}-${n}`} className="sr-only">Favorite frequency {n}</label>
+                <select
+                  id={`fav-freq-${fav.favorite_id}-${n}`}
+                  value={preset.frequency}
+                  onChange={e => updatePreset(i, { frequency: e.target.value })}
+                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="">Select frequency</option>
+                  {FREQUENCY_OPTIONS.map(f => <option key={f.code} value={f.code}>{f.display}</option>)}
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPresets(list => list.filter((_, j) => j !== i))}
+                disabled={presets.length === 1}
+                aria-label={`Remove dose ${n}`}
+                className="rounded border border-border px-2 py-1.5 text-[10px] hover:bg-muted disabled:opacity-40"
+              >
+                Remove
+              </button>
+              <p className="w-full text-[11px] text-foreground" data-testid={`favorite-dose-preview-${n}`}>
+                {formatFavoriteDose({ doseAmount: preset.dose, doseUnit: preset.unit, frequencyCode: preset.frequency, concentration: fav.formulations })
+                  || 'Enter a dose to see the mg equivalent'}
+              </p>
+            </div>
+          )
+        })}
+        <button
+          type="button"
+          onClick={() => setPresets(list => [...list, { ...EMPTY_PRESET, unit: list[list.length - 1]?.unit ?? '', frequency: list[list.length - 1]?.frequency ?? '' }])}
+          className="rounded-md border border-dashed border-border px-2 py-1 text-xs hover:bg-muted/50"
+        >
+          + Add dose
+        </button>
+      </fieldset>
+
       <div>
         <label htmlFor={`fav-pharmacy-${fav.favorite_id}`} className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
           Favorite pharmacy
@@ -1059,9 +1263,21 @@ function FavoriteEditForm({ favorite: fav, patientState, onCancel, onSaved }: Fa
           {pharmacyChoices.map(p => <option key={p.pharmacy_id} value={p.pharmacy_id}>{p.name}</option>)}
         </select>
       </div>
-      <p className="text-xs text-foreground" data-testid="favorite-dose-preview">
-        {preview || 'Enter a dose to see the mg equivalent'}
-      </p>
+
+      {patient && !pinnedElsewhere && (
+        <fieldset className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <legend className="sr-only">Favorite for</legend>
+          <label className="flex items-center gap-1">
+            <input type="radio" name={`fav-scope-${fav.favorite_id}`} checked={!forPatient} onChange={() => setForPatient(false)} />
+            For the practice
+          </label>
+          <label className="flex items-center gap-1">
+            <input type="radio" name={`fav-scope-${fav.favorite_id}`} checked={forPatient} onChange={() => setForPatient(true)} />
+            Only for {patient.name}
+          </label>
+        </fieldset>
+      )}
+
       {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
       <div className="flex gap-1">
         <button

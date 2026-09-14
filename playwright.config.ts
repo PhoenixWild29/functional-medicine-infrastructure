@@ -27,7 +27,9 @@ export default defineConfig({
 
   // Reporters: HTML report always; JUnit for CI artifact upload
   reporter: isCI
-    ? [['html', { open: 'never' }], ['junit', { outputFile: 'test-results/junit.xml' }]]
+    // 'github' writes each failure as a check-run annotation, readable
+    // without downloading the (auth-gated) report artifact.
+    ? [['html', { open: 'never' }], ['junit', { outputFile: 'test-results/junit.xml' }], ['github']]
     : [['html', { open: 'on-failure' }]],
 
   // Shared test options

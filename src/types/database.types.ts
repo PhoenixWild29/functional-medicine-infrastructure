@@ -2409,10 +2409,12 @@ export type Database = {
       }
       provider_favorites: {
         Row: {
+          category: string | null
           created_at: string | null
           default_quantity: string | null
           default_refills: number | null
           dose_amount: string | null
+          dose_presets: Json
           dose_unit: string | null
           duration_code: string | null
           favorite_id: string
@@ -2420,6 +2422,7 @@ export type Database = {
           frequency_code: string | null
           label: string
           last_used_at: string | null
+          patient_id: string | null
           pharmacy_id: string | null
           provider_id: string
           sig_mode: string | null
@@ -2429,10 +2432,12 @@ export type Database = {
           use_count: number | null
         }
         Insert: {
+          category?: string | null
           created_at?: string | null
           default_quantity?: string | null
           default_refills?: number | null
           dose_amount?: string | null
+          dose_presets?: Json
           dose_unit?: string | null
           duration_code?: string | null
           favorite_id?: string
@@ -2440,6 +2445,7 @@ export type Database = {
           frequency_code?: string | null
           label: string
           last_used_at?: string | null
+          patient_id?: string | null
           pharmacy_id?: string | null
           provider_id: string
           sig_mode?: string | null
@@ -2449,10 +2455,12 @@ export type Database = {
           use_count?: number | null
         }
         Update: {
+          category?: string | null
           created_at?: string | null
           default_quantity?: string | null
           default_refills?: number | null
           dose_amount?: string | null
+          dose_presets?: Json
           dose_unit?: string | null
           duration_code?: string | null
           favorite_id?: string
@@ -2460,6 +2468,7 @@ export type Database = {
           frequency_code?: string | null
           label?: string
           last_used_at?: string | null
+          patient_id?: string | null
           pharmacy_id?: string | null
           provider_id?: string
           sig_mode?: string | null
@@ -2469,6 +2478,13 @@ export type Database = {
           use_count?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "provider_favorites_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["patient_id"]
+          },
           {
             foreignKeyName: "provider_favorites_formulation_id_fkey"
             columns: ["formulation_id"]
@@ -3065,6 +3081,7 @@ export type Database = {
       }
     }
     Functions: {
+      collapse_provider_favorites: { Args: never; Returns: number }
       create_vault_secret: {
         Args: { p_name: string; p_secret: string }
         Returns: string

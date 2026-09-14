@@ -235,11 +235,21 @@ describe('MarginBuilderForm — WO-96 fix: days supply from the duration the pro
     expect(lastSession!.prescriptions[0]!.quantityLabel).toBe('5mL vial')
   })
 
-  it('recomputes when the duration in the sig changes', () => {
+  // WO-104: the sig fallback is for a legacy saved link only, and reads
+  // the sig that link carried once — editing the sig on the page no longer
+  // changes the derived values (the structured duration never did, WO-101).
+  it('a legacy link reads the duration from the sig it carried; editing the sig does not change it', () => {
     renderMargin({ presetSigText: GINA_SIG, presetQuantity: undefined, availableQuantities: STRIVE_PACKAGES })
+    expect(screen.getByTestId('days-supply-value')).toHaveTextContent('30 days')
     fireEvent.change(screen.getByLabelText(/Sig \(Prescription Directions\)/), {
       target: { value: 'Inject 10 units (0.10mL / 0.50mg) subcutaneous once weekly in the morning for 90 days' },
     })
+    expect(screen.getByTestId('days-supply-value')).toHaveTextContent('30 days')
+    expect(screen.getByTestId('dispense-value')).toHaveTextContent('0.4 mL')   // 4 doses × 0.1 mL
+  })
+
+  it('a structured duration from the builder is used as is', () => {
+    renderMargin({ presetSigText: GINA_SIG, presetDurationDays: 90, presetQuantity: undefined, availableQuantities: STRIVE_PACKAGES })
     expect(screen.getByTestId('days-supply-value')).toHaveTextContent('90 days')
     expect(screen.getByTestId('dispense-value')).toHaveTextContent('1.2 mL')   // 12 doses × 0.1 mL
   })

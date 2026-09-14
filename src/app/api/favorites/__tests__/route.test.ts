@@ -25,9 +25,16 @@ import { NextRequest } from 'next/server'
 const getSessionMock = jest.fn()
 const fromMock       = jest.fn()
 
+// WO-104: the route verifies the user with getUser(). The session-shaped
+// fixtures below are unwrapped to the user they carry.
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: {
+      getUser: async () => {
+        const r = await getSessionMock() as { data: { session: { user: unknown } | null } }
+        return { data: { user: r.data.session?.user ?? null } }
+      },
+    },
   }),
 }))
 

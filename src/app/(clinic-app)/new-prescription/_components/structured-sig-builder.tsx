@@ -28,6 +28,8 @@ import {
   type CyclingConfig,
 } from './structured-sig-builder.types'
 import { computeDoseDisplay } from '@/lib/orders/dose-display'
+import { timingAndDurationFromSig, type SigTimingAndDuration } from '../_lib/sig-recovery'
+import { builderDurationFromPreset, presetChipText, type DosePreset } from '@/lib/orders/favorite-presets'
 
 // ── Props ───────────────────────────────────────────────────
 
@@ -55,31 +57,25 @@ interface StructuredSigBuilderProps {
    * the controlled props.
    */
   initialSigText?: string | undefined
+  /**
+   * WO-104: timing + duration as structured values — a favorite's dose
+   * preset or the Custom chip. When set, `initialSigText` is ignored and
+   * no sig is parsed.
+   */
+  initialStructured?: SigTimingAndDuration | null | undefined
+  /** WO-104: timing + duration as selected, for ☆ Save as favorite. */
+  onTimingDurationChange?: (value: SigTimingAndDuration) => void
+  /**
+   * WO-104: the clinic's common doses for this formulation (from its
+   * favorites). Shown as chips above the dose fields; a click fills
+   * amount, unit, frequency, timing and duration. Free entry stays.
+   */
+  presets?: ReadonlyArray<DosePreset> | undefined
 }
 
-/** Recover the timing + duration codes from a previously generated sig. */
-export function timingAndDurationFromSig(sig: string | null | undefined): { timing: string; duration: string; customDurationDays: string } {
-  const lower = (sig ?? '').toLowerCase()
-  if (!lower) return { timing: '', duration: '', customDurationDays: '' }
-  // Longest fragment first so "30 minutes before meals" beats "with food" style overlaps.
-  const timing = [...TIMING_OPTIONS]
-    .filter(t => t.sig)
-    .sort((a, b) => b.sig.length - a.sig.length)
-    .find(t => lower.includes(t.sig.toLowerCase()))
-  let duration = ''
-  let customDurationDays = ''
-  if (lower.includes(', ongoing')) {
-    duration = 'ONGOING'
-  } else {
-    const m = /for (\d+) days/.exec(lower)
-    if (m?.[1]) {
-      const known = DURATION_OPTIONS.find(d => d.code === m[1])
-      if (known) duration = known.code
-      else { duration = 'CUSTOM'; customDurationDays = m[1] }
-    }
-  }
-  return { timing: timing?.code ?? '', duration, customDurationDays }
-}
+// WO-104: moved to _lib/sig-recovery.ts (WO-98 edit path only); re-exported
+// for existing imports.
+export { timingAndDurationFromSig } from '../_lib/sig-recovery'
 
 // ── Unit conversion helpers ─────────────────────────────────
 // WO-103: computeDoseDisplay moved to the shared pure lib so the
@@ -122,10 +118,15 @@ export function StructuredSigBuilder({
   onSigChange,
   onDurationDaysChange,
   initialSigText,
+  initialStructured,
+  onTimingDurationChange,
+  presets,
 }: StructuredSigBuilderProps) {
 
   // ── Internal state ──────────────────────────────────────
-  const [initial] = useState(() => timingAndDurationFromSig(initialSigText))
+  // WO-104: structured values win; the sig is parsed only for a WO-98
+  // reopened line that has no structured timing / duration.
+  const [initial] = useState(() => initialStructured ?? timingAndDurationFromSig(initialSigText))
   const [timing, setTiming] = useState(initial.timing)
   const [duration, setDuration] = useState(initial.duration)
   const [customDurationDays, setCustomDurationDays] = useState(initial.customDurationDays)
@@ -276,6 +277,21 @@ export function StructuredSigBuilder({
   useEffect(() => {
     onDurationDaysChange?.(durationDays)
   }, [durationDays, onDurationDaysChange])
+  useEffect(() => {
+    onTimingDurationChange?.({ timing, duration, customDurationDays })
+  }, [timing, duration, customDurationDays, onTimingDurationChange])
+
+  // ── WO-104: common-dose chip ────────────────────────────
+  function applyPreset(p: DosePreset) {
+    const d = builderDurationFromPreset(p.duration)
+    handleModeChange('standard')
+    onDoseAmountChange(p.dose)
+    onDoseUnitChange(p.unit)
+    onFrequencyChange(p.frequency)
+    setTiming(p.timing)
+    setDuration(d.duration)
+    setCustomDurationDays(d.customDurationDays)
+  }
 
   // ── Character count ─────────────────────────────────────
   const charCount = computedSig.length
@@ -296,6 +312,30 @@ export function StructuredSigBuilder({
       <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Dose & Directions
       </label>
+
+      {/* WO-104: the clinic's common doses for this formulation */}
+      {presets && presets.length > 0 && (
+        <div data-testid="dose-step-presets">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Common doses</p>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {presets.map(p => {
+              const text = presetChipText(p, formulation)
+              return (
+                <button
+                  key={[p.dose, p.unit, p.frequency, p.timing, p.duration].join('|')}
+                  type="button"
+                  onClick={() => applyPreset(p)}
+                  title={p.label ?? undefined}
+                  className="rounded-full border border-primary/40 bg-background px-2.5 py-1 text-xs text-primary hover:bg-primary/5"
+                >
+                  <span className="font-medium">{text.primary}</span>
+                  {text.secondary && <span className="text-muted-foreground">{' '}{text.secondary}</span>}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Row 1: Dose Amount + Unit + Frequency */}
       <div className="flex gap-2">
