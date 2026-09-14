@@ -7,10 +7,12 @@
 // to something a person recognises:
 //
 //   1. a provider in the order's clinic (providers.user_id) → "First Last"
-//   2. a staff login in the same clinic → user_metadata full_name / name
-//      when present, else the login email (clinic staff accounts carry no
-//      name field today, so for the POC MA / clinic admin this is the email)
-//   3. anyone else (another clinic, ops, system, deleted user) → no name;
+//   2. a staff login in the same clinic → user_metadata full_name, then
+//      name, then a role label from app_role ("Medical Assistant",
+//      "Clinic Admin", "Provider", "Ops"), then no name. An email address
+//      is never used: it is not a person's name and must not render as one.
+//   3. ops staff (cross-clinic, no clinic_id) → "Ops", never a name
+//   4. anyone else (another clinic, system, deleted user) → no name;
 //      the caller falls back to the id
 //
 // Service-role reads, always scoped to the order's clinic — a name is
@@ -30,6 +32,19 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 function clean(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v.trim() : null
+}
+
+/** Human label for an app_role; null for unknown roles. */
+const ROLE_LABEL: Record<string, string> = {
+  medical_assistant: 'Medical Assistant',
+  clinic_admin:      'Clinic Admin',
+  provider:          'Provider',
+  ops_admin:         'Ops',
+}
+
+export function roleLabel(appRole: unknown): string | null {
+  const role = clean(appRole)
+  return role ? ROLE_LABEL[role] ?? null : null
 }
 
 export async function resolveTimelineActors(
@@ -63,9 +78,17 @@ export async function resolveTimelineActors(
       const { data, error: userError } = await supabase.auth.admin.getUserById(id)
       if (userError || !data?.user) continue
       const meta = (data.user.user_metadata ?? {}) as Record<string, unknown>
+      // Ops staff work across clinics and carry no clinic_id: show only the
+      // role label, never a name, since they are outside this clinic.
+      if (clean(meta['app_role']) === 'ops_admin') {
+        out[id] = { name: roleLabel('ops_admin'), role: 'ops_admin' }
+        continue
+      }
       if (clean(meta['clinic_id']) !== clinicId) continue
       out[id] = {
-        name: clean(meta['full_name']) ?? clean(meta['name']) ?? clean(data.user.email),
+        // Never the email: full_name → name → role label → null (the
+        // drawer then shows the id).
+        name: clean(meta['full_name']) ?? clean(meta['name']) ?? roleLabel(meta['app_role']),
         role: clean(meta['app_role']),
       }
     } catch (err) {

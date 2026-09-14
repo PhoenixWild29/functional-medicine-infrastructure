@@ -7,7 +7,10 @@
 // order_status_history.changed_by on this order, so the order drawer can
 // show "Draft edited · Sarah Chen" instead of a raw auth user id.
 //
-// Auth: clinic session. The order must belong to the caller's clinic;
+// Auth: verified user via getUser(), never getSession() — middleware owns
+// token rotation, and getUser() validates the token with Supabase Auth
+// rather than trusting the cookie. clinic_id is read from that verified
+// user. The order must belong to the caller's clinic;
 // names are resolved only for users in that clinic (see
 // src/lib/orders/timeline-actors.ts). Unresolved ids are omitted and the
 // drawer falls back to printing the id.
@@ -25,12 +28,12 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
   const { orderId } = await params
 
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
     : null
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
