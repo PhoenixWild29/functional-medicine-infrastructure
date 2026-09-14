@@ -85,7 +85,8 @@ export async function GET(
     .select(`
       order_id, status, patient_id, provider_id, clinic_id,
       payment_group_id, stripe_payment_intent_id,
-      medication_snapshot, retail_price_snapshot, created_at
+      medication_snapshot, retail_price_snapshot, created_at,
+      pharmacy_id, shipping_type, wholesale_price_snapshot
     `)
     .eq('order_id', orderId)
     .eq('clinic_id', clinicId)
@@ -124,7 +125,8 @@ export async function GET(
   const { data: peers, error: peersErr } = await supabase
     .from('orders')
     .select(`
-      order_id, medication_snapshot, retail_price_snapshot, created_at
+      order_id, medication_snapshot, retail_price_snapshot, created_at,
+      pharmacy_id, shipping_type, wholesale_price_snapshot
     `)
     .eq('clinic_id',   clinicId)
     .eq('patient_id',  anchor.patient_id)
@@ -149,12 +151,20 @@ export async function GET(
         medicationName: extractMedicationName(anchor.medication_snapshot),
         retailPrice:    anchor.retail_price_snapshot,
         createdAt:      anchor.created_at,
+        // WO-102 follow-up: shipping inputs for the drawer's bundle preview,
+        // which charges shipping once per pharmacy like create-group does.
+        pharmacyId:     anchor.pharmacy_id,
+        shippingType:   anchor.shipping_type,
+        wholesalePrice: anchor.wholesale_price_snapshot,
       },
       siblings: (peers ?? []).map(p => ({
         orderId:        p.order_id,
         medicationName: extractMedicationName(p.medication_snapshot),
         retailPrice:    p.retail_price_snapshot,
         createdAt:      p.created_at,
+        pharmacyId:     p.pharmacy_id,
+        shippingType:   p.shipping_type,
+        wholesalePrice: p.wholesale_price_snapshot,
       })),
     },
     { status: 200, headers: { 'Cache-Control': 'no-store' } },
