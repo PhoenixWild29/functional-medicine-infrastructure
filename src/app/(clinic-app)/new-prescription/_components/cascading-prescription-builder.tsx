@@ -31,7 +31,8 @@ import {
   computeDispense,
   defaultQuantityLabel,
   dispenseUnitFor,
-  durationDaysFromSig,
+  suggestPackage,
+  type PackageOption,
 } from '@/lib/orders/rx-details'
 
 // ── Types ─────────────────────────────────────────────────────
@@ -93,6 +94,8 @@ interface PharmacyOption {
   wholesale_price: number
   available_quantities: string[] | null
   estimated_turnaround_days: number | null
+  /** WO-101: active packages (vial sizes) with their own prices, smallest first. */
+  packages?: PackageOption[]
   pharmacies: {
     pharmacy_id: string
     name: string
@@ -173,6 +176,9 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   const [quantityPicked, setQuantityPicked] = useState(false)
   const [refills, setRefills] = useState('0')
   const [currentSig, setCurrentSig] = useState('')
+  // WO-101: the duration selected on the dose step, as reported by the
+  // sig builder (structured — not read back out of the sig).
+  const [durationDays, setDurationDays] = useState<number | null>(null)
   // WO-98: pharmacy of the reopened line. Until the user picks one, the
   // matching option (once pharmacy_options load) counts as selected.
   const [pendingPharmacyId, setPendingPharmacyId] = useState<string | null>(null)
@@ -308,12 +314,10 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   }
 
   // ── WO-96 fix: default quantity from what the pharmacy lists ──
-  // The duration the provider picked is in the generated sig ("for 30
-  // days"). With it, dispense = doses in that many days × dose, and the
+  // With a duration, dispense = doses in that many days × dose, and the
   // default package is the smallest listed one that covers it. Without
   // it, the smallest package in the dispense unit. Recomputed whenever
-  // dose, frequency, duration (sig), formulation or pharmacy change.
-  const durationDays = durationDaysFromSig(currentSig)
+  // dose, frequency, duration, formulation or pharmacy change.
   const pharmacyQuantities = (selectedPharmacy?.available_quantities as string[] | null) ?? []
   const defaultQuantity = useMemo(() => {
     if (!selectedFormulation) return ''
@@ -340,7 +344,29 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     // pharmacyQuantities is derived from selectedPharmacy each render
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFormulation, selectedPharmacy, doseAmount, doseUnit, selectedFrequency, durationDays])
-  const effectiveQuantity = quantityPicked && quantity ? quantity : defaultQuantity
+  // ── WO-101: priced packages ─────────────────────────────
+  // A pharmacy that sells this formulation in more than one priced package
+  // gets a suggested package (smallest that covers the dispense quantity
+  // for the duration) and its price. The provider changes it on the price
+  // step, where wholesale / retail / margin recompute; here it replaces
+  // the interim Quantity dropdown.
+  function packageSuggestionFor(po: PharmacyOption | null) {
+    const pkgs = po?.packages ?? []
+    if (!selectedFormulation || pkgs.length < 2) return null
+    return suggestPackage(pkgs, {
+      doseAmount,
+      doseUnit,
+      frequencyCode:      selectedFrequency,
+      concentrationValue: selectedFormulation.concentration_value,
+      concentrationUnit:  selectedFormulation.concentration_unit,
+      dosageFormName:     selectedFormulation.dosage_forms?.name ?? null,
+      durationDays,
+    })
+  }
+  const selectedSuggestion = packageSuggestionFor(selectedPharmacy)
+  const effectiveQuantity = selectedSuggestion
+    ? selectedSuggestion.package.label
+    : quantityPicked && quantity ? quantity : defaultQuantity
   const quantityOptions = pharmacyQuantities.length > 0 ? [...pharmacyQuantities] : ['1']
   if (effectiveQuantity && !quantityOptions.includes(effectiveQuantity)) quantityOptions.push(effectiveQuantity)
 
@@ -393,6 +419,9 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       // defaults refills from here. Never empty: the default package.
       quantity: effectiveQuantity,
       refills,
+      // WO-101: the selected duration, structured, for the package
+      // suggestion and days supply on the price step ('' = no duration).
+      durationDays: durationDays != null ? String(durationDays) : '',
       // WO-98: keep the edit / add-to-draft target through the margin page.
       ...editTargetToParams(editTarget),
     })
@@ -549,6 +578,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
           onDoseUnitChange={setDoseUnit}
           onFrequencyChange={setSelectedFrequency}
           onSigChange={handleSigChange}
+          onDurationDaysChange={setDurationDays}
           initialSigText={effectiveInitial?.sigText}
         />
       )}
@@ -560,7 +590,10 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
             Pharmacy & Pricing
           </label>
           <div className="mt-1 space-y-2">
-            {pharmacyOptions.map(po => (
+            {pharmacyOptions.map(po => {
+              const suggestion = packageSuggestionFor(po)
+              const shownPrice = suggestion ? suggestion.package.wholesalePrice : po.wholesale_price
+              return (
               <button
                 key={po.pharmacy_formulation_id}
                 type="button"
@@ -583,15 +616,27 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
                       {po.estimated_turnaround_days && ` — ~${po.estimated_turnaround_days} days`}
                     </p>
                   </div>
-                  <p className="text-lg font-bold text-foreground">{toCurrency(po.wholesale_price)}</p>
+                  <div className="text-right">
+                    <p className="text-lg font-bold text-foreground">{toCurrency(shownPrice)}</p>
+                    {suggestion && (
+                      <p className="text-[10px] text-muted-foreground" data-testid="pharmacy-suggested-package">
+                        {suggestion.package.label}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                {po.available_quantities && (
+                {po.packages && po.packages.length > 1 ? (
+                  <p className="mt-1 text-[10px] text-muted-foreground" data-testid="pharmacy-package-prices">
+                    {po.packages.map(p => `${p.label} ${toCurrency(p.wholesalePrice)}`).join(' · ')}
+                  </p>
+                ) : po.available_quantities && (
                   <p className="mt-1 text-[10px] text-muted-foreground">
                     Available: {(po.available_quantities as string[]).join(', ')}
                   </p>
                 )}
               </button>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
@@ -600,9 +645,13 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       {selectedPharmacy && (
         <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
           <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Quantity & Refills
+            {selectedSuggestion ? 'Refills' : 'Quantity & Refills'}
           </label>
           <div className="mt-1 flex gap-3">
+            {/* WO-101: priced packages replace the Quantity dropdown — the
+                suggested package shows on the pharmacy row and is changed
+                on the price step. */}
+            {!selectedSuggestion && (
             <div className="flex-1">
               <select
                 aria-label="Quantity"
@@ -625,6 +674,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
                 </p>
               )}
             </div>
+            )}
             <div className="w-24">
               <select
                 aria-label="Refills"

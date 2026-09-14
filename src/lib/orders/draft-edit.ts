@@ -40,6 +40,9 @@ const DIFF_COLUMNS = [
   'retail_price_snapshot',
   'wholesale_price_snapshot',
   'sig_text',
+  // WO-101
+  'package_id',
+  'package_label',
   ...RX_DETAIL_COLUMN_LIST.split(',').map(s => s.trim()),
 ] as const
 

@@ -88,6 +88,12 @@ export interface SessionPrescription {
   // re-derivation only — never sent to the API.
   frequencyCode?:  string | null
   quantityLabel?:  string | null
+  // WO-101: the package (vial size) the line is priced from. packageId is
+  // sent to POST /api/orders, which re-prices from it server-side; the
+  // label is for display. Unset for single-package formulations and the
+  // legacy catalog. OPTIONAL ON PURPOSE.
+  packageId?:      string | null
+  packageLabel?:   string | null
   // WO-103: formulation concentration so the Review card can show the
   // computed mg equivalent next to the dose ("10 units (0.5 mg)").
   // Display only — never sent to the API. OPTIONAL ON PURPOSE.

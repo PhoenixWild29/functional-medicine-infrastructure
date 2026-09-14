@@ -26,6 +26,7 @@ import { MarginBuilderForm } from './_components/margin-builder-form'
 import { SessionBanner }     from '../_components/session-banner'
 import { DraftSessionPin }   from '../_components/draft-session-pin'
 import { loadRxDefaults, type RxFormulationDefaults } from '@/lib/orders/rx-defaults-loader'
+import { packageOptionsFromRows, type PackageOption } from '@/lib/orders/rx-details'
 import { loadDraftContext, type DraftContext } from '@/lib/orders/load-draft-context'
 import { draftReturnPath } from '@/lib/orders/draft-edit'
 import { editTargetFromParams } from '../_lib/edit-target'
@@ -48,6 +49,8 @@ interface PageProps {
     // WO-96: selected pharmacy quantity label + refills from the builder
     quantity?: string
     refills?: string
+    // WO-101: the duration selected on the dose step ('' = none)
+    durationDays?: string
     // WO-98: which existing line this page saves back to (see _lib/edit-target)
     editId?: string
     editOrder?: string
@@ -65,6 +68,14 @@ export default async function MarginPage({ searchParams }: PageProps) {
   const presetSig      = (resolvedParams.sigText ?? '').trim()
   const presetQuantity = (resolvedParams.quantity ?? '').trim()
   const presetRefills  = parseInt(resolvedParams.refills ?? '0', 10)
+  // WO-101: structured duration from the builder. Absent (favorites, older
+  // links) → undefined, and the form falls back as it did before.
+  const presetDurationDays: number | null | undefined = resolvedParams.durationDays === undefined
+    ? undefined
+    : (() => {
+        const n = parseInt(resolvedParams.durationDays, 10)
+        return Number.isFinite(n) && n > 0 ? n : null
+      })()
 
   // Need pharmacyId + (itemId OR formulation_id)
   if (!pharmacyId || (!itemId && !formulationId)) {
@@ -115,6 +126,8 @@ export default async function MarginPage({ searchParams }: PageProps) {
   // WO-96 fix: the pharmacy's listed packages, so a line that arrives with
   // no quantity (favorite / deep link) still gets a default one.
   let availableQuantities: string[] = []
+  // WO-101: this pharmacy's active packages (vial sizes) for the formulation.
+  let packages: PackageOption[] = []
   let rxDefaults: RxFormulationDefaults | null = null
 
   if (formulationId) {
@@ -127,7 +140,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
         .is('deleted_at', null)
         .maybeSingle(),
       supabase.from('pharmacy_formulations')
-        .select('wholesale_price, available_quantities')
+        .select('pharmacy_formulation_id, wholesale_price, available_quantities, pharmacy_formulation_packages(id, package_label, package_qty, package_unit, wholesale_price, is_default, active)')
         .eq('formulation_id', formulationId)
         .eq('pharmacy_id', pharmacyId)
         .eq('is_available', true)
@@ -152,6 +165,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
         }
       }
 
+      packages = packageOptionsFromRows(priceResult.data.pharmacy_formulation_packages)
       availableQuantities = Array.isArray(priceResult.data.available_quantities)
         ? (priceResult.data.available_quantities as unknown[]).filter((q): q is string => typeof q === 'string')
         : []
@@ -307,6 +321,9 @@ export default async function MarginPage({ searchParams }: PageProps) {
         presetRefills={Number.isFinite(presetRefills) ? presetRefills : 0}
         formulationDetails={formulationDetails}
         availableQuantities={availableQuantities}
+        packages={packages}
+        presetDurationDays={presetDurationDays}
+        existingPackageId={draft && editTarget?.kind === 'draft' ? draft.packageId : null}
         rxDefaults={rxDefaults}
         editTarget={editTarget}
         draftLine={draft && editTarget?.kind === 'draft'

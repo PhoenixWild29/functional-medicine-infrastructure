@@ -16,7 +16,7 @@
 // PATCH body — same line shape POST /api/orders takes, minus the
 // pinned patient/provider:
 //   { catalogItemId? | formulationId?, pharmacyId, retailCents, sigText,
-//     rxDetails?, dose?, frequencyCode?, quantityLabel? }
+//     rxDetails?, dose?, frequencyCode?, quantityLabel?, packageId? }
 //
 // REQ-OAS-010: DELETE is a soft delete (is_active = false, deleted_at).
 
@@ -34,7 +34,7 @@ interface RouteContext {
 
 const DRAFT_SELECT = `order_id, status, clinic_id, patient_id, provider_id, formulation_id, catalog_item_id, pharmacy_id,
   retail_price_snapshot, wholesale_price_snapshot, medication_snapshot, pharmacy_snapshot, sig_text,
-  shipping_state_snapshot, ${RX_DETAIL_COLUMN_LIST}`
+  shipping_state_snapshot, package_id, package_label, ${RX_DETAIL_COLUMN_LIST}`
 
 interface Actor {
   userId:   string
@@ -132,6 +132,7 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     dose?:          string | null
     frequencyCode?: string | null
     quantityLabel?: string | null
+    packageId?:     string | null
   }
   try {
     body = await request.json()
@@ -139,7 +140,7 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { catalogItemId, formulationId, pharmacyId, retailCents, sigText, rxDetails, dose, frequencyCode, quantityLabel } = body
+  const { catalogItemId, formulationId, pharmacyId, retailCents, sigText, rxDetails, dose, frequencyCode, quantityLabel, packageId } = body
 
   if (!pharmacyId || typeof sigText !== 'string') {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -171,7 +172,7 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
 
   const line = await resolveLine(supabase, {
     catalogItemId, formulationId, pharmacyId, patientState,
-    prescribedDose: dose, frequencyCode, quantityLabel,
+    prescribedDose: dose, frequencyCode, quantityLabel, packageId,
   })
   if (!line.ok) {
     return NextResponse.json({ error: line.error }, { status: line.status })
@@ -193,6 +194,8 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     pharmacy_snapshot:        line.pharmacySnapshot,
     sig_text:                 sigTrimmed,
     ...rxDetailsToColumns(rxDetailsValidation.details),
+    // WO-101
+    ...line.package,
   }
 
   const diff = diffDraftRows(draft, update)
