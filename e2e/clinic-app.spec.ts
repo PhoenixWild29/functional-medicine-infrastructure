@@ -1646,10 +1646,17 @@ test.describe('Clinic App — WO-104 favorites: doses as chips, dose step, Recen
     ])
     expect(error).toBeNull()
 
-    // Save a dose for THIS patient from the price step.
-    await loginAs(page, TEST_USERS.provider)
-    await walkBuilderToMargin(page, GLP1)
-    await page.getByRole('button', { name: '☆ Save as favorite' }).click()
+    // Save a dose for THIS patient with the ☆ on the dose step. (Stays on
+    // one page: a full reload restores the session asynchronously.)
+    await startSearchAsProvider(page)
+    await page.getByLabel('Search medications').fill(TEST_CATALOG.glp1IngredientName)
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.glp1IngredientName, 'i') }).click()
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.glp1FormulationName, 'i') }).click()
+    await page.getByLabel('Dose amount').fill('10')
+    await page.getByLabel('Dose unit').selectOption('units')
+    await page.getByLabel('Frequency').selectOption('QW')
+    await page.getByRole('button', { name: /Test Pharmacy Tier1/ }).click()
+    await page.getByRole('button', { name: `Save ${TEST_CATALOG.glp1FormulationName} as favorite` }).click()
     await page.getByLabel('Favorite name').fill('E2E For Test Patient')
     await page.getByLabel(/^Only for /).check()
     await page.getByRole('button', { name: 'Save favorite' }).click()
@@ -1662,13 +1669,8 @@ test.describe('Clinic App — WO-104 favorites: doses as chips, dose step, Recen
       .maybeSingle()
     expect(pinned?.patient_id).toBe(TEST_IDS.patient)
 
-    await page.goto('/new-prescription/search')
-    // Wait for the session (restored from sessionStorage after load) to
-    // bring the patient back: 3 practice favorites + this patient's 1. The
-    // other patient's favorite is never counted.
-    const favButton = page.getByRole('button', { name: 'Favorites (4)', exact: true })
-    await expect(favButton).toBeVisible({ timeout: 10_000 })
-    await favButton.click()
+    // 3 practice favorites + this patient's 1; the other patient's is never counted.
+    await page.getByRole('button', { name: 'Favorites (4)', exact: true }).click()
     const panel = page.getByTestId('favorites-panel')
     const groups = panel.locator('[data-testid^="favorite-group-"]')
     await expect(groups).toHaveCount(3)
