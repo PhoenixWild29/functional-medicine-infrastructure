@@ -75,10 +75,10 @@ beforeEach(() => {
   fixtures['providers:await'] = () => ({ data: [{ provider_id: PROVIDER }], error: null })
   fixtures['provider_favorites:await'] = () => ({ data: [], error: null })
   fixtures['provider_favorites:single'] = () => ({ data: { favorite_id: 'fav-1', label: 'Semaglutide' }, error: null })
-  fixtures['formulations:maybeSingle'] = () => ({
-    data: { salt_forms: { ingredients: { therapeutic_category: 'Weight Loss' } }, formulation_ingredients: [] },
-    error: null,
-  })
+  // Category lookups: formulation → salt form → ingredient (no nested embed).
+  fixtures['formulations:maybeSingle'] = () => ({ data: { salt_form_id: 'sf-sema' }, error: null })
+  fixtures['salt_forms:maybeSingle'] = () => ({ data: { ingredient_id: 'ing-sema' }, error: null })
+  fixtures['ingredients:maybeSingle'] = () => ({ data: { therapeutic_category: 'Weight Loss' }, error: null })
 })
 
 describe('POST /api/favorites — WO-104 cards with dose presets', () => {
@@ -95,6 +95,26 @@ describe('POST /api/favorites — WO-104 cards with dose presets', () => {
       dose_presets: [preset('10')], sig_mode: 'standard', default_refills: 2,
     })
     expect(inserts[0]!.row).not.toHaveProperty('sig_text')
+    expect(filters).toEqual(expect.arrayContaining([
+      { table: 'salt_forms', op: 'eq', args: ['salt_form_id', 'sf-sema'] },
+      { table: 'ingredients', op: 'eq', args: ['ingredient_id', 'ing-sema'] },
+    ]))
+  })
+
+  it('a combination (no salt form) takes the primary formulation ingredient\'s category', async () => {
+    fixtures['formulations:maybeSingle'] = () => ({ data: { salt_form_id: null }, error: null })
+    fixtures['formulation_ingredients:await'] = () => ({
+      data: [{ ingredient_id: 'ing-b12', role: 'adjuvant' }, { ingredient_id: 'ing-sema', role: 'primary' }],
+      error: null,
+    })
+    fixtures['ingredients:maybeSingle'] = () => ({ data: { therapeutic_category: "Women's Health" }, error: null })
+    const res = await POST(post({
+      provider_id: PROVIDER, formulation_id: FORMULATION, pharmacy_id: PHARMACY,
+      label: 'Combo', dose_presets: [preset('10')],
+    }))
+    expect(res.status).toBe(201)
+    expect(inserts[0]!.row['category']).toBe('Hormones')
+    expect(filters).toEqual(expect.arrayContaining([{ table: 'ingredients', op: 'eq', args: ['ingredient_id', 'ing-sema'] }]))
   })
 
   it('adds the dose to the existing card for the same formulation + pharmacy + scope', async () => {

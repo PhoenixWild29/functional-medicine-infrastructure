@@ -67,21 +67,43 @@ async function patientInClinic(supabase: ServiceClient, patientId: string, clini
  * WO-104: the favorite's group, from the formulation's ingredient
  * therapeutic_category (salt form first, then the primary formulation
  * ingredient for combinations). Nothing for the provider to type.
+ *
+ * Plain lookups, not a nested embed: formulations ↔ salt_forms is both a
+ * direct FK and a many-to-many through formulation_ingredients, so
+ * PostgREST refuses `formulations → salt_forms` as ambiguous.
  */
 async function categoryForFormulation(supabase: ServiceClient, formulationId: string): Promise<string> {
-  const { data } = await supabase
+  const { data: formulation } = await supabase
     .from('formulations')
-    .select('salt_forms ( ingredients ( therapeutic_category ) ), formulation_ingredients ( role, ingredients ( therapeutic_category ) )')
+    .select('salt_form_id')
     .eq('formulation_id', formulationId)
     .maybeSingle()
-  const row = (data ?? null) as null | {
-    salt_forms?: { ingredients?: { therapeutic_category: string | null } | null } | null
-    formulation_ingredients?: Array<{ role: string | null; ingredients?: { therapeutic_category: string | null } | null }> | null
+
+  let ingredientId: string | null = null
+  if (formulation?.salt_form_id) {
+    const { data: saltForm } = await supabase
+      .from('salt_forms')
+      .select('ingredient_id')
+      .eq('salt_form_id', formulation.salt_form_id)
+      .maybeSingle()
+    ingredientId = saltForm?.ingredient_id ?? null
   }
-  const fromSalt = row?.salt_forms?.ingredients?.therapeutic_category ?? null
-  const ingredients = [...(row?.formulation_ingredients ?? [])].sort((a, b) => Number(b.role === 'primary') - Number(a.role === 'primary'))
-  const fromIngredients = ingredients.find(fi => fi.ingredients?.therapeutic_category)?.ingredients?.therapeutic_category ?? null
-  return favoriteCategory(fromSalt ?? fromIngredients)
+  if (!ingredientId) {
+    const { data: parts } = await supabase
+      .from('formulation_ingredients')
+      .select('ingredient_id, role')
+      .eq('formulation_id', formulationId)
+    const sorted = [...(parts ?? [])].sort((a, b) => Number(b.role === 'primary') - Number(a.role === 'primary'))
+    ingredientId = sorted[0]?.ingredient_id ?? null
+  }
+  if (!ingredientId) return favoriteCategory(null)
+
+  const { data: ingredient } = await supabase
+    .from('ingredients')
+    .select('therapeutic_category')
+    .eq('ingredient_id', ingredientId)
+    .maybeSingle()
+  return favoriteCategory(ingredient?.therapeutic_category ?? null)
 }
 
 // Stale-favorite hardening: the formulations embed is intentionally
