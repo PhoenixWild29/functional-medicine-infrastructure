@@ -1132,6 +1132,8 @@ export type Database = {
           ops_assignee: string | null
           order_id: string
           order_number: string | null
+          package_id: string | null
+          package_label: string | null
           patient_id: string
           payment_group_id: string | null
           pharmacy_id: string | null
@@ -1185,6 +1187,8 @@ export type Database = {
           ops_assignee?: string | null
           order_id?: string
           order_number?: string | null
+          package_id?: string | null
+          package_label?: string | null
           patient_id: string
           payment_group_id?: string | null
           pharmacy_id?: string | null
@@ -1238,6 +1242,8 @@ export type Database = {
           ops_assignee?: string | null
           order_id?: string
           order_number?: string | null
+          package_id?: string | null
+          package_label?: string | null
           patient_id?: string
           payment_group_id?: string | null
           pharmacy_id?: string | null
@@ -1268,6 +1274,13 @@ export type Database = {
           wholesale_price_snapshot?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "orders_package_id_fkey"
+            columns: ["package_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacy_formulation_packages"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "fk_orders_protocol_instance"
             columns: ["protocol_instance_id", "patient_id"]
@@ -1737,6 +1750,53 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "pharmacies"
             referencedColumns: ["pharmacy_id"]
+          },
+        ]
+      }
+      pharmacy_formulation_packages: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          is_default: boolean
+          package_label: string
+          package_qty: number
+          package_unit: string
+          pharmacy_formulation_id: string
+          updated_at: string
+          wholesale_price: number
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          package_label: string
+          package_qty: number
+          package_unit: string
+          pharmacy_formulation_id: string
+          updated_at?: string
+          wholesale_price: number
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          package_label?: string
+          package_qty?: number
+          package_unit?: string
+          pharmacy_formulation_id?: string
+          updated_at?: string
+          wholesale_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pharmacy_formulation_packages_pharmacy_formulation_id_fkey"
+            columns: ["pharmacy_formulation_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacy_formulations"
+            referencedColumns: ["pharmacy_formulation_id"]
           },
         ]
       }
