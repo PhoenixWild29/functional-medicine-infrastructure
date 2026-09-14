@@ -324,6 +324,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
         packages={packages}
         presetDurationDays={presetDurationDays}
         existingPackageId={draft && editTarget?.kind === 'draft' ? draft.packageId : null}
+        existingPackageCount={draft && editTarget?.kind === 'draft' ? draft.packageCount : null}
         rxDefaults={rxDefaults}
         editTarget={editTarget}
         draftLine={draft && editTarget?.kind === 'draft'

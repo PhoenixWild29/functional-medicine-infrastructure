@@ -1132,6 +1132,7 @@ export type Database = {
           ops_assignee: string | null
           order_id: string
           order_number: string | null
+          package_count: number
           package_id: string | null
           package_label: string | null
           patient_id: string
@@ -1187,6 +1188,7 @@ export type Database = {
           ops_assignee?: string | null
           order_id?: string
           order_number?: string | null
+          package_count?: number
           package_id?: string | null
           package_label?: string | null
           patient_id: string
@@ -1242,6 +1244,7 @@ export type Database = {
           ops_assignee?: string | null
           order_id?: string
           order_number?: string | null
+          package_count?: number
           package_id?: string | null
           package_label?: string | null
           patient_id?: string

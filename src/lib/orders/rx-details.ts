@@ -488,10 +488,62 @@ export interface PackageOption {
   isDefault:      boolean
 }
 
-export type PackageSuggestion =
-  | { package: PackageOption; reason: 'covers'; daysSupply: number | null }
-  | { package: PackageOption; reason: 'largest'; daysSupply: number | null }
-  | { package: PackageOption; reason: 'default'; daysSupply: null }
+/** WO-101a: most packages one order line may carry (orders.package_count CHECK). */
+export const MAX_PACKAGE_COUNT = 20
+
+/**
+ * A suggested package and how many of it.
+ *   covers   — one package holds the dispense quantity (count 1)
+ *   multiple — none does; `count` of this package do (count > 1)
+ *   capped   — even MAX_PACKAGE_COUNT of the best package fall short;
+ *              count is MAX_PACKAGE_COUNT and the UI says it does not cover
+ *   default  — nothing to size from (no duration, uncountable dose); count 1
+ */
+export interface PackageSuggestion {
+  package:          PackageOption
+  count:            number
+  reason:           'covers' | 'multiple' | 'capped' | 'default'
+  daysSupply:       number | null
+  /** The dispense quantity sized against (package unit); null for 'default'. */
+  dispenseQuantity: number | null
+}
+
+/**
+ * Whole packages of `pkg` needed for `dispenseQuantity`, between 1 and
+ * MAX_PACKAGE_COUNT. Unknown quantity → 1.
+ */
+export function packageCountFor(pkg: Pick<PackageOption, 'qty'>, dispenseQuantity: number | null | undefined): number {
+  if (typeof dispenseQuantity !== 'number' || !(dispenseQuantity > 0) || !(pkg.qty > 0)) return 1
+  const needed = Math.ceil(dispenseQuantity / pkg.qty - 1e-9)
+  return Math.min(MAX_PACKAGE_COUNT, Math.max(1, needed))
+}
+
+/** "5 mL vial" × 1 → "5 mL vial"; × 2 → "2 × 5 mL vials". */
+export function formatPackageCount(label: string, count: number | null | undefined): string {
+  const n = typeof count === 'number' && count > 1 ? Math.trunc(count) : 1
+  if (n === 1) return label
+  const plural = /\b(vial|bottle|tube|pen|kit|syringe|jar|pump|cartridge)$/i.test(label.trim()) ? `${label.trim()}s` : label.trim()
+  return `${n} × ${plural}`
+}
+
+/**
+ * Dispense line with the packaging a pharmacy fills it from:
+ * "9.6 mL (2 × 5 mL vials)", "0.4 mL (1 × 1 mL vial)". No package → the
+ * plain dispense ("0.4 mL"), exactly as before WO-101a.
+ */
+export function formatDispenseWithPackage(
+  quantity: number | null | undefined,
+  unit: string | null | undefined,
+  packageLabel: string | null | undefined,
+  packageCount: number | null | undefined,
+): string | null {
+  const base = formatDispense(quantity, unit)
+  const label = typeof packageLabel === 'string' && packageLabel.trim() ? packageLabel.trim() : null
+  if (!label) return base
+  const n = typeof packageCount === 'number' && packageCount > 1 ? Math.trunc(packageCount) : 1
+  const packaging = n === 1 ? `1 × ${label}` : formatPackageCount(label, n)
+  return base ? `${base} (${packaging})` : packaging
+}
 
 /** Snake-case package rows (API / Supabase) → PackageOption, active only, smallest first. */
 export function packageOptionsFromRows(rows: ReadonlyArray<{
@@ -517,33 +569,37 @@ export function packageOptionsFromRows(rows: ReadonlyArray<{
 }
 
 /**
- * Which package to suggest (Gina Rooks 2026-09-11 item 3, WO-101).
+ * Which package to suggest, and how many (Gina Rooks 2026-09-11 item 3;
+ * WO-101, WO-101a).
  *
  * The dispense quantity comes from computeDispense — the WO-96 fix
  * derivation (doses in the selected duration × dose, in the dispense
- * unit). The suggestion is the smallest active package, in that unit,
- * whose package_qty is ≥ the dispense quantity. If no package is big
- * enough, the largest one. With no duration, or a dose that can't be
- * counted (PRN, unmatched units), the pharmacy's default package.
+ * unit). In order:
+ *   1. the smallest active package, in that unit, whose package_qty is ≥
+ *      the dispense quantity → that package, count 1;
+ *   2. otherwise the package needing the fewest whole units to reach it,
+ *      ties broken by lower total wholesale, then the smaller package;
+ *      count = ceil(dispense / package_qty), at most MAX_PACKAGE_COUNT;
+ *   3. no duration, or a dose that can't be counted (PRN, unmatched
+ *      units) → the pharmacy's default package, count 1.
  */
 export function suggestPackage(
   packages: ReadonlyArray<PackageOption>,
   input: Omit<DispenseInput, 'quantityLabel'>,
 ): PackageSuggestion | null {
   if (packages.length === 0) return null
-  const fallback = packages.find(p => p.isDefault) ?? packages[0]!
+  const fallbackPackage = packages.find(p => p.isDefault) ?? packages[0]!
+  const fallback: PackageSuggestion = { package: fallbackPackage, count: 1, reason: 'default', daysSupply: null, dispenseQuantity: null }
 
   const duration = typeof input.durationDays === 'number' && input.durationDays > 0 ? input.durationDays : null
-  if (duration == null || dosesInDays(duration, input.frequencyCode) == null) {
-    return { package: fallback, reason: 'default', daysSupply: null }
-  }
+  if (duration == null || dosesInDays(duration, input.frequencyCode) == null) return fallback
   // Only a dose computeDispense can count (it otherwise falls back to
   // "one package", which says nothing about size).
   const unit = dispenseUnitFor(input.dosageFormName, input.doseUnit)
   const perDose = perDoseInDispenseUnit({ ...input, quantityLabel: null }, { value: 1, unit, isContainer: false })
-  if (perDose == null || perDose <= 0) return { package: fallback, reason: 'default', daysSupply: null }
+  if (perDose == null || perDose <= 0) return fallback
   const dispense = computeDispense({ ...input, quantityLabel: null })
-  if (!dispense) return { package: fallback, reason: 'default', daysSupply: null }
+  if (!dispense) return fallback
 
   // Compare in the dispense unit: "1 mL" packages against mL, "30 count"
   // capsule packages against capsules (parseQuantityLabel infers the unit
@@ -551,12 +607,27 @@ export function suggestPackage(
   const sameUnit = packages
     .filter(p => parseQuantityLabel(`${p.qty} ${p.unit}`, input.dosageFormName)?.unit === dispense.dispenseUnit)
     .sort((a, b) => a.qty - b.qty)
-  if (sameUnit.length === 0) return { package: fallback, reason: 'default', daysSupply: null }
+  if (sameUnit.length === 0) return fallback
 
-  const covering = sameUnit.find(p => p.qty + 1e-9 >= dispense.dispenseQuantity)
-  return covering
-    ? { package: covering, reason: 'covers', daysSupply: dispense.daysSupply }
-    : { package: sameUnit[sameUnit.length - 1]!, reason: 'largest', daysSupply: dispense.daysSupply }
+  const need = dispense.dispenseQuantity
+  const base = { daysSupply: dispense.daysSupply, dispenseQuantity: need }
+
+  const covering = sameUnit.find(p => p.qty + 1e-9 >= need)
+  if (covering) return { ...base, package: covering, count: 1, reason: 'covers' }
+
+  // No single package holds it: fewest whole units, then cheapest total,
+  // then the smaller package.
+  const ranked = sameUnit
+    .map(p => {
+      const units = Math.max(1, Math.ceil(need / p.qty - 1e-9))
+      return { p, units, totalCents: Math.round(p.wholesalePrice * 100) * units }
+    })
+    .sort((a, b) => a.units - b.units || a.totalCents - b.totalCents || a.p.qty - b.p.qty)
+  const best = ranked[0]!
+  if (best.units > MAX_PACKAGE_COUNT) {
+    return { ...base, package: best.p, count: MAX_PACKAGE_COUNT, reason: 'capped' }
+  }
+  return { ...base, package: best.p, count: best.units, reason: 'multiple' }
 }
 
 // ── API body validation + column mapping ────────────────────

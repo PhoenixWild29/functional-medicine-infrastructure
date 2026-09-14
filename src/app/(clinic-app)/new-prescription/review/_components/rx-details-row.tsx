@@ -20,7 +20,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react'
 import {
-  formatDispense,
+  formatDispenseWithPackage,
   MAX_REFILLS,
   rxDetailsNeedConfirmation,
   SHIPPING_TYPES,
@@ -42,13 +42,16 @@ interface Props {
   missing:   MissingRxDetail[]
   disabled:  boolean
   onChange:  (patch: Partial<RxDetails>) => void
+  /** WO-101a: the package the line is filled from and how many — shown with the dispense total. */
+  packageLabel?: string | null
+  packageCount?: number | null
 }
 
 const OTHER = '__other__'
 
-function summaryLine(d: RxDetails, rules: RxRules): string {
+function summaryLine(d: RxDetails, rules: RxRules, packageLabel: string | null | undefined, packageCount: number | null | undefined): string {
   const parts: string[] = []
-  const dispense = formatDispense(d.dispenseQuantity, d.dispenseUnit)
+  const dispense = formatDispenseWithPackage(d.dispenseQuantity, d.dispenseUnit, packageLabel, packageCount)
   if (d.daysSupply != null) parts.push(`${d.daysSupply}-day supply`)
   if (dispense) parts.push(`dispense ${dispense}`)
   parts.push(`${d.refills} refill${d.refills === 1 ? '' : 's'}`)
@@ -60,7 +63,7 @@ function summaryLine(d: RxDetails, rules: RxRules): string {
   return parts.join(' · ')
 }
 
-export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChange }: Props) {
+export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChange, packageLabel = null, packageCount = null }: Props) {
   // Auto-expand only when a rule requires confirmation.
   const [open, setOpen] = useState<boolean>(() => rxDetailsNeedConfirmation(rules))
   const diagnosisRef = useRef<HTMLInputElement>(null)
@@ -117,7 +120,7 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
       >
         <span>
           <span className="text-xs font-semibold text-foreground">Rx details</span>
-          <span className="ml-2 text-[11px] text-muted-foreground">{summaryLine(details, rules)}</span>
+          <span className="ml-2 text-[11px] text-muted-foreground">{summaryLine(details, rules, packageLabel, packageCount)}</span>
         </span>
         <span className="shrink-0 text-xs text-muted-foreground" aria-hidden="true">{open ? '▾' : '▸'}</span>
       </button>
@@ -135,7 +138,7 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
           {/* Derived (read-only here; overridden on the margin page) */}
           <div className="grid grid-cols-2 gap-x-4 text-[11px] text-muted-foreground">
             <span>Days supply: <strong className="text-foreground">{details.daysSupply != null ? `${details.daysSupply} days` : '—'}</strong></span>
-            <span>Dispense: <strong className="text-foreground">{formatDispense(details.dispenseQuantity, details.dispenseUnit) ?? '—'}</strong></span>
+            <span>Dispense: <strong className="text-foreground" data-testid={`rx-dispense-${lineId}`}>{formatDispenseWithPackage(details.dispenseQuantity, details.dispenseUnit, packageLabel, packageCount) ?? '—'}</strong></span>
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

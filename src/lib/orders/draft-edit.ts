@@ -43,6 +43,7 @@ const DIFF_COLUMNS = [
   // WO-101
   'package_id',
   'package_label',
+  'package_count',
   ...RX_DETAIL_COLUMN_LIST.split(',').map(s => s.trim()),
 ] as const
 

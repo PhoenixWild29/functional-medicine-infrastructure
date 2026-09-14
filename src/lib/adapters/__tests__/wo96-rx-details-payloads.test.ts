@@ -84,6 +84,9 @@ describe('rxDetailPayloadFields — orders row → canonical payload', () => {
       diagnosisCode: 'E29.1',
       diagnosisText: 'Testicular hypofunction',
       specialInstructions: 'Call first',
+      // WO-101a: no package columns on this row
+      packageLabel: null,
+      packageCount: 1,
     })
   })
 
@@ -100,6 +103,8 @@ describe('rxDetailPayloadFields — orders row → canonical payload', () => {
       diagnosisCode: null,
       diagnosisText: null,
       specialInstructions: null,
+      packageLabel: null,
+      packageCount: 1,
     })
   })
 })
@@ -136,6 +141,9 @@ describe('transformers carry the WO-96 fields', () => {
       diagnosisCode:       'E66.9',
       diagnosisText:       'Obesity, unspecified',
       specialInstructions: 'Ship with ice packs',
+      // WO-101a: no package on this payload
+      packageLabel:        '',
+      packageCount:        1,
     })
   })
 

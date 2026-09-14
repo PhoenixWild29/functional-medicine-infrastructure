@@ -1558,7 +1558,7 @@ test.describe('Clinic App — WO-101: vial size is suggested from the Rx and pri
     await cleanupTestOrders()
   })
 
-  async function buildGlp1(page: Page, units: string) {
+  async function buildGlp1(page: Page, units: string, durationDays = '30') {
     await loginAs(page, TEST_USERS.provider)
     await page.goto('/new-prescription')
     await page.getByLabel('Search patients').fill('Test')
@@ -1574,14 +1574,14 @@ test.describe('Clinic App — WO-101: vial size is suggested from the Rx and pri
     await page.getByLabel('Dose unit').selectOption('units')
     await page.getByLabel('Frequency').selectOption('QW')
     await page.getByLabel('Timing').selectOption('MORNING')
-    await page.getByLabel('Duration').selectOption('30')
+    await page.getByLabel('Duration').selectOption(durationDays)
   }
 
   async function latestDraft() {
     const supabase = createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
     const { data } = await supabase
       .from('orders')
-      .select('package_id, package_label, wholesale_price_snapshot, retail_price_snapshot, medication_snapshot, days_supply, dispense_quantity')
+      .select('package_id, package_label, package_count, wholesale_price_snapshot, retail_price_snapshot, medication_snapshot, days_supply, dispense_quantity')
       .eq('clinic_id', TEST_IDS.clinic)
       .eq('pharmacy_id', TEST_IDS.pharmacyTier2)
       .eq('formulation_id', TEST_IDS.glp1Formulation)
@@ -1619,7 +1619,9 @@ test.describe('Clinic App — WO-101: vial size is suggested from the Rx and pri
     const summary = page.getByText('Margin Summary').locator('..')
 
     // a) the provider selects the vial size; b) cost changes with it.
-    await page.getByLabel('Package').selectOption({ label: '5 mL vial — $285.00' })
+    // exact: WO-101a added "Number of packages" beside this dropdown, and
+    // getByLabel matches substrings by default.
+    await page.getByLabel('Package', { exact: true }).selectOption({ label: '5 mL vial — $285.00' })
     await expect(page.getByTestId('package-summary')).toHaveText('Package: 5 mL vial (changed by provider) · $285.00')
     const retailAt285 = Math.round(retailAt95 * 285 / 95 * 100) / 100
     await expect(retail).toHaveValue(retailAt285.toFixed(2))
@@ -1668,6 +1670,39 @@ test.describe('Clinic App — WO-101: vial size is suggested from the Rx and pri
     }))
   })
 
+  // WO-101a: no single vial holds the Rx → how many of which vial.
+  test('80 units weekly for 90 days → 2 × 5 mL vials at $570.00, and the draft stores package_count 2', async ({ page }) => {
+    await buildGlp1(page, '80', '90')
+
+    const tier2 = page.getByRole('button', { name: /Test Pharmacy Tier2/ })
+    await expect(tier2.getByTestId('pharmacy-suggested-package')).toHaveText('2 × 5 mL vials')
+    await expect(tier2).toContainText('$570.00')
+    await tier2.click()
+    await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
+
+    // 12 weekly doses × 0.8 mL = 9.6 mL; the 5 mL vial needs the fewest units.
+    await expect(page.getByTestId('dispense-value')).toHaveText('9.6 mL')
+    await expect(page.getByTestId('package-summary')).toHaveText('Package: 2 × 5 mL vials (suggested for 90 days) · $570.00')
+    await expect(page.getByLabel('Number of packages')).toHaveValue('2')
+    await expect(page.getByTestId('package-price')).toHaveText('$570.00')
+    const retail = Number(await page.locator('#retail-price').inputValue())
+    expect(retail).toBeGreaterThanOrEqual(570)
+
+    await page.getByRole('button', { name: /Save as Draft/ }).click()
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    await expect.poll(latestDraft, { timeout: 15_000 }).toEqual(expect.objectContaining({
+      package_id:               packageId(TEST_IDS.glp1PackagedPharmacyFormulation, '5 mL vial'),
+      package_label:            '5 mL vial',
+      package_count:            2,
+      wholesale_price_snapshot: 570,
+      retail_price_snapshot:    retail,
+      days_supply:              90,
+      dispense_quantity:        9.6,
+      medication_snapshot:      expect.objectContaining({ wholesale_price: 570, package_count: 2 }),
+    }))
+  })
+
   test('a pharmacy with a single package shows no package control', async ({ page }) => {
     await buildGlp1(page, '40')
     const tier1 = page.getByRole('button', { name: /Test Pharmacy Tier1/ })
@@ -1678,6 +1713,7 @@ test.describe('Clinic App — WO-101: vial size is suggested from the Rx and pri
     await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
     await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
     await expect(page.getByTestId('package-control')).toHaveCount(0)
-    await expect(page.getByLabel('Package')).toHaveCount(0)
+    await expect(page.getByLabel('Package', { exact: true })).toHaveCount(0)
+    await expect(page.getByLabel('Number of packages')).toHaveCount(0)
   })
 })

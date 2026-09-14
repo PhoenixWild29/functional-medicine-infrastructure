@@ -17,6 +17,7 @@
 // the prescription document itself — Documo is BAA-covered.
 
 import { allergiesForPayload } from '@/lib/patients/allergies'
+import { formatDispenseWithPackage } from '@/lib/orders/rx-details'
 
 // ============================================================
 // TYPES
@@ -61,6 +62,10 @@ export interface PrescriptionPdfData {
   diagnosisCode?: string | null
   diagnosisText?: string | null
   specialInstructions?: string | null
+  // WO-101a: package filled from and how many — printed with the dispense
+  // total ("Dispense: 9.6 mL (2 × 5 mL vials)").
+  packageLabel?: string | null
+  packageCount?: number | null
   // Order metadata
   orderNumber: string | null
   orderDate: string            // ISO date string
@@ -81,14 +86,6 @@ const SYRINGE_LABEL: Record<string, string> = {
 const SHIPPING_LABEL: Record<string, string> = {
   standard:   'Standard',
   cold_chain: 'Cold chain (refrigerated)',
-}
-
-function dispenseLine(qty: number | null | undefined, unit: string | null | undefined): string | null {
-  if (qty == null) return null
-  const q = Number.isInteger(qty) ? String(qty) : String(Math.round(qty * 100) / 100)
-  if (!unit) return q
-  const plural = qty !== 1 && /^(capsule|tablet|troche|vial|bottle|tube|pen|kit|unit)$/.test(unit)
-  return `${q} ${unit}${plural ? 's' : ''}`
 }
 
 // ============================================================
@@ -180,7 +177,9 @@ function buildContentStream(d: PrescriptionPdfData): string {
   }
 
   // ── WO-96 Rx details ──────────────────────────────────────
-  const dispense = dispenseLine(d.dispenseQuantity, d.dispenseUnit)
+  // WO-101a: the total, plus the packages it is filled from. esc() is
+  // ASCII-only, so the multiplication sign prints as "x".
+  const dispense = formatDispenseWithPackage(d.dispenseQuantity, d.dispenseUnit, d.packageLabel, d.packageCount)?.replace(/×/g, 'x') ?? null
   const daysSupply = d.daysSupply != null ? `${d.daysSupply} days` : null
   if (dispense || daysSupply) {
     lines.push(v(`Dispense: ${dispense ?? '-'}    Days supply: ${daysSupply ?? '-'}`))

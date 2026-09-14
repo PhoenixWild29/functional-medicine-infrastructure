@@ -78,6 +78,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     quantityLabel?: string | null
     // WO-101: pharmacy_formulation_packages.id — priced server-side.
     packageId?:     string | null
+    // WO-101a: how many of the package — priced server-side.
+    packageCount?:  number | null
     // WO-98: set when "+ Add prescription" appends a line to an existing
     // draft; recorded on the audit row only.
     appendedToOrderId?: string | null
@@ -89,7 +91,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { patientId, providerId, catalogItemId, formulationId, pharmacyId, retailCents, sigText, patientState, protocolId, rxDetails, dose, frequencyCode, quantityLabel, packageId, appendedToOrderId } = body
+  const { patientId, providerId, catalogItemId, formulationId, pharmacyId, retailCents, sigText, patientState, protocolId, rxDetails, dose, frequencyCode, quantityLabel, packageId, packageCount, appendedToOrderId } = body
 
   if (!patientId || !providerId || !pharmacyId || !sigText || !patientState) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -157,7 +159,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // re-validates a changed line exactly like creating one.
   const line = await resolveLine(supabase, {
     catalogItemId, formulationId, pharmacyId, patientState,
-    prescribedDose: dose, frequencyCode, quantityLabel, packageId,
+    prescribedDose: dose, frequencyCode, quantityLabel, packageId, packageCount,
   })
   if (!line.ok) {
     return NextResponse.json({ error: line.error }, { status: line.status })

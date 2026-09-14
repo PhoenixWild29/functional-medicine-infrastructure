@@ -94,6 +94,9 @@ export interface SessionPrescription {
   // legacy catalog. OPTIONAL ON PURPOSE.
   packageId?:      string | null
   packageLabel?:   string | null
+  // WO-101a: how many of that package (sent to POST /api/orders, which
+  // prices package × count). Unset → 1. OPTIONAL ON PURPOSE.
+  packageCount?:   number | null
   // WO-103: formulation concentration so the Review card can show the
   // computed mg equivalent next to the dose ("10 units (0.5 mg)").
   // Display only — never sent to the API. OPTIONAL ON PURPOSE.

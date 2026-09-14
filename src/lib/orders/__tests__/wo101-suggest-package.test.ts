@@ -30,7 +30,7 @@ describe('suggestPackage', () => {
   it('10 units weekly for 30 days → 0.4 mL → the 1 mL vial ($95)', () => {
     expect(computeDispense({ ...rx(10, 'QW', 30), quantityLabel: null })).toEqual({ daysSupply: 30, dispenseQuantity: 0.4, dispenseUnit: 'mL' })
     expect(suggestPackage(VIALS, rx(10, 'QW', 30))).toEqual({
-      package: VIALS[1], reason: 'covers', daysSupply: 30,
+      package: VIALS[1], count: 1, reason: 'covers', daysSupply: 30, dispenseQuantity: 0.4,
     })
   })
 
@@ -50,13 +50,16 @@ describe('suggestPackage', () => {
     expect(suggestPackage(VIALS, rx(25, 'QW', 28))?.package.label).toBe('1 mL vial')
   })
 
-  it('more than the largest vial → the largest, flagged', () => {
-    expect(suggestPackage(VIALS, rx(40, 'QD', 30))).toEqual({ package: VIALS[0], reason: 'largest', daysSupply: 30 })
+  // WO-101a replaced the 'largest' reason: no path prices one vial that
+  // does not cover the Rx. See wo101a-package-count.test.ts.
+  it('more than the largest vial → how many of the best vial (WO-101a)', () => {
+    // 40 units daily × 30 days = 12 mL → 3 × 5 mL
+    expect(suggestPackage(VIALS, rx(40, 'QD', 30))).toEqual({ package: VIALS[0], count: 3, reason: 'multiple', daysSupply: 30, dispenseQuantity: 12 })
   })
 
   it('no duration, or PRN → the pharmacy\'s default package', () => {
-    expect(suggestPackage(VIALS, rx(40, 'QW', null))).toEqual({ package: VIALS[1], reason: 'default', daysSupply: null })
-    expect(suggestPackage(VIALS, rx(40, 'PRN', 30))).toEqual({ package: VIALS[1], reason: 'default', daysSupply: null })
+    expect(suggestPackage(VIALS, rx(40, 'QW', null))).toEqual({ package: VIALS[1], count: 1, reason: 'default', daysSupply: null, dispenseQuantity: null })
+    expect(suggestPackage(VIALS, rx(40, 'PRN', 30))).toEqual({ package: VIALS[1], count: 1, reason: 'default', daysSupply: null, dispenseQuantity: null })
   })
 
   it('dose that cannot be put in the package unit → default package', () => {

@@ -27,6 +27,12 @@
 // sits under the formulation line with its price and a dropdown. The
 // package drives wholesale, and with it retail, platform fee, clinic
 // margin and the quantity the order stores. One package → no control.
+//
+// WO-101a: when no single vial holds the Rx, the suggestion is a count of
+// one package — "Package: 2 × 5 mL vials (suggested for 90 days) ·
+// $570.00" — and a number control beside the dropdown changes the count.
+// Wholesale is package price × count. The control stays hidden only when
+// the pharmacy has one package and one of it covers the Rx.
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
@@ -39,6 +45,9 @@ import {
   dosesInDays,
   durationDaysFromSig,
   suggestPackage,
+  packageCountFor,
+  formatPackageCount,
+  MAX_PACKAGE_COUNT,
   type PackageOption,
   defaultRxDetails,
   missingRxDetails,
@@ -126,15 +135,21 @@ interface Props {
   presetDurationDays?: number | null | undefined
   /** WO-101: package the draft line being edited was priced from. */
   existingPackageId?:  string | null
+  /** WO-101a: how many of that package the draft line carries. */
+  existingPackageCount?: number | null
 }
 
 // splitDose moved to @/lib/orders/dose (WO-98; WO-103 uses the same helper) — re-exported for existing imports.
 export { splitDose }
 
-// WO-101: why this package is the suggestion.
+// WO-101 / WO-101a: why this package (and count) is the suggestion.
 function packageSuggestionText(s: NonNullable<ReturnType<typeof suggestPackage>>): string {
-  if (s.reason === 'covers') return s.daysSupply != null ? `suggested for ${s.daysSupply} days` : 'suggested'
-  if (s.reason === 'largest') return s.daysSupply != null ? `largest available — does not cover ${s.daysSupply} days` : 'largest available'
+  if (s.reason === 'covers' || s.reason === 'multiple') return s.daysSupply != null ? `suggested for ${s.daysSupply} days` : 'suggested'
+  if (s.reason === 'capped') {
+    return s.daysSupply != null
+      ? `${MAX_PACKAGE_COUNT} is the most per prescription — does not cover ${s.daysSupply} days`
+      : `${MAX_PACKAGE_COUNT} is the most per prescription`
+  }
   return 'default package — no duration selected'
 }
 
@@ -171,6 +186,7 @@ export function MarginBuilderForm({
   packages = [],
   presetDurationDays,
   existingPackageId = null,
+  existingPackageCount = null,
 }: Props) {
   const router = useRouter()
   const rxSession = usePrescriptionSession()
@@ -213,8 +229,8 @@ export function MarginBuilderForm({
   // ── WO-101: package (vial size) ───────────────────────────────
   const doseForPackages = splitDose(dose)
   const suggestion = useMemo(() => {
-    if (packages.length < 2 || !formulationDetails) return null
-    return suggestPackage(packages, {
+    if (packages.length === 0 || !formulationDetails) return null
+    const s = suggestPackage(packages, {
       doseAmount:         doseForPackages.amount,
       doseUnit:           doseForPackages.unit,
       frequencyCode:      presetFrequency ?? null,
@@ -223,6 +239,9 @@ export function MarginBuilderForm({
       dosageFormName:     formulationDetails.dosageFormName,
       durationDays,
     })
+    // One package, and one of it covers the Rx: nothing to choose.
+    if (!s || (packages.length < 2 && s.count <= 1)) return null
+    return s
   }, [packages, formulationDetails, doseForPackages.amount, doseForPackages.unit, presetFrequency, durationDays])
   // The line being edited keeps its package when it is still offered.
   const carriedPackageId = editTarget?.kind === 'draft'
@@ -232,7 +251,19 @@ export function MarginBuilderForm({
   const selectedPackage: PackageOption | null = suggestion
     ? packages.find(p => p.id === (pickedPackageId ?? carriedPackageId)) ?? suggestion.package
     : null
-  const packageIsSuggested = !!suggestion && selectedPackage?.id === suggestion.package.id
+  // WO-101a: how many. A picked count wins; a line being edited keeps its
+  // own count for its own package; otherwise the whole packages of the
+  // selected package that hold the dispense quantity.
+  const carriedPackageCount = editTarget?.kind === 'draft'
+    ? existingPackageCount
+    : sessionLine?.packageCount ?? null
+  const [pickedCount, setPickedCount] = useState<number | null>(null)
+  const usingCarriedPackage = !!selectedPackage && pickedPackageId == null && selectedPackage.id === carriedPackageId
+  const packageCount = !selectedPackage || !suggestion
+    ? 1
+    : pickedCount
+      ?? (usingCarriedPackage && carriedPackageCount ? carriedPackageCount : packageCountFor(selectedPackage, suggestion.dispenseQuantity))
+  const packageIsSuggested = !!suggestion && selectedPackage?.id === suggestion.package.id && packageCount === suggestion.count
 
   const effectiveQuantity = useMemo(() => {
     if (selectedPackage) return selectedPackage.label
@@ -313,10 +344,10 @@ export function MarginBuilderForm({
   const missingForDraft = missingRxDetails(rxDetails, rxRules)
 
   // WO-101: the selected package's price, else the pharmacy formulation's
-  // (= its default package's).
+  // (= its default package's). WO-101a: × the package count.
   const wholesaleCents = useMemo(
-    () => toCents(selectedPackage ? selectedPackage.wholesalePrice : wholesalePrice),
-    [selectedPackage, wholesalePrice],
+    () => selectedPackage ? toCents(selectedPackage.wholesalePrice) * packageCount : toCents(wholesalePrice),
+    [selectedPackage, packageCount, wholesalePrice],
   )
 
   // WO-103: dose with its computed mg equivalent, when the formulation
@@ -382,17 +413,33 @@ export function MarginBuilderForm({
   // Wholesale follows the package; retail keeps the markup the provider
   // had (retail ÷ wholesale), so platform fee and clinic margin recompute
   // with it.
-  function changePackage(nextId: string) {
-    const next = packages.find(p => p.id === nextId)
-    if (!next) return
-    const nextWholesaleCents = toCents(next.wholesalePrice)
+  function repriceRetail(nextWholesaleCents: number) {
     if (wholesaleCents > 0 && retailCents > 0) {
       setRetailInput(toCurrency(Math.round(retailCents * nextWholesaleCents / wholesaleCents)))
     } else {
       setRetailInput(toCurrency(defaultRetailCents(nextWholesaleCents, defaultMarkupPct)))
     }
     setHighMarkupAcknowledged(false)
+  }
+
+  // WO-101a: a new package gets the count that package needs.
+  function changePackage(nextId: string) {
+    const next = packages.find(p => p.id === nextId)
+    if (!next) return
+    const nextCount = packageCountFor(next, suggestion?.dispenseQuantity ?? null)
+    repriceRetail(toCents(next.wholesalePrice) * nextCount)
     setPickedPackageId(next.id)
+    setPickedCount(null)
+  }
+
+  function changePackageCount(raw: string) {
+    if (!selectedPackage) return
+    const n = parseInt(raw, 10)
+    if (!Number.isFinite(n)) return
+    const nextCount = Math.min(MAX_PACKAGE_COUNT, Math.max(1, n))
+    repriceRetail(toCents(selectedPackage.wholesalePrice) * nextCount)
+    setPickedPackageId(selectedPackage.id)
+    setPickedCount(nextCount)
   }
 
   // ── Multiplier handler ────────────────────────────────────────
@@ -429,6 +476,8 @@ export function MarginBuilderForm({
       // WO-101
       packageId:    selectedPackage?.id ?? null,
       packageLabel: selectedPackage?.label ?? null,
+      // WO-101a
+      packageCount: selectedPackage ? packageCount : null,
     }
   }
 
@@ -456,6 +505,7 @@ export function MarginBuilderForm({
       frequencyCode: presetFrequency ?? null,
       quantityLabel: effectiveQuantity || null,
       packageId:     selectedPackage?.id ?? null,
+      packageCount:  selectedPackage ? packageCount : null,
     }
   }
 
@@ -555,6 +605,8 @@ export function MarginBuilderForm({
           quantityLabel: effectiveQuantity || null,
           // WO-101: priced server-side from the package.
           packageId:     selectedPackage?.id ?? null,
+          // WO-101a: priced server-side as package × count.
+          packageCount:  selectedPackage ? packageCount : null,
         }),
       })
 
@@ -588,11 +640,12 @@ export function MarginBuilderForm({
             <p className="font-semibold text-foreground">{medicationName}</p>
             <p className="text-sm text-muted-foreground">{form} · <span data-testid="dose-display">{doseDisplay}</span></p>
             <p className="text-xs text-muted-foreground mt-0.5">via {pharmacyName}</p>
-            {/* WO-101: package (vial size) — only when there is a choice */}
+            {/* WO-101: package (vial size) — only when there is a choice.
+                WO-101a: or when one package takes more than one of it. */}
             {suggestion && selectedPackage && (
               <div className="mt-2 space-y-1" data-testid="package-control">
                 <p className="text-sm text-foreground" data-testid="package-summary">
-                  Package: <span className="font-medium">{selectedPackage.label}</span>
+                  Package: <span className="font-medium">{formatPackageCount(selectedPackage.label, packageCount)}</span>
                   {' '}
                   <span className="text-muted-foreground">
                     {packageIsSuggested
@@ -600,20 +653,34 @@ export function MarginBuilderForm({
                       : '(changed by provider)'}
                   </span>
                   {' · '}
-                  <span className="font-medium" data-testid="package-price">${toCurrency(toCents(selectedPackage.wholesalePrice))}</span>
+                  <span className="font-medium" data-testid="package-price">${toCurrency(wholesaleCents)}</span>
                 </p>
-                <select
-                  aria-label="Package"
-                  value={selectedPackage.id}
-                  onChange={e => changePackage(e.target.value)}
-                  className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  {packages.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.label} — ${toCurrency(toCents(p.wholesalePrice))}{p.id === suggestion.package.id ? ' (suggested)' : ''}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    aria-label="Number of packages"
+                    min={1}
+                    max={MAX_PACKAGE_COUNT}
+                    step={1}
+                    value={packageCount}
+                    onChange={e => changePackageCount(e.target.value)}
+                    onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
+                    className="w-16 rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                  <span className="text-sm text-muted-foreground" aria-hidden="true">×</span>
+                  <select
+                    aria-label="Package"
+                    value={selectedPackage.id}
+                    onChange={e => changePackage(e.target.value)}
+                    className="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {packages.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.label} — ${toCurrency(toCents(p.wholesalePrice))}{p.id === suggestion.package.id ? ' (suggested)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             )}
             {/* WO-103: ☆ Save as favorite — name defaults to "<Drug> <dose> <freq>" */}

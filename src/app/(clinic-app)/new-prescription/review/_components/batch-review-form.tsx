@@ -140,6 +140,8 @@ export function orderPostBody(
     ...structuredLineInputs(rx),
     // WO-101: the package the line is priced from (server re-prices).
     packageId:     rx.packageId ?? null,
+    // WO-101a: how many of it (server prices package × count).
+    packageCount:  rx.packageId ? (rx.packageCount ?? 1) : null,
   }
 }
 
@@ -563,6 +565,8 @@ export function BatchReviewForm({ isProvider }: Props) {
                 onChange={patch => session.updatePrescription(rx.id, {
                   rxDetails: { ...effectiveDetails(rx), ...patch },
                 })}
+                packageLabel={rx.packageLabel ?? null}
+                packageCount={rx.packageCount ?? null}
               />
               <div className="mt-2 flex items-center justify-between gap-2">
                 {/* WO-103: ☆ Save as favorite — V3.0 formulation lines only */}

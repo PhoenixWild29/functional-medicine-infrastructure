@@ -68,6 +68,13 @@ export interface OrderPayload {
   diagnosisCode:        string | null
   diagnosisText:        string | null
   specialInstructions:  string | null
+  // WO-101a: the package the pharmacy fills from, and how many. null /
+  // 1 for orders written without a package. dispenseQuantity stays the
+  // total the Rx needs ("9.6 mL"); the package says what it comes in
+  // ("2 × 5 mL vials").
+  // Optional so payloads built before WO-101a keep compiling.
+  packageLabel?:        string | null
+  packageCount?:        number
   // Clinic
   clinicName:           string
 }
@@ -89,9 +96,12 @@ export function rxDetailPayloadFields(order: {
   diagnosis_code?:       string | null
   diagnosis_text?:       string | null
   special_instructions?: string | null
+  package_label?:        string | null
+  package_count?:        number | null
 }): Pick<OrderPayload,
   'daysSupply' | 'dispenseQuantity' | 'dispenseUnit' | 'refills' | 'substitutionAllowed' |
-  'syringeOption' | 'shippingType' | 'clinicalDifference' | 'diagnosisCode' | 'diagnosisText' | 'specialInstructions'
+  'syringeOption' | 'shippingType' | 'clinicalDifference' | 'diagnosisCode' | 'diagnosisText' | 'specialInstructions' |
+  'packageLabel' | 'packageCount'
 > {
   const dq = order.dispense_quantity
   const dispenseQuantity = typeof dq === 'string' ? Number(dq) : dq ?? null
@@ -107,6 +117,9 @@ export function rxDetailPayloadFields(order: {
     diagnosisCode:       order.diagnosis_code ?? null,
     diagnosisText:       order.diagnosis_text ?? null,
     specialInstructions: order.special_instructions ?? null,
+    // WO-101a
+    packageLabel:        order.package_label ?? null,
+    packageCount:        typeof order.package_count === 'number' && order.package_count > 0 ? order.package_count : 1,
   }
 }
 
@@ -185,6 +198,9 @@ function transformViosPayload(p: OrderPayload): PharmacyPayload {
       diagnosis_code:       p.diagnosisCode,
       diagnosis_text:       p.diagnosisText,
       special_instructions: p.specialInstructions,
+      // WO-101a
+      package_label:        p.packageLabel ?? null,
+      package_count:        p.packageCount ?? 1,
     },
     clinic_name: p.clinicName,
   }
@@ -243,6 +259,9 @@ function transformLifeFilePayload(p: OrderPayload): PharmacyPayload {
         diagnosisCode:       p.diagnosisCode ?? '',
         diagnosisText:       p.diagnosisText ?? '',
         specialInstructions: p.specialInstructions ?? '',
+        // WO-101a
+        packageLabel:        p.packageLabel ?? '',
+        packageCount:        p.packageCount ?? 1,
       },
       clinic: p.clinicName,
     },
@@ -297,6 +316,9 @@ function transformMediVeraPayload(p: OrderPayload): PharmacyPayload {
       DiagnosisCode:       p.diagnosisCode ?? '',
       DiagnosisText:       p.diagnosisText ?? '',
       SpecialInstructions: p.specialInstructions ?? '',
+      // WO-101a
+      PackageLabel:        p.packageLabel ?? '',
+      PackageCount:        p.packageCount ?? 1,
     },
     ClinicName: p.clinicName,
   }

@@ -16,7 +16,7 @@
 // PATCH body — same line shape POST /api/orders takes, minus the
 // pinned patient/provider:
 //   { catalogItemId? | formulationId?, pharmacyId, retailCents, sigText,
-//     rxDetails?, dose?, frequencyCode?, quantityLabel?, packageId? }
+//     rxDetails?, dose?, frequencyCode?, quantityLabel?, packageId?, packageCount? }
 //
 // REQ-OAS-010: DELETE is a soft delete (is_active = false, deleted_at).
 
@@ -34,7 +34,7 @@ interface RouteContext {
 
 const DRAFT_SELECT = `order_id, status, clinic_id, patient_id, provider_id, formulation_id, catalog_item_id, pharmacy_id,
   retail_price_snapshot, wholesale_price_snapshot, medication_snapshot, pharmacy_snapshot, sig_text,
-  shipping_state_snapshot, package_id, package_label, ${RX_DETAIL_COLUMN_LIST}`
+  shipping_state_snapshot, package_id, package_label, package_count, ${RX_DETAIL_COLUMN_LIST}`
 
 interface Actor {
   userId:   string
@@ -133,6 +133,7 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     frequencyCode?: string | null
     quantityLabel?: string | null
     packageId?:     string | null
+    packageCount?:  number | null
   }
   try {
     body = await request.json()
@@ -140,7 +141,7 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { catalogItemId, formulationId, pharmacyId, retailCents, sigText, rxDetails, dose, frequencyCode, quantityLabel, packageId } = body
+  const { catalogItemId, formulationId, pharmacyId, retailCents, sigText, rxDetails, dose, frequencyCode, quantityLabel, packageId, packageCount } = body
 
   if (!pharmacyId || typeof sigText !== 'string') {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -172,7 +173,7 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
 
   const line = await resolveLine(supabase, {
     catalogItemId, formulationId, pharmacyId, patientState,
-    prescribedDose: dose, frequencyCode, quantityLabel, packageId,
+    prescribedDose: dose, frequencyCode, quantityLabel, packageId, packageCount,
   })
   if (!line.ok) {
     return NextResponse.json({ error: line.error }, { status: line.status })
