@@ -173,6 +173,9 @@ describe('transformLifeFilePayload — registry lookup + shape', () => {
           diagnosisCode:       '',
           diagnosisText:       '',
           specialInstructions: '',
+          // WO-101a: no package on this order
+          packageLabel:        '',
+          packageCount:        1,
         },
         clinic: 'Sunrise Functional Medicine',
       },
