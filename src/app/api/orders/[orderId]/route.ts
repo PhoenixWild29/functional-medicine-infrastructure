@@ -27,6 +27,7 @@ import { RX_DETAIL_COLUMN_LIST, rxDetailsToColumns, validateRxDetailsBody } from
 import { resolveLine, lineSourceKind } from '@/lib/orders/resolve-line'
 import { canEditDraft, diffDraftRows, writeDraftAudit } from '@/lib/orders/draft-edit'
 import { checkProviderOwnsDraft } from '@/lib/orders/provider-draft-guard'
+import { reallocateDraftSiblingShipping } from '@/lib/orders/apply-bundle-shipping'
 
 interface RouteContext {
   params: Promise<{ orderId: string }>
@@ -212,6 +213,11 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     return NextResponse.json({ error: 'Failed to update draft' }, { status: 500 })
   }
 
+  // WO-102: a changed pharmacy or shipping type moves shipping between
+  // this patient's draft lines — re-allocate once per pharmacy.
+  const owner = draft as unknown as { patient_id: string; provider_id: string }
+  await reallocateDraftSiblingShipping(supabase, actor.clinicId, owner.patient_id, owner.provider_id)
+
   await writeDraftAudit(supabase, orderId, {
     event: 'draft_edited',
     actor: { user_id: actor.userId, role: actor.role },
@@ -227,7 +233,7 @@ export async function DELETE(_request: NextRequest, context: RouteContext): Prom
 
   const loaded = await loadEditableDraft(orderId)
   if (!loaded.ok) return loaded.response
-  const { actor, supabase } = loaded
+  const { actor, draft, supabase } = loaded
 
   // REQ-OAS-010: soft delete only.
   const { error: deleteError } = await supabase
@@ -240,6 +246,10 @@ export async function DELETE(_request: NextRequest, context: RouteContext): Prom
     console.error('[orders/edit] draft soft-delete failed:', deleteError.message)
     return NextResponse.json({ error: 'Failed to remove draft' }, { status: 500 })
   }
+
+  // WO-102: the removed line may have carried its pharmacy's shipping.
+  const owner = draft as unknown as { patient_id: string; provider_id: string }
+  await reallocateDraftSiblingShipping(supabase, actor.clinicId, owner.patient_id, owner.provider_id)
 
   await writeDraftAudit(supabase, orderId, {
     event: 'draft_line_removed',

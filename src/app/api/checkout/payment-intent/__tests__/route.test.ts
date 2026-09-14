@@ -317,3 +317,46 @@ describe('POST /api/checkout/payment-intent — Phase C group carryover', () => 
     expect(body.code).toBe('ORDER_IN_PAYMENT_GROUP')
   })
 })
+
+// ── WO-102: amount = subtotal + shipping; platform fee never on shipping ──
+
+describe('POST /api/checkout/payment-intent — WO-102 shipping', () => {
+  beforeEach(() => {
+    stripeCreateMock.mockResolvedValue({ id: 'pi_new', client_secret: 'pi_new_secret_yyy' })
+  })
+
+  it('charges retail + the order\'s shipping; application fee adds shipping at cost, 15% on margin only', async () => {
+    orderFetchMock.mockResolvedValue({
+      data: { ...VALID_ORDER, stripe_payment_intent_id: null, retail_price_snapshot: 190, wholesale_price_snapshot: 95, shipping_fee: 25 },
+      error: null,
+    })
+    const res = await POST(makeRequest({ token: 'ok' }))
+    expect(res.status).toBe(200)
+    const createArgs = stripeCreateMock.mock.calls[0]![0] as Record<string, unknown>
+    expect(createArgs.amount).toBe(21500)
+    expect(createArgs.application_fee_amount).toBe(9500 + 1425 + 2500)
+  })
+
+  it('an order whose pharmacy shipping sits on a sibling order (shipping_fee 0) is charged retail only', async () => {
+    orderFetchMock.mockResolvedValue({
+      data: { ...VALID_ORDER, stripe_payment_intent_id: null, retail_price_snapshot: 130, wholesale_price_snapshot: 65, shipping_fee: 0 },
+      error: null,
+    })
+    await POST(makeRequest({ token: 'ok' }))
+    const createArgs = stripeCreateMock.mock.calls[0]![0] as Record<string, unknown>
+    expect(createArgs.amount).toBe(13000)
+    expect(createArgs.application_fee_amount).toBe(6500 + 975)
+  })
+
+  it('clinic absorbs shipping → patient charged retail; shipping still paid on out of the clinic share', async () => {
+    orderFetchMock.mockResolvedValue({
+      data: { ...VALID_ORDER, stripe_payment_intent_id: null, retail_price_snapshot: 190, wholesale_price_snapshot: 95, shipping_fee: 25 },
+      error: null,
+    })
+    clinicFetchMock.mockResolvedValue({ data: { ...VALID_CLINIC, absorb_shipping: true }, error: null })
+    await POST(makeRequest({ token: 'ok' }))
+    const createArgs = stripeCreateMock.mock.calls[0]![0] as Record<string, unknown>
+    expect(createArgs.amount).toBe(19000)
+    expect(createArgs.application_fee_amount).toBe(9500 + 1425 + 2500)
+  })
+})

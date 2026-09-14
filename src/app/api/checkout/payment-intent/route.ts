@@ -32,6 +32,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyCheckoutToken } from '@/lib/auth/checkout-token'
 import { createStripeClient } from '@/lib/stripe/client'
 import { createServiceClient } from '@/lib/supabase/service'
+import { stripeSplit } from '@/lib/orders/shipping'
 
 // PR #15: syntactic email validation for Stripe receipt_email.
 // Covers the "trivially malformed" case — does NOT verify deliverability
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Fetch order — must exist, belong to this clinic, and be awaiting payment
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('order_id, status, retail_price_snapshot, wholesale_price_snapshot, stripe_payment_intent_id, payment_group_id')
+    .select('order_id, status, retail_price_snapshot, wholesale_price_snapshot, shipping_fee, stripe_payment_intent_id, payment_group_id')
     .eq('order_id', orderId)
     .eq('clinic_id', clinicId)
     .is('deleted_at', null)
@@ -173,7 +174,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Fetch clinic's Stripe Connect account for split routing (REQ-PSR-002)
   const { data: clinic, error: clinicError } = await supabase
     .from('clinics')
-    .select('stripe_connect_account_id, stripe_connect_status')
+    .select('stripe_connect_account_id, stripe_connect_status, absorb_shipping')
     .eq('clinic_id', clinicId)
     .maybeSingle()
 
@@ -204,7 +205,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Example: retail=$100, wholesale=$60, margin=$40
   //   platformFee = $60 + $6 = $66 retained by platform
   //   clinic receives = $100 − $66 = $34 = 85% × $40 ✓
-  const platformFeeCents = wholesaleCents + Math.round(marginCents * 15 / 100)
+  //
+  // WO-102: shipping (orders.shipping_fee — once per pharmacy per bundle)
+  // is added to the charge unless the clinic absorbs it, and passes through
+  // the application fee at cost with the wholesale; the 15% never applies
+  // to it. See stripeSplit.
+  const shippingCents = Math.round((order.shipping_fee ?? 0) * 100)
+  const { amountCents, applicationFeeCents: platformFeeCents } = stripeSplit({
+    retailCents,
+    wholesaleCents,
+    shippingCents,
+    absorbShipping:   clinic.absorb_shipping === true,
+    platformFeeCents: Math.round(marginCents * 15 / 100),
+  })
 
   try {
     const stripe = createStripeClient()
@@ -223,7 +236,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const pi = await stripe.paymentIntents.create(
       {
-        amount:   retailCents,
+        amount:   amountCents,
         currency: 'usd',
         ...(isPocPlaceholder ? {} : {
           application_fee_amount: platformFeeCents,

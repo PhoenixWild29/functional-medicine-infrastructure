@@ -41,6 +41,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
   let body: {
     default_markup_pct?: number
     logo_url?: string | null
+    absorb_shipping?: boolean
   }
 
   try {
@@ -68,6 +69,14 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
       )
     }
     updates['default_markup_pct'] = pct
+  }
+
+  // WO-102: who pays shipping
+  if (body.absorb_shipping !== undefined) {
+    if (typeof body.absorb_shipping !== 'boolean') {
+      return NextResponse.json({ error: 'absorb_shipping must be a boolean' }, { status: 400 })
+    }
+    updates['absorb_shipping'] = body.absorb_shipping
   }
 
   // Validate and stage logo_url (null clears the logo)

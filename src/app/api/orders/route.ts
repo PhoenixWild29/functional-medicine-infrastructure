@@ -33,6 +33,7 @@ import { rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-detai
 import { lineSourceKind, resolveLine } from '@/lib/orders/resolve-line'
 import { writeDraftAudit } from '@/lib/orders/draft-edit'
 import { checkProviderOwnsDraft } from '@/lib/orders/provider-draft-guard'
+import { applyBundleShipping, reallocateDraftSiblingShipping } from '@/lib/orders/apply-bundle-shipping'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // Auth gate
@@ -330,6 +331,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       '[orders] primary_provider_id auto-default failed (non-fatal):',
       primaryProviderError.message,
     )
+  }
+
+  // WO-102: shipping on the new draft. Appended to a draft → re-allocate
+  // across that patient's draft lines (once per pharmacy); on its own → its
+  // pharmacy's fee. The Review page re-allocates a whole send afterwards
+  // (POST /api/orders/shipping). Non-fatal.
+  if (typeof appendedToOrderId === 'string' && appendedToOrderId) {
+    await reallocateDraftSiblingShipping(supabase, clinicId, patientId, providerId)
+  } else {
+    const shipping = await applyBundleShipping(supabase, clinicId, [order.order_id])
+    if (!shipping.ok) console.warn(`[orders] shipping allocation skipped (non-fatal): ${shipping.error}`)
   }
 
   console.info(`[orders] DRAFT created | order=${order.order_id} | clinic=${clinicId}`)
