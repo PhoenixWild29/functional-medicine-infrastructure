@@ -242,7 +242,7 @@ async function handleSoloPaymentSucceeded(
   // AC-SWH-003.1: Locate order by stripe_payment_intent_id
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('order_id, status, pharmacy_id, clinic_id')
+    .select('order_id, status, pharmacy_id')
     .eq('stripe_payment_intent_id', paymentIntent.id)
     .single()
 
@@ -268,10 +268,16 @@ async function handleSoloPaymentSucceeded(
     return
   }
 
-  // AC-SWH-003.4: Only proceed with transfer + tier branch if CAS succeeded
+  // AC-SWH-003.4: Only proceed with transfer bookkeeping + tier branch if CAS succeeded
 
-  // AC-SWH-004: Stripe Connect transfer
-  await initiateStripeTransfer(paymentIntent, order.order_id, order.clinic_id)
+  // AC-SWH-004: Money path. The solo PI is a Connect DESTINATION charge
+  // (see /api/checkout/payment-intent): transfer_data.destination routes
+  // the clinic's share to its Connect account at capture, and
+  // application_fee_amount is what the platform retains. Stripe creates
+  // that transfer itself, so the platform NEVER creates a second one here
+  // (a transfers.create against the same charge would double-pay the
+  // clinic, or be rejected by Stripe). We only record Stripe's transfer id.
+  await recordDestinationTransferId(paymentIntent, order.order_id)
 
   // AC-SWH-005: V2.0 tier-aware fulfillment branching
   await branchByTier(order.order_id, order.pharmacy_id!)
@@ -289,8 +295,8 @@ async function handleSoloPaymentSucceeded(
 // Stripe Connect transfers are NOT initiated per-order for groups: the
 // group PI was created with transfer_data.destination = clinic Connect
 // account, so the full bundled amount is transferred atomically at PI
-// confirmation by Stripe itself. (Solo flow calls
-// initiateStripeTransfer; the group case skips that step.) The
+// confirmation by Stripe itself. (The solo flow is also a destination
+// charge and likewise never creates its own transfer.) The
 // payment_groups row records the PI id; per-order
 // orders.stripe_payment_intent_id is intentionally NOT stamped to
 // avoid breaking the .single() lookup pattern in other handlers
@@ -310,73 +316,70 @@ async function handleGroupPaymentSucceeded(
 }
 
 // ------------------------------------------------------------
-// Stripe Connect Transfer (AC-SWH-004)
+// Destination-charge transfer bookkeeping (AC-SWH-004)
 // ------------------------------------------------------------
-async function initiateStripeTransfer(
+//
+// Funds are routed by the destination charge itself: Stripe transfers
+// (amount - application_fee_amount) to transfer_data.destination when
+// the charge captures, and the platform keeps application_fee_amount.
+// This function creates NO transfer; it only reads the transfer Stripe
+// already made (charge.transfer) and stores its id on
+// orders.stripe_transfer_id so ops can reconcile it and so a later
+// transfer.failed event (AC-SWH-007) points at a known transfer.
+//
+// No transfer on the charge is expected in POC mode (placeholder Connect
+// account, so the checkout route omitted Connect routing): leave the
+// column null and log at info. Lookup/update failures are non-fatal —
+// the payment already succeeded and fulfilment must proceed.
+async function recordDestinationTransferId(
   paymentIntent: Stripe.PaymentIntent,
-  orderId: string,
-  clinicId: string
+  orderId: string
 ): Promise<void> {
-  const supabase = createServiceClient()
-
-  const { data: clinic } = await supabase
-    .from('clinics')
-    .select('stripe_connect_account_id')
-    .eq('clinic_id', clinicId)
-    .single()
-
-  if (!clinic?.stripe_connect_account_id) {
-    console.warn(
-      `[stripe-webhook] no stripe_connect_account_id for clinic ${clinicId} — skipping transfer`
-    )
-    return
-  }
-
-  const latestCharge =
-    typeof paymentIntent.latest_charge === 'string'
-      ? paymentIntent.latest_charge
-      : paymentIntent.latest_charge?.id
-
+  const latestCharge = paymentIntent.latest_charge
   if (!latestCharge) {
-    console.warn(`[stripe-webhook] no latest_charge on payment_intent ${paymentIntent.id}`)
+    console.info(
+      `[stripe-webhook] no latest_charge on payment_intent ${paymentIntent.id} — stripe_transfer_id left null | order=${orderId}`
+    )
     return
   }
 
   try {
-    const stripe = createStripeClient()
-    const transfer = await stripe.transfers.create({
-      amount: paymentIntent.amount,
-      currency: paymentIntent.currency,
-      destination: clinic.stripe_connect_account_id,
-      source_transaction: latestCharge,
-      metadata: {
-        order_id: orderId,
-        platform: '8090ai',
-      },
-    })
+    const charge =
+      typeof latestCharge === 'string'
+        ? await createStripeClient().charges.retrieve(latestCharge)
+        : latestCharge
 
-    // AC-SWH-004.3: Store transfer.id on the order
-    await supabase
+    const transferId =
+      typeof charge.transfer === 'string' ? charge.transfer : charge.transfer?.id ?? null
+
+    if (!transferId) {
+      console.info(
+        `[stripe-webhook] charge ${charge.id} has no destination transfer (Connect routing omitted) — stripe_transfer_id left null | order=${orderId}`
+      )
+      return
+    }
+
+    const supabase = createServiceClient()
+    const { error } = await supabase
       .from('orders')
-      .update({ stripe_transfer_id: transfer.id })
+      .update({ stripe_transfer_id: transferId })
       .eq('order_id', orderId)
 
+    if (error) {
+      console.error(
+        `[stripe-webhook] failed to store stripe_transfer_id ${transferId} for order ${orderId}:`,
+        error.message
+      )
+      return
+    }
+
     console.info(
-      `[stripe-webhook] transfer ${transfer.id} created for order ${orderId}`
+      `[stripe-webhook] destination transfer ${transferId} recorded for order ${orderId}`
     )
   } catch (err) {
-    // AC-SWH-004.4: Transfer failure is non-fatal — log and continue fulfillment
-    // AC-SWH-004.5: Fire Slack alert on transfer failure
-    console.error(`[stripe-webhook] transfer failed for order ${orderId}:`, err)
-    await sendSlackAlert(
-      buildAdapterFailureAlert({
-        orderId,
-        pharmacySlug: 'stripe',
-        integrationTier: 'STRIPE_CONNECT',
-        errorCode: err instanceof Error ? err.message : 'transfer_error',
-      })
-    ).catch(alertErr =>
-      console.error('[stripe-webhook] failed to send transfer failure alert:', alertErr)
+    console.error(
+      `[stripe-webhook] failed to read destination transfer for order ${orderId} | pi=${paymentIntent.id}:`,
+      err
     )
   }
 }
