@@ -448,6 +448,45 @@ export function buildReFireAlert(params: SlaBreachTemplateParams): SlackAlertPay
 }
 
 // ============================================================
+// AUDIT ROW NOT WRITTEN — order_status_history insert failed
+// ============================================================
+// The status change is committed but has no audit row. The alert carries
+// what record_order_status_change() needs to rebuild it by hand. Fields:
+// order id, status enums, actor (a staff user id, ops email or system
+// name), source, time, and the database error. Never metadata.
+
+export function buildStatusHistoryWriteFailedAlert(params: {
+  orderId:   string
+  oldStatus: string
+  newStatus: string
+  actor:     string
+  source:    string
+  failedAt:  string
+  error:     string
+}): SlackAlertPayload {
+  return {
+    text: `Audit row not written — Order ${params.orderId} ${params.oldStatus} → ${params.newStatus} (actor ${params.actor})`,
+    blocks: [
+      {
+        type: 'header',
+        text: { type: 'plain_text', text: '🔴 Order status change has no audit row' },
+      },
+      {
+        type: 'section',
+        fields: [
+          { type: 'mrkdwn', text: `*Order ID:*\n${params.orderId}` },
+          { type: 'mrkdwn', text: `*Transition:*\n${params.oldStatus} → ${params.newStatus}` },
+          { type: 'mrkdwn', text: `*Actor:*\n${params.actor}` },
+          { type: 'mrkdwn', text: `*At:*\n${params.failedAt}` },
+          { type: 'mrkdwn', text: `*Source:*\n${params.source}` },
+          { type: 'mrkdwn', text: `*Error:*\n${params.error.slice(0, 300)}` },
+        ],
+      },
+    ],
+  }
+}
+
+// ============================================================
 // LEGACY BUILDER — kept for backward compatibility
 // ============================================================
 

@@ -19,6 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { insertStatusHistory } from '@/lib/orders/status-history'
 import { generateCheckoutToken } from '@/lib/auth/checkout-token'
 import { createSlasForTransition } from '@/lib/sla/creator'
 import { sendPaymentLinkSms } from '@/lib/sms/triggers'
@@ -307,16 +308,14 @@ export async function POST(
     // Do not return — order is already locked; provider hash is audit decoration
   }
 
-  // Write status history (non-fatal)
-  await supabase.from('order_status_history').insert({
+  // Write status history (non-fatal; a failure alerts ops)
+  await insertStatusHistory(supabase, {
     order_id:   orderId,
     old_status: 'DRAFT',
     new_status: 'AWAITING_PAYMENT',
     changed_by: session.user.id,
     metadata:   { actor: 'provider_sign_and_send', signed_at: signedAt },
-  }).then(({ error }) => {
-    if (error) console.error('[sign-and-send] status history insert failed:', error.message)
-  })
+  }, 'sign-and-send')
 
   // ── REQ-OAS-007: Create SLA deadlines ────────────────────────
   // createSlasForTransition('AWAITING_PAYMENT') creates:

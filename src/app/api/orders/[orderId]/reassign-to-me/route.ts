@@ -24,6 +24,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { insertStatusHistory } from '@/lib/orders/status-history'
 import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provider'
 import { REASSIGN_AUDIT_ACTOR } from '@/lib/orders/reassignment'
 
@@ -137,25 +138,21 @@ export async function POST(
 
   // Audit: one row per reassigned order. Status is unchanged (DRAFT →
   // DRAFT); the metadata is the record of who took it over from whom.
-  const { error: auditError } = await supabase.from('order_status_history').insert(
-    movedIds.map(id => ({
-      order_id:   id,
-      old_status: 'DRAFT' as const,
-      new_status: 'DRAFT' as const,
-      changed_by: session.user.id,
-      metadata: {
-        actor:            REASSIGN_AUDIT_ACTOR,
-        from_provider_id: fromProviderId,
-        to_provider_id:   me.provider_id,
-        reassigned_at:    reassignedAt,
-        reassigned_with:  movedIds.filter(other => other !== id),
-      },
-    })),
-  )
-  if (auditError) {
-    // Non-fatal: the reassignment is done; the audit row is the record of it.
-    console.error('[reassign-to-me] audit insert failed:', auditError.message)
-  }
+  // Non-fatal: the reassignment is done. A failure alerts ops, since the
+  // audit row is the only record of it.
+  await insertStatusHistory(supabase, movedIds.map(id => ({
+    order_id:   id,
+    old_status: 'DRAFT' as const,
+    new_status: 'DRAFT' as const,
+    changed_by: session.user.id,
+    metadata: {
+      actor:            REASSIGN_AUDIT_ACTOR,
+      from_provider_id: fromProviderId,
+      to_provider_id:   me.provider_id,
+      reassigned_at:    reassignedAt,
+      reassigned_with:  movedIds.filter(other => other !== id),
+    },
+  })), 'reassign-to-me')
 
   console.info(`[reassign-to-me] reassigned ${movedIds.length} draft line(s) | order=${orderId} | clinic=${clinicId}`)
 

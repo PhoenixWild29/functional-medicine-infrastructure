@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition }       from '@/lib/orders/cas-transition'
+import { insertStatusHistory } from '@/lib/orders/status-history'
 import { createStripeClient }  from '@/lib/stripe/client'
 import type { OrderStatusEnum } from '@/types/database.types'
 
@@ -319,19 +320,15 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
         return NextResponse.json({ ok: true })
       }
 
-      // Write audit record (non-fatal — transition already committed above)
-      const { error: historyErr } = await supabase
-        .from('order_status_history')
-        .insert({
-          order_id:   orderId,
-          old_status: currentStatus,
-          new_status: 'REROUTE_PENDING',
-          changed_by: actor,
-          metadata:   { reason: 'ops_reroute', reroute_count: rerouteCount + 1, new_pharmacy_id: newPharmacyId ?? null },
-        })
-      if (historyErr) {
-        console.error(`[ops/action] reroute history write failed (non-fatal) | order=${orderId}:`, historyErr.message)
-      }
+      // Write audit record (non-fatal — transition already committed above;
+      // a failure alerts ops)
+      await insertStatusHistory(supabase, {
+        order_id:   orderId,
+        old_status: currentStatus,
+        new_status: 'REROUTE_PENDING',
+        changed_by: actor,
+        metadata:   { reason: 'ops_reroute', reroute_count: rerouteCount + 1, new_pharmacy_id: newPharmacyId ?? null },
+      }, 'ops:reroute')
 
       console.info(`[ops/action] reroute | order=${orderId} | count=${rerouteCount + 1}`)
       return NextResponse.json({ ok: true })
