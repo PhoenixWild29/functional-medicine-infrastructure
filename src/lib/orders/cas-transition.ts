@@ -2,6 +2,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { canTransition } from '@/lib/orders/state-machine'
 import type { OrderStatus } from '@/lib/orders/state-machine'
 import type { Json } from '@/types/database.types'
+import { insertStatusHistory } from '@/lib/orders/status-history'
 
 // ============================================================
 // COMPARE-AND-SWAP (CAS) ORDER TRANSITION
@@ -144,21 +145,14 @@ async function writeStatusHistory(params: WriteStatusHistoryParams): Promise<voi
   const supabase = createServiceClient()
   const { orderId, oldStatus, newStatus, actor, metadata } = params
 
-  const { error } = await supabase.from('order_status_history').insert({
+  // Non-fatal (the transition is already committed), but a failure alerts ops.
+  await insertStatusHistory(supabase, {
     order_id: orderId,
     old_status: oldStatus,
     new_status: newStatus,
     changed_by: actor,
     metadata: (metadata ?? null) as Json,
-  })
-
-  if (error) {
-    // Non-fatal: log but don't throw — transition already committed
-    console.error(
-      `CAS: failed to write status history for ${orderId} (${oldStatus} → ${newStatus}):`,
-      error.message
-    )
-  }
+  }, 'casTransition')
 }
 
 // ============================================================

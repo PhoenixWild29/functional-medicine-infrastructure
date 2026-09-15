@@ -26,6 +26,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { insertStatusHistory } from '@/lib/orders/status-history'
 import { createStripeClient } from '@/lib/stripe/client'
 import { resolveSlasForTransition } from '@/lib/sla/resolver'
 
@@ -128,20 +129,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       })
 
       // Step 5: REQ-PRX-007 — audit trail
-      await supabase
-        .from('order_status_history')
-        .insert({
-          order_id:   orderId,
-          old_status: 'AWAITING_PAYMENT',
-          new_status: 'PAYMENT_EXPIRED',
-          changed_by: 'cron:payment-expiry',
-          metadata:   { reason: 'payment_not_received_72h', pi_id: piId ?? null },
-        })
-        .then(({ error: histError }) => {
-          if (histError) {
-            console.error(`[payment-expiry] history insert failed (non-fatal) | order=${orderId}:`, histError.message)
-          }
-        })
+      // Non-fatal; a failure alerts ops.
+      await insertStatusHistory(supabase, {
+        order_id:   orderId,
+        old_status: 'AWAITING_PAYMENT',
+        new_status: 'PAYMENT_EXPIRED',
+        changed_by: 'cron:payment-expiry',
+        metadata:   { reason: 'payment_not_received_72h', pi_id: piId ?? null },
+      }, 'cron:payment-expiry')
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

@@ -22,6 +22,7 @@ import type { Json } from '@/types/database.types'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import { RX_DETAIL_COLUMN_LIST } from './rx-details'
+import { insertStatusHistory } from './status-history'
 
 export type DraftAuditEvent = 'draft_created' | 'draft_edited' | 'draft_line_removed'
 
@@ -103,26 +104,21 @@ type ServiceClient = SupabaseClient<Database>
 
 /**
  * Append one DRAFT → DRAFT audit row. Non-fatal on failure (the data
- * change has already committed), mirrors writeStatusHistory in
- * cas-transition.ts. Returns whether the row was written.
+ * change has already committed), but a failure alerts ops through
+ * insertStatusHistory. Returns whether the row was written.
  */
 export async function writeDraftAudit(
   supabase: ServiceClient,
   orderId: string,
   metadata: DraftAuditMetadata,
 ): Promise<boolean> {
-  const { error } = await supabase.from('order_status_history').insert({
+  return insertStatusHistory(supabase, {
     order_id:   orderId,
     old_status: 'DRAFT',
     new_status: 'DRAFT',
     changed_by: metadata.actor.user_id,
     metadata:   metadata as unknown as Json,
-  })
-  if (error) {
-    console.error(`[draft-edit] audit row failed for ${orderId} (${metadata.event}):`, error.message)
-    return false
-  }
-  return true
+  }, `draft-edit:${metadata.event}`)
 }
 
 export interface DraftActor {
