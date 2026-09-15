@@ -16,7 +16,7 @@
 //   package     orders.package_label / package_count (WO-101 / WO-101a)
 //
 // Auth: verified user via getUser(); clinic_id from that user. The order
-// must belong to the caller's clinic.
+// must belong to the caller's clinic and not be soft-deleted.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
@@ -67,6 +67,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
       .select(`order_id, shipping_fee, pharmacy_snapshot, package_label, package_count, ${RX_DETAIL_COLUMN_LIST}`)
       .eq('order_id', orderId)
       .eq('clinic_id', clinicId)
+      .is('deleted_at', null)
       .maybeSingle(),
     supabase
       .from('clinics')
