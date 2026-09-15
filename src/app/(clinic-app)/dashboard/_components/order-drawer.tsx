@@ -5,7 +5,11 @@
 // ============================================================
 //
 // REQ-GDB-002: Slide-out drawer showing:
-//   - Financial split (wholesale, retail, platform fee, clinic payout)
+//   - Financial split (wholesale, retail, shipping, platform fee, clinic
+//     payout, patient total) — shipping is the order's stored snapshot, so
+//     the record reconciles with what checkout charges
+//   - Rx details (read-only; the WO-96 columns the order stores, with the
+//     Review card's labels)
 //   - Full status timeline (from order_status_history)
 //   - Tracking info (status-based summary)
 //
@@ -21,6 +25,14 @@ import { getStatusConfig } from '@/lib/orders/status-config'
 import { notify } from '@/lib/notifications'
 import { draftEditMode, type DraftViewer } from '@/lib/orders/draft-edit-access'
 import { actorDisplayName, type TimelineActor } from '@/lib/orders/timeline-actors'
+import {
+  formatDiagnosis,
+  formatDispenseWithPackage,
+  shippingTypeLabel,
+  syringeOptionLabel,
+} from '@/lib/orders/rx-details'
+import { computeBundleShipping, type PharmacyShippingRates } from '@/lib/orders/shipping'
+import type { OrderRecord } from '@/app/api/orders/[orderId]/record/route'
 
 interface Props {
   order: DashboardOrder | null
@@ -38,6 +50,11 @@ interface BundlableSibling {
   medicationName: string
   retailPrice:    number | null
   createdAt:      string
+  // Shipping inputs for the bundle preview (once per pharmacy). Optional so
+  // responses without them still render.
+  pharmacyId?:     string | null
+  shippingType?:   string | null
+  wholesalePrice?: number | null
 }
 interface BundlableState {
   anchorBundlable: boolean
@@ -103,6 +120,12 @@ function describeDiff(diff: Record<string, unknown> | undefined): string {
   return keys.length ? `changed ${keys.join(', ')}` : 'no field changes'
 }
 
+/** "Shipping — Strive Pharmacy (cold chain)", as the Review card labels it. */
+function shippingLabel(pharmacyName: string | null | undefined, shippingType: string | null | undefined): string {
+  const type = shippingType === 'cold_chain' ? 'cold chain' : 'standard'
+  return `Shipping — ${pharmacyName || 'pharmacy'} (${type})`
+}
+
 function toCurrency(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`
 }
@@ -124,6 +147,10 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
   const supabaseRef = useRef(createBrowserClient())
 
   const [history,           setHistory]           = useState<StatusHistoryRow[]>([])
+  // The order's stored shipping + Rx details (GET /api/orders/[id]/record).
+  const [record,            setRecord]            = useState<OrderRecord | null>(null)
+  // Shipping rates + absorb setting for the Combine preview.
+  const [bundleRates,       setBundleRates]       = useState<{ rates: PharmacyShippingRates[]; absorbShipping: boolean } | null>(null)
   const [isLoadingHistory,  setIsLoadingHistory]  = useState(false)
   // Timeline actor names (auth user id → provider / staff name). Until
   // they resolve — or when a user is outside the clinic — the id shows.
@@ -173,6 +200,28 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
           .catch(() => { /* non-fatal: ids stay visible */ })
       })
   }, [order?.orderId])
+
+  // Load the order's stored shipping + Rx details whenever the drawer opens
+  // on an order. Non-fatal: the split and details fall back to what the
+  // dashboard row carries.
+  const recordOrderId = order?.orderId ?? null
+  useEffect(() => {
+    setRecord(null)
+    if (!recordOrderId) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(`/api/orders/${recordOrderId}/record`, { headers: { Accept: 'application/json' } })
+        if (!res?.ok) return
+        const json = await res.json() as Partial<OrderRecord> | null
+        // Only a complete record replaces the fallback split.
+        if (!cancelled && json?.shipping && json.rxDetails) setRecord(json as OrderRecord)
+      } catch {
+        /* non-fatal: the drawer still shows the dashboard row's split */
+      }
+    })()
+    return () => { cancelled = true }
+  }, [recordOrderId])
 
   // Reset Combine and Send state whenever the drawer's anchor order changes,
   // then proactively probe bundlable-siblings. We discover on open (not on
@@ -232,6 +281,18 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
       setBundlable(data)
       // Pre-select all siblings — typical action is "bundle all outstanding".
       setSelectedSiblings(new Set(data.siblings.map(s => s.orderId)))
+      // Shipping rates for the preview (once per pharmacy across the bundle).
+      const pharmacyIds = [...new Set([data.anchor, ...data.siblings].map(s => s?.pharmacyId).filter((id): id is string => !!id))]
+      setBundleRates(null)
+      if (data.anchorBundlable && data.siblings.length > 0 && pharmacyIds.length > 0) {
+        try {
+          const ratesRes = await fetch(`/api/pharmacies/shipping?ids=${encodeURIComponent(pharmacyIds.join(','))}`)
+          const ratesJson = ratesRes?.ok ? await ratesRes.json() as { rates?: PharmacyShippingRates[]; absorbShipping?: boolean } : null
+          if (Array.isArray(ratesJson?.rates)) setBundleRates({ rates: ratesJson.rates, absorbShipping: ratesJson.absorbShipping === true })
+        } catch {
+          /* non-fatal: the preview shows the prescriptions subtotal */
+        }
+      }
     } catch (err) {
       notify.error(
         'Could not check for bundlable prescriptions',
@@ -436,6 +497,14 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
   if (!order) return null
 
   const marginCents = order.retailCents - order.wholesaleCents
+  // The order's stored shipping (what checkout adds via stripeSplit). When
+  // the clinic absorbs it, the patient total excludes it and the clinic
+  // payout carries it.
+  const shippingCents = record?.shipping.feeCents ?? 0
+  const shippingAbsorbed = record?.shipping.absorbed === true
+  const patientTotalCents = order.retailCents + (shippingAbsorbed ? 0 : shippingCents)
+  const clinicPayoutCents = order.clinicPayoutCents - (shippingAbsorbed ? shippingCents : 0)
+  const rx = record?.rxDetails ?? null
   const canIssuePaymentLink =
     order.status === 'AWAITING_PAYMENT' || order.status === 'PAYMENT_EXPIRED'
   const isExpired = order.status === 'PAYMENT_EXPIRED'
@@ -566,19 +635,47 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
 
                   {(() => {
                     const anchorCents = order.retailCents
-                    const sumSelectedCents = bundlable.siblings
-                      .filter(s => selectedSiblings.has(s.orderId))
+                    const selected = bundlable.siblings.filter(s => selectedSiblings.has(s.orderId))
+                    const sumSelectedCents = selected
                       .reduce((acc, s) => acc + Math.round((s.retailPrice ?? 0) * 100), 0)
-                    const totalCents = anchorCents + sumSelectedCents
+                    const subtotalCents = anchorCents + sumSelectedCents
                     const totalCount = 1 + selectedSiblings.size
+                    // Shipping as group checkout charges it: once per pharmacy
+                    // across the selected orders (create-group.ts).
+                    const members = [bundlable.anchor, ...selected].filter((s): s is BundlableSibling => !!s && !!s.pharmacyId)
+                    const shipping = bundleRates
+                      ? computeBundleShipping(
+                          members.map(s => ({
+                            pharmacyId:     s.pharmacyId!,
+                            shippingType:   s.shippingType ?? null,
+                            wholesaleCents: Math.round((s.wholesalePrice ?? 0) * 100),
+                          })),
+                          bundleRates.rates,
+                        )
+                      : null
+                    const absorbed = bundleRates?.absorbShipping === true
+                    const totalCents = subtotalCents + (shipping && !absorbed ? shipping.totalCents : 0)
                     return (
-                      <div className="mt-3 flex items-center justify-between border-t border-emerald-200 pt-2 text-sm">
-                        <span className="text-muted-foreground">
-                          {totalCount} prescription{totalCount === 1 ? '' : 's'}
-                        </span>
-                        <span className="font-semibold text-foreground">
-                          {toCurrency(totalCents)}
-                        </span>
+                      <div className="mt-3 space-y-1 border-t border-emerald-200 pt-2 text-sm" data-testid="bundle-preview">
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">
+                            {totalCount} prescription{totalCount === 1 ? '' : 's'}
+                          </span>
+                          <span className="text-foreground" data-testid="bundle-subtotal">{toCurrency(subtotalCents)}</span>
+                        </div>
+                        {shipping?.byPharmacy.map(p => (
+                          <div key={p.pharmacyId} className="flex items-center justify-between text-xs text-muted-foreground" data-testid={`bundle-shipping-${p.pharmacyId}`}>
+                            <span>{shippingLabel(p.pharmacyName, p.shippingType)}</span>
+                            <span>{toCurrency(p.feeCents)}</span>
+                          </div>
+                        ))}
+                        {absorbed && shipping && shipping.totalCents > 0 && (
+                          <p className="text-[10px] text-muted-foreground">Shipping is absorbed by the clinic — not charged to the patient.</p>
+                        )}
+                        <div className="flex items-center justify-between font-semibold">
+                          <span className="text-foreground">Patient total</span>
+                          <span className="text-foreground" data-testid="bundle-total">{toCurrency(totalCents)}</span>
+                        </div>
                       </div>
                     )
                   })()}
@@ -752,6 +849,23 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
                 <span className="text-muted-foreground">Patient retail price</span>
                 <span className="font-medium text-foreground">{toCurrency(order.retailCents)}</span>
               </div>
+              {record && (
+                <div className="flex justify-between" data-testid="drawer-shipping">
+                  <span className="text-muted-foreground">{shippingLabel(record.shipping.pharmacyName, record.shipping.shippingType)}</span>
+                  <span className="text-foreground">{toCurrency(shippingCents)}</span>
+                </div>
+              )}
+              {record && shippingAbsorbed && shippingCents > 0 && (
+                <p className="text-[11px] text-muted-foreground" data-testid="drawer-shipping-absorbed">
+                  Shipping is absorbed by the clinic — not charged to the patient.
+                </p>
+              )}
+              {record && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Patient total</span>
+                  <span className="font-medium text-foreground" data-testid="drawer-patient-total">{toCurrency(patientTotalCents)}</span>
+                </div>
+              )}
               <div className="border-t border-border pt-1.5">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Margin</span>
@@ -764,10 +878,36 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
               </div>
               <div className="border-t border-border pt-1.5 flex justify-between font-semibold">
                 <span className="text-foreground">Clinic payout</span>
-                <span className="text-emerald-600">{toCurrency(order.clinicPayoutCents)}</span>
+                <span className="text-emerald-600" data-testid="drawer-clinic-payout">{toCurrency(clinicPayoutCents)}</span>
               </div>
             </div>
           </section>
+
+          {/* Rx details — read-only, the columns the order stores (WO-96),
+              with the Review card's labels. */}
+          {rx && record && (
+            <section className="rounded-lg border border-border p-4 space-y-2" data-testid="drawer-rx-details">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Rx details</p>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+                {([
+                  ['Days supply',          rx.daysSupply != null ? `${rx.daysSupply} days` : null],
+                  ['Dispense',             formatDispenseWithPackage(rx.dispenseQuantity, rx.dispenseUnit, record.packageLabel, record.packageCount)],
+                  ['Refills',              String(rx.refills)],
+                  ['Substitution',         rx.substitutionAllowed ? 'Allowed' : 'Dispense as written'],
+                  ['Syringe option',       syringeOptionLabel(rx.syringeOption)],
+                  ['Shipping',             shippingTypeLabel(rx.shippingType)],
+                  ['Clinical difference',  rx.clinicalDifference],
+                  ['Diagnosis',            formatDiagnosis(rx.diagnosisCode, rx.diagnosisText)],
+                  ['Special instructions', rx.specialInstructions],
+                ] as Array<[string, string | null]>).map(([label, value]) => (
+                  <div key={label} className={label === 'Clinical difference' || label === 'Special instructions' ? 'col-span-2' : ''}>
+                    <dt className="text-[11px] text-muted-foreground">{label}</dt>
+                    <dd className="text-foreground" data-testid={`drawer-rx-${label.toLowerCase().replace(/\s+/g, '-')}`}>{value ?? '—'}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          )}
 
           {/* Rx PDF preview placeholder */}
           <section className="space-y-2">

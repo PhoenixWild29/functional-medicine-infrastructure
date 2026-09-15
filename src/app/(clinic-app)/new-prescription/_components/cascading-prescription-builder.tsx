@@ -129,6 +129,12 @@ interface PharmacyOption {
 
 // ── Helpers ───────────────────────────────────────────────────
 
+/**
+ * No timing, no duration. What the dose step starts from for anything
+ * the provider picks by hand — never the values of an earlier line.
+ */
+const NO_TIMING_DURATION: SigTimingAndDuration = { timing: '', duration: '', customDurationDays: '' }
+
 function toCurrency(dollars: number): string {
   return '$' + dollars.toFixed(2)
 }
@@ -215,9 +221,15 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   // WO-104: a favorite / Recent load re-mounts the sig builder with its
   // timing + duration as structured initial values (loadNonce is part of
   // the sig builder's key), and the dose step is scrolled into view.
+  //
+  // null means "not set yet": only then may the sig builder recover timing
+  // + duration from the reopened line's sig (WO-98). Every medication the
+  // provider picks by hand sets NO_TIMING_DURATION, so a line being edited
+  // (say "in the morning for 90 days") can never hand its timing and
+  // duration to a different medication.
   const [structuredInit, setStructuredInit] = useState<SigTimingAndDuration | null>(null)
   const [loadNonce, setLoadNonce] = useState(0)
-  const [timingDuration, setTimingDuration] = useState<SigTimingAndDuration>({ timing: '', duration: '', customDurationDays: '' })
+  const [timingDuration, setTimingDuration] = useState<SigTimingAndDuration>(NO_TIMING_DURATION)
   const doseStepRef = useRef<HTMLDivElement>(null)
   const pendingScrollRef = useRef(false)
 
@@ -329,8 +341,18 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   }, [selectedFormulation, loadNonce])
 
   // ── Reset downstream selections ─────────────────────────
+  // Timing + duration start empty for a new medication, and the parent's
+  // copies are cleared with them: durationDays drives days supply, the
+  // default quantity and the suggested vial count, so it must never
+  // outlive the dose step it came from.
+  function resetTimingDuration(next: SigTimingAndDuration) {
+    setStructuredInit(next)
+    setTimingDuration(next)
+    setDurationDays(null)
+  }
+
   function selectIngredient(ing: Ingredient) {
-    setStructuredInit(null)
+    resetTimingDuration(NO_TIMING_DURATION)
     setSelectedIngredient(ing)
     setSelectedSaltForm(null)
     setSelectedFormulation(null)
@@ -351,7 +373,10 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   }
 
   function selectFormulation(f: Formulation) {
-    setStructuredInit(null)
+    // Re-clicking the selected formulation keeps the sig builder mounted
+    // (same key), so its timing + duration — and the parent's copies —
+    // stay as they are.
+    if (selectedFormulation?.formulation_id !== f.formulation_id) resetTimingDuration(NO_TIMING_DURATION)
     setSelectedFormulation(f)
     setSelectedPharmacy(null)
     setPendingPharmacyId(null)
@@ -463,7 +488,9 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       setQuantityPicked(false)
       setRefills(String(load.refills))
       setCurrentSig('')
-      setStructuredInit({ timing: load.timing, duration: load.duration, customDurationDays: load.customDurationDays })
+      // Exactly what the preset carries — '' where it has no timing or
+      // duration, never what the dose step held before.
+      resetTimingDuration({ timing: load.timing, duration: load.duration, customDurationDays: load.customDurationDays })
       setLoadNonce(n => n + 1)
       pendingScrollRef.current = true
     } catch (err) {
@@ -541,6 +568,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
           onChange={e => {
             setSearchQuery(e.target.value)
             if (selectedIngredient) {
+              resetTimingDuration(NO_TIMING_DURATION)
               setSelectedIngredient(null)
               setSelectedSaltForm(null)
               setSelectedFormulation(null)
@@ -667,7 +695,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
           onSigChange={handleSigChange}
           onDurationDaysChange={setDurationDays}
           onTimingDurationChange={handleTimingDurationChange}
-          initialSigText={effectiveInitial?.sigText}
+          initialSigText={effectiveInitial?.formulationId === selectedFormulation.formulation_id ? effectiveInitial.sigText : undefined}
           initialStructured={structuredInit}
           presets={doseStepPresets}
         />
