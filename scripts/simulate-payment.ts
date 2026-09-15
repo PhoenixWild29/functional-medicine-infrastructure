@@ -29,7 +29,7 @@ async function main() {
   // 3. Log status history
   await sb.from('order_status_history').insert({
     order_id: ORDER_ID, old_status: 'AWAITING_PAYMENT',
-    new_status: 'PAID_PROCESSING', changed_by: null,
+    new_status: 'PAID_PROCESSING', changed_by: 'script:simulate-payment',
     metadata: { actor: 'poc_simulation', stripe_payment_intent_id: FAKE_PI }
   })
   console.log('✓ status history logged')
@@ -47,7 +47,7 @@ async function main() {
   // 5. Log status history
   await sb.from('order_status_history').insert({
     order_id: ORDER_ID, old_status: 'PAID_PROCESSING',
-    new_status: 'FAX_QUEUED', changed_by: null,
+    new_status: 'FAX_QUEUED', changed_by: 'script:simulate-payment',
     metadata: { actor: 'poc_simulation', tier: 'TIER_4_FAX' }
   })
   console.log('✓ status history logged')

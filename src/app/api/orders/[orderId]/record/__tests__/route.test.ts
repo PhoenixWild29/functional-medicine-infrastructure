@@ -22,6 +22,12 @@ jest.mock('@/lib/supabase/server', () => ({
 let orderRow: Record<string, unknown> | null = null
 let absorb = false
 const filters: Array<[string, string, unknown]> = []
+// Applies the deleted_at filter the way PostgREST would: a soft-deleted row
+// comes back only when the query does not exclude it.
+const visibleOrder = () =>
+  orderRow?.['deleted_at'] && filters.some(([t, c, v]) => t === 'orders' && c === 'deleted_at' && v === null)
+    ? null
+    : orderRow
 
 jest.mock('@/lib/supabase/service', () => ({
   createServiceClient: jest.fn().mockImplementation(() => ({
@@ -29,9 +35,10 @@ jest.mock('@/lib/supabase/service', () => ({
       const chain: Record<string, unknown> = {}
       chain['select'] = () => chain
       chain['eq'] = (col: string, val: unknown) => { filters.push([table, col, val]); return chain }
+      chain['is'] = (col: string, val: unknown) => { filters.push([table, col, val]); return chain }
       chain['maybeSingle'] = () => Promise.resolve(
         table === 'orders'
-          ? { data: orderRow, error: null }
+          ? { data: visibleOrder(), error: null }
           : { data: { absorb_shipping: absorb }, error: null },
       )
       return chain
@@ -76,6 +83,7 @@ describe('GET /api/orders/[orderId]/record', () => {
     expect(filters).toEqual(expect.arrayContaining([
       ['orders', 'order_id', ORDER_ID],
       ['orders', 'clinic_id', CLINIC],
+      ['orders', 'deleted_at', null],
       ['clinics', 'clinic_id', CLINIC],
     ]))
     expect(getUserMock).toHaveBeenCalledTimes(1)
@@ -97,6 +105,12 @@ describe('GET /api/orders/[orderId]/record', () => {
   it('404 when the order is not in the caller\'s clinic', async () => {
     orderRow = null
     expect((await call()).status).toBe(404)
+  })
+
+  it('404 for a soft-deleted order: the query excludes deleted_at rows', async () => {
+    orderRow = { ...orderRow!, deleted_at: '2026-09-14T12:00:00.000Z' }
+    expect((await call()).status).toBe(404)
+    expect(filters).toContainEqual(['orders', 'deleted_at', null])
   })
 
   it('401 without a verified user; 400 without clinic_id', async () => {
