@@ -308,7 +308,14 @@ export interface DerivedDispense {
  * Per-dose amount expressed in the dispense unit, or null when the two
  * cannot be reconciled (e.g. dose in mg against a container-only label).
  */
-function perDoseInDispenseUnit(input: DispenseInput, qty: ParsedQuantity): number | null {
+/**
+ * Quantity of one dose expressed in `qty`'s unit; null when the dose
+ * cannot be expressed there (PRN "clicks", an unknown unit, a strength
+ * the formulation does not carry). Exported for computeTitrationDispense
+ * (WO-105), which sums it per step; standard and cycling lines reach it
+ * through computeDispense exactly as before.
+ */
+export function perDoseInDispenseUnit(input: DispenseInput, qty: ParsedQuantity): number | null {
   const dose = typeof input.doseAmount === 'number' ? input.doseAmount : parseFloat(String(input.doseAmount ?? ''))
   if (!isFinite(dose) || dose <= 0) return null
   const unit = (input.doseUnit ?? '').toLowerCase()

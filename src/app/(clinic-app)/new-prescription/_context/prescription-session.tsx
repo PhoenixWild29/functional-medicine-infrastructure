@@ -21,6 +21,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import type { RxDetails, RxRules } from '@/lib/orders/rx-details'
+import type { SigMode, TitrationStep } from '@/lib/orders/titration'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -92,6 +93,13 @@ export interface SessionPrescription {
   // sent to POST /api/orders, which re-prices from it server-side; the
   // label is for display. Unset for single-package formulations and the
   // legacy catalog. OPTIONAL ON PURPOSE.
+  // WO-105: the sig mode and, for a titration, its steps. Stored on the
+  // order so the step table can be restored on reopen and refill, and
+  // the schedule printed for the pharmacy and the patient. OPTIONAL ON
+  // PURPOSE — sessions persisted before WO-105 parse and submit as
+  // standard lines.
+  sigMode?:        SigMode | null
+  titrationSteps?: TitrationStep[] | null
   packageId?:      string | null
   packageLabel?:   string | null
   // WO-101a: how many of that package (sent to POST /api/orders, which

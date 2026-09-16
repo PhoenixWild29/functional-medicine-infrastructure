@@ -54,7 +54,7 @@ export async function loadDraftContext(
   const { data: order, error } = await supabase
     .from('orders')
     .select(`order_id, status, patient_id, provider_id, formulation_id, pharmacy_id, sig_text,
-      retail_price_snapshot, medication_snapshot, package_id, package_count, ${RX_DETAIL_COLUMN_LIST}`)
+      retail_price_snapshot, medication_snapshot, package_id, package_count, sig_mode, titration_steps, ${RX_DETAIL_COLUMN_LIST}`)
     .eq('order_id', orderId)
     .eq('clinic_id', clinicId)
     .eq('is_active', true)

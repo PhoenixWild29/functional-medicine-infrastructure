@@ -34,6 +34,8 @@ import { lineSourceKind, resolveLine } from '@/lib/orders/resolve-line'
 import { writeDraftAudit } from '@/lib/orders/draft-edit'
 import { checkProviderOwnsDraft } from '@/lib/orders/provider-draft-guard'
 import { applyBundleShipping, reallocateDraftSiblingShipping } from '@/lib/orders/apply-bundle-shipping'
+import { parseTitrationSteps, isSigMode, type SigMode } from '@/lib/orders/titration'
+import type { Json } from '@/types/database.types'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // Auth gate
@@ -81,6 +83,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     packageId?:     string | null
     // WO-101a: how many of the package — priced server-side.
     packageCount?:  number | null
+    // WO-105: how the sig was built, and the titration steps behind it.
+    sigMode?:       unknown
+    titrationSteps?: unknown
     // WO-98: set when "+ Add prescription" appends a line to an existing
     // draft; recorded on the audit row only.
     appendedToOrderId?: string | null
@@ -93,6 +98,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const { patientId, providerId, catalogItemId, formulationId, pharmacyId, retailCents, sigText, patientState, protocolId, rxDetails, dose, frequencyCode, quantityLabel, packageId, packageCount, appendedToOrderId } = body
+
+  // WO-105: the mode and steps are stored as given, after validation —
+  // steps only ever accompany a titration, which the CHECK on orders
+  // enforces too. A malformed list reads as no titration rather than
+  // failing the request: the sig text still carries the schedule, and
+  // refusing to create the order would lose the prescription.
+  const sigMode: SigMode = isSigMode(body.sigMode) ? body.sigMode : 'standard'
+  const titrationSteps = sigMode === 'titration' ? parseTitrationSteps(body.titrationSteps) : []
 
   if (!patientId || !providerId || !pharmacyId || !sigText || !patientState) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -286,6 +299,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       provider_npi_snapshot:    provider.npi_number,
       pharmacy_snapshot:        pharmacySnapshot,
       sig_text:                 sigTrimmed,
+      // WO-105
+      sig_mode:                 sigMode,
+      titration_steps:          titrationSteps as unknown as Json,
       // GAP-3: null for ad-hoc/favorite lines and on resolution failure.
       protocol_instance_id:     protocolLinkage?.protocolInstanceId ?? null,
       protocol_version_id:      protocolLinkage?.protocolVersionId ?? null,

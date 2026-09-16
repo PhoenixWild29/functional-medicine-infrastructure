@@ -93,6 +93,7 @@ describe('builderLoadFromFavorite — structured end to end', () => {
       formulationId: 'f-sema', pharmacyId: 'ph-strive',
       doseAmount: '20', doseUnit: 'units', frequency: 'QW', timing: 'MORNING',
       duration: '30', customDurationDays: '', refills: 2,
+      sigMode: 'standard', titrationSteps: [],
     })
   })
 
@@ -101,12 +102,40 @@ describe('builderLoadFromFavorite — structured end to end', () => {
       formulationId: 'f-sema', pharmacyId: '',
       doseAmount: '', doseUnit: '', frequency: '', timing: '',
       duration: '', customDurationDays: '', refills: 0,
+      sigMode: 'standard', titrationSteps: [],
     })
   })
 
   it('carries no sig text for anything downstream to parse', () => {
     const load = builderLoadFromFavorite(fav, p('20'))
-    expect(Object.keys(load).some(k => /sig/i.test(k))).toBe(false)
+    // WO-105 added sigMode — an enum the builder opens in, never text to
+    // parse. No sig TEXT travels: the sig is still generated from the
+    // structured values in the builder.
+    expect(Object.keys(load).some(k => /sigtext|sig_text/i.test(k))).toBe(false)
+    expect(load.sigMode).toBe('standard')
+    expect(Object.values(load).every(v => typeof v !== 'string' || v.length < 20)).toBe(true)
+  })
+
+  it('WO-105: a titration favorite comes back as a titration, with its steps', () => {
+    const steps = [
+      { dose: '0.1', unit: 'mL', frequency: 'QHS', weeks: 2 },
+      { dose: '0.2', unit: 'mL', frequency: 'QHS', weeks: 2 },
+    ]
+    const load = builderLoadFromFavorite(
+      { ...fav, sig_mode: 'titration', titration_steps: steps },
+      null,
+    )
+    expect(load.sigMode).toBe('titration')
+    expect(load.titrationSteps).toEqual(steps)
+  })
+
+  it('WO-105: steps on a standard favorite are ignored', () => {
+    const load = builderLoadFromFavorite(
+      { ...fav, sig_mode: 'standard', titration_steps: [{ dose: '0.1', unit: 'mL', frequency: 'QHS', weeks: 2 }] },
+      p('20'),
+    )
+    expect(load.sigMode).toBe('standard')
+    expect(load.titrationSteps).toEqual([])
   })
 
   it('maps durations between the preset and the builder dropdown', () => {

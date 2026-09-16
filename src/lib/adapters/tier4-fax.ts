@@ -39,6 +39,7 @@ import {
   markFailed,
 } from '@/lib/adapters/audit-trail'
 import { casTransition } from '@/lib/orders/cas-transition'
+import { parseTitrationSteps } from '@/lib/orders/titration'
 
 // ============================================================
 // TYPES
@@ -69,7 +70,7 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
   // ── 1. Load order ──────────────────────────────────────────
   const { data: order, error: orderError } = await (supabase
     .from('orders')
-    .select('order_id, status, pharmacy_id, clinic_id, provider_id, patient_id, medication_snapshot, provider_npi_snapshot, quantity, sig_text, order_number, fax_attempt_count, locked_at, created_at, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions, package_label, package_count')
+    .select('order_id, status, pharmacy_id, clinic_id, provider_id, patient_id, medication_snapshot, provider_npi_snapshot, quantity, sig_text, order_number, fax_attempt_count, locked_at, created_at, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions, package_label, package_count, titration_steps')
     .eq('order_id', orderId)
     .single() as unknown as Promise<{
       data: {
@@ -100,6 +101,7 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
         diagnosis_text: string | null
         special_instructions: string | null
         // WO-101a
+        titration_steps: unknown
         package_label: string | null
         package_count: number | null
       } | null
@@ -206,6 +208,8 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
       medicationDose:     String(med?.dose ?? ''),
       quantity:           order.quantity ?? 0,
       sigText:            order.sig_text ?? null,
+      // WO-105: the schedule, printed as a table under the sig
+      titrationSteps:      parseTitrationSteps(order.titration_steps),
       // WO-96 Rx detail fields
       daysSupply:          order.days_supply,
       dispenseQuantity:    order.dispense_quantity,

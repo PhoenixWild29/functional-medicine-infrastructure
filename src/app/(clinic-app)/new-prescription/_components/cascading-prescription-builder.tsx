@@ -30,6 +30,11 @@ import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { usePrescriptionSession } from '../_context/prescription-session'
 import { StructuredSigBuilder } from './structured-sig-builder'
+import {
+  computeTitrationDispense,
+  type TitrationStep,
+  type SigMode,
+} from '@/lib/orders/titration'
 import { QuickActionsPanel, useClinicFavorites, type Favorite, type RecentItem } from './quick-actions-panel'
 import { SaveFavoriteButton } from './save-favorite-button'
 import { builderStateFromLine, editTargetToParams, type EditTarget } from '../_lib/edit-target'
@@ -47,6 +52,7 @@ import {
   defaultQuantityLabel,
   dispenseUnitFor,
   suggestPackage,
+  suggestPackageForDispense,
   formatPackageCount,
   pharmacySizeLabels,
   type PackageOption,
@@ -213,6 +219,11 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   // WO-101: the duration selected on the dose step, as reported by the
   // sig builder (structured — not read back out of the sig).
   const [durationDays, setDurationDays] = useState<number | null>(null)
+  // WO-105: the sig mode and the titration steps, structured. The steps
+  // are what days supply, dispense and the package suggestion are summed
+  // from; a titration has no single dose for computeDispense to use.
+  const [sigMode, setSigMode] = useState<SigMode>('standard')
+  const [titrationSteps, setTitrationSteps] = useState<TitrationStep[]>([])
   // WO-98: pharmacy of the reopened line. Until the user picks one, the
   // matching option (once pharmacy_options load) counts as selected.
   const [pendingPharmacyId, setPendingPharmacyId] = useState<string | null>(null)
@@ -314,6 +325,11 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
         setQuantityPicked(!!effectiveInitial.quantity)
         setRefills(String(effectiveInitial.refills))
         setPendingPharmacyId(effectiveInitial.pharmacyId || null)
+        // WO-105: a reopened titration reopens as a titration, with its
+        // steps — not as a standard sig with the schedule stranded in
+        // sig_text.
+        setSigMode(effectiveInitial.sigMode)
+        setTitrationSteps(effectiveInitial.titrationSteps)
       } catch (err) {
         console.warn('[builder] could not reopen line (non-fatal):', err instanceof Error ? err.message : err)
       }
@@ -395,6 +411,20 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   // frequency, duration, formulation or pharmacy change.
   // WO-101b: the pharmacy's priced packages only — a size with no package
   // row has no known price and is never offered.
+  // WO-105: the summed quantity across the steps (0.4 + 0.8 + 1.6 mL),
+  // never the target dose for the whole duration — that overshoots by
+  // the size of the titration.
+  const titrationDispense = useMemo(
+    () => (sigMode === 'titration' && titrationSteps.length > 0 && selectedFormulation
+      ? computeTitrationDispense(titrationSteps, {
+          concentrationValue: selectedFormulation.concentration_value,
+          concentrationUnit:  selectedFormulation.concentration_unit,
+          dosageFormName:     selectedFormulation.dosage_forms?.name ?? null,
+        })
+      : null),
+    [sigMode, titrationSteps, selectedFormulation],
+  )
+
   const pharmacyQuantities = pharmacySizeLabels(selectedPharmacy?.packages)
   const defaultQuantity = useMemo(() => {
     if (!selectedFormulation) return ''
@@ -411,16 +441,15 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
           durationDays,
         })
       : null
-    return defaultQuantityLabel(
-      pharmacyQuantities,
-      fromDuration
+    const derived = titrationDispense
+      ? { quantity: titrationDispense.totalQuantity, unit: titrationDispense.dispenseUnit }
+      : fromDuration
         ? { quantity: fromDuration.dispenseQuantity, unit: fromDuration.dispenseUnit }
-        : { quantity: null, unit: dispenseUnitFor(dosageFormName, doseUnit) },
-      dosageFormName,
-    )
+        : { quantity: null, unit: dispenseUnitFor(dosageFormName, doseUnit) }
+    return defaultQuantityLabel(pharmacyQuantities, derived, dosageFormName)
     // pharmacyQuantities is derived from selectedPharmacy each render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedFormulation, selectedPharmacy, doseAmount, doseUnit, selectedFrequency, durationDays])
+  }, [selectedFormulation, selectedPharmacy, doseAmount, doseUnit, selectedFrequency, durationDays, titrationDispense])
   // ── WO-101: priced packages ─────────────────────────────
   // A pharmacy that sells this formulation in more than one priced package
   // gets a suggested package (smallest that covers the dispense quantity
@@ -430,6 +459,20 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   function packageSuggestionFor(po: PharmacyOption | null) {
     const pkgs = po?.packages ?? []
     if (!selectedFormulation || pkgs.length === 0) return null
+    // WO-105: a titration is sized from its summed quantity.
+    if (titrationDispense) {
+      const t = suggestPackageForDispense(
+        pkgs,
+        {
+          dispenseQuantity: titrationDispense.totalQuantity,
+          dispenseUnit:     titrationDispense.dispenseUnit,
+          daysSupply:       titrationDispense.totalDays,
+        },
+        selectedFormulation.dosage_forms?.name ?? null,
+      )
+      if (!t || (pkgs.length < 2 && t.count <= 1)) return null
+      return t
+    }
     const s = suggestPackage(pkgs, {
       doseAmount,
       doseUnit,
@@ -452,12 +495,16 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     : quantityPicked && quantity && quantityOptions.includes(quantity) ? quantity : defaultQuantity
 
   // ── Can add to session? ─────────────────────────────────
+  // WO-105: a titration is complete when its steps are — the single dose
+  // field is not part of one. An invalid titration generates no sig, so
+  // the sig-length check alone would already block it; this says why.
   const canAdd = !!(
     selectedFormulation &&
     selectedPharmacy &&
-    doseAmount &&
-    selectedFrequency &&
-    currentSig.length >= 10
+    currentSig.length >= 10 &&
+    (sigMode === 'titration'
+      ? titrationSteps.length > 0 && titrationDispense != null
+      : doseAmount && selectedFrequency)
   )
 
   // ── WO-104: load a favorite / Recent item onto the dose step ──
@@ -491,6 +538,11 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       // Exactly what the preset carries — '' where it has no timing or
       // duration, never what the dose step held before.
       resetTimingDuration({ timing: load.timing, duration: load.duration, customDurationDays: load.customDurationDays })
+      // WO-105: a titration favorite comes back as a titration. The
+      // remount below (loadNonce) is what seeds the builder's step table
+      // from initialTitrationSteps.
+      setSigMode(load.sigMode)
+      setTitrationSteps(load.titrationSteps)
       setLoadNonce(n => n + 1)
       pendingScrollRef.current = true
     } catch (err) {
@@ -520,8 +572,12 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     const params = new URLSearchParams({
       pharmacyId: selectedPharmacy.pharmacies.pharmacy_id,
       formulation_id: selectedFormulation.formulation_id,
-      dose: `${doseAmount} ${doseUnit}`.trim(),
-      frequency: selectedFrequency,
+      // WO-105: a titration's dose line is the step it starts on; the
+      // whole schedule travels in titrationSteps.
+      dose: sigMode === 'titration' && titrationSteps[0]
+        ? `${titrationSteps[0].dose} ${titrationSteps[0].unit}`.trim()
+        : `${doseAmount} ${doseUnit}`.trim(),
+      frequency: sigMode === 'titration' && titrationSteps[0] ? titrationSteps[0].frequency : selectedFrequency,
       sigText: currentSig,
       // WO-96: the margin page derives days supply + dispense (from the
       // duration in the sig, else dose × frequency × quantity) and
@@ -534,9 +590,16 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       // WO-104: the selected timing, structured, so Save as favorite on
       // the price step stores it with the dose.
       timing: timingDuration.timing,
+      // WO-105: the mode and, for a titration, the steps — structured, so
+      // the price step and the order never re-read them from sig text.
+      sigMode,
       // WO-98: keep the edit / add-to-draft target through the margin page.
       ...editTargetToParams(editTarget),
     })
+
+    if (sigMode === 'titration' && titrationSteps.length > 0) {
+      params.set('titrationSteps', JSON.stringify(titrationSteps))
+    }
 
     // WO-86: Pass DEA schedule so margin builder can thread it to the session
     if (selectedIngredient?.dea_schedule) {
@@ -698,6 +761,10 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
           initialSigText={effectiveInitial?.formulationId === selectedFormulation.formulation_id ? effectiveInitial.sigText : undefined}
           initialStructured={structuredInit}
           presets={doseStepPresets}
+          onSigModeChange={setSigMode}
+          onTitrationStepsChange={setTitrationSteps}
+          initialSigMode={sigMode}
+          initialTitrationSteps={titrationSteps}
         />
         </div>
       )}

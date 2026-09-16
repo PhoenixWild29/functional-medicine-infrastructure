@@ -66,5 +66,8 @@ export function builderStateFromLine(line: SessionPrescription): BuilderInitialS
     quantity:      line.quantityLabel ?? '',
     refills:       line.rxDetails?.refills ?? 0,
     sigText:       line.sigText,
+    // WO-105: editing a titration line at Review reopens its step table.
+    sigMode:        line.sigMode === 'titration' ? 'titration' : line.sigMode === 'cycling' ? 'cycling' : 'standard',
+    titrationSteps: line.sigMode === 'titration' ? (line.titrationSteps ?? []).map(t => ({ ...t })) : [],
   }
 }

@@ -30,6 +30,7 @@ import {
   presetsFromJson,
   validateDosePresets,
 } from '@/lib/orders/favorite-presets'
+import { parseTitrationSteps } from '@/lib/orders/titration'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
@@ -144,6 +145,7 @@ export async function GET(req: NextRequest) {
       category,
       dose_presets,
       sig_mode,
+      titration_steps,
       default_refills,
       use_count,
       last_used_at,
@@ -201,6 +203,9 @@ export async function GET(req: NextRequest) {
     category:     (fav as { category?: string | null }).category ?? null,
     // WO-104: only valid builder presets reach the client.
     dose_presets: presetsFromJson((fav as { dose_presets?: unknown }).dose_presets),
+    // WO-105: a saved titration keeps its steps, so applying it rebuilds
+    // the schedule instead of flattening it to a standard sig.
+    titration_steps: parseTitrationSteps((fav as { titration_steps?: unknown }).titration_steps),
     formulation_active: isFormulationLive(fav.formulations),
     // null = unknown (no patient_state given) or no pinned pharmacy;
     // boolean otherwise. The UI only blocks on an explicit false.
@@ -295,6 +300,7 @@ export async function POST(req: NextRequest) {
       category,
       dose_presets:    presets.presets as unknown as Json,
       sig_mode:        sigMode,
+      titration_steps: (sigMode === 'titration' ? parseTitrationSteps(body['titration_steps']) : []) as unknown as Json,
       default_refills: refills,
     })
     .select()

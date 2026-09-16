@@ -51,6 +51,57 @@ describe('diffDraftRows', () => {
   })
 })
 
+describe('WO-105: reopening a saved titration', () => {
+  const STEPS = [
+    { dose: '10', unit: 'units', frequency: 'QW', weeks: 4 },
+    { dose: '20', unit: 'units', frequency: 'QW', weeks: 4 },
+  ]
+
+  it('comes back as a titration with its steps, not as a standard dose line', () => {
+    const state = builderStateFromOrder({
+      formulation_id: 'f1', pharmacy_id: 'p1', refills: 0,
+      sig_text: 'Weeks 1–4: inject 10 units subcutaneous once weekly. Weeks 5–8: inject 20 units subcutaneous once weekly. Total dispense 1.2 mL over 56 days.',
+      medication_snapshot: { prescribed_dose: '10 units', frequency_code: 'QW' },
+      sig_mode: 'titration',
+      titration_steps: STEPS,
+    })
+    expect(state.sigMode).toBe('titration')
+    expect(state.titrationSteps).toEqual(STEPS)
+  })
+
+  it('an order written before WO-105 reopens as standard with no steps', () => {
+    const state = builderStateFromOrder({
+      formulation_id: 'f1', pharmacy_id: 'p1', refills: 0,
+      sig_text: 'Inject 10 units subcutaneously once weekly',
+      medication_snapshot: {},
+    })
+    expect(state.sigMode).toBe('standard')
+    expect(state.titrationSteps).toEqual([])
+  })
+
+  it('steps on a row whose mode is not titration are ignored', () => {
+    const state = builderStateFromOrder({
+      formulation_id: 'f1', pharmacy_id: 'p1', refills: 0,
+      sig_text: 'Inject 10 units subcutaneously once weekly',
+      medication_snapshot: {},
+      sig_mode: 'standard',
+      titration_steps: STEPS,
+    })
+    expect(state.titrationSteps).toEqual([])
+  })
+
+  it('a malformed steps column reopens as a titration with no steps, never a half-schedule', () => {
+    const state = builderStateFromOrder({
+      formulation_id: 'f1', pharmacy_id: 'p1', refills: 0,
+      sig_text: 'x', medication_snapshot: {},
+      sig_mode: 'titration',
+      titration_steps: [{ dose: '10', unit: 'units' }],
+    })
+    expect(state.sigMode).toBe('titration')
+    expect(state.titrationSteps).toEqual([])
+  })
+})
+
 describe('parseSigForBuilder / builderStateFromOrder', () => {
   it('recovers dose + frequency from a generated sig', () => {
     expect(parseSigForBuilder('Inject 10 units (0.10mL / 0.50mg) subcutaneously once weekly in the morning'))
@@ -69,6 +120,8 @@ describe('parseSigForBuilder / builderStateFromOrder', () => {
       formulationId: 'f1', pharmacyId: 'p1', doseAmount: '15', doseUnit: 'units',
       frequency: 'Q2W', quantity: '5mL vial', refills: 2,
       sigText: 'Inject 10 units subcutaneously once weekly',
+      sigMode:        'standard',
+      titrationSteps: [],
     })
   })
 
@@ -81,6 +134,8 @@ describe('parseSigForBuilder / builderStateFromOrder', () => {
       formulationId: 'f1', pharmacyId: '', doseAmount: '0.5', doseUnit: 'mL',
       frequency: 'QW', quantity: '', refills: 0,
       sigText: 'Inject 0.5 mL subcutaneously once weekly',
+      sigMode:        'standard',
+      titrationSteps: [],
     })
   })
 })

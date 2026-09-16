@@ -243,6 +243,14 @@ interface Props {
   subtotalCents?: number
   /** WO-102: shipping the patient pays (once per pharmacy). 0 hides the line. */
   shippingCents?: number
+  /**
+   * WO-105: the titration schedule in plain language, with the total
+   * restated at the end — "this is the total amount, here's like the
+   * titration schedule and just recapping it. So it's like for both the
+   * patient and the pharmacy" (Lauren Perkins, 2026-09-11). Absent for
+   * every line that is not a titration.
+   */
+  titrationSchedule?: { lines: string[]; total: string } | null
   clinicName:    string
   logoUrl:       string | null
   checkoutState: 'active' | 'paid' | 'cancelled_expired'
@@ -255,6 +263,7 @@ export function CheckoutPageContent({
   retailCents,
   subtotalCents,
   shippingCents = 0,
+  titrationSchedule = null,
   clinicName,
   logoUrl,
   checkoutState,
@@ -390,6 +399,24 @@ export function CheckoutPageContent({
               </dl>
             )}
           </div>
+
+          {/* WO-105: what the patient actually does, week by week. */}
+          {titrationSchedule && (
+            <div
+              data-testid="checkout-titration-schedule"
+              className="rounded-xl border border-border bg-card p-5 shadow-sm"
+            >
+              <h2 className="text-sm font-semibold text-foreground">Your dosing schedule</h2>
+              <ol className="mt-2 space-y-1 text-sm text-muted-foreground">
+                {titrationSchedule.lines.map(line => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ol>
+              <p className="mt-3 border-t border-border pt-3 text-sm text-foreground" data-testid="checkout-titration-total">
+                {titrationSchedule.total}
+              </p>
+            </div>
+          )}
 
           {/* State-specific content */}
           {checkoutState === 'paid' && (

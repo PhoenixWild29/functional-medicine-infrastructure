@@ -14,6 +14,7 @@
 // soft-deleted / pharmacy offering removed — e.g. after a catalog
 // reseed), render a graceful inline state instead of notFound().
 // A true 404 (formulation row never existed) still calls notFound().
+import { parseTitrationSteps, isSigMode, type SigMode } from '@/lib/orders/titration'
 
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
@@ -54,6 +55,9 @@ interface PageProps {
     durationDays?: string
     // WO-104: the timing selected on the dose step ('' = none)
     timing?: string
+    // WO-105: the sig mode and, for a titration, its steps as JSON
+    sigMode?: string
+    titrationSteps?: string
     // WO-98: which existing line this page saves back to (see _lib/edit-target)
     editId?: string
     editOrder?: string
@@ -80,6 +84,16 @@ export default async function MarginPage({ searchParams }: PageProps) {
         const n = parseInt(resolvedParams.durationDays, 10)
         return Number.isFinite(n) && n > 0 ? n : null
       })()
+
+  // WO-105: a titration carries its steps, not a dose for the whole
+  // duration. Anything malformed reads as no titration — a bad link must
+  // never become a quantity.
+  const presetSigMode: SigMode = isSigMode(resolvedParams.sigMode) ? resolvedParams.sigMode : 'standard'
+  const presetTitrationSteps = presetSigMode === 'titration'
+    ? parseTitrationSteps((() => {
+        try { return JSON.parse(resolvedParams.titrationSteps ?? '[]') } catch { return [] }
+      })())
+    : []
 
   // Need pharmacyId + (itemId OR formulation_id)
   if (!pharmacyId || (!itemId && !formulationId)) {
@@ -324,6 +338,8 @@ export default async function MarginPage({ searchParams }: PageProps) {
         packages={packages}
         presetDurationDays={presetDurationDays}
         presetTiming={(resolvedParams.timing ?? '').trim() || undefined}
+        presetSigMode={presetSigMode}
+        presetTitrationSteps={presetTitrationSteps}
         existingPackageId={draft && editTarget?.kind === 'draft' ? draft.packageId : null}
         existingPackageCount={draft && editTarget?.kind === 'draft' ? draft.packageCount : null}
         shippingRates={ratesFromPharmacyRow(pharmacy)}

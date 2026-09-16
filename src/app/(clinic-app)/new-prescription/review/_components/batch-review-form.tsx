@@ -152,6 +152,11 @@ export function orderPostBody(
     packageId:     rx.packageId ?? null,
     // WO-101a: how many of it (server prices package × count).
     packageCount:  rx.packageId ? (rx.packageCount ?? 1) : null,
+    // WO-105: the titration schedule, structured. The sig still reads as
+    // a sentence for the fax; these are what the pharmacy payloads, the
+    // Rx PDF table and the patient schedule are built from.
+    sigMode:        rx.sigMode ?? 'standard',
+    titrationSteps: rx.titrationSteps ?? [],
   }
 }
 

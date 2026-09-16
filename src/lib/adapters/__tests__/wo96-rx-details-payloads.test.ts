@@ -87,6 +87,7 @@ describe('rxDetailPayloadFields — orders row → canonical payload', () => {
       // WO-101a: no package columns on this row
       packageLabel: null,
       packageCount: 1,
+      titrationSteps: [],
     })
   })
 
@@ -105,6 +106,7 @@ describe('rxDetailPayloadFields — orders row → canonical payload', () => {
       specialInstructions: null,
       packageLabel: null,
       packageCount: 1,
+      titrationSteps: [],
     })
   })
 })
@@ -144,6 +146,8 @@ describe('transformers carry the WO-96 fields', () => {
       // WO-101a: no package on this payload
       packageLabel:        '',
       packageCount:        1,
+      // WO-105: [] for a line that is not a titration
+      titrationSchedule:   [],
     })
   })
 

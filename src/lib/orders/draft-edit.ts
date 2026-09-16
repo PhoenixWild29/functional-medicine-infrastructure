@@ -23,6 +23,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import { RX_DETAIL_COLUMN_LIST } from './rx-details'
 import { insertStatusHistory } from './status-history'
+import { parseTitrationSteps, type TitrationStep, type SigMode } from './titration'
 
 export type DraftAuditEvent = 'draft_created' | 'draft_edited' | 'draft_line_removed'
 
@@ -163,6 +164,13 @@ export interface BuilderInitialState {
   quantity:      string
   refills:       number
   sigText:       string
+  /**
+   * WO-105: the mode and steps the draft was written with, so reopening
+   * a titration reopens the step table instead of a standard sig with
+   * the schedule stranded in sig_text.
+   */
+  sigMode:        SigMode
+  titrationSteps: TitrationStep[]
 }
 
 /** Frequency sig fragments → codes (mirrors FREQUENCY_OPTIONS in the sig builder). */
@@ -262,6 +270,8 @@ export function builderStateFromOrder(order: {
   sig_text:            string | null
   refills:             number | null
   medication_snapshot: unknown
+  sig_mode?:           string | null
+  titration_steps?:    unknown
 }): BuilderInitialState {
   const snap = (order.medication_snapshot ?? {}) as Record<string, unknown>
   // Same rule as the POST bodies: the stored structured inputs win; the
@@ -282,6 +292,9 @@ export function builderStateFromOrder(order: {
     quantity:      inputs.quantityLabel ?? '',
     refills:       typeof order.refills === 'number' ? order.refills : 0,
     sigText:       order.sig_text ?? '',
+    // WO-105: null sig_mode (every order before the migration) is standard.
+    sigMode:        order.sig_mode === 'titration' ? 'titration' : order.sig_mode === 'cycling' ? 'cycling' : 'standard',
+    titrationSteps: order.sig_mode === 'titration' ? parseTitrationSteps(order.titration_steps) : [],
   }
 }
 

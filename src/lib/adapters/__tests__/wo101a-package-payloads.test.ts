@@ -85,7 +85,7 @@ describe('Tier 2 portal and Tier 4 fax read the package columns', () => {
   const read = (f: string) => readFileSync(join(process.cwd(), 'src', 'lib', 'adapters', f), 'utf8')
 
   it.each(['tier1-api.ts', 'tier2-portal.ts', 'tier4-fax.ts'])('%s selects package_label and package_count', (file) => {
-    expect(read(file)).toMatch(/special_instructions, package_label, package_count'\)/)
+    expect(read(file)).toMatch(/special_instructions, package_label, package_count, titration_steps'\)/)
   })
 
   it('Tier 2 maps {packageLabel}, {packageCount} and {dispenseText}', () => {
