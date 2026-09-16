@@ -21,6 +21,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { PrescriptionSessionProvider } from '../../_context/prescription-session'
 import { CascadingPrescriptionBuilder } from '../cascading-prescription-builder'
+import { StructuredSigBuilder } from '../structured-sig-builder'
 
 const mockPush = jest.fn()
 jest.mock('next/navigation', () => ({
@@ -241,6 +242,83 @@ describe('multi-strength titrations fail loudly', () => {
     expect(screen.queryByTestId('titration-total')).not.toBeInTheDocument()
     const cont = screen.queryByRole('button', { name: 'Continue — Set Retail Price' })
     if (cont) expect(cont).toBeDisabled()
+  })
+})
+
+describe('switching modes never leaves a half-titration behind', () => {
+  it('titration → standard brings the Dose and Duration fields back and sends no steps', async () => {
+    await openDoseStep()
+    await switchTo('Titration')
+    const table = await screen.findByTestId('titration-builder')
+    fireEvent.change(within(table).getByLabelText('Step 1 dose'), { target: { value: '10' } })
+    fireEvent.change(within(table).getByLabelText('Step 1 weeks'), { target: { value: '4' } })
+    await waitFor(() => expect(screen.getByTestId('titration-total')).toBeInTheDocument())
+    // In titration mode the single dose and duration are gone: the steps
+    // are the dose and the duration.
+    expect(screen.queryByLabelText('Dose amount')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Duration')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Standard' }))
+
+    await waitFor(() => expect(screen.getByLabelText('Dose amount')).toBeInTheDocument())
+    expect(screen.getByLabelText('Duration')).toBeInTheDocument()
+    expect(screen.queryByTestId('titration-builder')).not.toBeInTheDocument()
+
+    // And nothing titration-shaped travels with the line. The migration's
+    // CHECK would reject orphan steps on a standard order; the UI must
+    // never send them in the first place.
+    fireEvent.change(screen.getByLabelText('Dose amount'), { target: { value: '20' } })
+    fireEvent.change(screen.getByLabelText('Dose unit'), { target: { value: 'units' } })
+    fireEvent.change(screen.getByLabelText('Frequency'), { target: { value: 'QW' } })
+    const cont = await screen.findByRole('button', { name: 'Continue — Set Retail Price' })
+    await waitFor(() => expect(cont).toBeEnabled())
+    fireEvent.click(cont)
+
+    const params = new URLSearchParams((mockPush.mock.calls[0]![0] as string).split('?')[1])
+    expect(params.get('sigMode')).toBe('standard')
+    expect(params.get('titrationSteps')).toBeNull()
+  })
+
+  it('standard → titration does not carry the single dose into step 1', async () => {
+    await openDoseStep()
+    fireEvent.change(screen.getByLabelText('Dose amount'), { target: { value: '40' } })
+    fireEvent.change(screen.getByLabelText('Dose unit'), { target: { value: 'units' } })
+    fireEvent.change(screen.getByLabelText('Frequency'), { target: { value: 'QW' } })
+
+    await switchTo('Titration')
+
+    const table = await screen.findByTestId('titration-builder')
+    // The dose is the one thing a step must be typed: a silent 40 here
+    // would be a prescription nobody wrote.
+    expect(within(table).getByLabelText('Step 1 dose')).toHaveValue('')
+    expect(screen.queryByTestId('titration-total')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('titration-problem')).not.toBeInTheDocument()
+  })
+})
+
+describe('reopening a saved titration line (WO-98)', () => {
+  it('comes back showing the step table with its steps, not the dose row', () => {
+    render(
+      <StructuredSigBuilder
+        formulation={FORMULATION as never}
+        doseAmount="" doseUnit="units" frequency="QW"
+        onDoseAmountChange={() => {}} onDoseUnitChange={() => {}} onFrequencyChange={() => {}}
+        onSigChange={() => {}}
+        initialSigMode="titration"
+        initialTitrationSteps={[
+          { dose: '10', unit: 'units', frequency: 'QW', weeks: 4 },
+          { dose: '20', unit: 'units', frequency: 'QW', weeks: 4 },
+        ]}
+      />,
+    )
+
+    const table = screen.getByTestId('titration-builder')
+    expect(within(table).getByLabelText('Step 1 dose')).toHaveValue('10')
+    expect(within(table).getByLabelText('Step 2 dose')).toHaveValue('20')
+    expect(screen.getByTestId('titration-total')).toHaveTextContent('Total 1.2 mL over 56 days')
+    // The dose row stays hidden: the steps are the dose and the duration.
+    expect(screen.queryByLabelText('Dose amount')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Duration')).not.toBeInTheDocument()
   })
 })
 
