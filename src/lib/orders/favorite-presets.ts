@@ -24,6 +24,7 @@ import {
   TIMING_OPTIONS,
 } from '@/app/(clinic-app)/new-prescription/_components/structured-sig-builder.types'
 import { formatDoseWithMg, formatPlainDose, frequencyShortLabel, isDoseUnit, type ConcentrationSource } from './dose-display'
+import { parseTitrationSteps, type TitrationStep, type SigMode } from '@/lib/orders/titration'
 
 // ── Preset shape ─────────────────────────────────────────────
 
@@ -161,6 +162,14 @@ export interface FavoriteBuilderLoad {
   duration:           string
   customDurationDays: string
   refills:            number
+  /**
+   * WO-105: a titration favorite loads the dose step in titration mode
+   * with its step table filled in. Before this, applying "LDN Starter —
+   * Titration" produced a standard sig and silently dropped the
+   * schedule, which is the opposite of what a saved titration is for.
+   */
+  sigMode:            SigMode
+  titrationSteps:     TitrationStep[]
 }
 
 /** Builder Duration dropdown value for a preset duration ("30" → "30"; "45" → CUSTOM + 45). */
@@ -187,6 +196,9 @@ export interface FavoriteLoadSource {
   formulation_id:  string
   pharmacy_id:     string | null
   default_refills: number | null
+  /** WO-105: 'titration' + steps for a saved titration. */
+  sig_mode?:        string | null
+  titration_steps?: unknown
 }
 
 /**
@@ -206,6 +218,10 @@ export function builderLoadFromFavorite(fav: FavoriteLoadSource, preset: DosePre
     duration:           dur.duration,
     customDurationDays: dur.customDurationDays,
     refills:            typeof fav.default_refills === 'number' ? fav.default_refills : 0,
+    // Steps only count when the favorite is actually a titration; a
+    // stale steps column on a standard favorite is ignored.
+    sigMode:            fav.sig_mode === 'titration' ? 'titration' : 'standard',
+    titrationSteps:     fav.sig_mode === 'titration' ? parseTitrationSteps(fav.titration_steps) : [],
   }
 }
 

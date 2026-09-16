@@ -99,7 +99,17 @@ async function main() {
       frequency_code: 'QHS',
       timing_code: 'BEDTIME',
       sig_mode: 'titration',
-      sig_text: 'Take 0.1mL (0.10mg) oral at bedtime. Titrate up by 0.1mL every 3-4 days as tolerated up to 0.5mL (0.50mg)',
+      // WO-105: the schedule as steps. The old free-text sentence
+      // ("Titrate up by 0.1mL every 3-4 days as tolerated") is what
+      // pharmacies push back on, and applying this favorite used to drop
+      // the schedule entirely.
+      titration_steps: [
+        { dose: '0.1', unit: 'mL', frequency: 'QHS', weeks: 2 },
+        { dose: '0.2', unit: 'mL', frequency: 'QHS', weeks: 2 },
+        { dose: '0.3', unit: 'mL', frequency: 'QHS', weeks: 2 },
+        { dose: '0.5', unit: 'mL', frequency: 'QHS', weeks: 4 },
+      ],
+      sig_text: 'Weeks 1–2: take 0.1 mL at bedtime. Weeks 3–4: take 0.2 mL at bedtime. Weeks 5–6: take 0.3 mL at bedtime. Weeks 7–10: take 0.5 mL at bedtime. Total dispense 22.4 mL over 70 days.',
       default_quantity: '60mL',
       default_refills: 2,
       use_count: 5,

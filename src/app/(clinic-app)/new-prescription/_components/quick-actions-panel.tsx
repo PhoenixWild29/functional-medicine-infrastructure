@@ -60,6 +60,7 @@ import {
   presetKey,
   type DosePreset,
 } from '@/lib/orders/favorite-presets'
+import type { TitrationStep } from '@/lib/orders/titration'
 
 // ── Types ───────────────────────────────────
 
@@ -76,6 +77,8 @@ export interface Favorite {
   /** WO-104: the clinic's common doses for this drug + formulation + pharmacy */
   dose_presets: DosePreset[]
   sig_mode: string
+  /** WO-105: the steps a saved titration carries. */
+  titration_steps?: TitrationStep[]
   default_refills: number
   use_count: number
   last_used_at: string | null

@@ -92,7 +92,7 @@ describe('POST /api/favorites — WO-104 cards with dose presets', () => {
     expect(inserts[0]!.row).toEqual({
       provider_id: PROVIDER, formulation_id: FORMULATION, pharmacy_id: PHARMACY, patient_id: null,
       label: 'Semaglutide', category: 'Weight Management',
-      dose_presets: [preset('10')], sig_mode: 'standard', default_refills: 2,
+      dose_presets: [preset('10')], sig_mode: 'standard', titration_steps: [], default_refills: 2,
     })
     expect(inserts[0]!.row).not.toHaveProperty('sig_text')
     expect(filters).toEqual(expect.arrayContaining([

@@ -69,6 +69,8 @@ describe('parseSigForBuilder / builderStateFromOrder', () => {
       formulationId: 'f1', pharmacyId: 'p1', doseAmount: '15', doseUnit: 'units',
       frequency: 'Q2W', quantity: '5mL vial', refills: 2,
       sigText: 'Inject 10 units subcutaneously once weekly',
+      sigMode:        'standard',
+      titrationSteps: [],
     })
   })
 
@@ -81,6 +83,8 @@ describe('parseSigForBuilder / builderStateFromOrder', () => {
       formulationId: 'f1', pharmacyId: '', doseAmount: '0.5', doseUnit: 'mL',
       frequency: 'QW', quantity: '', refills: 0,
       sigText: 'Inject 0.5 mL subcutaneously once weekly',
+      sigMode:        'standard',
+      titrationSteps: [],
     })
   })
 })

@@ -220,7 +220,7 @@ export async function submitTier2Portal(
   // ── 2. Load order data for form field substitution ─────────
   const { data: order, error: orderError } = await (supabase
     .from('orders')
-    .select('order_id, order_number, patient_id, provider_id, medication_snapshot, quantity, sig_text, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions, package_label, package_count')
+    .select('order_id, order_number, patient_id, provider_id, medication_snapshot, quantity, sig_text, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions, package_label, package_count, titration_steps')
     .eq('order_id', orderId)
     .single() as unknown as Promise<{
       data: {
@@ -244,6 +244,7 @@ export async function submitTier2Portal(
         diagnosis_text: string | null
         special_instructions: string | null
         // WO-101a
+        titration_steps: unknown
         package_label: string | null
         package_count: number | null
       } | null

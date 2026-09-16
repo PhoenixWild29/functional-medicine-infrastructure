@@ -20,16 +20,23 @@ import {
   FREQUENCY_OPTIONS,
   TIMING_OPTIONS,
   DURATION_OPTIONS,
-  TITRATION_INTERVALS,
   NCPDP_SIG_LIMIT,
   NCPDP_SIG_WARNING,
   type FormulationSigData,
-  type TitrationConfig,
   type CyclingConfig,
 } from './structured-sig-builder.types'
 import { computeDoseDisplay } from '@/lib/orders/dose-display'
 import { timingAndDurationFromSig, type SigTimingAndDuration } from '../_lib/sig-recovery'
 import { builderDurationFromPreset, presetChipText, type DosePreset } from '@/lib/orders/favorite-presets'
+import {
+  computeTitrationDispense,
+  validateTitrationSteps,
+  stepWeekLabel,
+  titrationSigSummary,
+  MAX_TITRATION_STEPS,
+  type TitrationStep,
+  type SigMode,
+} from '@/lib/orders/titration'
 
 // ── Props ───────────────────────────────────────────────────
 
@@ -73,6 +80,17 @@ interface StructuredSigBuilderProps {
    * amount, unit, frequency, timing and duration. Free entry stays.
    */
   presets?: ReadonlyArray<DosePreset> | undefined
+  /**
+   * WO-105: the titration steps and the mode, as structured values. The
+   * parent stores them on the order (orders.sig_mode /
+   * orders.titration_steps) and carries them to the price step, so a
+   * titration is never recovered by reading its sig text.
+   */
+  onSigModeChange?: (mode: SigMode) => void
+  onTitrationStepsChange?: (steps: TitrationStep[]) => void
+  /** WO-105: steps to open with — a titration favorite, or a reopened line. */
+  initialTitrationSteps?: ReadonlyArray<TitrationStep> | null | undefined
+  initialSigMode?: SigMode | null | undefined
 }
 
 // WO-104: moved to _lib/sig-recovery.ts (WO-98 edit path only); re-exported
@@ -82,30 +100,6 @@ export { timingAndDurationFromSig } from '../_lib/sig-recovery'
 // ── Unit conversion helpers ─────────────────────────────────
 // WO-103: computeDoseDisplay moved to the shared pure lib so the
 // margin page, Review card and Favorites panel use the same arithmetic.
-
-function computeTargetDoseDisplay(
-  targetDose: string,
-  targetUnit: string,
-  formulation: FormulationSigData,
-): string {
-  const num = parseFloat(targetDose)
-  if (!targetDose || isNaN(num)) return `${targetDose} ${targetUnit}`.trim()
-
-  const concVal = formulation.concentration_value
-  const concUnit = formulation.concentration_unit
-
-  if (concVal && concUnit === 'mg/mL') {
-    if (targetUnit === 'mL') {
-      const mg = num * concVal
-      return `${num}mL (${mg.toFixed(2)}mg)`
-    } else if (targetUnit === 'mg') {
-      const mL = num / concVal
-      return `${mL.toFixed(1)}mL (${num}mg)`
-    }
-  }
-
-  return `${targetDose} ${targetUnit}`.trim()
-}
 
 // ── Component ───────────────────────────────────────────────
 
@@ -123,6 +117,10 @@ export function StructuredSigBuilder({
   initialStructured,
   onTimingDurationChange,
   presets,
+  onSigModeChange,
+  onTitrationStepsChange,
+  initialTitrationSteps,
+  initialSigMode,
 }: StructuredSigBuilderProps) {
 
   // ── Internal state ──────────────────────────────────────
@@ -134,15 +132,19 @@ export function StructuredSigBuilder({
   const [customDurationDays, setCustomDurationDays] = useState(initial.customDurationDays)
 
   // Modes — mutually exclusive
-  const [sigMode, setSigMode] = useState<'standard' | 'titration' | 'cycling'>('standard')
+  const [sigMode, setSigMode] = useState<'standard' | 'titration' | 'cycling'>(
+    initialSigMode === 'titration' || initialSigMode === 'cycling' ? initialSigMode : 'standard',
+  )
 
-  // Titration state
-  const [titration, setTitration] = useState<TitrationConfig>({
-    startDose: '', startUnit: 'mL',
-    increment: '', incrementUnit: 'mL',
-    interval: 'Q3-4D', customInterval: '',
-    targetDose: '', targetUnit: 'mL',
-  })
+  // WO-105: titration state is the step list itself — "a different box
+  // for like each next step" (Gina Rooks, 2026-09-11). What it replaced
+  // (start / increment / interval / target) could only ever produce the
+  // free-text sentence pharmacies push back on.
+  const [steps, setSteps] = useState<TitrationStep[]>(() =>
+    initialTitrationSteps && initialTitrationSteps.length > 0
+      ? initialTitrationSteps.map(s => ({ ...s }))
+      : [{ dose: '', unit: doseUnit || 'mL', frequency: frequency || 'QW', weeks: 4 }],
+  )
 
   // Cycling state
   const [cycling, setCycling] = useState<CyclingConfig>({
@@ -195,39 +197,42 @@ export function StructuredSigBuilder({
     return sig
   }, [doseAmount, doseUnit, frequency, effectiveTiming, duration, customDurationDays, formulation])
 
-  // ── Generate titration sig ──────────────────────────────
+  // ── WO-105: titration steps → derived numbers + sig ─────
+  // Everything shown about a titration is computed from the steps and
+  // read-only (phase rule 3). The sig sentence is generated FROM the
+  // steps so the fax still reads as a sentence; the steps themselves
+  // travel to the pharmacy as fields.
+  const titrationFormulation = useMemo(() => ({
+    concentrationValue: formulation.concentration_value,
+    concentrationUnit:  formulation.concentration_unit,
+    dosageFormName:     formulation.dosage_forms?.name ?? null,
+  }), [formulation])
+
+  const titrationDerived = useMemo(
+    () => (sigMode === 'titration' ? computeTitrationDispense(steps, titrationFormulation) : null),
+    [sigMode, steps, titrationFormulation],
+  )
+
+  // Only complain once the provider has filled a step in — an empty new
+  // step is not an error, it is an empty field.
+  const titrationProblem = useMemo(() => {
+    if (sigMode !== 'titration') return null
+    if (steps.every(st => !st.dose)) return null
+    const v = validateTitrationSteps(steps, titrationFormulation)
+    return v.ok ? null : v
+  }, [sigMode, steps, titrationFormulation])
+
   const titrationSig = useMemo(() => {
     if (sigMode !== 'titration') return ''
-    if (!titration.startDose || !titration.increment || !titration.targetDose) return ''
-
+    if (titrationProblem) return ''
     const route = formulation.routes_of_administration
-    const prefix = route?.sig_prefix ?? 'Take'
-    const freq = FREQUENCY_OPTIONS.find(f => f.code === frequency)
     const timingOpt = TIMING_OPTIONS.find(t => t.code === effectiveTiming)
-    const routeText = route?.name ? route.name.toLowerCase() : ''
-
-    // Start dose display with unit conversion
-    const startDisplay = computeDoseDisplay(titration.startDose, titration.startUnit, formulation)
-    const targetDisplay = computeTargetDoseDisplay(titration.targetDose, titration.targetUnit, formulation)
-    const incrementDisplay = `${titration.increment}${titration.incrementUnit}`
-
-    // Interval text
-    const intervalOpt = TITRATION_INTERVALS.find(i => i.code === titration.interval)
-    const intervalText = titration.interval === 'CUSTOM' && titration.customInterval
-      ? titration.customInterval
-      : intervalOpt?.sig ?? ''
-
-    // "Take 0.1mL by mouth every night at bedtime."
-    let basePart = `${prefix} ${startDisplay}`
-    if (routeText) basePart += ` ${routeText}`
-    if (freq?.sig) basePart += ` ${freq.sig}`
-    if (timingOpt?.sig) basePart += ` ${timingOpt.sig}`
-
-    // "Titrate up by 0.1mL every 3-4 days as tolerated up to 0.5mL (0.5mg)"
-    const titratePart = `Titrate up by ${incrementDisplay} ${intervalText} as tolerated up to ${targetDisplay}`
-
-    return `${basePart}. ${titratePart}`
-  }, [sigMode, titration, frequency, effectiveTiming, formulation])
+    return titrationSigSummary(steps, titrationFormulation, {
+      prefix:    route?.sig_prefix ?? 'Take',
+      routeName: route?.name ?? null,
+      timingSig: timingOpt?.sig ?? null,
+    })
+  }, [sigMode, steps, titrationProblem, titrationFormulation, formulation, effectiveTiming])
 
   // ── Generate cycling sig ────────────────────────────────
   const cyclingSig = useMemo(() => {
@@ -283,6 +288,19 @@ export function StructuredSigBuilder({
     onTimingDurationChange?.({ timing, duration, customDurationDays })
   }, [timing, duration, customDurationDays, onTimingDurationChange])
 
+  // WO-105: the mode and the steps are structured values the parent
+  // stores on the order. Steps are sent only for a titration whose steps
+  // are valid — an order must never carry a schedule the app refused to
+  // price. Cycling sends none, and nothing here changes for it.
+  useEffect(() => {
+    onSigModeChange?.(sigMode)
+  }, [sigMode, onSigModeChange])
+  useEffect(() => {
+    onTitrationStepsChange?.(
+      sigMode === 'titration' && !titrationProblem && titrationDerived ? steps.map(st => ({ ...st })) : [],
+    )
+  }, [sigMode, steps, titrationProblem, titrationDerived, onTitrationStepsChange])
+
   // ── WO-104: common-dose chip ────────────────────────────
   function applyPreset(p: DosePreset) {
     const d = builderDurationFromPreset(p.duration)
@@ -299,6 +317,23 @@ export function StructuredSigBuilder({
   const charCount = computedSig.length
   const isOverLimit = charCount > NCPDP_SIG_LIMIT
   const isNearLimit = charCount > NCPDP_SIG_WARNING
+
+  // ── WO-105: step table mutators ─────────────────────────
+  function updateStep(index: number, patch: Partial<TitrationStep>) {
+    setSteps(list => list.map((st, i) => (i === index ? { ...st, ...patch } : st)))
+  }
+  function addStep() {
+    setSteps(list => {
+      if (list.length >= MAX_TITRATION_STEPS) return list
+      const last = list[list.length - 1]
+      // A new step continues the schedule: same unit and frequency, same
+      // length, empty dose — the dose is the only thing that changes.
+      return [...list, { dose: '', unit: last?.unit ?? doseUnit ?? 'mL', frequency: last?.frequency ?? frequency ?? 'QW', weeks: last?.weeks ?? 4 }]
+    })
+  }
+  function removeStep(index: number) {
+    setSteps(list => (list.length <= 1 ? list : list.filter((_, i) => i !== index)))
+  }
 
   // ── Mode toggle handler ─────────────────────────────────
   function handleModeChange(mode: 'standard' | 'titration' | 'cycling') {
@@ -339,7 +374,11 @@ export function StructuredSigBuilder({
         </div>
       )}
 
-      {/* Row 1: Dose Amount + Unit + Frequency */}
+      {/* Row 1: Dose Amount + Unit + Frequency.
+          WO-105: a titration has no single dose — its steps each carry
+          their own dose and frequency, and two dose fields on one screen
+          is how the money math and the sig came to disagree. */}
+      {sigMode !== 'titration' && (
       <div className="flex gap-2">
         <input
           type="text"
@@ -377,6 +416,8 @@ export function StructuredSigBuilder({
         </select>
       </div>
 
+      )}
+
       {/* Row 2: Timing + Duration */}
       <div className="flex gap-2">
         <select
@@ -389,6 +430,7 @@ export function StructuredSigBuilder({
             <option key={t.code} value={t.code}>{t.display}</option>
           ))}
         </select>
+        {sigMode !== 'titration' && (
         <select
           aria-label="Duration"
           value={duration}
@@ -399,7 +441,8 @@ export function StructuredSigBuilder({
             <option key={d.code} value={d.code}>{d.display}</option>
           ))}
         </select>
-        {duration === 'CUSTOM' && (
+        )}
+        {sigMode !== 'titration' && duration === 'CUSTOM' && (
           <input
             type="number"
             placeholder="Days"
@@ -429,102 +472,107 @@ export function StructuredSigBuilder({
         ))}
       </div>
 
-      {/* ── Titration Builder ───────────────────────────── */}
+      {/* ── WO-105: Titration step table ────────────────── */}
       {sigMode === 'titration' && (
-        <div className="space-y-3 rounded-md border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-800 dark:bg-amber-950/20">
+        <div
+          data-testid="titration-builder"
+          className="space-y-3 rounded-md border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-800 dark:bg-amber-950/20"
+        >
           <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">
-            Titration Schedule — Dose Escalation
+            Titration schedule — one step per dose change
           </p>
 
-          {/* Start dose */}
-          <div className="flex items-center gap-2">
-            <span className="w-20 text-xs text-muted-foreground">Start at</span>
-            <input
-              type="text"
-              placeholder="0.1"
-              value={titration.startDose}
-              onChange={e => setTitration(t => ({ ...t, startDose: e.target.value }))}
-              className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-            <select
-              value={titration.startUnit}
-              onChange={e => setTitration(t => ({ ...t, startUnit: e.target.value }))}
-              className="rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="mL">mL</option>
-              <option value="mg">mg</option>
-              <option value="units">units</option>
-              <option value="tablet">tablet(s)</option>
-              <option value="capsule">capsule(s)</option>
-            </select>
+          <div className="space-y-2">
+            {steps.map((step, i) => (
+              <div key={i} data-testid={`titration-step-${i}`} className="flex flex-wrap items-center gap-2">
+                <span className="w-16 text-xs text-muted-foreground">
+                  {stepWeekLabel({
+                    weekFrom: steps.slice(0, i).reduce((w, st) => w + (st.weeks || 0), 1),
+                    weekTo:   steps.slice(0, i).reduce((w, st) => w + (st.weeks || 0), 1) + (step.weeks || 1) - 1,
+                  })}
+                </span>
+                <input
+                  type="text"
+                  aria-label={`Step ${i + 1} dose`}
+                  placeholder="10"
+                  value={step.dose}
+                  onChange={e => updateStep(i, { dose: e.target.value })}
+                  className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <select
+                  aria-label={`Step ${i + 1} unit`}
+                  value={step.unit}
+                  onChange={e => updateStep(i, { unit: e.target.value })}
+                  className="rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="mg">mg</option>
+                  <option value="mL">mL</option>
+                  <option value="units">units</option>
+                  <option value="mcg">mcg</option>
+                  <option value="tablet">tablet(s)</option>
+                  <option value="capsule">capsule(s)</option>
+                </select>
+                <select
+                  aria-label={`Step ${i + 1} frequency`}
+                  value={step.frequency}
+                  onChange={e => updateStep(i, { frequency: e.target.value })}
+                  className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {FREQUENCY_OPTIONS.map(f => (
+                    <option key={f.code} value={f.code}>{f.display}</option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min={1}
+                  aria-label={`Step ${i + 1} weeks`}
+                  value={step.weeks}
+                  onChange={e => updateStep(i, { weeks: parseInt(e.target.value, 10) || 0 })}
+                  className="w-16 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <span className="text-xs text-muted-foreground">weeks</span>
+                <span data-testid={`titration-step-${i}-quantity`} className="w-24 text-right text-xs tabular-nums text-muted-foreground">
+                  {titrationDerived?.steps[i]?.quantity != null
+                    ? `${titrationDerived.steps[i]!.quantity} ${titrationDerived.dispenseUnit}`
+                    : '—'}
+                </span>
+                {steps.length > 1 && (
+                  <button
+                    type="button"
+                    aria-label={`Remove step ${i + 1}`}
+                    onClick={() => removeStep(i)}
+                    className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
 
-          {/* Increment */}
-          <div className="flex items-center gap-2">
-            <span className="w-20 text-xs text-muted-foreground">Increase by</span>
-            <input
-              type="text"
-              placeholder="0.1"
-              value={titration.increment}
-              onChange={e => setTitration(t => ({ ...t, increment: e.target.value }))}
-              className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-            <select
-              value={titration.incrementUnit}
-              onChange={e => setTitration(t => ({ ...t, incrementUnit: e.target.value }))}
-              className="rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          {steps.length < MAX_TITRATION_STEPS && (
+            <button
+              type="button"
+              data-testid="titration-add-step"
+              onClick={addStep}
+              className="rounded-full border border-amber-400 px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-200 dark:hover:bg-amber-900/40"
             >
-              <option value="mL">mL</option>
-              <option value="mg">mg</option>
-              <option value="units">units</option>
-              <option value="tablet">tablet(s)</option>
-            </select>
-          </div>
+              + Add step
+            </button>
+          )}
 
-          {/* Interval */}
-          <div className="flex items-center gap-2">
-            <span className="w-20 text-xs text-muted-foreground">Every</span>
-            <select
-              value={titration.interval}
-              onChange={e => setTitration(t => ({ ...t, interval: e.target.value }))}
-              className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {TITRATION_INTERVALS.map(i => (
-                <option key={i.code} value={i.code}>{i.display}</option>
-              ))}
-            </select>
-            {titration.interval === 'CUSTOM' && (
-              <input
-                type="text"
-                placeholder="e.g. every 5 days"
-                value={titration.customInterval}
-                onChange={e => setTitration(t => ({ ...t, customInterval: e.target.value }))}
-                className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            )}
-          </div>
+          {/* Derived, never typed (phase rule 3). */}
+          {titrationDerived && !titrationProblem && (
+            <p data-testid="titration-total" className="text-xs font-medium text-amber-900 dark:text-amber-200">
+              Total {titrationDerived.totalQuantity} {titrationDerived.dispenseUnit} over {titrationDerived.totalDays} days
+            </p>
+          )}
 
-          {/* Target dose */}
-          <div className="flex items-center gap-2">
-            <span className="w-20 text-xs text-muted-foreground">Up to</span>
-            <input
-              type="text"
-              placeholder="0.5"
-              value={titration.targetDose}
-              onChange={e => setTitration(t => ({ ...t, targetDose: e.target.value }))}
-              className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-            <select
-              value={titration.targetUnit}
-              onChange={e => setTitration(t => ({ ...t, targetUnit: e.target.value }))}
-              className="rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="mL">mL</option>
-              <option value="mg">mg</option>
-              <option value="units">units</option>
-            </select>
-            <span className="text-xs text-muted-foreground">as tolerated</span>
-          </div>
+          {titrationProblem?.message && (
+            <p data-testid="titration-problem" role="alert" className="text-xs font-medium text-red-700 dark:text-red-400">
+              {titrationProblem.message}
+            </p>
+          )}
         </div>
       )}
 

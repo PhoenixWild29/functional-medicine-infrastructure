@@ -21,6 +21,7 @@ import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createServiceClient } from '@/lib/supabase/service'
 import { CheckoutPageContent } from './_components/checkout-page-content'
+import { parseTitrationSteps, titrationPatientSchedule } from '@/lib/orders/titration'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,7 +65,7 @@ async function renderSoloCheckout({
   const [orderResult, clinicResult] = await Promise.all([
     supabase
       .from('orders')
-      .select('order_id, status, retail_price_snapshot, shipping_fee')
+      .select('order_id, status, retail_price_snapshot, shipping_fee, titration_steps, formulations(concentration_value, concentration_unit, dosage_forms(name))')
       .eq('order_id', orderId)
       .is('deleted_at', null)
       .maybeSingle(),
@@ -91,6 +92,20 @@ async function renderSoloCheckout({
 
   const checkoutState: ActiveState = mapOrderStatusToState(order.status)
 
+  // WO-105: the schedule in plain language for the patient. Derived from
+  // the stored steps, so it says the same thing as the pharmacy's copy.
+  const steps = parseTitrationSteps(order.titration_steps)
+  const formulation = (order as unknown as {
+    formulations?: { concentration_value: number | null; concentration_unit: string | null; dosage_forms?: { name: string } | null } | null
+  }).formulations ?? null
+  const titrationSchedule = steps.length > 0
+    ? titrationPatientSchedule(steps, {
+        concentrationValue: formulation?.concentration_value ?? null,
+        concentrationUnit:  formulation?.concentration_unit ?? null,
+        dosageFormName:     formulation?.dosage_forms?.name ?? null,
+      })
+    : null
+
   return (
     <CheckoutPageContent
       token={token}
@@ -102,6 +117,7 @@ async function renderSoloCheckout({
       clinicName={clinic.name}
       logoUrl={clinic.logo_url ?? null}
       checkoutState={checkoutState}
+      titrationSchedule={titrationSchedule}
     />
   )
 }

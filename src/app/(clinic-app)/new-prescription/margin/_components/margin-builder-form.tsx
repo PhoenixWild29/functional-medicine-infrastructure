@@ -63,6 +63,11 @@ import {
   type RxRules,
   pharmacySizeLabels,
 } from '@/lib/orders/rx-details'
+import {
+  computeTitrationDispense,
+  type TitrationStep,
+  type SigMode,
+} from '@/lib/orders/titration'
 import type { RxFormulationDefaults } from '@/lib/orders/rx-defaults-loader'
 import { splitDose } from '@/lib/orders/dose'
 import { DerivedDispense, EMPTY_OVERRIDE, resolveDispense, type DispenseOverride } from '../../_components/derived-dispense'
@@ -142,6 +147,13 @@ interface Props {
   presetDurationDays?: number | null | undefined
   /** WO-104: timing selected on the dose step (structured), for ☆ Save as favorite. */
   presetTiming?:       string | undefined
+  /**
+   * WO-105: the sig mode and, for a titration, its steps. A titration's
+   * days supply, dispense quantity and package are summed across the
+   * steps — computeDispense's single dose does not describe it.
+   */
+  presetSigMode?:      SigMode | undefined
+  presetTitrationSteps?: ReadonlyArray<TitrationStep> | undefined
   /** WO-101: package the draft line being edited was priced from. */
   existingPackageId?:  string | null
   /** WO-101a: how many of that package the draft line carries. */
@@ -198,6 +210,8 @@ export function MarginBuilderForm({
   packages = [],
   presetDurationDays,
   presetTiming,
+  presetSigMode,
+  presetTitrationSteps,
   existingPackageId = null,
   existingPackageCount = null,
   shippingRates = null,
@@ -312,8 +326,34 @@ export function MarginBuilderForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPackage, presetQuantity, formulationDetails, dose, durationDays, presetFrequency, packages])
 
+  // WO-105: a titration's days supply and dispense are the sum over its
+  // steps. computeDispense stays exactly as it is for standard and
+  // cycling lines — this branches before it, it does not change it.
+  const titrationSteps: TitrationStep[] = useMemo(
+    () => (presetSigMode === 'titration' && presetTitrationSteps ? presetTitrationSteps.map(t => ({ ...t })) : []),
+    [presetSigMode, presetTitrationSteps],
+  )
+
+  const titrationDispense = useMemo(
+    () => (presetSigMode === 'titration' && presetTitrationSteps && presetTitrationSteps.length > 0 && formulationDetails
+      ? computeTitrationDispense(presetTitrationSteps, {
+          concentrationValue: formulationDetails.concentrationValue,
+          concentrationUnit:  formulationDetails.concentrationUnit,
+          dosageFormName:     formulationDetails.dosageFormName,
+        })
+      : null),
+    [presetSigMode, presetTitrationSteps, formulationDetails],
+  )
+
   const derived = useMemo(() => {
     if (!formulationDetails) return null
+    if (titrationDispense) {
+      return {
+        daysSupply:       titrationDispense.totalDays,
+        dispenseQuantity: titrationDispense.totalQuantity,
+        dispenseUnit:     titrationDispense.dispenseUnit,
+      }
+    }
     const { amount, unit } = splitDose(dose)
     return computeDispense({
       doseAmount:         amount,
@@ -325,8 +365,10 @@ export function MarginBuilderForm({
       dosageFormName:     formulationDetails.dosageFormName,
       durationDays,
     })
-  }, [dose, presetFrequency, effectiveQuantity, formulationDetails, durationDays])
-  const derivedBasis = durationDays != null
+  }, [dose, presetFrequency, effectiveQuantity, formulationDetails, durationDays, titrationDispense])
+  const derivedBasis = titrationDispense != null
+    ? { kind: 'duration' as const, days: titrationDispense.totalDays, doses: null }
+    : durationDays != null
     ? { kind: 'duration' as const, days: durationDays, doses: dosesInDays(durationDays, presetFrequency ?? null) }
     : { kind: 'quantity' as const, label: effectiveQuantity }
   const [dispenseOverride, setDispenseOverride] = useState<DispenseOverride>(EMPTY_OVERRIDE)
@@ -524,6 +566,9 @@ export function MarginBuilderForm({
       packageLabel: selectedPackage?.label ?? null,
       // WO-101a
       packageCount: selectedPackage ? packageCount : null,
+      // WO-105
+      sigMode:         presetSigMode ?? 'standard',
+      titrationSteps:  titrationSteps,
     }
   }
 
@@ -552,6 +597,8 @@ export function MarginBuilderForm({
       quantityLabel: effectiveQuantity || null,
       packageId:     selectedPackage?.id ?? null,
       packageCount:  selectedPackage ? packageCount : null,
+      sigMode:        presetSigMode ?? 'standard',
+      titrationSteps: titrationSteps,
     }
   }
 

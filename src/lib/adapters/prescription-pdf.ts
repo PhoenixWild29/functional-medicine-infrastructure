@@ -18,6 +18,8 @@
 
 import { allergiesForPayload } from '@/lib/patients/allergies'
 import { formatDispenseWithPackage } from '@/lib/orders/rx-details'
+import { FREQUENCY_OPTIONS } from '@/app/(clinic-app)/new-prescription/_components/structured-sig-builder.types'
+import type { TitrationStep } from '@/lib/orders/titration'
 
 // ============================================================
 // TYPES
@@ -65,6 +67,12 @@ export interface PrescriptionPdfData {
   // WO-101a: package filled from and how many — printed with the dispense
   // total ("Dispense: 9.6 mL (2 × 5 mL vials)").
   packageLabel?: string | null
+  /**
+   * WO-105: the titration schedule. Printed as a table under the sig, so
+   * the pharmacy reads steps instead of "titrate up by ... as tolerated"
+   * — the free text Gina Rooks said pharmacies push back on (2026-09-11).
+   */
+  titrationSteps?: ReadonlyArray<TitrationStep> | null
   packageCount?: number | null
   // Order metadata
   orderNumber: string | null
@@ -174,6 +182,21 @@ function buildContentStream(d: PrescriptionPdfData): string {
   lines.push(v(`Quantity: ${d.quantity}`))
   if (d.sigText) {
     lines.push(v(`Sig: ${d.sigText}`))
+  }
+
+  // ── WO-105 titration schedule ─────────────────────────────
+  // Printed before the totals, because the totals are the sum of it.
+  const titration = d.titrationSteps ?? []
+  if (titration.length > 0) {
+    lines.push(v('Titration schedule:'))
+    let week = 1
+    for (const step of titration) {
+      const to = week + step.weeks - 1
+      const span = week === to ? `Week ${week}` : `Weeks ${week}-${to}`
+      const freq = FREQUENCY_OPTIONS.find(f => f.code === step.frequency)?.sig ?? step.frequency
+      lines.push(v(`  ${span}: ${step.dose} ${step.unit} ${freq} (${step.weeks} ${step.weeks === 1 ? 'week' : 'weeks'})`))
+      week = to + 1
+    }
   }
 
   // ── WO-96 Rx details ──────────────────────────────────────

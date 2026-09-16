@@ -43,6 +43,8 @@ describe('builderStateFromLine', () => {
       formulationId: 'f1', pharmacyId: 'ph1', doseAmount: '10', doseUnit: 'units',
       frequency: 'QW', quantity: '5mL vial', refills: 2,
       sigText: 'Inject 10 units subcutaneously once weekly',
+      sigMode:        'standard',
+      titrationSteps: [],
     })
   })
 })

@@ -19,6 +19,7 @@
 // Transformers must not add any logging of PHI fields.
 
 import { allergiesForPayload } from '@/lib/patients/allergies'
+import { parseTitrationSteps, type TitrationStep } from '@/lib/orders/titration'
 
 // ============================================================
 // CANONICAL ORDER PAYLOAD
@@ -75,6 +76,14 @@ export interface OrderPayload {
   // Optional so payloads built before WO-101a keep compiling.
   packageLabel?:        string | null
   packageCount?:        number
+  // WO-105: the titration schedule, structured. Empty for every other
+  // line. sigText still reads as a sentence (Tier 4 is a fax), but a
+  // pharmacy that takes fields gets the steps as fields — which is the
+  // whole point: "some pharmacies don't really like you to send things
+  // like free text written like this because it's like too vague for
+  // them with titrations" (Gina Rooks, 2026-09-11).
+  // Optional so payloads built before WO-105 keep compiling.
+  titrationSteps?:      ReadonlyArray<TitrationStep>
   // Clinic
   clinicName:           string
 }
@@ -98,10 +107,11 @@ export function rxDetailPayloadFields(order: {
   special_instructions?: string | null
   package_label?:        string | null
   package_count?:        number | null
+  titration_steps?:      unknown
 }): Pick<OrderPayload,
   'daysSupply' | 'dispenseQuantity' | 'dispenseUnit' | 'refills' | 'substitutionAllowed' |
   'syringeOption' | 'shippingType' | 'clinicalDifference' | 'diagnosisCode' | 'diagnosisText' | 'specialInstructions' |
-  'packageLabel' | 'packageCount'
+  'packageLabel' | 'packageCount' | 'titrationSteps'
 > {
   const dq = order.dispense_quantity
   const dispenseQuantity = typeof dq === 'string' ? Number(dq) : dq ?? null
@@ -120,7 +130,35 @@ export function rxDetailPayloadFields(order: {
     // WO-101a
     packageLabel:        order.package_label ?? null,
     packageCount:        typeof order.package_count === 'number' && order.package_count > 0 ? order.package_count : 1,
+    // WO-105
+    titrationSteps:      parseTitrationSteps(order.titration_steps),
   }
+}
+
+/**
+ * WO-105: the titration schedule as the pharmacy receives it — one entry
+ * per step, with the week range spelled out so the pharmacy never has to
+ * count. Empty array when the line is not a titration.
+ */
+export function titrationScheduleField(
+  steps: ReadonlyArray<TitrationStep> | undefined,
+): Array<{ step: number; weeks: string; dose: string; unit: string; frequency: string; duration_weeks: number }> {
+  if (!steps || steps.length === 0) return []
+  const out: Array<{ step: number; weeks: string; dose: string; unit: string; frequency: string; duration_weeks: number }> = []
+  let week = 1
+  steps.forEach((s, i) => {
+    const to = week + s.weeks - 1
+    out.push({
+      step:           i + 1,
+      weeks:          week === to ? `Week ${week}` : `Weeks ${week}-${to}`,
+      dose:           s.dose,
+      unit:           s.unit,
+      frequency:      s.frequency,
+      duration_weeks: s.weeks,
+    })
+    week = to + 1
+  })
+  return out
 }
 
 /**
@@ -201,6 +239,8 @@ function transformViosPayload(p: OrderPayload): PharmacyPayload {
       // WO-101a
       package_label:        p.packageLabel ?? null,
       package_count:        p.packageCount ?? 1,
+      // WO-105: [] for a line that is not a titration.
+      titration_schedule:   titrationScheduleField(p.titrationSteps),
     },
     clinic_name: p.clinicName,
   }
@@ -259,6 +299,8 @@ function transformLifeFilePayload(p: OrderPayload): PharmacyPayload {
         diagnosisCode:       p.diagnosisCode ?? '',
         diagnosisText:       p.diagnosisText ?? '',
         specialInstructions: p.specialInstructions ?? '',
+        // WO-105
+        titrationSchedule:   titrationScheduleField(p.titrationSteps),
         // WO-101a
         packageLabel:        p.packageLabel ?? '',
         packageCount:        p.packageCount ?? 1,

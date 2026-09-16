@@ -168,6 +168,8 @@ describe('transformLifeFilePayload — registry lookup + shape', () => {
           refills:             0,
           dispenseAsWritten:   false,
           syringeOption:       'sc_kit',
+          // WO-105: [] unless the line is a titration
+          titrationSchedule:   [],
           shippingType:        'standard',
           clinicalDifference:  '',
           diagnosisCode:       '',
