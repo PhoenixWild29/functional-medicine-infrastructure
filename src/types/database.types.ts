@@ -1154,6 +1154,7 @@ export type Database = {
           shipping_fee: number
           shipping_state_snapshot: string | null
           shipping_type: string | null
+          sig_mode: string | null
           sig_text: string | null
           special_instructions: string | null
           status: Database["public"]["Enums"]["order_status_enum"]
@@ -1163,6 +1164,7 @@ export type Database = {
             | Database["public"]["Enums"]["integration_tier_enum"]
             | null
           substitution_allowed: boolean
+          titration_steps: Json
           syringe_option: string | null
           tracking_number: string | null
           updated_at: string
@@ -1211,6 +1213,7 @@ export type Database = {
           shipping_fee?: number
           shipping_state_snapshot?: string | null
           shipping_type?: string | null
+          sig_mode?: string | null
           sig_text?: string | null
           special_instructions?: string | null
           status?: Database["public"]["Enums"]["order_status_enum"]
@@ -1220,6 +1223,7 @@ export type Database = {
             | Database["public"]["Enums"]["integration_tier_enum"]
             | null
           substitution_allowed?: boolean
+          titration_steps?: Json
           syringe_option?: string | null
           tracking_number?: string | null
           updated_at?: string
@@ -1268,6 +1272,7 @@ export type Database = {
           shipping_fee?: number
           shipping_state_snapshot?: string | null
           shipping_type?: string | null
+          sig_mode?: string | null
           sig_text?: string | null
           special_instructions?: string | null
           status?: Database["public"]["Enums"]["order_status_enum"]
@@ -1277,6 +1282,7 @@ export type Database = {
             | Database["public"]["Enums"]["integration_tier_enum"]
             | null
           substitution_allowed?: boolean
+          titration_steps?: Json
           syringe_option?: string | null
           tracking_number?: string | null
           updated_at?: string
@@ -2427,6 +2433,7 @@ export type Database = {
           provider_id: string
           sig_mode: string | null
           sig_text: string | null
+          titration_steps: Json
           timing_code: string | null
           updated_at: string | null
           use_count: number | null
@@ -2450,6 +2457,7 @@ export type Database = {
           provider_id: string
           sig_mode?: string | null
           sig_text?: string | null
+          titration_steps?: Json
           timing_code?: string | null
           updated_at?: string | null
           use_count?: number | null
@@ -2473,6 +2481,7 @@ export type Database = {
           provider_id?: string
           sig_mode?: string | null
           sig_text?: string | null
+          titration_steps?: Json
           timing_code?: string | null
           updated_at?: string | null
           use_count?: number | null
