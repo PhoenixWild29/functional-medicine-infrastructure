@@ -1,9 +1,11 @@
 # Phase 21 — Practitioner Feedback Round 1 (Gina Rooks, 2026-09-11)
 
 **Status:** Work orders defined, ready for build
-**Source:** Product Run Thru meeting 2026-09-11 (Gina Rooks NP, Lauren Perkins, Anila Coniku-Nicklos) + Gina's follow-up email
+**Source:** Product Run Thru meeting 2026-09-11 (Gina Rooks NP, Lauren Perkins, Anila Coniku-Nicklos) + Gina's follow-up email. Both are now committed verbatim under [`docs/practitioner-feedback/`](practitioner-feedback/README.md) — the [email](practitioner-feedback/2026-09-11-gina-rooks-email.md) and the [transcript](practitioner-feedback/2026-09-11-product-run-thru-transcript.md). **Check every requirement here against those files.** A requirement that cannot quote its source is a proposal, and must say so.
 **Owner:** Sam Shamber
 **Build order:** WO-96 → WO-107 as listed. Dependencies noted per WO.
+
+> **This file is the canonical copy: `docs/phase21-practitioner-feedback-workorders.md` in this repository.** Copies exist in the OneDrive folder and in older worktrees; they are stale, they disagree with this one, and they are not to be edited. Amend this file.
 
 ---
 
@@ -282,32 +284,67 @@ A favorite is a drug + formulation + pharmacy. Under it, the clinic's common dos
 
 ---
 
-## WO-105: Titration Builder → Sequential Orders + Summed Quantity
+## WO-105: Titration Builder → Structured Steps + Summed Quantity
 
 **Phase:** 21
 **Blocked by:** WO-96, WO-101
 **Status:** ready
 
-### Description
-Titration is a schedule of steps the provider enters once. The app generates the sequential monthly orders, sums quantity per order and total, and prints the schedule for the pharmacy and the patient. Pharmacies reject free-text titration; this replaces it with structured steps.
+> **Spec amendment (2026-09-15, this is what gets built).** The original WO specified sequential monthly orders, a `scheduled` order state with a `release_at` date released by "the existing cron", and linkage via `protocol_instance_id` + `cycle_number`. **All three are struck.** None appears in either primary source; `cycle_number` numbers repeat runs of a protocol for a patient (`UNIQUE (patient_id, protocol_id, cycle_number)`, migration 20260816000001), not months within a titration; and there is no `scheduled` status in `order_status_enum` and no release cron. The original also cited Gina's email, which says nothing about titration: the request is verbal, from the 2026-09-11 meeting. What is built is **one order, structured steps, summed quantity, schedule printed for the pharmacy and the patient** — see "What she asked for" below, then Scope.
+>
+> Sequential monthly orders ("Phase B") stay open as a later, additive change if Gina wants monthly billing. It is not built now because it charges shipping once per order, and shipping charged more than once is a problem she raised in writing: *"You might get better pricing but you then you pay shipping more than once, so would want that built in as well."* The open question behind Phase B — whether the patient pays once up front or monthly — is hers to answer, and nothing in Phase A forecloses it.
+
+### What she asked for
+From the [2026-09-11 transcript](practitioner-feedback/2026-09-11-product-run-thru-transcript.md). Gina, at 00:56:14, on the titration mode as it shipped:
+
+> "I see that there's some this says titration. So I was thinking there was going to be more to it, but it looks like it's just giving directions for the next few days later. Um because I had said to you before, you know, with drugs that you titrate, it would be nice to have like do this for the first four weeks, do this for the next four weeks."
+
+At 00:57:56, on the shape and on why free text fails:
+
+> "I would see the titration as like at least a different box for like each next step. um that could then be you know like this is your first it would almost be like separate prescriptions that would be triaged at separate points. Um some[ph]armacies don't really like you to send things like free text written like this because it's like too vague for them with titrations. So sometimes you get a lot of push back with something like this."
+
+At 00:59:00, on the workaround this replaces:
+
+> "I'm not going to say that I don't do that sometimes too and make it easier, but it can get confusing for the patient as well and it's definitely not best practice. So if like there was a way to actually put the titration in so that it's like this is your first month, this is your second month, that would be so much more ideal because I know that's definitely something that frustrates the provider that you have to put in like a fake prescription, then you have to tell the patient separately like do this and then they might get confused and they might mess it up."
+
+At 01:01:35, on entering it once:
+
+> "you order a medication, you want them to take it like that for a month and then you want the next month, but you don't want to go in every single month and put it in because it's just extra work. It's a pain in the butt."
+
+The summed total is Lauren's, at 00:59:49:
+
+> "we can build the titration schedule like it's a protocol, but then the technology can just sum up how much medicine you need to actually like execute that. So, it could still go to the pharmacy with it, but then there's like at the very top and then you could even resum it at the bottom just because sometimes[ph] are dense, but like this is the total amount, here's like the titration schedule and just recapping it. So it's like for both the patient and the pharmacy."
+
+Phase A serves both of her problems: the pharmacy gets structured steps instead of "Titrate up by 0.1mL every 3-4 days as tolerated", and the provider enters the whole schedule once instead of re-entering it monthly or writing a fake maximum-dose script.
 
 ### Schema
-- `titration_schedules`: `id`, `order_id` (first order), `protocol_instance_id`, `steps jsonb` — `[{dose, unit, frequency, weeks}]`, `total_quantity numeric`, `created_by`.
-- Generated orders link via `protocol_instance_id` + `cycle_number` (already exists from GAP-3). `orders.titration_step_range text` snapshot ("Weeks 1–4").
+One migration, merged alone:
+- `orders.sig_mode text` — `standard | titration | cycling`, so the mode round-trips into reopen (WO-98), refill (WO-106) and favorites. Orders carry no mode today; a titration is recoverable only from words in `sig_text`.
+- `orders.titration_steps jsonb` — `[{dose, unit, frequency, weeks}]`, a snapshot on the order in the manner of `medication_snapshot`. No `titration_schedules` table and no `order_id` pointer to a "first" order: nothing makes one order special.
+- `provider_favorites.titration_steps jsonb` — so a titration favorite is a real titration (see Scope).
 
-### UI
-- Dose step: **Titrate** toggle beside the dose field. When on, a step table appears: dose, frequency, weeks. + Add step. The app shows: per-step quantity, per-month order breakdown, and total.
-- Review: one card per generated order labelled "Semaglutide · Month 1 (weeks 1–4) · 10 units" etc., plus a schedule summary block at the top of the group.
-- Rx PDF: schedule table at top, per-order details below. Patient checkout: schedule shown in plain language.
-- Orders after month 1 are created in a `scheduled` state with a `release_at` date; released to Awaiting Payment automatically by the existing cron. Provider can release early or cancel remaining.
+### Scope
+- **Step table** in the dose step: dose, unit, frequency, weeks per step, with **Add step** and **Remove step**. Per-step quantity, total quantity and total days are derived and read-only (phase rule 3).
+- **`computeTitrationDispense(steps, formulation)`** sums per step and returns total days supply, total quantity and the per-step breakdown. `suggestPackage` takes the summed quantity. The `/titrate/` bail-out in `durationDaysFromSig` stays, for legacy rows only.
+- **Sig**: a generated summary sentence is kept, because Tier 4 is a fax and text is the transport — but it is backed by the structured steps, which render as a **table on the Rx PDF** and as **fields in the Tier 1 / 2 / 3 payloads**.
+- **Patient-facing schedule** in plain language at checkout, with the total restated at the bottom (Lauren's "resum it at the bottom").
+- **Fix the titration favorite.** "LDN Starter — Titration" loads as a *standard* sig today and silently drops the increment, interval and target, because `applyPreset` forces standard mode. With `provider_favorites.titration_steps` a titration favorite loads as a titration. Reseed it.
+- **Multi-strength titrations are out of scope and must fail loudly.** Two capsule strengths are two formulations at two prices, so one order line cannot represent that titration. If the steps cross formulations the builder says so and requires a second line. It must never silently produce a single wrong quantity.
+- **Cycling is not touched.** Its on-days / off-days quantity math is wrong today (a 5-on/2-off week is 5/7 doses per day, which `dosesPerDay` does not model) and gets its own work order. Cycling shares `computeDispense` with titration, so Phase A must leave its behaviour byte-identical, pinned by a test.
+
+### Why one dose per order no longer holds
+WO-96, WO-101, WO-101a and WO-102 all assume one dose for the whole duration: `computeDispense` takes a single dose + frequency + duration, and `suggestPackage` covers a single product. A titration is *n* segments, so the quantity is Σ over steps of doses(step) × dose(step). Semaglutide 5 mg/mL weekly, 10u×4w → 20u×4w → 40u×4w, is 0.4 + 0.8 + 1.6 = **2.8 mL over 84 days**; the single-dose math at the target dose returns 4.8 mL, a 71% overshoot — which is precisely the "script through for like the maximum" workaround, encoded in our arithmetic.
 
 ### Acceptance Criteria
-- [ ] Semaglutide steps: 10u×4w, 20u×4w, 40u×4w → 3 orders, quantities computed per WO-101 package logic, total shown.
-- [ ] Ketotifen capsule steps: 0.1 mg×2w, 0.2 mg×2w, 0.5 mg×4w → orders grouped by month with correct capsule counts.
-- [ ] Rx PDF shows schedule table and per-order lines.
-- [ ] Month 2 order sits in `scheduled` with `release_at` = month 1 send date + 28 days; cron releases it.
-- [ ] Cancel remaining from the month-1 order detail cancels months 2–3 and writes audit.
-- [ ] Free-text "titrate up by…" is no longer generated into the sig when Titrate is on.
+- [ ] Semaglutide steps 10u×4w, 20u×4w, 40u×4w → one order, per-step quantities 0.4 / 0.8 / 1.6 mL, total 2.8 mL, total days 84, package suggested for the summed quantity per WO-101.
+- [ ] The step table adds and removes steps; per-step quantity, total quantity and total days are shown and cannot be typed into.
+- [ ] `orders.sig_mode = 'titration'` and `orders.titration_steps` are stored, and reopening the draft (WO-98) restores the step table.
+- [ ] Rx PDF shows the step table and the summed dispense; Tier 1 / 2 / 3 payloads carry the steps as fields; the fax sig still reads as a sentence.
+- [ ] Patient checkout shows the schedule in plain language with the total restated at the bottom.
+- [ ] "LDN Starter — Titration" loads as a titration with its steps, not as a standard sig.
+- [ ] Steps that cross formulations (ketotifen 0.1 mg capsule → 0.5 mg capsule) are refused with a message telling the provider to add a second line; no quantity is computed.
+- [ ] Cycling behaviour is unchanged, pinned by a test.
+- [ ] Free-text "titrate up by…" is no longer generated when Titrate is on.
 
 ---
 
