@@ -240,6 +240,11 @@ export function computeTitrationDispense(
     const quantity = perDose != null && perDose > 0 && doses != null ? round2(doses * perDose) : null
 
     if (quantity != null) {
+      // DELIBERATE: each step is rounded BEFORE it is added, not summed
+      // at full precision and rounded once at the end. The per-step rows
+      // a pharmacist reads have to add up to the total printed under
+      // them; a total that is a cent-equivalent off from its own rows is
+      // a total nobody trusts. Do not "fix" this into round2(sum).
       totalQuantity += quantity
       derivedAny = true
     }
@@ -249,6 +254,9 @@ export function computeTitrationDispense(
   }
 
   if (!derivedAny) return null
+  // round2 here only clears floating-point dust from adding already-
+  // rounded steps (0.4 + 0.8 + 1.6); it is not a second rounding of the
+  // raw arithmetic. See the note at the summation above.
   return { totalDays, totalQuantity: round2(totalQuantity), dispenseUnit, steps: out }
 }
 
