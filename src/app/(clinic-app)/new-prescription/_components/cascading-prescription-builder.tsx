@@ -357,18 +357,26 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   }, [selectedFormulation, loadNonce])
 
   // ── Reset downstream selections ─────────────────────────
-  // Timing + duration start empty for a new medication, and the parent's
-  // copies are cleared with them: durationDays drives days supply, the
-  // default quantity and the suggested vial count, so it must never
-  // outlive the dose step it came from.
-  function resetTimingDuration(next: SigTimingAndDuration) {
+  // Everything the dose step derives belongs to ONE medication, and is
+  // cleared when the medication changes: timing, duration, durationDays,
+  // and — WO-105 — the sig mode and the titration steps. All of them
+  // drive days supply, the default quantity and the suggested vial
+  // count, so none may outlive the dose step it came from. A titration
+  // schedule that survived a medication change would hand the next drug
+  // the previous drug's steps, in the previous drug's units.
+  //
+  // Callers that legitimately carry state (a favorite, a protocol, a
+  // reopened draft) call this first and then apply their own values.
+  function resetDoseStepState(next: SigTimingAndDuration) {
     setStructuredInit(next)
     setTimingDuration(next)
     setDurationDays(null)
+    setSigMode('standard')
+    setTitrationSteps([])
   }
 
   function selectIngredient(ing: Ingredient) {
-    resetTimingDuration(NO_TIMING_DURATION)
+    resetDoseStepState(NO_TIMING_DURATION)
     setSelectedIngredient(ing)
     setSelectedSaltForm(null)
     setSelectedFormulation(null)
@@ -392,7 +400,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     // Re-clicking the selected formulation keeps the sig builder mounted
     // (same key), so its timing + duration — and the parent's copies —
     // stay as they are.
-    if (selectedFormulation?.formulation_id !== f.formulation_id) resetTimingDuration(NO_TIMING_DURATION)
+    if (selectedFormulation?.formulation_id !== f.formulation_id) resetDoseStepState(NO_TIMING_DURATION)
     setSelectedFormulation(f)
     setSelectedPharmacy(null)
     setPendingPharmacyId(null)
@@ -537,7 +545,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       setCurrentSig('')
       // Exactly what the preset carries — '' where it has no timing or
       // duration, never what the dose step held before.
-      resetTimingDuration({ timing: load.timing, duration: load.duration, customDurationDays: load.customDurationDays })
+      resetDoseStepState({ timing: load.timing, duration: load.duration, customDurationDays: load.customDurationDays })
       // WO-105: a titration favorite comes back as a titration. The
       // remount below (loadNonce) is what seeds the builder's step table
       // from initialTitrationSteps.
@@ -631,7 +639,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
           onChange={e => {
             setSearchQuery(e.target.value)
             if (selectedIngredient) {
-              resetTimingDuration(NO_TIMING_DURATION)
+              resetDoseStepState(NO_TIMING_DURATION)
               setSelectedIngredient(null)
               setSelectedSaltForm(null)
               setSelectedFormulation(null)
