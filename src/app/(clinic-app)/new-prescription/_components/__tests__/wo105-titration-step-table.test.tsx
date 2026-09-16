@@ -81,6 +81,11 @@ function jsonResponse(body: unknown) {
 
 let formulation: typeof FORMULATION = FORMULATION
 
+const OTHER_INGREDIENT = {
+  ingredient_id: 'ing-test', common_name: 'Testosterone Cypionate', therapeutic_category: "Men's Health",
+  dea_schedule: null, fda_alert_status: null, fda_alert_message: null, description: null,
+}
+
 const mockFetch = jest.fn((input: unknown, init?: { method?: string }) => {
   const url = String(input)
   const method = init?.method ?? 'GET'
@@ -90,7 +95,8 @@ const mockFetch = jest.fn((input: unknown, init?: { method?: string }) => {
   if (url.startsWith('/api/protocols')) return jsonResponse({ data: [] })
   if (url.includes('level=formulation&')) return jsonResponse({ data: { formulation, salt_form: SALT_FORM, ingredient: INGREDIENT } })
   if (url.includes('level=salt_forms')) return jsonResponse({ data: [SALT_FORM] })
-  if (url.includes('level=formulations')) return jsonResponse({ data: [formulation] })
+  if (url.includes('level=formulations')) return jsonResponse({ data: [formulation, KETO_FORMULATION] })
+  if (url.includes('level=ingredients')) return jsonResponse({ data: [INGREDIENT, OTHER_INGREDIENT] })
   if (url.includes('level=pharmacy_options')) {
     return jsonResponse({ data: [{
       pharmacy_formulation_id: 'pf-strive', wholesale_price: 95, available_quantities: ['1mL vial', '5mL vial'],
@@ -319,6 +325,85 @@ describe('reopening a saved titration line (WO-98)', () => {
     // The dose row stays hidden: the steps are the dose and the duration.
     expect(screen.queryByLabelText('Dose amount')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Duration')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * Same class of defect as the WO-96 timing/duration leak: state that
+ * belongs to one medication surviving into the next. A titration
+ * schedule is worse than a stale duration — it carries the previous
+ * drug's doses, in the previous drug's units, into the days supply,
+ * the dispense quantity and the suggested vial count.
+ */
+describe('titration steps never survive a medication change', () => {
+  async function loadTitrationFavorite() {
+    renderBuilder()
+    fireEvent.click(await screen.findByRole('button', { name: /^Favorites/ }))
+    const card = screen.getByTestId('favorite-fav-ldn')
+    fireEvent.click(within(card).getByTestId('favorite-custom'))
+    const table = await screen.findByTestId('titration-builder')
+    await waitFor(() => expect(within(table).getByLabelText('Step 1 dose')).toHaveValue('10'))
+  }
+
+  it('selecting a different formulation resets to one empty step in standard mode', async () => {
+    await loadTitrationFavorite()
+
+    fireEvent.click(await screen.findByText('Ketotifen 0.1mg Capsule'))
+
+    // Back to a standard line: the dose row is there, the step table is not.
+    await waitFor(() => expect(screen.getByLabelText('Dose amount')).toBeInTheDocument())
+    expect(screen.queryByTestId('titration-builder')).not.toBeInTheDocument()
+
+    // And switching to Titration starts from one empty step — not the
+    // LDN schedule in mL at bedtime.
+    fireEvent.click(screen.getByRole('button', { name: 'Titration' }))
+    const table = await screen.findByTestId('titration-builder')
+    expect(within(table).getByLabelText('Step 1 dose')).toHaveValue('')
+    expect(screen.queryByTestId('titration-step-1')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('titration-total')).not.toBeInTheDocument()
+  })
+
+  it('clearing the search and picking a different ingredient resets them too', async () => {
+    await loadTitrationFavorite()
+
+    fireEvent.change(screen.getByLabelText('Search medications'), { target: { value: 'Test' } })
+    fireEvent.click(await screen.findByText('Testosterone Cypionate'))
+
+    // The dose step is gone with the formulation; nothing titration-shaped survives.
+    await waitFor(() => expect(screen.queryByTestId('dose-step')).not.toBeInTheDocument())
+    expect(screen.queryByTestId('titration-builder')).not.toBeInTheDocument()
+
+    fireEvent.click(await screen.findByText('Semaglutide 5mg/mL Injectable'))
+    await screen.findByTestId('dose-step')
+    fireEvent.click(screen.getByRole('button', { name: 'Titration' }))
+    const table = await screen.findByTestId('titration-builder')
+    expect(within(table).getByLabelText('Step 1 dose')).toHaveValue('')
+    expect(screen.queryByTestId('titration-step-1')).not.toBeInTheDocument()
+  })
+
+  it('a titration favorite still loads its own steps and mode', async () => {
+    await loadTitrationFavorite()
+    const table = screen.getByTestId('titration-builder')
+    expect(within(table).getByLabelText('Step 2 dose')).toHaveValue('20')
+    expect(screen.getByTestId('titration-total')).toHaveTextContent('Total 1.2 mL over 56 days')
+    expect(screen.queryByLabelText('Dose amount')).not.toBeInTheDocument()
+  })
+
+  it('re-clicking the already-selected formulation keeps steps the provider typed', async () => {
+    await openDoseStep()
+    fireEvent.click(screen.getByRole('button', { name: 'Titration' }))
+    const table = await screen.findByTestId('titration-builder')
+    fireEvent.change(within(table).getByLabelText('Step 1 dose'), { target: { value: '15' } })
+    fireEvent.change(within(table).getByLabelText('Step 1 weeks'), { target: { value: '6' } })
+    await waitFor(() => expect(screen.getByTestId('titration-total')).toBeInTheDocument())
+
+    // Same formulation again: the sig builder stays mounted, exactly as
+    // it does for timing and duration.
+    fireEvent.click(screen.getByText('Semaglutide 5mg/mL Injectable'))
+
+    await waitFor(() => expect(screen.getByTestId('titration-builder')).toBeInTheDocument())
+    expect(within(screen.getByTestId('titration-builder')).getByLabelText('Step 1 dose')).toHaveValue('15')
+    expect(screen.getByTestId('titration-total')).toHaveTextContent('over 42 days')
   })
 })
 
