@@ -354,20 +354,83 @@ WO-96, WO-101, WO-101a and WO-102 all assume one dose for the whole duration: `c
 **Blocked by:** WO-98
 **Status:** ready
 
-### Description
-Refill copies an existing order into a new draft with everything pre-filled, lets the provider change dose or quantity, and signs. Dashboard exposes the three actions providers actually take.
+> **Spec amendment (2026-09-17, this is what gets built).** The original WO attributed all of this to the phase's practitioner feedback. Checked against the primary sources, most of it is Lauren's and Anila's, one line is Gina's, and four items are in neither source. Struck:
+>
+> - **The controlled-substance refill rule** — *"refill blocked … when the source is a controlled substance older than the state's limit (config value; default 6 months)"*. Nobody said this. There is no state-rules infrastructure in this codebase, and "default 6 months" was invented. A fabricated compliance rule in a prescribing app is worse than no rule: it either blocks lawful refills or implies a guarantee the product cannot make. A real rule needs regulatory input and its own work order. **Out of Phase 21.** Blocking at the authorized refill count is kept — that needs no legal opinion.
+> - **`refills` decremented on the source** — replaced by deriving the count (see Schema). Orders are append-only snapshots; mutating a signed order to track something the app can count is the wrong shape, and a decrement strands a refill the patient never received when the refill is cancelled or refunded.
+> - **"Refill opens at Review (not search)"** as a stated requirement — it is a design decision, not feedback, and is recorded as one below.
+> - **"Kanban view renamed Board"** — "Board" is an invention and still jargon. See UI.
+>
+> Added, because it is in the sources and the WO omitted it: **refilling multiples**. It is also the shipping fix — see Why multiples matter.
+>
+> **"Action needed"** (Lauren, 01:46:30: *"are there any orders that require attention right like action like an action needed one"*) is deliberately **routed to WO-107**, whose "Needs attention" queue already covers it. Not built twice.
+
+### What was asked, and by whom
+From the [2026-09-11 transcript](practitioner-feedback/2026-09-11-product-run-thru-transcript.md). Gina's [email](practitioner-feedback/2026-09-11-gina-rooks-email.md) does not mention refills as an action, the dashboard buttons, the view naming or the KPI cards; its only refill line is *"4) How many refills are authorized."*, which is the Rx field built in WO-96.
+
+**Gina Rooks, 00:32:29** — the one refill ask that is hers, and the reason this WO exists:
+
+> "So you'd want to have like your usual standards and then obviously you want to be able to tweak it if you need to. But then yes, from a specific patient perspective, like reordering, you want it to be as fast as possible, you know, not re-entering it every time."
+
+**Lauren Perkins, 00:45:42** — a refill whose dose can be edited:
+
+> "you should be able to check out or you know do refills and even if that refill is like oh I'm going to change the dose or I want to you know like in my last appointment with Dr. Mitchell he was like oh let's titrate up your LDN… And so it's a a refill, but you get to edit the actual, you know, dose and how much you're you're ordering"
+
+**Lauren Perkins, 01:34:34 and 01:38:27** — the three dashboard actions:
+
+> "there should be like new prescription, new protocol, and then there probably needs to be a button for refill or you know what I mean?"
+
+> "those three actions and the dashboard should have that."
+
+**Lauren Perkins, 01:35:48** — one-off and multiple:
+
+> "they definitely are going to need to do refills, whether that's a oneoff refill or whether that's refilling multiples. So, think through like what does that look like in terms of those are the key actions that they're going to take."
+
+**Lauren Perkins, 01:33:41** — the view label:
+
+> "Most people Sam I don't think are going to know canban. I wonder if we should call it like visual or like you know like some like if we should try to call it something that like cuz like can bin is like a technology term."
+
+**Anila Coniku-Nicklos, 01:32:09** — the clickable KPI cards:
+
+> "in the table version I would think like I was going to click under the total orders. the total orders and get there or the revenue or the the pending payments in conban or canban. … It takes you right there already does that. It just takes you into those categories."
+
+Also recorded, not built here: Lauren proposed watching Gina do a refill the old way before designing the flow (*"we can have Gina screen share and like use me as the practice patients and be like what's the old school way of doing it"*). Worth doing — it would tell us whether a refill is usually one drug or a whole protocol.
+
+### Schema
+One migration, merged alone:
+- `orders.refill_of_order_id uuid NULL REFERENCES orders(order_id)`, indexed. Set on the new order when it is created from a refill.
+
+Nothing else. **Refills used is derived**: `count(orders WHERE refill_of_order_id = <source> AND status NOT IN (cancelled/refunded states))`, compared against the source's `refills`. No decrement, no `refills_used` column. A cancelled or refunded refill correctly frees the authorization again, which a decrement cannot do without a compensating write on an order that is already signed.
 
 ### Behavior
-- Order detail and dashboard row menu: **Refill**. Creates a draft with the same patient, provider (or self per WO-100), formulation, pharmacy, package, sig, Rx details; `refills` decremented on the source if > 0; `refill_of_order_id` set.
-- Refill opens at Review (not search) with the card in edit-ready state.
-- Dashboard header: **+ New Prescription**, **+ New Protocol**, **Refill** (opens a patient search filtered to patients with prior orders). Kanban view renamed **Board**. KPI cards clickable → filter table (Pending Payment card → Pending Payment tab, etc.).
-- Provider view default stays My patients.
+- **Refill, single.** Primary action in the order drawer and a row action in the orders table. Opens the prescription session pre-loaded with patient, provider (self per WO-100), formulation, pharmacy, package, Rx details and the structured sig inputs. The dose is editable, per Lauren 00:45:42. The new order carries `refill_of_order_id`.
+- **Refill, multiple.** From a patient's order list, select several past orders and refill them into **one session as sibling drafts**, so the WO-102 bundle charges shipping once per pharmacy.
+- **Blocked at the authorization.** When the derived refill count is at or above the source's `refills`, Refill is unavailable with a message pointing at a new prescription. No other block.
+- **Titration refill defaults to the maintenance dose.** A refill of a line with `sig_mode = 'titration'` becomes a **standard** line at the final step's dose and frequency, duration defaulted to the last step's length, with the reason on screen: *"Refilling at the maintenance dose, 40 units weekly. Change it if the patient is still titrating."* Copying the schedule verbatim re-prescribes a ramp the patient has completed and under-dispenses — the WO-105 overshoot in reverse. Flagged for Gina to confirm; the safe default ships now.
+- **Multi-vial refill re-prices.** The package on the source is a snapshot. A refill re-runs the WO-101 suggestion against the pharmacy's **active** packages today and shows the delta when the price moved — *"2 × 5 mL vials, $310, was $285 on 12 Aug"*. Never silently re-price, and never resend a stale `packageId` and let the server reject it with an internal error.
+
+### UI
+- Dashboard header: **+ New Prescription**, **+ New Protocol**, **Refill**. Refill opens a patient picker limited to patients with prior orders.
+- View toggle becomes **Table / Cards**. Not "Board": that is an invention and still jargon. Lauren's word was "visual" and she was thinking aloud, so neither is settled — "Cards" describes what the user sees. **Lauren gets final say on the word.**
+- All four KPI cards clickable to their tab, keyboard accessible (real buttons, Enter/Space, focus ring).
+- **Pending Payment count fixed.** It counts month-to-date, but the tab it will link to shows all open links regardless of month, so the number and its destination disagree the moment the card becomes clickable. The card counts what the tab shows.
+- Provider view default stays My patients (unchanged; restated only because the original WO listed it).
+
+### Why multiples matter
+Each new order gets its own shipping at creation (`applyBundleShipping`, single-order bundle → full pharmacy fee). Refilling three medications one at a time therefore pays shipping three times, which is the thing Gina raised in writing: *"you then you pay shipping more than once, so would want that built in as well."* Refilling multiples into one session is not a convenience — it is what keeps a refill from costing the patient two extra shipping fees.
+
+### Design decisions (recorded as decisions, not requirements)
+- A refill lands at **Review** in edit-ready state rather than at search, because everything is already known and Review is where the provider changes a dose and signs.
+- A refill creates a **new order**, never reuses the source. Orders are append-only snapshots (medication, pharmacy, provider NPI, prices) and the audit trail and pharmacy submissions key off `order_id`; reusing the source would corrupt the history of the original fill.
 
 ### Acceptance Criteria
-- [ ] Refill on a delivered Semaglutide order → draft at Review with identical lines; change dose to 20 units; sign → new order with `refill_of_order_id` set.
-- [ ] Source order `refills` decremented; refill blocked with message when `refills = 0` and source is a controlled substance older than the state's limit (config value; default 6 months).
-- [ ] Dashboard shows three actions; "Kanban" label gone.
-- [ ] Clicking Pending Payment KPI selects the Pending Payment tab.
+- [ ] Refill on a delivered Semaglutide order → session at Review with the line pre-filled; change dose to 20 units; sign → new order with `refill_of_order_id` set to the source.
+- [ ] Refills used is derived from `refill_of_order_id`, never stored: a source with `refills = 2` allows two refills, a third is blocked with a message pointing at a new prescription, and cancelling one of the two frees it again.
+- [ ] Refilling three past orders for one patient lands three sibling drafts in one session, and shipping is charged once per pharmacy across them (WO-102).
+- [ ] Refill of a titration order produces a standard line at the final step's dose and frequency, with the maintenance-dose explanation shown; the step table is not reproduced.
+- [ ] Refill of a multi-vial line re-suggests from today's active packages and shows the price delta when it changed; a package the pharmacy no longer prices is replaced by the current suggestion, with the change visible.
+- [ ] Dashboard shows three actions; "Kanban" label gone; toggle reads Table / Cards.
+- [ ] Each KPI card is a real button, reachable by keyboard, and selects its tab; Pending Payment's number equals the row count of the tab it opens.
 
 ---
 
