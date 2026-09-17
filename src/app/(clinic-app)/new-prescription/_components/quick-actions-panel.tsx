@@ -244,17 +244,23 @@ interface QuickActionsPanelProps {
   onLoadRecent?: (item: RecentItem) => void
   /** The medication search control — rendered first, buttons beside it. */
   children?: ReactNode
+  /**
+   * WO-106: the panel to open with. "+ New Protocol" on the dashboard
+   * starts the ordinary flow with Protocols already open, so the button
+   * does what it says rather than dropping the provider at search.
+   */
+  initialPanel?: QuickActionsPanelName | null
   /** Favorites "+ New": close the panel and put the provider in the search. */
   onNewFavorite?: () => void
 }
 
 // ── Component ───────────────────────────────────
 
-export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNewFavorite }: QuickActionsPanelProps) {
+export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNewFavorite, initialPanel }: QuickActionsPanelProps) {
   const router = useRouter()
   const session = usePrescriptionSession()
   const queryClient = useQueryClient()
-  const [activePanel, setActivePanel] = useState<QuickActionsPanelName | null>(null)
+  const [activePanel, setActivePanel] = useState<QuickActionsPanelName | null>(initialPanel ?? null)
   const [expandedProtocol, setExpandedProtocol] = useState<string | null>(null)
   const [loadingProtocol, setLoadingProtocol] = useState(false)
   const [protocolLoadError, setProtocolLoadError] = useState<string | null>(null)

@@ -32,7 +32,13 @@ import { OrderDrawer }  from './order-drawer'
 
 // ── Status tab definitions ──────────────────────────────────
 
-type TabId = 'all' | 'drafts' | 'awaiting_payment' | 'submitting' | 'processing' | 'shipped' | 'errors'
+export type TabId = 'all' | 'drafts' | 'awaiting_payment' | 'submitting' | 'processing' | 'shipped' | 'errors'
+
+/** WO-106: a ?tab= value the KPI cards can link to; anything else is 'all'. */
+export function isTabId(v: unknown): v is TabId {
+  return v === 'all' || v === 'drafts' || v === 'awaiting_payment' || v === 'submitting'
+    || v === 'processing' || v === 'shipped' || v === 'errors'
+}
 
 interface TabDef {
   id:       TabId
@@ -66,6 +72,8 @@ interface Props {
   clinicId:            string   // BLK-01: passed from Server Component for defensive query filter
   /** WO-98 × WO-100: who is looking — gates draft Edit / + Add in the drawer. */
   viewer?:             DraftViewer | undefined
+  /** WO-106: tab to open with, from ?tab= — the KPI cards link to it. */
+  initialTab?: TabId | null
 }
 
 // ── Query function (Supabase browser client) ────────────────
@@ -113,13 +121,16 @@ function buildDashboardOrder(o: Record<string, unknown>): DashboardOrder {
 
 // ── Component ───────────────────────────────────────────────
 
-export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, viewer }: Props) {
+export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, viewer, initialTab }: Props) {
   const router = useRouter()
   const supabase = createBrowserClient()
   const queryClient = useQueryClient()
 
   const [viewMode,        setViewMode]        = useState<'table' | 'kanban'>('table')
-  const [activeTab,       setActiveTab]       = useState<TabId>('all')
+  // WO-106: the KPI cards link here (?tab=…), so the tab is addressable.
+  // Anila Coniku-Nicklos, 2026-09-11 (01:32:09): "I was going to click
+  // under the total orders … It takes you right there."
+  const [activeTab,       setActiveTab]       = useState<TabId>(initialTab ?? 'all')
   // QA post-combine fix: store only the selected order's ID and derive the
   // full row from the polled query data below. Storing the whole object
   // froze the drawer on a click-time snapshot — it never reflected poll
@@ -242,7 +253,36 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
               className={`px-3 py-1.5 text-xs font-medium border-l border-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${viewMode === 'kanban' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:bg-accent'}`}
               aria-pressed={viewMode === 'kanban'}
             >
-              Kanban
+              Cards
+            </button>
+          </div>
+
+          {/* WO-106: the three actions providers actually take.
+              Lauren Perkins, 2026-09-11 (01:34:34): "there should be like
+              new prescription, new protocol, and then there probably
+              needs to be a button for refill". Protocol opens the same
+              flow with the Protocols panel already open; Refill opens a
+              patient picker limited to patients with prior orders. Both
+              sit behind the same Stripe gate as New Prescription — a
+              clinic that cannot take payment cannot prescribe. */}
+          <div className="relative group">
+            <button
+              type="button"
+              disabled={!isStripeActive}
+              onClick={() => router.push('/new-prescription?panel=protocols')}
+              className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              + New Protocol
+            </button>
+          </div>
+          <div className="relative group">
+            <button
+              type="button"
+              disabled={!isStripeActive}
+              onClick={() => router.push('/refill')}
+              className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Refill
             </button>
           </div>
 

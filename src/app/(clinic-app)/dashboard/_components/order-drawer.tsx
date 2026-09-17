@@ -762,6 +762,30 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
             </div>
           )}
 
+          {/* WO-106: Refill. Gina Rooks, 2026-09-11 (00:32:29):
+              "like reordering, you want it to be as fast as possible,
+              you know, not re-entering it every time."
+              A draft is not refillable — it has not been filled. The
+              picker is where the refill is assembled, so that one place
+              owns the session, the authorization check, the maintenance
+              dose of a finished titration and the re-priced package;
+              it opens with this order selected and shows the patient's
+              other refillable prescriptions beside it, which is how a
+              one-off becomes a multiple and shipping stays one charge. */}
+          {order.status !== 'DRAFT' && (
+            <button
+              type="button"
+              data-testid="drawer-refill"
+              onClick={() => {
+                onClose()
+                router.push(`/refill?order=${encodeURIComponent(order.orderId)}`)
+              }}
+              className="w-full rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Refill this prescription
+            </button>
+          )}
+
           {/* WO-77: Review & Sign CTA for DRAFT orders */}
           {order.status === 'DRAFT' && (
             <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-4">

@@ -18,6 +18,7 @@
 import type { DashboardOrder } from '../page'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { SkeletonTableRow } from '@/components/ui/skeleton'
+import Link from 'next/link'
 
 interface Props {
   orders:     DashboardOrder[]
@@ -63,6 +64,8 @@ function TableHead() {
         <th className={TH_CLASS}>Method</th>
         <th className={TH_CLASS}>Created</th>
         <th className={TH_CLASS}>Updated</th>
+        {/* WO-106: Refill, one of the three actions providers take. */}
+        <th className={TH_CLASS}><span className="sr-only">Actions</span></th>
       </tr>
     </thead>
   )
@@ -100,7 +103,7 @@ export function OrdersTable({ orders, isLoading, isError = false, onRowClick, on
         <table className="w-full text-sm">
           <TableHead />
           <tbody className="divide-y divide-border">
-            {[1, 2, 3, 4, 5, 6, 7, 8].map(i => <SkeletonTableRow key={i} cols={7} />)}
+            {[1, 2, 3, 4, 5, 6, 7, 8].map(i => <SkeletonTableRow key={i} cols={8} />)}
           </tbody>
         </table>
       </div>
@@ -153,6 +156,22 @@ export function OrdersTable({ orders, isLoading, isError = false, onRowClick, on
                 </td>
                 <td className="px-3 py-3 text-[13px] text-muted-foreground leading-[1.6]">
                   {formatDate(order.updatedAt)}
+                </td>
+                {/* WO-106: a draft has not been filled, so it cannot be
+                    refilled — it is edited or signed instead. stopPropagation
+                    keeps the row's own click (open the drawer) out of it. */}
+                <td className="px-3 py-3 text-right">
+                  {order.status !== 'DRAFT' && (
+                    <Link
+                      href={`/refill?order=${encodeURIComponent(order.orderId)}`}
+                      data-testid={`row-refill-${order.orderId}`}
+                      onClick={e => e.stopPropagation()}
+                      aria-label={`Refill ${order.medicationName} for ${order.patientName}`}
+                      className="rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      Refill
+                    </Link>
+                  )}
                 </td>
               </tr>
             )
