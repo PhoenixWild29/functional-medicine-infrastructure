@@ -157,6 +157,8 @@ export function orderPostBody(
     // Rx PDF table and the patient schedule are built from.
     sigMode:        rx.sigMode ?? 'standard',
     titrationSteps: rx.titrationSteps ?? [],
+    // WO-106: the order this one refills, when the line came from Refill.
+    refillOfOrderId: rx.refillOfOrderId ?? null,
   }
 }
 

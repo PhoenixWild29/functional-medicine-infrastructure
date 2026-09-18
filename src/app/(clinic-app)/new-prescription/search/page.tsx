@@ -34,7 +34,7 @@ export const metadata = {
 }
 
 interface PageProps {
-  searchParams: Promise<{ editId?: string; editOrder?: string; addToOrder?: string }>
+  searchParams: Promise<{ editId?: string; editOrder?: string; addToOrder?: string; panel?: string }>
 }
 
 export default async function PharmacySearchPage({ searchParams }: PageProps) {
@@ -101,6 +101,7 @@ export default async function PharmacySearchPage({ searchParams }: PageProps) {
         <CascadingPrescriptionBuilder
           editTarget={editTarget}
           initial={draft && editTarget?.kind === 'draft' ? draft.initial : null}
+          initialPanel={params.panel === 'protocols' ? 'protocols' : null}
         />
     </>
   )

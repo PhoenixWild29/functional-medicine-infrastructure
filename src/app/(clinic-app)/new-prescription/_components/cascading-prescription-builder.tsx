@@ -35,7 +35,7 @@ import {
   type TitrationStep,
   type SigMode,
 } from '@/lib/orders/titration'
-import { QuickActionsPanel, useClinicFavorites, type Favorite, type RecentItem } from './quick-actions-panel'
+import { QuickActionsPanel, useClinicFavorites, type Favorite, type RecentItem, type QuickActionsPanelName } from './quick-actions-panel'
 import { SaveFavoriteButton } from './save-favorite-button'
 import { builderStateFromLine, editTargetToParams, type EditTarget } from '../_lib/edit-target'
 import type { BuilderInitialState } from '@/lib/orders/draft-edit'
@@ -178,6 +178,12 @@ async function fetchLevel<T>(level: string, params: Record<string, string> = {})
 interface Props {
   editTarget?: EditTarget | null
   initial?:    BuilderInitialState | null
+  /**
+   * WO-106: open with this quick-actions panel expanded — "+ New
+   * Protocol" on the dashboard lands here with Protocols open, so the
+   * button does what it says instead of dropping the provider at search.
+   */
+  initialPanel?: QuickActionsPanelName | null
 }
 
 interface FormulationContext {
@@ -186,7 +192,7 @@ interface FormulationContext {
   ingredient:  Ingredient | null
 }
 
-export function CascadingPrescriptionBuilder({ editTarget = null, initial = null }: Props = {}) {
+export function CascadingPrescriptionBuilder({ editTarget = null, initial = null, initialPanel = null }: Props = {}) {
   const router = useRouter()
   const session = usePrescriptionSession()
 
@@ -625,6 +631,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       {/* WO-103: Level 1 — medication search FIRST, with the Favorites /
           Protocols buttons beside it (WO-85 quick actions as panels). */}
       <QuickActionsPanel
+        initialPanel={initialPanel}
         onLoadFavorite={handleLoadFavorite}
         onLoadRecent={handleLoadRecent}
         onNewFavorite={() => searchInputRef.current?.focus()}

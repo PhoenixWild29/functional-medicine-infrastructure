@@ -11,6 +11,7 @@
 // ============================================================
 
 import { SkeletonCard } from '@/components/ui/skeleton'
+import Link from 'next/link'
 
 interface Props {
   // Current MTD metrics
@@ -79,6 +80,7 @@ export function RevenueSummary({
   const cards = [
     {
       id:          'total-orders',
+      tab:         'all',
       label:       'Total Orders',
       sublabel:    'Month to date',
       value:       totalOrdersMtd === 0 ? '—' : totalOrdersMtd.toLocaleString('en-US'),
@@ -89,6 +91,7 @@ export function RevenueSummary({
     },
     {
       id:          'revenue',
+      tab:         'all',
       label:       'Revenue',
       sublabel:    'Month to date',
       value:       totalRevenueCents === 0 ? '—' : toCurrency(totalRevenueCents),
@@ -99,6 +102,7 @@ export function RevenueSummary({
     },
     {
       id:          'pending-payment',
+      tab:         'awaiting_payment',
       label:       'Pending Payment',
       sublabel:    'Open payment links',
       value:       pendingPaymentCount === 0 ? '—' : pendingPaymentCount.toLocaleString('en-US'),
@@ -107,6 +111,7 @@ export function RevenueSummary({
     },
     {
       id:          'completed',
+      tab:         'shipped',
       label:       'Completed',
       sublabel:    'Delivered this month',
       value:       completedMtd === 0 ? '—' : completedMtd.toLocaleString('en-US'),
@@ -118,9 +123,17 @@ export function RevenueSummary({
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
       {cards.map(card => (
-        <div
+        // WO-106: a card takes you to the orders it counts. Anila
+        // Coniku-Nicklos, 2026-09-11 (01:32:09): "I was going to click
+        // under the total orders … It takes you right there." A link,
+        // not a div with an onClick, so it is keyboard reachable and
+        // opens in a new tab like any other link.
+        <Link
           key={card.id}
-          className="rounded-xl border border-border bg-card p-5 shadow-sm"
+          href={`/dashboard?tab=${card.tab}`}
+          data-testid={`kpi-card-${card.id}`}
+          aria-label={`${card.label}: ${card.value}. Show these orders.`}
+          className="block rounded-xl border border-border bg-card p-5 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           title={card.value === '—' ? card.emptyTip : undefined}
         >
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -137,7 +150,7 @@ export function RevenueSummary({
               label={priorLabel}
             />
           )}
-        </div>
+        </Link>
       ))}
     </div>
   )

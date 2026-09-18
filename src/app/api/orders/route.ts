@@ -35,6 +35,7 @@ import { writeDraftAudit } from '@/lib/orders/draft-edit'
 import { checkProviderOwnsDraft } from '@/lib/orders/provider-draft-guard'
 import { applyBundleShipping, reallocateDraftSiblingShipping } from '@/lib/orders/apply-bundle-shipping'
 import { parseTitrationSteps, isSigMode, type SigMode } from '@/lib/orders/titration'
+import { refillAllowance, refillsUsed } from '@/lib/orders/refill'
 import type { Json } from '@/types/database.types'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -86,6 +87,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // WO-105: how the sig was built, and the titration steps behind it.
     sigMode?:       unknown
     titrationSteps?: unknown
+    // WO-106: the order this one refills (must be an order of this clinic).
+    refillOfOrderId?: unknown
     // WO-98: set when "+ Add prescription" appends a line to an existing
     // draft; recorded on the audit row only.
     appendedToOrderId?: string | null
@@ -106,6 +109,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // refusing to create the order would lose the prescription.
   const sigMode: SigMode = isSigMode(body.sigMode) ? body.sigMode : 'standard'
   const titrationSteps = sigMode === 'titration' ? parseTitrationSteps(body.titrationSteps) : []
+
+  // WO-106: a refill points at its source. The link is validated below,
+  // against this clinic's orders — a client may not attach an order it
+  // cannot see.
+  const refillOfOrderId = typeof body.refillOfOrderId === 'string' && body.refillOfOrderId.trim()
+    ? body.refillOfOrderId.trim()
+    : null
 
   if (!patientId || !providerId || !pharmacyId || !sigText || !patientState) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -258,6 +268,43 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // clinic. The composite FK fk_orders_protocol_instance requires the
   // instance to belong to this same patientId — guaranteed because the
   // resolver looks up/creates the instance for exactly that patient.
+  // ── WO-106: the refill link, validated ────────────────────
+  // The source must be an order of this clinic for this patient, and it
+  // must still have an authorized refill left. Refills used is COUNTED
+  // from refill_of_order_id — there is no decrement on the signed source
+  // — so a cancelled or refunded refill frees the authorization again.
+  // Checked here as well as in /api/orders/refill because this route is
+  // what actually writes the order.
+  if (refillOfOrderId) {
+    const { data: source, error: sourceError } = await supabase
+      .from('orders')
+      .select('order_id, patient_id, refills')
+      .eq('order_id', refillOfOrderId)
+      .eq('clinic_id', clinicId)
+      .is('deleted_at', null)
+      .maybeSingle()
+    if (sourceError) {
+      console.error('[orders] refill source lookup failed:', sourceError.message)
+      return NextResponse.json({ error: 'Failed to verify the refill' }, { status: 500 })
+    }
+    if (!source || source.patient_id !== patientId) {
+      return NextResponse.json({ error: 'refillOfOrderId must be an order for this patient' }, { status: 400 })
+    }
+    const { data: priorRefills, error: priorError } = await supabase
+      .from('orders')
+      .select('status')
+      .eq('refill_of_order_id', refillOfOrderId)
+      .is('deleted_at', null)
+    if (priorError) {
+      console.error('[orders] refill count failed:', priorError.message)
+      return NextResponse.json({ error: 'Failed to verify the refill' }, { status: 500 })
+    }
+    const allowance = refillAllowance(source.refills, refillsUsed(priorRefills ?? []))
+    if (!allowance.allowed) {
+      return NextResponse.json({ error: allowance.message }, { status: 409 })
+    }
+  }
+
   let protocolLinkage: ProtocolLinkage | null = null
   if (typeof protocolId === 'string' && protocolId.length > 0) {
     try {
@@ -302,6 +349,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // WO-105
       sig_mode:                 sigMode,
       titration_steps:          titrationSteps as unknown as Json,
+      // WO-106
+      refill_of_order_id:       refillOfOrderId,
       // GAP-3: null for ad-hoc/favorite lines and on resolution failure.
       protocol_instance_id:     protocolLinkage?.protocolInstanceId ?? null,
       protocol_version_id:      protocolLinkage?.protocolVersionId ?? null,

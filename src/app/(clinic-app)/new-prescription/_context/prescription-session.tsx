@@ -100,6 +100,15 @@ export interface SessionPrescription {
   // standard lines.
   sigMode?:        SigMode | null
   titrationSteps?: TitrationStep[] | null
+  // WO-106: set when this line came from Refill. refillOfOrderId is sent
+  // to POST /api/orders and stored on the new order; the two notes are
+  // shown on the Review card because both are decisions the app made for
+  // the provider — the maintenance dose of a finished titration, and a
+  // package price that moved since the original fill. OPTIONAL ON
+  // PURPOSE: sessions persisted before WO-106 parse unchanged.
+  refillOfOrderId?: string | null
+  maintenanceNote?: string | null
+  priceNote?:       string | null
   packageId?:      string | null
   packageLabel?:   string | null
   // WO-101a: how many of that package (sent to POST /api/orders, which

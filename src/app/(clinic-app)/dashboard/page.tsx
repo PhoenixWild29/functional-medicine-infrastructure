@@ -24,6 +24,7 @@ import { HipaaTimeout }      from '@/components/hipaa-timeout'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { RevenueSummary }    from './_components/revenue-summary'
 import { OrdersDashboard }   from './_components/orders-dashboard'
+import { isTabId }           from './_lib/tabs'
 import { ProviderViewToggle } from './_components/provider-view-toggle'
 import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.types'
 
@@ -65,7 +66,7 @@ export interface DashboardOrder {
 }
 
 export default async function DashboardPage(
-  props: { searchParams?: Promise<{ view?: string }> } = {},
+  props: { searchParams?: Promise<{ view?: string; tab?: string }> } = {},
 ) {
   const { searchParams } = props
 
@@ -237,13 +238,21 @@ export default async function DashboardPage(
   const mtdOrders = orders.filter(o => o.createdAt >= mtdStart)
   let mtdRevenueCents = 0
   let mtdCompletedCount = 0
-  let pendingPaymentCount = 0
 
   for (const o of mtdOrders) {
     if (!EXCLUDED_FROM_REVENUE.has(o.status)) mtdRevenueCents += o.retailCents
     if (o.status === 'DELIVERED') mtdCompletedCount++
-    if (o.status === 'AWAITING_PAYMENT') pendingPaymentCount++
   }
+
+  // WO-106: Pending Payment counts what its tab shows — every open
+  // payment link, not just this month's. The card now links to that tab
+  // (Anila, 2026-09-11), and a number that disagreed with the list it
+  // opened would be worse than a number nobody could click. A link sent
+  // on 29 September is still open on 2 October; the month it was created
+  // in says nothing about whether the patient has paid.
+  const pendingPaymentCount = orders.filter(
+    o => o.status === 'AWAITING_PAYMENT' || o.status === 'PAYMENT_EXPIRED',
+  ).length
 
   // Prior-year same month totals for trend
   const pyRows = priorYearResult.data ?? []
@@ -290,6 +299,7 @@ export default async function DashboardPage(
           stripeConnectStatus={stripeConnectStatus}
           clinicId={clinicId}
           viewer={viewer}
+          initialTab={isTabId(resolvedSearchParams.tab) ? resolvedSearchParams.tab : null}
         />
       </main>
     </>
