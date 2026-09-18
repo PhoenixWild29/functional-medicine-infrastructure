@@ -1148,6 +1148,7 @@ export type Database = {
           provider_npi_snapshot: string | null
           provider_signature_hash_snapshot: string | null
           quantity: number
+          refill_of_order_id: string | null
           refills: number
           reroute_count: number
           retail_price_snapshot: number | null
@@ -1207,6 +1208,7 @@ export type Database = {
           provider_npi_snapshot?: string | null
           provider_signature_hash_snapshot?: string | null
           quantity: number
+          refill_of_order_id?: string | null
           refills?: number
           reroute_count?: number
           retail_price_snapshot?: number | null
@@ -1266,6 +1268,7 @@ export type Database = {
           provider_npi_snapshot?: string | null
           provider_signature_hash_snapshot?: string | null
           quantity?: number
+          refill_of_order_id?: string | null
           refills?: number
           reroute_count?: number
           retail_price_snapshot?: number | null
