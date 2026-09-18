@@ -27,18 +27,11 @@ import type { DashboardOrder } from '../page'
 import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.types'
 import { OrdersTable }  from './orders-table'
 import { OrdersKanban } from './orders-kanban'
+import type { TabId } from '../_lib/tabs'
 import type { DraftViewer } from '@/lib/orders/draft-edit-access'
 import { OrderDrawer }  from './order-drawer'
 
 // ── Status tab definitions ──────────────────────────────────
-
-export type TabId = 'all' | 'drafts' | 'awaiting_payment' | 'submitting' | 'processing' | 'shipped' | 'errors'
-
-/** WO-106: a ?tab= value the KPI cards can link to; anything else is 'all'. */
-export function isTabId(v: unknown): v is TabId {
-  return v === 'all' || v === 'drafts' || v === 'awaiting_payment' || v === 'submitting'
-    || v === 'processing' || v === 'shipped' || v === 'errors'
-}
 
 interface TabDef {
   id:       TabId
