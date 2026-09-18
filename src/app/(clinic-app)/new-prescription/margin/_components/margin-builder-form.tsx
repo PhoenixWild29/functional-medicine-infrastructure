@@ -40,7 +40,7 @@
 // prescription to the same pharmacy adds nothing unless it upgrades the
 // shipment to cold chain.
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePrescriptionSession, type SessionPrescription } from '../../_context/prescription-session'
 import type { EditTarget } from '../../_lib/edit-target'
@@ -659,6 +659,26 @@ export function MarginBuilderForm({
   const [isSavingDraft, setIsSavingDraft] = useState(false)
   const [draftError, setDraftError] = useState<string | null>(null)
 
+  // ── Clear the session only once we have actually left this page ──
+  //
+  // Save as Draft navigates to /dashboard and then clears the session.
+  // Clearing while the dashboard navigation is still pending flips
+  // isSessionStarted to false on a page that is still mounted, and
+  // SessionBanner's redirect effect fires
+  // router.replace('/new-prescription'), which supersedes the dashboard
+  // push. A timer (the previous "clear after a tick") only wins that
+  // race when the dashboard RSC comes back within the tick, which CI
+  // does not guarantee. Arming this ref and clearing in the unmount
+  // cleanup is deterministic: the cleanup runs when the new route has
+  // committed and no /new-prescription page can redirect any more.
+  // Same pattern as batch-review-form.tsx.
+  const clearSessionOnUnmountRef = useRef(false)
+  const clearSessionRef = useRef(rxSession.clearSession)
+  clearSessionRef.current = rxSession.clearSession
+  useEffect(() => () => {
+    if (clearSessionOnUnmountRef.current) clearSessionRef.current()
+  }, [])
+
   async function handleSaveDraft(e: React.MouseEvent) {
     e.preventDefault()
     if (!canContinue) return
@@ -708,11 +728,12 @@ export function MarginBuilderForm({
         throw new Error(err.error ?? 'Failed to save draft')
       }
 
-      // Navigate FIRST, then clear session after a tick.
-      // Same pattern as WO-80 batch send: clearSession triggers
-      // SessionBanner redirect to /new-prescription before router.push fires.
+      // Navigate to the dashboard; the session is cleared in the unmount
+      // cleanup once that navigation has committed (see
+      // clearSessionOnUnmountRef) — clearing any earlier lets the
+      // SessionBanner redirect race the dashboard push.
+      clearSessionOnUnmountRef.current = true
       router.push('/dashboard?draft=1')
-      setTimeout(() => rxSession.clearSession(), 100)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'An unexpected error occurred'
       setDraftError(msg)
