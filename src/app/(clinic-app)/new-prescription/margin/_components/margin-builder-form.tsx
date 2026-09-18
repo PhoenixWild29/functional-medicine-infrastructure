@@ -720,6 +720,15 @@ export function MarginBuilderForm({
           packageId:     selectedPackage?.id ?? null,
           // WO-101a: priced server-side as package × count.
           packageCount:  selectedPackage ? packageCount : null,
+          // WO-105: the sig mode and the titration steps. This body is
+          // written out by hand rather than from lineBody(), so it lost
+          // both when WO-105 added them: a titration saved as a draft
+          // from this page landed sig_mode 'standard' with no steps and
+          // the schedule was silently gone. It reopened as a standard
+          // line at the first step's dose, which is a different
+          // prescription from the one the provider wrote.
+          sigMode:        presetSigMode ?? 'standard',
+          titrationSteps: titrationSteps,
         }),
       })
 
