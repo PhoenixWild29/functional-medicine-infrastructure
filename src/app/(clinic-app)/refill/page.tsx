@@ -30,6 +30,7 @@ import { resolveCurrentProvider } from '@/lib/auth/current-provider'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { HipaaTimeout } from '@/components/hipaa-timeout'
 import { RefillPicker, type RefillablePatient, type RefillableOrder } from './_components/refill-picker'
+import type { SessionProvider } from '../new-prescription/_context/prescription-session'
 import { refillsUsed, refillAllowance } from '@/lib/orders/refill'
 
 export const dynamic = 'force-dynamic'
@@ -56,7 +57,7 @@ export default async function RefillPage(
 
   const supabase = createServiceClient()
 
-  const [ordersResult, selfProvider] = await Promise.all([
+  const [ordersResult, selfProvider, providersResult] = await Promise.all([
     supabase
       .from('orders')
       .select(`
@@ -73,6 +74,15 @@ export default async function RefillPage(
     appRole === 'provider'
       ? resolveCurrentProvider(supabase, { userId: user.id, clinicId })
       : Promise.resolve(null),
+    // A clinic admin or MA is not a provider, so a refill is written for
+    // the provider who prescribed the source order. Review will not start
+    // a session without one — it sends it back to step 1.
+    supabase
+      .from('providers')
+      .select('provider_id, first_name, last_name, npi_number, signature_hash')
+      .eq('clinic_id', clinicId)
+      .eq('is_active', true)
+      .is('deleted_at', null),
   ])
 
   // A failed query is not an empty clinic. `data ?? []` used to turn any
@@ -81,10 +91,11 @@ export default async function RefillPage(
   // reached the logs. Log the whole error and say so on the page.
   // PostgREST errors carry schema-level text (codes, column names), never
   // patient data, so the code and message are safe to show staff.
-  if (ordersResult.error) {
-    const e = ordersResult.error
+  const loadError = ordersResult.error ?? providersResult.error
+  if (loadError) {
+    const e = loadError
     console.error(
-      '[refill] orders query failed:',
+      ordersResult.error ? '[refill] orders query failed:' : '[refill] providers query failed:',
       JSON.stringify({ code: e.code, message: e.message, details: e.details, hint: e.hint }),
       '| clinic=', clinicId,
     )
@@ -113,6 +124,17 @@ export default async function RefillPage(
   }
 
   const rows = (ordersResult.data ?? []) as unknown as OrderRow[]
+
+  const prescribers = new Map<string, SessionProvider>()
+  for (const pr of (providersResult.data ?? []) as SessionProvider[]) {
+    prescribers.set(pr.provider_id, {
+      provider_id:    pr.provider_id,
+      first_name:     pr.first_name,
+      last_name:      pr.last_name,
+      npi_number:     pr.npi_number,
+      signature_hash: pr.signature_hash ?? null,
+    })
+  }
 
   // How many refills each order has already had. Counted, never stored:
   // a cancelled or refunded refill frees the authorization again.
@@ -152,6 +174,7 @@ export default async function RefillPage(
       refillsAuthorized: allowance.authorized,
       refillable:     allowance.allowed,
       blockedReason:  allowance.message ?? null,
+      prescriber:     row.provider_id ? prescribers.get(row.provider_id) ?? null : null,
     }
 
     const existing = patients.get(p.patient_id)

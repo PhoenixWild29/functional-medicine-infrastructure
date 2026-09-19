@@ -38,6 +38,11 @@ export interface RefillableOrder {
   refillsAuthorized: number
   refillable:     boolean
   blockedReason:  string | null
+  /**
+   * The provider who prescribed this order, if still active. A clinic
+   * admin or MA refills for them. Null when that provider is gone.
+   */
+  prescriber?:    SessionProvider | null
 }
 
 export interface RefillablePatient {
@@ -47,6 +52,7 @@ export interface RefillablePatient {
 
 interface Props {
   patients: RefillablePatient[]
+  /** The signed-in provider; null for a clinic admin or MA. */
   provider: SessionProvider | null
   /**
    * WO-106: one order, pre-selected — the drawer's and the table row's
@@ -87,6 +93,26 @@ export function RefillPicker({ patients, provider, preselectOrderId = null }: Pr
 
   async function startRefill() {
     if (!active || selected.size === 0) return
+
+    // Review starts a session only with a patient AND a provider; without
+    // one it sends the user to step 1. A provider login refills as
+    // themself. A clinic admin or MA refills for whoever prescribed the
+    // orders — one session holds one provider, so they must agree.
+    let sessionProvider = provider
+    if (!sessionProvider) {
+      const chosen = active.orders.filter(o => selected.has(o.orderId))
+      const ids = new Set(chosen.map(o => o.prescriber?.provider_id ?? null))
+      if (ids.has(null)) {
+        setError('The provider who prescribed this is no longer active. Write a new prescription.')
+        return
+      }
+      if (ids.size > 1) {
+        setError('These were prescribed by different providers. Refill one provider’s prescriptions at a time.')
+        return
+      }
+      sessionProvider = chosen[0]!.prescriber!
+    }
+
     setIsLoading(true)
     setError(null)
     try {
@@ -105,7 +131,7 @@ export function RefillPicker({ patients, provider, preselectOrderId = null }: Pr
       // shipping once per pharmacy across the whole refill.
       session.clearSession()
       session.setPatient(active.patient)
-      if (provider) session.setProvider(provider)
+      session.setProvider(sessionProvider)
       session.addPrescriptions(json.lines ?? [])
       router.push('/new-prescription/review')
     } catch (err) {
