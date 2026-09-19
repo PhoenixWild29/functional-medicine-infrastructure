@@ -2181,3 +2181,69 @@ test.describe('Clinic App — WO-101b: pharmacy sizes come from priced packages 
     await expect(page.getByText(/3 mL vial/)).toHaveCount(0)
   })
 })
+
+// ── WO-106: Refill lands on Review ─────────────────────────────────────────
+//
+// On prod, "Refill N prescriptions" landed on /new-prescription step 1
+// instead of Review. The refill picker fills the session and pushes to
+// /new-prescription/review — but /refill has its own session provider, so
+// Review mounts a NEW provider that starts empty and restores from
+// sessionStorage in its own effect. React runs a child's effects before
+// its parent's, so Review's "no session → step 1" redirect fired before
+// the provider had restored anything. Asserting the URL alone is not
+// enough: it is /review for a moment before the redirect replaces it, so
+// the test waits for Review's own content and checks the URL after.
+test.describe('Clinic App — WO-106 refill navigation', () => {
+  test.beforeAll(async () => {
+    await seedStaticData()
+  })
+
+  test.afterEach(async () => {
+    await cleanupTestOrders()
+  })
+
+  test('Refill lands on Review with the refilled line, not on step 1', async ({ page }) => {
+    const supabase = createClient(
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
+    )
+    const { data: source, error } = await supabase
+      .from('orders')
+      .insert({
+        patient_id:               TEST_IDS.patient,
+        provider_id:              TEST_IDS.provider,
+        catalog_item_id:          null,
+        formulation_id:           TEST_IDS.formulation,
+        clinic_id:                TEST_IDS.clinic,
+        pharmacy_id:              TEST_IDS.pharmacyTier1,
+        status:                   'AWAITING_PAYMENT',
+        quantity:                 1,
+        wholesale_price_snapshot: 100.00,
+        retail_price_snapshot:    200.00,
+        medication_snapshot:      {
+          formulation_id:  TEST_IDS.formulation,
+          medication_name: TEST_CATALOG.formulationName,
+          prescribed_dose: '10 mg',
+          frequency_code:  'QD',
+        },
+        pharmacy_snapshot:        { pharmacy_id: TEST_IDS.pharmacyTier1, name: 'Test Pharmacy Tier1' },
+        sig_text:                 'Inject 10 mg subcutaneous once daily for 30 days',
+        refills:                  2,
+        locked_at:                new Date().toISOString(),
+      })
+      .select('order_id')
+      .single()
+    if (error || !source) throw new Error(`Failed to seed refill source order: ${error?.message}`)
+
+    await loginAs(page, TEST_USERS.provider)
+    await page.goto(`/refill?order=${source.order_id}`)
+    await expect(page.getByTestId(`refill-order-${source.order_id}`)).toBeVisible({ timeout: 10_000 })
+
+    await page.getByTestId('refill-start').click()
+
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 15_000 })
+    await expect(page.getByTestId('review-totals')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText(TEST_CATALOG.formulationName).first()).toBeVisible()
+    await expect(page).toHaveURL(/\/new-prescription\/review/)
+  })
+})
