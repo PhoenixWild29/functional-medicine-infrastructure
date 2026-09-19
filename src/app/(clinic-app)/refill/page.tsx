@@ -75,6 +75,43 @@ export default async function RefillPage(
       : Promise.resolve(null),
   ])
 
+  // A failed query is not an empty clinic. `data ?? []` used to turn any
+  // PostgREST error into "No patient has a prescription to refill yet",
+  // which a provider cannot tell from a real empty state — and nothing
+  // reached the logs. Log the whole error and say so on the page.
+  // PostgREST errors carry schema-level text (codes, column names), never
+  // patient data, so the code and message are safe to show staff.
+  if (ordersResult.error) {
+    const e = ordersResult.error
+    console.error(
+      '[refill] orders query failed:',
+      JSON.stringify({ code: e.code, message: e.message, details: e.details, hint: e.hint }),
+      '| clinic=', clinicId,
+    )
+    return (
+      <>
+        <HipaaTimeout />
+        <main className="mx-auto max-w-3xl px-4 py-8">
+          <h1 className="text-2xl font-bold text-foreground">Refill</h1>
+          <div
+            role="alert"
+            data-testid="refill-load-error"
+            className="mt-6 rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-800"
+          >
+            <p className="font-semibold">Prescriptions could not be loaded for refill.</p>
+            <p className="mt-1">
+              This is an error, not an empty list — nothing has been refilled. Try again, and if it
+              persists, report the code below.
+            </p>
+            <p className="mt-3 font-mono text-xs" data-testid="refill-load-error-detail">
+              {e.code ?? 'no code'}: {e.message}
+            </p>
+          </div>
+        </main>
+      </>
+    )
+  }
+
   const rows = (ordersResult.data ?? []) as unknown as OrderRow[]
 
   // How many refills each order has already had. Counted, never stored:
