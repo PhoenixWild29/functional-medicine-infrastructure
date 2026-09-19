@@ -2181,3 +2181,86 @@ test.describe('Clinic App — WO-101b: pharmacy sizes come from priced packages 
     await expect(page.getByText(/3 mL vial/)).toHaveCount(0)
   })
 })
+
+// ── WO-106: Refill lands on Review ─────────────────────────────────────────
+//
+// On prod, "Refill N prescriptions" landed on /new-prescription step 1
+// instead of Review. The picker builds the session and pushes to Review,
+// whose "no session → step 1" redirect requires a patient AND a provider.
+// /refill only resolved a provider for a provider login; for a clinic
+// admin or MA it passed none, so the refilled session had no provider and
+// Review sent it to step 1 — every time, not a race.
+//
+// Asserting the URL alone is not enough: it is /review for a moment
+// before the redirect replaces it, so each test waits for Review's own
+// content and checks the URL after.
+test.describe('Clinic App — WO-106 refill navigation', () => {
+  test.beforeAll(async () => {
+    await seedStaticData()
+  })
+
+  test.afterEach(async () => {
+    await cleanupTestOrders()
+  })
+
+  async function seedRefillSource(): Promise<string> {
+    const supabase = createClient(
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
+    )
+    const { data: source, error } = await supabase
+      .from('orders')
+      .insert({
+        patient_id:               TEST_IDS.patient,
+        provider_id:              TEST_IDS.provider,
+        catalog_item_id:          null,
+        formulation_id:           TEST_IDS.formulation,
+        clinic_id:                TEST_IDS.clinic,
+        pharmacy_id:              TEST_IDS.pharmacyTier1,
+        status:                   'AWAITING_PAYMENT',
+        quantity:                 1,
+        wholesale_price_snapshot: 100.00,
+        retail_price_snapshot:    200.00,
+        medication_snapshot:      {
+          formulation_id:  TEST_IDS.formulation,
+          medication_name: TEST_CATALOG.formulationName,
+          prescribed_dose: '10 mg',
+          frequency_code:  'QD',
+        },
+        pharmacy_snapshot:        { pharmacy_id: TEST_IDS.pharmacyTier1, name: 'Test Pharmacy Tier1' },
+        sig_text:                 'Inject 10 mg subcutaneous once daily for 30 days',
+        refills:                  2,
+        locked_at:                new Date().toISOString(),
+      })
+      .select('order_id')
+      .single()
+    if (error || !source) throw new Error(`Failed to seed refill source order: ${error?.message}`)
+    return source.order_id as string
+  }
+
+  async function refillLandsOnReview(page: Page, orderId: string) {
+    await page.goto(`/refill?order=${orderId}`)
+    await expect(page.getByTestId(`refill-order-${orderId}`)).toBeVisible({ timeout: 10_000 })
+
+    await page.getByTestId('refill-start').click()
+
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 15_000 })
+    await expect(page.getByTestId('review-totals')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText(TEST_CATALOG.formulationName).first()).toBeVisible()
+    await expect(page).toHaveURL(/\/new-prescription\/review/)
+  }
+
+  test('clinic admin: Refill lands on Review with the refilled line, not on step 1', async ({ page }) => {
+    const orderId = await seedRefillSource()
+    await loginAs(page, TEST_USERS.clinicAdmin)
+    await refillLandsOnReview(page, orderId)
+    // The session carries the prescribing provider of the source order.
+    await expect(page.getByText(/Test Provider/).first()).toBeVisible()
+  })
+
+  test('provider: Refill lands on Review with the refilled line, not on step 1', async ({ page }) => {
+    const orderId = await seedRefillSource()
+    await loginAs(page, TEST_USERS.provider)
+    await refillLandsOnReview(page, orderId)
+  })
+})

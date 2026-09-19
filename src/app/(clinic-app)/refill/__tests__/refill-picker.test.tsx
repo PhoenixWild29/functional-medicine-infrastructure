@@ -175,3 +175,65 @@ describe('a server refusal is shown, not swallowed', () => {
     expect(mockPush).not.toHaveBeenCalled()
   })
 })
+
+// ── A clinic admin or MA refills for the prescribing provider ───────────
+//
+// On prod, Refill as a clinic admin landed on step 1: /refill passed no
+// provider for a non-provider login, the session had a patient but no
+// provider, and Review's "no session" redirect sent it back to step 1.
+describe('refilling as a clinic admin (no provider login)', () => {
+  const OTHER = { ...PROVIDER, provider_id: 'prov-2', first_name: 'Other', last_name: 'Provider', npi_number: '0987654321' }
+
+  function renderAsAdmin(orders: RefillablePatient['orders']) {
+    return render(
+      <PrescriptionSessionProvider>
+        <RefillPicker patients={[{ patient: PATIENT, orders }]} provider={null} />
+      </PrescriptionSessionProvider>,
+    )
+  }
+  function pick(...ids: string[]) {
+    fireEvent.change(screen.getByTestId('refill-patient-select'), { target: { value: 'patient-1' } })
+    for (const id of ids) fireEvent.click(screen.getByTestId(`refill-order-${id}`))
+    fireEvent.click(screen.getByTestId('refill-start'))
+  }
+
+  it('starts the session with the provider who prescribed the orders', async () => {
+    renderAsAdmin([order({ prescriber: PROVIDER }), order({ orderId: 'order-2', prescriber: PROVIDER })])
+    pick('order-1', 'order-2')
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/new-prescription/review'))
+    await waitFor(() => expect(storedSession().prescriptions).toHaveLength(2))
+    const stored = storedSession() as ReturnType<typeof storedSession> & { provider?: { provider_id: string } }
+    expect(stored.provider?.provider_id).toBe('prov-1')
+    expect(stored.patient?.patient_id).toBe('patient-1')
+  })
+
+  it('will not mix two prescribers in one session, and says so', () => {
+    renderAsAdmin([order({ prescriber: PROVIDER }), order({ orderId: 'order-2', prescriber: OTHER })])
+    pick('order-1', 'order-2')
+
+    expect(screen.getByTestId('refill-error')).toHaveTextContent('These were prescribed by different providers.')
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(mockPush).not.toHaveBeenCalled()
+  })
+
+  it('says so when the prescriber is no longer active, instead of landing on step 1', () => {
+    renderAsAdmin([order({ prescriber: null })])
+    pick('order-1')
+
+    expect(screen.getByTestId('refill-error')).toHaveTextContent('The provider who prescribed this is no longer active.')
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(mockPush).not.toHaveBeenCalled()
+  })
+
+  it('a provider login still refills as themself', async () => {
+    render(
+      <PrescriptionSessionProvider>
+        <RefillPicker patients={[{ patient: PATIENT, orders: [order({ prescriber: OTHER })] }]} provider={PROVIDER} />
+      </PrescriptionSessionProvider>,
+    )
+    pick('order-1')
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/new-prescription/review'))
+    await waitFor(() => expect((storedSession() as { provider?: { provider_id: string } }).provider?.provider_id).toBe('prov-1'))
+  })
+})
