@@ -2238,6 +2238,36 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
     return source.order_id as string
   }
 
+  /**
+   * Wait for Review to render, and if it does not, fail with what was
+   * actually on screen. CI artifacts need auth to read, so the diagnosis
+   * has to travel in the error message itself.
+   */
+  async function expectReviewRendered(page: Page) {
+    const totals = page.getByTestId('review-totals')
+    try {
+      await expect(totals).toBeVisible({ timeout: 15_000 })
+    } catch {
+      const diag = await page.evaluate(() => {
+        let session: string | null = null
+        try { session = sessionStorage.getItem('compoundiq-rx-session') } catch { session = 'unreadable' }
+        const parsed = session ? JSON.parse(session) as {
+          patient?: { patient_id?: string }
+          provider?: { provider_id?: string }
+          prescriptions?: unknown[]
+        } : null
+        return {
+          url:           location.pathname + location.search,
+          hasPatient:    !!parsed?.patient?.patient_id,
+          hasProvider:   !!parsed?.provider?.provider_id,
+          lineCount:     parsed?.prescriptions?.length ?? -1,
+          bodyText:      document.body.innerText.replace(/\s+/g, ' ').slice(0, 400),
+        }
+      })
+      throw new Error(`Review did not render. ${JSON.stringify(diag)}`)
+    }
+  }
+
   async function refillLandsOnReview(page: Page, orderId: string) {
     await page.goto(`/refill?order=${orderId}`)
     await expect(page.getByTestId(`refill-order-${orderId}`)).toBeVisible({ timeout: 10_000 })
@@ -2245,7 +2275,7 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
     await page.getByTestId('refill-start').click()
 
     await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 15_000 })
-    await expect(page.getByTestId('review-totals')).toBeVisible({ timeout: 15_000 })
+    await expectReviewRendered(page)
     await expect(page.getByText(TEST_CATALOG.formulationName).first()).toBeVisible()
     await expect(page).toHaveURL(/\/new-prescription\/review/)
   }
@@ -2287,7 +2317,7 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
     await expect(page.getByTestId(`refill-order-${orderId}`)).toBeVisible({ timeout: 15_000 })
     await page.getByTestId('refill-start').click()
     await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 15_000 })
-    await expect(page.getByTestId('review-totals')).toBeVisible({ timeout: 15_000 })
+    await expectReviewRendered(page)
     await expect(page).toHaveURL(/\/new-prescription\/review/)
   }
 
@@ -2391,7 +2421,7 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
     await page.goto(`/refill?order=${orderId}`)
     await expect(page.getByTestId(`refill-order-${orderId}`)).toBeVisible({ timeout: 15_000 })
     await page.getByTestId('refill-start').click()
-    await expect(page.getByTestId('review-totals')).toBeVisible({ timeout: 15_000 })
+    await expectReviewRendered(page)
     await expect(page.getByText(/40 units/).first()).toBeVisible()
     await expect(page.getByText(/dispense 1\.6 mL/).first()).toBeVisible()
   })
