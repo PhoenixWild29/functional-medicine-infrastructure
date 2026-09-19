@@ -123,6 +123,26 @@ describe('refilling several at once', () => {
     expect(new Set(stored.prescriptions!.map(p => p.pharmacyId))).toEqual(new Set(['ph-strive']))
   })
 
+  it('the session is already in storage at the moment it navigates', async () => {
+    // Review mounts under a different session provider (its own layout),
+    // which can only see what is in sessionStorage. So the session must
+    // be there when router.push runs â€” not written later by an effect of
+    // the provider this page is leaving.
+    let atPush: ReturnType<typeof storedSession> | null = null
+    mockPush.mockImplementation(() => { atPush = storedSession() })
+
+    renderPicker()
+    fireEvent.change(screen.getByTestId('refill-patient-select'), { target: { value: 'patient-1' } })
+    fireEvent.click(screen.getByTestId('refill-order-order-1'))
+    fireEvent.click(screen.getByTestId('refill-order-order-2'))
+    fireEvent.click(screen.getByTestId('refill-start'))
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/new-prescription/review'))
+    expect(atPush).not.toBeNull()
+    expect(atPush!.patient?.patient_id).toBe('patient-1')
+    expect(atPush!.prescriptions?.map(p => p.refillOfOrderId)).toEqual(['order-1', 'order-2'])
+  })
+
   it('the button says how many, and does nothing with none selected', () => {
     renderPicker()
     fireEvent.change(screen.getByTestId('refill-patient-select'), { target: { value: 'patient-1' } })

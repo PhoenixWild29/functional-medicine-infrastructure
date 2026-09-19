@@ -240,12 +240,13 @@ export function BatchReviewForm({ isProvider }: Props) {
   const createdOrderIdsRef = useRef<Map<string, string>>(new Map())
   const allocatedOrderIdsRef = useRef<Set<string>>(new Set())
 
-  // Redirect if no session or no prescriptions
+  // Redirect if no session — once the provider has read storage (see
+  // SessionBanner: before that, empty means "not restored yet").
   useEffect(() => {
-    if (!session.isSessionStarted) {
+    if (session.isRestored && !session.isSessionStarted) {
       router.replace('/new-prescription')
     }
-  }, [session.isSessionStarted, router])
+  }, [session.isRestored, session.isSessionStarted, router])
 
   // ── Clear the session only once we have actually left this page ──
   //

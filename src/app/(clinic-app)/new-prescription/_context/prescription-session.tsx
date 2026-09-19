@@ -189,6 +189,24 @@ interface PrescriptionSessionContextValue extends PrescriptionSessionState {
   dismissNotice:      (id: string) => void
   /** Clear the entire session (after successful send or cancel) */
   clearSession:       () => void
+  /**
+   * Replace the whole session in one step, and write it to sessionStorage
+   * NOW rather than in the persist effect. For a caller that navigates to
+   * a route under a different provider instance straight away (Refill →
+   * Review): that provider can only see what is already in storage.
+   */
+  replaceSession:     (next: {
+    patient:       SessionPatient
+    provider:      SessionProvider | null
+    prescriptions: Omit<SessionPrescription, 'id'>[]
+  }) => void
+  /**
+   * Whether this provider has read sessionStorage yet. False on the first
+   * commit only. A page that redirects on "no session" must wait for it:
+   * a child's effects run before this provider's restore effect, so on
+   * that commit an empty session means "not restored yet", not "none".
+   */
+  isRestored:         boolean
   /** Whether patient + provider are both selected */
   isSessionStarted:   boolean
   /** Number of prescriptions added so far */
@@ -251,8 +269,10 @@ const PrescriptionSessionContext = createContext<PrescriptionSessionContextValue
 
 export function PrescriptionSessionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<PrescriptionSessionState>(EMPTY_STATE)
+  const [isRestored, setIsRestored] = useState(false)
 
-  // Restore from sessionStorage on mount
+  // Restore from sessionStorage on mount. Runs AFTER the children's
+  // effects on the first commit — hence isRestored.
   useEffect(() => {
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY)
@@ -271,10 +291,14 @@ export function PrescriptionSessionProvider({ children }: { children: ReactNode 
         }
       }
     } catch { /* ignore corrupt storage */ }
+    setIsRestored(true)
   }, [])
 
-  // Persist to sessionStorage on every state change
+  // Persist to sessionStorage on every state change — but not before the
+  // restore has been applied: on the first commit `state` is still the
+  // empty default, and writing it would remove the stored session.
   useEffect(() => {
+    if (!isRestored) return
     try {
       if (state.patient || state.prescriptions.length > 0) {
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state))
@@ -282,7 +306,7 @@ export function PrescriptionSessionProvider({ children }: { children: ReactNode 
         sessionStorage.removeItem(STORAGE_KEY)
       }
     } catch { /* ignore */ }
-  }, [state])
+  }, [state, isRestored])
 
   const setPatient = useCallback((patient: SessionPatient) => {
     setState(prev => ({ ...prev, patient }))
@@ -359,6 +383,28 @@ export function PrescriptionSessionProvider({ children }: { children: ReactNode 
     try { sessionStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
   }, [])
 
+  const replaceSession = useCallback((next: {
+    patient:       SessionPatient
+    provider:      SessionProvider | null
+    prescriptions: Omit<SessionPrescription, 'id'>[]
+  }) => {
+    // Same dedupe as addPrescriptions, so the result is what clearSession
+    // + setPatient + setProvider + addPrescriptions used to produce.
+    const seen = new Set<string>()
+    const prescriptions: SessionPrescription[] = []
+    for (const rx of next.prescriptions) {
+      const signature = prescriptionSignature(rx)
+      if (seen.has(signature)) continue
+      seen.add(signature)
+      prescriptions.push({ ...rx, id: generateId() })
+    }
+    const replaced: PrescriptionSessionState = {
+      patient: next.patient, provider: next.provider, prescriptions, notices: [],
+    }
+    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(replaced)) } catch { /* ignore */ }
+    setState(replaced)
+  }, [])
+
   const value: PrescriptionSessionContextValue = {
     ...state,
     setPatient,
@@ -371,6 +417,8 @@ export function PrescriptionSessionProvider({ children }: { children: ReactNode 
     addNotice,
     dismissNotice,
     clearSession,
+    replaceSession,
+    isRestored,
     isSessionStarted: !!(state.patient && state.provider),
     prescriptionCount: state.prescriptions.length,
   }

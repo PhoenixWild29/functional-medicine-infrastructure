@@ -32,14 +32,18 @@ function formatDob(iso: string): string {
 
 export function SessionBanner() {
   const router = useRouter()
-  const { patient, provider, prescriptionCount, isSessionStarted, updatePatient } = usePrescriptionSession()
+  const { patient, provider, prescriptionCount, isSessionStarted, isRestored, updatePatient } = usePrescriptionSession()
 
-  // Redirect if session not started
+  // Redirect if session not started — once the provider has read storage.
+  // Before that, an empty session means "not restored yet": this effect
+  // runs before the provider's restore on a freshly mounted provider
+  // (Refill → Review, or a hard refresh), and redirecting then sent a
+  // refill to step 1 with its session still sitting in storage.
   useEffect(() => {
-    if (!isSessionStarted) {
+    if (isRestored && !isSessionStarted) {
       router.replace('/new-prescription')
     }
-  }, [isSessionStarted, router])
+  }, [isRestored, isSessionStarted, router])
 
   // WO-97: a session persisted before allergies rode along has
   // `allergies` undefined. Hydrate from the patient row rather than
