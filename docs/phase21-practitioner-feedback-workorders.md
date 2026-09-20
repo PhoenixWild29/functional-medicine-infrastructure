@@ -3,7 +3,7 @@
 **Status:** Work orders defined, ready for build
 **Source:** Product Run Thru meeting 2026-09-11 (Gina Rooks NP, Lauren Perkins, Anila Coniku-Nicklos) + Gina's follow-up email. Both are now committed verbatim under [`docs/practitioner-feedback/`](practitioner-feedback/README.md) — the [email](practitioner-feedback/2026-09-11-gina-rooks-email.md) and the [transcript](practitioner-feedback/2026-09-11-product-run-thru-transcript.md). **Check every requirement here against those files.** A requirement that cannot quote its source is a proposal, and must say so.
 **Owner:** Sam Shamber
-**Build order:** WO-96 → WO-107 as listed. Dependencies noted per WO.
+**Build order:** WO-96 → WO-107 as listed, then WO-108 (raised from production verification of WO-106, not from the feedback session). Dependencies noted per WO.
 
 > **This file is the canonical copy: `docs/phase21-practitioner-feedback-workorders.md` in this repository.** Copies exist in the OneDrive folder and in older worktrees; they are stale, they disagree with this one, and they are not to be edited. Amend this file.
 
@@ -397,6 +397,61 @@ The ops dashboard scoped to one clinic, for the practice owner/manager. Script v
 
 ---
 
+## WO-108: Reprice a Refill When the Package Price Has Moved
+
+**Phase:** 21
+**Blocked by:** WO-106
+**Status:** ready
+
+**Source:** NOT from the 2026-09-11 practitioner feedback. This comes from Sam's production verification at `cdd0565`, where a refill showed retail $133.00 against wholesale $165.00 — margin −$32.00, clinic payout −$32.00, patient total $155.00. Per the phase rule on sources, this WO is a proposal grounded in that observation and the decisions recorded with it, not in Gina's or Lauren's words.
+
+### Description
+A refill carries the source order's retail forward while taking the pharmacy's CURRENT wholesale. When the package price has moved, the line is mispriced: the clinic absorbs the whole move, silently, and when the price rose far enough the line falls below cost. WO-106 stopped a below-cost line from being sent (#161). This WO decides what a refill should DO about a moved price.
+
+### Decision
+Interrupt and let the provider choose, with the preserved-margin number pre-filled. Carrying the old retail and showing the loss was rejected: `POST /api/orders` and the DB CHECK from `20260319000006` both refuse `retail < wholesale`, and that constraint stays.
+
+### Behavior
+- **Trigger: the package's wholesale price has moved since the source order — in either direction, by any amount.** No tolerance threshold. That is the moment a choice exists between the clinic's margin and the patient's price. Today nothing interrupts and the patient's price never changes, which is precisely the defect: the clinic absorbs the move without being asked.
+- **Scope:** lines whose wholesale has not moved go straight to Review, exactly as today. Only moved lines stop.
+- **Where:** the existing price step, `/new-prescription/margin?…&editId=<lineId>`, which already saves back to a session line (the WO-98 edit-at-review mechanism). **Not a new step** (rule 1) — the step that already exists, reached only when there is a real decision.
+- **Pre-fill:** `newRetail = round(newWholesale × oldRetail / oldWholesale)`, preserving the original margin percentage. Both snapshots are on the source order, so no number is invented (rule 3). It is a default the provider can overtype, so no new required field (rule 2).
+- **Reason on screen:** the existing price note (`2.5 mL vial, $95.00, was $50.00 on 12 Aug.`) renders on the price step. The reason for the interruption belongs where the decision is made.
+- **Several moved lines:** sequence through the builder one line at a time, in the order they appear on Review. No new screen.
+- **After the last moved line:** Review, with every line confirmed.
+
+### Mechanism
+- `/api/orders/refill` returns, per line, `sourceRetailCents` and `suggestedRetailCents` (preserved margin) alongside the existing `priceNote`.
+- The session line carries `repriceRequired`, set when the source's wholesale differs from today's.
+- The refill picker replaces the session as it does now, then pushes to the first flagged line's price step, or to Review when nothing is flagged.
+- Saving on the price step clears that line's flag and moves to the next flagged line, or to Review.
+- **Backstop:** a line still flagged when Review renders is unsendable, reusing WO-106's `sendBlock`, so a deep link to Review cannot skip the decision.
+
+### Edge cases (specified, never silent)
+- **The original margin cannot be meaningfully preserved** — the source order has no wholesale snapshot, or the source was itself priced below cost. One rule for both: pre-fill `clinics.default_markup_pct` and say on screen why the original margin could not be used. Preserving a negative margin is meaningless, and a zero-margin default is a number no clinic would choose.
+- **Provider leaves mid-sequence:** the flags persist in the session and the Review backstop holds.
+- **Titration refill:** the maintenance dose is resolved first (WO-106), then the same repricing path. The two do not interact.
+
+### Acceptance Criteria
+- [ ] Refill whose package wholesale rose → lands on the price step, not Review, with the preserved-margin retail pre-filled and the price note visible.
+- [ ] Refill whose package wholesale fell → also lands on the price step.
+- [ ] Refill whose wholesale is unchanged → lands on Review directly, with no interruption.
+- [ ] Two moved lines → the price step twice, in Review order, then Review.
+- [ ] A mix of moved and unmoved lines → only the moved ones stop.
+- [ ] The provider types their own number → that number is used, not the suggestion.
+- [ ] Arithmetic pinned: $50 → $95 wholesale with $60 retail gives $114 retail; margin 20% before and after.
+- [ ] Source with no wholesale snapshot, and source already below cost → both pre-fill `default_markup_pct`, with the reason on screen.
+- [ ] A flagged line reached by deep link to Review is unsendable.
+- [ ] POC demo doc updated: the refill walkthrough now includes the price step when the price has moved (rule 6).
+
+### Not in scope
+Repricing anything other than a refill. Changing the DB CHECK or the 422 — below cost stays refused. Repricing automatically without the provider seeing it, which was considered and rejected: a patient's price must not rise without a provider looking at it.
+
+### Migration
+None expected. Old retail and old wholesale are already on the source order, and `repriceRequired` is session state, not storage. If a column proves necessary it merges alone (rule 7).
+
+---
+
 ## Deferred to Phase 22 (recorded, not built now)
 
 - Patient-facing protocol review: provider marks must-haves, patient unchecks items before paying. Depends on WO-105 and the payment-group model.
@@ -410,7 +465,7 @@ WO-96 (Rx fields) ──┬── WO-101 (packages) ──┐
                     ├── WO-102 (shipping) ──┼── WO-105 (titration)
 WO-97 (allergies)   │                       │
 WO-98 (edit) ── WO-99 (batch sign)          └── WO-107 (practice dashboard, needs WO-102)
-            └── WO-106 (refill)
+            └── WO-106 (refill) ── WO-108 (reprice a moved package price)
 WO-100 (provider = self)
 WO-103 (search/favorites UI) ── WO-104 (favorites model)
 ```
