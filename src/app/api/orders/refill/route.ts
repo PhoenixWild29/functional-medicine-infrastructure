@@ -204,6 +204,7 @@ interface PharmacyFormulationRow {
 // ── One line ────────────────────────────────────────────────
 
 function buildRefillLine(row: SourceRow, packagesByKey: Map<string, PackageOption[]>) {
+  const sourceRetailCents = row.retail_price_snapshot != null ? Math.round(row.retail_price_snapshot * 100) : 0
   const snap = row.medication_snapshot ?? {}
   const pharmacySnap = row.pharmacy_snapshot ?? {}
   const rxDetails = rxDetailsFromRow(row as unknown as Record<string, unknown>)
@@ -305,6 +306,27 @@ function buildRefillLine(row: SourceRow, packagesByKey: Map<string, PackageOptio
 
   const priceNote = change ? priceDeltaMessage(change) : null
 
+  // ── WO-108: the price the provider must confirm ───────────
+  //
+  // The line used to carry the source order's retail forward against
+  // today's wholesale, so the clinic absorbed every price move in
+  // silence. The decision belongs to the provider, so the wholesale
+  // moving is what interrupts — in either direction, any amount.
+  //
+  // previousCents null means the source has no recorded wholesale: we
+  // cannot show that nothing moved, so it counts as moved.
+  const currentWholesaleCents = change?.currentCents ?? (previousCents ?? 0)
+  const repriceRequired = previousCents == null || currentWholesaleCents !== previousCents
+
+  // Preserving the original margin percentage only means something when
+  // there IS one: a source with no wholesale, or one already priced
+  // below its own cost, has no margin worth carrying forward. Both fall
+  // back to the clinic's default markup, and the page says why.
+  const canPreserveMargin = previousCents != null && previousCents > 0 && sourceRetailCents >= previousCents
+  const suggestedRetailCents = canPreserveMargin
+    ? Math.round(currentWholesaleCents * sourceRetailCents / previousCents)
+    : null
+
   return {
     refillOfOrderId: row.order_id,
     pharmacyId:      row.pharmacy_id ?? '',
@@ -327,8 +349,15 @@ function buildRefillLine(row: SourceRow, packagesByKey: Map<string, PackageOptio
     },
     concentrationValue,
     concentrationUnit,
-    wholesaleCents:  change?.currentCents ?? (previousCents ?? 0),
-    retailCents:     row.retail_price_snapshot != null ? Math.round(row.retail_price_snapshot * 100) : 0,
+    wholesaleCents:  currentWholesaleCents,
+    retailCents:     sourceRetailCents,
+    // WO-108: what the source charged, what today's margin-preserving
+    // price would be, and whether the provider has to confirm it.
+    sourceRetailCents,
+    sourceWholesaleCents: previousCents,
+    suggestedRetailCents,
+    marginBasis: canPreserveMargin ? ('preserved' as const) : ('clinic_default' as const),
+    repriceRequired,
     packageId:       change?.packageId ?? null,
     packageLabel:    change?.packageLabel ?? null,
     packageCount:    change?.packageCount ?? null,

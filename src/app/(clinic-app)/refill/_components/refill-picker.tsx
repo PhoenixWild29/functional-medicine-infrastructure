@@ -16,6 +16,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { repriceHref } from '../../new-prescription/_lib/reprice'
 import {
   usePrescriptionSession,
   type SessionPatient,
@@ -135,12 +136,18 @@ export function RefillPicker({ patients, provider, preselectOrderId = null }: Pr
       // can only see what is in sessionStorage. clearSession + the
       // setters left storage empty at the push and relied on this page's
       // persist effect landing first.
-      session.replaceSession({
+      const created = session.replaceSession({
         patient:       active.patient,
         provider:      sessionProvider,
         prescriptions: json.lines ?? [],
       })
-      router.push('/new-prescription/review')
+
+      // WO-108: a line whose wholesale has moved since the source order
+      // is priced by the provider, on the price step that already
+      // exists, before Review. Lines that did not move go straight
+      // through, which is every refill on a stable price.
+      const moved = created.find(line => line.repriceRequired === true)
+      router.push(moved ? repriceHref(moved) : '/new-prescription/review')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'This prescription could not be refilled.')
     } finally {

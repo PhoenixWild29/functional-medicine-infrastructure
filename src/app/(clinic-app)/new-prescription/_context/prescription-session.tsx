@@ -109,6 +109,18 @@ export interface SessionPrescription {
   refillOfOrderId?: string | null
   maintenanceNote?: string | null
   priceNote?:       string | null
+  // WO-108: set when the package's wholesale has moved since the source
+  // order, so the provider confirms the price rather than the clinic
+  // absorbing the move in silence. suggestedRetailCents keeps the
+  // original margin percentage; marginBasis 'clinic_default' means there
+  // was no margin worth preserving and the clinic's default markup is
+  // pre-filled instead. Cleared when the price step saves the line.
+  // OPTIONAL ON PURPOSE: sessions persisted before WO-108 parse
+  // unchanged, and a line without the flag is never interrupted.
+  repriceRequired?:      boolean | null
+  suggestedRetailCents?: number | null
+  sourceRetailCents?:    number | null
+  marginBasis?:          'preserved' | 'clinic_default' | null
   packageId?:      string | null
   packageLabel?:   string | null
   // WO-101a: how many of that package (sent to POST /api/orders, which
@@ -199,7 +211,7 @@ interface PrescriptionSessionContextValue extends PrescriptionSessionState {
     patient:       SessionPatient
     provider:      SessionProvider | null
     prescriptions: Omit<SessionPrescription, 'id'>[]
-  }) => void
+  }) => SessionPrescription[]
   /**
    * Whether this provider has read sessionStorage yet. False on the first
    * commit only. A page that redirects on "no session" must wait for it:
@@ -387,7 +399,7 @@ export function PrescriptionSessionProvider({ children }: { children: ReactNode 
     patient:       SessionPatient
     provider:      SessionProvider | null
     prescriptions: Omit<SessionPrescription, 'id'>[]
-  }) => {
+  }): SessionPrescription[] => {
     // Same dedupe as addPrescriptions, so the result is what clearSession
     // + setPatient + setProvider + addPrescriptions used to produce.
     const seen = new Set<string>()
@@ -403,6 +415,10 @@ export function PrescriptionSessionProvider({ children }: { children: ReactNode 
     }
     try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(replaced)) } catch { /* ignore */ }
     setState(replaced)
+    // Returned with their ids: the caller may need to address one of
+    // these lines immediately (WO-108 sends a moved price to the price
+    // step, which addresses the line by id through editId).
+    return prescriptions
   }, [])
 
   const value: PrescriptionSessionContextValue = {

@@ -227,3 +227,64 @@ describe('guards', () => {
     expect(body.lines.map(l => l['refillOfOrderId'])).toEqual([SOURCE, SOURCE_2])
   })
 })
+
+// ── WO-108: the price the provider must confirm ───────────────────────
+//
+// The line carried the source order's retail forward against today's
+// wholesale, so the clinic absorbed every price move in silence. The
+// wholesale moving is what interrupts — either direction, any amount —
+// and the suggestion keeps the margin the original was written at.
+describe('a package price that moved sends the line to the price step', () => {
+  it('flags it and suggests the margin-preserving price', async () => {
+    // Source: $285 wholesale × 2 vials = $570 … here one vial at $285
+    // with retail $231 is already below cost, so use a clean pair:
+    // $100 wholesale, $150 retail (50%), now $120 → suggest $180.
+    orderRows = [orderRow({ wholesale_price_snapshot: 100, retail_price_snapshot: 150, package_count: 1 })]
+    pharmacyFormulationRows = [packagesRow([{ ...PKG_5ML, wholesale_price: 120 }])]
+
+    const body = await (await call([SOURCE])).json() as { lines: Record<string, unknown>[] }
+    const line = body.lines[0]!
+    expect(line['repriceRequired']).toBe(true)
+    expect(line['wholesaleCents']).toBe(12000)
+    expect(line['sourceRetailCents']).toBe(15000)
+    expect(line['suggestedRetailCents']).toBe(18000)
+    expect(line['marginBasis']).toBe('preserved')
+  })
+
+  it('interrupts a price that moved DOWN too', async () => {
+    orderRows = [orderRow({ wholesale_price_snapshot: 100, retail_price_snapshot: 150, package_count: 1 })]
+    pharmacyFormulationRows = [packagesRow([{ ...PKG_5ML, wholesale_price: 80 }])]
+
+    const line = (await (await call([SOURCE])).json() as { lines: Record<string, unknown>[] }).lines[0]!
+    expect(line['repriceRequired']).toBe(true)
+    expect(line['suggestedRetailCents']).toBe(12000)   // 50% margin held
+  })
+
+  it('does not interrupt when the wholesale is unchanged', async () => {
+    orderRows = [orderRow({ wholesale_price_snapshot: 285, retail_price_snapshot: 400, package_count: 1 })]
+    pharmacyFormulationRows = [packagesRow([PKG_5ML])]
+
+    const line = (await (await call([SOURCE])).json() as { lines: Record<string, unknown>[] }).lines[0]!
+    expect(line['repriceRequired']).toBe(false)
+    expect(line['retailCents']).toBe(40000)
+  })
+
+  it('falls back to the clinic default when there is no margin worth preserving', async () => {
+    // No wholesale on the source: nothing to carry forward, and we
+    // cannot even show that the price held.
+    orderRows = [orderRow({ wholesale_price_snapshot: null, retail_price_snapshot: 150, package_count: 1 })]
+    const noSnapshot = (await (await call([SOURCE])).json() as { lines: Record<string, unknown>[] }).lines[0]!
+    expect(noSnapshot['repriceRequired']).toBe(true)
+    expect(noSnapshot['suggestedRetailCents']).toBeNull()
+    expect(noSnapshot['marginBasis']).toBe('clinic_default')
+
+    // Source already below its own cost: preserving a negative margin is
+    // meaningless, so the same rule applies.
+    orderRows = [orderRow({ wholesale_price_snapshot: 200, retail_price_snapshot: 150, package_count: 1 })]
+    pharmacyFormulationRows = [packagesRow([{ ...PKG_5ML, wholesale_price: 120 }])]
+    const belowCost = (await (await call([SOURCE])).json() as { lines: Record<string, unknown>[] }).lines[0]!
+    expect(belowCost['repriceRequired']).toBe(true)
+    expect(belowCost['suggestedRetailCents']).toBeNull()
+    expect(belowCost['marginBasis']).toBe('clinic_default')
+  })
+})
