@@ -2238,6 +2238,36 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
     return source.order_id as string
   }
 
+  /**
+   * Wait for Review to render, and if it does not, fail with what was
+   * actually on screen. CI artifacts need auth to read, so the diagnosis
+   * has to travel in the error message itself.
+   */
+  async function expectReviewRendered(page: Page) {
+    const totals = page.getByTestId('review-totals')
+    try {
+      await expect(totals).toBeVisible({ timeout: 15_000 })
+    } catch {
+      const diag = await page.evaluate(() => {
+        let session: string | null = null
+        try { session = sessionStorage.getItem('compoundiq-rx-session') } catch { session = 'unreadable' }
+        const parsed = session ? JSON.parse(session) as {
+          patient?: { patient_id?: string }
+          provider?: { provider_id?: string }
+          prescriptions?: unknown[]
+        } : null
+        return {
+          url:           location.pathname + location.search,
+          hasPatient:    !!parsed?.patient?.patient_id,
+          hasProvider:   !!parsed?.provider?.provider_id,
+          lineCount:     parsed?.prescriptions?.length ?? -1,
+          bodyText:      document.body.innerText.replace(/\s+/g, ' ').slice(0, 400),
+        }
+      })
+      throw new Error(`Review did not render. ${JSON.stringify(diag)}`)
+    }
+  }
+
   async function refillLandsOnReview(page: Page, orderId: string) {
     await page.goto(`/refill?order=${orderId}`)
     await expect(page.getByTestId(`refill-order-${orderId}`)).toBeVisible({ timeout: 10_000 })
@@ -2245,7 +2275,7 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
     await page.getByTestId('refill-start').click()
 
     await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 15_000 })
-    await expect(page.getByTestId('review-totals')).toBeVisible({ timeout: 15_000 })
+    await expectReviewRendered(page)
     await expect(page.getByText(TEST_CATALOG.formulationName).first()).toBeVisible()
     await expect(page).toHaveURL(/\/new-prescription\/review/)
   }
@@ -2262,5 +2292,160 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
     const orderId = await seedRefillSource()
     await loginAs(page, TEST_USERS.provider)
     await refillLandsOnReview(page, orderId)
+  })
+
+  // ── The same click, reached the way a provider actually reaches it ──
+  //
+  // Sam reproduced the bounce to step 1 on prod as a PROVIDER, with the
+  // banner reading "Prescribing as Sarah Chen" and the session holding a
+  // patient, a provider and one prescription — so the provider-null cause
+  // fixed above is not what he saw. The remaining suspect is ordering:
+  // the picker calls router.push while sessionStorage is still empty
+  // (clearSession removed it; the refilled session is only written by the
+  // persist effect of the provider being left), and Review mounts a
+  // DIFFERENT provider instance that can only read storage. Whether the
+  // write lands first depends on how long the push takes to commit.
+  //
+  // page.goto() is a full document load, so nothing is in the client
+  // router cache and the push must fetch /new-prescription/review — the
+  // slowest case, and the one the test above takes. These three take the
+  // paths a real session takes: soft navigations, and in the last one a
+  // wizard walk that puts /new-prescription/review in the router cache
+  // first, so the push can commit with no fetch at all.
+
+  async function startRefillFromPicker(page: Page, orderId: string) {
+    await expect(page.getByTestId(`refill-order-${orderId}`)).toBeVisible({ timeout: 15_000 })
+    await page.getByTestId('refill-start').click()
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 15_000 })
+    await expectReviewRendered(page)
+    await expect(page).toHaveURL(/\/new-prescription\/review/)
+  }
+
+  test('provider, soft navigation: dashboard row Refill link then Refill', async ({ page }) => {
+    const orderId = await seedRefillSource()
+    await loginAs(page, TEST_USERS.provider)
+
+    await page.getByTestId(`row-refill-${orderId}`).click()
+    await expect(page).toHaveURL(/\/refill/, { timeout: 15_000 })
+    await startRefillFromPicker(page, orderId)
+  })
+
+  test('provider, soft navigation: drawer "Refill this prescription" then Refill', async ({ page }) => {
+    const orderId = await seedRefillSource()
+    await loginAs(page, TEST_USERS.provider)
+
+    await page.locator(`[data-order-id="${orderId}"]`).click()
+    await page.getByTestId('drawer-refill').click()
+    await expect(page).toHaveURL(/\/refill/, { timeout: 15_000 })
+    await startRefillFromPicker(page, orderId)
+  })
+
+  // ── A titration refills at its maintenance dose ────────────────────
+  //
+  // Gina Rooks asked for the refill to be fast rather than re-entered.
+  // For a finished titration that means the maintenance dose — the final
+  // step — as an ordinary standard line, not the schedule again. Verified
+  // on prod: 10 → 20 → 40 units weekly refills as dose "40 units",
+  // sigMode "standard", no steps, dispense 1.6 mL. The arithmetic: 40
+  // units is 0.4 mL on a U-100 syringe, weekly over the final step's 4
+  // weeks (28 days) is 4 doses, so 1.6 mL over a 28-day supply.
+  test('a finished titration refills at its maintenance dose, as a standard line', async ({ page }) => {
+    const supabase = createClient(
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
+    )
+    const { data: source, error } = await supabase
+      .from('orders')
+      .insert({
+        patient_id:               TEST_IDS.patient,
+        provider_id:              TEST_IDS.provider,
+        catalog_item_id:          null,
+        formulation_id:           TEST_IDS.glp1Formulation,
+        clinic_id:                TEST_IDS.clinic,
+        pharmacy_id:              TEST_IDS.pharmacyTier1,
+        status:                   'AWAITING_PAYMENT',
+        quantity:                 1,
+        wholesale_price_snapshot: 95.00,
+        retail_price_snapshot:    190.00,
+        medication_snapshot:      {
+          formulation_id:      TEST_IDS.glp1Formulation,
+          medication_name:     TEST_CATALOG.glp1FormulationName,
+          prescribed_dose:     '10 units',
+          frequency_code:      'QW',
+          concentration_value: 5,
+          concentration_unit:  'mg/mL',
+          form:                'Injectable Solution',
+        },
+        pharmacy_snapshot:        { pharmacy_id: TEST_IDS.pharmacyTier1, name: 'Test Pharmacy Tier1' },
+        sig_text:                 'Weeks 1-4: inject 10 units subcutaneous once weekly. Weeks 5-8: inject 20 units subcutaneous once weekly. Weeks 9-12: inject 40 units subcutaneous once weekly.',
+        sig_mode:                 'titration',
+        titration_steps:          [
+          { dose: '10', unit: 'units', frequency: 'QW', weeks: 4 },
+          { dose: '20', unit: 'units', frequency: 'QW', weeks: 4 },
+          { dose: '40', unit: 'units', frequency: 'QW', weeks: 4 },
+        ],
+        days_supply:              84,
+        refills:                  2,
+        locked_at:                new Date().toISOString(),
+      })
+      .select('order_id')
+      .single()
+    if (error || !source) throw new Error(`Failed to seed titration source order: ${error?.message}`)
+    const orderId = source.order_id as string
+
+    await loginAs(page, TEST_USERS.provider)
+
+    // The line the picker puts in the session, as the API builds it.
+    const res = await page.request.post('/api/orders/refill', { data: { orderIds: [orderId] } })
+    expect(res.status()).toBe(200)
+    const body = await res.json() as {
+      lines: { dose: string; frequencyCode: string; sigMode: string; titrationSteps: unknown[]
+               rxDetails: { dispenseQuantity: number; dispenseUnit: string; daysSupply: number }
+               maintenanceNote: string | null }[]
+    }
+    expect(body.lines).toHaveLength(1)
+    const line = body.lines[0]!
+    expect(line.dose).toBe('40 units')
+    expect(line.frequencyCode).toBe('QW')
+    // A refill of a finished titration is an ordinary line, not the
+    // schedule again — the patient is past the ramp.
+    expect(line.sigMode).toBe('standard')
+    expect(line.titrationSteps).toEqual([])
+    expect(line.rxDetails.dispenseQuantity).toBe(1.6)
+    expect(line.rxDetails.dispenseUnit).toBe('mL')
+    expect(line.rxDetails.daysSupply).toBe(28)
+    // The reason is carried, so nothing about the dose change is silent.
+    expect(line.maintenanceNote).toContain('40 units')
+
+    // And the same through the UI: Review shows the maintenance dose.
+    await page.goto(`/refill?order=${orderId}`)
+    await expect(page.getByTestId(`refill-order-${orderId}`)).toBeVisible({ timeout: 15_000 })
+    await page.getByTestId('refill-start').click()
+    await expectReviewRendered(page)
+    await expect(page.getByText(/40 units/).first()).toBeVisible()
+    await expect(page.getByText(/dispense 1\.6 mL/).first()).toBeVisible()
+  })
+
+  test('provider, with /new-prescription/review already in the router cache', async ({ page }) => {
+    const orderId = await seedRefillSource()
+    await loginAs(page, TEST_USERS.provider)
+
+    // Walk the wizard once: this is an ordinary session's first act, and
+    // it leaves Review's payload in the client router cache, so the
+    // refill push can commit without waiting for a fetch.
+    await navigateToReviewPage(page)
+
+    // Back to the dashboard the way the app offers it — a soft
+    // navigation, not a reload.
+    await page.getByRole('link', { name: 'Dashboard' }).first().click()
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+
+    await page.getByTestId(`row-refill-${orderId}`).click()
+    await expect(page).toHaveURL(/\/refill/, { timeout: 15_000 })
+    await startRefillFromPicker(page, orderId)
+
+    // The refill replaced the wizard's session; the line on screen is the
+    // refilled one, not what the wizard left behind.
+    await expect(page.getByText(TEST_CATALOG.formulationName).first()).toBeVisible()
   })
 })

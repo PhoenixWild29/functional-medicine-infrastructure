@@ -129,10 +129,17 @@ export function RefillPicker({ patients, provider, preselectOrderId = null }: Pr
 
       // One session, every line in it: that is what makes WO-102 charge
       // shipping once per pharmacy across the whole refill.
-      session.clearSession()
-      session.setPatient(active.patient)
-      session.setProvider(sessionProvider)
-      session.addPrescriptions(json.lines ?? [])
+      //
+      // Written to storage BEFORE the push. Review mounts under
+      // /new-prescription's own session provider, not this page's, and
+      // can only see what is in sessionStorage. clearSession + the
+      // setters left storage empty at the push and relied on this page's
+      // persist effect landing first.
+      session.replaceSession({
+        patient:       active.patient,
+        provider:      sessionProvider,
+        prescriptions: json.lines ?? [],
+      })
       router.push('/new-prescription/review')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'This prescription could not be refilled.')
