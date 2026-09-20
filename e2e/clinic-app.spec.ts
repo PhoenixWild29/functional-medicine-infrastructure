@@ -2365,7 +2365,7 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
         pharmacy_id:              TEST_IDS.pharmacyTier1,
         status:                   'AWAITING_PAYMENT',
         quantity:                 1,
-        wholesale_price_snapshot: 95.00,
+        wholesale_price_snapshot: 80.00,
         retail_price_snapshot:    190.00,
         medication_snapshot:      {
           formulation_id:      TEST_IDS.glp1Formulation,
@@ -2401,7 +2401,7 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
     const body = await res.json() as {
       lines: { dose: string; frequencyCode: string; sigMode: string; titrationSteps: unknown[]
                rxDetails: { dispenseQuantity: number; dispenseUnit: string; daysSupply: number }
-               maintenanceNote: string | null }[]
+               maintenanceNote: string | null; priceNote: string | null }[]
     }
     expect(body.lines).toHaveLength(1)
     const line = body.lines[0]!
@@ -2414,8 +2414,9 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
     expect(line.rxDetails.dispenseQuantity).toBe(1.6)
     expect(line.rxDetails.dispenseUnit).toBe('mL')
     expect(line.rxDetails.daysSupply).toBe(28)
-    // The reason is carried, so nothing about the dose change is silent.
+    // The reasons are carried, so nothing is applied silently.
     expect(line.maintenanceNote).toContain('40 units')
+    expect(line.priceNote).toContain('was $80.00')
 
     // And the same through the UI: Review shows the maintenance dose.
     await page.goto(`/refill?order=${orderId}`)
@@ -2424,6 +2425,14 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
     await expectReviewRendered(page)
     await expect(page.getByText(/40 units/).first()).toBeVisible()
     await expect(page.getByText(/dispense 1\.6 mL/).first()).toBeVisible()
+
+    // WO-106: both decisions the refill made for the provider are on the
+    // card. A titration that drops to its maintenance dose without saying
+    // so is exactly what Gina objected to.
+    const notes = page.getByTestId(/^refill-notes-/).first()
+    await expect(notes).toBeVisible()
+    await expect(notes).toContainText('Refilling at the maintenance dose, 40 units once weekly.')
+    await expect(notes).toContainText('was $80.00')
   })
 
   test('provider, with /new-prescription/review already in the router cache', async ({ page }) => {

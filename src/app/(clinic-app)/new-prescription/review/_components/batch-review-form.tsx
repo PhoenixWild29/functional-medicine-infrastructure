@@ -611,6 +611,25 @@ export function BatchReviewForm({ isProvider }: Props) {
                       Missing {rx.retailCents <= 0 ? 'price' : 'directions'} — remove this line and re-add it from search or a protocol.
                     </p>
                   )}
+                  {/* WO-106: what the refill decided for the provider. The
+                      maintenance dose of a finished titration and a package
+                      price that moved are both changes the provider did not
+                      make — they are shown here so neither is applied
+                      silently, and either can be edited before sending. */}
+                  {(rx.maintenanceNote || rx.priceNote) && (
+                    <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5" data-testid={`refill-notes-${rx.id}`}>
+                      {rx.maintenanceNote && (
+                        <p className="text-xs text-amber-800" data-testid={`refill-maintenance-note-${rx.id}`}>
+                          {rx.maintenanceNote}
+                        </p>
+                      )}
+                      {rx.priceNote && (
+                        <p className="text-xs text-amber-800" data-testid={`refill-price-note-${rx.id}`}>
+                          {rx.priceNote}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-bold text-foreground">{toCurrency(rx.retailCents)}</p>
