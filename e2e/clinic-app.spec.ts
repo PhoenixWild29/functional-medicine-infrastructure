@@ -2458,3 +2458,54 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
     await expect(page.getByText(TEST_CATALOG.formulationName).first()).toBeVisible()
   })
 })
+
+// ── A reload mid-session keeps the session ─────────────────────────────
+//
+// Same defect as the refill bounce, reached another way. Every
+// /new-prescription/* page mounts the session provider, which starts
+// empty and restores from sessionStorage in its own effect; React runs a
+// child's effects before its parent's, so SessionBanner's and
+// BatchReviewForm's "no session -> step 1" redirects used to fire on that
+// first commit, before the restore. A provider who reloaded the Review
+// page — or whose browser reloaded it — lost their way back to step 1
+// with the session still sitting in storage. Fixed in #158 by gating
+// both redirects on isRestored; pinned here so it cannot come back.
+test.describe('Clinic App — WO-106 a reload does not lose the session', () => {
+  test.beforeAll(async () => {
+    await seedStaticData()
+  })
+
+  test.afterEach(async () => {
+    await cleanupTestOrders()
+  })
+
+  test('provider: reloading Review keeps the patient, the provider and the line', async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+    await navigateToReviewPage(page)
+    await expect(page.getByTestId('review-totals')).toBeVisible({ timeout: 15_000 })
+    const totalBefore = await page.getByTestId('review-patient-total').innerText()
+
+    // The reload a provider does themself, or that a phone does when it
+    // comes back to a backgrounded tab.
+    await page.reload()
+
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 15_000 })
+    await expect(page.getByTestId('review-totals')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId('review-patient-total')).toHaveText(totalBefore)
+    await expect(page.getByText(new RegExp(TEST_CATALOG.formulationName, 'i')).first()).toBeVisible()
+    // Still on Review after the redirect would have had time to fire.
+    await expect(page).toHaveURL(/\/new-prescription\/review/)
+  })
+
+  test('provider: reloading the price step keeps the session too', async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+    await walkBuilderToMargin(page, PLAIN)
+
+    await page.reload()
+
+    await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 15_000 })
+    // The banner only renders with a session; without one it redirects.
+    await expect(page.getByText(/Prescribing as Test Provider|Test Patient/).first()).toBeVisible({ timeout: 15_000 })
+    await expect(page).toHaveURL(/\/new-prescription\/margin/)
+  })
+})
