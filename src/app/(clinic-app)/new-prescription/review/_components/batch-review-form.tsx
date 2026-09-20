@@ -85,7 +85,11 @@ function toCurrency(cents: number): string {
 }
 
 function calcPlatformFeeCents(marginCents: number): number {
-  return Math.round(marginCents * 15 / 100)
+  // Floored at zero, exactly as bundleTotals does it. Unfloored, a line
+  // priced below cost produced a NEGATIVE fee, and the card read a
+  // smaller loss than the totals — as if the platform rebated 15% of the
+  // clinic's loss. One loss, stated one way.
+  return marginCents > 0 ? Math.round(marginCents * 15 / 100) : 0
 }
 
 // fix/review-send-flow: a session line is un-sendable when it carries
@@ -94,8 +98,29 @@ function calcPlatformFeeCents(marginCents: number): number {
 // 10 characters"). Sessions persisted in sessionStorage BEFORE the
 // PR #109 protocol pricing fix can still contain $0.00 stub lines, so
 // surface these BEFORE the provider signs instead of failing mid-batch.
-function isUnsendable(rx: { retailCents: number; sigText: string }): boolean {
-  return rx.retailCents <= 0 || rx.sigText.trim().length < 10
+/**
+ * Why a line cannot be sent, or null when it can.
+ *
+ * 'below_cost' is WO-106: a refill carries the source order's retail
+ * forward while taking today's wholesale, so a package price that rose
+ * since the original fill prices the line under it. POST /api/orders
+ * refuses retail < wholesale and the DB CHECK refuses it again, so this
+ * used to be a 422 per line AFTER the provider signed. The refusal
+ * belongs here, before the signature — and the fix is to edit the price,
+ * not to remove the line. (What a refill should do about a moved price
+ * is WO-107; this only stops it being sent below cost.)
+ */
+type SendBlock = 'price' | 'directions' | 'below_cost'
+
+function sendBlock(rx: { retailCents: number; wholesaleCents: number; sigText: string }): SendBlock | null {
+  if (rx.retailCents <= 0) return 'price'
+  if (rx.sigText.trim().length < 10) return 'directions'
+  if (rx.retailCents < rx.wholesaleCents) return 'below_cost'
+  return null
+}
+
+function isUnsendable(rx: { retailCents: number; wholesaleCents: number; sigText: string }): boolean {
+  return sendBlock(rx) !== null
 }
 
 // ── WO-96: per-line Rx details + rules ────────────────────────
@@ -355,6 +380,8 @@ export function BatchReviewForm({ isProvider }: Props) {
   // instead of failing after the provider has signed and confirmed.
   const invalidItems = prescriptions.filter(isUnsendable)
   const hasInvalidItems = invalidItems.length > 0
+  const belowCostItems = invalidItems.filter(rx => sendBlock(rx) === 'below_cost')
+  const malformedItems = invalidItems.filter(rx => sendBlock(rx) !== 'below_cost')
 
   // WO-96: rule-required Rx details still empty (controlled → diagnosis,
   // requires_clinical_difference → statement). Blocks both Sign & Send
@@ -588,7 +615,8 @@ export function BatchReviewForm({ isProvider }: Props) {
           const marginCents = rx.retailCents - rx.wholesaleCents
           const platformFeeCents = calcPlatformFeeCents(marginCents)
           const clinicMarginCents = marginCents - platformFeeCents
-          const invalid = isUnsendable(rx)
+          const block = sendBlock(rx)
+          const invalid = block !== null
 
           return (
             <div
@@ -606,9 +634,14 @@ export function BatchReviewForm({ isProvider }: Props) {
                   <p className="mt-1 text-xs text-muted-foreground italic">
                     Sig: {rx.sigText}
                   </p>
-                  {invalid && (
+                  {block === 'below_cost' ? (
+                    <p className="mt-1 text-xs font-medium text-amber-700" data-testid={`below-cost-${rx.id}`}>
+                      Priced below cost — {toCurrency(rx.retailCents)} retail against {toCurrency(rx.wholesaleCents)} wholesale
+                      today. Edit the price to continue; this cannot be sent as it stands.
+                    </p>
+                  ) : block && (
                     <p className="mt-1 text-xs font-medium text-amber-700">
-                      Missing {rx.retailCents <= 0 ? 'price' : 'directions'} — remove this line and re-add it from search or a protocol.
+                      Missing {block === 'price' ? 'price' : 'directions'} — remove this line and re-add it from search or a protocol.
                     </p>
                   )}
                   {/* WO-106: what the refill decided for the provider. The
@@ -748,12 +781,22 @@ export function BatchReviewForm({ isProvider }: Props) {
           <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
             {invalidItems.length} prescription{invalidItems.length !== 1 ? 's' : ''} can&apos;t be sent yet
           </p>
-          <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
-            {invalidItems.map(rx => rx.medicationName).join(', ')} {invalidItems.length !== 1 ? 'are' : 'is'} missing a price
-            or prescription directions — usually leftovers from a protocol added before pricing was fixed. Remove the flagged
-            line{invalidItems.length !== 1 ? 's' : ''} above and re-add {invalidItems.length !== 1 ? 'them' : 'it'} from search
-            or the protocol, or use Start Over to clear the session.
-          </p>
+          {belowCostItems.length > 0 && (
+            <p className="mt-1 text-xs text-amber-800 dark:text-amber-300" data-testid="review-below-cost-banner">
+              {belowCostItems.map(rx => rx.medicationName).join(', ')} {belowCostItems.length !== 1 ? 'are' : 'is'} priced
+              below what the pharmacy charges today. Edit the price on the flagged prescription
+              {belowCostItems.length !== 1 ? 's' : ''} above — sending below cost is refused when the order is created, after
+              the signature.
+            </p>
+          )}
+          {malformedItems.length > 0 && (
+            <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+              {malformedItems.map(rx => rx.medicationName).join(', ')} {malformedItems.length !== 1 ? 'are' : 'is'} missing a price
+              or prescription directions — usually leftovers from a protocol added before pricing was fixed. Remove the flagged
+              line{malformedItems.length !== 1 ? 's' : ''} above and re-add {malformedItems.length !== 1 ? 'them' : 'it'} from search
+              or the protocol, or use Start Over to clear the session.
+            </p>
+          )}
         </div>
       )}
 
@@ -882,7 +925,9 @@ export function BatchReviewForm({ isProvider }: Props) {
               disabled — a gray button with no hint reads as "broken". */}
           {!canSubmit && !isSubmitting && (
             <p className="text-center text-xs text-muted-foreground">
-              {hasInvalidItems
+              {belowCostItems.length > 0
+                ? 'Edit the price on the flagged prescriptions above to enable sending.'
+                : hasInvalidItems
                 ? 'Remove the flagged prescriptions above to enable sending.'
                 : hasMissingDetails
                   ? `Complete Rx details to enable sending: ${missingDetailsHint}.`
@@ -918,7 +963,9 @@ export function BatchReviewForm({ isProvider }: Props) {
           </button>
           {hasInvalidItems && (
             <p className="text-center text-xs text-amber-700">
-              Remove the flagged prescriptions above to enable saving drafts.
+              {belowCostItems.length > 0
+                ? 'Edit the price on the flagged prescriptions above to enable saving drafts.'
+                : 'Remove the flagged prescriptions above to enable saving drafts.'}
             </p>
           )}
           {!hasInvalidItems && hasMissingDetails && (

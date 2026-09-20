@@ -2509,3 +2509,93 @@ test.describe('Clinic App — WO-106 a reload does not lose the session', () => 
     await expect(page).toHaveURL(/\/new-prescription\/margin/)
   })
 })
+
+// ── A refill priced below today's wholesale ────────────────────────────
+//
+// Verified on prod at cdd0565: a refill carries the source order's retail
+// forward while taking the pharmacy's CURRENT wholesale, so a package
+// price that rose since the original fill prices the line below cost.
+// The card rendered a negative margin and a negative payout and Sign &
+// Send stayed enabled — while POST /api/orders refuses retail < wholesale
+// (route.ts) and the DB CHECK from 20260319000006 refuses it again. So
+// the provider signed and then met a 422, one line at a time.
+//
+// Repricing is WO-107. What is pinned here is the safety: the refusal is
+// on screen BEFORE the signature, and the two places that state the
+// clinic's loss agree. The line card used to compute the platform fee as
+// 15% of a negative margin — a negative fee — so it read -$29.75 against
+// totals of -$35.00, as if the platform rebated 15% of the loss.
+test.describe("Clinic App — WO-106 a refill below today's wholesale", () => {
+  test.beforeAll(async () => {
+    await seedStaticData()
+  })
+
+  test.afterEach(async () => {
+    await cleanupTestOrders()
+  })
+
+  test('cannot be sent, says why before the signature, and states one loss', async ({ page }) => {
+    const supabase = createClient(
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
+    )
+    // Retail $60 against a pharmacy that prices this formulation at $95
+    // today: the refill takes today's wholesale and the old retail.
+    const { data: source, error } = await supabase
+      .from('orders')
+      .insert({
+        patient_id:               TEST_IDS.patient,
+        provider_id:              TEST_IDS.provider,
+        catalog_item_id:          null,
+        formulation_id:           TEST_IDS.glp1Formulation,
+        clinic_id:                TEST_IDS.clinic,
+        pharmacy_id:              TEST_IDS.pharmacyTier1,
+        status:                   'AWAITING_PAYMENT',
+        quantity:                 1,
+        wholesale_price_snapshot: 50.00,
+        retail_price_snapshot:    60.00,
+        medication_snapshot:      {
+          formulation_id:      TEST_IDS.glp1Formulation,
+          medication_name:     TEST_CATALOG.glp1FormulationName,
+          prescribed_dose:     '10 units',
+          frequency_code:      'QW',
+          concentration_value: 5,
+          concentration_unit:  'mg/mL',
+          form:                'Injectable Solution',
+        },
+        pharmacy_snapshot:        { pharmacy_id: TEST_IDS.pharmacyTier1, name: 'Test Pharmacy Tier1' },
+        sig_text:                 'Inject 10 units subcutaneous once weekly for 28 days',
+        days_supply:              28,
+        refills:                  2,
+        locked_at:                new Date().toISOString(),
+      })
+      .select('order_id')
+      .single()
+    if (error || !source) throw new Error(`Failed to seed below-cost source order: ${error?.message}`)
+    const orderId = source.order_id as string
+
+    await loginAs(page, TEST_USERS.provider)
+    await page.goto(`/refill?order=${orderId}`)
+    await expect(page.getByTestId(`refill-order-${orderId}`)).toBeVisible({ timeout: 15_000 })
+    await page.getByTestId('refill-start').click()
+    await expect(page.getByTestId('review-totals')).toBeVisible({ timeout: 15_000 })
+
+    // The refusal is here, on the card, not a 422 after the signature.
+    const belowCost = page.getByTestId(/^below-cost-/).first()
+    await expect(belowCost).toBeVisible()
+    await expect(belowCost).toContainText('$60.00')
+    await expect(belowCost).toContainText('$95.00')
+
+    await expect(page.getByRole('button', { name: /Sign & Send/ })).toBeDisabled()
+    // The banner and the button hint both say to edit the price; assert
+    // the hint under the disabled button, exactly.
+    await expect(page.getByText('Edit the price on the flagged prescriptions above to enable sending.')).toBeVisible()
+    await expect(page.getByTestId('review-below-cost-banner')).toContainText('priced below what the pharmacy charges today')
+
+    // One loss, stated the same way in both places: retail $60 against
+    // wholesale $95 is -$35.00, and the platform fee on a loss is $0.00.
+    await expect(page.getByTestId('review-platform-fee')).toHaveText('$0.00')
+    await expect(page.getByTestId('review-clinic-payout')).toHaveText('$-35.00')
+    await expect(page.getByText(/Clinic margin: \$-35\.00/)).toBeVisible()
+  })
+})
