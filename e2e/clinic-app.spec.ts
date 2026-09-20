@@ -2418,10 +2418,15 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
     expect(line.maintenanceNote).toContain('40 units')
     expect(line.priceNote).toContain('was $80.00')
 
-    // And the same through the UI: Review shows the maintenance dose.
+    // And the same through the UI. The source was priced at $80 and the
+    // pharmacy charges $95 today, so WO-108 stops the line at the price
+    // step first; confirming the suggested price continues to Review.
     await page.goto(`/refill?order=${orderId}`)
     await expect(page.getByTestId(`refill-order-${orderId}`)).toBeVisible({ timeout: 15_000 })
     await page.getByTestId('refill-start').click()
+    await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 15_000 })
+    await expect(page.getByTestId('reprice-notice')).toContainText('was $80.00')
+    await page.getByRole('button', { name: /Review & Send/ }).click()
     await expectReviewRendered(page)
     await expect(page.getByText(/40 units/).first()).toBeVisible()
     await expect(page.getByText(/dispense 1\.6 mL/).first()).toBeVisible()
@@ -2540,7 +2545,9 @@ test.describe("Clinic App — WO-106 a refill below today's wholesale", () => {
       process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
     )
     // Retail $60 against a pharmacy that prices this formulation at $95
-    // today: the refill takes today's wholesale and the old retail.
+    // today — and $95 on the source too, so WO-108 does not interrupt:
+    // this is a line that was ALREADY below cost when it was written,
+    // which is the case the guard has to catch on its own.
     const { data: source, error } = await supabase
       .from('orders')
       .insert({
@@ -2552,7 +2559,7 @@ test.describe("Clinic App — WO-106 a refill below today's wholesale", () => {
         pharmacy_id:              TEST_IDS.pharmacyTier1,
         status:                   'AWAITING_PAYMENT',
         quantity:                 1,
-        wholesale_price_snapshot: 50.00,
+        wholesale_price_snapshot: 95.00,
         retail_price_snapshot:    60.00,
         medication_snapshot:      {
           formulation_id:      TEST_IDS.glp1Formulation,
@@ -2670,7 +2677,7 @@ test.describe('Clinic App — WO-108 repricing a refill', () => {
     await page.getByTestId('refill-start').click()
 
     await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 15_000 })
-    await expect(page.locator('#retail-price')).toHaveValue('$114.00')
+    await expect(page.locator('#retail-price')).toHaveValue('114.00')
     await expect(page.getByTestId('reprice-notice')).toContainText('was $50.00')
 
     // Accepting the suggestion lands on Review at the new price.
