@@ -2599,3 +2599,97 @@ test.describe("Clinic App — WO-106 a refill below today's wholesale", () => {
     await expect(page.getByText(/Clinic margin: \$-35\.00/)).toBeVisible()
   })
 })
+
+// ── WO-108: a refill whose package price moved stops at the price step ──
+//
+// The refill carried the source order's retail forward while taking the
+// pharmacy's current wholesale, so the clinic silently absorbed every
+// price move — and when the move was large enough the line fell below
+// cost (WO-106 blocks sending that; it does not price it).
+//
+// The interrupt fires on the WHOLESALE moving, either direction, any
+// amount: that is the moment a choice exists between the clinic's margin
+// and the patient's price. It stops at the price step that already
+// exists, with the preserved-margin number pre-filled and the reason on
+// screen. A line whose wholesale has not moved is not interrupted.
+test.describe('Clinic App — WO-108 repricing a refill', () => {
+  test.beforeAll(async () => {
+    await seedStaticData()
+  })
+
+  test.afterEach(async () => {
+    await cleanupTestOrders()
+  })
+
+  /** A refillable GLP-1 order at the given prices. Tier1 prices it at $95 today. */
+  async function seedPricedSource(wholesale: number, retail: number): Promise<string> {
+    const supabase = createClient(
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
+    )
+    const { data, error } = await supabase
+      .from('orders')
+      .insert({
+        patient_id:               TEST_IDS.patient,
+        provider_id:              TEST_IDS.provider,
+        catalog_item_id:          null,
+        formulation_id:           TEST_IDS.glp1Formulation,
+        clinic_id:                TEST_IDS.clinic,
+        pharmacy_id:              TEST_IDS.pharmacyTier1,
+        status:                   'AWAITING_PAYMENT',
+        quantity:                 1,
+        wholesale_price_snapshot: wholesale,
+        retail_price_snapshot:    retail,
+        medication_snapshot:      {
+          formulation_id:      TEST_IDS.glp1Formulation,
+          medication_name:     TEST_CATALOG.glp1FormulationName,
+          prescribed_dose:     '10 units',
+          frequency_code:      'QW',
+          concentration_value: 5,
+          concentration_unit:  'mg/mL',
+          form:                'Injectable Solution',
+        },
+        pharmacy_snapshot:        { pharmacy_id: TEST_IDS.pharmacyTier1, name: 'Test Pharmacy Tier1' },
+        sig_text:                 'Inject 10 units subcutaneous once weekly for 28 days',
+        days_supply:              28,
+        refills:                  2,
+        locked_at:                new Date().toISOString(),
+      })
+      .select('order_id')
+      .single()
+    if (error || !data) throw new Error(`Failed to seed priced source order: ${error?.message}`)
+    return data.order_id as string
+  }
+
+  test('wholesale moved: stops at the price step, preserved margin pre-filled, reason on screen', async ({ page }) => {
+    // $50 wholesale then, $95 now, $60 retail then → $114 keeps the 20%.
+    const orderId = await seedPricedSource(50.00, 60.00)
+    await loginAs(page, TEST_USERS.provider)
+    await page.goto(`/refill?order=${orderId}`)
+    await expect(page.getByTestId(`refill-order-${orderId}`)).toBeVisible({ timeout: 15_000 })
+    await page.getByTestId('refill-start').click()
+
+    await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 15_000 })
+    await expect(page.locator('#retail-price')).toHaveValue('$114.00')
+    await expect(page.getByTestId('reprice-notice')).toContainText('was $50.00')
+
+    // Accepting the suggestion lands on Review at the new price.
+    await page.getByRole('button', { name: /Review & Send/ }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 15_000 })
+    await expect(page.getByTestId('review-subtotal')).toHaveText('$114.00')
+    await expect(page.getByTestId(/^below-cost-/)).toHaveCount(0)
+  })
+
+  test('wholesale unchanged: straight to Review, no interruption', async ({ page }) => {
+    // $95 then and now — nothing to decide.
+    const orderId = await seedPricedSource(95.00, 190.00)
+    await loginAs(page, TEST_USERS.provider)
+    await page.goto(`/refill?order=${orderId}`)
+    await expect(page.getByTestId(`refill-order-${orderId}`)).toBeVisible({ timeout: 15_000 })
+    await page.getByTestId('refill-start').click()
+
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 15_000 })
+    await expect(page.getByTestId('review-totals')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId('review-subtotal')).toHaveText('$190.00')
+  })
+})
