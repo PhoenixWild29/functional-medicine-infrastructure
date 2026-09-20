@@ -2426,7 +2426,7 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
     await page.getByTestId('refill-start').click()
     await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 15_000 })
     await expect(page.getByTestId('reprice-notice')).toContainText('was $80.00')
-    await page.getByRole('button', { name: /Review & Send/ }).click()
+    await page.getByRole('button', { name: /Save Changes — Back to Review/ }).click()
     await expectReviewRendered(page)
     await expect(page.getByText(/40 units/).first()).toBeVisible()
     await expect(page.getByText(/dispense 1\.6 mL/).first()).toBeVisible()
@@ -2544,10 +2544,12 @@ test.describe("Clinic App — WO-106 a refill below today's wholesale", () => {
       process.env['E2E_SUPABASE_URL']!,
       process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
     )
-    // Retail $60 against a pharmacy that prices this formulation at $95
-    // today — and $95 on the source too, so WO-108 does not interrupt:
-    // this is a line that was ALREADY below cost when it was written,
-    // which is the case the guard has to catch on its own.
+    // A source order can never be below its own cost: the DB CHECK
+    // chk_orders_retail_gte_wholesale refuses it. So the only way a
+    // below-cost line reaches Review is the one taken here — the
+    // wholesale moved ($50 to $95) and the provider left the price step
+    // by the banner's shortcut, which navigates without saving. That is
+    // the deep-link case the backstop exists for.
     const { data: source, error } = await supabase
       .from('orders')
       .insert({
@@ -2559,7 +2561,7 @@ test.describe("Clinic App — WO-106 a refill below today's wholesale", () => {
         pharmacy_id:              TEST_IDS.pharmacyTier1,
         status:                   'AWAITING_PAYMENT',
         quantity:                 1,
-        wholesale_price_snapshot: 95.00,
+        wholesale_price_snapshot: 50.00,
         retail_price_snapshot:    60.00,
         medication_snapshot:      {
           formulation_id:      TEST_IDS.glp1Formulation,
@@ -2585,6 +2587,11 @@ test.describe("Clinic App — WO-106 a refill below today's wholesale", () => {
     await page.goto(`/refill?order=${orderId}`)
     await expect(page.getByTestId(`refill-order-${orderId}`)).toBeVisible({ timeout: 15_000 })
     await page.getByTestId('refill-start').click()
+
+    // WO-108 stops it at the price step; leave by the banner shortcut,
+    // without pricing it.
+    await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 15_000 })
+    await page.getByRole('button', { name: 'Review & Send' }).click()
     await expect(page.getByTestId('review-totals')).toBeVisible({ timeout: 15_000 })
 
     // The refusal is here, on the card, not a 422 after the signature.
@@ -2680,11 +2687,30 @@ test.describe('Clinic App — WO-108 repricing a refill', () => {
     await expect(page.locator('#retail-price')).toHaveValue('114.00')
     await expect(page.getByTestId('reprice-notice')).toContainText('was $50.00')
 
-    // Accepting the suggestion lands on Review at the new price.
-    await page.getByRole('button', { name: /Review & Send/ }).click()
+    // Accepting the suggestion lands on Review at the new price. The
+    // price step's own submit reads "Save Changes — Back to Review" when
+    // it is editing a session line; the banner's "Review & Send" is a
+    // shortcut that does NOT save (pinned separately below).
+    await page.getByRole('button', { name: /Save Changes — Back to Review/ }).click()
     await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 15_000 })
     await expect(page.getByTestId('review-subtotal')).toHaveText('$114.00')
     await expect(page.getByTestId(/^below-cost-/)).toHaveCount(0)
+  })
+
+  test('skipping the price step by the banner shortcut leaves the line unsendable', async ({ page }) => {
+    // The banner's "Review & Send" navigates without saving, so a
+    // provider can reach Review with the price unconfirmed. The backstop
+    // is what makes that safe rather than silent.
+    const orderId = await seedPricedSource(50.00, 60.00)
+    await loginAs(page, TEST_USERS.provider)
+    await page.goto(`/refill?order=${orderId}`)
+    await expect(page.getByTestId(`refill-order-${orderId}`)).toBeVisible({ timeout: 15_000 })
+    await page.getByTestId('refill-start').click()
+    await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 15_000 })
+
+    await page.getByRole('button', { name: 'Review & Send' }).click()
+    await expect(page.getByTestId('review-totals')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('button', { name: /Sign & Send/ })).toBeDisabled()
   })
 
   test('wholesale unchanged: straight to Review, no interruption', async ({ page }) => {
