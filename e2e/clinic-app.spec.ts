@@ -2587,7 +2587,10 @@ test.describe("Clinic App — WO-106 a refill below today's wholesale", () => {
     await expect(belowCost).toContainText('$95.00')
 
     await expect(page.getByRole('button', { name: /Sign & Send/ })).toBeDisabled()
-    await expect(page.getByText(/Edit the price on the flagged prescription/)).toBeVisible()
+    // The banner and the button hint both say to edit the price; assert
+    // the hint under the disabled button, exactly.
+    await expect(page.getByText('Edit the price on the flagged prescriptions above to enable sending.')).toBeVisible()
+    await expect(page.getByTestId('review-below-cost-banner')).toContainText('priced below what the pharmacy charges today')
 
     // One loss, stated the same way in both places: retail $60 against
     // wholesale $95 is -$35.00, and the platform fee on a loss is $0.00.
