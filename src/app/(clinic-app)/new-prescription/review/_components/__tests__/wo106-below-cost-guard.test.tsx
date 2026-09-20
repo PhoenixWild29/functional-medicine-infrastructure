@@ -133,3 +133,26 @@ describe('a line priced above cost', () => {
     expect(screen.getByText('Clinic margin: $80.75')).toBeInTheDocument()
   })
 })
+
+// ── WO-108 backstop ────────────────────────────────────────────────────
+//
+// A line whose wholesale moved is priced on the price step before
+// Review. Reaching Review with the flag still set means that step was
+// skipped — a deep link, or the back button — so the decision is still
+// owed and the line is not sendable.
+describe('a line whose price has not been confirmed', () => {
+  it('cannot be sent, and says what is owed', async () => {
+    renderReview([line({ retailCents: 19000, repriceRequired: true })])
+    const msg = await screen.findByTestId('reprice-required-line-refill')
+    expect(msg).toHaveTextContent("The pharmacy's price has changed since the last fill.")
+    expect(screen.getByRole('button', { name: /Sign & Send/ })).toBeDisabled()
+    expect(screen.getByTestId('review-reprice-banner')).toHaveTextContent('confirm what the patient pays')
+  })
+
+  it('is sendable once the price step has cleared the flag', async () => {
+    renderReview([line({ retailCents: 19000, repriceRequired: false })])
+    await screen.findByTestId('review-totals')
+    expect(screen.queryByTestId('reprice-required-line-refill')).not.toBeInTheDocument()
+    expect(screen.getByText('Sign in the signature box above to enable sending.')).toBeInTheDocument()
+  })
+})

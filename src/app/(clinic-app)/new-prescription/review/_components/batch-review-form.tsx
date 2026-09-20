@@ -110,16 +110,25 @@ function calcPlatformFeeCents(marginCents: number): number {
  * not to remove the line. (What a refill should do about a moved price
  * is WO-107; this only stops it being sent below cost.)
  */
-type SendBlock = 'price' | 'directions' | 'below_cost'
+type SendBlock = 'price' | 'directions' | 'below_cost' | 'reprice'
 
-function sendBlock(rx: { retailCents: number; wholesaleCents: number; sigText: string }): SendBlock | null {
+function sendBlock(rx: {
+  retailCents: number; wholesaleCents: number; sigText: string; repriceRequired?: boolean | null
+}): SendBlock | null {
   if (rx.retailCents <= 0) return 'price'
   if (rx.sigText.trim().length < 10) return 'directions'
   if (rx.retailCents < rx.wholesaleCents) return 'below_cost'
+  // WO-108: the wholesale moved and the provider has not confirmed a
+  // price yet. Reaching Review with the flag still set means the price
+  // step was skipped — a deep link, or a back button — so the decision
+  // is still owed.
+  if (rx.repriceRequired === true) return 'reprice'
   return null
 }
 
-function isUnsendable(rx: { retailCents: number; wholesaleCents: number; sigText: string }): boolean {
+function isUnsendable(rx: {
+  retailCents: number; wholesaleCents: number; sigText: string; repriceRequired?: boolean | null
+}): boolean {
   return sendBlock(rx) !== null
 }
 
@@ -381,7 +390,8 @@ export function BatchReviewForm({ isProvider }: Props) {
   const invalidItems = prescriptions.filter(isUnsendable)
   const hasInvalidItems = invalidItems.length > 0
   const belowCostItems = invalidItems.filter(rx => sendBlock(rx) === 'below_cost')
-  const malformedItems = invalidItems.filter(rx => sendBlock(rx) !== 'below_cost')
+  const repriceItems   = invalidItems.filter(rx => sendBlock(rx) === 'reprice')
+  const malformedItems = invalidItems.filter(rx => sendBlock(rx) !== 'below_cost' && sendBlock(rx) !== 'reprice')
 
   // WO-96: rule-required Rx details still empty (controlled → diagnosis,
   // requires_clinical_difference → statement). Blocks both Sign & Send
@@ -634,7 +644,12 @@ export function BatchReviewForm({ isProvider }: Props) {
                   <p className="mt-1 text-xs text-muted-foreground italic">
                     Sig: {rx.sigText}
                   </p>
-                  {block === 'below_cost' ? (
+                  {block === 'reprice' ? (
+                    <p className="mt-1 text-xs font-medium text-amber-700" data-testid={`reprice-required-${rx.id}`}>
+                      The pharmacy&apos;s price has changed since the last fill. Edit this line to confirm what the
+                      patient pays.
+                    </p>
+                  ) : block === 'below_cost' ? (
                     <p className="mt-1 text-xs font-medium text-amber-700" data-testid={`below-cost-${rx.id}`}>
                       Priced below cost — {toCurrency(rx.retailCents)} retail against {toCurrency(rx.wholesaleCents)} wholesale
                       today. Edit the price to continue; this cannot be sent as it stands.
@@ -781,6 +796,13 @@ export function BatchReviewForm({ isProvider }: Props) {
           <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
             {invalidItems.length} prescription{invalidItems.length !== 1 ? 's' : ''} can&apos;t be sent yet
           </p>
+          {repriceItems.length > 0 && (
+            <p className="mt-1 text-xs text-amber-800 dark:text-amber-300" data-testid="review-reprice-banner">
+              {repriceItems.map(rx => rx.medicationName).join(', ')} {repriceItems.length !== 1 ? 'have' : 'has'} a pharmacy
+              price that changed since the last fill. Edit the flagged line{repriceItems.length !== 1 ? 's' : ''} above to
+              confirm what the patient pays.
+            </p>
+          )}
           {belowCostItems.length > 0 && (
             <p className="mt-1 text-xs text-amber-800 dark:text-amber-300" data-testid="review-below-cost-banner">
               {belowCostItems.map(rx => rx.medicationName).join(', ')} {belowCostItems.length !== 1 ? 'are' : 'is'} priced
@@ -925,7 +947,7 @@ export function BatchReviewForm({ isProvider }: Props) {
               disabled — a gray button with no hint reads as "broken". */}
           {!canSubmit && !isSubmitting && (
             <p className="text-center text-xs text-muted-foreground">
-              {belowCostItems.length > 0
+              {belowCostItems.length > 0 || repriceItems.length > 0
                 ? 'Edit the price on the flagged prescriptions above to enable sending.'
                 : hasInvalidItems
                 ? 'Remove the flagged prescriptions above to enable sending.'
@@ -963,7 +985,7 @@ export function BatchReviewForm({ isProvider }: Props) {
           </button>
           {hasInvalidItems && (
             <p className="text-center text-xs text-amber-700">
-              {belowCostItems.length > 0
+              {belowCostItems.length > 0 || repriceItems.length > 0
                 ? 'Edit the price on the flagged prescriptions above to enable saving drafts.'
                 : 'Remove the flagged prescriptions above to enable saving drafts.'}
             </p>

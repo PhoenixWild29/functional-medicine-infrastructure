@@ -44,6 +44,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePrescriptionSession, type SessionPrescription } from '../../_context/prescription-session'
 import type { EditTarget } from '../../_lib/edit-target'
+import { nextAfterReprice } from '../../_lib/reprice'
 import {
   computeDispense,
   defaultQuantityLabel,
@@ -227,9 +228,17 @@ export function MarginBuilderForm({
   const sessionLine: SessionPrescription | null = editTarget?.kind === 'session'
     ? rxSession.prescriptions.find(rx => rx.id === editTarget.lineId) ?? null
     : null
+  // WO-108: a line whose wholesale moved since the source order arrives
+  // here to BE priced, so its stale retail must not seed the input. The
+  // margin-preserving suggestion does; with no margin worth preserving
+  // (no source wholesale, or a source already below its own cost) there
+  // is no suggestion and the clinic's default markup seeds it as usual.
+  const needsReprice = editTarget?.kind === 'session' && sessionLine?.repriceRequired === true
   const existingRetailCents = editTarget?.kind === 'draft'
     ? draftLine?.retailCents ?? null
-    : sessionLine?.retailCents ?? null
+    : needsReprice
+      ? sessionLine?.suggestedRetailCents ?? null
+      : sessionLine?.retailCents ?? null
   const existingDetails: RxDetails | null = editTarget?.kind === 'draft'
     ? draftLine?.rxDetails ?? null
     : sessionLine?.rxDetails ?? null
@@ -611,8 +620,12 @@ export function MarginBuilderForm({
 
     // WO-98: edit at Review — patch the same session line, same id.
     if (editTarget?.kind === 'session') {
-      rxSession.updatePrescription(editTarget.lineId, lineFromForm())
-      router.push('/new-prescription/review')
+      const lineId = editTarget.lineId
+      rxSession.updatePrescription(lineId, { ...lineFromForm(), repriceRequired: false })
+      // WO-108: on to the next line whose price moved, or Review when
+      // this was the last one. An ordinary edit has no flagged lines, so
+      // it lands on Review exactly as before.
+      router.push(nextAfterReprice(rxSession.prescriptions, lineId))
       return
     }
 
@@ -842,6 +855,29 @@ export function MarginBuilderForm({
           </div>
         </div>
       </div>
+
+      {/* ── WO-108: why this line stopped here ── */}
+      {needsReprice && (
+        <div
+          role="status"
+          data-testid="reprice-notice"
+          className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/20"
+        >
+          <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+            This pharmacy&apos;s price has changed since the last fill.
+          </p>
+          {sessionLine?.priceNote && (
+            <p className="mt-1 text-xs text-amber-800 dark:text-amber-300" data-testid="reprice-price-note">
+              {sessionLine.priceNote}
+            </p>
+          )}
+          <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+            {sessionLine?.marginBasis === 'clinic_default'
+              ? 'The original order has no usable margin to carry forward, so the price below is your clinic’s default markup. Change it if it is wrong.'
+              : 'The price below keeps the margin the original order was written at. Change it if it is wrong — the patient pays what you confirm here.'}
+          </p>
+        </div>
+      )}
 
       {/* ── Retail price input — REQ-DMB-002 ── */}
       <div className="space-y-2">
