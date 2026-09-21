@@ -22,6 +22,12 @@ export interface DraftSessionPatient {
   phone:         string
   state:         string | null
   sms_opt_in:    boolean
+  // Batch 1, finding 1: the session carries the allergy state, so the
+  // banner has nothing to hydrate and a failed read cannot render as
+  // "Allergies: not recorded".
+  allergies:            string[]
+  nkda:                 boolean
+  allergies_updated_at: string | null
 }
 
 export interface DraftSessionProvider {
@@ -70,7 +76,7 @@ export async function loadDraftContext(
   const [patientResult, providerResult] = await Promise.all([
     supabase
       .from('patients')
-      .select('patient_id, first_name, last_name, date_of_birth, phone, state, sms_opt_in')
+      .select('patient_id, first_name, last_name, date_of_birth, phone, state, sms_opt_in, allergies, nkda, allergies_updated_at')
       .eq('patient_id', order.patient_id)
       .maybeSingle(),
     supabase
@@ -95,6 +101,12 @@ export async function loadDraftContext(
       phone:         patient.phone ?? '',
       state:         patient.state ?? null,
       sms_opt_in:    patient.sms_opt_in,
+      // Batch 1, finding 1: see refill/page.tsx — a draft session
+      // carries its allergies rather than depending on a fetch that
+      // could fail into "not recorded".
+      allergies:            patient.allergies ?? [],
+      nkda:                 patient.nkda === true,
+      allergies_updated_at: patient.allergies_updated_at ?? null,
     },
     provider: {
       provider_id:    provider.provider_id,

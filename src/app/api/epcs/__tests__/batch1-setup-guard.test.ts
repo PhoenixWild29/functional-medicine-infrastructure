@@ -42,6 +42,17 @@ jest.mock('@/lib/supabase/service', () => ({
   }),
 }))
 
+// otplib pulls in an ESM-only dependency that Jest does not transform,
+// and none of this is about real TOTP maths — it is about which writes
+// the route is allowed to make.
+jest.mock('otplib', () => ({
+  TOTP: class { check() { return true } },
+  generateSecret: () => 'NEWSECRET',
+  generateURI: () => 'otpauth://totp/CompoundIQ:Sarah%20Chen?secret=NEWSECRET',
+  verifySync: () => true,
+}))
+jest.mock('qrcode', () => ({ toDataURL: async () => 'data:image/png;base64,AAA' }))
+
 jest.mock('@/lib/epcs/crypto', () => ({
   encryptSecret: (s: string) => `enc(${s})`,
   decryptSecret: (s: string) => s.replace(/^enc\(|\)$/g, ''),
@@ -86,7 +97,7 @@ describe('GET ?action=status when the lookup fails', () => {
 describe('POST ?action=setup on a provider who already has a secret', () => {
   it('refuses, so the existing authenticator keeps working', async () => {
     providerFetchMock.mockResolvedValue({
-      data: { first_name: 'Sarah', last_name: 'Chen', totp_secret_encrypted: 'enc(EXISTING)' },
+      data: { first_name: 'Sarah', last_name: 'Chen', totp_secret_encrypted: 'enc(EXISTING)', totp_enabled: true },
       error: null,
     })
 
@@ -98,7 +109,19 @@ describe('POST ?action=setup on a provider who already has a secret', () => {
 
   it('still enrols a provider who has none', async () => {
     providerFetchMock.mockResolvedValue({
-      data: { first_name: 'Sarah', last_name: 'Chen', totp_secret_encrypted: null },
+      data: { first_name: 'Sarah', last_name: 'Chen', totp_secret_encrypted: null, totp_enabled: false },
+      error: null,
+    })
+
+    const res = await POST(postRequest('action=setup', { provider_id: PROVIDER_ID }))
+
+    expect(res.status).toBe(200)
+    expect(providerUpdateMock).toHaveBeenCalled()
+  })
+
+  it('lets an abandoned setup finish — a secret that was never verified is not a working authenticator', async () => {
+    providerFetchMock.mockResolvedValue({
+      data: { first_name: 'Sarah', last_name: 'Chen', totp_secret_encrypted: 'enc(NEVER_VERIFIED)', totp_enabled: false },
       error: null,
     })
 

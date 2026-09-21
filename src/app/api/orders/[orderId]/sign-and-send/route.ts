@@ -198,14 +198,20 @@ export async function POST(
   // orders. dea_schedule is always present in the medication_snapshot
   // (populated at order creation), so the snapshot is the authoritative
   // source post-creation regardless of which catalog backed it.
-  const catalog = catalogItemId
-    ? (await supabase.from('catalog').select('dea_schedule').eq('item_id', catalogItemId).maybeSingle()).data
+  // Batch 1, finding 2: a schedule that could not be read is UNKNOWN,
+  // never 0. The old code discarded this error and then defaulted the
+  // snapshot to 0, so an unreadable schedule passed the "Schedule 2+
+  // must go by fax" gate as if the drug were not controlled.
+  const catalogResult = catalogItemId
+    ? await supabase.from('catalog').select('dea_schedule').eq('item_id', catalogItemId).maybeSingle()
     : null
+  if (catalogResult?.error) {
+    console.error('[sign-and-send] catalog dea_schedule lookup failed:', catalogResult.error.message, '| order=', orderId)
+  }
+  const catalog = catalogResult?.data ?? null
 
-  const snapshotDeaSchedule =
-    typeof (order.medication_snapshot as Record<string, unknown> | null)?.['dea_schedule'] === 'number'
-      ? ((order.medication_snapshot as Record<string, number>)['dea_schedule'] as number)
-      : 0
+  const rawSnapshotSchedule = (order.medication_snapshot as Record<string, unknown> | null)?.['dea_schedule']
+  const snapshotDeaSchedule = typeof rawSnapshotSchedule === 'number' ? rawSnapshotSchedule : null
 
   const pharmacy = pharmacyResult.data
   const clinic   = clinicResult.data
@@ -215,8 +221,11 @@ export async function POST(
   const stripeActive = clinic?.stripe_connect_status === 'ACTIVE'
   const pharmacyOk   = !!pharmacy && pharmacy.is_active && !pharmacy.deleted_at && pharmacy.pharmacy_status !== 'BANNED'
   const licenseOk    = !!licenseResult.data
-  const deaSchedule  = catalog?.dea_schedule ?? snapshotDeaSchedule
-  const deaOk        = deaSchedule < 2 || pharmacy?.integration_tier === 'TIER_4_FAX'
+  // null = unknown. Unknown routes to fax and counts as controlled for
+  // the Rx-detail rules; it never reads as "not controlled".
+  const deaSchedule: number | null = catalog?.dea_schedule ?? snapshotDeaSchedule
+  const deaUnknown   = deaSchedule == null || catalogResult?.error != null
+  const deaOk        = (!deaUnknown && (deaSchedule as number) < 2) || pharmacy?.integration_tier === 'TIER_4_FAX'
   // REQ-OAS-005, check 4 (retail >= wholesale) is enforced by DB CHECK at order creation
 
   if (!licenseOk) {
@@ -232,7 +241,11 @@ export async function POST(
     return NextResponse.json({ error: 'Compliance: pharmacy inactive or banned' }, { status: 422 })
   }
   if (!deaOk) {
-    return NextResponse.json({ error: `Compliance: DEA Schedule ${deaSchedule} requires Tier 4 fax pharmacy` }, { status: 422 })
+    return NextResponse.json({
+      error: deaUnknown
+        ? 'Compliance: the DEA schedule for this medication could not be read, so it must go to a Tier 4 fax pharmacy. Try again, or route it to a fax pharmacy.'
+        : `Compliance: DEA Schedule ${deaSchedule} requires Tier 4 fax pharmacy`,
+    }, { status: 422 })
   }
 
   // ── WO-96: rule-required Rx details ──────────────────────────
@@ -240,17 +253,34 @@ export async function POST(
   // requires_clinical_difference → a clinical difference statement. The
   // Review card pre-fills both and blocks Sign & Send client-side; this
   // is the authoritative gate for drafts saved before the field was set.
+  // Batch 1, finding 3: this error used to be discarded, so a failed
+  // lookup meant "not required" and the Rx was signed and sent without
+  // the statement. A rule that could not be read is not a rule that
+  // does not apply — refuse, and say which check could not run.
   let requiresClinicalDifference = false
   if (order.formulation_id) {
-    const { data: formulationRules } = await supabase
+    const { data: formulationRules, error: formulationRulesError } = await supabase
       .from('formulations')
       .select('requires_clinical_difference')
       .eq('formulation_id', order.formulation_id)
       .maybeSingle()
-    requiresClinicalDifference = formulationRules?.requires_clinical_difference === true
+    if (formulationRulesError || !formulationRules) {
+      console.error(
+        '[sign-and-send] clinical-difference rule lookup failed:',
+        formulationRulesError?.message ?? 'formulation not found',
+        '| order=', orderId, '| formulation=', order.formulation_id,
+      )
+      return NextResponse.json(
+        { error: 'The clinical-difference requirement could not be checked for this medication. Nothing was sent — try again.' },
+        { status: 503 },
+      )
+    }
+    requiresClinicalDifference = formulationRules.requires_clinical_difference === true
   }
   const missingDetails = missingRxDetails(rxDetailsFromRow(order), {
-    isControlled: deaSchedule >= 2,
+    // Unknown counts as controlled: the diagnosis requirement is not
+    // waived by a lookup we could not perform.
+    isControlled: deaUnknown || (deaSchedule as number) >= 2,
     requiresClinicalDifference,
     clinicalDifferenceOptions: [],
   })

@@ -75,6 +75,20 @@ interface AllergyChipProps {
 }
 
 export function AllergyChip({ patient, onClick, expanded, className = '' }: AllergyChipProps) {
+  // Batch 1, finding 1: a failed read is not "not recorded". It gets its
+  // own chip so the provider can see the difference at a glance.
+  if ((patient as { allergiesLoadFailed?: boolean | null } | null | undefined)?.allergiesLoadFailed) {
+    return (
+      <span
+        className={`inline-flex max-w-full items-center gap-1 truncate rounded-full px-2 py-0.5 text-[11px] font-medium leading-4 bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300 ${className}`}
+        data-testid="allergy-chip-load-error"
+        data-allergy-status="load_failed"
+        title="Allergies could not be loaded — this is an error, not an empty record"
+      >
+        Allergies: could not load
+      </span>
+    )
+  }
   const status = allergyStatus(patient)
   const label  = allergyChipLabel(patient)
   const base   = `inline-flex max-w-full items-center gap-1 truncate rounded-full px-2 py-0.5 text-[11px] font-medium leading-4 ${CHIP_TONE[status.kind]} ${className}`

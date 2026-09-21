@@ -25,6 +25,29 @@ export function AllergyNotice({ patient, onSaved }: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
 
+  // Batch 1, finding 1: when the read FAILED we do not know what this
+  // patient is allergic to, so the "not recorded" notice — and above all
+  // its Confirm NKDA button, which PATCHes {allergies: [], nkda: true}
+  // over whatever is stored — must not appear. Sending is blocked
+  // upstream until the status is known.
+  if ((patient as { allergiesLoadFailed?: boolean | null }).allergiesLoadFailed) {
+    return (
+      <div
+        role="alert"
+        data-testid="allergy-load-error"
+        className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/20 dark:text-red-200"
+      >
+        <p className="font-semibold">
+          Allergies could not be loaded for {patient.first_name} {patient.last_name}.
+        </p>
+        <p className="mt-0.5 text-xs">
+          This is an error, not an empty record — they may have allergies on file. Reload the page before
+          sending; nothing about this patient has been changed.
+        </p>
+      </div>
+    )
+  }
+
   if (hasRecordedAllergies(patient)) return null
 
   async function confirmNkda() {

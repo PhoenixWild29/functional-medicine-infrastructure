@@ -19,6 +19,7 @@
 
 import { render, screen, waitFor } from '@testing-library/react'
 import { PrescriptionSessionProvider } from '../../../_context/prescription-session'
+import { SessionBanner } from '../../../_components/session-banner'
 import { BatchReviewForm } from '../batch-review-form'
 import { defaultRxDetails } from '@/lib/orders/rx-details'
 
@@ -72,8 +73,11 @@ function line(over: Record<string, unknown> = {}) {
 
 function renderReview(prescriptions: Record<string, unknown>[], patient: Record<string, unknown>) {
   sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ patient, provider: PROVIDER, prescriptions, notices: [] }))
+  // Both, as /new-prescription/review/page.tsx renders them: the banner
+  // owns the allergy hydration, the form owns the send gate.
   return render(
     <PrescriptionSessionProvider>
+      <SessionBanner />
       <BatchReviewForm isProvider />
     </PrescriptionSessionProvider>,
   )

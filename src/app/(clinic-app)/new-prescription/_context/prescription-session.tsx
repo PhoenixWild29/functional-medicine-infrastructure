@@ -41,6 +41,12 @@ export interface SessionPatient {
   allergies?:            string[] | null
   nkda?:                 boolean
   allergies_updated_at?: string | null
+  // Batch 1, finding 1: set when the hydration read FAILED, as opposed
+  // to returning "nothing recorded". The chip, the Review notice and the
+  // send gate all read it: an unknown allergy status is not an answer,
+  // and must never be offered as "not recorded" with a Confirm NKDA
+  // button that would overwrite a real list.
+  allergiesLoadFailed?:  boolean | null
 }
 
 export interface SessionProvider {

@@ -7,6 +7,7 @@
 // Checks all medications in the current session for known
 // drug interactions. Displays warnings inline in the review page.
 
+import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 interface Interaction {
@@ -21,11 +22,20 @@ interface Interaction {
 
 interface DrugInteractionAlertsProps {
   medicationNames: string[]
+  /**
+   * Called with true when the check could not run, so Review can block
+   * sending: "we could not check" must not pass as "we checked".
+   */
+  onCheckUnavailable?: (unavailable: boolean) => void
 }
 
 async function fetchAllInteractions(): Promise<Interaction[]> {
+  // Batch 1, finding 4: this used to return [] on a failed request, and
+  // an empty list renders as nothing — byte for byte what "no
+  // interactions found" looks like. Throwing puts the query into its
+  // error state, which the component shows and the Review gate blocks on.
   const res = await fetch('/api/interactions')
-  if (!res.ok) return []
+  if (!res.ok) throw new Error(`interactions lookup failed: ${res.status}`)
   const json = await res.json()
   return json.data ?? []
 }
@@ -54,13 +64,35 @@ const SEVERITY_STYLES = {
   },
 }
 
-export function DrugInteractionAlerts({ medicationNames }: DrugInteractionAlertsProps) {
-  const { data: allInteractions = [] } = useQuery({
+export function DrugInteractionAlerts({ medicationNames, onCheckUnavailable }: DrugInteractionAlertsProps) {
+  const { data: allInteractions = [], isError } = useQuery({
     queryKey: ['drug-interactions'],
     queryFn: fetchAllInteractions,
   })
 
-  if (allInteractions.length === 0 || medicationNames.length < 2) return null
+  // With fewer than two medications nothing can interact, so a failed
+  // lookup changes nothing and must not block.
+  const checkMatters = medicationNames.length >= 2
+  const unavailable  = isError && checkMatters
+  useEffect(() => { onCheckUnavailable?.(unavailable) }, [unavailable, onCheckUnavailable])
+
+  if (unavailable) {
+    return (
+      <div
+        role="alert"
+        data-testid="drug-interactions-error"
+        className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/20 dark:text-red-200"
+      >
+        <p className="font-semibold">Drug interaction check could not run.</p>
+        <p className="mt-0.5 text-xs">
+          This is an error, not a clear result — these medications have not been checked against each other.
+          Reload before sending.
+        </p>
+      </div>
+    )
+  }
+
+  if (allInteractions.length === 0 || !checkMatters) return null
 
   // Fuzzy match: check if both ingredient names appear in the session's medication names
   const namesLower = medicationNames.map(n => n.toLowerCase())

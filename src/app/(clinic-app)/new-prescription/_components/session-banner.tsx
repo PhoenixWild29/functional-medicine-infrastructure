@@ -57,15 +57,26 @@ export function SessionBanner() {
     ;(async () => {
       try {
         const res = await fetch(`/api/patients/${patientId}/allergies`)
-        if (!res.ok) return
+        if (!res.ok) {
+          console.error('[allergies] hydration failed:', res.status, '| patient=', patientId)
+          if (!cancelled) updatePatient({ allergiesLoadFailed: true })
+          return
+        }
         const body = await res.json() as Partial<SavedAllergies>
         if (cancelled) return
         updatePatient({
           allergies:            Array.isArray(body.allergies) ? body.allergies : [],
           nkda:                 body.nkda === true,
           allergies_updated_at: body.allergiesUpdatedAt ?? null,
+          allergiesLoadFailed:  false,
         })
-      } catch { /* chip falls back to "not recorded"; the editor still works */ }
+      } catch (err) {
+        // Batch 1, finding 1: this used to fall back to "not recorded",
+        // which reads as a clinical fact and invites a Confirm NKDA that
+        // overwrites the patient's real list.
+        console.error('[allergies] hydration failed:', err instanceof Error ? err.message : err, '| patient=', patientId)
+        if (!cancelled) updatePatient({ allergiesLoadFailed: true })
+      }
     })()
     return () => { cancelled = true }
   }, [patientId, needsHydration, updatePatient])

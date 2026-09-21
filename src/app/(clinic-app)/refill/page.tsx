@@ -64,7 +64,7 @@ export default async function RefillPage(
         order_id, patient_id, provider_id, status, created_at, refills,
         sig_text, sig_mode, medication_snapshot, pharmacy_snapshot, pharmacy_id,
         package_label, package_count, refill_of_order_id,
-        patients!inner(patient_id, first_name, last_name, date_of_birth, phone, state, sms_opt_in)
+        patients!inner(patient_id, first_name, last_name, date_of_birth, phone, state, sms_opt_in, allergies, nkda, allergies_updated_at)
       `)
       .eq('clinic_id', clinicId)
       .is('deleted_at', null)
@@ -190,6 +190,9 @@ export default async function RefillPage(
           phone:         p.phone,
           state:         p.state,
           sms_opt_in:    p.sms_opt_in,
+          allergies:            p.allergies ?? [],
+          nkda:                 p.nkda === true,
+          allergies_updated_at: p.allergies_updated_at,
         },
         orders: [order],
       })
@@ -249,5 +252,11 @@ interface OrderRow {
     phone:         string
     state:         string | null
     sms_opt_in:    boolean
+    // Batch 1, finding 1: carried on the session so the banner has
+    // nothing to hydrate, and a failed hydration read cannot present
+    // this patient as "Allergies: not recorded".
+    allergies:            string[] | null
+    nkda:                 boolean | null
+    allergies_updated_at: string | null
   } | null
 }
