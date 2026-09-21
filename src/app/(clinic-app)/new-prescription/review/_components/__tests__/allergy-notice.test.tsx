@@ -103,10 +103,18 @@ describe('Review & Send — allergies not recorded', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
+  // CHANGED (draft-sign safety checks PR). This used to assert that a
+  // session with NO allergy fields shows the "not recorded" notice. Those
+  // fields being absent means the status is not known yet — the banner
+  // has not read it — and "not recorded" offered Confirm NKDA, which can
+  // overwrite a real list. The session now shows a loading state and no
+  // Confirm NKDA until the read resolves. What this test was for — Save as
+  // Draft stays enabled — is unchanged.
   it('non-provider: Save as Draft stays enabled — also for a pre-WO-97 session with no allergy fields', async () => {
     seedSession(BASE_PATIENT)
     renderReview(false)
-    expect(await screen.findByTestId('allergy-notice')).toBeInTheDocument()
+    expect(await screen.findByTestId('allergy-loading')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Confirm NKDA/i })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Save as Draft/ })).toBeEnabled()
   })
 
@@ -124,7 +132,9 @@ describe('Review & Send — allergies not recorded', () => {
     await waitFor(() => expect(screen.queryByTestId('allergy-notice')).not.toBeInTheDocument())
     expect(global.fetch).toHaveBeenCalledWith(`/api/patients/${BASE_PATIENT.patient_id}/allergies`, expect.objectContaining({
       method: 'PATCH',
-      body: JSON.stringify({ allergies: [], nkda: true }),
+      // CHANGED (draft-sign safety checks PR): the shortcut now identifies
+      // itself so the server can refuse it (409) over a recorded list.
+      body: JSON.stringify({ allergies: [], nkda: true, confirmNkda: true }),
     }))
     const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY)!)
     expect(saved.patient).toEqual(expect.objectContaining({ nkda: true, allergies: [], allergies_updated_at: '2026-09-13T00:00:00Z' }))

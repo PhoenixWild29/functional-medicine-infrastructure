@@ -74,13 +74,29 @@ export function AllergyNotice({ patient, onSaved }: Props) {
     )
   }
 
+  // Not read yet: the status is unknown. "Not recorded" — and above all
+  // Confirm NKDA — waits for the read to resolve.
+  if ((patient as { allergies?: unknown }).allergies === undefined) {
+    return (
+      <div
+        role="status"
+        data-testid="allergy-loading"
+        className="rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground"
+      >
+        Loading allergies for {patient.first_name} {patient.last_name}…
+      </div>
+    )
+  }
+
   if (hasRecordedAllergies(patient)) return null
 
   async function confirmNkda() {
     setSaving(true)
     setError(null)
     try {
-      const saved = await saveAllergies(patient.patient_id, { allergies: [], nkda: true })
+      // confirmNkda: the server refuses the shortcut (409) if a list is
+      // on file, so this button can never erase one.
+      const saved = await saveAllergies(patient.patient_id, { allergies: [], nkda: true, confirmNkda: true })
       onSaved({ allergies: saved.allergies, nkda: saved.nkda, allergies_updated_at: saved.allergiesUpdatedAt })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save')

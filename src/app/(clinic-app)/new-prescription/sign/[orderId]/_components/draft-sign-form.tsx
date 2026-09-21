@@ -11,11 +11,15 @@
 // This form is pre-populated from the server — no data entry
 // required from the provider. They just review and sign.
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import * as Sentry from '@sentry/nextjs'
 import SignatureCanvas from 'react-signature-canvas'
 import { DraftLines, type DraftLineView } from './draft-lines'
+// The same safety checks, and the same components, as Review.
+import { AllergyChip, loadAllergies } from '../../../_components/allergy-chip'
+import { AllergyNotice } from '../../../review/_components/allergy-notice'
+import { DrugInteractionAlerts } from '../../../_components/drug-interaction-alerts'
 
 // ── F5 diagnostic (PR #7c, self-reverts) ─────────────────────
 // Cowork round-3 observed that this canvas's `onEnd` never fires
@@ -55,6 +59,10 @@ function calcPlatformFeeCents(marginCents: number): number {
 
 interface Props {
   orderId:        string
+  /** Whose allergy status is checked before signing. */
+  patientId:      string
+  patientFirstName?: string
+  patientLastName?:  string
   patientName:    string
   patientDob:     string
   patientPhone:   string
@@ -77,6 +85,9 @@ interface Props {
 
 export function DraftSignForm({
   orderId,
+  patientId,
+  patientFirstName,
+  patientLastName,
   patientName,
   patientDob,
   patientPhone,
@@ -101,6 +112,58 @@ export function DraftSignForm({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
+
+  // ── Safety checks, as on Review ─────────────────────────────
+  //
+  // This page used to run neither check: a provider signing a draft an
+  // MA prepared never saw the patient's allergy status or the drug
+  // interaction check. It now runs both with Review's components. A check
+  // that failed or has not resolved blocks Sign & Send; what a check
+  // FINDS does not. sign-and-send enforces the same at send time.
+  const [allergy, setAllergy] = useState<{
+    state: 'loading' | 'failed' | 'loaded'
+    allergies?: string[]
+    nkda?: boolean
+    updatedAt?: string | null
+  }>({ state: 'loading' })
+  useEffect(() => {
+    let cancelled = false
+    loadAllergies(patientId)
+      .then(loaded => {
+        if (!cancelled) setAllergy({ state: 'loaded', allergies: loaded.allergies, nkda: loaded.nkda, updatedAt: loaded.allergiesUpdatedAt })
+      })
+      .catch(err => {
+        console.error('[draft-sign] allergy status could not be loaded:', err instanceof Error ? err.message : err, '| patient=', patientId)
+        if (!cancelled) setAllergy({ state: 'failed' })
+      })
+    return () => { cancelled = true }
+  }, [patientId])
+  const [interactionsUnavailable, setInteractionsUnavailable] = useState(false)
+
+  const [firstName, ...rest] = patientName.split(' ')
+  const allergyPatient = {
+    patient_id:           patientId,
+    first_name:           patientFirstName ?? firstName ?? patientName,
+    last_name:            patientLastName ?? rest.join(' '),
+    // undefined = not read yet, which the notice shows as loading.
+    allergies:            allergy.state === 'loaded' ? allergy.allergies : undefined,
+    nkda:                 allergy.state === 'loaded' ? allergy.nkda : undefined,
+    allergies_updated_at: allergy.state === 'loaded' ? allergy.updatedAt ?? null : null,
+    allergiesLoadFailed:  allergy.state === 'failed',
+  }
+  const medicationNames = draftLines && draftLines.length > 0
+    ? draftLines.map(line => line.medicationName)
+    : [medicationName]
+
+  const allergiesUnknown  = allergy.state !== 'loaded'
+  const checksUnavailable = allergiesUnknown || interactionsUnavailable
+  const blockedReason = allergy.state === 'loading'
+    ? 'Loading the allergy status for this patient — sending waits for it.'
+    : allergy.state === 'failed'
+    ? 'The allergy status for this patient could not be loaded. Retry it above to enable sending.'
+    : interactionsUnavailable
+    ? 'The drug interaction check could not run. Retry it above to enable sending.'
+    : null
 
   const marginCents = retailCents - wholesaleCents
   const platformFeeCents = calcPlatformFeeCents(marginCents)
@@ -159,6 +222,21 @@ export function DraftSignForm({
             <p className="text-xs text-muted-foreground">NPI: {providerNpi}</p>
           </div>
         </div>
+      </div>
+
+      {/* Safety checks — the same as Review. */}
+      <div className="space-y-3" data-testid="draft-safety-checks">
+        <AllergyChip patient={allergyPatient} loading={allergy.state === 'loading'} />
+        <AllergyNotice
+          patient={allergyPatient}
+          onSaved={patch => setAllergy({
+            state:     'loaded',
+            allergies: patch.allergies,
+            nkda:      patch.nkda,
+            updatedAt: patch.allergies_updated_at,
+          })}
+        />
+        <DrugInteractionAlerts medicationNames={medicationNames} onCheckUnavailable={setInteractionsUnavailable} />
       </div>
 
       {/* Prescription details — WO-98: the draft's lines with Edit /
@@ -293,7 +371,7 @@ export function DraftSignForm({
             <button
               type="button"
               onClick={handleSignAndSend}
-              disabled={isSubmitting}
+              disabled={isSubmitting || checksUnavailable}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               {isSubmitting ? 'Sending...' : 'Confirm & Send'}
@@ -323,9 +401,9 @@ export function DraftSignForm({
           <button
             type="button"
             onClick={() => setConfirmOpen(true)}
-            disabled={!signatureCaptured || isSubmitting}
+            disabled={!signatureCaptured || isSubmitting || checksUnavailable}
             className={`flex-1 rounded-lg px-6 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-              signatureCaptured && !isSubmitting
+              signatureCaptured && !isSubmitting && !checksUnavailable
                 ? 'bg-primary text-primary-foreground hover:bg-primary/90'
                 : 'bg-muted text-muted-foreground cursor-not-allowed'
             }`}
@@ -333,6 +411,11 @@ export function DraftSignForm({
             Sign & Send Payment Link
           </button>
         </div>
+      )}
+      {blockedReason && (
+        <p className="text-center text-xs text-muted-foreground" data-testid="send-blocked-reason">
+          {blockedReason}
+        </p>
       )}
     </div>
   )

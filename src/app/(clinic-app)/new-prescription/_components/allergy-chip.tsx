@@ -40,7 +40,11 @@ export interface SavedAllergies {
 
 export async function saveAllergies(
   patientId: string,
-  patch: { allergies: string[]; nkda: boolean },
+  // confirmNkda marks the one-click "Confirm NKDA" shortcut. The server
+  // refuses it (409) over a recorded allergy list, so the shortcut can
+  // never erase one; the allergy editor omits it and may clear a list
+  // deliberately.
+  patch: { allergies: string[]; nkda: boolean; confirmNkda?: true },
 ): Promise<SavedAllergies> {
   const res = await fetch(`/api/patients/${patientId}/allergies`, {
     method:  'PATCH',
@@ -85,13 +89,33 @@ const CHIP_TONE: Record<ReturnType<typeof allergyStatus>['kind'], string> = {
 
 interface AllergyChipProps {
   patient:   PatientAllergyFields | null | undefined
+  /**
+   * The allergy read has not resolved yet. Explicit rather than inferred
+   * from missing fields: a patient row that simply was not selected with
+   * its allergies is a caller bug, not a loading state.
+   */
+  loading?:  boolean
   /** When set the chip is a button; otherwise a plain span (safe inside another button). */
   onClick?:  () => void
   expanded?: boolean
   className?: string
 }
 
-export function AllergyChip({ patient, onClick, expanded, className = '' }: AllergyChipProps) {
+export function AllergyChip({ patient, onClick, expanded, className = '', loading = false }: AllergyChipProps) {
+  // Not yet known is not "not recorded" — and a chip that says "not
+  // recorded" invites the Confirm NKDA that could overwrite a real list.
+  if (loading) {
+    return (
+      <span
+        className={`inline-flex max-w-full items-center gap-1 truncate rounded-full px-2 py-0.5 text-[11px] font-medium leading-4 bg-muted text-muted-foreground ${className}`}
+        data-testid="allergy-chip-loading"
+        data-allergy-status="loading"
+        title="Loading allergies"
+      >
+        Allergies: loading…
+      </span>
+    )
+  }
   // Batch 1, finding 1: a failed read is not "not recorded". It gets its
   // own chip so the provider can see the difference at a glance.
   if ((patient as { allergiesLoadFailed?: boolean | null } | null | undefined)?.allergiesLoadFailed) {
@@ -256,14 +280,19 @@ interface EditableAllergyChipProps {
   className?: string
   /** Rendered next to the chip (e.g. a hint) — stays outside the button. */
   trailing?: ReactNode
+  /** The allergy read has not resolved yet — see AllergyChipProps.loading. */
+  loading?:  boolean
 }
 
-export function EditableAllergyChip({ patientId, patient, onSaved, className, trailing }: EditableAllergyChipProps) {
+export function EditableAllergyChip({ patientId, patient, onSaved, className, trailing, loading = false }: EditableAllergyChipProps) {
   const [open, setOpen] = useState(false)
   return (
     <div className={className}>
       <div className="flex flex-wrap items-center gap-2">
-        <AllergyChip patient={patient} expanded={open} onClick={() => setOpen(o => !o)} />
+        {/* No editor while loading: there is nothing known to edit yet. */}
+        {loading
+          ? <AllergyChip patient={patient} loading />
+          : <AllergyChip patient={patient} expanded={open} onClick={() => setOpen(o => !o)} />}
         {trailing}
       </div>
       {open && (

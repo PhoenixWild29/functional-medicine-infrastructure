@@ -49,14 +49,25 @@ jest.mock('@/lib/supabase/server', () => ({
   }),
 }))
 
+/**
+ * A read chain that answers both shapes the route uses on `orders`: the
+ * single-order fetch (…maybeSingle()) and the sibling-draft list the
+ * interaction check reads (awaited directly).
+ */
+function ordersReadChain(single: () => unknown): Record<string, unknown> {
+  const c: Record<string, unknown> = {}
+  for (const k of ['eq', 'is', 'order']) c[k] = () => c
+  c['maybeSingle'] = () => single()
+  c['then'] = (resolve: (r: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(resolve)
+  return c
+}
+
 jest.mock('@/lib/supabase/service', () => ({
   createServiceClient: jest.fn().mockReturnValue({
     from: (table: string) => {
       if (table === 'orders') {
         return {
-          select: () => ({
-            eq: () => ({ eq: () => ({ eq: () => ({ is: () => ({ maybeSingle: () => orderFetchMock() }) }) }) }),
-          }),
+          select: () => ordersReadChain(() => orderFetchMock()),
           update: () => ({ eq: () => ({ eq: () => ({ select: () => orderUpdateMock() }) }) }),
         }
       }
@@ -78,6 +89,13 @@ jest.mock('@/lib/supabase/service', () => ({
       }
       if (table === 'formulations') {
         return { select: () => ({ eq: () => ({ maybeSingle: () => formulationFetchMock() }) }) }
+      }
+      // Safety checks at send time: both reads succeed, nothing found.
+      if (table === 'patients') {
+        return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { allergies: [], nkda: true }, error: null }) }) }) }
+      }
+      if (table === 'drug_interactions') {
+        return { select: () => ({ then: (resolve: (r: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(resolve) }) }
       }
       throw new Error(`Unexpected table in test: ${table}`)
     },

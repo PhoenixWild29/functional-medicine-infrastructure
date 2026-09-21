@@ -56,6 +56,8 @@ jest.mock('../../../_components/epcs-totp-gate', () => ({ EpcsTotpGate: () => nu
 
 const STORAGE_KEY = 'compoundiq-rx-session'
 
+// Allergy fields present, as every session now carries them: without
+// them Review reads the status as still loading and waits to send.
 const PATIENT = {
   patient_id: '11111111-1111-4111-8111-111111111111',
   first_name: 'Alex',
@@ -64,6 +66,9 @@ const PATIENT = {
   phone: '+15125550000',
   state: 'TX',
   sms_opt_in: true,
+  allergies: [],
+  nkda: true,
+  allergies_updated_at: '2026-09-01T00:00:00Z',
 }
 const PROVIDER = {
   provider_id: '22222222-2222-4222-8222-222222222222',

@@ -107,6 +107,7 @@ export function SessionBanner() {
               patientId={patient.patient_id}
               patient={patient}
               onSaved={handleAllergiesSaved}
+              loading={needsHydration}
             />
           </div>
         </div>

@@ -142,6 +142,36 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
   const supabase = createServiceClient()
   const now = new Date().toISOString()
 
+  // The one-click "Confirm NKDA" shortcut identifies itself. It exists for
+  // a patient with NOTHING recorded; against a recorded list it would
+  // silently erase penicillin. Refuse it — clearing a real list is a
+  // deliberate edit through the allergy editor, which omits the flag.
+  const isConfirmNkda = (body as Record<string, unknown>)['confirmNkda'] === true
+  if (isConfirmNkda) {
+    const { data: current, error: currentError } = await supabase
+      .from('patients')
+      .select(SELECT)
+      .eq('patient_id', patientId)
+      .eq('clinic_id', auth.caller.clinicId)
+      .is('deleted_at', null)
+      .maybeSingle()
+    if (currentError) {
+      console.error('[patients/allergies PATCH] confirm-NKDA precheck failed:', currentError.message, '| patient=', patientId)
+      return NextResponse.json({ error: 'The allergy record could not be read, so nothing was changed. Try again.' }, { status: 503 })
+    }
+    if (!current) {
+      return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
+    }
+    const recorded = Array.isArray((current as PatientAllergyRow).allergies) ? (current as PatientAllergyRow).allergies ?? [] : []
+    if (recorded.length > 0) {
+      console.info(`[patients/allergies PATCH] confirm-NKDA refused: patient=${patientId} has ${recorded.length} recorded allergies`)
+      return NextResponse.json(
+        { error: 'This patient has allergies on file. Confirm NKDA cannot clear them — use the allergy editor to change the list.' },
+        { status: 409 },
+      )
+    }
+  }
+
   // Scoped UPDATE: the clinic filter is part of the write itself, so a
   // patient of another clinic is never touched even if the id is known.
   const { data, error } = await supabase

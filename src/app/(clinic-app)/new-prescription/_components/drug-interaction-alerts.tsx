@@ -9,6 +9,7 @@
 
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { findInteractions } from '@/lib/interactions/match'
 
 interface Interaction {
   interaction_id: string
@@ -105,16 +106,8 @@ export function DrugInteractionAlerts({ medicationNames, onCheckUnavailable }: D
 
   if (allInteractions.length === 0 || !checkMatters) return null
 
-  // Fuzzy match: check if both ingredient names appear in the session's medication names
-  const namesLower = medicationNames.map(n => n.toLowerCase())
-
-  const relevant = allInteractions.filter(int => {
-    const nameA = int.ingredient_a?.common_name?.toLowerCase() ?? ''
-    const nameB = int.ingredient_b?.common_name?.toLowerCase() ?? ''
-    const hasA = namesLower.some(n => n.includes(nameA) || nameA.includes(n.split(' ')[0] ?? ''))
-    const hasB = namesLower.some(n => n.includes(nameB) || nameB.includes(n.split(' ')[0] ?? ''))
-    return hasA && hasB
-  })
+  // Same match sign-and-send re-runs at send time (lib/interactions).
+  const relevant = findInteractions(allInteractions, medicationNames)
 
   if (relevant.length === 0) return null
 
