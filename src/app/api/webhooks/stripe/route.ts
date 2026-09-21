@@ -394,13 +394,27 @@ async function recordDestinationTransferId(
 async function branchByTier(orderId: string, pharmacyId: string): Promise<void> {
   const supabase = createServiceClient()
 
-  const { data: pharmacy } = await supabase
+  // Batch 1, finding 5: this error used to be discarded, and an
+  // undefined tier fell through to the API branch below — routing a
+  // fax-only pharmacy's prescription, controlled substances included,
+  // to an API adapter, with a 200 that stopped Stripe retrying.
+  // Throwing puts the event back in Stripe's retry queue (the route
+  // turns a thrown handler into a 500).
+  const { data: pharmacy, error: pharmacyError } = await supabase
     .from('pharmacies')
     .select('integration_tier')
     .eq('pharmacy_id', pharmacyId)
     .single()
 
-  const tier = pharmacy?.integration_tier
+  if (pharmacyError || !pharmacy?.integration_tier) {
+    console.error(
+      `[stripe-webhook] branchByTier: pharmacy tier unreadable | order=${orderId} pharmacy=${pharmacyId}:`,
+      pharmacyError?.message ?? 'no integration_tier on the row',
+    )
+    throw new Error(`branchByTier: cannot route order ${orderId} — pharmacy tier unavailable`)
+  }
+
+  const tier = pharmacy.integration_tier
 
   if (tier === 'TIER_4_FAX') {
     // AC-SWH-005.3: Tier 4 → FAX_QUEUED (Documo fax submission in FRD 4)

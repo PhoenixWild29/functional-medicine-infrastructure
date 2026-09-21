@@ -33,15 +33,28 @@ export async function GET(req: NextRequest) {
   const providerId = searchParams.get('provider_id')
 
   if (action === 'status' && providerId) {
-    const { data } = await supabase
+    // Batch 1, finding 6: this error used to be discarded and answered
+    // `totp_enabled: false`. The gate reads that as "not enrolled" and
+    // POSTs action=setup, which replaced the provider's TOTP secret and
+    // broke their authenticator. "Not enrolled" is a fact, not a
+    // fallback — a failed read says so.
+    const { data, error } = await supabase
       .from('providers')
       .select('totp_enabled, totp_verified_at')
       .eq('provider_id', providerId)
       .single()
 
+    if (error || !data) {
+      console.error('[epcs] status lookup failed:', error?.message ?? 'provider not found', '| provider=', providerId)
+      return NextResponse.json(
+        { error: 'Authenticator status could not be read. Nothing was changed — try again.' },
+        { status: 503 },
+      )
+    }
+
     return NextResponse.json({
-      totp_enabled: data?.totp_enabled ?? false,
-      totp_verified_at: data?.totp_verified_at ?? null,
+      totp_enabled: data.totp_enabled ?? false,
+      totp_verified_at: data.totp_verified_at ?? null,
     })
   }
 
@@ -63,14 +76,39 @@ export async function POST(req: NextRequest) {
     const { provider_id } = body
     if (!provider_id) return NextResponse.json({ error: 'Missing provider_id' }, { status: 400 })
 
-    // Get provider name for QR label
-    const { data: provider } = await supabase
+    // Get provider name for QR label — and the existing secret, because
+    // enrolment must never silently replace one (Batch 1, finding 6).
+    const { data: provider, error: providerError } = await supabase
       .from('providers')
-      .select('first_name, last_name')
+      .select('first_name, last_name, totp_secret_encrypted, totp_enabled')
       .eq('provider_id', provider_id)
       .single()
 
+    if (providerError) {
+      console.error('[epcs] setup provider lookup failed:', providerError.message, '| provider=', provider_id)
+      return NextResponse.json(
+        { error: 'Enrolment could not start because the provider record could not be read. Nothing was changed — try again.' },
+        { status: 503 },
+      )
+    }
     if (!provider) return NextResponse.json({ error: 'Provider not found' }, { status: 404 })
+
+    // An enrolled provider keeps their authenticator. Re-enrolling is a
+    // deliberate act (a lost device), not something a failed status
+    // check can trigger: replacing the secret silently locks them out
+    // of signing controlled substances.
+    //
+    // Only a WORKING authenticator is protected. A secret that exists
+    // but was never verified is an abandoned setup — that provider still
+    // needs the QR code, so enrolment proceeds (see
+    // lib/poc/totp-enrollment: totp_enabled flips on first verify).
+    if (provider.totp_secret_encrypted && provider.totp_enabled === true) {
+      console.error('[epcs] setup refused: provider already enrolled | provider=', provider_id)
+      return NextResponse.json(
+        { error: 'This provider already has an authenticator enrolled. Reset it deliberately before enrolling a new one.' },
+        { status: 409 },
+      )
+    }
 
     const secret = generateSecret()
     const label = `CompoundIQ:${provider.first_name} ${provider.last_name}`

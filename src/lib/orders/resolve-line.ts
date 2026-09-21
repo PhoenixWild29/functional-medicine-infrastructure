@@ -87,7 +87,7 @@ export interface LinePackage {
 
 export type ResolveLineResult =
   | { ok: true; medicationItem: MedicationItem; wholesaleCents: number; medicationSnapshot: MedicationSnapshot; pharmacySnapshot: PharmacySnapshot; package: LinePackage }
-  | { ok: false; status: 400 | 404 | 500; error: string }
+  | { ok: false; status: 400 | 404 | 500 | 503; error: string }
 
 /** Exactly one of catalogItemId / formulationId must be set. */
 export function lineSourceKind(input: { catalogItemId?: string | null | undefined; formulationId?: string | null | undefined }): 'catalog' | 'formulation' | null {
@@ -165,10 +165,26 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
     }
 
     // Pull dea_schedule from the most prevalent ingredient (highest among any).
-    const { data: ingredientRows } = await supabase
+    //
+    // Batch 1, finding 2: this error used to be discarded, and the
+    // snapshot below defaults a null schedule to 0. A failed lookup
+    // therefore recorded a Schedule II compound as non-controlled, and
+    // sign-and-send reads that snapshot: the fax-only gate passed and
+    // the diagnosis requirement was skipped. A lookup that failed has
+    // no answer, so the line is refused rather than guessed.
+    const { data: ingredientRows, error: ingredientError } = await supabase
       .from('formulation_ingredients')
       .select('ingredients(dea_schedule)')
       .eq('formulation_id', formulationId)
+
+    if (ingredientError) {
+      console.error('[orders] ingredient dea_schedule lookup failed:', ingredientError.message, '| formulation=', formulationId)
+      return {
+        ok: false,
+        status: 503,
+        error: 'Could not determine whether this medication is a controlled substance. Nothing was created — try again.',
+      }
+    }
 
     let deaSchedule: number | null = null
     for (const row of ingredientRows ?? []) {

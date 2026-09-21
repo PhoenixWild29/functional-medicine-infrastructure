@@ -271,6 +271,8 @@ export function BatchReviewForm({ isProvider }: Props) {
   // id, and the order ids shipping was allocated across — a retry signs the
   // existing drafts instead of re-creating them, and never re-allocates a
   // pharmacy's shipping that already went out on a signed order.
+  const [rulesLoadFailed, setRulesLoadFailed] = useState(false)
+  const [interactionsUnavailable, setInteractionsUnavailable] = useState(false)
   const createdOrderIdsRef = useRef<Map<string, string>>(new Map())
   const allocatedOrderIdsRef = useRef<Set<string>>(new Set())
 
@@ -319,7 +321,14 @@ export function BatchReviewForm({ isProvider }: Props) {
     void (async () => {
       try {
         const res = await fetch(`/api/formulations?level=rx_defaults&ids=${encodeURIComponent(ids.join(','))}`)
-        if (!res.ok) return
+        if (!res.ok) {
+          // Batch 1, finding 3: this used to return silently, so the
+          // clinical-difference requirement and the controlled-substance
+          // banner simply never appeared and the line looked complete.
+          console.error('[batch-review] rx defaults resolution failed:', res.status)
+          if (!cancelled) setRulesLoadFailed(true)
+          return
+        }
         const json = await res.json() as { data?: Record<string, RxFormulationDefaults> }
         if (cancelled || !json.data) return
         for (const rx of prescriptionsRef.current) {
@@ -352,9 +361,8 @@ export function BatchReviewForm({ isProvider }: Props) {
           })
         }
       } catch (err) {
-        // Non-fatal: the row renders with plain defaults; sign-and-send
-        // remains the authoritative gate for rule-required fields.
-        console.warn('[batch-review] rx defaults resolution failed:', err instanceof Error ? err.message : err)
+        console.error('[batch-review] rx defaults resolution failed:', err instanceof Error ? err.message : err)
+        if (!cancelled) setRulesLoadFailed(true)
       }
     })()
     return () => { cancelled = true }
@@ -376,6 +384,10 @@ export function BatchReviewForm({ isProvider }: Props) {
   }
 
   const { patient, provider, prescriptions } = session
+
+  // Batch 1: checks that could not run. Each blocks sending and says so
+  // on screen — an unanswered clinical question is not a clean result.
+  const allergyStatusUnknown = patient?.allergiesLoadFailed === true
 
   // Calculate totals — WO-102: shipping once per pharmacy, outside the
   // margin (the platform fee is never charged on it).
@@ -410,7 +422,8 @@ export function BatchReviewForm({ isProvider }: Props) {
     setSignatureCaptured(false)
   }
 
-  const canSubmit = signatureCaptured && prescriptions.length > 0 && !isSubmitting && !hasInvalidItems && !hasMissingDetails
+  const checksUnavailable = allergyStatusUnknown || rulesLoadFailed || interactionsUnavailable
+  const canSubmit = signatureCaptured && prescriptions.length > 0 && !isSubmitting && !hasInvalidItems && !hasMissingDetails && !checksUnavailable
   // Shared controls (Remove, Add Another) lock during either flow.
   const isBusy = isSubmitting || isSavingDraft
 
@@ -603,11 +616,28 @@ export function BatchReviewForm({ isProvider }: Props) {
       )}
 
       {/* WO-86: Drug Interaction Alerts */}
-      <DrugInteractionAlerts medicationNames={prescriptions.map(rx => rx.medicationName)} />
+      <DrugInteractionAlerts
+        medicationNames={prescriptions.map(rx => rx.medicationName)}
+        onCheckUnavailable={setInteractionsUnavailable}
+      />
 
       {/* WO-97: allergies not recorded → amber notice with an inline
           "Confirm NKDA". Never blocks Sign & Send or Save as Draft. */}
       <AllergyNotice patient={patient} onSaved={session.updatePatient} />
+
+      {rulesLoadFailed && (
+        <div
+          role="alert"
+          data-testid="rx-rules-load-error"
+          className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/20 dark:text-red-200"
+        >
+          <p className="font-semibold">Prescribing rules could not be loaded.</p>
+          <p className="mt-0.5 text-xs">
+            Diagnosis and clinical-difference requirements, and the controlled-substance check, depend on them.
+            This is an error, not an empty result — reload before sending.
+          </p>
+        </div>
+      )}
 
       {/* WO-102: more than one pharmacy → what the split costs, and a
           re-route only when it is a genuine net saving. */}
@@ -946,8 +976,14 @@ export function BatchReviewForm({ isProvider }: Props) {
           {/* fix/review-send-flow: a disabled button must say WHY it is
               disabled — a gray button with no hint reads as "broken". */}
           {!canSubmit && !isSubmitting && (
-            <p className="text-center text-xs text-muted-foreground">
-              {belowCostItems.length > 0 || repriceItems.length > 0
+            <p className="text-center text-xs text-muted-foreground" data-testid="send-blocked-reason">
+              {allergyStatusUnknown
+                ? 'The allergy status for this patient could not be loaded. Reload before sending.'
+                : rulesLoadFailed
+                ? 'The prescribing rules for these medications could not be loaded. Reload before sending.'
+                : interactionsUnavailable
+                ? 'The drug interaction check could not run. Reload before sending.'
+                : belowCostItems.length > 0 || repriceItems.length > 0
                 ? 'Edit the price on the flagged prescriptions above to enable sending.'
                 : hasInvalidItems
                 ? 'Remove the flagged prescriptions above to enable sending.'

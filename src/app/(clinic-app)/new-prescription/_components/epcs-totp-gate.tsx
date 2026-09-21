@@ -31,7 +31,7 @@ export function EpcsTotpGate({
   onVerified,
   onCancel,
 }: EpcsTotpGateProps) {
-  const [step, setStep] = useState<'loading' | 'setup' | 'verify'>('loading')
+  const [step, setStep] = useState<'loading' | 'setup' | 'verify' | 'status_error'>('loading')
   const [qrCode, setQrCode] = useState('')
   const [secret, setSecret] = useState('')
   const [code, setCode] = useState('')
@@ -41,27 +41,55 @@ export function EpcsTotpGate({
 
   // Check if provider already has TOTP set up
   useEffect(() => {
+    // Batch 1, finding 6: there was no res.ok check here, so any failure
+    // read as "not enrolled" and fell through to action=setup — which
+    // replaced the provider's TOTP secret and broke the authenticator
+    // they were about to sign with. Enrolment now happens only when the
+    // server actually says they are not enrolled.
     async function checkStatus() {
-      const res = await fetch(`/api/epcs?action=status&provider_id=${providerId}`)
-      const data = await res.json()
-      if (data.totp_enabled) {
-        setStep('verify')
-      } else {
-        // Need to set up TOTP first
+      try {
+        const res = await fetch(`/api/epcs?action=status&provider_id=${providerId}`)
+        if (!res.ok) {
+          console.error('[epcs] status check failed:', res.status, '| provider=', providerId)
+          setStep('status_error')
+          return
+        }
+        const data = await res.json() as { totp_enabled?: boolean }
+        if (data.totp_enabled === true) {
+          setStep('verify')
+          return
+        }
+        if (data.totp_enabled !== false) {
+          console.error('[epcs] status check returned no enrolment state | provider=', providerId)
+          setStep('status_error')
+          return
+        }
+
         const setupRes = await fetch('/api/epcs?action=setup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ provider_id: providerId }),
         })
-        const setupData = await setupRes.json()
-        if (setupData.qr_code) {
-          setQrCode(setupData.qr_code)
-          setSecret(setupData.secret)
-          setStep('setup')
+        if (!setupRes.ok) {
+          console.error('[epcs] enrolment failed:', setupRes.status, '| provider=', providerId)
+          setStep('status_error')
+          return
         }
+        const setupData = await setupRes.json() as { qr_code?: string; secret?: string }
+        if (!setupData.qr_code) {
+          console.error('[epcs] enrolment returned no QR code | provider=', providerId)
+          setStep('status_error')
+          return
+        }
+        setQrCode(setupData.qr_code)
+        setSecret(setupData.secret ?? '')
+        setStep('setup')
+      } catch (err) {
+        console.error('[epcs] status check failed:', err instanceof Error ? err.message : err, '| provider=', providerId)
+        setStep('status_error')
       }
     }
-    checkStatus()
+    void checkStatus()
   }, [providerId])
 
   // Auto-focus code input
@@ -166,6 +194,20 @@ export function EpcsTotpGate({
         <p className="mb-4 text-sm text-foreground">
           Signing as <strong>{providerName}</strong>
         </p>
+
+        {/* The check could not run — never silently enrol over an
+            existing authenticator (Batch 1, finding 6). */}
+        {step === 'status_error' && (
+          <div role="alert" data-testid="epcs-status-error" className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/20">
+            <p className="text-sm font-semibold text-red-800 dark:text-red-200">
+              Authenticator status could not be checked.
+            </p>
+            <p className="mt-1 text-xs text-red-700 dark:text-red-300">
+              Nothing has been changed and your authenticator is untouched. Close this and try again; if it
+              persists, report it rather than re-enrolling.
+            </p>
+          </div>
+        )}
 
         {/* Loading */}
         {step === 'loading' && (
