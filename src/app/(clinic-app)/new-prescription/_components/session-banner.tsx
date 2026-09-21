@@ -19,7 +19,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePrescriptionSession } from '../_context/prescription-session'
-import { EditableAllergyChip, type SavedAllergies } from './allergy-chip'
+import { EditableAllergyChip, loadAllergies, type SavedAllergies } from './allergy-chip'
 
 function formatDob(iso: string): string {
   try {
@@ -50,24 +50,18 @@ export function SessionBanner() {
   // showing "not recorded" for a patient who has allergies on file —
   // otherwise the Review notice could invite a stale "Confirm NKDA".
   const patientId = patient?.patient_id ?? null
-  const needsHydration = !!patient && patient.allergies === undefined
+  const needsHydration = !!patient && patient.allergies === undefined && patient.allergiesLoadFailed !== true
   useEffect(() => {
     if (!patientId || !needsHydration) return
     let cancelled = false
     ;(async () => {
       try {
-        const res = await fetch(`/api/patients/${patientId}/allergies`)
-        if (!res.ok) {
-          console.error('[allergies] hydration failed:', res.status, '| patient=', patientId)
-          if (!cancelled) updatePatient({ allergiesLoadFailed: true })
-          return
-        }
-        const body = await res.json() as Partial<SavedAllergies>
+        const loaded = await loadAllergies(patientId)
         if (cancelled) return
         updatePatient({
-          allergies:            Array.isArray(body.allergies) ? body.allergies : [],
-          nkda:                 body.nkda === true,
-          allergies_updated_at: body.allergiesUpdatedAt ?? null,
+          allergies:            loaded.allergies,
+          nkda:                 loaded.nkda,
+          allergies_updated_at: loaded.allergiesUpdatedAt,
           allergiesLoadFailed:  false,
         })
       } catch (err) {

@@ -171,3 +171,31 @@ describe('finding 2 — an unknown DEA schedule', () => {
     expect(res.status).toBe(500)   // the unmodelled CAS update, i.e. the gate passed
   })
 })
+
+// ── #164 follow-up: a draft is re-checked when it is sent ──────────────
+//
+// Save as Draft is never blocked by a failed check, so a draft can be
+// saved during an outage. What makes that safe for the clinical-
+// difference rule is that sign-and-send reads the rule itself, at send
+// time, from the database — it carries no "unknown" state forward from
+// when the draft was saved. Pinned here: the same DRAFT refuses while
+// the rule is unreadable, and goes through once it reads.
+//
+// Allergy status and the interaction check are NOT re-run on this path:
+// the draft sign page never runs them, even when nothing has failed.
+// That is reported separately, not papered over by this test.
+describe('a draft saved while the rule was unreadable', () => {
+  it('is re-checked at send time, not sent on stale state', async () => {
+    formulationFetchMock.mockResolvedValueOnce({ data: null, error: { message: 'connection reset', code: '08006' } })
+    const duringOutage = await post()
+    expect(duringOutage.status).toBe(503)
+
+    formulationFetchMock.mockResolvedValueOnce({ data: { requires_clinical_difference: true }, error: null })
+    const afterOutage = await post()
+    // The rule now reads — and requires a statement this draft lacks, so
+    // it is refused for the real reason rather than sent.
+    expect(afterOutage.status).toBe(422)
+    const body = await afterOutage.json() as { error: string }
+    expect(body.error).toMatch(/clinical difference/i)
+  })
+})

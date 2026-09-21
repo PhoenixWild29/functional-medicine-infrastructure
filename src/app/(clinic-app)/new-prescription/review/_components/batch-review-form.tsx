@@ -272,6 +272,11 @@ export function BatchReviewForm({ isProvider }: Props) {
   // existing drafts instead of re-creating them, and never re-allocates a
   // pharmacy's shipping that already went out on a signed order.
   const [rulesLoadFailed, setRulesLoadFailed] = useState(false)
+  // Bumped by the retry control to re-run the rules resolution in place.
+  // The failure flag is NOT cleared on click: it stays up until a
+  // resolution actually succeeds, so Sign & Send never flickers open on
+  // a retry that is still in flight or fails again.
+  const [rulesAttempt, setRulesAttempt] = useState(0)
   const [interactionsUnavailable, setInteractionsUnavailable] = useState(false)
   const createdOrderIdsRef = useRef<Map<string, string>>(new Map())
   const allocatedOrderIdsRef = useRef<Set<string>>(new Set())
@@ -331,6 +336,7 @@ export function BatchReviewForm({ isProvider }: Props) {
         }
         const json = await res.json() as { data?: Record<string, RxFormulationDefaults> }
         if (cancelled || !json.data) return
+        setRulesLoadFailed(false)
         for (const rx of prescriptionsRef.current) {
           if (!needsRxResolution(rx)) continue
           const entry = json.data[rx.formulationId as string]
@@ -366,7 +372,7 @@ export function BatchReviewForm({ isProvider }: Props) {
       }
     })()
     return () => { cancelled = true }
-  }, [unresolvedKey, updatePrescription])
+  }, [unresolvedKey, updatePrescription, rulesAttempt])
 
   if (!session.patient || !session.provider || session.prescriptions.length === 0) {
     return (
@@ -634,8 +640,15 @@ export function BatchReviewForm({ isProvider }: Props) {
           <p className="font-semibold">Prescribing rules could not be loaded.</p>
           <p className="mt-0.5 text-xs">
             Diagnosis and clinical-difference requirements, and the controlled-substance check, depend on them.
-            This is an error, not an empty result — reload before sending.
+            This is an error, not an empty result. You can still save a draft.
           </p>
+          <button
+            type="button"
+            onClick={() => setRulesAttempt(a => a + 1)}
+            className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-transparent dark:text-red-200"
+          >
+            Retry
+          </button>
         </div>
       )}
 
@@ -978,11 +991,11 @@ export function BatchReviewForm({ isProvider }: Props) {
           {!canSubmit && !isSubmitting && (
             <p className="text-center text-xs text-muted-foreground" data-testid="send-blocked-reason">
               {allergyStatusUnknown
-                ? 'The allergy status for this patient could not be loaded. Reload before sending.'
+                ? 'The allergy status for this patient could not be loaded. Retry it above to enable sending.'
                 : rulesLoadFailed
-                ? 'The prescribing rules for these medications could not be loaded. Reload before sending.'
+                ? 'The prescribing rules for these medications could not be loaded. Retry them above to enable sending.'
                 : interactionsUnavailable
-                ? 'The drug interaction check could not run. Reload before sending.'
+                ? 'The drug interaction check could not run. Retry it above to enable sending.'
                 : belowCostItems.length > 0 || repriceItems.length > 0
                 ? 'Edit the price on the flagged prescriptions above to enable sending.'
                 : hasInvalidItems
