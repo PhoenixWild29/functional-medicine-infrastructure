@@ -236,6 +236,9 @@ export default async function SignDraftPage({ params }: PageProps) {
 
         <DraftSignForm
           orderId={order.order_id}
+          patientId={order.patient_id}
+          patientFirstName={patient.first_name}
+          patientLastName={patient.last_name}
           patientName={`${patient.first_name} ${patient.last_name}`}
           patientDob={patient.date_of_birth}
           patientPhone={patient.phone ?? ''}

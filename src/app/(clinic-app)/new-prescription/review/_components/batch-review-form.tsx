@@ -393,7 +393,9 @@ export function BatchReviewForm({ isProvider }: Props) {
 
   // Batch 1: checks that could not run. Each blocks sending and says so
   // on screen — an unanswered clinical question is not a clean result.
-  const allergyStatusUnknown = patient?.allergiesLoadFailed === true
+  // Unknown = the read failed, or has not resolved yet (fields absent).
+  const allergiesLoading     = !!patient && patient.allergies === undefined && patient.allergiesLoadFailed !== true
+  const allergyStatusUnknown = patient?.allergiesLoadFailed === true || allergiesLoading
 
   // Calculate totals — WO-102: shipping once per pharmacy, outside the
   // margin (the platform fee is never charged on it).
@@ -990,7 +992,9 @@ export function BatchReviewForm({ isProvider }: Props) {
               disabled — a gray button with no hint reads as "broken". */}
           {!canSubmit && !isSubmitting && (
             <p className="text-center text-xs text-muted-foreground" data-testid="send-blocked-reason">
-              {allergyStatusUnknown
+              {allergiesLoading
+                ? 'Loading the allergy status for this patient — sending waits for it.'
+                : allergyStatusUnknown
                 ? 'The allergy status for this patient could not be loaded. Retry it above to enable sending.'
                 : rulesLoadFailed
                 ? 'The prescribing rules for these medications could not be loaded. Retry them above to enable sending.'

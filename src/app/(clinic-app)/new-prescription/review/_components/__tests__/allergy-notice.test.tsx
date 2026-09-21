@@ -132,7 +132,9 @@ describe('Review & Send — allergies not recorded', () => {
     await waitFor(() => expect(screen.queryByTestId('allergy-notice')).not.toBeInTheDocument())
     expect(global.fetch).toHaveBeenCalledWith(`/api/patients/${BASE_PATIENT.patient_id}/allergies`, expect.objectContaining({
       method: 'PATCH',
-      body: JSON.stringify({ allergies: [], nkda: true }),
+      // CHANGED (draft-sign safety checks PR): the shortcut now identifies
+      // itself so the server can refuse it (409) over a recorded list.
+      body: JSON.stringify({ allergies: [], nkda: true, confirmNkda: true }),
     }))
     const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY)!)
     expect(saved.patient).toEqual(expect.objectContaining({ nkda: true, allergies: [], allergies_updated_at: '2026-09-13T00:00:00Z' }))

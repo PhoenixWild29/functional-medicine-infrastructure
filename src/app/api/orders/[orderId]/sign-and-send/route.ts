@@ -25,6 +25,7 @@ import { createSlasForTransition } from '@/lib/sla/creator'
 import { sendPaymentLinkSms } from '@/lib/sms/triggers'
 import { serverEnv } from '@/lib/env'
 import { missingRxDetails, MISSING_RX_DETAIL_LABEL, rxDetailsFromRow } from '@/lib/orders/rx-details'
+import { findInteractions, type InteractionRow } from '@/lib/interactions/match'
 
 // ── SHA-256 helper — Web Crypto API (Edge runtime compatible) ──
 
@@ -292,6 +293,75 @@ export async function POST(
     )
   }
   // Check 3 (signature) — validated above (format + length guards replace the open accept).
+
+  // ── Safety checks at send time: allergy status + drug interactions ──
+  //
+  // The draft sign page and Review run both on screen, but this is the
+  // gate that cannot be skipped. What blocks is a check that COULD NOT
+  // RUN (503) — never what a check finds. Recorded allergies and a known
+  // interaction are the provider's information, shown on screen; they do
+  // not stop a send.
+  const { error: allergyReadError } = await supabase
+    .from('patients')
+    .select('allergies, nkda')
+    .eq('patient_id', order.patient_id)
+    .maybeSingle()
+  if (allergyReadError) {
+    console.error('[sign-and-send] allergy status read failed:', allergyReadError.message, '| order=', orderId)
+    return NextResponse.json(
+      { error: "The patient's allergy status could not be checked. Nothing was sent — try again." },
+      { status: 503 },
+    )
+  }
+
+  // The interaction check runs across this draft and the drafts prepared
+  // with it (same patient, same provider) — the set the provider is
+  // signing, as the draft sign page shows it.
+  const [siblingsResult, interactionsResult] = await Promise.all([
+    supabase
+      .from('orders')
+      .select('medication_snapshot')
+      .eq('clinic_id', clinicId)
+      .eq('patient_id', order.patient_id)
+      .eq('provider_id', order.provider_id)
+      .eq('status', 'DRAFT')
+      .eq('is_active', true)
+      .is('deleted_at', null),
+    supabase
+      .from('drug_interactions')
+      .select(`
+        interaction_id, severity, description,
+        ingredient_a:ingredients!drug_interactions_ingredient_a_id_fkey ( common_name ),
+        ingredient_b:ingredients!drug_interactions_ingredient_b_id_fkey ( common_name )
+      `),
+  ])
+  if (siblingsResult.error || interactionsResult.error) {
+    console.error(
+      '[sign-and-send] drug interaction check could not run:',
+      (siblingsResult.error ?? interactionsResult.error)?.message,
+      '| order=', orderId,
+    )
+    return NextResponse.json(
+      { error: 'The drug interaction check could not be run. Nothing was sent — try again.' },
+      { status: 503 },
+    )
+  }
+  const medicationNames = [
+    ...new Set(
+      [order.medication_snapshot, ...(siblingsResult.data ?? []).map(r => r.medication_snapshot)]
+        .map(snap => (snap as Record<string, unknown> | null)?.['medication_name'])
+        .filter((n): n is string => typeof n === 'string' && n.length > 0),
+    ),
+  ]
+  const interactionFindings = findInteractions(
+    (interactionsResult.data ?? []) as unknown as InteractionRow[],
+    medicationNames,
+  )
+  if (interactionFindings.length > 0) {
+    // A finding, not a failure: the provider saw it on screen. Recorded
+    // for the trail; the send proceeds.
+    console.info(`[sign-and-send] ${interactionFindings.length} drug interaction(s) shown to the provider | order=${orderId}`)
+  }
 
   // ── REQ-OAS-003: SHA-256 hash of signature data + timestamp ──
   const signedAt = new Date().toISOString()
