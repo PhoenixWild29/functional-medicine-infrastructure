@@ -59,7 +59,7 @@ jest.mock('@/lib/supabase/service', () => ({
       }
       if (table === 'orders') {
         return {
-          select: () => ({ eq: () => ({ single: () => orderFetchMock() }) }),
+          select: () => ({ eq: () => ({ single: () => orderFetchMock(), maybeSingle: () => orderFetchMock() }) }),
           update: (values: unknown) => ({ eq: (col: string, val: unknown) => orderUpdateMock(values, col, val) }),
         }
       }
