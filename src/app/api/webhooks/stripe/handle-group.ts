@@ -54,11 +54,16 @@ export async function handleGroupPaymentSucceeded(
     .eq('group_id', groupId)
     .maybeSingle()
 
-  if (groupErr || !group) {
-    console.error(
-      `[stripe-webhook] group not found | group=${groupId} pi=${paymentIntent.id}`,
-      groupErr?.message,
-    )
+  // Batch 2A: a DB error THROWS, so the route answers 500 and Stripe
+  // redelivers. Returning read as success: the bundle was paid and none
+  // of its orders moved. A group that genuinely does not exist still
+  // returns (logged): no retry will find it.
+  if (groupErr) {
+    console.error(`[stripe-webhook] group lookup failed | group=${groupId} pi=${paymentIntent.id}`, groupErr.message)
+    throw new Error(`group ${groupId} lookup failed: ${groupErr.message}`)
+  }
+  if (!group) {
+    console.error(`[stripe-webhook] group not found | group=${groupId} pi=${paymentIntent.id}`)
     return
   }
 
@@ -86,16 +91,20 @@ export async function handleGroupPaymentSucceeded(
 
   if (orderErr) {
     console.error(`[stripe-webhook] failed to load group members | group=${groupId}`, orderErr.message)
-    return
+    throw new Error(`group ${groupId} members could not be loaded: ${orderErr.message}`)
   }
 
   if (!memberOrders || memberOrders.length === 0) {
     console.warn(`[stripe-webhook] group ${groupId} has no member orders — marking CANCELLED`)
-    await supabase
+    const { error: cancelErr } = await supabase
       .from('payment_groups')
       .update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
       .eq('group_id', groupId)
       .eq('status', 'AWAITING_PAYMENT')
+    if (cancelErr) {
+      console.error(`[stripe-webhook] failed to mark empty group CANCELLED | group=${groupId}`, cancelErr.message)
+      throw new Error(`group ${groupId} could not be marked CANCELLED: ${cancelErr.message}`)
+    }
     return
   }
 
@@ -117,6 +126,12 @@ export async function handleGroupPaymentSucceeded(
 
       if (cas.wasAlreadyTransitioned) {
         alreadyTransitioned += 1
+        // Batch 2A: a member loaded as PAID_PROCESSING was marked paid by
+        // an earlier delivery that then failed before routing it. Resume:
+        // branchByTier is CAS-guarded, so it still moves exactly once.
+        if (order.status === 'PAID_PROCESSING' && order.pharmacy_id) {
+          await branchByTier(order.order_id, order.pharmacy_id)
+        }
         continue
       }
       transitionedNow += 1

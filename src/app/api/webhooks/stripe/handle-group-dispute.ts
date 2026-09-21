@@ -80,14 +80,21 @@ export async function handleGroupChargeDisputeCreated(
     .eq('stripe_payment_intent_id', paymentIntentId)
     .maybeSingle()
 
-  if (groupErr || !group) {
+  // Batch 2A: a DB error THROWS so the route answers 500 and Stripe
+  // redelivers. A dropped chargeback misses its evidence deadline.
+  const groupLookupMessage = groupErr?.message
+  if (groupErr) {
+    console.error(`[stripe-webhook] group lookup failed for dispute | dispute=${dispute.id} pi=${paymentIntentId}`, groupErr.message)
+    throw new Error(`group dispute ${dispute.id} group lookup failed: ${groupErr.message}`)
+  }
+  if (!group) {
     // Loud log: dispute claimed to be a group PI but no row found. This
     // can happen for legitimate solo PIs (route handler should not have
-    // routed us here in that case) — also covers an attacker-style
+    // routed us here in that case); also covers an attacker-style
     // mismatch.
     console.error(
       `[stripe-webhook] group not found for dispute | dispute=${dispute.id} pi=${paymentIntentId}`,
-      groupErr?.message,
+      groupLookupMessage,
     )
     return
   }
@@ -120,7 +127,7 @@ export async function handleGroupChargeDisputeCreated(
       `[stripe-webhook] failed to load group members for dispute | group=${group.group_id} dispute=${dispute.id}`,
       orderErr.message,
     )
-    return
+    throw new Error(`group dispute ${dispute.id} members could not be loaded: ${orderErr.message}`)
   }
 
   const members = memberOrders ?? []

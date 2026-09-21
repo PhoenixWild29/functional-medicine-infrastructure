@@ -86,11 +86,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // and MUST be re-processed on redelivery / manual replay. Only true
     // successes (processed_at IS NOT NULL with no error) are safe to skip.
     if (insertError.code === '23505') {
-      const { data: existing } = await supabase
+      const { data: existing, error: existingError } = await supabase
         .from('webhook_events')
         .select('event_id, processed_at, error')
         .eq('external_event_id', externalEventId)
         .maybeSingle()
+      // Batch 2A: we cannot tell whether this event already succeeded.
+      // Guessing "re-process" would run it with no outcome row; guessing
+      // "skip" could drop a payment. 500 lets Stripe ask again.
+      if (existingError) {
+        console.error(`[stripe-webhook] dedup lookup failed for ${externalEventId}:`, existingError.message)
+        return NextResponse.json({ status: 'error', detail: 'dedup lookup failed; Stripe will retry' }, { status: 500 })
+      }
       if (existing && existing.processed_at != null && existing.error == null) {
         console.info(`[stripe-webhook] duplicate event ${externalEventId} (already successful) — skipping`)
         return NextResponse.json({ status: 'duplicate' }, { status: 200 })
@@ -147,7 +154,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // that arrives behind the scheduled processing isn't tricked into thinking
   // the event is still in a failed state.
   if (internalEventRowId) {
-    await supabase
+    const { error: outcomeError } = await supabase
       .from('webhook_events')
       .update(
         processingError
@@ -155,6 +162,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           : { processed_at: new Date().toISOString(), error: null },
       )
       .eq('event_id', internalEventRowId)
+    if (outcomeError) {
+      // The event stays unstamped, so a redelivery re-runs it: safe,
+      // because every handler is idempotent. Say so rather than stay quiet.
+      console.error(`[stripe-webhook] could not record outcome for ${externalEventId}:`, outcomeError.message)
+    }
   }
 
   // Step 7: Respond.
@@ -240,17 +252,22 @@ async function handleSoloPaymentSucceeded(
   const supabase = createServiceClient()
 
   // AC-SWH-003.1: Locate order by stripe_payment_intent_id
+  // Batch 2A: maybeSingle, so "no such order" and "database down" are
+  // different answers. A DB error THROWS: the route then answers 500 and
+  // Stripe redelivers. Returning here used to mark a paid order's event
+  // processed with the order still AWAITING_PAYMENT.
   const { data: order, error: orderError } = await supabase
     .from('orders')
     .select('order_id, status, pharmacy_id')
     .eq('stripe_payment_intent_id', paymentIntent.id)
-    .single()
+    .maybeSingle()
 
-  if (orderError || !order) {
-    console.error(
-      `[stripe-webhook] solo order not found for payment_intent ${paymentIntent.id}:`,
-      orderError?.message
-    )
+  if (orderError) {
+    console.error(`[stripe-webhook] solo order lookup failed for payment_intent ${paymentIntent.id}:`, orderError.message)
+    throw new Error(`solo order lookup failed for ${paymentIntent.id}: ${orderError.message}`)
+  }
+  if (!order) {
+    console.error(`[stripe-webhook] solo order not found for payment_intent ${paymentIntent.id}`)
     return
   }
 
@@ -263,8 +280,15 @@ async function handleSoloPaymentSucceeded(
     metadata: { stripe_payment_intent_id: paymentIntent.id },
   })
 
-  // AC-SWH-003.3: 0-row CAS = already transitioned — idempotent no-op
-  if (casResult.wasAlreadyTransitioned) {
+  // AC-SWH-003.3: 0-row CAS = already transitioned — idempotent no-op.
+  //
+  // Batch 2A: EXCEPT when an earlier delivery made this transition and
+  // then failed before routing (e.g. the tier lookup threw). That order
+  // was loaded as PAID_PROCESSING: it is stranded, and the retry must
+  // finish the job. Every step below is itself idempotent (the transfer
+  // bookkeeping is an overwrite and branchByTier is CAS-guarded), so the
+  // order still changes state once.
+  if (casResult.wasAlreadyTransitioned && order.status !== 'PAID_PROCESSING') {
     return
   }
 
@@ -508,20 +532,31 @@ async function handleSoloChargeDisputeCreated(dispute: Stripe.Dispute): Promise<
   // handle-group.ts). If no order is found AND no group flavor metadata
   // was present, fall back to a group lookup defensively in case Stripe
   // stripped metadata in transit.
-  const { data: order } = await supabase
+  const { data: order, error: orderError } = await supabase
     .from('orders')
     .select('order_id')
     .eq('stripe_payment_intent_id', paymentIntentId)
-    .single()
+    .maybeSingle()
+
+  if (orderError) {
+    // Batch 2A: a chargeback must not be dropped because of a DB blip;
+    // dispute evidence has a deadline.
+    console.error(`[stripe-webhook] dispute ${dispute.id} order lookup failed:`, orderError.message)
+    throw new Error(`dispute ${dispute.id} order lookup failed: ${orderError.message}`)
+  }
 
   if (!order) {
     // Defensive fallback: a group PI's dispute that lost its metadata
     // would land here. Try the group path before giving up.
-    const { data: maybeGroup } = await supabase
+    const { data: maybeGroup, error: maybeGroupError } = await supabase
       .from('payment_groups')
       .select('group_id')
       .eq('stripe_payment_intent_id', paymentIntentId)
       .maybeSingle()
+    if (maybeGroupError) {
+      console.error(`[stripe-webhook] dispute ${dispute.id} group fallback lookup failed:`, maybeGroupError.message)
+      throw new Error(`dispute ${dispute.id} group lookup failed: ${maybeGroupError.message}`)
+    }
     if (maybeGroup) {
       console.warn(
         `[stripe-webhook] dispute ${dispute.id} routed solo but matched a group PI — falling back to group handler | pi=${paymentIntentId}`,
@@ -551,7 +586,7 @@ async function handleSoloChargeDisputeCreated(dispute: Stripe.Dispute): Promise<
 
   if (error) {
     console.error(`[stripe-webhook] failed to insert dispute ${dispute.id}:`, error.message)
-    return
+    throw new Error(`dispute ${dispute.id} could not be recorded: ${error.message}`)
   }
 
   // Fan out the single junction row into dispute_orders so ops JOIN
@@ -617,12 +652,16 @@ async function handleTransferFailed(transfer: Stripe.Transfer): Promise<void> {
   }
 
   // Resolve order to get clinic_id (required for transfer_failures RLS)
-  const { data: order } = await supabase
+  const { data: order, error: orderError } = await supabase
     .from('orders')
     .select('order_id, clinic_id')
     .eq('order_id', orderId)
-    .single()
+    .maybeSingle()
 
+  if (orderError) {
+    console.error(`[stripe-webhook] transfer.failed ${transfer.id} order lookup failed:`, orderError.message)
+    throw new Error(`transfer.failed ${transfer.id} order lookup failed: ${orderError.message}`)
+  }
   if (!order) {
     console.error(`[stripe-webhook] order not found for failed transfer ${transfer.id}`)
     return
@@ -634,7 +673,7 @@ async function handleTransferFailed(transfer: Stripe.Transfer): Promise<void> {
   // and ...-failure_message but the SDK v14 Stripe.Transfer interface doesn't
   // include them. Casts are TS-side workarounds for SDK type lag, NOT bypass
   // of non-existent API fields (the failure mode WO-88 catches).
-  await supabase.from('transfer_failures').insert({
+  const { error: failureInsertError } = await supabase.from('transfer_failures').insert({
     transfer_id: transfer.id,
     order_id: order.order_id,
     clinic_id: order.clinic_id,
@@ -645,6 +684,11 @@ async function handleTransferFailed(transfer: Stripe.Transfer): Promise<void> {
     // eslint-disable-next-line no-restricted-syntax
     failure_message: (transfer as unknown as { failure_message?: string }).failure_message ?? null,
   })
+  // A duplicate (23505) is a redelivery of a failure already recorded.
+  if (failureInsertError && failureInsertError.code !== '23505') {
+    console.error(`[stripe-webhook] transfer.failed ${transfer.id} could not be recorded:`, failureInsertError.message)
+    throw new Error(`transfer.failed ${transfer.id} could not be recorded: ${failureInsertError.message}`)
+  }
 
   // Financial alert — ops must investigate and manually re-initiate transfer
   await sendSlackAlert(
@@ -694,7 +738,7 @@ async function handleAccountUpdated(account: Stripe.Account): Promise<void> {
       `[stripe-webhook] failed to update stripe_connect_status for account ${account.id}:`,
       error.message
     )
-    return
+    throw new Error(`account.updated ${account.id} could not be applied: ${error.message}`)
   }
 
   console.info(
