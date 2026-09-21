@@ -58,6 +58,23 @@ export async function saveAllergies(
   }
 }
 
+/**
+ * Read the patient's allergy record. Throws on any failure — a read that
+ * failed is not "nothing recorded" (Batch 1, finding 1). Shared by the
+ * banner's hydration and Review's retry control so both mean the same
+ * thing by "loaded".
+ */
+export async function loadAllergies(patientId: string): Promise<SavedAllergies> {
+  const res = await fetch(`/api/patients/${patientId}/allergies`)
+  if (!res.ok) throw new Error(`Could not load allergies (${res.status})`)
+  const body = await res.json() as Partial<SavedAllergies>
+  return {
+    allergies:          Array.isArray(body.allergies) ? body.allergies : [],
+    nkda:               body.nkda === true,
+    allergiesUpdatedAt: body.allergiesUpdatedAt ?? null,
+  }
+}
+
 // ── Chip ──────────────────────────────────────────────────────
 
 const CHIP_TONE: Record<ReturnType<typeof allergyStatus>['kind'], string> = {

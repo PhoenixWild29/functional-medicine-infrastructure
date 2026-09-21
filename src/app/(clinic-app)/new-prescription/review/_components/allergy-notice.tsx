@@ -14,22 +14,40 @@
 
 import { useState } from 'react'
 import { hasRecordedAllergies, type PatientAllergyFields } from '@/lib/patients/allergies'
-import { saveAllergies } from '../../_components/allergy-chip'
+import { saveAllergies, loadAllergies } from '../../_components/allergy-chip'
 
 interface Props {
   patient: PatientAllergyFields & { patient_id: string; first_name: string; last_name: string }
-  onSaved: (patch: { allergies: string[]; nkda: boolean; allergies_updated_at: string | null }) => void
+  onSaved: (patch: {
+    allergies: string[]; nkda: boolean; allergies_updated_at: string | null; allergiesLoadFailed?: boolean
+  }) => void
 }
 
 export function AllergyNotice({ patient, onSaved }: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
 
+  // Retry re-runs the one read in place. The failure state stays up
+  // while it is in flight, so there is never a moment where this notice
+  // falls back to "not recorded" and offers Confirm NKDA.
+  const [retrying, setRetrying] = useState(false)
+  async function retryLoad() {
+    setRetrying(true)
+    try {
+      const loaded = await loadAllergies(patient.patient_id)
+      onSaved({ allergies: loaded.allergies, nkda: loaded.nkda, allergies_updated_at: loaded.allergiesUpdatedAt, allergiesLoadFailed: false })
+    } catch (err) {
+      console.error('[allergies] retry failed:', err instanceof Error ? err.message : err, '| patient=', patient.patient_id)
+    } finally {
+      setRetrying(false)
+    }
+  }
+
   // Batch 1, finding 1: when the read FAILED we do not know what this
   // patient is allergic to, so the "not recorded" notice — and above all
   // its Confirm NKDA button, which PATCHes {allergies: [], nkda: true}
   // over whatever is stored — must not appear. Sending is blocked
-  // upstream until the status is known.
+  // upstream until the status is known; saving a draft never is.
   if ((patient as { allergiesLoadFailed?: boolean | null }).allergiesLoadFailed) {
     return (
       <div
@@ -41,9 +59,17 @@ export function AllergyNotice({ patient, onSaved }: Props) {
           Allergies could not be loaded for {patient.first_name} {patient.last_name}.
         </p>
         <p className="mt-0.5 text-xs">
-          This is an error, not an empty record — they may have allergies on file. Reload the page before
-          sending; nothing about this patient has been changed.
+          This is an error, not an empty record — they may have allergies on file. Nothing about this patient
+          has been changed.
         </p>
+        <button
+          type="button"
+          onClick={retryLoad}
+          disabled={retrying}
+          className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-transparent dark:text-red-200"
+        >
+          {retrying ? 'Retrying…' : 'Retry'}
+        </button>
       </div>
     )
   }

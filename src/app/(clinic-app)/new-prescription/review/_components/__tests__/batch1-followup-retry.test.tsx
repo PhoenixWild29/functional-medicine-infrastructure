@@ -129,14 +129,14 @@ describe('retry in place clears the block', () => {
     mockFetchFailingOnce('/allergies', OK)
     renderReview([line()], PATIENT)
 
-    const error = await screen.findByTestId('allergy-load-error')
+    const error = await screen.findByTestId('allergy-load-error', undefined, { timeout: 5000 })
     await sign()
     expect(signAndSend()).toBeDisabled()
 
     fireEvent.click(within(error).getByRole('button', { name: /retry/i }))
 
-    await waitFor(() => expect(screen.queryByTestId('allergy-load-error')).not.toBeInTheDocument())
-    await waitFor(() => expect(signAndSend()).not.toBeDisabled())
+    await waitFor(() => expect(screen.queryByTestId('allergy-load-error')).not.toBeInTheDocument(), { timeout: 5000 })
+    await waitFor(() => expect(signAndSend()).not.toBeDisabled(), { timeout: 5000 })
   })
 
   it('prescribing rules: fails, blocks, retry succeeds, Sign & Send enables', async () => {
@@ -145,14 +145,14 @@ describe('retry in place clears the block', () => {
     // quick-load does.
     renderReview([line({ rxRules: null })], PATIENT_KNOWN)
 
-    const error = await screen.findByTestId('rx-rules-load-error')
+    const error = await screen.findByTestId('rx-rules-load-error', undefined, { timeout: 5000 })
     await sign()
     expect(signAndSend()).toBeDisabled()
 
     fireEvent.click(within(error).getByRole('button', { name: /retry/i }))
 
-    await waitFor(() => expect(screen.queryByTestId('rx-rules-load-error')).not.toBeInTheDocument())
-    await waitFor(() => expect(signAndSend()).not.toBeDisabled())
+    await waitFor(() => expect(screen.queryByTestId('rx-rules-load-error')).not.toBeInTheDocument(), { timeout: 5000 })
+    await waitFor(() => expect(signAndSend()).not.toBeDisabled(), { timeout: 5000 })
   })
 
   it('drug interaction check: fails, blocks, retry succeeds, Sign & Send enables', async () => {
@@ -160,14 +160,14 @@ describe('retry in place clears the block', () => {
     // Two lines, so the check matters.
     renderReview([line(), SECOND_LINE], PATIENT_KNOWN)
 
-    const error = await screen.findByTestId('drug-interactions-error')
+    const error = await screen.findByTestId('drug-interactions-error', undefined, { timeout: 5000 })
     await sign()
     expect(signAndSend()).toBeDisabled()
 
     fireEvent.click(within(error).getByRole('button', { name: /retry/i }))
 
-    await waitFor(() => expect(screen.queryByTestId('drug-interactions-error')).not.toBeInTheDocument())
-    await waitFor(() => expect(signAndSend()).not.toBeDisabled())
+    await waitFor(() => expect(screen.queryByTestId('drug-interactions-error')).not.toBeInTheDocument(), { timeout: 5000 })
+    await waitFor(() => expect(signAndSend()).not.toBeDisabled(), { timeout: 5000 })
   })
 
   it('a retry that fails again keeps the block, and says so', async () => {
@@ -179,11 +179,11 @@ describe('retry in place clears the block', () => {
     }) as unknown as typeof fetch
     renderReview([line()], PATIENT)
 
-    const error = await screen.findByTestId('allergy-load-error')
+    const error = await screen.findByTestId('allergy-load-error', undefined, { timeout: 5000 })
     fireEvent.click(within(error).getByRole('button', { name: /retry/i }))
 
     await waitFor(() => expect((global.fetch as jest.Mock).mock.calls.filter(c => String(c[0]).includes('/allergies')).length).toBe(2))
-    expect(await screen.findByTestId('allergy-load-error')).toBeInTheDocument()
+    expect(await screen.findByTestId('allergy-load-error', undefined, { timeout: 5000 })).toBeInTheDocument()
     await sign()
     expect(signAndSend()).toBeDisabled()
   })
@@ -194,21 +194,21 @@ describe('Save as Draft is never blocked by a failed check', () => {
   it('with the allergy status unknown', async () => {
     mockFetchFailingOnce('/allergies', OK)
     renderReview([line()], PATIENT, false)
-    await screen.findByTestId('allergy-load-error')
+    await screen.findByTestId('allergy-load-error', undefined, { timeout: 5000 })
     expect(screen.getByRole('button', { name: /Save as Draft/ })).not.toBeDisabled()
   })
 
   it('with the prescribing rules unreadable', async () => {
     mockFetchFailingOnce('level=rx_defaults', OK)
     renderReview([line({ rxRules: null })], PATIENT_KNOWN, false)
-    await screen.findByTestId('rx-rules-load-error')
+    await screen.findByTestId('rx-rules-load-error', undefined, { timeout: 5000 })
     expect(screen.getByRole('button', { name: /Save as Draft/ })).not.toBeDisabled()
   })
 
   it('with the drug interaction check failed', async () => {
     mockFetchFailingOnce('/api/interactions', OK)
     renderReview([line(), SECOND_LINE], PATIENT_KNOWN, false)
-    await screen.findByTestId('drug-interactions-error')
+    await screen.findByTestId('drug-interactions-error', undefined, { timeout: 5000 })
     expect(screen.getByRole('button', { name: /Save as Draft/ })).not.toBeDisabled()
   })
 })

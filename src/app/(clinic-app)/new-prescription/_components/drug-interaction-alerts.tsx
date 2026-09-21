@@ -65,7 +65,7 @@ const SEVERITY_STYLES = {
 }
 
 export function DrugInteractionAlerts({ medicationNames, onCheckUnavailable }: DrugInteractionAlertsProps) {
-  const { data: allInteractions = [], isError } = useQuery({
+  const { data: allInteractions = [], isError, isFetching, refetch } = useQuery({
     queryKey: ['drug-interactions'],
     queryFn: fetchAllInteractions,
   })
@@ -86,8 +86,19 @@ export function DrugInteractionAlerts({ medicationNames, onCheckUnavailable }: D
         <p className="font-semibold">Drug interaction check could not run.</p>
         <p className="mt-0.5 text-xs">
           This is an error, not a clear result — these medications have not been checked against each other.
-          Reload before sending.
+          You can still save a draft.
         </p>
+        {/* Re-runs this one check in place. The query stays in its error
+            state while the retry is in flight, so the send block holds
+            until a check actually succeeds. */}
+        <button
+          type="button"
+          onClick={() => { void refetch() }}
+          disabled={isFetching}
+          className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-transparent dark:text-red-200"
+        >
+          {isFetching ? 'Retrying…' : 'Retry'}
+        </button>
       </div>
     )
   }
