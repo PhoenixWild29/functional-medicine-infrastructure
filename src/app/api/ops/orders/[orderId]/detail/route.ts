@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { isRefundEventRow } from '@/lib/refunds/events'
 
 interface Params { params: Promise<{ orderId: string }> }
 
@@ -132,7 +133,9 @@ export async function GET(_request: NextRequest, { params }: Params): Promise<Ne
       medicationName:        medSnap?.medication_name ?? null,
       opsAssignee:           (o['ops_assignee'] as string | null) ?? null,
     },
-    history:     (historyResult.data ?? []).map(h => ({
+    // Refund bookkeeping rows are filtered by event name only (ops see
+    // them on the pipeline panels); the draft-edit audit rows stay.
+    history:     (historyResult.data ?? []).filter(h => !isRefundEventRow(h.metadata)).map(h => ({
       historyId:  h.history_id,
       oldStatus:  h.old_status,
       newStatus:  h.new_status,

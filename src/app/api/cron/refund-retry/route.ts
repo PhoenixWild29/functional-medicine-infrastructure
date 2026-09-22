@@ -22,7 +22,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createStripeClient } from '@/lib/stripe/client'
 import { casTransition } from '@/lib/orders/cas-transition'
-import { issueRefund, pendingRefund, REFUND_RETRY_WINDOW_MS, type RefundableOrder } from '@/lib/refunds/refund'
+import {
+  issueRefund, retrieveRefund, recordPendingRefund, pendingRefund,
+  REFUND_RETRY_WINDOW_MS, type RefundableOrder,
+} from '@/lib/refunds/refund'
 
 const MAX_BATCH = 100
 
@@ -57,7 +60,44 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       leftForOps++
       continue
     }
-    if (!decided.pendingSince || Date.now() - Date.parse(decided.pendingSince) > REFUND_RETRY_WINDOW_MS) {
+    const outsideWindow = !decided.pendingSince || Date.now() - Date.parse(decided.pendingSince) > REFUND_RETRY_WINDOW_MS
+
+    // A refund Stripe reported as pending: ask about THAT refund, by id.
+    // Creating again would only replay the old response under the same
+    // key, and could refund twice under a new one. Retrieving is safe at
+    // any age, so a pending refund that resolves late still completes.
+    if (decided.refundId) {
+      const known = await retrieveRefund(stripe, decided.refundId)
+      if (known.ok && known.status === 'succeeded') {
+        const done = await casTransition({
+          orderId:        order.order_id,
+          expectedStatus: 'REFUND_PENDING',
+          newStatus:      'REFUNDED',
+          actor:          'cron:refund-retry',
+          metadata:       { refund_id: known.refundId },
+        })
+        if (done.wasAlreadyTransitioned) {
+          console.error(`[refund-retry] refund ${known.refundId} succeeded but the order had already left REFUND_PENDING | order=${order.order_id}`)
+        } else {
+          refunded++
+        }
+        continue
+      }
+      if (!known.ok) {
+        console.error(`[refund-retry] recorded refund ${decided.refundId} could not be retrieved | order=${order.order_id}: ${known.error}`)
+      }
+      // Still pending, or unreadable, or failed at Stripe: unresolved.
+      // Stuck only once it is past the window; until then, wait.
+      if (outsideWindow) {
+        console.info(`[refund-retry] refund ${decided.refundId} still unresolved after the window; left for ops | order=${order.order_id}`)
+        leftForOps++
+      } else {
+        stillPending++
+      }
+      continue
+    }
+
+    if (outsideWindow) {
       console.info(`[refund-retry] outside the idempotency window; left for ops | order=${order.order_id}`)
       leftForOps++
       continue
@@ -75,6 +115,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       continue
     }
     if (result.status !== 'succeeded') {
+      // Record which refund Stripe is processing, so the next run asks
+      // about it by id instead of creating another.
+      await recordPendingRefund(supabase, order.order_id, result.refundId, 'cron:refund-retry')
       stillPending++
       continue
     }

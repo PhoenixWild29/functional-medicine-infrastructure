@@ -21,8 +21,8 @@
 import { createServiceClient } from '@/lib/supabase/service'
 import type { OrderStatusEnum, IntegrationTierEnum } from '@/types/database.types'
 import { PipelineView } from './_components/pipeline-view'
-import { StuckRefundsPanel } from './_components/stuck-refunds-panel'
-import { listStuckRefunds } from '@/lib/refunds/stuck'
+import { StuckRefundsPanel, LatePaymentsPanel } from './_components/stuck-refunds-panel'
+import { listStuckRefunds, listLatePayments } from '@/lib/refunds/stuck'
 import { slaSortComparator } from '@/lib/ops/sla-sort'
 import type { PipelineOrder, FilterOption } from '@/types/pipeline'
 
@@ -137,11 +137,15 @@ export default async function PipelinePage() {
   // Batch 2B: refunds automation has stopped retrying (past Stripe's
   // idempotency window, or with no readable pending time). A failed read
   // renders as an error, never as "no stuck refunds".
-  const stuckRefunds = await listStuckRefunds(supabase)
+  const [stuckRefunds, latePayments] = await Promise.all([
+    listStuckRefunds(supabase),
+    listLatePayments(supabase),
+  ])
 
   return (
     <div className="space-y-3">
       <StuckRefundsPanel result={stuckRefunds} />
+      <LatePaymentsPanel result={latePayments} />
       <PipelineView
         initialOrders={orders}
         clinicOptions={clinics}

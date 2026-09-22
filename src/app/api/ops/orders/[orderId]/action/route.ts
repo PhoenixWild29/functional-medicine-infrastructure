@@ -23,7 +23,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition }       from '@/lib/orders/cas-transition'
 import { insertStatusHistory } from '@/lib/orders/status-history'
 import { createStripeClient }  from '@/lib/stripe/client'
-import { decideRefund, pendingRefund, issueRefund, refundMetadata } from '@/lib/refunds/refund'
+import { decideRefund, pendingRefund, issueRefund, refundMetadata, recordPendingRefund } from '@/lib/refunds/refund'
 import type { OrderStatusEnum } from '@/types/database.types'
 
 interface Params { params: Promise<{ orderId: string }> }
@@ -249,8 +249,9 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
       console.info(`[ops/action] refund ${refund.refundId} (${refund.status}) | order=${orderId} | pi=${target.paymentIntentId}`)
 
       if (refund.status !== 'succeeded') {
-        // Stripe is still processing it: stays pending, the retry cron
-        // asks again with the same key.
+        // Stripe is still processing it: stays pending. Record which
+        // refund it is, so the retry cron asks about THAT refund by id.
+        await recordPendingRefund(supabase, orderId, refund.refundId, actor)
         return NextResponse.json({ ok: true, status: 'REFUND_PENDING', refundId: refund.refundId, refundStatus: refund.status })
       }
 

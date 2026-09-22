@@ -45,6 +45,8 @@ export async function listStuckRefunds(supabase: Supabase, nowMs: number = Date.
       .select('created_at')
       .eq('order_id', o.order_id)
       .eq('new_status', 'REFUND_PENDING')
+      // The transition, not a recorded-pending-refund event row.
+      .neq('old_status', 'REFUND_PENDING')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -59,4 +61,57 @@ export async function listStuckRefunds(supabase: Supabase, nowMs: number = Date.
     }
   }
   return { ok: true, rows }
+}
+
+// ── Late payments on expired bundles ─────────────────────────
+//
+// The Stripe webhook refunds a payment that arrives after every member of
+// a bundle has expired, and records why on each member's status history
+// (event rows, metadata.event = 'late_payment_refunded'). Ops see them
+// here — refunded, or refund FAILED and still owed — once per group.
+
+export interface LatePayment {
+  groupId:       string
+  paymentIntent: string | null
+  refundId:      string | null
+  refundOk:      boolean
+  error:         string | null
+  at:            string
+}
+
+export type LatePaymentsResult =
+  | { ok: true; rows: LatePayment[] }
+  | { ok: false; error: string }
+
+const LATE_PAYMENT_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000
+
+export async function listLatePayments(supabase: Supabase, nowMs: number = Date.now()): Promise<LatePaymentsResult> {
+  const { data, error } = await supabase
+    .from('order_status_history')
+    .select('order_id, created_at, metadata')
+    .contains('metadata', { event: 'late_payment_refunded' })
+    .gte('created_at', new Date(nowMs - LATE_PAYMENT_LOOKBACK_MS).toISOString())
+    .order('created_at', { ascending: false })
+    .limit(200)
+  if (error) {
+    console.error('[stuck-refunds] late payments could not be read:', error.message)
+    return { ok: false, error: error.message }
+  }
+
+  // Newest first, so the first row seen per group is its latest outcome.
+  const byGroup = new Map<string, LatePayment>()
+  for (const row of (data ?? []) as { created_at: string; metadata: Record<string, unknown> | null }[]) {
+    const m = row.metadata ?? {}
+    const groupId = typeof m['payment_group_id'] === 'string' ? m['payment_group_id'] : null
+    if (!groupId || byGroup.has(groupId)) continue
+    byGroup.set(groupId, {
+      groupId,
+      paymentIntent: typeof m['payment_intent'] === 'string' ? m['payment_intent'] : null,
+      refundId:      typeof m['refund_id'] === 'string' ? m['refund_id'] : null,
+      refundOk:      m['refund_ok'] === true,
+      error:         typeof m['error'] === 'string' ? m['error'] : null,
+      at:            row.created_at,
+    })
+  }
+  return { ok: true, rows: [...byGroup.values()] }
 }

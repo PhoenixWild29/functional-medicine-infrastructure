@@ -7,7 +7,7 @@
 // person to check the PaymentIntent in Stripe. Server-rendered; no
 // client state.
 
-import type { StuckRefundsResult } from '@/lib/refunds/stuck'
+import type { StuckRefundsResult, LatePaymentsResult } from '@/lib/refunds/stuck'
 
 function formatSince(iso: string | null): string {
   if (!iso) return 'pending since: unknown'
@@ -49,6 +49,40 @@ export function StuckRefundsPanel({ result }: { result: StuckRefundsResult }) {
           </ul>
         </>
       )}
+    </section>
+  )
+}
+
+/**
+ * Late payments on expired bundles: refunded by the webhook, never marked
+ * PAID. A failed refund is still owed — Stripe redelivers the event and
+ * the refund is retried — and is flagged here until it succeeds.
+ */
+export function LatePaymentsPanel({ result }: { result: LatePaymentsResult }) {
+  if (!result.ok) {
+    return (
+      <div role="alert" data-testid="late-payments-error" className="rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+        Late payments could not be loaded: {result.error}. This is an error, not an empty list.
+      </div>
+    )
+  }
+  if (result.rows.length === 0) return null
+
+  return (
+    <section data-testid="late-payments" className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+      <p className="font-semibold">
+        {result.rows.length} late payment{result.rows.length !== 1 ? 's' : ''} on expired bundles — refunded, not fulfilled.
+      </p>
+      <ul className="mt-1 space-y-0.5">
+        {result.rows.map(r => (
+          <li key={r.groupId} data-testid={`late-payment-${r.groupId}`} className="font-mono text-xs">
+            {r.groupId} — {r.paymentIntent ?? 'unknown PaymentIntent'} —{' '}
+            {r.refundOk
+              ? `refunded (${r.refundId ?? 'refund id unknown'})`
+              : `refund FAILED, still owed: ${r.error ?? 'unknown error'}`}
+          </li>
+        ))}
+      </ul>
     </section>
   )
 }

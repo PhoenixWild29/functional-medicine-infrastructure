@@ -57,6 +57,7 @@ jest.mock('@/lib/supabase/service', () => ({
       }
       if (table === 'order_status_history') {
         return {
+          insert: async () => ({ error: null }),
           select: () => chain(f => historyError
             ? { data: null, error: { message: 'connection reset' } }
             : { data: pendingSince[f['order_id'] as string] ? { created_at: pendingSince[f['order_id'] as string] } : null, error: null }),
@@ -95,7 +96,8 @@ describe('refund retry', () => {
     await run()
 
     expect(refundsCreateMock).toHaveBeenCalledWith(
-      { payment_intent: 'pi_1' },
+      // CHANGED (batch-2 follow-up, decision 1): the Connect flags.
+      { payment_intent: 'pi_1', reverse_transfer: true, refund_application_fee: true },
       expect.objectContaining({ idempotencyKey: expect.stringContaining('o-1') }),
     )
     expect(casTransitionMock).toHaveBeenCalledWith(expect.objectContaining({

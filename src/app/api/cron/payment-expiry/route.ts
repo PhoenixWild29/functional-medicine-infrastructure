@@ -85,6 +85,34 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const errors: string[] = []
   const stripe = createStripeClient()
 
+  // A bundle's PaymentIntent is shared by its members: cancel it once per
+  // group per run, and remember the outcome for the other members.
+  const groupCancelled = new Map<string, boolean>()
+
+  /**
+   * Cancel a PaymentIntent. True when it is cancelled (or already was);
+   * false when it could not be — including when it was just paid, which
+   * Stripe refuses to cancel. A false means: do not expire.
+   */
+  async function cancelPaymentIntent(pi: string, orderId: string): Promise<boolean> {
+    try {
+      await stripe.paymentIntents.cancel(pi)
+      console.info(`[payment-expiry] PI cancelled | pi=${pi} | order=${orderId}`)
+      return true
+    } catch (stripeErr) {
+      const errObj = stripeErr as { code?: string; message?: string }
+      // unexpected_state: the PI is no longer cancellable. Already
+      // cancelled is fine to expire; anything else (paid) is not.
+      if (errObj.code === 'payment_intent_unexpected_state') {
+        try {
+          if ((await stripe.paymentIntents.retrieve(pi)).status === 'canceled') return true
+        } catch { /* cannot confirm: treated as not cancelled */ }
+      }
+      console.error(`[payment-expiry] skipped: PaymentIntent could not be cancelled, so the order is not expired | order=${orderId} pi=${pi}: ${errObj.message ?? String(stripeErr)}`)
+      return false
+    }
+  }
+
   for (const order of orders) {
     const { order_id: orderId, stripe_payment_intent_id: piId, payment_group_id: groupId } = order
 
@@ -98,6 +126,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       // it cannot be confirmed, the order is skipped, logged, and left
       // for the next run: expiring a paid order is the worse mistake.
       let piToCheck: string | null = piId
+      let groupPiToCancel: string | null = null
 
       if (groupId) {
         const { data: group, error: groupError } = await supabase
@@ -110,12 +139,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           skippedCount++
           continue
         }
-        if (group && group.status !== 'AWAITING_PAYMENT') {
+        // EXPIRED: this cron already cancelled the group's payment (an
+        // earlier member, this run or a previous one). Nothing can be paid
+        // any more, so the member may expire.
+        const groupExpired = group?.status === 'EXPIRED'
+        if (group && !groupExpired && group.status !== 'AWAITING_PAYMENT') {
           console.error(`[payment-expiry] skipped: payment group is ${group.status}, not unpaid; the order's own webhook likely failed | order=${orderId} group=${groupId}`)
           skippedCount++
           continue
         }
-        piToCheck = piId ?? group?.stripe_payment_intent_id ?? null
+        piToCheck = groupExpired ? piId : (piId ?? group?.stripe_payment_intent_id ?? null)
+        groupPiToCancel = groupExpired ? null : (group?.stripe_payment_intent_id ?? null)
       }
 
       if (piToCheck) {
@@ -134,30 +168,41 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         }
       }
 
-      // Cancel this order's own PaymentIntent BEFORE expiring the order,
-      // so a payment that lands between the check above and now makes
-      // the cancel fail and the order is left alone. A group's PI is
-      // shared by its members and is not cancelled here.
-      if (piId) {
-        try {
-          await stripe.paymentIntents.cancel(piId)
-          console.info(`[payment-expiry] PI cancelled | pi=${piId} | order=${orderId}`)
-        } catch (stripeErr) {
-          const errObj = stripeErr as { code?: string; message?: string }
-          // unexpected_state: the PI is no longer cancellable. Already
-          // cancelled is fine to expire; anything else (paid) is not.
-          let alreadyCancelled = false
-          if (errObj.code === 'payment_intent_unexpected_state') {
-            try {
-              alreadyCancelled = (await stripe.paymentIntents.retrieve(piId)).status === 'canceled'
-            } catch { /* cannot confirm: treated as not cancelled */ }
-          }
-          if (!alreadyCancelled) {
-            console.error(`[payment-expiry] skipped: PaymentIntent could not be cancelled, so the order is not expired | order=${orderId} pi=${piId}: ${errObj.message ?? String(stripeErr)}`)
-            skippedCount++
-            continue
+      // Cancel the payment BEFORE expiring anything, so a payment that
+      // lands between the check above and now makes the cancel fail and
+      // the order is left alone.
+      //
+      // Batch 2 follow-up: a bundle's shared PaymentIntent is cancelled
+      // too — once per group — and the group marked EXPIRED. Left open,
+      // an expired bundle could still be paid, and the payment used to be
+      // marked PAID against orders that will never be filled.
+      if (groupId && groupPiToCancel) {
+        let cancelled = groupCancelled.get(groupId)
+        if (cancelled === undefined) {
+          cancelled = await cancelPaymentIntent(groupPiToCancel, orderId)
+          groupCancelled.set(groupId, cancelled)
+          if (cancelled) {
+            const { error: groupExpireError } = await supabase
+              .from('payment_groups')
+              .update({ status: 'EXPIRED', updated_at: new Date().toISOString() })
+              .eq('group_id', groupId)
+              .eq('status', 'AWAITING_PAYMENT')
+            if (groupExpireError) {
+              // The payment is cancelled, so nothing can be paid; the
+              // status is bookkeeping. Say so rather than stay quiet.
+              console.error(`[payment-expiry] group payment cancelled but the group could not be marked EXPIRED | group=${groupId}: ${groupExpireError.message}`)
+            }
           }
         }
+        if (!cancelled) {
+          skippedCount++
+          continue
+        }
+      }
+
+      if (piId && !(await cancelPaymentIntent(piId, orderId))) {
+        skippedCount++
+        continue
       }
 
       // Step 2: REQ-PRX-004 CAS — only transition if still AWAITING_PAYMENT
