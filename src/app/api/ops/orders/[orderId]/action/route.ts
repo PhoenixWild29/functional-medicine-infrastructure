@@ -23,6 +23,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition }       from '@/lib/orders/cas-transition'
 import { insertStatusHistory } from '@/lib/orders/status-history'
 import { createStripeClient }  from '@/lib/stripe/client'
+import { decideRefund, pendingRefund, issueRefund, refundMetadata } from '@/lib/refunds/refund'
 import type { OrderStatusEnum } from '@/types/database.types'
 
 interface Params { params: Promise<{ orderId: string }> }
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
   // ── Fetch order for CAS predicates ──────────────────────────
   const { data: order, error: fetchError } = await supabase
     .from('orders')
-    .select('order_id, status, stripe_payment_intent_id, reroute_count, pharmacy_id, ops_assignee')
+    .select('order_id, status, stripe_payment_intent_id, payment_group_id, retail_price_snapshot, reroute_count, pharmacy_id, ops_assignee')
     .eq('order_id', orderId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -161,47 +162,112 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
         )
       }
 
-      const piId = order.stripe_payment_intent_id
-      const hasPayment = !!piId && ['PAID_PROCESSING', 'SUBMISSION_PENDING', 'SUBMISSION_FAILED',
-        'FAX_QUEUED', 'FAX_DELIVERED', 'FAX_FAILED', 'PHARMACY_ACKNOWLEDGED', 'PHARMACY_COMPOUNDING',
-        'PHARMACY_PROCESSING', 'PHARMACY_REJECTED', 'REROUTE_PENDING', 'READY_TO_SHIP',
-        'ERROR_COMPLIANCE_HOLD', 'REFUND_PENDING',
-      ].includes(currentStatus)
+      // Batch 2B: what is this order owed? Decided once, here, and
+      // recorded on the REFUND_PENDING transition so a retry refunds the
+      // same amount (lib/refunds). A bundle member's PaymentIntent is on
+      // its payment group; the old check looked only at the order and
+      // hard-cancelled paid bundle members with no refund at all.
+      const refundable = {
+        order_id:                 order.order_id,
+        status:                   currentStatus,
+        stripe_payment_intent_id: order.stripe_payment_intent_id,
+        payment_group_id:         order.payment_group_id,
+        retail_price_snapshot:    order.retail_price_snapshot,
+      }
 
-      if (hasPayment && piId) {
-        // Transition to REFUND_PENDING; Stripe refund triggered by webhook or manual
-        const casResult = await casTransition({
-          orderId,
-          expectedStatus: currentStatus,
-          newStatus:      'REFUND_PENDING',
-          actor,
-          metadata:       { reason: 'ops_cancel_refund', pi_id: piId },
-        })
-        // BLK-04: Only initiate Stripe refund if this CAS actually transitioned the order.
-        // If wasAlreadyTransitioned, the refund was already initiated by a prior request.
-        if (!casResult.wasAlreadyTransitioned) {
-          try {
-            const stripe = createStripeClient()
-            await stripe.refunds.create({ payment_intent: piId })
-            console.info(`[ops/action] refund initiated | order=${orderId} | pi=${piId}`)
-          } catch (stripeErr) {
-            // Non-fatal: log and continue — REFUND_PENDING status will trigger follow-up
-            console.error(`[ops/action] Stripe refund failed (non-fatal) | order=${orderId}:`,
-              stripeErr instanceof Error ? stripeErr.message : stripeErr)
-          }
+      // Already pending (a retry from the UI): reuse what was decided.
+      const decided = currentStatus === 'REFUND_PENDING'
+        ? await pendingRefund(supabase, refundable)
+        : await decideRefund(supabase, refundable)
+      if (!decided.ok) {
+        console.error(`[ops/action] cancel_refund: cannot establish what is owed | order=${orderId}: ${decided.error}`)
+        return NextResponse.json(
+          { ok: false, error: `Nothing was cancelled or refunded: ${decided.error}. Try again.` },
+          { status: 503 },
+        )
+      }
+
+      if (!decided.target) {
+        if (currentStatus === 'REFUND_PENDING') {
+          return NextResponse.json(
+            { ok: false, error: 'This refund has no recorded amount, so it cannot be retried safely. Resolve it in Stripe.' },
+            { status: 409 },
+          )
         }
-        return NextResponse.json({ ok: true, status: 'REFUND_PENDING' })
-      } else {
         // No payment collected — hard cancel
-        await casTransition({
+        const cancelled = await casTransition({
           orderId,
           expectedStatus: currentStatus,
           newStatus:      'CANCELLED',
           actor,
           metadata:       { reason: 'ops_cancel_no_payment' },
         })
+        if (cancelled.wasAlreadyTransitioned) {
+          return NextResponse.json(
+            { ok: false, error: `The order's status changed before it could be cancelled (was ${currentStatus}). Nothing was changed — refresh and check it.` },
+            { status: 409 },
+          )
+        }
         return NextResponse.json({ ok: true, status: 'CANCELLED' })
       }
+
+      const target = decided.target
+      if (currentStatus !== 'REFUND_PENDING') {
+        const pendingCas = await casTransition({
+          orderId,
+          expectedStatus: currentStatus,
+          newStatus:      'REFUND_PENDING',
+          actor,
+          metadata:       { reason: 'ops_cancel_refund', pi_id: target.paymentIntentId, ...refundMetadata(target) },
+        })
+        // BLK-04 kept: only the request that made the transition refunds.
+        // But a no-op is reported, never answered as success.
+        if (pendingCas.wasAlreadyTransitioned) {
+          return NextResponse.json(
+            { ok: false, error: `The order's status changed before the cancel applied (was ${currentStatus}). Nothing was refunded — refresh and check it.` },
+            { status: 409 },
+          )
+        }
+      }
+
+      // A refund that fails is a failure. It used to be logged as
+      // "non-fatal" and answered { ok: true }: ops were told a refund had
+      // been initiated when none had. The order stays REFUND_PENDING, so
+      // the refund-retry cron picks it up.
+      const refund = await issueRefund(createStripeClient(), orderId, target)
+      if (!refund.ok) {
+        console.error(`[ops/action] refund failed | order=${orderId}: ${refund.error}`)
+        return NextResponse.json(
+          {
+            ok: false,
+            status: 'REFUND_PENDING',
+            error: `Refund failed: ${refund.error}. The order is REFUND_PENDING and will be retried automatically; if it keeps failing it appears under Stuck refunds.`,
+          },
+          { status: 502 },
+        )
+      }
+      console.info(`[ops/action] refund ${refund.refundId} (${refund.status}) | order=${orderId} | pi=${target.paymentIntentId}`)
+
+      if (refund.status !== 'succeeded') {
+        // Stripe is still processing it: stays pending, the retry cron
+        // asks again with the same key.
+        return NextResponse.json({ ok: true, status: 'REFUND_PENDING', refundId: refund.refundId, refundStatus: refund.status })
+      }
+
+      const refundedCas = await casTransition({
+        orderId,
+        expectedStatus: 'REFUND_PENDING',
+        newStatus:      'REFUNDED',
+        actor,
+        metadata:       { refund_id: refund.refundId },
+      })
+      if (refundedCas.wasAlreadyTransitioned) {
+        return NextResponse.json(
+          { ok: false, refundId: refund.refundId, error: `Refund ${refund.refundId} was issued, but the order left REFUND_PENDING before it could be marked REFUNDED. Check the order.` },
+          { status: 409 },
+        )
+      }
+      return NextResponse.json({ ok: true, status: 'REFUNDED', refundId: refund.refundId })
     }
 
     // ── AC-OPV-004.1: Retry Submission (SUBMISSION_FAILED → SUBMISSION_PENDING) ─
