@@ -49,7 +49,8 @@ jest.mock('otplib', () => ({
   TOTP: class { check() { return true } },
   generateSecret: () => 'NEWSECRET',
   generateURI: () => 'otpauth://totp/CompoundIQ:Sarah%20Chen?secret=NEWSECRET',
-  verifySync: () => true,
+  // otplib 13's contract: an object, never a boolean.
+  verifySync: () => ({ valid: true, delta: 0, epoch: 0, timeStep: 0 }),
 }))
 jest.mock('qrcode', () => ({ toDataURL: async () => 'data:image/png;base64,AAA' }))
 
