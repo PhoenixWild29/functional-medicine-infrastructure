@@ -19,6 +19,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { isRefundEventRow } from '@/lib/refunds/events'
 import { createBrowserClient } from '@/lib/supabase/client'
 import type { DashboardOrder } from '../page'
 import { getStatusConfig } from '@/lib/orders/status-config'
@@ -187,7 +188,11 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
       .eq('order_id', order.orderId)
       .order('created_at', { ascending: true })
       .then(({ data }) => {
-        const rows = (data ?? []) as StatusHistoryRow[]
+        // Refund bookkeeping rows (a refund Stripe is still processing, a
+        // late payment refunded) record facts, not steps in the order's
+        // timeline. Filtered by their event name only: other same-status
+        // rows — the draft-edit audit (DRAFT → DRAFT) — ARE timeline steps.
+        const rows = ((data ?? []) as StatusHistoryRow[]).filter(r => !isRefundEventRow(r.metadata))
         setHistory(rows)
         setIsLoadingHistory(false)
         setActors({})

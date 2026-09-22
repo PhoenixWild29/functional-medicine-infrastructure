@@ -19,7 +19,7 @@ function supabaseWith(orders: unknown, history: Record<string, string>, fail: 'o
   const chain = (answer: (f: Record<string, unknown>) => unknown) => {
     const filters: Record<string, unknown> = {}
     const c: Record<string, unknown> = {}
-    for (const k of ['select', 'is', 'in', 'order', 'limit']) c[k] = () => c
+    for (const k of ['select', 'is', 'in', 'order', 'limit', 'neq']) c[k] = () => c
     c['eq'] = (col: string, val: unknown) => { filters[col] = val; return c }
     c['maybeSingle'] = async () => answer(filters)
     c['then'] = (resolve: (r: unknown) => unknown) => Promise.resolve(answer(filters)).then(resolve)

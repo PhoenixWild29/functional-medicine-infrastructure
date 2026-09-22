@@ -336,6 +336,8 @@ async function handleGroupPaymentSucceeded(
     supabase:      createServiceClient(),
     casTransition,
     branchByTier,
+    // Batch 2 follow-up: to refund a late payment on an expired bundle.
+    stripe:        createStripeClient(),
   })
 }
 

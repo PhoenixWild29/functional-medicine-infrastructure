@@ -23,6 +23,7 @@
 import type Stripe from 'stripe'
 import type { createServiceClient } from '@/lib/supabase/service'
 import type { casTransition as CasFn } from '@/lib/orders/cas-transition'
+import { connectRefundParams } from '@/lib/refunds/refund'
 
 // Injectable dependency for tier-aware fulfillment branching. In
 // production the route module passes its own branchByTier; the test
@@ -33,6 +34,8 @@ interface Deps {
   supabase: ReturnType<typeof createServiceClient>
   casTransition: typeof CasFn
   branchByTier: BranchByTierFn
+  /** Needed only to refund a late payment on an expired bundle. */
+  stripe?: Stripe
 }
 
 export async function handleGroupPaymentSucceeded(
@@ -77,8 +80,9 @@ export async function handleGroupPaymentSucceeded(
   }
 
   // Idempotent: if the group has already been marked terminal,
-  // re-delivery is a no-op.
-  if (group.status !== 'AWAITING_PAYMENT') {
+  // re-delivery is a no-op. EXPIRED is the exception: a payment that
+  // lands on an expired bundle must be refunded, not ignored (below).
+  if (group.status !== 'AWAITING_PAYMENT' && group.status !== 'EXPIRED') {
     console.info(`[stripe-webhook] group ${groupId} already terminal (status=${group.status}) — no-op`)
     return
   }
@@ -92,6 +96,22 @@ export async function handleGroupPaymentSucceeded(
   if (orderErr) {
     console.error(`[stripe-webhook] failed to load group members | group=${groupId}`, orderErr.message)
     throw new Error(`group ${groupId} members could not be loaded: ${orderErr.message}`)
+  }
+
+  // ── A late payment on an expired bundle ─────────────────────
+  //
+  // Every member has expired (or payment expiry already marked the group
+  // EXPIRED), yet the patient paid. Marking the group PAID would take
+  // their money against orders that will never be filled. Refund it in
+  // full, unwinding the Connect charge, record why on every member, and
+  // mark the group EXPIRED. A refund that fails is recorded and thrown:
+  // Stripe redelivers, the same idempotency key retries the same refund,
+  // and the ops pipeline flags it as still owed until it succeeds.
+  const everyMemberExpired = (memberOrders?.length ?? 0) > 0
+    && memberOrders!.every(o => o.status === 'PAYMENT_EXPIRED')
+  if (group.status === 'EXPIRED' || everyMemberExpired) {
+    await refundLatePayment(supabase, deps.stripe, groupId, paymentIntent, memberOrders ?? [])
+    return
   }
 
   if (!memberOrders || memberOrders.length === 0) {
@@ -180,4 +200,67 @@ export async function handleGroupPaymentSucceeded(
     )
     throw new Error(`group ${groupId} payment_intent.succeeded: ${casFailures} per-order CAS failure(s)`)
   }
+}
+
+async function refundLatePayment(
+  supabase: Deps['supabase'],
+  stripe: Stripe | undefined,
+  groupId: string,
+  paymentIntent: Stripe.PaymentIntent,
+  members: ReadonlyArray<{ order_id: string; status: string }>,
+): Promise<void> {
+  console.error(`[stripe-webhook] late payment on expired bundle — refunding, not marking PAID | group=${groupId} pi=${paymentIntent.id}`)
+  if (!stripe) {
+    throw new Error(`late payment on expired group ${groupId}: no Stripe client to refund it`)
+  }
+
+  let refund: { id: string; status: string | null } | null = null
+  let refundError: string | null = null
+  try {
+    refund = await stripe.refunds.create(
+      connectRefundParams(paymentIntent.id, null),
+      { idempotencyKey: `late-payment:${groupId}:${paymentIntent.id}` },
+    )
+  } catch (err) {
+    refundError = err instanceof Error ? err.message : String(err)
+  }
+
+  // Why, on every member — the ops pipeline lists these (lib/refunds/stuck).
+  // Append-only event rows: the order's status does not change.
+  const rows = members.map(m => ({
+    order_id:   m.order_id,
+    old_status: m.status,
+    new_status: m.status,
+    changed_by: 'stripe_webhook_group',
+    metadata: {
+      event:            'late_payment_refunded',
+      reason:           'payment arrived after every member of the bundle had expired',
+      payment_group_id: groupId,
+      payment_intent:   paymentIntent.id,
+      refund_ok:        refund != null,
+      refund_id:        refund?.id ?? null,
+      refund_status:    refund?.status ?? null,
+      error:            refundError,
+    },
+  }))
+  if (rows.length > 0) {
+    const { error: recordError } = await supabase.from('order_status_history').insert(rows as never)
+    if (recordError) {
+      throw new Error(`late payment on expired group ${groupId}: could not record the refund: ${recordError.message}`)
+    }
+  }
+
+  if (!refund) {
+    throw new Error(`late payment on expired group ${groupId}: refund failed: ${refundError}`)
+  }
+
+  const { error: expireError } = await supabase
+    .from('payment_groups')
+    .update({ status: 'EXPIRED', updated_at: new Date().toISOString() })
+    .eq('group_id', groupId)
+    .eq('status', 'AWAITING_PAYMENT')
+  if (expireError) {
+    throw new Error(`late payment on expired group ${groupId}: refunded (${refund.id}) but the group could not be marked EXPIRED: ${expireError.message}`)
+  }
+  console.info(`[stripe-webhook] late payment refunded | group=${groupId} pi=${paymentIntent.id} refund=${refund.id} (${refund.status})`)
 }

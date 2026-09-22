@@ -110,11 +110,12 @@ describe('cancel + refund — a single order', () => {
     const res = await post('o-solo')
 
     expect(res.status).toBe(200)
-    // { payment_intent } — nothing invented. The idempotency key is a
-    // request option, not a refund parameter: it makes a retry of the
-    // same refund return the same refund instead of a second one.
+    // CHANGED (batch-2 follow-up, decision 1): every refund on a Connect
+    // destination charge also sends reverse_transfer and
+    // refund_application_fee. The idempotency key is a request option,
+    // not a refund parameter.
     expect(refundsCreateMock).toHaveBeenCalledWith(
-      { payment_intent: 'pi_solo' },
+      { payment_intent: 'pi_solo', reverse_transfer: true, refund_application_fee: true },
       expect.objectContaining({ idempotencyKey: expect.any(String) }),
     )
     expect(moves()).toEqual(['PAID_PROCESSING->REFUND_PENDING', 'REFUND_PENDING->REFUNDED'])
@@ -140,7 +141,7 @@ describe('cancel + refund — a paid bundle member', () => {
 
     expect(res.status).toBe(200)
     expect(refundsCreateMock).toHaveBeenCalledWith(
-      { payment_intent: 'pi_group', amount: 20000 },
+      { payment_intent: 'pi_group', amount: 20000, reverse_transfer: true, refund_application_fee: true },
       expect.objectContaining({ idempotencyKey: expect.any(String) }),
     )
   })
@@ -157,7 +158,7 @@ describe('cancel + refund — a paid bundle member', () => {
     expect(res.status).toBe(200)
     // $250 for the member + $50 shipping ($500 charged − $450 retail).
     expect(refundsCreateMock).toHaveBeenCalledWith(
-      { payment_intent: 'pi_group', amount: 30000 },
+      { payment_intent: 'pi_group', amount: 30000, reverse_transfer: true, refund_application_fee: true },
       expect.objectContaining({ idempotencyKey: expect.any(String) }),
     )
   })
@@ -173,7 +174,7 @@ describe('cancel + refund — a paid bundle member', () => {
     await post('o-b')
 
     expect(refundsCreateMock).toHaveBeenCalledWith(
-      { payment_intent: 'pi_group', amount: 25000 },
+      { payment_intent: 'pi_group', amount: 25000, reverse_transfer: true, refund_application_fee: true },
       expect.anything(),
     )
   })

@@ -17,6 +17,7 @@ import type { NextRequest } from 'next/server'
 import { GET } from '../route'
 
 let candidates: Record<string, unknown>[] = []
+let groupStatus = 'AWAITING_PAYMENT'
 const orderUpdateMock  = jest.fn()
 const groupUpdateMock  = jest.fn()
 const piRetrieveMock   = jest.fn()
@@ -57,7 +58,7 @@ jest.mock('@/lib/supabase/service', () => ({
       }
       if (table === 'payment_groups') {
         return {
-          select: () => listChain(() => ({ data: { status: 'AWAITING_PAYMENT', stripe_payment_intent_id: 'pi_group' }, error: null })),
+          select: () => listChain(() => ({ data: { status: groupStatus, stripe_payment_intent_id: 'pi_group' }, error: null })),
           update: (values: unknown) => ({ eq: () => ({ eq: async () => groupUpdateMock(values) }) }),
         }
       }
@@ -77,6 +78,7 @@ jest.spyOn(console, 'info').mockImplementation(() => {})
 
 beforeEach(() => {
   calls.length = 0
+  groupStatus = 'AWAITING_PAYMENT'
   candidates = [
     { order_id: 'o-a', stripe_payment_intent_id: null, payment_group_id: 'g-1' },
     { order_id: 'o-b', stripe_payment_intent_id: null, payment_group_id: 'g-1' },
@@ -108,5 +110,16 @@ describe('payment expiry — a bundle', () => {
     await run()
 
     expect(calls.filter(c => c.startsWith('expire:'))).toHaveLength(0)
+  })
+
+  it('a member of a group already EXPIRED (its payment cancelled earlier) still expires', async () => {
+    // Without this, marking the group EXPIRED would leave every other
+    // member skipped forever as "group not unpaid".
+    groupStatus = 'EXPIRED'
+    candidates = [{ order_id: 'o-b', stripe_payment_intent_id: null, payment_group_id: 'g-1' }]
+
+    await run()
+
+    expect(calls).toEqual(['expire:o-b'])
   })
 })
