@@ -80,6 +80,10 @@ export function RefillPicker({ patients, provider, preselectOrderId = null }: Pr
   )
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Batch 2C: the refill could not be priced or reached at all — a
+  // failure, not a refusal. Shown with a Retry; it stays up until a retry
+  // succeeds, and the refill never proceeds without a price.
+  const [loadFailed, setLoadFailed] = useState<string | null>(null)
 
   const active = patients.find(p => p.patient.patient_id === patientId) ?? null
 
@@ -124,9 +128,17 @@ export function RefillPicker({ patients, provider, preselectOrderId = null }: Pr
       })
       const json = await res.json() as { lines?: RefillLine[]; error?: string }
       if (!res.ok) {
-        setError(json.error ?? 'This prescription could not be refilled.')
+        if (res.status >= 500) {
+          setLoadFailed(json.error ?? 'This refill could not be prepared. Nothing was changed — try again.')
+        } else {
+          // A refusal on the merits (e.g. refills used up): retrying will
+          // not change the answer, so no Retry is offered.
+          setLoadFailed(null)
+          setError(json.error ?? 'This prescription could not be refilled.')
+        }
         return
       }
+      setLoadFailed(null)
 
       // One session, every line in it: that is what makes WO-102 charge
       // shipping once per pharmacy across the whole refill.
@@ -149,7 +161,7 @@ export function RefillPicker({ patients, provider, preselectOrderId = null }: Pr
       const moved = created.find(line => line.repriceRequired === true)
       router.push(moved ? repriceHref(moved) : '/new-prescription/review')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'This prescription could not be refilled.')
+      setLoadFailed(err instanceof Error ? err.message : 'This refill could not be prepared. Nothing was changed — try again.')
     } finally {
       setIsLoading(false)
     }
@@ -245,6 +257,20 @@ export function RefillPicker({ patients, provider, preselectOrderId = null }: Pr
             <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert" data-testid="refill-error">
               {error}
             </p>
+          )}
+          {loadFailed && (
+            <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert" data-testid="refill-load-failed">
+              <p>{loadFailed}</p>
+              <p className="mt-0.5">This is an error, not a refusal — nothing was refilled.</p>
+              <button
+                type="button"
+                onClick={() => { void startRefill() }}
+                disabled={isLoading}
+                className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-transparent dark:text-red-200"
+              >
+                {isLoading ? 'Retrying…' : 'Retry'}
+              </button>
+            </div>
           )}
 
           <button

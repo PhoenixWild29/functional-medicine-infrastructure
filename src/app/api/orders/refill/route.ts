@@ -146,11 +146,22 @@ export async function POST(request: NextRequest) {
   const pharmacyIds = rows.map(r => r.pharmacy_id).filter((id): id is string => !!id)
   const packagesByKey = new Map<string, PackageOption[]>()
   if (formulationIds.length > 0 && pharmacyIds.length > 0) {
-    const { data: pfRows } = await supabase
+    const { data: pfRows, error: pfError } = await supabase
       .from('pharmacy_formulations')
       .select('pharmacy_id, formulation_id, wholesale_price, pharmacy_formulation_packages(id, package_label, package_qty, package_unit, wholesale_price, is_default, active)')
       .in('formulation_id', formulationIds)
       .in('pharmacy_id', pharmacyIds)
+    // Batch 2C: this error used to be discarded. With no packages the line
+    // fell back to the source order's wholesale, repriceRequired came out
+    // false, and the refill skipped the WO-108 price interrupt exactly when
+    // we could not see the price. A read that failed has no answer.
+    if (pfError) {
+      console.error('[refill] package prices could not be read:', pfError.message)
+      return NextResponse.json(
+        { error: "Today's package prices could not be read, so this refill cannot be priced. Nothing was changed — try again." },
+        { status: 503 },
+      )
+    }
     for (const pf of (pfRows ?? []) as unknown as PharmacyFormulationRow[]) {
       packagesByKey.set(
         `${pf.pharmacy_id}:${pf.formulation_id}`,
