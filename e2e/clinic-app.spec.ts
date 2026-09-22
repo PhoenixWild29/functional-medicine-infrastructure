@@ -4,6 +4,7 @@ import { seedStaticData, cleanupTestOrders, cleanupTestFavorites, seedSecondProv
 import { packageId } from '../src/lib/catalog/packages'
 import { decryptSecret } from '../src/lib/epcs/crypto'
 import { DEMO_TOTP_SECRET } from '../src/lib/poc/totp-enrollment'
+import { totpCode, wrongTotpCode } from './fixtures/totp'
 
 // ============================================================
 // Clinic App E2E — cascading prescription builder (WO-80/82/83/85/86/87)
@@ -327,6 +328,27 @@ test.describe('Clinic App — Order Creation Flow', () => {
 
     const decrypted = decryptSecret(provider.totp_secret_encrypted!)
     expect(decrypted).toBe(DEMO_TOTP_SECRET)
+  })
+
+  test('EPCS: a wrong authenticator code is rejected and the current one is accepted (real otplib)', async ({ page }) => {
+    // otplib 13's verifySync returns { valid: false } for a wrong code — an
+    // object, and truthy. The route read it as a boolean, so every 6-digit
+    // code verified. This runs the real library in the real route: the code
+    // is computed here from the seeded secret by an independent RFC 6238
+    // implementation (e2e/fixtures/totp.ts), not by otplib.
+    await loginAs(page, TEST_USERS.provider)
+
+    const verify = (code: string) => page.request.post('/api/epcs?action=verify', {
+      data: { provider_id: TEST_IDS.provider, code },
+    })
+
+    const wrong = await verify(wrongTotpCode(DEMO_TOTP_SECRET))
+    const wrongBody = await wrong.json()
+    expect({ status: wrong.status(), verified: wrongBody.verified }).toEqual({ status: 401, verified: false })
+
+    const right = await verify(totpCode(DEMO_TOTP_SECRET))
+    const rightBody = await right.json()
+    expect({ status: right.status(), verified: rightBody.verified }).toEqual({ status: 200, verified: true })
   })
 })
 
