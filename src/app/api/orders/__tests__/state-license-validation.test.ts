@@ -264,3 +264,35 @@ describe('POST /api/orders — pharmacy state-licensure validation', () => {
     expect(res.status).toBe(500)
   })
 })
+
+// ── An inactive or deleted pharmacy ──────────────────────────
+//
+// The three E2E test pharmacies were soft-deleted on prod yet still offered
+// in the builder. However a stale session or a deep link reaches the order
+// API, it must refuse the pharmacy, and say why — not "not found".
+describe('POST /api/orders — a pharmacy that is no longer active', () => {
+  it.each([
+    ['soft-deleted', { is_active: true,  deleted_at: '2026-04-23T00:00:00Z' }],
+    ['deactivated',  { is_active: false, deleted_at: null }],
+  ])('refuses a %s pharmacy with 422 and a clear error, creating nothing', async (_label, state) => {
+    fixtures['pharmacies:maybeSingle'] = () => ({
+      data: {
+        pharmacy_id:      TEST_PHARMACY_ID,
+        name:             'Test Pharmacy Tier1',
+        integration_tier: 'TIER_1_API',
+        fax_number:       null,
+        ...state,
+      },
+      error: null,
+    })
+
+    const res = await POST(makeRequest(defaultBody()))
+    expect(res.status).toBe(422)
+    const body = await res.json()
+    expect(body).toMatchObject({
+      code:  'PHARMACY_INACTIVE',
+      error: 'Test Pharmacy Tier1 is no longer active. Choose another pharmacy for this prescription.',
+    })
+    expect(queryCalls.some(c => c.table === 'orders')).toBe(false)
+  })
+})
