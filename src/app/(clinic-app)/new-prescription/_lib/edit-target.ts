@@ -10,6 +10,12 @@
 //   ?addToOrder=<order id>      append a new DRAFT line next to that draft
 //
 // Absent → the normal "add a new line to the session" flow.
+//
+// WO-99 follow-up: a draft target may also carry
+//   &returnOrders=<id>,<id>…   the batch sign page's selection
+// so saving returns to that page with the same drafts selected — plus the
+// new line, when it was an Add. Without it, an added line came back
+// unchecked beside the double-shipping warning.
 
 import type { SessionPrescription } from '../_context/prescription-session'
 import type { BuilderInitialState } from '@/lib/orders/draft-edit'
@@ -17,8 +23,8 @@ import { splitDose } from '@/lib/orders/dose'
 
 export type EditTarget =
   | { kind: 'session';   lineId:  string }
-  | { kind: 'draft';     orderId: string }
-  | { kind: 'draft-add'; orderId: string }
+  | { kind: 'draft';     orderId: string; returnOrders?: string[] | undefined }
+  | { kind: 'draft-add'; orderId: string; returnOrders?: string[] | undefined }
 
 type ParamSource = { get(name: string): string | null } | Record<string, string | string[] | undefined>
 
@@ -30,13 +36,20 @@ function readParam(source: ParamSource, name: string): string {
   return (value ?? '').trim()
 }
 
+const ORDER_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function readReturnOrders(source: ParamSource): { returnOrders: string[] } | Record<string, never> {
+  const ids = readParam(source, 'returnOrders').split(',').map(s => s.trim()).filter(s => ORDER_ID_RE.test(s))
+  return ids.length > 0 ? { returnOrders: [...new Set(ids)] } : {}
+}
+
 export function editTargetFromParams(source: ParamSource): EditTarget | null {
   const editId = readParam(source, 'editId')
   if (editId) return { kind: 'session', lineId: editId }
   const editOrder = readParam(source, 'editOrder')
-  if (editOrder) return { kind: 'draft', orderId: editOrder }
+  if (editOrder) return { kind: 'draft', orderId: editOrder, ...readReturnOrders(source) }
   const addToOrder = readParam(source, 'addToOrder')
-  if (addToOrder) return { kind: 'draft-add', orderId: addToOrder }
+  if (addToOrder) return { kind: 'draft-add', orderId: addToOrder, ...readReturnOrders(source) }
   return null
 }
 
@@ -44,9 +57,13 @@ export function editTargetToParams(target: EditTarget | null | undefined): Recor
   if (!target) return {}
   switch (target.kind) {
     case 'session':   return { editId: target.lineId }
-    case 'draft':     return { editOrder: target.orderId }
-    case 'draft-add': return { addToOrder: target.orderId }
+    case 'draft':     return { editOrder: target.orderId, ...returnOrdersParam(target.returnOrders) }
+    case 'draft-add': return { addToOrder: target.orderId, ...returnOrdersParam(target.returnOrders) }
   }
+}
+
+function returnOrdersParam(ids: string[] | undefined): Record<string, string> {
+  return ids && ids.length > 0 ? { returnOrders: ids.join(',') } : {}
 }
 
 /** The search-page URL that reopens the builder for a target. */

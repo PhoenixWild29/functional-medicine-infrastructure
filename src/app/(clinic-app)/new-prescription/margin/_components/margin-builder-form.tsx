@@ -40,6 +40,7 @@
 // prescription to the same pharmacy adds nothing unless it upgrades the
 // shipment to cold chain.
 
+import { withOrderSelected } from '@/lib/orders/batch-sign-view'
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePrescriptionSession, type SessionPrescription } from '../../_context/prescription-session'
@@ -656,7 +657,13 @@ export function MarginBuilderForm({
           const err = await res.json().catch(() => ({}))
           throw new Error((err as { error?: string }).error ?? 'Failed to save the draft line')
         }
-        router.push(draftReturnTo ?? '/dashboard?draft=1')
+        // WO-99 follow-up: an added line comes back selected on the batch
+        // sign page, alongside the selection the provider left.
+        const created = editTarget.kind === 'draft-add'
+          ? (await res.json().catch(() => ({})) as { orderId?: string }).orderId
+          : undefined
+        const back = draftReturnTo ?? '/dashboard?draft=1'
+        router.push(created ? withOrderSelected(back, created) : back)
       } catch (err) {
         setLineError(err instanceof Error ? err.message : 'An unexpected error occurred')
         setIsSavingLine(false)

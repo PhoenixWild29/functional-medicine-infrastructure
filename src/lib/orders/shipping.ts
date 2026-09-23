@@ -129,23 +129,36 @@ export function computeBundleShipping(
 
 /**
  * Per-order shipping snapshots (orders.shipping_fee) for a bundle: each
- * pharmacy's fee is recorded on the FIRST of its orders and 0 on the rest,
- * so the snapshots sum to the bundle total and no order double-counts.
+ * pharmacy's fee is recorded on ONE of its orders and 0 on the rest, so
+ * the snapshots sum to the bundle total and no order double-counts.
+ *
+ * That one order is the one whose shipping type set the rate: when any of
+ * the pharmacy's items is cold chain the fee is the cold-chain rate, and it
+ * sits on the first cold-chain order — not on a standard order that happens
+ * to come first (prod, WO-99 verification: a standard BPC-157 line stored
+ * Strive's $22 cold-chain fee and the cold-chain Semaglutide stored $0).
+ * Otherwise, the first of the pharmacy's orders.
  */
 export function allocateShippingToOrders<T extends { orderId: string } & ShippingItem>(
   orders: ReadonlyArray<T>,
   shipping: BundleShipping,
 ): Map<string, number> {
-  const feeByPharmacy = new Map(shipping.byPharmacy.map(p => [p.pharmacyId, p.feeCents]))
-  const charged = new Set<string>()
+  const byPharmacy = new Map(shipping.byPharmacy.map(p => [p.pharmacyId, p]))
+  const carrier = new Map<string, string>()   // pharmacyId → orderId carrying its fee
+  for (const o of orders) {
+    const rateType = byPharmacy.get(o.pharmacyId)?.shippingType
+    const current = carrier.get(o.pharmacyId)
+    if (current === undefined) {
+      carrier.set(o.pharmacyId, o.orderId)
+    } else if (rateType === 'cold_chain' && o.shippingType === 'cold_chain') {
+      const currentOrder = orders.find(x => x.orderId === current)
+      if (currentOrder?.shippingType !== 'cold_chain') carrier.set(o.pharmacyId, o.orderId)
+    }
+  }
   const out = new Map<string, number>()
   for (const o of orders) {
-    if (charged.has(o.pharmacyId)) {
-      out.set(o.orderId, 0)
-    } else {
-      charged.add(o.pharmacyId)
-      out.set(o.orderId, feeByPharmacy.get(o.pharmacyId) ?? 0)
-    }
+    const fee = carrier.get(o.pharmacyId) === o.orderId ? (byPharmacy.get(o.pharmacyId)?.feeCents ?? 0) : 0
+    out.set(o.orderId, fee)
   }
   return out
 }

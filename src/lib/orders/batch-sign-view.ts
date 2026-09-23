@@ -22,6 +22,18 @@ export function batchSignHref(orderIds: ReadonlyArray<string>): string {
   return `${BATCH_SIGN_PATH}?orders=${orderIds.map(encodeURIComponent).join(',')}`
 }
 
+/**
+ * A batch sign page href with one more order selected; any other href is
+ * returned unchanged. Used after "+ Add prescription" so the new line
+ * comes back selected.
+ */
+export function withOrderSelected(href: string, orderId: string): string {
+  const prefix = `${BATCH_SIGN_PATH}?orders=`
+  if (!href.startsWith(prefix)) return href
+  const ids = href.slice(prefix.length).split(',').map(decodeURIComponent).filter(Boolean)
+  return batchSignHref(ids.includes(orderId) ? ids : [...ids, orderId])
+}
+
 /** `?orders=a,b` → the valid, distinct order ids (at most `max`). */
 export function parseOrdersParam(raw: string | string[] | undefined | null, max = MAX_BATCH_ORDERS): string[] {
   const value = Array.isArray(raw) ? raw.join(',') : (raw ?? '')

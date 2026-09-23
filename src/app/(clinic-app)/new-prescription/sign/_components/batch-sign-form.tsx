@@ -351,6 +351,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
               <DraftLineList
                 patient={p}
                 selected={selected}
+                selectionIds={selectedIds}
                 problems={lineProblems}
                 disabled={submitting}
                 onToggle={toggle}
@@ -476,9 +477,11 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
 
 // ── One patient's draft lines ─────────────────────────────────
 
-function DraftLineList({ patient, selected, problems, disabled, onToggle }: {
+function DraftLineList({ patient, selected, selectionIds, problems, disabled, onToggle }: {
   patient:  BatchPatientView
   selected: Set<string>
+  /** The page's whole selection, carried through the builder and back. */
+  selectionIds: string[]
   problems: Map<string, Problem[]>
   disabled: boolean
   onToggle: (orderId: string) => void
@@ -511,7 +514,7 @@ function DraftLineList({ patient, selected, problems, disabled, onToggle }: {
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Draft lines ({patient.lines.length})</p>
         <button
           type="button"
-          onClick={() => router.push(builderHref({ kind: 'draft-add', orderId: anchor }))}
+          onClick={() => router.push(builderHref({ kind: 'draft-add', orderId: anchor, returnOrders: selectionIds }))}
           className="text-xs font-medium text-primary underline hover:text-primary/80"
         >
           + Add prescription
@@ -527,7 +530,7 @@ function DraftLineList({ patient, selected, problems, disabled, onToggle }: {
             disabled={disabled || removing !== null}
             removing={removing === line.orderId}
             onToggle={() => onToggle(line.orderId)}
-            onEdit={() => router.push(builderHref({ kind: 'draft', orderId: line.orderId }))}
+            onEdit={() => router.push(builderHref({ kind: 'draft', orderId: line.orderId, returnOrders: selectionIds.includes(line.orderId) ? selectionIds : [...selectionIds, line.orderId] }))}
             onRemove={() => void remove(line.orderId)}
           />
         ))}
