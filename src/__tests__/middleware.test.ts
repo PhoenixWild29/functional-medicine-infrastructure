@@ -357,3 +357,28 @@ describe('middleware refreshed-cookie propagation', () => {
     expect(getUserMock).toHaveBeenCalled()
   })
 })
+
+
+// ───────────────────────────────────────────────────────
+// WO-107: /practice — the clinic admin's (and providers' when shared)
+// ───────────────────────────────────────────────────────
+describe('middleware — /practice', () => {
+  it.each([
+    ['ops_admin', OPS_SESSION],
+    ['medical_assistant', MA_SESSION],
+  ])('sends %s to /unauthorized', async (_role, session) => {
+    getUserMock.mockResolvedValue(session)
+    const res = await middleware(makeReq('/practice'))
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toContain('/unauthorized')
+  })
+
+  it.each([
+    ['clinic_admin', CLINIC_SESSION],
+    ['provider', PROVIDER_SESSION],
+  ])('lets %s through (the page checks the provider toggle)', async (_role, session) => {
+    getUserMock.mockResolvedValue(session)
+    const res = await middleware(makeReq('/practice'))
+    expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
+  })
+})

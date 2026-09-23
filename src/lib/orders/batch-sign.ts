@@ -183,7 +183,12 @@ export function parseOrderIds(raw: unknown): { ok: true; ids: string[] } | { ok:
  */
 export async function checkBatch(
   supabase: Supabase,
-  input: { clinicId: string; userId: string; orderIds: string[]; atSigning: boolean },
+  /**
+   * userId null = no one is signing (the practice dashboard's queue of
+   * blocked drafts, WO-107): the line checks run, the signer checks —
+   * whose draft it is, the signer's NPI — do not.
+   */
+  input: { clinicId: string; userId: string | null; orderIds: string[]; atSigning: boolean },
 ): Promise<BatchCheck> {
   const { clinicId, userId, orderIds } = input
   const problems: BatchProblem[] = []
@@ -214,7 +219,9 @@ export async function checkBatch(
   }
 
   // ── Who is signing ──
-  const { data: signer, error: signerError } = await supabase
+  const signerRead = userId === null
+    ? { data: null, error: null }
+    : await supabase
     .from('providers')
     .select('provider_id, first_name, last_name, npi_number')
     .eq('user_id', userId)
@@ -222,19 +229,22 @@ export async function checkBatch(
     .eq('is_active', true)
     .is('deleted_at', null)
     .maybeSingle()
+  const { data: signer, error: signerError } = signerRead
   if (signerError) {
     console.error('[batch-sign] signing provider could not be read:', signerError.message)
     add(null, 'provider_unavailable', 'Your provider record could not be read. Nothing was signed — try again.')
     return { lines: [], problems, signer: null }
   }
-  if (!signer) {
+  if (!signer && userId !== null) {
     add(null, 'provider_unlinked', 'Only a provider can sign, and your login is not linked to a provider in this clinic.')
     return { lines: [], problems, signer: null }
   }
 
   // Never signed silently under someone else's name: another provider's
   // draft is taken over with Sign as me (WO-100) first.
-  const others = [...new Set(ordered.filter(r => r.provider_id !== signer.provider_id).map(r => r.provider_id))]
+  const others = signer
+    ? [...new Set(ordered.filter(r => r.provider_id !== signer.provider_id).map(r => r.provider_id))]
+    : []
   if (others.length > 0) {
     const { data: otherRows } = await supabase
       .from('providers')
@@ -242,7 +252,7 @@ export async function checkBatch(
       .in('provider_id', others)
     const names = new Map((otherRows ?? []).map(p => [p.provider_id, `${p.first_name} ${p.last_name}`]))
     for (const r of ordered) {
-      if (r.provider_id === signer.provider_id) continue
+      if (r.provider_id === signer?.provider_id) continue
       add(r, 'not_signer', `${medicationNameOf(r)} is assigned to ${names.get(r.provider_id) ?? 'another provider'}. Use Sign as me to take it over before signing.`)
     }
   }
@@ -284,7 +294,7 @@ export async function checkBatch(
     console.error('[batch-sign] clinical-difference rule lookup failed:', rulesRes.error.message)
   }
 
-  if (!/^\d{10}$/.test(signer.npi_number ?? '')) {
+  if (signer && !/^\d{10}$/.test(signer.npi_number ?? '')) {
     add(null, 'npi', 'Your NPI on file is not valid, so nothing can be signed. Contact your administrator.')
   }
   if (clinicRes.data?.stripe_connect_status !== 'ACTIVE') {

@@ -27,12 +27,22 @@ export type StuckRefundsResult =
   | { ok: true; rows: StuckRefund[] }
   | { ok: false; error: string }
 
-export async function listStuckRefunds(supabase: Supabase, nowMs: number = Date.now()): Promise<StuckRefundsResult> {
-  const { data: orders, error } = await supabase
+/**
+ * `clinicId` scopes the list to one clinic (the WO-107 practice
+ * dashboard); without it, every clinic (the ops pipeline).
+ */
+export async function listStuckRefunds(
+  supabase: Supabase,
+  nowMs: number = Date.now(),
+  opts: { clinicId?: string } = {},
+): Promise<StuckRefundsResult> {
+  let query = supabase
     .from('orders')
     .select('order_id, stripe_payment_intent_id, payment_group_id, retail_price_snapshot')
     .eq('status', 'REFUND_PENDING')
     .is('deleted_at', null)
+  if (opts.clinicId) query = query.eq('clinic_id', opts.clinicId)
+  const { data: orders, error } = await query
   if (error) {
     console.error('[stuck-refunds] REFUND_PENDING orders could not be read:', error.message)
     return { ok: false, error: error.message }
@@ -72,6 +82,8 @@ export async function listStuckRefunds(supabase: Supabase, nowMs: number = Date.
 
 export interface LatePayment {
   groupId:       string
+  /** A member order of the group — where a clinic user opens it. */
+  orderId:       string
   paymentIntent: string | null
   refundId:      string | null
   refundOk:      boolean
@@ -85,7 +97,11 @@ export type LatePaymentsResult =
 
 const LATE_PAYMENT_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000
 
-export async function listLatePayments(supabase: Supabase, nowMs: number = Date.now()): Promise<LatePaymentsResult> {
+export async function listLatePayments(
+  supabase: Supabase,
+  nowMs: number = Date.now(),
+  opts: { clinicId?: string } = {},
+): Promise<LatePaymentsResult> {
   const { data, error } = await supabase
     .from('order_status_history')
     .select('order_id, created_at, metadata')
@@ -100,12 +116,13 @@ export async function listLatePayments(supabase: Supabase, nowMs: number = Date.
 
   // Newest first, so the first row seen per group is its latest outcome.
   const byGroup = new Map<string, LatePayment>()
-  for (const row of (data ?? []) as { created_at: string; metadata: Record<string, unknown> | null }[]) {
+  for (const row of (data ?? []) as { order_id: string; created_at: string; metadata: Record<string, unknown> | null }[]) {
     const m = row.metadata ?? {}
     const groupId = typeof m['payment_group_id'] === 'string' ? m['payment_group_id'] : null
     if (!groupId || byGroup.has(groupId)) continue
     byGroup.set(groupId, {
       groupId,
+      orderId:       row.order_id,
       paymentIntent: typeof m['payment_intent'] === 'string' ? m['payment_intent'] : null,
       refundId:      typeof m['refund_id'] === 'string' ? m['refund_id'] : null,
       refundOk:      m['refund_ok'] === true,
@@ -113,5 +130,18 @@ export async function listLatePayments(supabase: Supabase, nowMs: number = Date.
       at:            row.created_at,
     })
   }
-  return { ok: true, rows: [...byGroup.values()] }
+  if (!opts.clinicId || byGroup.size === 0) return { ok: true, rows: [...byGroup.values()] }
+
+  // One clinic: keep the groups that are this clinic's.
+  const { data: groups, error: groupError } = await supabase
+    .from('payment_groups')
+    .select('group_id')
+    .in('group_id', [...byGroup.keys()])
+    .eq('clinic_id', opts.clinicId)
+  if (groupError) {
+    console.error('[stuck-refunds] late payment groups could not be read:', groupError.message)
+    return { ok: false, error: groupError.message }
+  }
+  const mine = new Set((groups ?? []).map(g => g.group_id))
+  return { ok: true, rows: [...byGroup.values()].filter(r => mine.has(r.groupId)) }
 }

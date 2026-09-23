@@ -314,6 +314,15 @@ export async function middleware(request: NextRequest) {
     return applySecurityHeaders(redirectWithSessionCookies(new URL('/unauthorized', request.url)))
   }
 
+  // WO-107: the practice dashboard is the clinic admin's, and the
+  // clinic's providers' when the admin shares it (checked by the page and
+  // /api/practice, which read the toggle). Ops and medical assistants
+  // never reach it.
+  if ((pathname === '/practice' || pathname.startsWith('/practice/'))
+    && appRole !== 'clinic_admin' && appRole !== 'provider') {
+    return applySecurityHeaders(redirectWithSessionCookies(new URL('/unauthorized', request.url)))
+  }
+
   // WO-99: the single-draft sign page is gone. /new-prescription/sign/<id>
   // (dashboard drawer, draft edit return path, old links) goes to the
   // batch sign page with that order pre-selected. Done here rather than in

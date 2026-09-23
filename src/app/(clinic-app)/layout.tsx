@@ -34,12 +34,25 @@ export default async function ClinicAppLayout({
   const userEmail = user.email ?? ''
   const userRole  = appRole
 
+  // WO-107: the Practice link — the clinic admin always; a provider when
+  // the admin has shared it. A toggle that cannot be read hides the link
+  // (the page itself reports the error).
+  let showPractice = appRole === 'clinic_admin'
+  if (appRole === 'provider' && typeof user.user_metadata['clinic_id'] === 'string') {
+    const { data: clinic } = await supabase
+      .from('clinics')
+      .select('practice_dashboard_visible_to_providers')
+      .eq('clinic_id', user.user_metadata['clinic_id'] as string)
+      .maybeSingle()
+    showPractice = clinic?.practice_dashboard_visible_to_providers === true
+  }
+
   return (
     <Providers>
       <BfcacheGuard />
       {/* md: 56px icon-rail offset | xl: 240px sidebar (or 56px if collapsed) */}
       <div className="min-h-screen bg-background">
-        <SidebarNav userEmail={userEmail} userRole={userRole} />
+        <SidebarNav userEmail={userEmail} userRole={userRole} showPractice={showPractice} />
 
         {/* Main content — offset adjusts dynamically with sidebar collapse state */}
         <MainContentOffset>

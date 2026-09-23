@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import { seedStaticData, cleanupTestOrders, cleanupTestFavorites, seedSecondProvider, retireSecondProvider, seedLegacySemaglutideFavorites, insertRecentOrder, seedControlledAtFaxPharmacy, retireControlledAtFaxPharmacy, TEST_IDS, TEST_USERS, TEST_CATALOG, TEST_PATIENTS, TEST_SHIPPING } from './fixtures/seed'
@@ -3120,5 +3121,192 @@ test.describe('WO-107 migration — clinics.practice_dashboard_visible_to_provid
       .single()
     expect(error?.message ?? null).toBeNull()
     expect(data).toEqual({ clinic_id: TEST_IDS.clinic, practice_dashboard_visible_to_providers: false })
+  })
+})
+
+// ============================================================
+// WO-107 — the clinic practice dashboard
+// ============================================================
+// Against the real app and database:
+//   - the numbers reconcile to a direct sum over the orders table for the
+//     same orders; refunded and cancelled are labelled, not revenue;
+//     shipping counts once per payment group
+//   - Needs attention lists the failed submission, the payment unpaid for
+//     over 72h and a draft whose price moved (WO-108), each linking to
+//     where it is fixed
+//   - the CSV export matches the on-screen table
+//   - RBAC both ways: the admin sees it; a provider only once the admin
+//     turns the toggle on (and cannot turn it on themselves); ops never
+//   - the markup help text reads "Example: 40 = 40% markup (1.4× wholesale)"
+
+async function setPracticeToggle(on: boolean) {
+  const { error } = await e2eSupabase()
+    .from('clinics')
+    .update({ practice_dashboard_visible_to_providers: on })
+    .eq('clinic_id', TEST_IDS.clinic)
+  if (error) throw new Error(`practice toggle: ${error.message}`)
+}
+
+function practiceOrder(over: Record<string, unknown>) {
+  return {
+    patient_id: TEST_IDS.patient, provider_id: TEST_IDS.provider, clinic_id: TEST_IDS.clinic,
+    pharmacy_id: TEST_IDS.pharmacyTier2, formulation_id: TEST_IDS.formulation,
+    quantity: 1, wholesale_price_snapshot: 100, retail_price_snapshot: 200, shipping_fee: 0,
+    medication_snapshot: { medication_name: TEST_CATALOG.formulationName, form: 'Injectable Solution', dose: '10 mg/mL', wholesale_price: 100, dea_schedule: 0 },
+    pharmacy_snapshot: { pharmacy_id: TEST_IDS.pharmacyTier2, name: 'Test Pharmacy Tier2', integration_tier: 'TIER_2_PORTAL', fax_number: null },
+    shipping_state_snapshot: 'TX', sig_text: 'WO-107 practice dashboard seed order',
+    locked_at: new Date().toISOString(),
+    ...over,
+  }
+}
+
+const money = (cents: number) => `$${(cents / 100).toFixed(2)}`
+
+test.describe('Clinic App — WO-107 practice dashboard', () => {
+  test.beforeAll(async () => {
+    await seedStaticData()
+    await setPracticeToggle(false)
+  })
+
+  test.afterEach(async () => {
+    await cleanupTestOrders()
+  })
+
+  test.afterAll(async () => {
+    await setPracticeToggle(false)
+  })
+
+  test('the numbers reconcile to the orders table; refunds and cancellations are labelled; shipping once per group', async ({ page }) => {
+    const supabase = e2eSupabase()
+    const { data: group, error: groupError } = await supabase
+      .from('payment_groups')
+      .insert({ clinic_id: TEST_IDS.clinic, patient_id: TEST_IDS.patient, provider_id: TEST_IDS.provider, total_cents: 40900, shipping_total: 9, status: 'PAID' })
+      .select('group_id')
+      .single()
+    if (groupError || !group) throw new Error(`group: ${groupError?.message}`)
+    const { error } = await supabase.from('orders').insert([
+      // A paid group of two: $9 shipping for the group, allocated 9 / 0.
+      practiceOrder({ status: 'DELIVERED', retail_price_snapshot: 200, wholesale_price_snapshot: 100, shipping_fee: 9, payment_group_id: group.group_id }),
+      practiceOrder({ status: 'SHIPPED',   retail_price_snapshot: 209, wholesale_price_snapshot: 100, shipping_fee: 0, payment_group_id: group.group_id }),
+      // A paid solo order with its own $12.
+      practiceOrder({ status: 'PAID_PROCESSING', retail_price_snapshot: 150, wholesale_price_snapshot: 110, shipping_fee: 12, pharmacy_id: TEST_IDS.pharmacyTier4 }),
+      // Not revenue, each labelled.
+      practiceOrder({ status: 'REFUNDED',  retail_price_snapshot: 180, shipping_fee: 9 }),
+      practiceOrder({ status: 'CANCELLED', retail_price_snapshot: 170 }),
+      practiceOrder({ status: 'AWAITING_PAYMENT', retail_price_snapshot: 160 }),
+    ])
+    if (error) throw new Error(`orders: ${error.message}`)
+
+    // The direct sum over the same orders, written here by hand.
+    const { data: rows } = await supabase
+      .from('orders')
+      .select('status, retail_price_snapshot, wholesale_price_snapshot, shipping_fee, payment_group_id')
+      .eq('clinic_id', TEST_IDS.clinic)
+      .is('deleted_at', null)
+    const notTaken = new Set(['DRAFT', 'AWAITING_PAYMENT', 'PAYMENT_EXPIRED', 'ERROR_PAYMENT_FAILED', 'REFUND_PENDING', 'REFUNDED', 'CANCELLED', 'DISPUTED'])
+    const paid = (rows ?? []).filter(r => !notTaken.has(r.status))
+    const c = (v: number | null) => Math.round(Number(v ?? 0) * 100)
+    const revenue = paid.reduce((s, r) => s + c(r.retail_price_snapshot), 0)
+    const wholesale = paid.reduce((s, r) => s + c(r.wholesale_price_snapshot), 0)
+    const fee = paid.reduce((s, r) => s + Math.max(0, Math.round((c(r.retail_price_snapshot) - c(r.wholesale_price_snapshot)) * 0.15)), 0)
+    const groups = new Set(paid.map(r => r.payment_group_id).filter(Boolean))
+    const shipping = paid.filter(r => !r.payment_group_id).reduce((s, r) => s + c(r.shipping_fee), 0) + (groups.size ? 900 : 0)
+
+    await loginAs(page, TEST_USERS.clinicAdmin)
+    await page.goto('/practice')
+    await expect(page.getByTestId('practice-revenue')).toHaveText(money(revenue), { timeout: 20_000 })
+    await expect(page.getByTestId('practice-fee')).toHaveText(money(fee))
+    await expect(page.getByTestId('practice-shipping')).toHaveText(money(shipping))
+    await expect(page.getByTestId('practice-payout')).toHaveText(money(revenue - wholesale - fee))
+    await expect(page.getByTestId('practice-scripts')).toHaveText('6')
+    // The numbers, spelled out: revenue 559.00, shipping 9 once + 12 = 21.00.
+    expect([revenue, shipping]).toEqual([55900, 2100])
+    // Money not taken is labelled on its own line.
+    await expect(page.getByTestId('practice-excluded-refunded')).toContainText('Refunded — excluded from revenue (1)')
+    await expect(page.getByTestId('practice-excluded-refunded')).toContainText('$180.00')
+    await expect(page.getByTestId('practice-excluded-cancelled')).toContainText('$170.00')
+    await expect(page.getByTestId('practice-excluded-awaiting')).toContainText('$160.00')
+
+    // CSV export matches the on-screen table.
+    const tableRows = await page.getByTestId('practice-row').evaluateAll(trs =>
+      trs.map(tr => Array.from(tr.querySelectorAll('td')).map(td => td.textContent!.trim()).join(',')))
+    const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId('practice-export').click()])
+    const csv = readFileSync((await download.path())!, 'utf8').trim().split('\n')
+    expect(csv[0]).toBe('Provider,Scripts,Revenue,Wholesale,Platform fee,Margin')
+    expect(csv.slice(1)).toEqual(tableRows)
+  })
+
+  test('Needs attention: the failed order, the payment unpaid for 72h+, and a draft whose price moved — each linking to its fix', async ({ page }) => {
+    const supabase = e2eSupabase()
+    const fourDaysAgo = new Date(Date.now() - 96 * 3600_000).toISOString()
+    const { data: seeded, error } = await supabase.from('orders').insert([
+      // Every row names the same columns: a bulk insert sends NULL for a
+      // key one row leaves out, and created_at is NOT NULL.
+      practiceOrder({ status: 'SUBMISSION_FAILED', created_at: new Date().toISOString() }),
+      practiceOrder({ status: 'AWAITING_PAYMENT', locked_at: fourDaysAgo, created_at: fourDaysAgo }),
+    ]).select('order_id, status')
+    if (error || !seeded) throw new Error(`orders: ${error?.message}`)
+    const failed = seeded.find(o => o.status === 'SUBMISSION_FAILED')!.order_id
+    const unpaid = seeded.find(o => o.status === 'AWAITING_PAYMENT')!.order_id
+
+    await loginAs(page, TEST_USERS.provider)
+    const moved = await createDraftViaApi(page)
+    await supabase.from('orders').update({ wholesale_price_snapshot: 90 }).eq('order_id', moved)
+    await page.context().clearCookies()
+
+    await loginAs(page, TEST_USERS.clinicAdmin)
+    await page.goto('/practice')
+    const queue = page.getByTestId('practice-attention')
+    await expect(queue.getByTestId(`attention-submission_failed-${failed}`)).toBeVisible({ timeout: 20_000 })
+    await expect(queue.getByTestId(`attention-awaiting_payment-${unpaid}`)).toBeVisible()
+    const reprice = queue.getByTestId(`attention-reprice-${moved}`)
+    await expect(reprice).toContainText('$90.00 → $100.00')
+    await expect(reprice.getByRole('link')).toHaveAttribute('href', `/new-prescription/search?editOrder=${moved}`)
+    await expect(page.getByTestId('practice-attention-partial-error')).toHaveCount(0)
+
+    // The link opens that order on the dashboard.
+    await queue.getByTestId(`attention-submission_failed-${failed}`).getByRole('link').click()
+    await expect(page).toHaveURL(new RegExp(`/dashboard\\?order=${failed}`), { timeout: 15_000 })
+    await expect(page.getByRole('dialog', { name: `Order details — ${failed.slice(0, 8)}` })).toBeVisible({ timeout: 15_000 })
+  })
+
+  test('RBAC both ways: provider denied until the admin shares it, cannot share it themselves; ops never', async ({ page }) => {
+    try {
+      await loginAs(page, TEST_USERS.provider)
+      await page.goto('/practice')
+      await expect(page.getByTestId('practice-denied')).toContainText('Access Denied', { timeout: 15_000 })
+      // A provider cannot grant themselves the clinic's numbers.
+      const self = await page.request.patch('/api/clinic/settings', { data: { practice_dashboard_visible_to_providers: true } })
+      expect(self.status()).toBe(403)
+      await page.context().clearCookies()
+
+      await loginAs(page, TEST_USERS.clinicAdmin)
+      const shared = await page.request.patch('/api/clinic/settings', { data: { practice_dashboard_visible_to_providers: true } })
+      expect(shared.status()).toBe(200)
+      await page.context().clearCookies()
+
+      await loginAs(page, TEST_USERS.provider)
+      await page.goto('/practice')
+      await expect(page.getByTestId('practice-cards')).toBeVisible({ timeout: 20_000 })
+      await page.context().clearCookies()
+
+      // Ops: never, toggle or not.
+      await page.goto('/login')
+      await page.getByLabel('Email').fill(TEST_USERS.opsAdmin.email)
+      await page.getByLabel('Password').fill(TEST_USERS.opsAdmin.password)
+      await page.getByRole('button', { name: 'Sign in' }).click()
+      await expect(page).toHaveURL(/\/ops/, { timeout: 15_000 })
+      await page.goto('/practice')
+      await expect(page).toHaveURL(/\/unauthorized/, { timeout: 15_000 })
+      expect((await page.request.get('/api/practice')).status()).toBe(403)
+    } finally {
+      await setPracticeToggle(false)
+    }
+  })
+
+  test('the markup help text matches what is stored', async ({ page }) => {
+    await loginAs(page, TEST_USERS.clinicAdmin)
+    await page.goto('/settings')
+    await expect(page.getByText(/Example:/).first()).toContainText('Example: 40 = 40% markup (1.4× wholesale).', { timeout: 15_000 })
   })
 })

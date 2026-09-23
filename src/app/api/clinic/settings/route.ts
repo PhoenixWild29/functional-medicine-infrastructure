@@ -9,7 +9,10 @@
 // Request body (all fields optional, at least one required):
 //   { default_markup_pct?: number, logo_url?: string | null }
 //
-// default_markup_pct: stored as NUMERIC(5,2) — e.g., 150.00 = 150%.
+// default_markup_pct: stored as NUMERIC(5,2) — the markup over wholesale,
+//   e.g., 40.00 = 40% markup = retail 1.4× wholesale.
+//
+// practice_dashboard_visible_to_providers (WO-107): clinic admin only.
 //   Must be a positive finite number if provided.
 //   Used by the Margin Builder (REQ-DMB-003) as the default retail multiplier.
 //
@@ -42,6 +45,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     default_markup_pct?: number
     logo_url?: string | null
     absorb_shipping?: boolean
+    practice_dashboard_visible_to_providers?: boolean
   }
 
   try {
@@ -72,6 +76,19 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
   }
 
   // WO-102: who pays shipping
+  // WO-107: only the clinic admin decides who sees the practice dashboard.
+  // A provider who could flip it could grant themselves the clinic's
+  // revenue and margin.
+  if (body.practice_dashboard_visible_to_providers !== undefined) {
+    if (session.user.user_metadata['app_role'] !== 'clinic_admin') {
+      return NextResponse.json({ error: 'Only the clinic admin can change who sees the practice dashboard.' }, { status: 403 })
+    }
+    if (typeof body.practice_dashboard_visible_to_providers !== 'boolean') {
+      return NextResponse.json({ error: 'practice_dashboard_visible_to_providers must be a boolean' }, { status: 400 })
+    }
+    updates['practice_dashboard_visible_to_providers'] = body.practice_dashboard_visible_to_providers
+  }
+
   if (body.absorb_shipping !== undefined) {
     if (typeof body.absorb_shipping !== 'boolean') {
       return NextResponse.json({ error: 'absorb_shipping must be a boolean' }, { status: 400 })
