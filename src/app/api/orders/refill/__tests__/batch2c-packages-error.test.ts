@@ -93,6 +93,7 @@ describe('refill — today\'s package prices cannot be read', () => {
     packagesResult = {
       data: [{
         pharmacy_id: 'ph-1', formulation_id: 'f-1', wholesale_price: 120,
+        pharmacies: { name: 'Strive Pharmacy', is_active: true, deleted_at: null },
         pharmacy_formulation_packages: [
           { id: 'pkg-5ml', package_label: '5 mL vial', package_qty: 5, package_unit: 'mL', wholesale_price: 120, is_default: true, active: true },
         ],

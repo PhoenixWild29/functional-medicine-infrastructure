@@ -152,7 +152,7 @@ function installHappyFixtures(row: Record<string, unknown> = DRAFT_ROW) {
   fixtures['pharmacy_formulations:maybeSingle'] = () => ({ data: { wholesale_price: 95 }, error: null })
   fixtures['formulation_ingredients:await'] = () => ({ data: [{ ingredients: { dea_schedule: null } }], error: null })
   fixtures['pharmacies:maybeSingle'] = () => ({
-    data: { pharmacy_id: PHARMACY_ID, name: 'Strive Pharmacy', integration_tier: 'TIER_1_API', fax_number: null },
+    data: { pharmacy_id: PHARMACY_ID, name: 'Strive Pharmacy', integration_tier: 'TIER_1_API', fax_number: null, is_active: true, deleted_at: null },
     error: null,
   })
   fixtures['pharmacy_state_licenses:maybeSingle'] = () => ({ data: { pharmacy_id: PHARMACY_ID }, error: null })

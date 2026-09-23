@@ -47,6 +47,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import type { Json } from '@/types/database.types'
 import { formulationRxDefaults } from '@/lib/orders/rx-details'
 import { defaultPackagePrice, packageRowsFor, pharmacyFormulationId, type PackageRow } from '@/lib/catalog/packages'
+import { listAttachablePharmacies } from '@/lib/catalog/attachable-pharmacies'
 
 const CSV_PATH = join(process.cwd(), 'docs', 'research', 'catalog-seed', 'compoundiq-catalog-seed-v1.csv')
 
@@ -145,14 +146,11 @@ async function main(): Promise<void> {
   const routeMap = new Map<string, string>((routes ?? []).map((r) => [r.name, r.route_id]))
 
   // ── pharmacies to attach ──
-  let pharmacyIds: string[]
-  if (pharmacyArg) {
-    pharmacyIds = [pharmacyArg]
-  } else {
-    const { data: phs, error: pErr } = await supabase.from('pharmacies').select('pharmacy_id')
-    if (pErr) throw pErr
-    pharmacyIds = (phs ?? []).map((p) => p.pharmacy_id)
-  }
+  // Only live pharmacies (active, not deleted). Reading every row here is
+  // how soft-deleted E2E test pharmacies were attached to the prod catalog.
+  const attachable = await listAttachablePharmacies(supabase, pharmacyArg)
+  if (!attachable.ok) throw new Error(attachable.error)
+  const pharmacyIds: string[] = attachable.pharmacyIds
   if (pharmacyIds.length === 0) {
     console.warn(
       '[import-catalog] no pharmacies found — formulations will load but have zero pharmacy options (not orderable until a pharmacy exists)',

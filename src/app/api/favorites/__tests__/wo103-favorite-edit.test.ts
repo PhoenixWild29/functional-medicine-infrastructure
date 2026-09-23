@@ -99,7 +99,7 @@ beforeEach(() => {
     error: null,
   })
   fixtures['providers:await'] = () => ({ data: [{ provider_id: PROVIDER_IN }], error: null })
-  fixtures['pharmacy_formulations:maybeSingle'] = () => ({ data: { pharmacy_formulation_id: 'pf-1' }, error: null })
+  fixtures['pharmacy_formulations:maybeSingle'] = () => ({ data: { pharmacy_formulation_id: 'pf-1', pharmacies: { is_active: true, deleted_at: null } }, error: null })
 })
 
 function favoriteUpdate(): Record<string, unknown> {

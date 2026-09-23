@@ -53,7 +53,7 @@ function makeSupabase() {
       }
       if (table === 'pharmacies') {
         return chain(() => ({
-          data: { pharmacy_id: PHARMACY, name: 'Strive Pharmacy', integration_tier: 'TIER_4_FAX', fax_number: '+15125550000' },
+          data: { pharmacy_id: PHARMACY, name: 'Strive Pharmacy', integration_tier: 'TIER_4_FAX', fax_number: '+15125550000', is_active: true, deleted_at: null },
           error: null,
         }))
       }

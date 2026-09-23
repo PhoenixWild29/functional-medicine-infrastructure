@@ -222,6 +222,8 @@ function installHappyFixtures() {
       name:             'Test Pharmacy',
       integration_tier: 'API',
       fax_number:       null,
+      is_active:        true,
+      deleted_at:       null,
     },
     error: null,
   })

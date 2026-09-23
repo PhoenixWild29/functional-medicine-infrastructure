@@ -47,7 +47,7 @@ function rowFor(table: string): Record<string, unknown> | null {
     case 'pharmacies': return {
       pharmacy_id: 'pharmacy-strive', name: 'Strive Pharmacy', slug: 'strive',
       integration_tier: 'TIER_4_FAX', shipping_fee_standard: 9, shipping_fee_cold_chain: 22,
-      free_shipping_threshold: null,
+      free_shipping_threshold: null, is_active: true, deleted_at: null,
     }
     case 'pharmacy_formulation_packages': return { id: 'pkg-1', package_label: '1 mL vial', wholesale_price: 95 }
     case 'pharmacy_state_licenses': return { pharmacy_id: 'pharmacy-strive' }

@@ -184,7 +184,7 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     prescribedDose: dose, frequencyCode, quantityLabel, packageId, packageCount,
   })
   if (!line.ok) {
-    return NextResponse.json({ error: line.error }, { status: line.status })
+    return NextResponse.json({ error: line.error, ...(line.code ? { code: line.code } : {}) }, { status: line.status })
   }
   if (retailCents < line.wholesaleCents) {
     return NextResponse.json(
