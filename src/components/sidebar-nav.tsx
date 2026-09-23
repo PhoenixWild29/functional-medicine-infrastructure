@@ -23,6 +23,7 @@ import {
   Menu,
   X,
   LogOut,
+  BarChart3,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createBrowserClient } from '@/lib/supabase/client'
@@ -37,15 +38,19 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard',        label: 'Dashboard',         icon: LayoutDashboard },
   { href: '/new-prescription', label: 'New Prescription',  icon: FilePlus },
+  { href: '/practice',         label: 'Practice',          icon: BarChart3 },
   { href: '/settings',         label: 'Settings',          icon: Settings },
 ]
 
 interface Props {
   userEmail: string
   userRole:  string
+  /** WO-107: the clinic admin, or a provider the admin shared the practice dashboard with. */
+  showPractice?: boolean
 }
 
-export function SidebarNav({ userEmail, userRole }: Props) {
+export function SidebarNav({ userEmail, userRole, showPractice = false }: Props) {
+  const navItems = NAV_ITEMS.filter(item => item.href !== '/practice' || showPractice)
   const pathname = usePathname()
 
   // Desktop collapse state — persisted to localStorage
@@ -174,7 +179,7 @@ export function SidebarNav({ userEmail, userRole }: Props) {
 
         {/* Nav items */}
         <nav className="flex-1 overflow-y-auto p-2 space-y-0.5" aria-label="Main navigation">
-          {NAV_ITEMS.map(item => (
+          {navItems.map(item => (
             <NavLink key={item.href} item={item} collapsed={collapsed} />
           ))}
         </nav>

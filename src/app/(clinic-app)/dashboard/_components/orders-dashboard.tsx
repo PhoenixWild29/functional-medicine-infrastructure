@@ -68,6 +68,8 @@ interface Props {
   viewer?:             DraftViewer | undefined
   /** WO-106: tab to open with, from ?tab= — the KPI cards link to it. */
   initialTab?: TabId | null
+  /** WO-107: an order to open in the drawer, from ?order= — the practice dashboard's queue links to it. */
+  initialOrderId?: string | null
 }
 
 // ── Query function (Supabase browser client) ────────────────
@@ -115,7 +117,7 @@ function buildDashboardOrder(o: Record<string, unknown>): DashboardOrder {
 
 // ── Component ───────────────────────────────────────────────
 
-export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, viewer, initialTab }: Props) {
+export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, viewer, initialTab, initialOrderId }: Props) {
   const router = useRouter()
   const supabase = createBrowserClient()
   const queryClient = useQueryClient()
@@ -129,7 +131,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
   // full row from the polled query data below. Storing the whole object
   // froze the drawer on a click-time snapshot — it never reflected poll
   // updates or the post-combine cache patch (handleGroupCreated).
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(initialOrderId ?? null)
   // WO-99: drafts ticked for "Sign selected" on the Drafts tab.
   const [draftSelection, setDraftSelection] = useState<Set<string>>(new Set())
 

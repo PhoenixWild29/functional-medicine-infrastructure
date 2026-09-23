@@ -1,8 +1,10 @@
 # CompoundIQ POC Demo — Detailed Walkthrough
 
-**Version:** 2.24 | **Date:** September 23, 2026
+**Version:** 2.25 | **Date:** September 23, 2026
 **Application:** https://functional-medicine-infrastructure.vercel.app
 **Duration:** 30–45 minutes (with discussion)
+
+> **What's new in v2.25 (2026-09-23):** **WO-107 — the practice dashboard** (the 2026-09-11 group aligned on script volume, billing and margin per practice; Lauren asked for a queue of scripts that need attention). New **Part 3L**, still as the Clinic Admin: **Practice** in the sidebar opens `/practice` — Scripts, Patient revenue (**collected** — paid orders only), Clinic payout, Platform fees, Shipping (once per payment, not per prescription) and Avg margin, for Today / 7 days / 30 days / Month to date / Custom. Money not collected or given back — awaiting payment, expired, failed, refund pending, refunded, cancelled, disputed — is listed on its own labelled lines, never in revenue. Tables by provider, pharmacy and medication, with **Export CSV** (the file is the table). **Needs attention**: payments unpaid for 72 hours, failed submissions, pharmacy faxes awaiting review, drafts older than 48 hours, drafts whose pharmacy price moved (WO-108) or that a check refuses, stuck refunds and late payments — each links to where it gets fixed. A query that fails shows an error with Retry, never a zero. **Settings → Clinic Profile** gains **Show the practice dashboard to providers** (off by default; admin only), and the markup help text now reads **"Example: 40 = 40% markup (1.4× wholesale)"** (step 68). Ops cannot open a clinic's practice dashboard.
 
 > **What's new in v2.24 (2026-09-23):** **WO-99 — Sign all at once** (Gina Rooks, 2026-09-11: sign all of a patient's prescriptions at once). Still three steps; nothing new to type. (a) **Drafts tab (step 51)** — a **Sign all (N)** button above the table, counting only the drafts the signed-in provider is the signer of, plus a checkbox on each of those rows and a **Sign selected (k)** button. Another provider's draft has no checkbox and is not counted: it goes through **Sign as me** first. (b) **One page, one pad, one click (steps 52–55)** — `/new-prescription/sign?orders=…` lists the selected drafts under their patient, each with its Rx details collapsed, the patient's allergy status and the drug interaction check across that patient's selected prescriptions, the totals with **shipping once per pharmacy**, one signature pad and one **Sign & Send N Prescriptions**. A Schedule III line asks for the **authenticator code once for the whole batch**; Cancel signs nothing. (c) **All or nothing** — every line is checked before anything is signed. A line that cannot be sent (a pharmacy price that moved since the draft was saved, a price below cost, a missing diagnosis or clinical difference, a check that could not run) is named on its line, and Sign & Send stays off for the whole batch. (d) **One payment link per patient** — the patient's signed prescriptions form one payment group at signing: the drawer already shows **"Part of a Payment Bundle"** (Part 3I is now a copy, not a combine). Different patients never share a group or a link. (e) **The signature** — at least **3 strokes across at least 40% of the pad**; a single dot is refused with the reason. (f) **The old single-draft page** — `/new-prescription/sign/<id>` (the drawer's **Review & Sign This Prescription**, bookmarks) now opens the batch page with that draft selected and the patient's other drafts listed beside it. The MA is still sent to `/unauthorized` from both (step 47 unchanged). Steps 51–56, 57–60 and the "Sign as me" beat updated.
 
@@ -630,7 +632,7 @@ Two things worth showing if asked: applying the **LDN Starter — Titration** fa
 
 67. **Clinic Profile** — the section shows the **Clinic Name** (display only — "Sunrise Functional Medicine"), the **Default Markup %** field, **v2.20:** an **Absorb shipping costs** checkbox (off: pharmacy shipping is passed to the patient at cost, once per pharmacy per order; on: the clinic pays it out of its payout — either way it is never part of the margin or the platform fee), the **Logo URL** field with a live preview thumbnail, and a **Save Settings** button. Leave the checkbox off so Part 4 shows the $22.00 shipping line.
 
-68. **Point at Default Markup % and connect it back to Part 3E.** This is the field that pre-filled the retail price in the Margin Builder. The helper text under the input states the convention explicitly: *"Pre-fills the retail price in the Margin Builder. Example: 150 = 150% of wholesale (1.5× markup)."* **Read the number the field actually contains** — Sunrise's value is the one that produced the $133.00 pre-fill on a $95 wholesale in step 33.
+68. **Point at Default Markup % and connect it back to Part 3E.** This is the field that pre-filled the retail price in the Margin Builder. The helper text under the input states the convention explicitly: *"Pre-fills the retail price in the Margin Builder. Example: 40 = 40% markup (1.4× wholesale)."* (**v2.25:** it used to say "150 = 150% of wholesale", which contradicted what the field stores.) **Read the number the field actually contains** — Sunrise's **40** is what turned a $95 wholesale into the $133.00 pre-fill in step 33 ($95 × 1.4).
 
 > "Remember that retail price that appeared already filled in when I got to the margin screen? It came from here. One number, set once by the practice, applied to every prescription every clinician writes — and any of them can still override it per-prescription, which is what I did when I tapped 2×.
 >
@@ -643,6 +645,24 @@ Two things worth showing if asked: applying the **LDN Starter — Titration** fa
 70. **Notifications** — the third section is honest about not being built yet. It reads: *"Email and SMS notification preferences are not yet configurable. Order status updates are sent automatically based on your clinic's registered contact email,"* with a **"Coming soon — configurable preferences"** chip.
 
 > **Do not skip past this or apologize for it.** Say it plainly: *"Notifications go out today on the clinic's registered contact email; per-user preferences are on the roadmap and the page says so. We'd rather show you a labelled gap than a screen that pretends."* Prospects trust a product that admits its edges. This one costs you nothing and buys you credibility for everything else you just claimed.
+
+### 3L — The Practice Dashboard (60–90 seconds, still as Clinic Admin)
+
+> "You've seen one visit end to end. The practice owner's question is the month: how many scripts, what did we collect, what did we keep — and what's stuck."
+
+71. Click **Practice** in the sidebar (`/practice`). It opens on **30 days**. **Read the cards as they are** — Scripts, **Patient revenue (collected)**, Clinic payout, Platform fees, Shipping passed through, Avg margin — rather than quoting numbers from this script; they depend on what the demo data holds today.
+
+> "Revenue here is money actually collected. The two prescriptions Dr. Chen just signed are real orders, but Alex hasn't paid yet — so they're not revenue."
+
+72. **Point at "Not in revenue."** Alex Demo's bundle sits on the **Awaiting payment — not yet collected** line; anything refunded, cancelled, expired or disputed has its own labelled line too. *"We never mix money we didn't collect, or gave back, into revenue. Each kind is named."* Then click **By pharmacy** and **Export CSV** — the file is exactly the table on screen.
+
+> **If someone compares this to the dashboard's Revenue card:** that card counts what has been billed this month (signed orders, paid or awaiting payment); this page counts only what was collected. Say which is which — they answer different questions.
+
+73. **Needs attention.** Read what is listed. Each item says what's wrong and links straight to the fix: an unpaid link opens the order (to resend or regenerate it), a draft whose pharmacy price moved opens that line in the builder, a failed submission opens the order. If the list reads **"Nothing needs attention"**, say so — that is a real answer, not a missing one: a check that could not run shows an error with **Retry** instead.
+
+> "Lauren asked for exactly this: the scripts that need someone. One list, this clinic only, each with the button that fixes it."
+
+74. **Who sees it.** Back in **Settings → Clinic Profile**, point at **Show the practice dashboard to providers** — off by default, and only the clinic admin can change it. With it off, Dr. Chen gets **Access Denied** at `/practice`. Ops can never open a clinic's practice dashboard.
 
 ---
 

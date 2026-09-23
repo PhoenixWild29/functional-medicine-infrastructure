@@ -66,7 +66,7 @@ export interface DashboardOrder {
 }
 
 export default async function DashboardPage(
-  props: { searchParams?: Promise<{ view?: string; tab?: string }> } = {},
+  props: { searchParams?: Promise<{ view?: string; tab?: string; order?: string }> } = {},
 ) {
   const { searchParams } = props
 
@@ -300,6 +300,7 @@ export default async function DashboardPage(
           clinicId={clinicId}
           viewer={viewer}
           initialTab={isTabId(resolvedSearchParams.tab) ? resolvedSearchParams.tab : null}
+          initialOrderId={typeof resolvedSearchParams.order === 'string' ? resolvedSearchParams.order : null}
         />
       </main>
     </>

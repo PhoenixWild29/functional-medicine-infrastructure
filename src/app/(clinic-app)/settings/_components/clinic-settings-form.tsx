@@ -9,7 +9,10 @@
 //   the resulting public URL. Null clears the logo.
 //
 // REQ-CAD-007: Default markup percentage configuration.
-//   default_markup_pct is a percentage (e.g., 150 = 150% = 1.5× wholesale).
+//   default_markup_pct is the markup over wholesale (e.g., 40 = 40% markup
+//   = retail 1.4× wholesale) — the Margin Builder prices retail as
+//   wholesale × (1 + pct/100). WO-107 corrected the help text, which said
+//   "150 = 150% of wholesale (1.5×)" and contradicted the stored 40 → 1.4×.
 //   Used by the Margin Builder (WO-28) as the default retail multiplier.
 //   Stored as NUMERIC(5,2) — max 10000.
 
@@ -21,10 +24,15 @@ interface Props {
   defaultMarkupPct: number | null
   /** WO-102: clinics.absorb_shipping (default false = patient pays shipping at cost). */
   absorbShipping?:  boolean
+  /** WO-107: clinics.practice_dashboard_visible_to_providers. */
+  practiceVisibleToProviders?: boolean
+  /** Only the clinic admin decides who sees the practice dashboard. */
+  isClinicAdmin?: boolean
 }
 
-export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, absorbShipping = false }: Props) {
+export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, absorbShipping = false, practiceVisibleToProviders = false, isClinicAdmin = false }: Props) {
   const [absorbInput, setAbsorbInput] = useState(absorbShipping)
+  const [practiceInput, setPracticeInput] = useState(practiceVisibleToProviders)
   const [markupInput, setMarkupInput] = useState(
     defaultMarkupPct !== null ? defaultMarkupPct.toString() : ''
   )
@@ -43,7 +51,7 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
     if (markupInput.trim() !== '') {
       const parsed = parseFloat(markupInput)
       if (!isFinite(parsed) || parsed <= 0) {
-        setSaveError('Default markup must be a positive number (e.g., 150 for 150%).')
+        setSaveError('Default markup must be a positive number (e.g., 40 for a 40% markup).')
         setIsSaving(false)
         return
       }
@@ -53,6 +61,11 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
     // WO-102: include absorb_shipping when changed
     if (absorbInput !== absorbShipping) {
       body['absorb_shipping'] = absorbInput
+    }
+
+    // WO-107: who sees the practice dashboard (clinic admin only)
+    if (isClinicAdmin && practiceInput !== practiceVisibleToProviders) {
+      body['practice_dashboard_visible_to_providers'] = practiceInput
     }
 
     // Include logo_url if it has changed from the prop value
@@ -102,7 +115,7 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
         </label>
         <p className="text-xs text-muted-foreground">
           Pre-fills the retail price in the Margin Builder.
-          Example: <strong>150</strong> = 150% of wholesale (1.5× markup).
+          Example: <strong>40</strong> = 40% markup (1.4× wholesale).
         </p>
         <div className="flex items-center gap-2">
           <input
@@ -113,7 +126,7 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
             step="0.01"
             value={markupInput}
             onChange={e => setMarkupInput(e.target.value)}
-            placeholder="e.g., 150"
+            placeholder="e.g., 40"
             className="w-36 rounded-md border border-input bg-background px-3 py-2 text-base shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
             // Disable scroll-to-change to prevent accidental input
             onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
@@ -140,6 +153,26 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
           Shipping is never part of the margin or the platform fee.
         </p>
       </div>
+
+      {/* WO-107: who sees the practice dashboard */}
+      {isClinicAdmin && (
+        <div className="space-y-1">
+          <label className="flex items-start gap-2 text-sm font-medium text-foreground">
+            <input
+              type="checkbox"
+              data-testid="practice-visible-to-providers"
+              checked={practiceInput}
+              onChange={e => setPracticeInput(e.target.checked)}
+              className="mt-0.5 rounded border-input"
+            />
+            <span>Show the practice dashboard to providers</span>
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Off (default): only clinic admins see the practice dashboard — revenue, payout and margin for the whole
+            clinic. On: the clinic&apos;s providers see it too.
+          </p>
+        </div>
+      )}
 
       {/* Logo URL — REQ-CAD-006 */}
       <div className="space-y-1">
