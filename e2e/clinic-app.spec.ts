@@ -3240,7 +3240,9 @@ test.describe('Clinic App — WO-107 practice dashboard', () => {
     const supabase = e2eSupabase()
     const fourDaysAgo = new Date(Date.now() - 96 * 3600_000).toISOString()
     const { data: seeded, error } = await supabase.from('orders').insert([
-      practiceOrder({ status: 'SUBMISSION_FAILED' }),
+      // Every row names the same columns: a bulk insert sends NULL for a
+      // key one row leaves out, and created_at is NOT NULL.
+      practiceOrder({ status: 'SUBMISSION_FAILED', created_at: new Date().toISOString() }),
       practiceOrder({ status: 'AWAITING_PAYMENT', locked_at: fourDaysAgo, created_at: fourDaysAgo }),
     ]).select('order_id, status')
     if (error || !seeded) throw new Error(`orders: ${error?.message}`)
