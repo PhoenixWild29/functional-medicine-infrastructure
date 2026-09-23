@@ -391,6 +391,7 @@ export type Database = {
           logo_url: string | null
           name: string
           order_intake_blocked: boolean
+          practice_dashboard_visible_to_providers: boolean
           stripe_connect_account_id: string | null
           stripe_connect_status: Database["public"]["Enums"]["stripe_connect_status_enum"]
           updated_at: string
@@ -407,6 +408,7 @@ export type Database = {
           logo_url?: string | null
           name: string
           order_intake_blocked?: boolean
+          practice_dashboard_visible_to_providers?: boolean
           stripe_connect_account_id?: string | null
           stripe_connect_status?: Database["public"]["Enums"]["stripe_connect_status_enum"]
           updated_at?: string
@@ -423,6 +425,7 @@ export type Database = {
           logo_url?: string | null
           name?: string
           order_intake_blocked?: boolean
+          practice_dashboard_visible_to_providers?: boolean
           stripe_connect_account_id?: string | null
           stripe_connect_status?: Database["public"]["Enums"]["stripe_connect_status_enum"]
           updated_at?: string

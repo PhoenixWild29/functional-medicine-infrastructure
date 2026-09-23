@@ -444,7 +444,7 @@ Each new order gets its own shipping at creation (`applyBundleShipping`, single-
 The ops dashboard scoped to one clinic, for the practice owner/manager. Script volume, billed, margin captured, by day/week/month, with admin control over who sees it.
 
 ### Behavior
-- New route `/practice` for `clinic_admin` (and providers when `clinic_settings.practice_dashboard_visible_to_providers = true`).
+- New route `/practice` for `clinic_admin` (and providers when `clinics.practice_dashboard_visible_to_providers = true`). The toggle is a column on `clinics`, beside the clinic's other settings (`absorb_shipping`, `default_markup_pct`); there is no `clinic_settings` table. Migration `20260923000001`, default `false`, merged alone (rule 7).
 - Cards: Scripts (period), Patient revenue, Clinic payout, Platform fees, Shipping passed through, Avg margin %. Period selector: Today / 7d / 30d / MTD / custom.
 - Table: by provider, by pharmacy, by medication. Export CSV.
 - **Needs attention** queue: awaiting payment > 72h, submission failed, unmatched fax for this clinic, drafts older than 48h.
