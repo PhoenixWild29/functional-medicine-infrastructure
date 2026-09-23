@@ -164,7 +164,9 @@ export async function POST(req: NextRequest) {
       decryptedSecret = provider.totp_secret_encrypted
     }
 
-    const isValid = verifySync({ token: code, secret: decryptedSecret })
+    // otplib 13 returns { valid, … } — an object, never a boolean. Reading
+    // it as a boolean made { valid: false } truthy, so every code verified.
+    const isValid = verifySync({ token: code, secret: decryptedSecret }).valid === true
 
     if (isValid) {
       // Mark TOTP as enabled + verified
