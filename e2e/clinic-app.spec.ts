@@ -3102,3 +3102,23 @@ test.describe('Clinic App — WO-99 batch sign', () => {
     await expect(page.getByRole('button', { name: 'Sign & Send 1 Prescription' })).toBeEnabled({ timeout: 15_000 })
   })
 })
+
+// ============================================================
+// WO-107 — the practice dashboard's provider-visibility toggle
+// ============================================================
+// Migration 20260923000001 adds clinics.practice_dashboard_visible_to_providers,
+// default false: only the clinic admin sees /practice until the admin turns
+// it on. CI db-pushes migrations to the E2E project before this runs.
+
+test.describe('WO-107 migration — clinics.practice_dashboard_visible_to_providers', () => {
+  test('exists on every clinic and defaults to false', async () => {
+    await seedStaticData()
+    const { data, error } = await e2eSupabase()
+      .from('clinics')
+      .select('clinic_id, practice_dashboard_visible_to_providers')
+      .eq('clinic_id', TEST_IDS.clinic)
+      .single()
+    expect(error?.message ?? null).toBeNull()
+    expect(data).toEqual({ clinic_id: TEST_IDS.clinic, practice_dashboard_visible_to_providers: false })
+  })
+})
