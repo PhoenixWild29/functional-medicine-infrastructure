@@ -19,7 +19,10 @@
 // logo_url: URL of the uploaded logo in Supabase Storage (or null to clear).
 //   Upload is handled client-side; this endpoint only stores the URL.
 //
-// Auth: Requires active Clinic App session.
+// Auth: the clinic admin only. Any other clinic user — a medical
+// assistant, a provider — gets 403 on every field and nothing is written.
+// (Before, any signed-in clinic user could change the markup, shipping
+// absorption and logo.) Reading settings is unaffected.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
@@ -39,6 +42,11 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
 
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
+  }
+
+  if (session.user.user_metadata['app_role'] !== 'clinic_admin') {
+    console.warn(`[clinic/settings] write refused: not the clinic admin | clinic=${clinicId}`)
+    return NextResponse.json({ error: 'Only the clinic admin can change clinic settings.' }, { status: 403 })
   }
 
   let body: {
@@ -76,13 +84,8 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
   }
 
   // WO-102: who pays shipping
-  // WO-107: only the clinic admin decides who sees the practice dashboard.
-  // A provider who could flip it could grant themselves the clinic's
-  // revenue and margin.
+  // WO-107: who sees the practice dashboard (admin-only, like every field).
   if (body.practice_dashboard_visible_to_providers !== undefined) {
-    if (session.user.user_metadata['app_role'] !== 'clinic_admin') {
-      return NextResponse.json({ error: 'Only the clinic admin can change who sees the practice dashboard.' }, { status: 403 })
-    }
     if (typeof body.practice_dashboard_visible_to_providers !== 'boolean') {
       return NextResponse.json({ error: 'practice_dashboard_visible_to_providers must be a boolean' }, { status: 400 })
     }

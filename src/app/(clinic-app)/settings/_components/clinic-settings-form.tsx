@@ -26,7 +26,10 @@ interface Props {
   absorbShipping?:  boolean
   /** WO-107: clinics.practice_dashboard_visible_to_providers. */
   practiceVisibleToProviders?: boolean
-  /** Only the clinic admin decides who sees the practice dashboard. */
+  /**
+   * Only the clinic admin may change clinic settings (the API refuses
+   * everyone else). Anyone else sees them read-only.
+   */
   isClinicAdmin?: boolean
 }
 
@@ -101,6 +104,11 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
   return (
     <section className="rounded-lg border border-border bg-card p-6 space-y-5">
       <h2 className="text-base font-semibold text-foreground">Clinic Profile</h2>
+      {!isClinicAdmin && (
+        <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground" data-testid="settings-read-only">
+          Only the clinic admin can change these settings.
+        </p>
+      )}
 
       {/* Clinic name — display only, not editable via this form */}
       <div className="space-y-1">
@@ -126,6 +134,7 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
             step="0.01"
             value={markupInput}
             onChange={e => setMarkupInput(e.target.value)}
+            disabled={!isClinicAdmin}
             placeholder="e.g., 40"
             className="w-36 rounded-md border border-input bg-background px-3 py-2 text-base shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
             // Disable scroll-to-change to prevent accidental input
@@ -143,6 +152,7 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
             type="checkbox"
             checked={absorbInput}
             onChange={e => setAbsorbInput(e.target.checked)}
+            disabled={!isClinicAdmin}
             className="mt-0.5 rounded border-input"
           />
           <span>Absorb shipping costs</span>
@@ -188,6 +198,7 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
           type="url"
           value={logoInput}
           onChange={e => setLogoInput(e.target.value)}
+          disabled={!isClinicAdmin}
           placeholder="https://…"
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-base shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
@@ -215,14 +226,14 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
         </div>
       )}
 
-      <button
+      {isClinicAdmin && <button
         type="button"
         onClick={handleSave}
         disabled={isSaving}
         className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {isSaving ? 'Saving…' : 'Save Settings'}
-      </button>
+      </button>}
     </section>
   )
 }
