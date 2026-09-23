@@ -106,7 +106,12 @@ describe('free_shipping_threshold', () => {
 })
 
 describe('allocateShippingToOrders — per-order snapshots sum to the bundle', () => {
-  it('the pharmacy fee lands on its first order only', () => {
+  // WO-99 follow-up (prod finding 2): a pharmacy's fee lands on ONE of its
+  // orders — the one whose shipping type set the rate. Semaglutide (cold
+  // chain) set Strive's $22, so it carries it; BPC-157 (standard) carries
+  // $0. This used to put the fee on the first order (o1), which stored the
+  // cold-chain fee on a standard line.
+  it('the pharmacy fee lands on one order only — the one whose shipping type set the rate', () => {
     const orders = [
       { orderId: 'o1', ...bpc157(STRIVE) },
       { orderId: 'o2', ...semaglutide(QUICK_RX) },
@@ -114,7 +119,7 @@ describe('allocateShippingToOrders — per-order snapshots sum to the bundle', (
     ]
     const s = computeBundleShipping(orders, RATES)
     const alloc = allocateShippingToOrders(orders, s)
-    expect(Object.fromEntries(alloc)).toEqual({ o1: 2200, o2: 2500, o3: 0 })
+    expect(Object.fromEntries(alloc)).toEqual({ o1: 0, o2: 2500, o3: 2200 })
     expect([...alloc.values()].reduce((a, b) => a + b, 0)).toBe(s.totalCents)
   })
 })

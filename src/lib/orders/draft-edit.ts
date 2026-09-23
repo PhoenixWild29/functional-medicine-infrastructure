@@ -18,6 +18,7 @@
 // they created. "Created by" is the actor on the draft_created audit
 // row POST /api/orders writes, so nothing is added to `orders`.
 
+import { batchSignHref } from './batch-sign-view'
 import type { Json } from '@/types/database.types'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
@@ -298,7 +299,13 @@ export function builderStateFromOrder(order: {
   }
 }
 
-/** Return path after a draft edit/add: providers land on the draft, others on the dashboard. */
-export function draftReturnPath(anchorOrderId: string, isProvider: boolean): string {
-  return isProvider ? `/new-prescription/sign/${anchorOrderId}` : '/dashboard?draft=1'
+/**
+ * Return path after a draft edit/add: providers land on the batch sign page
+ * (WO-99) with the selection they left — `returnOrders`, carried through
+ * the builder — or the draft alone; others on the dashboard. After an Add
+ * the caller appends the new line (withOrderSelected).
+ */
+export function draftReturnPath(anchorOrderId: string, isProvider: boolean, returnOrders?: ReadonlyArray<string>): string {
+  if (!isProvider) return '/dashboard?draft=1'
+  return batchSignHref(returnOrders && returnOrders.length > 0 ? returnOrders : [anchorOrderId])
 }

@@ -2959,6 +2959,35 @@ test.describe('Clinic App — WO-99 batch sign', () => {
     }
   })
 
+  test('a line added from the batch page comes back selected, and shipping shows once', async ({ page }) => {
+    // Prod verification of WO-99, finding 1: "+ Add prescription" returned
+    // to the page with the NEW draft unchecked and the double-shipping
+    // warning up. Both drafts here ship from Tier1, so selected together
+    // they are one shipment.
+    await loginAs(page, TEST_USERS.provider)
+    const first = await createDraftViaApi(page, { pharmacyId: TEST_IDS.pharmacyTier1 })
+
+    await page.goto(`/new-prescription/sign?orders=${first}`)
+    await expect(page.getByTestId(`select-${first}`)).toBeChecked({ timeout: 15_000 })
+    await page.getByRole('button', { name: '+ Add prescription' }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/search\?addToOrder=/, { timeout: 10_000 })
+    await fillBuilder(page, GLP1)
+    await page.locator('#retail-price').fill('200.00')
+    await page.getByRole('button', { name: 'Add to Draft' }).click()
+
+    await expect(page).toHaveURL(new RegExp(`/new-prescription/sign\\?orders=${first},`), { timeout: 15_000 })
+    const lines = page.getByTestId('draft-lines')
+    await expect(lines).toContainText('Draft lines (2)', { timeout: 15_000 })
+    const added = (await page.locator('[data-testid^="select-"]').evaluateAll(els =>
+      els.map(e => e.getAttribute('data-testid')!.replace('select-', '')))).find(id => id !== first)!
+    await expect(page.getByTestId(`select-${first}`)).toBeChecked()
+    await expect(page.getByTestId(`select-${added}`)).toBeChecked()
+    await expect(page.getByTestId(`unselected-siblings-${TEST_IDS.patient}`)).toHaveCount(0)
+    await expect(page.getByTestId(`batch-shipping-${TEST_IDS.patient}-${TEST_IDS.pharmacyTier1}`)).toContainText('2 items, once')
+    await expect(page.locator(`[data-testid^="batch-shipping-${TEST_IDS.patient}-"]`)).toHaveCount(1)
+    await expect(page.getByRole('button', { name: 'Sign & Send 2 Prescriptions' })).toBeVisible()
+  })
+
   test('a deep link to /new-prescription/sign/<id> redirects to the batch page with that order pre-selected', async ({ page }) => {
     await loginAs(page, TEST_USERS.provider)
     const first  = await createDraftViaApi(page)

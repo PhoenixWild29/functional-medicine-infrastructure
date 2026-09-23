@@ -349,7 +349,9 @@ export default async function MarginPage({ searchParams }: PageProps) {
         draftLine={draft && editTarget?.kind === 'draft'
           ? { retailCents: draft.retailCents, rxDetails: draft.rxDetails }
           : null}
-        draftReturnTo={draft ? draftReturnPath(draft.orderId, isProvider) : null}
+        draftReturnTo={draft && editTarget && editTarget.kind !== 'session'
+          ? draftReturnPath(draft.orderId, isProvider, editTarget.returnOrders)
+          : null}
         presetDose={presetDose || undefined}
       />
     </>

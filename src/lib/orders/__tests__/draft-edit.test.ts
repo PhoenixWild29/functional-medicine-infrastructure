@@ -141,8 +141,10 @@ describe('parseSigForBuilder / builderStateFromOrder', () => {
 })
 
 describe('draftReturnPath', () => {
-  it('sends providers back to the draft and everyone else to the dashboard', () => {
-    expect(draftReturnPath('o1', true)).toBe('/new-prescription/sign/o1')
+  // WO-99 follow-up: providers go straight to the batch sign page (the
+  // old /sign/<id> redirects there anyway, selecting that order alone).
+  it('sends providers back to the draft on the batch sign page and everyone else to the dashboard', () => {
+    expect(draftReturnPath('o1', true)).toBe('/new-prescription/sign?orders=o1')
     expect(draftReturnPath('o1', false)).toBe('/dashboard?draft=1')
   })
 })
