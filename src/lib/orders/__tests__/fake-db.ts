@@ -58,6 +58,13 @@ export function fakeDb(tables: Record<string, Row[]>) {
       neq(col: string, v: unknown) { filters.push(r => r[col] !== v); return q },
       in(col: string, vs: unknown[]) { filters.push(r => vs.includes(r[col])); return q },
       is(col: string, v: unknown) { filters.push(r => (r[col] ?? null) === v); return q },
+      not(col: string, op: string, v: unknown) {
+        if (op === 'is') filters.push(r => (r[col] ?? null) !== v)
+        else filters.push(r => r[col] !== v)
+        return q
+      },
+      gte(col: string, v: unknown) { filters.push(r => String(r[col]) >= String(v)); return q },
+      lt(col: string, v: unknown) { filters.push(r => String(r[col]) < String(v)); return q },
       order() { return q },
       limit() { return q },
       maybeSingle() { single = 'maybe'; return Promise.resolve(run()) },
