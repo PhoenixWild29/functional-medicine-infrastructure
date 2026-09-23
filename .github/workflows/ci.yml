@@ -271,6 +271,11 @@ jobs:
           # ── Feature flags: suppress external services in CI ──────
           TWILIO_ENABLED:   'false'
           DOCUMO_ENABLED:   'false'
+          # WO-99: batch signing forms one payment group per patient, as in
+          # production (flag on since 2026-06-14). The E2E clinic's Connect
+          # account is poc_placeholder, so the group PaymentIntent carries no
+          # transfer, and no test ever confirms it — nothing is charged.
+          PHASE_C_GROUPS_ENABLED: 'true'
           # ── Misc ─────────────────────────────────────────────────
           NEXT_TELEMETRY_DISABLED: '1'
           # PLAYWRIGHT_BASE_URL intentionally omitted — playwright.config.ts

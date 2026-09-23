@@ -61,6 +61,10 @@ export const TEST_IDS = {
   controlledSaltForm:           'aaaaaaaa-0000-0000-0000-000000000041',
   controlledFormulation:        'aaaaaaaa-0000-0000-0000-000000000042',
   controlledPharmacyFormulation:'aaaaaaaa-0000-0000-0000-000000000043',
+  // WO-99: the same Schedule III compound at the Tier 4 FAX pharmacy — the
+  // only route a controlled substance may be signed to. Seeded (and
+  // retired) only by the WO-99 describe block.
+  controlledTier4PharmacyFormulation: 'aaaaaaaa-0000-0000-0000-000000000044',
   // WO-96: GLP-1-style seed — requires_clinical_difference = true, cold chain.
   // Drives the "Semaglutide cannot be sent without a clinical difference"
   // acceptance path without depending on the production catalog seed.
@@ -733,6 +737,14 @@ export async function cleanupTestOrders(): Promise<void> {
     .update({ is_active: false, deleted_at: new Date().toISOString() })
     .in('order_id', orderIds)
 
+  // WO-99: batch signing forms payment groups. Cancel the test clinic's
+  // open ones so a later spec never finds a stale group on its patient.
+  await supabase
+    .from('payment_groups')
+    .update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
+    .eq('clinic_id', TEST_IDS.clinic)
+    .eq('status', 'AWAITING_PAYMENT')
+
   // Truncate all related rows for test orders
   await supabase.from('adapter_submissions').delete().in('order_id', orderIds)
   await supabase.from('webhook_events').delete().in('order_id', orderIds)
@@ -827,4 +839,31 @@ export async function cleanupTestFavorites(): Promise<void> {
   if (ids.length === 0) return
   await supabase.from('protocol_items').delete().in('protocol_id', ids)
   await supabase.from('protocol_templates').delete().in('protocol_id', ids)
+}
+
+// ── WO-99: a controlled substance at the fax pharmacy ─────────
+//
+// Schedule II+ may only be signed to a Tier 4 fax pharmacy, so the EPCS
+// batch-signing test needs the controlled compound offered there. Only the
+// WO-99 block activates it; retire it after so the builder's pharmacy list
+// for this compound is unchanged for every other spec.
+export async function seedControlledAtFaxPharmacy(): Promise<void> {
+  const { error } = await supabase.from('pharmacy_formulations').upsert({
+    pharmacy_formulation_id:   TEST_IDS.controlledTier4PharmacyFormulation,
+    pharmacy_id:               TEST_IDS.pharmacyTier4,
+    formulation_id:            TEST_IDS.controlledFormulation,
+    wholesale_price:           150.00,
+    available_quantities:      ['1 vial'],
+    is_available:              true,
+    estimated_turnaround_days: 7,
+    is_active:                 true,
+  }, { onConflict: 'pharmacy_formulation_id' })
+  if (error) throw new Error(`seedControlledAtFaxPharmacy: ${error.message}`)
+}
+
+export async function retireControlledAtFaxPharmacy(): Promise<void> {
+  await supabase
+    .from('pharmacy_formulations')
+    .update({ is_active: false, is_available: false })
+    .eq('pharmacy_formulation_id', TEST_IDS.controlledTier4PharmacyFormulation)
 }

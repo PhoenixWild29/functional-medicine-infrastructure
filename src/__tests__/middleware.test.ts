@@ -248,6 +248,24 @@ describe('middleware F-3 — /new-prescription/sign/[orderId] provider-only', ()
     const res = await middleware(makeReq('/new-prescription/sign'))
     expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
   })
+
+  // WO-99: the single-draft sign page is gone; its URL goes to the batch
+  // sign page with that order pre-selected.
+  it('redirects a provider from /new-prescription/sign/<id> to the batch page with that order selected', async () => {
+    getUserMock.mockResolvedValue(PROVIDER_SESSION)
+    const res = await middleware(makeReq(TEST_SIGN_PATH))
+    expect(res.status).toBe(307)
+    const location = new URL(res.headers.get('location')!)
+    expect(location.pathname).toBe('/new-prescription/sign')
+    expect(location.searchParams.get('orders')).toBe('00000000-0000-4000-8000-000000000001')
+    expectSecurityHeaders(res)
+  })
+
+  it('does not redirect the batch page itself', async () => {
+    getUserMock.mockResolvedValue(PROVIDER_SESSION)
+    const res = await middleware(makeReq('/new-prescription/sign'))
+    expect(res.headers.get('location')).toBeNull()
+  })
 })
 
 // ───────────────────────────────────────────────────────
