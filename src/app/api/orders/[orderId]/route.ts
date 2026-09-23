@@ -35,7 +35,7 @@ interface RouteContext {
 
 const DRAFT_SELECT = `order_id, status, clinic_id, patient_id, provider_id, formulation_id, catalog_item_id, pharmacy_id,
   retail_price_snapshot, wholesale_price_snapshot, medication_snapshot, pharmacy_snapshot, sig_text,
-  shipping_state_snapshot, package_id, package_label, package_count, ${RX_DETAIL_COLUMN_LIST}`
+  shipping_state_snapshot, package_id, package_label, package_count, payment_group_id, ${RX_DETAIL_COLUMN_LIST}`
 
 interface Actor {
   userId:   string
@@ -93,6 +93,13 @@ async function loadEditableDraft(orderId: string): Promise<
   }
   if (draft.status !== 'DRAFT') {
     return { ok: false, response: NextResponse.json({ error: 'Only DRAFT orders can be edited' }, { status: 409 }) }
+  }
+  // WO-99: a draft linked to a payment group is being signed with the
+  // patient's other drafts right now. Batch signing links the group
+  // before it signs, so a change here would land between the checks and
+  // the signature.
+  if ((draft as { payment_group_id?: string | null }).payment_group_id) {
+    return { ok: false, response: NextResponse.json({ error: 'This draft is being signed right now and cannot be changed.' }, { status: 409 }) }
   }
 
   // WO-100: a provider may only edit / remove lines on a draft under their

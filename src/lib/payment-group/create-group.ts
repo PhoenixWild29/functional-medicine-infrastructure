@@ -28,6 +28,15 @@ export interface CreateGroupInput {
    */
   callerUserId: string
   orderIds:  string[]
+  /**
+   * WO-99: the status the orders must be in. Combine and Send bundles
+   * orders that are already signed (AWAITING_PAYMENT, the default). Batch
+   * signing bundles DRAFTs BEFORE it signs them: a signed order is locked
+   * (locked_at can never change), so the group — and its PaymentIntent —
+   * must exist before anything is signed, or a failure here would leave
+   * signed orders with no link.
+   */
+  memberStatus?: 'AWAITING_PAYMENT' | 'DRAFT'
 }
 
 export type CreateGroupResult =
@@ -51,6 +60,7 @@ interface OrderRow {
 
 export async function createPaymentGroup(input: CreateGroupInput): Promise<CreateGroupResult> {
   const { supabase, clinicId, callerAppRole, callerUserId, orderIds } = input
+  const memberStatus = input.memberStatus ?? 'AWAITING_PAYMENT'
 
   // ── Load all orders ─────────────────────────────────────────
   const { data: orders, error: ordersErr } = await supabase
@@ -92,8 +102,8 @@ export async function createPaymentGroup(input: CreateGroupInput): Promise<Creat
     if (o.patient_id !== sharedPatientId) {
       return { ok: false, status: 409, error: 'All orders in a payment group must be for the same patient' }
     }
-    if (o.status !== 'AWAITING_PAYMENT') {
-      return { ok: false, status: 409, error: `Order ${o.order_id} is not in AWAITING_PAYMENT (status=${o.status})` }
+    if (o.status !== memberStatus) {
+      return { ok: false, status: 409, error: `Order ${o.order_id} is not in ${memberStatus} (status=${o.status})` }
     }
     if (o.payment_group_id) {
       return { ok: false, status: 409, error: `Order ${o.order_id} is already part of another payment group` }
@@ -206,7 +216,7 @@ export async function createPaymentGroup(input: CreateGroupInput): Promise<Creat
     .from('orders')
     .update({ payment_group_id: groupId, updated_at: new Date().toISOString() })
     .in('order_id', orderIds)
-    .eq('status', 'AWAITING_PAYMENT')
+    .eq('status', memberStatus)
     .is('payment_group_id', null)
     .is('stripe_payment_intent_id', null)
     .is('deleted_at', null)

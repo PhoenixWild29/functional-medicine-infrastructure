@@ -5,16 +5,17 @@
 // ============================================================
 //
 // Reviews ALL prescriptions in the current session. The provider
-// signs once, and all prescriptions are submitted as DRAFT orders
-// then transitioned to AWAITING_PAYMENT in sequence.
+// signs once: every prescription is created as a DRAFT order, then
+// the whole set is signed in ONE request to POST /api/orders/batch-sign
+// (WO-99) — all or nothing, one payment group, one payment link.
 //
 // Each prescription creates its own order record with its own
 // state machine, but they share a single provider signature
-// and the patient receives one combined payment notification.
+// and the patient receives one payment link.
 //
 // Sign-gating (cosmetic, UX only): only the assigned provider can
 // actually sign & send — the server enforces this in
-// /api/orders/[orderId]/sign-and-send, which returns 403 for any
+// /api/orders/batch-sign, which returns 403 for any
 // non-provider signer. That 403 is the authoritative gate and is
 // unchanged. Here we hide the signature canvas + "Sign & Send" for
 // non-providers (medical_assistant, clinic_admin, ops_admin) and
@@ -77,6 +78,7 @@ import { splitDose } from '@/lib/orders/dose'
 import { formatDoseWithMg } from '@/lib/orders/dose-display'
 import { bundleTotals } from '@/lib/orders/shipping'
 import { useBundleShipping, ShippingLines, MultiPharmacyNoticeBanner } from './bundle-shipping'
+import { checkSignature, signatureFromPad, SIGNATURE_REJECTION_COPY, type SignatureCheck } from '@/lib/orders/signature'
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -238,9 +240,9 @@ function doseWithMg(rx: SessionPrescription): string {
 
 // ── Props ─────────────────────────────────────────────────────
 // isProvider is derived server-side (review/page.tsx) from the
-// session app_role claim. Providers get the sign-and-send UI;
+// session app_role claim. Providers get the Sign & Send UI;
 // everyone else gets "Save as Draft — Provider Signs Later". The
-// server 403 in sign-and-send remains the real gate regardless.
+// server 403 in batch-sign remains the real gate regardless.
 interface Props {
   isProvider: boolean
 }
@@ -252,7 +254,14 @@ export function BatchReviewForm({ isProvider }: Props) {
   const session = usePrescriptionSession()
   const sigCanvasRef = useRef<SignatureCanvas>(null)
 
-  const [signatureCaptured, setSignatureCaptured] = useState(false)
+  // WO-99: the stroke rule (at least 3 strokes spanning at least 40% of
+  // the pad), read off the pad after each stroke. The server checks the
+  // same rule.
+  const [signatureCheck, setSignatureCheck] = useState<SignatureCheck | null>(null)
+  const signatureCaptured = signatureCheck?.ok === true
+  function readSignaturePad() {
+    setSignatureCheck(checkSignature(signatureFromPad(sigCanvasRef.current as unknown as Parameters<typeof signatureFromPad>[0])))
+  }
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitProgress, setSubmitProgress] = useState<string | null>(null)
@@ -427,7 +436,7 @@ export function BatchReviewForm({ isProvider }: Props) {
 
   function handleClearSignature() {
     sigCanvasRef.current?.clear()
-    setSignatureCaptured(false)
+    setSignatureCheck(null)
   }
 
   const checksUnavailable = allergyStatusUnknown || rulesLoadFailed || interactionsUnavailable
@@ -436,14 +445,20 @@ export function BatchReviewForm({ isProvider }: Props) {
   const isBusy = isSubmitting || isSavingDraft
 
   // ── Sign & Send all prescriptions ──────────────────────────
-  async function handleSignAndSend() {
-    if (!sigCanvasRef.current || sigCanvasRef.current.isEmpty()) {
+  // WO-99: create every draft, allocate shipping, then ONE batch-sign
+  // request signs them all — or none. A failure leaves every order an
+  // unsigned DRAFT; a retry reuses the drafts already created.
+  async function handleSignAndSend(totpCode?: string) {
+    const payload = signatureFromPad(sigCanvasRef.current as unknown as Parameters<typeof signatureFromPad>[0])
+    const sig = checkSignature(payload)
+    if (!sig.ok) {
       // fix/review-send-flow (F5 family): the canvas can lose its strokes
-      // (e.g. after a resize/re-render) while signatureCaptured is still
-      // true. The old silent `return` here made "Confirm & Send" look
-      // completely dead. Surface it and reset so the user can re-sign.
-      setSubmitError('Your signature did not register. Please sign in the signature box again, then retry.')
-      setSignatureCaptured(false)
+      // (e.g. after a resize/re-render) while the button still looked
+      // enabled. Surface it and reset so the provider can re-sign.
+      setSubmitError(sig.reason === 'format' || (payload?.strokes.length ?? 0) === 0
+        ? 'Your signature did not register. Please sign in the signature box again, then retry.'
+        : SIGNATURE_REJECTION_COPY[sig.reason])
+      setSignatureCheck(sig)
       setConfirmOpen(false)
       return
     }
@@ -454,41 +469,34 @@ export function BatchReviewForm({ isProvider }: Props) {
     setConfirmOpen(false)
 
     try {
-      const signatureDataUrl = sigCanvasRef.current.toDataURL('image/png')
       const totalCount = prescriptions.length
-      let sentCount = 0
 
       // Step 1 (WO-102): create every DRAFT, then Step 2: allocate shipping
-      // across the send, before any payment link goes out.
+      // across the send, before anything is signed.
       const orderIds = await createDrafts('Creating order')
       await allocateShipping(orderIds)
 
-      for (let i = 0; i < prescriptions.length; i++) {
-        const rx = prescriptions[i]!
-        const orderId = createdOrderIdsRef.current.get(rx.id)!
-
-        // Step 3: Sign & Send
-        setSubmitProgress(`Signing order ${i + 1} of ${totalCount}...`)
-
-        const sendRes = await fetch(`/api/orders/${orderId}/sign-and-send`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ signatureDataUrl }),
-        })
-
-        if (!sendRes.ok) {
-          const err = await sendRes.json()
-          throw new Error(
-            `Sign & send for order ${i + 1} (${rx.medicationName}) failed: ${err.error ?? 'Unknown error'}` +
-            (sentCount > 0 ? `. ${sentCount} of ${totalCount} already sent successfully.` : '')
-          )
+      // Step 3 (WO-99): sign every order in one request.
+      setSubmitProgress(`Signing ${totalCount} prescription${totalCount !== 1 ? 's' : ''}...`)
+      const sendRes = await fetch('/api/orders/batch-sign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderIds, signature: sig.signature, ...(totpCode ? { totpCode } : {}) }),
+      })
+      if (!sendRes.ok) {
+        const err = await sendRes.json().catch(() => ({})) as { error?: string; code?: string }
+        if (err.code === 'TOTP_REQUIRED') {
+          // The server found a controlled line this page did not flag
+          // (a schedule that could not be read): ask for the code.
+          setShowEpcsGate(true)
         }
+        const message = err.error ?? 'Unknown error'
+        throw new Error(/nothing was signed/i.test(message) ? message : `${message} Nothing was signed.`)
+      }
 
-        // BLK-01 fix: This prescription succeeded — remove it from the session
-        // so if a later prescription fails, retrying won't re-submit this one
+      for (const rx of prescriptions) {
         session.removePrescription(rx.id)
         createdOrderIdsRef.current.delete(rx.id)
-        sentCount++
       }
 
       // Navigate to dashboard; the session is cleared in the unmount
@@ -574,7 +582,7 @@ export function BatchReviewForm({ isProvider }: Props) {
 
   // ── Save all prescriptions as drafts (non-provider) ─────────
   // Mirrors handleSignAndSend but stops after DRAFT creation — no
-  // signature, no sign-and-send call. The assigned provider signs
+  // signature, no batch-sign call. The assigned provider signs
   // each draft later from the dashboard Drafts tab. Reuses the same
   // POST /api/orders the provider flow and the margin builder use.
   async function handleSaveDraftAll() {
@@ -893,11 +901,10 @@ export function BatchReviewForm({ isProvider }: Props) {
               }}
               onBegin={() => {
                 logSignatureEvent('batch-review-form', 'onBegin')
-                setSignatureCaptured(true)
               }}
               onEnd={() => {
                 logSignatureEvent('batch-review-form', 'onEnd')
-                setSignatureCaptured(true)
+                readSignaturePad()
               }}
             />
           </div>
@@ -936,13 +943,14 @@ export function BatchReviewForm({ isProvider }: Props) {
       {isProvider && confirmOpen && (
         <div className="rounded-lg border-2 border-primary bg-primary/5 p-4">
           <p className="text-sm font-medium text-foreground">
-            You are about to send {prescriptions.length} payment link{prescriptions.length !== 1 ? 's' : ''} totaling{' '}
+            {/* WO-99: one payment link for the whole send, however many prescriptions. */}
+            You are about to send one payment link for {prescriptions.length} prescription{prescriptions.length !== 1 ? 's' : ''} totaling{' '}
             <strong>{toCurrency(totals.patientTotalCents)}</strong>
             {totals.patientShippingCents > 0 && <> (including {toCurrency(totals.patientShippingCents)} shipping)</>} to{' '}
             <strong>{patient.first_name} {patient.last_name}</strong> at <strong>{patient.phone || 'no phone'}</strong>.
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            The link{prescriptions.length !== 1 ? 's' : ''} will expire in 72 hours. Once sent, all prescriptions are locked and cannot be edited.
+            The link will expire in 72 hours. Once sent, all prescriptions are locked and cannot be edited.
           </p>
           <div className="mt-3 flex gap-3">
             <button
@@ -953,7 +961,7 @@ export function BatchReviewForm({ isProvider }: Props) {
                 if (controlled.length > 0) {
                   setShowEpcsGate(true)
                 } else {
-                  handleSignAndSend()
+                  void handleSignAndSend()
                 }
               }}
               disabled={isSubmitting}
@@ -1006,6 +1014,8 @@ export function BatchReviewForm({ isProvider }: Props) {
                 ? 'Remove the flagged prescriptions above to enable sending.'
                 : hasMissingDetails
                   ? `Complete Rx details to enable sending: ${missingDetailsHint}.`
+                  : signatureCheck && !signatureCheck.ok
+                  ? SIGNATURE_REJECTION_COPY[signatureCheck.reason]
                   : 'Sign in the signature box above to enable sending.'}
             </p>
           )}
@@ -1072,9 +1082,9 @@ export function BatchReviewForm({ isProvider }: Props) {
               .filter(rx => rx.deaSchedule && rx.deaSchedule >= 2)
               .map(rx => rx.deaSchedule)
           }
-          onVerified={() => {
+          onVerified={code => {
             setShowEpcsGate(false)
-            handleSignAndSend()
+            void handleSignAndSend(code)
           }}
           onCancel={() => setShowEpcsGate(false)}
         />
