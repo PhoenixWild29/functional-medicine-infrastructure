@@ -186,7 +186,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     prescribedDose: dose, frequencyCode, quantityLabel, packageId, packageCount,
   })
   if (!line.ok) {
-    return NextResponse.json({ error: line.error }, { status: line.status })
+    return NextResponse.json({ error: line.error, ...(line.code ? { code: line.code } : {}) }, { status: line.status })
   }
   const { wholesaleCents, medicationSnapshot, pharmacySnapshot } = line
 

@@ -13,6 +13,7 @@
 //   as the builder's pharmacy_options level (/api/formulations).
 // ============================================================
 
+import { isLivePharmacy, type PharmacyLiveness } from '@/lib/pharmacies/live'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
@@ -107,7 +108,7 @@ export async function GET(req: NextRequest) {
       const [priceResult, formResult] = await Promise.all([
         supabase
           .from('pharmacy_formulations')
-          .select('formulation_id, pharmacy_id, wholesale_price')
+          .select('formulation_id, pharmacy_id, wholesale_price, pharmacies ( is_active, deleted_at )')
           .in('formulation_id', formulationIds)
           .in('pharmacy_id', pharmacyIds)
           .eq('is_active', true)
@@ -125,6 +126,9 @@ export async function GET(req: NextRequest) {
       if (formResult.error) return NextResponse.json({ error: formResult.error.message }, { status: 500 })
 
       for (const row of priceResult.data ?? []) {
+        // No price for a pharmacy that is no longer live: the item reads
+        // as unavailable and is never quick-loaded.
+        if (!isLivePharmacy((row as { pharmacies?: PharmacyLiveness | null }).pharmacies)) continue
         priceByKey.set(`${row.pharmacy_id}:${row.formulation_id}`, row.wholesale_price)
       }
       for (const row of formResult.data ?? []) {

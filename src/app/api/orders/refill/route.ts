@@ -27,6 +27,7 @@
 // must belong to that clinic.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { isLivePharmacy, type PharmacyLiveness } from '@/lib/pharmacies/live'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import {
@@ -148,9 +149,12 @@ export async function POST(request: NextRequest) {
   if (formulationIds.length > 0 && pharmacyIds.length > 0) {
     const { data: pfRows, error: pfError } = await supabase
       .from('pharmacy_formulations')
-      .select('pharmacy_id, formulation_id, wholesale_price, pharmacy_formulation_packages(id, package_label, package_qty, package_unit, wholesale_price, is_default, active)')
+      .select('pharmacy_id, formulation_id, wholesale_price, pharmacy_formulation_packages(id, package_label, package_qty, package_unit, wholesale_price, is_default, active), pharmacies ( name, is_active, deleted_at )')
       .in('formulation_id', formulationIds)
       .in('pharmacy_id', pharmacyIds)
+      .eq('is_active', true)
+      .eq('is_available', true)
+      .is('deleted_at', null)
     // Batch 2C: this error used to be discarded. With no packages the line
     // fell back to the source order's wholesale, repriceRequired came out
     // false, and the refill skipped the WO-108 price interrupt exactly when
@@ -161,6 +165,23 @@ export async function POST(request: NextRequest) {
         { error: "Today's package prices could not be read, so this refill cannot be priced. Nothing was changed — try again." },
         { status: 503 },
       )
+    }
+    // A refill goes to the source order's pharmacy. If that pharmacy is
+    // no longer live (or no longer offers the formulation), the refill is
+    // refused up front, naming the line — it is never priced from a
+    // snapshot and sent to a pharmacy that cannot fill it.
+    const offered = new Set(
+      ((pfRows ?? []) as unknown as Array<{ pharmacy_id: string; formulation_id: string; pharmacies?: PharmacyLiveness | null }>)
+        .filter(pf => isLivePharmacy(pf.pharmacies))
+        .map(pf => `${pf.pharmacy_id}:${pf.formulation_id}`),
+    )
+    const unavailable = rows.filter(r => r.formulation_id && r.pharmacy_id && !offered.has(`${r.pharmacy_id}:${r.formulation_id}`))
+    if (unavailable.length > 0) {
+      return NextResponse.json({
+        error: `${unavailable.map(r => refillLineName(r)).join(', ')} cannot be refilled as before: the pharmacy is no longer active or no longer offers it. Start a new prescription to choose another pharmacy.`,
+        code:  'PHARMACY_INACTIVE',
+        unavailable: unavailable.map(r => r.order_id),
+      }, { status: 409 })
     }
     for (const pf of (pfRows ?? []) as unknown as PharmacyFormulationRow[]) {
       packagesByKey.set(
@@ -388,4 +409,11 @@ function readRoute(snap: Record<string, unknown>): { name: string; sig_prefix: s
     }
   }
   return null
+}
+
+/** The medication name a refused refill line is reported by. */
+function refillLineName(row: SourceRow): string {
+  const snap = (row as { medication_snapshot?: unknown }).medication_snapshot
+  const name = snap && typeof snap === 'object' ? (snap as Record<string, unknown>)['medication_name'] : null
+  return typeof name === 'string' && name ? name : 'A prescription'
 }

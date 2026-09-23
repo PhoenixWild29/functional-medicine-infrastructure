@@ -222,6 +222,15 @@ describe('all or nothing', () => {
     expect(res.problems![0]).toMatchObject({ orderId: id(1), code: 'reprice' })
   })
 
+  it("a pharmacy soft-deleted since the draft was saved blocks its line, and says so", async () => {
+    const db = world([draft(1)])
+    db.tables['pharmacies']!.find(p => p['pharmacy_id'] === 'ph-strive')!['deleted_at'] = '2026-04-23T00:00:00Z'
+    const res = await sign(db, [id(1)])
+    if (res.ok) throw new Error('expected a refusal')
+    expect(res.problems![0]).toMatchObject({ orderId: id(1), code: 'pharmacy', message: expect.stringContaining('Strive is no longer active') })
+    expect(signingUpdates(db)).toHaveLength(0)
+  })
+
   it('a draft already signed elsewhere: 409, the others are not signed', async () => {
     const db = world([draft(1), draft(2, { status: 'AWAITING_PAYMENT' })])
     const res = await sign(db, [id(1), id(2)])

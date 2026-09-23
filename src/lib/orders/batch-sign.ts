@@ -53,6 +53,7 @@ import {
 } from './rx-details'
 import { resolveLine } from './resolve-line'
 import { applyBundleShipping } from './apply-bundle-shipping'
+import { pharmacyInactiveMessage } from '@/lib/pharmacies/live'
 import { findInteractions, type InteractionRow } from '@/lib/interactions/match'
 import { checkSignature, SIGNATURE_REJECTION_COPY, type SignaturePayload } from './signature'
 import { verifyProviderTotp } from '@/lib/epcs/totp'
@@ -306,7 +307,11 @@ export async function checkBatch(
       add(r, 'license', `${name}: ${pharmacy?.name ?? 'the pharmacy'} is not licensed in ${r.shipping_state_snapshot ?? "the patient's state"}.`)
     }
     const pharmacyOk = !!pharmacy && pharmacy.is_active && !pharmacy.deleted_at && pharmacy.pharmacy_status !== 'BANNED'
-    if (!pharmacyOk) add(r, 'pharmacy', `${name}: ${pharmacy?.name ?? 'the pharmacy'} is inactive or banned.`)
+    if (!pharmacyOk) {
+      add(r, 'pharmacy', pharmacy?.pharmacy_status === 'BANNED'
+        ? `${name}: ${pharmacy.name} is banned.`
+        : `${name}: ${pharmacyInactiveMessage(pharmacy?.name)}`)
+    }
 
     // DEA: the catalog when this is a catalog line and it could be read,
     // else the snapshot taken at creation. Unknown is never "0".

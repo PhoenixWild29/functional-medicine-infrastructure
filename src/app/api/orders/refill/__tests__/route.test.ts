@@ -83,6 +83,7 @@ function packagesRow(packages: Record<string, unknown>[]): Record<string, unknow
   return {
     pharmacy_id: PHARMACY, formulation_id: FORM, wholesale_price: 95,
     pharmacy_formulation_packages: packages,
+    pharmacies: { name: 'Strive Pharmacy', is_active: true, deleted_at: null },
   }
 }
 
@@ -286,5 +287,20 @@ describe('a package price that moved sends the line to the price step', () => {
     expect(belowCost['repriceRequired']).toBe(true)
     expect(belowCost['suggestedRetailCents']).toBeNull()
     expect(belowCost['marginBasis']).toBe('clinic_default')
+  })
+})
+
+describe('a refill whose pharmacy is no longer live', () => {
+  it('is refused with 409 PHARMACY_INACTIVE naming the line — never priced and sent to it', async () => {
+    pharmacyFormulationRows = [{
+      ...packagesRow([PKG_5ML]),
+      pharmacies: { name: 'Test Pharmacy Tier1', is_active: true, deleted_at: '2026-04-23T00:00:00Z' },
+    }]
+    const res = await call([SOURCE])
+    expect(res.status).toBe(409)
+    const body = await res.json() as { code: string; error: string; unavailable: string[] }
+    expect(body.code).toBe('PHARMACY_INACTIVE')
+    expect(body.unavailable).toEqual([SOURCE])
+    expect(body.error).toContain('Start a new prescription')
   })
 })

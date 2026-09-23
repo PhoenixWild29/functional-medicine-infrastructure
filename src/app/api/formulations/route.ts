@@ -23,6 +23,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
 import { loadRxDefaults } from '@/lib/orders/rx-defaults-loader'
 import { packageOptionsFromRows } from '@/lib/orders/rx-details'
+import { isLivePharmacy, type PharmacyLiveness } from '@/lib/pharmacies/live'
 
 /** Upper bound on formulation ids per rx_defaults request. */
 const RX_DEFAULTS_MAX_IDS = 50
@@ -290,7 +291,8 @@ export async function GET(req: NextRequest) {
             available_supply_durations, estimated_turnaround_days,
             pharmacies(
               pharmacy_id, name, slug, integration_tier,
-              fax_number, supports_real_time_status
+              fax_number, supports_real_time_status,
+              is_active, deleted_at
             ),
             pharmacy_formulation_packages(
               id, package_label, package_qty, package_unit,
@@ -306,20 +308,25 @@ export async function GET(req: NextRequest) {
         const { data, error } = await query
         if (error) throw error
 
-        // If patient state provided, filter to pharmacies licensed in that state
-        let filtered = data ?? []
+        // An active link is not enough: the pharmacy itself must be live.
+        // A soft-deleted pharmacy whose links were never deactivated (the
+        // E2E test pharmacies on prod) used to be offered here.
+        let filtered = (data ?? []).filter(pf => isLivePharmacy(pf.pharmacies as PharmacyLiveness | null))
         if (patientState && filtered.length > 0) {
           const pharmacyIds = filtered
             .map(pf => (pf.pharmacies as Record<string, unknown>)?.pharmacy_id as string)
             .filter(Boolean)
 
           if (pharmacyIds.length > 0) {
-            const { data: licenses } = await supabase
+            const { data: licenses, error: licenseError } = await supabase
               .from('pharmacy_state_licenses')
               .select('pharmacy_id')
               .in('pharmacy_id', pharmacyIds)
               .eq('state_code', patientState.toUpperCase())
               .eq('is_active', true)
+            // A licence read that failed has no answer; it is not "every
+            // pharmacy is unlicensed" (an empty list the provider can't read).
+            if (licenseError) throw licenseError
 
             const licensedIds = new Set(licenses?.map(l => l.pharmacy_id) ?? [])
             filtered = filtered.filter(pf =>

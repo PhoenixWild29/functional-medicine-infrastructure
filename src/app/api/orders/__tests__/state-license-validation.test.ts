@@ -145,6 +145,8 @@ function installHappyFixtures() {
       name:             'Portal Plus Pharmacy',
       integration_tier: 'TIER_2_PORTAL',
       fax_number:       null,
+      is_active:        true,
+      deleted_at:       null,
     },
     error: null,
   })

@@ -19,6 +19,7 @@
 // read from that verified user.
 // ============================================================
 
+import { isLivePharmacy, type PharmacyLiveness } from '@/lib/pharmacies/live'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
@@ -111,6 +112,13 @@ async function categoryForFormulation(supabase: ServiceClient, formulationId: st
 // unfiltered (so dead favorites still render and can be deleted), but
 // each favorite surfaces a computed formulation_active flag so the UI
 // can disable the click-through instead of 404ing on the margin page.
+/** No pinned pharmacy → nothing to check; otherwise it must be live. */
+function pinnedPharmacyLive(fav: { pharmacy_id?: string | null; pharmacies?: unknown }): boolean {
+  if (!fav.pharmacy_id) return true
+  const p: unknown = Array.isArray(fav.pharmacies) ? fav.pharmacies[0] : fav.pharmacies
+  return isLivePharmacy(p as PharmacyLiveness | null)
+}
+
 function isFormulationLive(f: unknown): boolean {
   const row: unknown = Array.isArray(f) ? f[0] : f
   if (!row || typeof row !== 'object') return false
@@ -160,7 +168,7 @@ export async function GET(req: NextRequest) {
         dosage_forms ( name ),
         routes_of_administration ( name, abbreviation, sig_prefix )
       ),
-      pharmacies ( pharmacy_id, name )
+      pharmacies ( pharmacy_id, name, is_active, deleted_at )
     `)
     .in('provider_id', providerIds)
     .order('use_count', { ascending: false })
@@ -206,7 +214,10 @@ export async function GET(req: NextRequest) {
     // WO-105: a saved titration keeps its steps, so applying it rebuilds
     // the schedule instead of flattening it to a standard sig.
     titration_steps: parseTitrationSteps((fav as { titration_steps?: unknown }).titration_steps),
-    formulation_active: isFormulationLive(fav.formulations),
+    // A favorite pinned to a pharmacy that is no longer live cannot be
+    // loaded: it reads as unavailable, like a retired formulation.
+    formulation_active: isFormulationLive(fav.formulations) && pinnedPharmacyLive(fav),
+    pharmacy_active:    pinnedPharmacyLive(fav),
     // null = unknown (no patient_state given) or no pinned pharmacy;
     // boolean otherwise. The UI only blocks on an explicit false.
     pharmacy_licensed: patientState
@@ -368,14 +379,14 @@ export async function PATCH(req: NextRequest) {
   if (typeof newPharmacyId === 'string') {
     const { data: offering } = await supabase
       .from('pharmacy_formulations')
-      .select('pharmacy_formulation_id')
+      .select('pharmacy_formulation_id, pharmacies!inner ( is_active, deleted_at )')
       .eq('pharmacy_id', newPharmacyId)
       .eq('formulation_id', current.formulation_id)
       .eq('is_available', true)
       .eq('is_active', true)
       .is('deleted_at', null)
       .maybeSingle()
-    if (!offering) {
+    if (!offering || !isLivePharmacy((offering as { pharmacies?: PharmacyLiveness }).pharmacies)) {
       return NextResponse.json({ error: 'That pharmacy does not offer this formulation' }, { status: 400 })
     }
   }

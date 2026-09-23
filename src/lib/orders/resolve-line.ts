@@ -23,6 +23,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/types/database.types'
 import { MAX_PACKAGE_COUNT } from './rx-details'
+import { isLivePharmacy, pharmacyInactiveMessage } from '@/lib/pharmacies/live'
 
 type ServiceClient = SupabaseClient<Database>
 
@@ -87,7 +88,7 @@ export interface LinePackage {
 
 export type ResolveLineResult =
   | { ok: true; medicationItem: MedicationItem; wholesaleCents: number; medicationSnapshot: MedicationSnapshot; pharmacySnapshot: PharmacySnapshot; package: LinePackage }
-  | { ok: false; status: 400 | 404 | 500 | 503; error: string }
+  | { ok: false; status: 400 | 404 | 422 | 500 | 503; error: string; code?: string }
 
 /** Exactly one of catalogItemId / formulationId must be set. */
 export function lineSourceKind(input: { catalogItemId?: string | null | undefined; formulationId?: string | null | undefined }): 'catalog' | 'formulation' | null {
@@ -228,18 +229,25 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
 
   const wholesaleCents = Math.round(medicationItem.wholesale_price * 100)
 
-  // Fetch pharmacy (for snapshot)
+  // Fetch pharmacy (for snapshot). Read whatever its state, then refuse a
+  // pharmacy that is not live with a reason — a stale session or a deep
+  // link must not create an order on it, and "not found" told nobody why.
   const { data: pharmacy, error: pharmacyError } = await supabase
     .from('pharmacies')
-    .select('pharmacy_id, name, integration_tier, fax_number')
+    .select('pharmacy_id, name, integration_tier, fax_number, is_active, deleted_at')
     .eq('pharmacy_id', pharmacyId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
     .maybeSingle()
 
-  if (pharmacyError || !pharmacy) {
-    console.error('[orders] pharmacy fetch failed:', pharmacyError?.message)
+  if (pharmacyError) {
+    console.error('[orders] pharmacy fetch failed:', pharmacyError.message)
+    return { ok: false, status: 500, error: 'Pharmacy lookup failed' }
+  }
+  if (!pharmacy) {
     return { ok: false, status: 404, error: 'Pharmacy not found' }
+  }
+  if (!isLivePharmacy(pharmacy)) {
+    console.warn(`[orders] refused: pharmacy is not live | pharmacy=${pharmacyId}`)
+    return { ok: false, status: 422, code: 'PHARMACY_INACTIVE', error: pharmacyInactiveMessage(pharmacy.name) }
   }
 
   // Compliance (defense in depth): the pharmacy must hold an ACTIVE

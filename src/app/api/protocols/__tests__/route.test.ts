@@ -119,7 +119,7 @@ describe('GET /api/protocols?id — live pricing enrichment', () => {
         case 'pharmacy_formulations':
           // Only form-live still has an active + available price row
           return chain({
-            data: [{ formulation_id: 'form-live', pharmacy_id: 'ph-1', wholesale_price: 45 }],
+            data: [{ formulation_id: 'form-live', pharmacy_id: 'ph-1', wholesale_price: 45, pharmacies: { is_active: true, deleted_at: null } }],
             error: null,
           })
         case 'formulations':
