@@ -28,9 +28,9 @@ jest.mock('react-signature-canvas', () => {
   const React = jest.requireActual('react')
   return {
     __esModule: true,
-    default: React.forwardRef(function FakeCanvas(props: { onBegin?: () => void }, ref: React.Ref<unknown>) {
-      React.useImperativeHandle(ref, () => ({ isEmpty: () => false, clear: () => {}, toDataURL: () => 'data:image/png;base64,SIG' }))
-      return React.createElement('canvas', { 'aria-label': 'Provider signature pad', onClick: () => props.onBegin?.() })
+    default: React.forwardRef(function FakeCanvas(props: { onBegin?: () => void; onEnd?: () => void }, ref: React.Ref<unknown>) {
+      React.useImperativeHandle(ref, () => ({ toData: () => [[{ x: 10, y: 10 }, { x: 200, y: 20 }], [{ x: 30, y: 40 }, { x: 180, y: 40 }], [{ x: 50, y: 60 }, { x: 220, y: 70 }]], getCanvas: () => ({ getBoundingClientRect: () => ({ width: 300 }) }), isEmpty: () => false, clear: () => {}, toDataURL: () => 'data:image/png;base64,SIG' }))
+      return React.createElement('canvas', { 'aria-label': 'Provider signature pad', onClick: () => { props.onBegin?.(); props.onEnd?.() } })
     }),
   }
 })
@@ -84,7 +84,7 @@ function fetchRouter(input: RequestInfo | URL, init?: RequestInit) {
   }
   if (url === '/api/orders' && method === 'POST') return ok({ orderId: `order-${calls.filter(c => c.url === '/api/orders').length}` }, 201)
   if (url === '/api/orders/shipping') return shippingOk ? ok({ totalCents: 3400 }) : ok({ error: 'rates unavailable' }, 500)
-  if (url.endsWith('/sign-and-send')) return ok({ checkoutUrl: 'https://x/checkout/t' })
+  if (url === '/api/orders/batch-sign') return ok({ signedAt: 'now', patients: [{ patientId: 'p', orderIds: [], paymentGroupId: 'g', checkoutUrl: 'https://x/checkout/t' }] })
   return ok({})
 }
 
@@ -156,7 +156,8 @@ describe('Sign & Send — WO-102 order of operations', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm & Send' }))
   }
 
-  it('creates both drafts, allocates shipping across them, then signs each', async () => {
+  // WO-99: then ONE batch-sign request signs both — never one request per order.
+  it('creates both drafts, allocates shipping across them, then signs both in one request', async () => {
     renderReview([SEMA_QUICK_RX, BPC_STRIVE])
     await waitFor(() => expect(screen.getByTestId('review-patient-total')).toHaveTextContent('$354.00'))
     await signAndConfirm()
@@ -164,8 +165,9 @@ describe('Sign & Send — WO-102 order of operations', () => {
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/dashboard?sent=2'))
     const sequence = calls
       .filter(c => c.method === 'POST')
-      .map(c => (c.url.endsWith('/sign-and-send') ? 'sign' : c.url))
-    expect(sequence).toEqual(['/api/orders', '/api/orders', '/api/orders/shipping', 'sign', 'sign'])
+      .map(c => c.url)
+    expect(sequence).toEqual(['/api/orders', '/api/orders', '/api/orders/shipping', '/api/orders/batch-sign'])
+    expect(calls.find(c => c.url === '/api/orders/batch-sign')!.body).toMatchObject({ orderIds: ['order-1', 'order-2'] })
     expect(calls.find(c => c.url === '/api/orders/shipping')!.body).toEqual({ orderIds: ['order-1', 'order-2'] })
   })
 
@@ -174,7 +176,7 @@ describe('Sign & Send — WO-102 order of operations', () => {
     await waitFor(() => expect(screen.getByTestId('review-patient-total')).toHaveTextContent('$354.00'))
     fireEvent.click(await screen.findByLabelText('Provider signature pad'))
     fireEvent.click(screen.getByRole('button', { name: /Sign & Send All 2 Prescriptions/ }))
-    expect(screen.getByText(/You are about to send 2 payment links totaling/)).toHaveTextContent('totaling $354.00 (including $34.00 shipping) to Alex Demo')
+    expect(screen.getByText(/You are about to send one payment link for 2 prescriptions totaling/)).toHaveTextContent('totaling $354.00 (including $34.00 shipping) to Alex Demo')
   })
 
   it('if shipping cannot be allocated, nothing is signed and nothing is sent', async () => {
@@ -184,7 +186,7 @@ describe('Sign & Send — WO-102 order of operations', () => {
     await signAndConfirm()
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Shipping could not be calculated: rates unavailable. Nothing has been sent.')
-    expect(calls.some(c => c.url.endsWith('/sign-and-send'))).toBe(false)
+    expect(calls.some(c => c.url === '/api/orders/batch-sign')).toBe(false)
 
     // Retry reuses the drafts already created — no duplicate orders.
     shippingOk = true

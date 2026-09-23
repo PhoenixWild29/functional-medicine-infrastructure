@@ -30,6 +30,7 @@ import { OrdersKanban } from './orders-kanban'
 import type { TabId } from '../_lib/tabs'
 import type { DraftViewer } from '@/lib/orders/draft-edit-access'
 import { OrderDrawer }  from './order-drawer'
+import { batchSignHref, MAX_BATCH_ORDERS } from '@/lib/orders/batch-sign-view'
 
 // ── Status tab definitions ──────────────────────────────────
 
@@ -129,6 +130,8 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
   // froze the drawer on a click-time snapshot — it never reflected poll
   // updates or the post-combine cache patch (handleGroupCreated).
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
+  // WO-99: drafts ticked for "Sign selected" on the Drafts tab.
+  const [draftSelection, setDraftSelection] = useState<Set<string>>(new Set())
 
   // Poll orders every 30 seconds (REQ-GDB-001, no Realtime — HIPAA)
   const { data: ordersData, isError, isFetching, refetch } = useQuery({
@@ -180,6 +183,24 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
     if (tab.statuses === null) return orders.length
     return orders.filter(o => tab.statuses!.includes(o.status)).length
   }
+
+  // ── WO-99: Sign all / Sign selected ─────────────────────
+  // Only drafts where the signed-in provider IS the signer. A draft under
+  // another provider is taken over with Sign as me (WO-100) first; it is
+  // never counted here, never ticked, and never signed under their name.
+  const myDraftIds = viewer?.isProvider && viewer.providerId
+    ? orders.filter(o => o.status === 'DRAFT' && o.providerId === viewer.providerId).map(o => o.orderId)
+    : []
+  const mySignable = new Set(myDraftIds)
+  const chosenDraftIds = [...draftSelection].filter(id => mySignable.has(id))
+  const toggleDraft = useCallback((orderId: string) => {
+    setDraftSelection(prev => {
+      const next = new Set(prev)
+      if (next.has(orderId)) next.delete(orderId)
+      else next.add(orderId)
+      return next
+    })
+  }, [])
 
   const handleRowClick = useCallback((order: DashboardOrder) => {
     setSelectedOrderId(order.orderId)
@@ -336,6 +357,33 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
         })}
       </div>
 
+      {/* ── WO-99: Sign all (N) — the provider's own drafts ── */}
+      {activeTab === 'drafts' && myDraftIds.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2" data-testid="drafts-sign-bar">
+          <button
+            type="button"
+            data-testid="sign-all-drafts"
+            onClick={() => router.push(batchSignHref(myDraftIds.slice(0, MAX_BATCH_ORDERS)))}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Sign all ({myDraftIds.length})
+          </button>
+          {chosenDraftIds.length > 0 && (
+            <button
+              type="button"
+              data-testid="sign-selected-drafts"
+              onClick={() => router.push(batchSignHref(chosenDraftIds.slice(0, MAX_BATCH_ORDERS)))}
+              className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Sign selected ({chosenDraftIds.length})
+            </button>
+          )}
+          {myDraftIds.length > MAX_BATCH_ORDERS && (
+            <span className="text-xs text-muted-foreground">Up to {MAX_BATCH_ORDERS} are signed at a time.</span>
+          )}
+        </div>
+      )}
+
       {/* ── Empty state — REQ-GDB-004 / WO-71 ── */}
       {!isFetching && filteredOrders.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/10 py-16 text-center gap-3">
@@ -392,6 +440,9 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
             isError={isError}
             onRowClick={handleRowClick}
             onRetry={() => void refetch()}
+            draftSelection={activeTab === 'drafts' && myDraftIds.length > 0
+              ? { selectable: mySignable, selected: draftSelection, onToggle: toggleDraft }
+              : undefined}
           />
         ) : (
           <OrdersKanban

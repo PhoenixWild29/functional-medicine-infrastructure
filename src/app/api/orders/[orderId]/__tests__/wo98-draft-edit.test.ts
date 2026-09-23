@@ -370,3 +370,17 @@ describe('WO-100 — PATCH / DELETE apply the provider-owns-draft rule (shared w
     })
   })
 })
+
+describe('WO-99 — a draft being batch-signed cannot change', () => {
+  // Batch signing links the patient's drafts to their payment group
+  // BEFORE it signs them. A change landing between the checks and the
+  // signature would sign something nobody checked.
+  it('PATCH and DELETE refuse a draft linked to a payment group (409) and write nothing', async () => {
+    installHappyFixtures({ ...DRAFT_ROW, payment_group_id: 'g-1' })
+
+    expect((await PATCH(makeRequest(patchBody()), ctx)).status).toBe(409)
+    expect((await DELETE(makeRequest(), ctx)).status).toBe(409)
+    expect(updatedRows).toEqual([])
+    expect(auditRows()).toEqual([])
+  })
+})

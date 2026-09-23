@@ -314,6 +314,18 @@ export async function middleware(request: NextRequest) {
     return applySecurityHeaders(redirectWithSessionCookies(new URL('/unauthorized', request.url)))
   }
 
+  // WO-99: the single-draft sign page is gone. /new-prescription/sign/<id>
+  // (dashboard drawer, draft edit return path, old links) goes to the
+  // batch sign page with that order pre-selected. Done here rather than in
+  // the page: a redirect() from inside the (clinic-app) Suspense boundary
+  // hangs instead of navigating.
+  const singleDraft = /^\/new-prescription\/sign\/([^/]+)\/?$/.exec(pathname)
+  if (singleDraft && appRole === 'provider') {
+    const target = new URL('/new-prescription/sign', request.url)
+    target.searchParams.set('orders', decodeURIComponent(singleDraft[1]!))
+    return applySecurityHeaders(redirectWithSessionCookies(target))
+  }
+
   return applySecurityHeaders(response)
 }
 

@@ -26,7 +26,7 @@ jest.mock('react-signature-canvas', () => {
   return {
     __esModule: true,
     default: React.forwardRef(function FakeCanvas(_p: unknown, ref: React.Ref<unknown>) {
-      React.useImperativeHandle(ref, () => ({ isEmpty: () => true, clear: () => {}, toDataURL: () => '' }))
+      React.useImperativeHandle(ref, () => ({ toData: () => [[{ x: 10, y: 10 }, { x: 200, y: 20 }], [{ x: 30, y: 40 }, { x: 180, y: 40 }], [{ x: 50, y: 60 }, { x: 220, y: 70 }]], getCanvas: () => ({ getBoundingClientRect: () => ({ width: 300 }) }), isEmpty: () => true, clear: () => {}, toDataURL: () => '' }))
       return React.createElement('canvas', { 'aria-label': 'Provider signature pad' })
     }),
   }

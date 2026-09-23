@@ -10,7 +10,11 @@
 // Flow:
 // 1. If provider has TOTP set up → show code entry
 // 2. If not → show QR code setup, then code entry
-// 3. On valid code → call onVerified() to proceed with signing
+// 3. On valid code → call onVerified(code) to proceed with signing
+//
+// WO-99: the code is handed to the caller, which sends it with the signing
+// request. The server checks it again there (lib/epcs/totp) — this modal
+// is the provider's feedback, not the gate.
 
 import { useState, useEffect, useRef } from 'react'
 
@@ -19,7 +23,8 @@ interface EpcsTotpGateProps {
   providerName: string
   medicationNames: string[]
   deaSchedules: (number | null)[]
-  onVerified: () => void
+  /** Called with the code the provider entered; the signing request carries it. */
+  onVerified: (code: string) => void
   onCancel: () => void
 }
 
@@ -141,7 +146,7 @@ export function EpcsTotpGate({
         }),
       }).catch(() => {})
 
-      onVerified()
+      onVerified(code)
     } else {
       // Log failed attempt
       await fetch('/api/epcs?action=audit', {

@@ -26,6 +26,15 @@ interface Props {
   isError?:   boolean
   onRowClick: (order: DashboardOrder) => void
   onRetry?:   () => void
+  /**
+   * WO-99: per-row checkboxes on the Drafts tab. Only the provider's own
+   * drafts are selectable; another provider's draft shows none.
+   */
+  draftSelection?: {
+    selectable: ReadonlySet<string>
+    selected:   ReadonlySet<string>
+    onToggle:   (orderId: string) => void
+  } | undefined
 }
 
 // Error statuses — Terra/Rust (#A84B2F) left border (REQ-GDB-001)
@@ -53,10 +62,11 @@ function formatDate(iso: string): string {
 
 const TH_CLASS = 'px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground'
 
-function TableHead() {
+function TableHead({ withSelect = false }: { withSelect?: boolean }) {
   return (
     <thead>
       <tr className="border-b border-border">
+        {withSelect && <th className={TH_CLASS}><span className="sr-only">Select to sign</span></th>}
         <th className={TH_CLASS}>Order #</th>
         <th className={TH_CLASS}>Patient</th>
         <th className={TH_CLASS}>Medication</th>
@@ -71,7 +81,7 @@ function TableHead() {
   )
 }
 
-export function OrdersTable({ orders, isLoading, isError = false, onRowClick, onRetry }: Props) {
+export function OrdersTable({ orders, isLoading, isError = false, onRowClick, onRetry, draftSelection }: Props) {
   // Error state
   if (isError) {
     return (
@@ -113,7 +123,7 @@ export function OrdersTable({ orders, isLoading, isError = false, onRowClick, on
   return (
     <div className="overflow-x-auto rounded-xl border border-border">
       <table className="w-full text-sm">
-        <TableHead />
+        <TableHead withSelect={!!draftSelection} />
         <tbody>
           {orders.map(order => {
             const isErr  = ERROR_STATUSES.has(order.status)
@@ -132,6 +142,21 @@ export function OrdersTable({ orders, isLoading, isError = false, onRowClick, on
                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onRowClick(order) }}
                 aria-label={`${isErr ? 'Error — ' : ''}Order ${order.orderId.slice(0, 8)} — ${order.patientName} — ${order.status}`}
               >
+                {draftSelection && (
+                  <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                    {draftSelection.selectable.has(order.orderId) && (
+                      <input
+                        type="checkbox"
+                        data-testid={`select-draft-${order.orderId}`}
+                        aria-label={`Select ${order.medicationName} for ${order.patientName} to sign`}
+                        checked={draftSelection.selected.has(order.orderId)}
+                        onChange={() => draftSelection.onToggle(order.orderId)}
+                        onKeyDown={e => e.stopPropagation()}
+                        className="h-4 w-4"
+                      />
+                    )}
+                  </td>
+                )}
                 <td className="px-3 py-3 font-mono text-xs text-muted-foreground leading-[1.6]">
                   {order.orderId.slice(0, 8)}…
                 </td>

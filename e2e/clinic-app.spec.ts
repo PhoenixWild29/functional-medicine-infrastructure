@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
-import { seedStaticData, cleanupTestOrders, cleanupTestFavorites, seedSecondProvider, retireSecondProvider, seedLegacySemaglutideFavorites, insertRecentOrder, TEST_IDS, TEST_USERS, TEST_CATALOG, TEST_PATIENTS, TEST_SHIPPING } from './fixtures/seed'
+import { seedStaticData, cleanupTestOrders, cleanupTestFavorites, seedSecondProvider, retireSecondProvider, seedLegacySemaglutideFavorites, insertRecentOrder, seedControlledAtFaxPharmacy, retireControlledAtFaxPharmacy, TEST_IDS, TEST_USERS, TEST_CATALOG, TEST_PATIENTS, TEST_SHIPPING } from './fixtures/seed'
 import { packageId } from '../src/lib/catalog/packages'
 import { decryptSecret } from '../src/lib/epcs/crypto'
 import { DEMO_TOTP_SECRET } from '../src/lib/poc/totp-enrollment'
@@ -1054,6 +1054,8 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
     await page.context().clearCookies()
     await loginAs(page, TEST_USERS.provider)
     await page.goto(`/new-prescription/sign/${anchorId}`)
+    // WO-99: /sign/<id> redirects to the batch sign page with the draft selected.
+    await expect(page).toHaveURL(new RegExp(`/new-prescription/sign\\?orders=${anchorId}`), { timeout: 15_000 })
     const lines = page.getByTestId('draft-lines')
     await expect(lines).toContainText('Draft lines (1)')
 
@@ -1070,7 +1072,7 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
     await expect(page).toHaveURL(/\/new-prescription\/margin\?.*editOrder=/, { timeout: 10_000 })
     await expect(page.locator('#retail-price')).toHaveValue('200.00')
     await page.getByRole('button', { name: 'Save Changes to Draft' }).click()
-    await expect(page).toHaveURL(new RegExp(`/new-prescription/sign/${anchorId}`), { timeout: 15_000 })
+    await expect(page).toHaveURL(new RegExp(`/new-prescription/sign\\?orders=${anchorId}`), { timeout: 15_000 })
     await expect(page.getByTestId('draft-lines')).toContainText('12 mg')
 
     // + Add prescription → builder pinned to the draft's patient/provider, appends a line.
@@ -1080,7 +1082,7 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
     await fillBuilder(page, GLP1)
     await page.locator('#retail-price').fill('200.00')
     await page.getByRole('button', { name: 'Add to Draft' }).click()
-    await expect(page).toHaveURL(new RegExp(`/new-prescription/sign/${anchorId}`), { timeout: 15_000 })
+    await expect(page).toHaveURL(new RegExp(`/new-prescription/sign\\?orders=${anchorId}`), { timeout: 15_000 })
     await expect(page.getByTestId('draft-lines')).toContainText('Draft lines (2)')
     await expect(page.getByTestId('draft-lines')).toContainText(TEST_CATALOG.glp1FormulationName)
 
@@ -1274,6 +1276,30 @@ test.describe('Clinic App — WO-100 provider defaults to self', () => {
     const [first, second] = drafts
 
     await loginAs(page, TEST_USERS.provider)
+
+    // WO-99: "Sign all (N)" counts only drafts the provider is the signer
+    // of. Provider B's two drafts are not counted and cannot be ticked.
+    const mine = await page.request.post('/api/orders', {
+      data: { patientId: TEST_IDS.patient, providerId: TEST_IDS.provider, formulationId: TEST_IDS.formulation, pharmacyId: TEST_IDS.pharmacyTier1, retailCents: 20000, sigText: 'WO-99 my own draft line one', patientState: 'TX' },
+    })
+    expect(mine.status()).toBe(201)
+    await page.goto('/dashboard?tab=drafts')
+    await expect(page.getByTestId('sign-all-drafts')).toHaveText('Sign all (1)', { timeout: 15_000 })
+    await expect(page.getByTestId(`select-draft-${first!.order_id}`)).toHaveCount(0)
+    // …and the server never signs another provider's draft under my name.
+    const refused = await page.request.post('/api/orders/batch-sign', {
+      data: {
+        orderIds: [first!.order_id],
+        signature: { dataUrl: 'data:image/png;base64,iVBORw0KGgo=', strokes: [[{ x: 10, y: 10 }, { x: 250, y: 12 }], [{ x: 20, y: 40 }, { x: 240, y: 42 }], [{ x: 30, y: 70 }, { x: 260, y: 72 }]], padWidth: 300 },
+      },
+    })
+    const refusedBody = await refused.json() as { problems: Array<{ orderId: string; code: string; message: string }> }
+    expect(refused.status()).toBe(403)
+    expect(refusedBody.problems[0]).toMatchObject({ orderId: first!.order_id, code: 'not_signer' })
+    expect(refusedBody.problems[0]!.message).toContain('Other Provider')
+    // Leave only provider B's draft for the Sign as me walk-through below.
+    await page.request.delete(`/api/orders/${(await mine.json()).orderId}`)
+
     await page.goto(`/new-prescription/sign/${first!.order_id}`)
 
     // Not mine → the Sign as me panel, not a signature pad.
@@ -2746,5 +2772,304 @@ test.describe('Clinic App — WO-108 repricing a refill', () => {
     await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 15_000 })
     await expect(page.getByTestId('review-totals')).toBeVisible({ timeout: 15_000 })
     await expect(page.getByTestId('review-subtotal')).toHaveText('$190.00')
+  })
+})
+
+// ============================================================
+// WO-99 — Batch sign as the only signing path
+// ============================================================
+// Gina Rooks asked to sign all of a patient's prescriptions at once.
+// Covered here, against the real app and database:
+//   - two drafts → Sign all → one pad, one click → both Awaiting Payment,
+//     ONE payment group (one link), shipping once per pharmacy; a titration
+//     keeps its steps and a refill keeps refill_of_order_id
+//   - a single dot is rejected; three strokes across the pad are accepted
+//     (the signature is really drawn — signature_pad 2.3 takes mouse events)
+//   - /new-prescription/sign/<id> redirects to the batch page with that
+//     order pre-selected
+//   - a Schedule III order cannot be signed without the authenticator code
+//     through any route; in a batch the code is asked once; cancel leaves
+//     every order unsigned; the audit references every controlled order
+//   - a line that cannot be sent (price moved, below cost) blocks the whole
+//     batch, is named, and nothing is signed
+
+const WO99_SIG_TEXT = 'Inject 10 mg subcutaneously once daily for 30 days'
+
+/** A draft created the way the app creates one: POST /api/orders as the provider. */
+async function createDraftViaApi(page: Page, over: Record<string, unknown> = {}): Promise<string> {
+  const res = await page.request.post('/api/orders', {
+    data: {
+      patientId:     TEST_IDS.patient,
+      providerId:    TEST_IDS.provider,
+      formulationId: TEST_IDS.formulation,
+      pharmacyId:    TEST_IDS.pharmacyTier2,
+      retailCents:   20000,
+      sigText:       WO99_SIG_TEXT,
+      patientState:  'TX',
+      dose:          '10 mg',
+      frequencyCode: 'QD',
+      ...over,
+    },
+  })
+  const body = await res.json()
+  expect({ status: res.status(), error: body.error ?? null }).toEqual({ status: 201, error: null })
+  return body.orderId as string
+}
+
+/** Draw `strokes` horizontal strokes across 80% of the pad. */
+async function drawSignature(page: Page, strokes = 3) {
+  const pad = page.locator('canvas[aria-label="Provider signature pad"]')
+  await pad.scrollIntoViewIfNeeded()
+  const box = (await pad.boundingBox())!
+  for (let i = 0; i < strokes; i++) {
+    const y = box.y + box.height * (0.25 + 0.25 * i)
+    await page.mouse.move(box.x + box.width * 0.1, y)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width * 0.5, y + 6, { steps: 8 })
+    await page.mouse.move(box.x + box.width * 0.9, y, { steps: 8 })
+    await page.mouse.up()
+  }
+}
+
+async function drawDot(page: Page) {
+  const pad = page.locator('canvas[aria-label="Provider signature pad"]')
+  await pad.scrollIntoViewIfNeeded()
+  const box = (await pad.boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.up()
+}
+
+/** A signature payload that passes the stroke rule, for API-level calls. */
+const API_SIGNATURE = {
+  dataUrl:  'data:image/png;base64,iVBORw0KGgo=',
+  strokes:  [[{ x: 10, y: 10 }, { x: 250, y: 12 }], [{ x: 20, y: 40 }, { x: 240, y: 42 }], [{ x: 30, y: 70 }, { x: 260, y: 72 }]],
+  padWidth: 300,
+}
+
+test.describe('Clinic App — WO-99 batch sign', () => {
+  test.beforeAll(async () => {
+    await seedStaticData()
+    await seedControlledAtFaxPharmacy()
+  })
+
+  test.afterEach(async () => {
+    await cleanupTestOrders()
+  })
+
+  test.afterAll(async () => {
+    await retireControlledAtFaxPharmacy()
+  })
+
+  test('two drafts → Sign all → one pad, one click → both Awaiting Payment, one payment group, shipping once', async ({ page }) => {
+    const supabase = e2eSupabase()
+    // A refill needs a filled source with an authorized refill left.
+    const { data: source, error: sourceError } = await supabase
+      .from('orders')
+      .insert({
+        patient_id: TEST_IDS.patient, provider_id: TEST_IDS.provider, clinic_id: TEST_IDS.clinic,
+        pharmacy_id: TEST_IDS.pharmacyTier2, formulation_id: TEST_IDS.formulation,
+        status: 'DELIVERED', quantity: 1, refills: 2,
+        wholesale_price_snapshot: 100, retail_price_snapshot: 200,
+        medication_snapshot: { medication_name: TEST_CATALOG.formulationName, form: 'Injectable Solution', dose: '10 mg/mL', wholesale_price: 100, dea_schedule: 0 },
+        pharmacy_snapshot: { pharmacy_id: TEST_IDS.pharmacyTier2, name: 'Test Pharmacy Tier2', integration_tier: 'TIER_2_PORTAL', fax_number: null },
+        shipping_state_snapshot: 'TX', sig_text: WO99_SIG_TEXT, locked_at: new Date(Date.now() - 30 * 86_400_000).toISOString(),
+      })
+      .select('order_id')
+      .single()
+    if (sourceError || !source) throw new Error(`Failed to seed refill source: ${sourceError?.message}`)
+
+    await loginAs(page, TEST_USERS.provider)
+    const steps = [
+      { dose: '10', unit: 'mg', frequency: 'QD', weeks: 2 },
+      { dose: '20', unit: 'mg', frequency: 'QD', weeks: 2 },
+    ]
+    const titrationId = await createDraftViaApi(page, { sigMode: 'titration', titrationSteps: steps, sigText: 'Inject 10 mg daily for 2 weeks, then 20 mg daily for 2 weeks' })
+    const refillId    = await createDraftViaApi(page, { refillOfOrderId: source.order_id })
+
+    // Dashboard → Drafts → Sign all (2): only the provider's own drafts.
+    await page.goto('/dashboard?tab=drafts')
+    await page.getByTestId('sign-all-drafts').click()
+    await expect(page).toHaveURL(/\/new-prescription\/sign\?orders=/, { timeout: 15_000 })
+    await expect(page.getByTestId(`select-${titrationId}`)).toBeChecked({ timeout: 15_000 })
+    await expect(page.getByTestId(`select-${refillId}`)).toBeChecked()
+    await expect(page.getByTestId(`titration-steps-${titrationId}`)).toContainText('step 2 20 mg')
+    await expect(page.getByTestId(`refill-of-${refillId}`)).toContainText(source.order_id.slice(0, 8))
+
+    // Shipping: two items at one pharmacy ship once.
+    const shipping = page.getByTestId(`batch-shipping-${TEST_IDS.patient}-${TEST_IDS.pharmacyTier2}`)
+    await expect(shipping).toContainText('2 items, once')
+    await expect(shipping).toContainText(`$${TEST_SHIPPING.tier2.standard}.00`)
+    await expect(page.getByTestId(`batch-patient-total-${TEST_IDS.patient}`)).toHaveText(`$${400 + TEST_SHIPPING.tier2.standard}.00`)
+
+    // A single dot is not a signature.
+    const send = page.getByRole('button', { name: 'Sign & Send 2 Prescriptions' })
+    await expect(page.getByTestId('send-blocked-reason')).toHaveText('Sign in the signature box below to enable sending.', { timeout: 15_000 })
+    await drawDot(page)
+    await expect(page.getByTestId('send-blocked-reason')).toHaveText(/at least 3 strokes/)
+    await expect(send).toBeDisabled()
+    await page.getByRole('button', { name: 'Clear Signature' }).click()
+
+    // Three strokes across the pad are. One click signs both.
+    await drawSignature(page)
+    await expect(page.getByText('Signature captured')).toBeVisible()
+    await expect(send).toBeEnabled()
+    await send.click()
+    await expect(page).toHaveURL(/\/dashboard\?sent=2/, { timeout: 30_000 })
+
+    const { data: signed } = await supabase
+      .from('orders')
+      .select('order_id, status, payment_group_id, locked_at, provider_signature_hash_snapshot, shipping_fee, sig_mode, titration_steps, refill_of_order_id')
+      .in('order_id', [titrationId, refillId])
+    const byId = new Map((signed ?? []).map(r => [r.order_id, r]))
+    const t = byId.get(titrationId)!, r = byId.get(refillId)!
+    expect([t.status, r.status]).toEqual(['AWAITING_PAYMENT', 'AWAITING_PAYMENT'])
+    // One payment group: one link for the patient.
+    expect(t.payment_group_id).not.toBeNull()
+    expect(r.payment_group_id).toBe(t.payment_group_id)
+    // One signature record per order, same signature and time.
+    expect(t.provider_signature_hash_snapshot).toMatch(/^[0-9a-f]{64}$/)
+    expect(r.provider_signature_hash_snapshot).toBe(t.provider_signature_hash_snapshot)
+    expect(r.locked_at).toBe(t.locked_at)
+    // Shipping once per pharmacy: on one order, zero on the other.
+    expect([Number(t.shipping_fee), Number(r.shipping_fee)].sort()).toEqual([0, TEST_SHIPPING.tier2.standard])
+    // The titration keeps its steps; the refill keeps its source.
+    expect(t.sig_mode).toBe('titration')
+    expect(t.titration_steps).toEqual(steps)
+    expect(r.refill_of_order_id).toBe(source.order_id)
+
+    const { data: group } = await supabase
+      .from('payment_groups')
+      .select('patient_id, provider_id, status, shipping_total, total_cents')
+      .eq('group_id', t.payment_group_id!)
+      .single()
+    expect(group).toMatchObject({ patient_id: TEST_IDS.patient, provider_id: TEST_IDS.provider, status: 'AWAITING_PAYMENT' })
+    expect(Number(group!.shipping_total)).toBe(TEST_SHIPPING.tier2.standard)
+    expect(group!.total_cents).toBe((400 + TEST_SHIPPING.tier2.standard) * 100)
+
+    const { data: history } = await supabase
+      .from('order_status_history')
+      .select('order_id, old_status, new_status, metadata')
+      .in('order_id', [titrationId, refillId])
+      .eq('new_status', 'AWAITING_PAYMENT')
+    expect(history).toHaveLength(2)
+    for (const row of history ?? []) {
+      expect(row.old_status).toBe('DRAFT')
+      expect(row.metadata).toMatchObject({ actor: 'provider_batch_sign', payment_group_id: t.payment_group_id })
+    }
+  })
+
+  test('a deep link to /new-prescription/sign/<id> redirects to the batch page with that order pre-selected', async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+    const first  = await createDraftViaApi(page)
+    const second = await createDraftViaApi(page, { retailCents: 21000 })
+
+    await page.goto(`/new-prescription/sign/${first}`)
+    await expect(page).toHaveURL(new RegExp(`/new-prescription/sign\\?orders=${first}$`), { timeout: 15_000 })
+    await expect(page.getByTestId(`select-${first}`)).toBeChecked({ timeout: 15_000 })
+    // The patient's other draft is listed, not selected, and the page says
+    // what signing it separately costs.
+    await expect(page.getByTestId(`select-${second}`)).not.toBeChecked()
+    await expect(page.getByTestId(`unselected-siblings-${TEST_IDS.patient}`)).toContainText('can charge shipping again')
+    await expect(page.getByRole('button', { name: 'Sign & Send 1 Prescription' })).toBeVisible()
+  })
+
+  test('Schedule III: no signature without the authenticator code by any route; asked once per batch; cancel signs nothing', async ({ page }) => {
+    const supabase = e2eSupabase()
+    await loginAs(page, TEST_USERS.provider)
+    const plainA = await createDraftViaApi(page)
+    const plainB = await createDraftViaApi(page, { retailCents: 21000 })
+    // The controlled draft at the fax pharmacy, priced as that pharmacy
+    // prices it today, with the diagnosis a controlled substance requires.
+    const { data: controlled, error } = await supabase
+      .from('orders')
+      .insert({
+        patient_id: TEST_IDS.patient, provider_id: TEST_IDS.provider, clinic_id: TEST_IDS.clinic,
+        pharmacy_id: TEST_IDS.pharmacyTier4, formulation_id: TEST_IDS.controlledFormulation,
+        status: 'DRAFT', quantity: 1,
+        wholesale_price_snapshot: 150, retail_price_snapshot: 250,
+        medication_snapshot: { medication_name: TEST_CATALOG.controlledFormulationName, form: 'Injectable Solution', dose: '100 mg/mL', wholesale_price: 150, dea_schedule: 3, formulation_id: TEST_IDS.controlledFormulation, item_id: null },
+        pharmacy_snapshot: { pharmacy_id: TEST_IDS.pharmacyTier4, name: 'Test Pharmacy Tier4', integration_tier: 'TIER_4_FAX', fax_number: '+15555550100' },
+        shipping_state_snapshot: 'TX', sig_text: 'Inject 0.5 mL intramuscularly once weekly',
+        diagnosis_code: 'E29.1', diagnosis_text: 'Testicular hypofunction',
+      })
+      .select('order_id')
+      .single()
+    if (error || !controlled) throw new Error(`Failed to seed controlled draft: ${error?.message}`)
+    const controlledId = controlled.order_id
+
+    // ── No route signs it without the code ──
+    const oldRoute = await page.request.post(`/api/orders/${controlledId}/sign-and-send`, { data: { signatureDataUrl: 'data:image/png;base64,' + 'A'.repeat(6000) } })
+    expect(oldRoute.status()).toBe(410)
+    const noCode = await page.request.post('/api/orders/batch-sign', { data: { orderIds: [controlledId], signature: API_SIGNATURE } })
+    expect({ status: noCode.status(), code: (await noCode.json()).code }).toEqual({ status: 401, code: 'TOTP_REQUIRED' })
+    const wrongCode = await page.request.post('/api/orders/batch-sign', { data: { orderIds: [controlledId], signature: API_SIGNATURE, totpCode: wrongTotpCode(DEMO_TOTP_SECRET) } })
+    expect({ status: wrongCode.status(), code: (await wrongCode.json()).code }).toEqual({ status: 401, code: 'TOTP_INVALID' })
+    const { data: stillDraft } = await supabase.from('orders').select('status').eq('order_id', controlledId).single()
+    expect(stillDraft!.status).toBe('DRAFT')
+
+    // ── In a batch: the code is asked once; Cancel signs nothing ──
+    await page.goto(`/new-prescription/sign?orders=${plainA},${plainB},${controlledId}`)
+    await expect(page.getByTestId('batch-epcs-banner')).toContainText(TEST_CATALOG.controlledFormulationName, { timeout: 15_000 })
+    await drawSignature(page)
+    const send = page.getByRole('button', { name: 'Sign & Send 3 Prescriptions' })
+    await expect(send).toBeEnabled({ timeout: 15_000 })
+    await send.click()
+    await expect(page.getByText('EPCS Two-Factor Authentication Required')).toHaveCount(1)
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await expect(page.getByText('EPCS Two-Factor Authentication Required')).toHaveCount(0)
+    const { data: afterCancel } = await supabase.from('orders').select('status').in('order_id', [plainA, plainB, controlledId])
+    expect((afterCancel ?? []).map(r => r.status)).toEqual(['DRAFT', 'DRAFT', 'DRAFT'])
+
+    // ── With the code: all three sign, and the audit names every controlled order ──
+    await send.click()
+    await page.getByPlaceholder('000000').fill(totpCode(DEMO_TOTP_SECRET))
+    await page.getByRole('button', { name: 'Verify & Sign' }).click()
+    await expect(page).toHaveURL(/\/dashboard\?sent=3/, { timeout: 30_000 })
+    const { data: signed } = await supabase.from('orders').select('status, payment_group_id').in('order_id', [plainA, plainB, controlledId])
+    expect((signed ?? []).map(r => r.status)).toEqual(['AWAITING_PAYMENT', 'AWAITING_PAYMENT', 'AWAITING_PAYMENT'])
+    expect(new Set((signed ?? []).map(r => r.payment_group_id)).size).toBe(1)
+    const { data: audit } = await supabase
+      .from('epcs_audit_log')
+      .select('event_type, order_id, dea_schedule, details')
+      .eq('order_id', controlledId)
+      .in('event_type', ['TOTP_VERIFIED', 'ORDER_SIGNED'])
+    expect((audit ?? []).map(a => a.event_type).sort()).toEqual(['ORDER_SIGNED', 'TOTP_VERIFIED'])
+    for (const row of audit ?? []) {
+      expect(row.dea_schedule).toBe(3)
+      expect(row.details).toMatchObject({ batch_controlled_order_ids: [controlledId] })
+    }
+  })
+
+  test('a line that cannot be sent blocks the whole batch, is named, and nothing is signed', async ({ page }) => {
+    const supabase = e2eSupabase()
+    await loginAs(page, TEST_USERS.provider)
+    const good     = await createDraftViaApi(page)
+    const moved    = await createDraftViaApi(page, { retailCents: 21000 })
+    const belowNow = await createDraftViaApi(page, { retailCents: 20500 })
+    // The pharmacy charges $100 today. One draft was saved at $90 (the
+    // price moved since); one is priced $95 against it (below cost now).
+    await supabase.from('orders').update({ wholesale_price_snapshot: 90 }).eq('order_id', moved)
+    await supabase.from('orders').update({ wholesale_price_snapshot: 90, retail_price_snapshot: 95 }).eq('order_id', belowNow)
+
+    await page.goto(`/new-prescription/sign?orders=${good},${moved},${belowNow}`)
+    await expect(page.getByTestId(`line-problem-${moved}`)).toContainText("the pharmacy's price changed since this draft was saved ($90.00 → $100.00)", { timeout: 15_000 })
+    await expect(page.getByTestId(`line-problem-${belowNow}`)).toContainText('priced below cost — $95.00 retail against $100.00 wholesale')
+    await drawSignature(page)
+    await expect(page.getByRole('button', { name: 'Sign & Send 3 Prescriptions' })).toBeDisabled()
+    await expect(page.getByTestId('send-blocked-reason')).toContainText(TEST_CATALOG.formulationName)
+
+    // The server refuses the same batch outright, naming both lines.
+    const res = await page.request.post('/api/orders/batch-sign', { data: { orderIds: [good, moved, belowNow], signature: API_SIGNATURE } })
+    const body = await res.json() as { problems: Array<{ orderId: string; code: string }> }
+    expect(res.status()).toBe(422)
+    expect(body.problems.map(p => [p.orderId, p.code]).sort()).toEqual([[belowNow, 'below_cost'], [moved, 'reprice']].sort())
+    const { data: rows } = await supabase.from('orders').select('status, payment_group_id').in('order_id', [good, moved, belowNow])
+    expect((rows ?? []).every(r => r.status === 'DRAFT' && r.payment_group_id === null)).toBe(true)
+
+    // Deselecting the two leaves a batch that can be signed.
+    await page.getByTestId(`select-${moved}`).uncheck()
+    await page.getByTestId(`select-${belowNow}`).uncheck()
+    await expect(page.getByRole('button', { name: 'Sign & Send 1 Prescription' })).toBeEnabled({ timeout: 15_000 })
   })
 })
