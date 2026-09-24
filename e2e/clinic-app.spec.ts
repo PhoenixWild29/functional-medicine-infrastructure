@@ -3361,6 +3361,10 @@ test.describe('Cycling migration — structured on/off pattern', () => {
       // Zero on-days is refused.
       const zero = await supabase.from('orders').update({ cycle_on_days: 0 } as never).eq('order_id', ok!.order_id)
       expect(zero.error?.message ?? '').toContain('chk_orders_cycle')
+      // A pattern on a row with no sig_mode (every order signed before
+      // WO-105) is refused too: NULL must not slip through the CHECK.
+      const noMode = await supabase.from('orders').update({ sig_mode: null } as never).eq('order_id', ok!.order_id)
+      expect(noMode.error?.message ?? '').toContain('chk_orders_cycle')
     } finally {
       await supabase.from('orders').delete().eq('order_id', ok!.order_id)
     }

@@ -27,6 +27,10 @@
 --
 -- Re-runnable as a whole: ADD COLUMN IF NOT EXISTS, DROP CONSTRAINT IF
 -- EXISTS before each ADD CONSTRAINT, CREATE OR REPLACE FUNCTION.
+--
+-- Every term in the constraints is guarded with IS NOT NULL: a CHECK
+-- passes when it evaluates to NULL, so "cycle_off_days BETWEEN 1 AND 365"
+-- alone would let a half-set pattern (or a NULL sig_mode) through.
 
 -- ── 1. orders ──────────────────────────────────────────────────
 
@@ -38,9 +42,9 @@ ALTER TABLE orders DROP CONSTRAINT IF EXISTS chk_orders_cycle;
 ALTER TABLE orders
   ADD CONSTRAINT chk_orders_cycle CHECK (
     (cycle_on_days IS NULL AND cycle_off_days IS NULL)
-    OR (sig_mode = 'cycling'
-        AND cycle_on_days  BETWEEN 1 AND 365
-        AND cycle_off_days BETWEEN 1 AND 365));
+    OR (sig_mode IS NOT NULL AND sig_mode = 'cycling'
+        AND cycle_on_days  IS NOT NULL AND cycle_on_days  BETWEEN 1 AND 365
+        AND cycle_off_days IS NOT NULL AND cycle_off_days BETWEEN 1 AND 365));
 
 COMMENT ON COLUMN orders.cycle_on_days IS
   'Cycling lines only: dosing days per cycle (5 in "5 days on / 2 days off"). NULL on every other line and on cycling lines saved before 2026-09-24.';
@@ -58,10 +62,10 @@ ALTER TABLE provider_favorites DROP CONSTRAINT IF EXISTS chk_provider_favorites_
 ALTER TABLE provider_favorites
   ADD CONSTRAINT chk_provider_favorites_cycle CHECK (
     (cycle_on_days IS NULL AND cycle_off_days IS NULL AND cycle_duration_days IS NULL)
-    OR (sig_mode = 'cycling'
-        AND cycle_on_days       BETWEEN 1 AND 365
-        AND cycle_off_days      BETWEEN 1 AND 365
-        AND cycle_duration_days BETWEEN 1 AND 3650));
+    OR (sig_mode IS NOT NULL AND sig_mode = 'cycling'
+        AND cycle_on_days       IS NOT NULL AND cycle_on_days       BETWEEN 1 AND 365
+        AND cycle_off_days      IS NOT NULL AND cycle_off_days      BETWEEN 1 AND 365
+        AND cycle_duration_days IS NOT NULL AND cycle_duration_days BETWEEN 1 AND 3650));
 
 COMMENT ON COLUMN provider_favorites.cycle_duration_days IS
   'Cycling favorites: the course length in days the builder defaults to (6 weeks = 42).';
@@ -77,10 +81,10 @@ ALTER TABLE protocol_items DROP CONSTRAINT IF EXISTS chk_protocol_items_cycle;
 ALTER TABLE protocol_items
   ADD CONSTRAINT chk_protocol_items_cycle CHECK (
     (cycle_on_days IS NULL AND cycle_off_days IS NULL AND cycle_duration_days IS NULL)
-    OR (sig_mode = 'cycling'
-        AND cycle_on_days       BETWEEN 1 AND 365
-        AND cycle_off_days      BETWEEN 1 AND 365
-        AND cycle_duration_days BETWEEN 1 AND 3650));
+    OR (sig_mode IS NOT NULL AND sig_mode = 'cycling'
+        AND cycle_on_days       IS NOT NULL AND cycle_on_days       BETWEEN 1 AND 365
+        AND cycle_off_days      IS NOT NULL AND cycle_off_days      BETWEEN 1 AND 365
+        AND cycle_duration_days IS NOT NULL AND cycle_duration_days BETWEEN 1 AND 3650));
 
 COMMENT ON COLUMN protocol_items.cycle_duration_days IS
   'Cycling items: the course length in days the builder defaults to (6 weeks = 42).';
