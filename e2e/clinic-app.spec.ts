@@ -3310,3 +3310,107 @@ test.describe('Clinic App — WO-107 practice dashboard', () => {
     await expect(page.getByText(/Example:/).first()).toContainText('Example: 40 = 40% markup (1.4× wholesale).', { timeout: 15_000 })
   })
 })
+
+// ============================================================
+// Cycling dose math — the on/off pattern, stored structured
+// ============================================================
+// Migration 20260924000001 adds cycle_on_days / cycle_off_days to orders
+// and cycle_on_days / cycle_off_days / cycle_duration_days to
+// provider_favorites and protocol_items, so quantity can count dosing days
+// (5 on / 2 off for 30 days = 22) instead of reading the pattern out of
+// the sig. backfill_cycle_patterns() reads the pattern out of an existing
+// cycling row's sig once, and reports how many rows it filled. CI
+// db-pushes migrations to the E2E project before this runs.
+
+test.describe('Cycling migration — structured on/off pattern', () => {
+  const FAV_ID = 'aaaaaaaa-0000-4000-8000-0000000c1c01'
+  const PROTO_ID = 'aaaaaaaa-0000-4000-8000-0000000c1c02'
+  const ITEM_ID = 'aaaaaaaa-0000-4000-8000-0000000c1c03'
+  const LEGACY_SIG = 'Inject 20 units (0.20mL / 1mg) subcutaneous once daily, 5 days on / 2 days off, for 6 weeks then reassess'
+
+  test.beforeAll(async () => { await seedStaticData() })
+  test.afterAll(async () => {
+    const supabase = e2eSupabase()
+    await supabase.from('protocol_items').delete().eq('item_id', ITEM_ID)
+    await supabase.from('protocol_templates').delete().eq('protocol_id', PROTO_ID)
+    await supabase.from('provider_favorites').delete().eq('favorite_id', FAV_ID)
+  })
+
+  test('orders carry cycle_on_days / cycle_off_days, only on a cycling line, both or neither', async () => {
+    const supabase = e2eSupabase()
+    const base = {
+      patient_id: TEST_IDS.patient, provider_id: TEST_IDS.provider, catalog_item_id: null,
+      formulation_id: TEST_IDS.glp1Formulation, clinic_id: TEST_IDS.clinic, pharmacy_id: TEST_IDS.pharmacyTier1,
+      status: 'DRAFT', quantity: 1, wholesale_price_snapshot: 100, retail_price_snapshot: 200,
+      medication_snapshot: { formulation_id: TEST_IDS.glp1Formulation, medication_name: 'E2E cycling' },
+      pharmacy_snapshot: { pharmacy_id: TEST_IDS.pharmacyTier1, name: 'Test Pharmacy Tier1' },
+      sig_text: 'E2E cycling, 5 days on / 2 days off',
+    }
+    const { data: ok, error } = await supabase.from('orders')
+      .insert({ ...base, sig_mode: 'cycling', cycle_on_days: 5, cycle_off_days: 2 } as never)
+      .select('order_id, cycle_on_days, cycle_off_days').single()
+    expect(error?.message ?? null).toBeNull()
+    expect(ok).toEqual(expect.objectContaining({ cycle_on_days: 5, cycle_off_days: 2 }))
+    try {
+      // A standard line may not carry a pattern.
+      const standard = await supabase.from('orders').update({ sig_mode: 'standard' } as never).eq('order_id', ok!.order_id)
+      expect(standard.error?.message ?? '').toContain('chk_orders_cycle')
+      // On days without off days is refused.
+      const half = await supabase.from('orders').update({ cycle_off_days: null } as never).eq('order_id', ok!.order_id)
+      expect(half.error?.message ?? '').toContain('chk_orders_cycle')
+      // Zero on-days is refused.
+      const zero = await supabase.from('orders').update({ cycle_on_days: 0 } as never).eq('order_id', ok!.order_id)
+      expect(zero.error?.message ?? '').toContain('chk_orders_cycle')
+    } finally {
+      await supabase.from('orders').delete().eq('order_id', ok!.order_id)
+    }
+  })
+
+  test('favorites and protocol items: the constraint, and the backfill from the old sig', async () => {
+    const supabase = e2eSupabase()
+    // A cycling favorite and protocol item as they exist on prod today:
+    // the pattern only in the (legacy) sig.
+    const fav = await supabase.from('provider_favorites').insert({
+      favorite_id: FAV_ID, provider_id: TEST_IDS.provider, formulation_id: TEST_IDS.glp1Formulation,
+      pharmacy_id: TEST_IDS.pharmacyTier1, label: 'E2E cycling favorite', sig_mode: 'cycling',
+      sig_text: LEGACY_SIG, dose_presets: [{ dose: '20', unit: 'units', frequency: 'QD', timing: '', duration: '', label: null }],
+    })
+    expect(fav.error?.message ?? null).toBeNull()
+    const proto = await supabase.from('protocol_templates').insert({ protocol_id: PROTO_ID, clinic_id: TEST_IDS.clinic, name: 'E2E cycling protocol' })
+    expect(proto.error?.message ?? null).toBeNull()
+    const item = await supabase.from('protocol_items').insert({
+      item_id: ITEM_ID, protocol_id: PROTO_ID, formulation_id: TEST_IDS.glp1Formulation, pharmacy_id: TEST_IDS.pharmacyTier1,
+      dose_amount: '1', dose_unit: 'mg', frequency_code: 'QD', sig_mode: 'cycling',
+      sig_text: 'Inject 1mg subcutaneous daily, 5 days on / 2 days off, for 6 weeks then reassess',
+    })
+    expect(item.error?.message ?? null).toBeNull()
+
+    // First run fills both from the sig and says so.
+    const first = await supabase.rpc('backfill_cycle_patterns' as never)
+    expect(first.error?.message ?? null).toBeNull()
+    const firstRow = (first.data as unknown as Array<{ favorites_updated: number; protocol_items_updated: number }>)[0]
+    expect(firstRow!.favorites_updated).toBeGreaterThanOrEqual(1)
+    expect(firstRow!.protocol_items_updated).toBeGreaterThanOrEqual(1)
+
+    const { data: favRow } = await supabase.from('provider_favorites')
+      .select('cycle_on_days, cycle_off_days, cycle_duration_days').eq('favorite_id', FAV_ID).single()
+    expect(favRow).toEqual({ cycle_on_days: 5, cycle_off_days: 2, cycle_duration_days: 42 })
+    const { data: itemRow } = await supabase.from('protocol_items')
+      .select('cycle_on_days, cycle_off_days, cycle_duration_days').eq('item_id', ITEM_ID).single()
+    expect(itemRow).toEqual({ cycle_on_days: 5, cycle_off_days: 2, cycle_duration_days: 42 })
+
+    // Re-runnable: a second run touches nothing.
+    const second = await supabase.rpc('backfill_cycle_patterns' as never)
+    expect(second.error?.message ?? null).toBeNull()
+    expect((second.data as unknown as Array<Record<string, number>>)[0]).toEqual({ favorites_updated: 0, protocol_items_updated: 0 })
+
+    // The constraint: a standard favorite may not carry a pattern; a
+    // cycling one needs all three.
+    const std = await supabase.from('provider_favorites').update({ sig_mode: 'standard' } as never).eq('favorite_id', FAV_ID)
+    expect(std.error?.message ?? '').toContain('chk_provider_favorites_cycle')
+    const noLen = await supabase.from('provider_favorites').update({ cycle_duration_days: null } as never).eq('favorite_id', FAV_ID)
+    expect(noLen.error?.message ?? '').toContain('chk_provider_favorites_cycle')
+    const itemStd = await supabase.from('protocol_items').update({ sig_mode: 'titration' } as never).eq('item_id', ITEM_ID)
+    expect(itemStd.error?.message ?? '').toContain('chk_protocol_items_cycle')
+  })
+})
