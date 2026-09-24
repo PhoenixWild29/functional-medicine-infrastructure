@@ -1120,6 +1120,8 @@ export type Database = {
           catalog_item_id: string | null
           clinic_id: string
           created_at: string
+          cycle_off_days: number | null
+          cycle_on_days: number | null
           clinical_difference: string | null
           days_supply: number | null
           deleted_at: string | null
@@ -1180,6 +1182,8 @@ export type Database = {
           catalog_item_id?: string | null
           clinic_id: string
           created_at?: string
+          cycle_off_days?: number | null
+          cycle_on_days?: number | null
           clinical_difference?: string | null
           days_supply?: number | null
           deleted_at?: string | null
@@ -1240,6 +1244,8 @@ export type Database = {
           catalog_item_id?: string | null
           clinic_id?: string
           created_at?: string
+          cycle_off_days?: number | null
+          cycle_on_days?: number | null
           clinical_difference?: string | null
           days_supply?: number | null
           deleted_at?: string | null
@@ -2224,6 +2230,9 @@ export type Database = {
         Row: {
           condition_description: string | null
           created_at: string | null
+          cycle_duration_days: number | null
+          cycle_off_days: number | null
+          cycle_on_days: number | null
           default_quantity: string | null
           default_refills: number | null
           dose_amount: string | null
@@ -2245,6 +2254,9 @@ export type Database = {
         Insert: {
           condition_description?: string | null
           created_at?: string | null
+          cycle_duration_days?: number | null
+          cycle_off_days?: number | null
+          cycle_on_days?: number | null
           default_quantity?: string | null
           default_refills?: number | null
           dose_amount?: string | null
@@ -2266,6 +2278,9 @@ export type Database = {
         Update: {
           condition_description?: string | null
           created_at?: string | null
+          cycle_duration_days?: number | null
+          cycle_off_days?: number | null
+          cycle_on_days?: number | null
           default_quantity?: string | null
           default_refills?: number | null
           dose_amount?: string | null
@@ -2423,6 +2438,9 @@ export type Database = {
         Row: {
           category: string | null
           created_at: string | null
+          cycle_duration_days: number | null
+          cycle_off_days: number | null
+          cycle_on_days: number | null
           default_quantity: string | null
           default_refills: number | null
           dose_amount: string | null
@@ -2447,6 +2465,9 @@ export type Database = {
         Insert: {
           category?: string | null
           created_at?: string | null
+          cycle_duration_days?: number | null
+          cycle_off_days?: number | null
+          cycle_on_days?: number | null
           default_quantity?: string | null
           default_refills?: number | null
           dose_amount?: string | null
@@ -2471,6 +2492,9 @@ export type Database = {
         Update: {
           category?: string | null
           created_at?: string | null
+          cycle_duration_days?: number | null
+          cycle_off_days?: number | null
+          cycle_on_days?: number | null
           default_quantity?: string | null
           default_refills?: number | null
           dose_amount?: string | null
@@ -3096,6 +3120,10 @@ export type Database = {
       }
     }
     Functions: {
+      backfill_cycle_patterns: {
+        Args: never
+        Returns: { favorites_updated: number; protocol_items_updated: number }[]
+      }
       collapse_provider_favorites: { Args: never; Returns: number }
       create_vault_secret: {
         Args: { p_name: string; p_secret: string }
