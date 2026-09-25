@@ -18,9 +18,15 @@ interface Props {
   myProviderName:       string
   /** Number of DRAFT lines that will move with this one (same patient, same provider). */
   lineCount:            number
+  /**
+   * Called with the ids of every line that moved. The batch sign page
+   * uses it to bring those lines back selected; without it the page is
+   * refreshed in place.
+   */
+  onReassigned?:        (orderIds: string[]) => void
 }
 
-export function SignAsMePanel({ orderId, assignedProviderName, myProviderName, lineCount }: Props) {
+export function SignAsMePanel({ orderId, assignedProviderName, myProviderName, lineCount, onReassigned }: Props) {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -30,13 +36,17 @@ export function SignAsMePanel({ orderId, assignedProviderName, myProviderName, l
     setError(null)
     try {
       const res = await fetch(`/api/orders/${orderId}/reassign-to-me`, { method: 'POST' })
+      const body = await res.json().catch(() => ({})) as { error?: string; orderIds?: unknown }
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
         throw new Error(body.error ?? 'Could not reassign this draft')
       }
-      // Same URL, now under my name — the server component re-renders the
-      // signing form. WO-99 will redirect this to the batch sign page.
-      router.refresh()
+      const moved = Array.isArray(body.orderIds) ? body.orderIds.filter((id): id is string => typeof id === 'string') : [orderId]
+      if (onReassigned) {
+        onReassigned(moved.length > 0 ? moved : [orderId])
+      } else {
+        // Same URL, now under my name: the server component re-renders.
+        router.refresh()
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred')
       setIsSubmitting(false)

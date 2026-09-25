@@ -19,7 +19,7 @@
 //
 // REQ-GDB-004: Loading, empty, and offline states.
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
@@ -70,6 +70,12 @@ interface Props {
   initialTab?: TabId | null
   /** WO-107: an order to open in the drawer, from ?order= — the practice dashboard's queue links to it. */
   initialOrderId?: string | null
+  /**
+   * F-3: the provider's view ("My patients" / "All clinic orders"). The
+   * table's query is keyed on it and its poll asks for it, so the table
+   * and tab counts follow the toggle with the stat cards.
+   */
+  providerViewMode?: 'mine' | 'clinic'
 }
 
 // ── Query function (Supabase browser client) ────────────────
@@ -117,10 +123,19 @@ function buildDashboardOrder(o: Record<string, unknown>): DashboardOrder {
 
 // ── Component ───────────────────────────────────────────────
 
-export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, viewer, initialTab, initialOrderId }: Props) {
+export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, viewer, initialTab, initialOrderId, providerViewMode = 'mine' }: Props) {
   const router = useRouter()
-  const supabase = createBrowserClient()
+  // The clinic view's poll carries the same header the server render
+  // used; without it the poll read "My patients" rows under the clinic
+  // view's cards.
+  const supabase = useMemo(
+    () => (providerViewMode === 'clinic'
+      ? createBrowserClient({ extraHeaders: { 'x-provider-view-mode': 'clinic' } })
+      : createBrowserClient()),
+    [providerViewMode],
+  )
   const queryClient = useQueryClient()
+  const ordersKey = useMemo(() => ['dashboard-orders', clinicId, providerViewMode] as const, [clinicId, providerViewMode])
 
   const [viewMode,        setViewMode]        = useState<'table' | 'kanban'>('table')
   // WO-106: the KPI cards link here (?tab=…), so the tab is addressable.
@@ -137,7 +152,9 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
 
   // Poll orders every 30 seconds (REQ-GDB-001, no Realtime — HIPAA)
   const { data: ordersData, isError, isFetching, refetch } = useQuery({
-    queryKey:       ['dashboard-orders', clinicId],
+    // Keyed on the view: "My patients" and "All clinic orders" are
+    // different lists and must never share a cache entry.
+    queryKey:       ordersKey,
     queryFn:        async () => {
       // BLK-01: explicit clinic_id filter as defence-in-depth (RLS also enforces this)
       const { data, error } = await supabase
@@ -166,6 +183,14 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
   })
 
   const orders = ordersData ?? initialOrders
+
+  // The toggle re-renders the page server-side with the other view's
+  // orders. initialData is read once per cache entry, so take every new
+  // server snapshot as the current data — the table and tab counts then
+  // match the stat cards without a reload, in both directions.
+  useEffect(() => {
+    queryClient.setQueryData<DashboardOrder[]>(ordersKey, initialOrders)
+  }, [queryClient, ordersKey, initialOrders])
 
   // Live-derived drawer order: always the current row from the query cache,
   // so the drawer reacts to poll refreshes and combine-flow cache patches.
@@ -220,13 +245,13 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
   const handleGroupCreated = useCallback((groupId: string, orderIds: string[]) => {
     const grouped = new Set(orderIds)
     queryClient.setQueryData<DashboardOrder[]>(
-      ['dashboard-orders', clinicId],
+      ordersKey,
       prev => prev?.map(o =>
         grouped.has(o.orderId) ? { ...o, paymentGroupId: groupId } : o,
       ),
     )
     void queryClient.invalidateQueries({ queryKey: ['dashboard-orders', clinicId] })
-  }, [queryClient, clinicId])
+  }, [queryClient, clinicId, ordersKey])
 
   const isStripeActive = stripeConnectStatus === 'ACTIVE'
 

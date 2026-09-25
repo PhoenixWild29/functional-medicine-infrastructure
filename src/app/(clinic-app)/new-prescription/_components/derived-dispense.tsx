@@ -31,6 +31,38 @@ export const EMPTY_OVERRIDE: DispenseOverride = { daysSupply: '', dispenseQuanti
 export type DerivedBasis =
   | { kind: 'duration'; days: number; doses: number | null; cycle?: CyclePattern }
   | { kind: 'quantity'; label: string; cycle?: CyclePattern }
+  // WO-105: a titration's total, summed over its steps.
+  | { kind: 'titration'; days: number; steps: number }
+
+/**
+ * The sentence under Days supply / Dispense: what was actually computed,
+ * for the mode the line is in. Each mode has its own; the as-needed one
+ * is only for a dose that cannot be counted (a titration total used to
+ * borrow it, found on prod 2026-09-25).
+ */
+export function derivedHelpText(basis: DerivedBasis, derived: DerivedDispense | null, packageText: string): string {
+  if (basis.kind === 'titration') {
+    return `Days supply is the ${basis.days} days the ${basis.steps} titration step${basis.steps === 1 ? '' : 's'} add up to. ` +
+      "Dispense is the sum over the steps: each step's doses × that step's dose."
+  }
+  if (basis.kind === 'duration') {
+    if (basis.doses == null) {
+      return `Days supply is the ${basis.days}-day duration selected on the dose step. As-needed doses can't be counted, so dispense is the selected package.`
+    }
+    if (basis.cycle) {
+      return `Days supply is the ${basis.days}-day cycle length selected on the dose step. ` +
+        `Dispense is ${basis.doses} dose${basis.doses === 1 ? '' : 's'} (the on-days in those ${basis.days} days) × the dose.`
+    }
+    return `Days supply is the ${basis.days}-day duration selected on the dose step. Dispense is ${basis.doses} dose${basis.doses === 1 ? '' : 's'} over those days × the dose.`
+  }
+  if (derived?.daysSupply == null) {
+    return `No duration selected, and this dose can't be counted per day (as-needed or unmatched units). Dispense is the ${packageText}; use Override to set days supply.`
+  }
+  if (basis.cycle) {
+    return `No cycle length (ongoing), so days supply is how long the ${packageText} package lasts, dosing on on-days only.`
+  }
+  return `No duration selected, so days supply is how long the ${packageText} package lasts at this dose and frequency. Select a duration on the dose step to set it directly.`
+}
 
 interface Props {
   derived:  DerivedDispense | null
@@ -68,7 +100,7 @@ export function DerivedDispense({ derived, basis, override, onChange }: Props) {
     ?? (basis.kind === 'quantity' && basis.label ? basis.label : 'selected')
   const daysText = resolved.daysSupply != null ? `${resolved.daysSupply} days` : '—'
   // Cycling dose math: the dosing days in the days supply.
-  const dosingDaysText = basis.cycle && resolved.daysSupply != null
+  const dosingDaysText = basis.kind !== 'titration' && basis.cycle && resolved.daysSupply != null
     ? dosingDaysSummary(resolved.daysSupply, basis.cycle)
     : null
   const dispenseText = formatDispense(resolved.dispenseQuantity, resolved.dispenseUnit) ?? '—'
@@ -100,16 +132,8 @@ export function DerivedDispense({ derived, basis, override, onChange }: Props) {
         <p className="mt-1 text-xs font-medium text-foreground" data-testid="dosing-days">{dosingDaysText}</p>
       )}
 
-      <p className="mt-1 text-[11px] text-muted-foreground">
-        {isOverridden
-          ? 'Provider override in effect.'
-          : basis.kind === 'duration'
-            ? basis.doses != null
-              ? `Days supply is the ${basis.days}-day duration selected on the dose step. Dispense is ${basis.doses} dose${basis.doses === 1 ? '' : 's'} over those days × the dose.`
-              : `Days supply is the ${basis.days}-day duration selected on the dose step. As-needed doses can't be counted, so dispense is the selected package.`
-            : derived?.daysSupply == null
-              ? `No duration selected, and this dose can't be counted per day (as-needed or unmatched units). Dispense is the ${packageText}; use Override to set days supply.`
-              : `No duration selected, so days supply is how long the ${packageText} package lasts at this dose and frequency. Select a duration on the dose step to set it directly.`}
+      <p className="mt-1 text-[11px] text-muted-foreground" data-testid="derived-help">
+        {isOverridden ? 'Provider override in effect.' : derivedHelpText(basis, derived, packageText)}
       </p>
 
       {editing && (

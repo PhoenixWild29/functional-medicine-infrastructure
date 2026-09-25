@@ -301,6 +301,7 @@ export default async function DashboardPage(
           viewer={viewer}
           initialTab={isTabId(resolvedSearchParams.tab) ? resolvedSearchParams.tab : null}
           initialOrderId={typeof resolvedSearchParams.order === 'string' ? resolvedSearchParams.order : null}
+          providerViewMode={viewMode}
         />
       </main>
     </>

@@ -391,7 +391,7 @@ export function MarginBuilderForm({
     })
   }, [dose, presetFrequency, effectiveQuantity, formulationDetails, durationDays, titrationDispense, cycle])
   const derivedBasis = titrationDispense != null
-    ? { kind: 'duration' as const, days: titrationDispense.totalDays, doses: null }
+    ? { kind: 'titration' as const, days: titrationDispense.totalDays, steps: titrationSteps.length }
     : durationDays != null
     ? { kind: 'duration' as const, days: durationDays, doses: dosesInDays(durationDays, presetFrequency ?? null, cycle), ...(cycle ? { cycle } : {}) }
     : { kind: 'quantity' as const, label: effectiveQuantity, ...(cycle ? { cycle } : {}) }
