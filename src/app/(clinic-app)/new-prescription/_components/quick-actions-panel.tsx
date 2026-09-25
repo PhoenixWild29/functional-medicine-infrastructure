@@ -55,6 +55,7 @@ import { FREQUENCY_OPTIONS } from './structured-sig-builder.types'
 import { DOSE_UNITS, formatFavoriteDose } from '@/lib/orders/dose-display'
 import { splitDose } from '@/lib/orders/dose'
 import {
+  favoriteCycle,
   groupFavorites,
   presetChipText,
   presetKey,
@@ -79,6 +80,10 @@ export interface Favorite {
   sig_mode: string
   /** WO-105: the steps a saved titration carries. */
   titration_steps?: TitrationStep[]
+  /** Cycling dose math: a cycling favorite's pattern and cycle length. */
+  cycle_on_days?:       number | null
+  cycle_off_days?:      number | null
+  cycle_duration_days?: number | null
   default_refills: number
   use_count: number
   last_used_at: string | null
@@ -140,6 +145,11 @@ interface ProtocolItem {
   default_quantity: string | null
   default_refills: number
   sort_order: number
+  /** Cycling dose math: a cycling item's mode, pattern and cycle length. */
+  sig_mode?: string | null
+  cycle_on_days?: number | null
+  cycle_off_days?: number | null
+  cycle_duration_days?: number | null
   // Live pricing resolved server-side by /api/protocols?id= — null when
   // the pharmacy no longer actively offers this formulation.
   wholesale_price: number | null
@@ -398,6 +408,19 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
         protocolName: detail.name,
         frequencyCode: item.frequency_code,
         quantityLabel: item.default_quantity,
+        // Cycling dose math: a cycling item loads as cycling, with its
+        // pattern and length; Review sizes it by dosing days. One saved
+        // without a pattern loads as cycling and is flagged for editing.
+        ...(item.sig_mode === 'cycling'
+          ? {
+              sigMode: 'cycling' as const,
+              cycle: favoriteCycle({
+                formulation_id: item.formulation_id, pharmacy_id: item.pharmacy_id, default_refills: item.default_refills,
+                sig_mode: item.sig_mode, cycle_on_days: item.cycle_on_days ?? null,
+                cycle_off_days: item.cycle_off_days ?? null, cycle_duration_days: item.cycle_duration_days ?? null,
+              }),
+            }
+          : {}),
       }
 
       const signature = prescriptionSignature(line)
@@ -550,6 +573,10 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
               sig_text:         rx.sigText,
               default_quantity: rx.quantityLabel ?? null,
               default_refills:  rx.rxDetails?.refills ?? 0,
+              // Cycling dose math: a cycling line stays cycling in the protocol.
+              ...(rx.sigMode === 'cycling' && rx.cycle
+                ? { sig_mode: 'cycling', cycle_on_days: rx.cycle.onDays, cycle_off_days: rx.cycle.offDays, cycle_duration_days: rx.cycle.lengthDays ?? rx.rxDetails?.daysSupply ?? null }
+                : {}),
             }
           }),
         }),

@@ -16,7 +16,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { repriceHref } from '../../new-prescription/_lib/reprice'
+import { refillLandingHref } from '../../new-prescription/_lib/reprice'
 import {
   usePrescriptionSession,
   type SessionPatient,
@@ -158,8 +158,10 @@ export function RefillPicker({ patients, provider, preselectOrderId = null }: Pr
       // is priced by the provider, on the price step that already
       // exists, before Review. Lines that did not move go straight
       // through, which is every refill on a stable price.
-      const moved = created.find(line => line.repriceRequired === true)
-      router.push(moved ? repriceHref(moved) : '/new-prescription/review')
+      //
+      // Cycling dose math: before that, a cycling order written before its
+      // on/off pattern was stored stops at the dose step and asks for it.
+      router.push(refillLandingHref(created))
     } catch (err) {
       setLoadFailed(err instanceof Error ? err.message : 'This refill could not be prepared. Nothing was changed — try again.')
     } finally {

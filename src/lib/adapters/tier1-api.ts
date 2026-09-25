@@ -189,7 +189,7 @@ export async function submitTier1Api(
   // ── 5. Load order data for payload transformation ─────────
   const { data: order, error: orderError } = await (supabase
     .from('orders')
-    .select('order_id, order_number, provider_id, patient_id, clinic_id, medication_snapshot, provider_npi_snapshot, quantity, sig_text, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions, package_label, package_count, titration_steps')
+    .select('order_id, order_number, provider_id, patient_id, clinic_id, medication_snapshot, provider_npi_snapshot, quantity, sig_text, sig_mode, cycle_on_days, cycle_off_days, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions, package_label, package_count, titration_steps')
     .eq('order_id', orderId)
     .single() as unknown as Promise<{
       data: {
@@ -216,6 +216,9 @@ export async function submitTier1Api(
         special_instructions: string | null
         // WO-101a
         titration_steps: unknown
+        sig_mode: string | null
+        cycle_on_days: number | null
+        cycle_off_days: number | null
         package_label: string | null
         package_count: number | null
       } | null

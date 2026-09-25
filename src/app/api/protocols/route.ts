@@ -17,6 +17,7 @@ import { isLivePharmacy, type PharmacyLiveness } from '@/lib/pharmacies/live'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
+import { cycleLengthFrom, cyclePatternFrom } from '@/lib/orders/cycling'
 
 export async function GET(req: NextRequest) {
   const supabaseAuth = await createServerClient()
@@ -62,6 +63,9 @@ export async function GET(req: NextRequest) {
         timing_code,
         sig_mode,
         sig_text,
+        cycle_on_days,
+        cycle_off_days,
+        cycle_duration_days,
         default_quantity,
         default_refills,
         is_conditional,
@@ -223,6 +227,11 @@ interface ProtocolItemBody {
   sig_text:         string | null
   default_quantity: string | null
   default_refills:  number
+  /** Cycling dose math: 'cycling' only with a full pattern + length. */
+  sig_mode:            'standard' | 'cycling'
+  cycle_on_days:       number | null
+  cycle_off_days:      number | null
+  cycle_duration_days: number | null
 }
 
 function optionalStr(v: unknown): string | null {
@@ -258,6 +267,15 @@ export async function POST(req: NextRequest) {
     const formulationId = optionalStr(r['formulation_id'])
     if (!formulationId) return NextResponse.json({ error: 'each item needs a formulation_id' }, { status: 400 })
     const refills = r['default_refills']
+    // Cycling dose math: a cycling line stays cycling, with its pattern
+    // and length. Before this every item was saved 'standard'. Anything
+    // else (including titration, whose steps a protocol item does not
+    // store) is saved standard, as before.
+    const cyclePattern = r['sig_mode'] === 'cycling' ? cyclePatternFrom(r['cycle_on_days'], r['cycle_off_days']) : null
+    const cycleLength = cyclePattern ? cycleLengthFrom(r['cycle_duration_days']) : null
+    if (r['sig_mode'] === 'cycling' && (!cyclePattern || cycleLength == null)) {
+      return NextResponse.json({ error: 'a cycling item needs its days on, days off and cycle length' }, { status: 400 })
+    }
     items.push({
       formulation_id:   formulationId,
       pharmacy_id:      optionalStr(r['pharmacy_id']),
@@ -267,6 +285,10 @@ export async function POST(req: NextRequest) {
       sig_text:         optionalStr(r['sig_text']),
       default_quantity: optionalStr(r['default_quantity']),
       default_refills:  typeof refills === 'number' && Number.isInteger(refills) && refills >= 0 ? refills : 0,
+      sig_mode:            cyclePattern ? 'cycling' : 'standard',
+      cycle_on_days:       cyclePattern?.onDays ?? null,
+      cycle_off_days:      cyclePattern?.offDays ?? null,
+      cycle_duration_days: cyclePattern ? cycleLength : null,
     })
   }
 
@@ -304,7 +326,6 @@ export async function POST(req: NextRequest) {
     .insert(items.map((item, i) => ({
       protocol_id: protocol.protocol_id,
       ...item,
-      sig_mode:    'standard',
       sort_order:  i,
     })))
 

@@ -23,6 +23,7 @@ import { resolveCurrentProvider } from '@/lib/auth/current-provider'
 import { loadShippingRates } from '@/lib/orders/apply-bundle-shipping'
 import { rxDetailsFromRow, RX_DETAIL_COLUMN_LIST } from '@/lib/orders/rx-details'
 import { parseTitrationSteps } from '@/lib/orders/titration'
+import { cyclePatternFromRow } from '@/lib/orders/cycling'
 import { parseOrdersParam, type BatchDraftLine, type BatchPatientView } from '@/lib/orders/batch-sign-view'
 import { BatchSignForm } from './_components/batch-sign-form'
 
@@ -35,7 +36,7 @@ interface PageProps {
 }
 
 const LINE_SELECT = `order_id, status, patient_id, provider_id, pharmacy_id, medication_snapshot, pharmacy_snapshot, sig_text,
-  retail_price_snapshot, wholesale_price_snapshot, sig_mode, titration_steps, refill_of_order_id,
+  retail_price_snapshot, wholesale_price_snapshot, sig_mode, titration_steps, cycle_on_days, cycle_off_days, refill_of_order_id,
   package_label, package_count, created_at, ${RX_DETAIL_COLUMN_LIST}`
 
 type LineRow = Record<string, unknown> & {
@@ -67,6 +68,7 @@ function toLine(row: LineRow): BatchDraftLine {
     deaSchedule:     typeof schedule === 'number' ? schedule : null,
     sigMode,
     titrationSteps:  sigMode === 'titration' ? parseTitrationSteps(row['titration_steps']) : [],
+    cyclePattern:    cyclePatternFromRow(row as Parameters<typeof cyclePatternFromRow>[0]),
     refillOfOrderId: typeof row['refill_of_order_id'] === 'string' ? row['refill_of_order_id'] : null,
     packageLabel:    typeof row['package_label'] === 'string' ? row['package_label'] : null,
     packageCount:    typeof row['package_count'] === 'number' ? row['package_count'] : null,

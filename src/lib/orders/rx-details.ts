@@ -16,6 +16,8 @@
 //      computed by `formulationRxDefaults` and written to
 //      `formulations.default_*` (migration 20260912000001 + seeds).
 
+import { calendarDaysForDosingDays, dosingDaysIn, MON_FRI, type CyclePattern } from './cycling'
+
 // ── Enumerations ────────────────────────────────────────────
 
 export const SYRINGE_OPTIONS = [
@@ -296,6 +298,12 @@ export interface DispenseInput {
    * supply from the quantity. See durationDaysFromSig.
    */
   durationDays?:      number | null | undefined
+  /**
+   * A cycling line's on/off pattern. Doses are counted on the on-days
+   * only (see lib/orders/cycling). null/absent for every other line —
+   * which then computes exactly as before.
+   */
+  cycle?:             CyclePattern | null | undefined
 }
 
 export interface DerivedDispense {
@@ -398,10 +406,37 @@ export function durationDaysForLink(
   return durationDaysFromSig(legacyLinkSig)
 }
 
-/** Number of doses taken over `days` at `frequencyCode`; null when not computable (PRN). */
-export function dosesInDays(days: number, frequencyCode: string | null | undefined): number | null {
+/**
+ * The on/off pattern a line doses on, and the doses per on-day: a
+ * cycling line's own pattern at its frequency (Mon-Fri inside a cycle
+ * counts one dose per on-day), Mon-Fri as a 5 / 2 week, or null for
+ * every other line.
+ */
+function dosingPattern(
+  frequencyCode: string | null | undefined,
+  cycle: CyclePattern | null | undefined,
+): { pattern: CyclePattern; perOnDay: number | null } | null {
+  const isMonFri = (frequencyCode ?? '').toUpperCase() === 'MF'
+  if (cycle) return { pattern: cycle, perOnDay: isMonFri ? 1 : dosesPerDay(frequencyCode) }
+  if (isMonFri) return { pattern: MON_FRI, perOnDay: 1 }
+  return null
+}
+
+/**
+ * Number of doses taken over `days` at `frequencyCode`; null when not
+ * computable (PRN). With an on/off pattern (a cycling line, or Mon-Fri),
+ * only the on-days count, starting on an on-day: 5 on / 2 off for 30
+ * days = 22. Every other frequency is days × doses per day, as before.
+ */
+export function dosesInDays(days: number, frequencyCode: string | null | undefined, cycle?: CyclePattern | null): number | null {
+  if (days <= 0) return null
+  const p = dosingPattern(frequencyCode, cycle)
+  if (p) {
+    if (p.perOnDay == null) return null
+    return Math.max(1, Math.floor(dosingDaysIn(days, p.pattern) * p.perOnDay + 1e-9))
+  }
   const perDay = dosesPerDay(frequencyCode)
-  if (perDay == null || days <= 0) return null
+  if (perDay == null) return null
   return Math.max(1, Math.floor(days * perDay + 1e-9))
 }
 
@@ -424,7 +459,7 @@ export function computeDispense(input: DispenseInput): DerivedDispense | null {
   if (duration != null) {
     const unit = dispenseUnitFor(input.dosageFormName, input.doseUnit)
     const perDose = perDoseInDispenseUnit(input, { value: 1, unit, isContainer: false })
-    const doses = dosesInDays(duration, input.frequencyCode)
+    const doses = dosesInDays(duration, input.frequencyCode, input.cycle)
     if (perDose != null && perDose > 0 && doses != null) {
       return { daysSupply: duration, dispenseQuantity: round2(doses * perDose), dispenseUnit: unit }
     }
@@ -446,9 +481,21 @@ export function computeDispense(input: DispenseInput): DerivedDispense | null {
   }
   if (qty.isContainer) return result
 
-  const perDay = dosesPerDay(input.frequencyCode)
   const perDose = perDoseInDispenseUnit(input, qty)
-  if (perDay == null || perDose == null || perDose <= 0) return result
+  if (perDose == null || perDose <= 0) return result
+
+  // On/off pattern (cycling, Mon-Fri): the package's doses cover on-days
+  // only; days supply is the calendar days those on-days span.
+  const pattern = dosingPattern(input.frequencyCode, input.cycle)
+  if (pattern) {
+    if (pattern.perOnDay == null || pattern.perOnDay <= 0) return result
+    const onDays = Math.floor(qty.value / (perDose * pattern.perOnDay) + 1e-9)
+    result.daysSupply = Math.max(1, calendarDaysForDosingDays(onDays, pattern.pattern))
+    return result
+  }
+
+  const perDay = dosesPerDay(input.frequencyCode)
+  if (perDay == null) return result
 
   const dailyUse = perDose * perDay
   if (dailyUse <= 0) return result
@@ -633,7 +680,7 @@ export function suggestPackage(
   const fallback: PackageSuggestion = { package: fallbackPackage, count: 1, reason: 'default', daysSupply: null, dispenseQuantity: null }
 
   const duration = typeof input.durationDays === 'number' && input.durationDays > 0 ? input.durationDays : null
-  if (duration == null || dosesInDays(duration, input.frequencyCode) == null) return fallback
+  if (duration == null || dosesInDays(duration, input.frequencyCode, input.cycle) == null) return fallback
   // Only a dose computeDispense can count (it otherwise falls back to
   // "one package", which says nothing about size).
   const unit = dispenseUnitFor(input.dosageFormName, input.doseUnit)

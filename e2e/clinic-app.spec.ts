@@ -3418,3 +3418,69 @@ test.describe('Cycling migration — structured on/off pattern', () => {
     expect(itemStd.error?.message ?? '').toContain('chk_protocol_items_cycle')
   })
 })
+
+// ============================================================
+// Cycling dose math — dosing days, not calendar days
+// ============================================================
+// 10 units once daily, 5 days on / 2 days off, for 30 days: the patient
+// doses on 22 days (the course starts on an on-day), so the line is
+// 2.2 mL and the 2.5 mL vial covers it. Daily dosing would have been
+// 3.0 mL and the 5 mL vial.
+
+test.describe('Clinic App — cycling dose math', () => {
+  test.beforeAll(async () => { await seedStaticData() })
+  test.afterEach(async () => { await cleanupTestOrders() })
+
+  test('5 on / 2 off for 30 days: 22 dosing days, 2.2 mL, the 2.5 mL vial — shown, priced and stored', async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+    await page.goto('/new-prescription')
+    await page.getByLabel('Search patients').fill('Test')
+    await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
+    await pickProviderIfListed(page)
+    await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
+
+    await page.getByLabel('Search medications').fill(TEST_CATALOG.glp1IngredientName)
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.glp1IngredientName, 'i') }).click()
+    await page.getByRole('button', { name: new RegExp(TEST_CATALOG.glp1FormulationName, 'i') }).click()
+    await page.getByLabel('Dose amount').fill('10')
+    await page.getByLabel('Dose unit').selectOption('units')
+    await page.getByLabel('Frequency').selectOption('QD')
+    await page.getByRole('button', { name: 'Cycling', exact: true }).click()
+    await page.getByLabel('Cycle length unit').selectOption('days')
+    await page.getByLabel('Cycle length', { exact: true }).fill('30')
+    await expect(page.getByTestId('cycling-dosing-days')).toHaveText('22 dosing days in 30 days (5 days on / 2 days off, starting on an on-day)')
+
+    const tier2 = page.getByRole('button', { name: /Test Pharmacy Tier2/ })
+    await expect(tier2.getByTestId('pharmacy-suggested-package')).toHaveText('2.5 mL vial')
+    await tier2.click()
+    await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 10_000 })
+
+    await expect(page.getByTestId('days-supply-value')).toHaveText('30 days')
+    await expect(page.getByTestId('dispense-value')).toHaveText('2.2 mL')
+    await expect(page.getByTestId('dosing-days')).toHaveText('22 dosing days in 30 days (5 days on / 2 days off, starting on an on-day)')
+    await expect(page.getByTestId('package-summary')).toHaveText('Package: 2.5 mL vial (suggested for 30 days) · $165.00')
+
+    await page.getByRole('button', { name: /Save as Draft/ }).click()
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+
+    const supabase = createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
+    await expect.poll(async () => {
+      const { data } = await supabase
+        .from('orders')
+        .select('sig_mode, cycle_on_days, cycle_off_days, days_supply, dispense_quantity, package_label')
+        .eq('clinic_id', TEST_IDS.clinic)
+        .eq('formulation_id', TEST_IDS.glp1Formulation)
+        .eq('status', 'DRAFT')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      return data
+    }, { timeout: 15_000 }).toEqual({
+      sig_mode: 'cycling', cycle_on_days: 5, cycle_off_days: 2,
+      days_supply: 30, dispense_quantity: 2.2, package_label: '2.5 mL vial',
+    })
+  })
+})

@@ -122,6 +122,7 @@ describe('parseSigForBuilder / builderStateFromOrder', () => {
       sigText: 'Inject 10 units subcutaneously once weekly',
       sigMode:        'standard',
       titrationSteps: [],
+      cycle: null,
     })
   })
 
@@ -136,6 +137,7 @@ describe('parseSigForBuilder / builderStateFromOrder', () => {
       sigText: 'Inject 0.5 mL subcutaneously once weekly',
       sigMode:        'standard',
       titrationSteps: [],
+      cycle: null,
     })
   })
 })

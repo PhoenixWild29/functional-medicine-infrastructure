@@ -86,5 +86,8 @@ export function builderStateFromLine(line: SessionPrescription): BuilderInitialS
     // WO-105: editing a titration line at Review reopens its step table.
     sigMode:        line.sigMode === 'titration' ? 'titration' : line.sigMode === 'cycling' ? 'cycling' : 'standard',
     titrationSteps: line.sigMode === 'titration' ? (line.titrationSteps ?? []).map(t => ({ ...t })) : [],
+    // Cycling dose math: null on a cycling line opens the dose step in
+    // cycling mode asking for the days on and off — never daily.
+    cycle:          line.sigMode === 'cycling' && line.cycle ? { ...line.cycle } : null,
   }
 }

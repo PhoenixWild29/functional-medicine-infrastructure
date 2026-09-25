@@ -40,6 +40,7 @@ import {
 } from '@/lib/adapters/audit-trail'
 import { casTransition } from '@/lib/orders/cas-transition'
 import { parseTitrationSteps } from '@/lib/orders/titration'
+import { cyclePatternFromRow } from '@/lib/orders/cycling'
 
 // ============================================================
 // TYPES
@@ -70,7 +71,7 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
   // ── 1. Load order ──────────────────────────────────────────
   const { data: order, error: orderError } = await (supabase
     .from('orders')
-    .select('order_id, status, pharmacy_id, clinic_id, provider_id, patient_id, medication_snapshot, provider_npi_snapshot, quantity, sig_text, order_number, fax_attempt_count, locked_at, created_at, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions, package_label, package_count, titration_steps')
+    .select('order_id, status, pharmacy_id, clinic_id, provider_id, patient_id, medication_snapshot, provider_npi_snapshot, quantity, sig_text, sig_mode, cycle_on_days, cycle_off_days, order_number, fax_attempt_count, locked_at, created_at, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions, package_label, package_count, titration_steps')
     .eq('order_id', orderId)
     .single() as unknown as Promise<{
       data: {
@@ -102,6 +103,9 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
         special_instructions: string | null
         // WO-101a
         titration_steps: unknown
+        sig_mode: string | null
+        cycle_on_days: number | null
+        cycle_off_days: number | null
         package_label: string | null
         package_count: number | null
       } | null
@@ -210,6 +214,8 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
       sigText:            order.sig_text ?? null,
       // WO-105: the schedule, printed as a table under the sig
       titrationSteps:      parseTitrationSteps(order.titration_steps),
+      // Cycling dose math: the pattern, printed under the sig
+      cyclePattern:        cyclePatternFromRow(order),
       // WO-96 Rx detail fields
       daysSupply:          order.days_supply,
       dispenseQuantity:    order.dispense_quantity,

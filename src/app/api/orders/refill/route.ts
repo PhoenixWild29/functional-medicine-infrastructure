@@ -20,6 +20,11 @@
 //   - the refill is authorized (counted from refill_of_order_id, never
 //     a decrement on the signed source);
 //   - a titration refills at its maintenance dose, with the reason;
+//   - a cycling order refills as cycling, its quantity recomputed from
+//     the stored on/off pattern (dosing days, not calendar days). One
+//     written before the pattern was stored is never refilled as daily
+//     dosing: the line comes back cyclePatternRequired and the picker
+//     lands on the dose step to ask for the days on and off;
 //   - the package is re-suggested against today's ACTIVE packages and
 //     re-priced, with the delta reported rather than applied silently.
 //
@@ -38,6 +43,7 @@ import {
   type RefillPackageChange,
 } from '@/lib/orders/refill'
 import { parseTitrationSteps } from '@/lib/orders/titration'
+import { cyclePatternFromRow } from '@/lib/orders/cycling'
 import {
   rxDetailsFromRow,
   packageOptionsFromRows,
@@ -87,7 +93,7 @@ export async function POST(request: NextRequest) {
     .from('orders')
     .select(`
       order_id, patient_id, provider_id, formulation_id, catalog_item_id, pharmacy_id,
-      sig_text, sig_mode, titration_steps, quantity, created_at,
+      sig_text, sig_mode, titration_steps, cycle_on_days, cycle_off_days, quantity, created_at,
       retail_price_snapshot, wholesale_price_snapshot,
       medication_snapshot, pharmacy_snapshot,
       package_id, package_label, package_count,
@@ -211,6 +217,8 @@ interface SourceRow {
   sig_text:        string | null
   sig_mode:        string | null
   titration_steps: unknown
+  cycle_on_days?:  number | null
+  cycle_off_days?: number | null
   quantity:        number | null
   created_at:      string
   retail_price_snapshot:    number | null
@@ -284,8 +292,17 @@ function buildRefillLine(row: SourceRow, packagesByKey: Map<string, PackageOptio
     ? Math.round(row.wholesale_price_snapshot * 100)
     : null
 
+  // ── Cycling → the same pattern, the same dosing days ────
+  // The length is the source's days supply (the calendar span). A
+  // cycling source with no stored pattern is NOT recomputed: sizing it
+  // without the pattern would be sizing it as daily dosing. It keeps
+  // the source's own numbers and waits for the provider (below).
+  const isCycling = row.sig_mode === 'cycling'
+  const cyclePattern = isCycling ? cyclePatternFromRow(row) : null
+  const cyclePatternRequired = isCycling && !cyclePattern
+
   const { amount, unit } = splitDose(dose)
-  const derived = computeDispense({
+  const derived = cyclePatternRequired ? null : computeDispense({
     doseAmount:         amount,
     doseUnit:           unit,
     frequencyCode:      frequencyCode,
@@ -294,6 +311,7 @@ function buildRefillLine(row: SourceRow, packagesByKey: Map<string, PackageOptio
     concentrationUnit:  concentrationUnit,
     dosageFormName:     dosageFormName,
     durationDays:       durationDays,
+    cycle:              cyclePattern,
   })
 
   const stillPriced = row.package_id ? packages.find(p => p.id === row.package_id) ?? null : null
@@ -371,8 +389,12 @@ function buildRefillLine(row: SourceRow, packagesByKey: Map<string, PackageOptio
     frequencyCode,
     quantityLabel,
     sigText,
-    sigMode:         'standard' as const,
+    // A finished titration refills as standard at its maintenance dose;
+    // a cycling order refills as cycling.
+    sigMode:         isCycling ? ('cycling' as const) : ('standard' as const),
     titrationSteps:  [] as never[],
+    cycle:           cyclePattern ? { ...cyclePattern, lengthDays: durationDays } : null,
+    cyclePatternRequired,
     rxDetails: {
       ...rxDetails,
       daysSupply:       derived?.daysSupply ?? rxDetails.daysSupply,

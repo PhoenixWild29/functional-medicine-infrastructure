@@ -93,7 +93,7 @@ describe('builderLoadFromFavorite — structured end to end', () => {
       formulationId: 'f-sema', pharmacyId: 'ph-strive',
       doseAmount: '20', doseUnit: 'units', frequency: 'QW', timing: 'MORNING',
       duration: '30', customDurationDays: '', refills: 2,
-      sigMode: 'standard', titrationSteps: [],
+      sigMode: 'standard', titrationSteps: [], cycle: null,
     })
   })
 
@@ -102,7 +102,7 @@ describe('builderLoadFromFavorite — structured end to end', () => {
       formulationId: 'f-sema', pharmacyId: '',
       doseAmount: '', doseUnit: '', frequency: '', timing: '',
       duration: '', customDurationDays: '', refills: 0,
-      sigMode: 'standard', titrationSteps: [],
+      sigMode: 'standard', titrationSteps: [], cycle: null,
     })
   })
 

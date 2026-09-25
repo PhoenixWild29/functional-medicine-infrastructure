@@ -76,6 +76,7 @@ import { DerivedDispense, EMPTY_OVERRIDE, resolveDispense, type DispenseOverride
 import { SaveFavoriteButton } from '../../_components/save-favorite-button'
 import { formatDoseWithMg } from '@/lib/orders/dose-display'
 import { presetDurationFromDays } from '@/lib/orders/favorite-presets'
+import { dosingDaysIn, type CyclePattern } from '@/lib/orders/cycling'
 import { computeBundleShipping, type PharmacyShippingRates } from '@/lib/orders/shipping'
 
 // ── Cent arithmetic helpers — HC-01 ──────────────────────────
@@ -156,6 +157,13 @@ interface Props {
    */
   presetSigMode?:      SigMode | undefined
   presetTitrationSteps?: ReadonlyArray<TitrationStep> | undefined
+  /**
+   * Cycling dose math: a cycling line's on/off pattern. Days supply is
+   * the duration (calendar span); dispense and the package are counted
+   * over its dosing days only. null on a cycling line = no pattern, and
+   * the line cannot continue.
+   */
+  presetCycle?:        CyclePattern | null | undefined
   /** WO-101: package the draft line being edited was priced from. */
   existingPackageId?:  string | null
   /** WO-101a: how many of that package the draft line carries. */
@@ -214,6 +222,7 @@ export function MarginBuilderForm({
   presetTiming,
   presetSigMode,
   presetTitrationSteps,
+  presetCycle = null,
   existingPackageId = null,
   existingPackageCount = null,
   shippingRates = null,
@@ -267,6 +276,8 @@ export function MarginBuilderForm({
     () => durationDaysForLink(presetDurationDays, presetSigText),
     [presetDurationDays, presetSigText],
   )
+  // Cycling dose math: the pattern every quantity below is counted over.
+  const cycle = presetSigMode === 'cycling' ? presetCycle : null
 
   // ── WO-101: package (vial size) ───────────────────────────────
   const doseForPackages = splitDose(dose)
@@ -280,11 +291,12 @@ export function MarginBuilderForm({
       concentrationUnit:  formulationDetails.concentrationUnit,
       dosageFormName:     formulationDetails.dosageFormName,
       durationDays,
+      cycle,
     })
     // One package, and one of it covers the Rx: nothing to choose.
     if (!s || (packages.length < 2 && s.count <= 1)) return null
     return s
-  }, [packages, formulationDetails, doseForPackages.amount, doseForPackages.unit, presetFrequency, durationDays])
+  }, [packages, formulationDetails, doseForPackages.amount, doseForPackages.unit, presetFrequency, durationDays, cycle])
   // The line being edited keeps its package when it is still offered.
   const carriedPackageId = editTarget?.kind === 'draft'
     ? existingPackageId
@@ -323,6 +335,7 @@ export function MarginBuilderForm({
           concentrationUnit:  formulationDetails.concentrationUnit,
           dosageFormName:     formulationDetails.dosageFormName,
           durationDays,
+          cycle,
         })
       : null
     return defaultQuantityLabel(
@@ -334,7 +347,7 @@ export function MarginBuilderForm({
     )
     // sizeLabels is derived from packages each render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPackage, presetQuantity, formulationDetails, dose, durationDays, presetFrequency, packages])
+  }, [selectedPackage, presetQuantity, formulationDetails, dose, durationDays, presetFrequency, packages, cycle])
 
   // WO-105: a titration's days supply and dispense are the sum over its
   // steps. computeDispense stays exactly as it is for standard and
@@ -374,13 +387,14 @@ export function MarginBuilderForm({
       concentrationUnit:  formulationDetails.concentrationUnit,
       dosageFormName:     formulationDetails.dosageFormName,
       durationDays,
+      cycle,
     })
-  }, [dose, presetFrequency, effectiveQuantity, formulationDetails, durationDays, titrationDispense])
+  }, [dose, presetFrequency, effectiveQuantity, formulationDetails, durationDays, titrationDispense, cycle])
   const derivedBasis = titrationDispense != null
     ? { kind: 'duration' as const, days: titrationDispense.totalDays, doses: null }
     : durationDays != null
-    ? { kind: 'duration' as const, days: durationDays, doses: dosesInDays(durationDays, presetFrequency ?? null) }
-    : { kind: 'quantity' as const, label: effectiveQuantity }
+    ? { kind: 'duration' as const, days: durationDays, doses: dosesInDays(durationDays, presetFrequency ?? null, cycle), ...(cycle ? { cycle } : {}) }
+    : { kind: 'quantity' as const, label: effectiveQuantity, ...(cycle ? { cycle } : {}) }
   const [dispenseOverride, setDispenseOverride] = useState<DispenseOverride>(EMPTY_OVERRIDE)
 
   // ── WO-96: pre-filled Rx details + the rules that govern them ──
@@ -505,7 +519,9 @@ export function MarginBuilderForm({
     retailCents > 0 &&
     !isBelowWholesale &&
     (!isHighMarkup || highMarkupAcknowledged) &&
-    sigTrimmed.length >= 10
+    sigTrimmed.length >= 10 &&
+    // Cycling dose math: never price a cycling line without its pattern.
+    !(presetSigMode === 'cycling' && !cycle)
 
   // ── WO-101: package change ───────────────────────────────────
   // Wholesale follows the package; retail keeps the markup the provider
@@ -579,6 +595,8 @@ export function MarginBuilderForm({
       // WO-105
       sigMode:         presetSigMode ?? 'standard',
       titrationSteps:  titrationSteps,
+      // Cycling dose math: the pattern, with the duration as its length.
+      cycle:           cycle ? { ...cycle, lengthDays: durationDays } : null,
     }
   }
 
@@ -592,6 +610,9 @@ export function MarginBuilderForm({
     addToSession()
     router.push('/new-prescription/search')
   }
+
+  // Cycling dose math: the on/off pattern every POST / PATCH body carries.
+  const cycleBody = cycle ? { cycleOnDays: cycle.onDays, cycleOffDays: cycle.offDays } : {}
 
   // WO-98: the line body PATCH /api/orders/[id] and POST /api/orders share.
   function lineBody() {
@@ -609,6 +630,7 @@ export function MarginBuilderForm({
       packageCount:  selectedPackage ? packageCount : null,
       sigMode:        presetSigMode ?? 'standard',
       titrationSteps: titrationSteps,
+      ...cycleBody,
     }
   }
 
@@ -749,6 +771,8 @@ export function MarginBuilderForm({
           // prescription from the one the provider wrote.
           sigMode:        presetSigMode ?? 'standard',
           titrationSteps: titrationSteps,
+          // Cycling dose math: the pattern, so the draft reopens cycling.
+          ...cycleBody,
         }),
       })
 
@@ -855,6 +879,7 @@ export function MarginBuilderForm({
                 frequencyCode={presetFrequency ?? null}
                 timingCode={presetTiming ?? ''}
                 duration={presetDurationFromDays(durationDays)}
+                cycle={cycle ? { ...cycle, lengthDays: durationDays } : null}
                 refills={rxDetails.refills}
                 patient={rxSession.patient ? { patientId: rxSession.patient.patient_id, name: `${rxSession.patient.first_name} ${rxSession.patient.last_name}` } : null}
                 disabled={sigTrimmed.length < 10}

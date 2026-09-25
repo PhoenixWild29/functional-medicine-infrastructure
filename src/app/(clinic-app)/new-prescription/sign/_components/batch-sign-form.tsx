@@ -32,6 +32,7 @@ import { DrugInteractionAlerts } from '../../_components/drug-interaction-alerts
 import { EpcsTotpGate } from '../../_components/epcs-totp-gate'
 import { SignAsMePanel } from './sign-as-me-panel'
 import { builderHref } from '../../_lib/edit-target'
+import { dosingDaysIn } from '@/lib/orders/cycling'
 import {
   isControlledLine,
   patientBatchTotals,
@@ -566,6 +567,13 @@ function DraftLineItem({ line, checked, problems, disabled, removing, onToggle, 
             {line.sigMode === 'titration' && line.titrationSteps.length > 0 && (
               <span className="mt-1 block text-[11px] text-muted-foreground" data-testid={`titration-steps-${line.orderId}`}>
                 Titration: {line.titrationSteps.map((s, i) => `step ${i + 1} ${s.dose} ${s.unit} ${s.frequency} × ${s.weeks} wk`).join(' → ')}
+              </span>
+            )}
+            {line.sigMode === 'cycling' && (
+              <span className="mt-1 block text-[11px] text-muted-foreground" data-testid={`cycle-${line.orderId}`}>
+                {line.cyclePattern
+                  ? `Cycling: ${line.cyclePattern.onDays} on / ${line.cyclePattern.offDays} off${line.rxDetails.daysSupply != null ? ` · ${dosingDaysIn(line.rxDetails.daysSupply, line.cyclePattern)} dosing days in ${line.rxDetails.daysSupply}` : ''}`
+                  : 'Cycling: days on / off not stored (saved before they were). Edit to enter them before a refill.'}
               </span>
             )}
             {line.refillOfOrderId && (

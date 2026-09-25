@@ -14,6 +14,7 @@
 // src/__tests__/server-client-boundary-static-guard.test.ts.
 
 import type { SessionPrescription } from '../_context/prescription-session'
+import { builderHref } from './edit-target'
 
 /** Lines still waiting for the provider to confirm a moved price. */
 export function linesNeedingReprice(
@@ -44,6 +45,10 @@ export function repriceHref(line: SessionPrescription): string {
   if (line.sigMode === 'titration' && line.titrationSteps?.length) {
     params.set('titrationSteps', JSON.stringify(line.titrationSteps))
   }
+  if (line.sigMode === 'cycling' && line.cycle) {
+    params.set('cycleOnDays', String(line.cycle.onDays))
+    params.set('cycleOffDays', String(line.cycle.offDays))
+  }
   params.set('editId', line.id)
   return `/new-prescription/margin?${params.toString()}`
 }
@@ -59,4 +64,22 @@ export function nextAfterReprice(
 ): string {
   const next = linesNeedingReprice(prescriptions).find(rx => rx.id !== justSavedId)
   return next ? repriceHref(next) : '/new-prescription/review'
+}
+
+/** A cycling line with no on/off pattern: the dose step owes a decision. */
+export function needsCyclePattern(line: Pick<SessionPrescription, 'sigMode' | 'cycle'>): boolean {
+  return line.sigMode === 'cycling' && !line.cycle
+}
+
+/**
+ * Where a refill lands. A cycling line written before its pattern was
+ * stored stops at the dose step, in cycling mode, asking for the days on
+ * and off — it is never refilled as daily dosing. Then a moved price
+ * stops at the price step (WO-108). Otherwise Review.
+ */
+export function refillLandingHref(lines: ReadonlyArray<SessionPrescription>): string {
+  const owed = lines.find(needsCyclePattern)
+  if (owed) return builderHref({ kind: 'session', lineId: owed.id })
+  const moved = lines.find(line => line.repriceRequired === true)
+  return moved ? repriceHref(moved) : '/new-prescription/review'
 }

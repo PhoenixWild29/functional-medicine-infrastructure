@@ -32,6 +32,7 @@ import {
   validateDosePresets,
 } from '@/lib/orders/favorite-presets'
 import { parseTitrationSteps } from '@/lib/orders/titration'
+import { cycleLengthFrom, cyclePatternFrom } from '@/lib/orders/cycling'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
@@ -154,6 +155,9 @@ export async function GET(req: NextRequest) {
       dose_presets,
       sig_mode,
       titration_steps,
+      cycle_on_days,
+      cycle_off_days,
+      cycle_duration_days,
       default_refills,
       use_count,
       last_used_at,
@@ -296,6 +300,17 @@ export async function POST(req: NextRequest) {
 
   const category = await categoryForFormulation(supabase, formulationId)
   const sigMode = body['sig_mode'] === 'titration' || body['sig_mode'] === 'cycling' ? body['sig_mode'] : 'standard'
+  // Cycling dose math: a cycling favorite keeps its pattern and cycle
+  // length, so it reopens as the same cycling line. The builder always
+  // has both unless the course is Ongoing, which a favorite cannot hold
+  // (the stored length is what sizes the next prescription).
+  const cyclePattern = sigMode === 'cycling' ? cyclePatternFrom(body['cycle_on_days'], body['cycle_off_days']) : null
+  const cycleLength = sigMode === 'cycling' ? cycleLengthFrom(body['cycle_duration_days']) : null
+  if (sigMode === 'cycling' && (!cyclePattern || cycleLength == null)) {
+    return NextResponse.json({
+      error: 'A cycling favorite needs its days on, days off and cycle length. Choose a cycle length (not Ongoing) to save it.',
+    }, { status: 400 })
+  }
   const refills = typeof body['default_refills'] === 'number' && Number.isInteger(body['default_refills']) && body['default_refills'] >= 0
     ? body['default_refills']
     : 0
@@ -312,6 +327,9 @@ export async function POST(req: NextRequest) {
       dose_presets:    presets.presets as unknown as Json,
       sig_mode:        sigMode,
       titration_steps: (sigMode === 'titration' ? parseTitrationSteps(body['titration_steps']) : []) as unknown as Json,
+      cycle_on_days:       cyclePattern?.onDays ?? null,
+      cycle_off_days:      cyclePattern?.offDays ?? null,
+      cycle_duration_days: cyclePattern ? cycleLength : null,
       default_refills: refills,
     })
     .select()

@@ -112,13 +112,20 @@ function calcPlatformFeeCents(marginCents: number): number {
  * not to remove the line. (What a refill should do about a moved price
  * is WO-107; this only stops it being sent below cost.)
  */
-type SendBlock = 'price' | 'directions' | 'below_cost' | 'reprice'
+type SendBlock = 'price' | 'directions' | 'below_cost' | 'reprice' | 'cycle_pattern'
 
-function sendBlock(rx: {
+type SendBlockLine = {
   retailCents: number; wholesaleCents: number; sigText: string; repriceRequired?: boolean | null
-}): SendBlock | null {
+  sigMode?: SessionPrescription['sigMode']; cycle?: SessionPrescription['cycle']
+}
+
+export function sendBlock(rx: SendBlockLine): SendBlock | null {
   if (rx.retailCents <= 0) return 'price'
   if (rx.sigText.trim().length < 10) return 'directions'
+  // Cycling dose math: a cycling line without its days on / off (one
+  // written before the pattern was stored) has a quantity with no basis
+  // but daily dosing. Edit it on the dose step; the server refuses it too.
+  if (rx.sigMode === 'cycling' && !rx.cycle) return 'cycle_pattern'
   if (rx.retailCents < rx.wholesaleCents) return 'below_cost'
   // WO-108: the wholesale moved and the provider has not confirmed a
   // price yet. Reaching Review with the flag still set means the price
@@ -128,9 +135,7 @@ function sendBlock(rx: {
   return null
 }
 
-function isUnsendable(rx: {
-  retailCents: number; wholesaleCents: number; sigText: string; repriceRequired?: boolean | null
-}): boolean {
+function isUnsendable(rx: SendBlockLine): boolean {
   return sendBlock(rx) !== null
 }
 
@@ -193,6 +198,10 @@ export function orderPostBody(
     // Rx PDF table and the patient schedule are built from.
     sigMode:        rx.sigMode ?? 'standard',
     titrationSteps: rx.titrationSteps ?? [],
+    // Cycling dose math: the on/off pattern, stored on the order.
+    ...(rx.sigMode === 'cycling' && rx.cycle
+      ? { cycleOnDays: rx.cycle.onDays, cycleOffDays: rx.cycle.offDays }
+      : {}),
     // WO-106: the order this one refills, when the line came from Refill.
     refillOfOrderId: rx.refillOfOrderId ?? null,
   }
@@ -217,7 +226,11 @@ function derivedForLine(
     concentrationValue: inputs.concentrationValue,
     concentrationUnit:  inputs.concentrationUnit,
     dosageFormName:     inputs.dosageFormName,
-    durationDays:       durationDaysFromSig(rx.sigText),
+    // Cycling dose math: a cycling line's length is its own, never read
+    // from its sig ("for 6 weeks then reassess" has none durationDaysFromSig
+    // accepts); the doses count on-days only.
+    durationDays:       rx.sigMode === 'cycling' ? rx.cycle?.lengthDays ?? null : durationDaysFromSig(rx.sigText),
+    cycle:              rx.sigMode === 'cycling' ? rx.cycle ?? null : null,
   })
 }
 
@@ -420,7 +433,8 @@ export function BatchReviewForm({ isProvider }: Props) {
   const hasInvalidItems = invalidItems.length > 0
   const belowCostItems = invalidItems.filter(rx => sendBlock(rx) === 'below_cost')
   const repriceItems   = invalidItems.filter(rx => sendBlock(rx) === 'reprice')
-  const malformedItems = invalidItems.filter(rx => sendBlock(rx) !== 'below_cost' && sendBlock(rx) !== 'reprice')
+  const cycleItems     = invalidItems.filter(rx => sendBlock(rx) === 'cycle_pattern')
+  const malformedItems = invalidItems.filter(rx => sendBlock(rx) === 'price' || sendBlock(rx) === 'directions')
 
   // WO-96: rule-required Rx details still empty (controlled → diagnosis,
   // requires_clinical_difference → statement). Blocks both Sign & Send
@@ -697,7 +711,12 @@ export function BatchReviewForm({ isProvider }: Props) {
                   <p className="mt-1 text-xs text-muted-foreground italic">
                     Sig: {rx.sigText}
                   </p>
-                  {block === 'reprice' ? (
+                  {block === 'cycle_pattern' ? (
+                    <p className="mt-1 text-xs font-medium text-amber-700" data-testid={`cycle-pattern-required-${rx.id}`}>
+                      This cycling prescription was saved before its days on and off were stored. Edit this line to
+                      enter them; the quantity is counted from them.
+                    </p>
+                  ) : block === 'reprice' ? (
                     <p className="mt-1 text-xs font-medium text-amber-700" data-testid={`reprice-required-${rx.id}`}>
                       The pharmacy&apos;s price has changed since the last fill. Edit this line to confirm what the
                       patient pays.
@@ -755,6 +774,7 @@ export function BatchReviewForm({ isProvider }: Props) {
                 })}
                 packageLabel={rx.packageLabel ?? null}
                 packageCount={rx.packageCount ?? null}
+                cycle={rx.sigMode === 'cycling' ? rx.cycle ?? null : null}
               />
               <div className="mt-2 flex items-center justify-between gap-2">
                 {/* WO-103: ☆ Save as favorite — V3.0 formulation lines only */}
@@ -862,6 +882,12 @@ export function BatchReviewForm({ isProvider }: Props) {
               below what the pharmacy charges today. Edit the price on the flagged prescription
               {belowCostItems.length !== 1 ? 's' : ''} above — sending below cost is refused when the order is created, after
               the signature.
+            </p>
+          )}
+          {cycleItems.length > 0 && (
+            <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+              {cycleItems.map(rx => rx.medicationName).join(', ')} {cycleItems.length !== 1 ? 'need' : 'needs'} the days on
+              and days off of {cycleItems.length !== 1 ? 'their' : 'its'} cycle. Edit the flagged line{cycleItems.length !== 1 ? 's' : ''} above.
             </p>
           )}
           {malformedItems.length > 0 && (
@@ -1008,6 +1034,8 @@ export function BatchReviewForm({ isProvider }: Props) {
                 ? 'The prescribing rules for these medications could not be loaded. Retry them above to enable sending.'
                 : interactionsUnavailable
                 ? 'The drug interaction check could not run. Retry it above to enable sending.'
+                : cycleItems.length > 0
+                ? 'Edit the flagged prescriptions above to enable sending.'
                 : belowCostItems.length > 0 || repriceItems.length > 0
                 ? 'Edit the price on the flagged prescriptions above to enable sending.'
                 : hasInvalidItems
@@ -1048,7 +1076,9 @@ export function BatchReviewForm({ isProvider }: Props) {
           </button>
           {hasInvalidItems && (
             <p className="text-center text-xs text-amber-700">
-              {belowCostItems.length > 0 || repriceItems.length > 0
+              {cycleItems.length > 0
+                ? 'Edit the flagged prescriptions above to enable saving drafts.'
+                : belowCostItems.length > 0 || repriceItems.length > 0
                 ? 'Edit the price on the flagged prescriptions above to enable saving drafts.'
                 : 'Remove the flagged prescriptions above to enable saving drafts.'}
             </p>

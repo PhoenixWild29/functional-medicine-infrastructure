@@ -384,3 +384,36 @@ describe('WO-99 — a draft being batch-signed cannot change', () => {
     expect(auditRows()).toEqual([])
   })
 })
+
+// Cycling dose math: an old cycling draft reopened to enter its missing
+// days on / off is saved through this route. It used to ignore the mode
+// entirely, so the corrected quantity was stored and the pattern the
+// provider typed was lost.
+describe('PATCH /api/orders/[orderId] — the sig mode and cycle travel with the edit', () => {
+  const cycling = {
+    sigMode: 'cycling', titrationSteps: [], cycleOnDays: 5, cycleOffDays: 2,
+    sigText: 'Inject 10 units (0.10mL / 0.50mg) subcutaneously once daily, 5 days on / 2 days off, for 30 days then reassess',
+    frequencyCode: 'QD',
+  }
+
+  it('stores the mode and the pattern the provider entered', async () => {
+    installHappyFixtures({ ...DRAFT_ROW, sig_mode: 'cycling', cycle_on_days: null, cycle_off_days: null })
+    const res = await PATCH(makeRequest(patchBody(cycling)), ctx)
+    expect(res.status).toBe(200)
+    const update = updatedRows.find(u => u.table === 'orders')!
+    expect(update.row).toMatchObject({ sig_mode: 'cycling', cycle_on_days: 5, cycle_off_days: 2, titration_steps: [] })
+  })
+
+  it('refuses a cycling edit without a valid pattern, and writes nothing', async () => {
+    const res = await PATCH(makeRequest(patchBody({ ...cycling, cycleOffDays: null })), ctx)
+    expect(res.status).toBe(400)
+    expect(updatedRows.filter(u => u.table === 'orders')).toEqual([])
+  })
+
+  it('a body without sigMode leaves the stored mode alone', async () => {
+    await PATCH(makeRequest(patchBody()), ctx)
+    const update = updatedRows.find(u => u.table === 'orders')!
+    expect(update.row).not.toHaveProperty('sig_mode')
+    expect(update.row).not.toHaveProperty('cycle_on_days')
+  })
+})

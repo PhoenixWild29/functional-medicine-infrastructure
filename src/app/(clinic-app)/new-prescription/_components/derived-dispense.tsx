@@ -13,6 +13,7 @@
 
 import { useId, useState } from 'react'
 import { formatDispense, type DerivedDispense } from '@/lib/orders/rx-details'
+import { dosingDaysSummary, type CyclePattern } from '@/lib/orders/cycling'
 
 export interface DispenseOverride {
   daysSupply:       string   // '' = keep derived
@@ -23,9 +24,13 @@ export interface DispenseOverride {
 export const EMPTY_OVERRIDE: DispenseOverride = { daysSupply: '', dispenseQuantity: '', dispenseUnit: '' }
 
 /** What the derived values were computed from — drives the explanation line. */
+/**
+ * `cycle` is set on a cycling line: its doses were counted over the
+ * on-days only, and the count is shown (rule 3).
+ */
 export type DerivedBasis =
-  | { kind: 'duration'; days: number; doses: number | null }
-  | { kind: 'quantity'; label: string }
+  | { kind: 'duration'; days: number; doses: number | null; cycle?: CyclePattern }
+  | { kind: 'quantity'; label: string; cycle?: CyclePattern }
 
 interface Props {
   derived:  DerivedDispense | null
@@ -62,6 +67,10 @@ export function DerivedDispense({ derived, basis, override, onChange }: Props) {
   const packageText = formatDispense(derived?.dispenseQuantity ?? null, derived?.dispenseUnit ?? null)
     ?? (basis.kind === 'quantity' && basis.label ? basis.label : 'selected')
   const daysText = resolved.daysSupply != null ? `${resolved.daysSupply} days` : '—'
+  // Cycling dose math: the dosing days in the days supply.
+  const dosingDaysText = basis.cycle && resolved.daysSupply != null
+    ? dosingDaysSummary(resolved.daysSupply, basis.cycle)
+    : null
   const dispenseText = formatDispense(resolved.dispenseQuantity, resolved.dispenseUnit) ?? '—'
 
   return (
@@ -86,6 +95,10 @@ export function DerivedDispense({ derived, basis, override, onChange }: Props) {
           </button>
         )}
       </div>
+
+      {dosingDaysText && (
+        <p className="mt-1 text-xs font-medium text-foreground" data-testid="dosing-days">{dosingDaysText}</p>
+      )}
 
       <p className="mt-1 text-[11px] text-muted-foreground">
         {isOverridden

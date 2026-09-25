@@ -170,6 +170,7 @@ describe('transformLifeFilePayload — registry lookup + shape', () => {
           syringeOption:       'sc_kit',
           // WO-105: [] unless the line is a titration
           titrationSchedule:   [],
+          cycleSchedule:       null,
           shippingType:        'standard',
           clinicalDifference:  '',
           diagnosisCode:       '',

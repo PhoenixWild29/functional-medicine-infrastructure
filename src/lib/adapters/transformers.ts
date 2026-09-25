@@ -20,6 +20,7 @@
 
 import { allergiesForPayload } from '@/lib/patients/allergies'
 import { parseTitrationSteps, type TitrationStep } from '@/lib/orders/titration'
+import { cyclePatternFromRow, cyclePatternText, dosingDaysIn, type CyclePattern } from '@/lib/orders/cycling'
 
 // ============================================================
 // CANONICAL ORDER PAYLOAD
@@ -84,6 +85,11 @@ export interface OrderPayload {
   // them with titrations" (Gina Rooks, 2026-09-11).
   // Optional so payloads built before WO-105 keep compiling.
   titrationSteps?:      ReadonlyArray<TitrationStep>
+  // Cycling dose math: a cycling line's on/off pattern, structured. The
+  // dispense quantity was sized from its dosing days (5 on / 2 off for
+  // 30 days = 22 doses), so the pharmacy gets the pattern that explains
+  // it. null for every other line. Optional so older payloads compile.
+  cyclePattern?:        CyclePattern | null
   // Clinic
   clinicName:           string
 }
@@ -108,10 +114,13 @@ export function rxDetailPayloadFields(order: {
   package_label?:        string | null
   package_count?:        number | null
   titration_steps?:      unknown
+  sig_mode?:             string | null
+  cycle_on_days?:        number | null
+  cycle_off_days?:       number | null
 }): Pick<OrderPayload,
   'daysSupply' | 'dispenseQuantity' | 'dispenseUnit' | 'refills' | 'substitutionAllowed' |
   'syringeOption' | 'shippingType' | 'clinicalDifference' | 'diagnosisCode' | 'diagnosisText' | 'specialInstructions' |
-  'packageLabel' | 'packageCount' | 'titrationSteps'
+  'packageLabel' | 'packageCount' | 'titrationSteps' | 'cyclePattern'
 > {
   const dq = order.dispense_quantity
   const dispenseQuantity = typeof dq === 'string' ? Number(dq) : dq ?? null
@@ -132,7 +141,37 @@ export function rxDetailPayloadFields(order: {
     packageCount:        typeof order.package_count === 'number' && order.package_count > 0 ? order.package_count : 1,
     // WO-105
     titrationSteps:      parseTitrationSteps(order.titration_steps),
+    // Cycling dose math
+    cyclePattern:        cyclePatternFromRow(order),
   }
+}
+
+/**
+ * Cycling dose math: the pattern as the pharmacy receives it, with the
+ * dosing days the dispense quantity was sized from. null when the line
+ * is not cycling.
+ */
+export function cycleScheduleField(
+  pattern: CyclePattern | null | undefined,
+  daysSupply: number | null | undefined,
+): { on_days: number; off_days: number; dosing_days: number | null; days_supply: number | null } | null {
+  if (!pattern) return null
+  const days = typeof daysSupply === 'number' && daysSupply > 0 ? daysSupply : null
+  return {
+    on_days:     pattern.onDays,
+    off_days:    pattern.offDays,
+    dosing_days: days != null ? dosingDaysIn(days, pattern) : null,
+    days_supply: days,
+  }
+}
+
+/** One line of text for free-text fields: "5 days on / 2 days off: 22 dosing days in 30 days". '' when not cycling. */
+export function cycleScheduleText(pattern: CyclePattern | null | undefined, daysSupply: number | null | undefined): string {
+  if (!pattern) return ''
+  const days = typeof daysSupply === 'number' && daysSupply > 0 ? daysSupply : null
+  return days != null
+    ? `${cyclePatternText(pattern)}: ${dosingDaysIn(days, pattern)} dosing days in ${days} days`
+    : cyclePatternText(pattern)
 }
 
 /**
@@ -241,6 +280,8 @@ function transformViosPayload(p: OrderPayload): PharmacyPayload {
       package_count:        p.packageCount ?? 1,
       // WO-105: [] for a line that is not a titration.
       titration_schedule:   titrationScheduleField(p.titrationSteps),
+      // Cycling dose math: null for a line that is not cycling.
+      cycle_schedule:       cycleScheduleField(p.cyclePattern, p.daysSupply),
     },
     clinic_name: p.clinicName,
   }
@@ -301,6 +342,8 @@ function transformLifeFilePayload(p: OrderPayload): PharmacyPayload {
         specialInstructions: p.specialInstructions ?? '',
         // WO-105
         titrationSchedule:   titrationScheduleField(p.titrationSteps),
+        // Cycling dose math
+        cycleSchedule:       cycleScheduleField(p.cyclePattern, p.daysSupply),
         // WO-101a
         packageLabel:        p.packageLabel ?? '',
         packageCount:        p.packageCount ?? 1,
@@ -361,6 +404,8 @@ function transformMediVeraPayload(p: OrderPayload): PharmacyPayload {
       // WO-101a
       PackageLabel:        p.packageLabel ?? '',
       PackageCount:        p.packageCount ?? 1,
+      // Cycling dose math — MediVera's RxInfo is flat text fields.
+      CycleSchedule:       cycleScheduleText(p.cyclePattern, p.daysSupply),
     },
     ClinicName: p.clinicName,
   }

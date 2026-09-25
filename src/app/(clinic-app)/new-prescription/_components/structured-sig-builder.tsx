@@ -7,7 +7,10 @@
 // Sub-component of CascadingPrescriptionBuilder. Manages:
 // - Standard sig generation from dropdowns (dose, frequency, timing, duration)
 // - Titration mode: multi-step dose escalation with start/increment/target
-// - Cycling mode: on/off day schedules with cycle duration
+// - Cycling mode: on/off day schedules with cycle duration. The cycle
+//   length is the line's duration: quantity counts the dosing days in it
+//   (lib/orders/cycling), and the count is shown. "Ongoing" sizes from
+//   the package, like Standard's Ongoing.
 // - Unit auto-conversion: mg ↔ mL ↔ syringe units (injectables) and mg ↔ mL (oral solutions)
 // - Free text override with structured data preservation
 // - NCPDP 1,000-character limit enforcement
@@ -37,6 +40,13 @@ import {
   type TitrationStep,
   type SigMode,
 } from '@/lib/orders/titration'
+import {
+  cycleLengthDays,
+  cycleLengthFromDays,
+  cyclePatternFrom,
+  dosingDaysSummary,
+  type CycleSchedule,
+} from '@/lib/orders/cycling'
 
 // ── Props ───────────────────────────────────────────────────
 
@@ -91,6 +101,21 @@ interface StructuredSigBuilderProps {
   /** WO-105: steps to open with — a titration favorite, or a reopened line. */
   initialTitrationSteps?: ReadonlyArray<TitrationStep> | null | undefined
   initialSigMode?: SigMode | null | undefined
+  /**
+   * Cycling dose math: the on/off pattern and cycle length, structured.
+   * Reported as the provider edits them (null unless the pattern is
+   * complete) so the parent sizes the line by dosing days and stores the
+   * pattern on the order.
+   */
+  onCycleChange?: (cycle: CycleSchedule | null) => void
+  /**
+   * The pattern to open a cycling line with: a cycling favorite, or a
+   * reopened / refilled cycling line. Explicitly null on a cycling line
+   * means "saved before the pattern was stored": the days on and off
+   * start empty and the provider is asked for them, with the old sig
+   * shown for reference. It is never assumed to be daily.
+   */
+  initialCycle?: CycleSchedule | null | undefined
 }
 
 // WO-104: moved to _lib/sig-recovery.ts (WO-98 edit path only); re-exported
@@ -121,6 +146,8 @@ export function StructuredSigBuilder({
   onTitrationStepsChange,
   initialTitrationSteps,
   initialSigMode,
+  onCycleChange,
+  initialCycle,
 }: StructuredSigBuilderProps) {
 
   // ── Internal state ──────────────────────────────────────
@@ -146,12 +173,16 @@ export function StructuredSigBuilder({
       : [{ dose: '', unit: doseUnit || 'mL', frequency: frequency || 'QW', weeks: 4 }],
   )
 
-  // Cycling state
-  const [cycling, setCycling] = useState<CyclingConfig>({
-    onDays: '5', offDays: '2',
-    cycleDuration: '6', cycleDurationUnit: 'weeks',
-    restPeriod: '',
-  })
+  // Cycling state. The defaults (5 on / 2 off, 6 weeks) are the ones the
+  // builder has always shown; a favorite or a reopened line brings its
+  // own. A cycling line with no stored pattern starts with the days on
+  // and off EMPTY: nothing is generated until the provider enters them.
+  const [cycling, setCycling] = useState<CyclingConfig>(() => cyclingConfigFor(
+    initialSigMode === 'cycling' ? initialCycle : undefined,
+  ))
+  // Cycling dose math: asked once, for a line saved before its pattern
+  // was stored; cleared by entering the days on and off.
+  const [patternRequired, setPatternRequired] = useState(initialSigMode === 'cycling' && initialCycle === null)
 
   // Free text override
   const [sigOverride, setSigOverride] = useState('')
@@ -249,8 +280,10 @@ export function StructuredSigBuilder({
     // "Inject 1.0mg (0.33mL) subcutaneously daily, 5 days on / 2 days off"
     let sig = `${prefix} ${doseDisplay}${sigRoute} ${freq?.sig ?? 'daily'}, ${cycling.onDays} days on / ${cycling.offDays} days off`
 
-    // Duration: "for 6 weeks then reassess"
-    if (cycling.cycleDuration) {
+    // Duration: "for 6 weeks then reassess", or ", ongoing"
+    if (cycling.cycleDurationUnit === 'ongoing') {
+      sig += ', ongoing'
+    } else if (cycling.cycleDuration) {
       sig += `, for ${cycling.cycleDuration} ${cycling.cycleDurationUnit} then reassess`
     }
 
@@ -276,11 +309,28 @@ export function StructuredSigBuilder({
   }, [computedSig, onSigChange])
 
   // ── WO-101: propagate the structured duration ───────────
+  // Cycling dose math: a cycling line's duration is its cycle length
+  // (null when Ongoing, which sizes from the package like Standard's).
+  const cyclePattern = useMemo(
+    () => (sigMode === 'cycling' ? cyclePatternFrom(cycling.onDays, cycling.offDays) : null),
+    [sigMode, cycling.onDays, cycling.offDays],
+  )
+  const cycleDays = useMemo(
+    () => (sigMode === 'cycling' ? cycleLengthDays(cycling.cycleDuration, cycling.cycleDurationUnit) : null),
+    [sigMode, cycling.cycleDuration, cycling.cycleDurationUnit],
+  )
   const durationDays = useMemo(() => {
+    if (sigMode === 'cycling') return cycleDays
     if (sigMode !== 'standard') return null
     const days = parseInt(duration === 'CUSTOM' ? customDurationDays : duration, 10)
     return Number.isFinite(days) && days > 0 ? days : null
-  }, [sigMode, duration, customDurationDays])
+  }, [sigMode, duration, customDurationDays, cycleDays])
+  useEffect(() => {
+    onCycleChange?.(cyclePattern ? { ...cyclePattern, lengthDays: cycleDays } : null)
+  }, [cyclePattern, cycleDays, onCycleChange])
+  useEffect(() => {
+    if (cyclePattern) setPatternRequired(false)
+  }, [cyclePattern])
   useEffect(() => {
     onDurationDaysChange?.(durationDays)
   }, [durationDays, onDurationDaysChange])
@@ -304,7 +354,15 @@ export function StructuredSigBuilder({
   // ── WO-104: common-dose chip ────────────────────────────
   function applyPreset(p: DosePreset) {
     const d = builderDurationFromPreset(p.duration)
-    handleModeChange('standard')
+    // A chip from a cycling favorite opens in cycling mode with that
+    // favorite's pattern (it always opened Standard before).
+    if (p.sigMode === 'cycling') {
+      handleModeChange('cycling')
+      setCycling(cyclingConfigFor(p.cycle ?? null))
+      setPatternRequired(!p.cycle)
+    } else {
+      handleModeChange('standard')
+    }
     onDoseAmountChange(p.dose)
     onDoseUnitChange(p.unit)
     onFrequencyChange(p.frequency)
@@ -430,7 +488,7 @@ export function StructuredSigBuilder({
             <option key={t.code} value={t.code}>{t.display}</option>
           ))}
         </select>
-        {sigMode !== 'titration' && (
+        {sigMode === 'standard' && (
         <select
           aria-label="Duration"
           value={duration}
@@ -442,7 +500,7 @@ export function StructuredSigBuilder({
           ))}
         </select>
         )}
-        {sigMode !== 'titration' && duration === 'CUSTOM' && (
+        {sigMode === 'standard' && duration === 'CUSTOM' && (
           <input
             type="number"
             placeholder="Days"
@@ -578,16 +636,28 @@ export function StructuredSigBuilder({
 
       {/* ── Cycling Builder ─────────────────────────────── */}
       {sigMode === 'cycling' && (
-        <div className="space-y-3 rounded-md border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-800 dark:bg-blue-950/20">
+        <div data-testid="cycling-builder" className="space-y-3 rounded-md border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-800 dark:bg-blue-950/20">
           <p className="text-xs font-semibold text-blue-800 dark:text-blue-200">
             Cycling Schedule — On/Off Pattern
           </p>
+
+          {patternRequired && !cyclePattern && (
+            <div data-testid="cycling-pattern-required" role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+              <p className="font-medium">
+                Enter the days on and days off. This prescription was saved before its cycle was stored, so the quantity cannot be counted until you do.
+              </p>
+              {initialSigText && (
+                <p className="mt-1">Previous directions: <span className="italic">&ldquo;{initialSigText}&rdquo;</span></p>
+              )}
+            </div>
+          )}
 
           {/* On/Off days */}
           <div className="flex items-center gap-2">
             <input
               type="number"
               min={1}
+              aria-label="Days on"
               placeholder="5"
               value={cycling.onDays}
               onChange={e => setCycling(c => ({ ...c, onDays: e.target.value }))}
@@ -597,6 +667,7 @@ export function StructuredSigBuilder({
             <input
               type="number"
               min={1}
+              aria-label="Days off"
               placeholder="2"
               value={cycling.offDays}
               onChange={e => setCycling(c => ({ ...c, offDays: e.target.value }))}
@@ -608,15 +679,19 @@ export function StructuredSigBuilder({
           {/* Cycle duration */}
           <div className="flex items-center gap-2">
             <span className="w-20 text-xs text-muted-foreground">Cycle for</span>
+            {cycling.cycleDurationUnit !== 'ongoing' && (
             <input
               type="number"
               min={1}
+              aria-label="Cycle length"
               placeholder="6"
               value={cycling.cycleDuration}
               onChange={e => setCycling(c => ({ ...c, cycleDuration: e.target.value }))}
               className="w-16 rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
+            )}
             <select
+              aria-label="Cycle length unit"
               value={cycling.cycleDurationUnit}
               onChange={e => setCycling(c => ({ ...c, cycleDurationUnit: e.target.value }))}
               className="rounded-md border border-input bg-background px-2 py-1.5 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -624,9 +699,24 @@ export function StructuredSigBuilder({
               <option value="days">days</option>
               <option value="weeks">weeks</option>
               <option value="months">months</option>
+              <option value="ongoing">(ongoing)</option>
             </select>
-            <span className="text-xs text-muted-foreground">then reassess</span>
+            {cycling.cycleDurationUnit !== 'ongoing' && (
+              <span className="text-xs text-muted-foreground">then reassess</span>
+            )}
           </div>
+
+          {/* Derived, never typed (phase rule 3): the days actually dosed. */}
+          {cyclePattern && cycleDays != null && (
+            <p data-testid="cycling-dosing-days" className="text-xs font-medium text-blue-900 dark:text-blue-200">
+              {dosingDaysSummary(cycleDays, cyclePattern)}
+            </p>
+          )}
+          {cyclePattern && cycling.cycleDurationUnit === 'ongoing' && (
+            <p data-testid="cycling-dosing-days" className="text-xs font-medium text-blue-900 dark:text-blue-200">
+              Ongoing: sized from the package, counting on-days only.
+            </p>
+          )}
 
           {/* Rest period (optional) */}
           <div className="flex items-center gap-2">
@@ -700,4 +790,20 @@ export function StructuredSigBuilder({
       )}
     </div>
   )
+}
+
+/** The cycling fields for a pattern (or the defaults; or empty on/off when explicitly none). */
+function cyclingConfigFor(cycle: CycleSchedule | null | undefined): CyclingConfig {
+  if (cycle === undefined) {
+    return { onDays: '5', offDays: '2', cycleDuration: '6', cycleDurationUnit: 'weeks', restPeriod: '' }
+  }
+  if (cycle === null) {
+    return { onDays: '', offDays: '', cycleDuration: '6', cycleDurationUnit: 'weeks', restPeriod: '' }
+  }
+  const length = cycleLengthFromDays(cycle.lengthDays)
+  return {
+    onDays: String(cycle.onDays), offDays: String(cycle.offDays),
+    cycleDuration: length.value, cycleDurationUnit: length.unit,
+    restPeriod: '',
+  }
 }
