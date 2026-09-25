@@ -22,7 +22,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/types/database.types'
-import { MAX_PACKAGE_COUNT } from './rx-details'
+import { MAX_PACKAGE_COUNT, packageQtyInUnit, packageUnitMismatchMessage } from './rx-details'
 import { isLivePharmacy, pharmacyInactiveMessage } from '@/lib/pharmacies/live'
 
 type ServiceClient = SupabaseClient<Database>
@@ -77,6 +77,13 @@ export interface ResolveLineInput {
   packageId?:      string | null | undefined
   /** WO-101a: how many of the package (integer 1..MAX_PACKAGE_COUNT; absent → 1). */
   packageCount?:   number | null | undefined
+  /**
+   * The line's dispense (rxDetails). With a package, the package must be
+   * expressible in this unit (directly, or mg / mcg ↔ mL through the
+   * formulation's mg/mL concentration); otherwise the line is refused
+   * (422 PACKAGE_UNIT_MISMATCH) rather than priced as one package.
+   */
+  dispense?:       { quantity: number | null; unit: string | null } | null | undefined
 }
 
 /** WO-101: the package an order was priced from (orders.package_id / package_label). */
@@ -141,7 +148,7 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
     const [formResult, priceResult] = await Promise.all([
       supabase
         .from('formulations')
-        .select('formulation_id, name, concentration, dosage_forms(name)')
+        .select('formulation_id, name, concentration, concentration_value, concentration_unit, dosage_forms(name)')
         .eq('formulation_id', formulationId)
         .eq('is_active', true)
         .is('deleted_at', null)
@@ -200,7 +207,7 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
     if (requestedPackageId) {
       const { data: pkg, error: pkgError } = await supabase
         .from('pharmacy_formulation_packages')
-        .select('id, package_label, wholesale_price')
+        .select('id, package_label, package_qty, package_unit, wholesale_price')
         .eq('id', requestedPackageId)
         .eq('pharmacy_formulation_id', priceResult.data.pharmacy_formulation_id)
         .eq('active', true)
@@ -211,6 +218,29 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
       }
       if (!pkg) {
         return { ok: false, status: 400, error: 'Package is not offered by this pharmacy for this formulation' }
+      }
+      // The package must be sizable against the dispense. A 5 mg vial for
+      // 30 mL at no known concentration has no honest count, so the line
+      // is refused rather than stored as one package (prod, 2026-09-25).
+      const d = input.dispense
+      const pkgRow = pkg as { package_qty?: number | string | null; package_unit?: string | null }
+      if (d && typeof d.quantity === 'number' && d.quantity > 0 && d.unit && pkgRow.package_unit && pkgRow.package_qty != null) {
+        const form = formResult.data as { concentration_value?: number | null; concentration_unit?: string | null; dosage_forms?: unknown }
+        const sized = packageQtyInUnit(
+          { qty: Number(pkgRow.package_qty), unit: pkgRow.package_unit },
+          d.unit,
+          {
+            dosageFormName:     (form.dosage_forms as { name?: string } | null)?.name ?? null,
+            concentrationValue: form.concentration_value ?? null,
+            concentrationUnit:  form.concentration_unit ?? null,
+          },
+        )
+        if (sized == null) {
+          return {
+            ok: false, status: 422, code: 'PACKAGE_UNIT_MISMATCH',
+            error: packageUnitMismatchMessage({ label: pkg.package_label }, d.unit),
+          }
+        }
       }
       // WO-101a: package price × count, in cents.
       wholesalePrice = (Math.round(Number(pkg.wholesale_price) * 100) * requestedCount) / 100
