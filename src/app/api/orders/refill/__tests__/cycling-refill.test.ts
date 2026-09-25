@@ -144,3 +144,31 @@ describe('an old cycling order with no stored pattern', () => {
     expect(refillLandingHref([{ ...lines[0]!, repriceRequired: false }])).toBe('/new-prescription/review')
   })
 })
+
+// Package units vs dispense units (prod, 2026-09-25): a BPC-157 order
+// priced as one 5 mg vial for 30 mL refills as the 6 vials it needs.
+describe('a refill of an mg-vial line is re-counted in mL', () => {
+  const BPC_PKG = { id: 'pkg-bpc-5', package_label: '5 mg vial', package_qty: 5, package_unit: 'mg', wholesale_price: 62, is_default: true, active: true }
+  beforeEach(() => {
+    orderRows = [cyclingRow({
+      sig_text: 'Inject 1mg (1.00mL) subcutaneous once daily, 5 days on / 2 days off, for 6 weeks then reassess',
+      medication_snapshot: {
+        medication_name: 'BPC-157 Injectable 5mg', form: 'Injectable Solution',
+        prescribed_dose: '1 mg', frequency_code: 'QD', quantity_label: '5 mg vial',
+        concentration_value: 1, concentration_unit: 'mg/mL',
+      },
+      package_id: 'pkg-bpc-5', package_label: '5 mg vial', package_count: 1,
+      days_supply: 42, dispense_quantity: 30, wholesale_price_snapshot: 62, retail_price_snapshot: 95.8,
+    })]
+    pharmacyFormulationRows = [packagesRow([BPC_PKG])]
+  })
+
+  it('6 × 5 mg vial, $372 wholesale — the source\'s single vial is not carried forward', async () => {
+    const line = (await call()).body.lines[0]!
+    expect((line['rxDetails'] as Record<string, unknown>)['dispenseQuantity']).toBe(30)
+    expect(line['packageCount']).toBe(6)
+    expect(line['wholesaleCents']).toBe(37200)
+    // The price moved against the source, so the provider confirms it.
+    expect(line['repriceRequired']).toBe(true)
+  })
+})
