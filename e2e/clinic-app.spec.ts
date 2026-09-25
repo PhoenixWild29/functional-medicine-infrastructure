@@ -1319,6 +1319,11 @@ test.describe('Clinic App — WO-100 provider defaults to self', () => {
     await expect(page.getByTestId('sign-as-me-panel')).toHaveCount(0)
     await expect(page.getByText('Test Provider').first()).toBeVisible()
     await expect(page.getByText('Other Provider')).toHaveCount(0)
+    // Found on prod 2026-09-25: the reassigned lines came back unticked
+    // ("signing 0 prescriptions"). Both lines that moved are selected.
+    await expect(page.getByTestId(`select-${first!.order_id}`)).toBeChecked({ timeout: 15_000 })
+    await expect(page.getByTestId(`select-${second!.order_id}`)).toBeChecked()
+    await expect(page.getByText(/signing 2 prescriptions/)).toBeVisible()
 
     // Both lines now belong to provider A with A's NPI snapshot…
     const { data: rows } = await supabase
