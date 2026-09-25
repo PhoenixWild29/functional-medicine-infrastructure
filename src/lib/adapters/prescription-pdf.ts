@@ -20,6 +20,8 @@ import { allergiesForPayload } from '@/lib/patients/allergies'
 import { formatDispenseWithPackage } from '@/lib/orders/rx-details'
 import { FREQUENCY_OPTIONS } from '@/app/(clinic-app)/new-prescription/_components/structured-sig-builder.types'
 import type { TitrationStep } from '@/lib/orders/titration'
+import type { CyclePattern } from '@/lib/orders/cycling'
+import { cycleScheduleText } from '@/lib/adapters/transformers'
 
 // ============================================================
 // TYPES
@@ -73,6 +75,11 @@ export interface PrescriptionPdfData {
    * — the free text Gina Rooks said pharmacies push back on (2026-09-11).
    */
   titrationSteps?: ReadonlyArray<TitrationStep> | null
+  /**
+   * Cycling dose math: the on/off pattern. Printed under the sig with
+   * the dosing days the dispense was sized from.
+   */
+  cyclePattern?: CyclePattern | null
   packageCount?: number | null
   // Order metadata
   orderNumber: string | null
@@ -197,6 +204,13 @@ function buildContentStream(d: PrescriptionPdfData): string {
       lines.push(v(`  ${span}: ${step.dose} ${step.unit} ${freq} (${step.weeks} ${step.weeks === 1 ? 'week' : 'weeks'})`))
       week = to + 1
     }
+  }
+
+  // ── Cycling dose math ─────────────────────────────────────
+  // The dispense below is dosing days × dose, not calendar days; this
+  // line says which days those are.
+  if (d.cyclePattern) {
+    lines.push(v(`Cycle: ${cycleScheduleText(d.cyclePattern, d.daysSupply)} (starts on an on-day)`))
   }
 
   // ── WO-96 Rx details ──────────────────────────────────────

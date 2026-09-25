@@ -35,6 +35,7 @@ import { writeDraftAudit } from '@/lib/orders/draft-edit'
 import { checkProviderOwnsDraft } from '@/lib/orders/provider-draft-guard'
 import { applyBundleShipping, reallocateDraftSiblingShipping } from '@/lib/orders/apply-bundle-shipping'
 import { parseTitrationSteps, isSigMode, type SigMode } from '@/lib/orders/titration'
+import { cyclePatternFrom } from '@/lib/orders/cycling'
 import { refillAllowance, refillsUsed } from '@/lib/orders/refill'
 import type { Json } from '@/types/database.types'
 
@@ -87,6 +88,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // WO-105: how the sig was built, and the titration steps behind it.
     sigMode?:       unknown
     titrationSteps?: unknown
+    // Cycling dose math: a cycling line's on/off pattern.
+    cycleOnDays?:   unknown
+    cycleOffDays?:  unknown
     // WO-106: the order this one refills (must be an order of this clinic).
     refillOfOrderId?: unknown
     // WO-98: set when "+ Add prescription" appends a line to an existing
@@ -119,6 +123,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (!patientId || !providerId || !pharmacyId || !sigText || !patientState) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+  }
+
+  // Cycling dose math: a cycling line carries its pattern, stored
+  // structured. One without a valid pattern is refused rather than
+  // stored — its quantity would have no basis but daily dosing. Review
+  // blocks it first; this is the server's own check. A pattern sent
+  // with any other mode is dropped.
+  const cyclePattern = sigMode === 'cycling' ? cyclePatternFrom(body.cycleOnDays, body.cycleOffDays) : null
+  if (sigMode === 'cycling' && !cyclePattern) {
+    return NextResponse.json({
+      error: 'A cycling prescription needs its days on and days off (1 to 365 each). Edit the line to enter them.',
+      code:  'CYCLE_PATTERN_REQUIRED',
+    }, { status: 400 })
   }
 
   const sourceKind = lineSourceKind({ catalogItemId, formulationId })
@@ -349,6 +366,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // WO-105
       sig_mode:                 sigMode,
       titration_steps:          titrationSteps as unknown as Json,
+      // Cycling dose math: null on every line that is not cycling.
+      cycle_on_days:            cyclePattern?.onDays ?? null,
+      cycle_off_days:           cyclePattern?.offDays ?? null,
       // WO-106
       refill_of_order_id:       refillOfOrderId,
       // GAP-3: null for ad-hoc/favorite lines and on resolution failure.

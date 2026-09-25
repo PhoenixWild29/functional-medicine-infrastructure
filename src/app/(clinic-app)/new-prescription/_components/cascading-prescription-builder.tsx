@@ -40,8 +40,10 @@ import { SaveFavoriteButton } from './save-favorite-button'
 import { builderStateFromLine, editTargetToParams, type EditTarget } from '../_lib/edit-target'
 import type { BuilderInitialState } from '@/lib/orders/draft-edit'
 import type { SigTimingAndDuration } from '../_lib/sig-recovery'
+import type { CycleSchedule } from '@/lib/orders/cycling'
 import {
   builderLoadFromFavorite,
+  favoritePresetsForChips,
   mergePresets,
   presetDurationFromBuilder,
   type DosePreset,
@@ -230,6 +232,11 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   // from; a titration has no single dose for computeDispense to use.
   const [sigMode, setSigMode] = useState<SigMode>('standard')
   const [titrationSteps, setTitrationSteps] = useState<TitrationStep[]>([])
+  // Cycling dose math: a cycling line's on/off pattern and length. The
+  // quantity counts its dosing days; the pattern is stored on the order.
+  // null until the pattern is complete — and on a cycling line saved
+  // before the pattern was stored, which asks for it on the dose step.
+  const [cycle, setCycle] = useState<CycleSchedule | null>(null)
   // WO-98: pharmacy of the reopened line. Until the user picks one, the
   // matching option (once pharmacy_options load) counts as selected.
   const [pendingPharmacyId, setPendingPharmacyId] = useState<string | null>(null)
@@ -294,7 +301,8 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     if (!selectedFormulation) return []
     return favorites
       .filter(f => f.formulation_id === selectedFormulation.formulation_id)
-      .reduce<DosePreset[]>((acc, f) => mergePresets(acc, f.dose_presets), [])
+      // A cycling favorite's chips carry its mode and pattern.
+      .reduce<DosePreset[]>((acc, f) => mergePresets(acc, favoritePresetsForChips(f)), [])
   }, [favorites, selectedFormulation])
 
   // ── Auto-select salt form if only one ───────────────────
@@ -336,6 +344,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
         // sig_text.
         setSigMode(effectiveInitial.sigMode)
         setTitrationSteps(effectiveInitial.titrationSteps)
+        setCycle(effectiveInitial.cycle)
       } catch (err) {
         console.warn('[builder] could not reopen line (non-fatal):', err instanceof Error ? err.message : err)
       }
@@ -379,6 +388,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     setDurationDays(null)
     setSigMode('standard')
     setTitrationSteps([])
+    setCycle(null)
   }
 
   function selectIngredient(ing: Ingredient) {
@@ -439,6 +449,9 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     [sigMode, titrationSteps, selectedFormulation],
   )
 
+  // Cycling dose math: the pattern the quantity is counted over.
+  const lineCycle = sigMode === 'cycling' ? cycle : null
+
   const pharmacyQuantities = pharmacySizeLabels(selectedPharmacy?.packages)
   const defaultQuantity = useMemo(() => {
     if (!selectedFormulation) return ''
@@ -453,6 +466,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
           concentrationUnit:  selectedFormulation.concentration_unit,
           dosageFormName,
           durationDays,
+          cycle:              lineCycle,
         })
       : null
     const derived = titrationDispense
@@ -463,7 +477,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     return defaultQuantityLabel(pharmacyQuantities, derived, dosageFormName)
     // pharmacyQuantities is derived from selectedPharmacy each render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedFormulation, selectedPharmacy, doseAmount, doseUnit, selectedFrequency, durationDays, titrationDispense])
+  }, [selectedFormulation, selectedPharmacy, doseAmount, doseUnit, selectedFrequency, durationDays, titrationDispense, lineCycle])
   // ── WO-101: priced packages ─────────────────────────────
   // A pharmacy that sells this formulation in more than one priced package
   // gets a suggested package (smallest that covers the dispense quantity
@@ -495,6 +509,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       concentrationUnit:  selectedFormulation.concentration_unit,
       dosageFormName:     selectedFormulation.dosage_forms?.name ?? null,
       durationDays,
+      cycle:              lineCycle,
     })
     // WO-101a: a single package matters only when more than one is needed.
     if (!s || (pkgs.length < 2 && s.count <= 1)) return null
@@ -518,7 +533,10 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     currentSig.length >= 10 &&
     (sigMode === 'titration'
       ? titrationSteps.length > 0 && titrationDispense != null
-      : doseAmount && selectedFrequency)
+      // Cycling dose math: a cycling line needs its pattern.
+      : sigMode === 'cycling'
+        ? !!cycle && doseAmount && selectedFrequency
+        : doseAmount && selectedFrequency)
   )
 
   // ── WO-104: load a favorite / Recent item onto the dose step ──
@@ -557,6 +575,9 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       // from initialTitrationSteps.
       setSigMode(load.sigMode)
       setTitrationSteps(load.titrationSteps)
+      // A cycling favorite comes back as cycling, with its pattern (or,
+      // saved before the pattern was stored, asking for it).
+      setCycle(load.cycle)
       setLoadNonce(n => n + 1)
       pendingScrollRef.current = true
     } catch (err) {
@@ -613,6 +634,12 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
 
     if (sigMode === 'titration' && titrationSteps.length > 0) {
       params.set('titrationSteps', JSON.stringify(titrationSteps))
+    }
+    // Cycling dose math: the pattern, structured. Its length is
+    // durationDays ('' = ongoing).
+    if (sigMode === 'cycling' && cycle) {
+      params.set('cycleOnDays', String(cycle.onDays))
+      params.set('cycleOffDays', String(cycle.offDays))
     }
 
     // WO-86: Pass DEA schedule so margin builder can thread it to the session
@@ -780,6 +807,8 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
           onTitrationStepsChange={setTitrationSteps}
           initialSigMode={sigMode}
           initialTitrationSteps={titrationSteps}
+          onCycleChange={setCycle}
+          initialCycle={sigMode === 'cycling' ? cycle : undefined}
         />
         </div>
       )}
@@ -908,6 +937,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
             frequencyCode={selectedFrequency}
             timingCode={timingDuration.timing}
             duration={presetDurationFromBuilder(timingDuration.duration, timingDuration.customDurationDays)}
+            cycle={sigMode === 'cycling' ? cycle : null}
             refills={parseInt(refills, 10)}
             patient={session.patient ? { patientId: session.patient.patient_id, name: `${session.patient.first_name} ${session.patient.last_name}` } : null}
             disabled={!canAdd}

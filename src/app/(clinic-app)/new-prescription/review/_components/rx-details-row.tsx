@@ -33,6 +33,7 @@ import {
   type ShippingType,
   type SyringeOption,
 } from '@/lib/orders/rx-details'
+import { dosingDaysIn, type CyclePattern } from '@/lib/orders/cycling'
 
 interface Props {
   /** Stable per-line id — used for input ids and test hooks. */
@@ -45,6 +46,8 @@ interface Props {
   /** WO-101a: the package the line is filled from and how many — shown with the dispense total. */
   packageLabel?: string | null
   packageCount?: number | null
+  /** Cycling dose math: the line's on/off pattern — its dosing days are shown with the days supply. */
+  cycle?: CyclePattern | null
 }
 
 const OTHER = '__other__'
@@ -63,7 +66,7 @@ function summaryLine(d: RxDetails, rules: RxRules, packageLabel: string | null |
   return parts.join(' · ')
 }
 
-export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChange, packageLabel = null, packageCount = null }: Props) {
+export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChange, packageLabel = null, packageCount = null, cycle = null }: Props) {
   // Auto-expand only when a rule requires confirmation.
   const [open, setOpen] = useState<boolean>(() => rxDetailsNeedConfirmation(rules))
   const diagnosisRef = useRef<HTMLInputElement>(null)
@@ -121,6 +124,12 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
         <span>
           <span className="text-xs font-semibold text-foreground">Rx details</span>
           <span className="ml-2 text-[11px] text-muted-foreground">{summaryLine(details, rules, packageLabel, packageCount)}</span>
+          {/* Cycling dose math: what the dispense was counted over (rule 3). */}
+          {cycle && details.daysSupply != null && (
+            <span className="ml-1 text-[11px] font-medium text-foreground" data-testid={`rx-dosing-days-${lineId}`}>
+              · {dosingDaysIn(details.daysSupply, cycle)} dosing days ({cycle.onDays} on / {cycle.offDays} off)
+            </span>
+          )}
         </span>
         <span className="shrink-0 text-xs text-muted-foreground" aria-hidden="true">{open ? '▾' : '▸'}</span>
       </button>

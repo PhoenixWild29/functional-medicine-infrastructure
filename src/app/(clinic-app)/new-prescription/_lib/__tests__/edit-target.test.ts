@@ -45,6 +45,7 @@ describe('builderStateFromLine', () => {
       sigText: 'Inject 10 units subcutaneously once weekly',
       sigMode:        'standard',
       titrationSteps: [],
+      cycle:          null,
     })
   })
 })

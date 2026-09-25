@@ -25,6 +25,7 @@ import {
 } from '@/app/(clinic-app)/new-prescription/_components/structured-sig-builder.types'
 import { formatDoseWithMg, formatPlainDose, frequencyShortLabel, isDoseUnit, type ConcentrationSource } from './dose-display'
 import { parseTitrationSteps, type TitrationStep, type SigMode } from '@/lib/orders/titration'
+import { cycleLengthFrom, cyclePatternFrom, type CycleSchedule } from '@/lib/orders/cycling'
 
 // ── Preset shape ─────────────────────────────────────────────
 
@@ -41,6 +42,14 @@ export interface DosePreset {
   duration:  string
   /** optional name the clinic gave this dose; the chip shows the dose */
   label:     string | null
+  /**
+   * Cycling dose math: set on a CHIP built from a cycling favorite
+   * (favoritePresetsForChips), never stored in dose_presets — the mode
+   * and the pattern belong to the favorite. A chip that carries them
+   * opens the dose step in cycling mode.
+   */
+  sigMode?:  SigMode
+  cycle?:    CycleSchedule | null
 }
 
 export const MAX_DOSE_PRESETS = 20
@@ -94,7 +103,10 @@ export function validateDosePresets(raw: unknown): { ok: true; presets: DosePres
 
 /** Two presets are the same dose when every structured field matches (the label does not count). */
 export function presetKey(p: DosePreset): string {
-  return [p.dose, p.unit, p.frequency, p.timing, p.duration].join('|')
+  const base = [p.dose, p.unit, p.frequency, p.timing, p.duration].join('|')
+  // A cycling chip is a different dose from the same amount taken daily.
+  if (p.sigMode !== 'cycling') return base
+  return `${base}|cycling:${p.cycle ? `${p.cycle.onDays}/${p.cycle.offDays}/${p.cycle.lengthDays ?? 'ongoing'}` : 'none'}`
 }
 
 /**
@@ -170,6 +182,13 @@ export interface FavoriteBuilderLoad {
    */
   sigMode:            SigMode
   titrationSteps:     TitrationStep[]
+  /**
+   * Cycling dose math: a cycling favorite's pattern and cycle length.
+   * null for every other favorite, AND for a cycling favorite saved
+   * before the pattern was stored — which still opens in cycling mode
+   * and asks for the days on and off rather than dosing daily.
+   */
+  cycle:              CycleSchedule | null
 }
 
 /** Builder Duration dropdown value for a preset duration ("30" → "30"; "45" → CUSTOM + 45). */
@@ -199,6 +218,31 @@ export interface FavoriteLoadSource {
   /** WO-105: 'titration' + steps for a saved titration. */
   sig_mode?:        string | null
   titration_steps?: unknown
+  /** Cycling dose math: the stored pattern and cycle length of a cycling favorite. */
+  cycle_on_days?:       number | null
+  cycle_off_days?:      number | null
+  cycle_duration_days?: number | null
+}
+
+/**
+ * A cycling favorite's pattern + cycle length, or null (not cycling, or
+ * saved before the pattern was stored).
+ */
+export function favoriteCycle(fav: FavoriteLoadSource): CycleSchedule | null {
+  if (fav.sig_mode !== 'cycling') return null
+  const pattern = cyclePatternFrom(fav.cycle_on_days, fav.cycle_off_days)
+  return pattern ? { ...pattern, lengthDays: cycleLengthFrom(fav.cycle_duration_days) } : null
+}
+
+/**
+ * The dose-step chips for one favorite: its presets, marked cycling (with
+ * the favorite's pattern) when the favorite is. Before this every chip
+ * opened in Standard mode.
+ */
+export function favoritePresetsForChips(fav: FavoriteLoadSource & { dose_presets: ReadonlyArray<DosePreset> }): DosePreset[] {
+  if (fav.sig_mode !== 'cycling') return [...fav.dose_presets]
+  const cycle = favoriteCycle(fav)
+  return fav.dose_presets.map(p => ({ ...p, sigMode: 'cycling' as const, cycle }))
 }
 
 /**
@@ -220,8 +264,9 @@ export function builderLoadFromFavorite(fav: FavoriteLoadSource, preset: DosePre
     refills:            typeof fav.default_refills === 'number' ? fav.default_refills : 0,
     // Steps only count when the favorite is actually a titration; a
     // stale steps column on a standard favorite is ignored.
-    sigMode:            fav.sig_mode === 'titration' ? 'titration' : 'standard',
+    sigMode:            fav.sig_mode === 'titration' ? 'titration' : fav.sig_mode === 'cycling' ? 'cycling' : 'standard',
     titrationSteps:     fav.sig_mode === 'titration' ? parseTitrationSteps(fav.titration_steps) : [],
+    cycle:              favoriteCycle(fav),
   }
 }
 

@@ -25,6 +25,7 @@ import type { Database } from '@/types/database.types'
 import { RX_DETAIL_COLUMN_LIST } from './rx-details'
 import { insertStatusHistory } from './status-history'
 import { parseTitrationSteps, type TitrationStep, type SigMode } from './titration'
+import { cycleLengthFrom, cyclePatternFromRow, type CycleSchedule } from './cycling'
 
 export type DraftAuditEvent = 'draft_created' | 'draft_edited' | 'draft_line_removed'
 
@@ -47,6 +48,11 @@ const DIFF_COLUMNS = [
   'package_id',
   'package_label',
   'package_count',
+  // WO-105 / cycling dose math: the mode and its schedule
+  'sig_mode',
+  'titration_steps',
+  'cycle_on_days',
+  'cycle_off_days',
   ...RX_DETAIL_COLUMN_LIST.split(',').map(s => s.trim()),
 ] as const
 
@@ -172,6 +178,13 @@ export interface BuilderInitialState {
    */
   sigMode:        SigMode
   titrationSteps: TitrationStep[]
+  /**
+   * Cycling dose math: the stored pattern, with the order's days supply
+   * as its length. null for every other line, and for a cycling order
+   * written before the pattern was stored — which reopens in cycling
+   * mode and asks for the days on and off.
+   */
+  cycle:          CycleSchedule | null
 }
 
 /** Frequency sig fragments → codes (mirrors FREQUENCY_OPTIONS in the sig builder). */
@@ -273,6 +286,9 @@ export function builderStateFromOrder(order: {
   medication_snapshot: unknown
   sig_mode?:           string | null
   titration_steps?:    unknown
+  cycle_on_days?:      number | null
+  cycle_off_days?:     number | null
+  days_supply?:        number | null
 }): BuilderInitialState {
   const snap = (order.medication_snapshot ?? {}) as Record<string, unknown>
   // Same rule as the POST bodies: the stored structured inputs win; the
@@ -296,7 +312,13 @@ export function builderStateFromOrder(order: {
     // WO-105: null sig_mode (every order before the migration) is standard.
     sigMode:        order.sig_mode === 'titration' ? 'titration' : order.sig_mode === 'cycling' ? 'cycling' : 'standard',
     titrationSteps: order.sig_mode === 'titration' ? parseTitrationSteps(order.titration_steps) : [],
+    cycle:          cycleScheduleFromOrder(order),
   }
+}
+
+function cycleScheduleFromOrder(order: { sig_mode?: string | null; cycle_on_days?: number | null; cycle_off_days?: number | null; days_supply?: number | null }): CycleSchedule | null {
+  const pattern = cyclePatternFromRow(order)
+  return pattern ? { ...pattern, lengthDays: cycleLengthFrom(order.days_supply) } : null
 }
 
 /**

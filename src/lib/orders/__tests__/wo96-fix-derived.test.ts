@@ -66,7 +66,10 @@ describe('dispenseUnitFor / dosesInDays', () => {
     expect(dosesInDays(28, 'QW')).toBe(4)
     expect(dosesInDays(30, 'QD')).toBe(30)
     expect(dosesInDays(30, 'BID')).toBe(60)
-    expect(dosesInDays(30, 'MF')).toBe(21)
+    // Mon-Fri counts on-days from a Monday start (cycling dose math):
+    // 4 weeks + Mon, Tue = 22. It was 21 (30 × 5/7 rounded down).
+    expect(dosesInDays(30, 'MF')).toBe(22)
+    expect(dosesInDays(28, 'MF')).toBe(20)
     expect(dosesInDays(3, 'QW')).toBe(1)      // never zero
     expect(dosesInDays(30, 'PRN')).toBeNull()
   })

@@ -40,6 +40,8 @@ import { executeFlow } from '@/lib/adapters/portal-flow-executor'
 import type { FlowStep, FlowFieldValues } from '@/lib/adapters/portal-flow-executor'
 import { allergiesForPayload } from '@/lib/patients/allergies'
 import { formatDispenseWithPackage } from '@/lib/orders/rx-details'
+import { cycleScheduleText } from '@/lib/adapters/transformers'
+import { cyclePatternFromRow } from '@/lib/orders/cycling'
 import {
   createSubmissionRecord,
   markSubmitted,
@@ -220,7 +222,7 @@ export async function submitTier2Portal(
   // ── 2. Load order data for form field substitution ─────────
   const { data: order, error: orderError } = await (supabase
     .from('orders')
-    .select('order_id, order_number, patient_id, provider_id, medication_snapshot, quantity, sig_text, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions, package_label, package_count, titration_steps')
+    .select('order_id, order_number, patient_id, provider_id, medication_snapshot, quantity, sig_text, sig_mode, cycle_on_days, cycle_off_days, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions, package_label, package_count, titration_steps')
     .eq('order_id', orderId)
     .single() as unknown as Promise<{
       data: {
@@ -245,6 +247,9 @@ export async function submitTier2Portal(
         special_instructions: string | null
         // WO-101a
         titration_steps: unknown
+        sig_mode: string | null
+        cycle_on_days: number | null
+        cycle_off_days: number | null
         package_label: string | null
         package_count: number | null
       } | null
@@ -341,6 +346,9 @@ export async function submitTier2Portal(
     packageCount:        String(order.package_count ?? 1),
     // ASCII "x": portal forms are typed into by automation.
     dispenseText:        (formatDispenseWithPackage(order.dispense_quantity, order.dispense_unit, order.package_label, order.package_count) ?? '').replace(/×/g, 'x'),
+    // Cycling dose math — {cycleSchedule}: "5 days on / 2 days off: 22
+    // dosing days in 30 days", '' for a line that is not cycling.
+    cycleSchedule:       cycleScheduleText(cyclePatternFromRow(order), order.days_supply),
   }
 
   // ── 6. Mark SUBMITTED (pre-browser) ───────────────────────

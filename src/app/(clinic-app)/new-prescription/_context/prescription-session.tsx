@@ -22,6 +22,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import type { RxDetails, RxRules } from '@/lib/orders/rx-details'
 import type { SigMode, TitrationStep } from '@/lib/orders/titration'
+import type { CycleSchedule } from '@/lib/orders/cycling'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -106,6 +107,15 @@ export interface SessionPrescription {
   // standard lines.
   sigMode?:        SigMode | null
   titrationSteps?: TitrationStep[] | null
+  // Cycling dose math: a cycling line's on/off pattern and its length
+  // (null = ongoing). Sent to POST /api/orders (cycle_on_days /
+  // cycle_off_days); the length is the line's days supply. A cycling
+  // line with no cycle cannot be sent: Review asks for the days on and
+  // off (cyclePatternRequired is set when a refill of an order written
+  // before the pattern was stored needs that decision). OPTIONAL ON
+  // PURPOSE: sessions persisted before this parse unchanged.
+  cycle?:                CycleSchedule | null
+  cyclePatternRequired?: boolean | null
   // WO-106: set when this line came from Refill. refillOfOrderId is sent
   // to POST /api/orders and stored on the new order; the two notes are
   // shown on the Review card because both are decisions the app made for

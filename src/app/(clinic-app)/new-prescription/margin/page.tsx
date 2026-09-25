@@ -15,6 +15,7 @@
 // reseed), render a graceful inline state instead of notFound().
 // A true 404 (formulation row never existed) still calls notFound().
 import { parseTitrationSteps, isSigMode, type SigMode } from '@/lib/orders/titration'
+import { cyclePatternFrom } from '@/lib/orders/cycling'
 
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
@@ -58,6 +59,9 @@ interface PageProps {
     // WO-105: the sig mode and, for a titration, its steps as JSON
     sigMode?: string
     titrationSteps?: string
+    // Cycling dose math: a cycling line's on/off pattern
+    cycleOnDays?: string
+    cycleOffDays?: string
     // WO-98: which existing line this page saves back to (see _lib/edit-target)
     editId?: string
     editOrder?: string
@@ -94,6 +98,12 @@ export default async function MarginPage({ searchParams }: PageProps) {
         try { return JSON.parse(resolvedParams.titrationSteps ?? '[]') } catch { return [] }
       })())
     : []
+  // Cycling dose math: the pattern the quantity is counted over. A
+  // cycling link without a valid one prices nothing as daily: the form
+  // blocks it (the dose step always sends one).
+  const presetCycle = presetSigMode === 'cycling'
+    ? cyclePatternFrom(resolvedParams.cycleOnDays, resolvedParams.cycleOffDays)
+    : null
 
   // Need pharmacyId + (itemId OR formulation_id)
   if (!pharmacyId || (!itemId && !formulationId)) {
@@ -340,6 +350,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
         presetTiming={(resolvedParams.timing ?? '').trim() || undefined}
         presetSigMode={presetSigMode}
         presetTitrationSteps={presetTitrationSteps}
+        presetCycle={presetCycle}
         existingPackageId={draft && editTarget?.kind === 'draft' ? draft.packageId : null}
         existingPackageCount={draft && editTarget?.kind === 'draft' ? draft.packageCount : null}
         shippingRates={ratesFromPharmacyRow(pharmacy)}

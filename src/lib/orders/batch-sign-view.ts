@@ -8,6 +8,7 @@
 
 import type { RxDetails } from './rx-details'
 import type { TitrationStep } from './titration'
+import type { CyclePattern } from './cycling'
 import { bundleTotals, computeBundleShipping, type BundleShipping, type BundleTotals, type PharmacyShippingRates } from './shipping'
 
 export const BATCH_SIGN_PATH = '/new-prescription/sign'
@@ -59,6 +60,8 @@ export interface BatchDraftLine {
   /** WO-105: a titration keeps its steps through signing. */
   sigMode:          'standard' | 'titration' | 'cycling'
   titrationSteps:   TitrationStep[]
+  /** Cycling dose math: a cycling line keeps its on/off pattern through signing. */
+  cyclePattern?:    CyclePattern | null
   /** WO-106: the order this one refills. */
   refillOfOrderId:  string | null
   packageLabel:     string | null

@@ -21,6 +21,7 @@
 
 import { useContext, useState } from 'react'
 import { QueryClientContext } from '@tanstack/react-query'
+import type { CycleSchedule } from '@/lib/orders/cycling'
 
 export interface SaveFavoriteInput {
   providerId:     string
@@ -37,6 +38,12 @@ export interface SaveFavoriteInput {
   refills:        number
   /** WO-104: the session patient, offered as "Only for <name>" */
   patient?:       { patientId: string; name: string } | null | undefined
+  /**
+   * Cycling dose math: a cycling line's pattern and length. Saved on the
+   * favorite, so it reopens as the same cycling line (before this every
+   * favorite saved from the app was standard).
+   */
+  cycle?:         CycleSchedule | null | undefined
 }
 
 interface Props extends SaveFavoriteInput {
@@ -49,7 +56,7 @@ interface Props extends SaveFavoriteInput {
 
 export function SaveFavoriteButton({
   providerId, formulationId, pharmacyId, medicationName,
-  doseAmount, doseUnit, frequencyCode, timingCode, duration, refills, patient,
+  doseAmount, doseUnit, frequencyCode, timingCode, duration, refills, patient, cycle,
   disabled = false, compact = false, idSuffix,
 }: Props) {
   const queryClient = useContext(QueryClientContext)
@@ -96,6 +103,9 @@ export function SaveFavoriteButton({
             label:     null,
           }],
           default_refills: refills,
+          ...(cycle
+            ? { sig_mode: 'cycling', cycle_on_days: cycle.onDays, cycle_off_days: cycle.offDays, cycle_duration_days: cycle.lengthDays }
+            : {}),
         }),
       })
       const json = await res.json().catch(() => ({})) as { error?: string; merged?: boolean; data?: { label?: string } }

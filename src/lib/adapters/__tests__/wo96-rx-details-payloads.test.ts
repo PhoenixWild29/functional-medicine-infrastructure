@@ -88,6 +88,7 @@ describe('rxDetailPayloadFields — orders row → canonical payload', () => {
       packageLabel: null,
       packageCount: 1,
       titrationSteps: [],
+      cyclePattern: null,
     })
   })
 
@@ -107,6 +108,7 @@ describe('rxDetailPayloadFields — orders row → canonical payload', () => {
       packageLabel: null,
       packageCount: 1,
       titrationSteps: [],
+      cyclePattern: null,
     })
   })
 })
@@ -148,6 +150,7 @@ describe('transformers carry the WO-96 fields', () => {
       packageCount:        1,
       // WO-105: [] for a line that is not a titration
       titrationSchedule:   [],
+      cycleSchedule:       null,
     })
   })
 

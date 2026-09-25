@@ -28,6 +28,9 @@ import { resolveLine, lineSourceKind } from '@/lib/orders/resolve-line'
 import { canEditDraft, diffDraftRows, writeDraftAudit } from '@/lib/orders/draft-edit'
 import { checkProviderOwnsDraft } from '@/lib/orders/provider-draft-guard'
 import { reallocateDraftSiblingShipping } from '@/lib/orders/apply-bundle-shipping'
+import { parseTitrationSteps, isSigMode } from '@/lib/orders/titration'
+import { cyclePatternFrom } from '@/lib/orders/cycling'
+import type { Json } from '@/types/database.types'
 
 interface RouteContext {
   params: Promise<{ orderId: string }>
@@ -35,7 +38,8 @@ interface RouteContext {
 
 const DRAFT_SELECT = `order_id, status, clinic_id, patient_id, provider_id, formulation_id, catalog_item_id, pharmacy_id,
   retail_price_snapshot, wholesale_price_snapshot, medication_snapshot, pharmacy_snapshot, sig_text,
-  shipping_state_snapshot, package_id, package_label, package_count, payment_group_id, ${RX_DETAIL_COLUMN_LIST}`
+  shipping_state_snapshot, package_id, package_label, package_count, payment_group_id,
+  sig_mode, titration_steps, cycle_on_days, cycle_off_days, ${RX_DETAIL_COLUMN_LIST}`
 
 interface Actor {
   userId:   string
@@ -142,6 +146,10 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     quantityLabel?: string | null
     packageId?:     string | null
     packageCount?:  number | null
+    sigMode?:       unknown
+    titrationSteps?: unknown
+    cycleOnDays?:   unknown
+    cycleOffDays?:  unknown
   }
   try {
     body = await request.json()
@@ -168,6 +176,29 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
   const rxDetailsValidation = validateRxDetailsBody(rxDetails)
   if (!rxDetailsValidation.ok) {
     return NextResponse.json({ error: rxDetailsValidation.error }, { status: 400 })
+  }
+
+  // The sig mode travels with the edit, same rules as POST /api/orders.
+  // Before this, an edit never wrote it: a cycling draft reopened to
+  // enter its missing days on / off saved the corrected quantity but
+  // lost the pattern the provider typed. A body without sigMode (a
+  // client that predates it) leaves the stored mode untouched.
+  let modeColumns: Record<string, unknown> = {}
+  if (body.sigMode !== undefined) {
+    const sigMode = isSigMode(body.sigMode) ? body.sigMode : 'standard'
+    const cyclePattern = sigMode === 'cycling' ? cyclePatternFrom(body.cycleOnDays, body.cycleOffDays) : null
+    if (sigMode === 'cycling' && !cyclePattern) {
+      return NextResponse.json({
+        error: 'A cycling prescription needs its days on and days off (1 to 365 each). Edit the line to enter them.',
+        code:  'CYCLE_PATTERN_REQUIRED',
+      }, { status: 400 })
+    }
+    modeColumns = {
+      sig_mode:        sigMode,
+      titration_steps: (sigMode === 'titration' ? parseTitrationSteps(body.titrationSteps) : []) as unknown as Json,
+      cycle_on_days:   cyclePattern?.onDays ?? null,
+      cycle_off_days:  cyclePattern?.offDays ?? null,
+    }
   }
 
   const loaded = await loadEditableDraft(orderId)
@@ -205,6 +236,7 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     ...rxDetailsToColumns(rxDetailsValidation.details),
     // WO-101
     ...line.package,
+    ...modeColumns,
   }
 
   const diff = diffDraftRows(draft, update)
