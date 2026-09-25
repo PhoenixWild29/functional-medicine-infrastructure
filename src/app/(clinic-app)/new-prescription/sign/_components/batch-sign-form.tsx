@@ -34,6 +34,7 @@ import { SignAsMePanel } from './sign-as-me-panel'
 import { builderHref } from '../../_lib/edit-target'
 import { dosingDaysIn } from '@/lib/orders/cycling'
 import {
+  batchSignHref,
   isControlledLine,
   patientBatchTotals,
   type BatchDraftLine,
@@ -78,6 +79,21 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
   const sigCanvasRef = useRef<SignatureCanvas>(null)
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set(preselected))
+  // A draft that becomes mine after the first render (Sign as me, then the
+  // server re-renders with it pre-selected) is ticked too. The selection
+  // was seeded once, so a reassigned line came back unticked and the page
+  // read "signing 0 prescriptions" (prod, 2026-09-25). Only ids NEW to
+  // the pre-selection are added: a line the provider unticked stays so.
+  const seenPreselected = useRef<Set<string>>(new Set(preselected))
+  const preselectedKey = preselected.join(',')
+  useEffect(() => {
+    const fresh = preselected.filter(id => !seenPreselected.current.has(id))
+    if (fresh.length === 0) return
+    fresh.forEach(id => seenPreselected.current.add(id))
+    setSelected(prev => new Set([...prev, ...fresh]))
+    // preselectedKey is the content of preselected
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectedKey])
   const allLines = useMemo(() => patients.flatMap(p => p.lines), [patients])
   const selectedLines = allLines.filter(l => selected.has(l.orderId))
   const selectedIds = selectedLines.map(l => l.orderId)
@@ -345,6 +361,12 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
                 assignedProviderName={o.providerName}
                 myProviderName={signer.name}
                 lineCount={o.count}
+                onReassigned={ids => {
+                  // Back selected: ticked now, and in the URL the page
+                  // re-renders from (so a reload keeps them).
+                  setSelected(prev => new Set([...prev, ...ids]))
+                  router.replace(batchSignHref([...new Set([...selectedIds, ...ids])]))
+                }}
               />
             ))}
 
