@@ -76,7 +76,7 @@ Sermorelin,Peptides,,Acetate,Sermorelin Injectable 9mg,Injectable Solution,Subcu
 CJC-1295,Peptides,,Acetate,CJC-1295 (no DAC) Injectable,Injectable Solution,Subcutaneous,2,mg/mL,false,,85.00,2 mL vial|5 mg vial
 Ipamorelin,Peptides,,Acetate,Ipamorelin Injectable,Injectable Solution,Subcutaneous,5,mg/mL,false,,70.00,2 mL vial|5 mg vial
 CJC-1295/Ipamorelin,Peptides,,Acetate,CJC-1295/Ipamorelin Blend,Injectable Solution,Subcutaneous,5,mg/mL,true,CJC-1295 1mg/mL|Ipamorelin 2mg/mL,95.00,3 mL vial|5 mL vial
-Tesamorelin,Peptides,,Acetate,Tesamorelin Injectable,Injectable Solution,Subcutaneous,10,mg/mL,false,,165.00,1 vial|2 mg vial
+Tesamorelin,Peptides,,Acetate,Tesamorelin Injectable,Injectable Solution,Subcutaneous,10,mg/mL,false,,165.00,10 mg vial
 Tesamorelin/Ipamorelin,Peptides,,Acetate,Tesamorelin/Ipamorelin Blend,Injectable Solution,Subcutaneous,10,mg/mL,true,Tesamorelin 5mg/mL|Ipamorelin 5mg/mL,178.00,3 mL vial
 Sermorelin/Ipamorelin,Peptides,,Acetate,Sermorelin/Ipamorelin Blend,Injectable Solution,Subcutaneous,5,mg/mL,true,Sermorelin 2mg/mL|Ipamorelin 3mg/mL,89.00,3 mL vial|5 mL vial
 Hexarelin,Peptides,,Acetate,Hexarelin Injectable,Injectable Solution,Subcutaneous,5,mg/mL,false,,80.00,2 mL vial|5 mg vial
@@ -88,15 +88,15 @@ BPC-157,Peptides,,Acetate,BPC-157 Injectable 10mg,Injectable Solution,Subcutaneo
 TB-500,Peptides,,Acetate,TB-500 Injectable 5mg,Injectable Solution,Subcutaneous,1,mg/mL,false,,88.00,5 mg vial|10 mg vial
 BPC-157/TB-500,Peptides,,Acetate,BPC-157/TB-500 Blend,Injectable Solution,Subcutaneous,5,mg/mL,true,BPC-157 2.5mg/mL|TB-500 2.5mg/mL,145.00,5 mL vial
 GHK-Cu,Peptides,,Copper Peptide,GHK-Cu Injectable,Injectable Solution,Subcutaneous,50,mg/mL,false,,92.00,2 mL vial|10 mL vial
-GHK-Cu,Longevity,,Copper Peptide,GHK-Cu Topical Serum,Topical Gel,Topical,2,%,false,,54.00,30 mL bottle|60 mL bottle
+GHK-Cu,Longevity,,Copper Peptide,GHK-Cu Topical Serum,Topical Solution,Topical,2,%,false,,54.00,30 mL bottle|60 mL bottle
 KPV,Peptides,,Acetate,KPV Injectable,Injectable Solution,Subcutaneous,5,mg/mL,false,,80.00,2 mL vial|5 mg vial
 KPV,Peptides,,Acetate,KPV Capsule,Capsule,Oral,10,mg,false,,58.00,60 count
 PT-141,Peptides,,Acetate,PT-141 (Bremelanotide) Injectable,Injectable Solution,Subcutaneous,10,mg/mL,false,,110.00,2 mL vial|10 mg vial
 PT-141,Peptides,,Acetate,PT-141 Nasal Spray,Nasal Spray,Intranasal,10,mg/mL,false,,105.00,8 mL bottle
 MOTS-c,Longevity,,Acetate,MOTS-c Injectable,Injectable Solution,Subcutaneous,10,mg/mL,false,,135.00,2 mL vial|10 mg vial
-Epitalon,Longevity,,Acetate,Epitalon Injectable,Injectable Solution,Subcutaneous,10,mg/mL,false,,120.00,1 vial|10 mg vial
+Epitalon,Longevity,,Acetate,Epitalon Injectable,Injectable Solution,Subcutaneous,10,mg/mL,false,,120.00,10 mg vial
 NAD+,Longevity,,,NAD+ Injectable,Injectable Solution,Subcutaneous,100,mg/mL,false,,155.00,2 mL vial|5 mL vial
-Thymosin Alpha-1,Peptides,,Acetate,Thymosin Alpha-1 Injectable,Injectable Solution,Subcutaneous,5,mg/mL,false,,132.00,1 vial|5 mg vial
+Thymosin Alpha-1,Peptides,,Acetate,Thymosin Alpha-1 Injectable,Injectable Solution,Subcutaneous,5,mg/mL,false,,132.00,5 mg vial
 Selank,Peptides,,Acetate,Selank Nasal Spray,Nasal Spray,Intranasal,5,mg/mL,false,,68.00,5 mL bottle
 Semax,Peptides,,Acetate,Semax Nasal Spray,Nasal Spray,Intranasal,3,mg/mL,false,,72.00,5 mL bottle
 DSIP,Peptides,,Acetate,DSIP Injectable,Injectable Solution,Subcutaneous,2,mg/mL,false,,66.00,2 mL vial|2 mg vial
@@ -149,13 +149,13 @@ Acne Blend Cream,Dermatology,,,Acne Blend Cream,Topical Cream,Topical,,%,true,Cl
 Spironolactone,Dermatology,,,Spironolactone Topical Gel 5%,Topical Gel,Topical,5,%,false,,25.00,30 g|60 g
 Niacinamide,Dermatology,,,Niacinamide Topical Cream 5%,Topical Cream,Topical,5,%,false,,20.00,30 g|60 g
 Kojic Acid Blend,Dermatology,,,Kojic Acid Melasma Blend,Topical Cream,Topical,,%,true,Kojic Acid 2%|Hydroquinone 4%,31.00,15 g|30 g
-Minoxidil,Hair Restoration,,,Minoxidil Topical Solution 5%,Topical Gel,Topical,5,%,false,,24.00,60 mL|120 mL
+Minoxidil,Hair Restoration,,,Minoxidil Topical Solution 5%,Topical Solution,Topical,5,%,false,,24.00,60 mL|120 mL
 Minoxidil,Hair Restoration,,,Minoxidil Topical Foam 5%,Topical Cream,Topical,5,%,false,,27.00,60 g|120 g
-Minoxidil/Finasteride,Hair Restoration,,,Hair Growth Combo Topical Solution,Topical Gel,Topical,,%,true,Minoxidil 5%|Finasteride 0.1%,38.00,60 mL|120 mL
-Finasteride,Hair Restoration,,,Finasteride Topical Serum 0.25%,Topical Gel,Topical,0.25,%,false,,30.00,30 mL|60 mL
-Minoxidil/Finasteride/Biotin,Hair Restoration,,,Triple Hair Growth Serum,Topical Gel,Topical,,%,true,Minoxidil 5%|Finasteride 0.1%|Biotin 0.5%,42.00,30 mL|60 mL
+Minoxidil/Finasteride,Hair Restoration,,,Hair Growth Combo Topical Solution,Topical Solution,Topical,,%,true,Minoxidil 5%|Finasteride 0.1%,38.00,60 mL|120 mL
+Finasteride,Hair Restoration,,,Finasteride Topical Serum 0.25%,Topical Solution,Topical,0.25,%,false,,30.00,30 mL|60 mL
+Minoxidil/Finasteride/Biotin,Hair Restoration,,,Triple Hair Growth Serum,Topical Solution,Topical,,%,true,Minoxidil 5%|Finasteride 0.1%|Biotin 0.5%,42.00,30 mL|60 mL
 Finasteride,Hair Restoration,,,Finasteride Capsule 1mg,Capsule,Oral,1,mg,false,,18.00,30 caps|60 caps|90 caps
-Latanoprost,Hair Restoration,,,Latanoprost Hair Growth Solution 0.03%,Topical Gel,Topical,0.03,%,false,,33.00,30 mL
+Latanoprost,Hair Restoration,,,Latanoprost Hair Growth Solution 0.03%,Topical Solution,Topical,0.03,%,false,,33.00,30 mL
 Naltrexone,Other,,Hydrochloride,LDN Capsule 0.5mg,Capsule,Oral,0.5,mg,false,,14.00,30 caps|60 caps|90 caps
 Naltrexone,Other,,Hydrochloride,LDN Capsule 1.5mg,Capsule,Oral,1.5,mg,false,,15.00,30 caps|60 caps|90 caps
 Naltrexone,Other,,Hydrochloride,LDN Capsule 3mg,Capsule,Oral,3,mg,false,,17.00,30 caps|60 caps|90 caps
