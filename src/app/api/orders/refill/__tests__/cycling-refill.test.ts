@@ -172,3 +172,33 @@ describe('a refill of an mg-vial line is re-counted in mL', () => {
     expect(line['repriceRequired']).toBe(true)
   })
 })
+
+// Pellets and suppositories (#181 audit, group 3): a refill of an
+// Oxytocin order billed as one pack of 10 for 30 daily doses refills as
+// the 3 packs it needs.
+describe('a refill of a suppository line is counted', () => {
+  const OXY_PKG = { id: 'pkg-oxy-10', package_label: '10 supp', package_qty: 10, package_unit: 'supp', wholesale_price: 28, is_default: true, active: true }
+  beforeEach(() => {
+    orderRows = [cyclingRow({
+      sig_mode: 'standard', cycle_on_days: null, cycle_off_days: null,
+      sig_text: 'Insert 400 units intravaginal once daily for 30 days',
+      medication_snapshot: {
+        medication_name: 'Oxytocin Vaginal Suppository 400IU', form: 'Suppository',
+        prescribed_dose: '400 units', frequency_code: 'QD', quantity_label: '10 supp',
+        concentration_value: 400, concentration_unit: 'units',
+      },
+      package_id: 'pkg-oxy-10', package_label: '10 supp', package_count: 1,
+      days_supply: 30, dispense_quantity: 10, dispense_unit: 'supp', wholesale_price_snapshot: 28, retail_price_snapshot: 42,
+    })]
+    pharmacyFormulationRows = [packagesRow([OXY_PKG])]
+  })
+
+  it('30 suppositories, 3 × 10 supp, $84 wholesale', async () => {
+    const line = (await call()).body.lines[0]!
+    const details = line['rxDetails'] as Record<string, unknown>
+    expect(details['dispenseQuantity']).toBe(30)
+    expect(details['dispenseUnit']).toBe('suppository')
+    expect(line['packageCount']).toBe(3)
+    expect(line['wholesaleCents']).toBe(8400)
+  })
+})
