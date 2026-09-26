@@ -201,6 +201,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const line = await resolveLine(supabase, {
     catalogItemId, formulationId, pharmacyId, patientState,
     prescribedDose: dose, frequencyCode, quantityLabel, packageId, packageCount,
+    // The package must be sizable against this dispense (PACKAGE_UNIT_MISMATCH).
+    dispense: { quantity: rxDetailsValidation.details.dispenseQuantity, unit: rxDetailsValidation.details.dispenseUnit },
   })
   if (!line.ok) {
     return NextResponse.json({ error: line.error, ...(line.code ? { code: line.code } : {}) }, { status: line.status })
