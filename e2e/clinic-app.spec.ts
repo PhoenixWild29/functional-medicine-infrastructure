@@ -3489,3 +3489,82 @@ test.describe('Clinic App — cycling dose math', () => {
     })
   })
 })
+
+// ============================================================
+// Catalog unit corrections — #181 prod audit, groups 1 and 4
+// ============================================================
+// Migration 20260926000001 runs apply_catalog_unit_corrections() once on
+// the catalog it finds. Here it runs against prod-shaped rows: an
+// injectable sold as "1 vial" (no amount to size against mL) and a
+// topical sold in mL but filed as "Topical Gel" (dispensed in g).
+
+test.describe('Catalog unit corrections — sized vials, Topical Solution', () => {
+  const EPITALON = 'aaaaaaaa-0000-4000-8000-0000000ca701'
+  const FINASTERIDE = 'aaaaaaaa-0000-4000-8000-0000000ca702'
+  const PF_T1 = 'aaaaaaaa-0000-4000-8000-0000000ca711'
+  const PF_T2 = 'aaaaaaaa-0000-4000-8000-0000000ca712'
+
+  test.beforeAll(async () => { await seedStaticData() })
+  test.afterAll(async () => {
+    const supabase = e2eSupabase()
+    await supabase.from('pharmacy_formulation_packages').delete().in('pharmacy_formulation_id', [PF_T1, PF_T2])
+    await supabase.from('pharmacy_formulations').delete().in('pharmacy_formulation_id', [PF_T1, PF_T2])
+    await supabase.from('formulations').delete().in('formulation_id', [EPITALON, FINASTERIDE])
+  })
+
+  test('the "1 vial" becomes a 10 mg vial at every pharmacy, the gel topical becomes a solution, and a second run changes nothing', async () => {
+    const supabase = e2eSupabase()
+    const byName = async (table: 'dosage_forms' | 'routes_of_administration', name: string) => {
+      const idCol = table === 'dosage_forms' ? 'dosage_form_id' : 'route_id'
+      const { data } = await supabase.from(table).select(idCol).eq('name', name).single()
+      return (data as Record<string, string>)[idCol]!
+    }
+    const injectable = await byName('dosage_forms', 'Injectable Solution')
+    const gel = await byName('dosage_forms', 'Topical Gel')
+    const subq = await byName('routes_of_administration', 'Subcutaneous')
+    const topical = await byName('routes_of_administration', 'Topical')
+
+    const base = { salt_form_id: TEST_IDS.saltForm, is_combination: false, total_ingredients: 1, is_active: true }
+    expect((await supabase.from('formulations').upsert([
+      { ...base, formulation_id: EPITALON, name: 'Epitalon Injectable', dosage_form_id: injectable, route_id: subq, concentration: '10mg/mL', concentration_value: 10, concentration_unit: 'mg/mL' },
+      { ...base, formulation_id: FINASTERIDE, name: 'Finasteride Topical Serum 0.25%', dosage_form_id: gel, route_id: topical, concentration: '0.25%', concentration_value: 0.25, concentration_unit: '%' },
+    ], { onConflict: 'formulation_id' })).error).toBeNull()
+    expect((await supabase.from('pharmacy_formulations').upsert([
+      { pharmacy_formulation_id: PF_T1, pharmacy_id: TEST_IDS.pharmacyTier1, formulation_id: EPITALON, wholesale_price: 120, available_quantities: ['1 vial', '10 mg vial'], is_available: true, is_active: true },
+      { pharmacy_formulation_id: PF_T2, pharmacy_id: TEST_IDS.pharmacyTier2, formulation_id: EPITALON, wholesale_price: 125, available_quantities: ['1 vial', '10 mg vial'], is_available: true, is_active: true },
+    ], { onConflict: 'pharmacy_formulation_id' })).error).toBeNull()
+    expect((await supabase.from('pharmacy_formulation_packages').upsert([
+      { id: packageId(PF_T1, '1 vial'), pharmacy_formulation_id: PF_T1, package_label: '1 vial', package_qty: 1, package_unit: 'vial', wholesale_price: 120, is_default: true, active: true },
+      { id: packageId(PF_T2, '1 vial'), pharmacy_formulation_id: PF_T2, package_label: '1 vial', package_qty: 1, package_unit: 'vial', wholesale_price: 125, is_default: true, active: true },
+    ], { onConflict: 'id' })).error).toBeNull()
+
+    const first = await supabase.rpc('apply_catalog_unit_corrections' as never)
+    expect(first.error?.message ?? null).toBeNull()
+    const counts = (first.data as unknown as Array<Record<string, number>>)[0]!
+    expect(counts['packages_added']).toBeGreaterThanOrEqual(2)
+    expect(counts['packages_retired']).toBe(counts['packages_added'])
+    expect(counts['formulations_moved']).toBeGreaterThanOrEqual(1)
+
+    // Each pharmacy: one active default "10 mg vial" at its own price,
+    // under the importer's deterministic id; the "1 vial" kept, retired.
+    for (const [pf, price] of [[PF_T1, 120], [PF_T2, 125]] as const) {
+      const { data: pkgs } = await supabase.from('pharmacy_formulation_packages')
+        .select('id, package_label, package_qty, package_unit, wholesale_price, is_default, active')
+        .eq('pharmacy_formulation_id', pf).order('package_label')
+      expect(pkgs).toEqual([
+        { id: packageId(pf, '1 vial'), package_label: '1 vial', package_qty: 1, package_unit: 'vial', wholesale_price: price, is_default: false, active: false },
+        { id: packageId(pf, '10 mg vial'), package_label: '10 mg vial', package_qty: 10, package_unit: 'mg', wholesale_price: price, is_default: true, active: true },
+      ])
+    }
+    const { data: pfRow } = await supabase.from('pharmacy_formulations').select('wholesale_price').eq('pharmacy_formulation_id', PF_T1).single()
+    expect(pfRow).toEqual({ wholesale_price: 120 })   // same price
+
+    const { data: moved } = await supabase.from('formulations').select('dosage_forms(name, calculation_method)').eq('formulation_id', FINASTERIDE).single()
+    expect(moved).toEqual({ dosage_forms: { name: 'Topical Solution', calculation_method: 'volume-based' } })
+
+    // Idempotent: a second run changes nothing.
+    const second = await supabase.rpc('apply_catalog_unit_corrections' as never)
+    expect(second.error?.message ?? null).toBeNull()
+    expect((second.data as unknown as Array<Record<string, number>>)[0]).toEqual({ packages_added: 0, packages_retired: 0, formulations_moved: 0 })
+  })
+})
