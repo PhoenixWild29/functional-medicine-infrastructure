@@ -356,13 +356,18 @@ export function perDoseInDispenseUnit(input: DispenseInput, qty: ParsedQuantity)
   // 400 IU suppository is one, 75 mg of 37.5 mg pellets is two. Before,
   // a mg or IU dose could not be counted against them at all and the line
   // took one package whatever its duration.
+  //
+  // Whole units per dose: a patient cannot use half a suppository or half
+  // a pellet, so 0.25 mg of a 0.5 mg suppository is one, and 50 mg of
+  // 37.5 mg pellets is two. (Capsules are left as they are.)
   if (qty.unit === 'pellet' || qty.unit === 'suppository') {
-    if (unit === qty.unit) return dose
+    const whole = (n: number) => Math.max(1, Math.ceil(n - 1e-9))
+    if (unit === qty.unit) return whole(dose)
     const concUnit = (input.concentrationUnit ?? '').trim().toLowerCase()
     if ((unit === 'mg' || unit === 'mcg') && conc && concUnit === 'mg') {
-      return (unit === 'mcg' ? dose / 1000 : dose) / conc
+      return whole((unit === 'mcg' ? dose / 1000 : dose) / conc)
     }
-    if (unit === 'units' && conc && (concUnit === 'units' || concUnit === 'iu')) return dose / conc
+    if (unit === 'units' && conc && (concUnit === 'units' || concUnit === 'iu')) return whole(dose / conc)
     return null
   }
   if (qty.unit === 'g') {
