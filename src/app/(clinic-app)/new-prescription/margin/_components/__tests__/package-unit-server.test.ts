@@ -39,7 +39,7 @@ function rowFor(table: string): Record<string, unknown> | null {
       integration_tier: 'TIER_4_FAX', shipping_fee_standard: 9, shipping_fee_cold_chain: 22,
       free_shipping_threshold: null, is_active: true, deleted_at: null,
     }
-    case 'pharmacy_formulation_packages': return { id: 'pkg-bpc-5', package_label: '5 mg vial', package_qty: 5, package_unit: 'mg', wholesale_price: 62 }
+    case 'pharmacy_formulation_packages': return { id: 'pkg-bpc-5', package_label: '5 mg vial', package_qty: 5, package_unit: 'mg', wholesale_price: 62, is_default: true, active: true }
     case 'pharmacy_state_licenses': return { pharmacy_id: 'pharmacy-strive' }
     default: return null
   }
@@ -104,5 +104,40 @@ describe('POST /api/orders sizes the package against the dispense', () => {
     expect(json.code).toBe('PACKAGE_UNIT_MISMATCH')
     expect(json.error).toContain('The 5 mg vial package is not measured in mL')
     expect(insertedRow).toBeNull()
+  })
+})
+
+// A line that reaches Review with no package chosen (a protocol load)
+// used to be priced as the pharmacy's default package, once, whatever
+// its dispense. The server sizes it the same way the price step does.
+describe('POST /api/orders with no package chosen', () => {
+  const noPackage = (dispense: number) => draftBody({
+    formulationId: 'formulation-bpc', sigMode: 'standard', titrationSteps: [],
+    sigText: 'Inject 1mg (1.00mL) subcutaneous once daily for 30 days', dose: '1 mg', frequencyCode: 'QD',
+    quantityLabel: null, packageId: null, packageCount: null, retailCents: 9580,
+    rxDetails: { ...(draftBody()['rxDetails'] as object), daysSupply: 30, dispenseQuantity: dispense, dispenseUnit: 'mL' },
+  })
+
+  it('30 mL needs 6 × 5 mg vial: refused, not priced as one — the package must be chosen', async () => {
+    const res = await post(noPackage(30))
+    expect(res.status).toBe(422)
+    const json = await res.json() as { code?: string; error?: string }
+    expect(json.code).toBe('PACKAGE_REQUIRED')
+    expect(json.error).toContain('6 × 5 mg vials')
+    expect(insertedRow).toBeNull()
+  })
+
+  it('a package that cannot be sized: the same refusal as with a package', async () => {
+    formulationRow = { ...formulationRow, concentration_value: null, concentration_unit: null }
+    const res = await post(noPackage(30))
+    expect(res.status).toBe(422)
+    expect((await res.json() as { code?: string }).code).toBe('PACKAGE_UNIT_MISMATCH')
+    expect(insertedRow).toBeNull()
+  })
+
+  it('one default vial that covers the dispense is priced as before', async () => {
+    const res = await post(noPackage(5))
+    expect(res.status).toBe(201)
+    expect(insertedRow!['wholesale_price_snapshot']).toBe(95)   // pharmacy_formulations price, unchanged
   })
 })

@@ -400,7 +400,7 @@ export async function seedStaticData(): Promise<void> {
     pharmacy_id:               TEST_IDS.pharmacyTier1,
     formulation_id:            TEST_IDS.formulation,
     wholesale_price:           100.00,
-    available_quantities:      ['30', '60', '90'],
+    available_quantities:      ['30 mL vial', '60 mL vial', '90 mL vial'],
     is_available:              true,
     estimated_turnaround_days: 5,
     is_active:                 true,
@@ -452,7 +452,7 @@ export async function seedStaticData(): Promise<void> {
     pharmacy_id:               TEST_IDS.pharmacyTier1,
     formulation_id:            TEST_IDS.controlledFormulation,
     wholesale_price:           150.00,
-    available_quantities:      ['1 vial', '2 vials'],
+    available_quantities:      ['10 mL vial', '20 mL vial'],
     is_available:              true,
     estimated_turnaround_days: 7,
     is_active:                 true,
@@ -543,7 +543,7 @@ export async function seedStaticData(): Promise<void> {
       pharmacy_id:               TEST_IDS.pharmacyTier2,
       formulation_id:            TEST_IDS.formulation,
       wholesale_price:           100.00,
-      available_quantities:      ['30', '60', '90'],
+      available_quantities:      ['30 mL vial', '60 mL vial', '90 mL vial'],
       is_available:              true,
       estimated_turnaround_days: 5,
       is_active:                 true,
@@ -563,7 +563,7 @@ export async function seedStaticData(): Promise<void> {
       pharmacy_id:               TEST_IDS.pharmacyTier4,
       formulation_id:            TEST_IDS.formulation,
       wholesale_price:           110.00,
-      available_quantities:      ['30', '60', '90'],
+      available_quantities:      ['30 mL vial', '60 mL vial', '90 mL vial'],
       is_available:              true,
       estimated_turnaround_days: 5,
       is_active:                 true,
@@ -575,11 +575,15 @@ export async function seedStaticData(): Promise<void> {
   // deterministic id), so a fresh E2E project matches the shared one. The
   // prescribing flow lists sizes from these rows only.
   const glp1Packages = [
-    ...packageRowsFor(TEST_IDS.pharmacyFormulation, '', { price: 100, availableQuantities: ['30', '60', '90'] }),
-    ...packageRowsFor(TEST_IDS.controlledPharmacyFormulation, '', { price: 150, availableQuantities: ['1 vial', '2 vials'] }),
+    // Every injectable package is sized in a unit the app can convert
+    // (#181): an injectable sold as a bare "30" or a container-only
+    // "1 vial" cannot be sized against a dispense in mL, and a line with
+    // a duration is refused rather than priced as one package.
+    ...packageRowsFor(TEST_IDS.pharmacyFormulation, '', { price: 100, availableQuantities: ['30 mL vial', '60 mL vial', '90 mL vial'] }),
+    ...packageRowsFor(TEST_IDS.controlledPharmacyFormulation, '', { price: 150, availableQuantities: ['10 mL vial', '20 mL vial'] }),
     ...packageRowsFor(TEST_IDS.glp1Tier4PharmacyFormulation, '', { price: 95, availableQuantities: ['5mL vial'] }),
-    ...packageRowsFor(TEST_IDS.plainTier2PharmacyFormulation, '', { price: 100, availableQuantities: ['30', '60', '90'] }),
-    ...packageRowsFor(TEST_IDS.plainTier4PharmacyFormulation, '', { price: 110, availableQuantities: ['30', '60', '90'] }),
+    ...packageRowsFor(TEST_IDS.plainTier2PharmacyFormulation, '', { price: 100, availableQuantities: ['30 mL vial', '60 mL vial', '90 mL vial'] }),
+    ...packageRowsFor(TEST_IDS.plainTier4PharmacyFormulation, '', { price: 110, availableQuantities: ['30 mL vial', '60 mL vial', '90 mL vial'] }),
     ...packageRowsFor(TEST_IDS.glp1QuickRxPharmacyFormulation, '', { price: 95, availableQuantities: ['1 mL vial', '3 mL vial'] }),
     ...packageRowsFor(TEST_IDS.glp1PharmacyFormulation, '', { price: 95, availableQuantities: ['5mL vial', '2.5mL vial'] }),
     ...packageRowsFor(TEST_IDS.glp1PackagedPharmacyFormulation, TEST_GLP1_PACKAGES_CELL, { price: 95, availableQuantities: [] }),
@@ -602,6 +606,19 @@ export async function seedStaticData(): Promise<void> {
     .from('pharmacy_formulation_packages')
     .upsert(glp1Packages, { onConflict: 'id' })
   if (packagesError) throw new Error(`seed pharmacy_formulation_packages: ${packagesError.message}`)
+
+  // The shared E2E project still holds the unsized packages earlier seeds
+  // wrote ("30", "1 vial"; ids derive from the label, so the upsert above
+  // adds new rows beside them). Retire every package on these offers that
+  // this seed did not write, so only the sized ones are listed.
+  const seededPfIds = [...new Set(glp1Packages.map(p => p.pharmacy_formulation_id))]
+  const seededPkgIds = glp1Packages.map(p => p.id)
+  const { error: retireError } = await supabase
+    .from('pharmacy_formulation_packages')
+    .update({ active: false })
+    .in('pharmacy_formulation_id', seededPfIds)
+    .not('id', 'in', `(${seededPkgIds.join(',')})`)
+  if (retireError) throw new Error(`seed retire stale packages: ${retireError.message}`)
 
   // ── Pre-enroll the E2E test provider with the canonical demo TOTP secret ──
   //
@@ -867,7 +884,7 @@ export async function seedControlledAtFaxPharmacy(): Promise<void> {
     pharmacy_id:               TEST_IDS.pharmacyTier4,
     formulation_id:            TEST_IDS.controlledFormulation,
     wholesale_price:           150.00,
-    available_quantities:      ['1 vial'],
+    available_quantities:      ['10 mL vial'],
     is_available:              true,
     estimated_turnaround_days: 7,
     is_active:                 true,

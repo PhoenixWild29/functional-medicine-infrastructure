@@ -617,7 +617,7 @@ const PLAIN: BuilderChoice = {
   ingredientName:  TEST_CATALOG.ingredientName,
   formulationName: TEST_CATALOG.formulationName,
   doseAmount: '10', doseUnit: 'mg', frequency: 'QD',
-  quantity: '30',   // bare number on an injectable → 30 mL
+  quantity: '30 mL vial',
 }
 const GLP1: BuilderChoice = {
   ingredientName:  TEST_CATALOG.glp1IngredientName,
@@ -629,7 +629,7 @@ const CONTROLLED: BuilderChoice = {
   ingredientName:  TEST_CATALOG.controlledIngredientName,
   formulationName: TEST_CATALOG.controlledFormulationName,
   doseAmount: '0.5', doseUnit: 'mL', frequency: 'QW',
-  quantity: '1 vial',
+  quantity: '10 mL vial',
 }
 
 test.describe('Clinic App — WO-96 Rx detail fields', () => {
@@ -684,8 +684,9 @@ test.describe('Clinic App — WO-96 Rx detail fields', () => {
     await loginAs(page, TEST_USERS.provider)
     await walkBuilderToMargin(page, CONTROLLED)
 
-    // "1 vial" carries no volume → dispense derived, days supply not (no typing either way).
-    await expect(page.getByTestId('dispense-value')).toHaveText('1 vial')
+    // The 10 mL vial is the dispense; 0.5 mL weekly makes it 140 days (nothing typed).
+    await expect(page.getByTestId('dispense-value')).toHaveText('10 mL')
+    await expect(page.getByTestId('days-supply-value')).toHaveText('140 days')
 
     await page.locator('#retail-price').fill('300.00')
     await page.getByRole('button', { name: /Review & Send/ }).click()
@@ -1047,7 +1048,7 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
 
     // The MA can edit the draft they created — the creator rule, server-side.
     const ownEdit = await page.request.patch(`/api/orders/${anchorId}`, {
-      data: { formulationId: TEST_IDS.formulation, pharmacyId: TEST_IDS.pharmacyTier1, retailCents: 20000, sigText: 'Inject 10 mg (1.00mL) subcutaneously once daily at bedtime', dose: '10 mg', frequencyCode: 'QD', quantityLabel: '30' },
+      data: { formulationId: TEST_IDS.formulation, pharmacyId: TEST_IDS.pharmacyTier1, retailCents: 20000, sigText: 'Inject 10 mg (1.00mL) subcutaneously once daily at bedtime', dose: '10 mg', frequencyCode: 'QD', quantityLabel: '30 mL vial' },
     })
     expect(ownEdit.status()).toBe(200)
 
@@ -1067,7 +1068,7 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
     // The draft's patient is pinned on the session banner.
     await expect(page.getByText('Test Patient').first()).toBeVisible()
     await expect(page.getByLabel('Dose amount')).toHaveValue('10', { timeout: 15_000 })
-    await expect(page.getByLabel('Quantity')).toHaveValue('30', { timeout: 15_000 })
+    await expect(page.getByLabel('Quantity')).toHaveValue('30 mL vial', { timeout: 15_000 })
     await page.getByLabel('Dose amount').fill('12')
     await page.getByRole('button', { name: /Continue.*Set Retail Price/i }).click()
     await expect(page).toHaveURL(/\/new-prescription\/margin\?.*editOrder=/, { timeout: 10_000 })
