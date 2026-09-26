@@ -116,3 +116,35 @@ describe('a dose entered as tablets or capsules is still refused', () => {
     expect(suggestPackage([ROWS.estradiolSupp.pkg], line(ROWS.estradiolSupp, '1', 'tablet', 'QD', 30))!.reason).toBe('unconvertible')
   })
 })
+
+// A patient cannot use half a suppository or half a pellet: a dose that
+// is less than one (or not a whole number of) counts as the next whole
+// unit, per dose. Capsules are unchanged.
+describe('fractional doses round up to whole units per dose', () => {
+  it('0.25 mg of a 0.5 mg suppository is 1 per dose: 30 days daily = 30 suppositories, one pack', () => {
+    const input = line(ROWS.estradiolSupp, '0.25', 'mg', 'QD', 30)
+    expect(computeDispense({ ...input, quantityLabel: null })).toEqual({ daysSupply: 30, dispenseQuantity: 30, dispenseUnit: 'suppository' })
+    expect(suggestPackage([ROWS.estradiolSupp.pkg], input)!.count).toBe(1)
+  })
+
+  it('0.75 mg of a 0.5 mg suppository is 2 per dose: 30 days daily = 60 suppositories, 2 packs', () => {
+    const input = line(ROWS.estradiolSupp, '0.75', 'mg', 'QD', 30)
+    expect(computeDispense({ ...input, quantityLabel: null })!.dispenseQuantity).toBe(60)
+    expect(suggestPackage([ROWS.estradiolSupp.pkg], input)!.count).toBe(2)
+  })
+
+  it('50 mg of 37.5 mg pellets is 2 pellets', () => {
+    const s = suggestPackage([ROWS.testosterone37.pkg], line(ROWS.testosterone37, '50', 'mg', 'QD', 1))!
+    expect(s.dispenseQuantity).toBe(2)
+    expect(s.count).toBe(2)
+  })
+
+  it('no duration: days supply counts whole suppositories per dose — 30 supp at 1 per dose lasts 30 days', () => {
+    expect(computeDispense({ ...line(ROWS.estradiolSupp, '0.25', 'mg', 'QD', null), quantityLabel: '30 supp' })!.daysSupply).toBe(30)
+  })
+
+  it('capsules are left as they are: half a 1 mg capsule per dose is still counted as half', () => {
+    const capsule = { doseAmount: '0.5', doseUnit: 'mg', frequencyCode: 'QD', concentrationValue: 1, concentrationUnit: 'mg', dosageFormName: 'Capsule', durationDays: 30 }
+    expect(computeDispense({ ...capsule, quantityLabel: null })).toEqual({ daysSupply: 30, dispenseQuantity: 15, dispenseUnit: 'capsule' })
+  })
+})
