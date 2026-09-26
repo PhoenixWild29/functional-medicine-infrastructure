@@ -588,8 +588,9 @@ export async function seedStaticData(): Promise<void> {
     ...packageRowsFor(TEST_IDS.glp1PharmacyFormulation, '', { price: 95, availableQuantities: ['5mL vial', '2.5mL vial'] }),
     ...packageRowsFor(TEST_IDS.glp1PackagedPharmacyFormulation, TEST_GLP1_PACKAGES_CELL, { price: 95, availableQuantities: [] }),
   ]
-  // The shared E2E project may hold packages another branch's seed wrote
-  // (#181 sizes these offers as "30 mL vial" / "10 mL vial"). Retire every
+  // The shared E2E project may hold packages that earlier seeds or another
+  // branch's seed wrote (the unsized "30" / "1 vial"; ids derive from the
+  // label, so the upsert below adds rows beside them). Retire every
   // package on these offers that this seed does not write — BEFORE the
   // upsert, and no longer the default, since an offer has one default
   // package (uq_pfp_one_default). Each branch's seed restores its own set.
@@ -607,18 +608,6 @@ export async function seedStaticData(): Promise<void> {
     .upsert(glp1Packages, { onConflict: 'id' })
   if (packagesError) throw new Error(`seed pharmacy_formulation_packages: ${packagesError.message}`)
 
-  // The shared E2E project still holds the unsized packages earlier seeds
-  // wrote ("30", "1 vial"; ids derive from the label, so the upsert above
-  // adds new rows beside them). Retire every package on these offers that
-  // this seed did not write, so only the sized ones are listed.
-  const seededPfIds = [...new Set(glp1Packages.map(p => p.pharmacy_formulation_id))]
-  const seededPkgIds = glp1Packages.map(p => p.id)
-  const { error: retireError } = await supabase
-    .from('pharmacy_formulation_packages')
-    .update({ active: false })
-    .in('pharmacy_formulation_id', seededPfIds)
-    .not('id', 'in', `(${seededPkgIds.join(',')})`)
-  if (retireError) throw new Error(`seed retire stale packages: ${retireError.message}`)
 
   // ── Pre-enroll the E2E test provider with the canonical demo TOTP secret ──
   //
