@@ -54,6 +54,7 @@ import {
   durationDaysForLink,
   suggestPackage,
   packageCountFor,
+  packageUnitMismatchMessage,
   formatPackageCount,
   MAX_PACKAGE_COUNT,
   type PackageOption,
@@ -293,10 +294,25 @@ export function MarginBuilderForm({
       durationDays,
       cycle,
     })
+    if (!s) return null
+    // A package that cannot be sized against the dispense is kept, so the
+    // page can refuse the line instead of pricing one package.
+    if (s.reason === 'unconvertible') return s
     // One package, and one of it covers the Rx: nothing to choose.
-    if (!s || (packages.length < 2 && s.count <= 1)) return null
+    if (packages.length < 2 && s.count <= 1) return null
     return s
   }, [packages, formulationDetails, doseForPackages.amount, doseForPackages.unit, presetFrequency, durationDays, cycle])
+  const packageUnconvertible = suggestion?.reason === 'unconvertible'
+  // Package amounts are counted in the dispense unit (a 5 mg vial at
+  // 1 mg/mL holds 5 mL).
+  const packageSizing = formulationDetails
+    ? {
+        unit:               dispenseUnitFor(formulationDetails.dosageFormName, doseForPackages.unit),
+        dosageFormName:     formulationDetails.dosageFormName,
+        concentrationValue: formulationDetails.concentrationValue,
+        concentrationUnit:  formulationDetails.concentrationUnit,
+      }
+    : undefined
   // The line being edited keeps its package when it is still offered.
   const carriedPackageId = editTarget?.kind === 'draft'
     ? existingPackageId
@@ -316,7 +332,7 @@ export function MarginBuilderForm({
   const packageCount = !selectedPackage || !suggestion
     ? 1
     : pickedCount
-      ?? (usingCarriedPackage && carriedPackageCount ? carriedPackageCount : packageCountFor(selectedPackage, suggestion.dispenseQuantity))
+      ?? (usingCarriedPackage && carriedPackageCount ? carriedPackageCount : packageCountFor(selectedPackage, suggestion.dispenseQuantity, packageSizing))
   const packageIsSuggested = !!suggestion && selectedPackage?.id === suggestion.package.id && packageCount === suggestion.count
 
   // WO-96 fix / WO-101b: the quantity defaults from the pharmacy's priced
@@ -521,7 +537,9 @@ export function MarginBuilderForm({
     (!isHighMarkup || highMarkupAcknowledged) &&
     sigTrimmed.length >= 10 &&
     // Cycling dose math: never price a cycling line without its pattern.
-    !(presetSigMode === 'cycling' && !cycle)
+    !(presetSigMode === 'cycling' && !cycle) &&
+    // Never price a package the dispense cannot be sized against.
+    !packageUnconvertible
 
   // ── WO-101: package change ───────────────────────────────────
   // Wholesale follows the package; retail keeps the markup the provider
@@ -540,7 +558,7 @@ export function MarginBuilderForm({
   function changePackage(nextId: string) {
     const next = packages.find(p => p.id === nextId)
     if (!next) return
-    const nextCount = packageCountFor(next, suggestion?.dispenseQuantity ?? null)
+    const nextCount = packageCountFor(next, suggestion?.dispenseQuantity ?? null, packageSizing)
     repriceRetail(toCents(next.wholesalePrice) * nextCount)
     setPickedPackageId(next.id)
     setPickedCount(null)
@@ -809,7 +827,13 @@ export function MarginBuilderForm({
             <p className="text-xs text-muted-foreground mt-0.5">via {pharmacyName}</p>
             {/* WO-101: package (vial size) — only when there is a choice.
                 WO-101a: or when one package takes more than one of it. */}
-            {suggestion && selectedPackage && (
+            {/* A package that cannot be sized is refused, never priced as one. */}
+            {packageUnconvertible && suggestion && (
+              <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700" role="alert" data-testid="package-unit-mismatch">
+                {packageUnitMismatchMessage(suggestion.package, packageSizing?.unit ?? 'the dispense unit')}
+              </p>
+            )}
+            {suggestion && selectedPackage && !packageUnconvertible && (
               <div className="mt-2 space-y-1" data-testid="package-control">
                 <p className="text-sm text-foreground" data-testid="package-summary">
                   Package: <span className="font-medium">{formatPackageCount(selectedPackage.label, packageCount)}</span>

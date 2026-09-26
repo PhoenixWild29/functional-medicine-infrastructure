@@ -44,6 +44,9 @@ export interface RerouteLine {
   dispenseQuantity?: number | null
   dispenseUnit?:     string | null
   dosageFormName?:   string | null
+  /** The formulation's concentration, to size mg vials against an mL dispense. */
+  concentrationValue?: number | null
+  concentrationUnit?:  string | null
 }
 
 /** One pharmacy's offer for a formulation (pharmacy_options, licensed in the patient's state). */
@@ -107,8 +110,16 @@ export function priceLineAt(line: RerouteLine, offer: PharmacyOffer | undefined)
     const suggestion = sameLabel
       ? { package: sameLabel, count }
       : line.dispenseQuantity != null && line.dispenseUnit
-        ? suggestPackageForDispense(offer.packages, { dispenseQuantity: line.dispenseQuantity, dispenseUnit: line.dispenseUnit }, line.dosageFormName)
+        ? suggestPackageForDispense(
+            offer.packages,
+            { dispenseQuantity: line.dispenseQuantity, dispenseUnit: line.dispenseUnit },
+            line.dosageFormName,
+            { concentrationValue: line.concentrationValue ?? null, concentrationUnit: line.concentrationUnit ?? null },
+          )
         : null
+    // A target whose packages cannot be sized against this dispense is
+    // not a price this line can move to: it is never priced as one package.
+    if (suggestion && 'reason' in suggestion && suggestion.reason === 'unconvertible') return null
     const chosen = suggestion ?? { package: offer.packages.find(p => p.isDefault) ?? offer.packages[0]!, count: 1 }
     // Same visibility rule as the price step: a package is named when the
     // pharmacy sells more than one, or more than one of it is needed.
