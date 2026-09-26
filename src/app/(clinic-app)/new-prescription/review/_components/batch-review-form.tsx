@@ -132,14 +132,12 @@ export function sendBlock(rx: SendBlockLine): SendBlock | null {
   if (rx.sigMode === 'cycling' && !rx.cycle) return 'cycle_pattern'
   // #181: its package cannot be sized against its dispense — never one package.
   if (rx.packageUnitMismatch) return 'package_unit'
-  // A line owed a price confirmation says so first: its retail may be
-  // below today's cost precisely because the price moved (#181).
+  if (rx.retailCents < rx.wholesaleCents) return 'below_cost'
   // WO-108: the wholesale moved and the provider has not confirmed a
   // price yet. Reaching Review with the flag still set means the price
   // step was skipped — a deep link, or a back button — so the decision
   // is still owed.
   if (rx.repriceRequired === true) return 'reprice'
-  if (rx.retailCents < rx.wholesaleCents) return 'below_cost'
   return null
 }
 

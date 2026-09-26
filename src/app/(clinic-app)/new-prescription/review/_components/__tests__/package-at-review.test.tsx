@@ -94,9 +94,10 @@ describe('a protocol line with no package', () => {
     renderReview(PROTOCOL_LINE)
     // The Rx details summary line: the dispense with the packages it is filled from.
     expect(await screen.findByText(/dispense 30 mL \(6 × 5 mg vials\)/, undefined, { timeout: 5000 })).toBeInTheDocument()
-    // $62 → $372 wholesale: the old retail would be below cost, so the
-    // price step (WO-108) is owed before it can be sent.
-    expect(await screen.findByTestId('reprice-required-line-proto')).toBeInTheDocument()
+    // $62 → $372 wholesale: the old $93.00 retail is now below cost, so the
+    // line cannot be sent until the provider re-prices it.
+    const block = await screen.findByTestId('below-cost-line-proto')
+    expect(block).toHaveTextContent('$93.00 retail against $372.00 wholesale')
   })
 
   it('a package that cannot be sized blocks the line with the price step message', async () => {
