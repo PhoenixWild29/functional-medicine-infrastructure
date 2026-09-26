@@ -584,6 +584,20 @@ export async function seedStaticData(): Promise<void> {
     ...packageRowsFor(TEST_IDS.glp1PharmacyFormulation, '', { price: 95, availableQuantities: ['5mL vial', '2.5mL vial'] }),
     ...packageRowsFor(TEST_IDS.glp1PackagedPharmacyFormulation, TEST_GLP1_PACKAGES_CELL, { price: 95, availableQuantities: [] }),
   ]
+  // The shared E2E project may hold packages another branch's seed wrote
+  // (#181 sizes these offers as "30 mL vial" / "10 mL vial"). Retire every
+  // package on these offers that this seed does not write — BEFORE the
+  // upsert, and no longer the default, since an offer has one default
+  // package (uq_pfp_one_default). Each branch's seed restores its own set.
+  const seededPfIds = [...new Set(glp1Packages.map(p => p.pharmacy_formulation_id))]
+  const seededPkgIds = glp1Packages.map(p => p.id)
+  const { error: retireError } = await supabase
+    .from('pharmacy_formulation_packages')
+    .update({ active: false, is_default: false })
+    .in('pharmacy_formulation_id', seededPfIds)
+    .not('id', 'in', `(${seededPkgIds.join(',')})`)
+  if (retireError) throw new Error(`seed retire stale packages: ${retireError.message}`)
+
   const { error: packagesError } = await supabase
     .from('pharmacy_formulation_packages')
     .upsert(glp1Packages, { onConflict: 'id' })
