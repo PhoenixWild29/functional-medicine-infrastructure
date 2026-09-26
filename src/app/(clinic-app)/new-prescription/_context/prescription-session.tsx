@@ -116,6 +116,11 @@ export interface SessionPrescription {
   // PURPOSE: sessions persisted before this parse unchanged.
   cycle?:                CycleSchedule | null
   cyclePatternRequired?: boolean | null
+  // #181: set when a line that reached Review with no package (a protocol
+  // load) has packages that cannot be sized against its dispense. The
+  // line is blocked with this message until it is edited. OPTIONAL ON
+  // PURPOSE.
+  packageUnitMismatch?:  string | null
   // WO-106: set when this line came from Refill. refillOfOrderId is sent
   // to POST /api/orders and stored on the new order; the two notes are
   // shown on the Review card because both are decisions the app made for
