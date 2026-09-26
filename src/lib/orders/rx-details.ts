@@ -235,7 +235,7 @@ export function dosesPerDay(frequencyCode: string | null | undefined): number | 
 
 export interface ParsedQuantity {
   value:      number
-  /** Normalised unit: mL | g | mg | capsule | tablet | troche | vial | bottle | tube | unit */
+  /** Normalised unit: mL | g | mg | capsule | tablet | troche | pellet | suppository | vial | bottle | tube | unit */
   unit:       string
   /** True when the label only names containers (e.g. "1 vial") with no volume. */
   isContainer: boolean
@@ -248,6 +248,9 @@ const UNIT_ALIASES: Array<[RegExp, string, boolean]> = [
   [/^caps?(ules?)?$/i,     'capsule', false],
   [/^tabs?(lets?)?$/i,     'tablet', false],
   [/^troches?$/i,          'troche', false],
+  // Counted like capsules (#181 audit): "1 pellet", "30 supp".
+  [/^pellets?$/i,          'pellet', false],
+  [/^supp(s|ository|ositories)?$/i, 'suppository', false],
   [/^units?$/i,            'unit',   false],
   [/^vials?$/i,            'vial',   true],
   [/^bottles?$/i,          'bottle', true],
@@ -278,6 +281,8 @@ export function parseQuantityLabel(label: string | null | undefined, dosageFormN
   if (/capsule/.test(form)) return { value, unit: 'capsule', isContainer: false }
   if (/tablet|rdt/.test(form)) return { value, unit: 'tablet', isContainer: false }
   if (/troche/.test(form)) return { value, unit: 'troche', isContainer: false }
+  if (/pellet/.test(form)) return { value, unit: 'pellet', isContainer: false }
+  if (/suppositor/.test(form)) return { value, unit: 'suppository', isContainer: false }
   if (/injectable|solution|spray/.test(form)) return { value, unit: 'mL', isContainer: false }
   if (/cream|gel/.test(form)) return { value, unit: 'g', isContainer: false }
   return { value, unit: token || 'unit', isContainer: false }
@@ -346,6 +351,20 @@ export function perDoseInDispenseUnit(input: DispenseInput, qty: ParsedQuantity)
     }
     return null
   }
+  // Pellets and suppositories are counted through the strength of one
+  // (#181 audit): 0.5 mg of a 0.5 mg suppository is one, 400 IU of a
+  // 400 IU suppository is one, 75 mg of 37.5 mg pellets is two. Before,
+  // a mg or IU dose could not be counted against them at all and the line
+  // took one package whatever its duration.
+  if (qty.unit === 'pellet' || qty.unit === 'suppository') {
+    if (unit === qty.unit) return dose
+    const concUnit = (input.concentrationUnit ?? '').trim().toLowerCase()
+    if ((unit === 'mg' || unit === 'mcg') && conc && concUnit === 'mg') {
+      return (unit === 'mcg' ? dose / 1000 : dose) / conc
+    }
+    if (unit === 'units' && conc && (concUnit === 'units' || concUnit === 'iu')) return dose / conc
+    return null
+  }
   if (qty.unit === 'g') {
     if (unit === 'g') return dose
     if (unit === 'mg' && conc && /mg\/g/i.test(input.concentrationUnit ?? '')) return dose / conc
@@ -366,6 +385,8 @@ export function dispenseUnitFor(dosageFormName: string | null | undefined, doseU
   if (/capsule/.test(form)) return 'capsule'
   if (/tablet|rdt/.test(form)) return 'tablet'
   if (/troche/.test(form)) return 'troche'
+  if (/pellet/.test(form)) return 'pellet'
+  if (/suppositor/.test(form)) return 'suppository'
   if (/injectable|solution|spray/.test(form)) return 'mL'
   if (/cream|gel/.test(form)) return 'g'
   return unit === 'ml' ? 'mL' : (unit || 'unit')
@@ -969,7 +990,8 @@ export function formatDispense(quantity: number | null | undefined, unit: string
   if (quantity == null) return null
   const q = Number.isInteger(quantity) ? String(quantity) : String(round2(quantity))
   if (!unit) return q
-  const plural = quantity !== 1 && /^(capsule|tablet|troche|vial|bottle|tube|pen|kit|unit)$/.test(unit)
+  if (quantity !== 1 && unit === 'suppository') return `${q} suppositories`
+  const plural = quantity !== 1 && /^(capsule|tablet|troche|pellet|vial|bottle|tube|pen|kit|unit)$/.test(unit)
   return `${q} ${unit}${plural ? 's' : ''}`
 }
 
