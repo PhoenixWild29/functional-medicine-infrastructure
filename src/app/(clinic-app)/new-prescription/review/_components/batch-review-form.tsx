@@ -32,7 +32,7 @@
 // out. A session spanning pharmacies shows what the split costs and, when
 // it is a genuine net saving, offers to route everything to one pharmacy.
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import * as Sentry from '@sentry/nextjs'
 import SignatureCanvas from 'react-signature-canvas'
@@ -67,6 +67,9 @@ import {
   missingRxDetails,
   MISSING_RX_DETAIL_LABEL,
   rulesFromFormulation,
+  suggestPackageForDispense,
+  packageUnitMismatchMessage,
+  type PackageOption,
   type MissingRxDetail,
   type RxDetails,
   type RxRules,
@@ -112,11 +115,12 @@ function calcPlatformFeeCents(marginCents: number): number {
  * not to remove the line. (What a refill should do about a moved price
  * is WO-107; this only stops it being sent below cost.)
  */
-type SendBlock = 'price' | 'directions' | 'below_cost' | 'reprice' | 'cycle_pattern'
+type SendBlock = 'price' | 'directions' | 'below_cost' | 'reprice' | 'cycle_pattern' | 'package_unit'
 
 type SendBlockLine = {
   retailCents: number; wholesaleCents: number; sigText: string; repriceRequired?: boolean | null
   sigMode?: SessionPrescription['sigMode']; cycle?: SessionPrescription['cycle']
+  packageUnitMismatch?: string | null
 }
 
 export function sendBlock(rx: SendBlockLine): SendBlock | null {
@@ -126,12 +130,16 @@ export function sendBlock(rx: SendBlockLine): SendBlock | null {
   // written before the pattern was stored) has a quantity with no basis
   // but daily dosing. Edit it on the dose step; the server refuses it too.
   if (rx.sigMode === 'cycling' && !rx.cycle) return 'cycle_pattern'
-  if (rx.retailCents < rx.wholesaleCents) return 'below_cost'
+  // #181: its package cannot be sized against its dispense — never one package.
+  if (rx.packageUnitMismatch) return 'package_unit'
+  // A line owed a price confirmation says so first: its retail may be
+  // below today's cost precisely because the price moved (#181).
   // WO-108: the wholesale moved and the provider has not confirmed a
   // price yet. Reaching Review with the flag still set means the price
   // step was skipped — a deep link, or a back button — so the decision
   // is still owed.
   if (rx.repriceRequired === true) return 'reprice'
+  if (rx.retailCents < rx.wholesaleCents) return 'below_cost'
   return null
 }
 
@@ -341,6 +349,59 @@ export function BatchReviewForm({ isProvider }: Props) {
   const { updatePrescription } = session
   const prescriptionsRef = useRef(session.prescriptions)
   prescriptionsRef.current = session.prescriptions
+  // #181: the vial suggestion for a line with no package. Another package
+  // or more than one → the line takes it and its price must be confirmed
+  // (WO-108, the margin kept); a package that cannot be sized → blocked
+  // with the price step's message.
+  const patientStateRef = useRef(session.patient?.state ?? null)
+  patientStateRef.current = session.patient?.state ?? null
+  const sizeUnpackagedLine = useCallback(async (
+    rx: SessionPrescription,
+    dispense: { quantity: number; unit: string; daysSupply: number | null },
+    inputs: RxFormulationDefaults['dispenseInputs'] | undefined,
+  ) => {
+    if (!rx.formulationId) return
+    try {
+      const state = patientStateRef.current
+      const res = await fetch(`/api/formulations?level=pharmacy_options&formulation_id=${encodeURIComponent(rx.formulationId)}${state ? `&state=${encodeURIComponent(state)}` : ''}`)
+      if (!res.ok) {
+        console.error('[batch-review] package sizing read failed:', res.status)
+        return
+      }
+      const json = await res.json() as { data?: Array<{ pharmacies?: { pharmacy_id?: string } | null; packages?: PackageOption[] }> }
+      const offer = (json.data ?? []).find(o => o.pharmacies?.pharmacy_id === rx.pharmacyId)
+      const packages = offer?.packages ?? []
+      if (packages.length === 0) return
+      const s = suggestPackageForDispense(
+        packages,
+        { dispenseQuantity: dispense.quantity, dispenseUnit: dispense.unit, daysSupply: dispense.daysSupply },
+        inputs?.dosageFormName ?? rx.form ?? null,
+        { concentrationValue: inputs?.concentrationValue ?? null, concentrationUnit: inputs?.concentrationUnit ?? null },
+      )
+      if (!s || s.reason === 'default') return
+      if (s.reason === 'unconvertible') {
+        updatePrescription(rx.id, { packageUnitMismatch: packageUnitMismatchMessage(s.package, dispense.unit) })
+        return
+      }
+      if (s.count === 1 && s.package.isDefault) return   // priced as it is
+      const wholesaleCents = Math.round(s.package.wholesalePrice * 100) * s.count
+      const canPreserve = rx.wholesaleCents > 0 && rx.retailCents >= rx.wholesaleCents
+      updatePrescription(rx.id, {
+        packageId:            s.package.id,
+        packageLabel:         s.package.label,
+        packageCount:         s.count,
+        quantityLabel:        s.package.label,
+        wholesaleCents,
+        repriceRequired:      true,
+        sourceRetailCents:    rx.retailCents,
+        suggestedRetailCents: canPreserve ? Math.round(wholesaleCents * rx.retailCents / rx.wholesaleCents) : null,
+        marginBasis:          canPreserve ? 'preserved' : 'clinic_default',
+      })
+    } catch (err) {
+      console.error('[batch-review] package sizing failed:', err instanceof Error ? err.message : err)
+    }
+  }, [updatePrescription])
+
   useEffect(() => {
     if (!unresolvedKey) return
     const ids = [...new Set(unresolvedKey.split(','))]
@@ -373,20 +434,27 @@ export function BatchReviewForm({ isProvider }: Props) {
           // dispense — derive them here (duration in the sig first, else the
           // line's quantity, else one package) rather than show "—".
           const derived = derivedForLine(rx, entry.dispenseInputs)
+          const rxDetails = {
+            ...defaults,
+            ...(existing ?? {}),
+            ...(existing?.daysSupply == null && existing?.dispenseQuantity == null && derived
+              ? { daysSupply: derived.daysSupply, dispenseQuantity: derived.dispenseQuantity, dispenseUnit: derived.dispenseUnit }
+              : {}),
+            clinicalDifference: existing?.clinicalDifference ?? defaults.clinicalDifference,
+            diagnosisCode:      defaults.diagnosisCode,
+            diagnosisText:      defaults.diagnosisText,
+          }
           updatePrescription(rx.id, {
-            rxDetails: {
-              ...defaults,
-              ...(existing ?? {}),
-              ...(existing?.daysSupply == null && existing?.dispenseQuantity == null && derived
-                ? { daysSupply: derived.daysSupply, dispenseQuantity: derived.dispenseQuantity, dispenseUnit: derived.dispenseUnit }
-                : {}),
-              clinicalDifference: existing?.clinicalDifference ?? defaults.clinicalDifference,
-              diagnosisCode:      defaults.diagnosisCode,
-              diagnosisText:      defaults.diagnosisText,
-            },
+            rxDetails,
             rxRules:     rulesFromFormulation(entry.defaults, entry.deaSchedule ?? rx.deaSchedule),
             deaSchedule: entry.deaSchedule ?? rx.deaSchedule,
           })
+          // #181: a line with no package chosen (it skipped the price step)
+          // is sized here the way the price step sizes it — never priced
+          // as the pharmacy's default package once.
+          if (!rx.packageId && rxDetails.dispenseQuantity != null && rxDetails.dispenseUnit) {
+            await sizeUnpackagedLine(rx, { quantity: rxDetails.dispenseQuantity, unit: rxDetails.dispenseUnit, daysSupply: rxDetails.daysSupply }, entry.dispenseInputs)
+          }
         }
       } catch (err) {
         console.error('[batch-review] rx defaults resolution failed:', err instanceof Error ? err.message : err)
@@ -394,7 +462,7 @@ export function BatchReviewForm({ isProvider }: Props) {
       }
     })()
     return () => { cancelled = true }
-  }, [unresolvedKey, updatePrescription, rulesAttempt])
+  }, [unresolvedKey, updatePrescription, rulesAttempt, sizeUnpackagedLine])
 
   if (!session.patient || !session.provider || session.prescriptions.length === 0) {
     return (
@@ -433,7 +501,7 @@ export function BatchReviewForm({ isProvider }: Props) {
   const hasInvalidItems = invalidItems.length > 0
   const belowCostItems = invalidItems.filter(rx => sendBlock(rx) === 'below_cost')
   const repriceItems   = invalidItems.filter(rx => sendBlock(rx) === 'reprice')
-  const cycleItems     = invalidItems.filter(rx => sendBlock(rx) === 'cycle_pattern')
+  const cycleItems     = invalidItems.filter(rx => sendBlock(rx) === 'cycle_pattern' || sendBlock(rx) === 'package_unit')
   const malformedItems = invalidItems.filter(rx => sendBlock(rx) === 'price' || sendBlock(rx) === 'directions')
 
   // WO-96: rule-required Rx details still empty (controlled → diagnosis,
@@ -711,7 +779,11 @@ export function BatchReviewForm({ isProvider }: Props) {
                   <p className="mt-1 text-xs text-muted-foreground italic">
                     Sig: {rx.sigText}
                   </p>
-                  {block === 'cycle_pattern' ? (
+                  {block === 'package_unit' ? (
+                    <p className="mt-1 text-xs font-medium text-red-700" data-testid={`package-unit-mismatch-${rx.id}`}>
+                      {rx.packageUnitMismatch}
+                    </p>
+                  ) : block === 'cycle_pattern' ? (
                     <p className="mt-1 text-xs font-medium text-amber-700" data-testid={`cycle-pattern-required-${rx.id}`}>
                       This cycling prescription was saved before its days on and off were stored. Edit this line to
                       enter them; the quantity is counted from them.

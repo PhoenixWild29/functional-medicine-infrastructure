@@ -22,7 +22,14 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/types/database.types'
-import { MAX_PACKAGE_COUNT, packageQtyInUnit, packageUnitMismatchMessage } from './rx-details'
+import {
+  MAX_PACKAGE_COUNT,
+  formatPackageCount,
+  packageOptionsFromRows,
+  packageQtyInUnit,
+  packageUnitMismatchMessage,
+  suggestPackageForDispense,
+} from './rx-details'
 import { isLivePharmacy, pharmacyInactiveMessage } from '@/lib/pharmacies/live'
 
 type ServiceClient = SupabaseClient<Database>
@@ -245,6 +252,58 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
       // WO-101a: package price × count, in cents.
       wholesalePrice = (Math.round(Number(pkg.wholesale_price) * 100) * requestedCount) / 100
       linePackage = { package_id: pkg.id, package_label: pkg.package_label, package_count: requestedCount }
+    }
+
+    // No package chosen (a protocol line, which never passes the price
+    // step): it would be priced as the pharmacy's default package, once,
+    // whatever it dispenses. Size it the way the price step does. One
+    // default package that covers the dispense is exactly that price, as
+    // before. Anything else — another package, more than one, or a
+    // package that cannot be sized — is refused, never priced as one.
+    const dispenseIn = input.dispense
+    if (!requestedPackageId && dispenseIn && typeof dispenseIn.quantity === 'number' && dispenseIn.quantity > 0 && dispenseIn.unit) {
+      const { data: pkgRows, error: pkgListError } = await supabase
+        .from('pharmacy_formulation_packages')
+        .select('id, package_label, package_qty, package_unit, wholesale_price, is_default, active')
+        .eq('pharmacy_formulation_id', priceResult.data.pharmacy_formulation_id)
+        .eq('active', true)
+      if (pkgListError) {
+        console.error('[orders] package list fetch failed:', pkgListError.message)
+        return { ok: false, status: 500, error: 'Package lookup failed' }
+      }
+      const offered = packageOptionsFromRows(
+        ((pkgRows ?? []) as Array<Record<string, unknown>>)
+          .filter(r => r['package_qty'] != null && typeof r['package_unit'] === 'string' && typeof r['id'] === 'string')
+          .map(r => ({
+            id:              r['id'] as string,
+            package_label:   String(r['package_label'] ?? ''),
+            package_qty:     r['package_qty'] as number | string,
+            package_unit:    r['package_unit'] as string,
+            wholesale_price: r['wholesale_price'] as number | string,
+            is_default:      r['is_default'] === true,
+            active:          r['active'] !== false,
+          })),
+      )
+      if (offered.length > 0) {
+        const form = formResult.data as { concentration_value?: number | null; concentration_unit?: string | null; dosage_forms?: unknown }
+        const s = suggestPackageForDispense(
+          offered,
+          { dispenseQuantity: dispenseIn.quantity, dispenseUnit: dispenseIn.unit },
+          (form.dosage_forms as { name?: string } | null)?.name ?? null,
+          { concentrationValue: form.concentration_value ?? null, concentrationUnit: form.concentration_unit ?? null },
+        )
+        if (s?.reason === 'unconvertible') {
+          return { ok: false, status: 422, code: 'PACKAGE_UNIT_MISMATCH', error: packageUnitMismatchMessage(s.package, dispenseIn.unit) }
+        }
+        if (s && s.reason !== 'default' && !(s.count === 1 && s.package.isDefault)) {
+          const dflt = offered.find(p => p.isDefault) ?? offered[0]!
+          return {
+            ok: false, status: 422, code: 'PACKAGE_REQUIRED',
+            error: `This prescription needs ${formatPackageCount(s.package.label, s.count)} for its ${dispenseIn.quantity} ${dispenseIn.unit} dispense, ` +
+              `but no package was chosen, so it would be priced as one ${dflt.label}. Edit the line to choose the package and confirm the price.`,
+          }
+        }
+      }
     }
 
     const df = formResult.data.dosage_forms as { name: string } | null
