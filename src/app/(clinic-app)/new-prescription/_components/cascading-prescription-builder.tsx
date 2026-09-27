@@ -55,6 +55,7 @@ import {
   dispenseUnitFor,
   suggestPackage,
   suggestPackageForDispense,
+  packageUnitMismatchMessage,
   formatPackageCount,
   pharmacySizeLabels,
   type PackageOption,
@@ -497,8 +498,11 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
           daysSupply:       titrationDispense.totalDays,
         },
         selectedFormulation.dosage_forms?.name ?? null,
+        { concentrationValue: selectedFormulation.concentration_value, concentrationUnit: selectedFormulation.concentration_unit },
       )
-      if (!t || (pkgs.length < 2 && t.count <= 1)) return null
+      if (!t) return null
+      if (t.reason === 'unconvertible') return t
+      if (pkgs.length < 2 && t.count <= 1) return null
       return t
     }
     const s = suggestPackage(pkgs, {
@@ -511,8 +515,12 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       durationDays,
       cycle:              lineCycle,
     })
+    if (!s) return null
+    // A package the dispense cannot be sized against is kept, so the line
+    // is refused rather than priced as one package.
+    if (s.reason === 'unconvertible') return s
     // WO-101a: a single package matters only when more than one is needed.
-    if (!s || (pkgs.length < 2 && s.count <= 1)) return null
+    if (pkgs.length < 2 && s.count <= 1) return null
     return s
   }
   const selectedSuggestion = packageSuggestionFor(selectedPharmacy)
@@ -527,7 +535,9 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   // WO-105: a titration is complete when its steps are — the single dose
   // field is not part of one. An invalid titration generates no sig, so
   // the sig-length check alone would already block it; this says why.
+  const packageUnconvertible = selectedSuggestion?.reason === 'unconvertible'
   const canAdd = !!(
+    !packageUnconvertible &&
     selectedFormulation &&
     selectedPharmacy &&
     currentSig.length >= 10 &&
@@ -849,9 +859,14 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
                   </div>
                   <div className="text-right">
                     <p className="text-lg font-bold text-foreground">{toCurrency(shownPrice)}</p>
-                    {suggestion && (
+                    {suggestion && suggestion.reason !== 'unconvertible' && (
                       <p className="text-[10px] text-muted-foreground" data-testid="pharmacy-suggested-package">
                         {formatPackageCount(suggestion.package.label, suggestion.count)}
+                      </p>
+                    )}
+                    {suggestion?.reason === 'unconvertible' && (
+                      <p className="text-[10px] font-medium text-red-700" data-testid="pharmacy-package-unsized">
+                        Package can&apos;t be sized
                       </p>
                     )}
                   </div>
@@ -921,6 +936,13 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
             </div>
           </div>
         </div>
+      )}
+
+      {/* A package the dispense cannot be sized against: refused, never one package. */}
+      {selectedPharmacy && packageUnconvertible && selectedSuggestion && (
+        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700" role="alert" data-testid="package-unit-mismatch">
+          {packageUnitMismatchMessage(selectedSuggestion.package, dispenseUnitFor(selectedFormulation?.dosage_forms?.name ?? null, doseUnit))}
+        </p>
       )}
 
       {/* Actions: Save Favorite + Continue to set retail price */}

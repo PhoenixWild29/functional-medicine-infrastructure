@@ -49,6 +49,8 @@ export function rerouteLineFrom(rx: SessionPrescription): RerouteLine {
     dispenseQuantity: rx.rxDetails?.dispenseQuantity ?? null,
     dispenseUnit:     rx.rxDetails?.dispenseUnit ?? null,
     dosageFormName:   rx.form || null,
+    concentrationValue: rx.concentrationValue ?? null,
+    concentrationUnit:  rx.concentrationUnit ?? null,
   }
 }
 

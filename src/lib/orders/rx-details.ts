@@ -571,23 +571,88 @@ export const MAX_PACKAGE_COUNT = 20
  *   capped   — even MAX_PACKAGE_COUNT of the best package fall short;
  *              count is MAX_PACKAGE_COUNT and the UI says it does not cover
  *   default  — nothing to size from (no duration, uncountable dose); count 1
+ *   unconvertible — there IS a dispense quantity, but no package can be
+ *              expressed in its unit (an mg vial with no mg/mL
+ *              concentration, a container-only "1 vial"). The line must be
+ *              refused (packageUnitMismatchMessage), never priced as one
+ *              package — that is how 30 mL of BPC-157 was billed as one
+ *              $62 vial (prod, 2026-09-25).
  */
 export interface PackageSuggestion {
   package:          PackageOption
   count:            number
-  reason:           'covers' | 'multiple' | 'capped' | 'default'
+  reason:           'covers' | 'multiple' | 'capped' | 'default' | 'unconvertible'
   daysSupply:       number | null
   /** The dispense quantity sized against (package unit); null for 'default'. */
   dispenseQuantity: number | null
 }
 
+/** What a package amount is converted with: the formulation's form and concentration. */
+export interface PackageUnitContext {
+  dosageFormName:      string | null | undefined
+  concentrationValue?: number | null | undefined
+  concentrationUnit?:  string | null | undefined
+}
+
+/**
+ * A package's amount in `unit` (the line's dispense unit), or null when
+ * it cannot be expressed there.
+ *
+ * The package unit is the word after the number in its label ("5 mg
+ * vial" → mg), read the way parseQuantityLabel reads any quantity. Same
+ * unit → as is. mg or mcg → mL through an mg/mL concentration (5 mg at
+ * 1 mg/mL = 5 mL), and mL → mg the other way. Anything else — a
+ * container-only "1 vial", "Standard", an mg vial with no concentration
+ * — is null: there is no honest number to size with.
+ */
+export function packageQtyInUnit(
+  pkg: Pick<PackageOption, 'qty' | 'unit'>,
+  unit: string,
+  ctx: PackageUnitContext,
+): number | null {
+  if (!(pkg.qty > 0)) return null
+  const token = (pkg.unit ?? '').trim()
+  // mcg is not a quantity unit parseQuantityLabel knows (it would infer mL
+  // from an injectable form), so read it here first.
+  const parsed = /^mcg$/i.test(token)
+    ? { value: pkg.qty, unit: 'mcg', isContainer: false }
+    : parseQuantityLabel(`${pkg.qty} ${token}`, ctx.dosageFormName)
+  if (!parsed || parsed.isContainer) return null
+  if (parsed.unit === unit) return parsed.value
+  const conc = typeof ctx.concentrationValue === 'number' && ctx.concentrationValue > 0 ? ctx.concentrationValue : null
+  const mgPerMl = conc != null && (ctx.concentrationUnit ?? '').trim().toLowerCase() === 'mg/ml'
+  if (!mgPerMl) return null
+  if (unit === 'mL' && parsed.unit === 'mg')  return round4(parsed.value / conc!)
+  if (unit === 'mL' && parsed.unit === 'mcg') return round4(parsed.value / 1000 / conc!)
+  if (unit === 'mg' && parsed.unit === 'mL')  return round4(parsed.value * conc!)
+  return null
+}
+
+/**
+ * The line cannot be priced: the message the builder, the price step and
+ * the server all give. "Choose a package measured in <unit>" is the fix a
+ * provider can make; the catalog is the fix ops can make.
+ */
+export function packageUnitMismatchMessage(pkg: Pick<PackageOption, 'label'>, dispenseUnit: string): string {
+  return `The ${pkg.label} package is not measured in ${dispenseUnit}, and this formulation gives no way to convert it, ` +
+    `so the app will not price this prescription as one package. Choose a package measured in ${dispenseUnit}, or have the catalog entry corrected.`
+}
+
 /**
  * Whole packages of `pkg` needed for `dispenseQuantity`, between 1 and
- * MAX_PACKAGE_COUNT. Unknown quantity → 1.
+ * MAX_PACKAGE_COUNT. Unknown quantity → 1. With `sizing` the package is
+ * first converted to the dispense unit (a 5 mg vial at 1 mg/mL holds
+ * 5 mL); a package that cannot be converted counts 1 — callers refuse it
+ * through the suggestion's 'unconvertible'.
  */
-export function packageCountFor(pkg: Pick<PackageOption, 'qty'>, dispenseQuantity: number | null | undefined): number {
-  if (typeof dispenseQuantity !== 'number' || !(dispenseQuantity > 0) || !(pkg.qty > 0)) return 1
-  const needed = Math.ceil(dispenseQuantity / pkg.qty - 1e-9)
+export function packageCountFor(
+  pkg: Pick<PackageOption, 'qty'> & Partial<Pick<PackageOption, 'unit'>>,
+  dispenseQuantity: number | null | undefined,
+  sizing?: PackageUnitContext & { unit: string },
+): number {
+  const qty = sizing && pkg.unit != null ? packageQtyInUnit({ qty: pkg.qty, unit: pkg.unit }, sizing.unit, sizing) : pkg.qty
+  if (typeof dispenseQuantity !== 'number' || !(dispenseQuantity > 0) || qty == null || !(qty > 0)) return 1
+  const needed = Math.ceil(dispenseQuantity / qty - 1e-9)
   return Math.min(MAX_PACKAGE_COUNT, Math.max(1, needed))
 }
 
@@ -688,7 +753,7 @@ export function suggestPackage(
   if (perDose == null || perDose <= 0) return fallback
   const dispense = computeDispense({ ...input, quantityLabel: null })
   if (!dispense) return fallback
-  return suggestPackageForDispense(packages, dispense, input.dosageFormName)
+  return suggestPackageForDispense(packages, dispense, input.dosageFormName, input)
 }
 
 /**
@@ -701,6 +766,7 @@ export function suggestPackageForDispense(
   packages: ReadonlyArray<PackageOption>,
   dispense: Pick<DerivedDispense, 'dispenseQuantity' | 'dispenseUnit'> & { daysSupply?: number | null },
   dosageFormName: string | null | undefined,
+  concentration?: { concentrationValue?: number | null | undefined; concentrationUnit?: string | null | undefined } | null,
 ): PackageSuggestion | null {
   if (packages.length === 0) return null
   const fallbackPackage = packages.find(p => p.isDefault) ?? packages[0]!
@@ -709,26 +775,38 @@ export function suggestPackageForDispense(
 
   // Compare in the dispense unit: "1 mL" packages against mL, "30 count"
   // capsule packages against capsules (parseQuantityLabel infers the unit
-  // from the dosage form when the label's token isn't one it knows).
-  const sameUnit = packages
-    .filter(p => parseQuantityLabel(`${p.qty} ${p.unit}`, dosageFormName)?.unit === dispense.dispenseUnit)
+  // from the dosage form when the label's token isn't one it knows), and
+  // an mg vial through the mg/mL concentration (a 5 mg vial at 1 mg/mL
+  // holds 5 mL). Before, an mg vial never matched an mL dispense and the
+  // line fell back to ONE default package whatever it needed.
+  const ctx: PackageUnitContext = {
+    dosageFormName,
+    concentrationValue: concentration?.concentrationValue ?? null,
+    concentrationUnit:  concentration?.concentrationUnit ?? null,
+  }
+  const sized = packages
+    .map(p => ({ p, qty: packageQtyInUnit(p, dispense.dispenseUnit, ctx) }))
+    .filter((x): x is { p: PackageOption; qty: number } => x.qty != null && x.qty > 0)
     .sort((a, b) => a.qty - b.qty)
-  if (sameUnit.length === 0) return fallback
 
   const need = dispense.dispenseQuantity
   const base = { daysSupply: dispense.daysSupply ?? null, dispenseQuantity: need }
 
-  const covering = sameUnit.find(p => p.qty + 1e-9 >= need)
-  if (covering) return { ...base, package: covering, count: 1, reason: 'covers' }
+  // A quantity to size, and no package that can be sized against it:
+  // refused, never one package.
+  if (sized.length === 0) return { ...base, package: fallbackPackage, count: 1, reason: 'unconvertible' }
+
+  const covering = sized.find(x => x.qty + 1e-9 >= need)
+  if (covering) return { ...base, package: covering.p, count: 1, reason: 'covers' }
 
   // No single package holds it: fewest whole units, then cheapest total,
   // then the smaller package.
-  const ranked = sameUnit
-    .map(p => {
-      const units = Math.max(1, Math.ceil(need / p.qty - 1e-9))
-      return { p, units, totalCents: Math.round(p.wholesalePrice * 100) * units }
+  const ranked = sized
+    .map(({ p, qty }) => {
+      const units = Math.max(1, Math.ceil(need / qty - 1e-9))
+      return { p, qty, units, totalCents: Math.round(p.wholesalePrice * 100) * units }
     })
-    .sort((a, b) => a.units - b.units || a.totalCents - b.totalCents || a.p.qty - b.p.qty)
+    .sort((a, b) => a.units - b.units || a.totalCents - b.totalCents || a.qty - b.qty)
   const best = ranked[0]!
   if (best.units > MAX_PACKAGE_COUNT) {
     return { ...base, package: best.p, count: MAX_PACKAGE_COUNT, reason: 'capped' }
@@ -903,6 +981,10 @@ export function formatDiagnosis(code: string | null | undefined, text: string | 
 }
 
 // ── Internal helpers ────────────────────────────────────────
+
+function round4(n: number): number {
+  return Math.round(n * 10000) / 10000
+}
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
