@@ -18,6 +18,7 @@
 
 import coreWebVitals from 'eslint-config-next/core-web-vitals'
 import typescript from 'eslint-config-next/typescript'
+import noUncheckedSupabaseError from './eslint-rules/no-unchecked-supabase-error.js'
 
 /** @type {import('eslint').Linter.Config[]} */
 const config = [
@@ -138,6 +139,30 @@ const config = [
             "properly-typed SDK upgrade instead. See CONTRIBUTING.md 'Third-Party API Parameter Rule.'",
         },
       ],
+    },
+  },
+
+  // Custom rules are CommonJS so both this config (ESM) and Jest load them.
+  {
+    files: ['eslint-rules/*.js'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+
+  // ── Batch 3: an awaited Supabase call's `error` must be read ─────
+  //
+  // Batches 1 and 2 (#164–#170) fixed the clinical and money paths where
+  // a Supabase `.error` was ignored and the code carried on with
+  // `data = null`. This rule stops the pattern coming back. Existing sites
+  // are listed in eslint-baselines/supabase-errors.json (file + function
+  // + line text) and skipped until each Batch 3 area PR clears them; a
+  // NEW site fails Lint. An intentional exception carries
+  // `// supabase-error-ok: <reason>` on the line above — sparingly.
+  {
+    files: ['src/**/*.{ts,tsx}', 'scripts/**/*.{ts,mts,js,mjs}'],
+    ignores: ['**/__tests__/**', '**/*.test.{ts,tsx}'],
+    plugins: { supabase: { rules: { 'no-unchecked-supabase-error': noUncheckedSupabaseError } } },
+    rules: {
+      'supabase/no-unchecked-supabase-error': ['error', { baselineFile: 'eslint-baselines/supabase-errors.json' }],
     },
   },
 ]

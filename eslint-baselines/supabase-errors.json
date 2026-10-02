@@ -1,0 +1,781 @@
+{
+  "rule": "supabase/no-unchecked-supabase-error",
+  "note": "Existing unchecked Supabase errors, skipped by the rule until fixed. This file only shrinks. See scripts/generate-supabase-error-baseline.mjs.",
+  "total": 152,
+  "entries": [
+    {
+      "file": "scripts/seed-formulations-phase2.ts",
+      "function": "main",
+      "line": "const { data: dosageForms } = await supabase.from('dosage_forms').select('dosage_form_id, name')",
+      "count": 1
+    },
+    {
+      "file": "scripts/seed-formulations-phase2.ts",
+      "function": "main",
+      "line": "const { data: routes } = await supabase.from('routes_of_administration').select('route_id, name')",
+      "count": 1
+    },
+    {
+      "file": "scripts/seed-poc.ts",
+      "function": "seedCatalog",
+      "line": "const { data: existing } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "scripts/seed-poc.ts",
+      "function": "seedClinic",
+      "line": "const { data: existing } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "scripts/seed-poc.ts",
+      "function": "seedPatient",
+      "line": "const { data: existing } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "scripts/seed-poc.ts",
+      "function": "seedPharmacies",
+      "line": "const { data: existing } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "scripts/seed-poc.ts",
+      "function": "seedPharmacyLicense",
+      "line": "const { data: existing } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "scripts/seed-poc.ts",
+      "function": "seedProvider",
+      "line": "const { data: existing } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "scripts/simulate-payment.ts",
+      "function": "main",
+      "line": "await sb.from('order_status_history').insert({",
+      "count": 2
+    },
+    {
+      "file": "scripts/simulate-payment.ts",
+      "function": "main",
+      "line": "const { data: final } = await sb.from('orders')",
+      "count": 1
+    },
+    {
+      "file": "src/app/(clinic-app)/dashboard/page.tsx",
+      "function": "DashboardPage",
+      "line": "const [clinicResult, ordersResult, priorYearResult] = await Promise.all([",
+      "count": 3
+    },
+    {
+      "file": "src/app/(clinic-app)/layout.tsx",
+      "function": "ClinicAppLayout",
+      "line": "const { data: clinic } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/(clinic-app)/new-prescription/margin/page.tsx",
+      "function": "MarginPage",
+      "line": "const [formResult, priceResult] = await Promise.all([",
+      "count": 2
+    },
+    {
+      "file": "src/app/(clinic-app)/new-prescription/margin/page.tsx",
+      "function": "MarginPage",
+      "line": "const { data: clinic } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/(clinic-app)/new-prescription/margin/page.tsx",
+      "function": "MarginPage",
+      "line": "const { data: staleFormulation } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/(clinic-app)/new-prescription/page.tsx",
+      "function": "NewPrescriptionPage",
+      "line": "const [patientsResult, providersResult, selfProvider] = await Promise.all([",
+      "count": 1
+    },
+    {
+      "file": "src/app/(clinic-app)/settings/page.tsx",
+      "function": "SettingsPage",
+      "line": "const { data: clinic } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/(ops-dashboard)/ops/pipeline/page.tsx",
+      "function": "PipelinePage",
+      "line": "const [ordersResult, slasResult, clinicsResult, pharmaciesResult] = await Promise.all([",
+      "count": 4
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { count: catalogSyncs } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { count: circuitBreakerTrips } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { count: disputeCount } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { count: faxDelivered } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { count: faxFailed } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { count: paymentExpiries } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { count: slaBreaches } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { count: totalEvents } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { count: transferFailCount } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { count: unmatchedFaxes } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { data: dlqEvents } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { data: errorRows } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { data: eventsBySource } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { data: failuresBySource } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { data: processedEvents } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { data: retryData } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { data: smsRows } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/daily-digest/route.ts",
+      "function": "GET",
+      "line": "const { data: submissions } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/portal-status-poll/route.ts",
+      "function": "GET",
+      "line": "await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/portal-status-poll/route.ts",
+      "function": "GET",
+      "line": "const { data: config } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/portal-status-poll/route.ts",
+      "function": "GET",
+      "line": "const { data: currentOrder } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/sla-check/route.ts",
+      "function": "attemptCascadeToFax",
+      "line": "await supabase",
+      "count": 2
+    },
+    {
+      "file": "src/app/api/cron/sla-check/route.ts",
+      "function": "attemptCascadeToFax",
+      "line": "const { data: order } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/sla-check/route.ts",
+      "function": "GET",
+      "line": "const { data: orderData } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/sla-check/route.ts",
+      "function": "GET",
+      "line": "const { data: pharmData } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/sla-refire/route.ts",
+      "function": "GET",
+      "line": "const { data: orderData } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/sla-refire/route.ts",
+      "function": "GET",
+      "line": "const { data: pharmData } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/submission-reconciliation/route.ts",
+      "function": "GET",
+      "line": "const { data: claimed } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/cron/submission-reconciliation/route.ts",
+      "function": "GET",
+      "line": "const { data: pharmacies } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/epcs/route.ts",
+      "function": "POST",
+      "line": "await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/epcs/route.ts",
+      "function": "POST",
+      "line": "const { data: provider } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/favorites/recent/route.ts",
+      "function": "GET",
+      "line": "const { data: provider } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/favorites/route.ts",
+      "function": "categoryForFormulation",
+      "line": "const { data: formulation } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/favorites/route.ts",
+      "function": "categoryForFormulation",
+      "line": "const { data: ingredient } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/favorites/route.ts",
+      "function": "categoryForFormulation",
+      "line": "const { data: parts } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/favorites/route.ts",
+      "function": "categoryForFormulation",
+      "line": "const { data: saltForm } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/favorites/route.ts",
+      "function": "DELETE",
+      "line": "const { data: fav } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/favorites/route.ts",
+      "function": "getClinicProviderIds",
+      "line": "const { data } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/favorites/route.ts",
+      "function": "PATCH",
+      "line": "const { data: current } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/favorites/route.ts",
+      "function": "PATCH",
+      "line": "const { data: offering } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/favorites/route.ts",
+      "function": "patientInClinic",
+      "line": "const { data } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/formulations/route.ts",
+      "function": "GET",
+      "line": "const { data: combos } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/formulations/route.ts",
+      "function": "GET",
+      "line": "const { data: salts } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/ops/catalog/rollback/route.ts",
+      "function": "POST",
+      "line": "await supabase",
+      "count": 3
+    },
+    {
+      "file": "src/app/api/ops/catalog/route.ts",
+      "function": "GET",
+      "line": "const [itemsResult, versionsResult, normalizedResult, syncResult] = await Promise.all([",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/ops/catalog/sync/[pharmacyId]/route.ts",
+      "function": "POST",
+      "line": "await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/ops/catalog/sync/[pharmacyId]/route.ts",
+      "function": "POST",
+      "line": "const { data: lastVersion } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/ops/catalog/sync/[pharmacyId]/route.ts",
+      "function": "POST",
+      "line": "const { data: prevItems } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/ops/catalog/upload/route.ts",
+      "function": "POST",
+      "line": "await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/ops/catalog/upload/route.ts",
+      "function": "POST",
+      "line": "const { data: lastVersion } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/ops/catalog/upload/route.ts",
+      "function": "POST",
+      "line": "const { data: prevItems } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/ops/orders/[orderId]/detail/route.ts",
+      "function": "GET",
+      "line": "const [orderResult, historyResult, submissionsResult, slasResult] = await Promise.all([",
+      "count": 4
+    },
+    {
+      "file": "src/app/api/ops/pipeline/route.ts",
+      "function": "GET",
+      "line": "const [ordersResult, slasResult] = await Promise.all([",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/orders/[orderId]/record/route.ts",
+      "function": "GET",
+      "line": "const [orderResult, clinicResult] = await Promise.all([",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/orders/compliance-check/route.ts",
+      "function": "GET",
+      "line": "await Promise.all([",
+      "count": 5
+    },
+    {
+      "file": "src/app/api/orders/compliance-check/route.ts",
+      "function": "GET",
+      "line": "const { data: license } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/patient-phases/route.ts",
+      "function": "POST",
+      "line": "await supabase.from('phase_advancement_history').insert({",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/patient-phases/route.ts",
+      "function": "POST",
+      "line": "const { data: current } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/pharmacies/shipping/route.ts",
+      "function": "GET",
+      "line": "const [rates, clinic] = await Promise.all([",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/protocols/route.ts",
+      "function": "GET",
+      "line": "const { data: clinic } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/protocols/route.ts",
+      "function": "POST",
+      "line": "await supabase.from('protocol_templates').delete().eq('protocol_id', protocol.protocol_id)",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/protocols/route.ts",
+      "function": "POST",
+      "line": "const { data: provider } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/webhooks/documo/inbound/route.ts",
+      "function": "matchPharmacyByFaxNumber",
+      "line": "const { data: pharmacy } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/webhooks/documo/inbound/route.ts",
+      "function": "POST",
+      "line": "await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/webhooks/documo/route.ts",
+      "function": "handleFaxDelivered",
+      "line": "await supabase",
+      "count": 2
+    },
+    {
+      "file": "src/app/api/webhooks/documo/route.ts",
+      "function": "handleFaxFailed",
+      "line": "const { count: priorFailures } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/webhooks/documo/route.ts",
+      "function": "handleFaxFailed",
+      "line": "const { data: pharmacy } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/webhooks/documo/route.ts",
+      "function": "POST",
+      "line": "await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/webhooks/pharmacy/[pharmacySlug]/route.ts",
+      "function": "POST",
+      "line": "await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/webhooks/pharmacy/[pharmacySlug]/route.ts",
+      "function": "POST",
+      "line": "const { data: apiConfig } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/webhooks/pharmacy/[pharmacySlug]/route.ts",
+      "function": "POST",
+      "line": "const { data: vaultRow } = await (supabase as any).schema('vault')",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/webhooks/pharmacy/[pharmacySlug]/route.ts",
+      "function": "resolveOrderByExternalRef",
+      "line": "const { data: order } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/webhooks/pharmacy/[pharmacySlug]/route.ts",
+      "function": "resolveOrderByExternalRef",
+      "line": "const { data: submission } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/webhooks/twilio/route.ts",
+      "function": "handleSmsFailureFallback",
+      "line": "const { data: order } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/api/webhooks/twilio/route.ts",
+      "function": "handleSmsFailureFallback",
+      "line": "const { data: patient } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/checkout/[token]/page.tsx",
+      "function": "renderGroupCheckout",
+      "line": "const [groupResult, clinicResult, countResult] = await Promise.all([",
+      "count": 3
+    },
+    {
+      "file": "src/app/checkout/[token]/page.tsx",
+      "function": "renderSoloCheckout",
+      "line": "const [orderResult, clinicResult] = await Promise.all([",
+      "count": 2
+    },
+    {
+      "file": "src/app/checkout/success/page.tsx",
+      "function": "CheckoutSuccessPage",
+      "line": "const { count: orderCount } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/checkout/success/page.tsx",
+      "function": "CheckoutSuccessPage",
+      "line": "const { data: group } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/app/checkout/success/page.tsx",
+      "function": "CheckoutSuccessPage",
+      "line": "const { data: order } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/adapters/audit-trail.ts",
+      "function": "markSubmitted",
+      "line": "const { data: existing } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/adapters/routing-engine.ts",
+      "function": "getCircuitBreakerRow",
+      "line": "const { data: row } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/adapters/routing-engine.ts",
+      "function": "loadPharmacy",
+      "line": "const { data } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/adapters/routing-engine.ts",
+      "function": "recordCircuitSuccess",
+      "line": "await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/adapters/tier1-api.ts",
+      "function": "checkRateLimits",
+      "line": "const { count } = await supabase",
+      "count": 2
+    },
+    {
+      "file": "src/lib/adapters/tier1-api.ts",
+      "function": "submitTier1Api",
+      "line": "const { data: clinic } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/adapters/tier1-api.ts",
+      "function": "submitTier1Api",
+      "line": "const { data: patient } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/adapters/tier1-api.ts",
+      "function": "submitTier1Api",
+      "line": "const { data: pharmacy } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/adapters/tier1-api.ts",
+      "function": "submitTier1Api",
+      "line": "const { data: provider } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/adapters/tier2-portal.ts",
+      "function": "submitTier2Portal",
+      "line": "const { data: patient } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/adapters/tier2-portal.ts",
+      "function": "submitTier2Portal",
+      "line": "const { data: provider } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/adapters/tier4-fax.ts",
+      "function": "submitTier4Fax",
+      "line": "const { data: clinic } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/adapters/tier4-fax.ts",
+      "function": "submitTier4Fax",
+      "line": "const { data: patient } = await (supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/adapters/tier4-fax.ts",
+      "function": "submitTier4Fax",
+      "line": "const { data: pharmacy } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/adapters/tier4-fax.ts",
+      "function": "submitTier4Fax",
+      "line": "const { data: provider } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/fax/map-fax-row.ts",
+      "function": "mapFaxRow",
+      "line": "const { data: urlData } = await supabase.storage",
+      "count": 1
+    },
+    {
+      "file": "src/lib/orders/batch-sign.ts",
+      "function": "checkBatch",
+      "line": "const { data: otherRows } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/orders/load-draft-context.ts",
+      "function": "loadDraftContext",
+      "line": "const [patientResult, providerResult] = await Promise.all([",
+      "count": 2
+    },
+    {
+      "file": "src/lib/payment-group/create-group.ts",
+      "function": "createPaymentGroup",
+      "line": "const { data: clinicShipping } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/poc/refresh-demo-data.ts",
+      "function": "ensureDemoScaffolding",
+      "line": "const { data: byId } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/poc/refresh-demo-data.ts",
+      "function": "ensureDemoScaffolding",
+      "line": "const { data: bySlug } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/poc/refresh-demo-data.ts",
+      "function": "ensureDemoScaffolding",
+      "line": "const { data: clinic } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/poc/refresh-demo-data.ts",
+      "function": "ensureDemoScaffolding",
+      "line": "const { data: existing } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/poc/refresh-demo-data.ts",
+      "function": "ensureDemoScaffolding",
+      "line": "const { data: order } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/poc/refresh-demo-data.ts",
+      "function": "ensureDemoScaffolding",
+      "line": "const { data: patient } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/poc/refresh-demo-data.ts",
+      "function": "ensureDemoScaffolding",
+      "line": "const { data: provider } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/protocols/resolve-instance.ts",
+      "function": "resolveActiveInstance",
+      "line": "const { data: raced } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/protocols/resolve-instance.ts",
+      "function": "resolvePublishedVersion",
+      "line": "const { data: raced } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/sla/creator.ts",
+      "function": "createSlasForTransition",
+      "line": "await Promise.all([",
+      "count": 1
+    },
+    {
+      "file": "src/lib/sla/creator.ts",
+      "function": "getPharmacyTimezone",
+      "line": "const { data } = await supabase",
+      "count": 1
+    },
+    {
+      "file": "src/lib/sms/sender.ts",
+      "function": "sendSms",
+      "line": "const { count: existingCount } = await supabase",
+      "count": 1
+    }
+  ]
+}
