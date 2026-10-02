@@ -151,6 +151,30 @@ export async function POST(request: NextRequest) {
     }, { status: 409 })
   }
 
+  // ── The formulation as it is today ────────────────────────
+  // A refill sizes the line with the formulation's CURRENT dosage form
+  // and concentration, not the ones frozen on the source's snapshot. A
+  // catalog correction (#183 moved six mL topicals from Topical Gel to
+  // Topical Solution) would otherwise never reach a refill of an order
+  // written before it. A formulation that no longer exists falls back to
+  // the snapshot; a read that FAILED has no answer and is refused.
+  const currentByFormulation = new Map<string, CurrentFormulation>()
+  const refillFormulationIds = [...new Set(rows.map(r => r.formulation_id).filter((id): id is string => !!id))]
+  if (refillFormulationIds.length > 0) {
+    const { data: current, error: currentError } = await supabase
+      .from('formulations')
+      .select('formulation_id, concentration_value, concentration_unit, dosage_forms ( name )')
+      .in('formulation_id', refillFormulationIds)
+    if (currentError) {
+      console.error('[refill] formulations could not be read:', currentError.message)
+      return NextResponse.json(
+        { error: "Today's formulation details could not be read, so this refill cannot be sized. Nothing was changed — try again." },
+        { status: 503 },
+      )
+    }
+    for (const f of (current ?? []) as unknown as CurrentFormulation[]) currentByFormulation.set(f.formulation_id, f)
+  }
+
   // ── Packages, priced today ────────────────────────────────
   const formulationIds = rows.map(r => r.formulation_id).filter((id): id is string => !!id)
   const pharmacyIds = rows.map(r => r.pharmacy_id).filter((id): id is string => !!id)
@@ -200,7 +224,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const lines = rows.map(row => buildRefillLine(row, packagesByKey))
+  const lines = rows.map(row => buildRefillLine(row, packagesByKey, row.formulation_id ? currentByFormulation.get(row.formulation_id) ?? null : null))
 
   // A package that cannot be sized against the refill's dispense (an mg
   // vial with no concentration, a container-only "1 vial") is refused,
@@ -258,7 +282,14 @@ interface PharmacyFormulationRow {
 
 // ── One line ────────────────────────────────────────────────
 
-function buildRefillLine(row: SourceRow, packagesByKey: Map<string, PackageOption[]>) {
+interface CurrentFormulation {
+  formulation_id:      string
+  concentration_value: number | string | null
+  concentration_unit:  string | null
+  dosage_forms:        { name?: string | null } | Array<{ name?: string | null }> | null
+}
+
+function buildRefillLine(row: SourceRow, packagesByKey: Map<string, PackageOption[]>, current: CurrentFormulation | null) {
   const sourceRetailCents = row.retail_price_snapshot != null ? Math.round(row.retail_price_snapshot * 100) : 0
   const snap = row.medication_snapshot ?? {}
   const pharmacySnap = row.pharmacy_snapshot ?? {}
@@ -268,9 +299,17 @@ function buildRefillLine(row: SourceRow, packagesByKey: Map<string, PackageOptio
     : typeof snap['dose'] === 'string' ? snap['dose'] : ''
   const storedFrequency = typeof snap['frequency_code'] === 'string' ? snap['frequency_code'] : null
   const quantityLabel = typeof snap['quantity_label'] === 'string' ? snap['quantity_label'] : null
-  const concentrationValue = typeof snap['concentration_value'] === 'number' ? snap['concentration_value'] : null
-  const concentrationUnit = typeof snap['concentration_unit'] === 'string' ? snap['concentration_unit'] : null
-  const dosageFormName = typeof snap['form'] === 'string' ? snap['form'] : null
+  // Today's catalog first (see the handler); the snapshot only when the
+  // formulation is gone.
+  const currentForm = current
+    ? (Array.isArray(current.dosage_forms) ? current.dosage_forms[0]?.name : current.dosage_forms?.name) ?? null
+    : null
+  const currentConc = current?.concentration_value != null && Number.isFinite(Number(current.concentration_value))
+    ? Number(current.concentration_value)
+    : null
+  const concentrationValue = currentConc ?? (typeof snap['concentration_value'] === 'number' ? snap['concentration_value'] : null)
+  const concentrationUnit = (current?.concentration_unit ?? null) ?? (typeof snap['concentration_unit'] === 'string' ? snap['concentration_unit'] : null)
+  const dosageFormName = currentForm ?? (typeof snap['form'] === 'string' ? snap['form'] : null)
 
   // ── Titration → maintenance dose ────────────────────────
   const steps = row.sig_mode === 'titration' ? parseTitrationSteps(row.titration_steps) : []
