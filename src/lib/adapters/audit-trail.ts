@@ -146,16 +146,28 @@ export async function markSubmitted(
   // keys the row already has (e.g. config_id, api_version set at
   // createSubmissionRecord time). Re-read the current metadata, then
   // overlay phi_fingerprint.
-  const { data: existing } = await supabase
+  const { data: existing, error: readError } = await supabase
     .from('adapter_submissions')
     .select('metadata')
     .eq('submission_id', submissionId)
     .single()
 
-  const mergedMetadata: Record<string, unknown> = {
-    ...((existing?.metadata as Record<string, unknown> | null) ?? {}),
-    phi_fingerprint: fingerprint,
+  // On a failed re-read, leave metadata out of the update: merging over
+  // {} would replace the row's existing keys with just the fingerprint.
+  if (readError) {
+    console.error(
+      `[audit-trail] markSubmitted could not re-read metadata for submission ${submissionId}; metadata left unchanged:`,
+      readError.message
+    )
   }
+  const metadataUpdate = readError
+    ? {}
+    : {
+        metadata: {
+          ...((existing?.metadata as Record<string, unknown> | null) ?? {}),
+          phi_fingerprint: fingerprint,
+        } as Json,
+      }
 
   const { error } = await supabase
     .from('adapter_submissions')
@@ -163,7 +175,7 @@ export async function markSubmitted(
       status:          'SUBMITTED',
       submitted_at:    new Date().toISOString(),
       request_payload: redactedPayload as Json,
-      metadata:        mergedMetadata as Json,
+      ...metadataUpdate,
     })
     .eq('submission_id', submissionId)
 

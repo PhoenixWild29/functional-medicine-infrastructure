@@ -87,11 +87,18 @@ export async function POST(
   const signature = request.headers.get('x-webhook-signature') ?? ''
 
   // Step 3: Load per-pharmacy webhook secret from Vault (REQ-PWH-002)
-  const { data: apiConfig } = await supabase
+  const { data: apiConfig, error: apiConfigError } = await supabase
     .from('pharmacy_api_configs')
     .select('webhook_secret_vault_id')
     .eq('pharmacy_id', pharmacyId)
-    .single()
+    .maybeSingle()
+
+  // A failed read is temporary: 500 so the pharmacy retries. 403 is kept
+  // for "not configured", which a retry cannot fix.
+  if (apiConfigError) {
+    console.error(`[pharmacy-webhook] api config read failed for pharmacy ${pharmacySlug}:`, apiConfigError.message)
+    return NextResponse.json({ error: 'Temporarily unavailable' }, { status: 500 })
+  }
 
   if (!apiConfig?.webhook_secret_vault_id) {
     console.error(
@@ -102,11 +109,16 @@ export async function POST(
 
   // Decrypt secret via vault.decrypted_secrets view (service_role only)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: vaultRow } = await (supabase as any).schema('vault')
+  const { data: vaultRow, error: vaultError } = await (supabase as any).schema('vault')
     .from('decrypted_secrets')
     .select('decrypted_secret')
     .eq('id', apiConfig.webhook_secret_vault_id)
-    .single()
+    .maybeSingle()
+
+  if (vaultError) {
+    console.error(`[pharmacy-webhook] vault read failed for pharmacy ${pharmacySlug}:`, vaultError.message)
+    return NextResponse.json({ error: 'Temporarily unavailable' }, { status: 500 })
+  }
 
   if (!vaultRow?.decrypted_secret) {
     console.error(
@@ -212,7 +224,7 @@ export async function POST(
 
   // Step 8: Record outcome on pharmacy_webhook_events row
   if (internalEventRowId) {
-    await supabase
+    const { error: outcomeError } = await supabase
       .from('pharmacy_webhook_events')
       .update({
         processed_at: new Date().toISOString(),
@@ -220,6 +232,15 @@ export async function POST(
         ...(processingError ? { error: processingError } : {}),
       })
       .eq('id', internalEventRowId)
+
+    if (outcomeError) {
+      // Still 200: a retry would be skipped as a duplicate anyway.
+      console.error(
+        `[pharmacy-webhook] failed to record outcome for ${externalEventId} from ${pharmacySlug}:`,
+        outcomeError.message,
+        processingError ? `| processing error: ${processingError}` : ''
+      )
+    }
   }
 
   // Step 9: Always 200 — prevents pharmacy retry storms
@@ -287,22 +308,31 @@ async function resolveOrderByExternalRef(
 ): Promise<{ order_id: string; status: OrderStatus; clinic_id: string } | null> {
   const supabase = createServiceClient()
 
-  const { data: submission } = await supabase
+  // A failed read throws, so the event row records it; before, it was
+  // logged as "no order found" and the event was marked processed.
+  const { data: submission, error: submissionError } = await supabase
     .from('adapter_submissions')
     .select('order_id')
     .eq('external_reference_id', externalOrderId)
     .eq('pharmacy_id', pharmacyId)
     .order('created_at', { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
 
+  if (submissionError) {
+    throw new Error(`order for external ref ${externalOrderId} could not be read: ${submissionError.message}`)
+  }
   if (!submission?.order_id) return null
 
-  const { data: order } = await supabase
+  const { data: order, error: orderError } = await supabase
     .from('orders')
     .select('order_id, status, clinic_id')
     .eq('order_id', submission.order_id)
-    .single()
+    .maybeSingle()
+
+  if (orderError) {
+    throw new Error(`order ${submission.order_id} could not be read: ${orderError.message}`)
+  }
 
   return order as { order_id: string; status: OrderStatus; clinic_id: string } | null
 }

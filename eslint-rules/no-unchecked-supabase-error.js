@@ -264,13 +264,18 @@ module.exports = {
 
         if (all) {
           // const [a, { data: b }] = await Promise.all([q1, q2])
+          const elements = arg.arguments[0] && arg.arguments[0].type === 'ArrayExpression'
+            ? arg.arguments[0].elements
+            : []
+          const isQuery = el => !!el && (isSupabaseChain(el) || isSupabaseIdentifier(sourceCode, el))
           if (parent.type !== 'VariableDeclarator' || parent.id.type !== 'ArrayPattern') {
-            if (parent.type === 'ExpressionStatement') report(node)
+            // await Promise.all([q1, q2]) as a statement: only when some
+            // element is a Supabase call (helpers check their own errors).
+            if (parent.type === 'ExpressionStatement' && elements.some(isQuery)) report(node)
             return
           }
-          const elements = arg.arguments[0].elements
           elements.forEach((el, i) => {
-            if (!el || !(isSupabaseChain(el) || isSupabaseIdentifier(sourceCode, el))) return
+            if (!isQuery(el)) return
             const target = parent.id.elements[i]
             if (!target) return // skipped in the pattern: thrown away
             if (!patternChecksError(target)) report(node)

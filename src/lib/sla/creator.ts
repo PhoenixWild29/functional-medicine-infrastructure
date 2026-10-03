@@ -73,11 +73,20 @@ export interface CreateSlasParams {
 async function getPharmacyTimezone(pharmacyId: string): Promise<string> {
   const supabase = createServiceClient()
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('pharmacies')
     .select('timezone')
     .eq('pharmacy_id', pharmacyId)
     .maybeSingle()
+
+  if (error) {
+    // Business-hours SLAs fall back to Eastern, as for a pharmacy with no
+    // timezone set; a missing SLA would be worse than a shifted one.
+    console.error(
+      `[sla-creator] pharmacy ${pharmacyId} timezone could not be read; using America/New_York:`,
+      error.message
+    )
+  }
 
   return (data as { timezone?: string } | null)?.timezone ?? 'America/New_York'
 }

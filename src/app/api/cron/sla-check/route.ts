@@ -145,11 +145,17 @@ async function attemptCascadeToFax(
   const supabase = createServiceClient()
 
   // Step 1: Verify order is still in SUBMISSION_PENDING
-  const { data: order } = await supabase
+  const { data: order, error: orderError } = await supabase
     .from('orders')
     .select('status')
     .eq('order_id', orderId)
     .maybeSingle()
+
+  // A failed read is not "order moved on": throw, so the caller counts an
+  // error instead of escalating on data it never saw.
+  if (orderError) {
+    throw new Error(`cascade order read failed: ${orderError.message}`)
+  }
 
   if (!order || (order as { status: string }).status !== 'SUBMISSION_PENDING') {
     // Order already moved on — SLA will be auto-resolved on next state change
@@ -160,11 +166,16 @@ async function attemptCascadeToFax(
   }
 
   // Step 2: Mark cascade_attempted before making any changes
-  await supabase
+  const { error: guardError } = await supabase
     .from('order_sla_deadlines')
     .update({ cascade_attempted: true })
     .eq('order_id', orderId)
     .eq('sla_type', slaType as SlaTypeEnum)
+
+  // Without the guard a concurrent run could cascade the same order twice.
+  if (guardError) {
+    throw new Error(`cascade_attempted guard write failed: ${guardError.message}`)
+  }
 
   // Step 3: CAS SUBMISSION_PENDING → FAX_QUEUED
   try {
@@ -201,7 +212,7 @@ async function attemptCascadeToFax(
   await upsertFaxDeliverySla(orderId)
 
   // Step 6: Resolve the ADAPTER_SUBMISSION_ACK SLA
-  await supabase
+  const { error: resolveError } = await supabase
     .from('order_sla_deadlines')
     .update({
       resolved_at:      new Date().toISOString(),
@@ -210,6 +221,15 @@ async function attemptCascadeToFax(
     .eq('order_id', orderId)
     .eq('sla_type', slaType as SlaTypeEnum)
     .is('resolved_at', null)
+
+  if (resolveError) {
+    // The fax went out; the cascade succeeded. cascade_attempted keeps a
+    // second cascade from firing, so the unresolved SLA only escalates.
+    console.error(
+      `[sla-check] cascade succeeded but ADAPTER_SUBMISSION_ACK SLA not resolved | order=${orderId}:`,
+      resolveError.message
+    )
+  }
 
   console.info(`[sla-check] cascade succeeded | order=${orderId}`)
   return true
@@ -354,11 +374,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     // Fallback: secondary DB lookup if join data missing (e.g. schema mismatch)
     if (!orderStatus || !pharmacySlug) {
-      const { data: orderData } = await supabase
+      const { data: orderData, error: orderLookupError } = await supabase
         .from('orders')
         .select('status, pharmacy_id')
         .eq('order_id', orderId)
         .maybeSingle()
+
+      if (orderLookupError) {
+        console.error(`[sla-check] fallback order lookup failed | order=${orderId}:`, orderLookupError.message)
+        results.push({ orderId, slaType, outcome: 'error' })
+        continue
+      }
 
       orderStatus = (orderData as { status?: string } | null)?.status ?? ''
       // BLK-04 fix: assign fallback pharmacy_id so breach.pharmacy_id is populated
@@ -366,11 +392,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
       if (fallbackPharmacyId) {
         pharmacyId = fallbackPharmacyId
-        const { data: pharmData } = await supabase
+        const { data: pharmData, error: pharmLookupError } = await supabase
           .from('pharmacies')
           .select('slug, integration_tier')
           .eq('pharmacy_id', pharmacyId)
           .maybeSingle()
+
+        if (pharmLookupError) {
+          console.error(`[sla-check] fallback pharmacy lookup failed | order=${orderId}:`, pharmLookupError.message)
+          results.push({ orderId, slaType, outcome: 'error' })
+          continue
+        }
 
         pharmacySlug    = (pharmData as { slug?: string } | null)?.slug ?? ''
         integrationTier = (pharmData as { integration_tier?: string } | null)?.integration_tier ?? ''

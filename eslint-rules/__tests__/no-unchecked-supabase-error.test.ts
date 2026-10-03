@@ -61,6 +61,8 @@ tester.run('no-unchecked-supabase-error', rule, {
       filename: ROUTE,
       options: [{ baseline: [{ file: 'src/app/api/orders/route.ts', function: 'GET', line: "const { data } = await supabase.from('orders').select('*')", count: 1 }] }],
     },
+    // 14. Promise.all of plain helpers (each checks its own error) is not a Supabase call.
+    { code: wrap(`await Promise.all([upsertSla(supabase, id), notify(id)])`) },
   ],
 
   invalid: [
@@ -105,5 +107,7 @@ tester.run('no-unchecked-supabase-error', rule, {
       options: [{ baseline: [{ file: 'src/app/api/orders/route.ts', function: 'GET', line: "const { data } = await supabase.from('orders').select('*')", count: 1 }] }],
       errors: [{ messageId: 'unchecked', line: 4 }],
     },
+    // 15. Promise.all of Supabase writes, results thrown away.
+    { code: wrap(`await Promise.all([supabase.from('a').update({ x: 1 }).eq('id', id), supabase.from('b').delete().eq('id', id)])`), errors: [{ messageId: 'unchecked' }] },
   ],
 })

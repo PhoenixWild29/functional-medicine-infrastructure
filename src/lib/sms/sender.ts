@@ -271,11 +271,21 @@ export async function sendSms(params: SendSmsParams): Promise<SendSmsResult> {
   // Gate 3: dedup — skip if this template was already sent for this order
   // Prevents duplicate SMS on webhook replay or concurrent state transitions.
   const supabase = createServiceClient()
-  const { count: existingCount } = await supabase
+  const { count: existingCount, error: dedupError } = await supabase
     .from('sms_log')
     .select('sms_id', { count: 'exact', head: true })
     .eq('order_id', params.orderId)
     .eq('template_name', params.templateName)
+
+  // Fail closed: a failed count is not "never sent", and a patient getting
+  // the same SMS twice is worse than a retry on the next trigger.
+  if (dedupError) {
+    console.error(
+      `[sms-sender] dedup check failed | order=${params.orderId} | template=${params.templateName}:`,
+      dedupError.message
+    )
+    return { outcome: 'failed', reason: 'dedup_check_failed' }
+  }
 
   if ((existingCount ?? 0) > 0) {
     console.info(

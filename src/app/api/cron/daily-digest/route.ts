@@ -45,15 +45,25 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const metrics: Record<string, unknown> = { period_start: periodStartIso, ran_at: now.toISOString() }
 
+  // A metric whose read failed is reported as 'unavailable', never as 0 or
+  // "No errors": the digest must not say all is well when it could not look.
+  const unavailableMetrics: string[] = []
+  const unavailable = (key: string, error: { message: string }): string => {
+    console.error(`[daily-digest] ${key} could not be read:`, error.message)
+    unavailableMetrics.push(key)
+    return UNAVAILABLE
+  }
+
   // ─── M-01: Total webhook events processed ────────────────────────────────
-  const { count: totalEvents } = await supabase
+  const { count: totalEvents, error: m01Err } = await supabase
     .from('webhook_events')
     .select('*', { count: 'exact', head: true })
     .gte('created_at', periodStartIso)
   metrics.m01_total_webhook_events = totalEvents ?? 0
+  if (m01Err) metrics.m01_total_webhook_events = unavailable('m01_total_webhook_events', m01Err)
 
   // ─── M-02: Success rate by source ────────────────────────────────────────
-  const { data: eventsBySource } = await supabase
+  const { data: eventsBySource, error: m02Err } = await supabase
     .from('webhook_events')
     .select('source, processed_at, error')
     .gte('created_at', periodStartIso)
@@ -70,10 +80,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       s.total > 0 ? `${Math.round((s.success / s.total) * 100)}%` : 'N/A',
     ])
   )
+  if (m02Err) metrics.m02_success_rate_by_source = unavailable('m02_success_rate_by_source', m02Err)
 
   // ─── M-03: DLQ count by source ───────────────────────────────────────────
   // Filtered to period window — counts events that entered the DLQ in the last 24h.
-  const { data: dlqEvents } = await supabase
+  const { data: dlqEvents, error: m03Err } = await supabase
     .from('webhook_events')
     .select('source')
     .gte('created_at', periodStartIso)
@@ -85,10 +96,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     dlqBySource[ev.source] = (dlqBySource[ev.source] ?? 0) + 1
   }
   metrics.m03_dlq_count_by_source = dlqBySource
+  if (m03Err) metrics.m03_dlq_count_by_source = unavailable('m03_dlq_count_by_source', m03Err)
 
   // ─── M-04: Average processing time (created_at to processed_at) ──────────
   // Computed as avg seconds from created_at to processed_at for events in period
-  const { data: processedEvents } = await supabase
+  const { data: processedEvents, error: m04Err } = await supabase
     .from('webhook_events')
     .select('created_at, processed_at')
     .gte('created_at', periodStartIso)
@@ -104,23 +116,26 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     avgProcessingMs = Math.round(totalMs / processedEvents.length)
   }
   metrics.m04_avg_processing_ms = avgProcessingMs
+  if (m04Err) metrics.m04_avg_processing_ms = unavailable('m04_avg_processing_ms', m04Err)
 
   // ─── M-05: Dispute count ─────────────────────────────────────────────────
-  const { count: disputeCount } = await supabase
+  const { count: disputeCount, error: m05Err } = await supabase
     .from('disputes')
     .select('*', { count: 'exact', head: true })
     .gte('created_at', periodStartIso)
   metrics.m05_dispute_count = disputeCount ?? 0
+  if (m05Err) metrics.m05_dispute_count = unavailable('m05_dispute_count', m05Err)
 
   // ─── M-06: Transfer failure count ────────────────────────────────────────
-  const { count: transferFailCount } = await supabase
+  const { count: transferFailCount, error: m06Err } = await supabase
     .from('transfer_failures')
     .select('*', { count: 'exact', head: true })
     .gte('created_at', periodStartIso)
   metrics.m06_transfer_failure_count = transferFailCount ?? 0
+  if (m06Err) metrics.m06_transfer_failure_count = unavailable('m06_transfer_failure_count', m06Err)
 
   // ─── M-07: Adapter submission success rate ───────────────────────────────
-  const { data: submissions } = await supabase
+  const { data: submissions, error: m07Err } = await supabase
     .from('adapter_submissions')
     .select('status')
     .gte('created_at', periodStartIso)
@@ -130,16 +145,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   metrics.m07_adapter_submission_success_rate = submissionTotal > 0
     ? `${Math.round((submissionSuccess / submissionTotal) * 100)}%`
     : 'N/A'
+  if (m07Err) metrics.m07_adapter_submission_success_rate = unavailable('m07_adapter_submission_success_rate', m07Err)
 
   // ─── M-08: Fax delivery success rate ─────────────────────────────────────
-  const { count: faxDelivered } = await supabase
+  const { count: faxDelivered, error: m08aErr } = await supabase
     .from('webhook_events')
     .select('*', { count: 'exact', head: true })
     .eq('source', 'DOCUMO')
     .eq('event_type', 'fax.delivered')
     .gte('created_at', periodStartIso)
 
-  const { count: faxFailed } = await supabase
+  const { count: faxFailed, error: m08bErr } = await supabase
     .from('webhook_events')
     .select('*', { count: 'exact', head: true })
     .eq('source', 'DOCUMO')
@@ -150,9 +166,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   metrics.m08_fax_delivery_success_rate = faxTotal > 0
     ? `${Math.round(((faxDelivered ?? 0) / faxTotal) * 100)}%`
     : 'N/A'
+  const m08Err = m08bErr ?? m08aErr
+  if (m08Err) metrics.m08_fax_delivery_success_rate = unavailable('m08_fax_delivery_success_rate', m08Err)
 
   // ─── M-09: SMS delivery success rate ─────────────────────────────────────
-  const { data: smsRows } = await supabase
+  const { data: smsRows, error: m09Err } = await supabase
     .from('sms_log')
     .select('status')
     .gte('created_at', periodStartIso)
@@ -163,17 +181,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   metrics.m09_sms_delivery_success_rate = smsTotal > 0
     ? `${Math.round((smsDelivered / smsTotal) * 100)}%`
     : 'N/A'
+  if (m09Err) metrics.m09_sms_delivery_success_rate = unavailable('m09_sms_delivery_success_rate', m09Err)
 
   // ─── M-10: Unmatched inbound faxes ───────────────────────────────────────
-  const { count: unmatchedFaxes } = await supabase
+  const { count: unmatchedFaxes, error: m10Err } = await supabase
     .from('inbound_fax_queue')
     .select('*', { count: 'exact', head: true })
     .eq('status', 'UNMATCHED')
     .gte('created_at', periodStartIso)
   metrics.m10_unmatched_inbound_faxes = unmatchedFaxes ?? 0
+  if (m10Err) metrics.m10_unmatched_inbound_faxes = unavailable('m10_unmatched_inbound_faxes', m10Err)
 
   // ─── M-11: Top 5 error codes ─────────────────────────────────────────────
-  const { data: errorRows } = await supabase
+  const { data: errorRows, error: m11Err } = await supabase
     .from('webhook_events')
     .select('error')
     .gte('created_at', periodStartIso)
@@ -191,42 +211,47 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     .slice(0, 5)
     .map(([code, count]) => `${code} (${count})`)
   metrics.m11_top_error_codes = top5Errors
+  if (m11Err) metrics.m11_top_error_codes = unavailable('m11_top_error_codes', m11Err)
 
   // ─── M-12: Circuit breaker trips (adapter submissions FAILED this period) ──
-  const { count: circuitBreakerTrips } = await supabase
+  const { count: circuitBreakerTrips, error: m12Err } = await supabase
     .from('adapter_submissions')
     .select('*', { count: 'exact', head: true })
     .eq('status', 'FAILED')
     .gte('created_at', periodStartIso)
   metrics.m12_circuit_breaker_trips = circuitBreakerTrips ?? 0
+  if (m12Err) metrics.m12_circuit_breaker_trips = unavailable('m12_circuit_breaker_trips', m12Err)
 
   // ─── M-13: SLA breach count (escalated deadlines) ────────────────────────
-  const { count: slaBreaches } = await supabase
+  const { count: slaBreaches, error: m13Err } = await supabase
     .from('order_sla_deadlines')
     .select('*', { count: 'exact', head: true })
     .eq('escalated', true)
     .gte('escalated_at', periodStartIso)
   metrics.m13_sla_breach_count = slaBreaches ?? 0
+  if (m13Err) metrics.m13_sla_breach_count = unavailable('m13_sla_breach_count', m13Err)
 
   // ─── M-14: Payment expiry count ──────────────────────────────────────────
-  const { count: paymentExpiries } = await supabase
+  const { count: paymentExpiries, error: m14Err } = await supabase
     .from('webhook_events')
     .select('*', { count: 'exact', head: true })
     .eq('event_type', 'payment_intent.payment_failed')
     .gte('created_at', periodStartIso)
   // Supplement with orders that transitioned to PAYMENT_EXPIRED
   metrics.m14_payment_expiry_count = paymentExpiries ?? 0
+  if (m14Err) metrics.m14_payment_expiry_count = unavailable('m14_payment_expiry_count', m14Err)
 
   // ─── M-15: Catalog sync count (catalog.updated pharmacy webhooks) ─────────
-  const { count: catalogSyncs } = await supabase
+  const { count: catalogSyncs, error: m15Err } = await supabase
     .from('pharmacy_webhook_events')
     .select('*', { count: 'exact', head: true })
     .eq('event_type', 'catalog.updated')
     .gte('created_at', periodStartIso)
   metrics.m15_catalog_sync_count = catalogSyncs ?? 0
+  if (m15Err) metrics.m15_catalog_sync_count = unavailable('m15_catalog_sync_count', m15Err)
 
   // ─── M-16: Webhook retry count ───────────────────────────────────────────
-  const { data: retryData } = await supabase
+  const { data: retryData, error: m16Err } = await supabase
     .from('webhook_events')
     .select('retry_count')
     .gt('retry_count', 0)
@@ -234,9 +259,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const totalRetries = retryData?.reduce((sum, r) => sum + r.retry_count, 0) ?? 0
   metrics.m16_webhook_retry_count = totalRetries
+  if (m16Err) metrics.m16_webhook_retry_count = unavailable('m16_webhook_retry_count', m16Err)
 
   // ─── M-17: Processing failures by endpoint ───────────────────────────────
-  const { data: failuresBySource } = await supabase
+  const { data: failuresBySource, error: m17Err } = await supabase
     .from('webhook_events')
     .select('source, event_type')
     .not('error', 'is', null)
@@ -248,21 +274,31 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     failuresByEndpoint[key] = (failuresByEndpoint[key] ?? 0) + 1
   }
   metrics.m17_failures_by_endpoint = failuresByEndpoint
+  if (m17Err) metrics.m17_failures_by_endpoint = unavailable('m17_failures_by_endpoint', m17Err)
 
   // ─── Send daily digest to Slack ──────────────────────────────────────────
-  await sendSlackAlert(buildDailyDigestAlert(metrics)).catch(err =>
+  await sendSlackAlert(buildDailyDigestAlert(metrics, unavailableMetrics)).catch(err =>
     console.error('[daily-digest] failed to send digest:', err)
   )
 
-  console.info('[daily-digest] complete', { metrics_count: 17 })
-  return NextResponse.json({ status: 'ok', metrics }, { status: 200 })
+  console.info('[daily-digest] complete', { metrics_count: 17, unavailable: unavailableMetrics.length })
+  return NextResponse.json({ status: 'ok', metrics, unavailable_metrics: unavailableMetrics }, { status: 200 })
 }
 
 // ============================================================
 // DIGEST ALERT BUILDER
 // ============================================================
 
-function buildDailyDigestAlert(metrics: Record<string, unknown>): SlackAlertPayload {
+const UNAVAILABLE = 'unavailable'
+
+/** Renders a list-shaped metric, or says it could not be read. */
+function listOr(value: unknown, render: (v: never) => string, empty: string): string {
+  if (value === UNAVAILABLE) return '⚠️ could not be read'
+  const text = render(value as never)
+  return text.length > 0 ? text : empty
+}
+
+function buildDailyDigestAlert(metrics: Record<string, unknown>, unavailableMetrics: string[] = []): SlackAlertPayload {
   const date = new Date().toLocaleDateString('en-US', {
     timeZone: 'America/New_York',
     weekday: 'long',
@@ -270,8 +306,9 @@ function buildDailyDigestAlert(metrics: Record<string, unknown>): SlackAlertPayl
     day: 'numeric',
   })
 
-  const dlqTotal = Object.values(metrics.m03_dlq_count_by_source as Record<string, number>)
-    .reduce((sum, n) => sum + n, 0)
+  const dlqTotal = metrics.m03_dlq_count_by_source === UNAVAILABLE
+    ? UNAVAILABLE
+    : Object.values(metrics.m03_dlq_count_by_source as Record<string, number>).reduce((sum, n) => sum + n, 0)
 
   return {
     text: `CompoundIQ Daily Digest — ${date}`,
@@ -295,13 +332,11 @@ function buildDailyDigestAlert(metrics: Record<string, unknown>): SlackAlertPayl
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*Success Rate by Source (M-02):*\n${
-            Object.entries(metrics.m02_success_rate_by_source as Record<string, string>).length > 0
-              ? Object.entries(metrics.m02_success_rate_by_source as Record<string, string>)
-                  .map(([src, rate]) => `• ${src}: ${rate}`)
-                  .join('\n')
-              : '✅ No events'
-          }`,
+          text: `*Success Rate by Source (M-02):*\n${listOr(
+            metrics.m02_success_rate_by_source,
+            (rates: Record<string, string>) => Object.entries(rates).map(([src, rate]) => `• ${src}: ${rate}`).join('\n'),
+            '✅ No events',
+          )}`,
         },
       },
       {
@@ -326,28 +361,37 @@ function buildDailyDigestAlert(metrics: Record<string, unknown>): SlackAlertPayl
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*Top Error Codes:*\n${
-            (metrics.m11_top_error_codes as string[]).length > 0
-              ? (metrics.m11_top_error_codes as string[]).map(e => `• ${e}`).join('\n')
-              : '✅ No errors'
-          }`,
+          text: `*Top Error Codes:*\n${listOr(
+            metrics.m11_top_error_codes,
+            (codes: string[]) => codes.map(e => `• ${e}`).join('\n'),
+            '✅ No errors',
+          )}`,
         },
       },
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*Failures by Endpoint:*\n${
-            Object.keys(metrics.m17_failures_by_endpoint as Record<string, number>).length > 0
-              ? Object.entries(metrics.m17_failures_by_endpoint as Record<string, number>)
-                  .sort(([, a], [, b]) => b - a)
-                  .slice(0, 5)
-                  .map(([ep, n]) => `• ${ep}: ${n}`)
-                  .join('\n')
-              : '✅ No failures'
-          }`,
+          text: `*Failures by Endpoint:*\n${listOr(
+            metrics.m17_failures_by_endpoint,
+            (byEndpoint: Record<string, number>) => Object.entries(byEndpoint)
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, 5)
+              .map(([ep, n]) => `• ${ep}: ${n}`)
+              .join('\n'),
+            '✅ No failures',
+          )}`,
         },
       },
+      ...(unavailableMetrics.length > 0
+        ? [{
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: `*⚠️ ${unavailableMetrics.length} metric(s) could not be read:*\n${unavailableMetrics.map(k => `• ${k}`).join('\n')}`,
+            },
+          }]
+        : []),
     ],
   }
 }

@@ -95,21 +95,34 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     // Fallback lookup if join data missing
     if (!orderStatus || !pharmacySlug) {
-      const { data: orderData } = await supabase
+      const { data: orderData, error: orderLookupError } = await supabase
         .from('orders')
         .select('status, pharmacy_id')
         .eq('order_id', orderId)
         .maybeSingle()
 
+      // A failed lookup is an error, not a re-fire with a blank status.
+      if (orderLookupError) {
+        console.error(`[sla-refire] fallback order lookup failed | order=${orderId}:`, orderLookupError.message)
+        errors++
+        continue
+      }
+
       orderStatus = (orderData as { status?: string } | null)?.status ?? ''
       const pharmacyId = (orderData as { pharmacy_id?: string } | null)?.pharmacy_id
 
       if (pharmacyId) {
-        const { data: pharmData } = await supabase
+        const { data: pharmData, error: pharmLookupError } = await supabase
           .from('pharmacies')
           .select('slug, integration_tier')
           .eq('pharmacy_id', pharmacyId)
           .maybeSingle()
+
+        if (pharmLookupError) {
+          console.error(`[sla-refire] fallback pharmacy lookup failed | order=${orderId}:`, pharmLookupError.message)
+          errors++
+          continue
+        }
 
         pharmacySlug    = (pharmData as { slug?: string } | null)?.slug ?? ''
         integrationTier = (pharmData as { integration_tier?: string } | null)?.integration_tier ?? ''

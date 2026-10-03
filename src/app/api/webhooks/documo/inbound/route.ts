@@ -129,18 +129,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const internalFaxId = faxRow.fax_id
 
   // Step 5: Auto-match pharmacy by from_number
-  const matchedPharmacyId = await matchPharmacyByFaxNumber(fax.fromNumber)
+  const { pharmacyId: matchedPharmacyId, lookupFailed } = await matchPharmacyByFaxNumber(fax.fromNumber)
 
   // Step 6: Update matched status on the fax_queue row
   const newStatus = matchedPharmacyId ? 'MATCHED' : 'UNMATCHED'
 
-  await supabase
+  const { error: statusError } = await supabase
     .from('inbound_fax_queue')
     .update({
       status: newStatus,
       ...(matchedPharmacyId ? { matched_pharmacy_id: matchedPharmacyId } : {}),
     })
     .eq('fax_id', internalFaxId)
+
+  // Still 200 (a retry would be ignored as a duplicate): the ops alert says
+  // the row is still RECEIVED, so the fax is reviewed by hand.
+  if (statusError) {
+    console.error(`[documo-inbound] failed to save status ${newStatus} for fax_id=${internalFaxId}:`, statusError.message)
+  }
 
   // Step 7: Slack ops alert — all inbound faxes require manual ops review
   await sendSlackAlert(
@@ -151,6 +157,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       pages: fax.pages,
       status: newStatus,
       matchedPharmacyId,
+      statusSaved: !statusError,
+      lookupFailed,
     })
   ).catch(err =>
     console.error('[documo-inbound] failed to send inbound fax alert:', err)
@@ -180,20 +188,29 @@ export function DELETE() { return new NextResponse(null, { status: 405 }) }
  *
  * Returns the matched pharmacy_id or null if no match found.
  */
-async function matchPharmacyByFaxNumber(fromNumber: string): Promise<string | null> {
+async function matchPharmacyByFaxNumber(
+  fromNumber: string
+): Promise<{ pharmacyId: string | null; lookupFailed: boolean }> {
   const supabase = createServiceClient()
 
   // Normalize to E.164: strip non-digit chars, prepend +1 for 10-digit US numbers
   const normalized = normalizeFaxNumber(fromNumber)
 
-  const { data: pharmacy } = await supabase
+  const { data: pharmacy, error } = await supabase
     .from('pharmacies')
     .select('pharmacy_id')
     .eq('fax_number', normalized)
     .is('deleted_at', null)
-    .single()
+    .maybeSingle()
 
-  return pharmacy?.pharmacy_id ?? null
+  // A failed lookup (or two pharmacies sharing the number) leaves the fax
+  // UNMATCHED for manual review, and the alert says the match failed.
+  if (error) {
+    console.error(`[documo-inbound] pharmacy match lookup failed for ${normalized}:`, error.message)
+    return { pharmacyId: null, lookupFailed: true }
+  }
+
+  return { pharmacyId: pharmacy?.pharmacy_id ?? null, lookupFailed: false }
 }
 
 /**
@@ -224,11 +241,16 @@ function buildInboundFaxAlert(params: {
   pages: number
   status: 'MATCHED' | 'UNMATCHED'
   matchedPharmacyId: string | null
+  statusSaved?: boolean
+  lookupFailed?: boolean
 }): SlackAlertPayload {
-  const icon = params.status === 'MATCHED' ? '📠' : '⚠️'
-  const statusLabel = params.status === 'MATCHED'
+  const icon = params.status === 'MATCHED' && params.statusSaved !== false ? '📠' : '⚠️'
+  const statusLabel = (params.status === 'MATCHED'
     ? `MATCHED → pharmacy ${params.matchedPharmacyId}`
-    : 'UNMATCHED — manual review required'
+    : params.lookupFailed
+      ? 'UNMATCHED — pharmacy match could not be checked; manual review required'
+      : 'UNMATCHED — manual review required')
+    + (params.statusSaved === false ? ' (status was not saved; the queue row still says RECEIVED)' : '')
 
   return {
     text: `${icon} Inbound Fax Received`,
