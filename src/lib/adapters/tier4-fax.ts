@@ -121,11 +121,15 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
   const attemptNumber = (order.fax_attempt_count ?? 0) + 1
 
   // ── 2. Load pharmacy (fax_number required) ─────────────────
-  const { data: pharmacy } = await supabase
+  const { data: pharmacy, error: pharmacyError } = await supabase
     .from('pharmacies')
     .select('name, fax_number, slug')
     .eq('pharmacy_id', order.pharmacy_id!)
-    .single()
+    .maybeSingle()
+
+  if (pharmacyError) {
+    throw new Error(`[tier4-fax] pharmacy ${order.pharmacy_id} could not be read: ${pharmacyError.message}`)
+  }
 
   if (!pharmacy?.fax_number) {
     throw new Error(
@@ -134,29 +138,38 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
   }
 
   // ── 3. Load clinic ─────────────────────────────────────────
-  const { data: clinic } = await supabase
+  // A failed read would print the "CompoundIQ Clinic" fallback on the Rx.
+  const { data: clinic, error: clinicError } = await supabase
     .from('clinics')
     .select('name')
     .eq('clinic_id', order.clinic_id)
-    .single()
+    .maybeSingle()
+
+  if (clinicError) {
+    throw new Error(`[tier4-fax] clinic ${order.clinic_id} could not be read: ${clinicError.message}`)
+  }
 
   // ── 4. Load provider ───────────────────────────────────────
-  const { data: provider } = await supabase
+  const { data: provider, error: providerError } = await supabase
     .from('providers')
     .select('first_name, last_name, npi_number, dea_number, license_state')
     .eq('provider_id', order.provider_id!)
-    .single()
+    .maybeSingle()
+
+  if (providerError) {
+    throw new Error(`[tier4-fax] provider ${order.provider_id} could not be read: ${providerError.message}`)
+  }
 
   if (!provider) {
     throw new Error(`[tier4-fax] provider ${order.provider_id} not found`)
   }
 
   // ── 5. Load patient ────────────────────────────────────────
-  const { data: patient } = await (supabase
+  const { data: patient, error: patientError } = await (supabase
     .from('patients')
     .select('first_name, last_name, date_of_birth, address_line1, address_line2, city, state, zip, allergies, nkda')
     .eq('patient_id', order.patient_id)
-    .single() as unknown as Promise<{
+    .maybeSingle() as unknown as Promise<{
       data: {
         first_name: string
         last_name: string
@@ -172,6 +185,10 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
       } | null
       error: Error | null
     }>)
+
+  if (patientError) {
+    throw new Error(`[tier4-fax] patient ${order.patient_id} could not be read: ${patientError.message}`)
+  }
 
   if (!patient) {
     throw new Error(`[tier4-fax] patient ${order.patient_id} not found`)

@@ -262,17 +262,23 @@ export async function submitTier2Portal(
     )
   }
 
-  const { data: patient } = await supabase
+  const { data: patient, error: patientError } = await supabase
     .from('patients')
     .select('first_name, last_name, date_of_birth, address_line1, address_line2, city, state, zip, allergies, nkda')
     .eq('patient_id', order.patient_id)
-    .single()
+    .maybeSingle()
+  if (patientError) {
+    throw new Error(`[tier2-portal] patient ${order.patient_id} could not be read: ${patientError.message}`)
+  }
 
-  const { data: provider } = await supabase
+  const { data: provider, error: providerError } = await supabase
     .from('providers')
     .select('first_name, last_name, npi_number, dea_number')
     .eq('provider_id', order.provider_id!)
-    .single()
+    .maybeSingle()
+  if (providerError) {
+    throw new Error(`[tier2-portal] provider ${order.provider_id} could not be read: ${providerError.message}`)
+  }
 
   if (!patient || !provider) {
     throw new Error(`[tier2-portal] patient or provider not found for order ${orderId}`)

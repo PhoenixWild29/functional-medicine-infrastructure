@@ -164,12 +164,17 @@ async function handleSmsFailureFallback(params: SmsFailureParams): Promise<void>
   const supabase = createServiceClient()
 
   // (a) In-app MA alert — requires order to resolve clinic_id
+  let clinicNotified = false
   if (orderId) {
-    const { data: order } = await supabase
+    const { data: order, error: orderError } = await supabase
       .from('orders')
       .select('clinic_id')
       .eq('order_id', orderId)
-      .single()
+      .maybeSingle()
+
+    if (orderError) {
+      console.error(`[twilio-webhook] order read failed; clinic not notified | order=${orderId}:`, orderError.message)
+    }
 
     if (order?.clinic_id) {
       const { error: notifErr } = await supabase
@@ -181,6 +186,7 @@ async function handleSmsFailureFallback(params: SmsFailureParams): Promise<void>
           message: `SMS delivery ${messageStatus} for order ${orderId}. Template: ${templateName}. Error code: ${errorCode ?? 'N/A'}. Please contact patient directly to ensure they received their ${templateName === 'payment_link' ? 'payment link' : 'notification'}.`,
         })
       if (notifErr) console.error('[twilio-webhook] failed to insert clinic_notification:', notifErr)
+      else clinicNotified = true
     }
   }
 
@@ -188,13 +194,15 @@ async function handleSmsFailureFallback(params: SmsFailureParams): Promise<void>
   // Email delivery implementation is Out of Scope (FRD 5 email service integration).
   // Intent is logged here; email service will consume from clinic_notifications.
   if (patientId && templateName === 'payment_link') {
-    const { data: patient } = await supabase
+    const { data: patient, error: patientError } = await supabase
       .from('patients')
       .select('email')
       .eq('patient_id', patientId)
-      .single()
+      .maybeSingle()
 
-    if (patient?.email) {
+    if (patientError) {
+      console.error(`[twilio-webhook] patient email read failed | patient=${patientId}:`, patientError.message)
+    } else if (patient?.email) {
       // Patient has email on file — email fallback is eligible.
       // FRD 5 email service will process the clinic_notifications row above
       // and send the payment link via email.
@@ -211,7 +219,7 @@ async function handleSmsFailureFallback(params: SmsFailureParams): Promise<void>
   // (c) Slack ops alert
   if (orderId) {
     await sendSlackAlert(
-      buildSmsFailureAlert({ orderId, templateName, messageStatus, errorCode, messageSid })
+      buildSmsFailureAlert({ orderId, templateName, messageStatus, errorCode, messageSid, clinicNotified })
     ).catch(err =>
       console.error('[twilio-webhook] failed to send SMS failure Slack alert:', err)
     )
@@ -228,6 +236,7 @@ function buildSmsFailureAlert(params: {
   messageStatus: string
   errorCode: string | null
   messageSid: string
+  clinicNotified?: boolean
 }): SlackAlertPayload {
   return {
     text: `SMS Delivery Failed — Order ${params.orderId}`,
@@ -245,6 +254,9 @@ function buildSmsFailureAlert(params: {
           { type: 'mrkdwn', text: `*Twilio Error:*\n${params.errorCode ?? 'none'}` },
         ],
       },
+      ...(params.clinicNotified === false
+        ? [{ type: 'section' as const, text: { type: 'mrkdwn' as const, text: '⚠️ The clinic was not notified in-app. Contact the clinic directly.' } }]
+        : []),
     ],
   }
 }

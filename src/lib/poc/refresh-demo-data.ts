@@ -340,11 +340,12 @@ export async function ensureDemoScaffolding(
 ): Promise<DemoDataRefreshReport['scaffolding']> {
   try {
     // ── Clinic ───────────────────────────────────────────────
-    const { data: clinic } = await supabase
+    const { data: clinic, error: clinicReadError } = await supabase
       .from('clinics')
       .select('clinic_id')
       .eq('clinic_id', DEMO_CLINIC_ID)
       .maybeSingle()
+    if (clinicReadError) return { action: 'error', error: `clinic read: ${clinicReadError.message}` }
 
     if (!clinic) {
       const { error } = await supabase.from('clinics').insert({
@@ -360,11 +361,12 @@ export async function ensureDemoScaffolding(
     }
 
     // ── Patient ──────────────────────────────────────────────
-    const { data: patient } = await supabase
+    const { data: patient, error: patientReadError } = await supabase
       .from('patients')
       .select('patient_id')
       .eq('patient_id', DEMO_PATIENT_ID)
       .maybeSingle()
+    if (patientReadError) return { action: 'error', error: `patient read: ${patientReadError.message}` }
 
     if (!patient) {
       const { error } = await supabase.from('patients').insert({
@@ -383,11 +385,12 @@ export async function ensureDemoScaffolding(
     }
 
     // ── Provider ─────────────────────────────────────────────
-    const { data: provider } = await supabase
+    const { data: provider, error: providerReadError } = await supabase
       .from('providers')
       .select('provider_id')
       .eq('provider_id', DEMO_PROVIDER_ID)
       .maybeSingle()
+    if (providerReadError) return { action: 'error', error: `provider read: ${providerReadError.message}` }
 
     if (!provider) {
       const { error } = await supabase.from('providers').insert({
@@ -409,11 +412,12 @@ export async function ensureDemoScaffolding(
     // submission. Status PHARMACY_ACKNOWLEDGED = "in flight, not
     // at a terminal state" — won't be picked up by any
     // post-payment cron automation.
-    const { data: order } = await supabase
+    const { data: order, error: orderReadError } = await supabase
       .from('orders')
       .select('order_id')
       .eq('order_id', DEMO_ORDER_ID)
       .maybeSingle()
+    if (orderReadError) return { action: 'error', error: `order read: ${orderReadError.message}` }
 
     if (!order) {
       const { error } = await supabase.from('orders').insert({
@@ -462,11 +466,12 @@ export async function ensureDemoScaffolding(
     ]
 
     for (const co of CROSS_TIER_ORDERS) {
-      const { data: existing } = await supabase
+      const { data: existing, error: readError } = await supabase
         .from('orders')
         .select('order_id')
         .eq('order_id', co.id)
         .maybeSingle()
+      if (readError) return { action: 'error', error: `cross-tier order ${co.submission_tier} read: ${readError.message}` }
       if (existing) continue
       const { error } = await supabase.from('orders').insert({
         order_id:        co.id,
@@ -513,11 +518,12 @@ export async function ensureDemoScaffolding(
       const tz = PHARMACY_TIMEZONES[i]!
 
       // Primary-key lookup.
-      const { data: byId } = await supabase
+      const { data: byId, error: byIdError } = await supabase
         .from('pharmacies')
         .select('pharmacy_id')
         .eq('pharmacy_id', p.id)
         .maybeSingle()
+      if (byIdError) return { action: 'error', error: `pharmacy '${p.slug}' read: ${byIdError.message}` }
 
       if (byId) continue
 
@@ -527,11 +533,12 @@ export async function ensureDemoScaffolding(
       // already owns our slug (e.g., a hand-inserted test row). On
       // a collision we prefer to leave the existing row in place
       // and let the user resolve it manually rather than crash.
-      const { data: bySlug } = await supabase
+      const { data: bySlug, error: bySlugError } = await supabase
         .from('pharmacies')
         .select('pharmacy_id, slug')
         .eq('slug', p.slug)
         .maybeSingle()
+      if (bySlugError) return { action: 'error', error: `pharmacy '${p.slug}' slug read: ${bySlugError.message}` }
 
       if (bySlug) {
         // Log-shape: include the conflicting pharmacy_id so an

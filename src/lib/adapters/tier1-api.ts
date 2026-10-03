@@ -80,12 +80,17 @@ async function checkRateLimits(
 
   if (rateLimitRpm) {
     const windowStart = new Date(Date.now() - 60_000).toISOString()
-    const { count } = await supabase
+    const { count, error } = await supabase
       .from('adapter_submissions')
       .select('*', { count: 'exact', head: true })
       .eq('pharmacy_id', pharmacyId)
       .eq('tier', tier)
       .gte('created_at', windowStart)
+
+    // A failed count is not 0: refuse rather than exceed the pharmacy's limit.
+    if (error) {
+      throw new Error(`[tier1-api] rate limit could not be checked: ${error.message}`)
+    }
 
     if ((count ?? 0) >= rateLimitRpm) {
       throw new Error(
@@ -95,12 +100,16 @@ async function checkRateLimits(
   }
 
   if (rateLimitConcurrent) {
-    const { count } = await supabase
+    const { count, error } = await supabase
       .from('adapter_submissions')
       .select('*', { count: 'exact', head: true })
       .eq('pharmacy_id', pharmacyId)
       .eq('tier', tier)
       .in('status', ['PENDING', 'SUBMITTED'])
+
+    if (error) {
+      throw new Error(`[tier1-api] rate limit could not be checked: ${error.message}`)
+    }
 
     if ((count ?? 0) >= rateLimitConcurrent) {
       throw new Error(
@@ -158,11 +167,15 @@ export async function submitTier1Api(
 
   // Verify pharmacy is Tier 1 capable (config record existence implies this,
   // but guard against stale data)
-  const { data: pharmacy } = await supabase
+  const { data: pharmacy, error: pharmacyError } = await supabase
     .from('pharmacies')
     .select('integration_tier')
     .eq('pharmacy_id', pharmacyId)
-    .single()
+    .maybeSingle()
+
+  if (pharmacyError) {
+    throw new Error(`[tier1-api] pharmacy ${pharmacyId} could not be read: ${pharmacyError.message}`)
+  }
 
   // BLK-01: TIER_3_SPEC pharmacies share this adapter (AC-SPC-002.3).
   // Both TIER_1_API and TIER_3_SPEC are valid; reject any other tier.
@@ -231,23 +244,33 @@ export async function submitTier1Api(
     )
   }
 
-  const { data: provider } = await supabase
+  const { data: provider, error: providerError } = await supabase
     .from('providers')
     .select('first_name, last_name, npi_number, dea_number, license_state')
     .eq('provider_id', order.provider_id!)
-    .single()
+    .maybeSingle()
+  if (providerError) {
+    throw new Error(`[tier1-api] provider ${order.provider_id} could not be read: ${providerError.message}`)
+  }
 
-  const { data: patient } = await supabase
+  const { data: patient, error: patientError } = await supabase
     .from('patients')
     .select('first_name, last_name, date_of_birth, address_line1, address_line2, city, state, zip, allergies, nkda')
     .eq('patient_id', order.patient_id)
-    .single()
+    .maybeSingle()
+  if (patientError) {
+    throw new Error(`[tier1-api] patient ${order.patient_id} could not be read: ${patientError.message}`)
+  }
 
-  const { data: clinic } = await supabase
+  // A failed read would put the "CompoundIQ Clinic" fallback on the Rx.
+  const { data: clinic, error: clinicError } = await supabase
     .from('clinics')
     .select('name')
     .eq('clinic_id', order.clinic_id)
-    .single()
+    .maybeSingle()
+  if (clinicError) {
+    throw new Error(`[tier1-api] clinic ${order.clinic_id} could not be read: ${clinicError.message}`)
+  }
 
   if (!provider || !patient) {
     throw new Error(`[tier1-api] provider or patient not found for order ${orderId}`)

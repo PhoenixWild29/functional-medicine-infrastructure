@@ -105,11 +105,18 @@ async function getCircuitBreakerRow(
 ): Promise<CircuitBreakerRow | null> {
   const supabase = createServiceClient()
 
-  const { data: row } = await supabase
+  const { data: row, error } = await supabase
     .from('circuit_breaker_state')
     .select('*')
     .eq('pharmacy_id', pharmacyId)
     .maybeSingle()
+
+  // A failed read is not a CLOSED circuit: stop rather than submit blind.
+  if (error) {
+    throw new Error(
+      `[routing-engine] circuit breaker state for pharmacy ${pharmacyId} could not be read: ${error.message}`
+    )
+  }
 
   return row as CircuitBreakerRow | null
 }
@@ -162,7 +169,7 @@ async function resolveCircuitBreakerState(
 async function recordCircuitSuccess(pharmacyId: string): Promise<void> {
   const supabase = createServiceClient()
 
-  await supabase
+  const { error } = await supabase
     .from('circuit_breaker_state')
     .upsert(
       {
@@ -176,6 +183,15 @@ async function recordCircuitSuccess(pharmacyId: string): Promise<void> {
       },
       { onConflict: 'pharmacy_id' }
     )
+
+  if (error) {
+    // The submission already succeeded; a stale failure count only makes
+    // the breaker trip sooner. Log it, don't fail the submission.
+    console.error(
+      `[routing-engine] failed to reset circuit to CLOSED for pharmacy=${pharmacyId}:`,
+      error.message
+    )
+  }
 }
 
 /**
@@ -276,12 +292,16 @@ async function loadPharmacy(pharmacyId: string): Promise<{
   const supabase = createServiceClient()
 
   // NB-04: use maybeSingle() so a missing pharmacy returns null (not a throw)
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('pharmacies')
     .select('integration_tier, name, slug')
     .eq('pharmacy_id', pharmacyId)
     .eq('is_active', true)
     .maybeSingle()
+
+  if (error) {
+    throw new Error(`[routing-engine] pharmacy ${pharmacyId} could not be read: ${error.message}`)
+  }
 
   return data as { integration_tier: IntegrationTier; name: string; slug: string } | null
 }

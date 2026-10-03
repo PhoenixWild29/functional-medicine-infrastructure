@@ -139,7 +139,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Step 6: Record outcome — include resolved order_id and any processing error
   if (internalEventRowId) {
-    await supabase
+    const { error: outcomeError } = await supabase
       .from('webhook_events')
       .update({
         processed_at: new Date().toISOString(),
@@ -147,6 +147,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ...(processingError ? { error: processingError } : {}),
       })
       .eq('event_id', internalEventRowId)
+
+    if (outcomeError) {
+      // Still 200: a retry would be skipped as a duplicate anyway.
+      console.error(
+        `[documo-webhook] failed to record outcome for ${externalEventId}:`,
+        outcomeError.message,
+        processingError ? `| processing error: ${processingError}` : ''
+      )
+    }
   }
 
   // Step 7: Respond 200 — always, to prevent Documo retry storms
@@ -225,18 +234,23 @@ async function handleFaxDelivered(fax: DocumoFaxData): Promise<string | null> {
     return order.order_id
   }
 
-  // Resolve FAX_DELIVERY SLA deadline
-  await supabase
+  // Resolve FAX_DELIVERY SLA deadline. A failure throws, so the event row
+  // records it (the order has already moved to FAX_DELIVERED).
+  const { error: resolveError } = await supabase
     .from('order_sla_deadlines')
     .update({ resolved_at: new Date().toISOString() })
     .eq('order_id', order.order_id)
     .eq('sla_type', 'FAX_DELIVERY')
     .is('resolved_at', null)
 
+  if (resolveError) {
+    throw new Error(`order ${order.order_id} FAX_DELIVERED, but the FAX_DELIVERY SLA was not resolved: ${resolveError.message}`)
+  }
+
   // Create PHARMACY_ACKNOWLEDGE SLA — 4 hours from delivery
   // ON CONFLICT DO NOTHING: safe for duplicate fax.delivered events
   const pharmacyAckDeadline = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
-  await supabase
+  const { error: ackSlaError } = await supabase
     .from('order_sla_deadlines')
     .upsert(
       {
@@ -248,6 +262,10 @@ async function handleFaxDelivered(fax: DocumoFaxData): Promise<string | null> {
       },
       { onConflict: 'order_id,sla_type', ignoreDuplicates: true }
     )
+
+  if (ackSlaError) {
+    throw new Error(`order ${order.order_id} FAX_DELIVERED, but the PHARMACY_ACKNOWLEDGE SLA was not created: ${ackSlaError.message}`)
+  }
 
   console.info(
     `[documo-webhook] fax delivered | order=${order.order_id} | pharmacy_ack_deadline=${pharmacyAckDeadline}`
@@ -282,11 +300,17 @@ async function handleFaxFailed(fax: DocumoFaxData): Promise<string | null> {
   }
 
   // Count prior fax.failed events for this order (excludes current event — order_id still null)
-  const { count: priorFailures } = await supabase
+  const { count: priorFailures, error: countError } = await supabase
     .from('webhook_events')
     .select('*', { count: 'exact', head: true })
     .eq('order_id', order.order_id)
     .eq('event_type', 'fax.failed')
+
+  // A failed count is not 0: reading it as 0 means the third failure never
+  // moves the order to FAX_FAILED. Throw, so the event row records it.
+  if (countError) {
+    throw new Error(`prior fax.failed count for order ${order.order_id} could not be read: ${countError.message}`)
+  }
 
   const failureCount = (priorFailures ?? 0) + 1 // this delivery is the Nth failure
 
@@ -312,11 +336,16 @@ async function handleFaxFailed(fax: DocumoFaxData): Promise<string | null> {
   }
 
   // Fetch pharmacy slug for Slack alert
-  const { data: pharmacy } = await supabase
+  const { data: pharmacy, error: pharmacyError } = await supabase
     .from('pharmacies')
     .select('slug')
     .eq('pharmacy_id', order.pharmacy_id!)
-    .single()
+    .maybeSingle()
+
+  if (pharmacyError) {
+    // Alert context only: the alert still fires, with the pharmacy_id.
+    console.error(`[documo-webhook] pharmacy slug read failed | order=${order.order_id}:`, pharmacyError.message)
+  }
 
   // Alert ops — manual intervention required (re-route or contact pharmacy)
   await sendSlackAlert(

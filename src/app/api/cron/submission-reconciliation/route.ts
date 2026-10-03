@@ -59,10 +59,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     // Fetch pharmacy slugs for alert context (batch)
     const pharmacyIds = [...new Set(orphans.map(o => o.pharmacy_id))]
-    const { data: pharmacies } = await supabase
+    const { data: pharmacies, error: pharmaciesError } = await supabase
       .from('pharmacies')
       .select('pharmacy_id, slug')
       .in('pharmacy_id', pharmacyIds)
+
+    // Slugs are only alert context: report the failure, alert with the id.
+    if (pharmaciesError) {
+      console.error('[reconciliation-cron] failed to read pharmacy slugs:', pharmaciesError.message)
+      errors.push(`pharmacy slugs: ${pharmaciesError.message}`)
+    }
 
     const pharmacySlugMap = new Map(pharmacies?.map(p => [p.pharmacy_id, p.slug]) ?? [])
 
@@ -119,12 +125,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         // Optimistic claim: atomically mark sent_at only if it is still null.
         // If a concurrent cron run already claimed this alert, the update
         // matches 0 rows and we skip — prevents double-sending.
-        const { data: claimed } = await supabase
+        const { data: claimed, error: claimError } = await supabase
           .from('ops_alert_queue')
           .update({ sent_at: new Date().toISOString() })
           .eq('alert_id', alert.alert_id)
           .is('sent_at', null)
           .select('alert_id')
+
+        // Unclaimed: not sent now, still queued for the next run.
+        if (claimError) {
+          console.error(`[reconciliation-cron] failed to claim alert ${alert.alert_id}:`, claimError.message)
+          errors.push(`alert ${alert.alert_id} claim: ${claimError.message}`)
+          continue
+        }
 
         if (!claimed || claimed.length === 0) {
           // Already claimed by a concurrent cron run — skip

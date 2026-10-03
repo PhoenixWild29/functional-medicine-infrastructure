@@ -79,18 +79,27 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     newStatus?: string
     reason?: string
   }[] = []
+  // Poll-time writes that failed: the throttle then re-polls this order early.
+  let writeErrors = 0
 
   for (const submission of candidates ?? []) {
     const { submission_id: submissionId, order_id: orderId, pharmacy_id: pharmacyId } = submission
 
     try {
       // Load portal config + status_check_flow
-      const { data: config } = await supabase
+      const { data: config, error: configError } = await supabase
         .from('pharmacy_portal_configs')
         .select('status_check_flow, username_vault_id, password_vault_id, poll_interval_minutes')
         .eq('pharmacy_id', pharmacyId)
         .eq('is_active', true)
-        .single()
+        .maybeSingle()
+
+      // A failed read is an error, not "this pharmacy has no status flow".
+      if (configError) {
+        console.error(`[portal-status-poll] config read failed | order=${orderId}:`, configError.message)
+        results.push({ orderId, outcome: 'error', reason: 'config_read_failed' })
+        continue
+      }
 
       if (!config?.status_check_flow) {
         results.push({ orderId, outcome: 'skipped', reason: 'no_status_check_flow' })
@@ -132,10 +141,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         const mappedStatus = rawStatus ? mapPortalStatus(rawStatus) : null
 
         // BUG-02: Update portal_last_polled_at after every poll attempt
-        await supabase
+        const { error: polledAtError } = await supabase
           .from('adapter_submissions')
           .update({ portal_last_polled_at: new Date().toISOString() })
           .eq('submission_id', submissionId)
+
+        if (polledAtError) {
+          writeErrors++
+          console.error(
+            `[portal-status-poll] portal_last_polled_at write failed | submission=${submissionId}:`,
+            polledAtError.message
+          )
+        }
 
         if (!mappedStatus) {
           // NB-05: do NOT include rawStatus in reason — portal getText may contain PHI
@@ -144,11 +161,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         }
 
         // Check current order status before transitioning
-        const { data: currentOrder } = await supabase
+        const { data: currentOrder, error: currentOrderError } = await supabase
           .from('orders')
           .select('status')
           .eq('order_id', orderId)
           .single()
+
+        if (currentOrderError || !currentOrder) {
+          throw new Error(`order status could not be read: ${currentOrderError?.message ?? 'not found'}`)
+        }
 
         if (currentOrder?.status === mappedStatus) {
           results.push({ orderId, outcome: 'no_change' })
@@ -159,7 +180,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         // the order state machine and prevent invalid transitions.
         const casResult = await casTransition({
           orderId,
-          expectedStatus: currentOrder!.status,
+          expectedStatus: currentOrder.status,
           newStatus:      mappedStatus as OrderStatusEnum,
           actor:          'portal_status_poll',
           metadata:       { poll_source: 'status_check_flow' },
@@ -171,7 +192,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         }
 
         console.info(
-          `[portal-status-poll] status_updated | order=${orderId} | ${currentOrder?.status} → ${mappedStatus}`
+          `[portal-status-poll] status_updated | order=${orderId} | ${currentOrder.status} → ${mappedStatus}`
         )
         results.push({ orderId, outcome: 'status_updated', newStatus: mappedStatus })
 
@@ -193,6 +214,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     no_change:      results.filter(r => r.outcome === 'no_change').length,
     skipped:        results.filter(r => r.outcome === 'skipped').length,
     errors:         results.filter(r => r.outcome === 'error').length,
+    write_errors:   writeErrors,
   }
 
   console.info('[portal-status-poll] complete', summary)
