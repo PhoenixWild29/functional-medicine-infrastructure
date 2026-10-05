@@ -33,15 +33,39 @@ import {
 } from '@/lib/orders/favorite-presets'
 import { parseTitrationSteps } from '@/lib/orders/titration'
 import { cycleLengthFrom, cyclePatternFrom } from '@/lib/orders/cycling'
+import { isNoRows } from '@/lib/supabase/no-rows'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
+/**
+ * A lookup the route depends on failed. Thrown by the helpers below and
+ * turned into a 500 by `failLoud`, so a failed read is never mistaken
+ * for "not in clinic", "not found" or the default category.
+ */
+class FavoritesReadError extends Error {}
+
+function readFailed(what: string, error: { message: string }): never {
+  console.error(`[favorites] ${what} could not be read:`, error.message)
+  throw new FavoritesReadError(what)
+}
+
+/** Runs a handler; a FavoritesReadError becomes a 500 with a safe message. */
+async function failLoud(handler: () => Promise<NextResponse>): Promise<NextResponse> {
+  try {
+    return await handler()
+  } catch (err) {
+    if (!(err instanceof FavoritesReadError)) throw err
+    return NextResponse.json({ error: 'Favorites could not be loaded or saved. Nothing was changed — try again.' }, { status: 500 })
+  }
+}
+
 async function getClinicProviderIds(clinicId: string): Promise<string[]> {
   const supabase = createServiceClient()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('providers')
     .select('provider_id')
     .eq('clinic_id', clinicId)
+  if (error) readFailed('clinic providers', error)
   return data?.map(p => p.provider_id) ?? []
 }
 
@@ -57,12 +81,13 @@ async function callerClinic(): Promise<{ clinicId: string } | { response: NextRe
 
 /** A patient may only be pinned when they belong to the caller's clinic. */
 async function patientInClinic(supabase: ServiceClient, patientId: string, clinicId: string): Promise<boolean> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('patients')
     .select('patient_id')
     .eq('patient_id', patientId)
     .eq('clinic_id', clinicId)
     .maybeSingle()
+  if (error) readFailed('patient', error)
   return !!data
 }
 
@@ -76,36 +101,40 @@ async function patientInClinic(supabase: ServiceClient, patientId: string, clini
  * PostgREST refuses `formulations → salt_forms` as ambiguous.
  */
 async function categoryForFormulation(supabase: ServiceClient, formulationId: string): Promise<string> {
-  const { data: formulation } = await supabase
+  const { data: formulation, error: formulationError } = await supabase
     .from('formulations')
     .select('salt_form_id')
     .eq('formulation_id', formulationId)
     .maybeSingle()
+  if (formulationError) readFailed('formulation', formulationError)
 
   let ingredientId: string | null = null
   if (formulation?.salt_form_id) {
-    const { data: saltForm } = await supabase
+    const { data: saltForm, error: saltFormError } = await supabase
       .from('salt_forms')
       .select('ingredient_id')
       .eq('salt_form_id', formulation.salt_form_id)
       .maybeSingle()
+    if (saltFormError) readFailed('salt form', saltFormError)
     ingredientId = saltForm?.ingredient_id ?? null
   }
   if (!ingredientId) {
-    const { data: parts } = await supabase
+    const { data: parts, error: partsError } = await supabase
       .from('formulation_ingredients')
       .select('ingredient_id, role')
       .eq('formulation_id', formulationId)
+    if (partsError) readFailed('formulation ingredients', partsError)
     const sorted = [...(parts ?? [])].sort((a, b) => Number(b.role === 'primary') - Number(a.role === 'primary'))
     ingredientId = sorted[0]?.ingredient_id ?? null
   }
   if (!ingredientId) return favoriteCategory(null)
 
-  const { data: ingredient } = await supabase
+  const { data: ingredient, error: ingredientError } = await supabase
     .from('ingredients')
     .select('therapeutic_category')
     .eq('ingredient_id', ingredientId)
     .maybeSingle()
+  if (ingredientError) readFailed('ingredient', ingredientError)
   return favoriteCategory(ingredient?.therapeutic_category ?? null)
 }
 
@@ -128,6 +157,10 @@ function isFormulationLive(f: unknown): boolean {
 }
 
 export async function GET(req: NextRequest) {
+  return failLoud(() => getFavorites(req))
+}
+
+async function getFavorites(req: NextRequest): Promise<NextResponse> {
   const caller = await callerClinic()
   if ('response' in caller) return caller.response
   const { clinicId } = caller
@@ -242,6 +275,10 @@ export async function GET(req: NextRequest) {
 // merged: true; otherwise a new favorite is created (201).
 
 export async function POST(req: NextRequest) {
+  return failLoud(() => createFavorite(req))
+}
+
+async function createFavorite(req: NextRequest): Promise<NextResponse> {
   const caller = await callerClinic()
   if ('response' in caller) return caller.response
   const { clinicId } = caller
@@ -347,6 +384,10 @@ export async function POST(req: NextRequest) {
 // formulation, and a pinned patient must belong to the clinic.
 
 export async function PATCH(req: NextRequest) {
+  return failLoud(() => editFavorite(req))
+}
+
+async function editFavorite(req: NextRequest): Promise<NextResponse> {
   const caller = await callerClinic()
   if ('response' in caller) return caller.response
   const { clinicId } = caller
@@ -367,11 +408,12 @@ export async function PATCH(req: NextRequest) {
   // Clinic-scope guard (same as DELETE): the favorite must belong to a
   // provider in the caller's clinic. Favorites are clinic-wide, so any
   // clinic member may edit any of the clinic's favorites.
-  const { data: current } = await supabase
+  const { data: current, error: currentError } = await supabase
     .from('provider_favorites')
     .select('provider_id, formulation_id, use_count')
     .eq('favorite_id', favoriteId)
     .single()
+  if (currentError && !isNoRows(currentError)) readFailed('favorite', currentError)
 
   if (!current) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -395,7 +437,7 @@ export async function PATCH(req: NextRequest) {
   // otherwise loading the favorite would find no pharmacy to select.
   const newPharmacyId = validation.patch['pharmacy_id']
   if (typeof newPharmacyId === 'string') {
-    const { data: offering } = await supabase
+    const { data: offering, error: offeringError } = await supabase
       .from('pharmacy_formulations')
       .select('pharmacy_formulation_id, pharmacies!inner ( is_active, deleted_at )')
       .eq('pharmacy_id', newPharmacyId)
@@ -404,6 +446,7 @@ export async function PATCH(req: NextRequest) {
       .eq('is_active', true)
       .is('deleted_at', null)
       .maybeSingle()
+    if (offeringError) readFailed('pharmacy offering', offeringError)
     if (!offering || !isLivePharmacy((offering as { pharmacies?: PharmacyLiveness }).pharmacies)) {
       return NextResponse.json({ error: 'That pharmacy does not offer this formulation' }, { status: 400 })
     }
@@ -431,6 +474,10 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  return failLoud(() => deleteFavorite(req))
+}
+
+async function deleteFavorite(req: NextRequest): Promise<NextResponse> {
   const caller = await callerClinic()
   if ('response' in caller) return caller.response
   const { clinicId } = caller
@@ -444,11 +491,12 @@ export async function DELETE(req: NextRequest) {
   // Clinic-scope guard: the favorite must belong to a provider in the
   // caller's clinic. Without this, any logged-in user could delete any
   // favorite by guessing its UUID. POST has the same scoping.
-  const { data: fav } = await supabase
+  const { data: fav, error: favError } = await supabase
     .from('provider_favorites')
     .select('provider_id')
     .eq('favorite_id', favoriteId)
     .single()
+  if (favError && !isNoRows(favError)) readFailed('favorite', favError)
 
   if (!fav) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 

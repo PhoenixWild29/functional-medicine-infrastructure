@@ -7,8 +7,10 @@
  * per-file exemption.
  *
  * Runs the real rule against the real baseline file, linting text as if
- * it were src/app/api/favorites/route.ts (on the baseline: PATCH's
- * `const { data: current } = await supabase`).
+ * it were src/app/api/favorites/recent/route.ts (on the baseline: GET's
+ * `const { data: provider } = await supabase`). Batch 3 PR 3 fixed the
+ * favorites PATCH site this test used before; when a later PR fixes this
+ * one, point the test at a site that is still listed.
  */
 
 import { readFileSync } from 'node:fs'
@@ -19,7 +21,7 @@ const tsParser = require('@typescript-eslint/parser')
 import rule from '../no-unchecked-supabase-error'
 
 const BASELINE = 'eslint-baselines/supabase-errors.json'
-const FILE = 'src/app/api/favorites/route.ts'
+const FILE = 'src/app/api/favorites/recent/route.ts'
 
 function lint(code: string) {
   const eslint = new ESLint({
@@ -39,17 +41,17 @@ describe('the committed baseline', () => {
 
   it('lists the site this test relies on', () => {
     expect(entries).toEqual(expect.arrayContaining([
-      expect.objectContaining({ file: FILE, function: 'PATCH', line: 'const { data: current } = await supabase' }),
+      expect.objectContaining({ file: FILE, function: 'GET', line: 'const { data: provider } = await supabase' }),
     ]))
   })
 
   it('skips the listed site, and fails a new one in the same file and function', async () => {
     const [result] = await lint([
-      'export async function PATCH(supabase: any) {',
-      '  const { data: current } = await supabase',
-      "    .from('provider_favorites').select('*')",
-      "  const { data: extra } = await supabase.from('provider_favorites').select('id')",
-      '  return [current, extra]',
+      'export async function GET(supabase: any) {',
+      '  const { data: provider } = await supabase',
+      "    .from('providers').select('provider_id')",
+      "  const { data: extra } = await supabase.from('providers').select('id')",
+      '  return [provider, extra]',
       '}',
     ].join('\n'))
     const messages = result!.messages.filter(m => m.ruleId === 'supabase/no-unchecked-supabase-error')

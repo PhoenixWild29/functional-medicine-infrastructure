@@ -87,12 +87,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Get current phase for history
-    const { data: current } = await supabase
+    const { data: current, error: currentErr } = await supabase
       .from('patient_protocol_phases')
       .select('current_phase')
       .eq('tracking_id', tracking_id)
-      .single()
+      .maybeSingle()
 
+    if (currentErr) {
+      console.error('[patient-phases] current phase read failed:', currentErr.message, '| tracking=', tracking_id)
+      return NextResponse.json({ error: 'The current phase could not be read. Nothing was changed — try again.' }, { status: 500 })
+    }
     if (!current) return NextResponse.json({ error: 'Tracking not found' }, { status: 404 })
 
     // Update to new phase
@@ -109,8 +113,9 @@ export async function POST(req: NextRequest) {
 
     if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
 
-    // Log advancement history
-    await supabase.from('phase_advancement_history').insert({
+    // Log advancement history. An advancement without its history (who,
+    // why, which labs) is not kept: put the phase back and say so.
+    const { error: historyErr } = await supabase.from('phase_advancement_history').insert({
       tracking_id,
       from_phase: current.current_phase,
       to_phase: new_phase,
@@ -118,6 +123,21 @@ export async function POST(req: NextRequest) {
       reason: reason ?? null,
       lab_results: lab_results ?? null,
     })
+
+    if (historyErr) {
+      console.error('[patient-phases] history insert failed:', historyErr.message, '| tracking=', tracking_id)
+      const { error: revertErr } = await supabase
+        .from('patient_protocol_phases')
+        .update({ current_phase: current.current_phase, updated_at: new Date().toISOString() })
+        .eq('tracking_id', tracking_id)
+      if (revertErr) {
+        console.error('[patient-phases] CRITICAL: revert failed:', revertErr.message, '| tracking=', tracking_id)
+        return NextResponse.json({
+          error: `The phase was advanced to ${new_phase}, but its history could not be recorded and the change could not be undone. Contact support before advancing again.`,
+        }, { status: 500 })
+      }
+      return NextResponse.json({ error: 'The phase change could not be recorded. Nothing was changed — try again.' }, { status: 500 })
+    }
 
     return NextResponse.json({ ok: true, from: current.current_phase, to: new_phase })
   }

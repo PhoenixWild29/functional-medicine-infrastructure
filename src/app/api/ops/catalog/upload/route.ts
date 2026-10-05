@@ -168,12 +168,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // ── Fetch previous catalog for delta + price discrepancy ──────
-  const { data: prevItems } = await supabase
+  const { data: prevItems, error: prevErr } = await supabase
     .from('catalog')
     .select('item_id, medication_name, form, dose, wholesale_price')
     .eq('pharmacy_id', pharmacyId)
     .eq('is_active', true)
     .is('deleted_at', null)
+
+  // Read as empty, the delta and the price-change check would be wrong.
+  if (prevErr) {
+    console.error(`[ops/catalog/upload] previous catalog read failed | pharmacy=${pharmacyId}:`, prevErr.message)
+    return NextResponse.json({ error: 'The current catalog could not be read. Nothing was changed — try again.' }, { status: 500 })
+  }
 
   const prevMap = new Map<string, { item_id: string; wholesale_price: number }>()
   for (const item of (prevItems ?? [])) {
@@ -220,13 +226,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   let historyId: string | null = null
   let nextVersion = 0
   for (let attempt = 0; attempt < 5; attempt++) {
-    const { data: lastVersion } = await supabase
+    const { data: lastVersion, error: lastVersionErr } = await supabase
       .from('catalog_upload_history')
       .select('version_number')
       .eq('pharmacy_id', pharmacyId)
       .order('version_number', { ascending: false })
       .limit(1)
       .maybeSingle()
+
+    if (lastVersionErr) {
+      console.error(`[ops/catalog/upload] version read failed | pharmacy=${pharmacyId}:`, lastVersionErr.message)
+      return NextResponse.json({ error: 'The catalog version history could not be read. Nothing was changed — try again.' }, { status: 500 })
+    }
 
     nextVersion = ((lastVersion as Record<string, unknown> | null)?.['version_number'] as number ?? 0) + 1
 
@@ -288,11 +299,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (insertErr) {
     console.error(`[ops/catalog/upload] insert failed | pharmacy=${pharmacyId}:`, insertErr.message)
     // NB-3: Re-activate the items we just soft-deleted so the pharmacy isn't left with an empty catalog
-    await supabase
+    const { error: undoErr } = await supabase
       .from('catalog')
       .update({ is_active: true, deleted_at: null, updated_at: now })
       .eq('pharmacy_id', pharmacyId)
       .eq('deleted_at', now)
+    if (undoErr) {
+      console.error(`[ops/catalog/upload] CRITICAL: undo failed, no active catalog | pharmacy=${pharmacyId}:`, undoErr.message)
+      return NextResponse.json({ error: 'The previous catalog could not be put back, so this pharmacy has no active catalog. Roll back to a saved version, or contact engineering.' }, { status: 500 })
+    }
     return NextResponse.json({ error: 'Catalog insert failed' }, { status: 500 })
   }
 

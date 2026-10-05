@@ -246,10 +246,13 @@ export async function checkBatch(
     ? [...new Set(ordered.filter(r => r.provider_id !== signer.provider_id).map(r => r.provider_id))]
     : []
   if (others.length > 0) {
-    const { data: otherRows } = await supabase
+    const { data: otherRows, error: otherRowsError } = await supabase
       .from('providers')
       .select('provider_id, first_name, last_name')
       .in('provider_id', others)
+    // Names only: each line is blocked as not_signer either way; a failed
+    // read says "another provider" instead of the name.
+    if (otherRowsError) console.error('[batch-sign] other providers\' names could not be read:', otherRowsError.message)
     const names = new Map((otherRows ?? []).map(p => [p.provider_id, `${p.first_name} ${p.last_name}`]))
     for (const r of ordered) {
       if (r.provider_id === signer?.provider_id) continue

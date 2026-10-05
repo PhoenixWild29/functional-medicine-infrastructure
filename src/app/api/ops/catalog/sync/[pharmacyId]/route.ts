@@ -147,12 +147,18 @@ export async function POST(_request: NextRequest, { params }: Params): Promise<N
   }
 
   // ── Fetch previous catalog for delta computation (NB-03) ──────
-  const { data: prevItems } = await supabase
+  const { data: prevItems, error: prevErr } = await supabase
     .from('catalog')
     .select('medication_name, form, dose')
     .eq('pharmacy_id', pharmacyId)
     .eq('is_active', true)
     .is('deleted_at', null)
+
+  // Read as empty, the delta and the price-change check would be wrong.
+  if (prevErr) {
+    console.error(`[ops/catalog/sync] previous catalog read failed | pharmacy=${pharmacyId}:`, prevErr.message)
+    return NextResponse.json({ error: 'The current catalog could not be read. Nothing was changed — try again.' }, { status: 500 })
+  }
 
   const prevSet = new Set<string>()
   for (const item of (prevItems ?? [])) {
@@ -177,13 +183,18 @@ export async function POST(_request: NextRequest, { params }: Params): Promise<N
   let historyId: string | null = null
   let nextVersion = 0
   for (let attempt = 0; attempt < 5; attempt++) {
-    const { data: lastVersion } = await supabase
+    const { data: lastVersion, error: lastVersionErr } = await supabase
       .from('catalog_upload_history')
       .select('version_number')
       .eq('pharmacy_id', pharmacyId)
       .order('version_number', { ascending: false })
       .limit(1)
       .maybeSingle()
+
+    if (lastVersionErr) {
+      console.error(`[ops/catalog/sync] version read failed | pharmacy=${pharmacyId}:`, lastVersionErr.message)
+      return NextResponse.json({ error: 'The catalog version history could not be read. Nothing was changed — try again.' }, { status: 500 })
+    }
 
     nextVersion = ((lastVersion as Record<string, unknown> | null)?.['version_number'] as number ?? 0) + 1
 
@@ -246,10 +257,19 @@ export async function POST(_request: NextRequest, { params }: Params): Promise<N
   }
 
   // Update last_synced_at on pharmacy
-  await supabase
+  const { error: syncedAtErr } = await supabase
     .from('pharmacies')
     .update({ catalog_last_synced_at: now, updated_at: now })
     .eq('pharmacy_id', pharmacyId)
+
+  // The catalog is replaced; only the "last synced" time is missing. Say
+  // exactly that rather than reporting success.
+  if (syncedAtErr) {
+    console.error(`[ops/catalog/sync] catalog_last_synced_at not saved | pharmacy=${pharmacyId}:`, syncedAtErr.message)
+    return NextResponse.json({
+      error: `The catalog was replaced (version ${nextVersion}), but the sync time could not be saved, so the page will show the previous sync time.`,
+    }, { status: 500 })
+  }
 
   console.info(`[ops/catalog/sync] synced | pharmacy=${pharmacyId} | rows=${validRows.length} | by=${actorEmail}`)
 

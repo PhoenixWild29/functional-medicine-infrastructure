@@ -1,7 +1,7 @@
 {
   "rule": "supabase/no-unchecked-supabase-error",
   "note": "Existing unchecked Supabase errors, skipped by the rule until fixed. This file only shrinks. See scripts/generate-supabase-error-baseline.mjs.",
-  "total": 82,
+  "total": 54,
   "entries": [
     {
       "file": "scripts/seed-formulations-phase2.ts",
@@ -112,75 +112,9 @@
       "count": 4
     },
     {
-      "file": "src/app/api/epcs/route.ts",
-      "function": "POST",
-      "line": "await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/epcs/route.ts",
-      "function": "POST",
-      "line": "const { data: provider } = await supabase",
-      "count": 1
-    },
-    {
       "file": "src/app/api/favorites/recent/route.ts",
       "function": "GET",
       "line": "const { data: provider } = await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/favorites/route.ts",
-      "function": "categoryForFormulation",
-      "line": "const { data: formulation } = await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/favorites/route.ts",
-      "function": "categoryForFormulation",
-      "line": "const { data: ingredient } = await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/favorites/route.ts",
-      "function": "categoryForFormulation",
-      "line": "const { data: parts } = await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/favorites/route.ts",
-      "function": "categoryForFormulation",
-      "line": "const { data: saltForm } = await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/favorites/route.ts",
-      "function": "DELETE",
-      "line": "const { data: fav } = await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/favorites/route.ts",
-      "function": "getClinicProviderIds",
-      "line": "const { data } = await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/favorites/route.ts",
-      "function": "PATCH",
-      "line": "const { data: current } = await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/favorites/route.ts",
-      "function": "PATCH",
-      "line": "const { data: offering } = await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/favorites/route.ts",
-      "function": "patientInClinic",
-      "line": "const { data } = await supabase",
       "count": 1
     },
     {
@@ -196,51 +130,9 @@
       "count": 1
     },
     {
-      "file": "src/app/api/ops/catalog/rollback/route.ts",
-      "function": "POST",
-      "line": "await supabase",
-      "count": 3
-    },
-    {
       "file": "src/app/api/ops/catalog/route.ts",
       "function": "GET",
       "line": "const [itemsResult, versionsResult, normalizedResult, syncResult] = await Promise.all([",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/ops/catalog/sync/[pharmacyId]/route.ts",
-      "function": "POST",
-      "line": "await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/ops/catalog/sync/[pharmacyId]/route.ts",
-      "function": "POST",
-      "line": "const { data: lastVersion } = await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/ops/catalog/sync/[pharmacyId]/route.ts",
-      "function": "POST",
-      "line": "const { data: prevItems } = await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/ops/catalog/upload/route.ts",
-      "function": "POST",
-      "line": "await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/ops/catalog/upload/route.ts",
-      "function": "POST",
-      "line": "const { data: lastVersion } = await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/ops/catalog/upload/route.ts",
-      "function": "POST",
-      "line": "const { data: prevItems } = await supabase",
       "count": 1
     },
     {
@@ -274,18 +166,6 @@
       "count": 1
     },
     {
-      "file": "src/app/api/patient-phases/route.ts",
-      "function": "POST",
-      "line": "await supabase.from('phase_advancement_history').insert({",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/patient-phases/route.ts",
-      "function": "POST",
-      "line": "const { data: current } = await supabase",
-      "count": 1
-    },
-    {
       "file": "src/app/api/pharmacies/shipping/route.ts",
       "function": "GET",
       "line": "const [rates, clinic] = await Promise.all([",
@@ -295,18 +175,6 @@
       "file": "src/app/api/protocols/route.ts",
       "function": "GET",
       "line": "const { data: clinic } = await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/protocols/route.ts",
-      "function": "POST",
-      "line": "await supabase.from('protocol_templates').delete().eq('protocol_id', protocol.protocol_id)",
-      "count": 1
-    },
-    {
-      "file": "src/app/api/protocols/route.ts",
-      "function": "POST",
-      "line": "const { data: provider } = await supabase",
       "count": 1
     },
     {
@@ -346,34 +214,10 @@
       "count": 1
     },
     {
-      "file": "src/lib/orders/batch-sign.ts",
-      "function": "checkBatch",
-      "line": "const { data: otherRows } = await supabase",
-      "count": 1
-    },
-    {
       "file": "src/lib/orders/load-draft-context.ts",
       "function": "loadDraftContext",
       "line": "const [patientResult, providerResult] = await Promise.all([",
       "count": 2
-    },
-    {
-      "file": "src/lib/payment-group/create-group.ts",
-      "function": "createPaymentGroup",
-      "line": "const { data: clinicShipping } = await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/lib/protocols/resolve-instance.ts",
-      "function": "resolveActiveInstance",
-      "line": "const { data: raced } = await supabase",
-      "count": 1
-    },
-    {
-      "file": "src/lib/protocols/resolve-instance.ts",
-      "function": "resolvePublishedVersion",
-      "line": "const { data: raced } = await supabase",
-      "count": 1
     }
   ]
 }

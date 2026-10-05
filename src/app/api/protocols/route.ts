@@ -296,12 +296,16 @@ export async function POST(req: NextRequest) {
 
   const createdBy = optionalStr(body['created_by'])
   if (createdBy) {
-    const { data: provider } = await supabase
+    const { data: provider, error: providerErr } = await supabase
       .from('providers')
       .select('provider_id')
       .eq('provider_id', createdBy)
       .eq('clinic_id', clinicId)
       .maybeSingle()
+    if (providerErr) {
+      console.error('[protocols] creator lookup failed:', providerErr.message)
+      return NextResponse.json({ error: 'The protocol could not be saved. Nothing was changed — try again.' }, { status: 500 })
+    }
     if (!provider) return NextResponse.json({ error: 'Provider not in clinic' }, { status: 403 })
   }
 
@@ -330,9 +334,16 @@ export async function POST(req: NextRequest) {
     })))
 
   if (itemsErr) {
+    console.error('[protocols] items insert failed:', itemsErr.message, '| protocol=', protocol.protocol_id)
     // Keep the template out of the list rather than leaving an empty one.
-    await supabase.from('protocol_templates').delete().eq('protocol_id', protocol.protocol_id)
-    return NextResponse.json({ error: itemsErr.message }, { status: 500 })
+    const { error: cleanupErr } = await supabase.from('protocol_templates').delete().eq('protocol_id', protocol.protocol_id)
+    if (cleanupErr) {
+      console.error('[protocols] cleanup of empty template failed:', cleanupErr.message, '| protocol=', protocol.protocol_id)
+      return NextResponse.json({
+        error: `The protocol's items could not be saved, and an empty protocol "${protocol.name}" was left in the list. Delete it and try again.`,
+      }, { status: 500 })
+    }
+    return NextResponse.json({ error: 'The protocol could not be saved. Nothing was saved — try again.' }, { status: 500 })
   }
 
   return NextResponse.json({ data: { ...protocol, item_count: items.length } }, { status: 201 })

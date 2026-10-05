@@ -92,11 +92,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // BLK-03: If restore fails or returns 0 rows, re-activate the items we just deleted
   // to preserve the current catalog state rather than leaving the pharmacy with nothing.
   if (restoreErr || (restoredItems?.length ?? 0) === 0) {
-    await supabase
+    const { error: undoErr } = await supabase
       .from('catalog')
       .update({ is_active: true, deleted_at: null, updated_at: now })
       .eq('pharmacy_id', pharmacyId)
       .eq('deleted_at', now)  // Only the rows we just soft-deleted in this request
+
+    // The undo failed too: the pharmacy is left with no active catalog.
+    if (undoErr) {
+      console.error(`[ops/catalog/rollback] CRITICAL: undo failed, no active catalog | pharmacy=${pharmacyId}:`, undoErr.message)
+      return NextResponse.json({ error: 'The previous catalog could not be put back, so this pharmacy has no active catalog. Roll back to a saved version, or contact engineering.' }, { status: 500 })
+    }
 
     if (restoreErr) {
       console.error(`[ops/catalog/rollback] restore failed | pharmacy=${pharmacyId}:`, restoreErr.message)
@@ -110,17 +116,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // BLK-06: Deactivate the currently active version (scoped to the one version that is active),
   // then activate the target version.
-  await supabase
+  const { error: deactivateErr } = await supabase
     .from('catalog_upload_history')
     .update({ is_active: false })
     .eq('pharmacy_id', pharmacyId)
     .eq('is_active', true)
     .neq('history_id', targetHistoryId)
 
-  await supabase
-    .from('catalog_upload_history')
-    .update({ is_active: true })
-    .eq('history_id', targetHistoryId)
+  const { error: activateErr } = deactivateErr
+    ? { error: null }
+    : await supabase
+      .from('catalog_upload_history')
+      .update({ is_active: true })
+      .eq('history_id', targetHistoryId)
+
+  // The items are back, but the version list would show the wrong one as
+  // active: say so instead of reporting success.
+  const flagsErr = deactivateErr ?? activateErr
+  if (flagsErr) {
+    console.error(`[ops/catalog/rollback] version flags not saved | pharmacy=${pharmacyId}:`, flagsErr.message)
+    return NextResponse.json({
+      error: `Catalog items were restored, but the active version could not be recorded. The version list may show v${tv['version_number']} as inactive — run the rollback again.`,
+    }, { status: 500 })
+  }
 
   const restoredCount = restoredItems.length
 
