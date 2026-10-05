@@ -19,6 +19,11 @@ let listError: { message: string } | null = null
 const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
 const infoSpy  = jest.spyOn(console, 'info').mockImplementation(() => {})
 
+const sendSlackAlertMock = jest.fn().mockResolvedValue(undefined)
+jest.mock('@/lib/slack/client', () => ({
+  sendSlackAlert: (...a: unknown[]) => sendSlackAlertMock(...a),
+}))
+
 jest.mock('@/lib/adapters/routing-engine', () => ({
   routeOrder: (params: unknown) => routeOrderMock(params),
 }))
@@ -31,11 +36,11 @@ jest.mock('@/lib/supabase/service', () => ({
       for (const op of ['eq', 'lt', 'gt', 'is']) {
         c[op] = (col: string, val: unknown) => { filtersSeen.push([op, col, val]); return c }
       }
-      c['select'] = () => c
+      c['select'] = (_cols: string, opts?: { count?: string }) => { if (opts?.count) filtersSeen.push(['count', opts.count, null]); return c }
       c['order'] = () => c
       c['limit'] = () => c
       c['then'] = (resolve: (r: unknown) => unknown) =>
-        Promise.resolve(listError ? { data: null, error: listError } : { data: stranded, error: null }).then(resolve)
+        Promise.resolve(listError ? { data: null, error: listError, count: null } : { data: stranded, error: null, count: stranded.length }).then(resolve)
       return c
     },
   }),
@@ -47,6 +52,9 @@ function call(auth = 'Bearer cron-secret') {
 
 beforeEach(() => {
   process.env['CRON_SECRET'] = 'cron-secret'
+  // These tests describe the switch ON; the kill-switch tests below turn it off.
+  process.env['PHARMACY_SUBMISSIONS_ENABLED'] = 'true'
+  sendSlackAlertMock.mockClear()
   filtersSeen.length = 0
   stranded = [
     { order_id: 'o-1', pharmacy_id: 'pharm-1' },
@@ -107,4 +115,47 @@ it('a failed lookup answers 500', async () => {
   const res = await call()
 
   expect(res.status).toBe(500)
+})
+
+describe('pharmacy submissions turned off', () => {
+  beforeEach(() => { delete process.env['PHARMACY_SUBMISSIONS_ENABLED'] })
+  afterAll(() => { delete process.env['PHARMACY_SUBMISSIONS_ENABLED'] })
+
+  it('routes nothing', async () => {
+    const res = await call()
+
+    expect(res.status).toBe(200)
+    expect(routeOrderMock).not.toHaveBeenCalled()
+  })
+
+  it('sends one Slack alert for the run, with the count of paid orders waiting', async () => {
+    stranded = [
+      { order_id: 'o-1', pharmacy_id: 'pharm-1' },
+      { order_id: 'o-2', pharmacy_id: 'pharm-2' },
+      { order_id: 'o-3', pharmacy_id: 'pharm-3' },
+    ]
+
+    await call()
+
+    expect(sendSlackAlertMock).toHaveBeenCalledTimes(1)
+    const text = JSON.stringify(sendSlackAlertMock.mock.calls[0]![0])
+    expect(text).toContain('3')
+    expect(text).toMatch(/turned off/i)
+  })
+
+  it('sends no alert when no paid order is waiting', async () => {
+    stranded = []
+
+    await call()
+
+    expect(sendSlackAlertMock).not.toHaveBeenCalled()
+  })
+
+  it('logs each waiting order once, by id only', async () => {
+    await call()
+
+    const lines = infoSpy.mock.calls.map(c => String(c[0])).filter(l => l.includes('turned off'))
+    expect(lines.filter(l => l.includes('o-1'))).toHaveLength(1)
+    expect(lines.filter(l => l.includes('o-2'))).toHaveLength(1)
+  })
 })

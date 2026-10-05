@@ -99,6 +99,8 @@ async function flushAfter() {
 }
 
 beforeEach(() => {
+  // These tests describe the switch ON; the kill-switch tests below turn it off.
+  process.env['PHARMACY_SUBMISSIONS_ENABLED'] = 'true'
   orderRow = { order_id: 'o-1', status: 'SUBMISSION_FAILED', pharmacy_id: 'pharm-1', reroute_count: 0 }
   afterQueue = []
   routeOrderMock.mockReset().mockResolvedValue({ outcome: 'accepted', tier: 'TIER_1_API' })
@@ -215,5 +217,29 @@ describe('auth', () => {
     expect(res.status).toBe(401)
     expect(routeOrderMock).not.toHaveBeenCalled()
     expect(orderRow.status).toBe('SUBMISSION_FAILED')
+  })
+})
+
+describe('pharmacy submissions turned off', () => {
+  beforeEach(() => { delete process.env['PHARMACY_SUBMISSIONS_ENABLED'] })
+  afterAll(() => { delete process.env['PHARMACY_SUBMISSIONS_ENABLED'] })
+
+  it.each([
+    ['retry_submission', 'SUBMISSION_FAILED'],
+    ['force_fax',        'SUBMISSION_FAILED'],
+    ['force_fax',        'FAX_FAILED'],
+    ['retry_fax',        'FAX_FAILED'],
+  ])('%s from %s: refused with a clear message, nothing changes, nothing is sent', async (action, status) => {
+    orderRow.status = status
+
+    const res = await act(action)
+    await flushAfter()
+    const body = await res.json() as { error?: string }
+
+    expect([409, 423]).toContain(res.status)
+    expect(body.error).toContain('Pharmacy submissions are turned off')
+    expect(orderRow.status).toBe(status)
+    expect(routeOrderMock).not.toHaveBeenCalled()
+    expect(submitQueuedFaxMock).not.toHaveBeenCalled()
   })
 })

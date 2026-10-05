@@ -39,6 +39,7 @@ let afterQueue: Array<() => unknown> = []
 let failPharmacyLookups = 0
 
 const routeOrderMock     = jest.fn()
+const sendSlackAlertMock = jest.fn().mockResolvedValue(undefined)
 const constructEventMock = jest.fn()
 const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
 const warnSpy  = jest.spyOn(console, 'warn').mockImplementation(() => {})
@@ -52,7 +53,12 @@ jest.mock('next/server', () => {
   }
 })
 
-jest.mock('@/lib/env', () => ({ serverEnv: { stripeWebhookSecret: () => 'whsec_test' } }))
+jest.mock('@/lib/env', () => ({
+  serverEnv: {
+    stripeWebhookSecret: () => 'whsec_test',
+    pharmacySubmissionsEnabled: () => process.env['PHARMACY_SUBMISSIONS_ENABLED'] === 'true',
+  },
+}))
 
 jest.mock('@/lib/stripe/client', () => ({
   createStripeClient: () => ({
@@ -76,7 +82,7 @@ jest.mock('@/lib/adapters/routing-engine', () => ({
 }))
 
 jest.mock('@/lib/slack/client', () => ({
-  sendSlackAlert: jest.fn().mockResolvedValue(undefined),
+  sendSlackAlert: (...a: unknown[]) => sendSlackAlertMock(...a),
   buildAdapterFailureAlert: (args: unknown) => args,
 }))
 
@@ -195,6 +201,9 @@ async function flushAfter() {
 const routedOrderIds = () => routeOrderMock.mock.calls.map(c => (c[0] as { orderId: string }).orderId).sort()
 
 beforeEach(() => {
+  // These tests describe the switch ON; the kill-switch tests below turn it off.
+  process.env['PHARMACY_SUBMISSIONS_ENABLED'] = 'true'
+  sendSlackAlertMock.mockClear()
   orders = {
     'o-1': { order_id: 'o-1', status: 'AWAITING_PAYMENT', pharmacy_id: 'pharm-api', payment_group_id: null, stripe_payment_intent_id: 'pi_solo' },
     'o-g1': { order_id: 'o-g1', status: 'AWAITING_PAYMENT', pharmacy_id: 'pharm-api',    payment_group_id: 'g-1', stripe_payment_intent_id: null },
@@ -328,5 +337,53 @@ describe('group payment_intent.succeeded', () => {
     await flushAfter()
 
     expect(submissions).toEqual({ 'o-g1': 1, 'o-g2': 1, 'o-g3': 1 })
+  })
+})
+
+// ── Kill switch: PHARMACY_SUBMISSIONS_ENABLED off (or unset) ───────
+
+describe('pharmacy submissions turned off', () => {
+  beforeEach(() => { delete process.env['PHARMACY_SUBMISSIONS_ENABLED'] })
+  afterAll(() => { delete process.env['PHARMACY_SUBMISSIONS_ENABLED'] })
+
+  const skipLogs = (orderId: string) =>
+    infoSpy.mock.calls.filter(c => String(c[0]).includes('submissions are turned off') && String(c[0]).includes(orderId))
+
+  it('solo: the payment is recorded, nothing is submitted, the order stays PAID_PROCESSING', async () => {
+    const res = await deliver(soloEvent())
+    await flushAfter()
+
+    expect(res.status).toBe(200)
+    expect(orders['o-1']!.status).toBe('PAID_PROCESSING')
+    expect(routeOrderMock).not.toHaveBeenCalled()
+    expect(afterQueue).toHaveLength(0)
+  })
+
+  it('solo: the skip is logged once, by order id, with no Slack alert', async () => {
+    await deliver(soloEvent())
+    await flushAfter()
+
+    expect(skipLogs('o-1')).toHaveLength(1)
+    expect(sendSlackAlertMock).not.toHaveBeenCalled()
+  })
+
+  it('group: every member stays PAID_PROCESSING and nothing is submitted', async () => {
+    const res = await deliver(groupEvent())
+    await flushAfter()
+
+    expect(res.status).toBe(200)
+    expect(['o-g1', 'o-g2', 'o-g3'].map(id => orders[id]!.status)).toEqual(['PAID_PROCESSING', 'PAID_PROCESSING', 'PAID_PROCESSING'])
+    expect(routeOrderMock).not.toHaveBeenCalled()
+    expect(skipLogs('o-g2')).toHaveLength(1)
+  })
+
+  it('"false" is off too', async () => {
+    process.env['PHARMACY_SUBMISSIONS_ENABLED'] = 'false'
+
+    await deliver(soloEvent())
+    await flushAfter()
+
+    expect(routeOrderMock).not.toHaveBeenCalled()
+    expect(orders['o-1']!.status).toBe('PAID_PROCESSING')
   })
 })
