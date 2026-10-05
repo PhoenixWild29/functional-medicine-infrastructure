@@ -165,11 +165,13 @@ export async function createPaymentGroup(input: CreateGroupInput): Promise<Creat
       })),
       rates,
     ).totalCents
-    const { data: clinicShipping } = await supabase
+    const { data: clinicShipping, error: clinicShippingErr } = await supabase
       .from('clinics')
       .select('absorb_shipping')
       .eq('clinic_id', clinicId)
       .maybeSingle()
+    // Read as "not absorbed", the patient would pay shipping the clinic covers.
+    if (clinicShippingErr) throw new Error(`absorb_shipping read failed: ${clinicShippingErr.message}`)
     absorbShipping = (clinicShipping as { absorb_shipping?: boolean } | null)?.absorb_shipping === true
   } catch (err) {
     console.error('[payment-group create] shipping lookup failed:', err instanceof Error ? err.message : err)

@@ -177,12 +177,16 @@ async function resolvePublishedVersion(
       // A concurrent order creation won the publish race
       // (idx_ptv_one_published allows at most one published row per
       // protocol). Use the winner's version.
-      const { data: raced } = await supabase
+      const { data: raced, error: racedError } = await supabase
         .from('protocol_template_versions')
         .select('version_id')
         .eq('protocol_id', protocolId)
         .eq('status', 'published')
         .maybeSingle()
+      if (racedError) {
+        console.warn('[protocols] GAP-3: published-version re-read after race failed (non-fatal):', racedError.message)
+        return null
+      }
       if (raced) return raced.version_id
     }
     console.warn('[protocols] GAP-3: bootstrap publish failed (non-fatal):', insertError.message)
@@ -253,7 +257,7 @@ async function resolveActiveInstance(
     if (insertError.code === UNIQUE_VIOLATION) {
       // Concurrent order creation won the new-cycle race — reuse the
       // instance the winner created.
-      const { data: raced } = await supabase
+      const { data: raced, error: racedError } = await supabase
         .from('protocol_instances')
         .select('instance_id')
         .eq('patient_id', patientId)
@@ -262,6 +266,10 @@ async function resolveActiveInstance(
         .order('cycle_number', { ascending: false })
         .limit(1)
         .maybeSingle()
+      if (racedError) {
+        console.warn('[protocols] GAP-3: active-instance re-read after race failed (non-fatal):', racedError.message)
+        return null
+      }
       if (raced) return raced.instance_id
     }
     console.warn('[protocols] GAP-3: instance insert failed (non-fatal):', insertError.message)

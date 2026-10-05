@@ -17,6 +17,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { TOTP, generateSecret, generateURI, verifySync } from 'otplib'
 import QRCode from 'qrcode'
 import { encryptSecret, decryptSecret } from '@/lib/epcs/crypto'
+import { isNoRows } from '@/lib/supabase/no-rows'
 
 // TOTP secret encryption (AES-256-GCM) lives in @/lib/epcs/crypto so the
 // demo pre-enrollment path in @/lib/poc/totp-enrollment can share exactly
@@ -145,11 +146,21 @@ export async function POST(req: NextRequest) {
     }
 
     // Get stored secret
-    const { data: provider } = await supabase
+    const { data: provider, error: providerError } = await supabase
       .from('providers')
       .select('totp_secret_encrypted')
       .eq('provider_id', provider_id)
       .single()
+
+    // A failed read is not "not set up": that would send the provider to
+    // enrol again. (No row is still "not set up".)
+    if (providerError && !isNoRows(providerError)) {
+      console.error('[epcs] verify provider lookup failed:', providerError.message, '| provider=', provider_id)
+      return NextResponse.json(
+        { error: 'The authenticator could not be checked. Nothing was changed — try again.' },
+        { status: 500 },
+      )
+    }
 
     if (!provider?.totp_secret_encrypted) {
       return NextResponse.json({ error: 'TOTP not set up for this provider' }, { status: 400 })
@@ -170,10 +181,19 @@ export async function POST(req: NextRequest) {
 
     if (isValid) {
       // Mark TOTP as enabled + verified
-      await supabase
+      const { error: enableError } = await supabase
         .from('providers')
         .update({ totp_enabled: true, totp_verified_at: new Date().toISOString() })
         .eq('provider_id', provider_id)
+
+      // Never answer verified when the database did not record it.
+      if (enableError) {
+        console.error('[epcs] verify could not save totp_enabled:', enableError.message, '| provider=', provider_id)
+        return NextResponse.json(
+          { error: 'The code was correct, but the verification could not be saved. Try again.' },
+          { status: 500 },
+        )
+      }
 
       return NextResponse.json({ verified: true })
     } else {
