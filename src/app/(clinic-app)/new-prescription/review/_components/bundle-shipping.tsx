@@ -12,7 +12,7 @@
 // re-route. Everything shown is computed (src/lib/orders/shipping.ts,
 // src/lib/orders/reroute.ts); nothing here is typed.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SessionPrescription } from '../../_context/prescription-session'
 import { packageOptionsFromRows } from '@/lib/orders/rx-details'
 import { computeBundleShipping, type BundleShipping, type PharmacyShippingRates } from '@/lib/orders/shipping'
@@ -24,6 +24,8 @@ interface ShippingContext {
   shipping:       BundleShipping
   notice:         MultiPharmacyNotice | null
   loaded:         boolean
+  /** Pharmacies in the session whose rates could not be read: no fee is shown for them. */
+  unpriced:       Set<string>
 }
 
 interface PharmacyOptionRow {
@@ -59,6 +61,15 @@ export function useBundleShipping(prescriptions: ReadonlyArray<SessionPrescripti
   const [rates, setRates] = useState<Map<string, PharmacyShippingRates>>(new Map())
   const [absorbShipping, setAbsorbShipping] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  // Prod, Menopause BHRT: a failed rates read was swallowed and never
+  // retried, so every pharmacy showed as "pharmacy" at $0.00 for the rest
+  // of the session. A failed read is now retried whenever the lines change
+  // (an edit, a removal), and until it succeeds no fee is shown.
+  const ratesFailed = useRef(false)
+  const [retryToken, setRetryToken] = useState(0)
+  useEffect(() => {
+    if (ratesFailed.current) setRetryToken(t => t + 1)
+  }, [prescriptions])
 
   useEffect(() => {
     if (!pharmacyKey) return
@@ -66,19 +77,25 @@ export function useBundleShipping(prescriptions: ReadonlyArray<SessionPrescripti
     void (async () => {
       try {
         const res = await fetch(`/api/pharmacies/shipping?ids=${encodeURIComponent(pharmacyKey)}`)
-        if (!res.ok) return
+        if (!res.ok) {
+          console.error('[review] shipping rates lookup failed:', res.status)
+          ratesFailed.current = true
+          return
+        }
         const json = await res.json() as { rates?: PharmacyShippingRates[]; absorbShipping?: boolean }
         if (cancelled) return
         setRates(new Map((json.rates ?? []).map(r => [r.pharmacyId, r])))
         setAbsorbShipping(json.absorbShipping === true)
+        ratesFailed.current = false
       } catch (err) {
-        console.warn('[review] shipping rates lookup failed (non-fatal):', err instanceof Error ? err.message : err)
+        console.error('[review] shipping rates lookup failed:', err instanceof Error ? err.message : err)
+        ratesFailed.current = true
       } finally {
         if (!cancelled) setLoaded(true)
       }
     })()
     return () => { cancelled = true }
-  }, [pharmacyKey])
+  }, [pharmacyKey, retryToken])
 
   // Offers for the re-route: only for a multi-pharmacy session.
   const multi = pharmacyKey.includes(',')
@@ -123,24 +140,35 @@ export function useBundleShipping(prescriptions: ReadonlyArray<SessionPrescripti
     return () => { cancelled = true }
   }, [offerKey, patientState])
 
-  const shipping = useMemo(
-    () => computeBundleShipping(
+  const shipping = useMemo(() => {
+    const computed = computeBundleShipping(
       prescriptions.map(rx => ({ pharmacyId: rx.pharmacyId, shippingType: rx.rxDetails?.shippingType ?? null, wholesaleCents: rx.wholesaleCents })),
       rates,
-    ),
-    [prescriptions, rates],
+    )
+    // The pharmacy's name is on the session's own lines: never "pharmacy".
+    const names = new Map(prescriptions.map(rx => [rx.pharmacyId, rx.pharmacyName]))
+    return {
+      ...computed,
+      byPharmacy: computed.byPharmacy.map(p => ({ ...p, pharmacyName: p.pharmacyName || names.get(p.pharmacyId) || '' })),
+    }
+  }, [prescriptions, rates])
+  const unpriced = useMemo(
+    () => new Set(shipping.byPharmacy.filter(p => !rates.has(p.pharmacyId)).map(p => p.pharmacyId)),
+    [shipping, rates],
   )
   const notice = useMemo(
     () => (multi && loaded ? multiPharmacyNotice(prescriptions.map(rerouteLineFrom), offersByLine, rates) : null),
     [multi, loaded, prescriptions, offersByLine, rates],
   )
 
-  return { rates, absorbShipping, shipping, notice, loaded }
+  return { rates, absorbShipping, shipping, notice, loaded, unpriced }
 }
 
 const money = (cents: number) => '$' + (cents / 100).toFixed(2)
 
-export function ShippingLines({ shipping, absorbShipping, rates }: { shipping: BundleShipping; absorbShipping: boolean; rates: Map<string, PharmacyShippingRates> }) {
+export function ShippingLines({ shipping, absorbShipping, rates, unpriced = new Set() }: {
+  shipping: BundleShipping; absorbShipping: boolean; rates: Map<string, PharmacyShippingRates>; unpriced?: Set<string>
+}) {
   return (
     <div data-testid="shipping-breakdown">
       {shipping.byPharmacy.map(p => (
@@ -152,7 +180,9 @@ export function ShippingLines({ shipping, absorbShipping, rates }: { shipping: B
               ? ` — free over ${money(rates.get(p.pharmacyId)!.freeShippingThresholdCents!)}`
               : ''}
           </span>
-          <span>{money(p.feeCents)}</span>
+          {/* No rates read: a fee shown here would be invented. The server
+              prices shipping again when the order is sent. */}
+          <span>{unpriced.has(p.pharmacyId) ? 'could not be loaded — added when sent' : money(p.feeCents)}</span>
         </div>
       ))}
       {absorbShipping && shipping.totalCents > 0 && (

@@ -2,6 +2,8 @@
  * A suppository line that reaches Review with no pack chosen (a protocol
  * load) is counted and sized like the price step sizes it (#181 audit,
  * group 3): Oxytocin 400 IU daily × 30 days is 3 × 10 supp, not one.
+ * Its retail scales with the wholesale so the markup stays the same (the
+ * protocol pricing fix), rather than staying below cost.
  */
 
 import { render, screen } from '@testing-library/react'
@@ -79,11 +81,11 @@ jest.setTimeout(15_000)
 beforeEach(() => sessionStorage.clear())
 
 describe('a suppository protocol line with no pack', () => {
-  it('Oxytocin 400 IU daily × 30 days takes 3 × 10 supp ($84 wholesale) and must be re-priced', async () => {
+  it('Oxytocin 400 IU daily × 30 days takes 3 × 10 supp ($84 wholesale), retail scaled $42 × 84 ÷ 28 = $126', async () => {
     mockFetch()
     renderReview(PROTOCOL_LINE)
     expect(await screen.findByText(/dispense 30 suppositories \(3 × 10 supp\)/, undefined, { timeout: 5000 })).toBeInTheDocument()
-    const block = await screen.findByTestId('below-cost-line-proto')
-    expect(block).toHaveTextContent('$42.00 retail against $84.00 wholesale')
+    expect(await screen.findByText('Price updated for 3 × 10 supp (was $42.00 for 10 supp)')).toBeInTheDocument()
+    expect(screen.queryByTestId('below-cost-line-proto')).toBeNull()
   })
 })
