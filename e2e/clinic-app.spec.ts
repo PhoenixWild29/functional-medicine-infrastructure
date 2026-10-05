@@ -114,7 +114,7 @@ test.describe('Clinic App — Order Creation Flow', () => {
     await page.getByLabel('Email').fill(TEST_USERS.clinicAdmin.email)
     await page.getByLabel('Password').fill(TEST_USERS.clinicAdmin.password)
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    await expect(page).toHaveURL(/\/practice$/, { timeout: 15_000 })
 
     // ── 2. Walk all 4 wizard steps ───────────────────────
     // Patient → cascading builder → margin → review.
@@ -222,7 +222,8 @@ test.describe('Clinic App — Order Creation Flow', () => {
     await page.getByLabel('Email').fill(TEST_USERS.clinicAdmin.email)
     await page.getByLabel('Password').fill(TEST_USERS.clinicAdmin.password)
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    await expect(page).toHaveURL(/\/practice$/, { timeout: 15_000 })
+    await page.goto('/dashboard')
 
     // Open the drawer for the seeded order.
     const orderRow = page.locator(`[data-order-id="${order.order_id}"]`)
@@ -254,7 +255,7 @@ test.describe('Clinic App — Order Creation Flow', () => {
     await page.getByLabel('Email').fill(TEST_USERS.clinicAdmin.email)
     await page.getByLabel('Password').fill(TEST_USERS.clinicAdmin.password)
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    await expect(page).toHaveURL(/\/practice$/, { timeout: 15_000 })
 
     // ── 2. Walk Steps 0-1 of the cascading builder ───────────
     await page.goto('/new-prescription')
@@ -583,12 +584,14 @@ async function pickProviderIfListed(page: Page) {
   if (await providerButton.count() > 0) await providerButton.click()
 }
 
-async function loginAs(page: Page, user: { email: string; password: string }) {
+async function loginAs(page: Page, user: { email: string; password: string; role: string }) {
   await page.goto('/login')
   await page.getByLabel('Email').fill(user.email)
   await page.getByLabel('Password').fill(user.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+  // The clinic admin lands on the Practice dashboard; everyone else on /dashboard.
+  const landing = user.role === 'clinic_admin' ? /\/practice$/ : /\/dashboard/
+  await expect(page).toHaveURL(landing, { timeout: 15_000 })
 }
 
 /** Steps 0–1 of the wizard with an explicit quantity, landing on the margin page. */
