@@ -40,7 +40,9 @@ const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
 const warnSpy  = jest.spyOn(console, 'warn').mockImplementation(() => {})
 const infoSpy  = jest.spyOn(console, 'info').mockImplementation(() => {})
 
-jest.mock('@/lib/env', () => ({ serverEnv: { stripeWebhookSecret: () => 'whsec_test' } }))
+// Pharmacy submissions ON: these tests describe the switch on (the kill
+// switch is covered in auto-submit.test.ts and submission-kill-switch.test.ts).
+jest.mock('@/lib/env', () => ({ serverEnv: { stripeWebhookSecret: () => 'whsec_test', pharmacySubmissionsEnabled: () => true } }))
 
 jest.mock('@/lib/stripe/client', () => ({
   createStripeClient: () => ({

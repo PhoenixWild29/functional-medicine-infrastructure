@@ -131,6 +131,11 @@ beforeEach(() => {
 
 afterAll(() => { errorSpy.mockRestore(); warnSpy.mockRestore(); infoSpy.mockRestore() })
 
+// Pharmacy submissions ON: these tests describe the switch on (the kill
+// switch is covered in submission-kill-switch.test.ts).
+beforeAll(() => { process.env['PHARMACY_SUBMISSIONS_ENABLED'] = 'true' })
+afterAll(() => { delete process.env['PHARMACY_SUBMISSIONS_ENABLED'] })
+
 // ── Idempotency ────────────────────────────────────────────────────
 
 describe('exactly one submission per order', () => {

@@ -30,6 +30,7 @@ import { insertStatusHistory } from '@/lib/orders/status-history'
 import { createStripeClient }  from '@/lib/stripe/client'
 import { decideRefund, pendingRefund, issueRefund, refundMetadata, recordPendingRefund } from '@/lib/refunds/refund'
 import { routeOrder, submitQueuedFax } from '@/lib/adapters/routing-engine'
+import { pharmacySubmissionsEnabled, PHARMACY_SUBMISSIONS_OFF_MESSAGE } from '@/lib/adapters/submission-switch'
 import type { OrderStatusEnum } from '@/types/database.types'
 
 interface Params { params: Promise<{ orderId: string }> }
@@ -295,6 +296,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
           { status: 422 }
         )
       }
+      if (!pharmacySubmissionsEnabled()) return submissionsOff(action, orderId)
       const claimed = await casTransition({
         orderId,
         expectedStatus: 'SUBMISSION_FAILED',
@@ -346,6 +348,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
           { status: 422 }
         )
       }
+      if (!pharmacySubmissionsEnabled()) return submissionsOff(action, orderId)
       const claimed = await casTransition({
         orderId,
         expectedStatus: currentStatus,
@@ -434,6 +437,13 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
     default:
       return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 })
   }
+}
+
+// Kill switch (PHARMACY_SUBMISSIONS_ENABLED off): refused before any status
+// change, so the order is exactly as ops found it.
+function submissionsOff(action: string, orderId: string): NextResponse {
+  console.info(`[ops/action] ${action} refused: pharmacy submissions are turned off | order=${orderId}`)
+  return NextResponse.json({ ok: false, error: PHARMACY_SUBMISSIONS_OFF_MESSAGE }, { status: 423 })
 }
 
 export function GET()    { return new NextResponse(null, { status: 405 }) }

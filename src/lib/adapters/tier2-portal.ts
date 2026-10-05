@@ -32,6 +32,7 @@
 //   OPENAI_API_KEY          — for AI vision confidence scoring (REQ-PTA-004)
 //   PLAYWRIGHT_HEADLESS     — "true" in production; "false" for local dev
 
+import { assertPharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { chromium } from 'playwright'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getVaultSecret } from '@/lib/adapters/vault'
@@ -187,6 +188,9 @@ export async function submitTier2Portal(
   // NB-02: caller (routing engine) supplies attempt number for correct audit trail
   attemptNumber: number = 1
 ): Promise<Tier2PortalResult> {
+  // Kill switch: refuse before reading anything (lib/adapters/submission-switch).
+  assertPharmacySubmissionsEnabled('Tier 2 portal submission')
+
   const supabase = createServiceClient()
 
   // ── 1. Load pharmacy_portal_configs ───────────────────────

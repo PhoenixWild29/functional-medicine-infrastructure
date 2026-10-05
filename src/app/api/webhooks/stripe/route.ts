@@ -28,6 +28,7 @@ import { casTransition } from '@/lib/orders/cas-transition'
 import { serverEnv } from '@/lib/env'
 import { sendSlackAlert, buildAdapterFailureAlert } from '@/lib/slack/client'
 import { routeOrder } from '@/lib/adapters/routing-engine'
+import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { handleGroupPaymentSucceeded as handleGroupPaymentSucceededImpl } from './handle-group'
 import { handleGroupChargeDisputeCreated as handleGroupChargeDisputeCreatedImpl } from './handle-group-dispute'
 
@@ -429,7 +430,16 @@ async function recordDestinationTransferId(
 // nothing. If the background work never claims the order (the function is
 // recycled first, or the claim's own write fails) the order stays
 // PAID_PROCESSING and the submit-paid-orders cron picks it up.
+//
+// Kill switch: while PHARMACY_SUBMISSIONS_ENABLED is off the payment is
+// still recorded (PAID_PROCESSING) but nothing is handed over: no claim,
+// no SLA rows, no alert. One log line per order, by id only.
 async function branchByTier(orderId: string, pharmacyId: string): Promise<void> {
+  if (!pharmacySubmissionsEnabled()) {
+    console.info(`[stripe-webhook] pharmacy submissions are turned off | order=${orderId} stays PAID_PROCESSING`)
+    return
+  }
+
   const supabase = createServiceClient()
 
   // Batch 1, finding 5: a tier that cannot be read is never assumed. The

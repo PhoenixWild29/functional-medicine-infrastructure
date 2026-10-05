@@ -1,4 +1,5 @@
 import { serverEnv } from '@/lib/env'
+import { assertPharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 
 // Documo mFax REST API v2 client — fetch-based (no official SDK).
 // Auth: X-API-Key header + account_id path param
@@ -35,6 +36,9 @@ function documoHeaders() {
 }
 
 export async function sendFax(params: DocumentoSendFaxParams): Promise<{ faxId: string }> {
+  // Kill switch: no fax leaves the platform unless pharmacy submissions are on.
+  assertPharmacySubmissionsEnabled('Documo sendFax')
+
   const response = await fetch(
     `${DOCUMO_BASE_URL}/accounts/${serverEnv.documoAccountId()}/faxes`,
     {

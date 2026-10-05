@@ -55,6 +55,7 @@ import { sendSlackAlert, buildAdapterFailureAlert, buildSubmissionFailedAlert } 
 import { createSlasForTransition, upsertFaxDeliverySla } from '@/lib/sla/creator'
 import { resolveSlasForTransition } from '@/lib/sla/resolver'
 import type { IntegrationTier } from '@/lib/adapters/audit-trail'
+import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 
 // ============================================================
 // CONSTANTS
@@ -84,8 +85,11 @@ export interface RouteOrderParams {
 }
 
 export interface RouteOrderResult {
-  /** not_claimed: the order had already left currentStatus; nothing was submitted */
-  outcome:        'accepted' | 'manual_review' | 'reroute_pending' | 'cascaded_to_fax' | 'submission_failed' | 'circuit_open' | 'not_claimed'
+  /**
+   * not_claimed: the order had already left currentStatus; nothing was submitted.
+   * submissions_disabled: PHARMACY_SUBMISSIONS_ENABLED is off; the order was not touched.
+   */
+  outcome:        'accepted' | 'manual_review' | 'reroute_pending' | 'cascaded_to_fax' | 'submission_failed' | 'circuit_open' | 'not_claimed' | 'submissions_disabled'
   submissionId?:  string
   /** null when the pharmacy is missing or inactive */
   tier:           IntegrationTier | null
@@ -452,6 +456,16 @@ async function markFaxQueued(params: {
 export async function routeOrder(params: RouteOrderParams): Promise<RouteOrderResult> {
   const { orderId, pharmacyId, currentStatus, attemptNumber = 1 } = params
 
+  // ── 0. Kill switch ────────────────────────────────────────
+  // Off: do not claim. The order stays in currentStatus with no SLA rows,
+  // ready to be submitted once the owner turns submissions on.
+  if (!pharmacySubmissionsEnabled()) {
+    console.info(
+      `[routing-engine] pharmacy submissions are turned off | order=${orderId} not claimed, stays ${currentStatus}`
+    )
+    return { outcome: 'submissions_disabled', tier: null }
+  }
+
   // ── 1. Claim ──────────────────────────────────────────────
   const claim = await casTransition({
     orderId,
@@ -708,7 +722,7 @@ async function submitClaimedOrder(params: {
 // ============================================================
 
 export interface SubmitQueuedFaxResult {
-  outcome:       'accepted' | 'fax_failed' | 'not_claimed'
+  outcome:       'accepted' | 'fax_failed' | 'not_claimed' | 'submissions_disabled'
   submissionId?: string
 }
 
@@ -726,6 +740,12 @@ export async function submitQueuedFax(params: {
   pharmacyId: string
 }): Promise<SubmitQueuedFaxResult> {
   const { orderId, pharmacyId } = params
+
+  if (!pharmacySubmissionsEnabled()) {
+    console.info(`[routing-engine] pharmacy submissions are turned off | ops fax for order=${orderId} not sent`)
+    return { outcome: 'submissions_disabled' }
+  }
+
   const supabase = createServiceClient()
 
   const { data: order, error } = await supabase

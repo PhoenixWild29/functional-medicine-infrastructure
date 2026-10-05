@@ -45,6 +45,11 @@ import { markSubmitted } from '../audit-trail'
 const fetchMock = jest.fn()
 beforeAll(() => { (global as { fetch: unknown }).fetch = fetchMock })
 
+// Pharmacy submissions ON: these tests describe the switch on (the kill
+// switch is covered in submission-kill-switch.test.ts).
+beforeAll(() => { process.env['PHARMACY_SUBMISSIONS_ENABLED'] = 'true' })
+afterAll(() => { delete process.env['PHARMACY_SUBMISSIONS_ENABLED'] })
+
 jest.spyOn(console, 'error').mockImplementation(() => {})
 jest.spyOn(console, 'info').mockImplementation(() => {})
 jest.spyOn(console, 'warn').mockImplementation(() => {})
