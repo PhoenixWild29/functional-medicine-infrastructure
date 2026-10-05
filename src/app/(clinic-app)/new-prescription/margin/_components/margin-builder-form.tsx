@@ -197,7 +197,27 @@ const MULTIPLIERS = [
   { label: '3×',   factor: 300 },
 ]
 
-export function MarginBuilderForm({
+/**
+ * The price step, keyed by the line it prices. Saving one line's edit
+ * moves on to the next line owed a price (WO-108 nextAfterReprice) on
+ * this same route, so Next keeps the component and only the props
+ * change. Without a key every useState below (the sig, the retail, the
+ * package) kept the FIRST line's values: prod, Menopause BHRT, DHEA was
+ * saved with Progesterone's sig. A new line is a new form.
+ */
+export function MarginBuilderForm(props: Props) {
+  return <MarginBuilderFormForLine key={priceStepKey(props)} {...props} />
+}
+
+/** What identifies the line on the page: a change means a fresh form. */
+export function priceStepKey(props: Pick<Props, 'editTarget' | 'pharmacyId' | 'formulationId' | 'itemId' | 'dose' | 'presetSigText'>): string {
+  return JSON.stringify([
+    props.editTarget ?? null, props.pharmacyId, props.formulationId ?? null, props.itemId ?? null,
+    props.dose, props.presetSigText ?? null,
+  ])
+}
+
+function MarginBuilderFormForLine({
   pharmacyId,
   itemId,
   formulationId,

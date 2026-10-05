@@ -234,8 +234,11 @@ function derivedForLine(
     dosageFormName:     inputs.dosageFormName,
     // Cycling dose math: a cycling line's length is its own, never read
     // from its sig ("for 6 weeks then reassess" has none durationDaysFromSig
-    // accepts); the doses count on-days only.
-    durationDays:       rx.sigMode === 'cycling' ? rx.cycle?.lengthDays ?? null : durationDaysFromSig(rx.sigText),
+    // accepts); the doses count on-days only. A protocol line whose sig
+    // states no duration lasts the protocol's length (12 weeks = 84 days).
+    durationDays:       rx.sigMode === 'cycling'
+      ? rx.cycle?.lengthDays ?? null
+      : durationDaysFromSig(rx.sigText) ?? rx.protocolDurationDays ?? null,
     cycle:              rx.sigMode === 'cycling' ? rx.cycle ?? null : null,
   })
 }
@@ -384,6 +387,27 @@ export function BatchReviewForm({ isProvider }: Props) {
       if (s.count === 1 && s.package.isDefault) return   // priced as it is
       const wholesaleCents = Math.round(s.package.wholesalePrice * 100) * s.count
       const canPreserve = rx.wholesaleCents > 0 && rx.retailCents >= rx.wholesaleCents
+      // A protocol line's retail was set for the pharmacy's default
+      // package. Sized to another package or count, it keeps the same
+      // markup — saved retail × new wholesale ÷ saved wholesale — and says
+      // so, rather than staying at the old retail (below cost, blocked).
+      if (rx.protocolId && canPreserve) {
+        const retailCents = Math.round(rx.retailCents * wholesaleCents / rx.wholesaleCents)
+        const oldPackage = packages.find(p => p.isDefault)?.label ?? 'one package'
+        const newPackage = s.count > 1 ? `${s.count} × ${s.package.label}` : s.package.label
+        updatePrescription(rx.id, {
+          packageId:       s.package.id,
+          packageLabel:    s.package.label,
+          packageCount:    s.count,
+          quantityLabel:   s.package.label,
+          wholesaleCents,
+          retailCents,
+          repriceRequired: false,
+          marginBasis:     'preserved',
+          priceNote:       `Price updated for ${newPackage} (was ${toCurrency(rx.retailCents)} for ${oldPackage})`,
+        })
+        return
+      }
       updatePrescription(rx.id, {
         packageId:            s.package.id,
         packageLabel:         s.package.label,
@@ -916,7 +940,7 @@ export function BatchReviewForm({ isProvider }: Props) {
           <span className="text-sm font-semibold text-foreground" data-testid="review-subtotal">{toCurrency(totalRetailCents)}</span>
         </div>
         {/* WO-102: shipping per pharmacy — once per pharmacy, not per Rx */}
-        <ShippingLines shipping={bundle.shipping} absorbShipping={bundle.absorbShipping} rates={bundle.rates} />
+        <ShippingLines shipping={bundle.shipping} absorbShipping={bundle.absorbShipping} rates={bundle.rates} unpriced={bundle.unpriced} />
         <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
           <span>Platform fee (15% of margin, not charged on shipping)</span>
           <span data-testid="review-platform-fee">{toCurrency(totalPlatformFeeCents)}</span>

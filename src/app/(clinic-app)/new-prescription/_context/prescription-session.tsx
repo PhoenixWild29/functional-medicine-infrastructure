@@ -82,6 +82,11 @@ export interface SessionPrescription {
   protocolId?:     string | null
   // Display-only companion to protocolId (never sent to the API).
   protocolName?:   string | null
+  // The protocol's length in days (total_duration_weeks × 7). Review
+  // sizes a protocol line whose sig states no duration for this length,
+  // not for the item's stored quantity ("90 caps" priced as 3 bottles
+  // against a retail set for one). Optional: older sessions lack it.
+  protocolDurationDays?: number | null
   // WO-96: per-Rx detail fields (days supply, dispense, refills,
   // substitution, syringe kit, shipping, clinical difference, diagnosis,
   // special instructions) and the rules that govern them (controlled →

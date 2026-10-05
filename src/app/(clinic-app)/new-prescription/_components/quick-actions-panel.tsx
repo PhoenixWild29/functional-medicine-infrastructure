@@ -406,6 +406,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
         // ad-hoc builder lines never set this.
         protocolId: detail.protocol_id,
         protocolName: detail.name,
+        protocolDurationDays: detail.total_duration_weeks && detail.total_duration_weeks > 0 ? detail.total_duration_weeks * 7 : null,
         frequencyCode: item.frequency_code,
         quantityLabel: item.default_quantity,
         // Cycling dose math: a cycling item loads as cycling, with its
