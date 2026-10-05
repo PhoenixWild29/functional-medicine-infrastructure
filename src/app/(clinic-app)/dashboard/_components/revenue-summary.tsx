@@ -18,6 +18,8 @@ interface Props {
   totalOrdersMtd:      number
   totalRevenueCents:   number
   pendingPaymentCount: number
+  /** Links that have expired unpaid — not open, shown as a line under the card. */
+  expiredPaymentCount?: number
   completedMtd:        number
   // Prior year same-month metrics for trend
   priorYearOrdersMtd:  number
@@ -57,6 +59,7 @@ export function RevenueSummary({
   totalOrdersMtd,
   totalRevenueCents,
   pendingPaymentCount,
+  expiredPaymentCount = 0,
   completedMtd,
   priorYearOrdersMtd,
   priorYearRevenueCents,
@@ -143,6 +146,11 @@ export function RevenueSummary({
             {card.value}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">{card.sublabel}</p>
+          {card.id === 'pending-payment' && expiredPaymentCount > 0 && (
+            <p className="mt-0.5 text-xs text-amber-700" data-testid="kpi-pending-payment-expired">
+              {expiredPaymentCount.toLocaleString('en-US')} expired
+            </p>
+          )}
           {card.showTrend && card.value !== '—' && (
             <Trend
               current={card.trendCurrent!}
