@@ -8,9 +8,11 @@
  * dispense: BPC-157 cycling for 42 days (30 mL) as one $62 vial.
  *
  * Review now runs the same vial suggestion. When the line needs another
- * package or more than one, the line takes it and must be re-priced by
- * the provider (the WO-108 price step). When the package cannot be
- * sized, the line is blocked with the same message as the price step.
+ * package or more than one, the line takes it and its retail scales with
+ * the wholesale so the markup stays the same, with a note saying so (the
+ * protocol pricing fix: the old retail left it below cost, blocked). When
+ * the package cannot be sized, the line is blocked with the same message
+ * as the price step.
  */
 
 import { render, screen } from '@testing-library/react'
@@ -89,15 +91,16 @@ jest.setTimeout(15_000)
 beforeEach(() => sessionStorage.clear())
 
 describe('a protocol line with no package', () => {
-  it('takes the vial count the dispense needs — 6 × 5 mg vial — and asks the provider to confirm the price', async () => {
+  it('takes the vial count the dispense needs — 6 × 5 mg vial — and scales the retail to keep the markup', async () => {
     mockFetch({ value: 1, unit: 'mg/mL' })
     renderReview(PROTOCOL_LINE)
     // The Rx details summary line: the dispense with the packages it is filled from.
     expect(await screen.findByText(/dispense 30 mL \(6 × 5 mg vials\)/, undefined, { timeout: 5000 })).toBeInTheDocument()
-    // $62 → $372 wholesale: the old $93.00 retail is now below cost, so the
-    // line cannot be sent until the provider re-prices it.
-    const block = await screen.findByTestId('below-cost-line-proto')
-    expect(block).toHaveTextContent('$93.00 retail against $372.00 wholesale')
+    // $62 → $372 wholesale: the $93.00 retail scales to $93.00 × 372 ÷ 62 =
+    // $558.00, the same 50% markup — never left below cost.
+    expect(await screen.findByText('Price updated for 6 × 5 mg vial (was $93.00 for 5 mg vial)')).toBeInTheDocument()
+    expect(screen.queryByTestId('below-cost-line-proto')).toBeNull()
+    expect(screen.queryByTestId('reprice-required-line-proto')).toBeNull()
   })
 
   it('a package that cannot be sized blocks the line with the price step message', async () => {

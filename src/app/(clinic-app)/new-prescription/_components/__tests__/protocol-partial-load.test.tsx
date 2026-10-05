@@ -198,6 +198,9 @@ function SessionProbe() {
       <span data-testid="rx-protocol-ids">
         {session.prescriptions.map(rx => rx.protocolId ?? 'none').join(',')}
       </span>
+      <span data-testid="rx-protocol-days">
+        {session.prescriptions.map(rx => String((rx as { protocolDurationDays?: number | null }).protocolDurationDays ?? 'none')).join(',')}
+      </span>
     </div>
   )
 }
@@ -347,6 +350,17 @@ describe('protocol quick-load — idempotency', () => {
     expect(screen.getByTestId('rx-protocol-ids')).toHaveTextContent(
       `${PROTOCOL_ID},${PROTOCOL_ID}`,
     )
+  })
+
+  it('every loaded line carries the protocol length in days (12 weeks = 84), to size a line with no duration', async () => {
+    protocolItems = [LICENSED_ITEM, SECOND_LICENSED_ITEM]
+    seedSession('TX')
+    renderPanel()
+
+    fireEvent.click(await openProtocol())
+
+    await waitFor(() => expect(screen.getByTestId('rx-count')).toHaveTextContent('2'))
+    expect(screen.getByTestId('rx-protocol-days')).toHaveTextContent('84,84')
   })
 
   it('loading the same protocol twice does not duplicate the lines', async () => {
