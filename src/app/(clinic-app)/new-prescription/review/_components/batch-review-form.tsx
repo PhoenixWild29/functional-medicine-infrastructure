@@ -68,6 +68,7 @@ import {
   MISSING_RX_DETAIL_LABEL,
   rulesFromFormulation,
   suggestPackageForDispense,
+  dispenseInPackageUnit,
   packageUnitMismatchMessage,
   type PackageOption,
   type MissingRxDetail,
@@ -75,6 +76,8 @@ import {
   type RxRules,
 } from '@/lib/orders/rx-details'
 import type { RxFormulationDefaults } from '@/lib/orders/rx-defaults-loader'
+import { computeTitrationDispense } from '@/lib/orders/titration'
+import { legacyTitrationFromSig, legacyTitrationDispense } from '@/lib/orders/legacy-titration'
 import { structuredLineInputs } from '@/lib/orders/draft-edit'
 import { SaveFavoriteButton } from '../../_components/save-favorite-button'
 import { splitDose } from '@/lib/orders/dose'
@@ -217,13 +220,32 @@ export function orderPostBody(
  * WO-96 fix: days supply + dispense for a session line from its own sig,
  * dose, frequency and quantity. No quantity → one package ("1"); no
  * pharmacy package list is available on this page.
+ *
+ * A titrating line is sized for its schedule, never its starting dose
+ * every day (prod, Mold/MCAS LDN 0.1 mL × 56 = 5.6 mL): its structured
+ * steps when it has them (WO-105); otherwise, for a protocol line whose
+ * titration is written only in its directions, that schedule over its
+ * length, with the assumption returned as `sizingNote` for the card.
  */
 function derivedForLine(
   rx: SessionPrescription,
   inputs: RxFormulationDefaults['dispenseInputs'] | undefined,
-): DerivedDispense | null {
+): (DerivedDispense & { sizingNote?: string }) | null {
   if (!inputs) return null
+  if (rx.sigMode === 'titration' && rx.titrationSteps && rx.titrationSteps.length > 0) {
+    const t = computeTitrationDispense(rx.titrationSteps, inputs)
+    if (t) return { daysSupply: t.totalDays, dispenseQuantity: t.totalQuantity, dispenseUnit: t.dispenseUnit }
+  }
   const { amount, unit } = splitDose(rx.dose)
+  if (rx.sigMode !== 'cycling' && rx.sigMode !== 'titration') {
+    const legacy = legacyTitrationFromSig(rx.sigText, { amount, unit })
+    const sized = legacy
+      ? legacyTitrationDispense(legacy, { frequencyCode: rx.frequencyCode ?? null, durationDays: rx.protocolDurationDays ?? null, ...inputs })
+      : null
+    if (sized) {
+      return { daysSupply: sized.daysSupply, dispenseQuantity: sized.dispenseQuantity, dispenseUnit: sized.dispenseUnit, sizingNote: sized.note }
+    }
+  }
   return computeDispense({
     doseAmount:         amount,
     doseUnit:           unit,
@@ -358,9 +380,11 @@ export function BatchReviewForm({ isProvider }: Props) {
   patientStateRef.current = session.patient?.state ?? null
   const sizeUnpackagedLine = useCallback(async (
     rx: SessionPrescription,
-    dispense: { quantity: number; unit: string; daysSupply: number | null },
+    rxDetails: RxDetails,
     inputs: RxFormulationDefaults['dispenseInputs'] | undefined,
   ) => {
+    if (rxDetails.dispenseQuantity == null || !rxDetails.dispenseUnit) return
+    const dispense = { quantity: rxDetails.dispenseQuantity, unit: rxDetails.dispenseUnit, daysSupply: rxDetails.daysSupply }
     if (!rx.formulationId) return
     try {
       const state = patientStateRef.current
@@ -384,7 +408,26 @@ export function BatchReviewForm({ isProvider }: Props) {
         updatePrescription(rx.id, { packageUnitMismatch: packageUnitMismatchMessage(s.package, dispense.unit) })
         return
       }
-      if (s.count === 1 && s.package.isDefault) return   // priced as it is
+      // The dispense in the unit of the package it is filled from: a 5 mg
+      // vial is counted in mg (prod, BPC-157 read "25.2 mL (6 × 5 mg vials)").
+      const filled = dispenseInPackageUnit(
+        { dispenseQuantity: dispense.quantity, dispenseUnit: dispense.unit },
+        s.package,
+        { dosageFormName: inputs?.dosageFormName ?? rx.form ?? null, concentrationValue: inputs?.concentrationValue ?? null, concentrationUnit: inputs?.concentrationUnit ?? null },
+      )
+      const inPackageUnit = filled.dispenseUnit !== dispense.unit
+        ? { rxDetails: { ...rxDetails, dispenseQuantity: filled.dispenseQuantity, dispenseUnit: filled.dispenseUnit } }
+        : {}
+      if (s.count === 1 && s.package.isDefault) {
+        // Priced as it is. Its quantity is the package it is priced from:
+        // a protocol's stored "60mL" the pharmacy does not sell is not what
+        // is filled, and an Edit would otherwise change it.
+        const offered = packages.some(p => p.label === rx.quantityLabel)
+        if (!offered || 'rxDetails' in inPackageUnit) {
+          updatePrescription(rx.id, { ...(offered ? {} : { quantityLabel: s.package.label }), ...inPackageUnit })
+        }
+        return
+      }
       const wholesaleCents = Math.round(s.package.wholesalePrice * 100) * s.count
       const canPreserve = rx.wholesaleCents > 0 && rx.retailCents >= rx.wholesaleCents
       // A protocol line's retail was set for the pharmacy's default
@@ -400,6 +443,7 @@ export function BatchReviewForm({ isProvider }: Props) {
           packageLabel:    s.package.label,
           packageCount:    s.count,
           quantityLabel:   s.package.label,
+          ...inPackageUnit,
           wholesaleCents,
           retailCents,
           repriceRequired: false,
@@ -413,6 +457,7 @@ export function BatchReviewForm({ isProvider }: Props) {
         packageLabel:         s.package.label,
         packageCount:         s.count,
         quantityLabel:        s.package.label,
+        ...inPackageUnit,
         wholesaleCents,
         repriceRequired:      true,
         sourceRetailCents:    rx.retailCents,
@@ -466,16 +511,19 @@ export function BatchReviewForm({ isProvider }: Props) {
             diagnosisCode:      defaults.diagnosisCode,
             diagnosisText:      defaults.diagnosisText,
           }
+          const derivedUsed = existing?.daysSupply == null && existing?.dispenseQuantity == null && derived
           updatePrescription(rx.id, {
             rxDetails,
             rxRules:     rulesFromFormulation(entry.defaults, entry.deaSchedule ?? rx.deaSchedule),
             deaSchedule: entry.deaSchedule ?? rx.deaSchedule,
+            // The titration a protocol sig's quantity was sized for, on screen.
+            ...(derivedUsed ? { sizingNote: derived.sizingNote ?? null } : {}),
           })
           // #181: a line with no package chosen (it skipped the price step)
           // is sized here the way the price step sizes it — never priced
           // as the pharmacy's default package once.
           if (!rx.packageId && rxDetails.dispenseQuantity != null && rxDetails.dispenseUnit) {
-            await sizeUnpackagedLine(rx, { quantity: rxDetails.dispenseQuantity, unit: rxDetails.dispenseUnit, daysSupply: rxDetails.daysSupply }, entry.dispenseInputs)
+            await sizeUnpackagedLine(rx, rxDetails, entry.dispenseInputs)
           }
         }
       } catch (err) {
@@ -680,6 +728,10 @@ export function BatchReviewForm({ isProvider }: Props) {
         packageLabel:    line.packageLabel,
         packageCount:    line.packageCount,
         quantityLabel:   line.packageLabel ?? rx.quantityLabel ?? null,
+        // The dispense in the unit of the package it now fills from.
+        ...(line.dispenseUnit && line.dispenseQuantity != null && rx.rxDetails
+          ? { rxDetails: { ...rx.rxDetails, dispenseQuantity: line.dispenseQuantity, dispenseUnit: line.dispenseUnit } }
+          : {}),
       })
     }
   }
@@ -823,6 +875,13 @@ export function BatchReviewForm({ isProvider }: Props) {
                   ) : block && (
                     <p className="mt-1 text-xs font-medium text-amber-700">
                       Missing {block === 'price' ? 'price' : 'directions'} — remove this line and re-add it from search or a protocol.
+                    </p>
+                  )}
+                  {/* The assumption a titrating protocol line's quantity was
+                      sized on: the app chose it, so the provider sees it. */}
+                  {rx.sizingNote && (
+                    <p className="mt-1 text-xs text-amber-800" data-testid={`sizing-note-${rx.id}`}>
+                      {rx.sizingNote}
                     </p>
                   )}
                   {/* WO-106: what the refill decided for the provider. The

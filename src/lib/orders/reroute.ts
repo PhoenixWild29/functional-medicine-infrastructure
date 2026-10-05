@@ -25,6 +25,7 @@
 
 import {
   suggestPackageForDispense,
+  dispenseInPackageUnit,
   type PackageOption,
 } from './rx-details'
 import { computeBundleShipping, type PharmacyShippingRates } from './shipping'
@@ -72,6 +73,12 @@ export interface ReroutedLine {
   /** retailCents − the line's current retail */
   priceChangeCents: number
   fromRetailCents:  number
+  /**
+   * The line's dispense in the unit of the package it now fills from
+   * (a 5 mg vial counts mg, a 5 mL vial counts mL); absent when it has none.
+   */
+  dispenseQuantity?: number
+  dispenseUnit?:     string
 }
 
 export interface ReroutePlan {
@@ -132,7 +139,19 @@ export function priceLineAt(line: RerouteLine, offer: PharmacyOffer | undefined)
   }
 
   const retailCents = roundRetail(line.retailCents, line.wholesaleCents, wholesaleCents)
+  // The dispense reads in the unit of the package it is now filled from.
+  const fillPackage = packageId
+    ? offer.packages.find(p => p.id === packageId) ?? null
+    : offer.packages.find(p => p.isDefault) ?? offer.packages[0] ?? null
+  const dispense = line.dispenseQuantity != null && line.dispenseUnit
+    ? dispenseInPackageUnit({ dispenseQuantity: line.dispenseQuantity, dispenseUnit: line.dispenseUnit }, fillPackage, {
+        dosageFormName:     line.dosageFormName ?? null,
+        concentrationValue: line.concentrationValue ?? null,
+        concentrationUnit:  line.concentrationUnit ?? null,
+      })
+    : null
   return {
+    ...(dispense ? { dispenseQuantity: dispense.dispenseQuantity, dispenseUnit: dispense.dispenseUnit } : {}),
     lineId:          line.id,
     medicationName:  line.medicationName,
     pharmacyId:      offer.pharmacyId,

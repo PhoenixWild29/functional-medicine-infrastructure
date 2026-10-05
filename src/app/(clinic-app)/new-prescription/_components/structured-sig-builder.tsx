@@ -295,13 +295,28 @@ export function StructuredSigBuilder({
     return sig
   }, [sigMode, doseAmount, doseUnit, frequency, cycling, formulation])
 
+  // ── WO-98: a reopened line keeps its own sig ────────────
+  // The line's sig is what Review showed and what the pharmacy reads. A
+  // protocol line's ("Take 1 capsule by mouth four times daily with meals
+  // and at bedtime") is not one this builder generates, and regenerating
+  // it on Edit rewrote it ("Take 1 capsule oral four times daily at
+  // bedtime", prod 2026-10-05). It stands until the provider changes
+  // something it is generated from; then the sig is generated as usual.
+  const inputsKey = JSON.stringify([doseAmount, doseUnit, frequency, timing, duration, customDurationDays, sigMode, steps, cycling])
+  const [openedWithKey] = useState(inputsKey)
+  // Only while this builder could write one for it: a cycling line saved
+  // without its days on and off has no sig until they are entered.
+  const canGenerate = sigMode === 'titration' ? !!titrationSig : sigMode === 'cycling' ? !!cyclingSig : !!generatedSig
+  const keepLineSig = !initialStructured && !!initialSigText?.trim() && inputsKey === openedWithKey && canGenerate
+
   // ── Final sig text ──────────────────────────────────────
   const computedSig = useMemo(() => {
     if (isManualEdit && sigOverride) return sigOverride
+    if (keepLineSig) return initialSigText!.trim()
     if (sigMode === 'titration') return titrationSig
     if (sigMode === 'cycling') return cyclingSig
     return generatedSig
-  }, [isManualEdit, sigOverride, sigMode, generatedSig, titrationSig, cyclingSig])
+  }, [isManualEdit, sigOverride, keepLineSig, initialSigText, sigMode, generatedSig, titrationSig, cyclingSig])
 
   // ── Propagate sig to parent ─────────────────────────────
   useEffect(() => {

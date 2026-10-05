@@ -51,6 +51,7 @@ import {
   computeDispense,
   packageCountFor,
   packageQtyInUnit,
+  dispenseInPackageUnit,
   packageUnitMismatchMessage,
   RX_DETAIL_COLUMN_LIST,
   type PackageOption,
@@ -427,6 +428,11 @@ function buildRefillLine(row: SourceRow, packagesByKey: Map<string, PackageOptio
 
   const priceNote = change ? priceDeltaMessage(change) : null
 
+  // The dispense in the unit of the package it is filled from: a 5 mg vial
+  // is counted in mg, never "25.2 mL (6 × 5 mg vials)" (prod, 2026-10-05).
+  const fillPackage = change ? packages.find(p => p.id === change!.packageId) ?? null : null
+  const filled = derived && !packageUnitMismatch ? dispenseInPackageUnit(derived, fillPackage, sizing) : derived
+
   // ── WO-108: the price the provider must confirm ───────────
   //
   // The line used to carry the source order's retail forward against
@@ -468,9 +474,9 @@ function buildRefillLine(row: SourceRow, packagesByKey: Map<string, PackageOptio
     cyclePatternRequired,
     rxDetails: {
       ...rxDetails,
-      daysSupply:       derived?.daysSupply ?? rxDetails.daysSupply,
-      dispenseQuantity: derived?.dispenseQuantity ?? rxDetails.dispenseQuantity,
-      dispenseUnit:     derived?.dispenseUnit ?? rxDetails.dispenseUnit,
+      daysSupply:       filled?.daysSupply ?? rxDetails.daysSupply,
+      dispenseQuantity: filled?.dispenseQuantity ?? rxDetails.dispenseQuantity,
+      dispenseUnit:     filled?.dispenseUnit ?? rxDetails.dispenseUnit,
     },
     concentrationValue,
     concentrationUnit,
