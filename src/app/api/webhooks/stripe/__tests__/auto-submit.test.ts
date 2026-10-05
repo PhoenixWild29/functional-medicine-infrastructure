@@ -80,17 +80,18 @@ jest.mock('@/lib/slack/client', () => ({
   buildAdapterFailureAlert: (args: unknown) => args,
 }))
 
-function chain(single: () => unknown, list?: () => unknown): Record<string, unknown> {
+type Lookup = (filters: Record<string, unknown>) => unknown
+
+function chain(single: Lookup, list?: Lookup): Record<string, unknown> {
   const filters: Record<string, unknown> = {}
   const c: Record<string, unknown> = {}
   c['select'] = () => c
   c['eq'] = (col: string, val: unknown) => { filters[col] = val; return c }
   for (const k of ['is', 'in', 'order', 'limit']) c[k] = () => c
   c['filters'] = filters
-  c['single'] = async () => (single as (f: Record<string, unknown>) => unknown)(filters)
-  c['maybeSingle'] = async () => (single as (f: Record<string, unknown>) => unknown)(filters)
-  c['then'] = (resolve: (r: unknown) => unknown) =>
-    Promise.resolve(((list ?? single) as (f: Record<string, unknown>) => unknown)(filters)).then(resolve)
+  c['single'] = async () => single(filters)
+  c['maybeSingle'] = async () => single(filters)
+  c['then'] = (resolve: (r: unknown) => unknown) => Promise.resolve((list ?? single)(filters)).then(resolve)
   return c
 }
 

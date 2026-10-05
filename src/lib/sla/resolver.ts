@@ -17,7 +17,8 @@
 //   SHIPPED               → PHARMACY_CONFIRMATION, SHIPPING
 //   DELIVERED             → REROUTE_RESOLUTION
 //   CANCELLED             → all open SLAs (payment expired, cancelled before fulfillment)
-//   SUBMISSION_FAILED     → ADAPTER_SUBMISSION_ACK (cascade or exhausted — no longer pending)
+//   FAX_QUEUED            → ADAPTER_SUBMISSION_ACK (adapter cascaded to fax — no longer pending)
+//   SUBMISSION_FAILED     → ADAPTER_SUBMISSION_ACK, FAX_DELIVERY (cascade or exhausted — nothing is pending)
 //   REROUTE_PENDING       → ADAPTER_SUBMISSION_ACK (pharmacy rejected — rerouting)
 //
 // Idempotent: WHERE resolved_at IS NULL guard prevents double-resolution.
@@ -57,9 +58,16 @@ const RESOLVE_ON_STATUS: Partial<Record<OrderStatus, SlaType[]>> = {
   DELIVERED: [
     'REROUTE_RESOLUTION',
   ],
-  // Submission exhausted or rerouted — ADAPTER_SUBMISSION_ACK no longer pending
+  // The routing engine cascaded to fax: the adapter ack is no longer awaited
+  // (sla-check would otherwise escalate an order that is already faxed).
+  FAX_QUEUED: [
+    'ADAPTER_SUBMISSION_ACK',
+  ],
+  // Submission exhausted or rerouted — ADAPTER_SUBMISSION_ACK no longer pending.
+  // FAX_DELIVERY too: a Tier 4 send that failed never queued a fax.
   SUBMISSION_FAILED: [
     'ADAPTER_SUBMISSION_ACK',
+    'FAX_DELIVERY',
   ],
   REROUTE_PENDING: [
     'ADAPTER_SUBMISSION_ACK',

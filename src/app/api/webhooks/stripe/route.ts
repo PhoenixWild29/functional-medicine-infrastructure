@@ -20,13 +20,14 @@
 // Returns HTTP 400 ONLY for signature verification failures.
 // All other outcomes (processing errors, not-found, etc.) return 200.
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import type Stripe from 'stripe'
 import { createStripeClient } from '@/lib/stripe/client'
 import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition } from '@/lib/orders/cas-transition'
 import { serverEnv } from '@/lib/env'
 import { sendSlackAlert, buildAdapterFailureAlert } from '@/lib/slack/client'
+import { routeOrder } from '@/lib/adapters/routing-engine'
 import { handleGroupPaymentSucceeded as handleGroupPaymentSucceededImpl } from './handle-group'
 import { handleGroupChargeDisputeCreated as handleGroupChargeDisputeCreatedImpl } from './handle-group-dispute'
 
@@ -286,8 +287,8 @@ async function handleSoloPaymentSucceeded(
   // then failed before routing (e.g. the tier lookup threw). That order
   // was loaded as PAID_PROCESSING: it is stranded, and the retry must
   // finish the job. Every step below is itself idempotent (the transfer
-  // bookkeeping is an overwrite and branchByTier is CAS-guarded), so the
-  // order still changes state once.
+  // bookkeeping is an overwrite and the routing engine claims the order
+  // with a CAS before submitting), so the order is still submitted once.
   if (casResult.wasAlreadyTransitioned && order.status !== 'PAID_PROCESSING') {
     return
   }
@@ -411,21 +412,29 @@ async function recordDestinationTransferId(
 }
 
 // ------------------------------------------------------------
-// V2.0 Tier-Aware Fulfillment Branching (AC-SWH-005)
-// Adapter submission and fax PDF generation are Out of Scope for WO-14
-// (covered in FRD 4 adapter work orders). This handler performs the
-// correct CAS transition for each tier so downstream work orders
-// can build on the correct state.
+// Submission to the pharmacy (AC-SWH-005)
 // ------------------------------------------------------------
+//
+// Every paid order is handed to the routing engine, which claims it
+// (PAID_PROCESSING → SUBMISSION_PENDING), submits it through its tier's
+// adapter (API, portal or fax, with the circuit breaker and the fax
+// cascade), creates its SLAs, and lands any failure in SUBMISSION_FAILED
+// with a Slack alert.
+//
+// The submission runs AFTER the response (next/server after(), which is
+// waitUntil on Vercel): a pharmacy API with retries or a portal session
+// can take minutes, and Stripe must get its 200 first. The engine's claim
+// makes this exactly-once: a redelivered event, the group resume path, or
+// the submit-paid-orders cron finds the order already claimed and submits
+// nothing. If the background work never claims the order (the function is
+// recycled first, or the claim's own write fails) the order stays
+// PAID_PROCESSING and the submit-paid-orders cron picks it up.
 async function branchByTier(orderId: string, pharmacyId: string): Promise<void> {
   const supabase = createServiceClient()
 
-  // Batch 1, finding 5: this error used to be discarded, and an
-  // undefined tier fell through to the API branch below — routing a
-  // fax-only pharmacy's prescription, controlled substances included,
-  // to an API adapter, with a 200 that stopped Stripe retrying.
-  // Throwing puts the event back in Stripe's retry queue (the route
-  // turns a thrown handler into a 500).
+  // Batch 1, finding 5: a tier that cannot be read is never assumed. The
+  // route turns a throw into a 500, so Stripe redelivers, and nothing is
+  // handed to the routing engine until the pharmacy can be read.
   const { data: pharmacy, error: pharmacyError } = await supabase
     .from('pharmacies')
     .select('integration_tier')
@@ -441,32 +450,20 @@ async function branchByTier(orderId: string, pharmacyId: string): Promise<void> 
   }
 
   const tier = pharmacy.integration_tier
-
-  if (tier === 'TIER_4_FAX') {
-    // AC-SWH-005.3: Tier 4 → FAX_QUEUED (Documo fax submission in FRD 4)
-    const casResult = await casTransition({
-      orderId,
-      expectedStatus: 'PAID_PROCESSING',
-      newStatus: 'FAX_QUEUED',
-      actor: 'stripe_webhook',
-      metadata: { tier: 'TIER_4_FAX' },
-    })
-    if (casResult.wasAlreadyTransitioned) {
-      console.info(`[stripe-webhook] branchByTier: order ${orderId} already past PAID_PROCESSING (FAX path) — idempotent no-op`)
+  after(async () => {
+    try {
+      const result = await routeOrder({ orderId, pharmacyId, currentStatus: 'PAID_PROCESSING' })
+      console.info(
+        `[stripe-webhook] submission | order=${orderId} | tier=${result.tier ?? tier} | outcome=${result.outcome}`
+      )
+    } catch (err) {
+      console.error(
+        `[stripe-webhook] submission did not start | order=${orderId} — stays PAID_PROCESSING for the submit-paid-orders cron:`,
+        err instanceof Error ? err.message : err,
+      )
     }
-  } else {
-    // AC-SWH-005.2: Tier 1/2/3 → SUBMISSION_PENDING (adapter submission in FRD 4)
-    const casResult = await casTransition({
-      orderId,
-      expectedStatus: 'PAID_PROCESSING',
-      newStatus: 'SUBMISSION_PENDING',
-      actor: 'stripe_webhook',
-      metadata: { tier: tier ?? 'TIER_1_API' },
-    })
-    if (casResult.wasAlreadyTransitioned) {
-      console.info(`[stripe-webhook] branchByTier: order ${orderId} already past PAID_PROCESSING (API path) — idempotent no-op`)
-    }
-  }
+  })
+  console.info(`[stripe-webhook] order ${orderId} queued for ${tier} submission`)
 }
 
 // ------------------------------------------------------------

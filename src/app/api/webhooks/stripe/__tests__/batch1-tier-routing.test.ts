@@ -14,6 +14,12 @@
  * The fix: a lookup that failed has no answer, so it throws. The route
  * already turns a thrown handler into a 500, which is what makes Stripe
  * redeliver.
+ *
+ * Since the auto-submit fix the webhook no longer moves the order to
+ * SUBMISSION_PENDING / FAX_QUEUED itself: it hands the order to the
+ * routing engine after the response, and the engine claims it. So "routed"
+ * here means "handed to the routing engine", and the guarantee is that an
+ * unreadable tier hands nothing over.
  */
 
 import type { NextRequest } from 'next/server'
@@ -41,6 +47,20 @@ jest.mock('@/lib/stripe/client', () => ({
 
 jest.mock('@/lib/orders/cas-transition', () => ({
   casTransition: (args: unknown) => casTransitionMock(args),
+}))
+
+// The routing engine runs after the response (next/server after()); the
+// queue holds that work until the test flushes it.
+let afterQueue: Array<() => unknown> = []
+jest.mock('next/server', () => ({
+  ...jest.requireActual('next/server'),
+  after: (task: unknown) => { afterQueue.push(typeof task === 'function' ? task as () => unknown : () => task) },
+}))
+async function flushAfter() { while (afterQueue.length > 0) await afterQueue.shift()!() }
+
+const routeOrderMock = jest.fn()
+jest.mock('@/lib/adapters/routing-engine', () => ({
+  routeOrder: (p: unknown) => routeOrderMock(p),
 }))
 
 jest.mock('@/lib/slack/client', () => ({
@@ -93,6 +113,8 @@ async function deliver() {
 const casTargets = () => casTransitionMock.mock.calls.map(c => (c[0] as { newStatus: string }).newStatus)
 
 beforeEach(() => {
+  afterQueue = []
+  routeOrderMock.mockReset().mockResolvedValue({ outcome: 'accepted', tier: 'TIER_4_FAX' })
   constructEventMock.mockReset()
   casTransitionMock.mockReset().mockResolvedValue({ wasAlreadyTransitioned: false })
   orderFetchMock.mockReset().mockResolvedValue({
@@ -111,8 +133,10 @@ describe('branchByTier when the pharmacy tier cannot be read', () => {
     pharmacyFetchMock.mockResolvedValue({ data: null, error: { message: 'connection reset', code: '08006' } })
 
     await deliver()
+    await flushAfter()
 
     expect(casTargets()).not.toContain('SUBMISSION_PENDING')
+    expect(routeOrderMock).not.toHaveBeenCalled()
   })
 
   it('returns 500 so Stripe redelivers, instead of marking it done', async () => {
@@ -135,24 +159,28 @@ describe('branchByTier when the pharmacy tier cannot be read', () => {
     pharmacyFetchMock.mockResolvedValue({ data: null, error: null })
 
     const res = await deliver()
+    await flushAfter()
 
     expect(casTargets()).not.toContain('SUBMISSION_PENDING')
+    expect(routeOrderMock).not.toHaveBeenCalled()
     expect(res.status).toBe(500)
   })
 
-  it('a fax pharmacy still goes to FAX_QUEUED', async () => {
+  it('a fax pharmacy is still handed to the routing engine', async () => {
     const res = await deliver()
+    await flushAfter()
 
-    expect(casTargets()).toContain('FAX_QUEUED')
+    expect(routeOrderMock).toHaveBeenCalledWith(expect.objectContaining({ orderId: 'o-1', pharmacyId: 'pharm-1', currentStatus: 'PAID_PROCESSING' }))
     expect(res.status).toBe(200)
   })
 
-  it('an API pharmacy still goes to SUBMISSION_PENDING', async () => {
+  it('an API pharmacy is still handed to the routing engine', async () => {
     pharmacyFetchMock.mockResolvedValue({ data: { integration_tier: 'TIER_1_API' }, error: null })
 
     const res = await deliver()
+    await flushAfter()
 
-    expect(casTargets()).toContain('SUBMISSION_PENDING')
+    expect(routeOrderMock).toHaveBeenCalledWith(expect.objectContaining({ orderId: 'o-1', pharmacyId: 'pharm-1', currentStatus: 'PAID_PROCESSING' }))
     expect(res.status).toBe(200)
   })
 })

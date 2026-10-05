@@ -25,9 +25,9 @@ import type { createServiceClient } from '@/lib/supabase/service'
 import type { casTransition as CasFn } from '@/lib/orders/cas-transition'
 import { connectRefundParams } from '@/lib/refunds/refund'
 
-// Injectable dependency for tier-aware fulfillment branching. In
-// production the route module passes its own branchByTier; the test
-// passes a jest.fn().
+// Injectable dependency that hands a paid order to the routing engine
+// (after the response). In production the route module passes its own
+// branchByTier; the test passes a jest.fn().
 type BranchByTierFn = (orderId: string, pharmacyId: string) => Promise<void>
 
 interface Deps {
@@ -148,7 +148,8 @@ export async function handleGroupPaymentSucceeded(
         alreadyTransitioned += 1
         // Batch 2A: a member loaded as PAID_PROCESSING was marked paid by
         // an earlier delivery that then failed before routing it. Resume:
-        // branchByTier is CAS-guarded, so it still moves exactly once.
+        // the routing engine claims the order with a CAS before submitting,
+        // so it is still submitted exactly once.
         if (order.status === 'PAID_PROCESSING' && order.pharmacy_id) {
           await branchByTier(order.order_id, order.pharmacy_id)
         }

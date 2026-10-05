@@ -57,11 +57,17 @@ export interface Tier4FaxResult {
 // ============================================================
 //
 // Called by:
-//   - Stripe webhook branchByTier() for initial FAX_QUEUED orders
+//   - the routing engine (Tier 4 direct, and the cascade from Tier 1/2/3),
+//     with the order claimed in SUBMISSION_PENDING; the engine moves it to
+//     FAX_QUEUED and creates the FAX_DELIVERY SLA once the fax is sent
+//   - submitQueuedFax for ops force_fax / retry_fax (order already FAX_QUEUED)
 //   - /api/cron/fax-retry for retry attempts 2 and 3
+//   - /api/cron/sla-check cascade (order already FAX_QUEUED)
 //
-// On first call (attempt 1): transitions order PAID_PROCESSING → FAX_QUEUED
-//   and creates FAX_DELIVERY SLA (30 min wall clock).
+// On first call (attempt 1) for an order still in PAID_PROCESSING:
+//   transitions it PAID_PROCESSING → FAX_QUEUED and creates the
+//   FAX_DELIVERY SLA (30 min wall clock). From any other status that CAS
+//   is a no-op.
 // On retries (attempt 2–3): updates documo_fax_id only; order
 //   stays FAX_QUEUED (already transitioned on attempt 1).
 

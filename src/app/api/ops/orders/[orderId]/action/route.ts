@@ -10,20 +10,26 @@
 //   release          — Clear ops_assignee (REQ-OPV-006)
 //   add_tracking     — Set tracking_number + carrier, CAS → SHIPPED (REQ-OPV-005 AC-004.6)
 //   cancel_refund    — CAS → CANCELLED or REFUND_PENDING + Stripe refund (AC-004.7)
-//   retry_submission — CAS SUBMISSION_FAILED → REROUTE_PENDING → SUBMISSION_PENDING (AC-004.1)
-//   force_fax        — CAS current → FAX_QUEUED (AC-004.2)
-//   retry_fax        — CAS FAX_FAILED → FAX_QUEUED (AC-004.4)
+//   retry_submission — CAS SUBMISSION_FAILED → REROUTE_PENDING, then the routing
+//                      engine resubmits after the response (AC-004.1)
+//   force_fax        — CAS current → FAX_QUEUED, then the fax is sent after the response (AC-004.2)
+//   retry_fax        — CAS FAX_FAILED → FAX_QUEUED, then the fax is sent after the response (AC-004.4)
 //   reroute          — CAS current → REROUTE_PENDING, update pharmacy_id (AC-004.5, REQ-OPV-008 HC-06)
 //
-// Auth: ops_admin only.
+// Auth: ops_admin only, verified with getUser().
+//
+// Resubmission is exactly-once per click: the status CAS is the claim, a
+// request whose CAS no-ops answers 409 and sends nothing, and the work runs
+// after the response so a slow pharmacy never holds the ops UI.
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition }       from '@/lib/orders/cas-transition'
 import { insertStatusHistory } from '@/lib/orders/status-history'
 import { createStripeClient }  from '@/lib/stripe/client'
 import { decideRefund, pendingRefund, issueRefund, refundMetadata, recordPendingRefund } from '@/lib/refunds/refund'
+import { routeOrder, submitQueuedFax } from '@/lib/adapters/routing-engine'
 import type { OrderStatusEnum } from '@/types/database.types'
 
 interface Params { params: Promise<{ orderId: string }> }
@@ -33,11 +39,12 @@ const MAX_REROUTES = 2  // HC-06
 export async function POST(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const { orderId } = await params
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
+  const { data: { user }, error: authError } = await supabaseAuth.auth.getUser()
+  if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (session.user.user_metadata['app_role'] !== 'ops_admin') {
+  if (user.user_metadata?.['app_role'] !== 'ops_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -57,7 +64,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
     return NextResponse.json({ error: 'Missing action' }, { status: 400 })
   }
 
-  const actorEmail = session.user.email ?? 'ops_admin'
+  const actorEmail = user.email ?? 'ops_admin'
   const actor      = `ops:${actorEmail}`
   const supabase   = createServiceClient()
 
@@ -271,7 +278,9 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
       return NextResponse.json({ ok: true, status: 'REFUNDED', refundId: refund.refundId })
     }
 
-    // ── AC-OPV-004.1: Retry Submission (SUBMISSION_FAILED → SUBMISSION_PENDING) ─
+    // ── AC-OPV-004.1: Retry Submission ───────────────────────────
+    // SUBMISSION_FAILED → REROUTE_PENDING here (the claim), then the routing
+    // engine claims REROUTE_PENDING → SUBMISSION_PENDING and submits.
     case 'retry_submission': {
       if (currentStatus !== 'SUBMISSION_FAILED') {
         return NextResponse.json(
@@ -279,66 +288,87 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
           { status: 422 }
         )
       }
-      // Two-step: SUBMISSION_FAILED → REROUTE_PENDING → SUBMISSION_PENDING
-      // Step 1 may be a no-op if order already moved past SUBMISSION_FAILED.
-      // Step 2 is always attempted — if order is not at REROUTE_PENDING, casTransition no-ops safely.
-      await casTransition({
+      const pharmacyId = order.pharmacy_id
+      if (!pharmacyId) {
+        return NextResponse.json(
+          { error: 'This order has no pharmacy to submit to. Reroute it to a pharmacy instead.' },
+          { status: 422 }
+        )
+      }
+      const claimed = await casTransition({
         orderId,
         expectedStatus: 'SUBMISSION_FAILED',
         newStatus:      'REROUTE_PENDING',
         actor,
         metadata:       { reason: 'ops_retry_submission' },
       })
-      await casTransition({
-        orderId,
-        expectedStatus: 'REROUTE_PENDING',
-        newStatus:      'SUBMISSION_PENDING',
-        actor,
-        metadata:       { reason: 'ops_retry_submission_resume' },
+      if (claimed.wasAlreadyTransitioned) {
+        return NextResponse.json(
+          { ok: false, error: 'The order changed before the retry applied (it may already be resubmitting). Nothing was resubmitted. Refresh and check it.' },
+          { status: 409 },
+        )
+      }
+      after(async () => {
+        try {
+          const result = await routeOrder({ orderId, pharmacyId, currentStatus: 'REROUTE_PENDING' })
+          console.info(`[ops/action] retry_submission | order=${orderId} | outcome=${result.outcome}`)
+        } catch (err) {
+          console.error(`[ops/action] retry_submission did not start | order=${orderId}:`, err instanceof Error ? err.message : err)
+        }
       })
-      console.info(`[ops/action] retry_submission | order=${orderId}`)
-      return NextResponse.json({ ok: true })
+      console.info(`[ops/action] retry_submission queued | order=${orderId}`)
+      return NextResponse.json({ ok: true, status: 'REROUTE_PENDING' })
     }
 
     // ── AC-OPV-004.2: Force Fax ──────────────────────────────────
     // BLK-01: PHARMACY_REJECTED → FAX_QUEUED is an illegal state machine transition.
     // Valid transitions from PHARMACY_REJECTED: REROUTE_PENDING, REFUND_PENDING, CANCELLED.
-    case 'force_fax': {
-      const FORCE_FAX_STATES: OrderStatusEnum[] = ['SUBMISSION_FAILED', 'FAX_FAILED']
-      if (!FORCE_FAX_STATES.includes(currentStatus)) {
+    case 'force_fax':
+    // ── AC-OPV-004.4: Retry Fax ──────────────────────────────────
+    case 'retry_fax': {
+      const FAX_STATES: OrderStatusEnum[] = action === 'force_fax'
+        ? ['SUBMISSION_FAILED', 'FAX_FAILED']
+        : ['FAX_FAILED']
+      if (!FAX_STATES.includes(currentStatus)) {
         return NextResponse.json(
-          { error: `force_fax not supported from status ${currentStatus}` },
+          {
+            error: action === 'force_fax'
+              ? `force_fax not supported from status ${currentStatus}`
+              : `retry_fax requires FAX_FAILED (current: ${currentStatus})`,
+          },
           { status: 422 }
         )
       }
-      await casTransition({
+      const pharmacyId = order.pharmacy_id
+      if (!pharmacyId) {
+        return NextResponse.json(
+          { error: 'This order has no pharmacy to fax. Reroute it to a pharmacy instead.' },
+          { status: 422 }
+        )
+      }
+      const claimed = await casTransition({
         orderId,
         expectedStatus: currentStatus,
         newStatus:      'FAX_QUEUED',
         actor,
-        metadata:       { reason: 'ops_force_fax' },
+        metadata:       { reason: action === 'force_fax' ? 'ops_force_fax' : 'ops_retry_fax' },
       })
-      console.info(`[ops/action] force_fax | order=${orderId}`)
-      return NextResponse.json({ ok: true })
-    }
-
-    // ── AC-OPV-004.4: Retry Fax ──────────────────────────────────
-    case 'retry_fax': {
-      if (currentStatus !== 'FAX_FAILED') {
+      if (claimed.wasAlreadyTransitioned) {
         return NextResponse.json(
-          { error: `retry_fax requires FAX_FAILED (current: ${currentStatus})` },
-          { status: 422 }
+          { ok: false, error: 'The order changed before the fax was queued (it may already be faxing). Nothing was sent. Refresh and check it.' },
+          { status: 409 },
         )
       }
-      await casTransition({
-        orderId,
-        expectedStatus: 'FAX_FAILED',
-        newStatus:      'FAX_QUEUED',
-        actor,
-        metadata:       { reason: 'ops_retry_fax' },
+      after(async () => {
+        try {
+          const result = await submitQueuedFax({ orderId, pharmacyId })
+          console.info(`[ops/action] ${action} | order=${orderId} | outcome=${result.outcome}`)
+        } catch (err) {
+          console.error(`[ops/action] ${action} did not start | order=${orderId}:`, err instanceof Error ? err.message : err)
+        }
       })
-      console.info(`[ops/action] retry_fax | order=${orderId}`)
-      return NextResponse.json({ ok: true })
+      console.info(`[ops/action] ${action} queued | order=${orderId}`)
+      return NextResponse.json({ ok: true, status: 'FAX_QUEUED' })
     }
 
     // ── AC-OPV-004.5: Reroute — REQ-OPV-008, HC-06 ──────────────

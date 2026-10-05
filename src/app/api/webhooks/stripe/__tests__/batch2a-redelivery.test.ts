@@ -60,6 +60,26 @@ jest.mock('@/lib/orders/cas-transition', () => ({
   },
 }))
 
+// The routing engine runs after the response (next/server after()); the
+// queue holds that work until the test flushes it.
+let afterQueue: Array<() => unknown> = []
+jest.mock('next/server', () => ({
+  ...jest.requireActual('next/server'),
+  after: (task: unknown) => { afterQueue.push(typeof task === 'function' ? task as () => unknown : () => task) },
+}))
+async function flushAfter() { while (afterQueue.length > 0) await afterQueue.shift()!() }
+
+// The routing engine's claim, against the modelled status: it submits only
+// an order still in the status it was handed.
+jest.mock('@/lib/adapters/routing-engine', () => ({
+  routeOrder: async (p: { currentStatus: string }) => {
+    if (orderStatus !== p.currentStatus) return { outcome: 'not_claimed', tier: null }
+    orderStatus = 'SUBMISSION_PENDING'
+    transitions.push('SUBMISSION_PENDING')
+    return { outcome: 'accepted', tier: 'TIER_4_FAX' }
+  },
+}))
+
 jest.mock('@/lib/slack/client', () => ({
   sendSlackAlert: jest.fn().mockResolvedValue(undefined),
   buildAdapterFailureAlert: (args: unknown) => args,
@@ -155,6 +175,7 @@ const PAYMENT_SUCCEEDED = {
 }
 
 beforeEach(() => {
+  afterQueue = []
   orderStatus = 'AWAITING_PAYMENT'
   transitions.length = 0
   eventRow = null
@@ -183,11 +204,12 @@ describe('payment_intent.succeeded — a DB error is retried, not swallowed', ()
     await deliver(PAYMENT_SUCCEEDED)            // fails: 500, unprocessed
     const retry = await deliver(PAYMENT_SUCCEEDED)
     const replay = await deliver(PAYMENT_SUCCEEDED)   // a later duplicate
+    await flushAfter()
 
     expect(retry.status).toBe(200)
     expect(replay.status).toBe(200)
-    // Paid, then routed to the fax pharmacy — each exactly once.
-    expect(transitions).toEqual(['PAID_PROCESSING', 'FAX_QUEUED'])
+    // Paid, then claimed for submission by the routing engine — each exactly once.
+    expect(transitions).toEqual(['PAID_PROCESSING', 'SUBMISSION_PENDING'])
     expect(eventRow?.processed_at).not.toBeNull()
   })
 
@@ -201,9 +223,10 @@ describe('payment_intent.succeeded — a DB error is retried, not swallowed', ()
     expect(orderStatus).toBe('PAID_PROCESSING')
 
     const retry = await deliver(PAYMENT_SUCCEEDED)
+    await flushAfter()
 
     expect(retry.status).toBe(200)
-    expect(transitions).toEqual(['PAID_PROCESSING', 'FAX_QUEUED'])
+    expect(transitions).toEqual(['PAID_PROCESSING', 'SUBMISSION_PENDING'])
   })
 
   it('a dedup lookup that errors answers 500 rather than guessing', async () => {
@@ -211,9 +234,10 @@ describe('payment_intent.succeeded — a DB error is retried, not swallowed', ()
     failDedupLookup = true
 
     const res = await deliver(PAYMENT_SUCCEEDED)
+    await flushAfter()
 
     expect(res.status).toBe(500)
-    expect(transitions).toEqual(['PAID_PROCESSING', 'FAX_QUEUED'])
+    expect(transitions).toEqual(['PAID_PROCESSING', 'SUBMISSION_PENDING'])
   })
 })
 

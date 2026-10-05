@@ -24,12 +24,17 @@ jest.mock('@/lib/adapters/vault', () => ({
   getVaultSecret: async () => 'secret',
   buildAuthHeaders: async () => ({ Authorization: 'Bearer secret' }),
 }))
+const casCalls: Array<{ newStatus: string; metadata?: Record<string, unknown> }> = []
 jest.mock('@/lib/orders/cas-transition', () => ({
-  casTransition: async () => ({ success: true, wasAlreadyTransitioned: false }),
+  casTransition: async (args: { newStatus: string; metadata?: Record<string, unknown> }) => {
+    casCalls.push(args)
+    return { success: true, wasAlreadyTransitioned: false }
+  },
 }))
 jest.mock('@/lib/slack/client', () => ({
   sendSlackAlert: async () => undefined,
   buildAdapterFailureAlert: () => ({ text: '' }),
+  buildSubmissionFailedAlert: () => ({ text: '' }),
 }))
 
 import { routeOrder } from '../routing-engine'
@@ -45,6 +50,7 @@ jest.spyOn(console, 'info').mockImplementation(() => {})
 jest.spyOn(console, 'warn').mockImplementation(() => {})
 
 beforeEach(() => {
+  casCalls.length = 0
   sendFaxMock.mockReset().mockResolvedValue({ faxId: 'fax-1' })
   fetchMock.mockReset().mockResolvedValue({ ok: true, status: 200, json: async () => ({}), text: async () => '{}' })
 })
@@ -79,6 +85,11 @@ function healthy(override: Script): Script {
   }
 }
 
+// The engine claims the order before reading anything, so a failed read
+// after the claim lands the order in SUBMISSION_FAILED (with the read error
+// recorded on that transition) instead of throwing and leaving it claimed.
+const failedWith = () => casCalls.find(c => c.newStatus === 'SUBMISSION_FAILED')?.metadata?.['error']
+
 describe('routing engine', () => {
   it('a failed circuit-breaker read stops the submission instead of reading as CLOSED', async () => {
     db = scriptedDb(healthy(c => {
@@ -86,15 +97,17 @@ describe('routing engine', () => {
       if (c.table === 'circuit_breaker_state' && c.op === 'select') return DB_DOWN
       return undefined
     }))
-    await expect(routeOrder({ orderId: 'o-1', pharmacyId: 'ph-1', currentStatus: 'PAID_PROCESSING' }))
-      .rejects.toThrow(/circuit breaker state .* could not be read: connection reset/)
+    const result = await routeOrder({ orderId: 'o-1', pharmacyId: 'ph-1', currentStatus: 'PAID_PROCESSING' })
+    expect(result.outcome).toBe('submission_failed')
+    expect(failedWith()).toMatch(/circuit breaker state .* could not be read: connection reset/)
     expect(sendFaxMock).not.toHaveBeenCalled()
   })
 
   it('a failed pharmacy read says so, not "not found or inactive"', async () => {
     db = scriptedDb(healthy(c => (c.table === 'pharmacies' ? DB_DOWN : undefined)))
-    await expect(routeOrder({ orderId: 'o-1', pharmacyId: 'ph-1', currentStatus: 'PAID_PROCESSING' }))
-      .rejects.toThrow(/pharmacy ph-1 could not be read: connection reset/)
+    const result = await routeOrder({ orderId: 'o-1', pharmacyId: 'ph-1', currentStatus: 'PAID_PROCESSING' })
+    expect(result.outcome).toBe('submission_failed')
+    expect(failedWith()).toMatch(/pharmacy ph-1 could not be read: connection reset/)
   })
 })
 
