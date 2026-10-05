@@ -3644,7 +3644,7 @@ test.describe('Clinic App — dashboard KPI cards and row Refill', () => {
 
     await loginAs(page, TEST_USERS.provider)
     await page.getByTestId(`row-refill-${refill}`).click()
-    await expect(page).toHaveURL(new RegExp(`/refill\?order=${refill}`), { timeout: 15_000 })
+    await expect(page).toHaveURL(url => url.pathname === '/refill' && url.searchParams.get('order') === refill, { timeout: 15_000 })
     await expect(page.getByTestId('refill-patient-select')).toHaveValue(TEST_IDS.patient)
     await expect(page.getByTestId(`refill-order-${source}`)).toBeChecked()
   })
@@ -3654,7 +3654,7 @@ test.describe('Clinic App — dashboard KPI cards and row Refill', () => {
 
     await loginAs(page, TEST_USERS.provider)
     await page.getByTestId(`row-refill-${order}`).click()
-    await expect(page).toHaveURL(new RegExp(`/refill\?order=${order}`), { timeout: 15_000 })
+    await expect(page).toHaveURL(url => url.pathname === '/refill' && url.searchParams.get('order') === order, { timeout: 15_000 })
     await expect(page.getByTestId('refill-patient-select')).toHaveValue(TEST_IDS.patient)
     await expect(page.getByTestId(`refill-order-${order}`)).not.toBeChecked()
   })
