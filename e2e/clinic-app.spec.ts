@@ -3569,3 +3569,93 @@ test.describe('Catalog unit corrections — sized vials, Topical Solution', () =
     expect((second.data as unknown as Array<Record<string, number>>)[0]).toEqual({ packages_added: 0, packages_retired: 0, formulations_moved: 0 })
   })
 })
+
+// ── Prod, 5 Oct (dr.chen): KPI cards that do not filter, a row Refill ─────
+// that ignores its order ────────────────────────────────────────────────────
+//
+// The Pending Payment card linked to ?tab=awaiting_payment but the tab
+// stayed on All with every row showing: the tab was read once, and a card
+// click is a client navigation to the same route. A row's Refill opened
+// /refill?order=<id> with "Select a patient…" when the order could not be
+// ticked — a refill order, or one with no refills left.
+test.describe('Clinic App — dashboard KPI cards and row Refill', () => {
+  test.beforeAll(async () => {
+    await seedStaticData()
+  })
+
+  test.afterEach(async () => {
+    await cleanupTestOrders()
+  })
+
+  async function insertOrder(over: Record<string, unknown>): Promise<string> {
+    const { data, error } = await e2eSupabase()
+      .from('orders')
+      .insert({
+        patient_id:               TEST_IDS.patient,
+        provider_id:              TEST_IDS.provider,
+        catalog_item_id:          null,
+        formulation_id:           TEST_IDS.formulation,
+        clinic_id:                TEST_IDS.clinic,
+        pharmacy_id:              TEST_IDS.pharmacyTier1,
+        status:                   'AWAITING_PAYMENT',
+        quantity:                 1,
+        wholesale_price_snapshot: 100.00,
+        retail_price_snapshot:    200.00,
+        medication_snapshot:      {
+          formulation_id:  TEST_IDS.formulation,
+          medication_name: TEST_CATALOG.formulationName,
+          prescribed_dose: '10 mg',
+          frequency_code:  'QD',
+        },
+        pharmacy_snapshot:        { pharmacy_id: TEST_IDS.pharmacyTier1, name: 'Test Pharmacy Tier1' },
+        sig_text:                 'Inject 10 mg subcutaneous once daily for 30 days',
+        refills:                  2,
+        locked_at:                new Date().toISOString(),
+        ...over,
+      })
+      .select('order_id')
+      .single()
+    if (error || !data) throw new Error(`Failed to seed order: ${error?.message}`)
+    return data.order_id as string
+  }
+
+  test('the Pending Payment card selects its tab and shows only those rows', async ({ page }) => {
+    const open = await insertOrder({})
+    const draft = await insertOrder({ status: 'DRAFT', locked_at: null, shipping_state_snapshot: 'TX' })
+
+    await loginAs(page, TEST_USERS.provider)
+    await expect(page.locator(`[data-order-id="${draft}"]`)).toBeVisible({ timeout: 15_000 })
+
+    await page.getByTestId('kpi-card-pending-payment').click()
+    await expect(page).toHaveURL(/[?&]tab=awaiting_payment/)
+    await expect(page.getByRole('tab', { name: /Pending Payment/ })).toHaveAttribute('aria-selected', 'true')
+    await expect(page.locator(`[data-order-id="${open}"]`)).toBeVisible()
+    await expect(page.locator(`[data-order-id="${draft}"]`)).toHaveCount(0)
+
+    // And back: clicking a tab writes ?tab= so the URL and tab agree.
+    await page.getByRole('tab', { name: /^All/ }).click()
+    await expect(page).toHaveURL(/[?&]tab=all/)
+    await expect(page.locator(`[data-order-id="${draft}"]`)).toBeVisible()
+  })
+
+  test('a row Refill on a refill order preselects the patient and ticks its source prescription', async ({ page }) => {
+    const source = await insertOrder({ refills: 2 })
+    const refill = await insertOrder({ refill_of_order_id: source })
+
+    await loginAs(page, TEST_USERS.provider)
+    await page.getByTestId(`row-refill-${refill}`).click()
+    await expect(page).toHaveURL(url => url.pathname === '/refill' && url.searchParams.get('order') === refill, { timeout: 15_000 })
+    await expect(page.getByTestId('refill-patient-select')).toHaveValue(TEST_IDS.patient)
+    await expect(page.getByTestId(`refill-order-${source}`)).toBeChecked()
+  })
+
+  test('a row Refill on a prescription with no refills preselects the patient, the line unticked', async ({ page }) => {
+    const order = await insertOrder({ refills: 0 })
+
+    await loginAs(page, TEST_USERS.provider)
+    await page.getByTestId(`row-refill-${order}`).click()
+    await expect(page).toHaveURL(url => url.pathname === '/refill' && url.searchParams.get('order') === order, { timeout: 15_000 })
+    await expect(page.getByTestId('refill-patient-select')).toHaveValue(TEST_IDS.patient)
+    await expect(page.getByTestId(`refill-order-${order}`)).not.toBeChecked()
+  })
+})

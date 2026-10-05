@@ -21,13 +21,14 @@
 
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
 import type { DashboardOrder } from '../page'
 import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.types'
 import { OrdersTable }  from './orders-table'
 import { OrdersKanban } from './orders-kanban'
-import type { TabId } from '../_lib/tabs'
+import { isTabId, type TabId } from '../_lib/tabs'
+import { paymentLinkCounts } from '@/lib/orders/payment-link'
 import type { DraftViewer } from '@/lib/orders/draft-edit-access'
 import { OrderDrawer }  from './order-drawer'
 import { batchSignHref, MAX_BATCH_ORDERS } from '@/lib/orders/batch-sign-view'
@@ -118,6 +119,7 @@ function buildDashboardOrder(o: Record<string, unknown>): DashboardOrder {
     isOverdue48h,
     paymentGroupId:    (o['payment_group_id'] as string | null) ?? null,
     providerId:        (o['provider_id'] as string | null) ?? null,
+    lockedAt:          (o['locked_at'] as string | null) ?? null,
   }
 }
 
@@ -141,7 +143,23 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
   // WO-106: the KPI cards link here (?tab=…), so the tab is addressable.
   // Anila Coniku-Nicklos, 2026-09-11 (01:32:09): "I was going to click
   // under the total orders … It takes you right there."
-  const [activeTab,       setActiveTab]       = useState<TabId>(initialTab ?? 'all')
+  //
+  // Prod, 5 Oct: a card click changed the URL and left the tab on All —
+  // a client navigation to the same route keeps this component, so state
+  // seeded once from initialTab never saw the new ?tab=. The tab now
+  // follows the URL on every navigation, and a tab click writes ?tab=
+  // back (replace, so Back does not walk through tabs).
+  const searchParams = useSearchParams()
+  const urlTab = searchParams?.get('tab') ?? null
+  const tabFromUrl: TabId = urlTab !== null ? (isTabId(urlTab) ? urlTab : 'all') : (initialTab ?? 'all')
+  const [activeTab,       setActiveTab]       = useState<TabId>(tabFromUrl)
+  useEffect(() => { setActiveTab(tabFromUrl) }, [tabFromUrl])
+  const selectTab = useCallback((id: TabId) => {
+    setActiveTab(id)
+    const params = new URLSearchParams(searchParams?.toString() ?? '')
+    params.set('tab', id)
+    router.replace(`/dashboard?${params.toString()}`, { scroll: false })
+  }, [router, searchParams])
   // QA post-combine fix: store only the selected order's ID and derive the
   // full row from the polled query data below. Storing the whole object
   // froze the drawer on a click-time snapshot — it never reflected poll
@@ -160,7 +178,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
       const { data, error } = await supabase
         .from('orders')
         .select(`
-          order_id, status, created_at, updated_at, payment_group_id, provider_id,
+          order_id, status, created_at, updated_at, locked_at, payment_group_id, provider_id,
           retail_price_snapshot, wholesale_price_snapshot,
           medication_snapshot, pharmacy_snapshot,
           patients!inner(first_name, last_name)
@@ -208,6 +226,9 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
   // ── Tab count badges ────────────────────────────────────
   function tabCount(tab: TabDef): number {
     if (tab.statuses === null) return orders.length
+    // The badge counts open links only, like the Pending Payment card;
+    // the tab still lists the expired ones.
+    if (tab.id === 'awaiting_payment') return paymentLinkCounts(orders).open
     return orders.filter(o => tab.statuses!.includes(o.status)).length
   }
 
@@ -364,7 +385,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
               type="button"
               role="tab"
               aria-selected={isActive}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => selectTab(tab.id)}
               className={`
                 flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-t-md border-b-2 transition-colors
                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
@@ -448,7 +469,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
               <p className="text-sm font-medium text-foreground">No orders match your filters</p>
               <button
                 type="button"
-                onClick={() => setActiveTab('all')}
+                onClick={() => selectTab('all')}
                 className="text-sm text-primary underline-offset-2 hover:underline focus-visible:outline-none"
               >
                 Clear filters

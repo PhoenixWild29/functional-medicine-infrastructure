@@ -203,6 +203,16 @@ export default async function RefillPage(
     `${a.patient.last_name}${a.patient.first_name}`.localeCompare(`${b.patient.last_name}${b.patient.first_name}`),
   )
 
+  // ?order= from a dashboard row or the drawer. Only this clinic's orders
+  // were read above, so another clinic's order — or none at all — is
+  // simply not found: the page shows a short notice and nothing about it.
+  // A refill order is refilled against its source (refills count there),
+  // so it points the picker at the source prescription.
+  const requested = preselectOrderId ? rows.find(r => r.order_id === preselectOrderId) ?? null : null
+  const resolvedPreselect = requested ? (requested.refill_of_order_id ?? requested.order_id) : null
+  const preselectMissing = preselectOrderId !== null
+    && (resolvedPreselect === null || !list.some(p => p.orders.some(o => o.orderId === resolvedPreselect)))
+
   return (
     <>
       <HipaaTimeout />
@@ -214,8 +224,10 @@ export default async function RefillPage(
         </p>
 
         <RefillPicker
+          key={preselectOrderId ?? ''}
           patients={list}
-          preselectOrderId={preselectOrderId}
+          preselectOrderId={preselectMissing ? null : resolvedPreselect}
+          preselectMissing={preselectMissing}
           provider={selfProvider ? {
             provider_id:    selfProvider.provider_id,
             first_name:     selfProvider.first_name,
