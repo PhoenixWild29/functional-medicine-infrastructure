@@ -5,6 +5,8 @@ import { SidebarNav } from '@/components/sidebar-nav'
 import { MainContentOffset } from '@/components/main-content-offset'
 import { ClinicErrorBoundary } from '@/components/clinic-error-boundary'
 import { BfcacheGuard } from '@/components/bfcache-guard'
+import { HipaaTimeout } from '@/components/hipaa-timeout'
+import { serverEnv } from '@/lib/env'
 
 // Clinic App: auth required, app_role must be clinic_user
 // Accessible to: clinic_admin, provider, medical_assistant
@@ -50,6 +52,8 @@ export default async function ClinicAppLayout({
   return (
     <Providers>
       <BfcacheGuard />
+      {/* HIPAA automatic logoff on every clinic page (compliance C3) */}
+      <HipaaTimeout timeoutMinutes={serverEnv.idleTimeoutMinutes()} />
       {/* md: 56px icon-rail offset | xl: 240px sidebar (or 56px if collapsed) */}
       <div className="min-h-screen bg-background">
         <SidebarNav userEmail={userEmail} userRole={userRole} showPractice={showPractice} />

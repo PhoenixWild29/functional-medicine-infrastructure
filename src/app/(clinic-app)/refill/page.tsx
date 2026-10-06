@@ -28,7 +28,6 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { resolveCurrentProvider } from '@/lib/auth/current-provider'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
-import { HipaaTimeout } from '@/components/hipaa-timeout'
 import { RefillPicker, type RefillablePatient, type RefillableOrder } from './_components/refill-picker'
 import type { SessionProvider } from '../new-prescription/_context/prescription-session'
 import { refillsUsed, refillAllowance } from '@/lib/orders/refill'
@@ -102,7 +101,6 @@ export default async function RefillPage(
     )
     return (
       <>
-        <HipaaTimeout />
         <main className="mx-auto max-w-3xl px-4 py-8">
           <h1 className="text-2xl font-bold text-foreground">Refill</h1>
           <div
@@ -216,7 +214,6 @@ export default async function RefillPage(
 
   return (
     <>
-      <HipaaTimeout />
       <main className="mx-auto max-w-3xl px-4 py-8">
         <h1 className="text-2xl font-bold text-foreground">Refill</h1>
         <p className="mt-1 text-sm text-muted-foreground">
