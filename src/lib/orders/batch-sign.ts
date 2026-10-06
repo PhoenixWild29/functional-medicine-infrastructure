@@ -117,6 +117,8 @@ export interface BatchLine {
   deaSchedule:    number | null
   controlled:     boolean
   integrationTier: string | null
+  /** The state the draft was written (and the pharmacy license-checked) for. */
+  shippingState:  string | null
 }
 
 export interface BatchCheck {
@@ -364,6 +366,7 @@ export async function checkBatch(
     lines.push({
       orderId: r.order_id, patientId: r.patient_id, providerId: r.provider_id, pharmacyId: r.pharmacy_id,
       medicationName: name, deaSchedule, controlled, integrationTier: pharmacy?.integration_tier ?? null,
+      shippingState: r.shipping_state_snapshot ?? null,
     })
     if (problems.length === before && r.status === 'DRAFT') priceable.push(r)
   }
@@ -462,6 +465,54 @@ function groupsEnabled(): boolean {
   return process.env['PHASE_C_GROUPS_ENABLED'] === 'true'
 }
 
+interface PatientAddressRow {
+  patient_id:    string
+  address_line1: string | null
+  address_line2: string | null
+  city:          string | null
+  state:         string | null
+  zip:           string | null
+}
+
+/**
+ * The batch's patients' addresses, read once. Refuses (nothing written)
+ * when they cannot be read, or when a patient's state is no longer the
+ * state a line was written for.
+ */
+async function readShippingAddresses(
+  supabase: Supabase,
+  lines: BatchLine[],
+): Promise<{ ok: true; byPatient: Map<string, PatientAddressRow> } | { ok: false; result: SignBatchResult }> {
+  const patientIds = [...new Set(lines.map(l => l.patientId))]
+  const { data, error } = await supabase
+    .from('patients')
+    .select('patient_id, address_line1, address_line2, city, state, zip')
+    .in('patient_id', patientIds)
+  if (error) {
+    console.error('[batch-sign] patient addresses could not be read:', error.message)
+    return { ok: false, result: { ok: false, status: 503, error: "The patient's shipping address could not be read. Nothing was signed; try again." } }
+  }
+  const byPatient = new Map(((data ?? []) as PatientAddressRow[]).map(p => [p.patient_id, p]))
+  const norm = (v: string | null | undefined) => (v ?? '').trim().toUpperCase()
+  const moved = lines.find(l => {
+    const now = norm(byPatient.get(l.patientId)?.state)
+    return now !== '' && norm(l.shippingState) !== '' && now !== norm(l.shippingState)
+  })
+  if (moved) {
+    const now = norm(byPatient.get(moved.patientId)?.state)
+    return {
+      ok: false,
+      result: {
+        ok: false,
+        status: 409,
+        error: `${moved.medicationName}: the patient now lives in ${now}, but this prescription was written for ${norm(moved.shippingState)}, ` +
+          `where the pharmacy's license was checked. Remove it and write it again for the new address. Nothing was signed.`,
+      },
+    }
+  }
+  return { ok: true, byPatient }
+}
+
 export async function signBatch(
   supabase: Supabase,
   input: {
@@ -535,6 +586,14 @@ export async function signBatch(
     }
   }
 
+  // ── The address each order ships to, frozen at signing ──
+  // Read before anything is written: a patient now in a state other than
+  // the one the draft was written (and the pharmacy license-checked) for
+  // is not signed. The address is written onto the drafts in step 5,
+  // just before the signing statement.
+  const addresses = await readShippingAddresses(supabase, lines)
+  if (!addresses.ok) return addresses.result
+
   // ── One payment link per patient ──
   const byPatient = new Map<string, BatchLine[]>()
   for (const l of lines) byPatient.set(l.patientId, [...(byPatient.get(l.patientId) ?? []), l])
@@ -591,6 +650,31 @@ export async function signBatch(
   // refill_of_order_id.
   const signedAt = new Date().toISOString()
   const signatureHash = await sha256Hex(`${signature.dataUrl}:${signedAt}`)
+
+  // The shipping address, onto each patient's drafts (still DRAFT, so the
+  // snapshot trigger allows it), stamped with the signing time. The
+  // adapters and the Rx PDF ship to this, not to the patient's address at
+  // submission time. If it cannot be written, nothing is signed.
+  for (const [patientId, ls] of byPatient) {
+    const a = addresses.byPatient.get(patientId)
+    const { error: addressError } = await supabase
+      .from('orders')
+      .update({
+        shipping_address_line1_snapshot: a?.address_line1 ?? null,
+        shipping_address_line2_snapshot: a?.address_line2 ?? null,
+        shipping_city_snapshot:          a?.city ?? null,
+        shipping_zip_snapshot:           a?.zip ?? null,
+        shipping_address_snapshot_at:    signedAt,
+      })
+      .in('order_id', ls.map(l => l.orderId))
+      .eq('status', 'DRAFT')
+    if (addressError) {
+      console.error(`[batch-sign] shipping address could not be recorded | patient=${patientId}: ${addressError.message}`)
+      await unwindGroups()
+      return { ok: false, status: 503, error: 'The shipping address could not be recorded on the prescriptions. Nothing was signed; try again.' }
+    }
+  }
+
   const { data: signedRows, error: signError } = await supabase
     .from('orders')
     .update({

@@ -3,6 +3,12 @@
 // POST /api/webhooks/twilio
 // ============================================================
 //
+// Compliance C1: the same URL takes the patient's replies (Twilio's
+// "A message comes in" webhook). A request with a Body and no
+// MessageStatus is an inbound message: STOP / START / HELP are handled by
+// lib/sms/inbound and answered with TwiML. The signature is checked first
+// for both.
+//
 // Handles SMS delivery status updates from Twilio:
 //   queued, sent, delivered, undelivered, failed
 //
@@ -33,6 +39,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { validateTwilioWebhook } from '@/lib/twilio/client'
+import { handleInboundSms } from '@/lib/sms/inbound'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendSlackAlert } from '@/lib/slack/client'
 import type { SlackAlertPayload } from '@/lib/slack/client'
@@ -65,6 +72,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const ip = request.headers.get('x-forwarded-for') ?? 'unknown'
     console.error(`[twilio-webhook] signature verification failed | ip=${ip}`)
     return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
+  }
+
+  // Inbound message (a reply): keywords, answered with TwiML.
+  if (formParams['MessageStatus'] === undefined && formParams['Body'] !== undefined) {
+    const xml = await handleInboundSms({ from: formParams['From'] ?? '', body: formParams['Body'] })
+    return new NextResponse(xml, { status: 200, headers: { 'Content-Type': 'text/xml; charset=utf-8' } })
   }
 
   // Step 3: Extract key fields from the form payload

@@ -29,6 +29,7 @@
 
 import { assertPharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { createServiceClient } from '@/lib/supabase/service'
+import { shippingAddressFor, type OrderShippingAddressColumns } from '@/lib/adapters/shipping-address'
 import { getVaultSecret, buildAuthHeaders } from '@/lib/adapters/vault'
 import { getTransformer, rxDetailPayloadFields, patientAllergyPayloadFields, type OrderPayload } from '@/lib/adapters/transformers'
 import { getParser } from '@/lib/adapters/parsers'
@@ -206,7 +207,7 @@ export async function submitTier1Api(
   // ── 5. Load order data for payload transformation ─────────
   const { data: order, error: orderError } = await (supabase
     .from('orders')
-    .select('order_id, order_number, provider_id, patient_id, clinic_id, medication_snapshot, provider_npi_snapshot, quantity, sig_text, sig_mode, cycle_on_days, cycle_off_days, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions, package_label, package_count, titration_steps')
+    .select('order_id, order_number, provider_id, patient_id, clinic_id, medication_snapshot, shipping_address_line1_snapshot, shipping_address_line2_snapshot, shipping_city_snapshot, shipping_zip_snapshot, shipping_state_snapshot, shipping_address_snapshot_at, provider_npi_snapshot, quantity, sig_text, sig_mode, cycle_on_days, cycle_off_days, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions, package_label, package_count, titration_steps')
     .eq('order_id', orderId)
     .single() as unknown as Promise<{
       data: {
@@ -238,7 +239,7 @@ export async function submitTier1Api(
         cycle_off_days: number | null
         package_label: string | null
         package_count: number | null
-      } | null
+      } & OrderShippingAddressColumns | null
       error: Error | null
     }>)
 
@@ -282,6 +283,9 @@ export async function submitTier1Api(
 
   // ── 6. Build canonical OrderPayload ──────────────────────
   const med = order.medication_snapshot as Record<string, unknown> | null
+  // The address the order was signed with; the patient's only for an
+  // order signed before snapshots existed.
+  const shipTo = shippingAddressFor(order, patient)
 
   const orderPayload: OrderPayload = {
     orderId:            order.order_id,
@@ -295,11 +299,11 @@ export async function submitTier1Api(
     patientFirstName:   patient.first_name,
     patientLastName:    patient.last_name,
     patientDateOfBirth: patient.date_of_birth,
-    patientAddressLine1: patient.address_line1 ?? null,
-    patientAddressLine2: patient.address_line2 ?? null,
-    patientCity:        patient.city ?? null,
-    patientState:       patient.state ?? null,
-    patientZip:         patient.zip ?? null,
+    patientAddressLine1: shipTo.line1,
+    patientAddressLine2: shipTo.line2,
+    patientCity:        shipTo.city,
+    patientState:       shipTo.state,
+    patientZip:         shipTo.zip,
     // WO-97 allergies (stored once on the patient)
     ...patientAllergyPayloadFields(patient),
     medicationName:     String(med?.medication_name ?? 'Compounded Medication'),

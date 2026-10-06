@@ -17,7 +17,6 @@
 
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { HipaaTimeout } from '@/components/hipaa-timeout'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { resolveCurrentProvider } from '@/lib/auth/current-provider'
 import { loadShippingRates } from '@/lib/orders/apply-bundle-shipping'
@@ -193,7 +192,6 @@ export default async function BatchSignPage({ searchParams }: PageProps) {
 
   return (
     <>
-      <HipaaTimeout />
       <main className="mx-auto max-w-3xl px-4 py-8">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-foreground">Review &amp; Sign Prescriptions</h1>
