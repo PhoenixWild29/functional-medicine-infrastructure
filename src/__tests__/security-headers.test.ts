@@ -223,3 +223,29 @@ describe('upgrade-insecure-requests', () => {
     expect(res.headers.get('Content-Security-Policy')).toContain('upgrade-insecure-requests')
   })
 })
+
+// Prod (eaab539): https pages carried no upgrade-insecure-requests. Behind
+// Vercel's proxy the URL the middleware sees is http; the browser's scheme
+// is in x-forwarded-proto. Decide from its FIRST value, falling back to the
+// URL's protocol when the header is absent.
+describe('upgrade-insecure-requests behind a proxy', () => {
+  const proxied = (path: string, proto: string) =>
+    new NextRequest(new URL(`http://app.compoundiq.test${path}`), { method: 'GET', headers: { 'x-forwarded-proto': proto } })
+
+  it('is sent when the URL is http but x-forwarded-proto is https (Vercel)', async () => {
+    for (const path of ['/login', '/checkout/expired']) {
+      const res = await middleware(proxied(path, 'https'))
+      expect(res.headers.get('Content-Security-Policy')).toContain('upgrade-insecure-requests')
+    }
+  })
+
+  it('reads the first value of a comma-separated x-forwarded-proto', async () => {
+    expect((await middleware(proxied('/login', 'https, http'))).headers.get('Content-Security-Policy')).toContain('upgrade-insecure-requests')
+    expect((await middleware(proxied('/login', 'http, https'))).headers.get('Content-Security-Policy')).not.toContain('upgrade-insecure-requests')
+  })
+
+  it('is not sent when x-forwarded-proto says http (local / E2E production build)', async () => {
+    const res = await middleware(new NextRequest(new URL('http://localhost/login'), { method: 'GET', headers: { 'x-forwarded-proto': 'http' } }))
+    expect(res.headers.get('Content-Security-Policy')).not.toContain('upgrade-insecure-requests')
+  })
+})
