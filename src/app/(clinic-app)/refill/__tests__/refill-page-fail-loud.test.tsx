@@ -76,18 +76,21 @@ describe('/refill when the orders query fails', () => {
     expect(screen.queryByTestId('refill-empty')).not.toBeInTheDocument()
   })
 
-  it('logs the whole error, with the clinic, so it reaches the runtime logs', async () => {
+  // C9: `details` is left out. On some errors PostgREST echoes row values
+  // there, and row values on this page are patient data.
+  it('logs the error code, message and hint, with the clinic, so it reaches the runtime logs', async () => {
     ordersResult = {
       data: null,
-      error: { code: 'PGRST301', message: 'JWT expired', details: 'd', hint: 'h' },
+      error: { code: 'PGRST301', message: 'JWT expired', details: 'Jane Doe 1980-01-01', hint: 'h' },
     }
     await renderPage()
 
     expect(errorSpy).toHaveBeenCalledWith(
       '[refill] orders query failed:',
-      JSON.stringify({ code: 'PGRST301', message: 'JWT expired', details: 'd', hint: 'h' }),
+      JSON.stringify({ code: 'PGRST301', message: 'JWT expired', hint: 'h' }),
       '| clinic=', CLINIC,
     )
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('Jane Doe')
   })
 })
 

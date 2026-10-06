@@ -159,7 +159,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             // Non-fatal: the PI itself is still confirmable; worst case the
             // patient doesn't get the email. Log so we can observe if it
             // happens in production — then continue.
-            console.error('[payment-intent] failed to attach receipt_email to existing PI:', err instanceof Error ? err.message : err)
+            // C9: Stripe's message can echo the address; log its code only.
+            console.error(`[payment-intent] failed to attach receipt_email to existing PI ${existingPi.id} | code=${(err as { code?: string; type?: string })?.code ?? (err as { type?: string })?.type ?? 'unknown'}`)
           }
         }
         return NextResponse.json({ clientSecret: existingPi.client_secret }, { status: 200 })

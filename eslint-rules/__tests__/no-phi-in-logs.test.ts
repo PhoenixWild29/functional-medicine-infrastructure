@@ -15,8 +15,9 @@
  * (`patient`, `patients`). Ids pass (`patient.patient_id`).
  */
 
-import { RuleTester, ESLint } from 'eslint'
+import { RuleTester } from 'eslint'
 import path from 'path'
+import { execFileSync } from 'child_process'
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const tsParser = require('@typescript-eslint/parser')
 import rule from '../no-phi-in-logs'
@@ -53,10 +54,15 @@ tester.run('no-phi-in-logs', rule, {
 })
 
 describe('wired into the repo lint config', () => {
-  it('is an error for src files and not off for tests of the rule itself', async () => {
-    const eslint = new ESLint({ cwd: path.resolve(__dirname, '..', '..') })
-    const config = await eslint.calculateConfigForFile('src/lib/sms/sender.ts')
-    const setting = config.rules?.['phi/no-phi-in-logs']
+  // The flat config is ESM; Jest cannot import it in-process, so ask a
+  // child Node process what ESLint resolves for a src file.
+  it('is an error for src files', () => {
+    const script =
+      "const { ESLint } = require('eslint'); " +
+      "new ESLint({ cwd: process.cwd() }).calculateConfigForFile('src/lib/sms/sender.ts')" +
+      ".then(c => process.stdout.write(JSON.stringify(c.rules['phi/no-phi-in-logs'] ?? null)))"
+    const out = execFileSync(process.execPath, ['-e', script], { cwd: path.resolve(__dirname, '..', '..'), encoding: 'utf8' })
+    const setting = JSON.parse(out) as unknown
     expect(Array.isArray(setting) ? setting[0] : setting).toBe(2)
   })
 })

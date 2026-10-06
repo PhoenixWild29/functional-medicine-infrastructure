@@ -137,9 +137,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       try {
         await stripe.paymentIntents.update(existingPi.id, { receipt_email: validatedEmail })
       } catch (err) {
+        // C9: Stripe's message can echo the address; log its code only.
         console.error(
-          '[payment-group-intent] failed to attach receipt_email to group PI:',
-          err instanceof Error ? err.message : err,
+          `[payment-group-intent] failed to attach receipt_email to group PI ${existingPi.id} | code=${(err as { code?: string; type?: string })?.code ?? (err as { type?: string })?.type ?? 'unknown'}`,
         )
       }
     }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { verifyCheckoutToken } from '@/lib/auth/checkout-token'
+import { buildCsp, newNonce, permissionsPolicy } from '@/lib/security/headers'
 
 // PR R7-Bucket-1: Apply HIPAA-grade no-store cache headers to every response
 // that touches authenticated state OR PHI. Closes a CRITICAL bfcache leak
@@ -41,9 +42,31 @@ function isPrefetchRequest(request: NextRequest): boolean {
   )
 }
 
+// ── Compliance C9: CSP + Permissions-Policy on every response ─────────────
+//
+// A fresh nonce per request. It is set on the REQUEST (x-nonce and
+// content-security-policy) before any NextResponse.next({ request }) is
+// built below, so it is forwarded to the render and Next.js stamps it on
+// its own scripts. The same policy is then set on the RESPONSE, whichever
+// branch produced it (page, API, redirect, prefetch 204). The static
+// headers (HSTS, X-Frame-Options, nosniff, Referrer-Policy) come from
+// next.config.ts. See src/lib/security/headers.ts.
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+  const nonce = newNonce()
+  const csp = buildCsp({ nonce, pathname })
+  request.headers.set('x-nonce', nonce)
+  request.headers.set('content-security-policy', csp)
+
+  const res = await handleRequest(request)
+  res.headers.set('Content-Security-Policy', csp)
+  res.headers.set('Permissions-Policy', permissionsPolicy(pathname))
+  return res
+}
+
 // Edge Middleware: runs on every request before page rendering
 // Handles auth verification for clinic-app and ops-dashboard route groups
-export async function middleware(request: NextRequest) {
+async function handleRequest(request: NextRequest): Promise<NextResponse> {
   let response = NextResponse.next({ request })
   const { pathname } = request.nextUrl
 
