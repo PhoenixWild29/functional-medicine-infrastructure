@@ -36,6 +36,11 @@ interface Deps {
   branchByTier: BranchByTierFn
   /** Needed only to refund a late payment on an expired bundle. */
   stripe?: Stripe
+  /**
+   * C7: schedules the bundle's one payment-confirmation text. Must not
+   * throw (the route's version runs after the response); guarded anyway.
+   */
+  notifyPaymentConfirmed?: (orderId: string) => void
 }
 
 export async function handleGroupPaymentSucceeded(
@@ -128,6 +133,12 @@ export async function handleGroupPaymentSucceeded(
     return
   }
 
+  // C7: the bundle's one payment-confirmation text is tied to its lowest
+  // order_id. Only the delivery whose CAS moves THAT member to
+  // PAID_PROCESSING sends it, so a redelivery or a resumed partial failure
+  // never sends a second.
+  const textAnchorOrderId = memberOrders.map(o => o.order_id).sort()[0]
+
   let casFailures = 0
   let alreadyTransitioned = 0
   let transitionedNow = 0
@@ -156,6 +167,17 @@ export async function handleGroupPaymentSucceeded(
         continue
       }
       transitionedNow += 1
+
+      if (order.order_id === textAnchorOrderId && deps.notifyPaymentConfirmed) {
+        try {
+          deps.notifyPaymentConfirmed(order.order_id)
+        } catch (smsErr) {
+          console.error(
+            `[stripe-webhook] payment confirmation text failed | group=${groupId} order=${order.order_id}:`,
+            smsErr instanceof Error ? smsErr.message : smsErr,
+          )
+        }
+      }
 
       if (!order.pharmacy_id) {
         console.error(`[stripe-webhook] group member order missing pharmacy_id | group=${groupId} order=${order.order_id}`)

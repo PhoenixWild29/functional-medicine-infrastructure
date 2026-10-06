@@ -53,12 +53,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Missing token' }, { status: 400 })
   }
 
-  let validatedEmail: string | null = null
-  if (email !== undefined) {
-    if (!isValidReceiptEmail(email)) {
-      return NextResponse.json({ error: 'Invalid email address' }, { status: 400 })
-    }
-    validatedEmail = email
+  // C7: validated (the checkout page's contract is unchanged) but never
+  // sent to Stripe.
+  if (email !== undefined && !isValidReceiptEmail(email)) {
+    return NextResponse.json({ error: 'Invalid email address' }, { status: 400 })
   }
 
   const payload = await verifyCheckoutToken(token)
@@ -133,16 +131,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       )
     }
 
-    if (validatedEmail && existingPi.receipt_email !== validatedEmail) {
-      try {
-        await stripe.paymentIntents.update(existingPi.id, { receipt_email: validatedEmail })
-      } catch (err) {
-        // C9: Stripe's message can echo the address; log its code only.
-        console.error(
-          `[payment-group-intent] failed to attach receipt_email to group PI ${existingPi.id} | code=${(err as { code?: string; type?: string })?.code ?? (err as { type?: string })?.type ?? 'unknown'}`,
-        )
-      }
-    }
+    // C7: the patient's email is NOT sent to Stripe (no BAA). PR #15 used
+    // to attach it here as receipt_email; it is still validated above so
+    // the checkout page's request contract is unchanged.
 
     return NextResponse.json(
       {

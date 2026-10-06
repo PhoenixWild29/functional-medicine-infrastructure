@@ -53,7 +53,7 @@ function toCurrency(cents: number): string {
 
 interface PaymentFormProps {
   token:       string
-  /** Endpoint to call for receipt_email attach: solo vs group. */
+  /** Payment-intent endpoint: solo vs group. */
   intentEndpoint: string
   retailCents: number
   onError:     (msg: string | null) => void
@@ -64,10 +64,10 @@ function PaymentForm({ token, intentEndpoint, retailCents, onError, onReady }: P
   const stripe   = useStripe()
   const elements = useElements()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  // PR #15: patient-typed email for Stripe receipt. Required before
-  // confirmPayment — the submit handler attaches it to the PaymentIntent
-  // via the same /api/checkout/payment-intent endpoint (update path) so
-  // Stripe auto-emails a branded receipt when the charge succeeds.
+  // Optional patient email. C7: it is never sent to Stripe (no BAA), so
+  // Stripe sends no receipt; the patient is told to expect texts instead.
+  // When entered it is still posted to the intent endpoint, which
+  // validates it and rejects a malformed address before payment.
   const [email, setEmail] = useState('')
 
   async function handleSubmit(e: React.FormEvent) {
@@ -77,15 +77,15 @@ function PaymentForm({ token, intentEndpoint, retailCents, onError, onReady }: P
     setIsSubmitting(true)
     onError(null)
 
-    // PR #15: attach the validated email to the existing PI's receipt_email
-    // before confirmPayment. Server re-validates syntax + rejects .invalid
-    // TLD; HTML5 type=email + required at the input level catches most
-    // malformed entries before we get here.
+    // Pre-submit call. A blank email is not sent at all; an entered one is
+    // validated server-side (syntax + .invalid TLD) and a rejection stops
+    // payment here. HTML5 type=email catches most malformed entries first.
+    const trimmedEmail = email.trim()
     try {
       const res = await fetch(intentEndpoint, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ token, email }),
+        body:    JSON.stringify(trimmedEmail ? { token, email: trimmedEmail } : { token }),
       })
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({})) as { error?: string }
@@ -124,18 +124,17 @@ function PaymentForm({ token, intentEndpoint, retailCents, onError, onReady }: P
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* PR #15: patient email for Stripe receipt. type=email + required
-          + pattern triggers native mobile keyboard + HTML5 validation.
-          Placed ABOVE the Stripe iframe to match standard e-commerce
-          checkout patterns (Stripe Checkout, Shopify, etc.). */}
+      {/* Optional patient email (C7: never sent to Stripe). type=email
+          triggers the native mobile keyboard + HTML5 validation when
+          filled. Placed ABOVE the Stripe iframe to match standard
+          e-commerce checkout patterns. */}
       <div>
         <label htmlFor="checkout-email" className="block text-sm font-medium text-foreground">
-          Email for receipt
+          Email (optional)
         </label>
         <input
           id="checkout-email"
           type="email"
-          required
           autoComplete="email"
           inputMode="email"
           value={email}
@@ -145,7 +144,7 @@ function PaymentForm({ token, intentEndpoint, retailCents, onError, onReady }: P
           className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
         />
         <p className="mt-1 text-xs text-muted-foreground">
-          We&rsquo;ll send your payment receipt here — no account required.
+          We&rsquo;ll text you to confirm your payment and when your order ships.
         </p>
       </div>
 

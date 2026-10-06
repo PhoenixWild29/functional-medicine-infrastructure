@@ -12,6 +12,7 @@
 
 import type { createServiceClient } from '@/lib/supabase/service'
 import { createStripeClient }       from '@/lib/stripe/client'
+import { bundleDescription }        from '@/lib/stripe/phi-guard'
 import { computeBundleShipping, dollarsToCents, stripeSplit } from '@/lib/orders/shipping'
 import { loadShippingRates }        from '@/lib/orders/apply-bundle-shipping'
 
@@ -262,16 +263,18 @@ export async function createPaymentGroup(input: CreateGroupInput): Promise<Creat
           application_fee_amount: totalApplicationFeeCents,
           transfer_data: { destination: connectAccountId },
         }),
+        // C7: opaque ids only (order_count no longer rides along).
         metadata: {
           payment_group_id: groupId,
           clinic_id:        clinicId,
-          order_count:      String(orderIds.length),
           platform:         '8090ai',
         },
-        description: `CompoundIQ prescription bundle (${orderIds.length} items)`,
+        // C7: neutral description, not "prescription bundle".
+        description: bundleDescription(orderIds.length),
         automatic_payment_methods: { enabled: true },
       },
-      { idempotencyKey: `checkout-group-pi-v1-${groupId}` },
+      // v2 (C7): params changed; see the solo route's v3 key.
+      { idempotencyKey: `checkout-group-pi-v2-${groupId}` },
     )
 
     if (!pi.client_secret) {

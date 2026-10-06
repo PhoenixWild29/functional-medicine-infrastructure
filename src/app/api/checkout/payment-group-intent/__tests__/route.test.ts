@@ -178,7 +178,8 @@ describe('POST /api/checkout/payment-group-intent', () => {
     expect(body.orderCount).toBe(2)
   })
 
-  test('attaches receipt_email when supplied and differs', async () => {
+  // C7 (no PHI to Stripe): this test used to assert the PR #15 receipt_email update.
+  test('never sends the email to Stripe as receipt_email', async () => {
     groupFetchMock.mockResolvedValueOnce({
       data: { group_id: GROUP_ID, status: 'AWAITING_PAYMENT', total_cents: 100, stripe_payment_intent_id: 'pi_x', clinic_id: TEST_CLINIC_ID },
       error: null,
@@ -189,6 +190,6 @@ describe('POST /api/checkout/payment-group-intent', () => {
 
     const res = await POST(makeRequest({ token: 'x', email: 'patient@example.com' }))
     expect(res.status).toBe(200)
-    expect(stripeUpdateMock).toHaveBeenCalledWith('pi_x', { receipt_email: 'patient@example.com' })
+    expect(stripeUpdateMock).not.toHaveBeenCalled()
   })
 })
