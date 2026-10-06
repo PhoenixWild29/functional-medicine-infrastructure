@@ -19,7 +19,11 @@ let db = scriptedDb(() => undefined)
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: async () => ({ data: { session: { user: { id: 'u1' } } } }) },
+    // A provider of clinic c-1 (the phase routes are clinic-scoped, provider-only for changes).
+    auth: {
+      getSession: async () => ({ data: { session: { user: { id: 'u1', user_metadata: { app_role: 'provider', clinic_id: 'c-1' } } } } }),
+      getUser: async () => ({ data: { user: { id: 'u1', user_metadata: { app_role: 'provider', clinic_id: 'c-1' } } }, error: null }),
+    },
   }),
 }))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
@@ -27,7 +31,10 @@ jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.clien
 jest.spyOn(console, 'error').mockImplementation(() => {})
 
 async function advance(more: Script) {
-  db = scriptedDb(c => more(c) ?? (c.table === 'patient_protocol_phases' && c.op === 'select' ? { data: { current_phase: 'loading' } } : undefined))
+  db = scriptedDb(c => more(c)
+    ?? (c.table === 'patient_protocol_phases' && c.op === 'select' ? { data: { current_phase: 'loading', patient_id: 'pt-1' } }
+      : c.table === 'patients' ? { data: { patient_id: 'pt-1' } }
+      : undefined))
   const res = await POST({ json: async () => ({ action: 'advance', tracking_id: 't-1', new_phase: 'maintenance', provider_id: 'pr-1' }) } as unknown as NextRequest)
   return { status: res.status, body: await res.json() as Record<string, unknown> }
 }

@@ -13,6 +13,7 @@
  */
 
 import { POST } from '../route'
+import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
 import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
 const TEST_CLINIC_ID   = 'a1000000-0000-0000-0000-000000000001'
@@ -31,7 +32,7 @@ const getSessionMock = jest.fn()
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: { getSession: () => getSessionMock(), getUser: () => userFromSession(getSessionMock()) },
   }),
 }))
 
@@ -239,5 +240,15 @@ describe('PHI access log', () => {
   it('a refused request logs nothing', async () => {
     expect((await POST(makeRequest(formulationBody({ rxDetails: { refills: 13 } })))).status).toBe(400)
     expect(phiEntries()).toHaveLength(0)
+  })
+})
+
+// getUser(), never getSession(): a cookie whose token no longer verifies
+// (forged, revoked, expired) is refused, though getSession() still returns it.
+describe('a session that does not verify', () => {
+  it('POST /api/orders is 401 and touches nothing', async () => {
+    const res = await withForgedSession(() => POST(makeRequest(formulationBody())))
+    expect(res.status).toBe(401)
+    expect(tablesTouched).toEqual([])
   })
 })

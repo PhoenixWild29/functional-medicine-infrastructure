@@ -13,11 +13,12 @@ let session: unknown = null
 let db = scriptedDb(() => undefined)
 
 jest.mock('@/lib/supabase/server', () => ({
-  createServerClient: async () => ({ auth: { getSession: async () => ({ data: { session } }) } }),
+  createServerClient: async () => ({ auth: { getSession: async () => ({ data: { session } }), getUser: async () => userFromSession({ data: { session } }) } }),
 }))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
 
 import { GET } from '../route'
+import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
 
 const call = () => GET({ headers: new Headers() } as never, { params: Promise.resolve({ orderId: ORDER }) })
 
@@ -41,4 +42,10 @@ it('a non-ops user, or a missing order, logs nothing', async () => {
   db = scriptedDb(() => ({ data: null }))
   expect((await call()).status).toBe(404)
   expect(phiEntries()).toHaveLength(0)
+})
+
+// getUser(), never getSession(): a cookie whose token no longer verifies
+// (forged, revoked, expired) is refused, though getSession() still returns it.
+it('a session that does not verify is 401', async () => {
+  expect((await withForgedSession(() => call())).status).toBe(401)
 })

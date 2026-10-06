@@ -11,8 +11,8 @@
  *     trigger that refuses UPDATE, DELETE and TRUNCATE for every role,
  *     the service role included (RLS does not bind it);
  *   - INSERT through the service role only;
- *   - clinic users SELECT only their own clinic's rows, so a provider at
- *     one clinic never reads another clinic's;
+ *   - only the clinic admin SELECTs, and only their own clinic's rows: a
+ *     provider or MA (any clinic) reads nothing directly;
  *   - no PHI columns: ids, a role, keyed hashes, constrained codes;
  *   - indexes for the three questions: by clinic, by patient, by actor.
  */
@@ -76,10 +76,12 @@ describe('row level security', () => {
     expect(code).toContain('alter table phi_access_log enable row level security')
   })
 
-  it('clinic users SELECT only their own clinic\'s rows', () => {
+  it('only the clinic admin SELECTs, and only their own clinic\'s rows', () => {
     expect(code).toContain(
-      "create policy phi_access_log_clinic_user_select on phi_access_log for select to authenticated using (clinic_id = (auth.jwt() -> 'user_metadata' ->> 'clinic_id')::uuid)",
+      "create policy phi_access_log_clinic_admin_select on phi_access_log for select to authenticated using (clinic_id = (auth.jwt() -> 'user_metadata' ->> 'clinic_id')::uuid and (auth.jwt() -> 'user_metadata' ->> 'app_role') = 'clinic_admin')",
     )
+    // A provider or MA of the same clinic reads nothing: no policy names them.
+    expect(code).not.toContain('phi_access_log_clinic_user_select')
     // No other SELECT policy widens it.
     expect(code.match(/for select/g)).toHaveLength(1)
   })
@@ -110,6 +112,9 @@ describe('the down migration', () => {
   it('drops the table, its triggers and function', () => {
     const d = flat(down)
     expect(d).toContain('drop table if exists phi_access_log')
+    for (const p of ['phi_access_log_clinic_admin_select', 'phi_access_log_deny_insert', 'phi_access_log_deny_update', 'phi_access_log_deny_delete']) {
+      expect(d).toContain(`drop policy if exists ${p} on phi_access_log`)
+    }
     expect(d).toContain('drop function if exists phi_access_log_append_only()')
   })
 })

@@ -22,6 +22,7 @@
  */
 
 import { PATCH, DELETE } from '../route'
+import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
 import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
 const CLINIC_ID   = 'a1000000-0000-0000-0000-000000000001'
@@ -39,7 +40,7 @@ const getSessionMock = jest.fn()
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: { getSession: () => getSessionMock(), getUser: () => userFromSession(getSessionMock()) },
   }),
 }))
 
@@ -436,5 +437,14 @@ describe('PHI access log', () => {
   it('a refused edit logs nothing', async () => {
     expect((await PATCH(makeRequest(patchBody({ retailCents: 0 })), ctx)).status).toBe(400)
     expect(phiEntries()).toHaveLength(0)
+  })
+})
+
+// getUser(), never getSession(): a cookie whose token no longer verifies
+// (forged, revoked, expired) is refused, though getSession() still returns it.
+describe('a session that does not verify', () => {
+  it('PATCH and DELETE are 401', async () => {
+    expect((await withForgedSession(() => PATCH(makeRequest(patchBody()), ctx))).status).toBe(401)
+    expect((await withForgedSession(() => DELETE(makeRequest(), ctx))).status).toBe(401)
   })
 })

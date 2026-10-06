@@ -14,6 +14,7 @@
  */
 
 import { POST } from '../route'
+import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
 import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
 const TEST_CLINIC_ID  = 'aaaaaaaa-aaaa-4aaa-9aaa-aaaaaaaaaaaa'
@@ -26,7 +27,7 @@ const getSessionMock      = jest.fn()
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: { getSession: () => getSessionMock(), getUser: () => userFromSession(getSessionMock()) },
   }),
 }))
 
@@ -256,5 +257,15 @@ describe('PHI access log', () => {
     createGroupMock.mockResolvedValueOnce({ ok: false, status: 409, error: 'changed' })
     expect((await POST(makeRequest({ siblingOrderIds: [SIBLING_ID] }), makeParams(ORDER_ID))).status).toBe(409)
     expect(phiEntries()).toHaveLength(0)
+  })
+})
+
+// getUser(), never getSession(): a cookie whose token no longer verifies
+// (forged, revoked, expired) is refused, though getSession() still returns it.
+describe('a session that does not verify', () => {
+  test('is 401 and no group is created', async () => {
+    const res = await withForgedSession(() => POST(makeRequest({ siblingOrderIds: [SIBLING_ID] }, { 'sec-fetch-site': 'same-origin' }), makeParams(ORDER_ID)))
+    expect(res.status).toBe(401)
+    expect(createGroupMock).not.toHaveBeenCalled()
   })
 })
