@@ -21,15 +21,16 @@ import { createStripeClient } from '@/lib/stripe/client'
 import { serverEnv } from '@/lib/env'
 
 export async function POST(_request: NextRequest): Promise<NextResponse> {
-  // Auth gate
+  // Auth gate. getUser() verifies the JWT with the auth server;
+  // getSession() only decodes the cookie, so clinic_id would be forgeable.
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
     : null
 
   if (!clinicId) {

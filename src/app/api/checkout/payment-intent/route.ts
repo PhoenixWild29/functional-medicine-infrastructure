@@ -16,14 +16,13 @@
 //
 // Request:  POST { token: string, email?: string }
 //   token: JWT from checkout URL
-//   email: patient-typed email for Stripe receipt (PR #15). Optional on
+//   email: patient-typed email from the checkout page (PR #15). Optional on
 //     initial page-load call (Stripe Elements renders before the patient
-//     has typed anything). Required on the pre-submit call right before
-//     stripe.confirmPayment() — the endpoint updates the existing PI's
-//     receipt_email so Stripe auto-emails a branded receipt when the
-//     charge succeeds. Server-side regex validation rejects syntactically
-//     invalid addresses and defensively rejects the .invalid TLD so
-//     seed/test data can never leak.
+//     has typed anything), sent again on the pre-submit call right before
+//     stripe.confirmPayment(). Server-side regex validation rejects
+//     syntactically invalid addresses and defensively rejects the .invalid
+//     TLD. C7: it is NOT sent to Stripe (no BAA), so Stripe no longer
+//     emails a receipt; PR #15 used to set it as the PI's receipt_email.
 // Response: { clientSecret: string }
 //
 // No session required — guest endpoint authenticated by JWT token only.
@@ -31,10 +30,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyCheckoutToken } from '@/lib/auth/checkout-token'
 import { createStripeClient } from '@/lib/stripe/client'
+import { NEUTRAL_DESCRIPTION } from '@/lib/stripe/phi-guard'
 import { createServiceClient } from '@/lib/supabase/service'
 import { stripeSplit } from '@/lib/orders/shipping'
 
-// PR #15: syntactic email validation for Stripe receipt_email.
+// PR #15: syntactic email validation (was for Stripe receipt_email; C7
+// stopped sending it to Stripe).
 // Covers the "trivially malformed" case — does NOT verify deliverability
 // or domain existence. Rationale per design review:
 //   - Receipts are transactional side-effects; patient typed the address
@@ -72,12 +73,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // call. We only validate format when supplied; presence-as-required is
   // enforced on the client side (HTML5 required + type=email) so the
   // server stays permissive for the initial load.
-  let validatedEmail: string | null = null
-  if (email !== undefined) {
-    if (!isValidReceiptEmail(email)) {
-      return NextResponse.json({ error: 'Invalid email address' }, { status: 400 })
-    }
-    validatedEmail = email
+  // C7: the email is validated (the checkout page's contract is unchanged)
+  // but never sent to Stripe.
+  if (email !== undefined && !isValidReceiptEmail(email)) {
+    return NextResponse.json({ error: 'Invalid email address' }, { status: 400 })
   }
 
   // Verify JWT — same as middleware but server-side for API auth
@@ -142,26 +141,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // REQ-PSR-001: Idempotent — return existing PI if one already exists.
-  // PR #15: if the client sent a validated email on this call (pre-submit
-  // flow), attach it as receipt_email to the existing PI so Stripe sends a
-  // branded receipt when the charge succeeds. Idempotent: Stripe accepts
-  // update() on an un-confirmed PI until the moment of confirmation.
+  // C7: the patient's email is NOT sent to Stripe (no BAA). PR #15 used to
+  // attach it here as receipt_email; the email is still validated above so
+  // the checkout page's request contract is unchanged.
   if (order.stripe_payment_intent_id) {
     try {
       const stripe = createStripeClient()
       const existingPi = await stripe.paymentIntents.retrieve(order.stripe_payment_intent_id)
 
       if (existingPi.client_secret && existingPi.status !== 'canceled') {
-        if (validatedEmail && existingPi.receipt_email !== validatedEmail) {
-          try {
-            await stripe.paymentIntents.update(existingPi.id, { receipt_email: validatedEmail })
-          } catch (err) {
-            // Non-fatal: the PI itself is still confirmable; worst case the
-            // patient doesn't get the email. Log so we can observe if it
-            // happens in production — then continue.
-            console.error('[payment-intent] failed to attach receipt_email to existing PI:', err instanceof Error ? err.message : err)
-          }
-        }
         return NextResponse.json({ clientSecret: existingPi.client_secret }, { status: 200 })
       }
       // PI was cancelled (e.g., expiry cron ran) — fall through to create a new one
@@ -242,25 +230,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           application_fee_amount: platformFeeCents,
           transfer_data: { destination: clinic.stripe_connect_account_id },
         }),
+        // C7: opaque ids only.
         metadata: {
           order_id:  orderId,
           clinic_id: clinicId,
           platform:  '8090ai',
         },
-        // Generic description — no medication name, patient name, or clinical info
-        description: 'CompoundIQ prescription service',
+        // C7: neutral description. No medication, patient or clinical text,
+        // and not the word "prescription".
+        description: NEUTRAL_DESCRIPTION,
         // Automatic payment methods includes card, Apple Pay, Google Pay (REQ-PSR-003)
         automatic_payment_methods: { enabled: true },
-        // PR #15: include receipt_email on create when the client supplied a
-        // validated email. The initial page-load call typically omits email
-        // (Elements needs to render before the patient types anything), so
-        // this field is absent on the first create and attached by the
-        // update() path above on the pre-submit call. On paths where the
-        // client submits email on the first create (e.g., retries), we
-        // capture it here so the receipt story works end-to-end.
-        ...(validatedEmail ? { receipt_email: validatedEmail } : {}),
       },
-      { idempotencyKey: `checkout-pi-v2-${orderId}` }
+      // v3 (C7): the params changed (description, no receipt_email). A new
+      // key keeps a retry that straddles the deploy from hitting Stripe's
+      // "same key, different params" error.
+      { idempotencyKey: `checkout-pi-v3-${orderId}` }
     )
 
     if (!pi.client_secret) {

@@ -69,7 +69,7 @@ describe('createPaymentGroup memberStatus', () => {
     expect(db.tables['orders']!.map(o => [o['order_id'], o['status'], o['payment_group_id']])).toEqual([['o-1', 'DRAFT', 'g-1'], ['o-2', 'DRAFT', 'g-1']])
     // $400 retail + $9 shipping once for the one pharmacy.
     expect(db.tables['payment_groups']![0]).toMatchObject({ total_cents: 40900, shipping_total: 9 })
-    expect(piCreateMock).toHaveBeenCalledWith(expect.objectContaining({ amount: 40900 }), { idempotencyKey: 'checkout-group-pi-v1-g-1' })
+    expect(piCreateMock).toHaveBeenCalledWith(expect.objectContaining({ amount: 40900 }), { idempotencyKey: 'checkout-group-pi-v2-g-1' })
   })
 
   it("memberStatus 'DRAFT' refuses an order that is already signed", async () => {
