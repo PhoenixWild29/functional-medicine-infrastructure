@@ -89,7 +89,8 @@ function world(orders: Array<Record<string, unknown>>) {
     formulations: [
       { formulation_id: 'f-plain', requires_clinical_difference: false },
       { formulation_id: 'f-glp1', requires_clinical_difference: true },
-      { formulation_id: 'f-testo', requires_clinical_difference: false },
+      // Testosterone: Schedule III through its salt form's ingredient.
+      { formulation_id: 'f-testo', requires_clinical_difference: false, salt_forms: { ingredients: { dea_schedule: 3 } }, formulation_ingredients: [] },
     ],
     patients: [
       { patient_id: P1, allergies: ['sulfa'], nkda: false },
@@ -305,70 +306,65 @@ describe('a check that could not run blocks the whole batch (503), never reads a
 })
 
 // ── Controlled substances ────────────────────────────────────
+//
+// Compliance C6: a controlled substance cannot be signed through
+// CompoundIQ at all (PA and TX, among others, require certified EPCS).
+// The EPCS authenticator flow used to let a Schedule III line through with
+// a code; now the batch is refused before any code is asked for, and the
+// catalog decides, not the order's snapshot (which recorded plain
+// Testosterone Cypionate as schedule 0).
 
-describe('EPCS: the authenticator code is checked in the signing request', () => {
+describe('controlled substances are refused at signing', () => {
   const testo = (n: number, over: Record<string, unknown> = {}) => draft(n, {
     formulation_id: 'f-testo', pharmacy_id: 'ph-fax', wholesale_price_snapshot: 150, retail_price_snapshot: 250,
-    medication_snapshot: { medication_name: 'Testosterone Cypionate 200mg/mL', dea_schedule: 3 },
+    // The snapshot bug: a single-ingredient formulation recorded as 0.
+    medication_snapshot: { medication_name: 'Testosterone Cypionate 200mg/mL', dea_schedule: 0 },
     diagnosis_code: 'E29.1', ...over,
   })
   beforeEach(() => { todayCents.set('f-testo|ph-fax', 15000) })
 
-  it('Schedule III with no code: 401 TOTP_REQUIRED, nothing signed', async () => {
-    const db = world([draft(1), testo(2)])
-    const res = await sign(db, [id(1), id(2)])
-    expect(res).toMatchObject({ ok: false, status: 401, code: 'TOTP_REQUIRED' })
+  it('the catalog says Schedule III though the snapshot says 0: refused, nothing signed, no code asked for', async () => {
+    totpMock.mockResolvedValue('valid')
+    const db = world([testo(2)])
+    const res = await sign(db, [id(2)], { totpCode: '123456' })
+    if (res.ok) throw new Error('expected a refusal')
+    expect(res.problems).toEqual([expect.objectContaining({
+      orderId: id(2), code: 'controlled_substance',
+      message: expect.stringContaining('Controlled substance: prescribe through your EPCS system'),
+    })])
     expect(signingUpdates(db)).toHaveLength(0)
+    expect(totpMock).not.toHaveBeenCalled()
     expect(createPaymentGroupMock).not.toHaveBeenCalled()
   })
 
-  it('a wrong code: 401 TOTP_INVALID, a TOTP_FAILED audit row, nothing signed', async () => {
-    totpMock.mockResolvedValue('invalid')
-    const db = world([testo(2)])
-    const res = await sign(db, [id(2)], { totpCode: '000000' })
-    expect(res).toMatchObject({ ok: false, status: 401, code: 'TOTP_INVALID' })
-    expect(db.tables['epcs_audit_log']!.map(r => r['event_type'])).toEqual(['TOTP_FAILED'])
+  it('a snapshot that says Schedule III is refused too', async () => {
+    const db = world([draft(2, { medication_snapshot: { medication_name: 'Legacy testosterone', dea_schedule: 3 } })])
+    const res = await sign(db, [id(2)])
+    if (res.ok) throw new Error('expected a refusal')
+    expect(res.problems![0]).toMatchObject({ code: 'controlled_substance' })
+  })
+
+  it('one controlled line refuses the batch; the plain line beside it is not signed either', async () => {
+    const db = world([draft(1), testo(2)])
+    const res = await sign(db, [id(1), id(2)])
+    if (res.ok) throw new Error('expected a refusal')
+    expect(res.problems!.map(p => p.orderId)).toEqual([id(2)])
     expect(signingUpdates(db)).toHaveLength(0)
   })
 
-  it('the code is verified once for the batch; the audit references every controlled order id', async () => {
-    totpMock.mockResolvedValue('valid')
-    const db = world([draft(1), testo(2), testo(3, { medication_snapshot: { medication_name: 'Testosterone Enanthate', dea_schedule: 3 } })])
-    const res = await sign(db, [id(1), id(2), id(3)], { totpCode: '123456' })
-    expect(res).toMatchObject({ ok: true })
-    expect(totpMock).toHaveBeenCalledTimes(1)
-    expect(totpMock).toHaveBeenCalledWith(expect.anything(), CHEN, '123456')
-    const audit = db.tables['epcs_audit_log']!
-    expect(audit.filter(r => r['event_type'] === 'TOTP_VERIFIED').map(r => r['order_id'])).toEqual([id(2), id(3)])
-    expect(audit.filter(r => r['event_type'] === 'ORDER_SIGNED').map(r => r['order_id'])).toEqual([id(2), id(3)])
-    for (const row of audit) {
-      expect((row['details'] as { batch_controlled_order_ids: string[] }).batch_controlled_order_ids).toEqual([id(2), id(3)])
-    }
-  })
-
-  it('the TOTP_VERIFIED record is written BEFORE signing; if it cannot be, nothing is signed', async () => {
-    totpMock.mockResolvedValue('valid')
-    const db = world([testo(2)])
-    db.failOn('epcs_audit_log:insert')
-    const res = await sign(db, [id(2)], { totpCode: '123456' })
-    expect(res).toMatchObject({ ok: false, status: 503 })
-    expect(signingUpdates(db)).toHaveLength(0)
-  })
-
-  it('an UNKNOWN schedule counts as controlled: it must go by fax AND needs the code', async () => {
-    todayCents.set('null|ph-fax', 15000)
-    const db = world([testo(2, { catalog_item_id: 'cat-1', formulation_id: null, medication_snapshot: { medication_name: 'Legacy item' } })])
+  it('a schedule that could not be read is refused, never assumed 0', async () => {
+    const db = world([draft(2, { catalog_item_id: 'cat-1', formulation_id: null, medication_snapshot: { medication_name: 'Legacy item' } })])
     db.failOn('catalog:select')
     const res = await sign(db, [id(2)])
-    expect(res).toMatchObject({ ok: false, status: 401, code: 'TOTP_REQUIRED' })
+    if (res.ok) throw new Error('expected a refusal')
+    expect(res.problems![0]).toMatchObject({ code: 'controlled_unknown' })
+    expect(signingUpdates(db)).toHaveLength(0)
   })
 
-  it('Schedule III at a non-fax pharmacy is refused before the code is asked for', async () => {
-    const db = world([testo(2, { pharmacy_id: 'ph-strive' })])
-    const res = await sign(db, [id(2)], { totpCode: '123456' })
-    if (res.ok) throw new Error('expected a refusal')
-    expect(res.problems![0]).toMatchObject({ code: 'dea_fax' })
-    expect(totpMock).not.toHaveBeenCalled()
+  it('the preflight reports the controlled line the same way', async () => {
+    const db = world([testo(2)])
+    const check = await checkBatch(db.client, { clinicId: CLINIC, userId: USER_CHEN, orderIds: [id(2)], atSigning: false })
+    expect(check.problems).toEqual([expect.objectContaining({ orderId: id(2), code: 'controlled_substance' })])
   })
 })
 
