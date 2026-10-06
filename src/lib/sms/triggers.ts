@@ -175,18 +175,15 @@ export async function sendPaymentLinkSms(
     return skipResult('provider_last_name_missing')
   }
 
-  const template = await getTemplateBody('payment_link')
-  if (!template) return skipResult('template_not_found')
-
   // BLK-02: use pre-built URL when sign-and-send already generated a token,
   // preventing two independent JWTs with different expiry timestamps.
   const checkoutUrl = preBuiltCheckoutUrl
     ?? `${serverEnv.appBaseUrl().replace(/\/$/, '')}/checkout/${await generateCheckoutToken(orderId, ctx.patientId, ctx.clinicId)}`
 
-  const body = renderPaymentLinkSms(template, {
+  // Compliance C1: the wording is the app's (no clinic name), not a stored template.
+  const body = renderPaymentLinkSms({
     patientFirstName: ctx.patientFirstName,
     providerLastName: ctx.providerLastName,
-    clinicName:       ctx.clinicName,
     checkoutUrl,
   })
 
@@ -207,10 +204,8 @@ export async function sendPaymentLinkSms(
  * Fires when SUBMISSION SLA breaches (24h after AWAITING_PAYMENT).
  * REQ-SPN-001: Payment reminder with fresh checkout URL.
  *
- * NB-01: providerLastName is included to satisfy the PaymentReminderVars type contract.
- * The reminder_24h DB template currently does not contain {{providerLastName}};
- * the extra key is silently ignored by renderTemplate. If reminder templates are
- * updated to include the provider name, no code change is needed here.
+ * NB-01: providerLastName is part of PaymentReminderVars; the 24h reminder
+ * wording does not use it (renderTemplate ignores an unused key).
  */
 export async function sendReminder24hSms(orderId: string): Promise<SendSmsResult> {
   const ctx = await getOrderSmsContext(orderId)
@@ -218,16 +213,12 @@ export async function sendReminder24hSms(orderId: string): Promise<SendSmsResult
   if (!ctx.smsOptIn) return skipResult('sms_opt_out')
   if (!ctx.patientPhone) return skipResult('no_phone_number')
 
-  const template = await getTemplateBody('reminder_24h')
-  if (!template) return skipResult('template_not_found')
-
   const token       = await generateCheckoutToken(orderId, ctx.patientId, ctx.clinicId)
   const checkoutUrl = `${serverEnv.appBaseUrl().replace(/\/$/, '')}/checkout/${token}`
 
-  const body = renderReminder24hSms(template, {
+  const body = renderReminder24hSms({
     patientFirstName: ctx.patientFirstName,
     providerLastName: ctx.providerLastName,
-    clinicName:       ctx.clinicName,
     checkoutUrl,
   })
 
@@ -248,8 +239,7 @@ export async function sendReminder24hSms(orderId: string): Promise<SendSmsResult
  * Fires when STATUS_UPDATE SLA breaches (48h after AWAITING_PAYMENT).
  * REQ-SPN-002: Final cancellation warning with fresh checkout URL.
  *
- * NB-01: see sendReminder24hSms — providerLastName is passed for type contract;
- * the reminder_48h template does not currently use it.
+ * NB-01: see sendReminder24hSms; the 48h reminder does not use providerLastName.
  */
 export async function sendReminder48hSms(orderId: string): Promise<SendSmsResult> {
   const ctx = await getOrderSmsContext(orderId)
@@ -257,16 +247,12 @@ export async function sendReminder48hSms(orderId: string): Promise<SendSmsResult
   if (!ctx.smsOptIn) return skipResult('sms_opt_out')
   if (!ctx.patientPhone) return skipResult('no_phone_number')
 
-  const template = await getTemplateBody('reminder_48h')
-  if (!template) return skipResult('template_not_found')
-
   const token       = await generateCheckoutToken(orderId, ctx.patientId, ctx.clinicId)
   const checkoutUrl = `${serverEnv.appBaseUrl().replace(/\/$/, '')}/checkout/${token}`
 
-  const body = renderReminder48hSms(template, {
+  const body = renderReminder48hSms({
     patientFirstName: ctx.patientFirstName,
     providerLastName: ctx.providerLastName,
-    clinicName:       ctx.clinicName,
     checkoutUrl,
   })
 

@@ -1,14 +1,16 @@
 /**
  * HipaaTimeout unit tests.
  *
- * These cover the 30-minute idle-timeout state machine. The equivalent E2E
+ * These cover the idle-timeout state machine at its default: 15 minutes
+ * (compliance C3; it was 30), warning 2 minutes before. The equivalent E2E
  * coverage in e2e/auth.spec.ts only asserts that the component is mounted on
  * /dashboard — Playwright's page.clock is unreliable across full-page
  * navigations on Chromium (CDP-based polyfill doesn't survive context
  * recreation), so the real timer semantics are validated here against
  * jest.useFakeTimers() instead.
  *
- * REQ-OAS-011: HIPAA 30-minute inactivity timeout.
+ * REQ-OAS-011: HIPAA inactivity timeout. Configurable with
+ * IDLE_TIMEOUT_MINUTES; see idle-logoff.test.tsx.
  */
 
 import { render, screen, act } from '@testing-library/react'
@@ -35,8 +37,8 @@ jest.mock('@/lib/auth/redirect-to-login', () => ({
 
 // ── Shared setup ───────────────────────────────────────────────────────
 
-const WARNING_MS = 28 * 60 * 1000
-const TIMEOUT_MS = 30 * 60 * 1000
+const WARNING_MS = 13 * 60 * 1000
+const TIMEOUT_MS = 15 * 60 * 1000
 
 beforeEach(() => {
   jest.useFakeTimers()
@@ -58,7 +60,7 @@ describe('HipaaTimeout', () => {
     expect(sentinel).not.toHaveAttribute('role', 'dialog')
   })
 
-  it('shows the warning dialog at 28 minutes of inactivity', () => {
+  it('shows the warning dialog at 13 minutes of inactivity', () => {
     render(<HipaaTimeout />)
 
     // Before the warning fires, no dialog is in the tree.
@@ -75,7 +77,7 @@ describe('HipaaTimeout', () => {
     expect(dialog).toHaveAttribute('aria-modal', 'true')
   })
 
-  it('signs the user out at 30 minutes and redirects to /login', async () => {
+  it('signs the user out at 15 minutes and redirects to /login', async () => {
     render(<HipaaTimeout />)
 
     act(() => {

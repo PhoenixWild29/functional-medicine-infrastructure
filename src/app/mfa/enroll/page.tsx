@@ -1,0 +1,30 @@
+// ============================================================
+// /mfa/enroll: compliance C3, multi-factor sign-in
+// ============================================================
+//
+// Reachable at AAL1 (middleware exempts /mfa/*), with a signed-in user:
+// middleware sends anyone without a session to /login first. The
+// destination is resolved here with the same safe rule as /login, so
+// ?redirectTo= can never point off-site.
+//
+// getUser(), never getSession(): middleware owns token rotation.
+
+import { createServerClient } from '@/lib/supabase/server'
+import { SessionGuardNotice } from '@/components/session-guard-notice'
+import { postLoginDestination } from '@/lib/auth/landing-route'
+import { MfaEnroll } from '../_components/mfa-enroll'
+
+export const metadata = { title: 'Set up two-step sign-in' }
+export const dynamic = 'force-dynamic'
+
+export default async function Page(
+  props: { searchParams?: Promise<{ redirectTo?: string }> } = {},
+) {
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return <SessionGuardNotice />
+
+  const redirectTo = (await props.searchParams)?.redirectTo ?? null
+  const appRole = typeof user.user_metadata['app_role'] === 'string' ? user.user_metadata['app_role'] as string : undefined
+  return <MfaEnroll destination={postLoginDestination(appRole, redirectTo)} />
+}

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { verifyCheckoutToken } from '@/lib/auth/checkout-token'
+import { MFA_API_CODES, MFA_PAGES, hasVerifiedTotp, isMfaExemptPath, isMfaRole, mfaEnforcedFor, mfaGate } from '@/lib/auth/mfa'
 
 // PR R7-Bucket-1: Apply HIPAA-grade no-store cache headers to every response
 // that touches authenticated state OR PHI. Closes a CRITICAL bfcache leak
@@ -277,6 +278,41 @@ export async function middleware(request: NextRequest) {
   }
 
   const appRole = user.user_metadata['app_role'] as string | undefined
+
+  // ── Compliance C3: multi-factor sign-in ────────────────────────────────
+  //
+  // Every authenticated page and API route needs AAL2 when MFA is enforced
+  // for this account (REQUIRE_MFA, or MFA_ENFORCED_EMAILS), and whenever
+  // the user has enrolled a factor. At AAL1, pages go to the challenge (a
+  // verified factor) or to enrollment (none), with redirectTo; APIs answer
+  // 401 with a code. The enroll and challenge pages themselves are exempt.
+  //
+  // The AAL is the access token's `aal` claim, read with getClaims(),
+  // which VERIFIES the JWT (JWKS, or getUser for a symmetric key). It is
+  // only read when it can matter, so with enforcement off and no factor
+  // the request path is exactly what it was.
+  if (!isMfaExemptPath(pathname) && isMfaRole(appRole)) {
+    const enforced = mfaEnforcedFor(user.email)
+    const verifiedFactor = hasVerifiedTotp(user)
+    if (enforced || verifiedFactor) {
+      const { data: claimsData } = await supabase.auth.getClaims()
+      const aal = (claimsData?.claims as { aal?: string } | undefined)?.aal
+      const gate = mfaGate({ appRole, aal, verifiedFactor, enforced })
+      if (gate !== 'ok') {
+        if (pathname.startsWith('/api/')) {
+          const body = gate === 'challenge'
+            ? { error: 'Two-step verification is required for this session.', code: MFA_API_CODES.challenge }
+            : { error: 'Two-step sign-in must be set up for this account.', code: MFA_API_CODES.enroll }
+          const denied = NextResponse.json(body, { status: 401 })
+          response.cookies.getAll().forEach(cookie => denied.cookies.set(cookie))
+          return applySecurityHeaders(denied)
+        }
+        const target = new URL(gate === 'challenge' ? MFA_PAGES.challenge : MFA_PAGES.enroll, request.url)
+        target.searchParams.set('redirectTo', pathname + request.nextUrl.search)
+        return applySecurityHeaders(redirectWithSessionCookies(target))
+      }
+    }
+  }
 
   // Ops dashboard: ops_admin only
   if (pathname.startsWith('/ops') && appRole !== 'ops_admin') {

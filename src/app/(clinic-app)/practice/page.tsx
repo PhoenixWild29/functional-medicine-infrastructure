@@ -9,7 +9,6 @@
 
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { HipaaTimeout } from '@/components/hipaa-timeout'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { practiceAccess } from '@/lib/practice/access'
 import { PracticeDashboard } from './_components/practice-dashboard'
@@ -38,7 +37,6 @@ export default async function PracticePage() {
 
   return (
     <>
-      <HipaaTimeout />
       <main className="mx-auto max-w-6xl px-4 py-8 space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Practice Dashboard</h1>

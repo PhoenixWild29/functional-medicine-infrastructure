@@ -467,3 +467,65 @@ describe('the signature record', () => {
     expect(rows[0]!.metadata).toMatchObject({ actor: 'provider_batch_sign', batch_order_ids: [id(1), id(2)], payment_group_id: 'g-1' })
   })
 })
+
+// ── Patient Intake v1.1, PR 1: the shipping address is frozen at signing ──
+// Adapters used to read the patient's live address when the order was
+// submitted, so an address changed after signing re-routed a paid order.
+describe('the shipping address is frozen at signing', () => {
+  function withAddresses(db: ReturnType<typeof fakeDb>) {
+    Object.assign(db.tables['patients']![0]!, { address_line1: '500 New St', address_line2: 'Apt 4', city: 'Dallas', state: 'TX', zip: '75201' })
+    Object.assign(db.tables['patients']![1]!, { address_line1: '9 Elm Ave', address_line2: null, city: 'Houston', state: 'TX', zip: '77002' })
+    return db
+  }
+
+  it('each order takes its own patient\'s address and the signing time', async () => {
+    const db = withAddresses(world([draft(1), draft(2, { patient_id: P2 })]))
+    const res = await sign(db, [id(1), id(2)])
+    if (!res.ok) throw new Error(res.error)
+    const [a, b] = [orderRow(db, 1), orderRow(db, 2)]
+    expect(a).toMatchObject({ shipping_address_line1_snapshot: '500 New St', shipping_address_line2_snapshot: 'Apt 4', shipping_city_snapshot: 'Dallas', shipping_zip_snapshot: '75201', shipping_state_snapshot: 'TX' })
+    expect(b).toMatchObject({ shipping_address_line1_snapshot: '9 Elm Ave', shipping_address_line2_snapshot: null, shipping_city_snapshot: 'Houston', shipping_zip_snapshot: '77002' })
+    expect(a['shipping_address_snapshot_at']).toBe(a['locked_at'])
+    expect(b['shipping_address_snapshot_at']).toBe(b['locked_at'])
+  })
+
+  it('the address is written while the order is still a DRAFT, before the signing statement', async () => {
+    const db = withAddresses(world([draft(1)]))
+    const res = await sign(db, [id(1)])
+    if (!res.ok) throw new Error(res.error)
+    const orderWrites = db.writesTo('orders', 'update')
+    const addressAt = orderWrites.findIndex(w => w.patch?.['shipping_address_line1_snapshot'] === '500 New St')
+    const signAt = orderWrites.findIndex(w => w.patch?.['status'] === 'AWAITING_PAYMENT')
+    expect(addressAt).toBeGreaterThan(-1)
+    expect(addressAt).toBeLessThan(signAt)
+    expect(orderWrites[addressAt]!.matched!.every(r => r['status'] === 'DRAFT')).toBe(true)
+  })
+
+  it('a patient whose address is now in another state is not signed: the pharmacy was license-checked for the old one', async () => {
+    const db = withAddresses(world([draft(1), draft(2)]))
+    db.tables['patients']![0]!['state'] = 'CA'
+    const res = await sign(db, [id(1), id(2)])
+    expect(res).toMatchObject({ ok: false, status: 409 })
+    if (res.ok) throw new Error('unreachable')
+    expect(res.error).toMatch(/now lives in CA.*written for TX.*Nothing was signed/)
+    expect(signingUpdates(db)).toHaveLength(0)
+  })
+
+  it('if the patients\' addresses cannot be read, nothing is signed', async () => {
+    const db = withAddresses(world([draft(1)]))
+    db.failOn('patients:select', 'connection reset')
+    const res = await sign(db, [id(1)])
+    expect(res.ok).toBe(false)
+    expect(signingUpdates(db)).toHaveLength(0)
+  })
+
+  it('if the address cannot be written, nothing is signed, and the error says why', async () => {
+    const db = withAddresses(world([draft(1)]))
+    db.failOn('orders:update', 'write failed')
+    const res = await sign(db, [id(1)])
+    expect(res.ok).toBe(false)
+    if (res.ok) throw new Error('unreachable')
+    expect(res.error).toMatch(/shipping address could not be recorded.*Nothing was signed/)
+    expect(signingUpdates(db)).toHaveLength(0)
+  })
+})

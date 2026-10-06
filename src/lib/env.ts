@@ -64,6 +64,23 @@ export const serverEnv = {
   // Kill switch: nothing is sent to a pharmacy (API, portal or fax) unless
   // this is exactly "true". Unset means OFF. See lib/adapters/submission-switch.
   pharmacySubmissionsEnabled: () => process.env['PHARMACY_SUBMISSIONS_ENABLED'] === 'true',
+
+  // Compliance C3: multi-factor sign-in. OFF unless REQUIRE_MFA is exactly
+  // 'true', so demo accounts and E2E keep signing in with a password until
+  // the owner turns it on. MFA_ENFORCED_EMAILS (comma-separated) enforces
+  // it for named accounts only, e.g. the dedicated E2E user.
+  requireMfa: (): boolean => process.env['REQUIRE_MFA'] === 'true',
+  mfaEnforcedEmails: (): string[] =>
+    (process.env['MFA_ENFORCED_EMAILS'] ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean),
+
+  // HIPAA automatic logoff: minutes of inactivity before sign-out.
+  // Default 15; anything that is not a positive whole number is 15.
+  idleTimeoutMinutes: (): number => {
+    const raw = (process.env['IDLE_TIMEOUT_MINUTES'] ?? '').trim()
+    if (!/^\d+$/.test(raw)) return 15
+    const minutes = parseInt(raw, 10)
+    return minutes > 0 ? minutes : 15
+  },
 } as const
 
 // ------------------------------------------------------------
