@@ -37,7 +37,11 @@ export const metadata = {
 
 // ── Page ────────────────────────────────────────────────────
 
-export default async function PipelinePage() {
+export default async function PipelinePage(
+  props: { searchParams?: Promise<{ order?: string }> } = {},
+) {
+  // A Slack alert's "Open in ops" link: /ops/pipeline?order=<id> opens that order.
+  const initialOrderId = ((await props.searchParams)?.order ?? '').trim() || null
   const supabase = createServiceClient()
   const now = new Date().toISOString()
 
@@ -150,6 +154,7 @@ export default async function PipelinePage() {
         initialOrders={orders}
         clinicOptions={clinics}
         pharmacyOptions={pharmacies}
+        initialOrderId={initialOrderId}
       />
     </div>
   )

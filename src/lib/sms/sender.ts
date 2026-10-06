@@ -25,6 +25,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { createTwilioClient } from '@/lib/twilio/client'
 import { serverEnv } from '@/lib/env'
 import { sendSlackMessage } from '@/lib/slack/client'
+import { buildOpsAlert } from '@/lib/slack/ops-alert'
 
 // ============================================================
 // TYPES
@@ -136,33 +137,15 @@ async function fireSmsFallbackAlert(params: {
   toNumber:     string
   reason:       string
 }): Promise<void> {
-  const maskedPhone = params.toNumber.slice(-4)
-  const priority    = (params.templateName === 'reminder_24h' || params.templateName === 'reminder_48h')
-    ? '⚠️ HIGH PRIORITY'
-    : '📱 Low priority'
-
-  const text = `${priority} SMS delivery failed | order=${params.orderId} | type=${params.templateName} | phone=...${maskedPhone} | reason=${params.reason}`
-
+  // Not the number (even masked) and not the delivery error, which echoes
+  // the number: the order, the template and a priority (lib/slack/ops-alert).
+  const priority = (params.templateName === 'reminder_24h' || params.templateName === 'reminder_48h') ? 'high' : 'low'
   const channelId = serverEnv.slackOpsAlertsChannelId()
 
-  await sendSlackMessage(channelId, {
-    text,
-    blocks: [
-      {
-        type: 'header',
-        text: { type: 'plain_text', text: `${priority} — SMS Failed` },
-      },
-      {
-        type: 'section',
-        fields: [
-          { type: 'mrkdwn', text: `*Order ID:*\n${params.orderId}` },
-          { type: 'mrkdwn', text: `*SMS Type:*\n${params.templateName}` },
-          { type: 'mrkdwn', text: `*Phone (last 4):*\n...${maskedPhone}` },
-          { type: 'mrkdwn', text: `*Reason:*\n${params.reason}` },
-        ],
-      },
-    ],
-  }).catch(err =>
+  await sendSlackMessage(channelId, buildOpsAlert({
+    type: 'sms_failed', orderId: params.orderId,
+    details: { template: params.templateName, priority },
+  })).catch(err =>
     console.error('[sms-sender] fallback Slack alert failed:', err)
   )
 }

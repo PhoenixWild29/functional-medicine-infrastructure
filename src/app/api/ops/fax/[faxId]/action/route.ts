@@ -20,7 +20,7 @@ import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition }       from '@/lib/orders/cas-transition'
 import { sendSlackAlert }      from '@/lib/slack/client'
-import type { SlackAlertPayload } from '@/lib/slack/client'
+import { buildOpsAlert }       from '@/lib/slack/ops-alert'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -231,22 +231,10 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
       // Slack rejection alert — BLK-06: await so failure is surfaced in response
       // NB-03: HIPAA — order UUID and pharmacy name only, no PHI
       const pharmacyName = pharmacy?.name ?? 'Unknown pharmacy'
-      const alertPayload: SlackAlertPayload = {
-        text: `⚠️ Fax rejected by ops triage | Order: ${orderId} | Pharmacy: ${pharmacyName}`,
-        blocks: [
-          { type: 'header', text: { type: 'plain_text', text: '⚠️ Fax Rejection — Ops Triage' } },
-          {
-            type: 'section',
-            fields: [
-              { type: 'mrkdwn', text: `*Order:*\n${orderId}` },
-              { type: 'mrkdwn', text: `*Pharmacy:*\n${pharmacyName}` },
-              { type: 'mrkdwn', text: `*Fax ID:*\n${faxId}` },
-              { type: 'mrkdwn', text: `*Actor:*\n${actorEmail}` },
-            ],
-          },
-          { type: 'divider' },
-        ],
-      }
+      const alertPayload = buildOpsAlert({
+        type: 'fax_rejected_in_triage', orderId, pharmacy: pharmacyName,
+        details: { fax_id: faxId, actor: actorEmail },
+      })
       let slackWarning: string | undefined
       try {
         await sendSlackAlert(alertPayload)
