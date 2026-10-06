@@ -203,3 +203,23 @@ describe('next.config headers (every path, static assets included)', () => {
     expect(h['Referrer-Policy']).toBe('strict-origin-when-cross-origin')
   })
 })
+
+// E2E serves the production build over plain http://localhost. WebKit
+// applies upgrade-insecure-requests to localhost: every /_next script, CSS
+// file and font was rewritten to https://localhost and failed with an SSL
+// error, so no WebKit page hydrated and each test waited out its timeout
+// (#195's E2E was cut off at 15 min). The directive is only for pages
+// served over https (production, previews), where HSTS already applies.
+describe('upgrade-insecure-requests', () => {
+  it('is NOT sent for a page served over plain http (local and E2E builds)', async () => {
+    for (const path of ['/login', '/dashboard', '/checkout/some.jwt.token']) {
+      const res = await middleware(req(path))
+      expect(res.headers.get('Content-Security-Policy')).not.toContain('upgrade-insecure-requests')
+    }
+  })
+
+  it('is sent for a page served over https', async () => {
+    const res = await middleware(new NextRequest(new URL('https://app.compoundiq.test/login'), { method: 'GET' }))
+    expect(res.headers.get('Content-Security-Policy')).toContain('upgrade-insecure-requests')
+  })
+})
