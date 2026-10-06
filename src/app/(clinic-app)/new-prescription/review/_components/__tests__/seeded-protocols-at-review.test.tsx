@@ -81,6 +81,9 @@ const F: Record<string, Formulation> = {
             packages: [pkg('thymo-5', '5 mL vial', 5, 'mL', 70, true)] },
   biest:  { id: 'f-biest', name: 'Biest 80/20 Topical Cream 2.5mg/g', form: 'Cream', concentrationValue: null, concentrationUnit: null,
             packages: [pkg('biest-30', '30 g', 30, 'g', 38, true)] },
+  // The catalog lists Biest as "30 g|60 g" (docs/research/catalog-seed).
+  biest2: { id: 'f-biest2', name: 'Biest 80/20 Topical Cream 2.5mg/g', form: 'Topical Cream', concentrationValue: 2.5, concentrationUnit: 'mg/g',
+            packages: [pkg('biest2-30', '30 g', 30, 'g', 38, true), pkg('biest2-60', '60 g', 60, 'g', 64)] },
   prog:   { id: 'f-prog', name: 'Progesterone Capsule 100mg', form: 'Capsule', concentrationValue: null, concentrationUnit: null,
             packages: [pkg('prog-30', '30 caps', 30, 'capsule', 18.5, true)] },
   dhea:   { id: 'f-dhea', name: 'DHEA Capsule 10mg', form: 'Capsule', concentrationValue: null, concentrationUnit: null,
@@ -272,5 +275,60 @@ describe('rule 2: a re-sized protocol line keeps its markup', () => {
     expect(await screen.findByText('Price updated for 3 × 30 caps (was $25.90 for 30 caps)')).toBeInTheDocument()
     expect(screen.queryByTestId(`below-cost-${rx.id}`)).toBeNull()
     expect(screen.queryByTestId(`reprice-required-${rx.id}`)).toBeNull()
+  })
+})
+
+// ── Dosing fixes: BHRT topical sizing and one count rule ─────────────
+//
+// Prod, Menopause Foundation BHRT (12 weeks = 84 days):
+//   - Biest 0.5 mL nightly needs 42 mL; it was dispensed as one 30 g jar.
+//   - Progesterone (QHS) dispensed 84 caps; DHEA (QAM) 90.
+
+describe('BHRT topical: sized for the whole course', () => {
+  it('Biest 0.5 mL nightly × 84 days = 42 g; only 30 g sold → 2 × 30 g, retail scaled', async () => {
+    renderReview([protocolLine(BHRT, SEEDED[2]![1][0]!, 0)])
+    await settled(1)
+    await waitFor(() => expect(latest.session!.prescriptions[0]!.packageCount).toBe(2))
+    const rx = latest.session!.prescriptions[0]!
+    expect(rx.rxDetails?.daysSupply).toBe(84)
+    expect(rx.rxDetails?.dispenseQuantity).toBe(42)
+    expect(rx.rxDetails?.dispenseUnit).toBe('g')
+    expect(rx.wholesaleCents).toBe(7600)
+    expect(rx.priceNote).toBe('Price updated for 2 × 30 g (was $53.20 for 30 g)')
+    expect(screen.queryByTestId(`sizing-warning-${rx.id}`)).toBeNull()
+  })
+
+  it('Biest where 30 g and 60 g are sold → one 60 g jar (the smallest that covers 42 g)', async () => {
+    const item = { ...SEEDED[2]![1][0]!, f: F.biest2! }
+    renderReview([protocolLine(BHRT, item, 0)])
+    await settled(1)
+    await waitFor(() => expect(latest.session!.prescriptions[0]!.packageId).toBe('biest2-60'))
+    const rx = latest.session!.prescriptions[0]!
+    expect(rx.packageCount).toBe(1)
+    expect(rx.rxDetails?.dispenseQuantity).toBe(42)
+  })
+
+  it('a topical dose that cannot be measured shows a warning on the line instead of silently one jar', async () => {
+    const item = { ...SEEDED[2]![1][0]!, dose: '2 click', sigText: 'Apply 2 clicks topically nightly.' }
+    renderReview([protocolLine(BHRT, item, 0)])
+    await settled(1)
+    const rx = latest.session!.prescriptions[0]!
+    const warning = await screen.findByTestId(`sizing-warning-${rx.id}`)
+    expect(warning.textContent).toMatch(/84 days/)
+  })
+})
+
+describe('BHRT capsules: one rule for every count', () => {
+  it('DHEA once each morning × 84 days = 84 caps, exactly like Progesterone (was 90)', async () => {
+    renderReview([protocolLine(BHRT, SEEDED[2]![1][1]!, 1), protocolLine(BHRT, SEEDED[2]![1][2]!, 2)])
+    await settled(2)
+    await waitFor(() => {
+      for (const rx of latest.session!.prescriptions) expect(rx.packageCount).toBe(3)
+    })
+    const [prog, dhea] = latest.session!.prescriptions
+    expect(prog!.rxDetails?.dispenseQuantity).toBe(84)
+    expect(dhea!.rxDetails?.daysSupply).toBe(84)
+    expect(dhea!.rxDetails?.dispenseQuantity).toBe(84)
+    expect(dhea!.priceNote).toBe('Price updated for 3 × 30 caps (was $21.00 for 30 caps)')
   })
 })
