@@ -21,6 +21,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 
 export interface ComplianceCheckResult {
   id:      string   // e.g. 'pharmacy_license'
@@ -221,6 +222,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
   }
   checks.push(deaCheck)
+
+  // Compliance C2: the patient's record (state) was read.
+  if (patient) {
+    await logPhiAccess({
+      user: session.user, action: 'view', resource: 'patient', route: '/api/orders/compliance-check',
+      patientId: patient.patient_id, headers: request.headers ?? null,
+    })
+  }
 
   return NextResponse.json({ checks }, { status: 200 })
 }

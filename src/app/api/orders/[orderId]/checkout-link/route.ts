@@ -34,6 +34,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { generateCheckoutToken } from '@/lib/auth/checkout-token'
 import { serverEnv } from '@/lib/env'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
@@ -135,6 +136,11 @@ export async function POST(
   console.info(
     `[checkout-link] generated | order=${orderId} | clinic=${clinicId} | status=${order.status}`
   )
+  // Compliance C2: a payment link for the patient's order was issued.
+  await logPhiAccess({
+    user: session.user, action: 'create', resource: 'payment_link', route: '/api/orders/[orderId]/checkout-link',
+    orderId, patientId: order.patient_id, headers: request.headers,
+  })
 
   return NextResponse.json(
     { checkoutUrl, expiresAt },

@@ -29,6 +29,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }        from '@/lib/supabase/server'
 import { createServiceClient }       from '@/lib/supabase/service'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const CLINIC_APP_ROLES = ['clinic_admin', 'provider', 'medical_assistant'] as const
@@ -101,6 +102,13 @@ export async function GET(
   if (!anchor) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
+
+  // Compliance C2: the patient's open orders are read from here on; one
+  // row whichever answer follows.
+  await logPhiAccess({
+    user: session.user, action: 'view', resource: 'order_list', route: '/api/orders/[orderId]/bundlable-siblings',
+    orderId, patientId: anchor.patient_id, headers: request.headers ?? null,
+  })
 
   const anchorBundlable =
     anchor.status === 'AWAITING_PAYMENT' &&

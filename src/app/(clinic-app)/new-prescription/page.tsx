@@ -28,6 +28,7 @@ import { WizardProgress } from '@/components/wizard-progress'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { PatientProviderSelector } from './_components/patient-provider-selector'
 import { getWizardSteps } from './_lib/wizard-steps'
+import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
 
 export const metadata = {
   title: 'New Prescription — Select Patient',
@@ -97,6 +98,12 @@ export default async function NewPrescriptionPage() {
   const patients  = patientsResult.data ?? []
   const providers = providersResult.data ?? []
   const WIZARD_STEPS = getWizardSteps({ providerIsSelf })
+
+  // Compliance C2: the patient picker lists this clinic's patients (name,
+  // DOB, phone, allergies). One row for the page.
+  await logPhiAccess({
+    user, action: 'view', resource: 'patient_list', route: '/new-prescription', headers: await currentRequestHeaders(),
+  })
 
   return (
     <>

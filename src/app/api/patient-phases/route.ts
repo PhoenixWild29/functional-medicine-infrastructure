@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 
 export async function GET(req: NextRequest) {
   const supabaseAuth = await createServerClient()
@@ -46,6 +47,8 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Compliance C2: the patient's protocol phases were read.
+  await logPhiAccess({ user: session.user, action: 'view', resource: 'patient_phases', route: '/api/patient-phases', patientId, headers: req.headers ?? null })
   return NextResponse.json({ data })
 }
 
@@ -77,6 +80,8 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    // Compliance C2: a protocol started for the patient.
+    await logPhiAccess({ user: session.user, action: 'create', resource: 'patient_phases', route: '/api/patient-phases', patientId: patient_id, headers: req.headers ?? null })
     return NextResponse.json({ data }, { status: 201 })
   }
 
@@ -89,7 +94,7 @@ export async function POST(req: NextRequest) {
     // Get current phase for history
     const { data: current, error: currentErr } = await supabase
       .from('patient_protocol_phases')
-      .select('current_phase')
+      .select('current_phase, patient_id')
       .eq('tracking_id', tracking_id)
       .maybeSingle()
 
@@ -139,6 +144,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'The phase change could not be recorded. Nothing was changed — try again.' }, { status: 500 })
     }
 
+    // Compliance C2: the patient's protocol phase changed.
+    await logPhiAccess({
+      user: session.user, action: 'update', resource: 'patient_phases', route: '/api/patient-phases',
+      patientId: (current as { patient_id?: string | null }).patient_id ?? null, headers: req.headers ?? null,
+    })
     return NextResponse.json({ ok: true, from: current.current_phase, to: new_phase })
   }
 
@@ -162,11 +172,17 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
   }
 
-  const { error } = await supabase
+  const { data: changed, error } = await supabase
     .from('patient_protocol_phases')
     .update({ status: newStatus, updated_at: new Date().toISOString() })
     .eq('tracking_id', trackingId)
+    .select('patient_id')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Compliance C2: the patient's protocol status changed.
+  await logPhiAccess({
+    user: session.user, action: 'update', resource: 'patient_phases', route: '/api/patient-phases',
+    patientId: (changed as Array<{ patient_id: string }> | null)?.[0]?.patient_id ?? null, headers: req.headers ?? null,
+  })
   return NextResponse.json({ ok: true })
 }

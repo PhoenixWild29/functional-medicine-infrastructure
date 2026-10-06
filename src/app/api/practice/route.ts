@@ -18,6 +18,7 @@ import { practiceAccess } from '@/lib/practice/access'
 import { periodBounds } from '@/lib/practice/metrics'
 import { loadPracticeNumbers } from '@/lib/practice/load'
 import { loadAttention } from '@/lib/practice/attention'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
@@ -43,5 +44,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       }),
   ])
 
+  // Compliance C2: the needs-attention queue names patients.
+  await logPhiAccess({
+    user, clinicId: access.clinicId, action: 'view', resource: 'practice_dashboard', route: '/api/practice',
+    headers: request.headers ?? null,
+  })
   return NextResponse.json({ period, numbers, attention }, { headers: { 'Cache-Control': 'no-store' } })
 }

@@ -25,6 +25,7 @@ import { createServiceClient }       from '@/lib/supabase/service'
 import { createPaymentGroup, cancelPaymentGroup } from '@/lib/payment-group/create-group'
 import { generateGroupCheckoutToken } from '@/lib/auth/checkout-token'
 import { serverEnv }                 from '@/lib/env'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const CLINIC_APP_ROLES = ['clinic_admin', 'provider', 'medical_assistant'] as const
@@ -167,6 +168,11 @@ export async function POST(
   console.info(
     `[group-and-send] generated | group=${result.groupId} anchor=${anchorOrderId} orders=${result.orderCount} clinic=${clinicId}`,
   )
+  // Compliance C2: the patient's orders were bundled under one payment link.
+  await logPhiAccess({
+    user: session.user, action: 'create', resource: 'payment_group', route: '/api/orders/[orderId]/group-and-send',
+    orderId: anchorOrderId, patientId: result.patientId, headers: request.headers ?? null,
+  })
 
   return NextResponse.json(
     {

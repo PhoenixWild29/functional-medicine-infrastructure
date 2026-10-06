@@ -30,6 +30,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
 import { validateAllergiesPatch } from '@/lib/patients/allergies'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -40,6 +41,8 @@ interface RouteParams {
 
 interface CallerContext {
   clinicId: string
+  /** The signed-in user, for the PHI access log (Compliance C2). */
+  user:     PhiUser
 }
 
 type CallerResult =
@@ -64,7 +67,7 @@ async function resolveCaller(): Promise<CallerResult> {
   if (!clinicId) {
     return { ok: false, response: NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 }) }
   }
-  return { ok: true, caller: { clinicId } }
+  return { ok: true, caller: { clinicId, user: session.user } }
 }
 
 const SELECT = 'patient_id, clinic_id, allergies, nkda, allergies_updated_at'
@@ -88,7 +91,7 @@ function toResponse(row: PatientAllergyRow) {
 
 // ── GET ─────────────────────────────────────────────────────────────
 
-export async function GET(_request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+export async function GET(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
   const { patientId } = await params
   if (!UUID_RE.test(patientId)) {
     return NextResponse.json({ error: 'Invalid patientId' }, { status: 400 })
@@ -113,6 +116,10 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
   if (!data) {
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
   }
+  await logPhiAccess({
+    user: auth.caller.user, action: 'view', resource: 'patient_allergies',
+    route: '/api/patients/[patientId]/allergies', patientId, headers: request.headers ?? null,
+  })
   return NextResponse.json(toResponse(data as PatientAllergyRow))
 }
 
@@ -198,6 +205,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
 
   // No PHI in the log line: ids only.
   console.info(`[patients/allergies PATCH] patient=${patientId} clinic=${auth.caller.clinicId} nkda=${validated.value.nkda} entries=${validated.value.allergies.length}`)
+  await logPhiAccess({
+    user: auth.caller.user, action: 'update', resource: 'patient_allergies',
+    route: '/api/patients/[patientId]/allergies', patientId, headers: request.headers ?? null,
+  })
 
   return NextResponse.json(toResponse(data as PatientAllergyRow))
 }

@@ -31,6 +31,7 @@ import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { RefillPicker, type RefillablePatient, type RefillableOrder } from './_components/refill-picker'
 import type { SessionProvider } from '../new-prescription/_context/prescription-session'
 import { refillsUsed, refillAllowance } from '@/lib/orders/refill'
+import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
 
 export const dynamic = 'force-dynamic'
 
@@ -210,6 +211,15 @@ export default async function RefillPage(
   const resolvedPreselect = requested ? (requested.refill_of_order_id ?? requested.order_id) : null
   const preselectMissing = preselectOrderId !== null
     && (resolvedPreselect === null || !list.some(p => p.orders.some(o => o.orderId === resolvedPreselect)))
+
+  // Compliance C2: the refill picker lists this clinic's patients and their
+  // orders. One row; the order is named when the page was opened for one.
+  await logPhiAccess({
+    user, action: 'view', resource: 'refill', route: '/refill',
+    orderId: requested && !preselectMissing ? requested.order_id : null,
+    patientId: requested && !preselectMissing ? requested.patient_id : null,
+    headers: await currentRequestHeaders(),
+  })
 
   return (
     <>

@@ -28,6 +28,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 import { resolveProtocolLinkage, type ProtocolLinkage } from '@/lib/protocols/resolve-instance'
 import { rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
 import { lineSourceKind, resolveLine } from '@/lib/orders/resolve-line'
@@ -432,6 +433,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   console.info(`[orders] DRAFT created | order=${order.order_id} | clinic=${clinicId}`)
+
+  // Compliance C2: a prescription written for this patient.
+  await logPhiAccess({
+    user: session.user, action: 'create', resource: 'order', route: '/api/orders',
+    orderId: order.order_id, patientId, headers: request.headers ?? null,
+  })
 
   return NextResponse.json({ orderId: order.order_id }, { status: 201 })
 }

@@ -16,10 +16,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { isRefundEventRow } from '@/lib/refunds/events'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 
 interface Params { params: Promise<{ orderId: string }> }
 
-export async function GET(_request: NextRequest, { params }: Params): Promise<NextResponse> {
+export async function GET(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const { orderId } = await params
   const supabaseAuth = await createServerClient()
   const { data: { session } } = await supabaseAuth.auth.getSession()
@@ -41,7 +42,7 @@ export async function GET(_request: NextRequest, { params }: Params): Promise<Ne
     supabase
       .from('orders')
       .select(`
-        order_id, order_number, status, clinic_id, pharmacy_id,
+        order_id, order_number, status, clinic_id, patient_id, pharmacy_id,
         submission_tier, reroute_count, tracking_number, carrier,
         stripe_payment_intent_id, shipping_state_snapshot,
         created_at, updated_at, locked_at, ops_assignee,
@@ -81,6 +82,15 @@ export async function GET(_request: NextRequest, { params }: Params): Promise<Ne
   const clinic   = o['clinics']    as { name: string } | null
   const pharmacy = o['pharmacies'] as { name: string; integration_tier?: string } | null
   const medSnap  = o['medication_snapshot'] as { medication_name?: string } | null
+
+  // Compliance C2: ops viewed a patient's order (the medication, the
+  // state). The row belongs to the order's clinic, so its admin sees it.
+  await logPhiAccess({
+    user: session.user, action: 'view', resource: 'order', route: '/api/ops/orders/[orderId]/detail',
+    orderId, clinicId: typeof o['clinic_id'] === 'string' ? o['clinic_id'] : null,
+    patientId: typeof o['patient_id'] === 'string' ? o['patient_id'] : null,
+    headers: request.headers ?? null,
+  })
 
   // Calculate latency from created_at → completed_at for submissions
   const submissions = (submissionsResult.data ?? []).map(s => ({

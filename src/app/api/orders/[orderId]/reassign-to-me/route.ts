@@ -27,13 +27,14 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { insertStatusHistory } from '@/lib/orders/status-history'
 import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provider'
 import { REASSIGN_AUDIT_ACTOR } from '@/lib/orders/reassignment'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
 }
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: RouteParams
 ): Promise<NextResponse> {
   const { orderId } = await params
@@ -86,6 +87,11 @@ export async function POST(
   }
 
   if (order.provider_id === me.provider_id) {
+    // Compliance C2: the patient's draft was opened; nothing changed.
+    await logPhiAccess({
+      user: session.user, action: 'view', resource: 'order', route: '/api/orders/[orderId]/reassign-to-me',
+      orderId, patientId: order.patient_id, headers: request.headers ?? null,
+    })
     return NextResponse.json({ orderIds: [order.order_id], providerId: me.provider_id, reassigned: false }, { status: 200 })
   }
 
@@ -155,6 +161,11 @@ export async function POST(
   })), 'reassign-to-me')
 
   console.info(`[reassign-to-me] reassigned ${movedIds.length} draft line(s) | order=${orderId} | clinic=${clinicId}`)
+  // Compliance C2: the patient's draft(s) moved to this provider.
+  await logPhiAccess({
+    user: session.user, action: 'update', resource: 'order', route: '/api/orders/[orderId]/reassign-to-me',
+    orderId, patientId: order.patient_id, headers: request.headers ?? null,
+  })
 
   return NextResponse.json({ orderIds: movedIds, providerId: me.provider_id, reassigned: true }, { status: 200 })
 }

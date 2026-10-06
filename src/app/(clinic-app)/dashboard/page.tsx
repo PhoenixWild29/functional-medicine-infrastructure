@@ -27,6 +27,7 @@ import { isTabId }           from './_lib/tabs'
 import { paymentLinkCounts } from '@/lib/orders/payment-link'
 import { ProviderViewToggle } from './_components/provider-view-toggle'
 import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.types'
+import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
 
 export const metadata = {
   title: 'Dashboard',
@@ -269,6 +270,12 @@ export default async function DashboardPage(
       priorYearOrdersMtd++
     }
   }
+
+  // Compliance C2: the order list names this clinic's patients. One row
+  // for the page; the list itself is not itemised (see the PR notes).
+  await logPhiAccess({
+    user, action: 'view', resource: 'order_list', route: '/dashboard', headers: await currentRequestHeaders(),
+  })
 
   return (
     <>
