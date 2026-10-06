@@ -25,7 +25,6 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provider'
 import { WizardProgress } from '@/components/wizard-progress'
-import { HipaaTimeout } from '@/components/hipaa-timeout'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { PatientProviderSelector } from './_components/patient-provider-selector'
 import { getWizardSteps } from './_lib/wizard-steps'
@@ -101,7 +100,6 @@ export default async function NewPrescriptionPage() {
 
   return (
     <>
-      <HipaaTimeout />
       <main className="mx-auto max-w-2xl px-4 py-8">
         <div className="mb-6">
           <WizardProgress steps={WIZARD_STEPS} currentStep={1} />

@@ -4,29 +4,34 @@
 // HIPAA Session Timeout — WO-29
 // ============================================================
 //
-// REQ-OAS-011: HIPAA 30-minute inactivity timeout.
+// REQ-OAS-011 / compliance C3: HIPAA automatic logoff after inactivity.
 //   - Tracks mouse, keyboard, and touch activity.
-//   - At 28 minutes of inactivity: shows a 2-minute warning modal.
-//   - At 30 minutes of inactivity: signs out and redirects to /login.
+//   - `timeoutMinutes` of inactivity (default 15, IDLE_TIMEOUT_MINUTES via
+//     src/lib/env): signs out and redirects to /login.
+//   - A warning modal two minutes before (half the timeout if shorter).
 //
-// Mount this component in any page that handles PHI (e.g., the
-// new-prescription wizard). It renders null during normal activity
-// and only surfaces UI when the warning or timeout fires.
+// Mounted ONCE, by the clinic layout and the ops layout, so it covers
+// every clinic and ops page; pages do not mount their own (two timers
+// would race). It renders a hidden sentinel during normal activity and
+// only surfaces UI when the warning or timeout fires.
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createBrowserClient } from '@/lib/supabase/client'
 import { redirectToLogin } from '@/lib/auth/redirect-to-login'
 
-const WARNING_MS  = 28 * 60 * 1000  // 28 minutes — show warning
-const TIMEOUT_MS  = 30 * 60 * 1000  // 30 minutes — force sign-out
+export const DEFAULT_IDLE_TIMEOUT_MINUTES = 15
+const WARNING_LEAD_MS = 2 * 60 * 1000  // warn two minutes before sign-out
 
 const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'] as const
 
-export function HipaaTimeout() {
+export function HipaaTimeout({ timeoutMinutes = DEFAULT_IDLE_TIMEOUT_MINUTES }: { timeoutMinutes?: number } = {}) {
   const supabase = createBrowserClient()
+  const TIMEOUT_MS = Math.max(1, timeoutMinutes) * 60 * 1000
+  const WARNING_MS = TIMEOUT_MS - Math.min(WARNING_LEAD_MS, TIMEOUT_MS / 2)
+  const LEAD_SECONDS = Math.round((TIMEOUT_MS - WARNING_MS) / 1000)
 
   const [showWarning, setShowWarning] = useState(false)
-  const [countdown,   setCountdown]   = useState(120) // seconds remaining
+  const [countdown,   setCountdown]   = useState(LEAD_SECONDS) // seconds remaining
 
   const warningTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const timeoutTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -51,13 +56,13 @@ export function HipaaTimeout() {
 
     setShowWarning(false)
     showWarningRef.current = false  // BLK-07: sync ref when resetting
-    setCountdown(120)
+    setCountdown(LEAD_SECONDS)
     lastActivityRef.current = Date.now()
 
     warningTimerRef.current = setTimeout(() => {
       setShowWarning(true)
       showWarningRef.current = true   // BLK-07: keep ref in sync
-      setCountdown(120)
+      setCountdown(LEAD_SECONDS)
 
       // Countdown ticker — updates every second
       countdownRef.current = setInterval(() => {
@@ -74,7 +79,7 @@ export function HipaaTimeout() {
     timeoutTimerRef.current = setTimeout(() => {
       void forceSignOut()
     }, TIMEOUT_MS)
-  }, [forceSignOut])
+  }, [forceSignOut, WARNING_MS, TIMEOUT_MS, LEAD_SECONDS])
 
   // ── Activity listener ─────────────────────────────────────────
   useEffect(() => {

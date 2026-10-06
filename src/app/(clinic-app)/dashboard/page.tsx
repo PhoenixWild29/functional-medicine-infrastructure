@@ -20,7 +20,6 @@
 import { createServerClient } from '@/lib/supabase/server'
 import { resolveCurrentProvider } from '@/lib/auth/current-provider'
 import type { DraftViewer } from '@/lib/orders/draft-edit-access'
-import { HipaaTimeout }      from '@/components/hipaa-timeout'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { RevenueSummary }    from './_components/revenue-summary'
 import { OrdersDashboard }   from './_components/orders-dashboard'
@@ -273,8 +272,6 @@ export default async function DashboardPage(
 
   return (
     <>
-      {/* REQ-OAS-011: HIPAA 30-minute inactivity timeout */}
-      <HipaaTimeout />
 
       <main className="mx-auto max-w-6xl px-4 py-8 space-y-8">
         <div className="flex flex-wrap items-start justify-between gap-4">

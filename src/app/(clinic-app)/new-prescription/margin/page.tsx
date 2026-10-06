@@ -22,7 +22,6 @@ import { notFound, redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { WizardProgress }    from '@/components/wizard-progress'
-import { HipaaTimeout }      from '@/components/hipaa-timeout'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { MarginBuilderForm } from './_components/margin-builder-form'
 import { SessionBanner }     from '../_components/session-banner'
@@ -241,7 +240,6 @@ export default async function MarginPage({ searchParams }: PageProps) {
     if (staleFormulation) {
       return (
         <>
-        <HipaaTimeout />
         <main className="mx-auto max-w-2xl px-4 py-8">
           <SessionBanner />
 
@@ -370,7 +368,6 @@ export default async function MarginPage({ searchParams }: PageProps) {
 
   return (
     <>
-    <HipaaTimeout />
     <main className="mx-auto max-w-2xl px-4 py-8">
       {/* WO-98: a draft target pins its patient/provider on the session
           before the banner + form mount (see DraftSessionPin). */}
