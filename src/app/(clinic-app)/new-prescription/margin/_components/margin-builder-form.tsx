@@ -53,6 +53,8 @@ import {
   dosesInDays,
   durationDaysForLink,
   suggestPackage,
+  suggestPackageForDispense,
+  dispenseInPackageUnit,
   packageCountFor,
   packageUnitMismatchMessage,
   formatPackageCount,
@@ -71,6 +73,7 @@ import {
   type TitrationStep,
   type SigMode,
 } from '@/lib/orders/titration'
+import { legacyTitrationFromSig, legacyTitrationDispense } from '@/lib/orders/legacy-titration'
 import type { RxFormulationDefaults } from '@/lib/orders/rx-defaults-loader'
 import { splitDose } from '@/lib/orders/dose'
 import { DerivedDispense, EMPTY_OVERRIDE, resolveDispense, type DispenseOverride } from '../../_components/derived-dispense'
@@ -300,20 +303,42 @@ function MarginBuilderFormForLine({
   // Cycling dose math: the pattern every quantity below is counted over.
   const cycle = presetSigMode === 'cycling' ? presetCycle : null
 
+  // A protocol line whose titration is written only in its directions
+  // ("Titrate up by 0.1mL every 3-4 days ... up to 0.5mL") is sized for
+  // that schedule over its length, as Review sizes it — never the starting
+  // dose every day (prod, LDN 5.6 mL). Read from the sig this link carried
+  // (legacy protocol data), never the sig being edited on this page; a
+  // line with structured steps (titration mode) never comes here.
+  const legacyTitration = useMemo(() => {
+    if (!formulationDetails || (presetSigMode && presetSigMode !== 'standard')) return null
+    const t = legacyTitrationFromSig(presetSigText, splitDose(dose))
+    return t
+      ? legacyTitrationDispense(t, {
+          frequencyCode:      presetFrequency ?? null,
+          durationDays,
+          concentrationValue: formulationDetails.concentrationValue,
+          concentrationUnit:  formulationDetails.concentrationUnit,
+          dosageFormName:     formulationDetails.dosageFormName,
+        })
+      : null
+  }, [formulationDetails, presetSigMode, presetSigText, dose, presetFrequency, durationDays])
+
   // ── WO-101: package (vial size) ───────────────────────────────
   const doseForPackages = splitDose(dose)
   const suggestion = useMemo(() => {
     if (packages.length === 0 || !formulationDetails) return null
-    const s = suggestPackage(packages, {
-      doseAmount:         doseForPackages.amount,
-      doseUnit:           doseForPackages.unit,
-      frequencyCode:      presetFrequency ?? null,
-      concentrationValue: formulationDetails.concentrationValue,
-      concentrationUnit:  formulationDetails.concentrationUnit,
-      dosageFormName:     formulationDetails.dosageFormName,
-      durationDays,
-      cycle,
-    })
+    const s = legacyTitration
+      ? suggestPackageForDispense(packages, legacyTitration, formulationDetails.dosageFormName, formulationDetails)
+      : suggestPackage(packages, {
+          doseAmount:         doseForPackages.amount,
+          doseUnit:           doseForPackages.unit,
+          frequencyCode:      presetFrequency ?? null,
+          concentrationValue: formulationDetails.concentrationValue,
+          concentrationUnit:  formulationDetails.concentrationUnit,
+          dosageFormName:     formulationDetails.dosageFormName,
+          durationDays,
+          cycle,
+        })
     if (!s) return null
     // A package that cannot be sized against the dispense is kept, so the
     // page can refuse the line instead of pricing one package.
@@ -321,7 +346,7 @@ function MarginBuilderFormForLine({
     // One package, and one of it covers the Rx: nothing to choose.
     if (packages.length < 2 && s.count <= 1) return null
     return s
-  }, [packages, formulationDetails, doseForPackages.amount, doseForPackages.unit, presetFrequency, durationDays, cycle])
+  }, [packages, formulationDetails, doseForPackages.amount, doseForPackages.unit, presetFrequency, durationDays, cycle, legacyTitration])
   const packageUnconvertible = suggestion?.reason === 'unconvertible'
   // Package amounts are counted in the dispense unit (a 5 mg vial at
   // 1 mg/mL holds 5 mL).
@@ -404,17 +429,30 @@ function MarginBuilderFormForLine({
     [presetSigMode, presetTitrationSteps, formulationDetails],
   )
 
+  // The package the line is filled from: the one priced, else the
+  // pharmacy's default. Its unit is the dispense unit (a 5 mg vial is
+  // counted in mg — prod, BPC-157 "25.2 mL (6 × 5 mg vials)").
+  const fillPackage = selectedPackage ?? (packageUnconvertible ? null : packages.find(p => p.isDefault) ?? packages[0] ?? null)
   const derived = useMemo(() => {
     if (!formulationDetails) return null
+    const inFillUnit = <T extends { dispenseQuantity: number; dispenseUnit: string }>(d: T): T =>
+      dispenseInPackageUnit(d, fillPackage, formulationDetails)
     if (titrationDispense) {
-      return {
+      return inFillUnit({
         daysSupply:       titrationDispense.totalDays,
         dispenseQuantity: titrationDispense.totalQuantity,
         dispenseUnit:     titrationDispense.dispenseUnit,
-      }
+      })
+    }
+    if (legacyTitration) {
+      return inFillUnit({
+        daysSupply:       legacyTitration.daysSupply,
+        dispenseQuantity: legacyTitration.dispenseQuantity,
+        dispenseUnit:     legacyTitration.dispenseUnit,
+      })
     }
     const { amount, unit } = splitDose(dose)
-    return computeDispense({
+    const computed = computeDispense({
       doseAmount:         amount,
       doseUnit:           unit,
       frequencyCode:      presetFrequency ?? null,
@@ -425,9 +463,12 @@ function MarginBuilderFormForLine({
       durationDays,
       cycle,
     })
-  }, [dose, presetFrequency, effectiveQuantity, formulationDetails, durationDays, titrationDispense, cycle])
+    return computed ? inFillUnit(computed) : null
+  }, [dose, presetFrequency, effectiveQuantity, formulationDetails, durationDays, titrationDispense, legacyTitration, cycle, fillPackage])
   const derivedBasis = titrationDispense != null
     ? { kind: 'titration' as const, days: titrationDispense.totalDays, steps: titrationSteps.length }
+    : legacyTitration != null
+    ? { kind: 'legacy_titration' as const, note: legacyTitration.note }
     : durationDays != null
     ? { kind: 'duration' as const, days: durationDays, doses: dosesInDays(durationDays, presetFrequency ?? null, cycle), ...(cycle ? { cycle } : {}) }
     : { kind: 'quantity' as const, label: effectiveQuantity, ...(cycle ? { cycle } : {}) }
@@ -616,7 +657,10 @@ function MarginBuilderFormForLine({
       deaSchedule: deaSchedule || null,
       retailCents,
       sigText: sigTrimmed,
-      integrationTier: '',
+      // An edited line keeps its pharmacy's tier (Review shows it).
+      integrationTier: sessionLine?.integrationTier ?? '',
+      // The titration a protocol sig's quantity was sized for (Review shows it).
+      sizingNote: legacyTitration?.note ?? null,
       // WO-96
       rxDetails,
       rxRules,

@@ -655,6 +655,34 @@ export function packageQtyInUnit(
 }
 
 /**
+ * The dispense in the unit of the package it is filled from.
+ *
+ * A peptide sold as a "5 mg vial" is counted by the pharmacy in mg, so its
+ * dispense is "25.2 mg (6 × 5 mg vials)", not the "25.2 mL" the injectable
+ * form computes (prod, Weight Loss BPC-157, 2026-10-05). The amount is
+ * converted the way packageQtyInUnit converts the package (mg or mcg ↔ mL
+ * through an mg/mL concentration). No package, the same unit, or a package
+ * that cannot be converted → the dispense as it is.
+ */
+export function dispenseInPackageUnit<T extends { dispenseQuantity: number; dispenseUnit: string }>(
+  dispense: T,
+  pkg: Pick<PackageOption, 'qty' | 'unit'> | null | undefined,
+  ctx: PackageUnitContext,
+): T {
+  if (!pkg || !(pkg.qty > 0) || !(dispense.dispenseQuantity > 0)) return dispense
+  const token = (pkg.unit ?? '').trim()
+  const parsed = /^mcg$/i.test(token)
+    ? { unit: 'mcg', isContainer: false }
+    : parseQuantityLabel(`${pkg.qty} ${token}`, ctx.dosageFormName)
+  if (!parsed || parsed.isContainer || parsed.unit === dispense.dispenseUnit) return dispense
+  // How much of the dispense unit one package holds → per package unit.
+  const inDispenseUnit = packageQtyInUnit(pkg, dispense.dispenseUnit, ctx)
+  if (inDispenseUnit == null || !(inDispenseUnit > 0)) return dispense
+  const perPackageUnit = inDispenseUnit / pkg.qty
+  return { ...dispense, dispenseQuantity: round2(dispense.dispenseQuantity / perPackageUnit), dispenseUnit: parsed.unit }
+}
+
+/**
  * The line cannot be priced: the message the builder, the price step and
  * the server all give. "Choose a package measured in <unit>" is the fix a
  * provider can make; the catalog is the fix ops can make.

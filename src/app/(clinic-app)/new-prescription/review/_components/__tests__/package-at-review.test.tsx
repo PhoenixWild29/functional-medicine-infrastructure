@@ -94,8 +94,9 @@ describe('a protocol line with no package', () => {
   it('takes the vial count the dispense needs — 6 × 5 mg vial — and scales the retail to keep the markup', async () => {
     mockFetch({ value: 1, unit: 'mg/mL' })
     renderReview(PROTOCOL_LINE)
-    // The Rx details summary line: the dispense with the packages it is filled from.
-    expect(await screen.findByText(/dispense 30 mL \(6 × 5 mg vials\)/, undefined, { timeout: 5000 })).toBeInTheDocument()
+    // The Rx details summary line: the dispense with the packages it is
+    // filled from, in their unit (it read "30 mL" before 2026-10-05).
+    expect(await screen.findByText(/dispense 30 mg \(6 × 5 mg vials\)/, undefined, { timeout: 5000 })).toBeInTheDocument()
     // $62 → $372 wholesale: the $93.00 retail scales to $93.00 × 372 ÷ 62 =
     // $558.00, the same 50% markup — never left below cost.
     expect(await screen.findByText('Price updated for 6 × 5 mg vial (was $93.00 for 5 mg vial)')).toBeInTheDocument()

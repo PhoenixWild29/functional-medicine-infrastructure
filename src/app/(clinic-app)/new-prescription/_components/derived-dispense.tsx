@@ -33,6 +33,9 @@ export type DerivedBasis =
   | { kind: 'quantity'; label: string; cycle?: CyclePattern }
   // WO-105: a titration's total, summed over its steps.
   | { kind: 'titration'; days: number; steps: number }
+  // A protocol line's titration, written only in its directions: the
+  // note states the schedule the quantity was sized for.
+  | { kind: 'legacy_titration'; note: string }
 
 /**
  * The sentence under Days supply / Dispense: what was actually computed,
@@ -41,6 +44,7 @@ export type DerivedBasis =
  * borrow it, found on prod 2026-09-25).
  */
 export function derivedHelpText(basis: DerivedBasis, derived: DerivedDispense | null, packageText: string): string {
+  if (basis.kind === 'legacy_titration') return basis.note
   if (basis.kind === 'titration') {
     return `Days supply is the ${basis.days} days the ${basis.steps} titration step${basis.steps === 1 ? '' : 's'} add up to. ` +
       "Dispense is the sum over the steps: each step's doses × that step's dose."
@@ -100,7 +104,7 @@ export function DerivedDispense({ derived, basis, override, onChange }: Props) {
     ?? (basis.kind === 'quantity' && basis.label ? basis.label : 'selected')
   const daysText = resolved.daysSupply != null ? `${resolved.daysSupply} days` : '—'
   // Cycling dose math: the dosing days in the days supply.
-  const dosingDaysText = basis.kind !== 'titration' && basis.cycle && resolved.daysSupply != null
+  const dosingDaysText = (basis.kind === 'duration' || basis.kind === 'quantity') && basis.cycle && resolved.daysSupply != null
     ? dosingDaysSummary(resolved.daysSupply, basis.cycle)
     : null
   const dispenseText = formatDispense(resolved.dispenseQuantity, resolved.dispenseUnit) ?? '—'

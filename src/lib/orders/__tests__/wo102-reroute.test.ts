@@ -142,6 +142,23 @@ describe('planReroute — re-pricing a line at the target', () => {
     expect(plan.lines[0]).toEqual(expect.objectContaining({ packageLabel: '1 mL vial', packageCount: 1, wholesaleCents: 9500, priceChangeCents: 0 }))
   })
 
+  // The dispense reads in the unit of the package it is filled from
+  // (prod, BPC-157 "25.2 mL (6 × 5 mg vials)", 2026-10-05). Moved to a
+  // pharmacy that sells the same drug by volume, it reads in mL again.
+  it('re-routed between mg vials and mL vials, the dispense moves to the new package\'s unit', () => {
+    const ctx = { dosageFormName: 'Injectable Solution', concentrationValue: 1, concentrationUnit: 'mg/mL' }
+    const MG_VIALS: PackageOption[] = [{ id: 'q-5mg', label: '5 mg vial', qty: 5, unit: 'mg', wholesalePrice: 62, isDefault: true }]
+    const ML_VIALS: PackageOption[] = [{ id: 's-5ml', label: '5 mL vial', qty: 5, unit: 'mL', wholesalePrice: 60, isDefault: true }]
+
+    const inMg = bpc157(QUICK_RX, { ...ctx, packageId: 'q-5mg', packageLabel: '5 mg vial', packageCount: 6, dispenseQuantity: 25.2, dispenseUnit: 'mg', wholesaleCents: 37200, retailCents: 52080 })
+    const toMl = planReroute([inMg, semaglutide(STRIVE)], STRIVE, new Map([['bpc', [offer(STRIVE, 6000, ML_VIALS)]]]), RATES)!
+    expect(toMl.lines[0]).toEqual(expect.objectContaining({ packageLabel: '5 mL vial', packageCount: 6, dispenseQuantity: 25.2, dispenseUnit: 'mL' }))
+
+    const inMl = bpc157(STRIVE, { ...ctx, packageId: 's-5ml', packageLabel: '5 mL vial', packageCount: 6, dispenseQuantity: 25.2, dispenseUnit: 'mL', wholesaleCents: 36000, retailCents: 50400 })
+    const toMg = planReroute([inMl, semaglutide(QUICK_RX)], QUICK_RX, new Map([['bpc', [offer(QUICK_RX, 6200, MG_VIALS)]]]), RATES)!
+    expect(toMg.lines[0]).toEqual(expect.objectContaining({ packageLabel: '5 mg vial', packageCount: 6, dispenseQuantity: 25.2, dispenseUnit: 'mg' }))
+  })
+
   it('lines already at the target are unchanged', () => {
     const plan = planReroute([semaglutide(QUICK_RX), bpc157(STRIVE)], STRIVE, new Map([['sema', [offer(STRIVE, 9500)]]]), RATES)!
     expect(plan.lines[1]).toEqual(expect.objectContaining({ lineId: 'bpc', pharmacyId: STRIVE, priceChangeCents: 0, retailCents: 13000 }))

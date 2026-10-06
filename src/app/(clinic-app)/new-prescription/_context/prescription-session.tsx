@@ -87,6 +87,10 @@ export interface SessionPrescription {
   // not for the item's stored quantity ("90 caps" priced as 3 bottles
   // against a retail set for one). Optional: older sessions lack it.
   protocolDurationDays?: number | null
+  // The assumption a quantity was sized on, shown on the Review card: a
+  // protocol line whose titration is written only in its directions is
+  // sized for that schedule (lib/orders/legacy-titration). Optional.
+  sizingNote?: string | null
   // WO-96: per-Rx detail fields (days supply, dispense, refills,
   // substitution, syringe kit, shipping, clinical difference, diagnosis,
   // special instructions) and the rules that govern them (controlled →
