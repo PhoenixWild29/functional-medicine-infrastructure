@@ -13,6 +13,7 @@
 import type { NextRequest } from 'next/server'
 import { scriptedDb, DB_DOWN, type Script } from '@/__tests__/helpers/scripted-db'
 import { POST } from '../route'
+import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
 let db = scriptedDb(() => undefined)
 
@@ -57,4 +58,20 @@ it('a failed history write whose put-back also fails says the phase moved withou
   })
   expect(r.status).toBe(500)
   expect(String(r.body['error'])).toMatch(/advanced to maintenance, but its history could not be recorded/)
+})
+
+// Compliance C2: a patient's protocol phase change is logged once.
+describe('PHI access log', () => {
+  beforeEach(() => phiLog.mockClear())
+
+  it('an advance logs exactly one row: update, patient_phases, the patient', async () => {
+    const r = await advance(c => (c.table === 'patient_protocol_phases' && c.op === 'select' ? { data: { current_phase: 'loading', patient_id: 'pt-1' } } : undefined))
+    expect(r.status).toBe(200)
+    expectOnePhiRow({ action: 'update', resource: 'patient_phases', route: '/api/patient-phases', patientId: 'pt-1' })
+  })
+
+  it('a failed advance logs nothing', async () => {
+    await advance(c => (c.table === 'phase_advancement_history' ? DB_DOWN : undefined))
+    expect(phiEntries()).toHaveLength(0)
+  })
 })

@@ -13,6 +13,7 @@
  */
 
 import { GET } from '../route'
+import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
 const TEST_CLINIC_ID    = 'aaaaaaaa-aaaa-4aaa-9aaa-aaaaaaaaaaaa'
 const TEST_PATIENT_ID   = 'bbbbbbbb-bbbb-4bbb-9bbb-bbbbbbbbbbbb'
@@ -218,5 +219,29 @@ describe('GET /api/orders/[orderId]/bundlable-siblings', () => {
     const body = await res.json()
     expect(body.anchor.medicationName).toBe('Compounded prescription')
     expect(body.siblings).toEqual([])
+  })
+})
+
+// Compliance C2: reading a patient's open orders is logged once.
+describe('PHI access log', () => {
+  beforeEach(() => phiLog.mockClear())
+
+  test('a read logs exactly one row: view, order_list, the patient', async () => {
+    anchorFetchMock.mockResolvedValueOnce({
+      data: {
+        order_id: ORDER_ID, status: 'AWAITING_PAYMENT', patient_id: TEST_PATIENT_ID, provider_id: TEST_PROVIDER_ID,
+        clinic_id: TEST_CLINIC_ID, payment_group_id: 'some-group-uuid', stripe_payment_intent_id: null,
+        medication_snapshot: { name: 'Foo' }, retail_price_snapshot: 100, created_at: '2026-06-11T00:00:00Z',
+      },
+      error: null,
+    })
+    expect((await GET(makeRequest(), makeParams(ORDER_ID))).status).toBe(200)
+    expectOnePhiRow({ action: 'view', resource: 'order_list', route: '/api/orders/[orderId]/bundlable-siblings', orderId: ORDER_ID, patientId: TEST_PATIENT_ID })
+  })
+
+  test('a missing anchor logs nothing', async () => {
+    anchorFetchMock.mockResolvedValueOnce({ data: null, error: null })
+    expect((await GET(makeRequest(), makeParams(ORDER_ID))).status).toBe(404)
+    expect(phiEntries()).toHaveLength(0)
   })
 })

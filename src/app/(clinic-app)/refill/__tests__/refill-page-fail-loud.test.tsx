@@ -15,6 +15,7 @@
 
 import { render, screen } from '@testing-library/react'
 import RefillPage from '../page'
+import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 import { PrescriptionSessionProvider } from '../../new-prescription/_context/prescription-session'
 
 jest.mock('next/navigation', () => ({
@@ -99,5 +100,21 @@ describe('/refill when the clinic genuinely has nothing to refill', () => {
     expect(screen.getByTestId('refill-empty')).toBeInTheDocument()
     expect(screen.queryByTestId('refill-load-error')).not.toBeInTheDocument()
     expect(errorSpy).not.toHaveBeenCalled()
+  })
+})
+
+// Compliance C2: the refill picker (patients and their orders) is logged once.
+describe('PHI access log', () => {
+  beforeEach(() => phiLog.mockClear())
+
+  it('a rendered picker logs exactly one row: view, refill', async () => {
+    await renderPage()
+    expectOnePhiRow({ action: 'view', resource: 'refill', route: '/refill' })
+  })
+
+  it('a failed load logs nothing (no patient data was shown)', async () => {
+    ordersResult = { data: null, error: { code: '42703', message: 'x', details: null, hint: null } }
+    await renderPage()
+    expect(phiEntries()).toHaveLength(0)
   })
 })

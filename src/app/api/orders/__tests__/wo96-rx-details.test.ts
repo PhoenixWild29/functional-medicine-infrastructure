@@ -13,6 +13,7 @@
  */
 
 import { POST } from '../route'
+import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
 const TEST_CLINIC_ID   = 'a1000000-0000-0000-0000-000000000001'
 const TEST_PROVIDER_ID = 'a2000000-0000-0000-0000-000000000001'
@@ -223,5 +224,20 @@ describe('POST /api/orders — WO-96 fix: builder inputs are stored for the edit
       frequency_code:  'QW',
       quantity_label:  '1mL vial',
     }))
+  })
+})
+
+// Compliance C2: a prescription written for a patient is logged once.
+describe('PHI access log', () => {
+  beforeEach(() => phiLog.mockClear())
+
+  it('a created draft logs exactly one row: create, order, the patient', async () => {
+    expect((await POST(makeRequest(formulationBody()))).status).toBe(201)
+    expectOnePhiRow({ action: 'create', resource: 'order', route: '/api/orders', patientId: TEST_PATIENT_ID, orderId: expect.any(String) })
+  })
+
+  it('a refused request logs nothing', async () => {
+    expect((await POST(makeRequest(formulationBody({ rxDetails: { refills: 13 } })))).status).toBe(400)
+    expect(phiEntries()).toHaveLength(0)
   })
 })

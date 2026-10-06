@@ -17,6 +17,7 @@
  */
 
 import { POST } from '../route'
+import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
 // ── Mocks ──────────────────────────────────────────────────────────
 
@@ -196,5 +197,24 @@ describe('POST /api/orders/[orderId]/checkout-link', () => {
     mockOrder({ status: 'AWAITING_PAYMENT' })
     const res = await POST(makeRequest(), makeParams())
     expect(res.headers.get('Cache-Control')).toBe('no-store')
+  })
+})
+
+// Compliance C2: issuing a patient's payment link is logged once.
+describe('PHI access log', () => {
+  beforeEach(() => phiLog.mockClear())
+
+  it('a link issued logs exactly one row: create, payment_link', async () => {
+    mockSession({ app_role: 'clinic_admin', clinic_id: TEST_CLINIC_ID })
+    mockOrder({ status: 'AWAITING_PAYMENT' })
+    expect((await POST(makeRequest(), makeParams())).status).toBe(200)
+    expectOnePhiRow({ action: 'create', resource: 'payment_link', route: '/api/orders/[orderId]/checkout-link', orderId: expect.any(String) })
+  })
+
+  it('a refused request logs nothing', async () => {
+    mockSession({ app_role: 'clinic_admin', clinic_id: TEST_CLINIC_ID })
+    mockOrder({ status: 'DRAFT' })
+    expect((await POST(makeRequest(), makeParams())).status).toBe(422)
+    expect(phiEntries()).toHaveLength(0)
   })
 })

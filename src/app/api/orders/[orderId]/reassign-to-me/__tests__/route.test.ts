@@ -12,6 +12,7 @@
  */
 
 import { POST } from '../route'
+import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 import { REASSIGN_AUDIT_ACTOR } from '@/lib/orders/reassignment'
 
 const CLINIC_ID   = 'a1000000-0000-0000-0000-000000000001'
@@ -175,5 +176,30 @@ describe('POST /api/orders/[orderId]/reassign-to-me', () => {
     const res = await call()
     expect(res.status).toBe(409)
     expect(inserts).toHaveLength(0)
+  })
+})
+
+// Compliance C2: reassigning a patient's draft is logged once.
+describe('PHI access log', () => {
+  beforeEach(() => phiLog.mockClear())
+
+  it('a reassignment logs exactly one row: update, order, the patient', async () => {
+    expect((await call()).status).toBe(200)
+    expectOnePhiRow({ action: 'update', resource: 'order', route: '/api/orders/[orderId]/reassign-to-me', orderId: ORDER_A, patientId: expect.any(String) })
+  })
+
+  it('a no-op (already mine) logs exactly one row: view', async () => {
+    fixtures['orders:one'] = () => ({
+      data: { order_id: ORDER_A, status: 'DRAFT', clinic_id: CLINIC_ID, patient_id: PATIENT_ID, provider_id: CHEN_ID },
+      error: null,
+    })
+    expect((await call()).status).toBe(200)
+    expectOnePhiRow({ action: 'view', resource: 'order', patientId: PATIENT_ID })
+  })
+
+  it('a missing order logs nothing', async () => {
+    fixtures['orders:one'] = () => ({ data: null, error: null })
+    expect((await call()).status).toBe(404)
+    expect(phiEntries()).toHaveLength(0)
   })
 })

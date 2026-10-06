@@ -14,6 +14,7 @@
  */
 
 import { POST } from '../route'
+import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
 const CLINIC   = 'c0000000-0000-4000-8000-000000000001'
 const PATIENT  = 'p0000000-0000-4000-8000-000000000001'
@@ -302,5 +303,21 @@ describe('a refill whose pharmacy is no longer live', () => {
     expect(body.code).toBe('PHARMACY_INACTIVE')
     expect(body.unavailable).toEqual([SOURCE])
     expect(body.error).toContain('Start a new prescription')
+  })
+})
+
+// Compliance C2: reading a patient's orders to refill them is logged once.
+describe('PHI access log', () => {
+  beforeEach(() => phiLog.mockClear())
+
+  it('a refill read logs exactly one row: view, refill, the patient and source order', async () => {
+    expect((await call([SOURCE])).status).toBe(200)
+    expectOnePhiRow({ action: 'view', resource: 'refill', route: '/api/orders/refill', patientId: expect.any(String), orderId: SOURCE })
+  })
+
+  it('a refused refill logs nothing', async () => {
+    expect((await call([])).status).toBe(400)
+    expect((await call([SOURCE, SOURCE_2])).status).toBe(404)
+    expect(phiEntries()).toHaveLength(0)
   })
 })
