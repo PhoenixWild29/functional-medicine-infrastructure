@@ -25,6 +25,7 @@ import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { RevenueSummary }    from './_components/revenue-summary'
 import { OrdersDashboard }   from './_components/orders-dashboard'
 import { isTabId }           from './_lib/tabs'
+import { paymentLinkCounts } from '@/lib/orders/payment-link'
 import { ProviderViewToggle } from './_components/provider-view-toggle'
 import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.types'
 
@@ -63,6 +64,8 @@ export interface DashboardOrder {
   // me before a provider edits another provider's draft. Optional so
   // existing fixtures and cached rows without it keep working.
   providerId?:       string | null
+  /** When the order was signed: its payment link is payable for 72 h from here. */
+  lockedAt?:         string | null
 }
 
 export default async function DashboardPage(
@@ -141,7 +144,7 @@ export default async function DashboardPage(
     supabase
       .from('orders')
       .select(`
-        order_id, status, created_at, updated_at, payment_group_id, provider_id,
+        order_id, status, created_at, updated_at, locked_at, payment_group_id, provider_id,
         retail_price_snapshot, wholesale_price_snapshot,
         medication_snapshot, pharmacy_snapshot,
         patients!inner(first_name, last_name)
@@ -226,6 +229,7 @@ export default async function DashboardPage(
       isOverdue48h,
       paymentGroupId:    o.payment_group_id,
       providerId:        o.provider_id ?? null,
+      lockedAt:          o.locked_at ?? null,
     }
   })
 
@@ -250,9 +254,11 @@ export default async function DashboardPage(
   // opened would be worse than a number nobody could click. A link sent
   // on 29 September is still open on 2 October; the month it was created
   // in says nothing about whether the patient has paid.
-  const pendingPaymentCount = orders.filter(
-    o => o.status === 'AWAITING_PAYMENT' || o.status === 'PAYMENT_EXPIRED',
-  ).length
+  //
+  // Prod, 5 Oct: "6 Open payment links", all 6 expired. Only a link the
+  // patient can still pay is open; expired ones are counted apart and
+  // shown under the card. The Pending Payment tab badge uses the same rule.
+  const { open: pendingPaymentCount, expired: expiredPaymentCount } = paymentLinkCounts(orders)
 
   // Prior-year same month totals for trend
   const pyRows = priorYearResult.data ?? []
@@ -288,6 +294,7 @@ export default async function DashboardPage(
           totalOrdersMtd={mtdOrders.length}
           totalRevenueCents={mtdRevenueCents}
           pendingPaymentCount={pendingPaymentCount}
+          expiredPaymentCount={expiredPaymentCount}
           completedMtd={mtdCompletedCount}
           priorYearOrdersMtd={priorYearOrdersMtd}
           priorYearRevenueCents={priorYearRevenueCents}

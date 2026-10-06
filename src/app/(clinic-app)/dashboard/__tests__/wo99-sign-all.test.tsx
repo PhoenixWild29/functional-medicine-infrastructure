@@ -14,6 +14,8 @@ import type { DashboardOrder } from '../page'
 const mockPush = jest.fn()
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush, replace: jest.fn(), refresh: jest.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/dashboard',
 }))
 jest.mock('@/lib/supabase/client', () => ({
   createBrowserClient: () => ({
