@@ -335,6 +335,36 @@ export function BatchReviewForm({ isProvider }: Props) {
   // a retry that is still in flight or fails again.
   const [rulesAttempt, setRulesAttempt] = useState(0)
   const [interactionsUnavailable, setInteractionsUnavailable] = useState(false)
+  // Compliance C4: may this provider sign for the patient's state? Asked
+  // of the same rule batch-sign enforces, so the reason shows before the
+  // signature. Only explicit problems block here; batch-sign is the gate.
+  const [prescriberProblems, setPrescriberProblems] = useState<Array<{ code: string; message: string }>>([])
+  const patientShippingState = session.patient?.state ?? null
+  useEffect(() => {
+    if (!isProvider || !patientShippingState) {
+      setPrescriberProblems([])
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(`/api/prescriber-check?states=${encodeURIComponent(patientShippingState)}`)
+        const body = await res.json().catch(() => ({})) as { problems?: unknown }
+        if (cancelled) return
+        if (!res.ok || !Array.isArray(body.problems)) {
+          console.warn('[batch-review] prescriber check could not run:', res.status)
+          setPrescriberProblems([])
+          return
+        }
+        setPrescriberProblems((body.problems as Array<{ code?: unknown; message?: unknown }>)
+          .filter(p => typeof p.message === 'string')
+          .map(p => ({ code: String(p.code ?? ''), message: p.message as string })))
+      } catch {
+        if (!cancelled) setPrescriberProblems([])
+      }
+    })()
+    return () => { cancelled = true }
+  }, [isProvider, patientShippingState])
   const createdOrderIdsRef = useRef<Map<string, string>>(new Map())
   const allocatedOrderIdsRef = useRef<Set<string>>(new Set())
 
@@ -608,7 +638,7 @@ export function BatchReviewForm({ isProvider }: Props) {
   }
 
   const checksUnavailable = allergyStatusUnknown || rulesLoadFailed || interactionsUnavailable
-  const canSubmit = signatureCaptured && prescriptions.length > 0 && !isSubmitting && !hasInvalidItems && !hasMissingDetails && !checksUnavailable
+  const canSubmit = signatureCaptured && prescriptions.length > 0 && !isSubmitting && !hasInvalidItems && !hasMissingDetails && !checksUnavailable && prescriberProblems.length === 0
   // Shared controls (Remove, Add Another) lock during either flow.
   const isBusy = isSubmitting || isSavingDraft
 
@@ -812,6 +842,20 @@ export function BatchReviewForm({ isProvider }: Props) {
       {/* WO-97: allergies not recorded → amber notice with an inline
           "Confirm NKDA". Never blocks Sign & Send or Save as Draft. */}
       <AllergyNotice patient={patient} onSaved={session.updatePatient} />
+
+      {prescriberProblems.length > 0 && (
+        <div
+          role="alert"
+          data-testid="prescriber-check-problems"
+          className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-200"
+        >
+          <p className="font-semibold">You cannot sign these prescriptions yet.</p>
+          <ul className="mt-1 space-y-0.5 text-xs">
+            {prescriberProblems.map(p => <li key={`${p.code}-${p.message}`}>{p.message}</li>)}
+          </ul>
+          <p className="mt-1 text-xs">Your clinic admin can update licenses and the NPI check in Settings, Team.</p>
+        </div>
+      )}
 
       {rulesLoadFailed && (
         <div
@@ -1210,6 +1254,8 @@ export function BatchReviewForm({ isProvider }: Props) {
                 ? 'The prescribing rules for these medications could not be loaded. Retry them above to enable sending.'
                 : interactionsUnavailable
                 ? 'The drug interaction check could not run. Retry it above to enable sending.'
+                : prescriberProblems.length > 0
+                ? prescriberProblems[0]!.message
                 : cycleItems.length > 0
                 ? 'Edit the flagged prescriptions above to enable sending.'
                 : belowCostItems.length > 0 || repriceItems.length > 0

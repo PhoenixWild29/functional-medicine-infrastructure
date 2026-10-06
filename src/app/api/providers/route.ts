@@ -34,6 +34,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { npiChecksumValid } from '@/lib/providers/npi'
+import { runNpiCheck } from '@/lib/providers/verify-npi'
 
 // ── Validation constants ────────────────────────────────────────────
 
@@ -71,14 +73,15 @@ interface CreateProviderBody {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // 1. Auth gate
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const callerRole     = session.user.user_metadata['app_role']  as string | undefined
-  const callerClinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? (session.user.user_metadata['clinic_id'] as string)
+  const callerRole     = user.user_metadata['app_role']  as string | undefined
+  const callerClinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? (user.user_metadata['clinic_id'] as string)
     : null
 
   if (callerRole !== 'clinic_admin' && callerRole !== 'ops_admin') {
@@ -109,6 +112,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   if (!body.npiNumber || !NPI_RE.test(body.npiNumber)) {
     errs.push('npiNumber must be exactly 10 digits')
+  } else if (!npiChecksumValid(body.npiNumber)) {
+    // Compliance C4: the NPI check digit (Luhn with the 80840 prefix).
+    errs.push('npiNumber is not a valid NPI (the check digit does not match)')
   }
   if (!body.licenseState || !US_STATES.has(body.licenseState)) {
     errs.push('licenseState must be a valid 2-letter US state/territory code')
@@ -130,7 +136,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (body.clinicId && body.clinicId !== callerClinicId) {
       // Caller is clinic_admin trying to plant a provider in a different clinic.
       // Reject loudly — this is a tenancy-violation attempt.
-      console.warn(`[providers POST] cross-tenancy attempt | caller=${session.user.id} caller_clinic=${callerClinicId} target_clinic=${body.clinicId}`)
+      console.warn(`[providers POST] cross-tenancy attempt | caller=${user.id} caller_clinic=${callerClinicId} target_clinic=${body.clinicId}`)
       return NextResponse.json({ error: 'clinic_admin can only create providers in their own clinic' }, { status: 403 })
     }
     targetClinicId = callerClinicId
@@ -234,9 +240,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Failed to create provider record' }, { status: 500 })
   }
 
-  console.info(`[providers POST] created provider=${provider.provider_id} user_id=${authUserId} clinic=${targetClinicId} caller=${session.user.id}`)
+  console.info(`[providers POST] created provider=${provider.provider_id} user_id=${authUserId} clinic=${targetClinicId} caller=${user.id}`)
+
+  // Compliance C4: check the NPI against the NPPES registry and store the
+  // result. Never blocks the save: an unreachable registry is 'unverified'
+  // and the provider cannot sign until a later check verifies it.
+  const npiCheck = await runNpiCheck(supabase, provider, user.id)
 
   return NextResponse.json({
+    npiStatus:     npiCheck.lookup.status,
     providerId:    provider.provider_id,
     userId:        provider.user_id,
     clinicId:      provider.clinic_id,

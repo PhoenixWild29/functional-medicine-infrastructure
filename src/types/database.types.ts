@@ -2634,6 +2634,96 @@ export type Database = {
           },
         ]
       }
+      provider_npi_verifications: {
+        Row: {
+          provider_id: string
+          npi: string
+          status: string
+          name_match: boolean | null
+          enumeration_type: string | null
+          taxonomy_code: string | null
+          taxonomy_desc: string | null
+          registry_first_name: string | null
+          registry_last_name: string | null
+          reason: string | null
+          checked_at: string
+          checked_by: string | null
+          verified_at: string | null
+          source: string
+        }
+        Insert: {
+          provider_id: string
+          npi: string
+          status: string
+          name_match?: boolean | null
+          enumeration_type?: string | null
+          taxonomy_code?: string | null
+          taxonomy_desc?: string | null
+          registry_first_name?: string | null
+          registry_last_name?: string | null
+          reason?: string | null
+          checked_at?: string
+          checked_by?: string | null
+          verified_at?: string | null
+          source?: string
+        }
+        Update: {
+          provider_id?: string
+          npi?: string
+          status?: string
+          name_match?: boolean | null
+          enumeration_type?: string | null
+          taxonomy_code?: string | null
+          taxonomy_desc?: string | null
+          registry_first_name?: string | null
+          registry_last_name?: string | null
+          reason?: string | null
+          checked_at?: string
+          checked_by?: string | null
+          verified_at?: string | null
+          source?: string
+        }
+        Relationships: []
+      }
+      provider_state_licenses: {
+        Row: {
+          license_id: string
+          provider_id: string
+          state: string
+          license_number: string
+          expires_on: string
+          verified_at: string | null
+          verified_by: string | null
+          source: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          license_id?: string
+          provider_id: string
+          state: string
+          license_number: string
+          expires_on: string
+          verified_at?: string | null
+          verified_by?: string | null
+          source?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          license_id?: string
+          provider_id?: string
+          state?: string
+          license_number?: string
+          expires_on?: string
+          verified_at?: string | null
+          verified_by?: string | null
+          source?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       providers: {
         Row: {
           clinic_id: string

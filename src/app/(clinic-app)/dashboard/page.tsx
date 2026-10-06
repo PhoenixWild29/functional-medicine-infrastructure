@@ -28,6 +28,8 @@ import { paymentLinkCounts } from '@/lib/orders/payment-link'
 import { ProviderViewToggle } from './_components/provider-view-toggle'
 import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.types'
 import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
+import { loadExpiringLicenses } from '@/lib/providers/expiring'
+import { LicenseExpiryWarning } from './_components/license-expiry-warning'
 
 export const metadata = {
   title: 'Dashboard',
@@ -277,6 +279,10 @@ export default async function DashboardPage(
     user, action: 'view', resource: 'order_list', route: '/dashboard', headers: await currentRequestHeaders(),
   })
 
+  // Compliance C4: licenses that expire within 30 days (the admin: every
+  // provider's; a provider: their own). Never blocks the page.
+  const expiring = await loadExpiringLicenses(supabaseAuth, { clinicId, userId: user.id, role: appRole })
+
   return (
     <>
 
@@ -292,6 +298,8 @@ export default async function DashboardPage(
           {/* F-3 follow-up: provider-only opt-in clinic view toggle */}
           {isProvider && <ProviderViewToggle viewMode={viewMode} />}
         </div>
+
+        <LicenseExpiryWarning licenses={expiring} />
 
         {/* Metric cards — WO-71 */}
         <RevenueSummary
