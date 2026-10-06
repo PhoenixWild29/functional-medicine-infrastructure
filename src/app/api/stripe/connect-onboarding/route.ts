@@ -23,15 +23,16 @@ import { createStripeClient } from '@/lib/stripe/client'
 import { serverEnv } from '@/lib/env'
 
 export async function POST(_request: NextRequest): Promise<NextResponse> {
-  // Auth gate
-  // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
+  // Auth gate. getUser() verifies the JWT with the auth server;
+  // getSession() only decodes the cookie, so clinic_id would be forgeable.
   const supabaseAuth = await createServerClient()
   const { data: { user }, error: authError } = await supabaseAuth.auth.getUser()
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Only the clinic admin may start or resume onboarding.
+  // Only the clinic admin may start or resume onboarding, checked before
+  // anything reaches Stripe.
   if (user.user_metadata?.['app_role'] !== 'clinic_admin') {
     return NextResponse.json(
       { error: 'Only the clinic admin can set up the payout account.' },

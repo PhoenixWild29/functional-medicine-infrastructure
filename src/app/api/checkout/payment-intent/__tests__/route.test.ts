@@ -166,7 +166,9 @@ describe('POST /api/checkout/payment-intent — email validation', () => {
 // ── Existing PI branch: email attachment ─────────────────────
 
 describe('POST /api/checkout/payment-intent — existing PI + email', () => {
-  it('updates existing PI receipt_email when a new email is supplied', async () => {
+  // C7 (no PHI to Stripe): the patient's email is never sent to Stripe.
+  // This test used to assert the PR #15 receipt_email update.
+  it('does NOT send the email to Stripe as receipt_email on the existing PI', async () => {
     stripeRetrieveMock.mockResolvedValue({
       id:            'pi_existing',
       client_secret: 'pi_existing_secret_xxx',
@@ -175,20 +177,9 @@ describe('POST /api/checkout/payment-intent — existing PI + email', () => {
     })
     const res = await POST(makeRequest({ token: 'ok', email: 'alice@example.com' }))
     expect(res.status).toBe(200)
-    expect(stripeUpdateMock).toHaveBeenCalledTimes(1)
-    expect(stripeUpdateMock).toHaveBeenCalledWith('pi_existing', { receipt_email: 'alice@example.com' })
-  })
-
-  it('does NOT re-update when the PI already has the same receipt_email', async () => {
-    stripeRetrieveMock.mockResolvedValue({
-      id:            'pi_existing',
-      client_secret: 'pi_existing_secret_xxx',
-      status:        'requires_payment_method',
-      receipt_email: 'alice@example.com',
-    })
-    const res = await POST(makeRequest({ token: 'ok', email: 'alice@example.com' }))
-    expect(res.status).toBe(200)
     expect(stripeUpdateMock).not.toHaveBeenCalled()
+    const body = await res.json()
+    expect(body.clientSecret).toBe('pi_existing_secret_xxx')
   })
 
   it('does NOT update when no email was supplied (page-load call)', async () => {
@@ -205,21 +196,6 @@ describe('POST /api/checkout/payment-intent — existing PI + email', () => {
     expect(stripeCreateMock).not.toHaveBeenCalled()
   })
 
-  it('tolerates update() failure without blocking the checkout (non-fatal)', async () => {
-    stripeRetrieveMock.mockResolvedValue({
-      id:            'pi_existing',
-      client_secret: 'pi_existing_secret_xxx',
-      status:        'requires_payment_method',
-      receipt_email: null,
-    })
-    stripeUpdateMock.mockRejectedValueOnce(new Error('Stripe API 500'))
-    const res = await POST(makeRequest({ token: 'ok', email: 'alice@example.com' }))
-    // Critical: the client MUST still receive a clientSecret so checkout can proceed.
-    // Worst case we just don't attach the receipt_email; better than blocking the sale.
-    expect(res.status).toBe(200)
-    const body = await res.json()
-    expect(body.clientSecret).toBe('pi_existing_secret_xxx')
-  })
 })
 
 // ── Fresh PI create branch: email on create ──────────────────
@@ -237,12 +213,29 @@ describe('POST /api/checkout/payment-intent — new PI create + email', () => {
     })
   })
 
-  it('includes receipt_email on create when email is supplied', async () => {
+  // C7: this test used to assert receipt_email on create (PR #15).
+  it('does NOT include receipt_email on create even when email is supplied', async () => {
     const res = await POST(makeRequest({ token: 'ok', email: 'bob@example.com' }))
     expect(res.status).toBe(200)
     expect(stripeCreateMock).toHaveBeenCalledTimes(1)
     const createArgs = stripeCreateMock.mock.calls[0]![0] as Record<string, unknown>
-    expect(createArgs.receipt_email).toBe('bob@example.com')
+    expect(createArgs).not.toHaveProperty('receipt_email')
+  })
+
+  it('C7: sends Stripe only amount, currency, Connect split, opaque-id metadata and a neutral description', async () => {
+    const res = await POST(makeRequest({ token: 'ok', email: 'bob@example.com' }))
+    expect(res.status).toBe(200)
+    const createArgs = stripeCreateMock.mock.calls[0]![0] as Record<string, unknown>
+    expect(Object.keys(createArgs).sort()).toEqual([
+      'amount', 'application_fee_amount', 'automatic_payment_methods',
+      'currency', 'description', 'metadata', 'transfer_data',
+    ])
+    expect(createArgs['description']).toBe('CompoundIQ order')
+    expect(createArgs['metadata']).toEqual({ order_id: 'o-1', clinic_id: 'c-1', platform: '8090ai' })
+    // Amounts and routing unchanged: retail $300, wholesale $150, fee = 150 + 15% of 150.
+    expect(createArgs['amount']).toBe(30000)
+    expect(createArgs['application_fee_amount']).toBe(17250)
+    expect(createArgs['transfer_data']).toEqual({ destination: 'acct_test_123' })
   })
 
   it('omits receipt_email on create when no email is supplied', async () => {

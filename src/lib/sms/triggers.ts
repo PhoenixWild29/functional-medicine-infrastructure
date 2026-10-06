@@ -10,12 +10,13 @@
 //
 // Trigger → caller mapping:
 //   sendPaymentLinkSms()       ← Stripe webhook (AWAITING_PAYMENT)
+//   sendPaymentConfirmationSms()← Stripe webhook (AWAITING_PAYMENT → PAID_PROCESSING)
 //   sendReminder24hSms()       ← sla-check cron (SUBMISSION SLA breach)
 //   sendReminder48hSms()       ← sla-check cron (STATUS_UPDATE SLA breach)
 //   sendShippingNotificationSms()← Shipping webhook (SHIPPED)
 //   sendDeliveredSms()         ← Shipping webhook (DELIVERED)
-// (Post-payment communication is an email receipt via Stripe, not SMS —
-//  see PR #15 and receipt_email on PaymentIntent creation.)
+// (C7: Stripe no longer emails a receipt, so the post-payment message is
+//  the payment-confirmation text.)
 //
 // REQ-SPN-001 through REQ-SPN-005: Trigger logic per SLA type.
 // REQ-SPN-006: HIPAA — patient first name only, no medication names.
@@ -32,6 +33,7 @@ import {
   renderReminder48hSms,
   renderShippingNotificationSms,
   renderDeliveredSms,
+  buildPaymentConfirmationBody,
 } from '@/lib/sms/templates'
 
 // ============================================================
@@ -268,17 +270,34 @@ export async function sendReminder48hSms(orderId: string): Promise<SendSmsResult
 // ============================================================
 // TRIGGER: PAYMENT CONFIRMATION
 // ============================================================
-// NOTE: sendPaymentConfirmationSms was removed in PR #15.
+// C7: Stripe no longer emails a receipt (no BAA), and the checkout and
+// success pages tell the patient to expect a text confirming payment.
 //
-// Previously this function was *defined* to fire on AWAITING_PAYMENT →
-// PAID_PROCESSING from the Stripe webhook, but it was never actually wired
-// into the webhook handler — it was dead code. The post-payment
-// communication to the patient is now a Stripe-generated email receipt
-// (receipt_email attached on PaymentIntent creation/update per PR #15),
-// not an SMS. The 'payment_confirmation' sms_templates row + the DB
-// migration that seeded it are intentionally preserved in case a future
-// iteration re-introduces a post-payment SMS path alongside email.
+// Fired by the Stripe webhook, after the response, only by the delivery
+// whose CAS moved the order AWAITING_PAYMENT → PAID_PROCESSING (for a
+// bundle: the member with the lowest order_id). A redelivery, a resumed
+// partial failure or a duplicate event never transitions it again, so it
+// never texts again; sendSms's sms_log dedup (order_id + template) is the
+// second layer.
+//
+// Body is built in code (buildPaymentConfirmationBody): first name and a
+// neutral line only. The sms_templates row is not read.
 // ============================================================
+
+export async function sendPaymentConfirmationSms(orderId: string): Promise<SendSmsResult> {
+  const ctx = await getOrderSmsContext(orderId)
+  if (!ctx) return skipResult('order_not_found')
+  if (!ctx.smsOptIn) return skipResult('sms_opt_out')
+  if (!ctx.patientPhone) return skipResult('no_phone_number')
+
+  return sendSms({
+    orderId,
+    patientId:    ctx.patientId,
+    toNumber:     ctx.patientPhone,
+    templateName: 'payment_confirmation',
+    body:         buildPaymentConfirmationBody({ patientFirstName: ctx.patientFirstName }),
+  })
+}
 
 // ============================================================
 // TRIGGER: SHIPPING NOTIFICATION

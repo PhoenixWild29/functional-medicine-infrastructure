@@ -28,6 +28,7 @@ import { casTransition } from '@/lib/orders/cas-transition'
 import { serverEnv } from '@/lib/env'
 import { sendSlackAlert, buildAdapterFailureAlert } from '@/lib/slack/client'
 import { routeOrder } from '@/lib/adapters/routing-engine'
+import { sendPaymentConfirmationSms } from '@/lib/sms/triggers'
 import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { handleGroupPaymentSucceeded as handleGroupPaymentSucceededImpl } from './handle-group'
 import { handleGroupChargeDisputeCreated as handleGroupChargeDisputeCreatedImpl } from './handle-group-dispute'
@@ -294,6 +295,13 @@ async function handleSoloPaymentSucceeded(
     return
   }
 
+  // C7: one payment-confirmation text, only from the delivery that just
+  // marked the order paid (never the stranded-resume path above). Runs
+  // after the response and never throws.
+  if (!casResult.wasAlreadyTransitioned) {
+    notifyPaymentConfirmed(order.order_id)
+  }
+
   // AC-SWH-003.4: Only proceed with transfer bookkeeping + tier branch if CAS succeeded
 
   // AC-SWH-004: Money path. The solo PI is a Connect DESTINATION charge
@@ -340,7 +348,36 @@ async function handleGroupPaymentSucceeded(
     branchByTier,
     // Batch 2 follow-up: to refund a late payment on an expired bundle.
     stripe:        createStripeClient(),
+    // C7: one payment-confirmation text per paid bundle.
+    notifyPaymentConfirmed,
   })
+}
+
+// ------------------------------------------------------------
+// C7 — payment-confirmation text
+// ------------------------------------------------------------
+//
+// The checkout and success pages promise "a text confirming your
+// payment". Sent through sendSms (opt-in, rate limit, sms_log dedup),
+// AFTER the response so Stripe gets its 200 first. A failed or throwing
+// send is logged by id only and never fails the webhook, the payment or
+// fulfilment. Callers invoke this only when their CAS just moved the order
+// to PAID_PROCESSING, which is what makes it once per payment.
+function notifyPaymentConfirmed(orderId: string): void {
+  try {
+    after(async () => {
+      try {
+        const result = await sendPaymentConfirmationSms(orderId)
+        if (result.outcome !== 'sent') {
+          console.info(`[stripe-webhook] payment confirmation text ${result.outcome} | order=${orderId} | reason=${result.reason}`)
+        }
+      } catch (err) {
+        console.error(`[stripe-webhook] payment confirmation text failed | order=${orderId}:`, err instanceof Error ? err.message : err)
+      }
+    })
+  } catch (err) {
+    console.error(`[stripe-webhook] payment confirmation text could not be scheduled | order=${orderId}:`, err instanceof Error ? err.message : err)
+  }
 }
 
 // ------------------------------------------------------------
