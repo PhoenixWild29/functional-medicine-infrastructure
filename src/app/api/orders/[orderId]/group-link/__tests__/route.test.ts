@@ -19,6 +19,8 @@
  */
 
 import { GET } from '../route'
+import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
+import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
 const TEST_CLINIC_ID  = 'aaaaaaaa-aaaa-4aaa-9aaa-aaaaaaaaaaaa'
 const TEST_PATIENT_ID = 'bbbbbbbb-bbbb-4bbb-9bbb-bbbbbbbbbbbb'
@@ -33,7 +35,7 @@ const generateTokenMock = jest.fn()
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: { getSession: () => getSessionMock(), getUser: () => userFromSession(getSessionMock()) },
   }),
 }))
 
@@ -199,5 +201,29 @@ describe('GET /api/orders/[orderId]/group-link', () => {
     expect(res.status).toBe(500)
     const body = await res.json() as { error: string }
     expect(body.error).toMatch(/bundle payment link/i)
+  })
+})
+
+// Compliance C2: re-issuing a patient's bundle link is logged once.
+describe('PHI access log', () => {
+  beforeEach(() => phiLog.mockClear())
+
+  test('a re-issued link logs exactly one row: create, payment_link, the patient', async () => {
+    expect((await GET(makeRequest(), makeParams(ORDER_ID))).status).toBe(200)
+    expectOnePhiRow({ action: 'create', resource: 'payment_link', route: '/api/orders/[orderId]/group-link', orderId: ORDER_ID, patientId: TEST_PATIENT_ID })
+  })
+
+  test('a missing order logs nothing', async () => {
+    orderFetchMock.mockResolvedValueOnce({ data: null, error: null })
+    expect((await GET(makeRequest(), makeParams(ORDER_ID))).status).toBe(404)
+    expect(phiEntries()).toHaveLength(0)
+  })
+})
+
+// getUser(), never getSession(): a cookie whose token no longer verifies
+// (forged, revoked, expired) is refused, though getSession() still returns it.
+describe('a session that does not verify', () => {
+  test('is 401', async () => {
+    expect((await withForgedSession(() => GET(makeRequest(), makeParams(ORDER_ID)))).status).toBe(401)
   })
 })

@@ -14,6 +14,8 @@
  */
 
 import { GET, PATCH, POST } from '../route'
+import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
+import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
 const CLINIC_ID   = 'aaaaaaaa-aaaa-4aaa-9aaa-aaaaaaaaaaaa'
 const PATIENT_ID  = 'a3000000-0000-0000-0000-000000000001'
@@ -26,7 +28,7 @@ const filters: Array<[string, unknown]> = []
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: { getSession: () => getSessionMock(), getUser: () => userFromSession(getSessionMock()) },
   }),
 }))
 
@@ -189,5 +191,38 @@ describe('PATCH', () => {
   it('500 when the database rejects the write', async () => {
     updateChainMock.mockResolvedValue({ data: null, error: { message: 'boom' } })
     expect((await PATCH(request({ nkda: true }), ctx())).status).toBe(500)
+  })
+})
+
+// Compliance C2: who viewed or changed which patient's allergies.
+describe('PHI access log', () => {
+  beforeEach(() => phiLog.mockClear())
+
+  it('GET logs exactly one row: view, patient_allergies, the patient', async () => {
+    expect((await GET(request(), ctx())).status).toBe(200)
+    expectOnePhiRow({ action: 'view', resource: 'patient_allergies', route: '/api/patients/[patientId]/allergies', patientId: PATIENT_ID })
+  })
+
+  it('PATCH logs exactly one row: update, patient_allergies, the patient', async () => {
+    expect((await PATCH(request({ allergies: ['sulfa'] }), ctx())).status).toBe(200)
+    expectOnePhiRow({ action: 'update', resource: 'patient_allergies', patientId: PATIENT_ID })
+  })
+
+  it('refused or not-found requests log nothing', async () => {
+    selectChainMock.mockResolvedValue({ data: null, error: null })
+    expect((await GET(request(), ctx())).status).toBe(404)
+    getSessionMock.mockResolvedValue({ data: { session: null } })
+    expect((await PATCH(request({ allergies: ['sulfa'] }), ctx())).status).toBe(401)
+    expect(phiEntries()).toHaveLength(0)
+  })
+})
+
+// getUser(), never getSession(): a cookie whose token no longer verifies
+// (forged, revoked, expired) is refused, though getSession() still returns it.
+describe('a session that does not verify', () => {
+  it('GET and PATCH are 401 and nothing is written', async () => {
+    expect((await withForgedSession(() => GET(request(), ctx()))).status).toBe(401)
+    expect((await withForgedSession(() => PATCH(request({ allergies: ['sulfa'] }), ctx()))).status).toBe(401)
+    expect(updateMock).not.toHaveBeenCalled()
   })
 })

@@ -22,6 +22,8 @@
  */
 
 import { PATCH, DELETE } from '../route'
+import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
+import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
 const CLINIC_ID   = 'a1000000-0000-0000-0000-000000000001'
 const ORDER_ID    = 'a6000000-0000-0000-0000-000000000001'
@@ -38,7 +40,7 @@ const getSessionMock = jest.fn()
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: { getSession: () => getSessionMock(), getUser: () => userFromSession(getSessionMock()) },
   }),
 }))
 
@@ -415,5 +417,34 @@ describe('PATCH /api/orders/[orderId] — the sig mode and cycle travel with the
     const update = updatedRows.find(u => u.table === 'orders')!
     expect(update.row).not.toHaveProperty('sig_mode')
     expect(update.row).not.toHaveProperty('cycle_on_days')
+  })
+})
+
+// Compliance C2: a change to a patient's draft is logged once.
+describe('PHI access log', () => {
+  beforeEach(() => phiLog.mockClear())
+
+  it('PATCH logs exactly one row: update, order, with the patient', async () => {
+    expect((await PATCH(makeRequest(patchBody()), ctx)).status).toBe(200)
+    expectOnePhiRow({ action: 'update', resource: 'order', route: '/api/orders/[orderId]', orderId: expect.any(String), patientId: expect.any(String) })
+  })
+
+  it('DELETE (soft) logs exactly one row: update, order', async () => {
+    expect((await DELETE(makeRequest(), ctx)).status).toBe(200)
+    expectOnePhiRow({ action: 'update', resource: 'order', route: '/api/orders/[orderId]' })
+  })
+
+  it('a refused edit logs nothing', async () => {
+    expect((await PATCH(makeRequest(patchBody({ retailCents: 0 })), ctx)).status).toBe(400)
+    expect(phiEntries()).toHaveLength(0)
+  })
+})
+
+// getUser(), never getSession(): a cookie whose token no longer verifies
+// (forged, revoked, expired) is refused, though getSession() still returns it.
+describe('a session that does not verify', () => {
+  it('PATCH and DELETE are 401', async () => {
+    expect((await withForgedSession(() => PATCH(makeRequest(patchBody()), ctx))).status).toBe(401)
+    expect((await withForgedSession(() => DELETE(makeRequest(), ctx))).status).toBe(401)
   })
 })

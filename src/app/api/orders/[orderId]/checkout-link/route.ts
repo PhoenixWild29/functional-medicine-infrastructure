@@ -34,6 +34,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { generateCheckoutToken } from '@/lib/auth/checkout-token'
 import { serverEnv } from '@/lib/env'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
@@ -65,13 +66,14 @@ export async function POST(
 
   // Auth gate
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const appRole = typeof session.user.user_metadata['app_role'] === 'string'
-    ? session.user.user_metadata['app_role'] as string
+  const appRole = typeof user.user_metadata['app_role'] === 'string'
+    ? user.user_metadata['app_role'] as string
     : null
 
   if (!appRole || !(CLINIC_APP_ROLES as readonly string[]).includes(appRole)) {
@@ -81,8 +83,8 @@ export async function POST(
     )
   }
 
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
     : null
 
   if (!clinicId) {
@@ -135,6 +137,11 @@ export async function POST(
   console.info(
     `[checkout-link] generated | order=${orderId} | clinic=${clinicId} | status=${order.status}`
   )
+  // Compliance C2: a payment link for the patient's order was issued.
+  await logPhiAccess({
+    user: user, action: 'create', resource: 'payment_link', route: '/api/orders/[orderId]/checkout-link',
+    orderId, patientId: order.patient_id, headers: request.headers,
+  })
 
   return NextResponse.json(
     { checkoutUrl, expiresAt },

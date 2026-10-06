@@ -21,6 +21,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 import { RX_DETAIL_COLUMN_LIST, rxDetailsFromRow, type RxDetails } from '@/lib/orders/rx-details'
 import { dollarsToCents } from '@/lib/orders/shipping'
 
@@ -41,7 +42,7 @@ export interface OrderRecord {
   packageCount: number | null
 }
 
-export async function GET(_request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+export async function GET(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
   const { orderId } = await params
 
   const supabaseAuth = await createServerClient()
@@ -64,7 +65,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
   const [orderResult, clinicResult] = await Promise.all([
     supabase
       .from('orders')
-      .select(`order_id, shipping_fee, pharmacy_snapshot, package_label, package_count, ${RX_DETAIL_COLUMN_LIST}`)
+      .select(`order_id, patient_id, shipping_fee, pharmacy_snapshot, package_label, package_count, ${RX_DETAIL_COLUMN_LIST}`)
       .eq('order_id', orderId)
       .eq('clinic_id', clinicId)
       .is('deleted_at', null)
@@ -103,5 +104,11 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
     packageLabel: typeof order.package_label === 'string' ? order.package_label : null,
     packageCount: typeof order.package_count === 'number' ? order.package_count : null,
   }
+  // Compliance C2: one row per successful read of a patient's order.
+  await logPhiAccess({
+    user, action: 'view', resource: 'order', route: '/api/orders/[orderId]/record',
+    orderId, patientId: typeof order['patient_id'] === 'string' ? order['patient_id'] : null,
+    headers: request.headers ?? null,
+  })
   return NextResponse.json(record, { status: 200, headers: { 'Cache-Control': 'no-store' } })
 }

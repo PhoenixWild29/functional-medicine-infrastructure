@@ -58,6 +58,7 @@ import {
 } from '@/lib/orders/rx-details'
 import { buildStandardSig } from '@/lib/orders/dose-display'
 import { splitDose } from '@/lib/orders/dose'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 
 export const dynamic = 'force-dynamic'
 
@@ -238,6 +239,13 @@ export async function POST(request: NextRequest) {
       unavailable: unsized.map(l => l.refillOfOrderId),
     }, { status: 409 })
   }
+
+  // Compliance C2: the patient's earlier orders were read to refill them.
+  await logPhiAccess({
+    user, action: 'view', resource: 'refill', route: '/api/orders/refill',
+    patientId: rows[0]!.patient_id, orderId: rows.length === 1 ? rows[0]!.order_id : null,
+    headers: request.headers ?? null,
+  })
 
   return NextResponse.json({
     patientId: rows[0]!.patient_id,

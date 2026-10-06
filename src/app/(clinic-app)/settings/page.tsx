@@ -10,6 +10,7 @@
 // REQ-CAD-006: Clinic logo management.
 // REQ-CAD-007: Default markup percentage configuration.
 
+import Link from 'next/link'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
@@ -61,6 +62,9 @@ export default async function SettingsPage() {
     )
   }
 
+  // Compliance C2: the access log is the clinic admin's alone.
+  const isClinicAdmin = user.user_metadata['app_role'] === 'clinic_admin'
+
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
       {/* Page header */}
@@ -85,6 +89,7 @@ export default async function SettingsPage() {
               { href: '#clinic-profile',  label: 'Clinic Profile'  },
               { href: '#notifications',   label: 'Notifications'   },
               { href: '#sign-in-security', label: 'Sign-in Security' },
+              ...(isClinicAdmin ? [{ href: '#access-log', label: 'Access log' }] : []),
             ].map(({ href, label }) => (
               <li key={href}>
                 <a
@@ -126,6 +131,24 @@ export default async function SettingsPage() {
           <div id="sign-in-security" className="scroll-mt-6">
             <SignInSecuritySection enrolled={hasVerifiedTotp(user)} enforced={mfaEnforcedFor(user.email)} />
           </div>
+
+          {/* Compliance C2: the access log, clinic admin only */}
+          {isClinicAdmin && (
+            <div id="access-log" className="scroll-mt-6">
+              <section className="rounded-lg border border-border bg-card p-6 space-y-3" data-testid="settings-access-log">
+                <h2 className="text-base font-semibold text-foreground">Access log</h2>
+                <p className="text-sm text-muted-foreground">
+                  Who viewed or changed your patients&apos; information, and when. Filter by patient and date range.
+                </p>
+                <Link
+                  href="/settings/access-log"
+                  className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
+                >
+                  Open the access log
+                </Link>
+              </section>
+            </div>
+          )}
 
           {/* Notifications — placeholder section */}
           <div id="notifications" className="scroll-mt-6">

@@ -7,6 +7,7 @@
  */
 
 import { GET } from '../route'
+import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
 const CLINIC = 'c0000000-0000-4000-8000-000000000001'
 const ORDER_ID = '45e03578-e208-468d-a35b-ab9bc82320ae'
@@ -56,6 +57,7 @@ beforeEach(() => {
   absorb = false
   orderRow = {
     order_id: ORDER_ID,
+    patient_id: 'p0000000-0000-4000-8000-000000000001',
     shipping_fee: '22.00',
     shipping_type: 'cold_chain',
     pharmacy_snapshot: { pharmacy_id: 'strive', name: 'Strive Pharmacy' },
@@ -119,5 +121,26 @@ describe('GET /api/orders/[orderId]/record', () => {
     getUserMock.mockResolvedValueOnce({ data: { user: { id: 'u1', user_metadata: {} } } })
     expect((await call()).status).toBe(400)
     expect(getSessionMock).not.toHaveBeenCalled()
+  })
+})
+
+// Compliance C2: who viewed which patient's order.
+describe('PHI access log', () => {
+  beforeEach(() => phiLog.mockClear())
+
+  it('a successful read logs exactly one row: view, order, with its patient', async () => {
+    expect((await call()).status).toBe(200)
+    expectOnePhiRow({
+      action: 'view', resource: 'order', route: '/api/orders/[orderId]/record',
+      orderId: ORDER_ID, patientId: 'p0000000-0000-4000-8000-000000000001',
+    })
+  })
+
+  it('a refused or missing read logs nothing', async () => {
+    orderRow = null
+    expect((await call()).status).toBe(404)
+    getUserMock.mockResolvedValueOnce({ data: { user: null } })
+    expect((await call()).status).toBe(401)
+    expect(phiEntries()).toHaveLength(0)
   })
 })

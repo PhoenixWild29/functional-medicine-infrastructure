@@ -30,6 +30,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
 import { validateAllergiesPatch } from '@/lib/patients/allergies'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -40,6 +41,8 @@ interface RouteParams {
 
 interface CallerContext {
   clinicId: string
+  /** The signed-in user, for the PHI access log (Compliance C2). */
+  user:     PhiUser
 }
 
 type CallerResult =
@@ -48,14 +51,15 @@ type CallerResult =
 
 async function resolveCaller(): Promise<CallerResult> {
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
 
-  const role     = session.user.user_metadata['app_role'] as string | undefined
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? (session.user.user_metadata['clinic_id'] as string)
+  const role     = user.user_metadata['app_role'] as string | undefined
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? (user.user_metadata['clinic_id'] as string)
     : null
 
   if (role !== 'provider' && role !== 'medical_assistant' && role !== 'clinic_admin') {
@@ -64,7 +68,7 @@ async function resolveCaller(): Promise<CallerResult> {
   if (!clinicId) {
     return { ok: false, response: NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 }) }
   }
-  return { ok: true, caller: { clinicId } }
+  return { ok: true, caller: { clinicId, user: user } }
 }
 
 const SELECT = 'patient_id, clinic_id, allergies, nkda, allergies_updated_at'
@@ -88,7 +92,7 @@ function toResponse(row: PatientAllergyRow) {
 
 // ── GET ─────────────────────────────────────────────────────────────
 
-export async function GET(_request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+export async function GET(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
   const { patientId } = await params
   if (!UUID_RE.test(patientId)) {
     return NextResponse.json({ error: 'Invalid patientId' }, { status: 400 })
@@ -113,6 +117,10 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
   if (!data) {
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
   }
+  await logPhiAccess({
+    user: auth.caller.user, action: 'view', resource: 'patient_allergies',
+    route: '/api/patients/[patientId]/allergies', patientId, headers: request.headers ?? null,
+  })
   return NextResponse.json(toResponse(data as PatientAllergyRow))
 }
 
@@ -199,6 +207,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
   // No PHI in the log line: ids only.
   const entryCount = validated.value.allergies.length
   console.info(`[patients/allergies PATCH] patient=${patientId} clinic=${auth.caller.clinicId} nkda=${validated.value.nkda} entries=${entryCount}`)
+  await logPhiAccess({
+    user: auth.caller.user, action: 'update', resource: 'patient_allergies',
+    route: '/api/patients/[patientId]/allergies', patientId, headers: request.headers ?? null,
+  })
 
   return NextResponse.json(toResponse(data as PatientAllergyRow))
 }

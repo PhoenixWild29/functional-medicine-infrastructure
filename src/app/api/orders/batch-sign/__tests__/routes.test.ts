@@ -7,6 +7,7 @@
 
 import { POST as signPOST } from '../route'
 import { POST as checkPOST } from '../check/route'
+import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 import type { NextRequest } from 'next/server'
 
 const getUserMock = jest.fn()
@@ -110,5 +111,41 @@ describe('POST /api/orders/batch-sign/check', () => {
   it('bad ids are 400', async () => {
     user('provider')
     expect((await checkPOST(req({ orderIds: ['not-an-id'] }))).status).toBe(400)
+  })
+})
+
+// Compliance C2: signing, and the pre-sign check, are logged once each.
+describe('PHI access log', () => {
+  beforeEach(() => phiLog.mockClear())
+
+  it('a signature logs exactly one row: sign, prescription, its patient and order', async () => {
+    user('provider')
+    signBatchMock.mockResolvedValue({ ok: true, signedAt: 't', patients: [{ patientId: 'p', orderIds: [ID], paymentGroupId: null, checkoutUrl: 'u' }] })
+    expect((await signPOST(req({ orderIds: [ID], signature: { s: 1 } }))).status).toBe(200)
+    expectOnePhiRow({ action: 'sign', resource: 'prescription', route: '/api/orders/batch-sign', patientId: 'p', orderId: ID })
+  })
+
+  it('a batch for two patients still logs one row, naming neither', async () => {
+    user('provider')
+    signBatchMock.mockResolvedValue({ ok: true, signedAt: 't', patients: [
+      { patientId: 'p1', orderIds: ['o1'], paymentGroupId: null, checkoutUrl: 'u' },
+      { patientId: 'p2', orderIds: ['o2'], paymentGroupId: null, checkoutUrl: 'u' },
+    ] })
+    expect((await signPOST(req({ orderIds: ['o1', 'o2'], signature: { s: 1 } }))).status).toBe(200)
+    expectOnePhiRow({ action: 'sign', patientId: null, orderId: null })
+  })
+
+  it('a refused signature logs nothing', async () => {
+    user('provider')
+    signBatchMock.mockResolvedValue({ ok: false, status: 401, code: 'TOTP_REQUIRED', error: 'code needed' })
+    expect((await signPOST(req({ orderIds: [ID], signature: { s: 1 } }))).status).toBe(401)
+    expect(phiEntries()).toHaveLength(0)
+  })
+
+  it('the check logs exactly one row: view, prescription', async () => {
+    user('provider')
+    checkBatchMock.mockResolvedValue({ lines: [{ orderId: ID, patientId: 'p', controlled: false }], problems: [], signer: null })
+    expect((await checkPOST(req({ orderIds: [ID] }))).status).toBe(200)
+    expectOnePhiRow({ action: 'view', resource: 'prescription', route: '/api/orders/batch-sign/check', patientId: 'p', orderId: ID })
   })
 })
