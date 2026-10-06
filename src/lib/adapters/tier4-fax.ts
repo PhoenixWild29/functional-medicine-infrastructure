@@ -39,6 +39,7 @@ import {
   markFailed,
 } from '@/lib/adapters/audit-trail'
 import { casTransition } from '@/lib/orders/cas-transition'
+import { assertPharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { parseTitrationSteps } from '@/lib/orders/titration'
 import { cyclePatternFromRow } from '@/lib/orders/cycling'
 
@@ -57,15 +58,25 @@ export interface Tier4FaxResult {
 // ============================================================
 //
 // Called by:
-//   - Stripe webhook branchByTier() for initial FAX_QUEUED orders
+//   - the routing engine (Tier 4 direct, and the cascade from Tier 1/2/3),
+//     with the order claimed in SUBMISSION_PENDING; the engine moves it to
+//     FAX_QUEUED and creates the FAX_DELIVERY SLA once the fax is sent
+//   - submitQueuedFax for ops force_fax / retry_fax (order already FAX_QUEUED)
 //   - /api/cron/fax-retry for retry attempts 2 and 3
+//   - /api/cron/sla-check cascade (order already FAX_QUEUED)
 //
-// On first call (attempt 1): transitions order PAID_PROCESSING → FAX_QUEUED
-//   and creates FAX_DELIVERY SLA (30 min wall clock).
+// On first call (attempt 1) for an order still in PAID_PROCESSING:
+//   transitions it PAID_PROCESSING → FAX_QUEUED and creates the
+//   FAX_DELIVERY SLA (30 min wall clock). From any other status that CAS
+//   is a no-op.
 // On retries (attempt 2–3): updates documo_fax_id only; order
 //   stays FAX_QUEUED (already transitioned on attempt 1).
 
 export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
+  // Kill switch: refuse before building or uploading anything, including the
+  // DOCUMO_ENABLED=false synthetic path (lib/adapters/submission-switch).
+  assertPharmacySubmissionsEnabled('Tier 4 fax submission')
+
   const supabase = createServiceClient()
 
   // ── 1. Load order ──────────────────────────────────────────

@@ -35,6 +35,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/submit-paid-orders",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/portal-status-poll",
       "schedule": "*/30 * * * *"
     },
@@ -50,7 +54,7 @@
 
   "functions": {
     "src/app/api/webhooks/stripe/route.ts": {
-      "maxDuration": 60,
+      "maxDuration": 300,
       "memory": 1024
     },
     "src/app/api/webhooks/documo/route.ts": {
@@ -106,6 +110,14 @@
       "memory": 512
     },
     "src/app/api/adapters/route-order/route.ts": {
+      "maxDuration": 300,
+      "memory": 1024
+    },
+    "src/app/api/cron/submit-paid-orders/route.ts": {
+      "maxDuration": 300,
+      "memory": 1024
+    },
+    "src/app/api/ops/orders/[orderId]/action/route.ts": {
       "maxDuration": 300,
       "memory": 1024
     }

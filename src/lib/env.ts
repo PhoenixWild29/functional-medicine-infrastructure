@@ -61,6 +61,10 @@ export const serverEnv = {
   circuitBreakerThreshold: () => parseFloat(requireEnv('CIRCUIT_BREAKER_THRESHOLD')),
   playwrightHeadless: () => requireEnv('PLAYWRIGHT_HEADLESS') === 'true',
 
+  // Kill switch: nothing is sent to a pharmacy (API, portal or fax) unless
+  // this is exactly "true". Unset means OFF. See lib/adapters/submission-switch.
+  pharmacySubmissionsEnabled: () => process.env['PHARMACY_SUBMISSIONS_ENABLED'] === 'true',
+
   // Compliance C3: multi-factor sign-in. OFF unless REQUIRE_MFA is exactly
   // 'true', so demo accounts and E2E keep signing in with a password until
   // the owner turns it on. MFA_ENFORCED_EMAILS (comma-separated) enforces

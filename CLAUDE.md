@@ -33,7 +33,6 @@ The template includes the verify-before-report guardrail that dropped R7's 28% f
 
 Do NOT re-derive the prompt structure from scratch each round. The compounding payoff of the template is multi-hour savings per cycle in audit + triage work avoided. Filed under WO-95.
 
-<!-- VERCEL BEST PRACTICES START -->
 ## Multi-factor sign-in (compliance C3)
 
 - `REQUIRE_MFA` (read through `src/lib/env`) turns multi-factor sign-in on for provider, medical_assistant, clinic_admin and ops_admin. It is OFF unless exactly `true`, so demo accounts and E2E sign in with a password until the owner turns it on. `MFA_ENFORCED_EMAILS` enforces it for named accounts only (E2E uses `test-mfa-admin@compoundiq.test`).
@@ -42,6 +41,11 @@ Do NOT re-derive the prompt structure from scratch each round. The compounding p
 - A user who enrolled voluntarily (Settings) is challenged on every new sign-in even with enforcement off.
 - The login factor is Supabase Auth's TOTP factor (`auth.mfa_factors`). The EPCS signing secret (`providers.totp_secret_encrypted`, WO-86 / #171) is a separate factor on purpose: Supabase can only raise a session to AAL2 through its own factors, and EPCS needs its code checked by our server at the moment of signing. A provider may hold both in one authenticator app as two entries.
 - HIPAA automatic logoff: `HipaaTimeout` is mounted once, by the clinic and ops layouts, with `IDLE_TIMEOUT_MINUTES` (default 15). Do not mount it in pages.
+
+<!-- VERCEL BEST PRACTICES START -->
+## Environment variables
+
+- `PHARMACY_SUBMISSIONS_ENABLED`: kill switch for every pharmacy submission (API, portal, fax); OFF unless exactly `true`, and only the owner turns it on in production (see `src/lib/adapters/submission-switch.ts`).
 
 ## Best practices for developing on Vercel
 
