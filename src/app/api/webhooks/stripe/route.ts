@@ -660,7 +660,9 @@ async function handleSoloChargeDisputeCreated(dispute: Stripe.Dispute): Promise<
       orderId: order.order_id,
       pharmacySlug: 'stripe',
       integrationTier: 'STRIPE_DISPUTE',
-      errorCode: `${dispute.id}|reason=${dispute.reason ?? 'unknown'}|${dispute.amount}${dispute.currency}`,
+      errorCode: 'stripe_dispute',
+      type: 'stripe_dispute',
+      details: { dispute_id: dispute.id, dispute_reason: dispute.reason ?? 'unknown', amount: dispute.amount, currency: dispute.currency },
     })
   ).catch(err =>
     console.error('[stripe-webhook] failed to send dispute alert:', err)
@@ -742,7 +744,9 @@ async function handleTransferFailed(transfer: Stripe.Transfer): Promise<void> {
       orderId: order.order_id,
       pharmacySlug: 'stripe',
       integrationTier: 'STRIPE_TRANSFER_FAILED',
-      errorCode: `${transfer.id}|${transfer.amount}${transfer.currency}`,
+      errorCode: 'stripe_transfer_failed',
+      type: 'stripe_transfer_failed',
+      details: { transfer_id: transfer.id, amount: transfer.amount, currency: transfer.currency },
     })
   ).catch(err =>
     console.error('[stripe-webhook] failed to send transfer.failed alert:', err)

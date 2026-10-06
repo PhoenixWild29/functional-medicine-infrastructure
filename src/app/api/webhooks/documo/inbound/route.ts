@@ -34,7 +34,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { validateDocumoWebhook } from '@/lib/documo/client'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendSlackAlert } from '@/lib/slack/client'
-import type { SlackAlertPayload } from '@/lib/slack/client'
+import { buildOpsAlert, type SafeSlackPayload } from '@/lib/slack/ops-alert'
 
 // ============================================================
 // WEBHOOK PAYLOAD TYPES
@@ -243,30 +243,17 @@ function buildInboundFaxAlert(params: {
   matchedPharmacyId: string | null
   statusSaved?: boolean
   lookupFailed?: boolean
-}): SlackAlertPayload {
-  const icon = params.status === 'MATCHED' && params.statusSaved !== false ? '📠' : '⚠️'
-  const statusLabel = (params.status === 'MATCHED'
-    ? `MATCHED → pharmacy ${params.matchedPharmacyId}`
-    : params.lookupFailed
-      ? 'UNMATCHED — pharmacy match could not be checked; manual review required'
-      : 'UNMATCHED — manual review required')
-    + (params.statusSaved === false ? ' (status was not saved; the queue row still says RECEIVED)' : '')
-
-  return {
-    text: `${icon} Inbound Fax Received`,
-    blocks: [
-      {
-        type: 'header',
-        text: { type: 'plain_text', text: `${icon} Inbound Fax — ${params.status}` },
-      },
-      {
-        type: 'section',
-        fields: [
-          { type: 'mrkdwn', text: `*Fax Queue ID:*\n${params.faxId}` },
-          { type: 'mrkdwn', text: `*Pages:*\n${params.pages}` },
-          { type: 'mrkdwn', text: `*Status:*\n${statusLabel}` },
-        ],
-      },
+}): SafeSlackPayload {
+  // The sender's number and the fax itself are never sent: the queue ID,
+  // page count, match status and matched pharmacy only (lib/slack/ops-alert).
+  return buildOpsAlert({
+    type: 'inbound_fax',
+    status: params.status,
+    details: { fax_id: params.faxId, pages: params.pages, matched_pharmacy: params.matchedPharmacyId },
+    notes: [
+      ...(params.status === 'UNMATCHED' ? ['unmatched' as const] : []),
+      ...(params.lookupFailed ? ['match_unchecked' as const] : []),
+      ...(params.statusSaved === false ? ['status_not_saved' as const] : []),
     ],
-  }
+  })
 }

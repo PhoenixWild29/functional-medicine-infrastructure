@@ -78,7 +78,7 @@ describe('the alert builders keep their names and apply the allow-list', () => {
   })
 
   it('submission failed: a cascade history that echoes an adapter error is dropped', () => {
-    expectNoPhi(buildSubmissionFailedAlert({ orderId: ORDER, pharmacySlug: 'strive', cascadeHistory: `TIER_1_API: ${FREE_TEXT}` }))
+    expectNoPhi(buildSubmissionFailedAlert({ orderId: ORDER, pharmacySlug: 'strive', cascadeHistory: `TIER_1_API: ${FREE_TEXT}` } as never))
   })
 
   it('status history write failed: the database error text is not sent', () => {

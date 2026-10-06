@@ -167,7 +167,9 @@ describe('Phase C Stage 6 — handleGroupChargeDisputeCreated', () => {
     expect(buildAlertMock).toHaveBeenCalledWith(
       expect.objectContaining({
         integrationTier: 'STRIPE_DISPUTE_GROUP',
-        errorCode: expect.stringContaining('group=group-aaa'),
+        // Slack allow-list: the group context travels as named details, not
+        // as one pipe-joined errorCode string.
+        details: expect.objectContaining({ group_id: 'group-aaa', member_count: 2 }),
       }),
     )
   })

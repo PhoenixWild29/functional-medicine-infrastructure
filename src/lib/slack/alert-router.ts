@@ -30,7 +30,7 @@ import {
   buildSubmissionFailedAlert,   // BLK-07: needed for SUBMISSION_FAILED routing
   buildReFireAlert,
   type SlaBreachTemplateParams,
-  type SlackAlertPayload,
+  type SafeSlackPayload,
 } from '@/lib/slack/client'
 import { triggerSlaEscalation } from '@/lib/pagerduty/client'
 
@@ -48,7 +48,6 @@ export interface RouteSlaAlertParams {
   escalationTier:   number      // the NEW tier after escalation
   acknowledgedAt:   string | null
   cascadeStatus?:   string
-  cascadeHistory?:  string      // for SUBMISSION_FAILED alerts
 }
 
 // Channel values for notifications log
@@ -88,7 +87,7 @@ async function logNotification(
 // TEMPLATE SELECTOR — REQ-SAI-003
 // ============================================================
 
-function selectTemplate(params: RouteSlaAlertParams): SlackAlertPayload {
+function selectTemplate(params: RouteSlaAlertParams): SafeSlackPayload {
   const base: SlaBreachTemplateParams = {
     orderId:         params.orderId,
     slaType:         params.slaType,
@@ -112,9 +111,9 @@ function selectTemplate(params: RouteSlaAlertParams): SlackAlertPayload {
     case 'SUBMISSION_FAILED':
       // BLK-07: SUBMISSION_FAILED uses its own four-button critical template
       return buildSubmissionFailedAlert({
-        orderId:        params.orderId,
-        pharmacySlug:   params.pharmacySlug,
-        cascadeHistory: params.cascadeHistory ?? 'All submission tiers exhausted',
+        orderId:      params.orderId,
+        pharmacySlug: params.pharmacySlug,
+        failedTier:   params.integrationTier,
       })
 
     default:
