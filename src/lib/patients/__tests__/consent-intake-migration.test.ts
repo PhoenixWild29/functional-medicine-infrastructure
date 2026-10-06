@@ -155,3 +155,66 @@ describe('the down migration', () => {
     expect(d).toContain('drop column if exists shipping_address_snapshot_at')
   })
 })
+
+// ── prevent_snapshot_mutation: the signature hash is frozen too ──
+// provider_signature_hash_snapshot (20260319000007, WO-29 NB-01) was never
+// added to the frozen list, so a signed order's signature hash could be
+// changed after lock. Its only writer (lib/orders/batch-sign) sets it in
+// the same UPDATE that sets locked_at, so freezing it breaks nothing.
+//
+// No Postgres here: the trigger is run from its own SQL. Every
+// `NEW.<col> IS DISTINCT FROM OLD.<col>` in the function is a frozen
+// column, and the function raises once OLD.locked_at is set.
+
+function triggerOf(text: string) {
+  const start = text.search(/CREATE OR REPLACE FUNCTION prevent_snapshot_mutation\(\)/i)
+  const body = text.slice(start, text.indexOf('$$ LANGUAGE plpgsql', start))
+  const frozen = [...body.matchAll(/NEW\.(\w+)\s+IS DISTINCT FROM OLD\.(\w+)/gi)]
+    .filter(m => m[1] === m[2]).map(m => m[1]!)
+  const message = /RAISE EXCEPTION '([^']+)'/.exec(body)?.[1] ?? null
+  return {
+    body,
+    frozen,
+    /** What the trigger does for one UPDATE. */
+    update(oldRow: Record<string, unknown>, newRow: Record<string, unknown>) {
+      if (oldRow['locked_at'] == null) return
+      if (frozen.some(c => (oldRow[c] ?? null) !== (newRow[c] ?? null))) throw new Error(message ?? 'raised')
+    },
+  }
+}
+
+const ORIGINAL_SEVEN = [
+  'wholesale_price_snapshot', 'retail_price_snapshot', 'medication_snapshot', 'shipping_state_snapshot',
+  'provider_npi_snapshot', 'pharmacy_snapshot', 'locked_at',
+]
+
+describe('prevent_snapshot_mutation freezes the signature hash', () => {
+  const up = triggerOf(sql)
+  const locked = { order_id: 'o-1', locked_at: '2026-10-06T15:00:00Z', provider_signature_hash_snapshot: 'a'.repeat(64) }
+
+  it('updating provider_signature_hash_snapshot on a locked order raises', () => {
+    expect(() => up.update(locked, { ...locked, provider_signature_hash_snapshot: 'b'.repeat(64) }))
+      .toThrow('Cannot modify snapshot fields after order is locked')
+  })
+
+  it('signing still works: the hash is set in the same UPDATE as locked_at, on an unlocked DRAFT', () => {
+    const draft = { order_id: 'o-1', locked_at: null, provider_signature_hash_snapshot: null }
+    expect(() => up.update(draft, { ...draft, locked_at: '2026-10-06T15:00:00Z', provider_signature_hash_snapshot: 'a'.repeat(64) })).not.toThrow()
+  })
+
+  it('keeps the 7 original fields and the 5 address fields', () => {
+    for (const col of [...ORIGINAL_SEVEN, 'shipping_address_line1_snapshot', 'shipping_address_line2_snapshot', 'shipping_city_snapshot', 'shipping_zip_snapshot', 'shipping_address_snapshot_at']) {
+      expect(up.frozen).toContain(col)
+    }
+    expect(up.frozen).toContain('provider_signature_hash_snapshot')
+    expect(up.frozen).toHaveLength(13)
+  })
+
+  it('the down migration restores the original 7-field function exactly', () => {
+    const original = triggerOf(read(join(MIGRATIONS, '20260317000004_create_rls_and_triggers.sql')))
+    const restored = triggerOf(down)
+    expect(original.frozen).toEqual(ORIGINAL_SEVEN)
+    const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
+    expect(norm(restored.body)).toBe(norm(original.body))
+  })
+})
