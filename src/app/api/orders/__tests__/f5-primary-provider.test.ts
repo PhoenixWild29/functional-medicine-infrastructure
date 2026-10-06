@@ -27,6 +27,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { POST } from '../route'
+import { userFromSession } from '@/__tests__/helpers/auth-from-session'
 
 // ── Constants ──────────────────────────────────────────────────
 
@@ -112,7 +113,7 @@ const getSessionMock = jest.fn()
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: { getSession: () => getSessionMock(), getUser: () => userFromSession(getSessionMock()) },
   }),
 }))
 

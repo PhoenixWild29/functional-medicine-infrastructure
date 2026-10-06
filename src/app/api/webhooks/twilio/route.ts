@@ -42,7 +42,7 @@ import { validateTwilioWebhook } from '@/lib/twilio/client'
 import { handleInboundSms } from '@/lib/sms/inbound'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendSlackAlert } from '@/lib/slack/client'
-import type { SlackAlertPayload } from '@/lib/slack/client'
+import { buildOpsAlert, type SafeSlackPayload } from '@/lib/slack/ops-alert'
 
 // ============================================================
 // TYPES
@@ -250,26 +250,13 @@ function buildSmsFailureAlert(params: {
   errorCode: string | null
   messageSid: string
   clinicNotified?: boolean
-}): SlackAlertPayload {
-  return {
-    text: `SMS Delivery Failed — Order ${params.orderId}`,
-    blocks: [
-      {
-        type: 'header',
-        text: { type: 'plain_text', text: 'SMS Delivery Failed' },
-      },
-      {
-        type: 'section',
-        fields: [
-          { type: 'mrkdwn', text: `*Order ID:*\n${params.orderId}` },
-          { type: 'mrkdwn', text: `*Template:*\n${params.templateName}` },
-          { type: 'mrkdwn', text: `*Status:*\n${params.messageStatus}` },
-          { type: 'mrkdwn', text: `*Twilio Error:*\n${params.errorCode ?? 'none'}` },
-        ],
-      },
-      ...(params.clinicNotified === false
-        ? [{ type: 'section' as const, text: { type: 'mrkdwn' as const, text: '⚠️ The clinic was not notified in-app. Contact the clinic directly.' } }]
-        : []),
-    ],
-  }
+}): SafeSlackPayload {
+  // Twilio's numeric error code and the template are codes; the message,
+  // the number and Twilio's error text are never sent (lib/slack/ops-alert).
+  return buildOpsAlert({
+    type: 'sms_failed',
+    orderId: params.orderId,
+    details: { template: params.templateName, delivery_status: params.messageStatus, twilio_error: params.errorCode },
+    notes: params.clinicNotified === false ? ['clinic_not_notified'] : [],
+  })
 }

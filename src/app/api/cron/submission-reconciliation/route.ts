@@ -23,7 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendSlackAlert } from '@/lib/slack/client'
-import type { SlackAlertPayload } from '@/lib/slack/client'
+import { buildOpsAlert, type SafeSlackPayload } from '@/lib/slack/ops-alert'
 
 const ORPHAN_THRESHOLD_MINUTES = 15
 
@@ -177,25 +177,14 @@ function buildOpsAlertPayload(alert: {
   metadata: Record<string, unknown> | null
   slack_channel: string
   severity: string
-}): SlackAlertPayload {
-  const severityIcon = alert.severity === 'critical' ? '🔴'
-    : alert.severity === 'warning' ? '⚠️'
-    : 'ℹ️'
-
-  return {
-    text: `${severityIcon} ${alert.alert_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}`,
-    blocks: [
-      {
-        type: 'header',
-        text: {
-          type: 'plain_text',
-          text: `${severityIcon} ${alert.alert_type}`,
-        },
-      },
-      {
-        type: 'section',
-        text: { type: 'mrkdwn', text: alert.message },
-      },
-    ],
-  }
+}): SafeSlackPayload {
+  // The queued message is free text (and metadata can carry an error
+  // string), so neither is posted: the alert's type and severity as codes,
+  // its order ID, and the ops order link. The message stays in the queue.
+  const orderId = typeof alert.metadata?.['order_id'] === 'string' ? alert.metadata['order_id'] as string : null
+  return buildOpsAlert({
+    type: 'queued_alert',
+    orderId,
+    details: { alert_type: alert.alert_type, severity: alert.severity },
+  })
 }

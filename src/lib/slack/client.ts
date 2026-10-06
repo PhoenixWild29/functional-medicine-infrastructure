@@ -25,38 +25,16 @@
 // REQ-SAI-007: PHI boundary enforcement at template function signature level
 
 import { serverEnv } from '@/lib/env'
+import { buildOpsAlert, type SafeSlackPayload, type OpsAlertDetailValue, type OpsAlertDetailKey } from './ops-alert'
+
+export { buildOpsAlert, opsOrderUrl, type SafeSlackPayload, type SlackAlertPayload, type SlackBlock, type SlackActionElement } from './ops-alert'
 
 
 // ============================================================
 // SHARED BLOCK KIT TYPES
 // ============================================================
 
-export interface SlackAlertPayload {
-  text: string
-  blocks?: SlackBlock[]
-}
-
-export interface SlackBlock {
-  type: 'section' | 'divider' | 'header' | 'actions'
-  text?: { type: 'mrkdwn' | 'plain_text'; text: string }
-  fields?: Array<{ type: 'mrkdwn' | 'plain_text'; text: string }>
-  elements?: SlackActionElement[]
-}
-
-export interface SlackActionElement {
-  type: 'button'
-  text: { type: 'plain_text'; text: string; emoji?: boolean }
-  action_id: string
-  value: string
-  style?: 'primary' | 'danger'
-  url?: string
-}
-
-// ============================================================
-// SEND — INCOMING WEBHOOK (legacy)
-// ============================================================
-
-export async function sendSlackAlert(payload: SlackAlertPayload): Promise<void> {
+export async function sendSlackAlert(payload: SafeSlackPayload): Promise<void> {
   const webhookUrl = serverEnv.slackWebhookUrl()
 
   const response = await fetch(webhookUrl, {
@@ -85,7 +63,7 @@ export async function sendSlackAlert(payload: SlackAlertPayload): Promise<void> 
  */
 export async function sendSlackMessage(
   channelOrUserId: string,
-  payload:         SlackAlertPayload
+  payload:         SafeSlackPayload
 ): Promise<{ ts: string }> {
   const token = serverEnv.slackBotToken()
 
@@ -121,58 +99,25 @@ export async function sendSlackMessage(
 // BLOCK KIT HELPERS
 // ============================================================
 
-/**
- * Dashboard deep-link URL for an order (auth-gated).
- * BLK-03 fix: Slack button `url` field requires an absolute HTTPS URL.
- * APP_BASE_URL env var provides the base (e.g. https://app.compoundiq.com).
- */
-function orderUrl(orderId: string): string {
-  const base = serverEnv.appBaseUrl().replace(/\/$/, '')
-  return `${base}/dashboard/orders/${orderId}`
-}
-
-/** Overdue duration string from deadline timestamp. */
-function overdueLabel(deadlineAt: string): string {
-  const diffMs = Date.now() - new Date(deadlineAt).getTime()
-  const mins   = Math.max(0, Math.round(diffMs / 60000))
-  if (mins < 60) return `${mins} min`
-  const hrs = Math.floor(mins / 60)
-  const rem = mins % 60
-  return rem > 0 ? `${hrs}h ${rem}min` : `${hrs}h`
-}
-
-/** Standard two-button action block: [Acknowledge] [View Order]. */
-function standardActions(orderId: string): SlackBlock {
-  return {
-    type: 'actions',
-    elements: [
-      {
-        type:      'button',
-        text:      { type: 'plain_text', text: 'Acknowledge', emoji: true },
-        action_id: 'sla_acknowledge',
-        value:     orderId,
-        style:     'primary',
-      },
-      {
-        type:      'button',
-        text:      { type: 'plain_text', text: 'View Order', emoji: true },
-        action_id: 'view_order',
-        value:     orderId,
-        url:       orderUrl(orderId),
-      },
-    ],
-  }
-}
-
 // ============================================================
-// TEMPLATE PARAMS — PHI boundary enforced at type level
+// ALERT BUILDERS: every one goes through buildOpsAlert (./ops-alert)
 // ============================================================
+//
+// The names are the ones callers already use. Each builder maps its
+// parameters onto the allow-list; free text (a cascade history, an adapter
+// error, a database error, a pharmacy rejection reason) is never sent. See
+// ./ops-alert for the rule.
+
+/** Whole minutes past a deadline. */
+function overdueMinutes(deadlineAt: string): number {
+  return Math.max(0, Math.round((Date.now() - new Date(deadlineAt).getTime()) / 60000))
+}
 
 /** Common params for all SLA breach templates. PHI fields excluded by type design. */
 export interface SlaBreachTemplateParams {
   orderId:          string
   slaType:          string
-  deadlineAt:       string    // ISO string — used to compute overdue duration
+  deadlineAt:       string    // ISO string, used to compute overdue minutes
   orderStatus:      string
   pharmacySlug:     string
   integrationTier:  string
@@ -181,280 +126,89 @@ export interface SlaBreachTemplateParams {
 
 /** Extended params for adapter-submission SLA types (V2.0 fields). */
 export interface AdapterSlaTemplateParams extends SlaBreachTemplateParams {
-  cascadeStatus?: string   // e.g. "Tier 1 failed → Cascading to Tier 4 (fax)"
+  /** Not sent (free text). Kept so callers need not change. */
+  cascadeStatus?: string
 }
 
-/** Params for SUBMISSION_FAILED critical alert. */
+/** Params for the SUBMISSION_FAILED critical alert. */
 export interface SubmissionFailedTemplateParams {
   orderId:       string
   pharmacySlug:  string
-  cascadeHistory: string   // e.g. "Tier 1 (API timeout) → Tier 4 (fax queue full) → ALL TIERS EXHAUSTED"
+  /** The tier that failed last, as a code (e.g. TIER_1_API). */
+  failedTier?:   string | null
+  /** The order could not be moved to SUBMISSION_FAILED. */
+  statusNotSet?: boolean
 }
 
-// ============================================================
-// TEMPLATE BUILDERS — REQ-SAI-002, REQ-SAI-003
-// ============================================================
+function slaDetails(params: SlaBreachTemplateParams) {
+  return {
+    sla_type:         params.slaType,
+    overdue_minutes:  overdueMinutes(params.deadlineAt),
+    integration_tier: params.integrationTier,
+    escalation_tier:  params.escalationTier,
+  }
+}
 
 /**
  * Generic SLA breach template. Used for: PHARMACY_CONFIRMATION, SHIPPING,
  * PAYMENT, STATUS_UPDATE, REROUTE_RESOLUTION, FAX_DELIVERY, PHARMACY_ACKNOWLEDGE.
- *
- * REQ-SAI-002: Standard fields + action buttons [Acknowledge] [View Order].
+ * REQ-SAI-002: [Acknowledge] [Open in ops].
  */
-export function buildSlaBreachAlert(params: SlaBreachTemplateParams): SlackAlertPayload {
-  const overdue = overdueLabel(params.deadlineAt)
-  const fallback = `SLA Breach: ${params.slaType} — Order ${params.orderId} — overdue by ${overdue}`
+export function buildSlaBreachAlert(params: SlaBreachTemplateParams): SafeSlackPayload {
+  return buildOpsAlert({
+    type: 'sla_breach', orderId: params.orderId, pharmacy: params.pharmacySlug, status: params.orderStatus,
+    details: slaDetails(params), actions: 'sla',
+  })
+}
 
-  return {
-    text: fallback,
-    blocks: [
-      {
-        type: 'header',
-        text: { type: 'plain_text', text: `⚠️ SLA Breach: ${params.slaType}` },
-      },
-      {
-        type: 'section',
-        fields: [
-          { type: 'mrkdwn', text: `*Order ID:*\n<${orderUrl(params.orderId)}|${params.orderId}>` },
-          { type: 'mrkdwn', text: `*Overdue By:*\n${overdue}` },
-          { type: 'mrkdwn', text: `*Order Status:*\n${params.orderStatus}` },
-          { type: 'mrkdwn', text: `*Pharmacy:*\n${params.pharmacySlug}` },
-          { type: 'mrkdwn', text: `*Integration Tier:*\n${params.integrationTier}` },
-          { type: 'mrkdwn', text: `*Escalation Tier:*\n${params.escalationTier}` },
-        ],
-      },
-      { type: 'divider' },
-      standardActions(params.orderId),
-    ],
-  }
+/** ADAPTER_SUBMISSION_ACK breach (REQ-SAI-003.2): auto-cascade in progress. */
+export function buildAdapterSubmissionAckAlert(params: AdapterSlaTemplateParams): SafeSlackPayload {
+  return buildOpsAlert({
+    type: 'sla_breach', orderId: params.orderId, pharmacy: params.pharmacySlug, status: params.orderStatus,
+    details: slaDetails(params), notes: ['auto_cascade'], actions: 'sla',
+  })
+}
+
+/** PHARMACY_COMPOUNDING_ACK breach (REQ-SAI-003.3). */
+export function buildPharmacyCompoundingAckAlert(params: SlaBreachTemplateParams): SafeSlackPayload {
+  return buildOpsAlert({
+    type: 'sla_breach', orderId: params.orderId, pharmacy: params.pharmacySlug, status: params.orderStatus,
+    details: slaDetails(params), notes: ['confirm_compounding'], actions: 'sla',
+  })
+}
+
+/** PHARMACY_ACKNOWLEDGE (Tier 4 fax) breach (REQ-SAI-003.1). */
+export function buildPharmacyAckFaxAlert(params: SlaBreachTemplateParams): SafeSlackPayload {
+  return buildOpsAlert({
+    type: 'sla_breach', orderId: params.orderId, pharmacy: params.pharmacySlug, status: params.orderStatus,
+    details: { ...slaDetails(params), integration_tier: 'TIER_4_FAX' }, notes: ['confirm_fax_receipt'], actions: 'sla',
+  })
+}
+
+/** SUBMISSION_FAILED critical (REQ-SAI-003.4): [Reroute] [Manual Fax] [Refund] [Open in ops]. */
+export function buildSubmissionFailedAlert(params: SubmissionFailedTemplateParams): SafeSlackPayload {
+  return buildOpsAlert({
+    type: 'submission_failed', orderId: params.orderId, pharmacy: params.pharmacySlug, status: 'SUBMISSION_FAILED',
+    details: { failed_tier: params.failedTier ?? null },
+    notes: ['manual_intervention', ...(params.statusNotSet ? ['status_not_set' as const] : []), 'free_text_withheld'],
+    actions: 'submission_failed',
+  })
+}
+
+/** Re-fire for an unacknowledged Tier 1 alert after 15 minutes (REQ-SAI-006.1). */
+export function buildReFireAlert(params: SlaBreachTemplateParams): SafeSlackPayload {
+  return buildOpsAlert({
+    type: 'sla_unacknowledged', orderId: params.orderId, pharmacy: params.pharmacySlug, status: params.orderStatus,
+    details: slaDetails(params), actions: 'sla',
+  })
 }
 
 /**
- * ADAPTER_SUBMISSION_ACK breach template (REQ-SAI-003.2).
- * Includes V2.0 Cascade Status field.
- * Action: Auto-cascade in progress — monitor for resolution.
+ * AUDIT ROW NOT WRITTEN: order_status_history insert failed. The alert
+ * carries what record_order_status_change() needs to rebuild the row by
+ * hand: order, statuses, actor (a staff user id, ops email or system
+ * name), source and time. The database error stays in the server log.
  */
-export function buildAdapterSubmissionAckAlert(
-  params: AdapterSlaTemplateParams
-): SlackAlertPayload {
-  const overdue  = overdueLabel(params.deadlineAt)
-  const cascade  = params.cascadeStatus ?? 'N/A'
-  const fallback = `SLA Breach: ADAPTER_SUBMISSION_ACK — Order ${params.orderId} — overdue by ${overdue}`
-
-  return {
-    text: fallback,
-    blocks: [
-      {
-        type: 'header',
-        text: { type: 'plain_text', text: '⚠️ SLA Breach: ADAPTER_SUBMISSION_ACK' },
-      },
-      {
-        type: 'section',
-        fields: [
-          { type: 'mrkdwn', text: `*Order ID:*\n<${orderUrl(params.orderId)}|${params.orderId}>` },
-          { type: 'mrkdwn', text: `*Overdue By:*\n${overdue}` },
-          { type: 'mrkdwn', text: `*Order Status:*\n${params.orderStatus}` },
-          { type: 'mrkdwn', text: `*Pharmacy:*\n${params.pharmacySlug}` },
-          { type: 'mrkdwn', text: `*Integration Tier:*\n${params.integrationTier}` },
-          { type: 'mrkdwn', text: `*Cascade Status:*\n${cascade}` },
-        ],
-      },
-      {
-        type: 'section',
-        text: { type: 'mrkdwn', text: '> Auto-cascade in progress. Monitor for resolution.' },
-      },
-      { type: 'divider' },
-      standardActions(params.orderId),
-    ],
-  }
-}
-
-/**
- * PHARMACY_COMPOUNDING_ACK breach template (REQ-SAI-003.3).
- * Action: Contact pharmacy to confirm compounding has begun.
- */
-export function buildPharmacyCompoundingAckAlert(
-  params: SlaBreachTemplateParams
-): SlackAlertPayload {
-  const overdue  = overdueLabel(params.deadlineAt)
-  const fallback = `SLA Breach: PHARMACY_COMPOUNDING_ACK — Order ${params.orderId} — overdue by ${overdue}`
-
-  return {
-    text: fallback,
-    blocks: [
-      {
-        type: 'header',
-        text: { type: 'plain_text', text: '⚠️ SLA Breach: PHARMACY_COMPOUNDING_ACK' },
-      },
-      {
-        type: 'section',
-        fields: [
-          { type: 'mrkdwn', text: `*Order ID:*\n<${orderUrl(params.orderId)}|${params.orderId}>` },
-          { type: 'mrkdwn', text: `*Overdue By:*\n${overdue}` },
-          { type: 'mrkdwn', text: `*Order Status:*\n${params.orderStatus}` },
-          { type: 'mrkdwn', text: `*Pharmacy:*\n${params.pharmacySlug}` },
-          { type: 'mrkdwn', text: `*Integration Tier:*\n${params.integrationTier}` },
-          { type: 'mrkdwn', text: `*Escalation Tier:*\n${params.escalationTier}` },
-        ],
-      },
-      {
-        type: 'section',
-        text: { type: 'mrkdwn', text: '> Contact pharmacy to confirm compounding has begun.' },
-      },
-      { type: 'divider' },
-      standardActions(params.orderId),
-    ],
-  }
-}
-
-/**
- * PHARMACY_ACKNOWLEDGE (Tier 4 fax) breach template (REQ-SAI-003.1).
- * Action: Call pharmacy to confirm receipt.
- */
-export function buildPharmacyAckFaxAlert(
-  params: SlaBreachTemplateParams
-): SlackAlertPayload {
-  const overdue  = overdueLabel(params.deadlineAt)
-  const fallback = `SLA Breach: PHARMACY_ACKNOWLEDGE — Order ${params.orderId} — overdue by ${overdue}`
-
-  return {
-    text: fallback,
-    blocks: [
-      {
-        type: 'header',
-        text: { type: 'plain_text', text: '⚠️ SLA Breach: PHARMACY_ACKNOWLEDGE (Tier 4)' },
-      },
-      {
-        type: 'section',
-        fields: [
-          { type: 'mrkdwn', text: `*Order ID:*\n<${orderUrl(params.orderId)}|${params.orderId}>` },
-          { type: 'mrkdwn', text: `*Overdue By:*\n${overdue}` },
-          { type: 'mrkdwn', text: `*Order Status:*\n${params.orderStatus}` },
-          { type: 'mrkdwn', text: `*Pharmacy:*\n${params.pharmacySlug}` },
-          { type: 'mrkdwn', text: `*Integration Tier:*\nTier 4 — Fax` },
-          { type: 'mrkdwn', text: `*Escalation Tier:*\n${params.escalationTier}` },
-        ],
-      },
-      {
-        type: 'section',
-        text: { type: 'mrkdwn', text: '> Call pharmacy to confirm receipt of fax.' },
-      },
-      { type: 'divider' },
-      standardActions(params.orderId),
-    ],
-  }
-}
-
-/**
- * SUBMISSION_FAILED CRITICAL template (REQ-SAI-003.4).
- * Four-button layout: [Reroute] [Manual Fax] [Refund] [View Order].
- */
-export function buildSubmissionFailedAlert(
-  params: SubmissionFailedTemplateParams
-): SlackAlertPayload {
-  const fallback = `CRITICAL: SUBMISSION_FAILED — Order ${params.orderId} — Manual intervention required`
-
-  return {
-    text: fallback,
-    blocks: [
-      {
-        type: 'header',
-        text: { type: 'plain_text', text: '🔴 CRITICAL: SUBMISSION_FAILED' },
-      },
-      {
-        type: 'section',
-        fields: [
-          { type: 'mrkdwn', text: `*Order ID:*\n<${orderUrl(params.orderId)}|${params.orderId}>` },
-          { type: 'mrkdwn', text: `*Pharmacy:*\n${params.pharmacySlug}` },
-        ],
-      },
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*Cascade History:*\n${params.cascadeHistory}`,
-        },
-      },
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: '> ⚠️ *Manual intervention required:* Reroute, manual fax, or refund.',
-        },
-      },
-      { type: 'divider' },
-      {
-        type: 'actions',
-        elements: [
-          {
-            type:      'button',
-            text:      { type: 'plain_text', text: 'Reroute', emoji: true },
-            action_id: 'order_reroute',
-            value:     params.orderId,
-            style:     'primary',
-          },
-          {
-            type:      'button',
-            text:      { type: 'plain_text', text: 'Manual Fax', emoji: true },
-            action_id: 'manual_fax',
-            value:     params.orderId,
-          },
-          {
-            type:      'button',
-            text:      { type: 'plain_text', text: 'Refund', emoji: true },
-            action_id: 'order_refund',
-            value:     params.orderId,
-            style:     'danger',
-          },
-          {
-            type:      'button',
-            text:      { type: 'plain_text', text: 'View Order', emoji: true },
-            action_id: 'view_order',
-            value:     params.orderId,
-            url:       orderUrl(params.orderId),
-          },
-        ],
-      },
-    ],
-  }
-}
-
-/**
- * Re-fire alert appended to an existing Tier 1 message when unacknowledged
- * after 15 minutes. Sent to #ops-alerts (REQ-SAI-006.1).
- */
-export function buildReFireAlert(params: SlaBreachTemplateParams): SlackAlertPayload {
-  const overdue  = overdueLabel(params.deadlineAt)
-  const fallback = `⚠ UNACKNOWLEDGED: SLA Breach ${params.slaType} — Order ${params.orderId} — overdue by ${overdue}`
-
-  return {
-    text: fallback,
-    blocks: [
-      {
-        type: 'header',
-        text: { type: 'plain_text', text: '⚠️ UNACKNOWLEDGED — Re-firing Alert' },
-      },
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `⚠ UNACKNOWLEDGED — Re-firing alert. Escalating to ops manager.\n*Order:* <${orderUrl(params.orderId)}|${params.orderId}> | *SLA:* ${params.slaType} | *Overdue:* ${overdue}`,
-        },
-      },
-      { type: 'divider' },
-      standardActions(params.orderId),
-    ],
-  }
-}
-
-// ============================================================
-// AUDIT ROW NOT WRITTEN — order_status_history insert failed
-// ============================================================
-// The status change is committed but has no audit row. The alert carries
-// what record_order_status_change() needs to rebuild it by hand. Fields:
-// order id, status enums, actor (a staff user id, ops email or system
-// name), source, time, and the database error. Never metadata.
-
 export function buildStatusHistoryWriteFailedAlert(params: {
   orderId:   string
   oldStatus: string
@@ -462,56 +216,31 @@ export function buildStatusHistoryWriteFailedAlert(params: {
   actor:     string
   source:    string
   failedAt:  string
-  error:     string
-}): SlackAlertPayload {
-  return {
-    text: `Audit row not written — Order ${params.orderId} ${params.oldStatus} → ${params.newStatus} (actor ${params.actor})`,
-    blocks: [
-      {
-        type: 'header',
-        text: { type: 'plain_text', text: '🔴 Order status change has no audit row' },
-      },
-      {
-        type: 'section',
-        fields: [
-          { type: 'mrkdwn', text: `*Order ID:*\n${params.orderId}` },
-          { type: 'mrkdwn', text: `*Transition:*\n${params.oldStatus} → ${params.newStatus}` },
-          { type: 'mrkdwn', text: `*Actor:*\n${params.actor}` },
-          { type: 'mrkdwn', text: `*At:*\n${params.failedAt}` },
-          { type: 'mrkdwn', text: `*Source:*\n${params.source}` },
-          { type: 'mrkdwn', text: `*Error:*\n${params.error.slice(0, 300)}` },
-        ],
-      },
-    ],
-  }
+  /** Logged by the caller, never sent to Slack. */
+  error?:    string
+}): SafeSlackPayload {
+  return buildOpsAlert({
+    type: 'status_history_write_failed', orderId: params.orderId, status: params.newStatus,
+    details: { from_status: params.oldStatus, actor: params.actor, source: params.source, failed_at: params.failedAt },
+  })
 }
 
-// ============================================================
-// LEGACY BUILDER — kept for backward compatibility
-// ============================================================
-
+/**
+ * A pharmacy submission problem. `errorCode` must be one of OUR codes
+ * (e.g. fax_send_failed); a value that is not a single token is dropped.
+ * Never pass pharmacy text (a rejection reason or a rejection code) here.
+ */
 export function buildAdapterFailureAlert(params: {
-  orderId: string
-  pharmacySlug: string
+  orderId:         string
+  pharmacySlug:    string
   integrationTier: string
-  errorCode: string
-}): SlackAlertPayload {
-  return {
-    text: `Adapter Failure — Order ${params.orderId}`,
-    blocks: [
-      {
-        type: 'header',
-        text: { type: 'plain_text', text: '🔴 Adapter Submission Failed' },
-      },
-      {
-        type: 'section',
-        fields: [
-          { type: 'mrkdwn', text: `*Order ID:*\n${params.orderId}` },
-          { type: 'mrkdwn', text: `*Pharmacy:*\n${params.pharmacySlug}` },
-          { type: 'mrkdwn', text: `*Tier:*\n${params.integrationTier}` },
-          { type: 'mrkdwn', text: `*Error Code:*\n${params.errorCode}` },
-        ],
-      },
-    ],
-  }
+  errorCode:       string
+  type?:           'adapter_failure' | 'pharmacy_rejected' | 'fax_failed' | 'stripe_dispute' | 'stripe_transfer_failed'
+  status?:         string | null
+  details?:        Partial<Record<OpsAlertDetailKey, OpsAlertDetailValue>>
+}): SafeSlackPayload {
+  return buildOpsAlert({
+    type: params.type ?? 'adapter_failure', orderId: params.orderId, pharmacy: params.pharmacySlug, status: params.status ?? null,
+    details: { code: params.errorCode, integration_tier: params.integrationTier, ...params.details },
+  })
 }

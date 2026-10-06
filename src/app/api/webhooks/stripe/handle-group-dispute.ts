@@ -38,15 +38,10 @@
 
 import type Stripe from 'stripe'
 import type { createServiceClient } from '@/lib/supabase/service'
-import type { SlackAlertPayload } from '@/lib/slack/client'
+import type { SafeSlackPayload, buildAdapterFailureAlert as BuildAdapterFailureAlert } from '@/lib/slack/client'
 
-type SendSlackAlertFn = (payload: SlackAlertPayload) => Promise<void>
-type BuildAdapterFailureAlertFn = (params: {
-  orderId: string
-  pharmacySlug: string
-  integrationTier: string
-  errorCode: string
-}) => SlackAlertPayload
+type SendSlackAlertFn = (payload: SafeSlackPayload) => Promise<void>
+type BuildAdapterFailureAlertFn = typeof BuildAdapterFailureAlert
 
 interface Deps {
   supabase: ReturnType<typeof createServiceClient>
@@ -238,7 +233,12 @@ export async function handleGroupChargeDisputeCreated(
       orderId: anchorOrderId,
       pharmacySlug: 'stripe',
       integrationTier: 'STRIPE_DISPUTE_GROUP',
-      errorCode: `${dispute.id}|group=${group.group_id}|members=${memberCount}|reason=${dispute.reason ?? 'unknown'}|${dispute.amount}${dispute.currency}`,
+      errorCode: 'stripe_dispute_group',
+      type: 'stripe_dispute',
+      details: {
+        dispute_id: dispute.id, group_id: group.group_id, member_count: memberCount,
+        dispute_reason: dispute.reason ?? 'unknown', amount: dispute.amount, currency: dispute.currency,
+      },
     }),
   ).catch(alertErr =>
     console.error(

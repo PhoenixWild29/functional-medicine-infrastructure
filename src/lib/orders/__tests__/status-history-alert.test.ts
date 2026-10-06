@@ -73,16 +73,19 @@ describe('casTransition — failed status-history insert', () => {
 
     const text = alertText()
     expect(text).toContain(ORDER_ID)
-    expect(text).toContain('AWAITING_PAYMENT → PAID_PROCESSING')
+    expect(text).toContain('AWAITING_PAYMENT')
+    expect(text).toContain('PAID_PROCESSING')
     expect(text).toContain('stripe_webhook')
     expect(text).toContain('casTransition')
-    expect(text).toContain('connection terminated')
+    // Slack allow-list: the database error text is not sent (it is logged).
+    expect(text).not.toContain('connection terminated')
   })
 
   it('a thrown insert also alerts and does not fail the transition', async () => {
     historyInsert = () => Promise.reject(new Error('fetch failed'))
     await expect(transition()).resolves.toMatchObject({ success: true, wasAlreadyTransitioned: false })
-    expect(alertText()).toContain('fetch failed')
+    expect(alertText()).toContain(ORDER_ID)
+    expect(alertText()).not.toContain('fetch failed')
   })
 
   it('a Slack failure is logged, not thrown', async () => {

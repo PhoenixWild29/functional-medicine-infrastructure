@@ -19,6 +19,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { signBatch } from '@/lib/orders/batch-sign'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const sfSite = request.headers.get('sec-fetch-site')
@@ -60,6 +61,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { status: result.status, headers: { 'Cache-Control': 'no-store' } },
     )
   }
+  // Compliance C2: one row for the signature. The patient and order are
+  // named when the batch has one of each; a wider batch names neither.
+  const signedOrderIds = result.patients.flatMap(p => p.orderIds)
+  await logPhiAccess({
+    user, action: 'sign', resource: 'prescription', route: '/api/orders/batch-sign',
+    patientId: result.patients.length === 1 ? result.patients[0]!.patientId : null,
+    orderId:   signedOrderIds.length === 1 ? signedOrderIds[0]! : null,
+    headers:   request.headers,
+  })
   return NextResponse.json(
     { signedAt: result.signedAt, patients: result.patients },
     { status: 200, headers: { 'Cache-Control': 'no-store' } },

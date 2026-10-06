@@ -17,6 +17,8 @@
  */
 
 import { POST } from '../route'
+import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
+import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
 // ── Mocks ──────────────────────────────────────────────────────────
 
@@ -25,7 +27,7 @@ const fetchOrderMock = jest.fn()
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: { getSession: () => getSessionMock(), getUser: () => userFromSession(getSessionMock()) },
   }),
 }))
 
@@ -196,5 +198,34 @@ describe('POST /api/orders/[orderId]/checkout-link', () => {
     mockOrder({ status: 'AWAITING_PAYMENT' })
     const res = await POST(makeRequest(), makeParams())
     expect(res.headers.get('Cache-Control')).toBe('no-store')
+  })
+})
+
+// Compliance C2: issuing a patient's payment link is logged once.
+describe('PHI access log', () => {
+  beforeEach(() => phiLog.mockClear())
+
+  it('a link issued logs exactly one row: create, payment_link', async () => {
+    mockSession({ app_role: 'clinic_admin', clinic_id: TEST_CLINIC_ID })
+    mockOrder({ status: 'AWAITING_PAYMENT' })
+    expect((await POST(makeRequest(), makeParams())).status).toBe(200)
+    expectOnePhiRow({ action: 'create', resource: 'payment_link', route: '/api/orders/[orderId]/checkout-link', orderId: expect.any(String) })
+  })
+
+  it('a refused request logs nothing', async () => {
+    mockSession({ app_role: 'clinic_admin', clinic_id: TEST_CLINIC_ID })
+    mockOrder({ status: 'DRAFT' })
+    expect((await POST(makeRequest(), makeParams())).status).toBe(422)
+    expect(phiEntries()).toHaveLength(0)
+  })
+})
+
+// getUser(), never getSession(): a cookie whose token no longer verifies
+// (forged, revoked, expired) is refused, though getSession() still returns it.
+describe('a session that does not verify', () => {
+  it('is 401 and no link is issued', async () => {
+    mockSession({ app_role: 'clinic_admin', clinic_id: TEST_CLINIC_ID })
+    mockOrder({ status: 'AWAITING_PAYMENT' })
+    expect((await withForgedSession(() => POST(makeRequest(), makeParams()))).status).toBe(401)
   })
 })

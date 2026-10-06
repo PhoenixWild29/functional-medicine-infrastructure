@@ -13,6 +13,7 @@
  */
 
 import { PATCH } from '../route'
+import { userFromSession } from '@/__tests__/helpers/auth-from-session'
 
 const CLINIC_ID  = 'aaaaaaaa-aaaa-4aaa-9aaa-aaaaaaaaaaaa'
 const PATIENT_ID = 'a3000000-0000-0000-0000-000000000001'
@@ -23,7 +24,7 @@ const updateMock     = jest.fn()   // captures the update payload
 const updatedRowMock = jest.fn()   // the terminal maybeSingle() after update
 
 jest.mock('@/lib/supabase/server', () => ({
-  createServerClient: jest.fn().mockResolvedValue({ auth: { getSession: () => getSessionMock() } }),
+  createServerClient: jest.fn().mockResolvedValue({ auth: { getSession: () => getSessionMock(), getUser: () => userFromSession(getSessionMock()) } }),
 }))
 
 jest.mock('@/lib/supabase/service', () => ({

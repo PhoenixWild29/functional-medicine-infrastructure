@@ -25,6 +25,7 @@ import { parseTitrationSteps } from '@/lib/orders/titration'
 import { cyclePatternFromRow } from '@/lib/orders/cycling'
 import { parseOrdersParam, type BatchDraftLine, type BatchPatientView } from '@/lib/orders/batch-sign-view'
 import { BatchSignForm } from './_components/batch-sign-form'
+import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
 
 export const metadata = {
   title: 'Sign Prescriptions',
@@ -189,6 +190,15 @@ export default async function BatchSignPage({ searchParams }: PageProps) {
   // Pre-selected: the requested drafts that are mine to sign.
   const signable = new Set(patients.flatMap(p => p.lines.map(l => l.orderId)))
   const preselected = requested.filter(id => signable.has(id))
+
+  // Compliance C2: the patients' details and drafts shown for signing. The
+  // patient and order are named when the page shows one of each.
+  await logPhiAccess({
+    user, action: 'view', resource: 'prescription', route: '/new-prescription/sign',
+    patientId: patientIds.length === 1 ? patientIds[0]! : null,
+    orderId:   requested.length === 1 ? requested[0]! : null,
+    headers:   await currentRequestHeaders(),
+  })
 
   return (
     <>

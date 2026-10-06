@@ -25,6 +25,7 @@ import { createServiceClient }       from '@/lib/supabase/service'
 import { createPaymentGroup, cancelPaymentGroup } from '@/lib/payment-group/create-group'
 import { generateGroupCheckoutToken } from '@/lib/auth/checkout-token'
 import { serverEnv }                 from '@/lib/env'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const CLINIC_APP_ROLES = ['clinic_admin', 'provider', 'medical_assistant'] as const
@@ -63,13 +64,14 @@ export async function POST(
 
   // ── 2. Auth gate ──────────────────────────────────────────────
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const appRole = typeof session.user.user_metadata['app_role'] === 'string'
-    ? session.user.user_metadata['app_role'] as string
+  const appRole = typeof user.user_metadata['app_role'] === 'string'
+    ? user.user_metadata['app_role'] as string
     : null
 
   if (!appRole || !(CLINIC_APP_ROLES as readonly string[]).includes(appRole)) {
@@ -79,8 +81,8 @@ export async function POST(
     )
   }
 
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
     : null
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
@@ -124,7 +126,7 @@ export async function POST(
     supabase,
     clinicId,
     callerAppRole: appRole as ClinicAppRole,
-    callerUserId:  session.user.id,
+    callerUserId:  user.id,
     orderIds:      allIds,
   })
 
@@ -167,6 +169,11 @@ export async function POST(
   console.info(
     `[group-and-send] generated | group=${result.groupId} anchor=${anchorOrderId} orders=${result.orderCount} clinic=${clinicId}`,
   )
+  // Compliance C2: the patient's orders were bundled under one payment link.
+  await logPhiAccess({
+    user: user, action: 'create', resource: 'payment_group', route: '/api/orders/[orderId]/group-and-send',
+    orderId: anchorOrderId, patientId: result.patientId, headers: request.headers ?? null,
+  })
 
   return NextResponse.json(
     {

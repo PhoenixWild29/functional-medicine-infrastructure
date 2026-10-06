@@ -658,15 +658,18 @@ async function handleOrderRejected(
     return order.order_id
   }
 
-  // Critical Slack alert — ops must reroute or refund
+  // Critical Slack alert: ops must reroute or refund. The pharmacy's
+  // rejection reason and code are free text it typed and can carry patient
+  // details, so Slack gets only the type, order, pharmacy, status and the
+  // ops link; the reason is on the order's status history.
   await sendSlackAlert(
     buildAdapterFailureAlert({
       orderId: order.order_id,
       pharmacySlug,
       integrationTier: 'TIER_1_API',
-      errorCode: envelope.data?.rejectionCode
-        ?? envelope.data?.rejectionReason
-        ?? 'order_rejected',
+      errorCode: 'order_rejected',
+      type: 'pharmacy_rejected',
+      status: 'PHARMACY_REJECTED',
     })
   ).catch(alertErr =>
     console.error('[pharmacy-webhook] failed to send rejection alert:', alertErr)

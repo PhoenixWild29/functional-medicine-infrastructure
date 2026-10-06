@@ -29,7 +29,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendSlackAlert } from '@/lib/slack/client'
-import type { SlackAlertPayload } from '@/lib/slack/client'
+import { buildOpsAlert, type SafeSlackPayload } from '@/lib/slack/ops-alert'
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   // Verify Vercel cron secret
@@ -280,108 +280,44 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 // ============================================================
 // DIGEST ALERT BUILDER
 // ============================================================
+//
+// Built through the Slack allow-list (lib/slack/ops-alert): counts, rates
+// and source:count lists only. No error text.
 
 const UNAVAILABLE = 'unavailable'
 
-/** Renders a list-shaped metric, or says it could not be read. */
-function listOr(value: unknown, render: (v: never) => string, empty: string): string {
-  if (value === UNAVAILABLE) return '⚠️ could not be read'
-  const text = render(value as never)
-  return text.length > 0 ? text : empty
+/** A { key: value } metric as one token, e.g. "DOCUMO:98%,STRIPE:100%". */
+function listToken(value: unknown): string {
+  if (value === UNAVAILABLE) return UNAVAILABLE
+  if (!value || typeof value !== 'object') return 'none'
+  const parts = Object.entries(value as Record<string, unknown>).map(([k, v]) => `${k}:${String(v)}`)
+  return parts.length > 0 ? parts.join(',') : 'none'
 }
 
-function buildDailyDigestAlert(metrics: Record<string, unknown>, unavailableMetrics: string[] = []): SlackAlertPayload {
-  const date = new Date().toLocaleDateString('en-US', {
-    timeZone: 'America/New_York',
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
+const scalar = (value: unknown): string | number => (typeof value === 'number' || typeof value === 'string' ? value : 'none')
+
+function buildDailyDigestAlert(metrics: Record<string, unknown>, unavailableMetrics: string[] = []): SafeSlackPayload {
+  return buildOpsAlert({
+    type: 'daily_digest',
+    details: {
+      m01_total_webhook_events:            scalar(metrics['m01_total_webhook_events']),
+      m02_success_rate_by_source:          listToken(metrics['m02_success_rate_by_source']),
+      m03_dlq_count_by_source:             listToken(metrics['m03_dlq_count_by_source']),
+      m04_avg_processing_ms:               scalar(metrics['m04_avg_processing_ms']),
+      m05_dispute_count:                   scalar(metrics['m05_dispute_count']),
+      m06_transfer_failure_count:          scalar(metrics['m06_transfer_failure_count']),
+      m07_adapter_submission_success_rate: scalar(metrics['m07_adapter_submission_success_rate']),
+      m08_fax_delivery_success_rate:       scalar(metrics['m08_fax_delivery_success_rate']),
+      m09_sms_delivery_success_rate:       scalar(metrics['m09_sms_delivery_success_rate']),
+      m10_unmatched_inbound_faxes:         scalar(metrics['m10_unmatched_inbound_faxes']),
+      m11_error_event_count:               scalar(metrics['m11_error_event_count']),
+      m12_circuit_breaker_trips:           scalar(metrics['m12_circuit_breaker_trips']),
+      m13_sla_breach_count:                scalar(metrics['m13_sla_breach_count']),
+      m14_payment_expiry_count:            scalar(metrics['m14_payment_expiry_count']),
+      m15_catalog_sync_count:              scalar(metrics['m15_catalog_sync_count']),
+      m16_webhook_retry_count:             scalar(metrics['m16_webhook_retry_count']),
+      m17_failures_by_endpoint:            listToken(metrics['m17_failures_by_endpoint']),
+      unavailable_metrics:                 unavailableMetrics.length > 0 ? unavailableMetrics.join(',') : null,
+    },
   })
-
-  const dlqTotal = metrics.m03_dlq_count_by_source === UNAVAILABLE
-    ? UNAVAILABLE
-    : Object.values(metrics.m03_dlq_count_by_source as Record<string, number>).reduce((sum, n) => sum + n, 0)
-
-  return {
-    text: `CompoundIQ Daily Digest — ${date}`,
-    blocks: [
-      {
-        type: 'header',
-        text: { type: 'plain_text', text: `CompoundIQ Daily Digest — ${date}` },
-      },
-      {
-        type: 'section',
-        fields: [
-          { type: 'mrkdwn', text: `*Total Events:*\n${metrics.m01_total_webhook_events}` },
-          { type: 'mrkdwn', text: `*DLQ Total:*\n${dlqTotal}` },
-          { type: 'mrkdwn', text: `*Avg Processing:*\n${metrics.m04_avg_processing_ms}ms` },
-          { type: 'mrkdwn', text: `*Disputes:*\n${metrics.m05_dispute_count}` },
-          { type: 'mrkdwn', text: `*Transfer Failures:*\n${metrics.m06_transfer_failure_count}` },
-          { type: 'mrkdwn', text: `*SLA Breaches:*\n${metrics.m13_sla_breach_count}` },
-        ],
-      },
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*Success Rate by Source (M-02):*\n${listOr(
-            metrics.m02_success_rate_by_source,
-            (rates: Record<string, string>) => Object.entries(rates).map(([src, rate]) => `• ${src}: ${rate}`).join('\n'),
-            '✅ No events',
-          )}`,
-        },
-      },
-      {
-        type: 'section',
-        fields: [
-          { type: 'mrkdwn', text: `*Adapter Success Rate:*\n${metrics.m07_adapter_submission_success_rate}` },
-          { type: 'mrkdwn', text: `*Fax Delivery Rate:*\n${metrics.m08_fax_delivery_success_rate}` },
-          { type: 'mrkdwn', text: `*SMS Delivery Rate:*\n${metrics.m09_sms_delivery_success_rate}` },
-          { type: 'mrkdwn', text: `*Unmatched Faxes:*\n${metrics.m10_unmatched_inbound_faxes}` },
-          { type: 'mrkdwn', text: `*Circuit Breaker Trips:*\n${metrics.m12_circuit_breaker_trips}` },
-          { type: 'mrkdwn', text: `*Payment Expiries:*\n${metrics.m14_payment_expiry_count}` },
-        ],
-      },
-      {
-        type: 'section',
-        fields: [
-          { type: 'mrkdwn', text: `*Catalog Syncs:*\n${metrics.m15_catalog_sync_count}` },
-          { type: 'mrkdwn', text: `*Webhook Retries:*\n${metrics.m16_webhook_retry_count}` },
-        ],
-      },
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*Webhook Error Events:*\n${metrics.m11_error_event_count === UNAVAILABLE
-            ? '⚠️ could not be read'
-            : metrics.m11_error_event_count === 0 ? '✅ No errors' : String(metrics.m11_error_event_count)}`,
-        },
-      },
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*Failures by Endpoint:*\n${listOr(
-            metrics.m17_failures_by_endpoint,
-            (byEndpoint: Record<string, number>) => Object.entries(byEndpoint)
-              .sort(([, a], [, b]) => b - a)
-              .slice(0, 5)
-              .map(([ep, n]) => `• ${ep}: ${n}`)
-              .join('\n'),
-            '✅ No failures',
-          )}`,
-        },
-      },
-      ...(unavailableMetrics.length > 0
-        ? [{
-            type: 'section' as const,
-            text: {
-              type: 'mrkdwn' as const,
-              text: `*⚠️ ${unavailableMetrics.length} metric(s) could not be read:*\n${unavailableMetrics.map(k => `• ${k}`).join('\n')}`,
-            },
-          }]
-        : []),
-    ],
-  }
 }

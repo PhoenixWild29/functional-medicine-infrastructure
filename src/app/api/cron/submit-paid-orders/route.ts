@@ -32,6 +32,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { routeOrder } from '@/lib/adapters/routing-engine'
 import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { sendSlackAlert } from '@/lib/slack/client'
+import { buildOpsAlert } from '@/lib/slack/ops-alert'
 
 const STALE_AFTER_MIN = 5
 const MAX_AGE_HOURS   = 24
@@ -122,10 +123,9 @@ async function reportWaitingWhileOff(
   }
 
   if (total > 0) {
-    await sendSlackAlert({
-      text: `Pharmacy submissions are turned off: ${total} paid order(s) waiting in PAID_PROCESSING. ` +
-        'Nothing is sent to any pharmacy until PHARMACY_SUBMISSIONS_ENABLED=true.',
-    }).catch(err => console.error('[submit-paid-orders] waiting-orders alert failed:', err))
+    await sendSlackAlert(buildOpsAlert({
+      type: 'submissions_paused', status: 'PAID_PROCESSING', details: { count: total }, notes: ['submissions_off'],
+    })).catch(err => console.error('[submit-paid-orders] waiting-orders alert failed:', err))
   }
 
   return NextResponse.json({ submissions_enabled: false, waiting: total })

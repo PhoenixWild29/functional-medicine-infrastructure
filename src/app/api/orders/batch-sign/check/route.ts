@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { checkBatch, parseOrderIds } from '@/lib/orders/batch-sign'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 
 const COULD_NOT_RUN = new Set(['orders_unavailable', 'provider_unavailable', 'compliance_unavailable'])
 
@@ -44,6 +45,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     console.error(`[batch-sign/check] could not run: ${couldNotRun.code}`)
     return NextResponse.json({ error: couldNotRun.message, problems: check.problems }, { status: 503 })
   }
+  // Compliance C2: the lines (and their patients' allergy status) were read.
+  const patientIds = [...new Set(check.lines.map(l => l.patientId))]
+  await logPhiAccess({
+    user, action: 'view', resource: 'prescription', route: '/api/orders/batch-sign/check',
+    patientId: patientIds.length === 1 ? patientIds[0]! : null,
+    orderId:   check.lines.length === 1 ? check.lines[0]!.orderId : null,
+    headers:   request.headers,
+  })
   return NextResponse.json(
     { lines: check.lines, problems: check.problems },
     { status: 200, headers: { 'Cache-Control': 'no-store' } },

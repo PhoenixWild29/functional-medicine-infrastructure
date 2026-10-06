@@ -38,6 +38,7 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
 // ── 1. SSR uses the session client (not service-role) ──────────────────
 
@@ -182,5 +183,38 @@ describe('F-3 migration: 20260611000004_f3_dashboard_rls_filter.sql', () => {
     expect(sql).not.toMatch(/CREATE POLICY orders_clinic_user_insert/)
     expect(sql).not.toMatch(/CREATE POLICY orders_clinic_user_update/)
     expect(sql).not.toMatch(/FOR\s+(INSERT|UPDATE|DELETE)/i)
+  })
+})
+
+// ── Compliance C2: the dashboard's order list is logged once ───────────
+
+describe('PHI access log', () => {
+  beforeEach(() => phiLog.mockClear())
+
+  function arrange(user: unknown) {
+    getUserMock.mockResolvedValue({ data: { user } })
+    const chain: Record<string, jest.Mock> = {}
+    chain['select']      = jest.fn().mockReturnValue(chain)
+    chain['eq']          = jest.fn().mockReturnValue(chain)
+    chain['is']          = jest.fn().mockReturnValue(chain)
+    chain['gte']         = jest.fn().mockReturnValue(chain)
+    chain['lt']          = jest.fn().mockReturnValue(chain)
+    chain['order']       = jest.fn().mockResolvedValue({ data: [], error: null })
+    chain['maybeSingle'] = jest.fn().mockResolvedValue({ data: { stripe_connect_status: 'ACTIVE' }, error: null })
+    fromSpy.mockReturnValue(chain)
+  }
+
+  it('a rendered dashboard logs exactly one row: view, order_list', async () => {
+    arrange({ id: 'auth-uid-clinic-admin', user_metadata: { clinic_id: 'a1000000-0000-0000-0000-000000000001', app_role: 'clinic_admin' } })
+    const mod = await import('../page')
+    await mod.default()
+    expectOnePhiRow({ action: 'view', resource: 'order_list', route: '/dashboard' })
+  })
+
+  it('no user, no row', async () => {
+    arrange(null)
+    const mod = await import('../page')
+    await mod.default()
+    expect(phiEntries()).toHaveLength(0)
   })
 })

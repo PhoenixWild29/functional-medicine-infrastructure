@@ -23,6 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
 import { RX_DETAIL_COLUMN_LIST, rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
 import { resolveLine, lineSourceKind } from '@/lib/orders/resolve-line'
 import { canEditDraft, diffDraftRows, writeDraftAudit } from '@/lib/orders/draft-edit'
@@ -55,24 +56,25 @@ type DraftRow = Record<string, unknown> & {
 
 /** Auth + load the draft (clinic-scoped, active) + permission. */
 async function loadEditableDraft(orderId: string): Promise<
-  | { ok: true; actor: Actor; draft: DraftRow; supabase: ReturnType<typeof createServiceClient> }
+  | { ok: true; actor: Actor; draft: DraftRow; supabase: ReturnType<typeof createServiceClient>; user: PhiUser }
   | { ok: false; response: NextResponse }
 > {
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
     : null
   if (!clinicId) {
     return { ok: false, response: NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 }) }
   }
-  const role = typeof session.user.user_metadata['app_role'] === 'string'
-    ? session.user.user_metadata['app_role'] as string
+  const role = typeof user.user_metadata['app_role'] === 'string'
+    ? user.user_metadata['app_role'] as string
     : null
-  const actor: Actor = { userId: session.user.id, role, clinicId }
+  const actor: Actor = { userId: user.id, role, clinicId }
 
   if (!orderId) {
     return { ok: false, response: NextResponse.json({ error: 'orderId required' }, { status: 400 }) }
@@ -128,7 +130,7 @@ async function loadEditableDraft(orderId: string): Promise<
     return { ok: false, response: NextResponse.json({ error: 'You can only edit drafts you created' }, { status: 403 }) }
   }
 
-  return { ok: true, actor, draft: draft as unknown as DraftRow, supabase }
+  return { ok: true, actor, draft: draft as unknown as DraftRow, supabase, user: user }
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext): Promise<NextResponse> {
@@ -266,10 +268,15 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
   })
 
   console.info(`[orders/edit] DRAFT edited | order=${orderId} | fields=${Object.keys(diff).length}`)
+  // Compliance C2: a patient's prescription changed.
+  await logPhiAccess({
+    user: loaded.user, action: 'update', resource: 'order', route: '/api/orders/[orderId]',
+    orderId, patientId: owner.patient_id, headers: request.headers ?? null,
+  })
   return NextResponse.json({ orderId, changed: Object.keys(diff) }, { status: 200 })
 }
 
-export async function DELETE(_request: NextRequest, context: RouteContext): Promise<NextResponse> {
+export async function DELETE(request: NextRequest, context: RouteContext): Promise<NextResponse> {
   const { orderId } = await context.params
 
   const loaded = await loadEditableDraft(orderId)
@@ -298,5 +305,10 @@ export async function DELETE(_request: NextRequest, context: RouteContext): Prom
   })
 
   console.info(`[orders/edit] DRAFT soft-deleted | order=${orderId}`)
+  // Compliance C2: removing a draft line changes the patient's prescriptions.
+  await logPhiAccess({
+    user: loaded.user, action: 'update', resource: 'order', route: '/api/orders/[orderId]',
+    orderId, patientId: owner.patient_id, headers: request.headers ?? null,
+  })
   return NextResponse.json({ orderId, removed: true }, { status: 200 })
 }

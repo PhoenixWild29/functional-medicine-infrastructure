@@ -14,6 +14,8 @@
  */
 
 import { POST } from '../route'
+import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
+import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
 const TEST_CLINIC_ID  = 'aaaaaaaa-aaaa-4aaa-9aaa-aaaaaaaaaaaa'
 const ORDER_ID        = '11111111-1111-4111-9111-111111111111'
@@ -25,7 +27,7 @@ const getSessionMock      = jest.fn()
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: { getSession: () => getSessionMock(), getUser: () => userFromSession(getSessionMock()) },
   }),
 }))
 
@@ -234,5 +236,36 @@ describe('POST /api/orders/[orderId]/group-and-send', () => {
     )
     expect(res.status).toBe(409)
     expect(generateTokenMock).not.toHaveBeenCalled()
+  })
+})
+
+// Compliance C2: bundling a patient's orders is logged once.
+describe('PHI access log', () => {
+  beforeEach(() => phiLog.mockClear())
+
+  test('a bundle created logs exactly one row: create, payment_group, the patient', async () => {
+    createGroupMock.mockResolvedValueOnce({
+      ok: true, groupId: 'group-uuid-1', stripePaymentIntentId: 'pi_test', totalCents: 17500,
+      orderCount: 2, patientId: 'pat-uuid-1', providerId: 'prov-uuid-1',
+    })
+    const res = await POST(makeRequest({ siblingOrderIds: [SIBLING_ID] }, { 'sec-fetch-site': 'same-origin' }), makeParams(ORDER_ID))
+    expect(res.status).toBe(201)
+    expectOnePhiRow({ action: 'create', resource: 'payment_group', route: '/api/orders/[orderId]/group-and-send', orderId: ORDER_ID, patientId: 'pat-uuid-1' })
+  })
+
+  test('a refused bundle logs nothing', async () => {
+    createGroupMock.mockResolvedValueOnce({ ok: false, status: 409, error: 'changed' })
+    expect((await POST(makeRequest({ siblingOrderIds: [SIBLING_ID] }), makeParams(ORDER_ID))).status).toBe(409)
+    expect(phiEntries()).toHaveLength(0)
+  })
+})
+
+// getUser(), never getSession(): a cookie whose token no longer verifies
+// (forged, revoked, expired) is refused, though getSession() still returns it.
+describe('a session that does not verify', () => {
+  test('is 401 and no group is created', async () => {
+    const res = await withForgedSession(() => POST(makeRequest({ siblingOrderIds: [SIBLING_ID] }, { 'sec-fetch-site': 'same-origin' }), makeParams(ORDER_ID)))
+    expect(res.status).toBe(401)
+    expect(createGroupMock).not.toHaveBeenCalled()
   })
 })
