@@ -46,6 +46,7 @@
 //   cooldown_until, tripped_by_submission_id, updated_at
 
 import { createServiceClient } from '@/lib/supabase/service'
+import { orderControlStatus } from '@/lib/orders/controlled-substance'
 import { casTransition } from '@/lib/orders/cas-transition'
 import type { OrderStatus } from '@/lib/orders/state-machine'
 import { submitTier1Api } from '@/lib/adapters/tier1-api'
@@ -497,6 +498,21 @@ export async function routeOrder(params: RouteOrderParams): Promise<RouteOrderRe
   }
 }
 
+/** The order's line and snapshot, then orderControlStatus. A read failure is 'unknown'. */
+async function orderControlStatusFor(orderId: string): Promise<'controlled' | 'not_controlled' | 'unknown'> {
+  const supabase = createServiceClient()
+  const { data, error } = await supabase
+    .from('orders')
+    .select('order_id, formulation_id, catalog_item_id, medication_snapshot')
+    .eq('order_id', orderId)
+    .maybeSingle()
+  if (error || !data) {
+    console.error(`[routing-engine] controlled-substance check: order ${orderId} could not be read:`, error?.message ?? 'not found')
+    return 'unknown'
+  }
+  return orderControlStatus(supabase, data)
+}
+
 async function submitClaimedOrder(params: {
   orderId:       string
   pharmacyId:    string
@@ -512,6 +528,19 @@ async function submitClaimedOrder(params: {
 
   const tier = pharmacy.integration_tier
   const pharmacySlug = pharmacy.slug
+
+  // Compliance C6: a controlled substance is never sent to a pharmacy from
+  // CompoundIQ (certified EPCS is required). Checked from the catalog, not
+  // only the snapshot, and an order whose schedule cannot be determined is
+  // not sent either. It lands in SUBMISSION_FAILED with an alert.
+  const control = await orderControlStatusFor(orderId)
+  if (control !== 'not_controlled') {
+    await failSubmission({
+      orderId, pharmacySlug, tier,
+      reason: control === 'controlled' ? 'controlled_substance' : 'controlled_status_unknown',
+    })
+    return { outcome: 'submission_failed', tier }
+  }
 
   // BLK-05: TIER_3_HYBRID is not implemented. Fail loudly, never hang.
   if (tier === 'TIER_3_HYBRID') {

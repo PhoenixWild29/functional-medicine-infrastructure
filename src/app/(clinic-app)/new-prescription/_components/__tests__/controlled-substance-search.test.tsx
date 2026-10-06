@@ -86,5 +86,5 @@ it('a controlled medication shows the label and cannot continue to pricing', asy
   fireEvent.click(await screen.findByRole('button', { name: /^Favorites/ }))
   fireEvent.click(within(screen.getByTestId('favorite-fav-trt')).getByTestId('favorite-custom'))
   expect(await screen.findByTestId('controlled-substance-label')).toHaveTextContent(LABEL)
-  expect(screen.getByRole('button', { name: /Continue/ })).toBeDisabled()
+  expect(await screen.findByRole('button', { name: /Continue/ })).toBeDisabled()
 })

@@ -462,7 +462,7 @@ describe('protocol quick-load — controlled substances (compliance C6)', () => 
     expect(mockPush).toHaveBeenCalledWith('/new-prescription/review')
     // No silent drop: the excluded line is reported with its reason.
     expect(screen.getByTestId('notice-count')).toHaveTextContent('1')
-    const notice = await screen.findByText(/Testosterone Cypionate 200mg\/mL/)
+    const notice = await screen.findByText(/Testosterone Cypionate 200mg\/mL: Controlled substance/)
     expect(notice.closest('[role="status"]') ?? notice).toHaveTextContent(CONTROLLED_LABEL)
   })
 
