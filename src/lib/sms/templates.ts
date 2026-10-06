@@ -9,7 +9,6 @@
 //   - Clinic name permitted in payment reminders only
 //
 // REQ-SPN-006: HIPAA minimum necessary — first name only.
-// REQ-SPN-003.3: Tier-aware content for payment confirmation.
 //
 // Template variable syntax: {{variableName}}
 
@@ -25,10 +24,12 @@ export interface PaymentReminderVars {
   checkoutUrl:      string   // tokenized JWT checkout URL (72h expiry)
 }
 
-/** Variables for payment confirmation SMS — REQ-SPN-003. */
+/**
+ * Variables for payment confirmation SMS — REQ-SPN-003.
+ * First name only: no clinic, drug, amount or specialty (C7).
+ */
 export interface PaymentConfirmationVars {
   patientFirstName:  string
-  tierAwareMessage:  string  // tier-aware fulfillment status (no medication info)
 }
 
 /** Variables for shipping notification SMS — REQ-SPN-004. */
@@ -40,26 +41,6 @@ export interface ShippingVars {
 /** Variables for delivery confirmation SMS — REQ-SPN-005. */
 export interface DeliveryVars {
   patientFirstName: string
-}
-
-// ============================================================
-// TIER-AWARE MESSAGE BUILDER — REQ-SPN-003.3
-// ============================================================
-
-/**
- * Returns the tier-aware fulfillment status clause appended to payment
- * confirmation SMS. No medication or clinical info permitted.
- *
- * REQ-SPN-003.3:
- *   Tier 1 / Tier 3 (supports_real_time_status = true):
- *     "You'll receive updates as your order progresses."
- *   Tier 4 (fax-only, no real-time status):
- *     "You will receive an SMS with tracking when it ships (typically 3-7 business days)."
- */
-export function buildTierAwareClause(supportsRealTimeStatus: boolean): string {
-  return supportsRealTimeStatus
-    ? "You'll receive updates as your order progresses."
-    : 'You will receive an SMS with tracking when it ships (typically 3-7 business days).'
 }
 
 // ============================================================
@@ -116,12 +97,18 @@ export function renderReminder48hSms(
 }
 
 /**
- * REQ-SPN-003: Payment confirmation SMS.
- * Base content + tier-aware clause. Max ~160 chars.
- * HIPAA: no medication name in tierAwareMessage.
+ * REQ-SPN-003: Payment confirmation SMS, sent once per paid order or
+ * bundle by the Stripe webhook (sendPaymentConfirmationSms).
+ *
+ * C7: first name and a neutral line only. No clinic name, drug, amount or
+ * specialty, and not "prescription" or "pharmacy". The previous wording
+ * ("...payment confirmed! Your prescription is on its way to the
+ * pharmacy. {{tierAwareMessage}}") named a prescription; the
+ * sms_templates.payment_confirmation row still holds it as a reference
+ * only and is not read (this body is built in code).
  */
 export function buildPaymentConfirmationBody(vars: PaymentConfirmationVars): string {
-  return `Hi ${vars.patientFirstName}, payment confirmed! Your prescription is on its way to the pharmacy. ${vars.tierAwareMessage}`
+  return `Hi ${vars.patientFirstName}, your payment is confirmed. We'll text you again when your order ships.`
 }
 
 export function renderShippingNotificationSms(
