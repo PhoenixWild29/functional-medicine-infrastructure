@@ -25,6 +25,8 @@ ALTER TABLE sms_log ADD CONSTRAINT sms_log_status_check
 ALTER TABLE sms_log ALTER COLUMN twilio_message_sid SET NOT NULL;
 
 -- ── 5. orders ────────────────────────────────────────────────
+-- prevent_snapshot_mutation exactly as 20260317000004 defined it (7 fields;
+-- the address fields and provider_signature_hash_snapshot are released).
 CREATE OR REPLACE FUNCTION prevent_snapshot_mutation()
 RETURNS TRIGGER AS $$
 BEGIN

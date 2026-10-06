@@ -14,7 +14,10 @@
 --    path SELECT and UPDATE have used since 20260329000002.
 -- 5. orders: the shipping address frozen at signing (line 1, line 2, city,
 --    zip; the state is shipping_state_snapshot) and when it was taken.
---    Protected by prevent_snapshot_mutation once the order is locked.
+--    Protected by prevent_snapshot_mutation once the order is locked,
+--    which now also freezes provider_signature_hash_snapshot (added in
+--    20260319000007 but never in the frozen list; its only writer sets it
+--    in the same UPDATE as locked_at).
 -- 6. sms_log can record a send that was refused (no Twilio SID, status
 --    'suppressed'), so an opted-out patient's skipped text is on record.
 -- 7. Payment texts (payment_link, reminder_24h, reminder_48h) no longer
@@ -96,18 +99,19 @@ RETURNS TRIGGER AS $$
 BEGIN
   IF OLD.locked_at IS NOT NULL THEN
     IF (
-      NEW.wholesale_price_snapshot        IS DISTINCT FROM OLD.wholesale_price_snapshot        OR
-      NEW.retail_price_snapshot           IS DISTINCT FROM OLD.retail_price_snapshot           OR
-      NEW.medication_snapshot             IS DISTINCT FROM OLD.medication_snapshot             OR
-      NEW.shipping_state_snapshot         IS DISTINCT FROM OLD.shipping_state_snapshot         OR
-      NEW.shipping_address_line1_snapshot IS DISTINCT FROM OLD.shipping_address_line1_snapshot OR
-      NEW.shipping_address_line2_snapshot IS DISTINCT FROM OLD.shipping_address_line2_snapshot OR
-      NEW.shipping_city_snapshot          IS DISTINCT FROM OLD.shipping_city_snapshot          OR
-      NEW.shipping_zip_snapshot           IS DISTINCT FROM OLD.shipping_zip_snapshot           OR
-      NEW.shipping_address_snapshot_at    IS DISTINCT FROM OLD.shipping_address_snapshot_at    OR
-      NEW.provider_npi_snapshot           IS DISTINCT FROM OLD.provider_npi_snapshot           OR
-      NEW.pharmacy_snapshot               IS DISTINCT FROM OLD.pharmacy_snapshot               OR
-      NEW.locked_at                       IS DISTINCT FROM OLD.locked_at
+      NEW.wholesale_price_snapshot         IS DISTINCT FROM OLD.wholesale_price_snapshot         OR
+      NEW.retail_price_snapshot            IS DISTINCT FROM OLD.retail_price_snapshot            OR
+      NEW.medication_snapshot              IS DISTINCT FROM OLD.medication_snapshot              OR
+      NEW.shipping_state_snapshot          IS DISTINCT FROM OLD.shipping_state_snapshot          OR
+      NEW.shipping_address_line1_snapshot  IS DISTINCT FROM OLD.shipping_address_line1_snapshot  OR
+      NEW.shipping_address_line2_snapshot  IS DISTINCT FROM OLD.shipping_address_line2_snapshot  OR
+      NEW.shipping_city_snapshot           IS DISTINCT FROM OLD.shipping_city_snapshot           OR
+      NEW.shipping_zip_snapshot            IS DISTINCT FROM OLD.shipping_zip_snapshot            OR
+      NEW.shipping_address_snapshot_at     IS DISTINCT FROM OLD.shipping_address_snapshot_at     OR
+      NEW.provider_npi_snapshot            IS DISTINCT FROM OLD.provider_npi_snapshot            OR
+      NEW.provider_signature_hash_snapshot IS DISTINCT FROM OLD.provider_signature_hash_snapshot OR
+      NEW.pharmacy_snapshot                IS DISTINCT FROM OLD.pharmacy_snapshot                OR
+      NEW.locked_at                        IS DISTINCT FROM OLD.locked_at
     ) THEN
       RAISE EXCEPTION 'Cannot modify snapshot fields after order is locked';
     END IF;
