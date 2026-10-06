@@ -106,6 +106,7 @@ export default async function SettingsPage() {
             <StripeStatusSection
               stripeConnectStatus={clinic.stripe_connect_status}
               stripeAccountId={clinic.stripe_connect_account_id ?? null}
+              isClinicAdmin={user.user_metadata['app_role'] === 'clinic_admin'}
             />
           </div>
 
