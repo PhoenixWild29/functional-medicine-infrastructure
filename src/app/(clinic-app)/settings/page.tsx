@@ -15,6 +15,8 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { ClinicSettingsForm } from './_components/clinic-settings-form'
 import { StripeStatusSection } from './_components/stripe-status-section'
+import { SignInSecuritySection } from './_components/sign-in-security-section'
+import { hasVerifiedTotp, mfaEnforcedFor } from '@/lib/auth/mfa'
 
 export const metadata = {
   title: 'Clinic Settings',
@@ -82,6 +84,7 @@ export default async function SettingsPage() {
               { href: '#stripe-connect',  label: 'Stripe Connect'  },
               { href: '#clinic-profile',  label: 'Clinic Profile'  },
               { href: '#notifications',   label: 'Notifications'   },
+              { href: '#sign-in-security', label: 'Sign-in Security' },
             ].map(({ href, label }) => (
               <li key={href}>
                 <a
@@ -116,6 +119,11 @@ export default async function SettingsPage() {
               practiceVisibleToProviders={clinic.practice_dashboard_visible_to_providers === true}
               isClinicAdmin={user.user_metadata['app_role'] === 'clinic_admin'}
             />
+          </div>
+
+          {/* Compliance C3: two-step sign-in for this account */}
+          <div id="sign-in-security" className="scroll-mt-6">
+            <SignInSecuritySection enrolled={hasVerifiedTotp(user)} enforced={mfaEnforcedFor(user.email)} />
           </div>
 
           {/* Notifications — placeholder section */}

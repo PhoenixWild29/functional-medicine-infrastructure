@@ -75,8 +75,8 @@ test.describe('Compliance C3: multi-factor sign-in (enforced for the E2E MFA use
 
     await page.getByLabel('6-digit code').fill(totpCode(secret))
     await page.getByRole('button', { name: /Verify/ }).click()
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
-    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
+    // A clinic admin's landing page (defaultLandingRoute), as after any sign-in.
+    await expect(page).toHaveURL(/\/practice/, { timeout: 15_000 })
 
     // ── AAL2: the APIs answer ──
     const allowed = await page.request.get('/api/favorites')
@@ -99,7 +99,7 @@ test.describe('Compliance C3: multi-factor sign-in (enforced for the E2E MFA use
     await nextTotpWindow(page)
     await page.getByLabel('6-digit code').fill(totpCode(secret))
     await page.getByRole('button', { name: /Verify/ }).click()
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    await expect(page).toHaveURL(/\/practice/, { timeout: 15_000 })
   })
 
   test('a page reached at AAL1 goes to the challenge and comes back after it', async ({ page }) => {
@@ -109,7 +109,7 @@ test.describe('Compliance C3: multi-factor sign-in (enforced for the E2E MFA use
     const secret = (await page.getByTestId('mfa-manual-key').innerText()).replace(/\s+/g, '')
     await page.getByLabel('6-digit code').fill(totpCode(secret))
     await page.getByRole('button', { name: /Verify/ }).click()
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    await expect(page).toHaveURL(/\/practice/, { timeout: 15_000 })
 
     await page.context().clearCookies()
     await signIn(page)

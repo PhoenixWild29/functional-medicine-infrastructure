@@ -11,7 +11,6 @@
 // sigText) is no longer used — all data comes from the session context.
 
 import { WizardProgress } from '@/components/wizard-progress'
-import { HipaaTimeout }   from '@/components/hipaa-timeout'
 import { createServerClient } from '@/lib/supabase/server'
 import { SessionBanner }  from '../_components/session-banner'
 import { ProtocolLoadNotices } from './_components/protocol-load-notices'
@@ -59,7 +58,6 @@ export default async function ReviewPage() {
 
   return (
     <>
-      <HipaaTimeout />
       <main className="mx-auto max-w-2xl px-4 py-8">
         {/* Session banner — patient + provider pinned at top */}
         <SessionBanner />

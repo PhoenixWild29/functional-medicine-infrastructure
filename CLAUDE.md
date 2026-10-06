@@ -34,6 +34,15 @@ The template includes the verify-before-report guardrail that dropped R7's 28% f
 Do NOT re-derive the prompt structure from scratch each round. The compounding payoff of the template is multi-hour savings per cycle in audit + triage work avoided. Filed under WO-95.
 
 <!-- VERCEL BEST PRACTICES START -->
+## Multi-factor sign-in (compliance C3)
+
+- `REQUIRE_MFA` (read through `src/lib/env`) turns multi-factor sign-in on for provider, medical_assistant, clinic_admin and ops_admin. It is OFF unless exactly `true`, so demo accounts and E2E sign in with a password until the owner turns it on. `MFA_ENFORCED_EMAILS` enforces it for named accounts only (E2E uses `test-mfa-admin@compoundiq.test`).
+- The rule lives in `src/lib/auth/mfa.ts`; `src/middleware.ts` applies it to every authenticated page (redirect to `/mfa/enroll` or `/mfa/challenge` with `redirectTo`) and API route (401 `MFA_ENROLLMENT_REQUIRED` / `MFA_REQUIRED`). Patient checkout, webhooks, crons, health and `/login` are not gated.
+- The AAL comes from `supabase.auth.getClaims()`, which verifies the JWT. Never read it from an unverified session. `getUser()` stays the identity read.
+- A user who enrolled voluntarily (Settings) is challenged on every new sign-in even with enforcement off.
+- The login factor is Supabase Auth's TOTP factor (`auth.mfa_factors`). The EPCS signing secret (`providers.totp_secret_encrypted`, WO-86 / #171) is a separate factor on purpose: Supabase can only raise a session to AAL2 through its own factors, and EPCS needs its code checked by our server at the moment of signing. A provider may hold both in one authenticator app as two entries.
+- HIPAA automatic logoff: `HipaaTimeout` is mounted once, by the clinic and ops layouts, with `IDLE_TIMEOUT_MINUTES` (default 15). Do not mount it in pages.
+
 ## Best practices for developing on Vercel
 
 These defaults are optimized for AI coding agents (and humans) working on apps that deploy to Vercel.
