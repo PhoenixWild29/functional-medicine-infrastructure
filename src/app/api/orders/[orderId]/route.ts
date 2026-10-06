@@ -60,20 +60,21 @@ async function loadEditableDraft(orderId: string): Promise<
   | { ok: false; response: NextResponse }
 > {
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
     : null
   if (!clinicId) {
     return { ok: false, response: NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 }) }
   }
-  const role = typeof session.user.user_metadata['app_role'] === 'string'
-    ? session.user.user_metadata['app_role'] as string
+  const role = typeof user.user_metadata['app_role'] === 'string'
+    ? user.user_metadata['app_role'] as string
     : null
-  const actor: Actor = { userId: session.user.id, role, clinicId }
+  const actor: Actor = { userId: user.id, role, clinicId }
 
   if (!orderId) {
     return { ok: false, response: NextResponse.json({ error: 'orderId required' }, { status: 400 }) }
@@ -129,7 +130,7 @@ async function loadEditableDraft(orderId: string): Promise<
     return { ok: false, response: NextResponse.json({ error: 'You can only edit drafts you created' }, { status: 403 }) }
   }
 
-  return { ok: true, actor, draft: draft as unknown as DraftRow, supabase, user: session.user }
+  return { ok: true, actor, draft: draft as unknown as DraftRow, supabase, user: user }
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext): Promise<NextResponse> {

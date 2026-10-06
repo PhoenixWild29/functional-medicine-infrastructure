@@ -57,21 +57,22 @@ export async function GET(
   }
 
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const appRole = typeof session.user.user_metadata['app_role'] === 'string'
-    ? session.user.user_metadata['app_role'] as string
+  const appRole = typeof user.user_metadata['app_role'] === 'string'
+    ? user.user_metadata['app_role'] as string
     : null
 
   if (!appRole || !(CLINIC_APP_ROLES as readonly string[]).includes(appRole)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
     : null
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
@@ -106,7 +107,7 @@ export async function GET(
   // Compliance C2: the patient's open orders are read from here on; one
   // row whichever answer follows.
   await logPhiAccess({
-    user: session.user, action: 'view', resource: 'order_list', route: '/api/orders/[orderId]/bundlable-siblings',
+    user: user, action: 'view', resource: 'order_list', route: '/api/orders/[orderId]/bundlable-siblings',
     orderId, patientId: anchor.patient_id, headers: request.headers ?? null,
   })
 

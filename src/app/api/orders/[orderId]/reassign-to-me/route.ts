@@ -40,25 +40,26 @@ export async function POST(
   const { orderId } = await params
 
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
     : null
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }
 
-  if (!isProviderRole(session.user.user_metadata['app_role'])) {
+  if (!isProviderRole(user.user_metadata['app_role'])) {
     return NextResponse.json({ error: 'Only a provider can take over a draft.' }, { status: 403 })
   }
 
   const supabase = createServiceClient()
 
-  const me = await resolveCurrentProvider(supabase, { userId: session.user.id, clinicId })
+  const me = await resolveCurrentProvider(supabase, { userId: user.id, clinicId })
   if (!me) {
     return NextResponse.json(
       { error: 'Provider account is not linked to a Supabase Auth user. Contact ops to complete provider onboarding before signing.' },
@@ -89,7 +90,7 @@ export async function POST(
   if (order.provider_id === me.provider_id) {
     // Compliance C2: the patient's draft was opened; nothing changed.
     await logPhiAccess({
-      user: session.user, action: 'view', resource: 'order', route: '/api/orders/[orderId]/reassign-to-me',
+      user: user, action: 'view', resource: 'order', route: '/api/orders/[orderId]/reassign-to-me',
       orderId, patientId: order.patient_id, headers: request.headers ?? null,
     })
     return NextResponse.json({ orderIds: [order.order_id], providerId: me.provider_id, reassigned: false }, { status: 200 })
@@ -150,7 +151,7 @@ export async function POST(
     order_id:   id,
     old_status: 'DRAFT' as const,
     new_status: 'DRAFT' as const,
-    changed_by: session.user.id,
+    changed_by: user.id,
     metadata: {
       actor:            REASSIGN_AUDIT_ACTOR,
       from_provider_id: fromProviderId,
@@ -163,7 +164,7 @@ export async function POST(
   console.info(`[reassign-to-me] reassigned ${movedIds.length} draft line(s) | order=${orderId} | clinic=${clinicId}`)
   // Compliance C2: the patient's draft(s) moved to this provider.
   await logPhiAccess({
-    user: session.user, action: 'update', resource: 'order', route: '/api/orders/[orderId]/reassign-to-me',
+    user: user, action: 'update', resource: 'order', route: '/api/orders/[orderId]/reassign-to-me',
     orderId, patientId: order.patient_id, headers: request.headers ?? null,
   })
 

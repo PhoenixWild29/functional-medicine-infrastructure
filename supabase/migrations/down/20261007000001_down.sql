@@ -8,6 +8,10 @@
 
 BEGIN;
 
+DROP POLICY IF EXISTS phi_access_log_clinic_admin_select ON phi_access_log;
+DROP POLICY IF EXISTS phi_access_log_deny_insert ON phi_access_log;
+DROP POLICY IF EXISTS phi_access_log_deny_update ON phi_access_log;
+DROP POLICY IF EXISTS phi_access_log_deny_delete ON phi_access_log;
 DROP TRIGGER IF EXISTS phi_access_log_no_truncate ON phi_access_log;
 DROP TRIGGER IF EXISTS phi_access_log_no_update_delete ON phi_access_log;
 DROP TABLE IF EXISTS phi_access_log;

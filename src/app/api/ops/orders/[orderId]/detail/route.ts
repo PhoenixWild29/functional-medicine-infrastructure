@@ -23,11 +23,12 @@ interface Params { params: Promise<{ orderId: string }> }
 export async function GET(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const { orderId } = await params
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (session.user.user_metadata['app_role'] !== 'ops_admin') {
+  if (user.user_metadata['app_role'] !== 'ops_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest, { params }: Params): Promise<Nex
   // Compliance C2: ops viewed a patient's order (the medication, the
   // state). The row belongs to the order's clinic, so its admin sees it.
   await logPhiAccess({
-    user: session.user, action: 'view', resource: 'order', route: '/api/ops/orders/[orderId]/detail',
+    user: user, action: 'view', resource: 'order', route: '/api/ops/orders/[orderId]/detail',
     orderId, clinicId: typeof o['clinic_id'] === 'string' ? o['clinic_id'] : null,
     patientId: typeof o['patient_id'] === 'string' ? o['patient_id'] : null,
     headers: request.headers ?? null,

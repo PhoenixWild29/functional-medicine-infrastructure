@@ -51,14 +51,15 @@ type CallerResult =
 
 async function resolveCaller(): Promise<CallerResult> {
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
 
-  const role     = session.user.user_metadata['app_role'] as string | undefined
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? (session.user.user_metadata['clinic_id'] as string)
+  const role     = user.user_metadata['app_role'] as string | undefined
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? (user.user_metadata['clinic_id'] as string)
     : null
 
   if (role !== 'provider' && role !== 'medical_assistant' && role !== 'clinic_admin') {
@@ -67,7 +68,7 @@ async function resolveCaller(): Promise<CallerResult> {
   if (!clinicId) {
     return { ok: false, response: NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 }) }
   }
-  return { ok: true, caller: { clinicId, user: session.user } }
+  return { ok: true, caller: { clinicId, user: user } }
 }
 
 const SELECT = 'patient_id, clinic_id, allergies, nkda, allergies_updated_at'

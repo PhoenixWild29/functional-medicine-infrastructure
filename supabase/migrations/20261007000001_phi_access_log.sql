@@ -17,8 +17,8 @@
 -- order_status_history), the privileges revoked, and a trigger that refuses
 -- UPDATE, DELETE and TRUNCATE, because RLS does not bind the service role.
 --
--- Clinic users may SELECT only their own clinic's rows. The app shows the
--- log to clinic admins only (Settings, Access log).
+-- Only the clinic admin may SELECT, and only their own clinic's rows
+-- (Settings, Access log). Providers and medical assistants read nothing.
 
 BEGIN;
 
@@ -51,8 +51,9 @@ CREATE INDEX IF NOT EXISTS idx_phi_access_log_actor_time   ON phi_access_log (ac
 -- ── Row level security ───────────────────────────────────────
 ALTER TABLE phi_access_log ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY phi_access_log_clinic_user_select ON phi_access_log FOR SELECT TO authenticated
-  USING (clinic_id = (auth.jwt() -> 'user_metadata' ->> 'clinic_id')::UUID);
+CREATE POLICY phi_access_log_clinic_admin_select ON phi_access_log FOR SELECT TO authenticated
+  USING (clinic_id = (auth.jwt() -> 'user_metadata' ->> 'clinic_id')::UUID
+         AND (auth.jwt() -> 'user_metadata' ->> 'app_role') = 'clinic_admin');
 
 -- INSERT through the service role only (it bypasses RLS).
 CREATE POLICY phi_access_log_deny_insert ON phi_access_log FOR INSERT TO authenticated, anon

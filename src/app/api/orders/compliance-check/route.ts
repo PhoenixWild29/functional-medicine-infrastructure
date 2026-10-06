@@ -33,8 +33,9 @@ export interface ComplianceCheckResult {
 export async function GET(request: NextRequest): Promise<NextResponse> {
   // Auth gate
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -53,8 +54,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     )
   }
 
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
     : null
 
   if (!clinicId) {
@@ -226,7 +227,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // Compliance C2: the patient's record (state) was read.
   if (patient) {
     await logPhiAccess({
-      user: session.user, action: 'view', resource: 'patient', route: '/api/orders/compliance-check',
+      user: user, action: 'view', resource: 'patient', route: '/api/orders/compliance-check',
       patientId: patient.patient_id, headers: request.headers ?? null,
     })
   }

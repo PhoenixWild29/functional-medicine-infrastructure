@@ -64,13 +64,14 @@ export async function POST(
 
   // ── 2. Auth gate ──────────────────────────────────────────────
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const appRole = typeof session.user.user_metadata['app_role'] === 'string'
-    ? session.user.user_metadata['app_role'] as string
+  const appRole = typeof user.user_metadata['app_role'] === 'string'
+    ? user.user_metadata['app_role'] as string
     : null
 
   if (!appRole || !(CLINIC_APP_ROLES as readonly string[]).includes(appRole)) {
@@ -80,8 +81,8 @@ export async function POST(
     )
   }
 
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
     : null
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
@@ -125,7 +126,7 @@ export async function POST(
     supabase,
     clinicId,
     callerAppRole: appRole as ClinicAppRole,
-    callerUserId:  session.user.id,
+    callerUserId:  user.id,
     orderIds:      allIds,
   })
 
@@ -170,7 +171,7 @@ export async function POST(
   )
   // Compliance C2: the patient's orders were bundled under one payment link.
   await logPhiAccess({
-    user: session.user, action: 'create', resource: 'payment_group', route: '/api/orders/[orderId]/group-and-send',
+    user: user, action: 'create', resource: 'payment_group', route: '/api/orders/[orderId]/group-and-send',
     orderId: anchorOrderId, patientId: result.patientId, headers: request.headers ?? null,
   })
 
