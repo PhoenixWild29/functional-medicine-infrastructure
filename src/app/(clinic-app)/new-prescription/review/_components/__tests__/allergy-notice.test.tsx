@@ -14,8 +14,9 @@ import { defaultRxDetails } from '@/lib/orders/rx-details'
 
 // WO-102: the Review page also looks up shipping rates (GET
 // /api/pharmacies/shipping) and allocates shipping on send (POST
-// /api/orders/shipping). These tests are about the other calls.
-const SHIPPING_URL = /\/api\/(pharmacies|orders)\/shipping/
+// /api/orders/shipping), and C4 asks whether the provider may sign (GET
+// /api/prescriber-check). These tests are about the other calls.
+const SHIPPING_URL = /\/api\/((pharmacies|orders)\/shipping|prescriber-check)/
 function nonShippingCalls(): unknown[][] {
   return (global.fetch as jest.Mock).mock.calls.filter(c => !SHIPPING_URL.test(String(c[0])))
 }
