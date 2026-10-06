@@ -49,6 +49,8 @@ export interface RouteSlaAlertParams {
   acknowledgedAt:   string | null
   cascadeStatus?:   string
   cascadeHistory?:  string      // for SUBMISSION_FAILED alerts
+  /** Whether the fax cascade was attempted (sent to PagerDuty; cascadeStatus is not). */
+  cascadeAttempted?: boolean
 }
 
 // Channel values for notifications log
@@ -221,7 +223,9 @@ export async function routeSlaAlert(params: RouteSlaAlertParams): Promise<void> 
           escalationTier,
           pharmacySlug:          params.pharmacySlug,
           integrationTier:       params.integrationTier,
-          ...(params.cascadeStatus !== undefined ? { cascadeStatus: params.cascadeStatus } : {}),
+          // C9: ids, enums and counts only; cascadeStatus text stays out of PagerDuty.
+          orderStatus:           params.orderStatus,
+          ...(params.cascadeAttempted !== undefined ? { cascadeAttempted: params.cascadeAttempted } : {}),
           breachDurationMinutes: breachDurationMinutes(params.deadlineAt),
         })
         await logNotification(orderId, slaType, 3, 'pagerduty')

@@ -31,7 +31,8 @@ const ERROR_ROWS = [
 ]
 
 const withErrors: Script = c => {
-  if (c.table === 'webhook_events' && 'error:not' in c.filters) return { data: ERROR_ROWS }
+  // Rows for the by-endpoint list (M-17), and the count for M-11.
+  if (c.table === 'webhook_events' && 'error:not' in c.filters) return { data: ERROR_ROWS, count: ERROR_ROWS.length }
   return { data: [], count: 0 }
 }
 

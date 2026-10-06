@@ -99,7 +99,8 @@ describe('daily-digest', () => {
     const { body } = await run(dailyDigest, c => (c.table === 'webhook_events' ? DB_DOWN : { data: [], count: 0 }))
     const metrics = body['metrics'] as Record<string, unknown>
     expect(metrics['m03_dlq_count_by_source']).toBe('unavailable')
-    expect(metrics['m11_top_error_codes']).toBe('unavailable')
+    // C9: M-11 is a count now (was the error text, m11_top_error_codes).
+    expect(metrics['m11_error_event_count']).toBe('unavailable')
     const text = JSON.stringify(sendSlackAlertMock.mock.calls[0]![0])
     expect(text).not.toContain('No errors')
   })

@@ -192,26 +192,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   metrics.m10_unmatched_inbound_faxes = unmatchedFaxes ?? 0
   if (m10Err) metrics.m10_unmatched_inbound_faxes = unavailable('m10_unmatched_inbound_faxes', m10Err)
 
-  // ─── M-11: Top 5 error codes ─────────────────────────────────────────────
-  const { data: errorRows, error: m11Err } = await supabase
+  // ─── M-11: Webhook error events (count only) ──────────────────────────────
+  // C9: this used to return the first line of each error ("top error
+  // codes"). Error text can echo pharmacy or patient input, so the digest
+  // (its JSON response and its Slack message) carries the COUNT only. The
+  // errors stay on webhook_events; by endpoint, see M-17.
+  const { count: errorEventCount, error: m11Err } = await supabase
     .from('webhook_events')
-    .select('error')
+    .select('*', { count: 'exact', head: true })
     .gte('created_at', periodStartIso)
     .not('error', 'is', null)
-    .limit(500)
-
-  const errorCounts: Record<string, number> = {}
-  for (const row of errorRows ?? []) {
-    // Extract first line of error as the code
-    const code = (row.error ?? '').split('\n')[0]!.substring(0, 80)
-    errorCounts[code] = (errorCounts[code] ?? 0) + 1
-  }
-  const top5Errors = Object.entries(errorCounts)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 5)
-    .map(([code, count]) => `${code} (${count})`)
-  metrics.m11_top_error_codes = top5Errors
-  if (m11Err) metrics.m11_top_error_codes = unavailable('m11_top_error_codes', m11Err)
+  metrics.m11_error_event_count = errorEventCount ?? 0
+  if (m11Err) metrics.m11_error_event_count = unavailable('m11_error_event_count', m11Err)
 
   // ─── M-12: Circuit breaker trips (adapter submissions FAILED this period) ──
   const { count: circuitBreakerTrips, error: m12Err } = await supabase
@@ -361,11 +353,9 @@ function buildDailyDigestAlert(metrics: Record<string, unknown>, unavailableMetr
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*Top Error Codes:*\n${listOr(
-            metrics.m11_top_error_codes,
-            (codes: string[]) => codes.map(e => `• ${e}`).join('\n'),
-            '✅ No errors',
-          )}`,
+          text: `*Webhook Error Events:*\n${metrics.m11_error_event_count === UNAVAILABLE
+            ? '⚠️ could not be read'
+            : metrics.m11_error_event_count === 0 ? '✅ No errors' : String(metrics.m11_error_event_count)}`,
         },
       },
       {
