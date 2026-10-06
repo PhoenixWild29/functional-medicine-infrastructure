@@ -35,6 +35,7 @@
 import { assertPharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { chromium } from 'playwright'
 import { createServiceClient } from '@/lib/supabase/service'
+import { shippingAddressFor, type OrderShippingAddressColumns } from '@/lib/adapters/shipping-address'
 import { getVaultSecret } from '@/lib/adapters/vault'
 import { getBrowserLaunchOptions, getBrowserContextOptions, SCREENSHOT_BUCKET } from '@/lib/playwright/config'
 import { executeFlow } from '@/lib/adapters/portal-flow-executor'
@@ -226,7 +227,7 @@ export async function submitTier2Portal(
   // ── 2. Load order data for form field substitution ─────────
   const { data: order, error: orderError } = await (supabase
     .from('orders')
-    .select('order_id, order_number, patient_id, provider_id, medication_snapshot, quantity, sig_text, sig_mode, cycle_on_days, cycle_off_days, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions, package_label, package_count, titration_steps')
+    .select('order_id, order_number, patient_id, provider_id, medication_snapshot, shipping_address_line1_snapshot, shipping_address_line2_snapshot, shipping_city_snapshot, shipping_zip_snapshot, shipping_state_snapshot, shipping_address_snapshot_at, quantity, sig_text, sig_mode, cycle_on_days, cycle_off_days, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions, package_label, package_count, titration_steps')
     .eq('order_id', orderId)
     .single() as unknown as Promise<{
       data: {
@@ -256,7 +257,7 @@ export async function submitTier2Portal(
         cycle_off_days: number | null
         package_label: string | null
         package_count: number | null
-      } | null
+      } & OrderShippingAddressColumns | null
       error: Error | null
     }>)
 
@@ -308,6 +309,9 @@ export async function submitTier2Portal(
 
   // ── 5. Build field substitution map ───────────────────────
   const med = order.medication_snapshot as Record<string, unknown> | null
+  // The address the order was signed with; the patient's only for an
+  // order signed before snapshots existed.
+  const shipTo = shippingAddressFor(order, patient)
 
   const fieldValues: FlowFieldValues = {
     // Order
@@ -317,11 +321,11 @@ export async function submitTier2Portal(
     patientFirstName: patient.first_name,
     patientLastName:  patient.last_name,
     patientDob:       patient.date_of_birth,
-    patientAddress1:  patient.address_line1 ?? '',
-    patientAddress2:  patient.address_line2 ?? '',
-    patientCity:      patient.city ?? '',
-    patientState:     patient.state ?? '',
-    patientZip:       patient.zip ?? '',
+    patientAddress1:  shipTo.line1 ?? '',
+    patientAddress2:  shipTo.line2 ?? '',
+    patientCity:      shipTo.city ?? '',
+    patientState:     shipTo.state ?? '',
+    patientZip:       shipTo.zip ?? '',
     // WO-97 — {patientAllergies} = "NKDA" / "penicillin, sulfa" / "Not recorded"
     patientAllergies: allergiesForPayload(patient),
     patientNkda:      patient.nkda === true ? 'Y' : 'N',

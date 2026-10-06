@@ -6,7 +6,11 @@
 // All template functions enforce HIPAA at the type level:
 //   - Only patient first name (never last name)
 //   - No medication names, diagnoses, or prescription details
-//   - Clinic name permitted in payment reminders only
+//   - No clinic name in payment texts (Compliance C1): a clinic name can
+//     name a specialty ("Sunrise Weight Loss Clinic"). The payment link
+//     and both reminders are written here, in code, so no stored
+//     template can put it back; sms_templates keeps the same wording as
+//     the reference copy (migration 20261006000001).
 //
 // REQ-SPN-006: HIPAA minimum necessary — first name only.
 // REQ-SPN-003.3: Tier-aware content for payment confirmation.
@@ -17,11 +21,13 @@
 // TEMPLATE VARIABLE SETS — PHI boundary enforced by type
 // ============================================================
 
-/** Variables for payment reminder templates (payment_link, reminder_24h, reminder_48h). */
+/**
+ * Variables for the payment texts (payment_link, reminder_24h,
+ * reminder_48h). Deliberately no clinic name and nothing about the order.
+ */
 export interface PaymentReminderVars {
   patientFirstName: string   // first name only — no last name
-  providerLastName: string   // REQ-SCL-002: Dr. {{providerLastName}} in payment_link template
-  clinicName:       string   // prescribing clinic name — non-PHI operational reference
+  providerLastName: string   // REQ-SCL-002: "Dr. {providerLastName}" in the payment link
   checkoutUrl:      string   // tokenized JWT checkout URL (72h expiry)
 }
 
@@ -94,25 +100,29 @@ export function renderTemplate(
 // TYPED RENDER FUNCTIONS — one per SMS type
 // ============================================================
 
-export function renderPaymentLinkSms(
-  template: string,
-  vars:     PaymentReminderVars
-): string {
-  return renderTemplate(template, vars as unknown as Record<string, string>)
+// Payment texts (Compliance C1): first name, the provider's last name,
+// the link and how to stop. No clinic name, no drug, not even the word
+// "prescription". Kept in step with sms_templates (the reference copy).
+export const PAYMENT_LINK_SMS = 'Hi {{patientFirstName}}, Dr. {{providerLastName}} sent you a secure payment link: {{checkoutUrl}} Reply STOP to opt out.'
+export const REMINDER_24H_SMS = 'Hi {{patientFirstName}}, a reminder that your secure payment link is still open: {{checkoutUrl}} Reply STOP to opt out.'
+export const REMINDER_48H_SMS = 'Hi {{patientFirstName}}, your secure payment link expires soon: {{checkoutUrl}} Reply STOP to opt out.'
+
+const paymentVars = (v: PaymentReminderVars): Record<string, string> => ({
+  patientFirstName: v.patientFirstName,
+  providerLastName: v.providerLastName,
+  checkoutUrl:      v.checkoutUrl,
+})
+
+export function renderPaymentLinkSms(vars: PaymentReminderVars): string {
+  return renderTemplate(PAYMENT_LINK_SMS, paymentVars(vars))
 }
 
-export function renderReminder24hSms(
-  template: string,
-  vars:     PaymentReminderVars
-): string {
-  return renderTemplate(template, vars as unknown as Record<string, string>)
+export function renderReminder24hSms(vars: PaymentReminderVars): string {
+  return renderTemplate(REMINDER_24H_SMS, paymentVars(vars))
 }
 
-export function renderReminder48hSms(
-  template: string,
-  vars:     PaymentReminderVars
-): string {
-  return renderTemplate(template, vars as unknown as Record<string, string>)
+export function renderReminder48hSms(vars: PaymentReminderVars): string {
+  return renderTemplate(REMINDER_48H_SMS, paymentVars(vars))
 }
 
 /**

@@ -1159,6 +1159,11 @@ export type Database = {
           retail_price_snapshot: number | null
           shipping_fee: number
           shipping_state_snapshot: string | null
+          shipping_address_line1_snapshot: string | null
+          shipping_address_line2_snapshot: string | null
+          shipping_city_snapshot: string | null
+          shipping_zip_snapshot: string | null
+          shipping_address_snapshot_at: string | null
           shipping_type: string | null
           sig_mode: string | null
           sig_text: string | null
@@ -1221,6 +1226,11 @@ export type Database = {
           retail_price_snapshot?: number | null
           shipping_fee?: number
           shipping_state_snapshot?: string | null
+          shipping_address_line1_snapshot?: string | null
+          shipping_address_line2_snapshot?: string | null
+          shipping_city_snapshot?: string | null
+          shipping_zip_snapshot?: string | null
+          shipping_address_snapshot_at?: string | null
           shipping_type?: string | null
           sig_mode?: string | null
           sig_text?: string | null
@@ -1283,6 +1293,11 @@ export type Database = {
           retail_price_snapshot?: number | null
           shipping_fee?: number
           shipping_state_snapshot?: string | null
+          shipping_address_line1_snapshot?: string | null
+          shipping_address_line2_snapshot?: string | null
+          shipping_city_snapshot?: string | null
+          shipping_zip_snapshot?: string | null
+          shipping_address_snapshot_at?: string | null
           shipping_type?: string | null
           sig_mode?: string | null
           sig_text?: string | null
@@ -1462,6 +1477,14 @@ export type Database = {
           phone: string
           primary_provider_id: string | null
           sms_opt_in: boolean
+          sex: string | null
+          phone_e164: string | null
+          external_id: string | null
+          sms_consent_at: string | null
+          sms_consent_source: string | null
+          sms_consent_text_version: string | null
+          source: string
+          intake_status: string
           state: string | null
           updated_at: string
           zip: string | null
@@ -1486,6 +1509,14 @@ export type Database = {
           phone: string
           primary_provider_id?: string | null
           sms_opt_in?: boolean
+          sex?: string | null
+          phone_e164?: string | null
+          external_id?: string | null
+          sms_consent_at?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text_version?: string | null
+          source?: string
+          intake_status?: string
           state?: string | null
           updated_at?: string
           zip?: string | null
@@ -1510,6 +1541,14 @@ export type Database = {
           phone?: string
           primary_provider_id?: string | null
           sms_opt_in?: boolean
+          sex?: string | null
+          phone_e164?: string | null
+          external_id?: string | null
+          sms_consent_at?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text_version?: string | null
+          source?: string
+          intake_status?: string
           state?: string | null
           updated_at?: string
           zip?: string | null
@@ -2822,7 +2861,7 @@ export type Database = {
           status: string
           template_name: string
           to_number: string
-          twilio_message_sid: string
+          twilio_message_sid: string | null
         }
         Insert: {
           created_at?: string
@@ -2837,7 +2876,7 @@ export type Database = {
           status?: string
           template_name: string
           to_number: string
-          twilio_message_sid: string
+          twilio_message_sid?: string | null
         }
         Update: {
           created_at?: string
@@ -2852,7 +2891,7 @@ export type Database = {
           status?: string
           template_name?: string
           to_number?: string
-          twilio_message_sid?: string
+          twilio_message_sid?: string | null
         }
         Relationships: [
           {
