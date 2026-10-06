@@ -218,3 +218,28 @@ describe('prevent_snapshot_mutation freezes the signature hash', () => {
     expect(norm(restored.body)).toBe(norm(original.body))
   })
 })
+
+// ── payment_confirmation: the reference copy in step with PR #194 ──
+// Nothing reads this row; it is kept identical to the text the app sends.
+describe('payment_confirmation reference row', () => {
+  /** One line per statement, whatever the checkout's line endings. */
+  const flat = (t: string) => t.replace(/\s+/g, ' ')
+  const SEED = read(join(MIGRATIONS, '20260319000003_wo26_sms_notifications.sql'))
+  const seeded = /VALUES \(\s*'payment_confirmation',\s+('(?:[^']|'')*'),/.exec(SEED)![1]!
+
+  it('is updated to the wording the app sends, in the {{placeholder}} style', () => {
+    expect(flat(sql)).toContain(
+      "UPDATE sms_templates SET body_template = 'Hi {{patientFirstName}}, your payment is confirmed. We''ll text you again when your order ships.', updated_at = now() WHERE template_name = 'payment_confirmation';",
+    )
+  })
+
+  it('no longer mentions the prescription or the pharmacy', () => {
+    const row = /body_template = ('(?:[^']|'')*')[^;]*template_name = 'payment_confirmation'/.exec(sql)![1]!
+    expect(row).not.toMatch(/prescription|pharmacy/i)
+  })
+
+  it('the down restores the body exactly as 20260319000003 seeded it', () => {
+    expect(seeded).toBe("'Hi {{patientFirstName}}, payment confirmed! Your prescription is on its way to the pharmacy. {{tierAwareMessage}}'")
+    expect(flat(down)).toContain(`UPDATE sms_templates SET body_template = ${seeded}, updated_at = now() WHERE template_name = 'payment_confirmation';`)
+  })
+})
