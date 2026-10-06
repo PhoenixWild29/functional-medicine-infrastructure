@@ -55,7 +55,7 @@ function isPrefetchRequest(request: NextRequest): boolean {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const nonce = newNonce()
-  const csp = buildCsp({ nonce, pathname })
+  const csp = buildCsp({ nonce, pathname, secure: request.nextUrl.protocol === 'https:' })
   request.headers.set('x-nonce', nonce)
   request.headers.set('content-security-policy', csp)
 

@@ -79,7 +79,7 @@ export function newNonce(): string {
   return btoa(binary)
 }
 
-export function buildCsp(params: { nonce: string; pathname: string; dev?: boolean }): string {
+export function buildCsp(params: { nonce: string; pathname: string; dev?: boolean; secure?: boolean }): string {
   const { nonce, pathname } = params
   const dev = params.dev ?? process.env.NODE_ENV === 'development'
   const checkout = isCheckoutPath(pathname)
@@ -103,7 +103,12 @@ export function buildCsp(params: { nonce: string; pathname: string; dev?: boolea
   }
 
   const policy = Object.entries(directives).map(([k, v]) => `${k} ${v.join(' ')}`)
-  if (!dev) policy.push('upgrade-insecure-requests')
+  // Only for a page served over https (production, previews; HSTS already
+  // keeps those on https). On plain http — a local or E2E production build
+  // on http://localhost — WebKit applies it to localhost and rewrites every
+  // /_next script, CSS file and font to https://localhost, which fails: no
+  // page hydrates (#195 E2E, cut off at 15 min).
+  if (!dev && params.secure === true) policy.push('upgrade-insecure-requests')
   return policy.join('; ')
 }
 
