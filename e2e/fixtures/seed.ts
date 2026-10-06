@@ -157,6 +157,15 @@ export const TEST_USERS = {
     role:     'ops_admin',
     clinicId: null,
   },
+  // Compliance C3: the one account E2E runs with multi-factor sign-in
+  // enforced (MFA_ENFORCED_EMAILS in ci.yml). Every other account keeps
+  // signing in with a password only, as REQUIRE_MFA is off in E2E.
+  mfaClinicAdmin: {
+    email:    'test-mfa-admin@compoundiq.test',
+    password: 'TestPassword123!',
+    role:     'clinic_admin',
+    clinicId: TEST_IDS.clinic,
+  },
 }
 
 /**
