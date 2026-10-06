@@ -234,16 +234,21 @@ describe.each(SEEDED)('seeded protocol %o at Review', (protocol, items) => {
 })
 
 describe('rule 1: a protocol line with no duration is sized for the protocol length', () => {
-  it('Weight Loss Semaglutide 0.25 mg weekly × 12 weeks = 0.6 mL: one 1 mL vial at $95, retail $133 stands', async () => {
+  // Was "0.25 mg weekly × 12 weeks = 0.6 mL, one 1 mL vial": that sized a
+  // titration at its starting dose for all 12 weeks (the LDN 5.6 mL bug,
+  // 2026-10-05). Its directions titrate up 0.25 mg every 4 weeks, so the
+  // 12 weeks are 4 × 0.25 + 4 × 0.5 + 4 × 0.75 mg = 6 mg = 1.2 mL.
+  it('Weight Loss Semaglutide titrating from 0.25 mg weekly × 12 weeks = 1.2 mL: one 2.5 mL vial at $165, retail scaled', async () => {
     renderReview([protocolLine(WEIGHT_LOSS, SEEDED[0]![1][0]!, 0)])
     await settled(1)
+    await waitFor(() => expect(latest.session!.prescriptions[0]!.packageId).toBe('sema-2.5'))
     const rx = latest.session!.prescriptions[0]!
     expect(rx.rxDetails?.daysSupply).toBe(84)
-    expect(rx.rxDetails?.dispenseQuantity).toBeCloseTo(0.6)
+    expect(rx.rxDetails?.dispenseQuantity).toBeCloseTo(1.2)
     expect(rx.rxDetails?.dispenseUnit).toBe('mL')
-    expect(rx.wholesaleCents).toBe(9500)
-    expect(rx.retailCents).toBe(13300)
-    expect(rx.priceNote ?? null).toBeNull()
+    expect(rx.wholesaleCents).toBe(16500)
+    expect(rx.retailCents).toBe(23100)   // $133 × 165 ÷ 95
+    expect(rx.priceNote).toBe('Price updated for 2.5 mL vial (was $133.00 for 1 mL vial)')
   })
 
   it('BHRT Progesterone 1 capsule nightly × 84 days, not its stored "90 caps"', async () => {

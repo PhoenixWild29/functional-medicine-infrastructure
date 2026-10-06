@@ -17,6 +17,8 @@ import type { DashboardOrder } from '../page'
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), refresh: jest.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/dashboard',
 }))
 const mockCreateBrowserClient = jest.fn((..._args: unknown[]) => ({
   from: () => ({ select: () => ({ eq: () => ({ is: () => ({ order: () => new Promise(() => {}) }) }) }) }),

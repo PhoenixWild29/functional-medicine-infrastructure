@@ -166,6 +166,8 @@ describe('a refill of an mg-vial line is re-counted in mL', () => {
   it('6 × 5 mg vial, $372 wholesale — the source\'s single vial is not carried forward', async () => {
     const line = (await call()).body.lines[0]!
     expect((line['rxDetails'] as Record<string, unknown>)['dispenseQuantity']).toBe(30)
+    // In the vials' unit: 30 mg (6 × 5 mg vials), not 30 mL (2026-10-05).
+    expect((line['rxDetails'] as Record<string, unknown>)['dispenseUnit']).toBe('mg')
     expect(line['packageCount']).toBe(6)
     expect(line['wholesaleCents']).toBe(37200)
     // The price moved against the source, so the provider confirms it.

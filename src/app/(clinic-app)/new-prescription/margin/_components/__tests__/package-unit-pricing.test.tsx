@@ -53,19 +53,21 @@ function renderMargin(overrides: Partial<React.ComponentProps<typeof MarginBuild
 beforeEach(() => sessionStorage.clear())
 
 describe('mg vials are counted against a dispense in mL', () => {
-  it('BPC-157 daily cycling, 42 days: 30 mL is 6 × 5 mg vial at $372.00', () => {
+  // The dispense reads in the vials' unit (2026-10-05): 30 mL at 1 mg/mL
+  // is 30 mg, filled from 6 × 5 mg vials. It read "30 mL" before.
+  it('BPC-157 daily cycling, 42 days: 30 mg is 6 × 5 mg vial at $372.00', () => {
     renderMargin({})
-    expect(screen.getByTestId('dispense-value')).toHaveTextContent('30 mL')
+    expect(screen.getByTestId('dispense-value')).toHaveTextContent('30 mg')
     expect(screen.getByTestId('package-summary')).toHaveTextContent('Package: 6 × 5 mg vials (suggested for 42 days) · $372.00')
   })
 
-  it('a Standard line over 30 days: 0.5 mg daily is 15 mL, 3 × 5 mg vial at $186.00', () => {
+  it('a Standard line over 30 days: 0.5 mg daily is 15 mg, 3 × 5 mg vial at $186.00', () => {
     renderMargin({
       dose: '0.5 mg', presetDose: '0.5 mg', presetDurationDays: 30,
       presetSigMode: 'standard', presetCycle: null,
       presetSigText: 'Inject 0.5mg (0.50mL) subcutaneous once daily for 30 days',
     })
-    expect(screen.getByTestId('dispense-value')).toHaveTextContent('15 mL')
+    expect(screen.getByTestId('dispense-value')).toHaveTextContent('15 mg')
     expect(screen.getByTestId('package-summary')).toHaveTextContent('Package: 3 × 5 mg vials (suggested for 30 days) · $186.00')
   })
 })

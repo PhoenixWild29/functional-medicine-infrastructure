@@ -35,6 +35,7 @@ import {
   type TitrationStep,
   type SigMode,
 } from '@/lib/orders/titration'
+import { legacyTitrationFromSig, legacyTitrationDispense } from '@/lib/orders/legacy-titration'
 import { QuickActionsPanel, useClinicFavorites, type Favorite, type RecentItem, type QuickActionsPanelName } from './quick-actions-panel'
 import { SaveFavoriteButton } from './save-favorite-button'
 import { builderStateFromLine, editTargetToParams, type EditTarget } from '../_lib/edit-target'
@@ -450,6 +451,34 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     [sigMode, titrationSteps, selectedFormulation],
   )
 
+  // A protocol line reopened from Review, while the dose step shows its
+  // own medication. It lasts the protocol's length when its sig states no
+  // duration (how Review sized it), and a titration written only in its
+  // kept sig is sized for that schedule (lib/orders/legacy-titration).
+  // A medication picked by hand gets neither.
+  const editingOwnLine = !!effectiveInitial && !!selectedFormulation && effectiveInitial.formulationId === selectedFormulation.formulation_id
+  const effectiveDurationDays = durationDays
+    ?? (editingOwnLine && sigMode === 'standard' ? sessionLine?.protocolDurationDays ?? null : null)
+  const keptSig = editingOwnLine && sigMode === 'standard' && !!currentSig && currentSig === effectiveInitial?.sigText.trim()
+  const legacyTitration = useMemo(() => {
+    if (!keptSig || !selectedFormulation) return null
+    const t = legacyTitrationFromSig(currentSig, { amount: doseAmount, unit: doseUnit })
+    return t
+      ? legacyTitrationDispense(t, {
+          frequencyCode:      selectedFrequency,
+          durationDays:       effectiveDurationDays,
+          concentrationValue: selectedFormulation.concentration_value,
+          concentrationUnit:  selectedFormulation.concentration_unit,
+          dosageFormName:     selectedFormulation.dosage_forms?.name ?? null,
+        })
+      : null
+  }, [keptSig, selectedFormulation, currentSig, doseAmount, doseUnit, selectedFrequency, effectiveDurationDays])
+  // What a schedule (structured steps, or a protocol sig's titration) sums to.
+  const scheduleDispense = titrationDispense
+    ?? (legacyTitration
+      ? { totalQuantity: legacyTitration.dispenseQuantity, dispenseUnit: legacyTitration.dispenseUnit, totalDays: legacyTitration.daysSupply }
+      : null)
+
   // Cycling dose math: the pattern the quantity is counted over.
   const lineCycle = sigMode === 'cycling' ? cycle : null
 
@@ -457,7 +486,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   const defaultQuantity = useMemo(() => {
     if (!selectedFormulation) return ''
     const dosageFormName = selectedFormulation.dosage_forms?.name ?? null
-    const fromDuration = durationDays != null
+    const fromDuration = effectiveDurationDays != null
       ? computeDispense({
           doseAmount,
           doseUnit,
@@ -466,19 +495,19 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
           concentrationValue: selectedFormulation.concentration_value,
           concentrationUnit:  selectedFormulation.concentration_unit,
           dosageFormName,
-          durationDays,
+          durationDays:       effectiveDurationDays,
           cycle:              lineCycle,
         })
       : null
-    const derived = titrationDispense
-      ? { quantity: titrationDispense.totalQuantity, unit: titrationDispense.dispenseUnit }
+    const derived = scheduleDispense
+      ? { quantity: scheduleDispense.totalQuantity, unit: scheduleDispense.dispenseUnit }
       : fromDuration
         ? { quantity: fromDuration.dispenseQuantity, unit: fromDuration.dispenseUnit }
         : { quantity: null, unit: dispenseUnitFor(dosageFormName, doseUnit) }
     return defaultQuantityLabel(pharmacyQuantities, derived, dosageFormName)
     // pharmacyQuantities is derived from selectedPharmacy each render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedFormulation, selectedPharmacy, doseAmount, doseUnit, selectedFrequency, durationDays, titrationDispense, lineCycle])
+  }, [selectedFormulation, selectedPharmacy, doseAmount, doseUnit, selectedFrequency, effectiveDurationDays, scheduleDispense, lineCycle])
   // ── WO-101: priced packages ─────────────────────────────
   // A pharmacy that sells this formulation in more than one priced package
   // gets a suggested package (smallest that covers the dispense quantity
@@ -489,13 +518,13 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     const pkgs = po?.packages ?? []
     if (!selectedFormulation || pkgs.length === 0) return null
     // WO-105: a titration is sized from its summed quantity.
-    if (titrationDispense) {
+    if (scheduleDispense) {
       const t = suggestPackageForDispense(
         pkgs,
         {
-          dispenseQuantity: titrationDispense.totalQuantity,
-          dispenseUnit:     titrationDispense.dispenseUnit,
-          daysSupply:       titrationDispense.totalDays,
+          dispenseQuantity: scheduleDispense.totalQuantity,
+          dispenseUnit:     scheduleDispense.dispenseUnit,
+          daysSupply:       scheduleDispense.totalDays,
         },
         selectedFormulation.dosage_forms?.name ?? null,
         { concentrationValue: selectedFormulation.concentration_value, concentrationUnit: selectedFormulation.concentration_unit },
@@ -512,7 +541,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       concentrationValue: selectedFormulation.concentration_value,
       concentrationUnit:  selectedFormulation.concentration_unit,
       dosageFormName:     selectedFormulation.dosage_forms?.name ?? null,
-      durationDays,
+      durationDays:       effectiveDurationDays,
       cycle:              lineCycle,
     })
     if (!s) return null
@@ -631,7 +660,8 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       refills,
       // WO-101: the selected duration, structured, for the package
       // suggestion and days supply on the price step ('' = no duration).
-      durationDays: durationDays != null ? String(durationDays) : '',
+      // A protocol line being edited carries the protocol's length.
+      durationDays: effectiveDurationDays != null ? String(effectiveDurationDays) : '',
       // WO-104: the selected timing, structured, so Save as favorite on
       // the price step stores it with the dose.
       timing: timingDuration.timing,
@@ -915,8 +945,8 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
               </select>
               {!quantityPicked && (
                 <p className="mt-1 text-[10px] text-muted-foreground" data-testid="quantity-default-hint">
-                  {durationDays != null
-                    ? `Smallest package that covers ${durationDays} days — change if needed.`
+                  {effectiveDurationDays != null
+                    ? `Smallest package that covers ${effectiveDurationDays} days — change if needed.`
                     : 'Smallest package listed — change if needed.'}
                 </p>
               )}
