@@ -16,7 +16,8 @@
 //   - No PHI in Slack alert content beyond order_id + masked phone.
 //
 // Skip conditions:
-//   - patients.sms_opt_in = false: skip + log
+//   - patients.sms_opt_in = false: refused here, whatever the caller
+//     checked (Compliance C1), and recorded in sms_log as 'suppressed'
 //   - patients.phone IS NULL: skip + log
 //   - Rate limit (5 per 24h per phone): skip + log
 
@@ -69,6 +70,7 @@ async function isWithinRateLimit(toNumber: string): Promise<boolean> {
     .from('sms_log')
     .select('sms_id', { count: 'exact', head: true })
     .eq('to_number', toNumber)
+    .neq('status', 'suppressed')   // a refused send was never sent
     .gte('created_at', windowStart)
 
   if (error) {
@@ -227,6 +229,52 @@ async function dispatchWithRetry(params: {
 }
 
 // ============================================================
+// OPT-IN GATE — Compliance C1 (REQ-SPN-007)
+// ============================================================
+
+type OptInState = 'opted_in' | 'opted_out' | 'not_found' | 'unreadable'
+
+/**
+ * The patient's sms_opt_in, read here rather than trusted from the
+ * caller: a caller can forget the check, or read the row before a STOP
+ * reply landed.
+ */
+async function patientOptIn(patientId: string): Promise<OptInState> {
+  const supabase = createServiceClient()
+  const { data, error } = await supabase
+    .from('patients')
+    .select('sms_opt_in')
+    .eq('patient_id', patientId)
+    .maybeSingle()
+  if (error) {
+    console.error(`[sms-sender] opt-in could not be read | patient=${patientId}:`, error.message)
+    return 'unreadable'
+  }
+  if (!data) return 'not_found'
+  return (data as { sms_opt_in: boolean | null }).sms_opt_in === true ? 'opted_in' : 'opted_out'
+}
+
+/** A refused send, on record: no Twilio SID, status 'suppressed', the reason. */
+async function logSuppressed(params: SendSmsParams, reason: string): Promise<void> {
+  const supabase = createServiceClient()
+  const { error } = await supabase
+    .from('sms_log')
+    .insert({
+      order_id:           params.orderId,
+      patient_id:         params.patientId,
+      template_name:      params.templateName,
+      twilio_message_sid: null,
+      to_number:          params.toNumber,
+      status:             'suppressed',
+      error_code:         reason,
+      error_message:      'Patient has opted out of text messages.',
+    })
+  if (error) {
+    console.error(`[sms-sender] suppressed send could not be recorded | order=${params.orderId} | patient=${params.patientId}:`, error.message)
+  }
+}
+
+// ============================================================
 // MAIN SEND FUNCTION
 // ============================================================
 
@@ -242,9 +290,21 @@ async function dispatchWithRetry(params: {
  *   5. Failure ops alert on exhausted retries (REQ-SPN-010.1)
  */
 export async function sendSms(params: SendSmsParams): Promise<SendSmsResult> {
-  // Gate 1: opt-in is checked by caller (triggers.ts fetches patient row).
-  // The toNumber param only exists if opt-in was confirmed. This is a
-  // defense-in-depth check — never call sendSms without verifying opt-in.
+  // Gate 1 (Compliance C1): opt-in, checked here for every send. Callers
+  // check it too; this is the check that cannot be skipped. It runs
+  // before the TWILIO_ENABLED switch so the record is the same in every
+  // environment. Fails closed: an opt-in that cannot be read is no consent.
+  const optIn = await patientOptIn(params.patientId)
+  if (optIn === 'unreadable') return { outcome: 'failed', reason: 'opt_in_check_failed' }
+  if (optIn === 'not_found') {
+    console.error(`[sms-sender] patient not found; not sent | order=${params.orderId} | patient=${params.patientId}`)
+    return { outcome: 'skipped', reason: 'patient_not_found' }
+  }
+  if (optIn === 'opted_out') {
+    console.info(`[sms-sender] patient opted out; not sent | order=${params.orderId} | patient=${params.patientId} | template=${params.templateName}`)
+    await logSuppressed(params, 'sms_opt_out')
+    return { outcome: 'skipped', reason: 'sms_opt_out' }
+  }
 
   // WO-53: TWILIO_ENABLED=false disables live SMS dispatch for POC environments
   // that don't have a verified Twilio number. Logs the message body to console
@@ -276,6 +336,7 @@ export async function sendSms(params: SendSmsParams): Promise<SendSmsResult> {
     .select('sms_id', { count: 'exact', head: true })
     .eq('order_id', params.orderId)
     .eq('template_name', params.templateName)
+    .neq('status', 'suppressed')   // refused while opted out: may be sent after opting back in
 
   // Fail closed: a failed count is not "never sent", and a patient getting
   // the same SMS twice is worse than a retry on the next trigger.

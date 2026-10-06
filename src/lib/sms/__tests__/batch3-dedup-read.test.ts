@@ -35,6 +35,7 @@ beforeEach(() => {
 
 it('a failed dedup read refuses the send instead of counting as "never sent"', async () => {
   db = scriptedDb(c => {
+    if (c.table === 'patients') return { data: { sms_opt_in: true } }   // C1: sendSms reads opt-in itself
     if (c.table !== 'sms_log' || !c.head) return undefined
     return 'order_id' in c.filters ? DB_DOWN : { count: 0 } // rate limit fine, dedup read fails
   })
@@ -43,6 +44,6 @@ it('a failed dedup read refuses the send instead of counting as "never sent"', a
 })
 
 it('a dedup read of 0 still sends', async () => {
-  db = scriptedDb(c => (c.table === 'sms_log' && c.head ? { count: 0 } : undefined))
+  db = scriptedDb(c => (c.table === 'patients' ? { data: { sms_opt_in: true } } : c.table === 'sms_log' && c.head ? { count: 0 } : undefined))
   await expect(sendSms(PARAMS)).resolves.toEqual({ outcome: 'sent', messageSid: 'SM1' })
 })
