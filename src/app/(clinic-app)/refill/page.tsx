@@ -95,7 +95,8 @@ export default async function RefillPage(
     const e = loadError
     console.error(
       ordersResult.error ? '[refill] orders query failed:' : '[refill] providers query failed:',
-      JSON.stringify({ code: e.code, message: e.message, details: e.details, hint: e.hint }),
+      // C9: no `details`: on some errors PostgREST echoes row values there.
+      JSON.stringify({ code: e.code, message: e.message, hint: e.hint }),
       '| clinic=', clinicId,
     )
     return (

@@ -1,9 +1,20 @@
 import type { NextConfig } from 'next'
 import { withSentryConfig } from '@sentry/nextjs'
+import { STATIC_SECURITY_HEADERS } from './src/lib/security/headers'
 
-const nextConfig: NextConfig = {
+export const baseConfig: NextConfig = {
   // Server Components are default in App Router
   reactStrictMode: true,
+
+  // Do not advertise the framework.
+  poweredByHeader: false,
+
+  // Compliance C9: HSTS, X-Frame-Options, nosniff and Referrer-Policy on
+  // every path, static assets included. The per-request CSP and the
+  // Permissions-Policy are set by src/middleware.ts.
+  async headers() {
+    return [{ source: '/:path*', headers: [...STATIC_SECURITY_HEADERS] }]
+  },
 
   // Disable Supabase Realtime — all updates via polling (HIPAA requirement)
   // No WebSocket connections permitted
@@ -20,7 +31,7 @@ const nextConfig: NextConfig = {
   },
 }
 
-export default withSentryConfig(nextConfig, {
+export default withSentryConfig(baseConfig, {
   // Sentry build-time config
   org: process.env['SENTRY_ORG'] ?? '',
   project: process.env['SENTRY_PROJECT'] ?? '',

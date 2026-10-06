@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { connection } from 'next/server'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import './globals.css'
@@ -22,11 +23,17 @@ export const metadata: Metadata = {
 // mount on every authenticated page, which screen readers announce
 // twice and Playwright's strict-mode selectors report as duplicates.
 
-export default function RootLayout({
+// Compliance C9: the CSP nonce is per request, so every page must render
+// per request for Next.js to stamp the nonce on its scripts. A statically
+// prerendered page would carry inline scripts without it, and the enforced
+// CSP would block them. connection() opts the whole tree into dynamic
+// rendering (every authenticated page already was).
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  await connection()
   return (
     <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body className="font-sans">

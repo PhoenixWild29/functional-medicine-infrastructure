@@ -19,6 +19,7 @@
 import coreWebVitals from 'eslint-config-next/core-web-vitals'
 import typescript from 'eslint-config-next/typescript'
 import noUncheckedSupabaseError from './eslint-rules/no-unchecked-supabase-error.js'
+import noPhiInLogs from './eslint-rules/no-phi-in-logs.js'
 
 /** @type {import('eslint').Linter.Config[]} */
 const config = [
@@ -163,6 +164,22 @@ const config = [
     plugins: { supabase: { rules: { 'no-unchecked-supabase-error': noUncheckedSupabaseError } } },
     rules: {
       'supabase/no-unchecked-supabase-error': ['error', { baselineFile: 'eslint-baselines/supabase-errors.json' }],
+    },
+  },
+
+  // ── Compliance C9: no patient data in log lines ──────────────────
+  //
+  // console.* may not print a patient field (name, DOB, phone, email,
+  // address, allergies, sig, diagnosis, medication name) or a whole
+  // patient object. Log ids and outcomes. No baseline: every existing
+  // site was fixed when the rule landed. Scope is src (what runs in
+  // production); scripts/ are local seed tools that print demo data.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/__tests__/**', '**/*.test.{ts,tsx}'],
+    plugins: { phi: { rules: { 'no-phi-in-logs': noPhiInLogs } } },
+    rules: {
+      'phi/no-phi-in-logs': 'error',
     },
   },
 ]
