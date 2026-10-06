@@ -23,6 +23,8 @@
 -- 7. Payment texts (payment_link, reminder_24h, reminder_48h) no longer
 --    carry the clinic name, which can name a specialty. The app builds
 --    these texts itself; the rows are kept in step as the reference copy.
+--    payment_confirmation is kept in step with the wording the app sends
+--    since PR #194 (no prescription, no pharmacy); nothing reads the row.
 --
 -- Additive and safe to run before the code that uses it is deployed.
 
@@ -127,12 +129,15 @@ ALTER TABLE sms_log ADD CONSTRAINT sms_log_status_check
   CHECK (status IN ('queued', 'sent', 'delivered', 'failed', 'undelivered', 'suppressed'));
 
 -- ── 7. Payment texts without the clinic name ─────────────────
--- Kept identical to src/lib/sms/templates.ts (the app sends that copy).
+-- Kept identical to the copy the app sends (src/lib/sms/templates.ts;
+-- payment_confirmation since PR #194).
 UPDATE sms_templates SET body_template = 'Hi {{patientFirstName}}, Dr. {{providerLastName}} sent you a secure payment link: {{checkoutUrl}} Reply STOP to opt out.', updated_at = now()
  WHERE template_name = 'payment_link';
 UPDATE sms_templates SET body_template = 'Hi {{patientFirstName}}, a reminder that your secure payment link is still open: {{checkoutUrl}} Reply STOP to opt out.', updated_at = now()
  WHERE template_name = 'reminder_24h';
 UPDATE sms_templates SET body_template = 'Hi {{patientFirstName}}, your secure payment link expires soon: {{checkoutUrl}} Reply STOP to opt out.', updated_at = now()
  WHERE template_name = 'reminder_48h';
+UPDATE sms_templates SET body_template = 'Hi {{patientFirstName}}, your payment is confirmed. We''ll text you again when your order ships.', updated_at = now()
+ WHERE template_name = 'payment_confirmation';
 
 COMMIT;

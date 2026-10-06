@@ -9,13 +9,16 @@
 
 BEGIN;
 
--- ── 7. Payment texts as they were (WO-26 / WO-47) ────────────
+-- ── 7. Payment texts as they were (WO-26 / WO-47; payment_confirmation
+--    exactly as 20260319000003 seeded it) ──
 UPDATE sms_templates SET body_template = 'Hi {{patientFirstName}}, Dr. {{providerLastName}} sent you a secure payment link for your prescription from {{clinicName}}: {{checkoutUrl}}', updated_at = now()
  WHERE template_name = 'payment_link';
 UPDATE sms_templates SET body_template = 'Hi {{patientFirstName}}, friendly reminder — your prescription from {{clinicName}} is still waiting for payment. Tap to pay: {{checkoutUrl}}', updated_at = now()
  WHERE template_name = 'reminder_24h';
 UPDATE sms_templates SET body_template = 'Hi {{patientFirstName}}, this is your final reminder — your prescription order expires soon. Pay now to avoid cancellation: {{checkoutUrl}}', updated_at = now()
  WHERE template_name = 'reminder_48h';
+UPDATE sms_templates SET body_template = 'Hi {{patientFirstName}}, payment confirmed! Your prescription is on its way to the pharmacy. {{tierAwareMessage}}', updated_at = now()
+ WHERE template_name = 'payment_confirmation';
 
 -- ── 6. sms_log ───────────────────────────────────────────────
 DELETE FROM sms_log WHERE status = 'suppressed';
