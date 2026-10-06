@@ -113,9 +113,10 @@ export function renderReminder48hSms(vars: PaymentReminderVars): string {
  * C7: first name and a neutral line only. No clinic name, drug, amount or
  * specialty, and not "prescription" or "pharmacy". The previous wording
  * ("...payment confirmed! Your prescription is on its way to the
- * pharmacy. {{tierAwareMessage}}") named a prescription; the
- * sms_templates.payment_confirmation row still holds it as a reference
- * only and is not read (this body is built in code).
+ * pharmacy. {{tierAwareMessage}}") named a prescription. Migration
+ * 20261006000001 (#196) sets the sms_templates.payment_confirmation row
+ * to this same wording; the row is a reference only and is not read
+ * (this body is built in code), so keep the two in step.
  */
 export function buildPaymentConfirmationBody(vars: PaymentConfirmationVars): string {
   return `Hi ${vars.patientFirstName}, your payment is confirmed. We'll text you again when your order ships.`
