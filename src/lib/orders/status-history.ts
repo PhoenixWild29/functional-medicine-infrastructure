@@ -70,7 +70,6 @@ export async function insertStatusHistory(
         actor:     row.changed_by,
         source,
         failedAt,
-        error:     errorMessage,
       }))
     } catch (alertErr) {
       console.error(

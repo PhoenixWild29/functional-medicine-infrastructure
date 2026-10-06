@@ -28,6 +28,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 import { resolveProtocolLinkage, type ProtocolLinkage } from '@/lib/protocols/resolve-instance'
 import { rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
 import { lineSourceKind, resolveLine } from '@/lib/orders/resolve-line'
@@ -42,20 +43,21 @@ import type { Json } from '@/types/database.types'
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // Auth gate
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
     : null
 
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }
-  const appRole = typeof session.user.user_metadata['app_role'] === 'string'
-    ? session.user.user_metadata['app_role'] as string
+  const appRole = typeof user.user_metadata['app_role'] === 'string'
+    ? user.user_metadata['app_role'] as string
     : null
 
   // WO-87 (B1 hotfix): Accept EITHER a legacy catalog item OR a V3.0
@@ -183,8 +185,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // including "+ Add prescription" on another provider's draft (WO-98).
   // Shared with PATCH / DELETE /api/orders/[orderId].
   const ownership = await checkProviderOwnsDraft(supabase, {
-    appRole:         session.user.user_metadata['app_role'],
-    userId:          session.user.id,
+    appRole:         user.user_metadata['app_role'],
+    userId:          user.id,
     clinicId,
     draftProviderId: providerId,
   })
@@ -394,7 +396,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // created), and the first row of the draft's audit trail. Non-fatal.
   await writeDraftAudit(supabase, order.order_id, {
     event: 'draft_created',
-    actor: { user_id: session.user.id, role: appRole },
+    actor: { user_id: user.id, role: appRole },
     appended_to_order_id: typeof appendedToOrderId === 'string' && appendedToOrderId ? appendedToOrderId : null,
   })
 
@@ -432,6 +434,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   console.info(`[orders] DRAFT created | order=${order.order_id} | clinic=${clinicId}`)
+
+  // Compliance C2: a prescription written for this patient.
+  await logPhiAccess({
+    user: user, action: 'create', resource: 'order', route: '/api/orders',
+    orderId: order.order_id, patientId, headers: request.headers ?? null,
+  })
 
   return NextResponse.json({ orderId: order.order_id }, { status: 201 })
 }

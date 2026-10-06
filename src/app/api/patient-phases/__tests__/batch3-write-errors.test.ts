@@ -13,12 +13,17 @@
 import type { NextRequest } from 'next/server'
 import { scriptedDb, DB_DOWN, type Script } from '@/__tests__/helpers/scripted-db'
 import { POST } from '../route'
+import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
 let db = scriptedDb(() => undefined)
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: async () => ({ data: { session: { user: { id: 'u1' } } } }) },
+    // A provider of clinic c-1 (the phase routes are clinic-scoped, provider-only for changes).
+    auth: {
+      getSession: async () => ({ data: { session: { user: { id: 'u1', user_metadata: { app_role: 'provider', clinic_id: 'c-1' } } } } }),
+      getUser: async () => ({ data: { user: { id: 'u1', user_metadata: { app_role: 'provider', clinic_id: 'c-1' } } }, error: null }),
+    },
   }),
 }))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
@@ -26,7 +31,10 @@ jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.clien
 jest.spyOn(console, 'error').mockImplementation(() => {})
 
 async function advance(more: Script) {
-  db = scriptedDb(c => more(c) ?? (c.table === 'patient_protocol_phases' && c.op === 'select' ? { data: { current_phase: 'loading' } } : undefined))
+  db = scriptedDb(c => more(c)
+    ?? (c.table === 'patient_protocol_phases' && c.op === 'select' ? { data: { current_phase: 'loading', patient_id: 'pt-1' } }
+      : c.table === 'patients' ? { data: { patient_id: 'pt-1' } }
+      : undefined))
   const res = await POST({ json: async () => ({ action: 'advance', tracking_id: 't-1', new_phase: 'maintenance', provider_id: 'pr-1' }) } as unknown as NextRequest)
   return { status: res.status, body: await res.json() as Record<string, unknown> }
 }
@@ -57,4 +65,20 @@ it('a failed history write whose put-back also fails says the phase moved withou
   })
   expect(r.status).toBe(500)
   expect(String(r.body['error'])).toMatch(/advanced to maintenance, but its history could not be recorded/)
+})
+
+// Compliance C2: a patient's protocol phase change is logged once.
+describe('PHI access log', () => {
+  beforeEach(() => phiLog.mockClear())
+
+  it('an advance logs exactly one row: update, patient_phases, the patient', async () => {
+    const r = await advance(c => (c.table === 'patient_protocol_phases' && c.op === 'select' ? { data: { current_phase: 'loading', patient_id: 'pt-1' } } : undefined))
+    expect(r.status).toBe(200)
+    expectOnePhiRow({ action: 'update', resource: 'patient_phases', route: '/api/patient-phases', patientId: 'pt-1' })
+  })
+
+  it('a failed advance logs nothing', async () => {
+    await advance(c => (c.table === 'phase_advancement_history' ? DB_DOWN : undefined))
+    expect(phiEntries()).toHaveLength(0)
+  })
 })

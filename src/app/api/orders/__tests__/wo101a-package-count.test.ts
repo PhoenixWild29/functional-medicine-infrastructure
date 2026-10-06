@@ -14,6 +14,7 @@
  */
 
 import { POST } from '../route'
+import { userFromSession } from '@/__tests__/helpers/auth-from-session'
 
 const TEST_CLINIC_ID   = 'a1000000-0000-0000-0000-000000000001'
 const TEST_PROVIDER_ID = 'a2000000-0000-0000-0000-000000000001'
@@ -33,7 +34,7 @@ const getSessionMock = jest.fn()
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: { getSession: () => getSessionMock(), getUser: () => userFromSession(getSessionMock()) },
   }),
 }))
 

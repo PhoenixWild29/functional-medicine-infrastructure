@@ -5,6 +5,7 @@
  */
 
 import { GET } from '../route'
+import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 import type { NextRequest } from 'next/server'
 
 const getUserMock = jest.fn()
@@ -53,5 +54,21 @@ describe('GET /api/practice', () => {
     const body = await (await GET(req())).json()
     expect(body.numbers).toEqual({ ok: false, error: 'Orders could not be read.' })
     expect(body.attention).toEqual({ ok: false, error: 'The needs-attention queue could not be loaded.' })
+  })
+})
+
+// Compliance C2: the practice dashboard (patients in the attention queue) is logged once.
+describe('PHI access log', () => {
+  beforeEach(() => phiLog.mockClear())
+
+  it('a read logs exactly one row: view, practice_dashboard, the clinic', async () => {
+    expect((await GET(req())).status).toBe(200)
+    expectOnePhiRow({ action: 'view', resource: 'practice_dashboard', route: '/api/practice', clinicId: 'clinic-1' })
+  })
+
+  it('a refused read logs nothing', async () => {
+    accessMock.mockResolvedValue({ ok: false, status: 403, error: 'not shared' })
+    expect((await GET(req())).status).toBe(403)
+    expect(phiEntries()).toHaveLength(0)
   })
 })

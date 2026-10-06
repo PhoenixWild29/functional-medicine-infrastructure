@@ -289,7 +289,7 @@ async function recordCircuitFailure(params: {
         orderId,       // NB-07: pass actual orderId, not submissionId
         pharmacySlug,
         integrationTier: tier,
-        errorCode:     `circuit_breaker_opened (${reason})`,
+        errorCode:     'circuit_breaker_opened',
       })
     ).catch(slackErr =>
       console.error('[routing-engine] Slack circuit-open alert failed:', slackErr)
@@ -393,7 +393,9 @@ async function failSubmission(params: {
     buildSubmissionFailedAlert({
       orderId,
       pharmacySlug,
-      cascadeHistory: `${tier ?? 'unknown tier'}: ${reason}${casFailed ? ' (status could not be set; order is still SUBMISSION_PENDING)' : ''}`,
+      // The adapter's error text is logged above, never sent to Slack.
+      failedTier:     tier ?? null,
+      statusNotSet:   casFailed,
     })
   ).catch(slackErr =>
     console.error('[routing-engine] Slack SUBMISSION_FAILED alert failed:', slackErr)

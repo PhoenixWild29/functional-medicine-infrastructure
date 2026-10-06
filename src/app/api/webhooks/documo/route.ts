@@ -353,7 +353,10 @@ async function handleFaxFailed(fax: DocumoFaxData): Promise<string | null> {
       orderId: order.order_id,
       pharmacySlug: pharmacy?.slug ?? order.pharmacy_id ?? 'unknown',
       integrationTier: 'TIER_4_FAX',
-      errorCode: `fax_permanently_failed|fax=${fax.id}|attempts=${failureCount}`,
+      errorCode: 'fax_permanently_failed',
+      type: 'fax_failed',
+      status: 'FAX_FAILED',
+      details: { fax_id: fax.id, attempts: failureCount },
     })
   ).catch(alertErr =>
     console.error('[documo-webhook] failed to send fax failure alert:', alertErr)

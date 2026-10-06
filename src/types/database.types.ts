@@ -2168,6 +2168,54 @@ export type Database = {
           },
         ]
       }
+      phi_access_log: {
+        Row: {
+          id: string
+          occurred_at: string
+          actor_user_id: string
+          actor_role: string
+          actor_email_hash: string | null
+          clinic_id: string | null
+          patient_id: string | null
+          order_id: string | null
+          action: string
+          resource: string
+          route: string
+          ip_hash: string | null
+          user_agent_hash: string | null
+        }
+        Insert: {
+          id?: string
+          occurred_at?: string
+          actor_user_id: string
+          actor_role: string
+          actor_email_hash?: string | null
+          clinic_id?: string | null
+          patient_id?: string | null
+          order_id?: string | null
+          action: string
+          resource: string
+          route: string
+          ip_hash?: string | null
+          user_agent_hash?: string | null
+        }
+        Update: {
+          id?: string
+          occurred_at?: string
+          actor_user_id?: string
+          actor_role?: string
+          actor_email_hash?: string | null
+          clinic_id?: string | null
+          patient_id?: string | null
+          order_id?: string | null
+          action?: string
+          resource?: string
+          route?: string
+          ip_hash?: string | null
+          user_agent_hash?: string | null
+        }
+        Relationships: []
+      }
       protocol_instances: {
         Row: {
           clinic_id: string

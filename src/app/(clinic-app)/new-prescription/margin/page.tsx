@@ -34,6 +34,7 @@ import { draftReturnPath } from '@/lib/orders/draft-edit'
 import { editTargetFromParams } from '../_lib/edit-target'
 import { isProviderRole } from '@/lib/auth/current-provider'
 import { getWizardSteps } from '../_lib/wizard-steps'
+import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
 
 export const metadata = {
   title: 'New Prescription — Set Price',
@@ -138,6 +139,14 @@ export default async function MarginPage({ searchParams }: PageProps) {
   if (editTarget && editTarget.kind !== 'session') {
     draft = clinicId ? await loadDraftContext(supabase, clinicId, editTarget.orderId) : null
     if (!draft) editTarget = null
+  }
+  // Compliance C2: editing a draft loads its patient (name, DOB, phone,
+  // allergies). A new prescription loads no patient here.
+  if (draft) {
+    await logPhiAccess({
+      user, action: 'view', resource: 'order', route: '/new-prescription/margin',
+      orderId: draft.orderId, patientId: draft.patient.patient_id, headers: await currentRequestHeaders(),
+    })
   }
 
   // WO-83/87: Support both catalog-based (old) and formulation-based (new) paths.

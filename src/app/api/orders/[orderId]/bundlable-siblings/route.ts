@@ -29,6 +29,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }        from '@/lib/supabase/server'
 import { createServiceClient }       from '@/lib/supabase/service'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const CLINIC_APP_ROLES = ['clinic_admin', 'provider', 'medical_assistant'] as const
@@ -56,21 +57,22 @@ export async function GET(
   }
 
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const appRole = typeof session.user.user_metadata['app_role'] === 'string'
-    ? session.user.user_metadata['app_role'] as string
+  const appRole = typeof user.user_metadata['app_role'] === 'string'
+    ? user.user_metadata['app_role'] as string
     : null
 
   if (!appRole || !(CLINIC_APP_ROLES as readonly string[]).includes(appRole)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
     : null
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
@@ -101,6 +103,13 @@ export async function GET(
   if (!anchor) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
+
+  // Compliance C2: the patient's open orders are read from here on; one
+  // row whichever answer follows.
+  await logPhiAccess({
+    user: user, action: 'view', resource: 'order_list', route: '/api/orders/[orderId]/bundlable-siblings',
+    orderId, patientId: anchor.patient_id, headers: request.headers ?? null,
+  })
 
   const anchorBundlable =
     anchor.status === 'AWAITING_PAYMENT' &&

@@ -104,16 +104,20 @@ interface Props {
   initialOrders:   PipelineOrder[]
   clinicOptions:   FilterOption[]
   pharmacyOptions: FilterOption[]
+  /** ?order=<id> (a Slack alert's "Open in ops" link): open that order's drawer. */
+  initialOrderId?: string | null
 }
 
 // ── Component ─────────────────────────────────────────────────
 
-export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions }: Props) {
+export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions, initialOrderId = null }: Props) {
   const supabase = createBrowserClient()
 
   const [filters,         setFilters]        = useState<Filters>(EMPTY_FILTERS)
   const [selectedGroup,   setSelectedGroup]  = useState<string | null>(null)
-  const [selectedOrder,   setSelectedOrder]  = useState<PipelineOrder | null>(null)
+  const [selectedOrder,   setSelectedOrder]  = useState<PipelineOrder | null>(
+    () => (initialOrderId ? initialOrders.find(o => o.orderId === initialOrderId) ?? null : null),
+  )
   const [selectedIds,     setSelectedIds]    = useState<Set<string>>(new Set())
   const [bulkLoading,     setBulkLoading]    = useState(false)
   const [actionError,     setActionError]    = useState<string | null>(null)
