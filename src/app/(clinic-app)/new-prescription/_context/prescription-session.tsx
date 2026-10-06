@@ -91,6 +91,11 @@ export interface SessionPrescription {
   // protocol line whose titration is written only in its directions is
   // sized for that schedule (lib/orders/legacy-titration). Optional.
   sizingNote?: string | null
+  // The line may not cover its course: the dose could not be measured for
+  // its duration (one package was assumed), or even the most packages one
+  // line may carry fall short. Shown on the Review card as a warning, so
+  // a line is never silently undersized. Optional.
+  sizingWarning?: string | null
   // WO-96: per-Rx detail fields (days supply, dispense, refills,
   // substitution, syringe kit, shipping, clinical difference, diagnosis,
   // special instructions) and the rules that govern them (controlled →

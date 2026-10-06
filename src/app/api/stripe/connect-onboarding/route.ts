@@ -10,7 +10,9 @@
 //
 // HC-02/PF-01: EXPRESS account type ONLY. Platform never handles KYC.
 //
-// Auth: Requires active Clinic App session (clinic_id in JWT).
+// Auth: a verified clinic user (getUser(), clinic_id in JWT) whose role is
+// clinic_admin. The payout account is the clinic's: a provider or medical
+// assistant gets 403 and nothing is created at Stripe.
 //
 // Response: { url: string }  — redirect the browser to this URL.
 
@@ -22,14 +24,23 @@ import { serverEnv } from '@/lib/env'
 
 export async function POST(_request: NextRequest): Promise<NextResponse> {
   // Auth gate
+  // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  const { data: { user }, error: authError } = await supabaseAuth.auth.getUser()
+  if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
+  // Only the clinic admin may start or resume onboarding.
+  if (user.user_metadata?.['app_role'] !== 'clinic_admin') {
+    return NextResponse.json(
+      { error: 'Only the clinic admin can set up the payout account.' },
+      { status: 403 },
+    )
+  }
+
+  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
+    ? user.user_metadata['clinic_id'] as string
     : null
 
   if (!clinicId) {
