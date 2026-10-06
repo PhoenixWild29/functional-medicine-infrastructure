@@ -70,6 +70,8 @@ import {
   suggestPackageForDispense,
   dispenseInPackageUnit,
   packageUnitMismatchMessage,
+  formatDispense,
+  formatPackageCount,
   type PackageOption,
   type MissingRxDetail,
   type RxDetails,
@@ -231,6 +233,8 @@ function derivedForLine(
   rx: SessionPrescription,
   inputs: RxFormulationDefaults['dispenseInputs'] | undefined,
 ): (DerivedDispense & { sizingNote?: string }) | null {
+  // (DerivedDispense.sizingWarning travels with the result: a dose that
+  // cannot be measured for the line's duration.)
   if (!inputs) return null
   if (rx.sigMode === 'titration' && rx.titrationSteps && rx.titrationSteps.length > 0) {
     const t = computeTitrationDispense(rx.titrationSteps, inputs)
@@ -404,6 +408,16 @@ export function BatchReviewForm({ isProvider }: Props) {
         { concentrationValue: inputs?.concentrationValue ?? null, concentrationUnit: inputs?.concentrationUnit ?? null },
       )
       if (!s || s.reason === 'default') return
+      // Even the most packages one line may carry fall short: priced as
+      // that many, and the line says it does not cover the course.
+      const capWarning = s.reason === 'capped'
+        ? {
+            sizingWarning:
+              `${formatPackageCount(s.package.label, s.count)} is the most one line can carry and does not cover the ` +
+              `${formatDispense(dispense.quantity, dispense.unit) ?? 'amount'} needed` +
+              `${dispense.daysSupply ? ` for ${dispense.daysSupply} days` : ''}. Shorten the duration or split the course.`,
+          }
+        : {}
       if (s.reason === 'unconvertible') {
         updatePrescription(rx.id, { packageUnitMismatch: packageUnitMismatchMessage(s.package, dispense.unit) })
         return
@@ -444,6 +458,7 @@ export function BatchReviewForm({ isProvider }: Props) {
           packageCount:    s.count,
           quantityLabel:   s.package.label,
           ...inPackageUnit,
+          ...capWarning,
           wholesaleCents,
           retailCents,
           repriceRequired: false,
@@ -458,6 +473,7 @@ export function BatchReviewForm({ isProvider }: Props) {
         packageCount:         s.count,
         quantityLabel:        s.package.label,
         ...inPackageUnit,
+        ...capWarning,
         wholesaleCents,
         repriceRequired:      true,
         sourceRetailCents:    rx.retailCents,
@@ -517,7 +533,7 @@ export function BatchReviewForm({ isProvider }: Props) {
             rxRules:     rulesFromFormulation(entry.defaults, entry.deaSchedule ?? rx.deaSchedule),
             deaSchedule: entry.deaSchedule ?? rx.deaSchedule,
             // The titration a protocol sig's quantity was sized for, on screen.
-            ...(derivedUsed ? { sizingNote: derived.sizingNote ?? null } : {}),
+            ...(derivedUsed ? { sizingNote: derived.sizingNote ?? null, sizingWarning: derived.sizingWarning ?? null } : {}),
           })
           // #181: a line with no package chosen (it skipped the price step)
           // is sized here the way the price step sizes it — never priced
@@ -882,6 +898,13 @@ export function BatchReviewForm({ isProvider }: Props) {
                   {rx.sizingNote && (
                     <p className="mt-1 text-xs text-amber-800" data-testid={`sizing-note-${rx.id}`}>
                       {rx.sizingNote}
+                    </p>
+                  )}
+                  {/* The quantity may not cover the course: said on the line,
+                      never a silent undersize. */}
+                  {rx.sizingWarning && (
+                    <p role="alert" className="mt-1 text-xs font-medium text-red-700" data-testid={`sizing-warning-${rx.id}`}>
+                      {rx.sizingWarning}
                     </p>
                   )}
                   {/* WO-106: what the refill decided for the provider. The

@@ -170,12 +170,17 @@ jobs:
   # + API-level (PR #16/#17), ops reroute DB-truth assertion (PR #19).
   # Supabase Auth rate limits bumped to 300 req/5min for sign-ins and
   # token refresh so the suite doesn't throttle itself in the 30-default
-  # free-tier cap. Last verification dispatch: 65 passed / 0 failed /
-  # 5 skipped in 2.1 min.
+  # free-tier cap. (That dispatch, 2026-04: 65 passed / 0 failed /
+  # 5 skipped in 2.1 min, on a much smaller suite.)
+  #
+  # 2026-10: the suite has grown, and full E2E jobs now take 10-15 min
+  # (#196 10 min, #194 11 min, #197 15 min); a 15-min cap cut #195 off.
+  # 30 min leaves headroom without letting a hung run hold the shared
+  # E2E project (runs are serialized below) for long.
   e2e:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # upper bound; typical run is 2–3 min on the current suite
+    timeout-minutes: 30  # full jobs take 10-15 min as of 2026-10; see the note above
     needs: [test, build]
     # Serialize E2E across ALL branches/PRs: the job seeds and cleans one
     # shared E2E Supabase project, so concurrent runs corrupt each other's

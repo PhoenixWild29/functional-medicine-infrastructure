@@ -219,7 +219,14 @@ export const DOSES_PER_DAY: Record<string, number | null> = {
   TID: 3,
   QID: 4,
   QHS: 1,
+  // Morning / evening once daily. Protocol items and favorites store QAM
+  // (the favorites migration maps it to QD; protocol items keep it), and
+  // until this was listed a QAM line could not be counted: BHRT DHEA kept
+  // its stored "90 caps" for an 84-day protocol (prod).
+  QAM: 1,
+  QPM: 1,
   QW:  1 / 7,
+  BIW: 2 / 7,
   Q2W: 1 / 14,
   QOD: 1 / 2,
   MF:  5 / 7,
@@ -315,6 +322,13 @@ export interface DerivedDispense {
   daysSupply:       number | null
   dispenseQuantity: number
   dispenseUnit:     string
+  /**
+   * Set when a duration is known but the dose cannot be measured for it
+   * (a "click", a unit the formulation gives no way to convert), so the
+   * line falls back to one package that may not cover the course. Shown
+   * on the line; never a silent undersize.
+   */
+  sizingWarning?:   string
 }
 
 /**
@@ -328,6 +342,17 @@ export interface DerivedDispense {
  * (WO-105), which sums it per step; standard and cycling lines reach it
  * through computeDispense exactly as before.
  */
+/**
+ * A topical cream, gel, ointment or lotion: measured in grams, applied by
+ * the mL. For these, 1 mL is taken as 1 g (the density of a cream base is
+ * close to 1 g/mL). The catalog carries no density for a formulation, so
+ * there is nothing that can say otherwise yet; a Topical Solution is
+ * measured in mL already and is not included.
+ */
+export function isTopicalCreamOrGel(dosageFormName: string | null | undefined): boolean {
+  return /\b(cream|gel|ointment|lotion)\b/i.test(dosageFormName ?? '')
+}
+
 export function perDoseInDispenseUnit(input: DispenseInput, qty: ParsedQuantity): number | null {
   const dose = typeof input.doseAmount === 'number' ? input.doseAmount : parseFloat(String(input.doseAmount ?? ''))
   if (!isFinite(dose) || dose <= 0) return null
@@ -335,8 +360,10 @@ export function perDoseInDispenseUnit(input: DispenseInput, qty: ParsedQuantity)
   const conc = input.concentrationValue ?? null
   const concIsMgPerMl = (input.concentrationUnit ?? '').toLowerCase() === 'mg/ml'
 
+  const topical = isTopicalCreamOrGel(input.dosageFormName)
   if (qty.unit === 'mL') {
     if (unit === 'ml') return dose
+    if (unit === 'g' && topical) return dose            // a cream in an mL pump: 1 g = 1 mL
     if (unit === 'units') return dose / 100            // U-100 insulin syringe: 100 units = 1 mL
     if (unit === 'mg' && conc && concIsMgPerMl) return dose / conc
     if (unit === 'mcg' && conc && concIsMgPerMl) return dose / 1000 / conc
@@ -373,6 +400,10 @@ export function perDoseInDispenseUnit(input: DispenseInput, qty: ParsedQuantity)
   if (qty.unit === 'g') {
     if (unit === 'g') return dose
     if (unit === 'mg' && conc && /mg\/g/i.test(input.concentrationUnit ?? '')) return dose / conc
+    // Creams and gels: 1 mL = 1 g (prod, BHRT Biest 0.5 mL nightly was
+    // sized as one 30 g jar because mL could not be expressed in g).
+    if (unit === 'ml' && topical) return dose
+    if (unit === 'mg' && conc && concIsMgPerMl && topical) return dose / conc
     return null
   }
   return null
@@ -491,11 +522,21 @@ export function computeDispense(input: DispenseInput): DerivedDispense | null {
     }
     // Duration known but the dose can't be converted (PRN, clicks, …):
     // the days supply is still the duration; dispense is the package.
-    return {
+    const fallback: DerivedDispense = {
       daysSupply:       duration,
       dispenseQuantity: qty ? round2(qty.value) : 1,
       dispenseUnit:     qty ? qty.unit : unit,
     }
+    // A scheduled dose that cannot be measured: say so on the line. (As
+    // needed has no amount to cover, so it is not flagged.)
+    if (doses != null && (perDose == null || perDose <= 0)) {
+      const doseText = [input.doseAmount, input.doseUnit].filter(v => v != null && String(v).trim()).join(' ')
+      const packageText = formatDispense(fallback.dispenseQuantity, fallback.dispenseUnit) ?? 'one package'
+      fallback.sizingWarning =
+        `Could not work out how much is needed for ${duration} days: the dose${doseText ? ` (${doseText})` : ''} ` +
+        `cannot be measured in ${unit}. It is set to ${packageText}; check that covers the full course before sending.`
+    }
+    return fallback
   }
 
   if (!qty) return null
@@ -645,6 +686,11 @@ export function packageQtyInUnit(
     : parseQuantityLabel(`${pkg.qty} ${token}`, ctx.dosageFormName)
   if (!parsed || parsed.isContainer) return null
   if (parsed.unit === unit) return parsed.value
+  // Creams and gels: a 30 mL pump holds 30 g (see isTopicalCreamOrGel).
+  if (isTopicalCreamOrGel(ctx.dosageFormName)
+    && ((parsed.unit === 'mL' && unit === 'g') || (parsed.unit === 'g' && unit === 'mL'))) {
+    return parsed.value
+  }
   const conc = typeof ctx.concentrationValue === 'number' && ctx.concentrationValue > 0 ? ctx.concentrationValue : null
   const mgPerMl = conc != null && (ctx.concentrationUnit ?? '').trim().toLowerCase() === 'mg/ml'
   if (!mgPerMl) return null

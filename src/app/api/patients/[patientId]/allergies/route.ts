@@ -205,7 +205,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
   }
 
   // No PHI in the log line: ids only.
-  console.info(`[patients/allergies PATCH] patient=${patientId} clinic=${auth.caller.clinicId} nkda=${validated.value.nkda} entries=${validated.value.allergies.length}`)
+  const entryCount = validated.value.allergies.length
+  console.info(`[patients/allergies PATCH] patient=${patientId} clinic=${auth.caller.clinicId} nkda=${validated.value.nkda} entries=${entryCount}`)
   await logPhiAccess({
     user: auth.caller.user, action: 'update', resource: 'patient_allergies',
     route: '/api/patients/[patientId]/allergies', patientId, headers: request.headers ?? null,

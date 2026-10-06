@@ -314,7 +314,7 @@ export async function sendSms(params: SendSmsParams): Promise<SendSmsResult> {
     // patient first name or checkout token URLs which constitute PHI. Vercel function
     // logs are not BAA-covered storage. Log only non-PHI metadata for debugging.
     console.info(
-      `[sms-sender] TWILIO_ENABLED=false — SMS suppressed | order=${params.orderId} | template=${params.templateName} | to=...${params.toNumber.slice(-4)}`
+      `[sms-sender] TWILIO_ENABLED=false — SMS suppressed | order=${params.orderId} | template=${params.templateName}`
     )
     return { outcome: 'skipped', reason: 'twilio_disabled' }
   }
@@ -323,7 +323,7 @@ export async function sendSms(params: SendSmsParams): Promise<SendSmsResult> {
   const withinLimit = await isWithinRateLimit(params.toNumber)
   if (!withinLimit) {
     console.error(
-      `[sms-sender] rate limit exceeded | order=${params.orderId} | phone=...${params.toNumber.slice(-4)}`
+      `[sms-sender] rate limit exceeded | order=${params.orderId} | template=${params.templateName}`
     )
     return { outcome: 'skipped', reason: 'rate_limit_exceeded' }
   }
@@ -379,9 +379,10 @@ export async function sendSms(params: SendSmsParams): Promise<SendSmsResult> {
 
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err)
+    // C9: Twilio's message can contain the full To number (e.g. 21211);
+    // log its error code only.
     console.error(
-      `[sms-sender] failed after retries | order=${params.orderId} | template=${params.templateName}:`,
-      reason
+      `[sms-sender] failed after retries | order=${params.orderId} | template=${params.templateName} | twilio_code=${(err as { code?: unknown })?.code ?? 'none'}`
     )
 
     // REQ-SPN-010.1: ops alert on exhausted retries

@@ -165,7 +165,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   )
 
   console.info(
-    `[documo-inbound] inbound fax received | fax_id=${internalFaxId} | from=${fax.fromNumber} | status=${newStatus} | matched_pharmacy=${matchedPharmacyId ?? 'none'}`
+    // C9: the sender's number is not logged (it is stored on the fax row).
+    `[documo-inbound] inbound fax received | fax_id=${internalFaxId} | status=${newStatus} | matched_pharmacy=${matchedPharmacyId ?? 'none'}`
   )
 
   // Step 8: Always 200
@@ -206,7 +207,7 @@ async function matchPharmacyByFaxNumber(
   // A failed lookup (or two pharmacies sharing the number) leaves the fax
   // UNMATCHED for manual review, and the alert says the match failed.
   if (error) {
-    console.error(`[documo-inbound] pharmacy match lookup failed for ${normalized}:`, error.message)
+    console.error('[documo-inbound] pharmacy match lookup by sender number failed:', error.message)
     return { pharmacyId: null, lookupFailed: true }
   }
 

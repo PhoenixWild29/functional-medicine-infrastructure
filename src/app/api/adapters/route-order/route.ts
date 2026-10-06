@@ -139,7 +139,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // HC-13: forceOverride is ONLY logged — it does not alter routing logic.
     // Tier changes must be applied to pharmacies.integration_tier directly.
     console.info(
-      `[route-order] ops_override | order=${orderId} | pharmacy=${pharmacyId} | override_tier=${override.tier} | reason=${override.reason}`
+      // C9: the reason is free text typed by ops; log only that one was given.
+      `[route-order] ops_override | order=${orderId} | pharmacy=${pharmacyId} | override_tier=${override.tier} | reason_length=${override.reason.length}`
     )
   }
 

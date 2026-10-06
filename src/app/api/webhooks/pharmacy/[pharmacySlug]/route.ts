@@ -672,8 +672,11 @@ async function handleOrderRejected(
     console.error('[pharmacy-webhook] failed to send rejection alert:', alertErr)
   )
 
+  // C9: the rejection reason is the pharmacy's free text and can name the
+  // patient or the drug. Log the code (or that a reason was given), not the text.
+  const reasonGiven = envelope.data?.rejectionReason ? 'yes' : 'no'
   console.error(
-    `[pharmacy-webhook] order.rejected | order=${order.order_id} | pharmacy=${pharmacySlug} | reason=${envelope.data?.rejectionReason ?? 'unknown'}`
+    `[pharmacy-webhook] order.rejected | order=${order.order_id} | pharmacy=${pharmacySlug} | code=${envelope.data?.rejectionCode ?? 'none'} | reason_given=${reasonGiven}`
   )
   return order.order_id
 }

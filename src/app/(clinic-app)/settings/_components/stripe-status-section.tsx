@@ -14,6 +14,9 @@
 //
 // HC-02/PF-01: Onboarding button calls POST /api/stripe/connect-onboarding
 //   which creates an EXPRESS account (never Standard or Custom).
+//
+// Only the clinic admin sees the onboarding button (the route answers 403
+// to anyone else). Other clinic users see the status and who can act.
 
 import { useState } from 'react'
 import type { StripeConnectStatusEnum } from '@/types/database.types'
@@ -21,9 +24,10 @@ import type { StripeConnectStatusEnum } from '@/types/database.types'
 interface Props {
   stripeConnectStatus: StripeConnectStatusEnum
   stripeAccountId: string | null
+  isClinicAdmin: boolean
 }
 
-export function StripeStatusSection({ stripeConnectStatus, stripeAccountId }: Props) {
+export function StripeStatusSection({ stripeConnectStatus, stripeAccountId, isClinicAdmin }: Props) {
   const [isLoading, setIsLoading] = useState(false)
   const [error,     setError]     = useState<string | null>(null)
 
@@ -44,10 +48,11 @@ export function StripeStatusSection({ stripeConnectStatus, stripeAccountId }: Pr
     }
   }
 
-  const showOnboardingButton =
+  const onboardingOpen =
     stripeConnectStatus === 'PENDING' ||
     stripeConnectStatus === 'ONBOARDING' ||
     stripeConnectStatus === 'RESTRICTED'
+  const showOnboardingButton = onboardingOpen && isClinicAdmin
 
   return (
     <section className="rounded-lg border border-border bg-card p-6 space-y-4">
@@ -114,6 +119,12 @@ export function StripeStatusSection({ stripeConnectStatus, stripeAccountId }: Pr
         <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
           {error}
         </div>
+      )}
+
+      {onboardingOpen && !isClinicAdmin && (
+        <p className="text-xs text-muted-foreground" data-testid="stripe-onboarding-admin-only">
+          Only the clinic admin can set up the payout account.
+        </p>
       )}
 
       {/* Onboarding CTA */}

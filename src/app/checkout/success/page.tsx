@@ -285,7 +285,7 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
         )}
 
         <p className="text-center text-xs text-muted-foreground/60">
-          A receipt has been emailed to you. You&rsquo;ll receive additional updates as your prescription moves through our pharmacy network.
+          Payment received. You&rsquo;ll get a text confirming your payment and when your order ships. You&rsquo;ll receive additional updates as your prescription moves through our pharmacy network.
         </p>
       </div>
     </main>
@@ -416,7 +416,7 @@ function GroupBundleSuccessState({
         )}
 
         <p className="text-center text-xs text-muted-foreground/60">
-          A receipt has been emailed to you. You&rsquo;ll receive additional updates as each prescription moves through our pharmacy network.
+          Payment received. You&rsquo;ll get a text confirming your payment and when your order ships. You&rsquo;ll receive additional updates as each prescription moves through our pharmacy network.
         </p>
       </div>
     </main>

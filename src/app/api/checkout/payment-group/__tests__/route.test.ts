@@ -476,13 +476,20 @@ describe('POST /api/checkout/payment-group — happy path', () => {
       expect.objectContaining({
         amount: 30000,
         application_fee_amount: 18100,
-        metadata: expect.objectContaining({
-          payment_group_id: 'group-uuid-new',
-          order_count: '2',
-        }),
       }),
-      expect.objectContaining({ idempotencyKey: 'checkout-group-pi-v1-group-uuid-new' }),
+      expect.objectContaining({ idempotencyKey: 'checkout-group-pi-v2-group-uuid-new' }),
     )
+
+    // C7 (no PHI to Stripe): only opaque ids in metadata (order_count used
+    // to ride along) and a neutral description (used to say "prescription").
+    const createArgs = stripeCreatePiMock.mock.calls[0]![0] as Record<string, unknown>
+    expect(Object.keys(createArgs).sort()).toEqual([
+      'amount', 'application_fee_amount', 'automatic_payment_methods',
+      'currency', 'description', 'metadata', 'transfer_data',
+    ])
+    expect(createArgs['description']).toBe('CompoundIQ order bundle (2 items)')
+    expect(Object.keys(createArgs['metadata'] as object).sort()).toEqual(['clinic_id', 'payment_group_id', 'platform'])
+    expect(createArgs['metadata']).toEqual(expect.objectContaining({ payment_group_id: 'group-uuid-new', platform: '8090ai' }))
   })
 })
 

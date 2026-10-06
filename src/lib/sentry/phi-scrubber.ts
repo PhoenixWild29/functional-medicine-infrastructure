@@ -1,4 +1,4 @@
-import type { ErrorEvent, EventHint } from '@sentry/nextjs'
+import type { Breadcrumb, ErrorEvent, EventHint } from '@sentry/nextjs'
 
 // PHI scrubbing patterns for Sentry beforeSend hook.
 //
@@ -72,10 +72,33 @@ const ALWAYS_REDACT_KEYS = new Set([
   'Authorization', 'authorization', 'Cookie', 'cookie', 'set-cookie',
 ])
 
+// Compliance C9: patient fields are redacted by KEY wherever they appear
+// (extra, contexts, tags, breadcrumb data, stack-frame variables). A
+// pattern cannot recognise a name or a street address; the key can.
+// Keys are compared lowercased with '_' and '-' removed, so first_name,
+// firstName and first-name all match. 'name' alone is NOT listed: SDK
+// contexts use it for the OS, runtime and browser.
+const PHI_KEYS = new Set([
+  'firstname', 'lastname', 'fullname', 'middlename',
+  'patientname', 'patientfirstname', 'patientlastname',
+  'dateofbirth', 'dob', 'patientdateofbirth', 'birthdate',
+  'email', 'patientemail', 'receiptemail', 'emailaddress',
+  'phone', 'phonenumber', 'patientphone', 'mobile', 'tonumber', 'fromnumber',
+  'address', 'addressline1', 'addressline2', 'patientaddressline1', 'patientaddressline2',
+  'street', 'city', 'zip', 'zipcode', 'postalcode', 'patientcity', 'patientzip',
+  'allergies', 'patientallergies',
+  'sig', 'sigtext', 'diagnosiscode', 'diagnosistext', 'specialinstructions',
+  'medicationname', 'ssn',
+  // Raw bodies can carry any of the above.
+  'body', 'requestbody', 'responsebody', 'rawbody', 'payload',
+])
+
+const normalizeKey = (key: string) => key.toLowerCase().replace(/[_-]/g, '')
+
 function scrubObject(obj: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {}
   for (const [key, val] of Object.entries(obj)) {
-    if (ALWAYS_REDACT_KEYS.has(key)) {
+    if (ALWAYS_REDACT_KEYS.has(key) || PHI_KEYS.has(normalizeKey(key))) {
       result[key] = SCRUBBED
     } else {
       result[key] = scrubValue(val)
@@ -90,16 +113,56 @@ const DROPPED_EXTRA_KEYS = new Set([
   'twilioBody', 'pharmacyApiResponse', 'pharmacyWebhookPayload',
 ])
 
+/** Drops the query string and fragment: they can carry search terms, names, emails. */
+function stripQuery(url: string): string {
+  return url.split('#')[0]!.split('?')[0]!
+}
+
+/**
+ * Sentry beforeBreadcrumb (Compliance C9). Runs as each breadcrumb is
+ * recorded, so PHI never sits in the SDK's buffer:
+ *   - console: the logged arguments are dropped (the message is kept,
+ *     scrubbed); a log line that printed a patient object never leaves;
+ *   - fetch / xhr: request and response bodies dropped, URL query removed;
+ *   - navigation: from / to query removed;
+ *   - everything else: data scrubbed by key and pattern.
+ */
+export function phiBeforeBreadcrumb(crumb: Breadcrumb): Breadcrumb | null {
+  const out: Breadcrumb = { ...crumb }
+  if (out.message !== undefined) out.message = scrubString(out.message)
+  if (out.data) {
+    const data: Record<string, unknown> = { ...(out.data as Record<string, unknown>) }
+    delete data['arguments']
+    delete data['request_body']
+    delete data['response_body']
+    for (const k of ['url', 'from', 'to']) {
+      if (typeof data[k] === 'string') data[k] = stripQuery(data[k] as string)
+    }
+    out.data = scrubObject(data) as typeof out.data
+  }
+  return out
+}
+
 export function phiBeforeSend(event: ErrorEvent, _hint: EventHint): ErrorEvent | null {
-  // Scrub breadcrumbs
+  // Scrub breadcrumbs (the same rules as beforeBreadcrumb, in case one was
+  // recorded before the hook was installed).
   // NOTE: Event.breadcrumbs is Breadcrumb[] (a plain array in v8+),
   // not the v7 shape { values?: Breadcrumb[] }. Access directly, not via .values.
   if (event.breadcrumbs) {
-    event.breadcrumbs = event.breadcrumbs.map((crumb) => ({
-      ...crumb,
-      ...(crumb.message !== undefined ? { message: scrubString(crumb.message) } : {}),
-      ...(crumb.data !== undefined ? { data: scrubObject(crumb.data as Record<string, unknown>) as typeof crumb.data } : {}),
-    }))
+    event.breadcrumbs = event.breadcrumbs
+      .map(phiBeforeBreadcrumb)
+      .filter((crumb): crumb is Breadcrumb => crumb !== null)
+  }
+
+  if (event.message !== undefined) event.message = scrubString(event.message)
+  if (event.logentry?.message !== undefined) {
+    event.logentry = { ...event.logentry, message: scrubString(event.logentry.message) }
+  }
+  if (event.contexts) {
+    event.contexts = scrubObject(event.contexts as Record<string, unknown>) as typeof event.contexts
+  }
+  if (event.tags) {
+    event.tags = scrubObject(event.tags as Record<string, unknown>) as typeof event.tags
   }
 
   // Scrub exception values and stack frame variable snapshots
@@ -145,8 +208,9 @@ export function phiBeforeSend(event: ErrorEvent, _hint: EventHint): ErrorEvent |
     if (event.request.headers) {
       event.request.headers = scrubObject(event.request.headers as Record<string, unknown>) as typeof event.request.headers
     }
-    // Never send request body — may contain PHI
+    // Never send request body or cookies — may contain PHI / session
     delete event.request.data
+    delete event.request.cookies
   }
 
   // Scrub user context — retain only non-PHI operational fields.
