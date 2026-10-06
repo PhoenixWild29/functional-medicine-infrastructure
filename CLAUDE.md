@@ -34,6 +34,10 @@ The template includes the verify-before-report guardrail that dropped R7's 28% f
 Do NOT re-derive the prompt structure from scratch each round. The compounding payoff of the template is multi-hour savings per cycle in audit + triage work avoided. Filed under WO-95.
 
 <!-- VERCEL BEST PRACTICES START -->
+## Environment variables
+
+- `PHARMACY_SUBMISSIONS_ENABLED`: kill switch for every pharmacy submission (API, portal, fax); OFF unless exactly `true`, and only the owner turns it on in production (see `src/lib/adapters/submission-switch.ts`).
+
 ## Best practices for developing on Vercel
 
 These defaults are optimized for AI coding agents (and humans) working on apps that deploy to Vercel.

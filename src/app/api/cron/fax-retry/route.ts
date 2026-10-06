@@ -26,6 +26,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { submitTier4Fax } from '@/lib/adapters/tier4-fax'
+import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 
 // Retry delays per attempt (after fax attempt N fails, wait this long)
 const RETRY_DELAY_MS: Record<number, number> = {
@@ -38,6 +39,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Kill switch: no fax retries while pharmacy submissions are off. The
+  // adapter would refuse anyway; skipping here avoids an error per order.
+  if (!pharmacySubmissionsEnabled()) {
+    console.info('[fax-retry] pharmacy submissions are turned off; no retries this run')
+    return NextResponse.json({ status: 'ok', submissions_enabled: false, total: 0 }, { status: 200 })
   }
 
   const supabase = createServiceClient()

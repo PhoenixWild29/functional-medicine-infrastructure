@@ -60,6 +60,10 @@ export const serverEnv = {
   retryMaxAttempts: () => parseInt(requireEnv('RETRY_MAX_ATTEMPTS'), 10),
   circuitBreakerThreshold: () => parseFloat(requireEnv('CIRCUIT_BREAKER_THRESHOLD')),
   playwrightHeadless: () => requireEnv('PLAYWRIGHT_HEADLESS') === 'true',
+
+  // Kill switch: nothing is sent to a pharmacy (API, portal or fax) unless
+  // this is exactly "true". Unset means OFF. See lib/adapters/submission-switch.
+  pharmacySubmissionsEnabled: () => process.env['PHARMACY_SUBMISSIONS_ENABLED'] === 'true',
 } as const
 
 // ------------------------------------------------------------
