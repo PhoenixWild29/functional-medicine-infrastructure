@@ -62,21 +62,27 @@ interface Props {
    * which is how a one-off becomes a multiple when it should be one.
    */
   preselectOrderId?: string | null
+  /** ?order= named an order this clinic does not have: say so, select nothing. */
+  preselectMissing?: boolean
 }
 
 type RefillLine = Omit<SessionPrescription, 'id'> & { refillOfOrderId: string }
 
-export function RefillPicker({ patients, provider, preselectOrderId = null }: Props) {
+export function RefillPicker({ patients, provider, preselectOrderId = null, preselectMissing = false }: Props) {
   const router = useRouter()
   const session = usePrescriptionSession()
 
+  // Prod, 5 Oct: a row's Refill left "Select a patient…" whenever the
+  // order could not be ticked (no refills left). The patient is always
+  // selected; the prescription is ticked only when it can be refilled.
   const preselected = preselectOrderId
-    ? patients.find(p => p.orders.some(o => o.orderId === preselectOrderId && o.refillable)) ?? null
+    ? patients.find(p => p.orders.some(o => o.orderId === preselectOrderId)) ?? null
     : null
+  const preselectedRefillable = !!preselected?.orders.some(o => o.orderId === preselectOrderId && o.refillable)
 
   const [patientId, setPatientId] = useState<string | null>(preselected?.patient.patient_id ?? null)
   const [selected, setSelected] = useState<Set<string>>(
-    preselected && preselectOrderId ? new Set([preselectOrderId]) : new Set(),
+    preselectedRefillable && preselectOrderId ? new Set([preselectOrderId]) : new Set(),
   )
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -179,6 +185,11 @@ export function RefillPicker({ patients, provider, preselectOrderId = null }: Pr
 
   return (
     <div className="mt-6 space-y-5">
+      {preselectMissing && (
+        <p role="status" data-testid="refill-preselect-missing" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          The prescription in that link could not be found for this clinic. Choose a patient below.
+        </p>
+      )}
       {/* ── Patients with prior orders ─────────────────────── */}
       <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
         <label htmlFor="refill-patient" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

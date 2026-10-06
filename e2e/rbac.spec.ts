@@ -91,7 +91,7 @@ test.describe('RBAC — Cross-Clinic Data Isolation', () => {
     await page.getByLabel('Email').fill(CLINIC_B_USER.email)
     await page.getByLabel('Password').fill(CLINIC_B_USER.password)
     await page.getByRole('button', { name: /Sign in/i }).click()
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    await expect(page).toHaveURL(/\/practice$/, { timeout: 15_000 })
 
     // Navigate to dashboard/orders — Clinic B user should not see Clinic A order
     await page.goto('/dashboard')

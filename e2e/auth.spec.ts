@@ -22,13 +22,59 @@ test.describe('Auth — Login and Role-Aware Redirect', () => {
     await expect(page).toHaveURL(/\/ops\/pipeline/, { timeout: 15_000 })
   })
 
-  test('clinic_admin login redirects to /dashboard', async ({ page }) => {
+  // The clinic admin lands on the Practice dashboard (this test used to
+  // assert /dashboard, the old landing). Providers still land on /dashboard.
+  test('clinic_admin login lands on the Practice dashboard', async ({ page }) => {
     await page.goto('/login')
     await page.getByLabel('Email').fill(TEST_USERS.clinicAdmin.email)
     await page.getByLabel('Password').fill(TEST_USERS.clinicAdmin.password)
     await page.getByRole('button', { name: /Sign in/i }).click()
 
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    await expect(page).toHaveURL(/\/practice$/, { timeout: 15_000 })
+    await expect(page.getByRole('heading', { name: 'Practice Dashboard' })).toBeVisible({ timeout: 15_000 })
+  })
+
+  test('provider login lands on /dashboard', async ({ page }) => {
+    await page.goto('/login')
+    await page.getByLabel('Email').fill(TEST_USERS.provider.email)
+    await page.getByLabel('Password').fill(TEST_USERS.provider.password)
+    await page.getByRole('button', { name: /Sign in/i }).click()
+
+    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 })
+  })
+
+  test('"/" sends a signed-in clinic_admin to Practice, and the sidebar Dashboard link still opens /dashboard', async ({ page }) => {
+    await page.goto('/login')
+    await page.getByLabel('Email').fill(TEST_USERS.clinicAdmin.email)
+    await page.getByLabel('Password').fill(TEST_USERS.clinicAdmin.password)
+    await page.getByRole('button', { name: /Sign in/i }).click()
+    await expect(page).toHaveURL(/\/practice$/, { timeout: 15_000 })
+
+    await page.goto('/')
+    await expect(page).toHaveURL(/\/practice$/, { timeout: 15_000 })
+
+    await page.getByRole('link', { name: 'Dashboard', exact: true }).first().click()
+    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 })
+  })
+
+  test('"/" sends a signed-in provider to /dashboard', async ({ page }) => {
+    await page.goto('/login')
+    await page.getByLabel('Email').fill(TEST_USERS.provider.email)
+    await page.getByLabel('Password').fill(TEST_USERS.provider.password)
+    await page.getByRole('button', { name: /Sign in/i }).click()
+    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 })
+
+    await page.goto('/')
+    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 })
+  })
+
+  test('?redirectTo=/dashboard wins over the clinic_admin default', async ({ page }) => {
+    await page.goto('/login?redirectTo=/dashboard')
+    await page.getByLabel('Email').fill(TEST_USERS.clinicAdmin.email)
+    await page.getByLabel('Password').fill(TEST_USERS.clinicAdmin.password)
+    await page.getByRole('button', { name: /Sign in/i }).click()
+
+    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 })
   })
 
   test('login with wrong password shows error — no redirect', async ({ page }) => {
@@ -61,8 +107,8 @@ test.describe('Auth — Login and Role-Aware Redirect', () => {
     await page.getByLabel('Password').fill(TEST_USERS.clinicAdmin.password)
     await page.getByRole('button', { name: /Sign in/i }).click()
 
-    // Should NOT follow absolute URL — expect either /dashboard or /ops/pipeline
-    await expect(page).toHaveURL(/\/(dashboard|ops)/, { timeout: 15_000 })
+    // Should NOT follow absolute URL: falls back to the clinic_admin landing
+    await expect(page).toHaveURL(/\/practice$/, { timeout: 15_000 })
     await expect(page).not.toHaveURL(/evil\.example\.com/)
   })
 
@@ -72,7 +118,7 @@ test.describe('Auth — Login and Role-Aware Redirect', () => {
     await page.getByLabel('Password').fill(TEST_USERS.clinicAdmin.password)
     await page.getByRole('button', { name: /Sign in/i }).click()
 
-    await expect(page).toHaveURL(/\/(dashboard|ops)/, { timeout: 15_000 })
+    await expect(page).toHaveURL(/\/practice$/, { timeout: 15_000 })
     await expect(page).not.toHaveURL(/evil\.example\.com/)
   })
 })
@@ -84,7 +130,7 @@ test.describe('Auth — Sign Out', () => {
     await page.getByLabel('Email').fill(TEST_USERS.clinicAdmin.email)
     await page.getByLabel('Password').fill(TEST_USERS.clinicAdmin.password)
     await page.getByRole('button', { name: /Sign in/i }).click()
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    await expect(page).toHaveURL(/\/practice$/, { timeout: 15_000 })
 
     // Sign out
     await page.getByRole('button', { name: /Sign out/i }).click()
@@ -120,7 +166,7 @@ test.describe('Auth — RBAC Route Protection', () => {
     await page.getByLabel('Email').fill(TEST_USERS.clinicAdmin.email)
     await page.getByLabel('Password').fill(TEST_USERS.clinicAdmin.password)
     await page.getByRole('button', { name: /Sign in/i }).click()
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    await expect(page).toHaveURL(/\/practice$/, { timeout: 15_000 })
 
     // Attempt to access ops route
     await page.goto('/ops/pipeline')
@@ -179,7 +225,8 @@ test.describe('Auth — HIPAA Idle Timeout', () => {
     await page.getByLabel('Email').fill(TEST_USERS.clinicAdmin.email)
     await page.getByLabel('Password').fill(TEST_USERS.clinicAdmin.password)
     await page.getByRole('button', { name: /Sign in/i }).click()
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    await expect(page).toHaveURL(/\/practice$/, { timeout: 15_000 })
+    await page.goto('/dashboard')
 
     // Sentinel is always rendered by HipaaTimeout (hidden when no warning,
     // promoted to the dialog element when the 28-min timer fires). Its

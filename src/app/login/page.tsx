@@ -12,6 +12,7 @@
 import { useState, FormEvent, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
+import { postLoginDestination } from '@/lib/auth/landing-route'
 
 const AUTH_CALLBACK_ERROR_MESSAGES: Record<string, string> = {
   auth_callback_failed: 'Email verification failed. Please try signing in again.',
@@ -46,7 +47,7 @@ function LoginForm() {
       password,
     })
 
-    if (authError || !data.session) {
+    if (authError || !data.session || !data.user) {
       setError('Invalid email or password. Please try again.')
       setLoading(false)
       return
@@ -56,21 +57,13 @@ function LoginForm() {
     // before the protected Server Component renders on the redirect target.
     router.refresh()
 
-    // Role-aware redirect: honour ?redirectTo first, then fall back by role.
-    // NB-1 (cowork): exclude protocol-relative URLs (//evil.com) in addition to
-    // absolute URLs — startsWith('/') alone allows //foo which some browsers treat
-    // as an external redirect.
-    if (redirectTo && redirectTo.startsWith('/') && !redirectTo.startsWith('//')) {
-      router.push(redirectTo)
-      return
-    }
-
-    const appRole = data.session.user.user_metadata['app_role'] as string | undefined
-    if (appRole === 'ops_admin') {
-      router.push('/ops/pipeline')
-    } else {
-      router.push('/dashboard')
-    }
+    // Role-aware redirect: honour ?redirectTo first, then fall back by role
+    // (the clinic admin lands on Practice). NB-1 (cowork): absolute and
+    // protocol-relative targets (//evil.com) are ignored; see landing-route.ts.
+    // The role comes from the user the auth server just returned for this
+    // sign-in, not from a decoded session cookie.
+    const appRole = data.user.user_metadata['app_role'] as string | undefined
+    router.push(postLoginDestination(appRole, redirectTo))
   }
 
   return (
