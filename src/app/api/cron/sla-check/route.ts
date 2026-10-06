@@ -38,6 +38,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition } from '@/lib/orders/cas-transition'
 import { submitTier4Fax } from '@/lib/adapters/tier4-fax'
+import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { upsertFaxDeliverySla } from '@/lib/sla/creator'
 import { routeSlaAlert } from '@/lib/slack/alert-router'
 import { sendReminder24hSms, sendReminder48hSms } from '@/lib/sms/triggers'
@@ -142,6 +143,14 @@ async function attemptCascadeToFax(
   orderId:  string,
   slaType:  string
 ): Promise<boolean> {
+  // Kill switch: with pharmacy submissions off the fax cannot be sent, so do
+  // not move the order to FAX_QUEUED (it would be stranded there). The
+  // breach escalates as an uncascaded one.
+  if (!pharmacySubmissionsEnabled()) {
+    console.info(`[sla-check] cascade skipped: pharmacy submissions are turned off | order=${orderId}`)
+    return false
+  }
+
   const supabase = createServiceClient()
 
   // Step 1: Verify order is still in SUBMISSION_PENDING

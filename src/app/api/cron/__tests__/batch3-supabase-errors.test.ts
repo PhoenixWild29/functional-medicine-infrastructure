@@ -52,6 +52,11 @@ import { GET as slaCheck } from '../sla-check/route'
 import { GET as slaRefire } from '../sla-refire/route'
 import { GET as reconciliation } from '../submission-reconciliation/route'
 
+// Pharmacy submissions ON: the sla-check cascade only runs with the switch
+// on (the kill switch is covered in submission-kill-switch.test.ts).
+beforeAll(() => { process.env['PHARMACY_SUBMISSIONS_ENABLED'] = 'true' })
+afterAll(() => { delete process.env['PHARMACY_SUBMISSIONS_ENABLED'] })
+
 jest.spyOn(console, 'error').mockImplementation(() => {})
 jest.spyOn(console, 'info').mockImplementation(() => {})
 jest.spyOn(console, 'warn').mockImplementation(() => {})

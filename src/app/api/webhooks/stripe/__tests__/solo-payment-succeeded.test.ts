@@ -11,7 +11,8 @@
  *   - stripe.transfers.create is never called on solo success
  *   - charge.transfer (Stripe's destination transfer) → orders.stripe_transfer_id
  *   - no transfer on the charge (POC placeholder) → column untouched, info log
- *   - a charge-retrieve failure does not block fulfilment (branchByTier)
+ *   - a charge-retrieve failure does not block fulfilment (the order is
+ *     still handed to the routing engine for submission)
  */
 
 import type { NextRequest } from 'next/server'
@@ -31,8 +32,10 @@ const errorSpy              = jest.spyOn(console, 'error').mockImplementation(()
 const warnSpy               = jest.spyOn(console, 'warn').mockImplementation(() => {})
 const infoSpy               = jest.spyOn(console, 'info').mockImplementation(() => {})
 
+// Pharmacy submissions ON: these tests describe the switch on (the kill
+// switch is covered in auto-submit.test.ts and submission-kill-switch.test.ts).
 jest.mock('@/lib/env', () => ({
-  serverEnv: { stripeWebhookSecret: () => 'whsec_test' },
+  serverEnv: { stripeWebhookSecret: () => 'whsec_test', pharmacySubmissionsEnabled: () => true },
 }))
 
 jest.mock('@/lib/stripe/client', () => ({
@@ -46,6 +49,28 @@ jest.mock('@/lib/stripe/client', () => ({
 jest.mock('@/lib/orders/cas-transition', () => ({
   casTransition: (args: unknown) => casTransitionMock(args),
 }))
+
+// The routing engine runs after the response (next/server after()); the
+// queue holds that work until the test flushes it.
+let afterQueue: Array<() => unknown> = []
+jest.mock('next/server', () => ({
+  ...jest.requireActual('next/server'),
+  after: (task: unknown) => { afterQueue.push(typeof task === 'function' ? task as () => unknown : () => task) },
+}))
+async function flushAfter() { while (afterQueue.length > 0) await afterQueue.shift()!() }
+
+const routeOrderMock = jest.fn()
+jest.mock('@/lib/adapters/routing-engine', () => ({
+  routeOrder: (p: unknown) => routeOrderMock(p),
+}))
+
+/** Fulfilment: the paid order was handed to the routing engine. */
+async function expectSubmitted() {
+  await flushAfter()
+  expect(routeOrderMock).toHaveBeenCalledWith(
+    expect.objectContaining({ orderId: 'o-1', pharmacyId: 'pharm-1', currentStatus: 'PAID_PROCESSING' }),
+  )
+}
 
 jest.mock('@/lib/slack/client', () => ({
   sendSlackAlert: (args: unknown) => sendSlackAlertMock(args),
@@ -110,6 +135,8 @@ async function deliver(pi: Record<string, unknown>) {
 // ── Setup ──────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  afterQueue = []
+  routeOrderMock.mockReset().mockResolvedValue({ outcome: 'accepted', tier: 'TIER_4_FAX' })
   constructEventMock.mockReset()
   transfersCreateMock.mockReset().mockResolvedValue({ id: 'tr_should_not_exist' })
   chargesRetrieveMock.mockReset().mockResolvedValue({ id: 'ch_solo_1', transfer: 'tr_dest_1' })
@@ -148,9 +175,7 @@ describe('stripe webhook — solo payment_intent.succeeded (destination charge)'
 
     expect(chargesRetrieveMock).toHaveBeenCalledWith('ch_solo_1')
     expect(orderUpdateMock).toHaveBeenCalledWith({ stripe_transfer_id: 'tr_dest_1' }, 'order_id', 'o-1')
-    expect(casTransitionMock).toHaveBeenCalledWith(
-      expect.objectContaining({ orderId: 'o-1', expectedStatus: 'PAID_PROCESSING', newStatus: 'FAX_QUEUED' }),
-    )
+    await expectSubmitted()
   })
 
   it('reads the transfer from an already-expanded latest_charge without a retrieve', async () => {
@@ -170,7 +195,7 @@ describe('stripe webhook — solo payment_intent.succeeded (destination charge)'
     expect(transfersCreateMock).not.toHaveBeenCalled()
     expect(errorSpy).not.toHaveBeenCalled()
     expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('has no destination transfer'))
-    expect(casTransitionMock).toHaveBeenCalledWith(expect.objectContaining({ newStatus: 'FAX_QUEUED' }))
+    await expectSubmitted()
   })
 
   it('does not block fulfilment when the charge lookup fails', async () => {
@@ -181,7 +206,7 @@ describe('stripe webhook — solo payment_intent.succeeded (destination charge)'
     expect(res.status).toBe(200)
     expect(orderUpdateMock).not.toHaveBeenCalled()
     expect(transfersCreateMock).not.toHaveBeenCalled()
-    expect(casTransitionMock).toHaveBeenCalledWith(expect.objectContaining({ newStatus: 'FAX_QUEUED' }))
+    await expectSubmitted()
   })
 
   it('skips transfer bookkeeping entirely on an already-transitioned redelivery', async () => {

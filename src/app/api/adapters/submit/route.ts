@@ -35,6 +35,7 @@ import { submitTier1Api } from '@/lib/adapters/tier1-api'
 import { submitTier2Portal } from '@/lib/adapters/tier2-portal'
 import { submitTier4Fax } from '@/lib/adapters/tier4-fax'
 import type { IntegrationTier } from '@/lib/adapters/audit-trail'
+import { isPharmacySubmissionsDisabledError, PHARMACY_SUBMISSIONS_OFF_MESSAGE } from '@/lib/adapters/submission-switch'
 
 // ============================================================
 // ROUTE HANDLER
@@ -123,6 +124,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         )
     }
   } catch (err) {
+    if (isPharmacySubmissionsDisabledError(err)) {
+      console.info(`[adapter-submit] refused: pharmacy submissions are turned off | order=${orderId}`)
+      return NextResponse.json({ error: PHARMACY_SUBMISSIONS_OFF_MESSAGE }, { status: 423 })
+    }
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[adapter-submit] unhandled error | order=${orderId} | tier=${tier}:`, msg)
     // NB-07: return generic message — raw error may contain internal config details

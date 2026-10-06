@@ -27,6 +27,7 @@
 // routing engine's (WO-23) responsibility. This adapter only manages
 // the adapter_submissions audit trail and returns the outcome.
 
+import { assertPharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getVaultSecret, buildAuthHeaders } from '@/lib/adapters/vault'
 import { getTransformer, rxDetailPayloadFields, patientAllergyPayloadFields, type OrderPayload } from '@/lib/adapters/transformers'
@@ -136,6 +137,9 @@ export async function submitTier1Api(
   // be recorded with their actual tier in adapter_submissions.
   tier: IntegrationTier = 'TIER_1_API'
 ): Promise<Tier1SubmitResult> {
+  // Kill switch: refuse before reading anything (lib/adapters/submission-switch).
+  assertPharmacySubmissionsEnabled('Tier 1 API submission')
+
   const supabase = createServiceClient()
 
   // ── 1. Load pharmacy_api_configs ──────────────────────────
