@@ -152,7 +152,10 @@ function installHappyFixtures() {
     error: null,
   })
   fixtures['pharmacy_state_licenses:maybeSingle'] = () => ({
-    data: { pharmacy_id: TEST_PHARMACY_ID },
+    data: {
+      pharmacy_id: TEST_PHARMACY_ID, state_code: 'CA', expiration_date: '2099-12-31',
+      is_active: true, deleted_at: null, sterile_compounding: true,
+    },
     error: null,
   })
   fixtures['providers:maybeSingle'] = () => ({
@@ -297,5 +300,46 @@ describe('POST /api/orders — a pharmacy that is no longer active', () => {
       error: 'Test Pharmacy Tier1 is no longer active. Choose another pharmacy for this prescription.',
     })
     expect(queryCalls.some(c => c.table === 'orders')).toBe(false)
+  })
+})
+
+// ── C5: expiry and sterile scope at draft creation ──────────────
+describe('POST /api/orders — C5 license expiry and sterile scope', () => {
+  const license = (over: Record<string, unknown>) => () => ({
+    data: {
+      pharmacy_id: TEST_PHARMACY_ID, state_code: 'CA', expiration_date: '2099-12-31',
+      is_active: true, deleted_at: null, sterile_compounding: true, ...over,
+    },
+    error: null,
+  })
+
+  it('rejects a pharmacy whose license in the state has expired', async () => {
+    fixtures['pharmacy_state_licenses:maybeSingle'] = license({ expiration_date: '2026-01-31' })
+
+    const res = await POST(makeRequest(defaultBody()))
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe("Portal Plus Pharmacy's license in CA expired on 2026-01-31.")
+  })
+
+  it('rejects a sterile product when the license does not cover sterile compounding', async () => {
+    fixtures['catalog:maybeSingle'] = () => ({
+      data: { item_id: TEST_CATALOG_ID, medication_name: 'Semaglutide 5mg/mL', form: 'Injectable Solution', dose: '0.25mg', wholesale_price: 95, dea_schedule: null },
+      error: null,
+    })
+    fixtures['pharmacy_state_licenses:maybeSingle'] = license({ sterile_compounding: false })
+
+    const res = await POST(makeRequest(defaultBody()))
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('sterile compounding')
+  })
+
+  it('a non-sterile product is not blocked by the sterile scope', async () => {
+    fixtures['pharmacy_state_licenses:maybeSingle'] = license({ sterile_compounding: false })
+
+    const res = await POST(makeRequest(defaultBody()))
+
+    expect(res.status).not.toBe(400)
   })
 })

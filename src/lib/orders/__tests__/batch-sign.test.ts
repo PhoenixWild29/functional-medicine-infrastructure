@@ -82,12 +82,14 @@ function world(orders: Array<Record<string, unknown>>) {
       { pharmacy_id: 'ph-fax', name: 'Fax Rx', integration_tier: 'TIER_4_FAX', is_active: true, pharmacy_status: 'ACTIVE', deleted_at: null },
     ],
     pharmacy_state_licenses: [
-      { pharmacy_id: 'ph-strive', state_code: 'TX', is_active: true },
-      { pharmacy_id: 'ph-fax', state_code: 'TX', is_active: true },
+      { pharmacy_id: 'ph-strive', state_code: 'TX', is_active: true, deleted_at: null, expiration_date: '2099-12-31', sterile_compounding: true },
+      { pharmacy_id: 'ph-fax', state_code: 'TX', is_active: true, deleted_at: null, expiration_date: '2099-12-31', sterile_compounding: true },
     ],
     catalog: [],
     formulations: [
       { formulation_id: 'f-plain', requires_clinical_difference: false },
+      // C5: a sterile product (dosage_forms.is_sterile).
+      { formulation_id: 'f-inj', requires_clinical_difference: false, dosage_forms: { is_sterile: true } },
       { formulation_id: 'f-glp1', requires_clinical_difference: true },
       { formulation_id: 'f-testo', requires_clinical_difference: false },
     ],
@@ -527,5 +529,68 @@ describe('the shipping address is frozen at signing', () => {
     if (res.ok) throw new Error('unreachable')
     expect(res.error).toMatch(/shipping address could not be recorded.*Nothing was signed/)
     expect(signingUpdates(db)).toHaveLength(0)
+  })
+})
+
+// ── C5: pharmacy licensure at signing ─────────────────────────
+//
+// The license must be unexpired in the order's shipping state, and a
+// sterile product needs a license that covers sterile compounding (or a
+// 503B outsourcing facility). Before: is_active only, so an expired
+// license signed, and sterile scope was never looked at.
+
+describe('C5 licensure at signing', () => {
+  const licenseProblems = async (db: ReturnType<typeof fakeDb>, orderIds: string[]) =>
+    (await checkBatch(db.client, { clinicId: CLINIC, userId: USER_CHEN, orderIds, atSigning: false }))
+      .problems.filter(p => p.code === 'license')
+
+  const strive = (db: ReturnType<typeof fakeDb>) =>
+    db.tables['pharmacy_state_licenses']!.find(l => l['pharmacy_id'] === 'ph-strive')!
+
+  it('an expired license in the shipping state blocks the line, with its expiry date', async () => {
+    const db = world([draft(1)])
+    strive(db)['expiration_date'] = '2026-01-31'
+
+    expect(await licenseProblems(db, [id(1)])).toEqual([
+      expect.objectContaining({ orderId: id(1), message: expect.stringContaining('expired on 2026-01-31') }),
+    ])
+  })
+
+  it('a soft-deleted license does not count', async () => {
+    const db = world([draft(1)])
+    strive(db)['deleted_at'] = '2026-09-01T00:00:00Z'
+
+    expect(await licenseProblems(db, [id(1)])).toHaveLength(1)
+  })
+
+  it('a sterile product with a license that does not cover sterile compounding is blocked', async () => {
+    const db = world([draft(1, { formulation_id: 'f-inj' })])
+    strive(db)['sterile_compounding'] = false
+
+    expect(await licenseProblems(db, [id(1)])).toEqual([
+      expect.objectContaining({ orderId: id(1), message: expect.stringContaining('sterile compounding') }),
+    ])
+  })
+
+  it('a sterile product whose sterile scope was never recorded is blocked (fail closed)', async () => {
+    const db = world([draft(1, { formulation_id: 'f-inj' })])
+    strive(db)['sterile_compounding'] = null
+
+    expect(await licenseProblems(db, [id(1)])).toHaveLength(1)
+  })
+
+  it('a sterile product at a 503B outsourcing facility licensed in the state signs', async () => {
+    const db = world([draft(1, { formulation_id: 'f-inj' })])
+    strive(db)['sterile_compounding'] = null
+    db.tables['pharmacies']!.find(p => p['pharmacy_id'] === 'ph-strive')!['facility_type'] = '503B'
+
+    expect(await licenseProblems(db, [id(1)])).toEqual([])
+  })
+
+  it('a non-sterile product ignores the sterile scope', async () => {
+    const db = world([draft(1)])
+    strive(db)['sterile_compounding'] = false
+
+    expect(await licenseProblems(db, [id(1)])).toEqual([])
   })
 })
