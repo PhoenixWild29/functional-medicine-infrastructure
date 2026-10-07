@@ -346,7 +346,7 @@ export async function checkBatch(
         add(null, cp.code, cp.message)
         continue
       }
-      for (const r of mine.filter(o => (o.shipping_state_snapshot ?? '').toUpperCase() === cp.state)) {
+      for (const r of mine.filter(o => (o.shipping_state_snapshot ?? '').trim().toUpperCase() === cp.state)) {
         add(r, cp.code, `${medicationNameOf(r)}: ${cp.message}`)
       }
     }
