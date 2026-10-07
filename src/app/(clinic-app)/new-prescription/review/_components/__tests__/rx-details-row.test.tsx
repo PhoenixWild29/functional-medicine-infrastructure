@@ -197,29 +197,21 @@ describe('Rx details row — BPC-157 (no rule applies)', () => {
   })
 })
 
-describe('Rx details row — Testosterone Cypionate (controlled → diagnosis)', () => {
-  it('auto-expands with the diagnosis field focused and blocks sending until a diagnosis is entered', async () => {
+// Compliance C6: a controlled line can no longer be sent once a diagnosis
+// is entered. It is blocked as a controlled substance whatever is filled in.
+describe('Rx details row: Testosterone Cypionate (controlled)', () => {
+  it('is blocked as a controlled substance, and entering a diagnosis does not unblock it', async () => {
     seedSession([TESTOSTERONE])
     renderReview()
 
-    const row = await screen.findByTestId('rx-details-line-test')
-    expect(row).toHaveAttribute('data-expanded', 'true')
-    const dxCode = within(row).getByLabelText(/Diagnosis code \(required\)/)
-    await waitFor(() => expect(dxCode).toHaveFocus())
-    expect(within(row).getByRole('alert')).toHaveTextContent(/A diagnosis is required for a controlled substance/)
-
-    // Send is blocked with a reason that names the line and the field.
+    expect(await screen.findByTestId('controlled-line-test')).toHaveTextContent('Controlled substance: prescribe through your EPCS system')
     const send = screen.getByRole('button', { name: /Sign & Send/ })
     expect(send).toBeDisabled()
-    expect(screen.getByText(/Testosterone Cypionate 200mg\/mL Injectable needs a diagnosis \(controlled substance\)/)).toBeInTheDocument()
 
-    fireEvent.change(dxCode, { target: { value: 'E29.1' } })
-
-    // The rule is satisfied; only the signature remains.
-    await waitFor(() => {
-      expect(screen.getByText(/Sign in the signature box above to enable sending/)).toBeInTheDocument()
-    })
-    expect(within(row).queryByRole('alert')).not.toBeInTheDocument()
+    const row = rowFor('line-test')
+    fireEvent.change(within(row).getByLabelText(/Diagnosis code/), { target: { value: 'E29.1' } })
+    await waitFor(() => expect(screen.getByText(/Edit the flagged prescriptions above to enable sending/)).toBeInTheDocument())
+    expect(send).toBeDisabled()
   })
 })
 
@@ -294,15 +286,17 @@ describe('Rx details row — lines without rules resolve from /api/formulations'
 
 describe('Save as Draft (non-provider) carries rxDetails', () => {
   it('posts the per-line details and blocks while a rule-required field is empty', async () => {
-    seedSession([TESTOSTERONE, BPC157])
+    seedSession([SEMAGLUTIDE, BPC157])
     renderReview(false)
 
     const draftButton = await screen.findByRole('button', { name: /Save as Draft/ })
-    expect(draftButton).toBeDisabled()
-    expect(screen.getByText(/Complete Rx details to enable saving drafts: Testosterone Cypionate 200mg\/mL Injectable needs a diagnosis/)).toBeInTheDocument()
+    const row = rowFor('line-sema')
+    const select = within(row).getByLabelText(/Clinical difference \(required\)/)
+    fireEvent.change(select, { target: { value: '' } })
+    await waitFor(() => expect(draftButton).toBeDisabled())
+    expect(screen.getByText(/Complete Rx details to enable saving drafts: Semaglutide 5mg\/mL Injectable needs a clinical difference statement/)).toBeInTheDocument()
 
-    const row = rowFor('line-test')
-    fireEvent.change(within(row).getByLabelText(/Diagnosis code/), { target: { value: 'E29.1' } })
+    fireEvent.change(select, { target: { value: STANDARD_CLINICAL_DIFFERENCE_OPTIONS[1] } })
     fireEvent.change(within(row).getByLabelText('Refills'), { target: { value: '2' } })
     await waitFor(() => expect(draftButton).toBeEnabled())
 
@@ -311,13 +305,13 @@ describe('Save as Draft (non-provider) carries rxDetails', () => {
 
     await waitFor(() => expect(nonShippingCalls()).toHaveLength(2))
     const bodies = nonShippingCalls().map(c => JSON.parse((c[1] as RequestInit).body as string))
-    const testBody = bodies.find(b => b.formulationId === 'formulation-test')
-    expect(testBody.rxDetails).toEqual(expect.objectContaining({
+    const semaBody = bodies.find(b => b.formulationId === 'formulation-sema')
+    expect(semaBody.rxDetails).toEqual(expect.objectContaining({
       refills: 2,
       substitutionAllowed: true,
-      syringeOption: 'im_kit',
-      shippingType: 'standard',
-      diagnosisCode: 'E29.1',
+      syringeOption: 'sc_kit',
+      shippingType: 'cold_chain',
+      clinicalDifference: STANDARD_CLINICAL_DIFFERENCE_OPTIONS[1],
     }))
     const bpcBody = bodies.find(b => b.formulationId === 'formulation-bpc')
     expect(bpcBody.rxDetails).toEqual(expect.objectContaining({

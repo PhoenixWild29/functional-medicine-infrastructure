@@ -162,6 +162,33 @@ const SECOND_LICENSED_ITEM = item({
   },
 })
 
+// Compliance C6: Testosterone Cypionate is DEA Schedule III. /api/protocols
+// returns each item's schedule; a controlled item is labelled and never
+// loaded, and the load says so.
+const CONTROLLED_ITEM = item({
+  item_id: 'item-testo',
+  formulation_id: 'formulation-testo',
+  pharmacy_id: 'pharmacy-strive',
+  wholesale_price: 60,
+  pharmacy_licensed: true,
+  dea_schedule: 3,
+  sig_text: 'Inject 0.5 mL intramuscularly once weekly.',
+  formulations: {
+    formulation_id: 'formulation-testo',
+    name: 'Testosterone Cypionate 200mg/mL',
+    concentration: '200mg/mL',
+    dosage_forms: { name: 'Injectable Solution' },
+  },
+  pharmacies: {
+    pharmacy_id: 'pharmacy-strive',
+    name: 'Strive Pharmacy',
+    slug: 'strive',
+    integration_tier: 'TIER_4_FAX',
+  },
+})
+
+const CONTROLLED_LABEL = 'Controlled substance: prescribe through your EPCS system'
+
 let protocolItems: unknown[] = []
 
 function jsonResponse(body: unknown) {
@@ -410,5 +437,44 @@ describe('session backward compatibility', () => {
     // Missing `notices` normalises to an empty list rather than crashing.
     expect(screen.getByTestId('notice-count')).toHaveTextContent('0')
     expect(screen.getByTestId('rx-protocol-ids')).toHaveTextContent('none')
+  })
+})
+
+describe('protocol quick-load — controlled substances (compliance C6)', () => {
+  it('labels the controlled item in the protocol', async () => {
+    protocolItems = [LICENSED_ITEM, CONTROLLED_ITEM]
+    seedSession('TX')
+    renderPanel()
+
+    await openProtocol()
+    expect(screen.getByTestId('protocol-item-controlled-item-testo')).toHaveTextContent(CONTROLLED_LABEL)
+  })
+
+  it('loads the other lines and shows the controlled line as excluded, with the reason', async () => {
+    protocolItems = [LICENSED_ITEM, CONTROLLED_ITEM]
+    seedSession('TX')
+    renderPanel()
+
+    fireEvent.click(await openProtocol())
+
+    await waitFor(() => expect(screen.getByTestId('rx-count')).toHaveTextContent('1'))
+    expect(screen.getByTestId('rx-names')).not.toHaveTextContent('Testosterone')
+    expect(mockPush).toHaveBeenCalledWith('/new-prescription/review')
+    // No silent drop: the excluded line is reported with its reason.
+    expect(screen.getByTestId('notice-count')).toHaveTextContent('1')
+    const notice = await screen.findByText(/Testosterone Cypionate 200mg\/mL: Controlled substance/)
+    expect(notice.closest('[role="status"]') ?? notice).toHaveTextContent(CONTROLLED_LABEL)
+  })
+
+  it('a protocol of only controlled lines loads nothing and says why', async () => {
+    protocolItems = [CONTROLLED_ITEM]
+    seedSession('TX')
+    renderPanel()
+
+    fireEvent.click(await openProtocol())
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(CONTROLLED_LABEL)
+    expect(screen.getByTestId('rx-count')).toHaveTextContent('0')
+    expect(mockPush).not.toHaveBeenCalled()
   })
 })

@@ -28,6 +28,7 @@
 // the adapter_submissions audit trail and returns the outcome.
 
 import { assertPharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
+import { assertOrderNotControlled } from '@/lib/orders/controlled-substance'
 import { createServiceClient } from '@/lib/supabase/service'
 import { shippingAddressFor, type OrderShippingAddressColumns } from '@/lib/adapters/shipping-address'
 import { getVaultSecret, buildAuthHeaders } from '@/lib/adapters/vault'
@@ -140,6 +141,8 @@ export async function submitTier1Api(
 ): Promise<Tier1SubmitResult> {
   // Kill switch: refuse before reading anything (lib/adapters/submission-switch).
   assertPharmacySubmissionsEnabled('Tier 1 API submission')
+  // Compliance C6: never a controlled substance (defence in depth beside routeOrder).
+  await assertOrderNotControlled(createServiceClient(), orderId)
 
   const supabase = createServiceClient()
 

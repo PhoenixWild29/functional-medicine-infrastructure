@@ -10,8 +10,8 @@
  *
  * A check that fails or could not run blocks Sign & Send for the whole
  * batch and the reason names the line. What a check FINDS never blocks.
- * One pad, one Sign & Send; a controlled line asks for the code once and
- * Cancel sends nothing.
+ * One pad, one Sign & Send; a controlled line (compliance C6) blocks it and
+ * nothing is sent.
  */
 
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
@@ -281,30 +281,20 @@ describe('batch sign page — selection, shipping, and what each line keeps', ()
   })
 })
 
+// Compliance C6: a controlled line is never signed through CompoundIQ.
+// Before, the page asked for the authenticator code once and signed it.
 describe('batch sign page — controlled substances', () => {
   const controlledCheck = { lines: [{ orderId: 'o-1', controlled: false }, { orderId: 'o-2', controlled: true }] }
 
-  it('the code is asked once for the batch; Cancel signs nothing', async () => {
+  it('names the controlled line with the label, blocks Sign & Send, and offers no authenticator gate', async () => {
     mockFetch({ check: controlledCheck })
     renderForm([patient([line(1), line(2, { deaSchedule: 3 })])], ['o-1', 'o-2'])
-    expect(await screen.findByTestId('batch-epcs-banner')).toHaveTextContent('Testosterone Cypionate 200mg/mL')
+    expect(await screen.findByTestId('batch-controlled-banner')).toHaveTextContent('Controlled substance: prescribe through your EPCS system')
+    expect(screen.getByTestId('batch-controlled-banner')).toHaveTextContent('Testosterone Cypionate 200mg/mL')
     await signPad()
-    await waitFor(() => expect(sendButton()).toBeEnabled(), { timeout: 5000 })
-    fireEvent.click(sendButton())
-    expect(screen.getAllByTestId('epcs-gate')).toHaveLength(1)
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel stub' }))
+    await waitFor(() => expect(screen.getByTestId('send-blocked-reason')).toHaveTextContent('Controlled substance: prescribe through your EPCS system'))
+    expect(sendButton()).toBeDisabled()
     expect(screen.queryByTestId('epcs-gate')).not.toBeInTheDocument()
     expect(calls.some(c => c.url === '/api/orders/batch-sign')).toBe(false)
-  })
-
-  it('the verified code travels with the signing request', async () => {
-    mockFetch({ check: controlledCheck })
-    renderForm([patient([line(1), line(2, { deaSchedule: 3 })])], ['o-1', 'o-2'])
-    await signPad()
-    await waitFor(() => expect(sendButton()).toBeEnabled(), { timeout: 5000 })
-    fireEvent.click(sendButton())
-    fireEvent.click(screen.getByRole('button', { name: 'Verify stub' }))
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/dashboard?sent=2'))
-    expect(calls.find(c => c.url === '/api/orders/batch-sign')!.body).toMatchObject({ orderIds: ['o-1', 'o-2'], totpCode: '123456' })
   })
 })

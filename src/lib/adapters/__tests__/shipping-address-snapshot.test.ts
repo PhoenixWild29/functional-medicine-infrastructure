@@ -96,7 +96,7 @@ const BEFORE_SNAPSHOTS = {
 
 const ORDER = {
   order_id: 'o-1', order_number: 'CMP-1', status: 'PAID_PROCESSING',
-  pharmacy_id: 'ph-1', clinic_id: 'c-1', provider_id: 'pr-1', patient_id: 'pt-1',
+  pharmacy_id: 'ph-1', clinic_id: 'c-1', provider_id: 'pr-1', patient_id: 'pt-1', formulation_id: 'f-sema', catalog_item_id: null,
   medication_snapshot: { medication_name: 'Semaglutide' }, provider_npi_snapshot: '1234567890',
   quantity: 1, sig_text: 'Inject weekly', fax_attempt_count: 0, created_at: '2026-10-01T00:00:00Z', locked_at: '2026-10-06T15:00:00Z',
 }
@@ -109,6 +109,8 @@ function world(order: Record<string, unknown>, tier: string): Script {
       case 'providers': return { data: { first_name: 'Sarah', last_name: 'Chen', npi_number: '1234567890', dea_number: null, license_state: 'TX' } }
       case 'patients':  return { data: PATIENT }
       case 'clinics':   return { data: { name: 'Sunrise Functional Medicine' } }
+      // Compliance C6: each adapter checks the catalog; Semaglutide is not controlled.
+      case 'formulations': return { data: { formulation_id: 'f-sema', salt_forms: { ingredients: { dea_schedule: null } }, formulation_ingredients: [] } }
       case 'pharmacies': return { data: { integration_tier: tier, name: 'Acme', slug: 'acme', fax_number: '+15125550100' } }
       case 'pharmacy_api_configs':
         return { data: { config_id: 'cfg-1', base_url: 'https://pharm.test', vault_secret_id: 'v-1', endpoints: null, auth_type: 'api_key', payload_transformer: null, response_parser: null, rate_limit_rpm: null, rate_limit_concurrent: null, timeout_ms: 1000 } }

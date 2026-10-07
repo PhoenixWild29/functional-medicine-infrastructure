@@ -62,7 +62,7 @@ beforeEach(() => {
 
 const ORDER = {
   order_id: 'o-1', order_number: 'CMP-1', status: 'PAID_PROCESSING',
-  pharmacy_id: 'ph-1', clinic_id: 'c-1', provider_id: 'pr-1', patient_id: 'pt-1',
+  pharmacy_id: 'ph-1', clinic_id: 'c-1', provider_id: 'pr-1', patient_id: 'pt-1', formulation_id: 'f-sema', catalog_item_id: null,
   medication_snapshot: { medication_name: 'Semaglutide' }, provider_npi_snapshot: '1234567890',
   quantity: 1, sig_text: 'Inject weekly', fax_attempt_count: 0, created_at: '2026-10-01T00:00:00Z',
 }
@@ -79,6 +79,8 @@ function healthy(override: Script): Script {
       case 'providers': return { data: PROVIDER }
       case 'patients':  return { data: PATIENT }
       case 'clinics':   return { data: { name: 'Sunrise Functional Medicine' } }
+      // Compliance C6: submission checks the catalog; Semaglutide is not controlled.
+      case 'formulations': return { data: { formulation_id: 'f-sema', salt_forms: { ingredients: { dea_schedule: null } }, formulation_ingredients: [] } }
       case 'pharmacies':
         return { data: { integration_tier: 'TIER_1_API', name: 'Acme', slug: 'acme', fax_number: '+15125550100' } }
       case 'pharmacy_api_configs':
@@ -126,7 +128,9 @@ describe('Tier 1 API adapter', () => {
       return undefined
     }))
     await expect(submitTier1Api('o-1', 'ph-1')).rejects.toThrow(/rate limit could not be checked: connection reset/)
-    expect(db.to('orders')).toHaveLength(0)
+    // Only the controlled-substance check (compliance C6) reads the order
+    // before the rate limit; the order's data is not loaded.
+    expect(db.to('orders')).toHaveLength(1)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 

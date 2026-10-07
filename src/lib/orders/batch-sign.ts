@@ -43,6 +43,7 @@
 // FINDS — recorded allergies, a known interaction — is the provider's
 // information on screen and never blocks.
 
+import { FORMULATION_SCHEDULE_SELECT, controlledRefusal, isControlledSchedule, scheduleFromFormulationRow } from './controlled-substance'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/types/database.types'
 import {
@@ -76,7 +77,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export type BatchProblemCode =
   // the line cannot be sent as it stands
   | 'not_found' | 'not_draft' | 'not_signer'
-  | 'license' | 'pharmacy' | 'npi' | 'stripe' | 'dea_fax'
+  | 'license' | 'pharmacy' | 'npi' | 'stripe' | 'controlled_substance' | 'controlled_unknown'
   | 'rx_details' | 'reprice' | 'below_cost'
   // a check that could not run
   | 'orders_unavailable' | 'provider_unavailable' | 'provider_unlinked'
@@ -93,7 +94,7 @@ export interface BatchProblem {
 
 const UNAVAILABLE: ReadonlySet<BatchProblemCode> = new Set([
   'orders_unavailable', 'provider_unavailable', 'compliance_unavailable', 'rules_unavailable',
-  'price_unavailable', 'allergy_unavailable', 'interactions_unavailable',
+  'price_unavailable', 'allergy_unavailable', 'interactions_unavailable', 'controlled_unknown',
 ])
 
 /** One HTTP status for a set of problems: could-not-run beats everything. */
@@ -279,7 +280,7 @@ export async function checkBatch(
       ? supabase.from('catalog').select('item_id, dea_schedule').in('item_id', catalogIds)
       : Promise.resolve({ data: [], error: null }),
     formIds.length
-      ? supabase.from('formulations').select('formulation_id, requires_clinical_difference').in('formulation_id', formIds)
+      ? supabase.from('formulations').select(`formulation_id, requires_clinical_difference, ${FORMULATION_SCHEDULE_SELECT}`).in('formulation_id', formIds)
       : Promise.resolve({ data: [], error: null }),
   ])
 
@@ -310,6 +311,12 @@ export async function checkBatch(
   const licensed   = new Set((licenseRes.data ?? []).map(l => `${l.pharmacy_id}:${l.state_code}`))
   const catalogDea = new Map((catalogRes.data ?? []).map(c => [c.item_id, c.dea_schedule as number | null]))
   const rules      = new Map((rulesRes.data ?? []).map(f => [f.formulation_id, f.requires_clinical_difference === true]))
+  // Compliance C6: each formulation's schedule from its ingredients
+  // (salt form and combination), not the order's snapshot.
+  const formulationDea = new Map((rulesRes.data ?? []).map(f => [
+    f.formulation_id,
+    scheduleFromFormulationRow(f as unknown as Parameters<typeof scheduleFromFormulationRow>[0]),
+  ]))
 
   const lines: BatchLine[] = []
   const priceable: OrderRow[] = []
@@ -328,21 +335,38 @@ export async function checkBatch(
         : `${name}: ${pharmacyInactiveMessage(pharmacy?.name)}`)
     }
 
-    // DEA: the catalog when this is a catalog line and it could be read,
-    // else the snapshot taken at creation. Unknown is never "0".
+    // Compliance C6: a controlled substance is never signed through
+    // CompoundIQ (certified EPCS is required). The catalog decides (the
+    // legacy catalog item, or the formulation's ingredients); a snapshot
+    // can only add to it, since it recorded plain Testosterone Cypionate as
+    // 0. A schedule that could not be read is refused, never assumed 0.
     const snapSchedule = snap(r)['dea_schedule']
     const fromSnapshot = typeof snapSchedule === 'number' ? snapSchedule : null
-    const catalogUnreadable = !!r.catalog_item_id && !!catalogRes.error
-    const deaSchedule = catalogUnreadable
-      ? null
-      : (r.catalog_item_id ? (catalogDea.get(r.catalog_item_id) ?? fromSnapshot) : fromSnapshot)
-    const deaUnknown = deaSchedule == null
-    const controlled = deaUnknown || (deaSchedule as number) >= 2
-    const isFax = pharmacy?.integration_tier === 'TIER_4_FAX'
-    if (controlled && !isFax) {
-      add(r, 'dea_fax', deaUnknown
-        ? `${name}: the DEA schedule could not be read, so it must go to a Tier 4 fax pharmacy. Try again, or route it to a fax pharmacy.`
-        : `${name}: DEA Schedule ${deaSchedule} requires a Tier 4 fax pharmacy.`)
+    let fromCatalog: number | null = null
+    let catalogKnown = false
+    let catalogUnreadable = false
+    if (r.catalog_item_id) {
+      catalogUnreadable = !!catalogRes.error
+      if (!catalogUnreadable && catalogDea.has(r.catalog_item_id)) {
+        fromCatalog = catalogDea.get(r.catalog_item_id) ?? null
+        catalogKnown = true
+      }
+    } else if (r.formulation_id) {
+      catalogUnreadable = !!rulesRes.error
+      if (!catalogUnreadable && formulationDea.has(r.formulation_id)) {
+        fromCatalog = formulationDea.get(r.formulation_id) ?? null
+        catalogKnown = true
+      }
+    }
+    const deaSchedule = Math.max(fromCatalog ?? -1, fromSnapshot ?? -1)
+    const controlled = isControlledSchedule(deaSchedule)
+    const deaUnknown = !controlled && (catalogUnreadable || (!catalogKnown && fromSnapshot === null))
+    if (controlled) {
+      add(r, 'controlled_substance', controlledRefusal(name))
+    } else if (deaUnknown && !(r.formulation_id && rulesRes.error)) {
+      // (A failed formulations read is already reported, once, as
+      // rules_unavailable below; it refuses the line just the same.)
+      add(r, 'controlled_unknown', `${name}: whether this is a controlled substance could not be checked, so nothing was signed. Try again.`)
     }
 
     // WO-96 rule-required details.
@@ -365,7 +389,7 @@ export async function checkBatch(
 
     lines.push({
       orderId: r.order_id, patientId: r.patient_id, providerId: r.provider_id, pharmacyId: r.pharmacy_id,
-      medicationName: name, deaSchedule, controlled, integrationTier: pharmacy?.integration_tier ?? null,
+      medicationName: name, deaSchedule: deaSchedule >= 0 ? deaSchedule : null, controlled: controlled || deaUnknown, integrationTier: pharmacy?.integration_tier ?? null,
       shippingState: r.shipping_state_snapshot ?? null,
     })
     if (problems.length === before && r.status === 'DRAFT') priceable.push(r)

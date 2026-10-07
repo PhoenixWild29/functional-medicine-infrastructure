@@ -38,6 +38,7 @@ import {
 import { legacyTitrationFromSig, legacyTitrationDispense } from '@/lib/orders/legacy-titration'
 import { QuickActionsPanel, useClinicFavorites, type Favorite, type RecentItem, type QuickActionsPanelName } from './quick-actions-panel'
 import { SaveFavoriteButton } from './save-favorite-button'
+import { CONTROLLED_LABEL, isControlledSchedule } from '@/lib/orders/controlled-substance'
 import { builderStateFromLine, editTargetToParams, type EditTarget } from '../_lib/edit-target'
 import type { BuilderInitialState } from '@/lib/orders/draft-edit'
 import type { SigTimingAndDuration } from '../_lib/sig-recovery'
@@ -565,7 +566,13 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   // field is not part of one. An invalid titration generates no sig, so
   // the sig-length check alone would already block it; this says why.
   const packageUnconvertible = selectedSuggestion?.reason === 'unconvertible'
+  // Compliance C6: a controlled substance (the ingredient, or any
+  // ingredient of a combination) is never prescribed through CompoundIQ.
+  const controlled =
+    isControlledSchedule(selectedIngredient?.dea_schedule) ||
+    (selectedFormulation?.formulation_ingredients ?? []).some(fi => isControlledSchedule(fi.ingredients?.dea_schedule))
   const canAdd = !!(
+    !controlled &&
     !packageUnconvertible &&
     selectedFormulation &&
     selectedPharmacy &&
@@ -735,9 +742,9 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
                 {ing.therapeutic_category && (
                   <span className="ml-2 text-xs text-muted-foreground">{ing.therapeutic_category}</span>
                 )}
-                {ing.dea_schedule && (
+                {isControlledSchedule(ing.dea_schedule) && (
                   <span className="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">
-                    DEA {ing.dea_schedule}
+                    {CONTROLLED_LABEL}
                   </span>
                 )}
                 {ing.fda_alert_status && (
@@ -761,12 +768,11 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
         </div>
       )}
 
-      {/* DEA Schedule Warning */}
-      {selectedIngredient?.dea_schedule && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
-          <p className="text-xs font-medium text-red-700">
-            DEA Schedule {selectedIngredient.dea_schedule} — Controlled substance. EPCS requirements apply at signing.
-          </p>
+      {/* Compliance C6: controlled substance. Continue stays disabled. */}
+      {controlled && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2" data-testid="controlled-substance-label">
+          <p className="text-xs font-medium text-red-700">{CONTROLLED_LABEL}</p>
+          <p className="mt-0.5 text-xs text-red-700">CompoundIQ cannot sign or send a controlled substance.</p>
         </div>
       )}
 

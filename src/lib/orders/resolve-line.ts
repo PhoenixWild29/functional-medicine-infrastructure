@@ -21,6 +21,7 @@
 // 1) multiplies the package price; it is meaningless without a package.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { controlledRefusal, isControlledSchedule } from './controlled-substance'
 import type { Database, Json } from '@/types/database.types'
 import {
   MAX_PACKAGE_COUNT,
@@ -148,6 +149,10 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
       console.error('[orders] catalog fetch failed:', error?.message)
       return { ok: false, status: 404, error: 'Catalog item not found' }
     }
+    // Compliance C6: a controlled substance cannot be put on a CompoundIQ order.
+    if (isControlledSchedule(data.dea_schedule)) {
+      return { ok: false, status: 422, code: 'CONTROLLED_SUBSTANCE', error: controlledRefusal(data.medication_name) }
+    }
     medicationItem = data
   } else {
     // V3.0 hierarchical catalog — formulations + pharmacy_formulations
@@ -155,7 +160,7 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
     const [formResult, priceResult] = await Promise.all([
       supabase
         .from('formulations')
-        .select('formulation_id, name, concentration, concentration_value, concentration_unit, dosage_forms(name)')
+        .select('formulation_id, name, concentration, concentration_value, concentration_unit, dosage_forms(name), salt_forms(ingredients(dea_schedule))')
         .eq('formulation_id', formulationId)
         .eq('is_active', true)
         .is('deleted_at', null)
@@ -201,12 +206,20 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
       }
     }
 
-    let deaSchedule: number | null = null
+    // Compliance C6: a single-ingredient formulation reaches its ingredient
+    // through salt_forms, a combination through formulation_ingredients.
+    // Reading only the second recorded plain Testosterone Cypionate as 0.
+    const saltForm = (formResult.data as { salt_forms?: { ingredients?: { dea_schedule: number | null } | null } | null }).salt_forms
+    let deaSchedule: number | null = saltForm?.ingredients?.dea_schedule ?? null
     for (const row of ingredientRows ?? []) {
       const ing = row.ingredients as { dea_schedule: number | null } | null
       if (ing?.dea_schedule != null && (deaSchedule == null || ing.dea_schedule > deaSchedule)) {
         deaSchedule = ing.dea_schedule
       }
+    }
+    // A controlled substance cannot be put on a CompoundIQ order.
+    if (isControlledSchedule(deaSchedule)) {
+      return { ok: false, status: 422, code: 'CONTROLLED_SUBSTANCE', error: controlledRefusal(formResult.data.name) }
     }
 
     // WO-101: price from the chosen package when one is named.
