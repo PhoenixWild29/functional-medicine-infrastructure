@@ -1106,7 +1106,7 @@ export function BatchReviewForm({ isProvider }: Props) {
           <span className="text-sm font-semibold text-foreground" data-testid="review-subtotal">{toCurrency(totalRetailCents)}</span>
         </div>
         {/* WO-102: shipping per pharmacy — once per pharmacy, not per Rx */}
-        <ShippingLines shipping={bundle.shipping} absorbShipping={bundle.absorbShipping} rates={bundle.rates} unpriced={bundle.unpriced} />
+        <ShippingLines shipping={bundle.shipping} absorbShipping={bundle.absorbShipping} rates={bundle.rates} unpriced={bundle.unpriced} pending={bundle.pending} />
         <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
           <span>Platform fee (15% of margin, not charged on shipping)</span>
           <span data-testid="review-platform-fee">{toCurrency(totalPlatformFeeCents)}</span>
