@@ -672,6 +672,17 @@ describe('prescriber verification', () => {
     expect(check.problems.filter(p => String(p.code).startsWith('prescriber_'))).toEqual([])
   })
 
+  it('a blank shipping state does not skip the license check: 403, the line is named, nothing is signed', async () => {
+    for (const blank of [null, '', '  ']) {
+      const db = world([draft(1), draft(2, { shipping_state_snapshot: blank })])
+      const res = await sign(db, [id(1), id(2)])
+      expect(res).toMatchObject({ ok: false, status: 403 })
+      if (res.ok) throw new Error('unreachable')
+      expect(res.problems).toEqual([expect.objectContaining({ orderId: id(2), code: 'prescriber_license_missing', message: expect.stringContaining('no shipping state') })])
+      expect(signingUpdates(db)).toHaveLength(0)
+    }
+  })
+
   it('licensed and verified: signs', async () => {
     expect(await sign(world([draft(1)]), [id(1)])).toMatchObject({ ok: true })
   })
