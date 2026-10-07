@@ -756,6 +756,22 @@ export function packageCountFor(
   return Math.min(MAX_PACKAGE_COUNT, Math.max(1, needed))
 }
 
+/**
+ * The warning a line carries when even MAX_PACKAGE_COUNT packages do not
+ * cover its course (suggestion reason 'capped'). Review sets it when it
+ * sizes a line; the price step restates it, or clears it, when the line
+ * is saved, so a line that was shortened to fit no longer carries it.
+ */
+export function packageCapWarning(
+  packageLabel: string,
+  count: number,
+  dispense: { quantity: number | null | undefined; unit: string | null | undefined; daysSupply?: number | null },
+): string {
+  return `${formatPackageCount(packageLabel, count)} is the most one line can carry and does not cover the ` +
+    `${formatDispense(dispense.quantity, dispense.unit) ?? 'amount'} needed` +
+    `${dispense.daysSupply ? ` for ${dispense.daysSupply} days` : ''}. Shorten the duration or split the course.`
+}
+
 /** "5 mL vial" × 1 → "5 mL vial"; × 2 → "2 × 5 mL vials". */
 export function formatPackageCount(label: string, count: number | null | undefined): string {
   const n = typeof count === 'number' && count > 1 ? Math.trunc(count) : 1

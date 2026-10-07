@@ -70,8 +70,7 @@ import {
   suggestPackageForDispense,
   dispenseInPackageUnit,
   packageUnitMismatchMessage,
-  formatDispense,
-  formatPackageCount,
+  packageCapWarning,
   type PackageOption,
   type MissingRxDetail,
   type RxDetails,
@@ -489,12 +488,7 @@ export function BatchReviewForm({ isProvider }: Props) {
       // Even the most packages one line may carry fall short: priced as
       // that many, and the line says it does not cover the course.
       const capWarning = s.reason === 'capped'
-        ? {
-            sizingWarning:
-              `${formatPackageCount(s.package.label, s.count)} is the most one line can carry and does not cover the ` +
-              `${formatDispense(dispense.quantity, dispense.unit) ?? 'amount'} needed` +
-              `${dispense.daysSupply ? ` for ${dispense.daysSupply} days` : ''}. Shorten the duration or split the course.`,
-          }
+        ? { sizingWarning: packageCapWarning(s.package.label, s.count, dispense) }
         : {}
       if (s.reason === 'unconvertible') {
         updatePrescription(rx.id, { packageUnitMismatch: packageUnitMismatchMessage(s.package, dispense.unit) })
