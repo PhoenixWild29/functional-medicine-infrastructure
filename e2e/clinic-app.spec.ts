@@ -3023,7 +3023,7 @@ test.describe('Clinic App — WO-99 batch sign', () => {
       data: {
         patientId: TEST_IDS.patient, providerId: TEST_IDS.provider,
         formulationId: TEST_IDS.controlledFormulation, pharmacyId: TEST_IDS.pharmacyTier4,
-        retailCents: 25000, sigText: 'Inject 0.5 mL intramuscularly once weekly', dose: '100 mg', frequencyCode: 'QW',
+        retailCents: 25000, sigText: 'Inject 0.5 mL intramuscularly once weekly', dose: '100 mg', frequencyCode: 'QW', patientState: 'TX',
       },
     })
     expect(create.status()).toBe(422)
