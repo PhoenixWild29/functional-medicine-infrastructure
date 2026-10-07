@@ -28,9 +28,34 @@ jest.mock('@/lib/adapters/routing-engine', () => ({
   routeOrder: (params: unknown) => routeOrderMock(params),
 }))
 
+// ops_alert_queue: the record of the last "submissions are off" alert.
+let alertRows: Array<{ alert_type: string; created_at: string; sent_at: string | null }> = []
+let alertReadError: { message: string } | null = null
+function alertQueue() {
+  const filters: Array<[string, string, unknown]> = []
+  const q: Record<string, unknown> = {}
+  q['select'] = () => q
+  q['eq'] = (col: string, val: unknown) => { filters.push(['eq', col, val]); return q }
+  q['gte'] = (col: string, val: unknown) => { filters.push(['gte', col, val]); return q }
+  q['limit'] = () => q
+  q['insert'] = (row: { alert_type: string; sent_at?: string | null }) => {
+    alertRows.push({ alert_type: row.alert_type, created_at: new Date().toISOString(), sent_at: row.sent_at ?? null })
+    return Promise.resolve({ error: null })
+  }
+  q['then'] = (resolve: (r: unknown) => unknown) => {
+    if (alertReadError) return Promise.resolve({ data: null, error: alertReadError }).then(resolve)
+    const rows = alertRows.filter(r => filters.every(([op, col, val]) => op === 'eq'
+      ? (r as Record<string, unknown>)[col] === val
+      : String((r as Record<string, unknown>)[col]) >= String(val)))
+    return Promise.resolve({ data: rows, error: null }).then(resolve)
+  }
+  return q
+}
+
 jest.mock('@/lib/supabase/service', () => ({
   createServiceClient: () => ({
     from: (table: string) => {
+      if (table === 'ops_alert_queue') return alertQueue()
       if (table !== 'orders') throw new Error(`Unexpected table in test: ${table}`)
       const c: Record<string, unknown> = {}
       for (const op of ['eq', 'lt', 'gt', 'is']) {
@@ -56,6 +81,8 @@ beforeEach(() => {
   process.env['PHARMACY_SUBMISSIONS_ENABLED'] = 'true'
   sendSlackAlertMock.mockClear()
   filtersSeen.length = 0
+  alertRows = []
+  alertReadError = null
   stranded = [
     { order_id: 'o-1', pharmacy_id: 'pharm-1' },
     { order_id: 'o-2', pharmacy_id: 'pharm-2' },
@@ -148,6 +175,31 @@ describe('pharmacy submissions turned off', () => {
 
     await call()
 
+    expect(sendSlackAlertMock).not.toHaveBeenCalled()
+  })
+
+  it('at most one alert an hour: a run five minutes later sends nothing', async () => {
+    await call()
+    await call()
+    await call()
+    expect(sendSlackAlertMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('an hour after the last alert, the next run alerts again', async () => {
+    alertRows = [{ alert_type: 'submissions_paused', created_at: new Date(Date.now() - 61 * 60 * 1000).toISOString(), sent_at: new Date(Date.now() - 61 * 60 * 1000).toISOString() }]
+    await call()
+    expect(sendSlackAlertMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('the record is written already sent, so the queue flusher never re-sends it', async () => {
+    await call()
+    expect(alertRows).toEqual([expect.objectContaining({ alert_type: 'submissions_paused', sent_at: expect.any(String) })])
+  })
+
+  it('when the last alert cannot be read, it does not alert (no alert every five minutes)', async () => {
+    alertReadError = { message: 'connection reset' }
+    const res = await call()
+    expect(res.status).toBe(200)
     expect(sendSlackAlertMock).not.toHaveBeenCalled()
   })
 
