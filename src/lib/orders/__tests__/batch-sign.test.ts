@@ -679,7 +679,7 @@ describe('prescriber verification', () => {
       expect(res).toMatchObject({ ok: false, status: 403 })
       if (res.ok) throw new Error('unreachable')
       expect(res.problems).toEqual(expect.arrayContaining([expect.objectContaining({ orderId: id(2), code: 'prescriber_license_missing', message: expect.stringContaining('no shipping state') })]))
-      expect(res.problems.filter(p => p.orderId === id(1))).toEqual([])
+      expect((res.problems ?? []).filter(p => p.orderId === id(1))).toEqual([])
       expect(signingUpdates(db)).toHaveLength(0)
     }
   })
