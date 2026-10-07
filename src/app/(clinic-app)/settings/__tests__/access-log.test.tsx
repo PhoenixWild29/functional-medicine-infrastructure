@@ -10,8 +10,9 @@
  *     too: a provider of another clinic, or this clinic's admin, never
  *     reads another clinic's rows through this page;
  *   - filter by patient and date range;
- *   - each row shows the actor's role, the action, the resource and the
- *     time, and nothing else (no actor id, no hashes, no route);
+ *   - each row shows who acted (name and email, resolved server-side),
+ *     the actor's role, the action, the resource and the time, and
+ *     nothing else (no actor id, no hashes, no route);
  *   - opening the log is itself logged once.
  */
 
@@ -20,11 +21,30 @@ import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log
 import { parseAccessLogFilters } from '@/lib/audit/access-log-view'
 
 const CLINIC = 'a1000000-0000-0000-0000-000000000001'
+const U_PROVIDER = '00000000-0000-4000-8000-000000000009'
+const U_MA = '00000000-0000-4000-8000-000000000008'
+const U_GONE = '00000000-0000-4000-8000-000000000007'
 const PATIENT = 'a3000000-0000-0000-0000-000000000001'
 
 let user: unknown = null
 let db = scriptedDb(() => undefined)
-const serviceClient = jest.fn(() => { throw new Error('the access log must not be read with the service role') })
+// The service role resolves who acted (providers, auth users); it never
+// reads the log itself.
+const getUserById = jest.fn(async (id: string) => {
+  if (id === U_PROVIDER) return { data: { user: { id, email: 'sarah.chen@clinic.example', user_metadata: { app_role: 'provider', clinic_id: CLINIC } } }, error: null }
+  if (id === U_MA) return { data: { user: { id, email: 'ma@clinic.example', user_metadata: { app_role: 'medical_assistant', clinic_id: CLINIC } } }, error: null }
+  return { data: { user: null }, error: { message: 'not found' } }
+})
+const serviceFrom = jest.fn((table: string) => {
+  if (table === 'phi_access_log') throw new Error('the access log must not be read with the service role')
+  const q: Record<string, unknown> = {}
+  q['select'] = () => q
+  q['eq'] = () => q
+  q['in'] = () => q
+  q['then'] = (r: (v: unknown) => unknown) => Promise.resolve({ data: [{ user_id: U_PROVIDER, first_name: 'Sarah', last_name: 'Chen' }], error: null }).then(r)
+  return q
+})
+const serviceClient = jest.fn(() => ({ from: serviceFrom, auth: { admin: { getUserById } } }))
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: async () => ({ ...(db.client as object), auth: { getUser: async () => ({ data: { user } }) } }),
@@ -34,8 +54,9 @@ jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => serviceC
 import AccessLogPage from '../access-log/page'
 
 const LOG_ROWS = [
-  { id: 'l1', occurred_at: '2026-10-06T15:04:00.000Z', actor_role: 'provider', action: 'view', resource: 'order', actor_user_id: 'u-9', ip_hash: 'a'.repeat(64), route: '/api/orders/[orderId]/record' },
-  { id: 'l2', occurred_at: '2026-10-06T14:00:00.000Z', actor_role: 'medical_assistant', action: 'update', resource: 'patient_allergies' },
+  { id: 'l1', occurred_at: '2026-10-06T15:04:00.000Z', actor_role: 'provider', action: 'view', resource: 'order', actor_user_id: U_PROVIDER, ip_hash: 'a'.repeat(64), route: '/api/orders/[orderId]/record' },
+  { id: 'l2', occurred_at: '2026-10-06T14:00:00.000Z', actor_role: 'medical_assistant', action: 'update', resource: 'patient_allergies', actor_user_id: U_MA },
+  { id: 'l3', occurred_at: '2026-10-06T13:00:00.000Z', actor_role: 'provider', action: 'view', resource: 'order', actor_user_id: U_GONE },
 ]
 
 function answer(c: ScriptedCall) {
@@ -54,6 +75,8 @@ async function html(params: Record<string, string> = {}) {
 beforeEach(() => {
   phiLog.mockClear()
   serviceClient.mockClear()
+  serviceFrom.mockClear()
+  getUserById.mockClear()
   db = scriptedDb(answer)
   jest.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -82,7 +105,16 @@ describe('the clinic admin', () => {
     await html()
     const [read] = db.to('phi_access_log', 'select')
     expect(read!.filters).toEqual(expect.objectContaining({ clinic_id: CLINIC }))
-    expect(serviceClient).not.toHaveBeenCalled()
+    expect(serviceFrom).not.toHaveBeenCalledWith('phi_access_log')
+  })
+
+  it('shows who acted: the name, and the email as an email; an unknown actor says so', async () => {
+    const out = await html()
+    expect(out).toContain('Sarah Chen')
+    expect(out).toContain('sarah.chen@clinic.example')
+    expect(out).toContain('ma@clinic.example')
+    expect(out).toContain('Unknown user')
+    expect(out).toContain('>Who<')
   })
 
   it('shows role, action, resource and time, and nothing else', async () => {
@@ -94,7 +126,7 @@ describe('the clinic admin', () => {
     expect(out).toContain('Medical assistant')
     expect(out).toContain('Changed')
     expect(out).toContain('Allergies')
-    expect(out).not.toContain('u-9')
+    expect(out).not.toContain(U_PROVIDER)
     expect(out).not.toContain('a'.repeat(64))
     expect(out).not.toContain('/api/orders')
   })
