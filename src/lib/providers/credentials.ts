@@ -99,3 +99,6 @@ export function expiringLicenses<T extends LicenseRow>(licenses: ReadonlyArray<T
     .filter(l => l.daysLeft >= 0 && l.daysLeft <= days)
     .sort((a, b) => a.daysLeft - b.daysLeft)
 }
+
+/** A demo seed NPI record is fictional: never re-checked against the registry. */
+export const DEMO_RECORD_NOTE = 'Demo record: not checked against the registry'
