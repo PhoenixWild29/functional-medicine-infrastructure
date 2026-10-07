@@ -298,3 +298,35 @@ describe('batch sign page — controlled substances', () => {
     expect(calls.some(c => c.url === '/api/orders/batch-sign')).toBe(false)
   })
 })
+
+// Compliance C4 beside C6: the signer's own credentials come back from the
+// same check. Both kinds of block show, and either keeps Sign & Send off.
+describe('batch sign page — prescriber verification beside controlled substances', () => {
+  const NPI = "Sarah Chen's NPI has not been verified with the registry, so nothing can be signed. A clinic admin can run the check in Settings, Team."
+  const NO_FL = 'Semaglutide 1: No active license in FL on file for Sarah Chen.'
+
+  it('an NPI problem and a controlled line: both shown, Send blocked', async () => {
+    mockFetch({ check: {
+      lines: [{ orderId: 'o-1', controlled: false }, { orderId: 'o-2', controlled: true }],
+      problems: [{ orderId: null, code: 'prescriber_npi_unverified', message: NPI }],
+    } })
+    renderForm([patient([line(1), line(2, { deaSchedule: 3 })])], ['o-1', 'o-2'])
+    expect(await screen.findByTestId('batch-problems')).toHaveTextContent(NPI)
+    expect(screen.getByTestId('batch-controlled-banner')).toHaveTextContent('Controlled substance: prescribe through your EPCS system')
+    await signPad()
+    expect(screen.getByTestId('send-blocked-reason')).toHaveTextContent(NPI)
+    expect(sendButton()).toBeDisabled()
+  })
+
+  it('a license problem names its line; Send blocked with that reason', async () => {
+    mockFetch({ check: {
+      lines: [{ orderId: 'o-1', controlled: false }],
+      problems: [{ orderId: 'o-1', code: 'prescriber_license_missing', message: NO_FL }],
+    } })
+    renderForm([patient([line(1)])], ['o-1'])
+    await signPad()
+    await waitFor(() => expect(screen.getByTestId('send-blocked-reason')).toHaveTextContent(NO_FL))
+    expect(within(screen.getByTestId('draft-line-o-1')).getByText(NO_FL)).toBeInTheDocument()
+    expect(sendButton()).toBeDisabled()
+  })
+})

@@ -14,6 +14,7 @@
  */
 
 import { POST } from '../route'
+import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -33,7 +34,7 @@ function validBody(overrides: Record<string, unknown> = {}): Record<string, unkn
     password:      'a-strong-password-123',
     firstName:     'Test',
     lastName:      'Provider',
-    npiNumber:     '9876543210',
+    npiNumber:     '1987654328',
     licenseState:  'TX',
     licenseNumber: 'TX-MD-9999',
     deaNumber:     null,
@@ -52,9 +53,13 @@ const deleteUserMock     = jest.fn()
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: { getSession: () => getSessionMock(), getUser: () => userFromSession(getSessionMock()) },
   }),
 }))
+
+// Compliance C4: the NPPES check after the save is mocked (no network).
+const runNpiCheckMock = jest.fn()
+jest.mock('@/lib/providers/verify-npi', () => ({ runNpiCheck: (...a: unknown[]) => runNpiCheckMock(...a) }))
 
 jest.mock('@/lib/supabase/service', () => ({
   createServiceClient: jest.fn().mockReturnValue({
@@ -100,6 +105,7 @@ jest.mock('@/lib/supabase/service', () => ({
 
 beforeEach(() => {
   getSessionMock.mockReset()
+  runNpiCheckMock.mockReset().mockResolvedValue({ ok: true, lookup: { status: 'verified' }, checkedAt: '2026-10-08T00:00:00Z' })
   npiCheckMock.mockReset()
   clinicCheckMock.mockReset()
   createUserMock.mockReset()
@@ -117,7 +123,7 @@ beforeEach(() => {
       clinic_id:      TEST_CLINIC_ID,
       first_name:     'Test',
       last_name:      'Provider',
-      npi_number:     '9876543210',
+      npi_number:     '1987654328',
       license_state:  'TX',
       license_number: 'TX-MD-9999',
       dea_number:     null,
@@ -345,7 +351,7 @@ describe('POST /api/providers — happy path', () => {
         clinic_id:      OTHER_CLINIC_ID,
         first_name:     'Test',
         last_name:      'Provider',
-        npi_number:     '9876543210',
+        npi_number:     '1987654328',
         license_state:  'TX',
         license_number: 'TX-MD-9999',
         dea_number:     null,
@@ -396,6 +402,44 @@ describe('POST /api/providers — clinic existence pre-check', () => {
 
     const res = await POST(makeRequest(validBody()))
     expect(res.status).toBe(404)
+    expect(createUserMock).not.toHaveBeenCalled()
+  })
+})
+
+// ── Compliance C4: the NPI is checked on save ─────────────────────
+describe('NPI verification on save', () => {
+  beforeEach(() => {
+    getSessionMock.mockResolvedValue({ data: { session: { user: { id: 'admin-user', user_metadata: { app_role: 'clinic_admin', clinic_id: TEST_CLINIC_ID } } } } })
+    npiCheckMock.mockResolvedValue({ data: null, error: null })
+    clinicCheckMock.mockResolvedValue({ data: { clinic_id: TEST_CLINIC_ID, is_active: true }, error: null })
+    createUserMock.mockResolvedValue({ data: { user: { id: 'new-auth-user' } }, error: null })
+    providerInsertMock.mockResolvedValue({ data: { provider_id: 'new-provider', clinic_id: TEST_CLINIC_ID, user_id: 'new-auth-user', first_name: 'Ada', last_name: 'Lovelace', npi_number: '1987654328', license_state: 'TX', license_number: 'TX-1', dea_number: null }, error: null })
+  })
+
+  it('an NPI whose check digit is wrong is refused (400) before anything is created', async () => {
+    const res = await POST(makeRequest(validBody({ npiNumber: '1987654321' })))
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.details).toEqual(expect.arrayContaining(['npiNumber is not a valid NPI (the check digit does not match)']))
+    expect(createUserMock).not.toHaveBeenCalled()
+  })
+
+  it('after the save the NPI is checked against the registry and the result returned', async () => {
+    const res = await POST(makeRequest(validBody()))
+    expect(res.status).toBe(201)
+    expect(runNpiCheckMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ provider_id: 'new-provider', npi_number: '1987654328' }), 'admin-user')
+    expect((await res.json()).npiStatus).toBe('verified')
+  })
+
+  it('a registry that cannot be reached never blocks the save: 201, unverified', async () => {
+    runNpiCheckMock.mockResolvedValue({ ok: true, lookup: { status: 'unverified' }, checkedAt: 'x' })
+    const res = await POST(makeRequest(validBody()))
+    expect(res.status).toBe(201)
+    expect((await res.json()).npiStatus).toBe('unverified')
+  })
+
+  it('a session whose token does not verify is 401', async () => {
+    expect((await withForgedSession(() => POST(makeRequest(validBody())))).status).toBe(401)
     expect(createUserMock).not.toHaveBeenCalled()
   })
 })

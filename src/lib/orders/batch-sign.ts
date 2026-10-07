@@ -69,6 +69,8 @@ type Supabase = SupabaseClient<Database>
 
 export { MAX_BATCH_ORDERS } from './batch-sign-view'
 import { MAX_BATCH_ORDERS } from './batch-sign-view'
+import { prescriberProblems, todayUtc, type PrescriberProblemCode } from '@/lib/providers/credentials'
+import type { NpiStatus } from '@/lib/providers/npi'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -79,8 +81,10 @@ export type BatchProblemCode =
   | 'not_found' | 'not_draft' | 'not_signer'
   | 'license' | 'pharmacy' | 'npi' | 'stripe' | 'controlled_substance' | 'controlled_unknown'
   | 'rx_details' | 'reprice' | 'below_cost'
+  // Compliance C4: the signing provider's own credentials
+  | PrescriberProblemCode
   // a check that could not run
-  | 'orders_unavailable' | 'provider_unavailable' | 'provider_unlinked'
+  | 'orders_unavailable' | 'provider_unavailable' | 'provider_unlinked' | 'credentials_unavailable'
   | 'compliance_unavailable' | 'rules_unavailable' | 'price_unavailable'
   | 'allergy_unavailable' | 'interactions_unavailable'
 
@@ -95,12 +99,16 @@ export interface BatchProblem {
 const UNAVAILABLE: ReadonlySet<BatchProblemCode> = new Set([
   'orders_unavailable', 'provider_unavailable', 'compliance_unavailable', 'rules_unavailable',
   'price_unavailable', 'allergy_unavailable', 'interactions_unavailable', 'controlled_unknown',
+  'credentials_unavailable',
 ])
+
+/** Compliance C4: the signer is not (known to be) licensed for the line. */
+const PRESCRIBER: ReadonlySet<BatchProblemCode> = new Set(['prescriber_npi_unverified', 'prescriber_license_missing', 'prescriber_license_expired'])
 
 /** One HTTP status for a set of problems: could-not-run beats everything. */
 export function problemsStatus(problems: ReadonlyArray<BatchProblem>): 503 | 403 | 404 | 409 | 422 {
   if (problems.some(p => UNAVAILABLE.has(p.code))) return 503
-  if (problems.some(p => p.code === 'not_signer' || p.code === 'provider_unlinked')) return 403
+  if (problems.some(p => p.code === 'not_signer' || p.code === 'provider_unlinked' || PRESCRIBER.has(p.code))) return 403
   if (problems.some(p => p.code === 'not_found')) return 404
   if (problems.some(p => p.code === 'not_draft')) return 409
   return 422
@@ -305,6 +313,40 @@ export async function checkBatch(
   }
   if (clinicRes.data?.stripe_connect_status !== 'ACTIVE') {
     add(null, 'stripe', "The clinic's Stripe account is not active, so no payment link can be sent.")
+  }
+
+  // ── Compliance C4: is the signer licensed for these prescriptions? ──
+  // A verified NPI, and an unexpired license in each patient's shipping
+  // state. Credentials that cannot be read are a check that could not run.
+  if (signer) {
+    const [verificationRes, licensesRes] = await Promise.all([
+      supabase.from('provider_npi_verifications').select('npi, status').eq('provider_id', signer.provider_id).maybeSingle(),
+      supabase.from('provider_state_licenses').select('state, license_number, expires_on').eq('provider_id', signer.provider_id),
+    ])
+    if (verificationRes.error || licensesRes.error) {
+      console.error('[batch-sign] prescriber credentials could not be read:', (verificationRes.error ?? licensesRes.error)?.message)
+      add(null, 'credentials_unavailable', 'Your license and NPI records could not be read. Nothing was signed — try again.')
+    }
+    // The other checks still run, so every block shows (C6 included).
+    const mine = ordered.filter(r => r.provider_id === signer.provider_id)
+    const credentialProblems = verificationRes.error || licensesRes.error ? [] : prescriberProblems({
+      providerId:   signer.provider_id,
+      firstName:    signer.first_name,
+      lastName:     signer.last_name,
+      npi:          signer.npi_number ?? '',
+      verification: (verificationRes.data as { npi: string; status: NpiStatus } | null) ?? null,
+      licenses:     ((licensesRes.data ?? []) as Array<{ state: string; license_number: string; expires_on: string }>)
+        .map(l => ({ state: l.state, licenseNumber: l.license_number, expiresOn: l.expires_on })),
+    }, mine.map(r => r.shipping_state_snapshot), todayUtc())
+    for (const cp of credentialProblems) {
+      if (cp.state === null) {
+        add(null, cp.code, cp.message)
+        continue
+      }
+      for (const r of mine.filter(o => (o.shipping_state_snapshot ?? '').toUpperCase() === cp.state)) {
+        add(r, cp.code, `${medicationNameOf(r)}: ${cp.message}`)
+      }
+    }
   }
 
   const pharmacies = new Map((pharmacyRes.data ?? []).map(p => [p.pharmacy_id, p]))

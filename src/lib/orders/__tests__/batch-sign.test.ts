@@ -100,6 +100,15 @@ function world(orders: Array<Record<string, unknown>>) {
       { interaction_id: 'i1', severity: 'warning', description: 'Monitor', ingredient_a: { common_name: 'Semaglutide' }, ingredient_b: { common_name: 'Testosterone' } },
     ],
     epcs_audit_log: [],
+    // Compliance C4: both providers' NPIs verified, licensed in TX.
+    provider_npi_verifications: [
+      { provider_id: CHEN, npi: '1234567890', status: 'verified' },
+      { provider_id: PATEL, npi: '1987654321', status: 'verified' },
+    ],
+    provider_state_licenses: [
+      { provider_id: CHEN, state: 'TX', license_number: 'TX-MD-001234', expires_on: '2099-12-31' },
+      { provider_id: PATEL, state: 'TX', license_number: 'TX-MD-002345', expires_on: '2099-12-31' },
+    ],
   })
 }
 
@@ -523,5 +532,133 @@ describe('the shipping address is frozen at signing', () => {
     if (res.ok) throw new Error('unreachable')
     expect(res.error).toMatch(/shipping address could not be recorded.*Nothing was signed/)
     expect(signingUpdates(db)).toHaveLength(0)
+  })
+})
+
+// ── Compliance C4: the signer must be licensed for the prescription ──
+// A verified NPI, and an unexpired license in the patient's shipping state.
+describe('prescriber verification', () => {
+  const licensesOf = (db: ReturnType<typeof fakeDb>) => db.tables['provider_state_licenses']!
+  const verificationOf = (db: ReturnType<typeof fakeDb>) => db.tables['provider_npi_verifications']!.find(v => v['provider_id'] === CHEN)!
+
+  it("no license in the patient's state: 403, the line is named, nothing is signed", async () => {
+    const db = world([draft(1, { shipping_state_snapshot: 'FL' })])
+    db.tables['pharmacy_state_licenses']!.push({ pharmacy_id: 'ph-strive', state_code: 'FL', is_active: true })
+    const res = await sign(db, [id(1)])
+    expect(res).toMatchObject({ ok: false, status: 403 })
+    if (res.ok) throw new Error('unreachable')
+    expect(res.problems).toEqual([expect.objectContaining({
+      orderId: id(1), code: 'prescriber_license_missing', message: 'Plain compound 1: No active license in FL on file for Sarah Chen.',
+    })])
+    expect(res.error).toBe('Plain compound 1: No active license in FL on file for Sarah Chen.')
+    expect(signingUpdates(db)).toHaveLength(0)
+  })
+
+  it('an expired license: 403 prescriber_license_expired, with the date', async () => {
+    const db = world([draft(1)])
+    licensesOf(db)[0]!['expires_on'] = '2020-01-31'
+    const res = await sign(db, [id(1)])
+    expect(res).toMatchObject({ ok: false, status: 403 })
+    if (res.ok) throw new Error('unreachable')
+    expect(res.problems).toEqual([expect.objectContaining({ code: 'prescriber_license_expired', message: expect.stringContaining('expired on 2020-01-31') })])
+    expect(signingUpdates(db)).toHaveLength(0)
+  })
+
+  it.each(['unverified', 'mismatch', 'not_found', 'invalid'])('an NPI that is %s: 403 prescriber_npi_unverified, for the whole batch', async status => {
+    const db = world([draft(1)])
+    verificationOf(db)['status'] = status
+    const res = await sign(db, [id(1)])
+    expect(res).toMatchObject({ ok: false, status: 403 })
+    if (res.ok) throw new Error('unreachable')
+    expect(res.problems).toEqual([expect.objectContaining({ orderId: null, code: 'prescriber_npi_unverified' })])
+    expect(signingUpdates(db)).toHaveLength(0)
+  })
+
+  it('an NPI never checked, or checked before it changed: refused', async () => {
+    const never = world([draft(1)])
+    never.tables['provider_npi_verifications'] = []
+    expect(await sign(never, [id(1)])).toMatchObject({ ok: false, status: 403 })
+    const changed = world([draft(1)])
+    verificationOf(changed)['npi'] = '1003000126'
+    expect(await sign(changed, [id(1)])).toMatchObject({ ok: false, status: 403 })
+  })
+
+  it('credentials that cannot be read: 503, nothing signed', async () => {
+    const db = world([draft(1)])
+    db.failOn('provider_state_licenses:select', 'connection reset')
+    const res = await sign(db, [id(1)])
+    expect(res).toMatchObject({ ok: false, status: 503 })
+    if (res.ok) throw new Error('unreachable')
+    expect(res.problems).toEqual([expect.objectContaining({ code: 'credentials_unavailable' })])
+    expect(signingUpdates(db)).toHaveLength(0)
+  })
+
+  it('the pre-sign check shows the same problems (the Sign page reads it)', async () => {
+    const db = world([draft(1, { shipping_state_snapshot: 'FL' })])
+    db.tables['pharmacy_state_licenses']!.push({ pharmacy_id: 'ph-strive', state_code: 'FL', is_active: true })
+    const check = await checkBatch(db.client, { clinicId: CLINIC, userId: USER_CHEN, orderIds: [id(1)], atSigning: false })
+    expect(check.problems).toEqual([expect.objectContaining({ code: 'prescriber_license_missing' })])
+  })
+
+  it("the practice queue (no one signing) does not check a signer's credentials", async () => {
+    const db = world([draft(1, { shipping_state_snapshot: 'FL' })])
+    db.tables['pharmacy_state_licenses']!.push({ pharmacy_id: 'ph-strive', state_code: 'FL', is_active: true })
+    const check = await checkBatch(db.client, { clinicId: CLINIC, userId: null, orderIds: [id(1)], atSigning: false })
+    expect(check.problems.filter(p => String(p.code).startsWith('prescriber_'))).toEqual([])
+  })
+
+  it('licensed and verified: signs', async () => {
+    expect(await sign(world([draft(1)]), [id(1)])).toMatchObject({ ok: true })
+  })
+})
+
+// ── Merge of C4 and C6: both rule sets, each with its own status ──
+describe('prescriber verification and controlled substances together', () => {
+  const testo = (n: number, over: Record<string, unknown> = {}) => draft(n, {
+    formulation_id: 'f-testo', pharmacy_id: 'ph-fax', wholesale_price_snapshot: 150, retail_price_snapshot: 250,
+    medication_snapshot: { medication_name: 'Testosterone Cypionate 200mg/mL', dea_schedule: 0 },
+    diagnosis_code: 'E29.1', ...over,
+  })
+  beforeEach(() => { todayCents.set('f-testo|ph-fax', 15000) })
+  const codes = (problems: ReadonlyArray<{ code: string }> | undefined) => (problems ?? []).map(p => p.code)
+
+  it('a controlled line for a state the signer is not licensed in: both are named; the license is 403', async () => {
+    const db = world([testo(2, { shipping_state_snapshot: 'FL' })])
+    const res = await sign(db, [id(2)])
+    if (res.ok) throw new Error('expected a refusal')
+    expect(res.status).toBe(403)
+    expect(codes(res.problems)).toEqual(expect.arrayContaining(['prescriber_license_missing', 'controlled_substance']))
+    expect(signingUpdates(db)).toHaveLength(0)
+  })
+
+  it('a controlled line alone, signer licensed: 422', async () => {
+    const res = await sign(world([testo(2)]), [id(2)])
+    if (res.ok) throw new Error('expected a refusal')
+    expect(res.status).toBe(422)
+    expect(codes(res.problems)).toEqual(['controlled_substance'])
+  })
+
+  it('credentials that cannot be read: 503, and the controlled line is still named', async () => {
+    const db = world([testo(2)])
+    db.failOn('provider_state_licenses:select', 'connection reset')
+    const res = await sign(db, [id(2)])
+    if (res.ok) throw new Error('expected a refusal')
+    expect(res.status).toBe(503)
+    expect(codes(res.problems)).toEqual(expect.arrayContaining(['credentials_unavailable', 'controlled_substance']))
+  })
+
+  it('a schedule that could not be read beside a missing license: 503 wins (could-not-run first)', async () => {
+    const db = world([draft(2, { catalog_item_id: 'cat-1', formulation_id: null, shipping_state_snapshot: 'FL', medication_snapshot: { medication_name: 'Legacy item' } })])
+    db.failOn('catalog:select')
+    const res = await sign(db, [id(2)])
+    if (res.ok) throw new Error('expected a refusal')
+    expect(res.status).toBe(503)
+    expect(codes(res.problems)).toEqual(expect.arrayContaining(['controlled_unknown', 'prescriber_license_missing']))
+  })
+
+  it('the preflight the Sign page reads shows both kinds', async () => {
+    const db = world([testo(2, { shipping_state_snapshot: 'FL' })])
+    const check = await checkBatch(db.client, { clinicId: CLINIC, userId: USER_CHEN, orderIds: [id(2)], atSigning: false })
+    expect(codes(check.problems)).toEqual(expect.arrayContaining(['prescriber_license_missing', 'controlled_substance']))
   })
 })

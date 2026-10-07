@@ -198,6 +198,8 @@ export async function seedStaticData(): Promise<void> {
     signature_on_file: true,
     is_active:       true,
   }, { onConflict: 'provider_id' })
+  // Compliance C4: signing needs a verified NPI and a TX license (E2E patients are TX).
+  await seedProviderCredentials(TEST_IDS.provider, '1234567890')
 
   // WO-100: the second provider is NOT part of the shared seed. Retire it
   // if a previous run left it active, so every other spec keeps seeing a
@@ -658,6 +660,26 @@ export async function seedSecondProvider(): Promise<void> {
     deleted_at:      null,
   }, { onConflict: 'provider_id' })
   if (error) throw new Error(`seedSecondProvider: ${error.message}`)
+  await seedProviderCredentials(TEST_IDS.providerB, '1987654321')
+}
+
+/**
+ * Compliance C4: a verified NPI record and a TX license, so the provider
+ * can sign for the E2E patients (all TX). The fixture NPIs are fictional,
+ * so the record is marked demo_seed, never an NPPES result. Idempotent.
+ */
+export async function seedProviderCredentials(providerId: string, npi: string): Promise<void> {
+  const now = new Date().toISOString()
+  const { error: licenseError } = await supabase.from('provider_state_licenses').upsert({
+    provider_id: providerId, state: 'TX', license_number: `E2E-TX-${providerId.slice(-4)}`,
+    expires_on: '2099-12-31', verified_at: now, source: 'demo_seed',
+  }, { onConflict: 'provider_id,state' })
+  if (licenseError) throw new Error(`seedProviderCredentials (license): ${licenseError.message}`)
+  const { error: npiError } = await supabase.from('provider_npi_verifications').upsert({
+    provider_id: providerId, npi, status: 'verified', name_match: true, enumeration_type: 'NPI-1',
+    reason: 'E2E fixture: fictional NPI, not checked against NPPES.', checked_at: now, verified_at: now, source: 'demo_seed',
+  }, { onConflict: 'provider_id' })
+  if (npiError) throw new Error(`seedProviderCredentials (NPI): ${npiError.message}`)
 }
 
 /** WO-100: soft-retires the second provider (idempotent; no-op if absent). */
