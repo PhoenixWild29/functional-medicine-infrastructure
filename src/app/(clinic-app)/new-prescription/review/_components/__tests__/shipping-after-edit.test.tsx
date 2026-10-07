@@ -123,6 +123,25 @@ describe('Review shipping after protocol lines were edited', () => {
     expect(breakdown).toHaveTextContent(/could not be loaded/)
   })
 
+  it('while the rates are loading it says so, never "could not be loaded"', async () => {
+    let release: (r: Response) => void = () => {}
+    global.fetch = jest.fn(async (url: unknown) => {
+      const u = new URL(String(url), 'https://app.test')
+      if (u.pathname === '/api/pharmacies/shipping') {
+        return new Promise<Response>(resolve => { release = resolve })
+      }
+      return { ok: true, status: 200, json: async () => ({}) } as unknown as Response
+    }) as unknown as typeof fetch
+    renderReview()
+    const breakdown = await screen.findByTestId('shipping-breakdown')
+    expect(breakdown).toHaveTextContent(/Loading/)
+    expect(breakdown).not.toHaveTextContent(/could not be loaded/)
+    expect(breakdown).not.toHaveTextContent('$0.00')
+    await act(async () => { release({ ok: true, status: 200, json: async () => ({ rates: [RATES], absorbShipping: false }) } as unknown as Response) })
+    await waitFor(() => expect(breakdown).toHaveTextContent('$11.00'))
+    expect(breakdown).not.toHaveTextContent(/Loading/)
+  })
+
   it('a failed rates read is retried when a line changes (an edit), and then shows $11.00', async () => {
     mockFetch(1)
     renderReview()
