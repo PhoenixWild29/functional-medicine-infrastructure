@@ -65,7 +65,7 @@ async function renderSoloCheckout({
   const [orderResult, clinicResult] = await Promise.all([
     supabase
       .from('orders')
-      .select('order_id, status, retail_price_snapshot, shipping_fee, titration_steps, formulations(concentration_value, concentration_unit, dosage_forms(name))')
+      .select('order_id, status, retail_price_snapshot, shipping_fee, titration_steps, formulations(concentration_value, concentration_unit, dosage_forms(name)), patients(sms_opt_in)')
       .eq('order_id', orderId)
       .is('deleted_at', null)
       .maybeSingle(),
@@ -118,6 +118,7 @@ async function renderSoloCheckout({
       logoUrl={clinic.logo_url ?? null}
       checkoutState={checkoutState}
       titrationSchedule={titrationSchedule}
+      smsConsent={smsOptedIn((order as { patients?: unknown }).patients)}
     />
   )
 }
@@ -141,7 +142,7 @@ async function renderGroupCheckout({
   const [groupResult, clinicResult, countResult] = await Promise.all([
     supabase
       .from('payment_groups')
-      .select('group_id, status, total_cents, shipping_total')
+      .select('group_id, status, total_cents, shipping_total, patients(sms_opt_in)')
       .eq('group_id', groupId)
       .eq('clinic_id', clinicId)
       .maybeSingle(),
@@ -189,8 +190,15 @@ async function renderGroupCheckout({
       clinicName={clinic.name}
       logoUrl={clinic.logo_url ?? null}
       checkoutState={checkoutState}
+      smsConsent={smsOptedIn((group as { patients?: unknown }).patients)}
     />
   )
+}
+
+/** patients.sms_opt_in off an embedded row (object or one-element array); unknown is no. */
+function smsOptedIn(patients: unknown): boolean {
+  const p = Array.isArray(patients) ? patients[0] : patients
+  return (p as { sms_opt_in?: boolean | null } | null | undefined)?.sms_opt_in === true
 }
 
 function mapOrderStatusToState(status: string): ActiveState {

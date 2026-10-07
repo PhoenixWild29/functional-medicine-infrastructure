@@ -99,7 +99,8 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
       pharmacies (
         supports_real_time_status,
         average_turnaround_days
-      )
+      ),
+      patients ( sms_opt_in )
     `)
     .eq('stripe_payment_intent_id', paymentIntentId)
     .maybeSingle()
@@ -120,7 +121,8 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
           name,
           contact_phone,
           contact_email
-        )
+        ),
+        patients ( sms_opt_in )
       `)
       .eq('stripe_payment_intent_id', paymentIntentId)
       .maybeSingle()
@@ -142,6 +144,7 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
           clinicName={groupClinic ? String(groupClinic['name'] ?? '') : 'your clinic'}
           clinicPhone={groupClinic && groupClinic['contact_phone'] != null ? String(groupClinic['contact_phone']) : null}
           clinicEmail={groupClinic && groupClinic['contact_email'] != null ? String(groupClinic['contact_email']) : null}
+          smsConsent={smsOptedIn(groupRow['patients'])}
         />
       )
     }
@@ -165,6 +168,7 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
   const clinicPhone         = clinic  ? (clinic['contact_phone']  != null ? String(clinic['contact_phone'])  : null) : null
   const clinicEmail         = clinic  ? (clinic['contact_email']  != null ? String(clinic['contact_email'])  : null) : null
   const supportsRealTime    = Boolean(pharmacy?.['supports_real_time_status'] ?? false)
+  const smsConsent          = smsOptedIn(orderRow['patients'])
   const avgTurnaroundDays   = pharmacy?.['average_turnaround_days'] != null
     ? Number(pharmacy['average_turnaround_days'])
     : null
@@ -243,7 +247,7 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
                 <p className="text-sm font-medium text-foreground">Pharmacy will contact you</p>
                 <p className="text-xs text-muted-foreground">
                   {supportsRealTime
-                    ? 'Within 24–48 hours. You\'ll receive tracking info via text when it ships.'
+                    ? (smsConsent ? 'Within 24–48 hours. You\'ll receive tracking info via text when it ships.' : 'Within 24–48 hours.')
                     : `Within ${avgTurnaroundDays ? `${avgTurnaroundDays} business days` : '3–7 business days'}.`}
                 </p>
               </div>
@@ -285,11 +289,23 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
         )}
 
         <p className="text-center text-xs text-muted-foreground/60">
-          Payment received. You&rsquo;ll get a text confirming your payment and when your order ships. You&rsquo;ll receive additional updates as your prescription moves through our pharmacy network.
+          {smsConsent
+            ? <>Payment received. You&rsquo;ll get a text confirming your payment and when your order ships. You&rsquo;ll receive additional updates as your prescription moves through our pharmacy network.</>
+            : 'Payment received.'}
         </p>
       </div>
     </main>
   )
+}
+
+/**
+ * patients.sms_opt_in off the embedded row. A text is promised only to a
+ * patient who agreed to texts (the sender refuses everyone else); unknown
+ * is no. The value is read, never shown, so the page stays PHI-free.
+ */
+function smsOptedIn(patients: unknown): boolean {
+  const p = Array.isArray(patients) ? patients[0] : patients
+  return (p as { sms_opt_in?: boolean | null } | null | undefined)?.sms_opt_in === true
 }
 
 // ── Fallback states ───────────────────────────────────────────
@@ -317,8 +333,7 @@ function PendingConfirmationState() {
           Payment Received
         </h1>
         <p className="text-sm text-muted-foreground">
-          Your payment was successful. Order confirmation is being processed —
-          you will receive a text message shortly.
+          Your payment was successful. Order confirmation is being processed.
         </p>
       </div>
     </main>
@@ -329,7 +344,7 @@ function PendingConfirmationState() {
 // Same "Payment Received" surface as solo; copy explicitly says N prescriptions
 // were paid. Zero PHI — total + count + clinic contact only.
 function GroupBundleSuccessState({
-  totalCents, orderCount, groupId, clinicName, clinicPhone, clinicEmail,
+  totalCents, orderCount, groupId, clinicName, clinicPhone, clinicEmail, smsConsent,
 }: {
   totalCents: number
   orderCount: number
@@ -337,6 +352,7 @@ function GroupBundleSuccessState({
   clinicName: string
   clinicPhone: string | null
   clinicEmail: string | null
+  smsConsent: boolean
 }) {
   return (
     <main className="flex min-h-screen flex-col items-center px-4 py-12">
@@ -416,7 +432,9 @@ function GroupBundleSuccessState({
         )}
 
         <p className="text-center text-xs text-muted-foreground/60">
-          Payment received. You&rsquo;ll get a text confirming your payment and when your order ships. You&rsquo;ll receive additional updates as each prescription moves through our pharmacy network.
+          {smsConsent
+            ? <>Payment received. You&rsquo;ll get a text confirming your payment and when your order ships. You&rsquo;ll receive additional updates as each prescription moves through our pharmacy network.</>
+            : 'Payment received.'}
         </p>
       </div>
     </main>
