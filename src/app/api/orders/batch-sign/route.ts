@@ -3,14 +3,13 @@
 // ============================================================
 //
 // The only route that signs an order. Body:
-//   { orderIds: string[], signature: { dataUrl, strokes, padWidth }, totpCode?: string }
+//   { orderIds: string[], signature: { dataUrl, strokes, padWidth } }
 //
 // All or nothing: every line is checked before anything is written, and
 // the answer names each line that cannot be sent (see lib/orders/batch-sign).
 //
 // 200 { signedAt, patients: [{ patientId, orderIds, paymentGroupId, checkoutUrl }] }
 // 400 bad body / signature rejected
-// 401 TOTP_REQUIRED | TOTP_INVALID | TOTP_NOT_ENROLLED (with the controlled lines)
 // 403 not a provider / a line belongs to another provider
 // 404 / 409 / 422 a line cannot be sent (problems[])
 // 503 a check could not run — nothing signed (problems[])
@@ -35,7 +34,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!clinicId) return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   const appRole = typeof user.user_metadata['app_role'] === 'string' ? user.user_metadata['app_role'] as string : null
 
-  let body: { orderIds?: unknown; signature?: unknown; totpCode?: unknown }
+  let body: { orderIds?: unknown; signature?: unknown }
   try {
     body = await request.json()
   } catch {
@@ -48,16 +47,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     appRole,
     orderIds:  body.orderIds,
     signature: body.signature,
-    totpCode:  body.totpCode,
-    requestMeta: {
-      ip:        request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip') ?? null,
-      userAgent: request.headers.get('user-agent'),
-    },
   })
 
   if (!result.ok) {
     return NextResponse.json(
-      { error: result.error, code: result.code, problems: result.problems, controlled: result.controlled },
+      { error: result.error, code: result.code, problems: result.problems },
       { status: result.status, headers: { 'Cache-Control': 'no-store' } },
     )
   }

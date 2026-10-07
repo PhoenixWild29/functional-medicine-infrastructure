@@ -39,8 +39,6 @@ jest.mock('@/lib/sms/triggers', () => ({ sendPaymentLinkSms: (...a: unknown[]) =
 jest.mock('@/lib/sla/creator', () => ({ createSlasForTransition: jest.fn(async () => undefined) }))
 const historyMock = jest.fn()
 jest.mock('../status-history', () => ({ insertStatusHistory: (...a: unknown[]) => historyMock(...a) }))
-const totpMock = jest.fn()
-jest.mock('@/lib/epcs/totp', () => ({ verifyProviderTotp: (...a: unknown[]) => totpMock(...a) }))
 jest.mock('@/lib/env', () => ({ serverEnv: { appBaseUrl: () => 'https://app.test/' } }))
 
 // ── Fixture ──────────────────────────────────────────────────
@@ -149,7 +147,6 @@ beforeEach(() => {
   cancelPaymentGroupMock.mockReset().mockResolvedValue(undefined)
   smsMock.mockReset().mockResolvedValue({ ok: true })
   historyMock.mockReset().mockResolvedValue(true)
-  totpMock.mockReset()
   jest.spyOn(console, 'error').mockImplementation(() => {})
   jest.spyOn(console, 'info').mockImplementation(() => {})
 })
@@ -335,16 +332,14 @@ describe('controlled substances are refused at signing', () => {
   beforeEach(() => { todayCents.set('f-testo|ph-fax', 15000) })
 
   it('the catalog says Schedule III though the snapshot says 0: refused, nothing signed, no code asked for', async () => {
-    totpMock.mockResolvedValue('valid')
     const db = world([testo(2)])
-    const res = await sign(db, [id(2)], { totpCode: '123456' })
+    const res = await sign(db, [id(2)])
     if (res.ok) throw new Error('expected a refusal')
     expect(res.problems).toEqual([expect.objectContaining({
       orderId: id(2), code: 'controlled_substance',
       message: expect.stringContaining('Controlled substance: prescribe through your EPCS system'),
     })])
     expect(signingUpdates(db)).toHaveLength(0)
-    expect(totpMock).not.toHaveBeenCalled()
     expect(createPaymentGroupMock).not.toHaveBeenCalled()
   })
 

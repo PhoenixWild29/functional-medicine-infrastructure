@@ -39,15 +39,6 @@ jest.mock('react-signature-canvas', () => {
     }),
   }
 })
-jest.mock('../../_components/epcs-totp-gate', () => ({
-  EpcsTotpGate: ({ onVerified, onCancel, medicationNames }: { onVerified: (code: string) => void; onCancel: () => void; medicationNames: string[] }) => (
-    <div data-testid="epcs-gate">
-      <p>EPCS for {medicationNames.join(', ')}</p>
-      <button type="button" onClick={() => onVerified('123456')}>Verify stub</button>
-      <button type="button" onClick={onCancel}>Cancel stub</button>
-    </div>
-  ),
-}))
 
 const PATIENT = 'a3000000-0000-0000-0000-000000000004'
 

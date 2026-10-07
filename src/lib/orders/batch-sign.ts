@@ -13,15 +13,15 @@
 // prevent_snapshot_mutation), so the order of work below is chosen so that
 // nothing is signed until everything else has succeeded:
 //
-//   1. check every line (read only)
-//   2. the authenticator code, when any line is controlled
-//   3. shipping, allocated once per pharmacy per patient (drafts only)
-//   4. one payment group per patient with 2+ orders, created on the
+//   1. check every line (read only); a controlled line is refused here
+//      (C6), so nothing after this ever signs one
+//   2. shipping, allocated once per pharmacy per patient (drafts only)
+//   3. one payment group per patient with 2+ orders, created on the
 //      DRAFTs, with its PaymentIntent
-//   5. sign: DRAFT → AWAITING_PAYMENT for every order, one statement
-//   6. history, EPCS audit, SLAs, one payment link per patient
+//   4. sign: DRAFT → AWAITING_PAYMENT for every order, one statement
+//   5. history, SLAs, one payment link per patient
 //
-// A failure in 3 or 4 unwinds 4 and signs nothing.
+// A failure in 2 or 3 unwinds 3 and signs nothing.
 //
 // Checks per line, as the single-draft path had them (#164–#166) plus
 // WO-99's own:
@@ -58,7 +58,6 @@ import { applyBundleShipping } from './apply-bundle-shipping'
 import { pharmacyInactiveMessage } from '@/lib/pharmacies/live'
 import { findInteractions, type InteractionRow } from '@/lib/interactions/match'
 import { checkSignature, SIGNATURE_REJECTION_COPY, type SignaturePayload } from './signature'
-import { verifyProviderTotp } from '@/lib/epcs/totp'
 import { createPaymentGroup, cancelPaymentGroup } from '@/lib/payment-group/create-group'
 import { generateCheckoutToken, generateGroupCheckoutToken } from '@/lib/auth/checkout-token'
 import { insertStatusHistory, type StatusHistoryRow } from './status-history'
@@ -544,7 +543,7 @@ export interface SignedPatient {
 
 export type SignBatchResult =
   | { ok: true; signedAt: string; patients: SignedPatient[] }
-  | { ok: false; status: number; error: string; code?: string; problems?: BatchProblem[]; controlled?: Array<{ orderId: string; medicationName: string; deaSchedule: number | null }> }
+  | { ok: false; status: number; error: string; code?: string; problems?: BatchProblem[] }
 
 async function sha256Hex(input: string): Promise<string> {
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
@@ -611,8 +610,6 @@ export async function signBatch(
     appRole:   string | null
     orderIds:  unknown
     signature: unknown
-    totpCode?: unknown
-    requestMeta?: { ip: string | null; userAgent: string | null }
   },
 ): Promise<SignBatchResult> {
   if (input.appRole !== 'provider') {
@@ -649,37 +646,10 @@ export async function signBatch(
   const signer = check.signer
   const lines = check.lines
 
-  // ── 2. The second factor, when any line is controlled ──
-  const controlledLines = lines.filter(l => l.controlled)
-  if (controlledLines.length > 0) {
-    const controlled = controlledLines.map(l => ({ orderId: l.orderId, medicationName: l.medicationName, deaSchedule: l.deaSchedule }))
-    if (input.totpCode == null || input.totpCode === '') {
-      return { ok: false, status: 401, code: 'TOTP_REQUIRED', error: 'This batch includes a controlled substance: enter your authenticator code to sign.', controlled }
-    }
-    const totp = await verifyProviderTotp(supabase, signer.provider_id, input.totpCode)
-    if (totp === 'unavailable') {
-      return { ok: false, status: 503, code: 'TOTP_UNAVAILABLE', error: 'Your authenticator code could not be checked. Nothing was signed — try again.', controlled }
-    }
-    if (totp === 'not_enrolled') {
-      return { ok: false, status: 401, code: 'TOTP_NOT_ENROLLED', error: 'Set up your authenticator before signing a controlled substance.', controlled }
-    }
-    if (totp === 'invalid') {
-      await writeEpcsAudit(supabase, signer.provider_id, controlledLines, 'TOTP_FAILED', {}, input.requestMeta)
-      return { ok: false, status: 401, code: 'TOTP_INVALID', error: 'That authenticator code is not valid. Nothing was signed.', controlled }
-    }
-    // The verification is recorded before anything is signed, against
-    // every controlled order in the batch. If it cannot be recorded, the
-    // signature is not taken.
-    const recorded = await writeEpcsAudit(supabase, signer.provider_id, controlledLines, 'TOTP_VERIFIED', {}, input.requestMeta)
-    if (!recorded) {
-      return { ok: false, status: 503, code: 'EPCS_AUDIT_UNAVAILABLE', error: 'The EPCS audit record could not be written. Nothing was signed — try again.' }
-    }
-  }
-
   // ── The address each order ships to, frozen at signing ──
   // Read before anything is written: a patient now in a state other than
   // the one the draft was written (and the pharmacy license-checked) for
-  // is not signed. The address is written onto the drafts in step 5,
+  // is not signed. The address is written onto the drafts in step 4,
   // just before the signing statement.
   const addresses = await readShippingAddresses(supabase, lines)
   if (!addresses.ok) return addresses.result
@@ -692,7 +662,7 @@ export async function signBatch(
     return { ok: false, status: 503, error: 'Signing several prescriptions for one patient needs payment groups, which are not enabled here. Nothing was signed.' }
   }
 
-  // ── 3. Shipping once per pharmacy per patient (still DRAFTs) ──
+  // ── 2. Shipping once per pharmacy per patient (still DRAFTs) ──
   for (const [, ls] of byPatient) {
     const allocated = await applyBundleShipping(supabase, input.clinicId, ls.map(l => l.orderId))
     if (!allocated.ok) {
@@ -701,7 +671,7 @@ export async function signBatch(
     }
   }
 
-  // ── 4. A payment group per patient with 2+ orders, on the DRAFTs ──
+  // ── 3. A payment group per patient with 2+ orders, on the DRAFTs ──
   const groups = new Map<string, string>()  // patientId → groupId
   const groupPis = new Map<string, string>()
   const unwindGroups = async () => {
@@ -733,7 +703,7 @@ export async function signBatch(
     groupPis.set(created.groupId, created.stripePaymentIntentId)
   }
 
-  // ── 5. Sign every order — one statement, one timestamp, one hash ──
+  // ── 4. Sign every order — one statement, one timestamp, one hash ──
   // One signature record per order (orders.provider_signature_hash_snapshot
   // + locked_at), all carrying the same signature and time. The update
   // touches nothing else: a titration keeps its steps, a refill keeps
@@ -795,7 +765,7 @@ export async function signBatch(
     return { ok: false, status: 500, error: `Only ${signedIds.size} of ${orderIds.length} prescriptions were signed; ${unsigned.length} changed while signing. Contact support before retrying.` }
   }
 
-  // ── 6. Everything that follows a signature ──
+  // ── 5. Everything that follows a signature ──
   const { error: providerHashError } = await supabase
     .from('providers')
     .update({ signature_hash: signatureHash, updated_at: signedAt })
@@ -818,11 +788,6 @@ export async function signBatch(
     },
   }))
   await insertStatusHistory(supabase, historyRows, 'batch-sign')
-
-  if (controlledLines.length > 0) {
-    const ok = await writeEpcsAudit(supabase, signer.provider_id, controlledLines, 'ORDER_SIGNED', { signed_at: signedAt, signature_hash: signatureHash }, input.requestMeta)
-    if (!ok) console.error(`[batch-sign] CRITICAL: EPCS ORDER_SIGNED audit rows not written | orders=${controlledLines.map(l => l.orderId).join(',')}`)
-  }
 
   await Promise.all(lines.map(l => createSlasForTransition({
     orderId:    l.orderId,
@@ -848,40 +813,6 @@ export async function signBatch(
     patients.push({ patientId: pid, orderIds: ls.map(l => l.orderId), paymentGroupId: groupId, checkoutUrl })
   }
 
-  console.info(`[batch-sign] complete | orders=${orderIds.length} patients=${patients.length} groups=${groups.size} controlled=${controlledLines.length}`)
+  console.info(`[batch-sign] complete | orders=${orderIds.length} patients=${patients.length} groups=${groups.size}`)
   return { ok: true, signedAt, patients }
-}
-
-/**
- * EPCS audit rows, one per controlled order, each referencing every
- * controlled order in the batch. Returns false when they could not be
- * written.
- */
-async function writeEpcsAudit(
-  supabase: Supabase,
-  providerId: string,
-  controlled: ReadonlyArray<BatchLine>,
-  eventType: 'TOTP_VERIFIED' | 'TOTP_FAILED' | 'ORDER_SIGNED',
-  details: Record<string, unknown>,
-  meta: { ip: string | null; userAgent: string | null } | undefined,
-): Promise<boolean> {
-  const controlledIds = controlled.map(l => l.orderId)
-  const { error } = await supabase.from('epcs_audit_log').insert(controlled.map(l => ({
-    provider_id:     providerId,
-    patient_id:      l.patientId,
-    order_id:        l.orderId,
-    event_type:      eventType,
-    // An unreadable schedule is recorded as unknown (-1), never as a
-    // schedule it may not be.
-    dea_schedule:    l.deaSchedule ?? -1,
-    medication_name: l.medicationName,
-    details:         { ...details, batch_controlled_order_ids: controlledIds, dea_schedule_unknown: l.deaSchedule == null } as Json,
-    ip_address:      meta?.ip ?? null,
-    user_agent:      meta?.userAgent ?? null,
-  })))
-  if (error) {
-    console.error(`[batch-sign] EPCS audit (${eventType}) could not be written:`, error.message)
-    return false
-  }
-  return true
 }
