@@ -55,9 +55,9 @@ beforeEach(() => {
       pf('pf-paused', pharmacy('ph-paused', 'Paused Pharmacy', { is_active: false })),
     ],
     pharmacy_state_licenses: [
-      { pharmacy_id: 'ph-strive', state_code: 'TX', is_active: true },
-      { pharmacy_id: 'ph-test',   state_code: 'TX', is_active: true },
-      { pharmacy_id: 'ph-paused', state_code: 'TX', is_active: true },
+      { pharmacy_id: 'ph-strive', state_code: 'TX', is_active: true, deleted_at: null, expiration_date: '2099-12-31', sterile_compounding: true },
+      { pharmacy_id: 'ph-test',   state_code: 'TX', is_active: true, deleted_at: null, expiration_date: '2099-12-31', sterile_compounding: true },
+      { pharmacy_id: 'ph-paused', state_code: 'TX', is_active: true, deleted_at: null, expiration_date: '2099-12-31', sterile_compounding: true },
     ],
   })
 })

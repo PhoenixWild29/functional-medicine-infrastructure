@@ -231,7 +231,7 @@ function installHappyFixtures() {
   // State-licensure defense-in-depth check in POST /api/orders: the
   // happy path needs an ACTIVE license row for the patient's state.
   fixtures['pharmacy_state_licenses:maybeSingle'] = () => ({
-    data: { pharmacy_id: TEST_PHARMACY_ID },
+    data: { pharmacy_id: TEST_PHARMACY_ID, expiration_date: '2099-12-31', sterile_compounding: true },
     error: null,
   })
   fixtures['providers:maybeSingle'] = () => ({

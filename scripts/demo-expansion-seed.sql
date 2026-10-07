@@ -226,31 +226,46 @@ WHERE patient_id = 'a3000000-0000-0000-0000-000000000003'
 --   a4...03 Express Digital Rx (T1 API) · a4...04 Portal Plus (T2 Portal)
 --   a4...05 Hybrid Labs (T3 Hybrid)
 
-INSERT INTO pharmacy_state_licenses (pharmacy_id, state_code, license_number, expiration_date, is_active)
+INSERT INTO pharmacy_state_licenses (pharmacy_id, state_code, license_number, expiration_date, is_active, sterile_compounding)
 VALUES
   -- Strive Pharmacy (TX exists already)
-  ('a4000000-0000-0000-0000-000000000001', 'CA', 'CA-PHARM-4101', '2030-12-31', true),
-  ('a4000000-0000-0000-0000-000000000001', 'FL', 'FL-PHARM-4102', '2030-12-31', true),
-  ('a4000000-0000-0000-0000-000000000001', 'AZ', 'AZ-PHARM-4103', '2030-12-31', true),
+  ('a4000000-0000-0000-0000-000000000001', 'CA', 'CA-PHARM-4101', '2030-12-31', true, true),
+  ('a4000000-0000-0000-0000-000000000001', 'FL', 'FL-PHARM-4102', '2030-12-31', true, true),
+  ('a4000000-0000-0000-0000-000000000001', 'AZ', 'AZ-PHARM-4103', '2030-12-31', true, true),
   -- Quick Rx Pharmacy
-  ('a4000000-0000-0000-0000-000000000002', 'TX', 'TX-PHARM-4201', '2030-12-31', true),
-  ('a4000000-0000-0000-0000-000000000002', 'CA', 'CA-PHARM-4202', '2030-12-31', true),
-  ('a4000000-0000-0000-0000-000000000002', 'CO', 'CO-PHARM-4203', '2030-12-31', true),
+  ('a4000000-0000-0000-0000-000000000002', 'TX', 'TX-PHARM-4201', '2030-12-31', true, true),
+  ('a4000000-0000-0000-0000-000000000002', 'CA', 'CA-PHARM-4202', '2030-12-31', true, true),
+  ('a4000000-0000-0000-0000-000000000002', 'CO', 'CO-PHARM-4203', '2030-12-31', true, true),
   -- Express Digital Rx
-  ('a4000000-0000-0000-0000-000000000003', 'TX', 'TX-PHARM-4301', '2030-12-31', true),
-  ('a4000000-0000-0000-0000-000000000003', 'NY', 'NY-PHARM-4302', '2030-12-31', true),
-  ('a4000000-0000-0000-0000-000000000003', 'IL', 'IL-PHARM-4303', '2030-12-31', true),
+  ('a4000000-0000-0000-0000-000000000003', 'TX', 'TX-PHARM-4301', '2030-12-31', true, true),
+  ('a4000000-0000-0000-0000-000000000003', 'NY', 'NY-PHARM-4302', '2030-12-31', true, true),
+  ('a4000000-0000-0000-0000-000000000003', 'IL', 'IL-PHARM-4303', '2030-12-31', true, true),
   -- Portal Plus Pharmacy
-  ('a4000000-0000-0000-0000-000000000004', 'TX', 'TX-PHARM-4401', '2030-12-31', true),
-  ('a4000000-0000-0000-0000-000000000004', 'NY', 'NY-PHARM-4402', '2030-12-31', true),
-  ('a4000000-0000-0000-0000-000000000004', 'WA', 'WA-PHARM-4403', '2030-12-31', true),
-  ('a4000000-0000-0000-0000-000000000004', 'GA', 'GA-PHARM-4404', '2030-12-31', true),
+  ('a4000000-0000-0000-0000-000000000004', 'TX', 'TX-PHARM-4401', '2030-12-31', true, true),
+  ('a4000000-0000-0000-0000-000000000004', 'NY', 'NY-PHARM-4402', '2030-12-31', true, true),
+  ('a4000000-0000-0000-0000-000000000004', 'WA', 'WA-PHARM-4403', '2030-12-31', true, true),
+  ('a4000000-0000-0000-0000-000000000004', 'GA', 'GA-PHARM-4404', '2030-12-31', true, true),
   -- Hybrid Labs Pharmacy
-  ('a4000000-0000-0000-0000-000000000005', 'TX', 'TX-PHARM-4501', '2030-12-31', true),
-  ('a4000000-0000-0000-0000-000000000005', 'FL', 'FL-PHARM-4502', '2030-12-31', true),
-  ('a4000000-0000-0000-0000-000000000005', 'CO', 'CO-PHARM-4503', '2030-12-31', true),
-  ('a4000000-0000-0000-0000-000000000005', 'NM', 'NM-PHARM-4504', '2030-12-31', true)
+  ('a4000000-0000-0000-0000-000000000005', 'TX', 'TX-PHARM-4501', '2030-12-31', true, true),
+  ('a4000000-0000-0000-0000-000000000005', 'FL', 'FL-PHARM-4502', '2030-12-31', true, true),
+  ('a4000000-0000-0000-0000-000000000005', 'CO', 'CO-PHARM-4503', '2030-12-31', true, true),
+  ('a4000000-0000-0000-0000-000000000005', 'NM', 'NM-PHARM-4504', '2030-12-31', true, true)
 ON CONFLICT DO NOTHING;
+
+-- C5 (migration 20261009000001): every demo license covers sterile
+-- compounding (sterile_compounding above), and the five demo pharmacies are
+-- 503A compounding pharmacies, so the demo's injectables route. Demo
+-- pharmacies only; a value already recorded is kept.
+UPDATE pharmacies
+   SET facility_type = '503A'
+ WHERE pharmacy_id IN (
+         'a4000000-0000-0000-0000-000000000001',
+         'a4000000-0000-0000-0000-000000000002',
+         'a4000000-0000-0000-0000-000000000003',
+         'a4000000-0000-0000-0000-000000000004',
+         'a4000000-0000-0000-0000-000000000005'
+       )
+   AND facility_type IS NULL;
 
 -- ============================================================
 -- 5. ORDERS — DEMO-1001..DEMO-1012 (lifecycle pipeline)

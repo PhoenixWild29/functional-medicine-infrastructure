@@ -307,12 +307,15 @@ export async function seedStaticData(): Promise<void> {
     },
   ], { onConflict: 'pharmacy_id' })
 
-  // State licenses for TX (required for state-compliance search)
+  // State licenses for TX (required for state-compliance search). C5: the
+  // test pharmacies fill injectables, so each TX license records sterile
+  // compounding scope (migration 20261009000001); without it, sterile
+  // products would (correctly) not route to them.
   await supabase.from('pharmacy_state_licenses').upsert([
-    { pharmacy_id: TEST_IDS.pharmacyTier1, state_code: 'TX', license_number: 'TX-TEST-001', expiration_date: '2030-12-31', is_active: true },
-    { pharmacy_id: TEST_IDS.pharmacyTier2, state_code: 'TX', license_number: 'TX-TEST-002', expiration_date: '2030-12-31', is_active: true },
-    { pharmacy_id: TEST_IDS.pharmacyTier4, state_code: 'TX', license_number: 'TX-TEST-004', expiration_date: '2030-12-31', is_active: true },
-    { pharmacy_id: TEST_IDS.pharmacyQuickRx, state_code: 'TX', license_number: 'TX-TEST-014', expiration_date: '2030-12-31', is_active: true },
+    { pharmacy_id: TEST_IDS.pharmacyTier1, state_code: 'TX', license_number: 'TX-TEST-001', expiration_date: '2030-12-31', is_active: true, license_type: 'nonresident_pharmacy', sterile_compounding: true },
+    { pharmacy_id: TEST_IDS.pharmacyTier2, state_code: 'TX', license_number: 'TX-TEST-002', expiration_date: '2030-12-31', is_active: true, license_type: 'nonresident_pharmacy', sterile_compounding: true },
+    { pharmacy_id: TEST_IDS.pharmacyTier4, state_code: 'TX', license_number: 'TX-TEST-004', expiration_date: '2030-12-31', is_active: true, license_type: 'nonresident_pharmacy', sterile_compounding: true },
+    { pharmacy_id: TEST_IDS.pharmacyQuickRx, state_code: 'TX', license_number: 'TX-TEST-014', expiration_date: '2030-12-31', is_active: true, license_type: 'nonresident_pharmacy', sterile_compounding: true },
   ], { onConflict: 'pharmacy_id, state_code' })
 
   // Legacy flat catalog — kept for the Zero-PHI describe block which inserts

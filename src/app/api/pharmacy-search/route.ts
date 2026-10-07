@@ -16,6 +16,7 @@
 // Auth: Requires active Clinic App session.
 // Response: { results: PharmacySearchResult[] }
 
+import { checkLicensure, isSterileProduct, normalizeFacilityType, readLicenses, todayIso } from '@/lib/compliance/pharmacy-licensure'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -142,7 +143,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         supports_real_time_status,
         is_active,
         deleted_at,
-        pharmacy_status
+        pharmacy_status,
+        facility_type
       )
     `)
     .eq('medication_name', catalogItem.medication_name)
@@ -172,19 +174,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // REQ-SCS-004: only pharmacies with ACTIVE license in patient state
   const pharmacyIds = [...new Set(catalogRows.map(r => r.pharmacy_id))]
 
-  const { data: licenseRows, error: licenseError } = await supabase
-    .from('pharmacy_state_licenses')
-    .select('pharmacy_id')
-    .eq('state_code', patientState)
-    .eq('is_active', true)
-    .in('pharmacy_id', pharmacyIds)
+  // C5: an unexpired, live license in the state; sterile coverage (or
+  // 503B) for a sterile form. Expiry is judged per row below.
+  const { data: licenseRows, error: licenseError } = await readLicenses(supabase, pharmacyIds, patientState)
 
   if (licenseError) {
     console.error('[pharmacy-search] license check failed:', licenseError.message)
     return NextResponse.json({ error: 'Search failed' }, { status: 500 })
   }
-
-  const licensedPharmacyIds = new Set((licenseRows ?? []).map(r => r.pharmacy_id))
+  const today = todayIso()
   const staleThreshold = new Date(Date.now() - STALE_THRESHOLD_MS)
 
   // Step 4: Build results — filter, enrich, sort
@@ -200,12 +198,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       is_active: boolean
       deleted_at: string | null
       pharmacy_status: 'ACTIVE' | 'SUSPENDED' | 'BANNED'
+      facility_type?: string | null
     } | null
 
     if (!pharmacy) continue
 
-    // REQ-SCS-004: must have ACTIVE license in patient state
-    if (!licensedPharmacyIds.has(row.pharmacy_id)) continue
+    // REQ-SCS-004 / C5: an unexpired license in the patient state that
+    // covers this product (sterile scope for a sterile form).
+    const licensure = checkLicensure({
+      licenses:     licenseRows,
+      pharmacyId:   row.pharmacy_id,
+      pharmacyName: pharmacy.name,
+      state:        patientState,
+      sterile:      isSterileProduct({ formText: row.form }),
+      facilityType: normalizeFacilityType(pharmacy.facility_type),
+      today,
+    })
+    if (!licensure.ok) continue
 
     // REQ-SCS-005: BANNED pharmacies never shown; soft-deleted pharmacies excluded
     if (pharmacy.pharmacy_status === 'BANNED' || !pharmacy.is_active || pharmacy.deleted_at) continue

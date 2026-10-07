@@ -19,6 +19,7 @@
 // read from that verified user.
 // ============================================================
 
+import { checkLicensure, readLicenses, todayIso } from '@/lib/compliance/pharmacy-licensure'
 import { isLivePharmacy, type PharmacyLiveness } from '@/lib/pharmacies/live'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -231,15 +232,18 @@ async function getFavorites(req: NextRequest): Promise<NextResponse> {
 
   const licensedPharmacyIds = new Set<string>()
   if (patientState && pinnedPharmacyIds.length > 0) {
-    const { data: licenses, error: licErr } = await supabase
-      .from('pharmacy_state_licenses')
-      .select('pharmacy_id')
-      .in('pharmacy_id', pinnedPharmacyIds)
-      .eq('state_code', patientState)
-      .eq('is_active', true)
+    // C5: an unexpired, live license (expired or soft-deleted ones do not
+    // count). The sterile scope is checked where the line is created
+    // (resolveLine) and again at signing, which know the product's form.
+    const { data: licenses, error: licErr } = await readLicenses(supabase, pinnedPharmacyIds, patientState)
 
     if (licErr) return NextResponse.json({ error: licErr.message }, { status: 500 })
-    for (const row of licenses ?? []) licensedPharmacyIds.add(row.pharmacy_id)
+    const today = todayIso()
+    for (const id of pinnedPharmacyIds) {
+      if (checkLicensure({ licenses, pharmacyId: id, pharmacyName: 'pharmacy', state: patientState, sterile: false, facilityType: null, today }).ok) {
+        licensedPharmacyIds.add(id)
+      }
+    }
   }
 
   const favorites = scoped.map(fav => ({

@@ -58,7 +58,8 @@ function makeSupabase() {
         }))
       }
       if (table === 'pharmacy_state_licenses') {
-        return chain(() => ({ data: { pharmacy_id: PHARMACY }, error: null }))
+        // A real license row: active, unexpired, sterile scope recorded (C5).
+        return chain(() => ({ data: { pharmacy_id: PHARMACY, state_code: 'TX', expiration_date: '2099-12-31', is_active: true, deleted_at: null, sterile_compounding: true }, error: null }))
       }
       return chain(() => ({ data: null, error: null }))
     },

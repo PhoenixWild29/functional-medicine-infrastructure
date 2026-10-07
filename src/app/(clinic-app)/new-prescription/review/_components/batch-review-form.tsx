@@ -120,13 +120,14 @@ function calcPlatformFeeCents(marginCents: number): number {
  * not to remove the line. (What a refill should do about a moved price
  * is WO-107; this only stops it being sent below cost.)
  */
-type SendBlock = 'controlled' | 'price' | 'directions' | 'below_cost' | 'reprice' | 'cycle_pattern' | 'package_unit'
+type SendBlock = 'controlled' | 'licensure' | 'price' | 'directions' | 'below_cost' | 'reprice' | 'cycle_pattern' | 'package_unit'
 
 type SendBlockLine = {
   retailCents: number; wholesaleCents: number; sigText: string; repriceRequired?: boolean | null
   sigMode?: SessionPrescription['sigMode']; cycle?: SessionPrescription['cycle']
   packageUnitMismatch?: string | null
   deaSchedule?: number | null
+  licensureProblem?: string | null
 }
 
 export function sendBlock(rx: SendBlockLine): SendBlock | null {
@@ -134,6 +135,9 @@ export function sendBlock(rx: SendBlockLine): SendBlock | null {
   // old draft) is never signed or sent through CompoundIQ. Nothing on the
   // line fixes it, so it outranks every other reason.
   if (isControlledSchedule(rx.deaSchedule)) return 'controlled'
+  // Compliance C5: the pharmacy cannot fill it for the patient's shipping
+  // state. The fix is another pharmacy, not an edit of this line's price.
+  if (rx.licensureProblem) return 'licensure'
   if (rx.retailCents <= 0) return 'price'
   if (rx.sigText.trim().length < 10) return 'directions'
   // Cycling dose math: a cycling line without its days on / off (one
@@ -410,6 +414,46 @@ export function BatchReviewForm({ isProvider }: Props) {
   const { updatePrescription } = session
   const prescriptionsRef = useRef(session.prescriptions)
   prescriptionsRef.current = session.prescriptions
+
+  // Compliance C5: can each line's pharmacy fill it for this shipping
+  // state? The rule batch-sign enforces, asked before the signature so the
+  // line can say why. Keyed on what the answer depends on (pharmacy and
+  // product per line, and the state) so editing a price does not re-ask.
+  // Like the C4 check above, a check that cannot run blocks nothing here.
+  const licensureKey = patientShippingState
+    ? `${patientShippingState}|${session.prescriptions.map(rx => `${rx.id}:${rx.pharmacyId}:${rx.formulationId ?? ''}:${rx.itemId ?? ''}`).join(',')}`
+    : ''
+  const { updatePrescription: setLineLicensure } = session
+  useEffect(() => {
+    if (!licensureKey) return
+    const lines = prescriptionsRef.current.map(rx => ({
+      key: rx.id, pharmacyId: rx.pharmacyId, formulationId: rx.formulationId ?? null, catalogItemId: rx.itemId ?? null,
+    }))
+    if (lines.length === 0) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const qs = new URLSearchParams({ state: patientShippingState ?? '', lines: JSON.stringify(lines) })
+        const res = await fetch(`/api/pharmacy-licensure/check?${qs.toString()}`)
+        const body = await res.json().catch(() => ({})) as { problems?: Array<{ key?: unknown; message?: unknown }> }
+        if (cancelled) return
+        if (!res.ok || !Array.isArray(body.problems)) {
+          console.warn('[batch-review] pharmacy licensure check could not run:', res.status)
+          return
+        }
+        const byKey = new Map(body.problems
+          .filter(p => typeof p.key === 'string' && typeof p.message === 'string')
+          .map(p => [p.key as string, p.message as string]))
+        for (const rx of prescriptionsRef.current) {
+          const message = byKey.get(rx.id) ?? null
+          if ((rx.licensureProblem ?? null) !== message) setLineLicensure(rx.id, { licensureProblem: message })
+        }
+      } catch {
+        // Blocks nothing: batch-sign and the sign page enforce the rule.
+      }
+    })()
+    return () => { cancelled = true }
+  }, [licensureKey, patientShippingState, setLineLicensure])
   // #181: the vial suggestion for a line with no package. Another package
   // or more than one → the line takes it and its price must be confirmed
   // (WO-108, the margin kept); a package that cannot be sized → blocked
@@ -622,6 +666,7 @@ export function BatchReviewForm({ isProvider }: Props) {
   const belowCostItems = invalidItems.filter(rx => sendBlock(rx) === 'below_cost')
   const repriceItems   = invalidItems.filter(rx => sendBlock(rx) === 'reprice')
   const controlledItems = invalidItems.filter(rx => sendBlock(rx) === 'controlled')
+  const licensureItems  = invalidItems.filter(rx => sendBlock(rx) === 'licensure')
   const cycleItems     = invalidItems.filter(rx => sendBlock(rx) === 'cycle_pattern' || sendBlock(rx) === 'package_unit')
   const malformedItems = invalidItems.filter(rx => sendBlock(rx) === 'price' || sendBlock(rx) === 'directions')
 
@@ -903,6 +948,10 @@ export function BatchReviewForm({ isProvider }: Props) {
                   {block === 'controlled' ? (
                     <p className="mt-1 text-xs font-medium text-red-700" data-testid={`controlled-${rx.id}`}>
                       {CONTROLLED_LABEL}. CompoundIQ cannot sign or send it; remove this line.
+                    </p>
+                  ) : block === 'licensure' ? (
+                    <p className="mt-1 text-xs font-medium text-red-700" data-testid={`pharmacy-licensure-${rx.id}`}>
+                      {rx.licensureProblem} Choose another pharmacy for this prescription, or remove it.
                     </p>
                   ) : block === 'package_unit' ? (
                     <p className="mt-1 text-xs font-medium text-red-700" data-testid={`package-unit-mismatch-${rx.id}`}>
@@ -1245,6 +1294,8 @@ export function BatchReviewForm({ isProvider }: Props) {
                 ? 'The drug interaction check could not run. Retry it above to enable sending.'
                 : prescriberProblems.length > 0
                 ? prescriberProblems[0]!.message
+                : licensureItems.length > 0
+                ? 'Choose another pharmacy for the flagged prescriptions above to enable sending.'
                 : cycleItems.length > 0 || controlledItems.length > 0
                 ? 'Edit the flagged prescriptions above to enable sending.'
                 : belowCostItems.length > 0 || repriceItems.length > 0

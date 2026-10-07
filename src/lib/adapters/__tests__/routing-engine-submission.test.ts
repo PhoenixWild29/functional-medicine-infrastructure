@@ -96,10 +96,14 @@ jest.mock('@/lib/supabase/service', () => ({
         return { select: () => chain(() => ({ data: pharmacyRow, error: null })) }
       }
       if (table === 'orders') {
-        return { select: () => chain(() => ({ data: { order_id: 'o-1', status: orderStatus, pharmacy_id: 'pharm-1', ...orderLine }, error: null })) }
+        return { select: () => chain(() => ({ data: { order_id: 'o-1', status: orderStatus, pharmacy_id: 'pharm-1', shipping_state_snapshot: 'TX', formulation_id: null, catalog_item_id: null, ...orderLine }, error: null })) }
       }
       if (table === 'formulations') {
         return { select: () => chain(() => ({ data: formulationRow, error: null })) }
+      }
+      // C5: submission re-checks licensure; the pharmacy holds a valid TX license.
+      if (table === 'pharmacy_state_licenses') {
+        return { select: () => chain(() => ({ data: [{ pharmacy_id: 'pharm-1', state_code: 'TX', expiration_date: '2099-12-31', is_active: true, deleted_at: null, sterile_compounding: true }], error: null })) }
       }
       if (table === 'circuit_breaker_state') {
         return {

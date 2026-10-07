@@ -18,6 +18,7 @@
 //
 // Auth: Supabase JWT (clinic_user or ops_admin)
 
+import { checkLicensure, normalizeFacilityType, productIsSterile, readLicenses, todayIso } from '@/lib/compliance/pharmacy-licensure'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
@@ -292,7 +293,7 @@ export async function GET(req: NextRequest) {
             pharmacies(
               pharmacy_id, name, slug, integration_tier,
               fax_number, supports_real_time_status,
-              is_active, deleted_at
+              is_active, deleted_at, facility_type
             ),
             pharmacy_formulation_packages(
               id, package_label, package_qty, package_unit,
@@ -318,20 +319,28 @@ export async function GET(req: NextRequest) {
             .filter(Boolean)
 
           if (pharmacyIds.length > 0) {
-            const { data: licenses, error: licenseError } = await supabase
-              .from('pharmacy_state_licenses')
-              .select('pharmacy_id')
-              .in('pharmacy_id', pharmacyIds)
-              .eq('state_code', patientState.toUpperCase())
-              .eq('is_active', true)
+            // C5: only pharmacies that can lawfully fill THIS product for a
+            // patient in this state: an unexpired, live license there, and
+            // sterile coverage (or 503B) for a sterile product.
+            const { data: licenses, error: licenseError } = await readLicenses(supabase, pharmacyIds, patientState)
             // A licence read that failed has no answer; it is not "every
             // pharmacy is unlicensed" (an empty list the provider can't read).
-            if (licenseError) throw licenseError
+            if (licenseError) throw new Error(licenseError.message)
+            const sterile = await productIsSterile(supabase, formulationId, null)
+            const today = todayIso()
 
-            const licensedIds = new Set(licenses?.map(l => l.pharmacy_id) ?? [])
-            filtered = filtered.filter(pf =>
-              licensedIds.has((pf.pharmacies as Record<string, unknown>)?.pharmacy_id as string)
-            )
+            filtered = filtered.filter(pf => {
+              const ph = pf.pharmacies as Record<string, unknown> | null
+              return checkLicensure({
+                licenses,
+                pharmacyId:   ph?.['pharmacy_id'] as string,
+                pharmacyName: (ph?.['name'] as string) ?? 'pharmacy',
+                state:        patientState,
+                sterile,
+                facilityType: normalizeFacilityType(ph?.['facility_type']),
+                today,
+              }).ok
+            })
           }
         }
 

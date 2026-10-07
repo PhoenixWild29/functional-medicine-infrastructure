@@ -65,6 +65,7 @@ const ORDER = {
   pharmacy_id: 'ph-1', clinic_id: 'c-1', provider_id: 'pr-1', patient_id: 'pt-1', formulation_id: 'f-sema', catalog_item_id: null,
   medication_snapshot: { medication_name: 'Semaglutide' }, provider_npi_snapshot: '1234567890',
   quantity: 1, sig_text: 'Inject weekly', fax_attempt_count: 0, created_at: '2026-10-01T00:00:00Z',
+  shipping_state_snapshot: 'TX',
 }
 const PROVIDER = { first_name: 'Sarah', last_name: 'Chen', npi_number: '1234567890', dea_number: null, license_state: 'TX' }
 const PATIENT  = { first_name: 'Alex', last_name: 'Demo', date_of_birth: '1985-06-15', allergies: [], nkda: true }
@@ -87,6 +88,9 @@ function healthy(override: Script): Script {
         return { data: { config_id: 'cfg-1', base_url: 'https://pharm.test', vault_secret_id: 'v-1', endpoints: null, auth_type: 'api_key', payload_transformer: null, response_parser: null, rate_limit_rpm: null, rate_limit_concurrent: null, timeout_ms: 1000 } }
       case 'adapter_submissions':
         return call.op === 'insert' ? { data: { submission_id: 'sub-1' } } : { data: null, count: 0 }
+      // C5: submission re-checks licensure; a valid TX license.
+      case 'pharmacy_state_licenses':
+        return { data: [{ pharmacy_id: 'ph-1', state_code: 'TX', expiration_date: '2099-12-31', is_active: true, deleted_at: null, sterile_compounding: true }] }
       default: return undefined
     }
   }

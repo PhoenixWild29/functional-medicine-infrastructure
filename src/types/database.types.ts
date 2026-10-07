@@ -1649,6 +1649,7 @@ export type Database = {
           created_at: string
           deleted_at: string | null
           email: string | null
+          facility_type: string | null
           fax_number: string | null
           free_shipping_threshold: number | null
           integration_tier: Database["public"]["Enums"]["integration_tier_enum"]
@@ -1680,6 +1681,7 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           email?: string | null
+          facility_type?: string | null
           fax_number?: string | null
           free_shipping_threshold?: number | null
           integration_tier?: Database["public"]["Enums"]["integration_tier_enum"]
@@ -1711,6 +1713,7 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           email?: string | null
+          facility_type?: string | null
           fax_number?: string | null
           free_shipping_threshold?: number | null
           integration_tier?: Database["public"]["Enums"]["integration_tier_enum"]
@@ -2021,24 +2024,30 @@ export type Database = {
           expiration_date: string
           is_active: boolean
           license_number: string
+          license_type: string | null
           pharmacy_id: string
           state_code: string
+          sterile_compounding: boolean | null
         }
         Insert: {
           deleted_at?: string | null
           expiration_date: string
           is_active?: boolean
           license_number: string
+          license_type?: string | null
           pharmacy_id: string
           state_code: string
+          sterile_compounding?: boolean | null
         }
         Update: {
           deleted_at?: string | null
           expiration_date?: string
           is_active?: boolean
           license_number?: string
+          license_type?: string | null
           pharmacy_id?: string
           state_code?: string
+          sterile_compounding?: boolean | null
         }
         Relationships: [
           {

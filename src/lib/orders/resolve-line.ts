@@ -20,6 +20,7 @@
 // WO-101a: and how many of it. packageCount (1..MAX_PACKAGE_COUNT, default
 // 1) multiplies the package price; it is meaningless without a package.
 
+import { checkLicensure, isSterileProduct, LICENSE_COLUMNS, normalizeFacilityType, todayIso, type LicenseRecord } from '@/lib/compliance/pharmacy-licensure'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { controlledRefusal, isControlledSchedule } from './controlled-substance'
 import type { Database, Json } from '@/types/database.types'
@@ -121,6 +122,8 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
   const { pharmacyId, patientState } = input
 
   let medicationItem: MedicationItem | null = null
+  // C5: the dosage form's sterile flag (formulation lines); catalog lines use their form text.
+  let dosageFormIsSterile: boolean | null = null
   let linePackage: LinePackage = { package_id: null, package_label: null, package_count: 1 }
   const requestedPackageId = typeof input.packageId === 'string' && input.packageId.trim() ? input.packageId.trim() : null
   if (requestedPackageId && kind !== 'formulation') {
@@ -160,7 +163,8 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
     const [formResult, priceResult] = await Promise.all([
       supabase
         .from('formulations')
-        .select('formulation_id, name, concentration, concentration_value, concentration_unit, dosage_forms(name), salt_forms(ingredients(dea_schedule))')
+        // C5 sterile flag and C6 salt-form schedule, one read.
+        .select('formulation_id, name, concentration, concentration_value, concentration_unit, dosage_forms(name, is_sterile), salt_forms(ingredients(dea_schedule))')
         .eq('formulation_id', formulationId)
         .eq('is_active', true)
         .is('deleted_at', null)
@@ -319,7 +323,8 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
       }
     }
 
-    const df = formResult.data.dosage_forms as { name: string } | null
+    const df = formResult.data.dosage_forms as { name: string; is_sterile?: boolean | null } | null
+    dosageFormIsSterile = df?.is_sterile ?? null
     medicationItem = {
       medication_name: formResult.data.name,
       form:            df?.name ?? '',
@@ -336,7 +341,7 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
   // link must not create an order on it, and "not found" told nobody why.
   const { data: pharmacy, error: pharmacyError } = await supabase
     .from('pharmacies')
-    .select('pharmacy_id, name, integration_tier, fax_number, is_active, deleted_at')
+    .select('pharmacy_id, name, integration_tier, fax_number, is_active, deleted_at, facility_type')
     .eq('pharmacy_id', pharmacyId)
     .maybeSingle()
 
@@ -352,14 +357,16 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
     return { ok: false, status: 422, code: 'PHARMACY_INACTIVE', error: pharmacyInactiveMessage(pharmacy.name) }
   }
 
-  // Compliance (defense in depth): the pharmacy must hold an ACTIVE
-  // license in the patient's shipping state.
+  // Compliance (defense in depth), C5: the pharmacy must hold an ACTIVE,
+  // UNEXPIRED license in the patient's shipping state, covering sterile
+  // compounding (or be a 503B facility) when the product is sterile.
   const { data: stateLicense, error: licenseError } = await supabase
     .from('pharmacy_state_licenses')
-    .select('pharmacy_id')
+    .select(LICENSE_COLUMNS)
     .eq('pharmacy_id', pharmacyId)
     .eq('state_code', patientState)
     .eq('is_active', true)
+    .is('deleted_at', null)
     .maybeSingle()
 
   if (licenseError) {
@@ -369,6 +376,21 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
 
   if (!stateLicense) {
     return { ok: false, status: 400, error: `Pharmacy ${pharmacy.name} is not licensed in ${patientState}` }
+  }
+
+  const licensure = checkLicensure({
+    // The query above matched pharmacy, state, is_active and deleted_at, so
+    // those are known; what is judged here is the expiry and sterile scope.
+    licenses:     [{ ...(stateLicense as unknown as LicenseRecord), pharmacy_id: pharmacyId, state_code: patientState, is_active: true, deleted_at: null }],
+    pharmacyId,
+    pharmacyName: pharmacy.name,
+    state:        patientState,
+    sterile:      isSterileProduct({ dosageFormIsSterile, formText: medicationItem.form }),
+    facilityType: normalizeFacilityType((pharmacy as { facility_type?: string | null }).facility_type),
+    today:        todayIso(),
+  })
+  if (!licensure.ok) {
+    return { ok: false, status: 400, error: licensure.message }
   }
 
   const medicationSnapshot: MedicationSnapshot = {

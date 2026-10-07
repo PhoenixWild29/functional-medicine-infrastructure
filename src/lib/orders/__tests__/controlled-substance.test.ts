@@ -76,7 +76,8 @@ function supabaseWith(opts: { saltSchedule?: number | null; comboSchedules?: Arr
       if (table === 'pharmacies') {
         return chain(() => ({ data: { pharmacy_id: PHARMACY, name: 'Strive', integration_tier: 'TIER_4_FAX', fax_number: '+15125550000', is_active: true, deleted_at: null }, error: null }))
       }
-      if (table === 'pharmacy_state_licenses') return chain(() => ({ data: { pharmacy_id: PHARMACY }, error: null }))
+      // A real license row: active, unexpired, sterile scope recorded (C5).
+      if (table === 'pharmacy_state_licenses') return chain(() => ({ data: { pharmacy_id: PHARMACY, expiration_date: '2099-12-31', sterile_compounding: true }, error: null }))
       return chain(() => ({ data: null, error: null }))
     },
   }
