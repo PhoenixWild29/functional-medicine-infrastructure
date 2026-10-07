@@ -208,6 +208,26 @@ export async function productIsSterile(
   return false
 }
 
+// ── Demo pharmacies ─────────────────────────────────────────────
+
+/**
+ * The five seeded demo pharmacies (scripts/seed-poc.ts,
+ * scripts/demo-expansion-seed.sql, DEMO_PHARMACIES in
+ * lib/poc/refresh-demo-data.ts). Migration 20261009000001 recorded their
+ * sterile scope (true on every active license) and facility type (503A) in
+ * a demo-only backfill; the ops matrix marks them so nobody mistakes those
+ * values for verified licensure.
+ */
+export const DEMO_LICENSURE_PHARMACIES: ReadonlyArray<{ id: string; name: string }> = [
+  { id: 'a4000000-0000-0000-0000-000000000001', name: 'Strive Pharmacy' },
+  { id: 'a4000000-0000-0000-0000-000000000002', name: 'Quick Rx Pharmacy' },
+  { id: 'a4000000-0000-0000-0000-000000000003', name: 'Express Digital Rx' },
+  { id: 'a4000000-0000-0000-0000-000000000004', name: 'Portal Plus Pharmacy' },
+  { id: 'a4000000-0000-0000-0000-000000000005', name: 'Hybrid Labs Pharmacy' },
+]
+
+const DEMO_PHARMACY_IDS: ReadonlySet<string> = new Set(DEMO_LICENSURE_PHARMACIES.map(p => p.id))
+
 // ── Ops matrix ─────────────────────────────────────────────────
 
 export type MatrixStatus = 'valid' | 'expiring' | 'expired' | 'inactive'
@@ -226,6 +246,8 @@ export interface MatrixRow {
   pharmacyId:   string
   pharmacyName: string
   facilityType: FacilityType | null
+  /** A seeded demo pharmacy: its sterile scope and 503A came from the demo backfill. */
+  demo:         boolean
   cells:        Record<string, MatrixCell>
 }
 
@@ -273,7 +295,13 @@ export function licensureMatrix(
         if (status === 'expired') summary.expired++
         if (status !== 'inactive' && l.sterile_compounding == null) summary.sterileUnrecorded++
       }
-      return { pharmacyId: p.pharmacy_id, pharmacyName: p.name, facilityType: normalizeFacilityType(p.facility_type), cells }
+      return {
+        pharmacyId:   p.pharmacy_id,
+        pharmacyName: p.name,
+        facilityType: normalizeFacilityType(p.facility_type),
+        demo:         DEMO_PHARMACY_IDS.has(p.pharmacy_id),
+        cells,
+      }
     })
 
   return { today, states: [...states].sort(), rows, summary }

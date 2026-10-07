@@ -1,8 +1,9 @@
--- Down migration for 20261008000001_pharmacy_licensure_scope.sql
+-- Down migration for 20261009000001_pharmacy_licensure_scope.sql
 -- Atomic: either the whole rollback lands or none of it does.
 --
 -- Drops the three C5 columns and the expiry index. Recorded license types,
--- sterile scopes and 503A / 503B values are lost.
+-- sterile scopes and 503A / 503B values are lost, including the values the
+-- up file's demo backfill set on the five seeded demo pharmacies.
 
 BEGIN;
 

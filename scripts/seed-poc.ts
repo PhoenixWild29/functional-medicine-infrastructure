@@ -335,6 +335,9 @@ async function seedPharmacies() {
       // is nullable but operational flows key on it being present.
       fax_number:       p.slug === 'strive' ? stridesFaxNumber : '+15125550199',
       is_active:        true,
+      // C5: the demo pharmacies are 503A compounding pharmacies (migration
+      // 20261009000001 records the same on a database seeded before it).
+      facility_type:    '503A',
       // Initial adapter_status is cosmetic — the Ops page
       // recomputes it from submissions every render.
       adapter_status:   'green',
@@ -374,6 +377,9 @@ async function seedPharmacyLicense() {
     license_number:  'TX-PHARM-001',
     expiration_date: '2030-12-31',
     is_active:       true,
+    // C5: the demo assumes every demo license covers sterile compounding,
+    // so the demo's injectables route (migration 20261009000001).
+    sterile_compounding: true,
   })
 
   if (error) throw new Error(`Failed to seed pharmacy license: ${error.message}`)

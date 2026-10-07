@@ -68,6 +68,11 @@ export function LicensureMatrixTable({ matrix }: { matrix: LicensureMatrix }) {
                   <th scope="row" className="sticky left-0 bg-card px-3 py-2 text-left font-medium">
                     <span className="block">{row.pharmacyName}</span>
                     <span className="block text-muted-foreground">{row.facilityType ?? '503A/503B not recorded'}</span>
+                    {row.demo && (
+                      <span data-testid={`licensure-demo-${row.pharmacyId}`} className="mt-1 block text-[11px] font-normal text-amber-800">
+                        Demo pharmacy: sterile scope and 503A set by the C5 demo backfill, not verified
+                      </span>
+                    )}
                   </th>
                   {matrix.states.map(state => {
                     const cell = row.cells[state]
