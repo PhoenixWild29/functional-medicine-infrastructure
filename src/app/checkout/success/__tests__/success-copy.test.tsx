@@ -47,6 +47,7 @@ describe('checkout success copy', () => {
       order_id: 'o1', retail_price_snapshot: 200, shipping_fee: 0, clinic_id: 'c1',
       clinics: { name: 'Test Clinic', absorb_shipping: false, contact_phone: null, contact_email: null },
       pharmacies: { supports_real_time_status: true, average_turnaround_days: null },
+      patients: { sms_opt_in: true },
     }
     await renderPage()
     expect(screen.getByText(new RegExp(NEW_COPY.replace(/[.()]/g, '\\$&')))).toBeInTheDocument()
@@ -57,9 +58,63 @@ describe('checkout success copy', () => {
     groupRow = {
       group_id: 'g1', total_cents: 40000, clinic_id: 'c1',
       clinics: { name: 'Test Clinic', contact_phone: null, contact_email: null },
+      patients: { sms_opt_in: true },
     }
     await renderPage()
     expect(screen.getByText(new RegExp(NEW_COPY.replace(/[.()]/g, '\\$&')))).toBeInTheDocument()
     expect(screen.queryByText(/receipt has been emailed/i)).not.toBeInTheDocument()
   })
 })
+
+// A text is promised only to a patient who agreed to texts (sms_opt_in).
+// Without consent no text is sent, so the page says "Payment received."
+describe('no SMS consent: no text is promised', () => {
+  const noTextPromise = () => {
+    expect(screen.queryByText(/text/i)).not.toBeInTheDocument()
+    expect(screen.getByText('Payment received.')).toBeInTheDocument()
+  }
+
+  it('solo order, patient not opted in', async () => {
+    orderRow = {
+      order_id: 'o1', retail_price_snapshot: 200, shipping_fee: 0, clinic_id: 'c1',
+      clinics: { name: 'Test Clinic', absorb_shipping: false, contact_phone: null, contact_email: null },
+      pharmacies: { supports_real_time_status: true, average_turnaround_days: null },
+      patients: { sms_opt_in: false },
+    }
+    await renderPage()
+    noTextPromise()
+    expect(screen.getByText('Within 24–48 hours.')).toBeInTheDocument()
+  })
+
+  it('bundle, patient not opted in', async () => {
+    groupRow = {
+      group_id: 'g1', total_cents: 40000, clinic_id: 'c1',
+      clinics: { name: 'Test Clinic', contact_phone: null, contact_email: null },
+      patients: { sms_opt_in: false },
+    }
+    await renderPage()
+    noTextPromise()
+  })
+
+  it('consent not known (no patient row): no promise', async () => {
+    orderRow = {
+      order_id: 'o1', retail_price_snapshot: 200, shipping_fee: 0, clinic_id: 'c1',
+      clinics: { name: 'Test Clinic', absorb_shipping: false, contact_phone: null, contact_email: null },
+      pharmacies: { supports_real_time_status: true, average_turnaround_days: null },
+      patients: null,
+    }
+    await renderPage()
+    noTextPromise()
+  })
+
+  it('the order is not found yet (pending): no text is promised', async () => {
+    await renderPage()
+    expect(screen.queryByText(/text/i)).not.toBeInTheDocument()
+  })
+})
+
+it('the lookups read the patient SMS consent', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../page.tsx'), 'utf8') as string
+  expect(src.match(/patients\s*\(\s*sms_opt_in\s*\)/g)).toHaveLength(2)
+})
+

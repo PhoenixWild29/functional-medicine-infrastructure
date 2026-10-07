@@ -38,7 +38,7 @@ beforeEach(() => {
   global.fetch = fetchMock as unknown as typeof fetch
 })
 
-function renderCheckout() {
+function renderCheckout(smsConsent = true) {
   return render(
     <CheckoutPageContent
       token="tok"
@@ -48,9 +48,16 @@ function renderCheckout() {
       clinicName="Test Clinic"
       logoUrl={null}
       checkoutState="active"
+      smsConsent={smsConsent}
     />,
   )
 }
+
+it('a patient who has not agreed to texts is not promised one', async () => {
+  renderCheckout(false)
+  await screen.findByLabelText('Email (optional)')
+  expect(screen.queryByText(/text you/i)).not.toBeInTheDocument()
+})
 
 function lastPostBody(): Record<string, unknown> {
   const call = fetchMock.mock.calls[fetchMock.mock.calls.length - 1]!
