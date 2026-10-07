@@ -74,3 +74,25 @@ describe('LicensureMatrixTable', () => {
     expect(screen.getByTestId('licensure-summary')).toHaveTextContent('1 with sterile scope not recorded')
   })
 })
+
+describe('demo backfill note', () => {
+  it('marks the seeded demo pharmacies, whose sterile scope and 503A came from the C5 demo backfill', async () => {
+    const d = fakeDb({
+      pharmacies: [
+        { pharmacy_id: 'a4000000-0000-0000-0000-000000000001', name: 'Strive Pharmacy', facility_type: '503A', is_active: true, deleted_at: null },
+        { pharmacy_id: 'ph-1', name: 'Real Rx', facility_type: '503A', is_active: true, deleted_at: null },
+      ],
+      pharmacy_state_licenses: [
+        license('a4000000-0000-0000-0000-000000000001', 'TX'),
+        license('ph-1', 'TX'),
+      ],
+    })
+    const m = await loadLicensureMatrix(d.client, TODAY)
+    expect(m.rows.find(r => r.pharmacyId === 'a4000000-0000-0000-0000-000000000001')?.demo).toBe(true)
+    expect(m.rows.find(r => r.pharmacyId === 'ph-1')?.demo).toBe(false)
+
+    render(<LicensureMatrixTable matrix={m} />)
+    expect(screen.getByTestId('licensure-demo-a4000000-0000-0000-0000-000000000001')).toHaveTextContent(/demo/i)
+    expect(screen.queryByTestId('licensure-demo-ph-1')).toBeNull()
+  })
+})
