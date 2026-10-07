@@ -10,8 +10,8 @@
  *
  * A check that fails or could not run blocks Sign & Send for the whole
  * batch and the reason names the line. What a check FINDS never blocks.
- * One pad, one Sign & Send; a controlled line asks for the code once and
- * Cancel sends nothing.
+ * One pad, one Sign & Send; a controlled line (compliance C6) blocks it and
+ * nothing is sent.
  */
 
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
@@ -281,30 +281,52 @@ describe('batch sign page — selection, shipping, and what each line keeps', ()
   })
 })
 
+// Compliance C6: a controlled line is never signed through CompoundIQ.
+// Before, the page asked for the authenticator code once and signed it.
 describe('batch sign page — controlled substances', () => {
   const controlledCheck = { lines: [{ orderId: 'o-1', controlled: false }, { orderId: 'o-2', controlled: true }] }
 
-  it('the code is asked once for the batch; Cancel signs nothing', async () => {
+  it('names the controlled line with the label, blocks Sign & Send, and offers no authenticator gate', async () => {
     mockFetch({ check: controlledCheck })
     renderForm([patient([line(1), line(2, { deaSchedule: 3 })])], ['o-1', 'o-2'])
-    expect(await screen.findByTestId('batch-epcs-banner')).toHaveTextContent('Testosterone Cypionate 200mg/mL')
+    expect(await screen.findByTestId('batch-controlled-banner')).toHaveTextContent('Controlled substance: prescribe through your EPCS system')
+    expect(screen.getByTestId('batch-controlled-banner')).toHaveTextContent('Testosterone Cypionate 200mg/mL')
     await signPad()
-    await waitFor(() => expect(sendButton()).toBeEnabled(), { timeout: 5000 })
-    fireEvent.click(sendButton())
-    expect(screen.getAllByTestId('epcs-gate')).toHaveLength(1)
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel stub' }))
+    await waitFor(() => expect(screen.getByTestId('send-blocked-reason')).toHaveTextContent('Controlled substance: prescribe through your EPCS system'))
+    expect(sendButton()).toBeDisabled()
     expect(screen.queryByTestId('epcs-gate')).not.toBeInTheDocument()
     expect(calls.some(c => c.url === '/api/orders/batch-sign')).toBe(false)
   })
+})
 
-  it('the verified code travels with the signing request', async () => {
-    mockFetch({ check: controlledCheck })
+// Compliance C4 beside C6: the signer's own credentials come back from the
+// same check. Both kinds of block show, and either keeps Sign & Send off.
+describe('batch sign page — prescriber verification beside controlled substances', () => {
+  const NPI = "Sarah Chen's NPI has not been verified with the registry, so nothing can be signed. A clinic admin can run the check in Settings, Team."
+  const NO_FL = 'Semaglutide 1: No active license in FL on file for Sarah Chen.'
+
+  it('an NPI problem and a controlled line: both shown, Send blocked', async () => {
+    mockFetch({ check: {
+      lines: [{ orderId: 'o-1', controlled: false }, { orderId: 'o-2', controlled: true }],
+      problems: [{ orderId: null, code: 'prescriber_npi_unverified', message: NPI }],
+    } })
     renderForm([patient([line(1), line(2, { deaSchedule: 3 })])], ['o-1', 'o-2'])
+    expect(await screen.findByTestId('batch-problems')).toHaveTextContent(NPI)
+    expect(screen.getByTestId('batch-controlled-banner')).toHaveTextContent('Controlled substance: prescribe through your EPCS system')
     await signPad()
-    await waitFor(() => expect(sendButton()).toBeEnabled(), { timeout: 5000 })
-    fireEvent.click(sendButton())
-    fireEvent.click(screen.getByRole('button', { name: 'Verify stub' }))
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/dashboard?sent=2'))
-    expect(calls.find(c => c.url === '/api/orders/batch-sign')!.body).toMatchObject({ orderIds: ['o-1', 'o-2'], totpCode: '123456' })
+    expect(screen.getByTestId('send-blocked-reason')).toHaveTextContent(NPI)
+    expect(sendButton()).toBeDisabled()
+  })
+
+  it('a license problem names its line; Send blocked with that reason', async () => {
+    mockFetch({ check: {
+      lines: [{ orderId: 'o-1', controlled: false }],
+      problems: [{ orderId: 'o-1', code: 'prescriber_license_missing', message: NO_FL }],
+    } })
+    renderForm([patient([line(1)])], ['o-1'])
+    await signPad()
+    await waitFor(() => expect(screen.getByTestId('send-blocked-reason')).toHaveTextContent(NO_FL))
+    expect(within(screen.getByTestId('draft-line-o-1')).getByText(NO_FL)).toBeInTheDocument()
+    expect(sendButton()).toBeDisabled()
   })
 })

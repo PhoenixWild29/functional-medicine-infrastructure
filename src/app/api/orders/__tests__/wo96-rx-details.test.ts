@@ -191,11 +191,12 @@ describe('POST /api/orders — WO-96 Rx detail fields', () => {
   })
 
   it('does not block a DRAFT missing a rule-required field (sign-and-send is the gate)', async () => {
-    // Controlled ingredient, no diagnosis: the MA may still save the draft.
-    fixtures['formulation_ingredients:await'] = () => ({ data: [{ ingredients: { dea_schedule: 3 } }], error: null })
+    // Semaglutide requires a clinical difference; without one the MA may
+    // still save the draft. (This used a controlled ingredient missing its
+    // diagnosis; compliance C6 refuses a controlled draft outright.)
     const res = await POST(makeRequest(formulationBody({ rxDetails: { refills: 0 } })))
     expect(res.status).toBe(201)
-    expect(orderInsert()).toEqual(expect.objectContaining({ diagnosis_code: null, diagnosis_text: null }))
+    expect(orderInsert()).toEqual(expect.objectContaining({ clinical_difference: null }))
   })
 
   it.each([

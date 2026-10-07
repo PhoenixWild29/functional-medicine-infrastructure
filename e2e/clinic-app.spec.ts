@@ -683,29 +683,30 @@ test.describe('Clinic App — WO-96 Rx detail fields', () => {
     await expect(page.getByText(/Sign in the signature box above to enable sending/)).toBeVisible()
   })
 
-  test('controlled substance: Review row auto-expands with the diagnosis focused and blocks Send until it is entered', async ({ page }) => {
+  // Compliance C6: a controlled substance cannot be prescribed through
+  // CompoundIQ (certified EPCS is required). It is labelled in the builder
+  // and Continue stays disabled, so it never reaches pricing or Review.
+  test('controlled substance: labelled in the builder and cannot continue to pricing', async ({ page }) => {
     await loginAs(page, TEST_USERS.provider)
-    await walkBuilderToMargin(page, CONTROLLED)
+    await page.goto('/new-prescription')
+    await page.getByLabel('Search patients').fill('Test')
+    await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
+    await pickProviderIfListed(page)
+    await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
 
-    // The 10 mL vial is the dispense; 0.5 mL weekly makes it 140 days (nothing typed).
-    await expect(page.getByTestId('dispense-value')).toHaveText('10 mL')
-    await expect(page.getByTestId('days-supply-value')).toHaveText('140 days')
-
-    await page.locator('#retail-price').fill('300.00')
-    await page.getByRole('button', { name: /Review & Send/ }).click()
-    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
-
-    const row = page.locator('[data-testid^="rx-details-"]').first()
-    await expect(row).toHaveAttribute('data-expanded', 'true', { timeout: 15_000 })
-    const dxCode = row.getByLabel(/Diagnosis code \(required\)/)
-    await expect(dxCode).toBeFocused()
-    await expect(row.getByRole('alert')).toContainText(/A diagnosis is required for a controlled substance/)
-    await expect(page.getByRole('button', { name: /Sign & Send/ })).toBeDisabled()
-    await expect(page.getByText(/needs a diagnosis \(controlled substance\)/)).toBeVisible()
-
-    await dxCode.fill('E29.1')
-    await expect(page.getByText(/Sign in the signature box above to enable sending/)).toBeVisible()
-    await expect(row.getByRole('alert')).toHaveCount(0)
+    await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
+    await page.getByLabel('Search medications').fill(CONTROLLED.ingredientName)
+    const option = page.getByRole('button', { name: new RegExp(CONTROLLED.ingredientName, 'i') })
+    await expect(option).toContainText('Controlled substance: prescribe through your EPCS system')
+    await option.click()
+    await expect(page.getByTestId('controlled-substance-label')).toContainText('Controlled substance: prescribe through your EPCS system')
+    await page.getByRole('button', { name: new RegExp(CONTROLLED.formulationName, 'i') }).click()
+    await page.getByLabel('Dose amount').fill(CONTROLLED.doseAmount)
+    await page.getByLabel('Dose unit').selectOption(CONTROLLED.doseUnit)
+    await page.getByLabel('Frequency').selectOption(CONTROLLED.frequency)
+    await page.getByLabel('Timing').selectOption({ index: 1 })
+    await page.getByRole('button', { name: /Test Pharmacy Tier1/ }).click()
+    await expect(page.getByRole('button', { name: /Continue.*Set Retail Price/i })).toBeDisabled()
   })
 
   test('no rule applies: Rx details stays collapsed, Save as Draft needs no interaction with it, defaults land on the order', async ({ page }) => {
@@ -2797,9 +2798,8 @@ test.describe('Clinic App — WO-108 repricing a refill', () => {
 //     (the signature is really drawn — signature_pad 2.3 takes mouse events)
 //   - /new-prescription/sign/<id> redirects to the batch page with that
 //     order pre-selected
-//   - a Schedule III order cannot be signed without the authenticator code
-//     through any route; in a batch the code is asked once; cancel leaves
-//     every order unsigned; the audit references every controlled order
+//   - compliance C6: a Schedule III order cannot be created or signed
+//     through CompoundIQ at all; in a batch it is named and nothing signs
 //   - a line that cannot be sent (price moved, below cost) blocks the whole
 //     batch, is named, and nothing is signed
 
@@ -3013,13 +3013,24 @@ test.describe('Clinic App — WO-99 batch sign', () => {
     await expect(page.getByRole('button', { name: 'Sign & Send 1 Prescription' })).toBeVisible()
   })
 
-  test('Schedule III: no signature without the authenticator code by any route; asked once per batch; cancel signs nothing', async ({ page }) => {
+  test('Schedule III: cannot be created, cannot be signed by any route, and is named in a batch', async ({ page }) => {
     const supabase = e2eSupabase()
     await loginAs(page, TEST_USERS.provider)
     const plainA = await createDraftViaApi(page)
-    const plainB = await createDraftViaApi(page, { retailCents: 21000 })
-    // The controlled draft at the fax pharmacy, priced as that pharmacy
-    // prices it today, with the diagnosis a controlled substance requires.
+
+    // ── It cannot be created ──
+    const create = await page.request.post('/api/orders', {
+      data: {
+        patientId: TEST_IDS.patient, providerId: TEST_IDS.provider,
+        formulationId: TEST_IDS.controlledFormulation, pharmacyId: TEST_IDS.pharmacyTier4,
+        retailCents: 25000, sigText: 'Inject 0.5 mL intramuscularly once weekly', dose: '100 mg', frequencyCode: 'QW', patientState: 'TX',
+      },
+    })
+    expect(create.status()).toBe(422)
+    expect((await create.json()).code).toBe('CONTROLLED_SUBSTANCE')
+
+    // A controlled draft that already exists (written before this rule),
+    // its snapshot saying 3.
     const { data: controlled, error } = await supabase
       .from('orders')
       .insert({
@@ -3037,47 +3048,25 @@ test.describe('Clinic App — WO-99 batch sign', () => {
     if (error || !controlled) throw new Error(`Failed to seed controlled draft: ${error?.message}`)
     const controlledId = controlled.order_id
 
-    // ── No route signs it without the code ──
+    // ── No route signs it, with or without an authenticator code ──
     const oldRoute = await page.request.post(`/api/orders/${controlledId}/sign-and-send`, { data: { signatureDataUrl: 'data:image/png;base64,' + 'A'.repeat(6000) } })
     expect(oldRoute.status()).toBe(410)
-    const noCode = await page.request.post('/api/orders/batch-sign', { data: { orderIds: [controlledId], signature: API_SIGNATURE } })
-    expect({ status: noCode.status(), code: (await noCode.json()).code }).toEqual({ status: 401, code: 'TOTP_REQUIRED' })
-    const wrongCode = await page.request.post('/api/orders/batch-sign', { data: { orderIds: [controlledId], signature: API_SIGNATURE, totpCode: wrongTotpCode(DEMO_TOTP_SECRET) } })
-    expect({ status: wrongCode.status(), code: (await wrongCode.json()).code }).toEqual({ status: 401, code: 'TOTP_INVALID' })
-    const { data: stillDraft } = await supabase.from('orders').select('status').eq('order_id', controlledId).single()
-    expect(stillDraft!.status).toBe('DRAFT')
-
-    // ── In a batch: the code is asked once; Cancel signs nothing ──
-    await page.goto(`/new-prescription/sign?orders=${plainA},${plainB},${controlledId}`)
-    await expect(page.getByTestId('batch-epcs-banner')).toContainText(TEST_CATALOG.controlledFormulationName, { timeout: 15_000 })
-    await drawSignature(page)
-    const send = page.getByRole('button', { name: 'Sign & Send 3 Prescriptions' })
-    await expect(send).toBeEnabled({ timeout: 15_000 })
-    await send.click()
-    await expect(page.getByText('EPCS Two-Factor Authentication Required')).toHaveCount(1)
-    await page.getByRole('button', { name: 'Cancel' }).click()
-    await expect(page.getByText('EPCS Two-Factor Authentication Required')).toHaveCount(0)
-    const { data: afterCancel } = await supabase.from('orders').select('status').in('order_id', [plainA, plainB, controlledId])
-    expect((afterCancel ?? []).map(r => r.status)).toEqual(['DRAFT', 'DRAFT', 'DRAFT'])
-
-    // ── With the code: all three sign, and the audit names every controlled order ──
-    await send.click()
-    await page.getByPlaceholder('000000').fill(totpCode(DEMO_TOTP_SECRET))
-    await page.getByRole('button', { name: 'Verify & Sign' }).click()
-    await expect(page).toHaveURL(/\/dashboard\?sent=3/, { timeout: 30_000 })
-    const { data: signed } = await supabase.from('orders').select('status, payment_group_id').in('order_id', [plainA, plainB, controlledId])
-    expect((signed ?? []).map(r => r.status)).toEqual(['AWAITING_PAYMENT', 'AWAITING_PAYMENT', 'AWAITING_PAYMENT'])
-    expect(new Set((signed ?? []).map(r => r.payment_group_id)).size).toBe(1)
-    const { data: audit } = await supabase
-      .from('epcs_audit_log')
-      .select('event_type, order_id, dea_schedule, details')
-      .eq('order_id', controlledId)
-      .in('event_type', ['TOTP_VERIFIED', 'ORDER_SIGNED'])
-    expect((audit ?? []).map(a => a.event_type).sort()).toEqual(['ORDER_SIGNED', 'TOTP_VERIFIED'])
-    for (const row of audit ?? []) {
-      expect(row.dea_schedule).toBe(3)
-      expect(row.details).toMatchObject({ batch_controlled_order_ids: [controlledId] })
+    for (const extra of [{}, { totpCode: totpCode(DEMO_TOTP_SECRET) }]) {
+      const res = await page.request.post('/api/orders/batch-sign', { data: { orderIds: [plainA, controlledId], signature: API_SIGNATURE, ...extra } })
+      const body = await res.json() as { problems: Array<{ orderId: string; code: string }> }
+      expect(res.status()).toBe(422)
+      expect(body.problems.map(p => [p.orderId, p.code])).toEqual([[controlledId, 'controlled_substance']])
     }
+    const { data: still } = await supabase.from('orders').select('status').in('order_id', [plainA, controlledId])
+    expect((still ?? []).map(r => r.status)).toEqual(['DRAFT', 'DRAFT'])
+
+    // ── On the sign page it is named, and deselecting it lets the rest sign ──
+    await page.goto(`/new-prescription/sign?orders=${plainA},${controlledId}`)
+    await expect(page.getByTestId(`line-problem-${controlledId}`)).toContainText('Controlled substance: prescribe through your EPCS system', { timeout: 15_000 })
+    await drawSignature(page)
+    await expect(page.getByRole('button', { name: 'Sign & Send 2 Prescriptions' })).toBeDisabled()
+    await page.getByTestId(`select-${controlledId}`).uncheck()
+    await expect(page.getByRole('button', { name: 'Sign & Send 1 Prescription' })).toBeEnabled({ timeout: 15_000 })
   })
 
   test('a line that cannot be sent blocks the whole batch, is named, and nothing is signed', async ({ page }) => {

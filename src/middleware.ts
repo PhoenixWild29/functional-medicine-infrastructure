@@ -52,10 +52,21 @@ function isPrefetchRequest(request: NextRequest): boolean {
 // branch produced it (page, API, redirect, prefetch 204). The static
 // headers (HSTS, X-Frame-Options, nosniff, Referrer-Policy) come from
 // next.config.ts. See src/lib/security/headers.ts.
+// The scheme the BROWSER used. Behind Vercel's proxy the URL the middleware
+// sees is http; the browser's scheme is the first value of
+// x-forwarded-proto. Without the header (local `next start`), the URL's own
+// protocol. Prod eaab539 read only the URL and never sent
+// upgrade-insecure-requests on its https pages.
+function isHttpsRequest(request: NextRequest): boolean {
+  const forwarded = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim().toLowerCase()
+  if (forwarded) return forwarded === 'https'
+  return request.nextUrl.protocol === 'https:'
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const nonce = newNonce()
-  const csp = buildCsp({ nonce, pathname, secure: request.nextUrl.protocol === 'https:' })
+  const csp = buildCsp({ nonce, pathname, secure: isHttpsRequest(request) })
   request.headers.set('x-nonce', nonce)
   request.headers.set('content-security-policy', csp)
 

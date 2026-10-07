@@ -13,6 +13,7 @@
 //   as the builder's pharmacy_options level (/api/formulations).
 // ============================================================
 
+import { scheduleFromFormulationRow } from '@/lib/orders/controlled-substance'
 import { isLivePharmacy, type PharmacyLiveness } from '@/lib/pharmacies/live'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -78,7 +79,9 @@ export async function GET(req: NextRequest) {
           concentration_value,
           concentration_unit,
           dosage_forms ( name ),
-          routes_of_administration ( name, abbreviation, sig_prefix )
+          routes_of_administration ( name, abbreviation, sig_prefix ),
+          salt_forms ( ingredients ( dea_schedule ) ),
+          formulation_ingredients ( ingredients ( dea_schedule ) )
         ),
         pharmacies ( pharmacy_id, name, slug, integration_tier )
       `)
@@ -165,6 +168,12 @@ export async function GET(req: NextRequest) {
       // null = no patient_state provided (unknown); boolean otherwise.
       pharmacy_licensed: patientState
         ? typeof item.pharmacy_id === 'string' && licensedPharmacyIds.has(item.pharmacy_id)
+        : null,
+      // Compliance C6: the formulation's highest DEA schedule (salt form and
+      // combination ingredients). A controlled item is labelled and never
+      // quick-loaded.
+      dea_schedule: item.formulations
+        ? scheduleFromFormulationRow(item.formulations as unknown as Parameters<typeof scheduleFromFormulationRow>[0])
         : null,
     }))
 

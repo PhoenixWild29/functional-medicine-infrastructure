@@ -29,7 +29,7 @@ import SignatureCanvas from 'react-signature-canvas'
 import { AllergyChip, loadAllergies } from '../../_components/allergy-chip'
 import { AllergyNotice } from '../../review/_components/allergy-notice'
 import { DrugInteractionAlerts } from '../../_components/drug-interaction-alerts'
-import { EpcsTotpGate } from '../../_components/epcs-totp-gate'
+import { CONTROLLED_LABEL } from '@/lib/orders/controlled-substance'
 import { SignAsMePanel } from './sign-as-me-panel'
 import { builderHref } from '../../_lib/edit-target'
 import { dosingDaysIn } from '@/lib/orders/cycling'
@@ -187,7 +187,6 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [serverProblems, setServerProblems] = useState<Problem[]>([])
-  const [showEpcsGate, setShowEpcsGate] = useState(false)
 
   const lineProblems = new Map<string, Problem[]>()
   const batchProblems: Problem[] = []
@@ -216,12 +215,15 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
     else if (check.state === 'failed') blocked = `${check.message} Retry it above to enable sending.`
     else if (batchProblems.length > 0) blocked = batchProblems[0]!.message
     else if (firstLineProblem) blocked = firstLineProblem[1][0]!.message
+    // Compliance C6: a controlled line is never signed here, even if the
+    // check named no problem for it.
+    else if (controlledSelected.length > 0) blocked = `${controlledSelected[0]!.medicationName}: ${CONTROLLED_LABEL}. Deselect it to sign the rest.`
     else if (!signature) blocked = 'Sign in the signature box below to enable sending.'
     else if (!signature.ok) blocked = SIGNATURE_REJECTION_COPY[signature.reason]
   }
   const canSend = blocked === null && !submitting
 
-  async function send(totpCode?: string) {
+  async function send() {
     const payload = signatureFromPad(sigCanvasRef.current as unknown as Parameters<typeof signatureFromPad>[0])
     const sig = checkSignature(payload)
     if (!sig.ok) {
@@ -236,17 +238,12 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
       const res = await fetch('/api/orders/batch-sign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderIds: selectedIds, signature: sig.signature, ...(totpCode ? { totpCode } : {}) }),
+        body: JSON.stringify({ orderIds: selectedIds, signature: sig.signature }),
       })
       const body = await res.json().catch(() => ({})) as { error?: string; code?: string; problems?: Problem[] }
       if (res.ok) {
         router.push(`/dashboard?sent=${selectedIds.length}`)
         return
-      }
-      if (body.code === 'TOTP_REQUIRED') {
-        // The server found a controlled line the page did not know about
-        // (e.g. a schedule that could not be read): ask for the code.
-        setShowEpcsGate(true)
       }
       setServerProblems(body.problems ?? [])
       const message = body.error ?? 'Signing failed.'
@@ -260,8 +257,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
 
   function handleSignAndSend() {
     if (!canSend) return
-    if (controlledSelected.length > 0) setShowEpcsGate(true)
-    else void send()
+    void send()
   }
 
   function toggle(orderId: string) {
@@ -282,11 +278,11 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
   return (
     <div className="space-y-6">
       {controlledSelected.length > 0 && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3" data-testid="batch-epcs-banner">
-          <p className="text-sm font-semibold text-red-800">Controlled Substance — EPCS 2FA Required</p>
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3" data-testid="batch-controlled-banner">
+          <p className="text-sm font-semibold text-red-800">{CONTROLLED_LABEL}</p>
           <p className="mt-1 text-xs text-red-700">
             {controlledSelected.map(l => l.medicationName).join(', ')} {controlledSelected.length === 1 ? 'is' : 'are'} controlled.
-            Your authenticator code is required once, for the whole batch, at signing (DEA 21 CFR 1311).
+            CompoundIQ cannot sign or send a controlled substance. Deselect {controlledSelected.length === 1 ? 'it' : 'them'} to sign the rest.
           </p>
         </div>
       )}
@@ -480,20 +476,6 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
       )}
       </>)}
 
-      {showEpcsGate && (
-        <EpcsTotpGate
-          providerId={signer.providerId}
-          providerName={signer.name}
-          medicationNames={controlledSelected.map(l => l.medicationName)}
-          deaSchedules={controlledSelected.map(l => l.deaSchedule)}
-          onVerified={code => {
-            setShowEpcsGate(false)
-            void send(code)
-          }}
-          // Cancel leaves every order unsigned: nothing was sent.
-          onCancel={() => setShowEpcsGate(false)}
-        />
-      )}
     </div>
   )
 }

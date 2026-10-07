@@ -139,3 +139,16 @@ it('a non-provider is not asked: they do not sign', async () => {
   await screen.findByRole('button', { name: /Save as Draft/ })
   expect(prescriberCalls()).toHaveLength(0)
 })
+
+// Merge of C4 and C6: a controlled line and a prescriber problem are
+// separate blocks; Review shows both.
+it('a controlled line and a prescriber problem: both shown, Send blocked', async () => {
+  prescriberCheck = async () => ({ ok: true, json: async () => ({ applies: true, problems: [{ code: 'prescriber_license_missing', state: 'NY', message: NO_NY }] }) })
+  const TESTO = { ...BPC157, id: 'line-testo', formulationId: 'formulation-testo', medicationName: 'Testosterone Cypionate 200mg/mL', deaSchedule: 3 }
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ patient: PATIENT, provider: PROVIDER, prescriptions: [BPC157, TESTO], notices: [] }))
+  renderReview(true)
+  expect(await screen.findByTestId('prescriber-check-problems')).toHaveTextContent(NO_NY)
+  expect(screen.getByTestId('review-controlled-banner')).toHaveTextContent('Testosterone Cypionate 200mg/mL')
+  expect(screen.getByTestId('send-blocked-reason')).toHaveTextContent(NO_NY)
+  expect(screen.getByRole('button', { name: /Sign & Send/ })).toBeDisabled()
+})
