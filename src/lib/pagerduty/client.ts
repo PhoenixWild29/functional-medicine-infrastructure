@@ -1,4 +1,7 @@
 import { serverEnv } from '@/lib/env'
+import { VALID_TRANSITIONS } from '@/lib/orders/state-machine'
+import type { SlaType } from '@/lib/sla/creator'
+import type { IntegrationTier } from '@/lib/adapters/audit-trail'
 
 // ============================================================
 // PagerDuty Events API v2 Client — WO-24 (extended in WO-25)
@@ -123,9 +126,33 @@ export interface SlaEscalationParams {
   escalationTier:        number
   pharmacySlug:          string   // non-PHI operational reference
   integrationTier:       string
-  cascadeStatus?:        string
+  /** The order's status: sent only if it is an order status enum value. */
+  orderStatus?:          string
+  /** Whether the fax cascade was attempted for this breach. */
+  cascadeAttempted?:     boolean
   breachDurationMinutes: number
 }
+
+// C9: PagerDuty is outside the BAA boundary. An incident carries ids,
+// status enums and counts only. A value that should be an enum but is not
+// one is dropped (or shown as "unknown"), so free text cannot ride along in
+// an enum-shaped field. cascadeStatus (free text, e.g. "Tier 1 failed →
+// Cascading to Tier 4 (fax)") is no longer accepted: cascadeAttempted says
+// the same thing as a boolean.
+const SLA_TYPES = [
+  'PAYMENT', 'SUBMISSION', 'STATUS_UPDATE', 'FAX_DELIVERY', 'PHARMACY_ACKNOWLEDGE',
+  'PHARMACY_CONFIRMATION', 'SHIPPING', 'REROUTE_RESOLUTION', 'ADAPTER_SUBMISSION_ACK',
+  'PHARMACY_COMPOUNDING_ACK',
+] as const satisfies readonly SlaType[]
+
+const INTEGRATION_TIERS = [
+  'TIER_1_API', 'TIER_2_PORTAL', 'TIER_3_SPEC', 'TIER_3_HYBRID', 'TIER_4_FAX',
+] as const satisfies readonly IntegrationTier[]
+
+const ORDER_STATUSES: ReadonlySet<string> = new Set(Object.keys(VALID_TRANSITIONS))
+
+const oneOf = (allowed: ReadonlyArray<string> | ReadonlySet<string>, value: string | undefined): string | null =>
+  value != null && (Array.isArray(allowed) ? allowed.includes(value) : (allowed as ReadonlySet<string>).has(value)) ? value : null
 
 /**
  * Triggers a Tier 3 PagerDuty incident for an SLA breach.
@@ -137,20 +164,28 @@ export interface SlaEscalationParams {
  * and must NOT create PagerDuty incidents.
  */
 export async function triggerSlaEscalation(params: SlaEscalationParams): Promise<void> {
+  const slaType         = oneOf(SLA_TYPES, params.slaType) ?? 'unknown'
+  const integrationTier = oneOf(INTEGRATION_TIERS, params.integrationTier) ?? 'unknown'
+  const orderStatus     = oneOf(ORDER_STATUSES, params.orderStatus)
+
+  const customDetails: Record<string, string | number | boolean> = {
+    order_id:                params.orderId,
+    sla_type:                slaType,
+    escalation_tier:         params.escalationTier,
+    pharmacy_slug:           params.pharmacySlug,
+    integration_tier:        integrationTier,
+    ...(orderStatus ? { order_status: orderStatus } : {}),
+    ...(typeof params.cascadeAttempted === 'boolean' ? { cascade_attempted: params.cascadeAttempted } : {}),
+    breach_duration_minutes: params.breachDurationMinutes,
+  }
+
   await triggerPagerDutyIncident({
+    // The dedup key must match resolveSlaEscalation, so it keeps the raw type.
     dedupKey: slaDedupKey(params.orderId, params.slaType),
-    summary:  `SLA Breach (Tier 3): ${params.slaType} — Order ${params.orderId}`,
+    summary:  `SLA Breach (Tier 3): ${slaType} — Order ${params.orderId}`,
     severity: 'critical',
     source:   'compoundiq-sla-engine',
-    customDetails: {
-      order_id:                params.orderId,
-      sla_type:                params.slaType,
-      escalation_tier:         params.escalationTier,
-      pharmacy_name:           params.pharmacySlug,
-      integration_tier:        params.integrationTier,
-      cascade_status:          params.cascadeStatus ?? 'N/A',
-      breach_duration_minutes: params.breachDurationMinutes,
-    },
+    customDetails,
   })
 }
 

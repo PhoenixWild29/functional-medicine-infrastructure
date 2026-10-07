@@ -475,6 +475,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         integrationTier: breach.integration_tier,
         escalationTier:  newTier,
         acknowledgedAt:  breach.acknowledged_at,
+        cascadeAttempted,
       }).catch(err =>
         console.error(`[sla-check] routeSlaAlert failed | order=${orderId} | tier=${newTier}:`, err)
       )
