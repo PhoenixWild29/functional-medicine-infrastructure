@@ -135,6 +135,10 @@ export interface SessionPrescription {
   // line is blocked with this message until it is edited. OPTIONAL ON
   // PURPOSE.
   packageUnitMismatch?:  string | null
+  // C5: why the line's pharmacy cannot fill it for the patient's shipping
+  // state (no license, expired, no sterile coverage). Set by Review from
+  // /api/pharmacy-licensure/check; blocks Sign & Send. Optional.
+  licensureProblem?:     string | null
   // WO-106: set when this line came from Refill. refillOfOrderId is sent
   // to POST /api/orders and stored on the new order; the two notes are
   // shown on the Review card because both are decisions the app made for

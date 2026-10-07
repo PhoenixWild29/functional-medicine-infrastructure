@@ -53,11 +53,11 @@ let checkResponse: { status: number; body: unknown } = { status: 200, body: { pr
 const checkBodies: unknown[] = []
 
 function mockFetch() {
-  global.fetch = jest.fn(async (url: unknown, init?: { body?: string }) => {
+  global.fetch = jest.fn(async (url: unknown) => {
     const u = new URL(String(url), 'https://app.test')
     const res = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body }) as unknown as Response
     if (u.pathname === '/api/pharmacy-licensure/check') {
-      checkBodies.push(JSON.parse(init?.body ?? '{}'))
+      checkBodies.push({ state: u.searchParams.get('state'), lines: JSON.parse(u.searchParams.get('lines') ?? 'null') })
       return res(checkResponse.body, checkResponse.status)
     }
     if (u.pathname === '/api/prescriber-check') return res({ applies: true, problems: [] })

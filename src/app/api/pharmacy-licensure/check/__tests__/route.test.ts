@@ -1,14 +1,15 @@
 /**
  * @jest-environment node
  *
- * POST /api/pharmacy-licensure/check (C5): for Review, which session lines
+ * GET /api/pharmacy-licensure/check (C5): for Review, which session lines
  * cannot be sent to their pharmacy for the patient's shipping state. Any
  * signed-in clinic user (the person building the batch is not always the
  * signer); verified with getUser().
  */
 
 import type { NextRequest } from 'next/server'
-import { POST } from '../route'
+import { NextRequest as Req } from 'next/server'
+import { GET } from '../route'
 import { fakeDb } from '@/lib/orders/__tests__/fake-db'
 
 const getUserMock = jest.fn()
@@ -26,7 +27,12 @@ jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.clien
 const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
 afterAll(() => errorSpy.mockRestore())
 
-const post = (body: unknown) => POST({ json: async () => body } as unknown as NextRequest)
+const post = (body: { state?: unknown; lines?: unknown }) => {
+  const qs = new URLSearchParams()
+  if (body.state !== undefined) qs.set('state', String(body.state))
+  if (body.lines !== undefined) qs.set('lines', JSON.stringify(body.lines))
+  return GET(new Req(new URL(`https://app.test/api/pharmacy-licensure/check?${qs.toString()}`)) as unknown as NextRequest)
+}
 
 beforeEach(() => {
   getUserMock.mockReset().mockResolvedValue({ data: { user: { id: 'u-1', user_metadata: { app_role: 'medical_assistant', clinic_id: 'c-1' } } }, error: null })

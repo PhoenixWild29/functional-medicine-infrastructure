@@ -208,6 +208,68 @@ export async function productIsSterile(
   return false
 }
 
+// ── Review: session lines, before anything is a draft ──────────
+
+export interface LicensureLine {
+  /** The caller's id for the line (Review: the session line id). */
+  key:           string
+  pharmacyId:    string
+  formulationId: string | null
+  catalogItemId: string | null
+}
+
+export interface LineLicensureProblem {
+  key:     string
+  problem: LicensureProblem
+  message: string
+}
+
+/**
+ * The lines whose pharmacy cannot fill them for a patient in `state`: the
+ * rule batch-sign applies, asked before the signature so Review can say
+ * why. A failed read throws; the caller must not show "all clear" on it.
+ */
+export async function checkLinesLicensure(
+  supabase: Supabase,
+  input: { state: string; lines: ReadonlyArray<LicensureLine>; today?: string },
+): Promise<LineLicensureProblem[]> {
+  const { state, lines } = input
+  const today = input.today ?? todayIso()
+  if (lines.length === 0) return []
+
+  const pharmacyIds = [...new Set(lines.map(l => l.pharmacyId))]
+  const { data: pharmacies, error: pharmacyError } = await supabase
+    .from('pharmacies')
+    .select('pharmacy_id, name, facility_type')
+    .in('pharmacy_id', pharmacyIds)
+  if (pharmacyError) throw new Error(`licensure check: pharmacies could not be read: ${pharmacyError.message}`)
+  const byId = new Map((pharmacies ?? []).map(p => [p.pharmacy_id, p]))
+
+  const { data: licenses, error: licenseError } = await readLicenses(supabase, pharmacyIds, state)
+  if (licenseError) throw new Error(`licensure check: licenses could not be read: ${licenseError.message}`)
+
+  const sterileByProduct = new Map<string, boolean>()
+  const problems: LineLicensureProblem[] = []
+  for (const l of lines) {
+    const productKey = l.formulationId ? `f:${l.formulationId}` : l.catalogItemId ? `c:${l.catalogItemId}` : ''
+    if (productKey && !sterileByProduct.has(productKey)) {
+      sterileByProduct.set(productKey, await productIsSterile(supabase, l.formulationId, l.catalogItemId))
+    }
+    const pharmacy = byId.get(l.pharmacyId)
+    const result = checkLicensure({
+      licenses,
+      pharmacyId:   l.pharmacyId,
+      pharmacyName: pharmacy?.name ?? 'This pharmacy',
+      state,
+      sterile:      productKey ? sterileByProduct.get(productKey) === true : false,
+      facilityType: normalizeFacilityType(pharmacy?.facility_type),
+      today,
+    })
+    if (!result.ok) problems.push({ key: l.key, problem: result.problem, message: result.message })
+  }
+  return problems
+}
+
 // ── Demo pharmacies ─────────────────────────────────────────────
 
 /**

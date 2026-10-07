@@ -71,6 +71,8 @@ const mockFetch = jest.fn((input: unknown, init?: { method?: string; body?: stri
   if (/\/api\/pharmacies\/shipping/.test(String(input))) return Promise.resolve({ ok: true, json: async () => ({ rates: [], absorbShipping: false }) })
   // C4: nor is the prescriber check (no problems: the provider may sign).
   if (/\/api\/prescriber-check/.test(String(input))) return Promise.resolve({ ok: true, json: async () => ({ applies: true, problems: [] }) })
+  // C5's Review licensure check: a background read, not one of the calls under test.
+  if (/\/api\/pharmacy-licensure\/check/.test(String(input))) return Promise.resolve({ ok: true, json: async () => ({ problems: [] }) })
   calls.push({ url: String(input), method: init?.method ?? 'GET', body: init?.body ? JSON.parse(init.body) : null })
   return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve({ data: { favorite_id: 'fav-new' } }) })
 })
