@@ -68,6 +68,31 @@ describe('buildOpsAlert: the one allow-list', () => {
   it('a pharmacy value that reads like free text is dropped', () => {
     expectNoPhi(buildOpsAlert({ type: 'adapter_failure', orderId: ORDER, pharmacy: FREE_TEXT }))
   })
+
+  // A single token is not prose, but it can still identify a person.
+  it.each([
+    ['an email address', 'jane.doe@example.com'],
+    ['an email inside a token', 'ops:jane.doe@example.com'],
+    ['an E.164 phone', '+15558675309'],
+    ['a dashed phone', '555-867-5309'],
+    ['a dotted phone', '555.867.5309'],
+    ['a bare ten-digit phone', '5558675309'],
+  ])('a single token that looks like %s is dropped', (_name, value) => {
+    const text = JSON.stringify(buildOpsAlert({ type: 'status_history_write_failed', orderId: value, details: { actor: value, code: value } }))
+    expect(text).not.toContain(value)
+  })
+
+  it('a phone passed as a number is dropped too', () => {
+    expect(JSON.stringify(buildOpsAlert({ type: 'adapter_failure', orderId: ORDER, details: { code: 5558675309 } }))).not.toContain('5558675309')
+  })
+
+  it('machine tokens that are not contact details still go: ids, codes, ISO times, counts, source:count lists', () => {
+    const text = JSON.stringify(buildOpsAlert({
+      type: 'adapter_failure', orderId: ORDER,
+      details: { code: 'fax_send_failed', twilio_error: '30003', failed_at: '2026-10-07T12:00:00.000Z', attempts: 3, actor: 'cron:refund-retry', m03_dlq_count_by_source: 'STRIPE:2,DOCUMO:0', transfer_id: 'tr_1PqRsT2eZvKYlo2C' },
+    }))
+    for (const v of [ORDER, 'fax_send_failed', '30003', '2026-10-07T12:00:00.000Z', 'cron:refund-retry', 'STRIPE:2,DOCUMO:0', 'tr_1PqRsT2eZvKYlo2C']) expect(text).toContain(v)
+  })
 })
 
 describe('the alert builders keep their names and apply the allow-list', () => {
