@@ -18,7 +18,7 @@
 //   - a status (an enum);
 //   - named details from DETAIL_LABELS, each a number, a yes/no, or a
 //     single machine token (a code, an ID, a count, a timestamp): no
-//     spaces, so no prose;
+//     spaces, so no prose, and never an email address or a phone number;
 //   - notes from NOTES, sentences written here.
 //
 // Anything else is dropped. A free-text value passed by mistake therefore
@@ -152,16 +152,28 @@ export interface OpsAlert {
   actions?:  'sla' | 'submission_failed'
 }
 
-// A single machine token: codes, IDs, counts, ISO times, emails, "a:1,b:2".
+// A single machine token: codes, IDs, counts, ISO times, "a:1,b:2".
 const TOKEN    = /^[A-Za-z0-9_.:@+/%=,#-]{1,120}$/
+// A token can still identify a person: an email address anywhere in it
+// ("ops:jane@clinic.com"), or a phone number (digits and phone
+// punctuation only, 10 to 15 digits). Neither goes to Slack.
+const EMAIL    = /[^\s@]@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/
+const PHONE    = /^\+?[0-9][0-9 ().-]*$/
+
+function looksLikeContact(v: string): boolean {
+  if (EMAIL.test(v)) return true
+  if (!PHONE.test(v)) return false
+  const digits = v.replace(/[^0-9]/g, '').length
+  return digits >= 10 && digits <= 15
+}
 const STATUS   = /^[A-Z][A-Z0-9_]{1,59}$/
 // Our own pharmacy name or slug: words, no digits-and-punctuation prose.
 const PHARMACY = /^[A-Za-z0-9][A-Za-z0-9 .&'()-]{0,59}$/
 
 function token(v: unknown): string | null {
-  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : null
+  if (typeof v === 'number') return Number.isFinite(v) && !looksLikeContact(String(v)) ? String(v) : null
   if (typeof v === 'boolean') return v ? 'yes' : 'no'
-  if (typeof v === 'string' && TOKEN.test(v)) return v
+  if (typeof v === 'string' && TOKEN.test(v) && !looksLikeContact(v)) return v
   return null
 }
 
