@@ -5,6 +5,8 @@
  * so the success page no longer claims one was emailed. Solo and bundle.
  */
 
+import fs from 'node:fs'
+import path from 'node:path'
 import { render, screen } from '@testing-library/react'
 
 let orderRow: unknown = null
@@ -114,7 +116,7 @@ describe('no SMS consent: no text is promised', () => {
 })
 
 it('the lookups read the patient SMS consent', () => {
-  const src = require('fs').readFileSync(require('path').join(__dirname, '../page.tsx'), 'utf8') as string
+  const src = fs.readFileSync(path.join(__dirname, '../page.tsx'), 'utf8')
   expect(src.match(/patients\s*\(\s*sms_opt_in\s*\)/g)).toHaveLength(2)
 })
 
