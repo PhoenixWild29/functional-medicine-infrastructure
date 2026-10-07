@@ -114,6 +114,42 @@ VALUES
    'Naomi',  'Osei',      '1234567894', 'NM', 'NM-MD-005678', NULL,        false, true)
 ON CONFLICT DO NOTHING;
 
+-- Compliance C4 (20261008000001): the same demo credentials the migration
+-- seeds, for a database seeded after migrating. Idempotent.
+-- Sunrise Functional Medicine (a1…01): Chen, Patel, Rodriguez, Fletcher,
+-- licensed in every Sunrise demo patient's state. Blue Cedar Integrative
+-- Health (a1…03): Osei, in NM. Expiring 2027-12-31. The demo NPIs are
+-- fictional, so their record is a demo record, not an NPPES result.
+INSERT INTO provider_state_licenses (provider_id, state, license_number, expires_on, verified_at, source)
+SELECT p.provider_id, s.state, 'DEMO-' || s.state || '-' || right(p.provider_id::text, 4), DATE '2027-12-31', now(), 'demo_seed'
+  FROM providers p
+  JOIN (VALUES
+    ('a2000000-0000-0000-0000-000000000001'::UUID), ('a2000000-0000-0000-0000-000000000003'::UUID),
+    ('a2000000-0000-0000-0000-000000000004'::UUID), ('a2000000-0000-0000-0000-000000000005'::UUID)
+  ) AS demo(provider_id) ON demo.provider_id = p.provider_id
+  CROSS JOIN (VALUES ('TX'), ('CA'), ('NY'), ('FL'), ('WA'), ('CO'), ('AZ'), ('IL'), ('GA')) AS s(state)
+ WHERE p.clinic_id = 'a1000000-0000-0000-0000-000000000001'
+ON CONFLICT (provider_id, state) DO NOTHING;
+
+INSERT INTO provider_state_licenses (provider_id, state, license_number, expires_on, verified_at, source)
+SELECT p.provider_id, 'NM', 'DEMO-NM-' || right(p.provider_id::text, 4), DATE '2027-12-31', now(), 'demo_seed'
+  FROM providers p
+ WHERE p.provider_id = 'a2000000-0000-0000-0000-000000000006'
+   AND p.clinic_id = 'a1000000-0000-0000-0000-000000000003'
+ON CONFLICT (provider_id, state) DO NOTHING;
+
+INSERT INTO provider_npi_verifications (provider_id, npi, status, name_match, enumeration_type, reason, checked_at, verified_at, source)
+SELECT p.provider_id, p.npi_number, 'verified', true, 'NPI-1', 'Demo provider: fictional NPI, not checked against NPPES.', now(), now(), 'demo_seed'
+  FROM providers p
+ WHERE (p.provider_id, p.clinic_id) IN (
+         ('a2000000-0000-0000-0000-000000000001'::UUID, 'a1000000-0000-0000-0000-000000000001'::UUID),
+         ('a2000000-0000-0000-0000-000000000003'::UUID, 'a1000000-0000-0000-0000-000000000001'::UUID),
+         ('a2000000-0000-0000-0000-000000000004'::UUID, 'a1000000-0000-0000-0000-000000000001'::UUID),
+         ('a2000000-0000-0000-0000-000000000005'::UUID, 'a1000000-0000-0000-0000-000000000001'::UUID),
+         ('a2000000-0000-0000-0000-000000000006'::UUID, 'a1000000-0000-0000-0000-000000000003'::UUID))
+   AND p.npi_number ~ '^[0-9]{10}$'
+ON CONFLICT (provider_id) DO NOTHING;
+
 -- ============================================================
 -- 3. PATIENTS — 8 multi-state Sunrise + 1 Blue Cedar
 -- ============================================================

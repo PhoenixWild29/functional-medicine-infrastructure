@@ -54,6 +54,7 @@ import { computeItemPricing, findUnavailableItems, findUnlicensedItems } from '.
 import { FREQUENCY_OPTIONS } from './structured-sig-builder.types'
 import { DOSE_UNITS, formatFavoriteDose } from '@/lib/orders/dose-display'
 import { splitDose } from '@/lib/orders/dose'
+import { CONTROLLED_LABEL, isControlledSchedule } from '@/lib/orders/controlled-substance'
 import {
   favoriteCycle,
   groupFavorites,
@@ -158,6 +159,8 @@ interface ProtocolItem {
   // in the selected patient's shipping state; null when unknown (no
   // patient state provided). Only an explicit false skips the item.
   pharmacy_licensed: boolean | null
+  /** Compliance C6: the formulation's highest DEA schedule; null = none. */
+  dea_schedule?: number | null
   formulations: {
     formulation_id: string
     name: string
@@ -333,13 +336,21 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
     // State-licensure guard: items whose pinned pharmacy is not licensed
     // in the patient's shipping state are SKIPPED (never loaded), and
     // reported by name. Licensed items may still load.
-    const skippedMessages = findUnlicensedItems(detail.items.map(item => ({
-      name: item.formulations?.name ?? 'Unknown medication',
-      pharmacyName: item.pharmacies?.name ?? 'its pharmacy',
-      pharmacyLicensed: item.pharmacy_licensed,
-    })), patientState)
+    // Compliance C6: a controlled item is never loaded (CompoundIQ cannot
+    // sign or send it), and is reported by name with the reason, never
+    // dropped silently.
+    const controlledItems = detail.items.filter(item => isControlledSchedule(item.dea_schedule))
+    const uncontrolledItems = detail.items.filter(item => !isControlledSchedule(item.dea_schedule))
+    const skippedMessages = [
+      ...controlledItems.map(item => `${item.formulations?.name ?? 'Unknown medication'}: ${CONTROLLED_LABEL}`),
+      ...findUnlicensedItems(uncontrolledItems.map(item => ({
+        name: item.formulations?.name ?? 'Unknown medication',
+        pharmacyName: item.pharmacies?.name ?? 'its pharmacy',
+        pharmacyLicensed: item.pharmacy_licensed,
+      })), patientState),
+    ]
 
-    const loadableItems = detail.items.filter(item => item.pharmacy_licensed !== false)
+    const loadableItems = uncontrolledItems.filter(item => item.pharmacy_licensed !== false)
 
     if (loadableItems.length === 0) {
       // Total block: nothing would reach the review step, so there is
@@ -908,9 +919,10 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
               {expandedProtocol === proto.protocol_id && protocolDetail && (
                 <div className="border-t border-border px-3 py-2 space-y-1.5">
                   {protocolDetail.items.map((item, i) => {
-                    const itemUnlicensed = item.pharmacy_licensed === false
+                    const itemControlled = isControlledSchedule(item.dea_schedule)
+                    const itemUnlicensed = !itemControlled && item.pharmacy_licensed === false
                     const itemUnavailable =
-                      !itemUnlicensed && (!item.formulation_active || item.wholesale_price === null)
+                      !itemControlled && !itemUnlicensed && (!item.formulation_active || item.wholesale_price === null)
                     return (
                       <div key={item.item_id ?? i} className="flex items-start gap-2 text-xs">
                         <span className="mt-0.5 w-4 text-center font-medium text-muted-foreground">
@@ -927,6 +939,14 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
                             {itemUnlicensed && (
                               <span className="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">
                                 not licensed in {patientState} — will be skipped
+                              </span>
+                            )}
+                            {itemControlled && (
+                              <span
+                                className="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700"
+                                data-testid={`protocol-item-controlled-${item.item_id}`}
+                              >
+                                {CONTROLLED_LABEL}: will be excluded
                               </span>
                             )}
                           </p>

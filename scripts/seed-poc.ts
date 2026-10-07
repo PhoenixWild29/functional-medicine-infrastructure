@@ -204,6 +204,36 @@ async function seedProvider() {
 }
 
 // ============================================================
+// PROVIDER CREDENTIALS (Compliance C4)
+// ============================================================
+//
+// Signing needs a verified NPI and an unexpired license in the patient's
+// state. Dr. Chen gets demo licenses in every Sunrise demo patient's state
+// and a demo NPI record (the NPI is fictional: source demo_seed, never an
+// NPPES result). The same rows the migration seeds. Idempotent.
+
+const SUNRISE_DEMO_STATES = ['TX', 'CA', 'NY', 'FL', 'WA', 'CO', 'AZ', 'IL', 'GA']
+
+async function seedProviderCredentials() {
+  console.log('\n── Provider credentials ──')
+  const now = new Date().toISOString()
+  const { error: licenseError } = await supabase.from('provider_state_licenses').upsert(
+    SUNRISE_DEMO_STATES.map(state => ({
+      provider_id: IDS.provider, state, license_number: `DEMO-${state}-0001`,
+      expires_on: '2027-12-31', verified_at: now, source: 'demo_seed',
+    })),
+    { onConflict: 'provider_id,state', ignoreDuplicates: true },
+  )
+  if (licenseError) throw new Error(`Failed to seed provider licenses: ${licenseError.message}`)
+  const { error: npiError } = await supabase.from('provider_npi_verifications').upsert({
+    provider_id: IDS.provider, npi: '1234567890', status: 'verified', name_match: true, enumeration_type: 'NPI-1',
+    reason: 'Demo provider: fictional NPI, not checked against NPPES.', checked_at: now, verified_at: now, source: 'demo_seed',
+  }, { onConflict: 'provider_id', ignoreDuplicates: true })
+  if (npiError) throw new Error(`Failed to seed provider NPI record: ${npiError.message}`)
+  console.log(`  ✅  Dr. Sarah Chen — licensed in ${SUNRISE_DEMO_STATES.join(', ')}; demo NPI record`)
+}
+
+// ============================================================
 // PROVIDER ↔ AUTH USER LINK (F-1)
 // ============================================================
 //
@@ -528,6 +558,7 @@ async function main() {
     await createAuthUsers()
     await seedClinic()
     await seedProvider()
+  await seedProviderCredentials()
     await linkProviderToAuthUser()
     await seedPatient()
     await seedPharmacies()

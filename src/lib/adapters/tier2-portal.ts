@@ -33,6 +33,7 @@
 //   PLAYWRIGHT_HEADLESS     — "true" in production; "false" for local dev
 
 import { assertPharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
+import { assertOrderNotControlled } from '@/lib/orders/controlled-substance'
 import { chromium } from 'playwright'
 import { createServiceClient } from '@/lib/supabase/service'
 import { shippingAddressFor, type OrderShippingAddressColumns } from '@/lib/adapters/shipping-address'
@@ -191,6 +192,8 @@ export async function submitTier2Portal(
 ): Promise<Tier2PortalResult> {
   // Kill switch: refuse before reading anything (lib/adapters/submission-switch).
   assertPharmacySubmissionsEnabled('Tier 2 portal submission')
+  // Compliance C6: never a controlled substance (defence in depth beside routeOrder).
+  await assertOrderNotControlled(createServiceClient(), orderId)
 
   const supabase = createServiceClient()
 

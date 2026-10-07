@@ -53,7 +53,7 @@ function logSignatureEvent(component: 'draft-sign-form' | 'batch-review-form', e
   })
 }
 import { usePrescriptionSession, type SessionPrescription } from '../../_context/prescription-session'
-import { EpcsTotpGate } from '../../_components/epcs-totp-gate'
+import { CONTROLLED_LABEL, isControlledSchedule } from '@/lib/orders/controlled-substance'
 import { DrugInteractionAlerts } from '../../_components/drug-interaction-alerts'
 import { RxDetailsRow } from './rx-details-row'
 import { AllergyNotice } from './allergy-notice'
@@ -120,15 +120,20 @@ function calcPlatformFeeCents(marginCents: number): number {
  * not to remove the line. (What a refill should do about a moved price
  * is WO-107; this only stops it being sent below cost.)
  */
-type SendBlock = 'price' | 'directions' | 'below_cost' | 'reprice' | 'cycle_pattern' | 'package_unit'
+type SendBlock = 'controlled' | 'price' | 'directions' | 'below_cost' | 'reprice' | 'cycle_pattern' | 'package_unit'
 
 type SendBlockLine = {
   retailCents: number; wholesaleCents: number; sigText: string; repriceRequired?: boolean | null
   sigMode?: SessionPrescription['sigMode']; cycle?: SessionPrescription['cycle']
   packageUnitMismatch?: string | null
+  deaSchedule?: number | null
 }
 
 export function sendBlock(rx: SendBlockLine): SendBlock | null {
+  // Compliance C6: a controlled substance (from a favorite, a refill or an
+  // old draft) is never signed or sent through CompoundIQ. Nothing on the
+  // line fixes it, so it outranks every other reason.
+  if (isControlledSchedule(rx.deaSchedule)) return 'controlled'
   if (rx.retailCents <= 0) return 'price'
   if (rx.sigText.trim().length < 10) return 'directions'
   // Cycling dose math: a cycling line without its days on / off (one
@@ -314,7 +319,6 @@ export function BatchReviewForm({ isProvider }: Props) {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitProgress, setSubmitProgress] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [showEpcsGate, setShowEpcsGate] = useState(false)
 
   // Non-provider "Save as Draft" flow (batched WO-77 pattern)
   const [isSavingDraft, setIsSavingDraft] = useState(false)
@@ -335,6 +339,36 @@ export function BatchReviewForm({ isProvider }: Props) {
   // a retry that is still in flight or fails again.
   const [rulesAttempt, setRulesAttempt] = useState(0)
   const [interactionsUnavailable, setInteractionsUnavailable] = useState(false)
+  // Compliance C4: may this provider sign for the patient's state? Asked
+  // of the same rule batch-sign enforces, so the reason shows before the
+  // signature. Only explicit problems block here; batch-sign is the gate.
+  const [prescriberProblems, setPrescriberProblems] = useState<Array<{ code: string; message: string }>>([])
+  const patientShippingState = session.patient?.state ?? null
+  useEffect(() => {
+    if (!isProvider || !patientShippingState) {
+      setPrescriberProblems([])
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(`/api/prescriber-check?states=${encodeURIComponent(patientShippingState)}`)
+        const body = await res.json().catch(() => ({})) as { problems?: unknown }
+        if (cancelled) return
+        if (!res.ok || !Array.isArray(body.problems)) {
+          console.warn('[batch-review] prescriber check could not run:', res.status)
+          setPrescriberProblems([])
+          return
+        }
+        setPrescriberProblems((body.problems as Array<{ code?: unknown; message?: unknown }>)
+          .filter(p => typeof p.message === 'string')
+          .map(p => ({ code: String(p.code ?? ''), message: p.message as string })))
+      } catch {
+        if (!cancelled) setPrescriberProblems([])
+      }
+    })()
+    return () => { cancelled = true }
+  }, [isProvider, patientShippingState])
   const createdOrderIdsRef = useRef<Map<string, string>>(new Map())
   const allocatedOrderIdsRef = useRef<Set<string>>(new Set())
 
@@ -587,6 +621,7 @@ export function BatchReviewForm({ isProvider }: Props) {
   const hasInvalidItems = invalidItems.length > 0
   const belowCostItems = invalidItems.filter(rx => sendBlock(rx) === 'below_cost')
   const repriceItems   = invalidItems.filter(rx => sendBlock(rx) === 'reprice')
+  const controlledItems = invalidItems.filter(rx => sendBlock(rx) === 'controlled')
   const cycleItems     = invalidItems.filter(rx => sendBlock(rx) === 'cycle_pattern' || sendBlock(rx) === 'package_unit')
   const malformedItems = invalidItems.filter(rx => sendBlock(rx) === 'price' || sendBlock(rx) === 'directions')
 
@@ -608,7 +643,7 @@ export function BatchReviewForm({ isProvider }: Props) {
   }
 
   const checksUnavailable = allergyStatusUnknown || rulesLoadFailed || interactionsUnavailable
-  const canSubmit = signatureCaptured && prescriptions.length > 0 && !isSubmitting && !hasInvalidItems && !hasMissingDetails && !checksUnavailable
+  const canSubmit = signatureCaptured && prescriptions.length > 0 && !isSubmitting && !hasInvalidItems && !hasMissingDetails && !checksUnavailable && prescriberProblems.length === 0
   // Shared controls (Remove, Add Another) lock during either flow.
   const isBusy = isSubmitting || isSavingDraft
 
@@ -616,7 +651,7 @@ export function BatchReviewForm({ isProvider }: Props) {
   // WO-99: create every draft, allocate shipping, then ONE batch-sign
   // request signs them all — or none. A failure leaves every order an
   // unsigned DRAFT; a retry reuses the drafts already created.
-  async function handleSignAndSend(totpCode?: string) {
+  async function handleSignAndSend() {
     const payload = signatureFromPad(sigCanvasRef.current as unknown as Parameters<typeof signatureFromPad>[0])
     const sig = checkSignature(payload)
     if (!sig.ok) {
@@ -649,15 +684,10 @@ export function BatchReviewForm({ isProvider }: Props) {
       const sendRes = await fetch('/api/orders/batch-sign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderIds, signature: sig.signature, ...(totpCode ? { totpCode } : {}) }),
+        body: JSON.stringify({ orderIds, signature: sig.signature }),
       })
       if (!sendRes.ok) {
         const err = await sendRes.json().catch(() => ({})) as { error?: string; code?: string }
-        if (err.code === 'TOTP_REQUIRED') {
-          // The server found a controlled line this page did not flag
-          // (a schedule that could not be read): ask for the code.
-          setShowEpcsGate(true)
-        }
         const message = err.error ?? 'Unknown error'
         throw new Error(/nothing was signed/i.test(message) ? message : `${message} Nothing was signed.`)
       }
@@ -790,19 +820,6 @@ export function BatchReviewForm({ isProvider }: Props) {
   return (
     <div className="space-y-6">
 
-      {/* WO-86: Controlled substance banner */}
-      {prescriptions.some(rx => rx.deaSchedule && rx.deaSchedule >= 2) && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/20">
-          <p className="text-sm font-semibold text-red-800 dark:text-red-200">
-            Controlled Substance — EPCS 2FA Required
-          </p>
-          <p className="mt-1 text-xs text-red-700 dark:text-red-300">
-            This session contains DEA-scheduled medications. Two-factor authentication via authenticator app
-            will be required at signing per DEA 21 CFR 1311.
-          </p>
-        </div>
-      )}
-
       {/* WO-86: Drug Interaction Alerts */}
       <DrugInteractionAlerts
         medicationNames={prescriptions.map(rx => rx.medicationName)}
@@ -812,6 +829,20 @@ export function BatchReviewForm({ isProvider }: Props) {
       {/* WO-97: allergies not recorded → amber notice with an inline
           "Confirm NKDA". Never blocks Sign & Send or Save as Draft. */}
       <AllergyNotice patient={patient} onSaved={session.updatePatient} />
+
+      {prescriberProblems.length > 0 && (
+        <div
+          role="alert"
+          data-testid="prescriber-check-problems"
+          className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-200"
+        >
+          <p className="font-semibold">You cannot sign these prescriptions yet.</p>
+          <ul className="mt-1 space-y-0.5 text-xs">
+            {prescriberProblems.map(p => <li key={`${p.code}-${p.message}`}>{p.message}</li>)}
+          </ul>
+          <p className="mt-1 text-xs">Your clinic admin can update licenses and the NPI check in Settings, Team.</p>
+        </div>
+      )}
 
       {rulesLoadFailed && (
         <div
@@ -869,7 +900,11 @@ export function BatchReviewForm({ isProvider }: Props) {
                   <p className="mt-1 text-xs text-muted-foreground italic">
                     Sig: {rx.sigText}
                   </p>
-                  {block === 'package_unit' ? (
+                  {block === 'controlled' ? (
+                    <p className="mt-1 text-xs font-medium text-red-700" data-testid={`controlled-${rx.id}`}>
+                      {CONTROLLED_LABEL}. CompoundIQ cannot sign or send it; remove this line.
+                    </p>
+                  ) : block === 'package_unit' ? (
                     <p className="mt-1 text-xs font-medium text-red-700" data-testid={`package-unit-mismatch-${rx.id}`}>
                       {rx.packageUnitMismatch}
                     </p>
@@ -1045,6 +1080,12 @@ export function BatchReviewForm({ isProvider }: Props) {
           <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
             {invalidItems.length} prescription{invalidItems.length !== 1 ? 's' : ''} can&apos;t be sent yet
           </p>
+          {controlledItems.length > 0 && (
+            <p className="mt-1 text-xs text-amber-800 dark:text-amber-300" data-testid="review-controlled-banner">
+              {controlledItems.map(rx => rx.medicationName).join(', ')}: {CONTROLLED_LABEL}. Remove the flagged
+              line{controlledItems.length !== 1 ? 's' : ''} above.
+            </p>
+          )}
           {repriceItems.length > 0 && (
             <p className="mt-1 text-xs text-amber-800 dark:text-amber-300" data-testid="review-reprice-banner">
               {repriceItems.map(rx => rx.medicationName).join(', ')} {repriceItems.length !== 1 ? 'have' : 'has'} a pharmacy
@@ -1157,15 +1198,7 @@ export function BatchReviewForm({ isProvider }: Props) {
           <div className="mt-3 flex gap-3">
             <button
               type="button"
-              onClick={() => {
-                // WO-86: Check for controlled substances → require EPCS 2FA
-                const controlled = prescriptions.filter(rx => rx.deaSchedule && rx.deaSchedule >= 2)
-                if (controlled.length > 0) {
-                  setShowEpcsGate(true)
-                } else {
-                  void handleSignAndSend()
-                }
-              }}
+              onClick={() => { void handleSignAndSend() }}
               disabled={isSubmitting}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
@@ -1210,7 +1243,9 @@ export function BatchReviewForm({ isProvider }: Props) {
                 ? 'The prescribing rules for these medications could not be loaded. Retry them above to enable sending.'
                 : interactionsUnavailable
                 ? 'The drug interaction check could not run. Retry it above to enable sending.'
-                : cycleItems.length > 0
+                : prescriberProblems.length > 0
+                ? prescriberProblems[0]!.message
+                : cycleItems.length > 0 || controlledItems.length > 0
                 ? 'Edit the flagged prescriptions above to enable sending.'
                 : belowCostItems.length > 0 || repriceItems.length > 0
                 ? 'Edit the price on the flagged prescriptions above to enable sending.'
@@ -1273,28 +1308,6 @@ export function BatchReviewForm({ isProvider }: Props) {
         </div>
       )}
 
-      {/* WO-86: EPCS 2FA Gate for controlled substances — providers only */}
-      {isProvider && showEpcsGate && (
-        <EpcsTotpGate
-          providerId={provider.provider_id}
-          providerName={`${provider.first_name} ${provider.last_name}`}
-          medicationNames={
-            prescriptions
-              .filter(rx => rx.deaSchedule && rx.deaSchedule >= 2)
-              .map(rx => rx.medicationName)
-          }
-          deaSchedules={
-            prescriptions
-              .filter(rx => rx.deaSchedule && rx.deaSchedule >= 2)
-              .map(rx => rx.deaSchedule)
-          }
-          onVerified={code => {
-            setShowEpcsGate(false)
-            void handleSignAndSend(code)
-          }}
-          onCancel={() => setShowEpcsGate(false)}
-        />
-      )}
     </div>
   )
 }

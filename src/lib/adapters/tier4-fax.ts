@@ -41,6 +41,7 @@ import {
 } from '@/lib/adapters/audit-trail'
 import { casTransition } from '@/lib/orders/cas-transition'
 import { assertPharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
+import { assertOrderNotControlled } from '@/lib/orders/controlled-substance'
 import { parseTitrationSteps } from '@/lib/orders/titration'
 import { cyclePatternFromRow } from '@/lib/orders/cycling'
 
@@ -77,6 +78,8 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
   // Kill switch: refuse before building or uploading anything, including the
   // DOCUMO_ENABLED=false synthetic path (lib/adapters/submission-switch).
   assertPharmacySubmissionsEnabled('Tier 4 fax submission')
+  // Compliance C6: never a controlled substance (defence in depth beside routeOrder).
+  await assertOrderNotControlled(createServiceClient(), orderId)
 
   const supabase = createServiceClient()
 

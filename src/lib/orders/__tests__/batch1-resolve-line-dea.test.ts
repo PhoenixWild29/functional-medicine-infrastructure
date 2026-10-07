@@ -110,12 +110,13 @@ describe('resolveLine when the ingredient lookup fails', () => {
     if (result.ok) expect(result.medicationSnapshot['dea_schedule']).toBe(0)
   })
 
-  it('a Schedule II ingredient resolves as Schedule II', async () => {
+  // Compliance C6: a controlled line is no longer resolved into an order
+  // at all (it used to resolve as Schedule II and wait for EPCS signing).
+  it('a Schedule II ingredient is refused as a controlled substance', async () => {
     ingredientResult = { data: [{ ingredients: { dea_schedule: 2 } }], error: null }
 
     const result = await resolveLine(makeSupabase() as never, input as never)
 
-    expect(result.ok).toBe(true)
-    if (result.ok) expect(result.medicationSnapshot['dea_schedule']).toBe(2)
+    expect(result).toMatchObject({ ok: false, status: 422, code: 'CONTROLLED_SUBSTANCE' })
   })
 })

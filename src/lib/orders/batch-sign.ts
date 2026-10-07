@@ -44,6 +44,7 @@
 // information on screen and never blocks.
 
 import { checkLicensure, isSterileProduct, LICENSE_COLUMNS, normalizeFacilityType, todayIso, type LicenseRecord } from '@/lib/compliance/pharmacy-licensure'
+import { FORMULATION_SCHEDULE_SELECT, controlledRefusal, isControlledSchedule, scheduleFromFormulationRow } from './controlled-substance'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/types/database.types'
 import {
@@ -69,6 +70,8 @@ type Supabase = SupabaseClient<Database>
 
 export { MAX_BATCH_ORDERS } from './batch-sign-view'
 import { MAX_BATCH_ORDERS } from './batch-sign-view'
+import { prescriberProblems, todayUtc, type PrescriberProblemCode } from '@/lib/providers/credentials'
+import type { NpiStatus } from '@/lib/providers/npi'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -77,10 +80,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export type BatchProblemCode =
   // the line cannot be sent as it stands
   | 'not_found' | 'not_draft' | 'not_signer'
-  | 'license' | 'pharmacy' | 'npi' | 'stripe' | 'dea_fax'
+  | 'license' | 'pharmacy' | 'npi' | 'stripe' | 'controlled_substance' | 'controlled_unknown'
   | 'rx_details' | 'reprice' | 'below_cost'
+  // Compliance C4: the signing provider's own credentials
+  | PrescriberProblemCode
   // a check that could not run
-  | 'orders_unavailable' | 'provider_unavailable' | 'provider_unlinked'
+  | 'orders_unavailable' | 'provider_unavailable' | 'provider_unlinked' | 'credentials_unavailable'
   | 'compliance_unavailable' | 'rules_unavailable' | 'price_unavailable'
   | 'allergy_unavailable' | 'interactions_unavailable'
 
@@ -94,13 +99,17 @@ export interface BatchProblem {
 
 const UNAVAILABLE: ReadonlySet<BatchProblemCode> = new Set([
   'orders_unavailable', 'provider_unavailable', 'compliance_unavailable', 'rules_unavailable',
-  'price_unavailable', 'allergy_unavailable', 'interactions_unavailable',
+  'price_unavailable', 'allergy_unavailable', 'interactions_unavailable', 'controlled_unknown',
+  'credentials_unavailable',
 ])
+
+/** Compliance C4: the signer is not (known to be) licensed for the line. */
+const PRESCRIBER: ReadonlySet<BatchProblemCode> = new Set(['prescriber_npi_unverified', 'prescriber_license_missing', 'prescriber_license_expired'])
 
 /** One HTTP status for a set of problems: could-not-run beats everything. */
 export function problemsStatus(problems: ReadonlyArray<BatchProblem>): 503 | 403 | 404 | 409 | 422 {
   if (problems.some(p => UNAVAILABLE.has(p.code))) return 503
-  if (problems.some(p => p.code === 'not_signer' || p.code === 'provider_unlinked')) return 403
+  if (problems.some(p => p.code === 'not_signer' || p.code === 'provider_unlinked' || PRESCRIBER.has(p.code))) return 403
   if (problems.some(p => p.code === 'not_found')) return 404
   if (problems.some(p => p.code === 'not_draft')) return 409
   return 422
@@ -281,7 +290,8 @@ export async function checkBatch(
       ? supabase.from('catalog').select('item_id, dea_schedule, form').in('item_id', catalogIds)
       : Promise.resolve({ data: [], error: null }),
     formIds.length
-      ? supabase.from('formulations').select('formulation_id, requires_clinical_difference, dosage_forms(name, is_sterile)').in('formulation_id', formIds)
+      // C6 schedule (controlled check) and C5 dosage form (sterile check), one read.
+      ? supabase.from('formulations').select(`formulation_id, requires_clinical_difference, dosage_forms(name, is_sterile), ${FORMULATION_SCHEDULE_SELECT}`).in('formulation_id', formIds)
       : Promise.resolve({ data: [], error: null }),
   ])
 
@@ -308,6 +318,40 @@ export async function checkBatch(
     add(null, 'stripe', "The clinic's Stripe account is not active, so no payment link can be sent.")
   }
 
+  // ── Compliance C4: is the signer licensed for these prescriptions? ──
+  // A verified NPI, and an unexpired license in each patient's shipping
+  // state. Credentials that cannot be read are a check that could not run.
+  if (signer) {
+    const [verificationRes, licensesRes] = await Promise.all([
+      supabase.from('provider_npi_verifications').select('npi, status').eq('provider_id', signer.provider_id).maybeSingle(),
+      supabase.from('provider_state_licenses').select('state, license_number, expires_on').eq('provider_id', signer.provider_id),
+    ])
+    if (verificationRes.error || licensesRes.error) {
+      console.error('[batch-sign] prescriber credentials could not be read:', (verificationRes.error ?? licensesRes.error)?.message)
+      add(null, 'credentials_unavailable', 'Your license and NPI records could not be read. Nothing was signed — try again.')
+    }
+    // The other checks still run, so every block shows (C6 included).
+    const mine = ordered.filter(r => r.provider_id === signer.provider_id)
+    const credentialProblems = verificationRes.error || licensesRes.error ? [] : prescriberProblems({
+      providerId:   signer.provider_id,
+      firstName:    signer.first_name,
+      lastName:     signer.last_name,
+      npi:          signer.npi_number ?? '',
+      verification: (verificationRes.data as { npi: string; status: NpiStatus } | null) ?? null,
+      licenses:     ((licensesRes.data ?? []) as Array<{ state: string; license_number: string; expires_on: string }>)
+        .map(l => ({ state: l.state, licenseNumber: l.license_number, expiresOn: l.expires_on })),
+    }, mine.map(r => r.shipping_state_snapshot), todayUtc())
+    for (const cp of credentialProblems) {
+      if (cp.state === null) {
+        add(null, cp.code, cp.message)
+        continue
+      }
+      for (const r of mine.filter(o => (o.shipping_state_snapshot ?? '').toUpperCase() === cp.state)) {
+        add(r, cp.code, `${medicationNameOf(r)}: ${cp.message}`)
+      }
+    }
+  }
+
   const pharmacies = new Map((pharmacyRes.data ?? []).map(p => [p.pharmacy_id, p]))
   const licenses   = (licenseRes.data ?? []) as unknown as LicenseRecord[]
   const today      = todayIso()
@@ -320,6 +364,12 @@ export async function checkBatch(
   }))
   const catalogSterile = new Map((catalogRes.data ?? []).map(c => [c.item_id, isSterileProduct({ formText: (c as { form?: string | null }).form ?? null })]))
   const rules      = new Map((rulesRes.data ?? []).map(f => [f.formulation_id, f.requires_clinical_difference === true]))
+  // Compliance C6: each formulation's schedule from its ingredients
+  // (salt form and combination), not the order's snapshot.
+  const formulationDea = new Map((rulesRes.data ?? []).map(f => [
+    f.formulation_id,
+    scheduleFromFormulationRow(f as unknown as Parameters<typeof scheduleFromFormulationRow>[0]),
+  ]))
 
   const lines: BatchLine[] = []
   const priceable: OrderRow[] = []
@@ -351,21 +401,38 @@ export async function checkBatch(
         : `${name}: ${pharmacyInactiveMessage(pharmacy?.name)}`)
     }
 
-    // DEA: the catalog when this is a catalog line and it could be read,
-    // else the snapshot taken at creation. Unknown is never "0".
+    // Compliance C6: a controlled substance is never signed through
+    // CompoundIQ (certified EPCS is required). The catalog decides (the
+    // legacy catalog item, or the formulation's ingredients); a snapshot
+    // can only add to it, since it recorded plain Testosterone Cypionate as
+    // 0. A schedule that could not be read is refused, never assumed 0.
     const snapSchedule = snap(r)['dea_schedule']
     const fromSnapshot = typeof snapSchedule === 'number' ? snapSchedule : null
-    const catalogUnreadable = !!r.catalog_item_id && !!catalogRes.error
-    const deaSchedule = catalogUnreadable
-      ? null
-      : (r.catalog_item_id ? (catalogDea.get(r.catalog_item_id) ?? fromSnapshot) : fromSnapshot)
-    const deaUnknown = deaSchedule == null
-    const controlled = deaUnknown || (deaSchedule as number) >= 2
-    const isFax = pharmacy?.integration_tier === 'TIER_4_FAX'
-    if (controlled && !isFax) {
-      add(r, 'dea_fax', deaUnknown
-        ? `${name}: the DEA schedule could not be read, so it must go to a Tier 4 fax pharmacy. Try again, or route it to a fax pharmacy.`
-        : `${name}: DEA Schedule ${deaSchedule} requires a Tier 4 fax pharmacy.`)
+    let fromCatalog: number | null = null
+    let catalogKnown = false
+    let catalogUnreadable = false
+    if (r.catalog_item_id) {
+      catalogUnreadable = !!catalogRes.error
+      if (!catalogUnreadable && catalogDea.has(r.catalog_item_id)) {
+        fromCatalog = catalogDea.get(r.catalog_item_id) ?? null
+        catalogKnown = true
+      }
+    } else if (r.formulation_id) {
+      catalogUnreadable = !!rulesRes.error
+      if (!catalogUnreadable && formulationDea.has(r.formulation_id)) {
+        fromCatalog = formulationDea.get(r.formulation_id) ?? null
+        catalogKnown = true
+      }
+    }
+    const deaSchedule = Math.max(fromCatalog ?? -1, fromSnapshot ?? -1)
+    const controlled = isControlledSchedule(deaSchedule)
+    const deaUnknown = !controlled && (catalogUnreadable || (!catalogKnown && fromSnapshot === null))
+    if (controlled) {
+      add(r, 'controlled_substance', controlledRefusal(name))
+    } else if (deaUnknown && !(r.formulation_id && rulesRes.error)) {
+      // (A failed formulations read is already reported, once, as
+      // rules_unavailable below; it refuses the line just the same.)
+      add(r, 'controlled_unknown', `${name}: whether this is a controlled substance could not be checked, so nothing was signed. Try again.`)
     }
 
     // WO-96 rule-required details.
@@ -388,7 +455,7 @@ export async function checkBatch(
 
     lines.push({
       orderId: r.order_id, patientId: r.patient_id, providerId: r.provider_id, pharmacyId: r.pharmacy_id,
-      medicationName: name, deaSchedule, controlled, integrationTier: pharmacy?.integration_tier ?? null,
+      medicationName: name, deaSchedule: deaSchedule >= 0 ? deaSchedule : null, controlled: controlled || deaUnknown, integrationTier: pharmacy?.integration_tier ?? null,
       shippingState: r.shipping_state_snapshot ?? null,
     })
     if (problems.length === before && r.status === 'DRAFT') priceable.push(r)

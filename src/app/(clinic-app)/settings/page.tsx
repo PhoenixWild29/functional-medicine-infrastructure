@@ -64,6 +64,8 @@ export default async function SettingsPage() {
 
   // Compliance C2: the access log is the clinic admin's alone.
   const isClinicAdmin = user.user_metadata['app_role'] === 'clinic_admin'
+  // Compliance C4: Team (credentials) for the clinic admin and each provider.
+  const canSeeTeam = isClinicAdmin || user.user_metadata['app_role'] === 'provider'
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
@@ -89,6 +91,7 @@ export default async function SettingsPage() {
               { href: '#clinic-profile',  label: 'Clinic Profile'  },
               { href: '#notifications',   label: 'Notifications'   },
               { href: '#sign-in-security', label: 'Sign-in Security' },
+              ...(canSeeTeam ? [{ href: '#team', label: 'Team' }] : []),
               ...(isClinicAdmin ? [{ href: '#access-log', label: 'Access log' }] : []),
             ].map(({ href, label }) => (
               <li key={href}>
@@ -131,6 +134,26 @@ export default async function SettingsPage() {
           <div id="sign-in-security" className="scroll-mt-6">
             <SignInSecuritySection enrolled={hasVerifiedTotp(user)} enforced={mfaEnforcedFor(user.email)} />
           </div>
+
+          {/* Compliance C4: Team, for the clinic admin and each provider */}
+          {canSeeTeam && (
+            <div id="team" className="scroll-mt-6">
+              <section className="rounded-lg border border-border bg-card p-6 space-y-3" data-testid="settings-team">
+                <h2 className="text-base font-semibold text-foreground">Team</h2>
+                <p className="text-sm text-muted-foreground">
+                  {isClinicAdmin
+                    ? 'Each provider’s NPI status and state licenses. A provider signs only with a verified NPI and an active license in the patient’s state.'
+                    : 'Your NPI status and state licenses, as your clinic admin recorded them.'}
+                </p>
+                <Link
+                  href="/settings/team"
+                  className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
+                >
+                  {isClinicAdmin ? 'Manage the team' : 'View my credentials'}
+                </Link>
+              </section>
+            </div>
+          )}
 
           {/* Compliance C2: the access log, clinic admin only */}
           {isClinicAdmin && (

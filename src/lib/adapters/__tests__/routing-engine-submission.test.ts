@@ -25,6 +25,10 @@ const transitions: string[] = []
 const timeline: string[] = []
 
 let pharmacyRow: { integration_tier: string; name: string; slug: string } | null = null
+// What the order is for. Compliance C6: submission checks the catalog for a
+// controlled substance, so the order carries its line and snapshot.
+let orderLine: Record<string, unknown> = {}
+let formulationRow: Record<string, unknown> | null = null
 let circuitRow: Record<string, unknown> | null = null
 
 const submitTier1ApiMock    = jest.fn()
@@ -92,7 +96,10 @@ jest.mock('@/lib/supabase/service', () => ({
         return { select: () => chain(() => ({ data: pharmacyRow, error: null })) }
       }
       if (table === 'orders') {
-        return { select: () => chain(() => ({ data: { order_id: 'o-1', status: orderStatus, pharmacy_id: 'pharm-1', shipping_state_snapshot: 'TX', formulation_id: null, catalog_item_id: null }, error: null })) }
+        return { select: () => chain(() => ({ data: { order_id: 'o-1', status: orderStatus, pharmacy_id: 'pharm-1', shipping_state_snapshot: 'TX', formulation_id: null, catalog_item_id: null, ...orderLine }, error: null })) }
+      }
+      if (table === 'formulations') {
+        return { select: () => chain(() => ({ data: formulationRow, error: null })) }
       }
       // C5: submission re-checks licensure; the pharmacy holds a valid TX license.
       if (table === 'pharmacy_state_licenses') {
@@ -123,6 +130,8 @@ beforeEach(() => {
   timeline.length = 0
   pharmacyRow = { integration_tier: 'TIER_1_API', name: 'Pharm', slug: 'pharm' }
   circuitRow = null
+  orderLine = { formulation_id: 'f-plain', catalog_item_id: null, medication_snapshot: { dea_schedule: 0 } }
+  formulationRow = { formulation_id: 'f-plain', salt_forms: { ingredients: { dea_schedule: null } }, formulation_ingredients: [] }
   submitTier1ApiMock.mockReset().mockResolvedValue({ outcome: 'accepted', submissionId: 'sub-1', externalOrderId: 'x', attemptsMade: 1, errorCode: null, errorMessage: null })
   submitTier2PortalMock.mockReset().mockResolvedValue({ outcome: 'acknowledged', submissionId: 'sub-2', aiConfidenceScore: 0.99, screenshotUrl: null })
   submitTier4FaxMock.mockReset().mockResolvedValue({ submissionId: 'sub-4', documoFaxId: 'fax-1', attemptNumber: 1 })
@@ -399,5 +408,33 @@ describe('submitQueuedFax (ops force_fax / retry_fax)', () => {
 
     expect(submitTier4FaxMock).not.toHaveBeenCalled()
     expect(result.outcome).toBe('not_claimed')
+  })
+})
+
+// ── Compliance C6: a controlled substance is never sent ────────────
+
+describe('a controlled substance is refused at submission', () => {
+  it('Schedule III by the catalog (though the snapshot says 0): SUBMISSION_FAILED, no adapter called', async () => {
+    orderLine = { formulation_id: 'f-testo', catalog_item_id: null, medication_snapshot: { dea_schedule: 0 } }
+    formulationRow = { formulation_id: 'f-testo', salt_forms: { ingredients: { dea_schedule: 3 } }, formulation_ingredients: [] }
+    const result = await route()
+    expect(result.outcome).toBe('submission_failed')
+    expect(adapterCalls()).toBe(0)
+    expect(orderStatus).toBe('SUBMISSION_FAILED')
+    expect(alertKinds()).toContain('submission_failed')
+  })
+
+  it('a schedule that cannot be determined is not sent either', async () => {
+    orderLine = { formulation_id: 'f-unknown', catalog_item_id: null, medication_snapshot: {} }
+    formulationRow = null
+    const result = await route()
+    expect(result.outcome).toBe('submission_failed')
+    expect(adapterCalls()).toBe(0)
+  })
+
+  it('a non-controlled order is still sent', async () => {
+    const result = await route()
+    expect(adapterCalls()).toBe(1)
+    expect(result.outcome).not.toBe('submission_failed')
   })
 })
