@@ -22,8 +22,11 @@
 //
 // Kill switch: while PHARMACY_SUBMISSIONS_ENABLED is off this cron routes
 // nothing. It logs each paid order waiting (by id, once per run) and sends
-// at most ONE Slack alert per run with the count, so the owner can see what
-// is queued up before turning submissions on.
+// a Slack alert with the count at most once an hour (not every 5-minute
+// run), so the owner can see what is queued up before turning submissions
+// on. The last alert is recorded in ops_alert_queue, already marked sent so
+// the queue flusher never sends it again; if that record cannot be read or
+// written, no alert is sent (the per-order log lines still are).
 //
 // Vercel cron auth: verifies CRON_SECRET header.
 
@@ -40,6 +43,9 @@ const MAX_AGE_HOURS   = 24
 const BATCH_LIMIT     = 5
 /** Order ids logged per run while submissions are off (the count is exact). */
 const WAITING_LOG_LIMIT = 100
+/** The submissions-off alert is sent at most once in this window. */
+const PAUSED_ALERT_EVERY_MS = 60 * 60 * 1000
+const PAUSED_ALERT_TYPE = 'submissions_paused'
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const authHeader = request.headers.get('authorization')
@@ -122,11 +128,48 @@ async function reportWaitingWhileOff(
     console.info(`[submit-paid-orders] pharmacy submissions are turned off | order=${order.order_id} waiting in PAID_PROCESSING`)
   }
 
-  if (total > 0) {
+  if (total > 0 && await claimPausedAlert(supabase, total)) {
     await sendSlackAlert(buildOpsAlert({
       type: 'submissions_paused', status: 'PAID_PROCESSING', details: { count: total }, notes: ['submissions_off'],
     })).catch(err => console.error('[submit-paid-orders] waiting-orders alert failed:', err))
   }
 
   return NextResponse.json({ submissions_enabled: false, waiting: total })
+}
+
+/**
+ * Whether this run may send the submissions-off alert: none was recorded in
+ * the last hour. Records this one (already sent, so the ops_alert_queue
+ * flusher skips it) before the alert goes. A record that cannot be read or
+ * written means no alert, never one every five minutes.
+ */
+async function claimPausedAlert(
+  supabase: ReturnType<typeof createServiceClient>,
+  waiting: number,
+): Promise<boolean> {
+  const since = new Date(Date.now() - PAUSED_ALERT_EVERY_MS).toISOString()
+  const { data: recent, error: readError } = await supabase
+    .from('ops_alert_queue')
+    .select('alert_id')
+    .eq('alert_type', PAUSED_ALERT_TYPE)
+    .gte('created_at', since)
+    .limit(1)
+  if (readError) {
+    console.error('[submit-paid-orders] last waiting-orders alert could not be read; not alerting:', readError.message)
+    return false
+  }
+  if ((recent ?? []).length > 0) return false
+
+  const { error: writeError } = await supabase.from('ops_alert_queue').insert({
+    alert_type: PAUSED_ALERT_TYPE,
+    message:    `Pharmacy submissions are turned off: ${waiting} paid order(s) waiting`,
+    metadata:   { count: waiting },
+    severity:   'warning',
+    sent_at:    new Date().toISOString(),
+  })
+  if (writeError) {
+    console.error('[submit-paid-orders] waiting-orders alert could not be recorded; not alerting:', writeError.message)
+    return false
+  }
+  return true
 }
