@@ -44,7 +44,7 @@ function answer(c: ScriptedCall) {
   return undefined
 }
 
-const role = (r: string, clinic: string | null = CLINIC) => ({ id: `user-${r}`, email: `${r}@clinic.example`, user_metadata: { app_role: r, clinic_id: clinic } })
+const role = (r: string, clinic: string | null = CLINIC) => ({ id: `user-${r}`, email: `${r}@clinic.example`, app_metadata: { app_role: r, clinic_id: clinic } })
 
 async function html(params: Record<string, string> = {}) {
   const { renderToStaticMarkup } = await import('react-dom/server')

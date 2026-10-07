@@ -25,6 +25,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { loadRxDefaults } from '@/lib/orders/rx-defaults-loader'
 import { packageOptionsFromRows } from '@/lib/orders/rx-details'
 import { isLivePharmacy, type PharmacyLiveness } from '@/lib/pharmacies/live'
+import { getUserClinicId } from '@/lib/auth/claims'
 
 /** Upper bound on formulation ids per rx_defaults request. */
 const RX_DEFAULTS_MAX_IDS = 50
@@ -370,9 +371,7 @@ export async function GET(req: NextRequest) {
         if (ids.length > RX_DEFAULTS_MAX_IDS) {
           return NextResponse.json({ error: `at most ${RX_DEFAULTS_MAX_IDS} ids per request` }, { status: 400 })
         }
-        const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-          ? session.user.user_metadata['clinic_id'] as string
-          : null
+        const clinicId = getUserClinicId(session.user) ?? null
         if (!clinicId) {
           return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
         }

@@ -29,7 +29,7 @@ jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockImplementation(async () => ({
     auth: {
       getUser: async () => ({
-        data: { user: { id: 'user-1', user_metadata: { clinic_id: CLINIC, app_role: 'clinic_admin' } } },
+        data: { user: { id: 'user-1', app_metadata: { clinic_id: CLINIC, app_role: 'clinic_admin' } } },
       }),
     },
   })),

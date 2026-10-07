@@ -17,7 +17,7 @@ jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockImplementation(async () => ({
     auth: {
       getUser: () => getUserMock(),
-      getSession: async () => ({ data: { session: { user: { user_metadata: { app_role: 'provider', clinic_id: 'c-1' } } } } }),
+      getSession: async () => ({ data: { session: { user: { app_metadata: { app_role: 'provider', clinic_id: 'c-1' } } } } }),
     },
   })),
 }))
@@ -35,7 +35,7 @@ const post = (body: { state?: unknown; lines?: unknown }) => {
 }
 
 beforeEach(() => {
-  getUserMock.mockReset().mockResolvedValue({ data: { user: { id: 'u-1', user_metadata: { app_role: 'medical_assistant', clinic_id: 'c-1' } } }, error: null })
+  getUserMock.mockReset().mockResolvedValue({ data: { user: { id: 'u-1', app_metadata: { app_role: 'medical_assistant', clinic_id: 'c-1' } } }, error: null })
   db = fakeDb({
     pharmacies: [{ pharmacy_id: 'ph-1', name: 'Lapsed Rx', facility_type: '503A' }],
     pharmacy_state_licenses: [{ pharmacy_id: 'ph-1', state_code: 'TX', expiration_date: '2026-01-31', is_active: true, deleted_at: null, sterile_compounding: true }],
@@ -56,7 +56,7 @@ it('401 without a verified user, whatever the cookie session says', async () => 
 })
 
 it('403 for a user who is not a clinic user', async () => {
-  getUserMock.mockResolvedValue({ data: { user: { id: 'u-2', user_metadata: { app_role: 'ops_admin' } } }, error: null })
+  getUserMock.mockResolvedValue({ data: { user: { id: 'u-2', app_metadata: { app_role: 'ops_admin' } } }, error: null })
   expect((await post({ state: 'TX', lines: [] })).status).toBe(403)
 })
 

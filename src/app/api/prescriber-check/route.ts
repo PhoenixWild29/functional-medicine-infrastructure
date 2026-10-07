@@ -12,6 +12,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { prescriberProblems, todayUtc } from '@/lib/providers/credentials'
 import type { NpiStatus } from '@/lib/providers/npi'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
 
@@ -20,9 +21,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const meta = user.user_metadata ?? {}
-  const clinicId = typeof meta['clinic_id'] === 'string' ? meta['clinic_id'] as string : null
-  if (meta['app_role'] !== 'provider' || !clinicId) {
+  const clinicId = getUserClinicId(user) ?? null
+  if (getUserRole(user) !== 'provider' || !clinicId) {
     return NextResponse.json({ applies: false, problems: [] }, { headers: NO_STORE })
   }
   const states = (request.nextUrl.searchParams.get('states') ?? '')

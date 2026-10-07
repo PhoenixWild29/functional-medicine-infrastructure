@@ -52,7 +52,8 @@ describe('practiceAccess ignores self-edited user_metadata', () => {
 
   it('a role only in user_metadata is refused', async () => {
     const { client } = clinicsClient(true)
-    const access = await practiceAccess(client, { app_metadata: {}, user_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC_B } })
+    const metadataOnly = { app_metadata: {}, user_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC_B } }
+    const access = await practiceAccess(client, metadataOnly)
     expect(access.ok).toBe(false)
   })
 })
@@ -65,7 +66,8 @@ describe('phiActorFromUser records the real role and clinic', () => {
   })
 
   it('a role only in user_metadata is recorded as unknown, with no clinic', () => {
-    expect(phiActorFromUser({ id: 'u-2', app_metadata: {}, user_metadata: { app_role: 'ops_admin', clinic_id: CLINIC_B } }))
+    const metadataOnly = { id: 'u-2', app_metadata: {}, user_metadata: { app_role: 'ops_admin', clinic_id: CLINIC_B } }
+    expect(phiActorFromUser(metadataOnly))
       .toEqual({ userId: 'u-2', role: 'unknown', email: null, clinicId: null })
   })
 })

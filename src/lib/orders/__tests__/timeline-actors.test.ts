@@ -26,17 +26,19 @@ const NAME_ONLY_UID = '66666666-6666-4666-8666-666666666666'
 const UNKNOWN_ROLE_UID = '77777777-7777-4777-8777-777777777777'
 const OPS_UID = '88888888-8888-4888-8888-888888888888'
 
-type FakeUser = { email: string; user_metadata: Record<string, unknown> }
+// Role and clinic in app_metadata (authorization); the display name in
+// user_metadata (the user's own profile, only ever shown).
+type FakeUser = { email: string; app_metadata: Record<string, unknown>; user_metadata?: Record<string, unknown> }
 
 function fakeClient() {
   const providerFilters: Array<[string, unknown]> = []
   const users: Record<string, FakeUser | null> = {
-    [MA_UID]:           { email: 'ma@sunrise-clinic.com', user_metadata: { app_role: 'medical_assistant', clinic_id: CLINIC } },
-    [NAMED_ADMIN_UID]:  { email: 'admin@sunrise-clinic.com', user_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC, full_name: 'Lauren Perkins', name: 'Lauren' } },
-    [NAME_ONLY_UID]:    { email: 'anila@sunrise-clinic.com', user_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC, name: 'Anila Coniku-Nicklos' } },
-    [UNKNOWN_ROLE_UID]: { email: 'temp@sunrise-clinic.com', user_metadata: { app_role: 'contractor', clinic_id: CLINIC } },
-    [OPS_UID]:          { email: 'ops@compoundiq-poc.com', user_metadata: { app_role: 'ops_admin', full_name: 'Ops Person' } },
-    [OTHER_CLINIC_UID]: { email: 'someone@blue-cedar.com', user_metadata: { app_role: 'medical_assistant', clinic_id: 'c0000000-0000-4000-8000-000000000002', full_name: 'Other Clinic Staff' } },
+    [MA_UID]:           { email: 'ma@sunrise-clinic.com', app_metadata: { app_role: 'medical_assistant', clinic_id: CLINIC } },
+    [NAMED_ADMIN_UID]:  { email: 'admin@sunrise-clinic.com', app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC }, user_metadata: { full_name: 'Lauren Perkins', name: 'Lauren' } },
+    [NAME_ONLY_UID]:    { email: 'anila@sunrise-clinic.com', app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC }, user_metadata: { name: 'Anila Coniku-Nicklos' } },
+    [UNKNOWN_ROLE_UID]: { email: 'temp@sunrise-clinic.com', app_metadata: { app_role: 'contractor', clinic_id: CLINIC } },
+    [OPS_UID]:          { email: 'ops@compoundiq-poc.com', app_metadata: { app_role: 'ops_admin' }, user_metadata: { full_name: 'Ops Person' } },
+    [OTHER_CLINIC_UID]: { email: 'someone@blue-cedar.com', app_metadata: { app_role: 'medical_assistant', clinic_id: 'c0000000-0000-4000-8000-000000000002' }, user_metadata: { full_name: 'Other Clinic Staff' } },
     [GONE_UID]:         null,
   }
   const getUserById = jest.fn(async (id: string) => (users[id]

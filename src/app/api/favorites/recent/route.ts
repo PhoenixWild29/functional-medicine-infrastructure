@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { recentFormulations, RECENT_LIMIT, type RecentOrderRow } from '@/lib/orders/favorite-presets'
+import { getUserClinicId } from '@/lib/auth/claims'
 
 /** Orders scanned to find 8 distinct formulations; a provider rarely repeats one 25 times in a row. */
 const SCAN_LIMIT = 200
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const clinicId = typeof user.user_metadata?.['clinic_id'] === 'string' ? user.user_metadata['clinic_id'] as string : null
+  const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) return NextResponse.json({ error: 'No clinic context' }, { status: 403 })
 
   const providerId = new URL(req.url).searchParams.get('provider_id')?.trim() ?? ''

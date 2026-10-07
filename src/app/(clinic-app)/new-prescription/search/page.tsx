@@ -27,6 +27,7 @@ import { DraftSessionPin }    from '../_components/draft-session-pin'
 import { CascadingPrescriptionBuilder } from '../_components/cascading-prescription-builder'
 import { editTargetFromParams } from '../_lib/edit-target'
 import { getWizardSteps }    from '../_lib/wizard-steps'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export const metadata = {
   title: 'New Prescription — Find a Pharmacy',
@@ -51,7 +52,7 @@ export default async function PharmacySearchPage({ searchParams }: PageProps) {
 
   // WO-100: step 1 is labelled "Patient" for a provider (they ARE the
   // provider) and "Patient & Provider" for everyone else.
-  const providerIsSelf = isProviderRole(user?.user_metadata['app_role'])
+  const providerIsSelf = isProviderRole(getUserRole(user))
   const WIZARD_STEPS = getWizardSteps({ providerIsSelf, hrefs: { 1: '/new-prescription' } })
 
   // WO-98: draft targets need the order's patient/provider pinned and
@@ -59,9 +60,7 @@ export default async function PharmacySearchPage({ searchParams }: PageProps) {
   // scoped); a missing / non-draft order falls back to the plain flow.
   let draft: DraftContext | null = null
   if (editTarget && editTarget.kind !== 'session') {
-    const clinicId = typeof user?.user_metadata['clinic_id'] === 'string'
-      ? user.user_metadata['clinic_id'] as string
-      : null
+    const clinicId = getUserClinicId(user) ?? null
     if (clinicId) {
       draft = await loadDraftContext(createServiceClient(), clinicId, editTarget.orderId)
     }

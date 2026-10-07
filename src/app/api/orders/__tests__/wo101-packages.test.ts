@@ -132,7 +132,7 @@ beforeEach(() => {
   getSessionMock.mockResolvedValue({
     data: {
       session: {
-        user: { id: 'auth-uid-provider', user_metadata: { clinic_id: TEST_CLINIC_ID, app_role: 'provider' } },
+        user: { id: 'auth-uid-provider', app_metadata: { clinic_id: TEST_CLINIC_ID, app_role: 'provider' } },
       },
     },
   })

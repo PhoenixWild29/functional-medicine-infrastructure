@@ -24,6 +24,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { RX_DETAIL_COLUMN_LIST, rxDetailsFromRow, type RxDetails } from '@/lib/orders/rx-details'
 import { dollarsToCents } from '@/lib/orders/shipping'
+import { getUserClinicId } from '@/lib/auth/claims'
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
@@ -50,9 +51,7 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
-    ? user.user_metadata['clinic_id'] as string
-    : null
+  const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }

@@ -106,7 +106,7 @@ const TABLE = String.raw`((?:[A-Za-z_][A-Za-z0-9_]*\.)?[A-Za-z_][A-Za-z0-9_]*)`
 const normName = (n: string) => n.startsWith('"') ? n.slice(1, -1).replace(/""/g, '"') : n.toLowerCase()
 const normTable = (t: string) => (t.includes('.') ? t : `public.${t}`).toLowerCase()
 
-interface LivePolicy { using?: string; check?: string; file: string }
+interface LivePolicy { using?: string | undefined; check?: string | undefined; file: string }
 
 function replay(): Map<string, LivePolicy> {
   const live = new Map<string, LivePolicy>()

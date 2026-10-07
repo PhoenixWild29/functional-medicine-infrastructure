@@ -39,6 +39,7 @@ import { parseTitrationSteps, isSigMode, type SigMode } from '@/lib/orders/titra
 import { cyclePatternFrom } from '@/lib/orders/cycling'
 import { refillAllowance, refillsUsed } from '@/lib/orders/refill'
 import type { Json } from '@/types/database.types'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // Auth gate
@@ -49,16 +50,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
-    ? user.user_metadata['clinic_id'] as string
-    : null
+  const clinicId = getUserClinicId(user) ?? null
 
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }
-  const appRole = typeof user.user_metadata['app_role'] === 'string'
-    ? user.user_metadata['app_role'] as string
-    : null
+  const appRole = getUserRole(user) ?? null
 
   // WO-87 (B1 hotfix): Accept EITHER a legacy catalog item OR a V3.0
   // formulation. The cascading prescription builder produces a
@@ -185,7 +182,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // including "+ Add prescription" on another provider's draft (WO-98).
   // Shared with PATCH / DELETE /api/orders/[orderId].
   const ownership = await checkProviderOwnsDraft(supabase, {
-    appRole:         user.user_metadata['app_role'],
+    appRole:         getUserRole(user),
     userId:          user.id,
     clinicId,
     draftProviderId: providerId,

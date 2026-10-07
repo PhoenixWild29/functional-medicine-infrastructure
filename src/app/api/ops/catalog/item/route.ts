@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { Enums } from '@/types/database.types'
+import { getUserRole } from '@/lib/auth/claims'
 
 type RegulatoryStatusEnum = Enums<'regulatory_status_enum'>
 
@@ -22,7 +23,7 @@ async function guard(request: NextRequest) {
   const supabaseAuth = await createServerClient()
   const { data: { session } } = await supabaseAuth.auth.getSession()
   if (!session) return { session: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
-  if (session.user.user_metadata['app_role'] !== 'ops_admin') {
+  if (getUserRole(session.user) !== 'ops_admin') {
     return { session: null, error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
   return { session, error: null }

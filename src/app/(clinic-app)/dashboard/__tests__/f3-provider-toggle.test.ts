@@ -164,7 +164,7 @@ describe('F-3 follow-up SSR: ?view=clinic forwards the opt-in header', () => {
       data: {
         user: {
           id: 'auth-uid-provider',
-          user_metadata: {
+          app_metadata: {
             clinic_id: 'a1000000-0000-0000-0000-000000000001',
             app_role:  'provider',
           },
@@ -195,7 +195,7 @@ describe('F-3 follow-up SSR: ?view=clinic forwards the opt-in header', () => {
       data: {
         user: {
           id: 'auth-uid-provider',
-          user_metadata: {
+          app_metadata: {
             clinic_id: 'a1000000-0000-0000-0000-000000000001',
             app_role:  'provider',
           },
@@ -226,7 +226,7 @@ describe('F-3 follow-up SSR: ?view=clinic forwards the opt-in header', () => {
       data: {
         user: {
           id: 'auth-uid-clinic-admin',
-          user_metadata: {
+          app_metadata: {
             clinic_id: 'a1000000-0000-0000-0000-000000000001',
             app_role:  'clinic_admin',
           },

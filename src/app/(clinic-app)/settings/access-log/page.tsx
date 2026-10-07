@@ -24,6 +24,7 @@ import {
   resourceLabel,
   roleLabel,
 } from '@/lib/audit/access-log-view'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export const metadata = {
   title: 'Access log',
@@ -52,11 +53,11 @@ export default async function AccessLogPage({ searchParams }: PageProps = {}) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return <SessionGuardNotice />
 
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string' ? user.user_metadata['clinic_id'] as string : null
+  const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) {
     return <SessionGuardNotice title="No clinic linked" message="Your account is not linked to a clinic. Contact your administrator." />
   }
-  if (user.user_metadata['app_role'] !== 'clinic_admin') {
+  if (getUserRole(user) !== 'clinic_admin') {
     return (
       <main className="mx-auto max-w-5xl px-4 py-8">
         <section className="rounded-lg border border-border bg-card p-6" data-testid="access-log-admin-only">

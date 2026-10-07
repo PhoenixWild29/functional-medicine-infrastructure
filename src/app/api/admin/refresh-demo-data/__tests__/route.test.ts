@@ -73,7 +73,7 @@ const ORIGINAL_POC_MODE = process.env['POC_MODE']
 const OPS_SESSION = {
   data: {
     session: {
-      user: { user_metadata: { app_role: 'ops_admin' } },
+      user: { app_metadata: { app_role: 'ops_admin' } },
     },
   },
 }
@@ -81,7 +81,7 @@ const OPS_SESSION = {
 const CLINIC_SESSION = {
   data: {
     session: {
-      user: { user_metadata: { app_role: 'clinic_admin' } },
+      user: { app_metadata: { app_role: 'clinic_admin' } },
     },
   },
 }

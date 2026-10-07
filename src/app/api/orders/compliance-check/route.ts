@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { logPhiAccess } from '@/lib/audit/phi-access'
+import { getUserClinicId } from '@/lib/auth/claims'
 
 export interface ComplianceCheckResult {
   id:      string   // e.g. 'pharmacy_license'
@@ -55,9 +56,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     )
   }
 
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
-    ? user.user_metadata['clinic_id'] as string
-    : null
+  const clinicId = getUserClinicId(user) ?? null
 
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })

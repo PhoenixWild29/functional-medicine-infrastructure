@@ -24,7 +24,7 @@
 //
 // The cron entry was removed from vercel.json on 2026-09-11. This
 // function is now session-safe BY DEFAULT: existing users receive a
-// user_metadata-only update (metadata-only updates do NOT revoke
+// app_metadata-only update (metadata-only updates do NOT revoke
 // sessions). `password` is sent for an existing user ONLY when the
 // caller passes `{ resetPasswords: true }` explicitly, and that caller
 // must warn the operator that it signs out every demo user. New-user
@@ -35,7 +35,7 @@
 // invariants in.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { POC_CANONICAL_USERS, userMetadataFor, type PocUserLabel } from './canonical-users'
+import { POC_CANONICAL_USERS, pocAppMetadataFor, type PocUserLabel } from './canonical-users'
 import { enrollDemoProvider, type DemoTotpEnrollmentResult } from './totp-enrollment'
 import { refreshDemoData, type DemoDataRefreshReport } from './refresh-demo-data'
 
@@ -120,8 +120,8 @@ export async function syncPocCredentials(
       // for a password reset. Sending `password` here revokes all of the
       // user's sessions (see header comment).
       const attributes = resetPasswords
-        ? { password: user.password, user_metadata: userMetadataFor(user) }
-        : { user_metadata: userMetadataFor(user) }
+        ? { password: user.password, app_metadata: pocAppMetadataFor(user) }
+        : { app_metadata: pocAppMetadataFor(user) }
       const { error } = await supabase.auth.admin.updateUserById(existing.id, attributes)
       if (error) {
         results.push({ label: user.label, email: user.email, action: 'skipped', error: error.message })
@@ -135,7 +135,7 @@ export async function syncPocCredentials(
     const { error } = await supabase.auth.admin.createUser({
       email:         user.email,
       password:      user.password,
-      user_metadata: userMetadataFor(user),
+      app_metadata:  pocAppMetadataFor(user),
       email_confirm: true,
     })
     if (error) {

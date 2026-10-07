@@ -20,6 +20,7 @@ import type { User } from '@supabase/supabase-js'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
 import { logPhiAccess } from '@/lib/audit/phi-access'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 const STAFF_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
 
@@ -35,9 +36,8 @@ async function resolveCaller(change: boolean): Promise<Caller> {
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
 
-  const meta = user.user_metadata ?? {}
-  const role = typeof meta['app_role'] === 'string' ? meta['app_role'] as string : null
-  const clinicId = typeof meta['clinic_id'] === 'string' && meta['clinic_id'] ? meta['clinic_id'] as string : null
+  const role = getUserRole(user) ?? null
+  const clinicId = getUserClinicId(user) ?? null
   if (!clinicId || !role || !STAFF_ROLES.has(role)) {
     return { ok: false, response: NextResponse.json({ error: 'Forbidden — protocol phases are kept by clinic staff' }, { status: 403 }) }
   }

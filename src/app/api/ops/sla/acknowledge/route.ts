@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { Enums } from '@/types/database.types'
+import { getUserRole } from '@/lib/auth/claims'
 
 type SlaTypeEnum = Enums<'sla_type_enum'>
 
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (session.user.user_metadata['app_role'] !== 'ops_admin') {
+  if (getUserRole(session.user) !== 'ops_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

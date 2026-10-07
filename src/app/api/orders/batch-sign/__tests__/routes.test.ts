@@ -42,7 +42,7 @@ function req(body: unknown, headers: Record<string, string> = {}) {
   } as unknown as NextRequest
 }
 function user(role: string) {
-  getUserMock.mockResolvedValue({ data: { user: { id: `u-${role}`, user_metadata: { clinic_id: 'c1', app_role: role } } } })
+  getUserMock.mockResolvedValue({ data: { user: { id: `u-${role}`, app_metadata: { clinic_id: 'c1', app_role: role } } } })
 }
 
 beforeEach(() => {

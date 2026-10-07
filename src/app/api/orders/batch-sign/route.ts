@@ -20,6 +20,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { signBatch } from '@/lib/orders/batch-sign'
 import { logPhiAccess } from '@/lib/audit/phi-access'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const sfSite = request.headers.get('sec-fetch-site')
@@ -31,9 +32,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string' ? user.user_metadata['clinic_id'] as string : null
+  const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
-  const appRole = typeof user.user_metadata['app_role'] === 'string' ? user.user_metadata['app_role'] as string : null
+  const appRole = getUserRole(user) ?? null
 
   let body: { orderIds?: unknown; signature?: unknown; totpCode?: unknown }
   try {

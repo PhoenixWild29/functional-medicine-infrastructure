@@ -162,7 +162,7 @@ function installHappyFixtures(row: Record<string, unknown> = DRAFT_ROW) {
 
 function sessionAs(role: string, userId = `auth-${role}`) {
   getSessionMock.mockResolvedValue({
-    data: { session: { user: { id: userId, user_metadata: { clinic_id: CLINIC_ID, app_role: role } } } },
+    data: { session: { user: { id: userId, app_metadata: { clinic_id: CLINIC_ID, app_role: role } } } },
   })
 }
 

@@ -39,7 +39,7 @@ import { PUT as putLicense } from '../[providerId]/licenses/route'
 import { POST as npiCheck } from '../[providerId]/npi-check/route'
 import { GET as prescriberCheck } from '../../prescriber-check/route'
 
-const as = (role: string, clinic: string | null = CLINIC) => ({ id: `u-${role}`, email: `${role}@x.example`, user_metadata: { app_role: role, clinic_id: clinic } })
+const as = (role: string, clinic: string | null = CLINIC) => ({ id: `u-${role}`, email: `${role}@x.example`, app_metadata: { app_role: role, clinic_id: clinic } })
 const CHEN_ROW = { provider_id: CHEN, clinic_id: CLINIC, first_name: 'Sarah', last_name: 'Chen', npi_number: '1234567893' }
 
 /** Chen belongs to CLINIC; a query scoped to another clinic finds nothing. */
