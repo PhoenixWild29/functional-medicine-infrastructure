@@ -157,7 +157,7 @@ function installHappyFixtures(row: Record<string, unknown> = DRAFT_ROW) {
     data: { pharmacy_id: PHARMACY_ID, name: 'Strive Pharmacy', integration_tier: 'TIER_1_API', fax_number: null, is_active: true, deleted_at: null },
     error: null,
   })
-  fixtures['pharmacy_state_licenses:maybeSingle'] = () => ({ data: { pharmacy_id: PHARMACY_ID }, error: null })
+  fixtures['pharmacy_state_licenses:maybeSingle'] = () => ({ data: { pharmacy_id: PHARMACY_ID, expiration_date: '2099-12-31', sterile_compounding: true }, error: null })
 }
 
 function sessionAs(role: string, userId = `auth-${role}`) {

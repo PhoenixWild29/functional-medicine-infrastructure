@@ -56,6 +56,7 @@ import { createSlasForTransition, upsertFaxDeliverySla } from '@/lib/sla/creator
 import { resolveSlasForTransition } from '@/lib/sla/resolver'
 import type { IntegrationTier } from '@/lib/adapters/audit-trail'
 import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
+import { checkOrderLicensure, normalizeFacilityType } from '@/lib/compliance/pharmacy-licensure'
 
 // ============================================================
 // CONSTANTS
@@ -304,13 +305,14 @@ async function loadPharmacy(pharmacyId: string): Promise<{
   integration_tier: IntegrationTier
   name:  string
   slug:  string
+  facility_type?: string | null
 } | null> {
   const supabase = createServiceClient()
 
   // NB-04: use maybeSingle() so a missing pharmacy returns null (not a throw)
   const { data, error } = await supabase
     .from('pharmacies')
-    .select('integration_tier, name, slug')
+    .select('integration_tier, name, slug, facility_type')
     .eq('pharmacy_id', pharmacyId)
     .eq('is_active', true)
     .maybeSingle()
@@ -319,7 +321,7 @@ async function loadPharmacy(pharmacyId: string): Promise<{
     throw new Error(`[routing-engine] pharmacy ${pharmacyId} could not be read: ${error.message}`)
   }
 
-  return data as { integration_tier: IntegrationTier; name: string; slug: string } | null
+  return data as { integration_tier: IntegrationTier; name: string; slug: string; facility_type?: string | null } | null
 }
 
 // ============================================================
@@ -518,6 +520,21 @@ async function submitClaimedOrder(params: {
   // BLK-05: TIER_3_HYBRID is not implemented. Fail loudly, never hang.
   if (tier === 'TIER_3_HYBRID') {
     await failSubmission({ orderId, pharmacySlug, tier, reason: 'tier3_hybrid_unsupported' })
+    return { outcome: 'submission_failed', tier }
+  }
+
+  // ── C5: licensure, re-checked before anything is sent ──────
+  // The license may have expired, or the order been rerouted, since it
+  // was signed. Not licensed for the shipping state (or not for sterile
+  // compounding when the product is sterile) → SUBMISSION_FAILED with an
+  // alert, so ops can reroute. A read that fails throws: routeOrder lands
+  // it in SUBMISSION_FAILED as a routing error; nothing is sent blind.
+  const licensure = await checkOrderLicensure(createServiceClient(), {
+    orderId, pharmacyId, pharmacyName: pharmacy.name, facilityType: normalizeFacilityType(pharmacy.facility_type),
+  })
+  if (!licensure.ok) {
+    console.warn(`[routing-engine] not licensed | order=${orderId} | pharmacy=${pharmacyId} | problem=${licensure.problem}`)
+    await failSubmission({ orderId, pharmacySlug, tier, reason: 'pharmacy_not_licensed', error: licensure.message })
     return { outcome: 'submission_failed', tier }
   }
 
@@ -724,7 +741,8 @@ async function submitClaimedOrder(params: {
 // ============================================================
 
 export interface SubmitQueuedFaxResult {
-  outcome:       'accepted' | 'fax_failed' | 'not_claimed' | 'submissions_disabled'
+  /** not_licensed: C5, the pharmacy cannot lawfully fill it; moved to FAX_FAILED, nothing sent. */
+  outcome:       'accepted' | 'fax_failed' | 'not_claimed' | 'submissions_disabled' | 'not_licensed'
   submissionId?: string
 }
 
@@ -765,6 +783,37 @@ export async function submitQueuedFax(params: {
       `[routing-engine] ops fax skipped | order=${orderId} | status=${order?.status ?? 'not_found'}`
     )
     return { outcome: 'not_claimed' }
+  }
+
+  // C5: the same licensure rule as routeOrder, before the fax goes out.
+  const faxPharmacy = await loadPharmacy(pharmacyId)
+  const licensure = faxPharmacy
+    ? await checkOrderLicensure(supabase, {
+        orderId, pharmacyId, pharmacyName: faxPharmacy.name, facilityType: normalizeFacilityType(faxPharmacy.facility_type),
+      })
+    : { ok: false as const, problem: 'no_license' as const, message: 'The pharmacy is not active.' }
+  if (!licensure.ok) {
+    console.warn(`[routing-engine] ops fax not sent: not licensed | order=${orderId} | pharmacy=${pharmacyId} | problem=${licensure.problem}`)
+    await casTransition({
+      orderId,
+      expectedStatus: 'FAX_QUEUED',
+      newStatus:      'FAX_FAILED',
+      actor:          'routing_engine',
+      metadata:       { reason: 'pharmacy_not_licensed', error: licensure.message },
+    }).catch(casErr =>
+      console.error('[routing-engine] CAS FAX_FAILED (not licensed) error:', casErr)
+    )
+    await sendSlackAlert(
+      buildAdapterFailureAlert({
+        orderId,
+        pharmacySlug:    faxPharmacy?.slug ?? pharmacyId,
+        integrationTier: 'TIER_4_FAX',
+        errorCode:       'pharmacy_not_licensed',
+      })
+    ).catch(slackErr =>
+      console.error('[routing-engine] Slack not-licensed alert failed:', slackErr)
+    )
+    return { outcome: 'not_licensed' }
   }
 
   await upsertFaxDeliverySla(orderId)

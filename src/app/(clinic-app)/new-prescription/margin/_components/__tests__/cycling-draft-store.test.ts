@@ -42,7 +42,7 @@ function rowFor(table: string): Record<string, unknown> | null {
       free_shipping_threshold: null, is_active: true, deleted_at: null,
     }
     case 'pharmacy_formulation_packages': return { id: 'pkg-1', package_label: '1 mL vial', wholesale_price: 95 }
-    case 'pharmacy_state_licenses': return { pharmacy_id: 'pharmacy-strive' }
+    case 'pharmacy_state_licenses': return { pharmacy_id: 'pharmacy-strive', expiration_date: '2099-12-31', sterile_compounding: true }
     default: return null
   }
 }

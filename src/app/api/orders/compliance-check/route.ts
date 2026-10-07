@@ -18,6 +18,7 @@
 // Auth: Requires active Clinic App session.
 // Response: { checks: ComplianceCheckResult[] }
 
+import { checkLicensure, isSterileProduct, normalizeFacilityType, readLicenses, todayIso } from '@/lib/compliance/pharmacy-licensure'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -87,13 +88,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
       // Pharmacy — need integration_tier + is_active
       supabase.from('pharmacies')
-        .select('pharmacy_id, integration_tier, is_active, pharmacy_status, deleted_at')
+        .select('pharmacy_id, name, integration_tier, is_active, pharmacy_status, deleted_at, facility_type')
         .eq('pharmacy_id', pharmacyId)
         .maybeSingle(),
 
       // Catalog item — need dea_schedule + wholesale_price for check 4
       supabase.from('catalog')
-        .select('item_id, dea_schedule, wholesale_price')
+        .select('item_id, dea_schedule, wholesale_price, form')
         .eq('item_id', itemId)
         .eq('is_active', true)
         .is('deleted_at', null)
@@ -126,19 +127,28 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       message: 'Patient not found or missing shipping state.',
     }
   } else {
-    const { data: license } = await supabase
-      .from('pharmacy_state_licenses')
-      .select('pharmacy_id')
-      .eq('pharmacy_id', pharmacyId)
-      .eq('state_code', patientState)
-      .eq('is_active', true)
-      .maybeSingle()
+    // C5: unexpired, live, and covering sterile compounding (or 503B) for
+    // a sterile product. A failed read does not pass.
+    const { data: licenses, error: licenseError } = await readLicenses(supabase, [pharmacyId], patientState)
+    const licensure = licenseError
+      ? { ok: false as const, problem: 'no_license' as const, message: 'The pharmacy license could not be checked. Try again.' }
+      : checkLicensure({
+          licenses,
+          pharmacyId,
+          pharmacyName: (pharmacy as { name?: string } | null)?.name ?? 'Pharmacy',
+          state:        patientState,
+          sterile:      isSterileProduct({ formText: (catalog as { form?: string | null } | null)?.form ?? null }),
+          facilityType: normalizeFacilityType((pharmacy as { facility_type?: string | null } | null)?.facility_type),
+          today:        todayIso(),
+        })
 
     pharmacyLicenseCheck = {
       id: 'pharmacy_license',
       label: 'Pharmacy licensed in patient state',
-      passed: !!license,
-      message: license ? null : `Pharmacy is not licensed in ${patientState}.`,
+      passed: licensure.ok,
+      message: licensure.ok ? null
+        : licenseError || licensure.problem !== 'no_license' ? licensure.message
+        : `Pharmacy is not licensed in ${patientState}.`,
     }
   }
   checks.push(pharmacyLicenseCheck)

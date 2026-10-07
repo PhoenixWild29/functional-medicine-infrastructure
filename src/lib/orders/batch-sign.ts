@@ -43,6 +43,7 @@
 // FINDS — recorded allergies, a known interaction — is the provider's
 // information on screen and never blocks.
 
+import { checkLicensure, isSterileProduct, LICENSE_COLUMNS, normalizeFacilityType, todayIso, type LicenseRecord } from '@/lib/compliance/pharmacy-licensure'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/types/database.types'
 import {
@@ -270,16 +271,17 @@ export async function checkBatch(
   const [clinicRes, pharmacyRes, licenseRes, catalogRes, rulesRes] = await Promise.all([
     supabase.from('clinics').select('stripe_connect_status').eq('clinic_id', clinicId).maybeSingle(),
     pharmacyIds.length
-      ? supabase.from('pharmacies').select('pharmacy_id, name, integration_tier, is_active, pharmacy_status, deleted_at').in('pharmacy_id', pharmacyIds)
+      ? supabase.from('pharmacies').select('pharmacy_id, name, integration_tier, is_active, pharmacy_status, deleted_at, facility_type').in('pharmacy_id', pharmacyIds)
       : Promise.resolve({ data: [], error: null }),
     pharmacyIds.length
-      ? supabase.from('pharmacy_state_licenses').select('pharmacy_id, state_code').in('pharmacy_id', pharmacyIds).eq('is_active', true)
+      // C5: the whole live license (expiry, sterile scope), judged per line below.
+      ? supabase.from('pharmacy_state_licenses').select(LICENSE_COLUMNS).in('pharmacy_id', pharmacyIds).eq('is_active', true).is('deleted_at', null)
       : Promise.resolve({ data: [], error: null }),
     catalogIds.length
-      ? supabase.from('catalog').select('item_id, dea_schedule').in('item_id', catalogIds)
+      ? supabase.from('catalog').select('item_id, dea_schedule, form').in('item_id', catalogIds)
       : Promise.resolve({ data: [], error: null }),
     formIds.length
-      ? supabase.from('formulations').select('formulation_id, requires_clinical_difference').in('formulation_id', formIds)
+      ? supabase.from('formulations').select('formulation_id, requires_clinical_difference, dosage_forms(name, is_sterile)').in('formulation_id', formIds)
       : Promise.resolve({ data: [], error: null }),
   ])
 
@@ -307,8 +309,16 @@ export async function checkBatch(
   }
 
   const pharmacies = new Map((pharmacyRes.data ?? []).map(p => [p.pharmacy_id, p]))
-  const licensed   = new Set((licenseRes.data ?? []).map(l => `${l.pharmacy_id}:${l.state_code}`))
+  const licenses   = (licenseRes.data ?? []) as unknown as LicenseRecord[]
+  const today      = todayIso()
   const catalogDea = new Map((catalogRes.data ?? []).map(c => [c.item_id, c.dea_schedule as number | null]))
+  // C5: whether each line's product is sterile (dosage form, else the
+  // legacy catalog item's form text).
+  const formSterile = new Map((rulesRes.data ?? []).map(f => {
+    const df = (f as { dosage_forms?: { name?: string | null; is_sterile?: boolean | null } | null }).dosage_forms
+    return [f.formulation_id, isSterileProduct({ dosageFormIsSterile: df?.is_sterile ?? null, formText: df?.name ?? null })]
+  }))
+  const catalogSterile = new Map((catalogRes.data ?? []).map(c => [c.item_id, isSterileProduct({ formText: (c as { form?: string | null }).form ?? null })]))
   const rules      = new Map((rulesRes.data ?? []).map(f => [f.formulation_id, f.requires_clinical_difference === true]))
 
   const lines: BatchLine[] = []
@@ -318,8 +328,21 @@ export async function checkBatch(
     const pharmacy = r.pharmacy_id ? pharmacies.get(r.pharmacy_id) : undefined
     const before = problems.length
 
-    if (!licensed.has(`${r.pharmacy_id}:${r.shipping_state_snapshot}`)) {
-      add(r, 'license', `${name}: ${pharmacy?.name ?? 'the pharmacy'} is not licensed in ${r.shipping_state_snapshot ?? "the patient's state"}.`)
+    // C5: an unexpired, live license in the shipping state, covering
+    // sterile compounding (or a 503B facility) for a sterile product.
+    const licensure = checkLicensure({
+      licenses,
+      pharmacyId:   r.pharmacy_id ?? '',
+      pharmacyName: pharmacy?.name ?? 'the pharmacy',
+      state:        r.shipping_state_snapshot,
+      sterile:      r.formulation_id ? formSterile.get(r.formulation_id) === true
+                  : r.catalog_item_id ? catalogSterile.get(r.catalog_item_id) === true
+                  : false,
+      facilityType: normalizeFacilityType((pharmacy as { facility_type?: string | null } | undefined)?.facility_type),
+      today,
+    })
+    if (!licensure.ok) {
+      add(r, 'license', `${name}: ${licensure.message}`)
     }
     const pharmacyOk = !!pharmacy && pharmacy.is_active && !pharmacy.deleted_at && pharmacy.pharmacy_status !== 'BANNED'
     if (!pharmacyOk) {
