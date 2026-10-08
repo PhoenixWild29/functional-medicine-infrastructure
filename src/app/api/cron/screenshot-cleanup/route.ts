@@ -21,15 +21,13 @@
 // Safe to re-run: .remove() is idempotent for missing paths.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { SCREENSHOT_BUCKET, SCREENSHOT_TTL_HOURS } from '@/lib/playwright/config'
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  // Verify Vercel cron secret
-  const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const denied = cronAuthFailure(request, 'screenshot-cleanup')
+  if (denied) return denied
 
   const supabase = createServiceClient()
   const cutoffMs = Date.now() - SCREENSHOT_TTL_HOURS * 60 * 60 * 1000

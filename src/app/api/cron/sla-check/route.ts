@@ -35,6 +35,7 @@
 // escalateSla uses CAS on escalation_tier to prevent double-escalation).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition } from '@/lib/orders/cas-transition'
 import { submitTier4Fax } from '@/lib/adapters/tier4-fax'
@@ -309,16 +310,8 @@ async function attemptSmsTrigger(
 // ============================================================
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  // NB-10 fix: check for missing/undefined CRON_SECRET before comparison
-  const cronSecret = process.env['CRON_SECRET']
-  if (!cronSecret) {
-    console.error('[sla-check] CRON_SECRET env var is not set')
-    return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 })
-  }
-  const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const denied = cronAuthFailure(request, 'sla-check')
+  if (denied) return denied
 
   const supabase = createServiceClient()
   const now      = new Date().toISOString()

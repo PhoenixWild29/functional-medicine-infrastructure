@@ -29,19 +29,14 @@
 // logs surface drift if the table ever stops shrinking.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 
 const RETENTION_HOURS = 24
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const cronSecret = process.env['CRON_SECRET']
-  if (!cronSecret) {
-    console.error('[purge-phi-debug] CRON_SECRET env var is not set')
-    return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 })
-  }
-  if (request.headers.get('authorization') !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const denied = cronAuthFailure(request, 'purge-phi-debug')
+  if (denied) return denied
 
   const supabase = createServiceClient()
   const cutoffIso = new Date(Date.now() - RETENTION_HOURS * 60 * 60 * 1000).toISOString()

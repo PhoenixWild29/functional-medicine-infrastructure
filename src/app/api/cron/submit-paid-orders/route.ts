@@ -28,6 +28,7 @@
 // Vercel cron auth: verifies CRON_SECRET header.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { routeOrder } from '@/lib/adapters/routing-engine'
 import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
@@ -42,10 +43,8 @@ const BATCH_LIMIT     = 5
 const WAITING_LOG_LIMIT = 100
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env['CRON_SECRET']}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const denied = cronAuthFailure(request, 'submit-paid-orders')
+  if (denied) return denied
 
   const supabase = createServiceClient()
 
