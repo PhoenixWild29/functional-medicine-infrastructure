@@ -13,6 +13,7 @@
 //   as the builder's pharmacy_options level (/api/formulations).
 // ============================================================
 
+import { compoundingBlock, ingredientsFromFormulationRow } from '@/lib/compliance/compounding'
 import { checkLicensure, readLicenses, todayIso } from '@/lib/compliance/pharmacy-licensure'
 import { scheduleFromFormulationRow } from '@/lib/orders/controlled-substance'
 import { isLivePharmacy, type PharmacyLiveness } from '@/lib/pharmacies/live'
@@ -81,8 +82,8 @@ export async function GET(req: NextRequest) {
           concentration_unit,
           dosage_forms ( name ),
           routes_of_administration ( name, abbreviation, sig_prefix ),
-          salt_forms ( ingredients ( dea_schedule ) ),
-          formulation_ingredients ( ingredients ( dea_schedule ) )
+          salt_forms ( ingredients ( dea_schedule, common_name, compounding_status, commercial_equivalent, on_fda_shortage ) ),
+          formulation_ingredients ( ingredients ( dea_schedule, common_name, compounding_status, commercial_equivalent, on_fda_shortage ) )
         ),
         pharmacies ( pharmacy_id, name, slug, integration_tier )
       `)
@@ -179,6 +180,15 @@ export async function GET(req: NextRequest) {
       dea_schedule: item.formulations
         ? scheduleFromFormulationRow(item.formulations as unknown as Parameters<typeof scheduleFromFormulationRow>[0])
         : null,
+      // Compliance C8: why the item cannot be ordered (an ingredient that
+      // may not be compounded, or is not verified), or null. A blocked item
+      // is labelled and never quick-loaded.
+      compounding_block: compoundingBlock(
+        (item.formulations as { name?: string } | null)?.name ?? 'This medication',
+        item.formulations
+          ? ingredientsFromFormulationRow(item.formulations as unknown as Parameters<typeof ingredientsFromFormulationRow>[0])
+          : [],
+      ),
     }))
 
     // Clinic default markup — lets the client derive a real retail price

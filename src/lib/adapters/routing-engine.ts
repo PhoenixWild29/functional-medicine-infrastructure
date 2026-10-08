@@ -45,6 +45,7 @@
 //   pharmacy_id (PK), state, failure_count, last_failure_at,
 //   cooldown_until, tripped_by_submission_id, updated_at
 
+import { orderCompoundingStatus } from '@/lib/compliance/compounding'
 import { createServiceClient } from '@/lib/supabase/service'
 import { orderControlStatus } from '@/lib/orders/controlled-substance'
 import { casTransition } from '@/lib/orders/cas-transition'
@@ -502,6 +503,21 @@ export async function routeOrder(params: RouteOrderParams): Promise<RouteOrderRe
   }
 }
 
+/** C8: the order's line, then orderCompoundingStatus. A read failure is unknown. */
+async function orderCompoundingStatusFor(orderId: string): Promise<'ok' | 'not_compoundable' | 'compounding_status_unknown'> {
+  const supabase = createServiceClient()
+  const { data, error } = await supabase
+    .from('orders')
+    .select('order_id, formulation_id, catalog_item_id')
+    .eq('order_id', orderId)
+    .maybeSingle()
+  if (error || !data) {
+    console.error(`[routing-engine] compounding check: order ${orderId} could not be read:`, error?.message ?? 'not found')
+    return 'compounding_status_unknown'
+  }
+  return orderCompoundingStatus(supabase, data)
+}
+
 /** The order's line and snapshot, then orderControlStatus. A read failure is 'unknown'. */
 async function orderControlStatusFor(orderId: string): Promise<'controlled' | 'not_controlled' | 'unknown'> {
   const supabase = createServiceClient()
@@ -543,6 +559,15 @@ async function submitClaimedOrder(params: {
       orderId, pharmacySlug, tier,
       reason: control === 'controlled' ? 'controlled_substance' : 'controlled_status_unknown',
     })
+    return { outcome: 'submission_failed', tier }
+  }
+
+  // Compliance C8: nothing that may not be compounded (or whose status is
+  // not verified) is sent. Re-read from the catalog: a status can change
+  // after signing. It lands in SUBMISSION_FAILED with an alert.
+  const compounding = await orderCompoundingStatusFor(orderId)
+  if (compounding !== 'ok') {
+    await failSubmission({ orderId, pharmacySlug, tier, reason: compounding })
     return { outcome: 'submission_failed', tier }
   }
 

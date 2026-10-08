@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
 
         let query = supabase
           .from('ingredients')
-          .select('ingredient_id, common_name, therapeutic_category, dea_schedule, fda_alert_status, fda_alert_message, description')
+          .select('ingredient_id, common_name, therapeutic_category, dea_schedule, fda_alert_status, fda_alert_message, description, compounding_status, commercial_equivalent, on_fda_shortage')
           .eq('is_active', true)
           .is('deleted_at', null)
           .order('common_name')
@@ -210,7 +210,7 @@ export async function GET(req: NextRequest) {
             routes_of_administration(name, abbreviation, sig_prefix),
             formulation_ingredients(
               ingredient_id, concentration_per_unit, concentration_value, concentration_unit, role,
-              ingredients(common_name, dea_schedule, fda_alert_status)
+              ingredients(common_name, dea_schedule, fda_alert_status, compounding_status, commercial_equivalent, on_fda_shortage)
             )
           `)
           .eq('is_active', true)
@@ -244,7 +244,7 @@ export async function GET(req: NextRequest) {
             routes_of_administration(name, abbreviation, sig_prefix),
             formulation_ingredients(
               ingredient_id, concentration_per_unit, concentration_value, concentration_unit, role,
-              ingredients(common_name, dea_schedule, fda_alert_status)
+              ingredients(common_name, dea_schedule, fda_alert_status, compounding_status, commercial_equivalent, on_fda_shortage)
             )
           `)
           .eq('formulation_id', formulationId)
@@ -269,7 +269,7 @@ export async function GET(req: NextRequest) {
         const { data: ingredient } = ingredientId
           ? await supabase
               .from('ingredients')
-              .select('ingredient_id, common_name, therapeutic_category, dea_schedule, fda_alert_status, fda_alert_message, description')
+              .select('ingredient_id, common_name, therapeutic_category, dea_schedule, fda_alert_status, fda_alert_message, description, compounding_status, commercial_equivalent, on_fda_shortage')
               .eq('ingredient_id', ingredientId)
               .maybeSingle()
           : { data: null }

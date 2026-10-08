@@ -10,6 +10,7 @@
 // Idempotent: safe to run multiple times. Uses upsert pattern.
 
 import { createClient } from '@supabase/supabase-js'
+import { applyDemoCompounding } from '../src/lib/compliance/demo-compounding'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -84,6 +85,11 @@ async function main() {
       console.log(`  ✅ ${ing.common_name}`)
     }
   }
+
+  // Compliance C8: demo compounding statuses (demo data, not verified).
+  // An ingredient left unverified cannot be ordered.
+  const demoStatuses = await applyDemoCompounding(supabase)
+  console.log(`  ✅ demo compounding statuses on ${demoStatuses} ingredients`)
 
   // ── 2. Seed Salt Forms ─────────────────────────────────
   console.log('\n── Salt Forms ──')

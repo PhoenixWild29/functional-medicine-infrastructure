@@ -55,6 +55,7 @@ import { FREQUENCY_OPTIONS } from './structured-sig-builder.types'
 import { DOSE_UNITS, formatFavoriteDose } from '@/lib/orders/dose-display'
 import { splitDose } from '@/lib/orders/dose'
 import { CONTROLLED_LABEL, isControlledSchedule } from '@/lib/orders/controlled-substance'
+import { NOT_COMPOUNDABLE_LABEL } from '@/lib/compliance/compounding'
 import {
   favoriteCycle,
   groupFavorites,
@@ -161,6 +162,8 @@ interface ProtocolItem {
   pharmacy_licensed: boolean | null
   /** Compliance C6: the formulation's highest DEA schedule; null = none. */
   dea_schedule?: number | null
+  /** Compliance C8: why this item cannot be ordered (from /api/protocols), or null. */
+  compounding_block?: { code: string; message: string } | null
   formulations: {
     formulation_id: string
     name: string
@@ -339,10 +342,14 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
     // Compliance C6: a controlled item is never loaded (CompoundIQ cannot
     // sign or send it), and is reported by name with the reason, never
     // dropped silently.
+    // Compliance C8: an item that may not be compounded (or is not
+    // verified) is never loaded either, and is reported with its reason.
     const controlledItems = detail.items.filter(item => isControlledSchedule(item.dea_schedule))
-    const uncontrolledItems = detail.items.filter(item => !isControlledSchedule(item.dea_schedule))
+    const blockedItems = detail.items.filter(item => !isControlledSchedule(item.dea_schedule) && item.compounding_block)
+    const uncontrolledItems = detail.items.filter(item => !isControlledSchedule(item.dea_schedule) && !item.compounding_block)
     const skippedMessages = [
       ...controlledItems.map(item => `${item.formulations?.name ?? 'Unknown medication'}: ${CONTROLLED_LABEL}`),
+      ...blockedItems.map(item => (item.compounding_block as { message: string }).message),
       ...findUnlicensedItems(uncontrolledItems.map(item => ({
         name: item.formulations?.name ?? 'Unknown medication',
         pharmacyName: item.pharmacies?.name ?? 'its pharmacy',
@@ -920,6 +927,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
                 <div className="border-t border-border px-3 py-2 space-y-1.5">
                   {protocolDetail.items.map((item, i) => {
                     const itemControlled = isControlledSchedule(item.dea_schedule)
+                    const itemNotCompoundable = !itemControlled && !!item.compounding_block
                     const itemUnlicensed = !itemControlled && item.pharmacy_licensed === false
                     const itemUnavailable =
                       !itemControlled && !itemUnlicensed && (!item.formulation_active || item.wholesale_price === null)
@@ -947,6 +955,15 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
                                 data-testid={`protocol-item-controlled-${item.item_id}`}
                               >
                                 {CONTROLLED_LABEL}: will be excluded
+                              </span>
+                            )}
+                            {itemNotCompoundable && (
+                              <span
+                                className="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700"
+                                data-testid={`protocol-item-not-compoundable-${item.item_id}`}
+                                title={item.compounding_block?.message}
+                              >
+                                {NOT_COMPOUNDABLE_LABEL}: will be excluded
                               </span>
                             )}
                           </p>
