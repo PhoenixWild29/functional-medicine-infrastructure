@@ -35,7 +35,7 @@ export function SessionGuardNotice({
       <p className="mt-2 text-sm text-muted-foreground">{message}</p>
       <Link
         href="/login"
-        className="mt-6 inline-block rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
+        className="mt-6 inline-block rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         Sign in
       </Link>
