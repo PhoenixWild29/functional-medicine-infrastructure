@@ -15,6 +15,11 @@ import type { NextRequest } from 'next/server'
 import { scriptedDb } from '@/__tests__/helpers/scripted-db'
 import { epcsRequestFields } from '../audit-request'
 
+// The route's enrolment imports, as the other /api/epcs tests mock them.
+jest.mock('otplib', () => ({ TOTP: class {}, generateSecret: () => 'S', generateURI: () => 'otpauth://totp/x', verifySync: () => ({ valid: false }) }))
+jest.mock('qrcode', () => ({ toDataURL: async () => 'data:image/png;base64,AAA' }))
+jest.mock('@/lib/epcs/crypto', () => ({ encryptSecret: (s: string) => s, decryptSecret: (s: string) => s }))
+
 const HEX64 = /^[0-9a-f]{64}$/
 const headers = (h: Record<string, string>) => new Headers(h)
 

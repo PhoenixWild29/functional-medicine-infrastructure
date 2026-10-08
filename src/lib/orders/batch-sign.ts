@@ -59,6 +59,7 @@ import { pharmacyInactiveMessage } from '@/lib/pharmacies/live'
 import { findInteractions, type InteractionRow } from '@/lib/interactions/match'
 import { checkSignature, SIGNATURE_REJECTION_COPY, type SignaturePayload } from './signature'
 import { verifyProviderTotp } from '@/lib/epcs/totp'
+import { epcsRequestFieldsFrom } from '@/lib/epcs/audit-request'
 import { createPaymentGroup, cancelPaymentGroup } from '@/lib/payment-group/create-group'
 import { generateCheckoutToken, generateGroupCheckoutToken } from '@/lib/auth/checkout-token'
 import { insertStatusHistory, type StatusHistoryRow } from './status-history'
@@ -866,6 +867,8 @@ async function writeEpcsAudit(
   meta: { ip: string | null; userAgent: string | null } | undefined,
 ): Promise<boolean> {
   const controlledIds = controlled.map(l => l.orderId)
+  // C10: keyed hashes of the IP and user agent, never the raw values.
+  const request = await epcsRequestFieldsFrom(meta?.ip, meta?.userAgent)
   const { error } = await supabase.from('epcs_audit_log').insert(controlled.map(l => ({
     provider_id:     providerId,
     patient_id:      l.patientId,
@@ -876,8 +879,7 @@ async function writeEpcsAudit(
     dea_schedule:    l.deaSchedule ?? -1,
     medication_name: l.medicationName,
     details:         { ...details, batch_controlled_order_ids: controlledIds, dea_schedule_unknown: l.deaSchedule == null } as Json,
-    ip_address:      meta?.ip ?? null,
-    user_agent:      meta?.userAgent ?? null,
+    ...request,
   })))
   if (error) {
     console.error(`[batch-sign] EPCS audit (${eventType}) could not be written:`, error.message)
