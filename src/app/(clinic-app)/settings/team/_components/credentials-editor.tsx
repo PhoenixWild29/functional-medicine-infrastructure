@@ -10,6 +10,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { DEMO_RECORD_NOTE } from '@/lib/providers/credentials'
 
 const STATES = [
   'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
@@ -17,7 +18,7 @@ const STATES = [
   'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC', 'AS', 'GU', 'MP', 'PR', 'VI',
 ]
 
-export function CredentialsEditor({ providerId, providerName }: { providerId: string; providerName: string }) {
+export function CredentialsEditor({ providerId, providerName, demoRecord = false }: { providerId: string; providerName: string; demoRecord?: boolean }) {
   const router = useRouter()
   const [state, setState] = useState('')
   const [licenseNumber, setLicenseNumber] = useState('')
@@ -94,10 +95,15 @@ export function CredentialsEditor({ providerId, providerName }: { providerId: st
         <button type="submit" disabled={busy !== null} className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
           {busy === 'license' ? 'Saving...' : 'Save license'}
         </button>
-        <button type="button" onClick={rerunNpi} disabled={busy !== null} className="rounded-md border border-border px-4 py-1.5 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50">
+        <button type="button" onClick={rerunNpi} disabled={busy !== null || demoRecord} aria-describedby={demoRecord ? `demo-npi-${providerId}` : undefined} className="rounded-md border border-border px-4 py-1.5 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50">
           {busy === 'npi' ? 'Checking...' : 'Re-run NPI check'}
         </button>
       </form>
+      {/* A demo NPI is fictional: the registry would answer not found and
+          the provider could no longer sign. The server refuses it too. */}
+      {demoRecord && (
+        <p id={`demo-npi-${providerId}`} className="text-xs text-muted-foreground" data-testid={`demo-npi-note-${providerId}`}>{DEMO_RECORD_NOTE}</p>
+      )}
       {message && (
         <p role={message.tone === 'error' ? 'alert' : 'status'} className={`text-xs ${message.tone === 'error' ? 'text-red-700' : 'text-emerald-700'}`}>
           {message.text}
