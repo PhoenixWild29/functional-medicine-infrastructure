@@ -56,7 +56,8 @@ async function wrongCode(page: Page, secret: string | null) {
   // A code from ten minutes ago never matches; without a secret, any six digits.
   await page.getByLabel('6-digit code').fill(secret ? totpCode(secret, Date.now() - 10 * 60_000) : '000000')
   await page.getByRole('button', { name: /Verify/ }).click()
-  await expect(page.getByRole('alert')).toContainText('did not match', { timeout: 15_000 })
+  // #mfa-error, not getByRole('alert'): Next.js's hidden route announcer is also an alert.
+  await expect(page.locator('#mfa-error')).toContainText('did not match', { timeout: 15_000 })
   await expect(page.getByLabel('6-digit code')).toHaveAttribute('aria-invalid', 'true')
 }
 
