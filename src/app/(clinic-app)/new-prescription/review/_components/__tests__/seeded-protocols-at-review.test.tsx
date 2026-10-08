@@ -43,7 +43,6 @@ jest.mock('react-signature-canvas', () => {
   }
 })
 jest.mock('../../../_components/drug-interaction-alerts', () => ({ DrugInteractionAlerts: () => null }))
-jest.mock('../../../_components/epcs-totp-gate', () => ({ EpcsTotpGate: () => null }))
 
 const PATIENT = {
   patient_id: 'a3000000-0000-0000-0000-000000000004',

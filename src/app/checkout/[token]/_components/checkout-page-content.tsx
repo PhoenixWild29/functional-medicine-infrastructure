@@ -56,6 +56,8 @@ const PAY_ERROR_ID = 'checkout-pay-error'
 
 interface PaymentFormProps {
   token:       string
+  /** The patient agreed to texts (patients.sms_opt_in): only then is one promised. */
+  smsConsent:  boolean
   /** Payment-intent endpoint: solo vs group. */
   intentEndpoint: string
   retailCents: number
@@ -63,7 +65,7 @@ interface PaymentFormProps {
   onReady:     () => void
 }
 
-function PaymentForm({ token, intentEndpoint, retailCents, onError, onReady }: PaymentFormProps) {
+function PaymentForm({ token, smsConsent, intentEndpoint, retailCents, onError, onReady }: PaymentFormProps) {
   const stripe   = useStripe()
   const elements = useElements()
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -150,12 +152,14 @@ function PaymentForm({ token, intentEndpoint, retailCents, onError, onReady }: P
           placeholder="you@example.com"
           disabled={isSubmitting}
           aria-invalid={emailRejected || undefined}
-          aria-describedby={emailRejected ? `checkout-email-help ${PAY_ERROR_ID}` : 'checkout-email-help'}
+          aria-describedby={[smsConsent ? 'checkout-email-help' : null, emailRejected ? PAY_ERROR_ID : null].filter(Boolean).join(' ') || undefined}
           className="mt-1 block w-full rounded-lg border border-slate-500 bg-background px-3 py-2 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
         />
-        <p id="checkout-email-help" className="mt-1 text-xs text-muted-foreground">
-          We&rsquo;ll text you to confirm your payment and when your order ships.
-        </p>
+        {smsConsent && (
+          <p id="checkout-email-help" className="mt-1 text-xs text-muted-foreground">
+            We&rsquo;ll text you to confirm your payment and when your order ships.
+          </p>
+        )}
       </div>
 
       {/* Stripe PaymentElement — handles card, Apple Pay, Google Pay — REQ-PSR-003 */}
@@ -269,6 +273,11 @@ interface Props {
   clinicName:    string
   logoUrl:       string | null
   checkoutState: 'active' | 'paid' | 'cancelled_expired'
+  /**
+   * patients.sms_opt_in. A text is promised only to a patient who agreed
+   * to texts; the sender refuses everyone else, so the promise would be false.
+   */
+  smsConsent:    boolean
 }
 
 export function CheckoutPageContent({
@@ -282,6 +291,7 @@ export function CheckoutPageContent({
   clinicName,
   logoUrl,
   checkoutState,
+  smsConsent,
 }: Props) {
   const [clientSecret,   setClientSecret]   = useState<string | null>(null)
   const [fetchError,     setFetchError]     = useState<string | null>(null)
@@ -529,6 +539,7 @@ export function CheckoutPageContent({
                 >
                   <PaymentForm
                     token={token}
+                    smsConsent={smsConsent}
                     intentEndpoint={intentEndpoint}
                     retailCents={retailCents}
                     onError={setPayError}

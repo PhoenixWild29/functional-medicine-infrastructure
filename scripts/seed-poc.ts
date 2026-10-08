@@ -28,6 +28,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { POC_CANONICAL_USERS, userMetadataFor } from '../src/lib/poc/canonical-users'
 import { DEMO_PHARMACIES, refreshDemoData } from '../src/lib/poc/refresh-demo-data'
+import { withPhoneE164 } from '../src/lib/patients/phone'
 
 // ============================================================
 // CONFIG
@@ -291,7 +292,7 @@ async function seedPatient() {
     return
   }
 
-  const { error } = await supabase.from('patients').insert({
+  const { error } = await supabase.from('patients').insert(withPhoneE164({
     patient_id:    IDS.patient,
     clinic_id:     IDS.clinic,
     first_name:    'Alex',
@@ -309,7 +310,7 @@ async function seedPatient() {
     allergies:            [],
     nkda:                 true,
     allergies_updated_at: new Date().toISOString(),
-  })
+  }))
 
   if (error) throw new Error(`Failed to seed patient: ${error.message}`)
   console.log('  ✅  Alex Demo — created')

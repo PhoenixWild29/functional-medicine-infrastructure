@@ -116,7 +116,7 @@ function installHappyFixtures() {
     data: { pharmacy_id: TEST_PHARMACY_ID, name: 'Strive Pharmacy', integration_tier: 'TIER_1_API', fax_number: null, is_active: true, deleted_at: null },
     error: null,
   })
-  fixtures['pharmacy_state_licenses:maybeSingle'] = () => ({ data: { pharmacy_id: TEST_PHARMACY_ID, expiration_date: '2099-12-31', sterile_compounding: true }, error: null })
+  fixtures['pharmacy_state_licenses:await'] = () => ({ data: [{ pharmacy_id: TEST_PHARMACY_ID, expiration_date: '2099-12-31', sterile_compounding: true }], error: null })
   // Provider lookup by provider_id (clinic membership) — answers for whichever id was asked.
   fixtures['providers:maybeSingle'] = () => {
     const asked = providerFilters.find(([c]) => c === 'provider_id')?.[1] as string

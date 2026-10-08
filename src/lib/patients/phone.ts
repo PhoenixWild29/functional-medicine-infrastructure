@@ -20,3 +20,16 @@ export function toE164(raw: string | null | undefined): string | null {
   if (/^1[2-9][0-9]{9}$/.test(digits)) return `+${digits}`
   return null
 }
+
+/**
+ * A patients write with phone_e164 set from its phone, by the rule above.
+ * Every insert, upsert or update that sets phone goes through this, so the
+ * number a STOP reply arrives from always matches (a scan in
+ * __tests__/phone-e164-on-write enforces it). A write without phone is
+ * returned as it is.
+ */
+export function withPhoneE164<T extends object>(row: T): T & { phone_e164?: string | null } {
+  if (!('phone' in row)) return row
+  const phone = row.phone
+  return { ...row, phone_e164: toE164(typeof phone === 'string' ? phone : null) }
+}

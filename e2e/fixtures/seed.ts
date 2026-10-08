@@ -16,6 +16,7 @@ import { createClient } from '@supabase/supabase-js'
 import { encryptSecret } from '../../src/lib/epcs/crypto'
 import { DEMO_TOTP_SECRET } from '../../src/lib/poc/totp-enrollment'
 import { packageRowsFor } from '../../src/lib/catalog/packages'
+import { withPhoneE164 } from '../../src/lib/patients/phone'
 
 // E2E tests MUST run against an isolated Supabase project — never production.
 // If these env vars are missing, fail loudly rather than silently falling back
@@ -211,7 +212,7 @@ export async function seedStaticData(): Promise<void> {
   // editor / the Review "Confirm NKDA" beat) starts from a known state.
   // The wizard helpers search "Test" and click "Patient, Test"; the two
   // extra last names deliberately do not match that regex.
-  await supabase.from('patients').upsert([
+  await supabase.from('patients').upsert(([
     {
       patient_id:   TEST_IDS.patient,
       clinic_id:    TEST_IDS.clinic,
@@ -258,7 +259,7 @@ export async function seedStaticData(): Promise<void> {
       nkda:                 false,
       allergies_updated_at: new Date().toISOString(),
     },
-  ], { onConflict: 'patient_id' })
+  ]).map(withPhoneE164), { onConflict: 'patient_id' })
 
   // Pharmacies (Tier 1, 2, 4)
   await supabase.from('pharmacies').upsert([

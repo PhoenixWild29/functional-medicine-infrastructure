@@ -58,6 +58,7 @@ import {
   packageCountFor,
   packageUnitMismatchMessage,
   formatPackageCount,
+  packageCapWarning,
   MAX_PACKAGE_COUNT,
   type PackageOption,
   defaultRxDetails,
@@ -661,6 +662,11 @@ function MarginBuilderFormForLine({
       integrationTier: sessionLine?.integrationTier ?? '',
       // The titration a protocol sig's quantity was sized for (Review shows it).
       sizingNote: legacyTitration?.note ?? null,
+      // Review's "20 packages do not cover it" warning, restated for the line
+      // as saved, or cleared when the line now fits (it was shortened).
+      sizingWarning: suggestion?.reason === 'capped' && selectedPackage
+        ? packageCapWarning(selectedPackage.label, packageCount, { quantity: rxDetails.dispenseQuantity, unit: rxDetails.dispenseUnit, daysSupply: rxDetails.daysSupply })
+        : null,
       // WO-96
       rxDetails,
       rxRules,

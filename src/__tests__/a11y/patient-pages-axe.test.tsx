@@ -69,11 +69,11 @@ async function violations(): Promise<string[]> {
   return results.violations.map(v => `${v.id}: ${v.nodes.map(n => n.target.join(' ')).join(', ')}`)
 }
 
-function renderCheckout(state: 'active' | 'paid' | 'cancelled_expired') {
+function renderCheckout(state: 'active' | 'paid' | 'cancelled_expired', smsConsent = true) {
   return render(
     <CheckoutPageContent
       token="tok" kind="solo" orderCount={1} retailCents={20000} subtotalCents={18000} shippingCents={2000}
-      clinicName="Test Clinic" logoUrl={null} checkoutState={state}
+      clinicName="Test Clinic" logoUrl={null} checkoutState={state} smsConsent={smsConsent}
     />,
     { container: document.body.appendChild(document.createElement('div')) },
   )
@@ -87,6 +87,7 @@ async function renderSuccess(params: { payment_intent?: string; redirect_status?
 const SOLO_ORDER = {
   order_id: 'o1234567890', retail_price_snapshot: 200, shipping_fee: 0, clinic_id: 'c1',
   clinics: { name: 'Test Clinic', absorb_shipping: false, contact_phone: '+15125550100', contact_email: 'care@clinic.test' },
+  patients: { sms_opt_in: true },
   pharmacies: { supports_real_time_status: true, average_turnaround_days: null },
 }
 
@@ -124,6 +125,13 @@ describe('/checkout/[token]', () => {
     renderCheckout('active')
     const email = await screen.findByLabelText('Email (optional)')
     expect(email).toHaveAccessibleDescription('We’ll text you to confirm your payment and when your order ships.')
+  })
+
+  it('open, no SMS consent: no help text, so the email field points at nothing missing', async () => {
+    renderCheckout('active', false)
+    const email = await screen.findByLabelText('Email (optional)')
+    expect(email).not.toHaveAttribute('aria-describedby')
+    expect(await violations()).toEqual([])
   })
 
   it('open: the amount due is read with its label', async () => {
