@@ -16,7 +16,10 @@
 // Server Component — looks up order by stripe_payment_intent_id from search params.
 // No session required; patient arrives from Stripe redirect.
 
+import type { Metadata } from 'next'
 import { createServiceClient } from '@/lib/supabase/service'
+
+export const metadata: Metadata = { title: 'Payment confirmation' }
 
 function toCurrency(cents: number): string {
   return (cents / 100).toLocaleString('en-US', {
@@ -212,35 +215,35 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
           </p>
 
           {/* WO-73: Order reference for patient records */}
-          <p className="font-mono text-sm text-muted-foreground/60" aria-label="Order reference">
+          <p className="font-mono text-sm text-muted-foreground">
             Reference: #{(order as unknown as { order_id: string }).order_id.slice(0, 8)}
           </p>
         </div>
 
         {/* WO-73: "What happens next" — 3-step static list (icon + text, not color alone) — REQ-SPG-002 */}
         <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             What Happens Next
-          </p>
+          </h2>
           <ol className="mt-3 space-y-3">
             <li className="flex items-start gap-3">
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold" aria-hidden>✓</span>
               <div>
-                <p className="text-sm font-medium text-foreground">Payment confirmed</p>
+                <p className="text-sm font-medium text-foreground"><span className="sr-only">Done: </span>Payment confirmed</p>
                 <p className="text-xs text-muted-foreground">Your payment has been received.</p>
               </div>
             </li>
             <li className="flex items-start gap-3">
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs" aria-label="Pending" aria-hidden>⏳</span>
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs" aria-hidden>⏳</span>
               <div>
-                <p className="text-sm font-medium text-foreground">Prescription sent to pharmacy</p>
+                <p className="text-sm font-medium text-foreground"><span className="sr-only">Next: </span>Prescription sent to pharmacy</p>
                 <p className="text-xs text-muted-foreground">Within a few minutes.</p>
               </div>
             </li>
             <li className="flex items-start gap-3">
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs" aria-label="Pending" aria-hidden>⏳</span>
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs" aria-hidden>⏳</span>
               <div>
-                <p className="text-sm font-medium text-foreground">Pharmacy will contact you</p>
+                <p className="text-sm font-medium text-foreground"><span className="sr-only">Next: </span>Pharmacy will contact you</p>
                 <p className="text-xs text-muted-foreground">
                   {supportsRealTime
                     ? 'Within 24–48 hours. You\'ll receive tracking info via text when it ships.'
@@ -254,9 +257,9 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
         {/* Clinic contact — REQ-SPG-003 */}
         {(clinicPhone || clinicEmail) && (
           <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Questions? Contact {clinicName}
-            </p>
+            </h2>
             <div className="mt-2 space-y-1.5">
               {clinicPhone && (
                 <a
@@ -284,7 +287,7 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
           </div>
         )}
 
-        <p className="text-center text-xs text-muted-foreground/60">
+        <p className="text-center text-xs text-muted-foreground">
           Payment received. You&rsquo;ll get a text confirming your payment and when your order ships. You&rsquo;ll receive additional updates as your prescription moves through our pharmacy network.
         </p>
       </div>
@@ -355,32 +358,32 @@ function GroupBundleSuccessState({
               ? `Your ${orderCount} prescription${orderCount === 1 ? '' : 's'} ${orderCount === 1 ? 'is' : 'are'} being processed.`
               : 'Your prescriptions are being processed.'}
           </p>
-          <p className="font-mono text-sm text-muted-foreground/60" aria-label="Bundle reference">
+          <p className="font-mono text-sm text-muted-foreground">
             Reference: #{groupId.slice(0, 8)}
           </p>
         </div>
 
         <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">What Happens Next</p>
+          <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">What Happens Next</h2>
           <ol className="mt-3 space-y-3">
             <li className="flex items-start gap-3">
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold" aria-hidden>✓</span>
               <div>
-                <p className="text-sm font-medium text-foreground">Payment confirmed</p>
+                <p className="text-sm font-medium text-foreground"><span className="sr-only">Done: </span>Payment confirmed</p>
                 <p className="text-xs text-muted-foreground">Your payment has been received for all prescriptions in this bundle.</p>
               </div>
             </li>
             <li className="flex items-start gap-3">
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs" aria-label="Pending" aria-hidden>⏳</span>
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs" aria-hidden>⏳</span>
               <div>
-                <p className="text-sm font-medium text-foreground">Each prescription sent to pharmacy</p>
+                <p className="text-sm font-medium text-foreground"><span className="sr-only">Next: </span>Each prescription sent to pharmacy</p>
                 <p className="text-xs text-muted-foreground">Within a few minutes.</p>
               </div>
             </li>
             <li className="flex items-start gap-3">
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs" aria-label="Pending" aria-hidden>⏳</span>
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs" aria-hidden>⏳</span>
               <div>
-                <p className="text-sm font-medium text-foreground">Pharmacy will contact you</p>
+                <p className="text-sm font-medium text-foreground"><span className="sr-only">Next: </span>Pharmacy will contact you</p>
                 <p className="text-xs text-muted-foreground">
                   You&rsquo;ll receive updates for each prescription separately as they ship.
                 </p>
@@ -391,9 +394,9 @@ function GroupBundleSuccessState({
 
         {(clinicPhone || clinicEmail) && (
           <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Questions? Contact {clinicName}
-            </p>
+            </h2>
             <div className="mt-2 space-y-1.5">
               {clinicPhone && (
                 <a href={`tel:${clinicPhone}`} className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -415,7 +418,7 @@ function GroupBundleSuccessState({
           </div>
         )}
 
-        <p className="text-center text-xs text-muted-foreground/60">
+        <p className="text-center text-xs text-muted-foreground">
           Payment received. You&rsquo;ll get a text confirming your payment and when your order ships. You&rsquo;ll receive additional updates as each prescription moves through our pharmacy network.
         </p>
       </div>
