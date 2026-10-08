@@ -38,6 +38,8 @@ function makeSupabase() {
           data: {
             formulation_id: FORM, name: 'Semaglutide 5mg/mL', concentration: '5 mg/mL',
             dosage_forms: { name: 'Injectable Solution' },
+            // C8: a verified, compoundable ingredient (an ingredient-less formulation is refused).
+            salt_forms: { ingredients: { common_name: 'Semaglutide', dea_schedule: null, compounding_status: 'approved_drug_component' } },
           },
           error: null,
         }))
@@ -102,7 +104,7 @@ describe('resolveLine when the ingredient lookup fails', () => {
   })
 
   it('a formulation with no controlled ingredient still resolves, with schedule 0', async () => {
-    ingredientResult = { data: [{ ingredients: { dea_schedule: null } }], error: null }
+    ingredientResult = { data: [{ ingredients: { common_name: 'Cyanocobalamin', dea_schedule: null, compounding_status: 'approved_drug_component' } }], error: null }
 
     const result = await resolveLine(makeSupabase() as never, input as never)
 

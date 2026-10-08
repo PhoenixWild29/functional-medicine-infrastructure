@@ -558,8 +558,8 @@ test.describe('Clinic App — Order Zero-PHI Validation', () => {
 //   - Review card shows "Rx details" collapsed; expanding shows fields
 //   - controlled substance → row auto-expands, diagnosis focused, send
 //     blocked until a diagnosis is entered
-//   - requires_clinical_difference → row auto-expands, picklist
-//     pre-selected with the first option, nothing to type
+//   - requires_clinical_difference → row auto-expands; C8: no reason
+//     pre-selected, sending waits until the provider chooses one
 //   - a line with neither rule saves with zero interaction with the row
 //     and the defaults land on the order row
 //   - no new page or step: the same three wizard URLs as before
@@ -660,7 +660,7 @@ test.describe('Clinic App — WO-96 Rx detail fields', () => {
     await expect(page.getByTestId('days-supply-value')).toHaveText('28 days')
   })
 
-  test('GLP-1 analogue: 10 units weekly from a 5 mL vial derives 350 days / 5 mL; Review pre-selects the clinical difference', async ({ page }) => {
+  test('GLP-1 analogue: 10 units weekly from a 5 mL vial derives 350 days / 5 mL; Review asks for the clinical difference', async ({ page }) => {
     await loginAs(page, TEST_USERS.provider)
     await walkBuilderToMargin(page, GLP1)
 
@@ -674,12 +674,18 @@ test.describe('Clinic App — WO-96 Rx detail fields', () => {
     // Row auto-expands because the formulation requires a clinical difference…
     const row = page.locator('[data-testid^="rx-details-"]').first()
     await expect(row).toHaveAttribute('data-expanded', 'true', { timeout: 15_000 })
-    // …with the picklist already on the first option and cold-chain shipping pre-selected.
-    await expect(row.getByLabel(/Clinical difference \(required\)/)).toHaveValue(TEST_CATALOG.glp1ClinicalDifferenceOptions[0]!)
+    // …with cold-chain shipping pre-selected. CHANGED (C8): the reason is
+    // never pre-selected; the provider chooses it.
+    const reason = row.getByLabel(/Clinical difference \(required\)/)
+    await expect(reason).toHaveValue('')
     await expect(row.getByLabel('Shipping')).toHaveValue('cold_chain')
     await expect(row.getByLabel('Syringe option')).toHaveValue('sc_kit')
     await expect(row.getByLabel('Refills')).toHaveValue('0')
-    // Nothing is missing — only the signature stands between the provider and Send.
+    await expect(page.getByTestId('send-blocked-reason')).toContainText('needs a clinical difference statement')
+    // The shortage reason is not offered: the product is not on FDA's shortage list.
+    await expect(reason.locator('option', { hasText: 'national shortage' })).toHaveCount(0)
+    await reason.selectOption(TEST_CATALOG.glp1ClinicalDifferenceOptions[0]!)
+    // Now only the signature stands between the provider and Send.
     await expect(page.getByText(/Sign in the signature box above to enable sending/)).toBeVisible()
   })
 

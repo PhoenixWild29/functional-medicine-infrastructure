@@ -83,7 +83,7 @@ const bpcBody = (count: number) => draftBody({
 beforeEach(() => {
   insertedRow = null
   formulationRow = {
-    formulation_id: 'formulation-bpc', name: 'BPC-157 Injectable 5mg', concentration: '1mg/mL',
+    formulation_id: 'formulation-bpc', salt_forms: { ingredients: { common_name: 'Fixture', dea_schedule: null, compounding_status: 'approved_drug_component' } }, name: 'BPC-157 Injectable 5mg', concentration: '1mg/mL',
     concentration_value: 1, concentration_unit: 'mg/mL', dosage_forms: { name: 'Injectable Solution' },
   }
 })

@@ -185,4 +185,31 @@ describe('GET /api/protocols?id — live pricing enrichment', () => {
       formulation_active: false,
     })
   })
+
+  // Compliance C8: each item says whether it can be ordered.
+  it('C8: each item carries its compounding block (or null), from its ingredients', async () => {
+    getSessionMock.mockResolvedValue(SESSION_IN_CLINIC)
+    const ing = (name: string, status: string) => ({ common_name: name, dea_schedule: null, compounding_status: status, commercial_equivalent: false, on_fda_shortage: false })
+    const items = [
+      { item_id: 'i1', formulation_id: 'form-sema', pharmacy_id: 'ph-1', sort_order: 1, formulations: { name: 'Semaglutide 5mg/mL', salt_forms: { ingredients: ing('Semaglutide', 'approved_drug_component') }, formulation_ingredients: [] } },
+      { item_id: 'i2', formulation_id: 'form-bpc', pharmacy_id: 'ph-1', sort_order: 2, formulations: { name: 'BPC-157 5mg/mL', salt_forms: { ingredients: ing('BPC-157', 'pending_evaluation') }, formulation_ingredients: [] } },
+      { item_id: 'i3', formulation_id: 'form-nad', pharmacy_id: 'ph-1', sort_order: 3, formulations: { name: 'NAD+ 200mg/mL', salt_forms: { ingredients: ing('NAD+', 'unverified') }, formulation_ingredients: [] } },
+    ]
+    fromMock.mockImplementation((table: string) => {
+      switch (table) {
+        case 'protocol_templates': return chain({ data: { protocol_id: 'proto-1', name: 'P' }, error: null })
+        case 'protocol_items':     return chain({ data: items, error: null })
+        case 'pharmacy_formulations': return chain({ data: [], error: null })
+        case 'formulations':       return chain({ data: [], error: null })
+        case 'clinics':            return chain({ data: null, error: null })
+        default: throw new Error(`unexpected table ${table}`)
+      }
+    })
+
+    const json = await (await GET(makeRequest('proto-1'))).json()
+    const [sema, bpc, nad] = json.data.items
+    expect(sema.compounding_block).toBeNull()
+    expect(bpc.compounding_block).toEqual({ code: 'not_compoundable', message: expect.stringContaining('BPC-157 is pending FDA evaluation') })
+    expect(nad.compounding_block).toEqual({ code: 'compounding_status_unknown', message: expect.stringContaining('NAD+ has not been verified') })
+  })
 })

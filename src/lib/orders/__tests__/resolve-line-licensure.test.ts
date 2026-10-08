@@ -43,7 +43,9 @@ function makeSupabase() {
   return {
     from: (table: string) => {
       if (table === 'formulations') {
-        return chain(() => ({ formulation_id: FORM, name: 'Progesterone 100mg', concentration: '100 mg', dosage_forms: { name: 'Capsule', is_sterile: false } }))
+        return chain(() => ({ formulation_id: FORM, name: 'Progesterone 100mg', concentration: '100 mg', dosage_forms: { name: 'Capsule', is_sterile: false },
+          // C8: a verified, compoundable ingredient (an ingredient-less formulation is refused).
+          salt_forms: { ingredients: { common_name: 'Progesterone', dea_schedule: null, compounding_status: 'approved_drug_component' } } }))
       }
       if (table === 'pharmacy_formulations') return chain(() => ({ pharmacy_formulation_id: 'pf-1', wholesale_price: 20 }))
       if (table === 'formulation_ingredients') return chain(() => [])

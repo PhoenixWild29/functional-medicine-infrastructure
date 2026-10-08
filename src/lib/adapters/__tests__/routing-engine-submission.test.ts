@@ -29,6 +29,7 @@ let pharmacyRow: { integration_tier: string; name: string; slug: string } | null
 // controlled substance, so the order carries its line and snapshot.
 let orderLine: Record<string, unknown> = {}
 let formulationRow: Record<string, unknown> | null = null
+let catalogRow: Record<string, unknown> | null = null
 let circuitRow: Record<string, unknown> | null = null
 
 const submitTier1ApiMock    = jest.fn()
@@ -101,6 +102,9 @@ jest.mock('@/lib/supabase/service', () => ({
       if (table === 'formulations') {
         return { select: () => chain(() => ({ data: formulationRow, error: null })) }
       }
+      if (table === 'catalog') {
+        return { select: () => chain(() => ({ data: catalogRow, error: null })) }
+      }
       // C5: submission re-checks licensure; the pharmacy holds a valid TX license.
       if (table === 'pharmacy_state_licenses') {
         return { select: () => chain(() => ({ data: [{ pharmacy_id: 'pharm-1', state_code: 'TX', expiration_date: '2099-12-31', is_active: true, deleted_at: null, sterile_compounding: true }], error: null })) }
@@ -130,8 +134,10 @@ beforeEach(() => {
   timeline.length = 0
   pharmacyRow = { integration_tier: 'TIER_1_API', name: 'Pharm', slug: 'pharm' }
   circuitRow = null
+  catalogRow = null
   orderLine = { formulation_id: 'f-plain', catalog_item_id: null, medication_snapshot: { dea_schedule: 0 } }
-  formulationRow = { formulation_id: 'f-plain', salt_forms: { ingredients: { dea_schedule: null } }, formulation_ingredients: [] }
+  // C8: a verified, compoundable ingredient (submission re-checks it).
+  formulationRow = { formulation_id: 'f-plain', name: 'Plain 1mg', salt_forms: { ingredients: { common_name: 'Plain', dea_schedule: null, compounding_status: 'approved_drug_component' } }, formulation_ingredients: [] }
   submitTier1ApiMock.mockReset().mockResolvedValue({ outcome: 'accepted', submissionId: 'sub-1', externalOrderId: 'x', attemptsMade: 1, errorCode: null, errorMessage: null })
   submitTier2PortalMock.mockReset().mockResolvedValue({ outcome: 'acknowledged', submissionId: 'sub-2', aiConfidenceScore: 0.99, screenshotUrl: null })
   submitTier4FaxMock.mockReset().mockResolvedValue({ submissionId: 'sub-4', documoFaxId: 'fax-1', attemptNumber: 1 })
@@ -436,5 +442,40 @@ describe('a controlled substance is refused at submission', () => {
     const result = await route()
     expect(adapterCalls()).toBe(1)
     expect(result.outcome).not.toBe('submission_failed')
+  })
+})
+
+// ── Compliance C8: nothing that may not be compounded is sent ──────
+
+describe('compounding status is re-checked at submission', () => {
+  it('an ingredient that may not be compounded: SUBMISSION_FAILED, no adapter called', async () => {
+    orderLine = { formulation_id: 'f-bpc', catalog_item_id: null, medication_snapshot: { dea_schedule: 0 } }
+    formulationRow = { formulation_id: 'f-bpc', name: 'BPC-157 5mg/mL', salt_forms: { ingredients: { common_name: 'BPC-157', dea_schedule: null, compounding_status: 'pending_evaluation' } }, formulation_ingredients: [] }
+    const result = await route()
+    expect(result.outcome).toBe('submission_failed')
+    expect(adapterCalls()).toBe(0)
+    expect(orderStatus).toBe('SUBMISSION_FAILED')
+    expect(alertKinds()).toContain('submission_failed')
+  })
+
+  it('an unverified ingredient is not sent either', async () => {
+    orderLine = { formulation_id: 'f-nad', catalog_item_id: null, medication_snapshot: { dea_schedule: 0 } }
+    formulationRow = { formulation_id: 'f-nad', name: 'NAD+', salt_forms: { ingredients: { common_name: 'NAD+', dea_schedule: null, compounding_status: 'unverified' } }, formulation_ingredients: [] }
+    expect((await route()).outcome).toBe('submission_failed')
+    expect(adapterCalls()).toBe(0)
+  })
+
+  it.each(['RECALLED', 'DISCONTINUED'])('an older catalog item that is %s is not sent', async status => {
+    orderLine = { formulation_id: null, catalog_item_id: 'cat-1', medication_snapshot: { dea_schedule: 0 } }
+    catalogRow = { item_id: 'cat-1', medication_name: 'Old Cream 2%', dea_schedule: 0, regulatory_status: status }
+    expect((await route()).outcome).toBe('submission_failed')
+    expect(adapterCalls()).toBe(0)
+  })
+
+  it('an active older catalog item is still sent', async () => {
+    orderLine = { formulation_id: null, catalog_item_id: 'cat-1', medication_snapshot: { dea_schedule: 0 } }
+    catalogRow = { item_id: 'cat-1', medication_name: 'Old Cream 2%', dea_schedule: 0, regulatory_status: 'ACTIVE' }
+    await route()
+    expect(adapterCalls()).toBe(1)
   })
 })

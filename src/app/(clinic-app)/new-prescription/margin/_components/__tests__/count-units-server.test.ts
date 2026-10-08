@@ -82,7 +82,7 @@ const oxytocin = (over: Record<string, unknown>) => draftBody({
 beforeEach(() => {
   insertedRow = null
   formulationRow = {
-    formulation_id: 'formulation-oxytocin', name: 'Oxytocin Vaginal Suppository 400IU', concentration: '400IU',
+    formulation_id: 'formulation-oxytocin', salt_forms: { ingredients: { common_name: 'Fixture', dea_schedule: null, compounding_status: 'approved_drug_component' } }, name: 'Oxytocin Vaginal Suppository 400IU', concentration: '400IU',
     concentration_value: 400, concentration_unit: 'units', dosage_forms: { name: 'Suppository' },
   }
 })

@@ -32,7 +32,7 @@ function rowFor(table: string): Record<string, unknown> | null {
       stripe_connect_status: 'ACTIVE', stripe_connect_account_id: 'acct_test', absorb_shipping: false,
     }
     case 'formulations': return {
-      formulation_id: 'formulation-sema', name: 'Semaglutide 5mg/mL Injectable',
+      formulation_id: 'formulation-sema', name: 'Semaglutide 5mg/mL Injectable', salt_forms: { ingredients: { common_name: 'Fixture', dea_schedule: null, compounding_status: 'approved_drug_component' } }, 
       concentration: '5mg/mL', dosage_forms: { name: 'Injectable Solution' },
     }
     case 'pharmacy_formulations': return { pharmacy_formulation_id: 'pf-1', wholesale_price: 95 }

@@ -128,7 +128,7 @@ function installHappyFixtures() {
       formulation_id: TEST_FORM_ID,
       name:           'Progesterone Capsule 100mg',
       concentration:  '100mg',
-      dosage_forms:   { name: 'Capsule' },
+      dosage_forms:   { name: 'Capsule' }, salt_forms: { ingredients: { common_name: 'Fixture', dea_schedule: null, compounding_status: 'approved_drug_component' } },
     },
     error: null,
   })

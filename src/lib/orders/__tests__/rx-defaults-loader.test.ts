@@ -4,10 +4,17 @@
  * WO-96 rx-defaults loader: column values win, unset columns fall back
  * to the seed rule, the DEA schedule is the max across ingredients, and
  * the suggested diagnosis is the clinic's most common prior value.
+ *
+ * C8: an ingredient with a commercial equivalent makes the reason
+ * required; the shortage reason is offered only while an ingredient's
+ * commercial product is on FDA's shortage list; and an ingredient that may
+ * not be compounded (or is unverified) blocks the product.
  */
 
 import { loadRxDefaults, mostCommonDiagnoses } from '../rx-defaults-loader'
 import { STANDARD_CLINICAL_DIFFERENCE_OPTIONS } from '../rx-details'
+
+const SHORTAGE = 'Commercial product is unavailable or on national shortage'
 
 // ── Minimal fake Supabase client ─────────────────────────────
 
@@ -48,7 +55,7 @@ describe('loadRxDefaults', () => {
             requires_clinical_difference: true,
             dosage_forms: { name: 'Injectable Solution', requires_injection_supplies: true },
             routes_of_administration: { name: 'Subcutaneous' },
-            salt_forms: { ingredients: { common_name: 'Semaglutide', dea_schedule: null } },
+            salt_forms: { ingredients: { common_name: 'Semaglutide', dea_schedule: null, compounding_status: 'approved_drug_component', commercial_equivalent: true, on_fda_shortage: false } },
             formulation_ingredients: [],
           },
           {
@@ -59,7 +66,7 @@ describe('loadRxDefaults', () => {
             requires_clinical_difference: false,
             dosage_forms: { name: 'Injectable Solution', requires_injection_supplies: true },
             routes_of_administration: { name: 'Intramuscular' },
-            salt_forms: { ingredients: { common_name: 'Testosterone', dea_schedule: 3 } },
+            salt_forms: { ingredients: { common_name: 'Testosterone', dea_schedule: 3, compounding_status: 'approved_drug_component', commercial_equivalent: false, on_fda_shortage: false } },
             formulation_ingredients: [],
           },
         ],
@@ -84,6 +91,8 @@ describe('loadRxDefaults', () => {
         default_shipping_type: 'cold_chain',
         clinical_difference_options: ['Reason A', 'Reason B'],
         requires_clinical_difference: true,
+        shortage_reason_allowed: false,
+        compounding_block: null,
       },
       deaSchedule: null,
       suggestedDiagnosis: null,
@@ -97,6 +106,8 @@ describe('loadRxDefaults', () => {
         default_shipping_type: 'standard',
         clinical_difference_options: [],
         requires_clinical_difference: false,
+        shortage_reason_allowed: false,
+        compounding_block: null,
       },
       deaSchedule: 3,
       suggestedDiagnosis: { code: 'E29.1', text: 'Testicular hypofunction' },
@@ -123,8 +134,8 @@ describe('loadRxDefaults', () => {
           routes_of_administration: { name: 'Subcutaneous' },
           salt_forms: null,
           formulation_ingredients: [
-            { ingredients: { common_name: 'Tirzepatide', dea_schedule: null } },
-            { ingredients: { common_name: 'Cyanocobalamin', dea_schedule: null } },
+            { ingredients: { common_name: 'Tirzepatide', dea_schedule: null, compounding_status: 'approved_drug_component', commercial_equivalent: true, on_fda_shortage: false } },
+            { ingredients: { common_name: 'Cyanocobalamin', dea_schedule: null, compounding_status: 'approved_drug_component', commercial_equivalent: false, on_fda_shortage: false } },
           ],
         }],
         error: null,
@@ -132,12 +143,70 @@ describe('loadRxDefaults', () => {
     })
 
     const out = await loadRxDefaults(client as never, 'clinic-1', [NEW])
+    // CHANGED (C8): the shortage reason is left out: no ingredient's
+    // commercial product is on FDA's shortage list.
     expect(out[NEW]?.defaults).toEqual({
       default_syringe_option: 'sc_kit',
       default_shipping_type: 'cold_chain',
-      clinical_difference_options: [...STANDARD_CLINICAL_DIFFERENCE_OPTIONS],
+      clinical_difference_options: STANDARD_CLINICAL_DIFFERENCE_OPTIONS.filter(o => o !== SHORTAGE),
       requires_clinical_difference: true,
+      shortage_reason_allowed: false,
+      compounding_block: null,
     })
+  })
+
+  // ── C8 ────────────────────────────────────────────────────
+  const row = (ingredient: Record<string, unknown>, over: Record<string, unknown> = {}) => ({
+    formulation_id: NEW,
+    default_syringe_option: 'none',
+    default_shipping_type: 'standard',
+    clinical_difference_options: [],
+    requires_clinical_difference: false,
+    dosage_forms: { name: 'Capsule', requires_injection_supplies: false },
+    routes_of_administration: { name: 'Oral' },
+    salt_forms: { ingredients: { dea_schedule: null, ...ingredient } },
+    formulation_ingredients: [],
+    ...over,
+  })
+  const load = async (r: unknown) => (await loadRxDefaults(fakeClient({ formulations: { data: [r], error: null } }) as never, 'clinic-1', [NEW]))[NEW]!
+
+  it('C8: an ingredient with a commercial equivalent requires a reason, even when the column says no', async () => {
+    const out = await load(row({ common_name: 'Naltrexone', compounding_status: 'approved_drug_component', commercial_equivalent: true, on_fda_shortage: false }))
+    expect(out.defaults.requires_clinical_difference).toBe(true)
+    expect(out.defaults.clinical_difference_options).toEqual(STANDARD_CLINICAL_DIFFERENCE_OPTIONS.filter(o => o !== SHORTAGE))
+  })
+
+  it('C8: the shortage reason is offered only while the commercial product is on the FDA shortage list', async () => {
+    const out = await load(row({ common_name: 'Semaglutide', compounding_status: 'approved_drug_component', commercial_equivalent: true, on_fda_shortage: true }))
+    expect(out.defaults.shortage_reason_allowed).toBe(true)
+    expect(out.defaults.clinical_difference_options).toContain(SHORTAGE)
+  })
+
+  it('C8: no commercial equivalent, a compoundable status: no reason needed, nothing blocked', async () => {
+    const out = await load(row({ common_name: 'NAD+', compounding_status: 'usp_monograph', commercial_equivalent: false, on_fda_shortage: false }))
+    expect(out.defaults.requires_clinical_difference).toBe(false)
+    expect(out.defaults.compounding_block).toBeNull()
+  })
+
+  it('C8: an ingredient that may not be compounded blocks the product, with the reason', async () => {
+    const out = await load(row({ common_name: 'BPC-157', compounding_status: 'pending_evaluation', commercial_equivalent: false, on_fda_shortage: false }, { name: 'BPC-157 5mg/mL Injectable' }))
+    expect(out.defaults.compounding_block).toEqual({
+      code: 'not_compoundable',
+      message: expect.stringContaining('BPC-157 is pending FDA evaluation'),
+    })
+  })
+
+  it('C8: an unverified ingredient blocks it too', async () => {
+    const out = await load(row({ common_name: 'NAD+', compounding_status: 'unverified', commercial_equivalent: false, on_fda_shortage: false }))
+    expect(out.defaults.compounding_block?.code).toBe('compounding_status_unknown')
+  })
+
+  it('C8: reads the compounding fields of every ingredient', async () => {
+    const client = fakeClient({ formulations: { data: [], error: null } })
+    await loadRxDefaults(client as never, 'clinic-1', [NEW])
+    const select = String(client.calls.find(c => c.table === 'formulations' && c.method === 'select')?.args[0])
+    expect(select).toMatch(/salt_forms\(ingredients\([^)]*compounding_status, commercial_equivalent, on_fda_shortage/)
+    expect(select).toMatch(/formulation_ingredients\(ingredients\([^)]*compounding_status, commercial_equivalent, on_fda_shortage/)
   })
 
   it('returns an empty map for no ids without querying', async () => {
