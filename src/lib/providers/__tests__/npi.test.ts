@@ -35,6 +35,12 @@ describe('nameMatches', () => {
     expect(nameMatches({ firstName: 'Sarah', lastName: 'Chen' }, { firstName: 'SARAH', lastName: 'CHENG' })).toBe(false)
     expect(nameMatches({ firstName: 'Maria', lastName: 'Chen' }, { firstName: 'SARAH', lastName: 'CHEN' })).toBe(false)
   })
+  it('one letter of the first name is not a match: an initial matches every name that starts with it', () => {
+    expect(nameMatches({ firstName: 'S', lastName: 'Chen' }, { firstName: 'SARAH', lastName: 'CHEN' })).toBe(false)
+    expect(nameMatches({ firstName: 'Sarah', lastName: 'Chen' }, { firstName: 'S.', lastName: 'CHEN' })).toBe(false)
+    expect(nameMatches({ firstName: 'S', lastName: 'Chen' }, { firstName: 'S', lastName: 'CHEN' })).toBe(false)
+    expect(nameMatches({ firstName: 'Sa', lastName: 'Chen' }, { firstName: 'SARAH', lastName: 'CHEN' })).toBe(true)
+  })
 })
 
 const fetchMock = jest.fn()

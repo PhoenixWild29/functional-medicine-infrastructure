@@ -22,18 +22,13 @@ let warnedNoSecret = false
 
 /** From the request headers (the client IP is the first x-forwarded-for entry). */
 export async function epcsRequestFields(headers: Headers | null | undefined): Promise<EpcsRequestFields> {
-  return epcsRequestFieldsFrom(clientIp(headers), headers?.get('user-agent') ?? null)
-}
-
-/** From an IP (an x-forwarded-for list is cut to its first entry) and a user agent. */
-export async function epcsRequestFieldsFrom(ip: string | null | undefined, userAgent: string | null | undefined): Promise<EpcsRequestFields> {
   if (!process.env[AUDIT_HASH_SECRET_ENV] && !warnedNoSecret) {
     warnedNoSecret = true
     console.warn(`[epcs-audit] ${AUDIT_HASH_SECRET_ENV} is not set: IP and user agent hashes are left empty`)
   }
   const [ipHash, userAgentHash] = await Promise.all([
-    auditHash(ip?.split(',')[0]?.trim() || null),
-    auditHash(userAgent ?? null),
+    auditHash(clientIp(headers)),
+    auditHash(headers?.get('user-agent') ?? null),
   ])
   return { ip_address: null, user_agent: null, ip_hash: ipHash, user_agent_hash: userAgentHash }
 }

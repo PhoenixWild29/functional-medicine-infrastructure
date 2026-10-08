@@ -180,7 +180,7 @@ export default async function TeamPage() {
               </table>
             )}
 
-            {isAdmin && <CredentialsEditor providerId={p.provider_id} providerName={`${p.first_name} ${p.last_name}`} />}
+            {isAdmin && <CredentialsEditor providerId={p.provider_id} providerName={`${p.first_name} ${p.last_name}`} demoRecord={v?.source === 'demo_seed'} />}
           </section>
         )
       })}

@@ -16,7 +16,6 @@ jest.mock('@/lib/supabase/server', () => ({
 }))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => ({}) }))
 // batch-sign's collaborators (the real module is used only for parseOrderIds).
-jest.mock('@/lib/epcs/totp', () => ({ verifyProviderTotp: jest.fn() }))
 jest.mock('@/lib/payment-group/create-group', () => ({ createPaymentGroup: jest.fn(), cancelPaymentGroup: jest.fn() }))
 jest.mock('@/lib/sms/triggers', () => ({ sendPaymentLinkSms: jest.fn() }))
 jest.mock('@/lib/auth/checkout-token', () => ({ generateCheckoutToken: jest.fn(), generateGroupCheckoutToken: jest.fn() }))
@@ -66,23 +65,25 @@ describe('POST /api/orders/batch-sign', () => {
     expect(signBatchMock).not.toHaveBeenCalled()
   })
 
-  it('passes the ids, the signature, the code and who is asking; returns the links', async () => {
+  it('passes the ids, the signature and who is asking; returns the links', async () => {
     user('provider')
     signBatchMock.mockResolvedValue({ ok: true, signedAt: 't', patients: [{ patientId: 'p', orderIds: [ID], paymentGroupId: null, checkoutUrl: 'u' }] })
     const res = await signPOST(req({ orderIds: [ID], signature: { s: 1 }, totpCode: '123456' }))
     expect(res.status).toBe(200)
     expect(signBatchMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      clinicId: 'c1', userId: 'u-provider', appRole: 'provider', orderIds: [ID], signature: { s: 1 }, totpCode: '123456',
+      clinicId: 'c1', userId: 'u-provider', appRole: 'provider', orderIds: [ID], signature: { s: 1 },
     }))
+    // No second-factor step exists (C6 refuses controlled lines): a stray code is not passed on.
+    expect(signBatchMock.mock.calls[0]![1]).not.toHaveProperty('totpCode')
     expect(await res.json()).toEqual({ signedAt: 't', patients: [{ patientId: 'p', orderIds: [ID], paymentGroupId: null, checkoutUrl: 'u' }] })
   })
 
   it('a refusal keeps its status, code and the per-line problems', async () => {
     user('provider')
-    signBatchMock.mockResolvedValue({ ok: false, status: 401, code: 'TOTP_REQUIRED', error: 'code needed', controlled: [{ orderId: ID }] })
+    signBatchMock.mockResolvedValue({ ok: false, status: 422, code: 'LINES', error: 'line problem', problems: [{ orderId: ID, code: 'license', message: 'm' }] })
     const res = await signPOST(req({ orderIds: [ID] }))
-    expect(res.status).toBe(401)
-    expect(await res.json()).toMatchObject({ code: 'TOTP_REQUIRED', error: 'code needed', controlled: [{ orderId: ID }] })
+    expect(res.status).toBe(422)
+    expect(await res.json()).toMatchObject({ code: 'LINES', error: 'line problem', problems: [{ orderId: ID, code: 'license', message: 'm' }] })
   })
 })
 
@@ -137,8 +138,8 @@ describe('PHI access log', () => {
 
   it('a refused signature logs nothing', async () => {
     user('provider')
-    signBatchMock.mockResolvedValue({ ok: false, status: 401, code: 'TOTP_REQUIRED', error: 'code needed' })
-    expect((await signPOST(req({ orderIds: [ID], signature: { s: 1 } }))).status).toBe(401)
+    signBatchMock.mockResolvedValue({ ok: false, status: 422, error: 'line problem' })
+    expect((await signPOST(req({ orderIds: [ID], signature: { s: 1 } }))).status).toBe(422)
     expect(phiEntries()).toHaveLength(0)
   })
 

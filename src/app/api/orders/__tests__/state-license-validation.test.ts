@@ -151,11 +151,11 @@ function installHappyFixtures() {
     },
     error: null,
   })
-  fixtures['pharmacy_state_licenses:maybeSingle'] = () => ({
-    data: {
+  fixtures['pharmacy_state_licenses:await'] = () => ({
+    data: [{
       pharmacy_id: TEST_PHARMACY_ID, state_code: 'CA', expiration_date: '2099-12-31',
       is_active: true, deleted_at: null, sterile_compounding: true,
-    },
+    }],
     error: null,
   })
   fixtures['providers:maybeSingle'] = () => ({
@@ -210,11 +210,11 @@ beforeEach(() => {
 // ── Tests ──────────────────────────────────────────────────────
 
 describe('POST /api/orders — pharmacy state-licensure validation', () => {
-  it('rejects with 400 naming the pharmacy and state when no ACTIVE license exists', async () => {
-    fixtures['pharmacy_state_licenses:maybeSingle'] = () => ({ data: null, error: null })
+  it('rejects with 422 naming the pharmacy and state when no ACTIVE license exists', async () => {
+    fixtures['pharmacy_state_licenses:await'] = () => ({ data: [], error: null })
 
     const res = await POST(makeRequest(defaultBody()))
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(422)
 
     const body = await res.json()
     expect(body.error).toBe('Pharmacy Portal Plus Pharmacy is not licensed in CA')
@@ -247,21 +247,21 @@ describe('POST /api/orders — pharmacy state-licensure validation', () => {
   })
 
   it('also rejects on the V3.0 formulation branch (protocol quick-load path)', async () => {
-    fixtures['pharmacy_state_licenses:maybeSingle'] = () => ({ data: null, error: null })
+    fixtures['pharmacy_state_licenses:await'] = () => ({ data: [], error: null })
 
     const res = await POST(makeRequest({
       ...defaultBody(),
       catalogItemId: undefined,
       formulationId: TEST_FORM_ID,
     }))
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(422)
 
     const body = await res.json()
     expect(body.error).toBe('Pharmacy Portal Plus Pharmacy is not licensed in CA')
   })
 
   it('returns 500 (not a silent pass) when the license lookup itself errors', async () => {
-    fixtures['pharmacy_state_licenses:maybeSingle'] = () => ({
+    fixtures['pharmacy_state_licenses:await'] = () => ({
       data: null,
       error: { message: 'connection reset' },
     })
@@ -306,19 +306,19 @@ describe('POST /api/orders — a pharmacy that is no longer active', () => {
 // ── C5: expiry and sterile scope at draft creation ──────────────
 describe('POST /api/orders — C5 license expiry and sterile scope', () => {
   const license = (over: Record<string, unknown>) => () => ({
-    data: {
+    data: [{
       pharmacy_id: TEST_PHARMACY_ID, state_code: 'CA', expiration_date: '2099-12-31',
       is_active: true, deleted_at: null, sterile_compounding: true, ...over,
-    },
+    }],
     error: null,
   })
 
   it('rejects a pharmacy whose license in the state has expired', async () => {
-    fixtures['pharmacy_state_licenses:maybeSingle'] = license({ expiration_date: '2026-01-31' })
+    fixtures['pharmacy_state_licenses:await'] = license({ expiration_date: '2026-01-31' })
 
     const res = await POST(makeRequest(defaultBody()))
 
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(422)
     expect((await res.json()).error).toBe("Portal Plus Pharmacy's license in CA expired on 2026-01-31.")
   })
 
@@ -327,19 +327,19 @@ describe('POST /api/orders — C5 license expiry and sterile scope', () => {
       data: { item_id: TEST_CATALOG_ID, medication_name: 'Semaglutide 5mg/mL', form: 'Injectable Solution', dose: '0.25mg', wholesale_price: 95, dea_schedule: null },
       error: null,
     })
-    fixtures['pharmacy_state_licenses:maybeSingle'] = license({ sterile_compounding: false })
+    fixtures['pharmacy_state_licenses:await'] = license({ sterile_compounding: false })
 
     const res = await POST(makeRequest(defaultBody()))
 
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(422)
     expect((await res.json()).error).toContain('sterile compounding')
   })
 
   it('a non-sterile product is not blocked by the sterile scope', async () => {
-    fixtures['pharmacy_state_licenses:maybeSingle'] = license({ sterile_compounding: false })
+    fixtures['pharmacy_state_licenses:await'] = license({ sterile_compounding: false })
 
     const res = await POST(makeRequest(defaultBody()))
 
-    expect(res.status).not.toBe(400)
+    expect(res.status).not.toBe(422)
   })
 })
