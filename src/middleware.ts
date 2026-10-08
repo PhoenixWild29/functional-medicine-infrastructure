@@ -308,7 +308,10 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
 
   if (!user) {
     const loginUrl = new URL('/login', request.url)
-    loginUrl.searchParams.set('redirectTo', pathname)
+    // The query comes too: /ops/pipeline?order=<id> (the Slack "Open in
+    // ops" link) must open that order after sign-in. postLoginDestination
+    // only accepts an in-app path, so a query cannot send the user away.
+    loginUrl.searchParams.set('redirectTo', pathname + request.nextUrl.search)
     return applySecurityHeaders(redirectWithSessionCookies(loginUrl))
   }
 

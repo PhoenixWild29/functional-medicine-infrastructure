@@ -109,6 +109,31 @@ describe('the clinic admin', () => {
   })
 })
 
+describe('a demo provider (NPI record from the demo seed)', () => {
+  beforeEach(() => { user = as('clinic_admin') })
+
+  it('Re-run NPI check is disabled, with the note; the real record keeps the button', async () => {
+    const demo = { ...VERIFICATIONS[0]!, source: 'demo_seed' }
+    db = scriptedDb(c => (c.table === 'provider_npi_verifications'
+      ? { data: [demo, VERIFICATIONS[1]] } : answer(c)))
+    const out = await html()
+    const chen = out.slice(out.indexOf(`team-provider-${CHEN}`), out.indexOf(`team-provider-${PATEL}`))
+    const patel = out.slice(out.indexOf(`team-provider-${PATEL}`))
+    expect(chen).toMatch(/<button[^>]*disabled=""[^>]*>Re-run NPI check</)
+    expect(chen).toContain('Demo record: not checked against the registry')
+    expect(patel).not.toMatch(/<button[^>]*disabled=""[^>]*>Re-run NPI check</)
+    expect(patel).not.toContain('Demo record: not checked against the registry')
+  })
+
+  it('the license form stays usable for a demo provider', async () => {
+    db = scriptedDb(c => (c.table === 'provider_npi_verifications'
+      ? { data: [{ ...VERIFICATIONS[0]!, source: 'demo_seed' }] } : answer(c)))
+    const out = await html()
+    const chen = out.slice(out.indexOf(`team-provider-${CHEN}`), out.indexOf(`team-provider-${PATEL}`))
+    expect(chen).toMatch(/<button type="submit"(?![^>]*disabled="")[^>]*>Save license</)
+  })
+})
+
 describe('a provider', () => {
   beforeEach(() => { user = as('provider') })
 

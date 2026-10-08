@@ -57,7 +57,7 @@ function norm(name: string | null | undefined): string {
 /**
  * The registry's name is the provider's: the last names equal, and one first
  * name starts the other ("Sam" / "SAMUEL"), ignoring case, accents, spaces
- * and punctuation.
+ * and punctuation. A one-letter first name (an initial) never matches.
  */
 export function nameMatches(
   provider: { firstName: string; lastName: string },
@@ -66,6 +66,8 @@ export function nameMatches(
   const pl = norm(provider.lastName), rl = norm(registry.lastName)
   const pf = norm(provider.firstName), rf = norm(registry.firstName)
   if (!pl || !rl || !pf || !rf || pl !== rl) return false
+  // An initial is not a match: "S" starts every S name. Two letters at least.
+  if (pf.length < 2 || rf.length < 2) return false
   return pf.startsWith(rf) || rf.startsWith(pf)
 }
 

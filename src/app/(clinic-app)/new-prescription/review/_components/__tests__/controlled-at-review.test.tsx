@@ -24,7 +24,6 @@ jest.mock('react-signature-canvas', () => {
   }
 })
 jest.mock('../../../_components/drug-interaction-alerts', () => ({ DrugInteractionAlerts: () => null }))
-jest.mock('../../../_components/epcs-totp-gate', () => ({ EpcsTotpGate: () => <div data-testid="epcs-gate" /> }))
 
 const LABEL = 'Controlled substance: prescribe through your EPCS system'
 

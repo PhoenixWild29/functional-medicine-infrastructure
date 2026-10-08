@@ -51,7 +51,7 @@ function world(extra: (c: ScriptedCall) => ReturnType<Parameters<typeof scripted
       if ('user_id' in c.filters) return { data: c.filters['user_id'] === 'u-provider' ? CHEN_ROW : null }
       return { data: c.filters['provider_id'] === CHEN && c.filters['clinic_id'] === CLINIC ? CHEN_ROW : null }
     }
-    if (c.table === 'provider_npi_verifications' && c.op === 'select') return { data: { npi: '1234567893', status: 'verified' } }
+    if (c.table === 'provider_npi_verifications' && c.op === 'select') return { data: { npi: '1234567893', status: 'verified', source: 'nppes' } }
     if (c.table === 'provider_state_licenses' && c.op === 'select') return { data: [{ state: 'TX', license_number: 'TX-1', expires_on: '2099-12-31' }] }
     return undefined
   })
@@ -136,6 +136,31 @@ describe('POST npi-check', () => {
   it('a result that cannot be stored says so (500)', async () => {
     db = world(c => (c.table === 'provider_npi_verifications' && c.op === 'upsert' ? DB_DOWN : undefined))
     expect((await npiCheck(post(), params())).status).toBe(500)
+  })
+
+  // A demo provider's NPI is fictional: a real registry check would replace
+  // the demo record with not_found and stop that provider signing.
+  it('a demo record (source demo_seed) is refused (409): no registry call, nothing written', async () => {
+    db = world(c => (c.table === 'provider_npi_verifications' && c.op === 'select'
+      ? { data: { npi: '1234567893', status: 'verified', source: 'demo_seed' } } : undefined))
+    const res = await npiCheck(post(), params())
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toBe('Demo record: not checked against the registry')
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(db.to('provider_npi_verifications', 'upsert')).toHaveLength(0)
+  })
+
+  it('a record that cannot be read: 500, no registry call, nothing written', async () => {
+    db = world(c => (c.table === 'provider_npi_verifications' && c.op === 'select' ? DB_DOWN : undefined))
+    expect((await npiCheck(post(), params())).status).toBe(500)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(db.to('provider_npi_verifications', 'upsert')).toHaveLength(0)
+  })
+
+  it('a provider never checked yet is checked', async () => {
+    db = world(c => (c.table === 'provider_npi_verifications' && c.op === 'select' ? { data: null } : undefined))
+    expect((await npiCheck(post(), params())).status).toBe(200)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('a provider cannot run it (403)', async () => {

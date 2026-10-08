@@ -29,7 +29,6 @@ jest.mock('react-signature-canvas', () => {
   }
 })
 jest.mock('../../../_components/drug-interaction-alerts', () => ({ DrugInteractionAlerts: () => null }))
-jest.mock('../../../_components/epcs-totp-gate', () => ({ EpcsTotpGate: () => null }))
 
 const STORAGE_KEY = 'compoundiq-rx-session'
 const PROVIDER_ID = '22222222-2222-4222-8222-222222222222'

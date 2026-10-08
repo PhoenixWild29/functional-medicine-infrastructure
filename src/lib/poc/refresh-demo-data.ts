@@ -65,6 +65,7 @@
 // the orders table. This keeps the operator-facing clinic pristine.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { withPhoneE164 } from '../patients/phone'
 
 // ============================================================
 // CONSTANTS — deterministic UUIDs + enum values
@@ -369,7 +370,7 @@ export async function ensureDemoScaffolding(
     if (patientReadError) return { action: 'error', error: `patient read: ${patientReadError.message}` }
 
     if (!patient) {
-      const { error } = await supabase.from('patients').insert({
+      const { error } = await supabase.from('patients').insert(withPhoneE164({
         patient_id:    DEMO_PATIENT_ID,
         clinic_id:     DEMO_CLINIC_ID,
         first_name:    'Demo',
@@ -380,7 +381,7 @@ export async function ensureDemoScaffolding(
         state:         'TX',
         sms_opt_in:    false,
         is_active:     false,
-      })
+      }))
       if (error) return { action: 'error', error: `patient insert: ${error.message}` }
     }
 

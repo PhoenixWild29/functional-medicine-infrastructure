@@ -37,7 +37,7 @@ export type PrescriberProblemCode =
 
 export interface PrescriberProblem {
   code:    PrescriberProblemCode
-  /** The state the problem is about; null for the NPI. */
+  /** The state the problem is about; null for the NPI; '' for lines with no shipping state. */
   state:   string | null
   message: string
 }
@@ -76,7 +76,16 @@ export function prescriberProblems(p: ProviderCredentials, states: ReadonlyArray
     problems.push({ code: 'prescriber_npi_unverified', state: null, message: `${npiReason} A clinic admin can run the check in Settings, Team.` })
   }
 
-  const wanted = [...new Set(states.map(s => (s ?? '').trim().toUpperCase()).filter(Boolean))]
+  const normalized = states.map(s => (s ?? '').trim().toUpperCase())
+  // A prescription with no shipping state has no state to check a license
+  // in. It is refused, never waved through (state '' names those lines).
+  if (normalized.some(s => !s)) {
+    problems.push({
+      code: 'prescriber_license_missing', state: '',
+      message: `This prescription has no shipping state, so ${who}'s license for it cannot be checked. Add the patient's address.`,
+    })
+  }
+  const wanted = [...new Set(normalized.filter(Boolean))]
   for (const state of wanted) {
     const inState = p.licenses.filter(l => l.state.toUpperCase() === state)
     if (inState.length === 0) {
@@ -99,3 +108,6 @@ export function expiringLicenses<T extends LicenseRow>(licenses: ReadonlyArray<T
     .filter(l => l.daysLeft >= 0 && l.daysLeft <= days)
     .sort((a, b) => a.daysLeft - b.daysLeft)
 }
+
+/** A demo seed NPI record is fictional: never re-checked against the registry. */
+export const DEMO_RECORD_NOTE = 'Demo record: not checked against the registry'

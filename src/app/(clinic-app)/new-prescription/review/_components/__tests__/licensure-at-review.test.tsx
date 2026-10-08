@@ -28,7 +28,6 @@ jest.mock('react-signature-canvas', () => {
   }
 })
 jest.mock('../../../_components/drug-interaction-alerts', () => ({ DrugInteractionAlerts: () => null }))
-jest.mock('../../../_components/epcs-totp-gate', () => ({ EpcsTotpGate: () => null }))
 
 const PATIENT = {
   patient_id: 'pat-1', first_name: 'Maya', last_name: 'Thompson', date_of_birth: '1979-11-02', phone: '+12125550111',

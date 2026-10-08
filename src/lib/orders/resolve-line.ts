@@ -360,28 +360,33 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
   // Compliance (defense in depth), C5: the pharmacy must hold an ACTIVE,
   // UNEXPIRED license in the patient's shipping state, covering sterile
   // compounding (or be a 503B facility) when the product is sterile.
-  const { data: stateLicense, error: licenseError } = await supabase
+  //
+  // Every live row is read, not maybeSingle(): a renewal entered beside
+  // the old license is two rows, and that must not fail the line.
+  // checkLicensure judges the latest-expiring one, so an unexpired license
+  // wins over an expired one. A refusal is 422, as batch-sign refuses it.
+  const { data: stateLicenses, error: licenseError } = await supabase
     .from('pharmacy_state_licenses')
     .select(LICENSE_COLUMNS)
     .eq('pharmacy_id', pharmacyId)
     .eq('state_code', patientState)
     .eq('is_active', true)
     .is('deleted_at', null)
-    .maybeSingle()
 
   if (licenseError) {
     console.error('[orders] state license fetch failed:', licenseError.message)
     return { ok: false, status: 500, error: 'Pharmacy license lookup failed' }
   }
 
-  if (!stateLicense) {
-    return { ok: false, status: 400, error: `Pharmacy ${pharmacy.name} is not licensed in ${patientState}` }
+  const liveLicenses = (stateLicenses ?? []) as unknown as LicenseRecord[]
+  if (liveLicenses.length === 0) {
+    return { ok: false, status: 422, code: 'PHARMACY_LICENSE', error: `Pharmacy ${pharmacy.name} is not licensed in ${patientState}` }
   }
 
   const licensure = checkLicensure({
     // The query above matched pharmacy, state, is_active and deleted_at, so
     // those are known; what is judged here is the expiry and sterile scope.
-    licenses:     [{ ...(stateLicense as unknown as LicenseRecord), pharmacy_id: pharmacyId, state_code: patientState, is_active: true, deleted_at: null }],
+    licenses:     liveLicenses.map(l => ({ ...l, pharmacy_id: pharmacyId, state_code: patientState, is_active: true, deleted_at: null })),
     pharmacyId,
     pharmacyName: pharmacy.name,
     state:        patientState,
@@ -390,7 +395,7 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
     today:        todayIso(),
   })
   if (!licensure.ok) {
-    return { ok: false, status: 400, error: licensure.message }
+    return { ok: false, status: 422, code: 'PHARMACY_LICENSE', error: licensure.message }
   }
 
   const medicationSnapshot: MedicationSnapshot = {

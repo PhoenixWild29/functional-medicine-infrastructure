@@ -114,7 +114,7 @@ function installHappyFixtures() {
     data: { pharmacy_id: TEST_PHARMACY_ID, name: 'Strive Pharmacy', integration_tier: 'TIER_1_API', fax_number: null, is_active: true, deleted_at: null },
     error: null,
   })
-  fixtures['pharmacy_state_licenses:maybeSingle'] = () => ({ data: { pharmacy_id: TEST_PHARMACY_ID, expiration_date: '2099-12-31', sterile_compounding: true }, error: null })
+  fixtures['pharmacy_state_licenses:await'] = () => ({ data: [{ pharmacy_id: TEST_PHARMACY_ID, expiration_date: '2099-12-31', sterile_compounding: true }], error: null })
   fixtures['providers:maybeSingle'] = () => ({
     data: { provider_id: TEST_PROVIDER_ID, npi_number: '1234567890', clinic_id: TEST_CLINIC_ID },
     error: null,

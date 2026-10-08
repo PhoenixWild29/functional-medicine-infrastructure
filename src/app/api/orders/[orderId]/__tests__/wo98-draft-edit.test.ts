@@ -157,7 +157,7 @@ function installHappyFixtures(row: Record<string, unknown> = DRAFT_ROW) {
     data: { pharmacy_id: PHARMACY_ID, name: 'Strive Pharmacy', integration_tier: 'TIER_1_API', fax_number: null, is_active: true, deleted_at: null },
     error: null,
   })
-  fixtures['pharmacy_state_licenses:maybeSingle'] = () => ({ data: { pharmacy_id: PHARMACY_ID, expiration_date: '2099-12-31', sterile_compounding: true }, error: null })
+  fixtures['pharmacy_state_licenses:await'] = () => ({ data: [{ pharmacy_id: PHARMACY_ID, expiration_date: '2099-12-31', sterile_compounding: true }], error: null })
 }
 
 function sessionAs(role: string, userId = `auth-${role}`) {
@@ -270,9 +270,9 @@ describe('PATCH /api/orders/[orderId] — WO-98 edit a draft line', () => {
     expect(queryFilters).toEqual([])
   })
 
-  it('re-validates the edited line like POST: unlicensed pharmacy → 400, retail below wholesale → 422', async () => {
-    fixtures['pharmacy_state_licenses:maybeSingle'] = () => ({ data: null, error: null })
-    expect((await PATCH(makeRequest(patchBody()), ctx)).status).toBe(400)
+  it('re-validates the edited line like POST: unlicensed pharmacy → 422, retail below wholesale → 422', async () => {
+    fixtures['pharmacy_state_licenses:await'] = () => ({ data: [], error: null })
+    expect((await PATCH(makeRequest(patchBody()), ctx)).status).toBe(422)
 
     installHappyFixtures()
     expect((await PATCH(makeRequest(patchBody({ retailCents: 100 })), ctx)).status).toBe(422)

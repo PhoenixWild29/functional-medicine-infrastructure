@@ -351,6 +351,15 @@ describe('middleware refreshed-cookie propagation', () => {
     expectCarriesBothChunks(res)
   })
 
+  it('the /login redirect keeps the query: an /ops/pipeline?order= link opens that order after sign-in', async () => {
+    respondWithRefresh(NO_SESSION)
+    const res = await middleware(makeReq('/ops/pipeline?order=d1000000-0000-4000-8000-000000000001'))
+    expect(res.status).toBe(307)
+    const location = new URL(res.headers.get('location')!)
+    expect(location.pathname).toBe('/login')
+    expect(location.searchParams.get('redirectTo')).toBe('/ops/pipeline?order=d1000000-0000-4000-8000-000000000001')
+  })
+
   it('uses getUser(), not getSession(), so role claims come from a verified JWT', async () => {
     respondWithRefresh(OPS_SESSION)
     await middleware(makeReq('/ops/pipeline'))

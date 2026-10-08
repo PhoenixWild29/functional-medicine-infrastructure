@@ -35,7 +35,6 @@ jest.mock('react-signature-canvas', () => {
   }
 })
 jest.mock('../../../_components/drug-interaction-alerts', () => ({ DrugInteractionAlerts: () => null }))
-jest.mock('../../../_components/epcs-totp-gate', () => ({ EpcsTotpGate: () => null }))
 
 const STORAGE_KEY = 'compoundiq-rx-session'
 const PATIENT = { patient_id: 'p1', first_name: 'Alex', last_name: 'Demo', date_of_birth: '1985-06-15', phone: '+15125550000', state: 'TX', sms_opt_in: true }

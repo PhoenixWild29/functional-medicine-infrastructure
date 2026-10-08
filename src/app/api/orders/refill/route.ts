@@ -57,6 +57,7 @@ import {
   type PackageOption,
 } from '@/lib/orders/rx-details'
 import { buildStandardSig } from '@/lib/orders/dose-display'
+import { legacyTitrationFromSig, legacyTitrationDispense } from '@/lib/orders/legacy-titration'
 import { splitDose } from '@/lib/orders/dose'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId } from '@/lib/auth/claims'
@@ -364,7 +365,21 @@ function buildRefillLine(row: SourceRow, packagesByKey: Map<string, PackageOptio
   const cyclePatternRequired = isCycling && !cyclePattern
 
   const { amount, unit } = splitDose(dose)
-  const derived = cyclePatternRequired ? null : computeDispense({
+
+  // ── A titration written only in the directions (#191) ───
+  // A protocol line carries its titration in its sig. It refills sized
+  // for that schedule over its length, as Review and the price step size
+  // it (LDN = 25 mL over 56 days), never its starting dose every day
+  // (5.6 mL). The length and the assumption travel with the line so
+  // Review sizes it the same way and shows why.
+  const legacy = !maintenance && !isCycling ? legacyTitrationFromSig(sigText, { amount, unit }) : null
+  const legacySized = legacy
+    ? legacyTitrationDispense(legacy, { frequencyCode, durationDays, concentrationValue, concentrationUnit, dosageFormName })
+    : null
+
+  const derived = cyclePatternRequired ? null : legacySized
+    ? { daysSupply: legacySized.daysSupply, dispenseQuantity: legacySized.dispenseQuantity, dispenseUnit: legacySized.dispenseUnit }
+    : computeDispense({
     doseAmount:         amount,
     doseUnit:           unit,
     frequencyCode:      frequencyCode,
@@ -502,6 +517,9 @@ function buildRefillLine(row: SourceRow, packagesByKey: Map<string, PackageOptio
     // Shown on the Review card. Both are decisions the provider must be
     // able to see and undo, so neither is applied silently.
     maintenanceNote: notice,
+    // #191: the titration-in-sig sizing, and the length Review sizes it over.
+    protocolDurationDays: legacySized ? durationDays : null,
+    sizingNote:      legacySized?.note ?? null,
     priceNote,
     // Refused by the handler when set (never sent to the client as a line).
     packageUnitMismatch,

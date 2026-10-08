@@ -34,7 +34,6 @@ jest.mock('react-signature-canvas', () => {
     }),
   }
 })
-jest.mock('../../../_components/epcs-totp-gate', () => ({ EpcsTotpGate: () => null }))
 
 const STORAGE_KEY = 'compoundiq-rx-session'
 
