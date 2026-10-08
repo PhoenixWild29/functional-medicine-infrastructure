@@ -4,7 +4,9 @@
 //
 // Demo data, NOT verified regulatory values. The seeded demo ingredients
 // get these so the demo can prescribe; the peptides in regulatory limbo
-// are pending_evaluation, so they are blocked in the demo too. Real
+// are pending_evaluation, so they are blocked in the demo too, and an
+// ingredient not listed (5-Amino-1MQ, Adrenal Cortex Extract, Lipo-Mino
+// Mix among them) stays unverified, so blocked as well. Real
 // values are entered on /ops/ingredients from FDA's primary source after
 // counsel review.
 //
@@ -22,6 +24,7 @@ export interface DemoCompounding {
 }
 
 export const DEMO_COMPOUNDING: ReadonlyArray<DemoCompounding> = [
+  // Peptides pending FDA evaluation: blocked
   { name: 'BPC-157',                 status: 'pending_evaluation',       commercialEquivalent: false },
   { name: 'TB-500',                  status: 'pending_evaluation',       commercialEquivalent: false },
   { name: 'MOTS-c',                  status: 'pending_evaluation',       commercialEquivalent: false },
@@ -38,6 +41,7 @@ export const DEMO_COMPOUNDING: ReadonlyArray<DemoCompounding> = [
   { name: 'Hexarelin',               status: 'pending_evaluation',       commercialEquivalent: false },
   { name: 'Kisspeptin-10',           status: 'pending_evaluation',       commercialEquivalent: false },
   { name: 'Thymosin Alpha-1',        status: 'pending_evaluation',       commercialEquivalent: false },
+  // A marketed FDA-approved product with this active ingredient: a clinical-difference reason on every Rx
   { name: 'Semaglutide',             status: 'approved_drug_component',  commercialEquivalent: true },
   { name: 'Tirzepatide',             status: 'approved_drug_component',  commercialEquivalent: true },
   { name: 'Testosterone',            status: 'approved_drug_component',  commercialEquivalent: true },
@@ -48,50 +52,50 @@ export const DEMO_COMPOUNDING: ReadonlyArray<DemoCompounding> = [
   { name: 'Progesterone',            status: 'approved_drug_component',  commercialEquivalent: true },
   { name: 'DHEA',                    status: 'approved_drug_component',  commercialEquivalent: true },
   { name: 'Methylene Blue',          status: 'approved_drug_component',  commercialEquivalent: true },
-  { name: 'Alprostadil',             status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Aminophylline',           status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Atropine',                status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Azelaic Acid',            status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Benzoyl Peroxide',        status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Calcium Gluconate',       status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Clindamycin',             status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Cyanocobalamin',          status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Estradiol',               status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Finasteride',             status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Hydrocortisone',          status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Ketotifen',               status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Latanoprost',             status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Levothyroxine',           status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Liothyronine',            status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Minoxidil',               status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Oxytocin',                status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Papaverine',              status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Pentoxifylline',          status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Phentolamine',            status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'PT-141',                  status: 'approved_drug_component',  commercialEquivalent: false },
+  { name: 'Alprostadil',             status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Aminophylline',           status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Atropine',                status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Azelaic Acid',            status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Benzoyl Peroxide',        status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Calcium Gluconate',       status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Clindamycin',             status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Cyanocobalamin',          status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Estradiol',               status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Finasteride',             status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Hydrocortisone',          status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Ketotifen',               status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Latanoprost',             status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Levothyroxine',           status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Liothyronine',            status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Minoxidil',               status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Oxytocin',                status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Papaverine',              status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Pentoxifylline',          status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Phentolamine',            status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'PT-141',                  status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Sildenafil',              status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Sildenafil Citrate',      status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Spironolactone',          status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Tadalafil',               status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Tesamorelin',             status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Tretinoin',               status: 'approved_drug_component',  commercialEquivalent: true },
+  { name: 'Hydroquinone',            status: 'usp_monograph',            commercialEquivalent: true },
+  { name: 'L-Arginine',              status: 'usp_monograph',            commercialEquivalent: true },
+  { name: 'L-Carnitine',             status: 'usp_monograph',            commercialEquivalent: true },
+  { name: 'Vitamin C',               status: 'usp_monograph',            commercialEquivalent: true },
+  { name: 'Zinc Sulfate',            status: 'usp_monograph',            commercialEquivalent: true },
+  // Other demo ingredients: demo values
   { name: 'Sermorelin',              status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Sildenafil',              status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Sildenafil Citrate',      status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Spironolactone',          status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Tadalafil',               status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Tesamorelin',             status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: 'Tretinoin',               status: 'approved_drug_component',  commercialEquivalent: false },
-  { name: '5-Amino-1MQ',             status: 'usp_monograph',            commercialEquivalent: false },
-  { name: 'Adrenal Cortex Extract',  status: 'usp_monograph',            commercialEquivalent: false },
   { name: 'Biotin',                  status: 'usp_monograph',            commercialEquivalent: false },
   { name: 'Choline',                 status: 'usp_monograph',            commercialEquivalent: false },
   { name: 'Desiccated Thyroid',      status: 'usp_monograph',            commercialEquivalent: false },
   { name: 'Estriol',                 status: 'usp_monograph',            commercialEquivalent: false },
   { name: 'Estrone',                 status: 'usp_monograph',            commercialEquivalent: false },
   { name: 'Glutathione',             status: 'usp_monograph',            commercialEquivalent: false },
-  { name: 'Hydroquinone',            status: 'usp_monograph',            commercialEquivalent: false },
   { name: 'Inositol',                status: 'usp_monograph',            commercialEquivalent: false },
   { name: 'Kojic Acid',              status: 'usp_monograph',            commercialEquivalent: false },
-  { name: 'L-Arginine',              status: 'usp_monograph',            commercialEquivalent: false },
-  { name: 'L-Carnitine',             status: 'usp_monograph',            commercialEquivalent: false },
   { name: 'L-Citrulline',            status: 'usp_monograph',            commercialEquivalent: false },
   { name: 'L-Ornithine',             status: 'usp_monograph',            commercialEquivalent: false },
-  { name: 'Lipo-Mino Mix',           status: 'usp_monograph',            commercialEquivalent: false },
   { name: 'Magnesium Chloride',      status: 'usp_monograph',            commercialEquivalent: false },
   { name: 'Methionine',              status: 'usp_monograph',            commercialEquivalent: false },
   { name: 'Methylcobalamin',         status: 'usp_monograph',            commercialEquivalent: false },
@@ -100,8 +104,6 @@ export const DEMO_COMPOUNDING: ReadonlyArray<DemoCompounding> = [
   { name: 'Pregnenolone',            status: 'usp_monograph',            commercialEquivalent: false },
   { name: 'Taurine',                 status: 'usp_monograph',            commercialEquivalent: false },
   { name: 'Vitamin B Complex',       status: 'usp_monograph',            commercialEquivalent: false },
-  { name: 'Vitamin C',               status: 'usp_monograph',            commercialEquivalent: false },
-  { name: 'Zinc Sulfate',            status: 'usp_monograph',            commercialEquivalent: false },
 ]
 
 interface UpdateClient {
