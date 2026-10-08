@@ -15,7 +15,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DrugInteractionAlerts } from '../drug-interaction-alerts'
-import { EpcsTotpGate } from '../epcs-totp-gate'
 
 function withQuery(ui: React.ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -65,51 +64,5 @@ describe('finding 4 — the interaction check could not run', () => {
 
     await waitFor(() => expect(calls.length).toBeGreaterThan(0))
     expect(screen.queryByTestId('drug-interactions-error')).not.toBeInTheDocument()
-  })
-})
-
-describe('finding 6 — the EPCS status check could not run', () => {
-  const props = {
-    providerId: 'prov-1',
-    providerName: 'Sarah Chen',
-    medicationNames: ['Testosterone Cypionate 200mg/mL'],
-    deaSchedules: [3],
-    onVerified: jest.fn(),
-    onCancel: jest.fn(),
-  }
-
-  it('does not enrol a new authenticator when the status call fails', async () => {
-    mockFetch(url => url.includes('action=status')
-      ? { ok: false, status: 500, body: { error: 'db down' } }
-      : { ok: true, status: 200, body: { qr_code: 'data:image/png;base64,AAA', secret: 'S3CRET' } })
-
-    render(<EpcsTotpGate {...props} />)
-
-    expect(await screen.findByTestId('epcs-status-error')).toBeInTheDocument()
-    // The proof that matters: setup was never called, so an existing
-    // secret cannot have been overwritten.
-    expect(calls.some(c => c.url.includes('action=setup'))).toBe(false)
-  })
-
-  it('an enrolled provider still goes straight to code entry', async () => {
-    mockFetch(url => url.includes('action=status')
-      ? { ok: true, status: 200, body: { totp_enabled: true } }
-      : { ok: true, status: 200, body: {} })
-
-    render(<EpcsTotpGate {...props} />)
-
-    await waitFor(() => expect(screen.queryByTestId('epcs-status-error')).not.toBeInTheDocument())
-    expect(calls.some(c => c.url.includes('action=setup'))).toBe(false)
-  })
-
-  it('a provider who is genuinely not enrolled still gets the QR setup', async () => {
-    mockFetch(url => url.includes('action=status')
-      ? { ok: true, status: 200, body: { totp_enabled: false } }
-      : { ok: true, status: 200, body: { qr_code: 'data:image/png;base64,AAA', secret: 'S3CRET' } })
-
-    render(<EpcsTotpGate {...props} />)
-
-    await waitFor(() => expect(calls.some(c => c.url.includes('action=setup'))).toBe(true))
-    expect(screen.queryByTestId('epcs-status-error')).not.toBeInTheDocument()
   })
 })

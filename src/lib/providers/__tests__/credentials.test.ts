@@ -50,6 +50,12 @@ describe('prescriberProblems', () => {
     ])
   })
 
+  it('a prescription with no shipping state is not waved through: its license cannot be checked', () => {
+    expect(prescriberProblems(CHEN, ['TX', '', null, '  '], TODAY)).toEqual([
+      { code: 'prescriber_license_missing', state: '', message: "This prescription has no shipping state, so Sarah Chen's license for it cannot be checked. Add the patient's address." },
+    ])
+  })
+
   it('each state is judged once, whatever the case', () => {
     expect(prescriberProblems(CHEN, ['fl', 'FL', 'TX'], TODAY)).toHaveLength(1)
   })

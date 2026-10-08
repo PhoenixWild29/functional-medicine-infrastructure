@@ -70,8 +70,7 @@ import {
   suggestPackageForDispense,
   dispenseInPackageUnit,
   packageUnitMismatchMessage,
-  formatDispense,
-  formatPackageCount,
+  packageCapWarning,
   type PackageOption,
   type MissingRxDetail,
   type RxDetails,
@@ -489,12 +488,7 @@ export function BatchReviewForm({ isProvider }: Props) {
       // Even the most packages one line may carry fall short: priced as
       // that many, and the line says it does not cover the course.
       const capWarning = s.reason === 'capped'
-        ? {
-            sizingWarning:
-              `${formatPackageCount(s.package.label, s.count)} is the most one line can carry and does not cover the ` +
-              `${formatDispense(dispense.quantity, dispense.unit) ?? 'amount'} needed` +
-              `${dispense.daysSupply ? ` for ${dispense.daysSupply} days` : ''}. Shorten the duration or split the course.`,
-          }
+        ? { sizingWarning: packageCapWarning(s.package.label, s.count, dispense) }
         : {}
       if (s.reason === 'unconvertible') {
         updatePrescription(rx.id, { packageUnitMismatch: packageUnitMismatchMessage(s.package, dispense.unit) })
@@ -1106,7 +1100,7 @@ export function BatchReviewForm({ isProvider }: Props) {
           <span className="text-sm font-semibold text-foreground" data-testid="review-subtotal">{toCurrency(totalRetailCents)}</span>
         </div>
         {/* WO-102: shipping per pharmacy — once per pharmacy, not per Rx */}
-        <ShippingLines shipping={bundle.shipping} absorbShipping={bundle.absorbShipping} rates={bundle.rates} unpriced={bundle.unpriced} />
+        <ShippingLines shipping={bundle.shipping} absorbShipping={bundle.absorbShipping} rates={bundle.rates} unpriced={bundle.unpriced} pending={bundle.pending} />
         <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
           <span>Platform fee (15% of margin, not charged on shipping)</span>
           <span data-testid="review-platform-fee">{toCurrency(totalPlatformFeeCents)}</span>

@@ -49,6 +49,9 @@ async function resolveCaller(change: boolean): Promise<Caller> {
 
 const NOT_FOUND = () => NextResponse.json({ error: 'Not found' }, { status: 404 })
 const READ_FAILED = () => NextResponse.json({ error: 'The record could not be read. Nothing was changed — try again.' }, { status: 500 })
+// A failed write answers this, never the database's own text (it can quote
+// the row); the detail is logged.
+const WRITE_FAILED = () => NextResponse.json({ error: 'The change could not be saved. Nothing was changed, try again.' }, { status: 500 })
 
 /** Whether the patient is the caller's clinic's: 'yes', 'no', or 'error'. */
 async function patientInClinic(supabase: Supabase, patientId: string, clinicId: string): Promise<'yes' | 'no' | 'error'> {
@@ -127,7 +130,10 @@ export async function GET(req: NextRequest) {
     .eq('patient_id', patientId)
     .order('created_at', { ascending: false })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    console.error('[patient-phases] phases read failed:', error.message)
+    return READ_FAILED()
+  }
   // Compliance C2: the patient's protocol phases were read.
   await logPhiAccess({ user: caller.user, action: 'view', resource: 'patient_phases', route: '/api/patient-phases', patientId, headers: req.headers ?? null })
   return NextResponse.json({ data })
@@ -175,7 +181,10 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      console.error('[patient-phases] protocol start failed:', error.message)
+      return WRITE_FAILED()
+    }
     // Compliance C2: a protocol started for the patient.
     await logPhiAccess({ user: caller.user, action: 'create', resource: 'patient_phases', route: '/api/patient-phases', patientId: patient_id, headers: req.headers ?? null })
     return NextResponse.json({ data }, { status: 201 })
@@ -203,7 +212,10 @@ export async function POST(req: NextRequest) {
       })
       .eq('tracking_id', tracking_id)
 
-    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
+    if (updateErr) {
+      console.error('[patient-phases] phase advance failed:', updateErr.message, '| tracking=', tracking_id)
+      return WRITE_FAILED()
+    }
 
     // Log advancement history. An advancement without its history (who,
     // why, which labs) is not kept: put the phase back and say so.
@@ -267,7 +279,10 @@ export async function PATCH(req: NextRequest) {
     .update({ status: newStatus, updated_at: new Date().toISOString() })
     .eq('tracking_id', trackingId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    console.error('[patient-phases] status update failed:', error.message, '| tracking=', trackingId)
+    return WRITE_FAILED()
+  }
   // Compliance C2: the patient's protocol status changed.
   await logPhiAccess({
     user: caller.user, action: 'update', resource: 'patient_phases', route: '/api/patient-phases',
