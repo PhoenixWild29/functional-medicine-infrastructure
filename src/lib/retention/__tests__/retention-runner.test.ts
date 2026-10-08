@@ -142,7 +142,8 @@ describe('a run', () => {
     const writes = calls.filter(c => c.op !== 'select')
     expect(writes.length).toBeGreaterThan(0)
     for (const w of writes) expect(w).toEqual(expect.objectContaining({ table: 'retention_runs', op: 'insert' }))
-    for (const c of calls) expect(NEVER_RETENTION_TARGETS.filter(t => t !== 'legal_holds')).not.toContain(c.table)
+    // legal_holds is read, retention_runs written (above); the other protected tables are never touched.
+    for (const c of calls) expect(NEVER_RETENTION_TARGETS.filter(t => t !== 'legal_holds' && t !== 'retention_runs')).not.toContain(c.table)
   })
 
   it('each count is bounded by the cutoff and the policy filters; drafts only', async () => {
