@@ -68,7 +68,9 @@ test.describe('Accessibility: WCAG 2.1 AA (C10)', () => {
     await expect(page.getByLabel('Email (optional)')).toBeVisible({ timeout: 15_000 })
     // The fieldset renders once the payment intent loads; Stripe may not
     // load in headless CI, in which case the page shows its own alert.
-    await expect(page.getByRole('group', { name: 'Payment details' }).or(page.getByRole('alert'))).toBeVisible({ timeout: 15_000 })
+    // Scoped to <main>: Next.js renders its own hidden role="alert" route
+    // announcer, which a page-wide getByRole('alert') also matches.
+    await expect(page.getByRole('group', { name: 'Payment details' }).or(page.getByRole('main').getByRole('alert')).first()).toBeVisible({ timeout: 15_000 })
     expect(await axeViolations(page)).toEqual([])
     await expectReflowsAt320(page)
   })
@@ -122,7 +124,8 @@ test.describe('Accessibility: WCAG 2.1 AA (C10)', () => {
 
   test('login: no violations, error included; keyboard order; reflows at 320px', async ({ page }) => {
     await page.goto('/login?error=auth_callback_failed')
-    await expect(page.getByRole('alert')).toBeVisible({ timeout: 15_000 })
+    // #login-error, not getByRole('alert'): Next.js's route announcer is also an alert.
+    await expect(page.locator('#login-error')).toBeVisible({ timeout: 15_000 })
     await expect(page).toHaveTitle('Sign in')
     expect(await axeViolations(page)).toEqual([])
 
