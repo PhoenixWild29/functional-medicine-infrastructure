@@ -127,6 +127,27 @@ describe('demo statuses', () => {
     expect(code).toContain('on_fda_shortage = false')
   })
 
+  it('5-Amino-1MQ, Adrenal Cortex Extract and Lipo-Mino Mix get no demo status: they stay unverified (blocked)', () => {
+    const names = DEMO_COMPOUNDING.map(d => d.name)
+    for (const n of ['5-Amino-1MQ', 'Adrenal Cortex Extract', 'Lipo-Mino Mix']) {
+      expect(names).not.toContain(n)
+      expect(sql).not.toContain(`('${n}',`)
+    }
+  })
+
+  it('every seeded ingredient with a marketed FDA-approved product is a commercial equivalent (demo values)', () => {
+    const ce = DEMO_COMPOUNDING.filter(d => d.commercialEquivalent).map(d => d.name)
+    for (const n of [
+      'Sildenafil', 'Sildenafil Citrate', 'Tadalafil', 'Estradiol', 'Finasteride',
+      'Alprostadil', 'Aminophylline', 'Atropine', 'Azelaic Acid', 'Benzoyl Peroxide', 'Calcium Gluconate', 'Clindamycin',
+      'Cyanocobalamin', 'Hydrocortisone', 'Hydroquinone', 'Ketotifen', 'L-Arginine', 'L-Carnitine', 'Latanoprost',
+      'Levothyroxine', 'Liothyronine', 'Minoxidil', 'Oxytocin', 'Papaverine', 'Pentoxifylline', 'Phentolamine', 'PT-141',
+      'Spironolactone', 'Tesamorelin', 'Tretinoin', 'Vitamin C', 'Zinc Sulfate',
+    ]) expect(ce).toContain(n)
+    // No marketed FDA-approved product: Sermorelin (Geref withdrawn), estriol, supplements.
+    for (const n of ['Sermorelin', 'Estriol', 'NAD+', 'Glutathione', 'Biotin']) expect(ce).not.toContain(n)
+  })
+
   it('are marked demo data, and never overwrite a reviewed row', () => {
     expect(DEMO_COMPOUNDING_SOURCE).toBe('demo data, not verified')
     expect(code).toContain(`compounding_status_source = '${DEMO_COMPOUNDING_SOURCE}'`)
