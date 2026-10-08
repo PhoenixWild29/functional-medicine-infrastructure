@@ -65,6 +65,11 @@ export const serverEnv = {
   // this is exactly "true". Unset means OFF. See lib/adapters/submission-switch.
   pharmacySubmissionsEnabled: () => process.env['PHARMACY_SUBMISSIONS_ENABLED'] === 'true',
 
+  // Compliance C10: retention jobs delete, null or anonymize nothing
+  // unless this is exactly "true". Unset means OFF (dry run, counts only).
+  // See lib/retention/switch.
+  retentionEnabled: (): boolean => process.env['RETENTION_ENABLED'] === 'true',
+
   // Compliance C3: multi-factor sign-in. OFF unless REQUIRE_MFA is exactly
   // 'true', so demo accounts and E2E keep signing in with a password until
   // the owner turns it on. MFA_ENFORCED_EMAILS (comma-separated) enforces

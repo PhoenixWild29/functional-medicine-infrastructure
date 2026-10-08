@@ -86,13 +86,13 @@ it('switched on: removes every screenshot older than 72 hours, never the placeho
   expect(removed.flat().sort()).toEqual(['portal/order-1/sub-a-login.png', 'portal/order-2/sub-b-login.png'])
 })
 
-it('pages through every folder and every file, past 1000 folders and 100 files', async () => {
+it('pages through every folder and every file (1205 folders, 2500 files in one)', async () => {
   process.env['RETENTION_ENABLED'] = 'true'
   tree['portal'] = Array.from({ length: 1205 }, (_, i) => folder(`order-${i}`))
-  tree['portal/order-1204'] = Array.from({ length: 250 }, (_, i) => file(`s-${i}.png`, old))
+  tree['portal/order-1204'] = Array.from({ length: 2500 }, (_, i) => file(`s-${i}.png`, old))
 
   const body = await (await call()).json() as Record<string, unknown>
-  expect(body).toMatchObject({ deleted: 250 })
+  expect(body).toMatchObject({ deleted: 2500 })
   expect(listCalls.filter(c => c.prefix === 'portal').map(c => c.offset)).toEqual([0, 1000])
   expect(listCalls.filter(c => c.prefix === 'portal/order-1204').length).toBeGreaterThanOrEqual(3)
   // Removed in batches the storage API accepts.
