@@ -189,6 +189,44 @@ export async function triggerSlaEscalation(params: SlaEscalationParams): Promise
   })
 }
 
+// ============================================================
+// TIER 2 (PORTAL): SUBMISSION NOT CONFIRMED, NOT FAXED
+// ============================================================
+
+export interface PortalSubmissionUnconfirmedParams {
+  orderId:               string
+  pharmacySlug:          string   // non-PHI operational reference
+  /** The order's status: sent only if it is an order status enum value. */
+  orderStatus?:          string
+  breachDurationMinutes: number
+}
+
+/**
+ * A Tier 2 (portal) order's ADAPTER_SUBMISSION_ACK SLA breached. It is not
+ * faxed automatically (the portal submission may already have reached the
+ * pharmacy), so ops is paged to resolve it by hand. IDs, enums and counts
+ * only. Same dedup key as the SLA, so a later Tier 3 escalation of this SLA
+ * joins this incident and resolveSlaEscalation resolves it.
+ */
+export async function triggerPortalSubmissionUnconfirmed(params: PortalSubmissionUnconfirmedParams): Promise<void> {
+  const orderStatus = oneOf(ORDER_STATUSES, params.orderStatus)
+  await triggerPagerDutyIncident({
+    dedupKey: slaDedupKey(params.orderId, 'ADAPTER_SUBMISSION_ACK'),
+    summary:  `Portal submission not confirmed, not faxed: Order ${params.orderId}`,
+    severity: 'error',
+    source:   'compoundiq-sla-engine',
+    customDetails: {
+      order_id:                params.orderId,
+      sla_type:                'ADAPTER_SUBMISSION_ACK',
+      pharmacy_slug:           params.pharmacySlug,
+      integration_tier:        'TIER_2_PORTAL',
+      ...(orderStatus ? { order_status: orderStatus } : {}),
+      auto_fax:                false,
+      breach_duration_minutes: params.breachDurationMinutes,
+    },
+  })
+}
+
 /**
  * Resolves the PagerDuty incident when the SLA is resolved.
  * REQ-SAI-008.4. Call from resolveSlasForTransition for Tier 3 SLAs.

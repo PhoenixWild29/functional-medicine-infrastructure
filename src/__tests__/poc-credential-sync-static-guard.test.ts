@@ -97,7 +97,9 @@ describe('syncPocCredentials session safety', () => {
     for (const call of updateUserByIdMock.mock.calls) {
       const attributes = call[1] as Record<string, unknown>
       expect(attributes).not.toHaveProperty('password')
-      expect(attributes).toHaveProperty('user_metadata')
+      // Role + clinic go to app_metadata (service role), never user_metadata.
+      expect(attributes).toHaveProperty('app_metadata')
+      expect(attributes).not.toHaveProperty('user_metadata')
     }
     expect(createUserMock).not.toHaveBeenCalled()
     expect(report.ok).toBe(true)

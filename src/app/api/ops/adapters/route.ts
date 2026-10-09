@@ -19,6 +19,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { computeAdapterStatus, percentile } from '@/lib/ops/adapter-health'
+import { getUserRole } from '@/lib/auth/claims'
 
 export type CircuitBreakerState = 'CLOSED' | 'OPEN' | 'HALF_OPEN'
 
@@ -71,7 +72,7 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (session.user.user_metadata['app_role'] !== 'ops_admin') {
+  if (getUserRole(session.user) !== 'ops_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

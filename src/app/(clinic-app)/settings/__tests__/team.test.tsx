@@ -60,7 +60,7 @@ function answer(c: ScriptedCall) {
   return undefined
 }
 
-const as = (role: string, id = `u-${role}`) => ({ id, email: `${role}@clinic.example`, user_metadata: { app_role: role, clinic_id: CLINIC } })
+const as = (role: string, id = `u-${role}`) => ({ id, email: `${role}@clinic.example`, app_metadata: { app_role: role, clinic_id: CLINIC } })
 const html = async () => renderToStaticMarkup(await TeamPage())
 
 beforeEach(() => {

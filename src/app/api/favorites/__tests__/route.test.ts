@@ -63,7 +63,7 @@ const PROVIDER_OUT   = 'provider-other-clinic'
 const CALLER_CLINIC  = 'clinic-A'
 
 const SESSION_IN_CLINIC = {
-  data: { session: { user: { user_metadata: { clinic_id: CALLER_CLINIC } } } },
+  data: { session: { user: { app_metadata: { clinic_id: CALLER_CLINIC } } } },
 }
 
 const SESSION_NO_CLINIC = {

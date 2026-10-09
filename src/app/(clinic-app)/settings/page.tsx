@@ -18,6 +18,7 @@ import { ClinicSettingsForm } from './_components/clinic-settings-form'
 import { StripeStatusSection } from './_components/stripe-status-section'
 import { SignInSecuritySection } from './_components/sign-in-security-section'
 import { hasVerifiedTotp, mfaEnforcedFor } from '@/lib/auth/mfa'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export const metadata = {
   title: 'Clinic Settings',
@@ -31,9 +32,7 @@ export default async function SettingsPage() {
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return <SessionGuardNotice />
 
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
-    ? user.user_metadata['clinic_id'] as string
-    : undefined
+  const clinicId = getUserClinicId(user)
 
   if (!clinicId) {
     return (
@@ -63,9 +62,9 @@ export default async function SettingsPage() {
   }
 
   // Compliance C2: the access log is the clinic admin's alone.
-  const isClinicAdmin = user.user_metadata['app_role'] === 'clinic_admin'
+  const isClinicAdmin = getUserRole(user) === 'clinic_admin'
   // Compliance C4: Team (credentials) for the clinic admin and each provider.
-  const canSeeTeam = isClinicAdmin || user.user_metadata['app_role'] === 'provider'
+  const canSeeTeam = isClinicAdmin || getUserRole(user) === 'provider'
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
@@ -114,7 +113,7 @@ export default async function SettingsPage() {
             <StripeStatusSection
               stripeConnectStatus={clinic.stripe_connect_status}
               stripeAccountId={clinic.stripe_connect_account_id ?? null}
-              isClinicAdmin={user.user_metadata['app_role'] === 'clinic_admin'}
+              isClinicAdmin={getUserRole(user) === 'clinic_admin'}
             />
           </div>
 
@@ -126,7 +125,7 @@ export default async function SettingsPage() {
               defaultMarkupPct={clinic.default_markup_pct ?? null}
               absorbShipping={clinic.absorb_shipping === true}
               practiceVisibleToProviders={clinic.practice_dashboard_visible_to_providers === true}
-              isClinicAdmin={user.user_metadata['app_role'] === 'clinic_admin'}
+              isClinicAdmin={getUserRole(user) === 'clinic_admin'}
             />
           </div>
 

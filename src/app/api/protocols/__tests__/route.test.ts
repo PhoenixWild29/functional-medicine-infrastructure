@@ -69,7 +69,7 @@ function chain(result: ChainResult): QueryChain {
 const CLINIC = 'clinic-A'
 
 const SESSION_IN_CLINIC = {
-  data: { session: { user: { user_metadata: { clinic_id: CLINIC } } } },
+  data: { session: { user: { app_metadata: { clinic_id: CLINIC } } } },
 }
 
 function makeRequest(id?: string): NextRequest {

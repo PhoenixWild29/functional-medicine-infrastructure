@@ -21,8 +21,8 @@ jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
     // A provider of clinic c-1 (the phase routes are clinic-scoped, provider-only for changes).
     auth: {
-      getSession: async () => ({ data: { session: { user: { id: 'u1', user_metadata: { app_role: 'provider', clinic_id: 'c-1' } } } } }),
-      getUser: async () => ({ data: { user: { id: 'u1', user_metadata: { app_role: 'provider', clinic_id: 'c-1' } } }, error: null }),
+      getSession: async () => ({ data: { session: { user: { id: 'u1', app_metadata: { app_role: 'provider', clinic_id: 'c-1' } } } } }),
+      getUser: async () => ({ data: { user: { id: 'u1', app_metadata: { app_role: 'provider', clinic_id: 'c-1' } } }, error: null }),
     },
   }),
 }))

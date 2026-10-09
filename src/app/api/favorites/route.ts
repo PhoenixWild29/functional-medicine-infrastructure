@@ -35,6 +35,7 @@ import {
 import { parseTitrationSteps } from '@/lib/orders/titration'
 import { cycleLengthFrom, cyclePatternFrom } from '@/lib/orders/cycling'
 import { isNoRows } from '@/lib/supabase/no-rows'
+import { getUserClinicId } from '@/lib/auth/claims'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
@@ -75,7 +76,7 @@ async function callerClinic(): Promise<{ clinicId: string } | { response: NextRe
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
-  const clinicId = typeof user.user_metadata?.['clinic_id'] === 'string' ? user.user_metadata['clinic_id'] as string : null
+  const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) return { response: NextResponse.json({ error: 'No clinic context' }, { status: 403 }) }
   return { clinicId }
 }

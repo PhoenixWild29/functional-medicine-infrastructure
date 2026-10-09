@@ -10,6 +10,7 @@ import { NextResponse } from 'next/server'
 import type { User } from '@supabase/supabase-js'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -32,9 +33,8 @@ export async function clinicAdminForProvider(providerId: string): Promise<AdminA
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
 
-  const meta = user.user_metadata ?? {}
-  const clinicId = typeof meta['clinic_id'] === 'string' && meta['clinic_id'] ? meta['clinic_id'] as string : null
-  if (meta['app_role'] !== 'clinic_admin' || !clinicId) {
+  const clinicId = getUserClinicId(user) ?? null
+  if (getUserRole(user) !== 'clinic_admin' || !clinicId) {
     return { ok: false, response: NextResponse.json({ error: 'Only the clinic admin can change provider credentials.' }, { status: 403 }) }
   }
 

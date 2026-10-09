@@ -35,6 +35,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { generateCheckoutToken } from '@/lib/auth/checkout-token'
 import { serverEnv } from '@/lib/env'
 import { logPhiAccess } from '@/lib/audit/phi-access'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
@@ -72,9 +73,7 @@ export async function POST(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const appRole = typeof user.user_metadata['app_role'] === 'string'
-    ? user.user_metadata['app_role'] as string
-    : null
+  const appRole = getUserRole(user) ?? null
 
   if (!appRole || !(CLINIC_APP_ROLES as readonly string[]).includes(appRole)) {
     return NextResponse.json(
@@ -83,9 +82,7 @@ export async function POST(
     )
   }
 
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
-    ? user.user_metadata['clinic_id'] as string
-    : null
+  const clinicId = getUserClinicId(user) ?? null
 
   if (!clinicId) {
     return NextResponse.json(

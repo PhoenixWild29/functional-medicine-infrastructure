@@ -54,7 +54,7 @@ const CONFIRM_NKDA = { allergies: [], nkda: true, confirmNkda: true }
 
 beforeEach(() => {
   getSessionMock.mockReset().mockResolvedValue({
-    data: { session: { user: { id: 'user-1', user_metadata: { app_role: 'provider', clinic_id: CLINIC_ID } } } },
+    data: { session: { user: { id: 'user-1', app_metadata: { app_role: 'provider', clinic_id: CLINIC_ID } } } },
   })
   currentRowMock.mockReset()
   updateMock.mockReset()

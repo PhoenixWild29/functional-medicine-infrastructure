@@ -65,7 +65,7 @@ const call = () => POST({ json: async () => ({ orderIds: [SOURCE] }) } as never)
 const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
 
 beforeEach(() => {
-  getUserMock.mockReset().mockResolvedValue({ data: { user: { id: 'u1', user_metadata: { clinic_id: CLINIC } } } })
+  getUserMock.mockReset().mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { clinic_id: CLINIC } } } })
   errorSpy.mockClear()
 })
 
