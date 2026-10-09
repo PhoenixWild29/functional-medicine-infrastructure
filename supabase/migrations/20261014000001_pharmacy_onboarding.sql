@@ -18,7 +18,9 @@
 --      not verified can never be active (CHECK), so the C5 licensure check
 --      never counts it. Existing licenses are verified (they are in use).
 --   3. pharmacy_invites: only a SHA-256 of the token is stored.
---   4. pharmacy_onboarding_applications: progress, staged catalog, review.
+--   4. pharmacy_onboarding_applications: progress, staged catalog, review,
+--      and ops' "adapter configured" mark (required to approve an API or
+--      portal pharmacy).
 --      Secrets never: API keys and portal passwords go to Vault, and only
 --      Vault ids are referenced.
 --   5. pharmacy_agreement_acceptances (BAA, terms) and
@@ -129,8 +131,14 @@ CREATE TABLE IF NOT EXISTS pharmacy_onboarding_applications (
   reviewed_at       TIMESTAMPTZ,
   reviewed_by       UUID,
   approved_at       TIMESTAMPTZ,
+  -- An API or portal pharmacy is approved only after ops marks its adapter
+  -- configured (endpoints / portal selectors the pharmacy cannot supply).
+  -- Cleared when the pharmacy saves new ordering details.
+  adapter_configured_at TIMESTAMPTZ,
+  adapter_configured_by UUID,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK ((adapter_configured_at IS NULL) = (adapter_configured_by IS NULL))
 );
 
 DROP TRIGGER IF EXISTS set_updated_at_pharmacy_onboarding_applications ON pharmacy_onboarding_applications;

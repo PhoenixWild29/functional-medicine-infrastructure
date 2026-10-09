@@ -2108,6 +2108,8 @@ export type Database = {
       }
       pharmacy_onboarding_applications: {
         Row: {
+          adapter_configured_at: string | null
+          adapter_configured_by: string | null
           admin_user_id: string
           application_id: string
           approved_at: string | null
@@ -2129,6 +2131,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          adapter_configured_at?: string | null
+          adapter_configured_by?: string | null
           admin_user_id: string
           application_id?: string
           approved_at?: string | null
@@ -2150,6 +2154,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          adapter_configured_at?: string | null
+          adapter_configured_by?: string | null
           admin_user_id?: string
           application_id?: string
           approved_at?: string | null

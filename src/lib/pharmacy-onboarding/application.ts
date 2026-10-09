@@ -281,7 +281,8 @@ export async function saveOrdering(db: SupabaseClient, ctx: WizardCtx, input: Re
 
   const details = Object.keys(vault).length > 0 ? { ...v.value.details, vault } : { ...v.value.details }
   const { error: appError } = await db.from('pharmacy_onboarding_applications')
-    .update({ ordering_method: v.value.method, ordering_details: details })
+    // New details: ops checks the adapter again before approval.
+    .update({ ordering_method: v.value.method, ordering_details: details, adapter_configured_at: null, adapter_configured_by: null })
     .eq('application_id', r.app.application_id)
   if (appError) {
     await deleteVaultSecrets(db, created)

@@ -37,6 +37,7 @@ interface AppRow {
   reviewed_at:       string | null
   approved_at:       string | null
   updated_at:        string | null
+  adapter_configured_at: string | null
 }
 
 interface LicenseRow {
@@ -50,7 +51,10 @@ interface LicenseRow {
   verified_at:         string | null
 }
 
-const APP_COLUMNS = 'application_id, pharmacy_id, status, steps_completed, ordering_method, ordering_details, catalog_choice, catalog_rows, catalog_row_count, catalog_warnings, review_note, submitted_at, reviewed_at, approved_at, updated_at'
+const APP_COLUMNS = 'application_id, pharmacy_id, status, steps_completed, ordering_method, ordering_details, catalog_choice, catalog_rows, catalog_row_count, catalog_warnings, review_note, submitted_at, reviewed_at, approved_at, updated_at, adapter_configured_at'
+
+/** API and portal pharmacies need an adapter set up by ops (endpoints, selectors); fax does not. */
+const needsAdapter = (method: string | null) => method === 'api' || method === 'portal'
 const LICENSE_COLUMNS = 'state_code, license_number, expiration_date, sterile_compounding, verification_status, verification_note, document_path, verified_at'
 
 const today = (now: Date) => now.toISOString().slice(0, 10)
@@ -116,6 +120,7 @@ export interface ApplicationReview {
   pharmacy:       Record<string, unknown>
   licenses:       Array<{ state: string; licenseNumber: string; expiresOn: string; sterileCompounding: boolean | null; verificationStatus: string; verificationNote: string | null; verifiedAt: string | null; documentUrl: string | null }>
   ordering:       Record<string, unknown> | null
+  adapter:        { required: boolean; configuredAt: string | null }
   acceptance:     { signerName: string; signerTitle: string; acceptedAt: string; templateVersion: string; textSha256: string; current: boolean } | null
   catalog:        { choice: string | null; rowCount: number | null; warnings: string[]; rows: unknown[] }
   events:         Array<{ action: string; actorRole: string; occurredAt: string; stateCode: string | null }>
@@ -158,6 +163,7 @@ export async function getApplicationReview(db: SupabaseClient, applicationId: st
       pharmacy: pharmacy.data as Record<string, unknown>,
       licenses: withUrls,
       ordering: orderingView(r.app),
+      adapter: { required: needsAdapter(r.app.ordering_method), configuredAt: r.app.adapter_configured_at ?? null },
       acceptance: a ? { signerName: a.signer_name, signerTitle: a.signer_title, acceptedAt: a.accepted_at, templateVersion: a.template_version, textSha256: a.text_sha256, current: a.template_version === AGREEMENT.version } : null,
       catalog: {
         choice: r.app.catalog_choice, rowCount: r.app.catalog_row_count,
@@ -246,7 +252,11 @@ export async function approveApplication(
   if (notVerified.length > 0) return { ok: false, status: 409, error: `Verify every license first. Not verified: ${notVerified.join(', ')}.` }
   const expired = licenses.filter(l => l.expiration_date < today(now))
   if (expired.length > 0) return { ok: false, status: 409, error: `A license has expired since it was verified: ${expired.map(l => `${l.state_code} on ${l.expiration_date}`).join(', ')}.` }
-  if ((acceptance.data ?? []).length === 0) return { ok: false, status: 409, error: 'The pharmacy has not accepted the current BAA and terms.' }
+  if ((acceptance.data ?? []).length === 0) return { ok: false, status: 409, error: 'The pharmacy has not accepted the current BAA.' }
+  if (!r.app.ordering_method) return { ok: false, status: 409, error: 'The pharmacy has not said how it receives orders.' }
+  if (needsAdapter(r.app.ordering_method) && !r.app.adapter_configured_at) {
+    return { ok: false, status: 409, error: `Configure the ${r.app.ordering_method === 'api' ? 'API' : 'portal'} adapter and mark it configured before approving.` }
+  }
 
   const audit = { actor: input.actor, action: 'application_approved', pharmacyId, applicationId: r.app.application_id }
   if (!await recordOnboardingEvent(db, audit)) return { ok: false, status: 503, error: AUDIT_UNAVAILABLE }
@@ -268,6 +278,33 @@ export async function approveApplication(
     if (revertError) console.error(`[pharmacy-onboarding] CRITICAL: pharmacy active but application not approved | pharmacy=${pharmacyId}:`, revertError.code ?? revertError.message)
     await recordOnboardingEvent(db, { ...audit, action: 'application_approve_failed' })
     return UNAVAILABLE('The approval could not be saved.')
+  }
+  return { ok: true }
+}
+
+/**
+ * Ops marks (or unmarks) an API or portal pharmacy's adapter as configured.
+ * Required before approval; a fax pharmacy has no adapter to mark.
+ */
+export async function markAdapterConfigured(
+  db: SupabaseClient,
+  input: { actor: OnboardingActor; applicationId: string; configured: boolean },
+  now: Date = new Date(),
+): Promise<{ ok: true } | Fail> {
+  if (typeof input.configured !== 'boolean') return { ok: false, status: 400, error: 'Say whether the adapter is configured.' }
+  const r = await submitted(db, input.applicationId)
+  if (!r.ok) return r
+  if (!needsAdapter(r.app.ordering_method)) return { ok: false, status: 409, error: 'This pharmacy receives orders by fax: it has no adapter to configure.' }
+
+  const audit = { actor: input.actor, action: input.configured ? 'adapter_marked_configured' : 'adapter_marked_unconfigured', pharmacyId: r.app.pharmacy_id, applicationId: r.app.application_id, detail: { method: r.app.ordering_method } }
+  if (!await recordOnboardingEvent(db, audit)) return { ok: false, status: 503, error: AUDIT_UNAVAILABLE }
+  const patch = input.configured
+    ? { adapter_configured_at: now.toISOString(), adapter_configured_by: input.actor.userId }
+    : { adapter_configured_at: null, adapter_configured_by: null }
+  const { error } = await db.from('pharmacy_onboarding_applications').update(patch).eq('application_id', r.app.application_id)
+  if (error) {
+    await recordOnboardingEvent(db, { ...audit, action: `${audit.action}_failed` })
+    return UNAVAILABLE('The adapter mark could not be saved.')
   }
   return { ok: true }
 }

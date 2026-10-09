@@ -22,6 +22,7 @@ interface Review {
   pharmacy: Record<string, unknown>
   licenses: Array<{ state: string; licenseNumber: string; expiresOn: string; sterileCompounding: boolean | null; verificationStatus: string; verificationNote: string | null; documentUrl: string | null }>
   ordering: Record<string, unknown> | null
+  adapter: { required: boolean; configuredAt: string | null }
   acceptance: { signerName: string; signerTitle: string; acceptedAt: string; templateVersion: string; current: boolean } | null
   catalog: { choice: string | null; rowCount: number | null; warnings: string[]; rows: unknown[] }
   events: Array<{ action: string; actorRole: string; occurredAt: string; stateCode: string | null }>
@@ -89,7 +90,8 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
 
   const reviewable = review.status === 'submitted'
   const allVerified = review.licenses.length > 0 && review.licenses.every(l => l.verificationStatus === 'verified')
-  const canApprove = reviewable && allVerified && !!review.acceptance?.current
+  const adapterReady = !review.adapter.required || !!review.adapter.configuredAt
+  const canApprove = reviewable && allVerified && !!review.acceptance?.current && adapterReady
   const p = review.pharmacy
 
   return (
@@ -124,9 +126,22 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
             {review.ordering['method'] === 'portal' && `Portal at ${show(review.ordering['portalUrl'])}.`}
             {review.ordering['method'] === 'fax' && `Fax to ${show(review.ordering['faxNumber'])}.`}
             {review.ordering['secretsStored'] === true && ' Credentials stored in Vault.'}
-            {review.ordering['method'] !== 'fax' && ' Complete the adapter configuration before orders route here.'}
           </p>
         ) : <p className="mt-2 text-sm text-muted-foreground">Not provided.</p>}
+        {review.adapter.required && (
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <p className="text-sm text-foreground">
+              {review.adapter.configuredAt
+                ? `Adapter marked configured on ${new Date(review.adapter.configuredAt).toLocaleString()}.`
+                : 'The adapter is not configured. Set up the endpoints or portal steps, then mark it configured. It is needed to approve.'}
+            </p>
+            {reviewable && (
+              <SecondaryButton disabled={busy} onClick={() => void run(`/api/ops/onboarding/pharmacies/${applicationId}/adapter`, { configured: !review.adapter.configuredAt })}>
+                {review.adapter.configuredAt ? 'Mark adapter not configured' : 'Mark adapter configured'}
+              </SecondaryButton>
+            )}
+          </div>
+        )}
       </section>
 
       <section aria-labelledby="licenses-title" className="rounded-xl border border-border bg-card p-4">
@@ -194,7 +209,7 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
             <SecondaryButton disabled={busy || !sendBackNote.trim()} onClick={() => void run(`/api/ops/onboarding/pharmacies/${applicationId}/send-back`, { note: sendBackNote })}>Send back</SecondaryButton>
             <PrimaryButton type="button" disabled={!canApprove} busy={busy} onClick={() => void run(`/api/ops/onboarding/pharmacies/${applicationId}/approve`, {})}>Approve</PrimaryButton>
           </div>
-          {!canApprove && <p className="mt-2 text-xs text-muted-foreground">Approve is available when every license is verified and the current BAA is accepted.</p>}
+          {!canApprove && <p className="mt-2 text-xs text-muted-foreground">Approve is available when every license is verified, the current BAA is accepted and, for an API or portal pharmacy, its adapter is marked configured.</p>}
         </section>
       )}
 
