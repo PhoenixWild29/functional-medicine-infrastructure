@@ -36,11 +36,15 @@ function LoginForm() {
   const [password, setPassword] = useState('')
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState<string | null>(initialError)
+  // C10: the fields are marked invalid only when the credentials were
+  // refused, not for an auth-callback error that is not about them.
+  const [credentialsRefused, setCredentialsRefused] = useState(false)
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    setCredentialsRefused(false)
 
     const supabase = createBrowserClient()
     const { data, error: authError } = await supabase.auth.signInWithPassword({
@@ -50,6 +54,7 @@ function LoginForm() {
 
     if (authError || !data.session || !data.user) {
       setError('Invalid email or password. Please try again.')
+      setCredentialsRefused(true)
       setLoading(false)
       return
     }
@@ -73,9 +78,10 @@ function LoginForm() {
       {/* Error — inline below the heading, not a banner */}
       {error && (
         <div
+          id="login-error"
           role="alert"
           aria-live="assertive"
-          className="rounded-lg bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive"
+          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
         >
           {error}
         </div>
@@ -94,7 +100,9 @@ function LoginForm() {
           value={email}
           onChange={e => setEmail(e.target.value)}
           disabled={loading}
-          className="w-full rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground disabled:opacity-50"
+          aria-invalid={credentialsRefused || undefined}
+          aria-describedby={credentialsRefused ? 'login-error' : undefined}
+          className="w-full rounded-lg border border-slate-500 bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground disabled:opacity-50"
           placeholder="you@clinic.com"
         />
       </div>
@@ -112,7 +120,9 @@ function LoginForm() {
           value={password}
           onChange={e => setPassword(e.target.value)}
           disabled={loading}
-          className="w-full rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground disabled:opacity-50"
+          aria-invalid={credentialsRefused || undefined}
+          aria-describedby={credentialsRefused ? 'login-error' : undefined}
+          className="w-full rounded-lg border border-slate-500 bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground disabled:opacity-50"
           placeholder="••••••••"
         />
       </div>
@@ -121,7 +131,7 @@ function LoginForm() {
       <button
         type="submit"
         disabled={loading || !email || !password}
-        className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-[var(--duration-fast)]"
+        className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-[var(--duration-fast)]"
         style={{ minHeight: '48px' }}
       >
         {loading ? (
@@ -140,7 +150,7 @@ function LoginForm() {
       {/* Trust signal + admin note */}
       <div className="pt-1 space-y-2">
         <p className="text-xs text-muted-foreground text-center">
-          🔒 HIPAA-compliant authentication
+          <span aria-hidden>🔒 </span>HIPAA-compliant authentication
         </p>
         <p className="text-xs text-muted-foreground text-center">
           Contact your administrator if you need access.
@@ -173,7 +183,7 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <h1 className="text-3xl font-bold text-white tracking-tight">CompoundIQ</h1>
+            <p className="text-3xl font-bold text-white tracking-tight">CompoundIQ</p>
             <p className="mt-2 text-sm text-white/60 max-w-xs leading-relaxed">
               Compounding pharmacy order management
             </p>
@@ -198,17 +208,17 @@ export default function LoginPage() {
       </div>
 
       {/* ── Right panel: form ── */}
-      <div className="flex w-full md:w-1/2 flex-col items-center justify-center px-6 py-12 bg-background">
+      <main className="flex w-full md:w-1/2 flex-col items-center justify-center px-6 py-12 bg-background">
         <div className="w-full max-w-sm">
 
           {/* Mobile logo (hidden on desktop) */}
           <div className="mb-8 text-center md:hidden">
-            <h1 className="text-2xl font-bold text-foreground tracking-tight">CompoundIQ</h1>
+            <p className="text-2xl font-bold text-foreground tracking-tight">CompoundIQ</p>
           </div>
 
           {/* Heading */}
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-foreground tracking-tight">Sign in</h2>
+            <h1 className="text-2xl font-bold text-foreground tracking-tight">Sign in</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               Access your clinic dashboard
             </p>
@@ -219,7 +229,7 @@ export default function LoginPage() {
           </Suspense>
 
         </div>
-      </div>
+      </main>
 
     </div>
   )
