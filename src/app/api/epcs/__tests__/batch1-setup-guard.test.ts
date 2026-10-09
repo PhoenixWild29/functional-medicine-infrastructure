@@ -20,13 +20,21 @@ import type { NextRequest } from 'next/server'
 
 const PROVIDER_ID = 'a2000000-0000-0000-0000-000000000001'
 
-const getSessionMock   = jest.fn()
+const getUserMock      = jest.fn()
 const providerFetchMock = jest.fn()
 const providerUpdateMock = jest.fn()
 
 jest.mock('@/lib/supabase/server', () => ({
-  createServerClient: jest.fn().mockResolvedValue({ auth: { getSession: () => getSessionMock() } }),
+  createServerClient: jest.fn().mockResolvedValue({ auth: { getUser: () => getUserMock() } }),
 }))
+
+// The route resolves the signed-in provider from the verified user
+// (providers.user_id); a client-sent provider_id is never trusted.
+jest.mock('@/lib/auth/current-provider', () => ({
+  ...jest.requireActual('@/lib/auth/current-provider'),
+  resolveCurrentProvider: async () => ({ provider_id: 'a2000000-0000-0000-0000-000000000001', clinic_id: 'c-1', first_name: 'Sarah', last_name: 'Chen', npi_number: '1', signature_hash: null }),
+}))
+
 
 jest.mock('@/lib/supabase/service', () => ({
   createServiceClient: jest.fn().mockReturnValue({
@@ -67,7 +75,7 @@ function postRequest(qs: string, body: unknown) {
 }
 
 beforeEach(() => {
-  getSessionMock.mockReset().mockResolvedValue({ data: { session: { user: { id: 'u1' } } } })
+  getUserMock.mockReset().mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { app_role: 'provider', clinic_id: 'c-1' } } }, error: null })
   providerFetchMock.mockReset()
   providerUpdateMock.mockReset().mockResolvedValue({ error: null })
   jest.spyOn(console, 'error').mockImplementation(() => {})

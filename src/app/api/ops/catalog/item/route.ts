@@ -21,17 +21,17 @@ const VALID_REGULATORY_STATUSES = ['ACTIVE', 'RECALLED', 'DISCONTINUED', 'SHORTA
 
 async function guard(request: NextRequest) {
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) return { session: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
-  if (getUserRole(session.user) !== 'ops_admin') {
-    return { session: null, error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) return { user: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  if (getUserRole(user) !== 'ops_admin') {
+    return { user: null, error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
-  return { session, error: null }
+  return { user, error: null }
 }
 
 // ── POST: Add single item ─────────────────────────────────────
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const { session, error: authErr } = await guard(request)
+  const { user, error: authErr } = await guard(request)
   if (authErr) return authErr
 
   let body: Record<string, unknown>
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: `Invalid regulatoryStatus: ${status}` }, { status: 400 })
   }
 
-  const actorEmail = session!.user.email ?? `[no-email, id=${session!.user.id}]`
+  const actorEmail = user!.email ?? `[no-email, id=${user!.id}]`
   const supabase   = createServiceClient()
   const now        = new Date().toISOString()
 
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
 // ── PATCH: Update single item ─────────────────────────────────
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
-  const { session, error: authErr } = await guard(request)
+  const { user, error: authErr } = await guard(request)
   if (authErr) return authErr
 
   let body: Record<string, unknown>
@@ -110,7 +110,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid or missing itemId' }, { status: 400 })
   }
 
-  const actorEmail = session!.user.email ?? `[no-email, id=${session!.user.id}]`
+  const actorEmail = user!.email ?? `[no-email, id=${user!.id}]`
   const supabase   = createServiceClient()
   const now        = new Date().toISOString()
 

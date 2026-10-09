@@ -48,8 +48,16 @@ describe('epcsRequestFields', () => {
 describe('POST /api/epcs?action=audit', () => {
   let db = scriptedDb(() => undefined)
   beforeAll(() => {
+    // The route verifies the caller with getUser() and acts only for the
+    // signed-in provider, resolved from the user (never a client provider_id).
     jest.doMock('@/lib/supabase/server', () => ({
-      createServerClient: jest.fn().mockResolvedValue({ auth: { getSession: async () => ({ data: { session: { user: { id: 'u1' } } } }) } }),
+      createServerClient: jest.fn().mockResolvedValue({
+        auth: { getUser: async () => ({ data: { user: { id: 'u1', app_metadata: { app_role: 'provider', clinic_id: 'c-1' } } }, error: null }) },
+      }),
+    }))
+    jest.doMock('@/lib/auth/current-provider', () => ({
+      ...jest.requireActual('@/lib/auth/current-provider'),
+      resolveCurrentProvider: async () => ({ provider_id: 'pr-1', clinic_id: 'c-1', first_name: 'A', last_name: 'B', npi_number: '1', signature_hash: null }),
     }))
     jest.doMock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
   })

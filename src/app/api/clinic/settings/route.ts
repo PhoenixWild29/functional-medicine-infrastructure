@@ -32,18 +32,18 @@ import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
   // Auth gate
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const clinicId = getUserClinicId(session.user) ?? null
+  const clinicId = getUserClinicId(user) ?? null
 
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }
 
-  if (getUserRole(session.user) !== 'clinic_admin') {
+  if (getUserRole(user) !== 'clinic_admin') {
     console.warn(`[clinic/settings] write refused: not the clinic admin | clinic=${clinicId}`)
     return NextResponse.json({ error: 'Only the clinic admin can change clinic settings.' }, { status: 403 })
   }
