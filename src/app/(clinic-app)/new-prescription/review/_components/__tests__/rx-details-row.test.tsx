@@ -7,8 +7,8 @@
  *   - Testosterone Cypionate (Schedule III) cannot be sent without a
  *     diagnosis; the row auto-expands with the diagnosis field focused.
  *   - Semaglutide (requires_clinical_difference) cannot be sent without a
- *     clinical difference; the picklist is pre-selected with the first
- *     option, so it sends with zero typing.
+ *     clinical difference. C8: nothing is pre-selected; the provider
+ *     chooses the reason.
  *   - BPC-157 (non-GLP-1, non-controlled) sends with zero interaction
  *     with the Rx details row.
  *   - Lines that entered the session without rules (protocol quick-load,
@@ -216,17 +216,21 @@ describe('Rx details row: Testosterone Cypionate (controlled)', () => {
 })
 
 describe('Rx details row — Semaglutide (requires clinical difference)', () => {
-  it('auto-expands with the picklist pre-selected on the first option and does not block sending', async () => {
+  // CHANGED (C8): the picklist used to be pre-selected on the first option,
+  // so the line sent with zero typing and the reason was never chosen.
+  it('auto-expands with no reason pre-selected, and sending waits until one is chosen', async () => {
     seedSession([SEMAGLUTIDE])
     renderReview()
 
     const row = await screen.findByTestId('rx-details-line-sema')
     expect(row).toHaveAttribute('data-expanded', 'true')
     const select = within(row).getByLabelText(/Clinical difference \(required\)/)
-    expect(select).toHaveValue(STANDARD_CLINICAL_DIFFERENCE_OPTIONS[0])
+    expect(select).toHaveValue('')
     expect(within(row).getByLabelText('Shipping')).toHaveValue('cold_chain')
-    expect(within(row).queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.getByText(/Sign in the signature box above to enable sending/)).toBeInTheDocument()
+    expect(screen.getByText(/Semaglutide 5mg\/mL Injectable needs a clinical difference statement/)).toBeInTheDocument()
+
+    fireEvent.change(select, { target: { value: STANDARD_CLINICAL_DIFFERENCE_OPTIONS[0] } })
+    await waitFor(() => expect(screen.getByText(/Sign in the signature box above to enable sending/)).toBeInTheDocument())
   })
 
   it('clearing the clinical difference blocks sending until one is chosen again', async () => {
@@ -241,7 +245,9 @@ describe('Rx details row — Semaglutide (requires clinical difference)', () => 
     })
     expect(select).toHaveAttribute('aria-invalid', 'true')
 
-    fireEvent.change(select, { target: { value: STANDARD_CLINICAL_DIFFERENCE_OPTIONS[2] } })
+    // CHANGED (C8): this picked [2], the shortage reason, which is now
+    // refused unless the commercial product is on FDA's shortage list.
+    fireEvent.change(select, { target: { value: STANDARD_CLINICAL_DIFFERENCE_OPTIONS[3] } })
     await waitFor(() => {
       expect(screen.getByText(/Sign in the signature box above to enable sending/)).toBeInTheDocument()
     })
@@ -278,7 +284,8 @@ describe('Rx details row — lines without rules resolve from /api/formulations'
     expect(url).toContain(encodeURIComponent('formulation-sema'))
     expect(url).not.toContain('formulation-bpc')
 
-    expect(within(row).getByLabelText(/Clinical difference \(required\)/)).toHaveValue(STANDARD_CLINICAL_DIFFERENCE_OPTIONS[0])
+    // CHANGED (C8): no reason is pre-selected any more.
+    expect(within(row).getByLabelText(/Clinical difference \(required\)/)).toHaveValue('')
     expect(within(row).getByLabelText('Shipping')).toHaveValue('cold_chain')
     expect(within(row).getByLabelText(/Diagnosis code/)).toHaveValue('E66.9')
   })

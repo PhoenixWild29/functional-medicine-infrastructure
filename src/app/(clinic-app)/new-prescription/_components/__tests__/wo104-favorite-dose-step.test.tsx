@@ -47,7 +47,7 @@ const PROVIDER_ID = '22222222-2222-4222-8222-222222222222'
 
 const INGREDIENT = {
   ingredient_id: 'ing-sema', common_name: 'Semaglutide', therapeutic_category: 'Weight Management',
-  dea_schedule: null, fda_alert_status: null, fda_alert_message: null, description: null,
+  dea_schedule: null, fda_alert_status: null, fda_alert_message: null, description: null, compounding_status: 'approved_drug_component',
 }
 const SALT_FORM = { salt_form_id: 'sf-sema', salt_name: 'Semaglutide Base', abbreviation: null }
 const FORMULATION = {

@@ -46,6 +46,7 @@ import Papa from 'papaparse'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { Json } from '@/types/database.types'
 import { formulationRxDefaults } from '@/lib/orders/rx-details'
+import { applyDemoCompounding } from '@/lib/compliance/demo-compounding'
 import { defaultPackagePrice, packageRowsFor, pharmacyFormulationId, type PackageRow } from '@/lib/catalog/packages'
 import { listAttachablePharmacies } from '@/lib/catalog/attachable-pharmacies'
 
@@ -290,6 +291,9 @@ async function main(): Promise<void> {
   }))
   const { error: e1 } = await supabase.from('ingredients').upsert(ingRows, { onConflict: 'ingredient_id' })
   if (e1) throw e1
+  // Compliance C8: demo compounding statuses (demo data, not verified).
+  // An ingredient left unverified cannot be ordered.
+  await applyDemoCompounding(supabase)
 
   const saltRows = [...saltForms.values()].map((s) => ({ ...s, is_active: true }))
   const { error: e2 } = await supabase.from('salt_forms').upsert(saltRows, { onConflict: 'salt_form_id' })

@@ -70,6 +70,10 @@ export interface FormulationRxDefaults {
   default_shipping_type:        ShippingType
   clinical_difference_options:  string[]
   requires_clinical_difference: boolean
+  /** C8: an ingredient's commercial product is on FDA's shortage list. */
+  shortage_reason_allowed?:     boolean
+  /** C8: why this product cannot be ordered (an ingredient's compounding status). */
+  compounding_block?:           CompoundingBlockInfo | null
 }
 
 export interface FormulationRxDefaultsInput {
@@ -132,14 +136,25 @@ export interface RxDetails {
 export interface RxRules {
   /** DEA schedule ≥ 2 → a diagnosis (code or text) is required at sign time. */
   isControlled:               boolean
-  /** formulations.requires_clinical_difference */
+  /** formulations.requires_clinical_difference, or (C8) an ingredient with a commercial equivalent. */
   requiresClinicalDifference: boolean
-  /** formulations.clinical_difference_options (first entry = default) */
+  /** The picklist (C8: none pre-selected; the shortage reason only when allowed). */
   clinicalDifferenceOptions:  string[]
+  /** C8: the shortage reason may be given (the commercial product is on FDA's shortage list). */
+  shortageReasonAllowed?:     boolean
+  /** C8: why this product cannot be ordered, or null. */
+  compoundingBlock?:          CompoundingBlockInfo | null
+}
+
+/** C8 (lib/compliance/compounding): a product that cannot be ordered, and why. */
+export interface CompoundingBlockInfo {
+  code:    'not_compoundable' | 'compounding_status_unknown'
+  message: string
 }
 
 export type RxDetailsSource = Partial<Pick<FormulationRxDefaults,
   'default_syringe_option' | 'default_shipping_type' | 'clinical_difference_options' | 'requires_clinical_difference'
+  | 'shortage_reason_allowed' | 'compounding_block'
 >> | null | undefined
 
 export interface RxDetailsSeed {
@@ -155,8 +170,6 @@ export interface RxDetailsSeed {
  * for this formulation when one exists — see loadRxDefaults.
  */
 export function defaultRxDetails(formulation: RxDetailsSource, seed: RxDetailsSeed = {}): RxDetails {
-  const requires = formulation?.requires_clinical_difference === true
-  const options = formulation?.clinical_difference_options ?? []
   const syringe = formulation?.default_syringe_option
   const shipping = formulation?.default_shipping_type
 
@@ -168,7 +181,9 @@ export function defaultRxDetails(formulation: RxDetailsSource, seed: RxDetailsSe
     substitutionAllowed: true,
     syringeOption:       isSyringeOption(syringe) ? syringe : 'none',
     shippingType:        isShippingType(shipping) ? shipping : 'standard',
-    clinicalDifference:  requires && options.length > 0 ? (options[0] ?? null) : null,
+    // C8: never pre-selected. The provider chooses the reason, so a signed
+    // prescription records a decision, not a default.
+    clinicalDifference:  null,
     diagnosisCode:       blankToNull(seed.diagnosisCode),
     diagnosisText:       blankToNull(seed.diagnosisText),
     specialInstructions: null,
@@ -176,14 +191,64 @@ export function defaultRxDetails(formulation: RxDetailsSource, seed: RxDetailsSe
 }
 
 export function rulesFromFormulation(formulation: RxDetailsSource, deaSchedule: number | null | undefined): RxRules {
+  const shortageAllowed = formulation?.shortage_reason_allowed === true
   return {
     isControlled:               typeof deaSchedule === 'number' && deaSchedule >= 2,
     requiresClinicalDifference: formulation?.requires_clinical_difference === true,
-    clinicalDifferenceOptions:  [...(formulation?.clinical_difference_options ?? [])],
+    clinicalDifferenceOptions:  clinicalDifferenceOptions(formulation?.clinical_difference_options ?? [], shortageAllowed),
+    shortageReasonAllowed:      shortageAllowed,
+    compoundingBlock:           formulation?.compounding_block ?? null,
   }
 }
 
-export type MissingRxDetail = 'diagnosis' | 'clinical_difference'
+/**
+ * C8: a line from the older flat catalog. Its ingredients cannot be
+ * checked for a commercial equivalent, so it always needs a reason; there
+ * is no shortage data for it, so not the shortage reason.
+ */
+export function legacyCatalogRules(deaSchedule: number | null | undefined): RxRules {
+  return {
+    isControlled:               typeof deaSchedule === 'number' && deaSchedule >= 2,
+    requiresClinicalDifference: true,
+    clinicalDifferenceOptions:  clinicalDifferenceOptions(STANDARD_CLINICAL_DIFFERENCE_OPTIONS, false),
+    shortageReasonAllowed:      false,
+    compoundingBlock:           null,
+  }
+}
+
+// ── C8: the clinical-difference reason ──────────────────────
+// Kept here (lib/compliance/compounding re-exports them) so this module
+// never imports that one: the two would import each other.
+
+export const SHORTAGE_REASON = STANDARD_CLINICAL_DIFFERENCE_OPTIONS[2]
+export const MIN_OTHER_REASON_LENGTH = 20
+
+export function clinicalDifferenceOptions(options: ReadonlyArray<string>, shortageAllowed: boolean): string[] {
+  return options.filter(o => shortageAllowed || o !== SHORTAGE_REASON)
+}
+
+export type ClinicalDifferenceProblem = 'missing' | 'shortage_not_listed' | 'other_too_short'
+
+/** Is this a reason a signed prescription may carry? null when it is. */
+export function clinicalDifferenceProblem(
+  reason: string | null | undefined,
+  rules: { options: ReadonlyArray<string>; shortageAllowed: boolean },
+): ClinicalDifferenceProblem | null {
+  const r = (reason ?? '').trim()
+  if (!r) return 'missing'
+  if (r === SHORTAGE_REASON) return rules.shortageAllowed ? null : 'shortage_not_listed'
+  const picked = rules.options.includes(r) || (STANDARD_CLINICAL_DIFFERENCE_OPTIONS as readonly string[]).includes(r)
+  if (!picked && r.length < MIN_OTHER_REASON_LENGTH) return 'other_too_short'
+  return null
+}
+
+export type MissingRxDetail = 'diagnosis' | 'clinical_difference' | 'clinical_difference_shortage' | 'clinical_difference_other'
+
+const REASON_PROBLEM: Record<ClinicalDifferenceProblem, MissingRxDetail> = {
+  missing:             'clinical_difference',
+  shortage_not_listed: 'clinical_difference_shortage',
+  other_too_short:     'clinical_difference_other',
+}
 
 /**
  * Fields a rule requires that are still empty. The Review card blocks
@@ -194,8 +259,12 @@ export function missingRxDetails(details: RxDetails | null | undefined, rules: R
   const missing: MissingRxDetail[] = []
   const hasDiagnosis = !!(blankToNull(details?.diagnosisCode) || blankToNull(details?.diagnosisText))
   if (rules.isControlled && !hasDiagnosis) missing.push('diagnosis')
-  if (rules.requiresClinicalDifference && !blankToNull(details?.clinicalDifference)) {
-    missing.push('clinical_difference')
+  if (rules.requiresClinicalDifference) {
+    const problem = clinicalDifferenceProblem(details?.clinicalDifference, {
+      options:         rules.clinicalDifferenceOptions,
+      shortageAllowed: rules.shortageReasonAllowed === true,
+    })
+    if (problem) missing.push(REASON_PROBLEM[problem])
   }
   return missing
 }
@@ -206,8 +275,10 @@ export function rxDetailsNeedConfirmation(rules: RxRules): boolean {
 }
 
 export const MISSING_RX_DETAIL_LABEL: Record<MissingRxDetail, string> = {
-  diagnosis:           'a diagnosis (controlled substance)',
-  clinical_difference: 'a clinical difference statement',
+  diagnosis:                    'a diagnosis (controlled substance)',
+  clinical_difference:          'a clinical difference statement',
+  clinical_difference_shortage: 'a different clinical difference reason (the commercial product is not on the FDA shortage list)',
+  clinical_difference_other:    'a clinical difference reason of at least 20 characters',
 }
 
 // ── Derived: days supply + dispense ─────────────────────────

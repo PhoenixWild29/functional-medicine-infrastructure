@@ -67,6 +67,16 @@ function draft(n: number, over: Record<string, unknown> = {}) {
   }
 }
 
+/** C8: a compoundable, reviewed ingredient unless told otherwise. */
+function ingredient(name: string, over: Record<string, unknown> = {}) {
+  return {
+    common_name: name, dea_schedule: null, compounding_status: 'approved_drug_component',
+    commercial_equivalent: false, on_fda_shortage: false,
+    compounding_status_source: 'FDA, 2026-10-01', compounding_status_reviewed_at: '2026-10-01T00:00:00.000Z',
+    ...over,
+  }
+}
+
 function world(orders: Array<Record<string, unknown>>) {
   return fakeDb({
     orders,
@@ -84,13 +94,23 @@ function world(orders: Array<Record<string, unknown>>) {
       { pharmacy_id: 'ph-fax', state_code: 'TX', is_active: true, deleted_at: null, expiration_date: '2099-12-31', sterile_compounding: true },
     ],
     catalog: [],
+    // C8: every formulation's ingredients carry a compounding status (a
+    // formulation with none, or an unverified one, is refused).
     formulations: [
-      { formulation_id: 'f-plain', requires_clinical_difference: false },
+      { formulation_id: 'f-plain', requires_clinical_difference: false, salt_forms: { ingredients: ingredient('Plain') } },
       // C5: a sterile product (dosage_forms.is_sterile).
-      { formulation_id: 'f-inj', requires_clinical_difference: false, dosage_forms: { is_sterile: true } },
-      { formulation_id: 'f-glp1', requires_clinical_difference: true },
+      { formulation_id: 'f-inj', requires_clinical_difference: false, dosage_forms: { is_sterile: true }, salt_forms: { ingredients: ingredient('Plain') } },
+      { formulation_id: 'f-glp1', requires_clinical_difference: true, salt_forms: { ingredients: ingredient('Semaglutide', { commercial_equivalent: true }) } },
       // Testosterone: Schedule III through its salt form's ingredient.
-      { formulation_id: 'f-testo', requires_clinical_difference: false, salt_forms: { ingredients: { dea_schedule: 3 } }, formulation_ingredients: [] },
+      { formulation_id: 'f-testo', requires_clinical_difference: false, salt_forms: { ingredients: ingredient('Testosterone', { dea_schedule: 3 }) }, formulation_ingredients: [] },
+      // C8
+      { formulation_id: 'f-bpc', requires_clinical_difference: false, salt_forms: { ingredients: ingredient('BPC-157', { compounding_status: 'pending_evaluation', compounding_status_source: 'demo data, not verified' }) } },
+      { formulation_id: 'f-nad', requires_clinical_difference: false, salt_forms: { ingredients: ingredient('NAD+', { compounding_status: 'unverified', compounding_status_source: null, compounding_status_reviewed_at: null }) } },
+      { formulation_id: 'f-ltx', requires_clinical_difference: false, salt_forms: { ingredients: ingredient('Naltrexone', { commercial_equivalent: true }) } },
+      { formulation_id: 'f-sema-short', requires_clinical_difference: true, salt_forms: { ingredients: ingredient('Semaglutide', { commercial_equivalent: true, on_fda_shortage: true }) } },
+      { formulation_id: 'f-combo', requires_clinical_difference: false, salt_forms: null, formulation_ingredients: [
+        { ingredients: ingredient('Cyanocobalamin') }, { ingredients: ingredient('TB-500', { compounding_status: 'pending_evaluation' }) },
+      ] },
     ],
     patients: [
       { patient_id: P1, allergies: ['sulfa'], nkda: false },
@@ -523,7 +543,7 @@ describe('the shipping address is frozen at signing', () => {
 
   it('if the address cannot be written, nothing is signed, and the error says why', async () => {
     const db = withAddresses(world([draft(1)]))
-    db.failOn('orders:update', 'write failed')
+    db.failOn('orders:update', 'write failed', patch => 'shipping_address_snapshot_at' in patch)
     const res = await sign(db, [id(1)])
     expect(res.ok).toBe(false)
     if (res.ok) throw new Error('unreachable')
@@ -732,5 +752,137 @@ describe('prescriber verification and controlled substances together', () => {
     const db = world([testo(2, { shipping_state_snapshot: 'FL' })])
     const check = await checkBatch(db.client, { clinicId: CLINIC, userId: USER_CHEN, orderIds: [id(2)], atSigning: false })
     expect(codes(check.problems)).toEqual(expect.arrayContaining(['prescriber_license_missing', 'controlled_substance']))
+  })
+})
+
+// ── Compliance C8: compounding status and the documented reason ──
+describe('C8: what may be compounded, and the documented reason', () => {
+  const REASON = 'Patient requires a dose or strength not commercially available'
+  const SHORTAGE = 'Commercial product is unavailable or on national shortage'
+  const line = (n: number, formulationId: string, over: Record<string, unknown> = {}) =>
+    draft(n, { formulation_id: formulationId, medication_snapshot: { medication_name: `${formulationId} product`, dea_schedule: 0 }, ...over })
+  const codes = (problems: ReadonlyArray<{ code: string }> | undefined) => (problems ?? []).map(p => p.code)
+
+  it('an ingredient that may not be compounded: refused (422), naming it and why; nothing signed', async () => {
+    const db = world([draft(1), line(2, 'f-bpc')])
+    const res = await sign(db, [id(1), id(2)])
+    if (res.ok) throw new Error('expected a refusal')
+    expect(res.status).toBe(422)
+    expect(res.problems).toEqual([expect.objectContaining({
+      orderId: id(2), code: 'not_compoundable',
+      message: 'f-bpc product: BPC-157 is pending FDA evaluation (removed from Category 2, not yet placed in Category 1 or on the bulks list), so it cannot be compounded or ordered through CompoundIQ.',
+    })])
+    expect(signingUpdates(db)).toHaveLength(0)
+  })
+
+  it('a combination with one such ingredient is refused too', async () => {
+    const res = await sign(world([line(2, 'f-combo')]), [id(2)])
+    if (res.ok) throw new Error('expected a refusal')
+    expect(codes(res.problems)).toEqual(['not_compoundable'])
+  })
+
+  it('an unverified ingredient: compounding_status_unknown, a block (422)', async () => {
+    const res = await sign(world([line(2, 'f-nad')]), [id(2)])
+    if (res.ok) throw new Error('expected a refusal')
+    expect(res.status).toBe(422)
+    expect(res.problems).toEqual([expect.objectContaining({
+      orderId: id(2), code: 'compounding_status_unknown',
+      message: 'f-nad product: the compounding status of NAD+ has not been verified, so it cannot be ordered.',
+    })])
+  })
+
+  it('the pre-sign check reports the same', async () => {
+    const check = await checkBatch(world([line(2, 'f-bpc')]).client, { clinicId: CLINIC, userId: USER_CHEN, orderIds: [id(2)], atSigning: false })
+    expect(codes(check.problems)).toEqual(['not_compoundable'])
+  })
+
+  it('a commercial equivalent needs a reason even when the formulation flag is off', async () => {
+    const missing = await sign(world([line(2, 'f-ltx')]), [id(2)])
+    if (missing.ok) throw new Error('expected a refusal')
+    expect(missing.problems).toEqual([expect.objectContaining({ orderId: id(2), code: 'rx_details', message: 'f-ltx product needs a clinical difference statement. Edit this line to add it.' })])
+    expect((await sign(world([line(2, 'f-ltx', { clinical_difference: REASON })]), [id(2)])).ok).toBe(true)
+  })
+
+  it('the shortage reason is refused unless the commercial product is on the FDA shortage list', async () => {
+    const notListed = await sign(world([line(2, 'f-glp1', { clinical_difference: SHORTAGE })]), [id(2)])
+    if (notListed.ok) throw new Error('expected a refusal')
+    expect(notListed.problems![0]!.message).toBe('f-glp1 product needs a different clinical difference reason (the commercial product is not on the FDA shortage list). Edit this line to add it.')
+    expect((await sign(world([line(2, 'f-sema-short', { clinical_difference: SHORTAGE })]), [id(2)])).ok).toBe(true)
+  })
+
+  it('a typed "Other" reason needs at least 20 characters', async () => {
+    const short = await sign(world([line(2, 'f-glp1', { clinical_difference: 'needs it' })]), [id(2)])
+    if (short.ok) throw new Error('expected a refusal')
+    expect(short.problems![0]!.message).toContain('a clinical difference reason of at least 20 characters')
+    expect((await sign(world([line(2, 'f-glp1', { clinical_difference: 'Patient cannot tolerate sorbitol' })]), [id(2)])).ok).toBe(true)
+  })
+
+  describe('an older catalog line', () => {
+    const legacy = (n: number, over: Record<string, unknown> = {}) =>
+      draft(n, { catalog_item_id: 'cat-1', formulation_id: null, medication_snapshot: { medication_name: 'Old Cream 2%', dea_schedule: 0 }, ...over })
+    const withCatalog = (status: string, orders: Array<Record<string, unknown>>) => {
+      const db = world(orders)
+      db.tables['catalog'] = [{ item_id: 'cat-1', dea_schedule: 0, form: 'Cream', regulatory_status: status }]
+      return db
+    }
+
+    it('always needs a reason', async () => {
+      const res = await sign(withCatalog('ACTIVE', [legacy(2)]), [id(2)])
+      if (res.ok) throw new Error('expected a refusal')
+      expect(res.problems).toEqual([expect.objectContaining({ orderId: id(2), code: 'rx_details', message: expect.stringContaining('a clinical difference statement') })])
+      expect((await sign(withCatalog('ACTIVE', [legacy(2, { clinical_difference: REASON })]), [id(2)])).ok).toBe(true)
+    })
+
+    it.each(['RECALLED', 'DISCONTINUED'])('%s is refused', async status => {
+      const res = await sign(withCatalog(status, [legacy(2, { clinical_difference: REASON })]), [id(2)])
+      if (res.ok) throw new Error('expected a refusal')
+      expect(res.problems).toEqual([expect.objectContaining({ orderId: id(2), code: 'not_compoundable', message: `Old Cream 2%: this catalog item is ${status.toLowerCase()}, so it cannot be ordered.` })])
+    })
+  })
+
+  describe('what the signed prescription records', () => {
+    it('each line\'s ingredients, their status and source, and the reason, in the medication snapshot, before it is locked', async () => {
+      const db = world([line(2, 'f-glp1', { clinical_difference: REASON })])
+      expect((await sign(db, [id(2)])).ok).toBe(true)
+      const snapshot = orderRow(db, 2)['medication_snapshot'] as Record<string, unknown>
+      expect(snapshot['medication_name']).toBe('f-glp1 product')
+      expect(snapshot['compounding']).toEqual({
+        ingredients: [{
+          name: 'Semaglutide', status: 'approved_drug_component', commercial_equivalent: true, on_fda_shortage: false,
+          source: 'FDA, 2026-10-01', reviewed_at: '2026-10-01T00:00:00.000Z',
+        }],
+        clinical_difference_required: true,
+        clinical_difference: REASON,
+        checked_at: expect.any(String),
+      })
+      // Written while DRAFT (the lock trigger allows it), before the signing update.
+      const writes = db.writesTo('orders', 'update')
+      const snap = writes.findIndex(w => w.patch?.['medication_snapshot'] !== undefined)
+      const signed = writes.findIndex(w => w.patch?.['status'] === 'AWAITING_PAYMENT')
+      expect(snap).toBeGreaterThan(-1)
+      expect(snap).toBeLessThan(signed)
+    })
+
+    it('an older catalog line records that its ingredients cannot be checked', async () => {
+      const db = world([draft(2, { catalog_item_id: 'cat-1', formulation_id: null, clinical_difference: REASON, medication_snapshot: { medication_name: 'Old Cream 2%', dea_schedule: 0 } })])
+      db.tables['catalog'] = [{ item_id: 'cat-1', dea_schedule: 0, form: 'Cream', regulatory_status: 'ACTIVE' }]
+      expect((await sign(db, [id(2)])).ok).toBe(true)
+      expect((orderRow(db, 2)['medication_snapshot'] as Record<string, unknown>)['compounding']).toEqual({
+        ingredients: [],
+        catalog_regulatory_status: 'ACTIVE',
+        clinical_difference_required: true,
+        clinical_difference: REASON,
+        checked_at: expect.any(String),
+      })
+    })
+
+    it('a snapshot that cannot be written: nothing is signed (503)', async () => {
+      const db = world([line(2, 'f-glp1', { clinical_difference: REASON })])
+      db.failOn('orders:update', 'connection reset', patch => 'medication_snapshot' in patch)
+      const res = await sign(db, [id(2)])
+      expect(res).toMatchObject({ ok: false, status: 503, error: 'The compounding record could not be written on the prescriptions. Nothing was signed; try again.' })
+      expect(signingUpdates(db)).toHaveLength(0)
+      expect(orderRow(db, 2)['status']).toBe('DRAFT')
+    })
   })
 })

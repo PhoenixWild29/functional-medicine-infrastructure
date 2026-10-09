@@ -45,7 +45,7 @@ const PROVIDER_ID = '22222222-2222-4222-8222-222222222222'
 const SALT_FORM = { salt_form_id: 'sf-base', salt_name: 'Base', abbreviation: null }
 const ingredient = (id: string, name: string) => ({
   ingredient_id: id, common_name: name, therapeutic_category: 'Peptides',
-  dea_schedule: null, fda_alert_status: null, fda_alert_message: null, description: null,
+  dea_schedule: null, fda_alert_status: null, fda_alert_message: null, description: null, compounding_status: 'approved_drug_component',
 })
 const formulation = (id: string, name: string) => ({
   formulation_id: id, name, concentration: '5mg/mL',

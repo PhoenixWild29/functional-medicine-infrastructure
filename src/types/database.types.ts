@@ -875,9 +875,64 @@ export type Database = {
           },
         ]
       }
+      ingredient_compounding_history: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          history_id: string
+          ingredient_id: string
+          new_commercial_equivalent: boolean
+          new_on_fda_shortage: boolean
+          new_status: string
+          old_commercial_equivalent: boolean | null
+          old_on_fda_shortage: boolean | null
+          old_status: string | null
+          source: string | null
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          history_id?: string
+          ingredient_id: string
+          new_commercial_equivalent: boolean
+          new_on_fda_shortage: boolean
+          new_status: string
+          old_commercial_equivalent?: boolean | null
+          old_on_fda_shortage?: boolean | null
+          old_status?: string | null
+          source?: string | null
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          history_id?: string
+          ingredient_id?: string
+          new_commercial_equivalent?: boolean
+          new_on_fda_shortage?: boolean
+          new_status?: string
+          old_commercial_equivalent?: boolean | null
+          old_on_fda_shortage?: boolean | null
+          old_status?: string | null
+          source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingredient_compounding_history_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "ingredients"
+            referencedColumns: ["ingredient_id"]
+          },
+        ]
+      }
       ingredients: {
         Row: {
+          commercial_equivalent: boolean
           common_name: string
+          compounding_status: string
+          compounding_status_reviewed_at: string | null
+          compounding_status_reviewed_by: string | null
+          compounding_status_source: string | null
           created_at: string
           dea_schedule: number | null
           deleted_at: string | null
@@ -887,11 +942,17 @@ export type Database = {
           ingredient_id: string
           is_active: boolean
           is_hazardous: boolean
+          on_fda_shortage: boolean
           therapeutic_category: string | null
           updated_at: string
         }
         Insert: {
+          commercial_equivalent?: boolean
           common_name: string
+          compounding_status?: string
+          compounding_status_reviewed_at?: string | null
+          compounding_status_reviewed_by?: string | null
+          compounding_status_source?: string | null
           created_at?: string
           dea_schedule?: number | null
           deleted_at?: string | null
@@ -901,11 +962,17 @@ export type Database = {
           ingredient_id?: string
           is_active?: boolean
           is_hazardous?: boolean
+          on_fda_shortage?: boolean
           therapeutic_category?: string | null
           updated_at?: string
         }
         Update: {
+          commercial_equivalent?: boolean
           common_name?: string
+          compounding_status?: string
+          compounding_status_reviewed_at?: string | null
+          compounding_status_reviewed_by?: string | null
+          compounding_status_source?: string | null
           created_at?: string
           dea_schedule?: number | null
           deleted_at?: string | null
@@ -915,6 +982,7 @@ export type Database = {
           ingredient_id?: string
           is_active?: boolean
           is_hazardous?: boolean
+          on_fda_shortage?: boolean
           therapeutic_category?: string | null
           updated_at?: string
         }
