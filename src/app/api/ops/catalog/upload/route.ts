@@ -18,12 +18,11 @@ import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { Enums } from '@/types/database.types'
 import { getUserRole } from '@/lib/auth/claims'
+import { validateCatalogRows } from '@/lib/catalog/validate-csv-rows'
 
 type RegulatoryStatusEnum = Enums<'regulatory_status_enum'>
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-
-const VALID_REGULATORY_STATUSES = ['ACTIVE', 'RECALLED', 'DISCONTINUED', 'SHORTAGE']
 
 export interface CsvRow {
   medication_name:     string
@@ -97,72 +96,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Pharmacy not found' }, { status: 404 })
   }
 
-  // ── Server-side validation ────────────────────────────────────
-  const warnings: string[] = []
-  const validRows: Array<{
-    pharmacy_id:         string
-    medication_name:     string
-    form:                string
-    dose:                string
-    wholesale_price:     number
-    retail_price:        number | null
-    regulatory_status:   RegulatoryStatusEnum
-    requires_prior_auth: boolean
-    is_active:           boolean
-    updated_at:          string
-    upload_history_id:   string | null
-  }> = []
-
+  // ── Server-side validation (lib/catalog/validate-csv-rows, shared
+  // with pharmacy onboarding) ──────────────────────────────────────
   const now = new Date().toISOString()
-
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i] as Record<string, unknown>
-    const rowNum = i + 2  // 1-indexed, +1 for header row
-
-    const name   = String(row['medication_name'] ?? '').trim()
-    const form   = String(row['form']            ?? '').trim()
-    const dose   = String(row['dose']            ?? '').trim()
-    const status = String(row['regulatory_status'] ?? '').trim().toUpperCase()
-
-    if (!name || !form || !dose) {
-      warnings.push(`Row ${rowNum}: skipped — missing required field (medication_name, form, or dose)`)
-      continue
-    }
-
-    if (!VALID_REGULATORY_STATUSES.includes(status)) {
-      warnings.push(`Row ${rowNum}: invalid regulatory_status '${status}' — defaulting to ACTIVE`)
-    }
-
-    const wholesale = parseFloat(String(row['wholesale_price'] ?? ''))
-    if (isNaN(wholesale) || wholesale < 0) {
-      warnings.push(`Row ${rowNum}: skipped — invalid wholesale_price`)
-      continue
-    }
-
-    const retail = row['retail_price'] != null
-      ? parseFloat(String(row['retail_price']))
-      : null
-    const retailVal = retail !== null && !isNaN(retail) && retail >= 0 ? retail : null
-
-    const priorAuth = row['requires_prior_auth']
-    const requiresPriorAuth =
-      typeof priorAuth === 'boolean' ? priorAuth
-      : String(priorAuth ?? '').toLowerCase() === 'true' || String(priorAuth ?? '') === '1'
-
-    validRows.push({
-      pharmacy_id:         pharmacyId,
-      medication_name:     name,
-      form,
-      dose,
-      wholesale_price:     wholesale,
-      retail_price:        retailVal,
-      regulatory_status:   (VALID_REGULATORY_STATUSES.includes(status) ? status : 'ACTIVE') as RegulatoryStatusEnum,
-      requires_prior_auth: requiresPriorAuth,
-      is_active:           true,
-      updated_at:          now,
-      upload_history_id:   null,  // stamped after history insert below
-    })
-  }
+  const { valid, warnings } = validateCatalogRows(rows)
+  const validRows = valid.map(v => ({
+    pharmacy_id:         pharmacyId,
+    ...v,
+    regulatory_status:   v.regulatory_status as RegulatoryStatusEnum,
+    is_active:           true,
+    updated_at:          now,
+    upload_history_id:   null as string | null,  // stamped after history insert below
+  }))
 
   if (validRows.length === 0) {
     return NextResponse.json({ error: 'No valid rows found after validation', warnings }, { status: 422 })
