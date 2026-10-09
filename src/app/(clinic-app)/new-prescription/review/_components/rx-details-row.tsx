@@ -22,6 +22,8 @@ import { useEffect, useId, useRef, useState } from 'react'
 import {
   formatDispenseWithPackage,
   MAX_REFILLS,
+  MIN_OTHER_REASON_LENGTH,
+  MISSING_RX_DETAIL_LABEL,
   rxDetailsNeedConfirmation,
   SHIPPING_TYPES,
   shippingTypeLabel,
@@ -94,7 +96,7 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
   useEffect(() => {
     if (!open) return
     if (missing.includes('diagnosis')) diagnosisRef.current?.focus()
-    else if (missing.includes('clinical_difference')) clinicalRef.current?.focus()
+    else if (missing.some(m => m.startsWith('clinical_difference'))) clinicalRef.current?.focus()
     // Only on open/rule change — not on every keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, needsConfirmation])
@@ -106,7 +108,9 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
   )
 
   const missingDiagnosis = missing.includes('diagnosis')
-  const missingClinical = missing.includes('clinical_difference')
+  // C8: missing, a shortage reason that is not allowed, or a short "Other".
+  const missingClinical = missing.some(m => m.startsWith('clinical_difference'))
+  const clinicalProblem = missing.find(m => m === 'clinical_difference_shortage' || m === 'clinical_difference_other')
 
   return (
     <div
@@ -248,6 +252,7 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
                     className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                   />
                 )}
+                {clinicalOther && <p className="mt-0.5 text-[11px] text-muted-foreground">At least {MIN_OTHER_REASON_LENGTH} characters.</p>}
               </>
             ) : (
               <input
@@ -260,6 +265,11 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
                 onChange={e => onChange({ clinicalDifference: e.target.value || null })}
                 className={`mt-0.5 w-full rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${missingClinical ? 'border-amber-500' : 'border-input'}`}
               />
+            )}
+            {clinicalProblem && (
+              <p className="mt-0.5 text-[11px] text-amber-700" data-testid={`clinical-difference-problem-${lineId}`}>
+                Needs {MISSING_RX_DETAIL_LABEL[clinicalProblem]}.
+              </p>
             )}
           </div>
 

@@ -188,6 +188,26 @@ const CONTROLLED_ITEM = item({
 })
 
 const CONTROLLED_LABEL = 'Controlled substance: prescribe through your EPCS system'
+// Compliance C8: /api/protocols returns each item's compounding block. An
+// item that may not be compounded is labelled and never loaded.
+const BPC_MESSAGE = 'BPC-157 5mg/mL Injectable: BPC-157 is pending FDA evaluation (removed from Category 2, not yet placed in Category 1 or on the bulks list), so it cannot be compounded or ordered through CompoundIQ.'
+const BLOCKED_ITEM = item({
+  item_id: 'item-bpc',
+  formulation_id: 'formulation-bpc',
+  pharmacy_id: 'pharmacy-strive',
+  wholesale_price: 50,
+  pharmacy_licensed: true,
+  compounding_block: { code: 'not_compoundable', message: BPC_MESSAGE },
+  sig_text: 'Inject 10 units subcutaneously once daily.',
+  formulations: {
+    formulation_id: 'formulation-bpc',
+    name: 'BPC-157 5mg/mL Injectable',
+    concentration: '5mg/mL',
+    dosage_forms: { name: 'Injectable Solution' },
+  },
+  pharmacies: { pharmacy_id: 'pharmacy-strive', name: 'Strive Pharmacy', slug: 'strive', integration_tier: 'TIER_4_FAX' },
+})
+const NOT_COMPOUNDABLE_LABEL = 'Not compoundable: cannot be ordered through CompoundIQ'
 
 let protocolItems: unknown[] = []
 
@@ -474,6 +494,43 @@ describe('protocol quick-load — controlled substances (compliance C6)', () => 
     fireEvent.click(await openProtocol())
 
     expect(await screen.findByRole('alert')).toHaveTextContent(CONTROLLED_LABEL)
+    expect(screen.getByTestId('rx-count')).toHaveTextContent('0')
+    expect(mockPush).not.toHaveBeenCalled()
+  })
+})
+
+describe('protocol quick-load: products that may not be compounded (compliance C8)', () => {
+  it('labels the item in the protocol', async () => {
+    protocolItems = [LICENSED_ITEM, BLOCKED_ITEM]
+    seedSession('TX')
+    renderPanel()
+
+    await openProtocol()
+    expect(screen.getByTestId('protocol-item-not-compoundable-item-bpc')).toHaveTextContent(NOT_COMPOUNDABLE_LABEL)
+  })
+
+  it('loads the other lines and reports the blocked line with the reason', async () => {
+    protocolItems = [LICENSED_ITEM, BLOCKED_ITEM]
+    seedSession('TX')
+    renderPanel()
+
+    fireEvent.click(await openProtocol())
+
+    await waitFor(() => expect(screen.getByTestId('rx-count')).toHaveTextContent('1'))
+    expect(screen.getByTestId('rx-names')).not.toHaveTextContent('BPC-157')
+    expect(mockPush).toHaveBeenCalledWith('/new-prescription/review')
+    expect(screen.getByTestId('notice-count')).toHaveTextContent('1')
+    expect(await screen.findByText(BPC_MESSAGE)).toBeInTheDocument()
+  })
+
+  it('a protocol of only such lines loads nothing and says why', async () => {
+    protocolItems = [BLOCKED_ITEM]
+    seedSession('TX')
+    renderPanel()
+
+    fireEvent.click(await openProtocol())
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(BPC_MESSAGE)
     expect(screen.getByTestId('rx-count')).toHaveTextContent('0')
     expect(mockPush).not.toHaveBeenCalled()
   })

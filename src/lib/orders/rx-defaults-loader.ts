@@ -22,11 +22,21 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import {
+  STANDARD_CLINICAL_DIFFERENCE_OPTIONS,
+  clinicalDifferenceOptions,
   formulationRxDefaults,
   isShippingType,
   isSyringeOption,
   type FormulationRxDefaults,
 } from './rx-details'
+import {
+  INGREDIENT_COMPOUNDING_COLUMNS,
+  compoundingBlock,
+  ingredientFromRow,
+  requiresClinicalDifference,
+  shortageReasonAllowed,
+  type IngredientCompoundingRow,
+} from '@/lib/compliance/compounding'
 
 type ServiceClient = SupabaseClient<Database>
 
@@ -52,13 +62,14 @@ export interface RxFormulationDefaults {
   } | undefined
 }
 
-interface IngredientRow {
+interface IngredientRow extends IngredientCompoundingRow {
   common_name:  string
   dea_schedule: number | null
 }
 
 interface FormulationRow {
   formulation_id:               string
+  name?:                        string | null
   concentration_value?:         number | null
   concentration_unit?:          string | null
   default_syringe_option:       string | null
@@ -92,13 +103,13 @@ export async function loadRxDefaults(
     supabase
       .from('formulations')
       .select(`
-        formulation_id, concentration_value, concentration_unit,
+        formulation_id, name, concentration_value, concentration_unit,
         default_syringe_option, default_shipping_type,
         clinical_difference_options, requires_clinical_difference,
         dosage_forms(name, requires_injection_supplies),
         routes_of_administration(name),
-        salt_forms(ingredients(common_name, dea_schedule)),
-        formulation_ingredients(ingredients(common_name, dea_schedule))
+        salt_forms(ingredients(dea_schedule, ${INGREDIENT_COMPOUNDING_COLUMNS})),
+        formulation_ingredients(ingredients(dea_schedule, ${INGREDIENT_COMPOUNDING_COLUMNS}))
       `)
       .in('formulation_id', ids),
     supabase
@@ -139,7 +150,7 @@ export async function loadRxDefaults(
 
     out[raw.formulation_id] = {
       formulationId:      raw.formulation_id,
-      defaults:           resolveDefaults(raw, ingredients.map(i => i.common_name)),
+      defaults:           resolveDefaults(raw, ingredients),
       deaSchedule,
       suggestedDiagnosis: suggestions[raw.formulation_id] ?? null,
       dispenseInputs: {
@@ -156,24 +167,35 @@ export async function loadRxDefaults(
  * Column values win; anything unset falls back to the seed rule so a
  * formulation inserted after the migration still gets sane defaults.
  */
-function resolveDefaults(row: FormulationRow, ingredientNames: string[]): FormulationRxDefaults {
+function resolveDefaults(row: FormulationRow, ingredientRows: IngredientRow[]): FormulationRxDefaults {
   const computed = formulationRxDefaults({
     dosageFormName:            row.dosage_forms?.name ?? null,
     routeName:                 row.routes_of_administration?.name ?? null,
     requiresInjectionSupplies: row.dosage_forms?.requires_injection_supplies ?? null,
-    ingredientNames,
+    ingredientNames:           ingredientRows.map(i => i.common_name),
   })
 
-  const requires = row.requires_clinical_difference ?? computed.requires_clinical_difference
+  // C8: an ingredient with a marketed FDA-approved equivalent makes the
+  // reason required whatever the column says; the shortage reason only
+  // while its commercial product is on FDA's shortage list.
+  const ingredients = ingredientRows.map(ingredientFromRow)
+  const requires = requiresClinicalDifference({
+    flag:        row.requires_clinical_difference ?? computed.requires_clinical_difference,
+    ingredients,
+  })
+  const shortageAllowed = shortageReasonAllowed(ingredients)
   const columnOptions = row.clinical_difference_options ?? []
+  const options = columnOptions.length > 0
+    ? columnOptions
+    : (requires ? [...STANDARD_CLINICAL_DIFFERENCE_OPTIONS] : [])
 
   return {
     default_syringe_option:       isSyringeOption(row.default_syringe_option) ? row.default_syringe_option : computed.default_syringe_option,
     default_shipping_type:        isShippingType(row.default_shipping_type) ? row.default_shipping_type : computed.default_shipping_type,
     requires_clinical_difference: requires,
-    clinical_difference_options:  columnOptions.length > 0
-      ? columnOptions
-      : (requires ? computed.clinical_difference_options : []),
+    clinical_difference_options:  clinicalDifferenceOptions(options, shortageAllowed),
+    shortage_reason_allowed:      shortageAllowed,
+    compounding_block:            compoundingBlock(row.name ?? 'This product', ingredients),
   }
 }
 

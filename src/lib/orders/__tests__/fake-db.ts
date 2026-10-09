@@ -7,7 +7,8 @@
 // recorded, so a test can assert that NOTHING was written when a batch is
 // refused, and what exactly the signing update carried.
 //
-// failOn('table:op') makes that call answer { data: null, error }.
+// failOn('table:op') makes that call answer { data: null, error }; with a
+// `when` test on the update patch, only the updates it matches fail.
 
 type Row = Record<string, unknown>
 type Filter = (row: Row) => boolean
@@ -23,7 +24,7 @@ export interface FakeWrite {
 
 export function fakeDb(tables: Record<string, Row[]>) {
   const writes: FakeWrite[] = []
-  const failures = new Map<string, string>()
+  const failures = new Map<string, { message: string; when?: ((patch: Row) => boolean) | undefined }>()
 
   function builder(table: string) {
     let op: 'select' | 'update' | 'insert' = 'select'
@@ -34,7 +35,9 @@ export function fakeDb(tables: Record<string, Row[]>) {
 
     const run = (): { data: unknown; error: { message: string } | null } => {
       const failure = failures.get(`${table}:${op}`)
-      if (failure) return { data: null, error: { message: failure } }
+      if (failure && (!failure.when || (patch !== undefined && failure.when(patch)))) {
+        return { data: null, error: { message: failure.message } }
+      }
       const rows = tables[table] ?? (tables[table] = [])
       if (op === 'insert') {
         rows.push(...(inserted ?? []))
@@ -80,7 +83,7 @@ export function fakeDb(tables: Record<string, Row[]>) {
     client: { from: (table: string) => builder(table) } as never,
     tables,
     writes,
-    failOn(key: string, message = 'connection reset') { failures.set(key, message) },
+    failOn(key: string, message = 'connection reset', when?: (patch: Row) => boolean) { failures.set(key, { message, when }) },
     /** Writes to one table (optionally one op). */
     writesTo(table: string, op?: 'update' | 'insert') {
       return writes.filter(w => w.table === table && (!op || w.op === op))

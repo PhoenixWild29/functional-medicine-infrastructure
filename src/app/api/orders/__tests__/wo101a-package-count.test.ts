@@ -101,12 +101,12 @@ function installHappyFixtures() {
       formulation_id: TEST_FORM_ID,
       name:           'Semaglutide 5mg/mL Injectable',
       concentration:  '5mg/mL',
-      dosage_forms:   { name: 'Injectable Solution' },
+      dosage_forms:   { name: 'Injectable Solution' }, salt_forms: { ingredients: { common_name: 'Fixture', dea_schedule: null, compounding_status: 'approved_drug_component' } },
     },
     error: null,
   })
   fixtures['pharmacy_formulations:maybeSingle'] = () => ({ data: { pharmacy_formulation_id: TEST_PF_ID, wholesale_price: 95 }, error: null })
-  fixtures['formulation_ingredients:await'] = () => ({ data: [{ ingredients: { dea_schedule: null } }], error: null })
+  fixtures['formulation_ingredients:await'] = () => ({ data: [{ ingredients: { common_name: 'Fixture combo', dea_schedule: null, compounding_status: 'approved_drug_component' } }], error: null })
   fixtures['pharmacies:maybeSingle'] = () => ({
     data: { pharmacy_id: TEST_PHARMACY_ID, name: 'Strive Pharmacy', integration_tier: 'TIER_1_API', fax_number: null, is_active: true, deleted_at: null },
     error: null,

@@ -81,7 +81,7 @@ function healthy(override: Script): Script {
       case 'patients':  return { data: PATIENT }
       case 'clinics':   return { data: { name: 'Sunrise Functional Medicine' } }
       // Compliance C6: submission checks the catalog; Semaglutide is not controlled.
-      case 'formulations': return { data: { formulation_id: 'f-sema', salt_forms: { ingredients: { dea_schedule: null } }, formulation_ingredients: [] } }
+      case 'formulations': return { data: { formulation_id: 'f-sema', salt_forms: { ingredients: { common_name: 'Semaglutide', dea_schedule: null, compounding_status: 'approved_drug_component' } }, formulation_ingredients: [] } }
       case 'pharmacies':
         return { data: { integration_tier: 'TIER_1_API', name: 'Acme', slug: 'acme', fax_number: '+15125550100' } }
       case 'pharmacy_api_configs':

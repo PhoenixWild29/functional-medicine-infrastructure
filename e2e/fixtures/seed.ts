@@ -372,6 +372,13 @@ export async function seedStaticData(): Promise<void> {
     therapeutic_category: 'Testing',
     dea_schedule:         null,
     is_hazardous:         false,
+    // C8: an unverified ingredient cannot be ordered. Test data, not a
+    // regulatory value.
+    compounding_status:             'approved_drug_component',
+    commercial_equivalent:          false,
+    on_fda_shortage:                false,
+    compounding_status_source:      'E2E test data, not verified',
+    compounding_status_reviewed_at: new Date().toISOString(),
     is_active:            true,
   }, { onConflict: 'ingredient_id' })
 
@@ -432,6 +439,13 @@ export async function seedStaticData(): Promise<void> {
     therapeutic_category: 'Testing — Controlled',
     dea_schedule:         3,
     is_hazardous:         false,
+    // C8: an unverified ingredient cannot be ordered. Test data, not a
+    // regulatory value.
+    compounding_status:             'approved_drug_component',
+    commercial_equivalent:          false,
+    on_fda_shortage:                false,
+    compounding_status_source:      'E2E test data, not verified',
+    compounding_status_reviewed_at: new Date().toISOString(),
     is_active:            true,
   }, { onConflict: 'ingredient_id' })
 
@@ -486,6 +500,13 @@ export async function seedStaticData(): Promise<void> {
     therapeutic_category: 'Testing — GLP-1',
     dea_schedule:         null,
     is_hazardous:         false,
+    // C8: an unverified ingredient cannot be ordered. Test data, not a
+    // regulatory value.
+    compounding_status:             'approved_drug_component',
+    commercial_equivalent:          true,
+    on_fda_shortage:                false,
+    compounding_status_source:      'E2E test data, not verified',
+    compounding_status_reviewed_at: new Date().toISOString(),
     is_active:            true,
   }, { onConflict: 'ingredient_id' })
 
