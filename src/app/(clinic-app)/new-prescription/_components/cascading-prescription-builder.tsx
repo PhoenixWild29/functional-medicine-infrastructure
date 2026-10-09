@@ -25,6 +25,7 @@
 // to price as normal. The clinic's common doses for the selected
 // formulation also show as chips on the dose step.
 
+import { patientName } from '@/lib/patients/display'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
@@ -1029,7 +1030,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
             duration={presetDurationFromBuilder(timingDuration.duration, timingDuration.customDurationDays)}
             cycle={sigMode === 'cycling' ? cycle : null}
             refills={parseInt(refills, 10)}
-            patient={session.patient ? { patientId: session.patient.patient_id, name: `${session.patient.first_name} ${session.patient.last_name}` } : null}
+            patient={session.patient ? { patientId: session.patient.patient_id, name: patientName(session.patient) } : null}
             disabled={!canAdd}
           />
           <button

@@ -159,7 +159,7 @@ describe('likely duplicate', () => {
     fireEvent.change(within(form).getByLabelText('Mobile number'), { target: { value: '5125550000' } })
     await submit(form)
     const prompt = await screen.findByRole('region', { name: 'Is this the same patient?' })
-    expect(within(prompt).getByText(/Alex Demo/)).toBeInTheDocument()
+    expect(within(prompt).getByText('Alex Demo')).toBeInTheDocument()
     expect(within(prompt).getByText(/same mobile/)).toBeInTheDocument()
     expect(await violations()).toEqual([])
   })

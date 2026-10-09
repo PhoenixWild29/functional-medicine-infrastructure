@@ -183,6 +183,14 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
     return response
   }
 
+  // Patient Intake PR 2: the patient's intake link. No session: the token
+  // is checked in the page and the route, against its stored hash. Like
+  // checkout, it returns before the Supabase refresh, and is no-store (the
+  // page holds the details the patient is typing).
+  if (pathname === '/intake' || pathname.startsWith('/intake/') || pathname.startsWith('/api/intake/')) {
+    return applySecurityHeaders(response)
+  }
+
   // Public routes — no auth required
   // /api/webhooks must be public — Stripe/Documo/Twilio arrive without a session
   // BLK-1 (cowork): /api/cron and /api/health must be public.

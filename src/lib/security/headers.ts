@@ -55,11 +55,11 @@ export function isCheckoutPath(pathname: string): boolean {
 }
 
 /**
- * Paths that may use the camera. EMPTY on purpose: no page needs it yet.
- * The planned license-scan page will need camera=(self); add its path here
- * (and only its path) when it lands, with a test.
+ * Paths that may use the camera: only the patient intake page, which reads
+ * the license barcode in the browser (Patient Intake PR 2). Tested in
+ * security-headers.test.ts.
  */
-const CAMERA_PATHS: ReadonlyArray<string> = []
+const CAMERA_PATHS: ReadonlyArray<string> = ['/intake']
 
 function originOf(url: string | undefined): string | null {
   if (!url) return null

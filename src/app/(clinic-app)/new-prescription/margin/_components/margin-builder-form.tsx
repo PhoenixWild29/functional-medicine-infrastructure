@@ -40,6 +40,7 @@
 // prescription to the same pharmacy adds nothing unless it upgrades the
 // shipment to cold chain.
 
+import { patientName } from '@/lib/patients/display'
 import { withOrderSelected } from '@/lib/orders/batch-sign-view'
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -980,7 +981,7 @@ function MarginBuilderFormForLine({
                 duration={presetDurationFromDays(durationDays)}
                 cycle={cycle ? { ...cycle, lengthDays: durationDays } : null}
                 refills={rxDetails.refills}
-                patient={rxSession.patient ? { patientId: rxSession.patient.patient_id, name: `${rxSession.patient.first_name} ${rxSession.patient.last_name}` } : null}
+                patient={rxSession.patient ? { patientId: rxSession.patient.patient_id, name: patientName(rxSession.patient) } : null}
                 disabled={sigTrimmed.length < 10}
               />
             </div>

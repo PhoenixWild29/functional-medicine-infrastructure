@@ -77,7 +77,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Fetch group — must belong to the token's clinic, be AWAITING_PAYMENT
   const { data: group, error: groupErr } = await supabase
     .from('payment_groups')
-    .select('group_id, status, total_cents, stripe_payment_intent_id, clinic_id')
+    .select('group_id, status, total_cents, stripe_payment_intent_id, clinic_id, patients ( intake_status )')
     .eq('group_id', groupId)
     .eq('clinic_id', clinicId)
     .maybeSingle()
@@ -96,6 +96,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { error: `Payment group is not awaiting payment (status=${group.status})` },
       { status: statusCode },
     )
+  }
+
+  // Patient Intake PR 2: nothing is charged while the patient has not
+  // finished their details. Signing is refused first; this is the second
+  // line of defence.
+  {
+    const embed = (group as { patients?: { intake_status?: string | null } | Array<{ intake_status?: string | null }> | null }).patients
+    const intake = Array.isArray(embed) ? embed[0]?.intake_status : embed?.intake_status
+    if (intake === 'pending') {
+      return NextResponse.json(
+        { code: 'INTAKE_PENDING', error: 'Your clinic is waiting for your details before you can pay. Please use the link your clinic sent to complete them.' },
+        { status: 409 },
+      )
+    }
   }
 
   if (!group.stripe_payment_intent_id) {

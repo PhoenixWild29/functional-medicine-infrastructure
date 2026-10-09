@@ -15,19 +15,29 @@
 // WO-100: when `selfProvider` is set (the signed-in user IS a provider),
 // the provider section is not rendered at all — the session provider is
 // the caller, and the only thing left to pick is the patient.
+//
+// Patient Intake PR 2: "+ New patient" adds a patient with only a mobile
+// number. They are selected straight away (the provider can prescribe
+// now), shown as awaiting details, and staff get the intake link.
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePrescriptionSession, type SessionPatient, type SessionProvider } from '../_context/prescription-session'
 import { AllergyChip, EditableAllergyChip, type SavedAllergies } from './allergy-chip'
+import { NewPatientForm, type CreatedPatient, type CreatedIntake } from './new-patient-form'
+import { IntakeChip } from '@/components/intake-chip'
+import { IntakeLinkPanel } from '@/components/intake-link-panel'
+import { patientName } from '@/lib/patients/display'
 
 // ── Types (match server query) ────────────────────────────────
 
 interface Patient {
   patient_id:    string
-  first_name:    string
-  last_name:     string
-  date_of_birth: string
+  // Patient Intake PR 2: empty until a patient added by mobile number
+  // finishes intake.
+  first_name:    string | null
+  last_name:     string | null
+  date_of_birth: string | null
   phone:         string
   state:         string | null
   sms_opt_in:    boolean
@@ -35,6 +45,8 @@ interface Patient {
   allergies:            string[] | null
   nkda:                 boolean
   allergies_updated_at: string | null
+  /** Patient Intake PR 2: 'pending' until the patient finishes intake. */
+  intake_status?: string | null
 }
 
 interface Provider {
@@ -57,7 +69,8 @@ interface Props {
 
 // ── Helpers ───────────────────────────────────────────────────
 
-function formatDob(iso: string): string {
+function formatDob(iso: string | null): string {
+  if (!iso) return 'not given yet'
   try {
     const d = new Date(iso + 'T00:00:00')
     return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
@@ -77,9 +90,15 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
   // (and without an effect mirroring props into state).
   type AllergyPatch = Pick<Patient, 'allergies' | 'nkda' | 'allergies_updated_at'>
   const [allergyPatches, setAllergyPatches] = useState<Record<string, AllergyPatch>>({})
+  // Patient Intake PR 2: patients added here, listed first.
+  const [addedPatients, setAddedPatients] = useState<Patient[]>([])
+  const [showNewPatient, setShowNewPatient] = useState(false)
+  const [newIntake, setNewIntake] = useState<CreatedIntake | null>(null)
+  const newPatientButtonRef = useRef<HTMLButtonElement>(null)
   const patients = useMemo(
-    () => initialPatients.map(p => (allergyPatches[p.patient_id] ? { ...p, ...allergyPatches[p.patient_id] } : p)),
-    [initialPatients, allergyPatches],
+    () => [...addedPatients, ...initialPatients.filter(p => !addedPatients.some(a => a.patient_id === p.patient_id))]
+      .map(p => (allergyPatches[p.patient_id] ? { ...p, ...allergyPatches[p.patient_id] } : p)),
+    [initialPatients, addedPatients, allergyPatches],
   )
 
   const [patientSearch, setPatientSearch] = useState('')
@@ -118,9 +137,9 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
     if (!patientSearch.trim()) return patients
     const q = patientSearch.toLowerCase().trim()
     return patients.filter(p =>
-      `${p.first_name} ${p.last_name}`.toLowerCase().includes(q) ||
-      `${p.last_name}, ${p.first_name}`.toLowerCase().includes(q) ||
-      p.date_of_birth.includes(q) ||
+      patientName(p).toLowerCase().includes(q) ||
+      patientName(p, 'last-first').toLowerCase().includes(q) ||
+      (p.date_of_birth ?? '').includes(q) ||
       (p.phone && p.phone.includes(q))
     )
   }, [patients, patientSearch])
@@ -142,15 +161,30 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
     if (session.patient?.patient_id === patientId) session.updatePatient(patch)
   }
 
+  function handleCreated(patient: CreatedPatient, intake: CreatedIntake | null) {
+    setAddedPatients(prev => [patient, ...prev])
+    setSelectedPatientId(patient.patient_id)
+    setPatientSearch('')
+    setShowNewPatient(false)
+    setNewIntake(intake)
+  }
+
+  function handleUseExisting(patientId: string) {
+    setSelectedPatientId(patientId)
+    setPatientSearch('')
+    setShowNewPatient(false)
+    setNewIntake(null)
+  }
+
   function handleContinue() {
     if (!selectedPatient || !selectedProvider) return
 
     // Store in session context
     session.setPatient({
       patient_id:    selectedPatient.patient_id,
-      first_name:    selectedPatient.first_name,
-      last_name:     selectedPatient.last_name,
-      date_of_birth: selectedPatient.date_of_birth,
+      first_name:    selectedPatient.first_name ?? '',
+      last_name:     selectedPatient.last_name ?? '',
+      date_of_birth: selectedPatient.date_of_birth ?? '',
       phone:         selectedPatient.phone,
       state:         selectedPatient.state,
       sms_opt_in:    selectedPatient.sms_opt_in,
@@ -158,6 +192,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
       allergies:            selectedPatient.allergies,
       nkda:                 selectedPatient.nkda,
       allergies_updated_at: selectedPatient.allergies_updated_at,
+      intake_status:        selectedPatient.intake_status ?? null,
     })
     session.setProvider({
       provider_id:    selectedProvider.provider_id,
@@ -215,9 +250,33 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
 
       {/* Patient selection */}
       <div className="rounded-lg border border-border bg-card p-5 shadow-sm">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Select Patient
-        </h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Select Patient
+          </h2>
+          <button
+            ref={newPatientButtonRef}
+            type="button"
+            aria-expanded={showNewPatient}
+            onClick={() => { setShowNewPatient(v => !v); setNewIntake(null) }}
+            className="rounded-md border border-slate-500 px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            + New patient
+          </button>
+        </div>
+
+        {showNewPatient && (
+          <NewPatientForm
+            onCreated={handleCreated}
+            onUseExisting={handleUseExisting}
+            onCancel={() => { setShowNewPatient(false); newPatientButtonRef.current?.focus() }}
+          />
+        )}
+        {newIntake && (
+          <div className="mt-3">
+            <IntakeLinkPanel link={newIntake} idPrefix="new-patient-link" />
+          </div>
+        )}
 
         {/* Search input */}
         <div className="mt-3">
@@ -255,13 +314,14 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-sm font-medium text-foreground">
-                      {patient.last_name}, {patient.first_name}
+                      {patientName(patient, 'last-first')}
                     </span>
                     <span className="ml-2 text-xs text-muted-foreground">
                       DOB: {formatDob(patient.date_of_birth)}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
+                    <IntakeChip intakeStatus={patient.intake_status} />
                     {/* WO-97: allergy chip — plain span here (inside a button) */}
                     <AllergyChip patient={patient} />
                     {patient.state && (
@@ -292,8 +352,9 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
               <span className="font-medium text-foreground">
-                {selectedPatient.first_name} {selectedPatient.last_name}
+                {patientName(selectedPatient)}
               </span>
+              <IntakeChip intakeStatus={selectedPatient.intake_status} />
               <span className="text-muted-foreground">
                 — {selectedPatient.state ?? 'No state'} — DOB: {formatDob(selectedPatient.date_of_birth)}
               </span>

@@ -16,6 +16,9 @@
 // If no patient/provider is selected (session not started),
 // redirects back to /new-prescription to select them.
 
+import { IntakeChip } from '@/components/intake-chip'
+import { ResendIntakeLink } from '@/components/resend-intake-link'
+import { isIntakePending, patientName } from '@/lib/patients/display'
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePrescriptionSession } from '../_context/prescription-session'
@@ -75,6 +78,35 @@ export function SessionBanner() {
     return () => { cancelled = true }
   }, [patientId, needsHydration, updatePatient])
 
+  // Patient Intake PR 2: a patient awaiting details may finish while this
+  // session is open. Re-read the status once on mount; when they have
+  // finished, bring in the name, date of birth and state they gave.
+  const intakePending = !!patient && isIntakePending(patient)
+  useEffect(() => {
+    if (!patientId || !intakePending) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/patients/${patientId}/intake-link`, { method: 'GET' })
+        if (!res.ok) return
+        const body = await res.json() as { intakeStatus?: string; patient?: { first_name: string | null; last_name: string | null; date_of_birth: string | null; state: string | null } | null }
+        if (cancelled || body.intakeStatus !== 'complete') return
+        updatePatient({
+          intake_status: 'complete',
+          ...(body.patient ? {
+            first_name:    body.patient.first_name ?? '',
+            last_name:     body.patient.last_name ?? '',
+            date_of_birth: body.patient.date_of_birth ?? '',
+            state:         body.patient.state ?? null,
+          } : {}),
+        })
+      } catch {
+        // Not fatal: the header keeps the status it has; signing is checked on the server.
+      }
+    })()
+    return () => { cancelled = true }
+  }, [patientId, intakePending, updatePatient])
+
   if (!patient || !provider) return null
 
   function handleAllergiesSaved(saved: SavedAllergies) {
@@ -92,15 +124,21 @@ export function SessionBanner() {
         {/* Patient info */}
         <div className="flex min-w-0 items-start gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-            {patient.first_name[0]}{patient.last_name[0]}
+            {(patient.first_name?.[0] ?? '') + (patient.last_name?.[0] ?? '') || '+'}
           </div>
           <div className="min-w-0">
             <p className="text-sm font-medium text-foreground">
-              {patient.first_name} {patient.last_name}
+              {patientName(patient)}
             </p>
             <p className="text-[11px] text-muted-foreground">
-              DOB: {formatDob(patient.date_of_birth)} — {patient.state ?? 'No state'} — {patient.phone || 'No phone'}
+              DOB: {patient.date_of_birth ? formatDob(patient.date_of_birth) : 'not given yet'} — {patient.state ?? 'No state'} — {patient.phone || 'No phone'}
             </p>
+            {intakePending && (
+              <div className="mt-1 flex flex-wrap items-start gap-2">
+                <IntakeChip intakeStatus="pending" />
+                <ResendIntakeLink patientId={patient.patient_id} />
+              </div>
+            )}
             {/* WO-97: allergy chip + inline editor */}
             <EditableAllergyChip
               className="mt-1"

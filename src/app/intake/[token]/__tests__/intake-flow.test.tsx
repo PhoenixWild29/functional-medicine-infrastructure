@@ -27,6 +27,9 @@ jest.mock('../_components/license-scanner', () => ({
   ),
 }))
 
+const assignMock = jest.fn()
+jest.mock('@/lib/browser/navigate', () => ({ navigateTo: (url: string) => assignMock(url) }))
+
 import { IntakeFlow } from '../_components/intake-flow'
 import { SMS_CONSENT_TEXT } from '@/lib/intake/consent'
 
@@ -44,14 +47,12 @@ const TX_LICENSE = aamva({ DCS: 'SMITH', DAC: 'JANE', DBB: '04151985', DBC: '2',
 const NH_LICENSE = aamva({ DCS: 'DOE', DAC: 'JOHN', DBB: '01021970', DBC: '1', DAG: '1 ELM ST', DAI: 'CONCORD', DAJ: 'NH', DAK: '033010000' }, '636039')
 
 const fetchMock = jest.fn()
-const assignMock = jest.fn()
 
 beforeEach(() => {
   fetchMock.mockReset().mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true, checkoutUrl: null }) })
   global.fetch = fetchMock as unknown as typeof fetch
   ;(globalThis as unknown as { __scan: string }).__scan = TX_LICENSE
   assignMock.mockReset()
-  Object.defineProperty(window, 'location', { configurable: true, value: { ...window.location, assign: assignMock } })
 })
 
 const click = async (name: string | RegExp) => { await act(async () => { fireEvent.click(screen.getByRole('button', { name })) }) }

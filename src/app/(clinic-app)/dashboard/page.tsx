@@ -17,6 +17,7 @@
 //   retail_price_snapshot / wholesale_price_snapshot are NUMERIC(10,2)
 //   (dollars) in the DB → converted with Math.round(n * 100).
 
+import { dashboardPatient } from '@/lib/patients/dashboard-patient'
 import { createServerClient } from '@/lib/supabase/server'
 import { resolveCurrentProvider } from '@/lib/auth/current-provider'
 import type { DraftViewer } from '@/lib/orders/draft-edit-access'
@@ -69,6 +70,10 @@ export interface DashboardOrder {
   providerId?:       string | null
   /** When the order was signed: its payment link is payable for 72 h from here. */
   lockedAt?:         string | null
+  // Patient Intake PR 2: the patient, and whether they are still to finish
+  // their details (the draft is held; Resend link is offered).
+  patientId?:            string | null
+  patientIntakePending?: boolean
 }
 
 export default async function DashboardPage(
@@ -146,7 +151,7 @@ export default async function DashboardPage(
         order_id, status, created_at, updated_at, locked_at, payment_group_id, provider_id,
         retail_price_snapshot, wholesale_price_snapshot,
         medication_snapshot, pharmacy_snapshot,
-        patients!inner(first_name, last_name)
+        patients!inner(patient_id, first_name, last_name, phone, intake_status)
       `)
       .eq('clinic_id', clinicId)
       .is('deleted_at', null)
@@ -203,10 +208,7 @@ export default async function DashboardPage(
     const submissionTier = pharmacySnap?.integration_tier ?? null
 
     // patients!inner returns object for many-to-one (orders → patients)
-    const patient = Array.isArray(o.patients)
-      ? (o.patients as Array<{ first_name: string; last_name: string }>)[0]
-      : o.patients as { first_name: string; last_name: string } | null
-    const patientName = patient ? `${patient.last_name}, ${patient.first_name}` : '—'
+    const { patientId, patientName, patientIntakePending } = dashboardPatient(o.patients)
 
     // BLK-04: PAYMENT_EXPIRED also counts as unpaid (patient didn't pay before link expired)
     const isOverdue48h =
@@ -216,6 +218,8 @@ export default async function DashboardPage(
     return {
       orderId:           o.order_id,
       patientName,
+      patientId,
+      patientIntakePending,
       medicationName,
       status:            o.status as OrderStatusEnum,
       submissionTier,

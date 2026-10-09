@@ -53,6 +53,7 @@ function logSignatureEvent(component: 'draft-sign-form' | 'batch-review-form', e
   })
 }
 import { usePrescriptionSession, type SessionPrescription } from '../../_context/prescription-session'
+import { isIntakePending, patientName } from '@/lib/patients/display'
 import { CONTROLLED_LABEL, isControlledSchedule } from '@/lib/orders/controlled-substance'
 import { NOT_COMPOUNDABLE_LABEL } from '@/lib/compliance/compounding'
 import { DrugInteractionAlerts } from '../../_components/drug-interaction-alerts'
@@ -691,7 +692,11 @@ export function BatchReviewForm({ isProvider }: Props) {
   }
 
   const checksUnavailable = allergyStatusUnknown || rulesLoadFailed || interactionsUnavailable
-  const canSubmit = signatureCaptured && prescriptions.length > 0 && !isSubmitting && !hasInvalidItems && !hasMissingDetails && !checksUnavailable && prescriberProblems.length === 0
+  // Patient Intake PR 2: a patient added by mobile number who has not
+  // finished their details. The provider can prescribe (Save as Draft) but
+  // not sign; the server refuses it too (batch-sign intake_pending).
+  const intakePending = !!patient && isIntakePending(patient)
+  const canSubmit = signatureCaptured && prescriptions.length > 0 && !isSubmitting && !hasInvalidItems && !hasMissingDetails && !checksUnavailable && prescriberProblems.length === 0 && !intakePending
   // Shared controls (Remove, Add Another) lock during either flow.
   const isBusy = isSubmitting || isSavingDraft
 
@@ -1055,7 +1060,7 @@ export function BatchReviewForm({ isProvider }: Props) {
                   doseUnit={splitDose(rx.dose).unit}
                   frequencyCode={rx.frequencyCode ?? null}
                   refills={effectiveDetails(rx).refills}
-                  patient={{ patientId: patient.patient_id, name: `${patient.first_name} ${patient.last_name}` }}
+                  patient={{ patientId: patient.patient_id, name: patientName(patient) }}
                   disabled={isBusy}
                 />
                 <div className="ml-auto flex items-center gap-3">
@@ -1188,7 +1193,7 @@ export function BatchReviewForm({ isProvider }: Props) {
             Provider Signature — {provider.first_name} {provider.last_name}
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            NPI: {provider.npi_number} — Signing {prescriptions.length} prescription{prescriptions.length !== 1 ? 's' : ''} for {patient.first_name} {patient.last_name}
+            NPI: {provider.npi_number} — Signing {prescriptions.length} prescription{prescriptions.length !== 1 ? 's' : ''} for {patientName(patient)}
           </p>
 
           <div className="mt-3 rounded-lg border border-border bg-white">
@@ -1252,7 +1257,7 @@ export function BatchReviewForm({ isProvider }: Props) {
             You are about to send one payment link for {prescriptions.length} prescription{prescriptions.length !== 1 ? 's' : ''} totaling{' '}
             <strong>{toCurrency(totals.patientTotalCents)}</strong>
             {totals.patientShippingCents > 0 && <> (including {toCurrency(totals.patientShippingCents)} shipping)</>} to{' '}
-            <strong>{patient.first_name} {patient.last_name}</strong> at <strong>{patient.phone || 'no phone'}</strong>.
+            <strong>{patientName(patient)}</strong> at <strong>{patient.phone || 'no phone'}</strong>.
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             The link will expire in 72 hours. Once sent, all prescriptions are locked and cannot be edited.
@@ -1297,7 +1302,9 @@ export function BatchReviewForm({ isProvider }: Props) {
               disabled — a gray button with no hint reads as "broken". */}
           {!canSubmit && !isSubmitting && (
             <p className="text-center text-xs text-muted-foreground" data-testid="send-blocked-reason">
-              {allergiesLoading
+              {intakePending
+                ? `${patientName(patient)} has not finished their details yet. Save as draft now; you can sign once they finish.`
+                : allergiesLoading
                 ? 'Loading the allergy status for this patient — sending waits for it.'
                 : allergyStatusUnknown
                 ? 'The allergy status for this patient could not be loaded. Retry it above to enable sending.'
@@ -1328,6 +1335,28 @@ export function BatchReviewForm({ isProvider }: Props) {
       {/* Non-provider (MA / clinic_admin / ops_admin): signing is provider-only
           (server returns 403). Offer the existing Save-as-Draft action instead
           so the assigned provider can review and sign from the dashboard. */}
+      {/* Patient Intake PR 2: the provider can prescribe now; the drafts are
+          held until the patient finishes their details, then signed from
+          the dashboard Drafts tab. */}
+      {isProvider && intakePending && (
+        <div className="space-y-2" data-testid="intake-pending-save-draft">
+          <button
+            type="button"
+            onClick={handleSaveDraftAll}
+            disabled={isSavingDraft || prescriptions.length === 0 || hasInvalidItems || hasMissingDetails}
+            className="w-full rounded-lg border border-border bg-background px-6 py-3 text-sm font-semibold text-foreground shadow-sm hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {isSavingDraft ? 'Saving...' : 'Save as Draft: Sign When the Patient Finishes'}
+          </button>
+          <p className="text-center text-[10px] text-muted-foreground">
+            Creates the order{prescriptions.length > 1 ? 's' : ''} without signing. Sign from the dashboard Drafts tab once {patientName(patient)} has finished their details.
+          </p>
+          {draftError && (
+            <p className="text-center text-xs text-red-600" role="alert">{draftError}</p>
+          )}
+        </div>
+      )}
+
       {!isProvider && (
         <div className="space-y-3">
           <div className="rounded-lg border border-border bg-muted/30 p-4">

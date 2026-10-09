@@ -62,11 +62,12 @@ export default async function NewPrescriptionPage() {
     supabase
       .from('patients')
       // WO-97: allergies / nkda drive the chip on each patient card.
-      .select('patient_id, first_name, last_name, date_of_birth, phone, state, sms_opt_in, allergies, nkda, allergies_updated_at')
+      .select('patient_id, first_name, last_name, date_of_birth, phone, state, sms_opt_in, allergies, nkda, allergies_updated_at, intake_status')
       .eq('clinic_id', clinicId)
       .eq('is_active', true)
       .is('deleted_at', null)
-      .order('last_name', { ascending: true }),
+      // Patient Intake PR 2: patients awaiting details (no name yet) first.
+      .order('last_name', { ascending: true, nullsFirst: true }),
     providerIsSelf
       ? Promise.resolve({ data: [] })
       : supabase

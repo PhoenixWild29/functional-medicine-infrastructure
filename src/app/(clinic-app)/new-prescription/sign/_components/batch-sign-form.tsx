@@ -23,6 +23,7 @@
 //
 // All or nothing: the server validates every line before it signs any.
 
+import { patientName } from '@/lib/patients/display'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import SignatureCanvas from 'react-signature-canvas'
@@ -200,7 +201,8 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
     check.state === 'loaded' ? check.controlledIds.includes(l.orderId) : isControlledLine(l))
 
   // Why Sign & Send is disabled — always named, and naming the line.
-  const nameOf = (p: BatchPatientView) => `${p.firstName} ${p.lastName}`
+  // Patient Intake PR 2: a patient awaiting details has no name yet.
+  const nameOf = (p: BatchPatientView) => patientName({ first_name: p.firstName, last_name: p.lastName, phone: p.phone })
   let blocked: string | null = null
   if (selectedLines.length === 0) blocked = 'Select at least one prescription to sign.'
   else {
@@ -326,7 +328,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Patient</p>
-                <p className="text-sm font-semibold text-foreground">{p.firstName} {p.lastName}</p>
+                <p className="text-sm font-semibold text-foreground">{nameOf(p)}</p>
                 <p className="text-xs text-muted-foreground">DOB: {p.dob} — {p.state} — {p.phone || 'no phone'}</p>
               </div>
               <AllergyChip patient={allergyPatient} loading={state.state === 'loading'} />
@@ -380,7 +382,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
             {unchosen.length > 0 && chosen.length > 0 && (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid={`unselected-siblings-${p.patientId}`}>
                 <span>
-                  {unchosen.length} more draft{unchosen.length !== 1 ? 's' : ''} for {p.firstName} {p.lastName} {unchosen.length !== 1 ? 'are' : 'is'} not selected.
+                  {unchosen.length} more draft{unchosen.length !== 1 ? 's' : ''} for {nameOf(p)} {unchosen.length !== 1 ? 'are' : 'is'} not selected.
                   Signed separately, {unchosen.length !== 1 ? 'they send' : 'it sends'} a second payment link and can charge shipping again.
                 </span>
                 <button
@@ -388,7 +390,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
                   onClick={() => setSelected(prev => new Set([...prev, ...unchosen.map(l => l.orderId)]))}
                   className="rounded-md border border-amber-300 bg-white px-2 py-1 font-medium hover:bg-amber-100"
                 >
-                  Select all for {p.firstName}
+                  Select all for {p.firstName || nameOf(p)}
                 </button>
               </div>
             )}

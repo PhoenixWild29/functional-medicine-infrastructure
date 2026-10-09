@@ -16,6 +16,7 @@
 // The patient list for the filter is read the same way. Opening this page
 // is itself logged (view, access_log).
 
+import { patientName } from '@/lib/patients/display'
 import Link from 'next/link'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -88,7 +89,7 @@ export default async function AccessLogPage({ searchParams }: PageProps = {}) {
     query.order('occurred_at', { ascending: false }).limit(ACCESS_LOG_PAGE_SIZE),
     supabase
       .from('patients')
-      .select('patient_id, first_name, last_name')
+      .select('patient_id, first_name, last_name, phone')
       .eq('clinic_id', clinicId)
       .is('deleted_at', null)
       .order('last_name', { ascending: true }),
@@ -106,7 +107,7 @@ export default async function AccessLogPage({ searchParams }: PageProps = {}) {
   }
 
   const rows = (logResult.data ?? []) as LogRow[]
-  const patients = (patientsResult.data ?? []) as Array<{ patient_id: string; first_name: string; last_name: string }>
+  const patients = (patientsResult.data ?? []) as Array<{ patient_id: string; first_name: string | null; last_name: string | null; phone: string | null }>
   const actors = await resolveAccessLogActors(createServiceClient(), clinicId, rows.map(r => r.actor_user_id))
 
   // Opening the log lists the clinic's patients (the filter): itself an access.
@@ -131,7 +132,7 @@ export default async function AccessLogPage({ searchParams }: PageProps = {}) {
           <select name="patient" defaultValue={filters.patientId ?? ''} className="rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground">
             <option value="">All patients</option>
             {patients.map(p => (
-              <option key={p.patient_id} value={p.patient_id}>{p.last_name}, {p.first_name}</option>
+              <option key={p.patient_id} value={p.patient_id}>{patientName(p, 'last-first')}</option>
             ))}
           </select>
         </label>

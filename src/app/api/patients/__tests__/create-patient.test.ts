@@ -139,9 +139,11 @@ describe('duplicate check', () => {
     const lookup = db.to('patients', 'select')[0]!
     expect(lookup.filters['clinic_id']).toBe(CLINIC_ID)
     expect(lookup.filters['is_active']).toBe(true)
-    expect(JSON.stringify(lookup.filters)).toContain('phone_e164.eq.+15125550123')
-    expect(JSON.stringify(lookup.filters)).toMatch(/first_name\.ilike\.Jane/)
-    expect(JSON.stringify(lookup.filters)).toMatch(/last_name\.ilike\.Smith/)
+    // scriptedDb records or(expr) as a key "<expr>:or" (value undefined).
+    const orExpr = Object.keys(lookup.filters).find(k => k.endsWith(':or')) ?? ''
+    expect(orExpr).toContain('phone_e164.eq.+15125550123')
+    expect(orExpr).toMatch(/first_name\.ilike\.Jane/)
+    expect(orExpr).toMatch(/last_name\.ilike\.Smith/)
   })
 
   it('a same-name match on another number is reported as a name match', async () => {

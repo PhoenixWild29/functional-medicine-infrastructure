@@ -290,6 +290,14 @@ export async function submitTier1Api(
   // order signed before snapshots existed.
   const shipTo = shippingAddressFor(order, patient)
 
+  // Patient Intake PR 2: a patient's name and date of birth are required
+  // once intake is complete, and signing and payment are refused before
+  // then. A patient reaching a pharmacy without them is a defect: refuse
+  // the submission rather than send blanks.
+  if (!patient.first_name || !patient.last_name || !patient.date_of_birth) {
+    throw new Error(`Order ${order.order_id}: the patient's name or date of birth is missing (intake not finished); not sent.`)
+  }
+
   const orderPayload: OrderPayload = {
     orderId:            order.order_id,
     orderNumber:        order.order_number ?? null,

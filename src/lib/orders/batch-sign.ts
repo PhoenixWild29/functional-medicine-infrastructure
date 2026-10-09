@@ -108,6 +108,8 @@ export type BatchProblemCode =
   | 'orders_unavailable' | 'provider_unavailable' | 'provider_unlinked' | 'credentials_unavailable'
   | 'compliance_unavailable' | 'rules_unavailable' | 'price_unavailable'
   | 'allergy_unavailable' | 'interactions_unavailable'
+  // Patient Intake PR 2: the patient has not finished their details.
+  | 'intake_pending'
 
 export interface BatchProblem {
   /** The line it is about; null when it is about the batch as a whole. */
@@ -181,11 +183,18 @@ interface OrderRow {
 
 const ORDER_SELECT = `order_id, status, patient_id, provider_id, catalog_item_id, formulation_id, pharmacy_id,
   retail_price_snapshot, wholesale_price_snapshot, shipping_state_snapshot, medication_snapshot,
-  package_id, package_count, ${RX_DETAIL_COLUMN_LIST}`
+  package_id, package_count, ${RX_DETAIL_COLUMN_LIST},
+  patients ( intake_status )`
 
 function snap(row: { medication_snapshot: Json | null }): Record<string, unknown> {
   const s = row.medication_snapshot
   return s && typeof s === 'object' && !Array.isArray(s) ? s as Record<string, unknown> : {}
+}
+
+function intakeStatusOf(row: { [key: string]: unknown }): string | null {
+  const embed = row['patients'] as { intake_status?: unknown } | Array<{ intake_status?: unknown }> | null | undefined
+  const p = Array.isArray(embed) ? embed[0] : embed
+  return typeof p?.intake_status === 'string' ? p.intake_status : null
 }
 
 function medicationNameOf(row: { medication_snapshot: Json | null }): string {
@@ -414,6 +423,13 @@ export async function checkBatch(
     const name = medicationNameOf(r)
     const pharmacy = r.pharmacy_id ? pharmacies.get(r.pharmacy_id) : undefined
     const before = problems.length
+
+    // Patient Intake PR 2: a patient added with only a mobile number is
+    // 'pending' until they finish their details. Their drafts are held:
+    // nothing is signed, grouped or texted until then.
+    if (intakeStatusOf(r) === 'pending') {
+      add(r, 'intake_pending', `${name}: the patient has not finished their details yet. Nothing was signed; resend the intake link or wait for them to finish.`)
+    }
 
     // C5: an unexpired, live license in the shipping state, covering
     // sterile compounding (or a 503B facility) for a sterile product.

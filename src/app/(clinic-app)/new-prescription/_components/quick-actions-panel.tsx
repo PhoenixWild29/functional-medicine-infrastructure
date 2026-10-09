@@ -42,6 +42,7 @@
 // nothing to review. Loads are idempotent: lines already present in
 // the session are never added twice.
 
+import { patientName } from '@/lib/patients/display'
 import { useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
@@ -622,7 +623,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
   // in a fixed order, A–Z inside each group.
   const favoriteGroups = groupFavorites(
     visibleFavorites,
-    session.patient ? { patientId: session.patient.patient_id, name: `${session.patient.first_name} ${session.patient.last_name}` } : null,
+    session.patient ? { patientId: session.patient.patient_id, name: patientName(session.patient) } : null,
   )
   // A Recent item is already a favorite when a practice card for that
   // formulation + pharmacy carries its dose.
@@ -775,7 +776,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
                     key={fav.favorite_id}
                     favorite={fav}
                     patientState={patientState}
-                    patient={session.patient ? { patientId: session.patient.patient_id, name: `${session.patient.first_name} ${session.patient.last_name}` } : null}
+                    patient={session.patient ? { patientId: session.patient.patient_id, name: patientName(session.patient) } : null}
                     onCancel={() => setEditingFav(null)}
                     onSaved={async () => {
                       await queryClient.invalidateQueries({ queryKey: ['provider-favorites'] })

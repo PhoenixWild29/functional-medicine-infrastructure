@@ -12,12 +12,13 @@
 // it. Once anything is recorded the notice disappears; the banner chip
 // carries the state from then on.
 
+import { patientName } from '@/lib/patients/display'
 import { useState } from 'react'
 import { hasRecordedAllergies, type PatientAllergyFields } from '@/lib/patients/allergies'
 import { saveAllergies, loadAllergies } from '../../_components/allergy-chip'
 
 interface Props {
-  patient: PatientAllergyFields & { patient_id: string; first_name: string; last_name: string }
+  patient: PatientAllergyFields & { patient_id: string; first_name: string; last_name: string; phone?: string | null }
   onSaved: (patch: {
     allergies: string[]; nkda: boolean; allergies_updated_at: string | null; allergiesLoadFailed?: boolean
   }) => void
@@ -56,7 +57,7 @@ export function AllergyNotice({ patient, onSaved }: Props) {
         className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/20 dark:text-red-200"
       >
         <p className="font-semibold">
-          Allergies could not be loaded for {patient.first_name} {patient.last_name}.
+          Allergies could not be loaded for {patientName(patient)}.
         </p>
         <p className="mt-0.5 text-xs">
           This is an error, not an empty record — they may have allergies on file. Nothing about this patient
@@ -83,7 +84,7 @@ export function AllergyNotice({ patient, onSaved }: Props) {
         data-testid="allergy-loading"
         className="rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground"
       >
-        Loading allergies for {patient.first_name} {patient.last_name}…
+        Loading allergies for {patientName(patient)}…
       </div>
     )
   }
@@ -114,7 +115,7 @@ export function AllergyNotice({ patient, onSaved }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-            Allergies not recorded for {patient.first_name} {patient.last_name}
+            Allergies not recorded for {patientName(patient)}
           </p>
           <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">
             The pharmacy will receive &ldquo;Allergies: not recorded&rdquo;. Confirm NKDA here, or add allergies
