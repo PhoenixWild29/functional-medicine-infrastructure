@@ -5,7 +5,10 @@
 // A 503A pharmacy may compound a bulk drug substance only when it has a
 // USP-NF monograph, is a component of an FDA-approved drug, or is on the
 // 503A bulks list (Category 1 substances may be compounded while FDA
-// evaluates them). Everything else is refused here, and so is a substance
+// evaluates them). Owner decision: a substance FDA removed from Category 2
+// but has not yet placed (pending_evaluation) may be ordered too, with a
+// non-blocking warning that the dispensing pharmacy confirms it can
+// compound it. Everything else is refused here, and so is a substance
 // whose status nobody has verified: ops records each ingredient's status
 // (ingredients.compounding_status) on /ops/ingredients from FDA's primary
 // source.
@@ -29,14 +32,22 @@ export type CompoundingStatus = (typeof COMPOUNDING_STATUSES)[number]
 
 export const COMPOUNDABLE_STATUSES: ReadonlySet<string> = new Set<CompoundingStatus>([
   'usp_monograph', 'approved_drug_component', 'bulks_list', 'category_1',
+  // Owner decision: orderable, with PENDING_EVALUATION_WARNING shown.
+  'pending_evaluation',
 ])
+
+/** Shown wherever a pending_evaluation ingredient appears. Never blocks. */
+export const PENDING_EVALUATION_WARNING = 'FDA evaluation pending for this substance. The dispensing pharmacy confirms it can compound it.'
+
+export function isPendingEvaluation(status: string | null | undefined): boolean {
+  return status === 'pending_evaluation'
+}
 
 const NOT_COMPOUNDABLE_WHY: Record<string, string> = {
   category_2:         '503A Category 2 (significant safety risks)',
   category_3:         '503A Category 3 (not enough information to evaluate)',
   withdrawn_removed:  "on FDA's withdrawn or removed list",
   not_eligible:       'not eligible for 503A compounding',
-  pending_evaluation: 'pending FDA evaluation (removed from Category 2, not yet placed in Category 1 or on the bulks list)',
 }
 
 /** Labels for the ops screen and the builder. */
@@ -49,7 +60,7 @@ export const COMPOUNDING_STATUS_LABEL: Record<CompoundingStatus, string> = {
   category_3:              '503A Category 3: may not be compounded',
   withdrawn_removed:       'Withdrawn or removed: may not be compounded',
   not_eligible:            'Not eligible for 503A compounding',
-  pending_evaluation:      'Pending FDA evaluation: may not be compounded',
+  pending_evaluation:      'Pending FDA evaluation: may be ordered; the pharmacy confirms',
   unverified:              'Not verified: may not be ordered',
 }
 
@@ -98,6 +109,11 @@ export function compoundingBlock(medicationName: string, ingredients: ReadonlyAr
     }
   }
   return null
+}
+
+/** The warning for a product with an ingredient pending FDA evaluation, or null. */
+export function compoundingWarning(ingredients: ReadonlyArray<Pick<IngredientCompounding, 'status'>>): string | null {
+  return ingredients.some(i => isPendingEvaluation(i.status)) ? PENDING_EVALUATION_WARNING : null
 }
 
 // ── Reading the catalog ──────────────────────────────────────

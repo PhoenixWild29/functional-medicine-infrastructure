@@ -13,7 +13,7 @@
 //   as the builder's pharmacy_options level (/api/formulations).
 // ============================================================
 
-import { compoundingBlock, ingredientsFromFormulationRow } from '@/lib/compliance/compounding'
+import { compoundingBlock, compoundingWarning, ingredientsFromFormulationRow } from '@/lib/compliance/compounding'
 import { checkLicensure, readLicenses, todayIso } from '@/lib/compliance/pharmacy-licensure'
 import { scheduleFromFormulationRow } from '@/lib/orders/controlled-substance'
 import { isLivePharmacy, type PharmacyLiveness } from '@/lib/pharmacies/live'
@@ -190,6 +190,11 @@ export async function GET(req: NextRequest) {
           ? ingredientsFromFormulationRow(item.formulations as unknown as Parameters<typeof ingredientsFromFormulationRow>[0])
           : [],
       ),
+      // Owner decision: an ingredient pending FDA evaluation loads, with
+      // this non-blocking warning.
+      compounding_warning: item.formulations
+        ? compoundingWarning(ingredientsFromFormulationRow(item.formulations as unknown as Parameters<typeof ingredientsFromFormulationRow>[0]))
+        : null,
     }))
 
     // Clinic default markup — lets the client derive a real retail price
