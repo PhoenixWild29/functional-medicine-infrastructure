@@ -45,7 +45,7 @@
  *      loading.tsx above it.
  */
 
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 
 const APP_DIR = join(process.cwd(), 'src', 'app')
@@ -82,6 +82,9 @@ const AUTH_REDIRECT_ALLOWLIST = new Set([
   'src/app/page.tsx',
   'src/app/(clinic-app)/layout.tsx',
   'src/app/(ops-dashboard)/layout.tsx',
+  // The pharmacy portal's layout: the top of its own tree, no loading.tsx
+  // above it, so it runs before anything is flushed (like the two above).
+  'src/app/pharmacy/layout.tsx',
 ])
 
 const read = (rel: string): string =>
@@ -123,6 +126,18 @@ describe('route-group layouts still enforce their role gates', () => {
     expect(src).toMatch(/auth\.getUser\(\)/)
     expect(src).toMatch(/ops_admin/)
     expect(src).toMatch(/redirect\('\/unauthorized'\)/)
+  })
+})
+
+describe('the pharmacy portal layout enforces its role gate', () => {
+  it('pharmacy/layout.tsx gates on pharmacy_admin with getUser() and has no loading.tsx above or beside it', () => {
+    const src = read('src/app/pharmacy/layout.tsx')
+    expect(src).toMatch(/auth\.getUser\(\)/)
+    expect(src).toMatch(/pharmacy_admin/)
+    expect(src).toMatch(/redirect\('\/unauthorized'\)/)
+    expect(FILES.some(f => /^src\/app\/(pharmacy\/)?loading\.tsx$/.test(f))).toBe(false)
+    expect(existsSync(join(process.cwd(), 'src', 'app', 'pharmacy', 'loading.tsx'))).toBe(false)
+    expect(existsSync(join(process.cwd(), 'src', 'app', 'loading.tsx'))).toBe(false)
   })
 })
 
