@@ -7,6 +7,7 @@
 -- any database where a pharmacy has signed. Pharmacies created through
 -- the portal stay (inactive unless approved); their onboarding columns
 -- go. The license-documents bucket is removed only when empty.
+-- The Vault helper revoke from anon is kept on purpose (it closed a hole).
 -- Re-granting SELECT on the three owner-rights views restores the prior
 -- (over-broad) access; leave that line out unless a reader needs it.
 

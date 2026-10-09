@@ -35,6 +35,8 @@
 --   8. sla_notifications_log had no RLS; only the service role reads it.
 --   9. Three owner-rights views (no app code reads them) bypassed RLS for
 --      every signed-in user; SELECT is revoked from anon and authenticated.
+--  10. The Vault helper functions were executable by anon; now the
+--      service role only.
 --
 -- No existing row is deleted or updated.
 
@@ -260,6 +262,18 @@ ALTER TABLE sla_notifications_log ENABLE ROW LEVEL SECURITY;
 REVOKE SELECT ON webhook_dead_letter_queue FROM anon, authenticated;
 REVOKE SELECT ON pharmacy_webhook_dead_letter_queue FROM anon, authenticated;
 REVOKE SELECT ON provider_prescribing_history FROM anon, authenticated;
+
+-- ── 10. Vault helpers: service role only ─────────────────────
+-- 20260317000005 revoked these SECURITY DEFINER functions from PUBLIC and
+-- authenticated, not anon (Supabase grants function EXECUTE to anon by
+-- default), so the anon key could create, rotate or delete Vault secrets
+-- through RPC. The portal stores pharmacy credentials with them.
+REVOKE ALL ON FUNCTION create_vault_secret(TEXT, TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION rotate_vault_secret(UUID, TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION delete_vault_secret(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION create_vault_secret(TEXT, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION rotate_vault_secret(UUID, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION delete_vault_secret(UUID) TO service_role;
 
 -- ── 7b. pharmacy_admin_scope: one restrictive policy per RLS table ──
 -- RESTRICTIVE policies are ANDed with the permissive ones, so the
