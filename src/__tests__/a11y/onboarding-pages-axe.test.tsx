@@ -41,7 +41,6 @@ const STATE: OnboardingState = {
     clinicId: 'c1', name: 'Blue Cedar Wellness', onboardingStatus: 'changes_requested', reviewNote: 'Please add the second provider license.',
     legalName: 'Blue Cedar Wellness PLLC', dbaName: null, addressLine1: '1 Elm St', addressLine2: null, city: 'Austin', state: 'TX',
     postalCode: '78701', phone: '5125550100', practiceNpi: null, taxIdLast4: '1234', absorbShipping: false,
-    stripeConnectStatus: 'PENDING', stripeAccountId: null,
   },
   steps: { practice: 'complete', providers: 'in_progress', staff: 'not_started', baa: 'not_started', terms: 'not_started', payouts: 'not_started', review: 'not_started' },
   providers: [{
@@ -105,9 +104,24 @@ describe('onboarding wizard', () => {
 
   it.each(['baa', 'terms'] as StepKey[])('the %s step says it is a draft pending legal review', step => {
     render(<OnboardingWizard state={STATE} initialStep={step} />)
-    expect(screen.getByText(/draft, pending legal review/i)).toBeInTheDocument()
+    expect(document.getElementById('agreement-draft-banner')!.textContent).toMatch(/draft, pending legal review/i)
     expect(screen.getByLabelText('Signer name')).toBeInTheDocument()
     expect(screen.getByLabelText('Title')).toBeInTheDocument()
+  })
+
+  it('the BAA (v0.1 Markdown) renders as headings and lists, not raw Markdown', () => {
+    render(<OnboardingWizard state={STATE} initialStep="baa" />)
+    expect(screen.getByRole('heading', { name: '1. Definitions' })).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem').length).toBeGreaterThan(10)
+    expect(screen.queryByText(/^## /)).not.toBeInTheDocument()
+    expect(screen.getByText(/version v0\.1/i)).toBeInTheDocument()
+  })
+
+  it('payouts: setup is not live, so the control is disabled and nothing mentions Stripe', () => {
+    const { container } = render(<OnboardingWizard state={STATE} initialStep="payouts" />)
+    const button = screen.getByRole('button', { name: 'Payout setup: available at launch' })
+    expect(button).toBeDisabled()
+    expect(container.textContent).not.toMatch(/stripe/i)
   })
 
   it('every practice field has a visible label', () => {

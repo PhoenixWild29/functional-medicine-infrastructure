@@ -163,6 +163,14 @@ describe('BAA and terms acceptance', () => {
     expect(db.to('clinic_onboarding_steps', 'upsert')[0]!.payload).toEqual(expect.objectContaining({ step: key, status: 'complete' }))
   })
 
+  it('the BAA acceptance stores version v0.1 and the SHA-256 of the exact v0.1 text', async () => {
+    const res = await acceptAgreement(req({ agreement: 'baa', version: 'v0.1', signerName: 'Lauren Perkins', signerTitle: 'Owner' }))
+    expect(res.status).toBe(201)
+    expect(db.to('agreement_acceptances', 'insert')[0]!.payload).toEqual(expect.objectContaining({
+      template_version: 'v0.1', text_sha256: '14367b35e4b4ef51e6ed53d150275474635929a38c9bb900eef8d6e77ebc064e',
+    }))
+  })
+
   it('a stale template version is 409', async () => {
     const res = await acceptAgreement(req({ agreement: 'baa', version: 'old-1', signerName: 'L', signerTitle: 'Owner' }))
     expect(res.status).toBe(409)
@@ -194,6 +202,11 @@ describe('completing a step', () => {
 
   it('staff is optional: it completes with no assistants', async () => {
     expect((await completeStep(req({ step: 'staff' }))).status).toBe(200)
+  })
+
+  it('payouts cannot be completed: payout setup is not live for onboarding', async () => {
+    expect((await completeStep(req({ step: 'payouts' }))).status).toBe(400)
+    expect(db.to('clinic_onboarding_steps', 'upsert')).toEqual([])
   })
 
   it('the BAA cannot be completed except by accepting it', async () => {
