@@ -139,7 +139,8 @@ describe('row level security', () => {
 
   it('one restrictive policy on every RLS table shuts a pharmacy_admin out of everything else', () => {
     expect(code).toContain('as restrictive for all to authenticated')
-    expect(code).toContain("is distinct from 'pharmacy_admin'")
+    // Inside format(): the quotes are doubled.
+    expect(code).toMatch(/is distinct from '{1,2}pharmacy_admin'{1,2}/)
     expect(code).toContain('c.relrowsecurity')
     // The four pharmacy-owned tables allow its own rows.
     expect(code).toMatch(/array\['pharmacies', ?'pharmacy_state_licenses', ?'pharmacy_onboarding_applications', ?'pharmacy_agreement_acceptances'\]/)
