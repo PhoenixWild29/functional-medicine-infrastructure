@@ -15,7 +15,7 @@
 import { randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { validateCatalogRows } from '@/lib/catalog/validate-csv-rows'
-import { AGREEMENT, agreementTextSha256 } from './agreement'
+import { AGREEMENT, agreementText, agreementTextSha256 } from './agreement'
 import { recordOnboardingEvent } from './events'
 import type { Fail } from './invites'
 import { ONBOARDING_STEPS, SAVED_STEPS, withStep, withoutStep, type SavedStepKey } from './steps'
@@ -440,7 +440,7 @@ export async function loadOnboarding(db: SupabaseClient, pharmacyId: string): Pr
       ordering: orderingView(r.app),
       catalog: { choice: r.app.catalog_choice, rowCount: r.app.catalog_row_count, warnings },
       agreement: {
-        key: AGREEMENT.key, version: AGREEMENT.version, title: AGREEMENT.title, text: AGREEMENT.text,
+        key: AGREEMENT.key, version: AGREEMENT.version, title: AGREEMENT.title, text: agreementText(),
         textSha256: agreementTextSha256(), banner: AGREEMENT.banner, draft: AGREEMENT.draft,
         acceptance: accepted ? { signerName: accepted.signer_name, signerTitle: accepted.signer_title, acceptedAt: accepted.accepted_at } : null,
       },

@@ -202,7 +202,7 @@ describe('BAA and terms', () => {
     expect(await acceptAgreement(db.client, ctx, accept, NOW)).toMatchObject({ ok: true })
     expect(db.rows('pharmacy_agreement_acceptances')).toEqual([expect.objectContaining({
       pharmacy_id: PH, application_id: APP, user_id: USER, signer_name: 'Dana Ruiz', signer_title: 'Pharmacist in charge',
-      template_key: 'pharmacy_baa_terms', template_version: AGREEMENT.version, text_sha256: agreementTextSha256(), accepted_at: NOW.toISOString(),
+      template_key: AGREEMENT.key, template_version: AGREEMENT.version, text_sha256: agreementTextSha256(), accepted_at: NOW.toISOString(),
     })])
     expect(app(db)['steps_completed']).toEqual(['agreement'])
     expect(await acceptAgreement(db.client, ctx, accept, NOW)).toMatchObject({ ok: true })

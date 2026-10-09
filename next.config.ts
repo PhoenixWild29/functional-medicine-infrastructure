@@ -20,6 +20,15 @@ export const baseConfig: NextConfig = {
   // No WebSocket connections permitted
   serverExternalPackages: ['@supabase/supabase-js'],
 
+  // Pharmacy onboarding reads the BAA text from src/content/legal at
+  // runtime (lib/pharmacy-onboarding/agreement): ship it with the
+  // functions that read it.
+  outputFileTracingIncludes: {
+    '/api/pharmacy/**': ['./src/content/legal/**'],
+    '/pharmacy/**': ['./src/content/legal/**'],
+    '/api/ops/onboarding/**': ['./src/content/legal/**'],
+  },
+
   // Security: prevent sensitive env vars from leaking to client bundle
   // Only NEXT_PUBLIC_* vars are exposed to the browser
   env: {
