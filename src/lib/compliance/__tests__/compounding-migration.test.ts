@@ -116,7 +116,7 @@ describe('demo statuses', () => {
     expect(values).toEqual(DEMO_COMPOUNDING.map(d => [d.name, d.status, d.commercialEquivalent]))
   })
 
-  it('peptides in regulatory limbo are pending_evaluation (blocked); BPC-157 among them', () => {
+  it('peptides in regulatory limbo are pending_evaluation (orderable with a warning); BPC-157 among them', () => {
     const pending = DEMO_COMPOUNDING.filter(d => d.status === 'pending_evaluation').map(d => d.name)
     for (const p of ['BPC-157', 'TB-500', 'MOTS-c', 'DSIP', 'GHK-Cu', 'KPV', 'Epitalon', 'Semax']) expect(pending).toContain(p)
   })

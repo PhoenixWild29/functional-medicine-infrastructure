@@ -42,7 +42,7 @@ afterEach(() => jest.restoreAllMocks())
 it('lists every ingredient with its status, flags, source and review date', async () => {
   const out = await html()
   for (const n of ['BPC-157', 'NAD+', 'Semaglutide']) expect(out).toContain(n)
-  expect(out).toContain('Pending FDA evaluation: may not be compounded')
+  expect(out).toContain('Pending FDA evaluation: may be ordered; the pharmacy confirms')
   expect(out).toContain('Not verified: may not be ordered')
   expect(out).toContain('Component of an FDA-approved drug')
   expect(out).toContain('demo data, not verified')
@@ -52,8 +52,9 @@ it('lists every ingredient with its status, flags, source and review date', asyn
 it('counts and marks the ingredients that cannot be ordered', async () => {
   const out = await html()
   expect(out).toContain('data-testid="ingredients-blocked-count"')
-  expect(out).toMatch(/data-testid="ingredients-blocked-count"[^>]*>2 of 3</)
-  expect(out).toContain('data-testid="ingredient-blocked-i1"')
+  // CHANGED (owner decision): BPC-157 (pending evaluation) is orderable.
+  expect(out).toMatch(/data-testid="ingredients-blocked-count"[^>]*>1 of 3</)
+  expect(out).not.toContain('data-testid="ingredient-blocked-i1"')
   expect(out).toContain('data-testid="ingredient-blocked-i2"')
   expect(out).not.toContain('data-testid="ingredient-blocked-i3"')
 })

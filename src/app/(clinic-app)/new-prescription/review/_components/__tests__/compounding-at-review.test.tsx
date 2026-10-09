@@ -3,6 +3,8 @@
  *
  *   - a line whose product may not be compounded (or is not verified)
  *     shows why and blocks Send, whatever else is right with it;
+ *   - (owner decision) one pending FDA evaluation shows a warning and
+ *     does not block;
  *   - the shortage reason is not offered unless the commercial product is
  *     on FDA's shortage list;
  *   - a typed "Other" reason needs at least 20 characters, and says so;
@@ -31,7 +33,8 @@ jest.mock('react-signature-canvas', () => {
 jest.mock('../../../_components/drug-interaction-alerts', () => ({ DrugInteractionAlerts: () => null }))
 
 const SHORTAGE = 'Commercial product is unavailable or on national shortage'
-const BPC_MESSAGE = 'BPC-157 5mg/mL Injectable: BPC-157 is pending FDA evaluation (removed from Category 2, not yet placed in Category 1 or on the bulks list), so it cannot be compounded or ordered through CompoundIQ.'
+const BLOCKED_MESSAGE = 'Peptide X 5mg/mL Injectable: Peptide X is 503A Category 2 (significant safety risks), so it cannot be compounded or ordered through CompoundIQ.'
+const PENDING_WARNING = 'FDA evaluation pending for this substance. The dispensing pharmacy confirms it can compound it.'
 
 const PATIENT = {
   patient_id: 'a3000000-0000-0000-0000-000000000004',
@@ -49,11 +52,19 @@ const base = {
     syringeOption: 'sc_kit', shippingType: 'standard', clinicalDifference: null, diagnosisCode: null, diagnosisText: null, specialInstructions: null,
   },
 }
+const BLOCKED_LINE = {
+  ...base, id: 'line-x', formulationId: 'formulation-x', medicationName: 'Peptide X 5mg/mL Injectable',
+  rxRules: {
+    isControlled: false, requiresClinicalDifference: false, clinicalDifferenceOptions: [], shortageReasonAllowed: false,
+    compoundingBlock: { code: 'not_compoundable', message: BLOCKED_MESSAGE },
+  },
+}
+// Owner decision: pending FDA evaluation is orderable, with a warning.
 const BPC_LINE = {
   ...base, id: 'line-bpc', formulationId: 'formulation-bpc', medicationName: 'BPC-157 5mg/mL Injectable',
   rxRules: {
     isControlled: false, requiresClinicalDifference: false, clinicalDifferenceOptions: [], shortageReasonAllowed: false,
-    compoundingBlock: { code: 'not_compoundable', message: BPC_MESSAGE },
+    compoundingBlock: null, compoundingWarning: PENDING_WARNING,
   },
 }
 const SEMA_LINE = {
@@ -84,7 +95,9 @@ beforeEach(() => {
 
 describe('sendBlock', () => {
   it('a line whose product may not be compounded is blocked as compounding', () => {
-    expect(sendBlock({ retailCents: 9000, wholesaleCents: 5000, sigText: base.sigText, rxRules: BPC_LINE.rxRules })).toBe('compounding')
+    expect(sendBlock({ retailCents: 9000, wholesaleCents: 5000, sigText: base.sigText, rxRules: BLOCKED_LINE.rxRules })).toBe('compounding')
+    // A warning is not a block.
+    expect(sendBlock({ retailCents: 9000, wholesaleCents: 5000, sigText: base.sigText, rxRules: BPC_LINE.rxRules })).toBeNull()
   })
 
   it('no compounding block: not blocked for it', () => {
@@ -94,11 +107,19 @@ describe('sendBlock', () => {
 
 describe('Review', () => {
   it('a product that may not be compounded: shows why and blocks Send', async () => {
-    renderReview([BPC_LINE])
-    expect(await screen.findByTestId('not-compoundable-line-bpc')).toHaveTextContent(BPC_MESSAGE)
-    expect(screen.getByTestId('review-not-compoundable-banner')).toHaveTextContent('BPC-157 5mg/mL Injectable')
+    renderReview([BLOCKED_LINE])
+    expect(await screen.findByTestId('not-compoundable-line-x')).toHaveTextContent(BLOCKED_MESSAGE)
+    expect(screen.getByTestId('review-not-compoundable-banner')).toHaveTextContent('Peptide X 5mg/mL Injectable')
     expect(screen.getByText(/Remove the flagged prescriptions above to enable sending/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Sign & Send/ })).toBeDisabled()
+  })
+
+  it('pending FDA evaluation: the line shows the warning and Send is not blocked by it', async () => {
+    renderReview([BPC_LINE])
+    expect(await screen.findByTestId('pending-evaluation-line-bpc')).toHaveTextContent(PENDING_WARNING)
+    expect(screen.queryByTestId('not-compoundable-line-bpc')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('review-not-compoundable-banner')).not.toBeInTheDocument()
+    expect(screen.getByTestId('send-blocked-reason')).toHaveTextContent('Sign in the signature box above to enable sending')
   })
 
   it('the shortage reason is not offered when the commercial product is not on the FDA shortage list', async () => {

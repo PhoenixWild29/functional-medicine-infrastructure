@@ -194,6 +194,7 @@ describe('GET /api/protocols?id — live pricing enrichment', () => {
       { item_id: 'i1', formulation_id: 'form-sema', pharmacy_id: 'ph-1', sort_order: 1, formulations: { name: 'Semaglutide 5mg/mL', salt_forms: { ingredients: ing('Semaglutide', 'approved_drug_component') }, formulation_ingredients: [] } },
       { item_id: 'i2', formulation_id: 'form-bpc', pharmacy_id: 'ph-1', sort_order: 2, formulations: { name: 'BPC-157 5mg/mL', salt_forms: { ingredients: ing('BPC-157', 'pending_evaluation') }, formulation_ingredients: [] } },
       { item_id: 'i3', formulation_id: 'form-nad', pharmacy_id: 'ph-1', sort_order: 3, formulations: { name: 'NAD+ 200mg/mL', salt_forms: { ingredients: ing('NAD+', 'unverified') }, formulation_ingredients: [] } },
+      { item_id: 'i4', formulation_id: 'form-x', pharmacy_id: 'ph-1', sort_order: 4, formulations: { name: 'Peptide X 5mg/mL', salt_forms: { ingredients: ing('Peptide X', 'category_2') }, formulation_ingredients: [] } },
     ]
     fromMock.mockImplementation((table: string) => {
       switch (table) {
@@ -207,9 +208,13 @@ describe('GET /api/protocols?id — live pricing enrichment', () => {
     })
 
     const json = await (await GET(makeRequest('proto-1'))).json()
-    const [sema, bpc, nad] = json.data.items
+    const [sema, bpc, nad, cat2] = json.data.items
     expect(sema.compounding_block).toBeNull()
-    expect(bpc.compounding_block).toEqual({ code: 'not_compoundable', message: expect.stringContaining('BPC-157 is pending FDA evaluation') })
+    expect(sema.compounding_warning).toBeNull()
+    // CHANGED (owner decision): pending FDA evaluation loads, with the warning.
+    expect(bpc.compounding_block).toBeNull()
+    expect(bpc.compounding_warning).toBe('FDA evaluation pending for this substance. The dispensing pharmacy confirms it can compound it.')
     expect(nad.compounding_block).toEqual({ code: 'compounding_status_unknown', message: expect.stringContaining('NAD+ has not been verified') })
+    expect(cat2.compounding_block).toEqual({ code: 'not_compoundable', message: expect.stringContaining('Peptide X is 503A Category 2') })
   })
 })

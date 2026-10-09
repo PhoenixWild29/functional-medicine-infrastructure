@@ -5,6 +5,7 @@
  *
  *   - a formulation with an ingredient that may not be compounded is
  *     refused, 422 NOT_COMPOUNDABLE, naming the ingredient and why;
+ *   - (owner decision) one pending FDA evaluation resolves;
  *   - one with an unverified ingredient is refused too, 422
  *     COMPOUNDING_STATUS_UNKNOWN;
  *   - both the salt-form ingredient and every combination ingredient
@@ -90,11 +91,17 @@ describe('a formulation line', () => {
     expect((await resolveLine(makeSupabase() as never, formulationLine as never)).ok).toBe(true)
   })
 
-  it('an ingredient pending FDA evaluation: 422 NOT_COMPOUNDABLE, naming it', async () => {
-    saltIngredient = ok('BPC-157', { compounding_status: 'pending_evaluation' })
+  it('an ingredient in Category 2: 422 NOT_COMPOUNDABLE, naming it', async () => {
+    saltIngredient = ok('BPC-157', { compounding_status: 'category_2' })
     const res = await resolveLine(makeSupabase() as never, formulationLine as never)
     expect(res).toMatchObject({ ok: false, status: 422, code: 'NOT_COMPOUNDABLE' })
-    if (!res.ok) expect(res.error).toBe('BPC-157 5mg/mL Injectable: BPC-157 is pending FDA evaluation (removed from Category 2, not yet placed in Category 1 or on the bulks list), so it cannot be compounded or ordered through CompoundIQ.')
+    if (!res.ok) expect(res.error).toBe('BPC-157 5mg/mL Injectable: BPC-157 is 503A Category 2 (significant safety risks), so it cannot be compounded or ordered through CompoundIQ.')
+  })
+
+  // CHANGED (owner decision): pending FDA evaluation is orderable.
+  it('an ingredient pending FDA evaluation resolves (orderable, with a warning shown elsewhere)', async () => {
+    saltIngredient = ok('BPC-157', { compounding_status: 'pending_evaluation' })
+    expect((await resolveLine(makeSupabase() as never, formulationLine as never)).ok).toBe(true)
   })
 
   it.each(['category_2', 'category_3', 'withdrawn_removed', 'not_eligible'])('%s: 422 NOT_COMPOUNDABLE', async status => {
@@ -111,7 +118,7 @@ describe('a formulation line', () => {
 
   it('a combination: any combination ingredient blocks it', async () => {
     saltIngredient = null
-    comboIngredients = [ok('Cyanocobalamin'), ok('TB-500', { compounding_status: 'pending_evaluation' })]
+    comboIngredients = [ok('Cyanocobalamin'), ok('Peptide X', { compounding_status: 'category_2' })]
     expect(await resolveLine(makeSupabase() as never, formulationLine as never)).toMatchObject({ ok: false, status: 422, code: 'NOT_COMPOUNDABLE' })
   })
 
