@@ -2085,6 +2085,18 @@ test.describe('Clinic App — WO-102: shipping once per pharmacy per order', () 
     // link too — click the form's submit.
     await page.getByRole('button', { name: 'Review & Send (2)' }).click()
     await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 10_000 })
+    // C8: the GLP-1 line needs a clinical-difference reason the provider
+    // chooses (never pre-selected), or Save as Draft and Send stay disabled.
+    // Not the shortage reason: the product is not on FDA's shortage list.
+    await chooseClinicalDifference(page)
+  }
+
+  /** C8: pick the GLP-1 line's clinical-difference reason on Review (the only required one). */
+  async function chooseClinicalDifference(page: Page) {
+    const reason = page.getByLabel(/Clinical difference \(required\)/)
+    await expect(reason).toHaveValue('', { timeout: 15_000 })
+    await reason.selectOption(TEST_CATALOG.glp1ClinicalDifferenceOptions[0]!)
+    await expect(reason).toHaveValue(TEST_CATALOG.glp1ClinicalDifferenceOptions[0]!)
   }
 
   async function drafts() {
