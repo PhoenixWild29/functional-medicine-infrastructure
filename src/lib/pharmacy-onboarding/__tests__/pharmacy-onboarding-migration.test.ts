@@ -162,6 +162,17 @@ describe('row level security', () => {
   })
 })
 
+it('the Vault helpers (SECURITY DEFINER) run for the service role only, never anon', () => {
+  // 20260317000005 revoked them from PUBLIC and authenticated but not
+  // anon, which Supabase grants function EXECUTE by default: the anon key
+  // could create, rotate or delete Vault secrets through RPC. The portal
+  // stores pharmacy credentials with them.
+  for (const fn of ['create_vault_secret(text, text)', 'rotate_vault_secret(uuid, text)', 'delete_vault_secret(uuid)']) {
+    expect(code).toContain(`revoke all on function ${fn} from public, anon, authenticated`)
+    expect(code).toContain(`grant execute on function ${fn} to service_role`)
+  }
+})
+
 it('license documents: a private bucket, PDF and images, 10 MB, no storage policies', () => {
   expect(code).toMatch(/insert into storage\.buckets \(id, name, public, file_size_limit, allowed_mime_types\) values \( ?'pharmacy-license-documents', ?'pharmacy-license-documents', ?false, ?10485760/)
   expect(code).not.toMatch(/on storage\.objects/)
