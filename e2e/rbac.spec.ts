@@ -34,17 +34,18 @@ async function seedClinicB(): Promise<void> {
   }, { onConflict: 'clinic_id' })
 
   // Create Clinic B auth user idempotently
+  // Role and clinic in app_metadata (service role), never user_metadata.
+  const appMetadata = { app_role: CLINIC_B_USER.role, clinic_id: CLINIC_B_ID }
   const existing = await supabase.auth.admin.listUsers()
-  const alreadyExists = existing.data?.users.some(u => u.email === CLINIC_B_USER.email)
-  if (!alreadyExists) {
+  const found = existing.data?.users.find(u => u.email === CLINIC_B_USER.email)
+  if (found) {
+    await supabase.auth.admin.updateUserById(found.id, { app_metadata: appMetadata })
+  } else {
     await supabase.auth.admin.createUser({
       email:          CLINIC_B_USER.email,
       password:       CLINIC_B_USER.password,
       email_confirm:  true,
-      user_metadata: {
-        app_role:  CLINIC_B_USER.role,
-        clinic_id: CLINIC_B_ID,
-      },
+      app_metadata:   appMetadata,
     })
   }
 }

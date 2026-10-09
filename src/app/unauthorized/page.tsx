@@ -34,6 +34,7 @@
 
 import { createServerClient } from '@/lib/supabase/server'
 import { SignOutButton } from './_components/sign-out-button'
+import { getUserRole } from '@/lib/auth/claims'
 
 export const metadata = {
   title: 'Access Denied — CompoundIQ',
@@ -44,7 +45,7 @@ export default async function UnauthorizedPage() {
   const { data: { user } } = await supabase.auth.getUser()
 
   const email   = user?.email
-  const appRole = user?.user_metadata['app_role'] as string | undefined
+  const appRole = getUserRole(user)
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">

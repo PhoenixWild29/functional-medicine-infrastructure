@@ -36,7 +36,7 @@ function csp(res: Response): Record<string, string[]> {
 }
 
 const clinicUser = (factors: Array<{ factor_type: string; status: string }> = []) =>
-  ({ data: { user: { id: 'u-1', email: 'dr.chen@clinic.test', user_metadata: { app_role: 'provider' }, factors } } })
+  ({ data: { user: { id: 'u-1', email: 'dr.chen@clinic.test', app_metadata: { app_role: 'provider' }, factors } } })
 
 beforeEach(() => {
   jest.clearAllMocks()

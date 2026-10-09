@@ -39,7 +39,7 @@ jest.mock('@/lib/supabase/server', () => ({
     auth: {
       getUser: () => getUserMock(),
       // A cookie-only session must not be trusted: getUser() verifies it.
-      getSession: async () => ({ data: { session: { user: { email: 'ops@test', user_metadata: { app_role: 'ops_admin' } } } } }),
+      getSession: async () => ({ data: { session: { user: { email: 'ops@test', app_metadata: { app_role: 'ops_admin' } } } } }),
     },
   })),
 }))
@@ -106,7 +106,7 @@ beforeEach(() => {
   routeOrderMock.mockReset().mockResolvedValue({ outcome: 'accepted', tier: 'TIER_1_API' })
   submitQueuedFaxMock.mockReset().mockResolvedValue({ outcome: 'accepted' })
   getUserMock.mockReset().mockResolvedValue({
-    data: { user: { id: 'u-ops', email: 'ops@test', user_metadata: { app_role: 'ops_admin' } } },
+    data: { user: { id: 'u-ops', email: 'ops@test', app_metadata: { app_role: 'ops_admin' } } },
     error: null,
   })
   errorSpy.mockClear(); infoSpy.mockClear()

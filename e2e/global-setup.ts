@@ -32,23 +32,28 @@ export default async function globalSetup(): Promise<void> {
   // Create Auth users idempotently
   const { data: existingUsers } = await supabase.auth.admin.listUsers()
   for (const user of Object.values(TEST_USERS)) {
-    const alreadyExists = existingUsers?.users.some((u) => u.email === user.email)
-    if (alreadyExists) continue
+    // Role and clinic are authorization facts: app_metadata, written with
+    // the service role. The app reads them only from app_metadata
+    // (src/lib/auth/claims) and RLS from auth.jwt() -> 'app_metadata';
+    // user_metadata is rewritable by the user and is never trusted.
+    const appMetadata = { app_role: user.role, clinic_id: user.clinicId ?? null }
 
-    // NB-2 (cowork): app_role and clinic_id must be in user_metadata, not app_metadata.
-    // The application reads session.user.user_metadata['app_role'] in middleware and all
-    // layouts. Supabase does not merge app_metadata into user_metadata on the client SDK,
-    // so using app_metadata would result in undefined app_role at runtime.
+    const existing = existingUsers?.users.find((u) => u.email === user.email)
+    if (existing) {
+      // Idempotent: keep an existing test user's claims canonical.
+      const { error: updateError } = await supabase.auth.admin.updateUserById(existing.id, { app_metadata: appMetadata })
+      if (updateError) throw new Error(`Failed to sync test user ${user.email}: ${updateError.message}`)
+      continue
+    }
+
     const { error } = await supabase.auth.admin.createUser({
       email:          user.email,
       password:       user.password,
       email_confirm:  true,
-      user_metadata: {
-        app_role:  user.role,
-        ...(user.clinicId && { clinic_id: user.clinicId }),
-        // Map to the profile row that will be created by the auth trigger
-        ...(user.role === 'provider' && { profile_id: TEST_IDS.provider }),
-      },
+      app_metadata:   appMetadata,
+      // Map to the profile row that will be created by the auth trigger
+      // (display data only; not used for authorization).
+      ...(user.role === 'provider' && { user_metadata: { profile_id: TEST_IDS.provider } }),
     })
 
     if (error) {

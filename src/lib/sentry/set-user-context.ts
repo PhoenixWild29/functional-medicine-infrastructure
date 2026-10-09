@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/nextjs'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 // ============================================================
 // Sentry User Context — WO-40
@@ -17,7 +18,7 @@ export interface SentryUserContext {
   userId: string
   /** UUID of the clinic this user belongs to */
   clinicId?: string
-  /** Role from JWT user_metadata.app_role */
+  /** Role from app_metadata.app_role (src/lib/auth/claims) */
   appRole?: string
 }
 
@@ -31,8 +32,8 @@ export interface SentryUserContext {
  * if (user) {
  *   setSentryUserContext({
  *     userId: user.id,
- *     clinicId: user.user_metadata?.clinic_id,
- *     appRole: user.user_metadata?.app_role,
+ *     clinicId: getUserClinicId(user),
+ *     appRole: getUserRole(user),
  *   })
  * }
  */

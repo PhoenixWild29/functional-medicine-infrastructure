@@ -7,6 +7,7 @@ import { ClinicErrorBoundary } from '@/components/clinic-error-boundary'
 import { BfcacheGuard } from '@/components/bfcache-guard'
 import { HipaaTimeout } from '@/components/hipaa-timeout'
 import { serverEnv } from '@/lib/env'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 // Clinic App: auth required, app_role must be clinic_user
 // Accessible to: clinic_admin, provider, medical_assistant
@@ -26,7 +27,7 @@ export default async function ClinicAppLayout({
     redirect('/login')
   }
 
-  const appRole = user.user_metadata['app_role'] as string | undefined
+  const appRole = getUserRole(user)
   const clinicUserRoles = ['clinic_admin', 'provider', 'medical_assistant']
 
   if (!appRole || !clinicUserRoles.includes(appRole)) {
@@ -40,11 +41,12 @@ export default async function ClinicAppLayout({
   // the admin has shared it. A toggle that cannot be read hides the link
   // (the page itself reports the error).
   let showPractice = appRole === 'clinic_admin'
-  if (appRole === 'provider' && typeof user.user_metadata['clinic_id'] === 'string') {
+  const clinicId = getUserClinicId(user)
+  if (appRole === 'provider' && clinicId) {
     const { data: clinic } = await supabase
       .from('clinics')
       .select('practice_dashboard_visible_to_providers')
-      .eq('clinic_id', user.user_metadata['clinic_id'] as string)
+      .eq('clinic_id', clinicId)
       .maybeSingle()
     showPractice = clinic?.practice_dashboard_visible_to_providers === true
   }

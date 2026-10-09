@@ -23,6 +23,7 @@ import {
   mapCatalogItem, mapUploadVersion, mapNormalizedEntry, mapPharmacySyncStatus,
 } from '@/lib/catalog/map-catalog-row'
 import type { Enums } from '@/types/database.types'
+import { getUserRole } from '@/lib/auth/claims'
 
 type RegulatoryStatusEnum = Enums<'regulatory_status_enum'>
 
@@ -88,7 +89,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (session.user.user_metadata['app_role'] !== 'ops_admin') {
+  if (getUserRole(session.user) !== 'ops_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

@@ -13,6 +13,7 @@ import { useState, FormEvent, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
 import { postLoginDestination } from '@/lib/auth/landing-route'
+import { getUserRole } from '@/lib/auth/claims'
 
 const AUTH_CALLBACK_ERROR_MESSAGES: Record<string, string> = {
   auth_callback_failed: 'Email verification failed. Please try signing in again.',
@@ -67,7 +68,7 @@ function LoginForm() {
     // protocol-relative targets (//evil.com) are ignored; see landing-route.ts.
     // The role comes from the user the auth server just returned for this
     // sign-in, not from a decoded session cookie.
-    const appRole = data.user.user_metadata['app_role'] as string | undefined
+    const appRole = getUserRole(data.user)
     router.push(postLoginDestination(appRole, redirectTo))
   }
 

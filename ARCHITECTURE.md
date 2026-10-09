@@ -36,7 +36,7 @@ The codebase serves three distinct audiences through a single Next.js applicatio
   → clinic roles → /dashboard
 ```
 
-Role claims are stored in `user_metadata.app_role` and `user_metadata.clinic_id`. The middleware (`src/middleware.ts`) enforces role checks on every request. Layouts provide a second layer of defense.
+Role claims are stored in `app_metadata.app_role` and `app_metadata.clinic_id` (written only with the service role; read through `src/lib/auth/claims.ts`). Never read them from `user_metadata`, which any signed-in user can rewrite. The middleware (`src/middleware.ts`) enforces role checks on every request. Layouts provide a second layer of defense.
 
 ### Patients (Stateless Checkout Token)
 
@@ -157,7 +157,7 @@ All webhooks (Stripe, Documo, Twilio, pharmacy) share a 7-step pattern:
 
 ## Multi-Tenant Isolation (RLS)
 
-Every table has Row Level Security (RLS) enabled. The key JWT claim is `user_metadata.clinic_id`. Ops admins get a special `app_role = ops_admin` claim that grants cross-clinic SELECT access.
+Every table has Row Level Security (RLS) enabled. The key JWT claim is `app_metadata.clinic_id` (`auth.jwt() -> 'app_metadata' ->> 'clinic_id'`, migration 20261010000001). Ops admins get a special `app_role = ops_admin` claim that grants cross-clinic SELECT access.
 
 The server-side Supabase client (`service_role`) bypasses RLS and is used exclusively in API routes and cron jobs — never in client-side code.
 

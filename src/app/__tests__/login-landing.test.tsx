@@ -25,7 +25,7 @@ jest.mock('@/lib/supabase/client', () => ({
 import LoginPage from '../login/page'
 
 function signInReturns(role: string) {
-  const user = { id: 'u1', email: 'someone@clinic.test', user_metadata: { app_role: role } }
+  const user = { id: 'u1', email: 'someone@clinic.test', app_metadata: { app_role: role } }
   signInMock.mockResolvedValue({ data: { user, session: { user } }, error: null })
 }
 

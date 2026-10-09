@@ -78,13 +78,13 @@ function expectNoSecurityHeaders(res: Response) {
 
 const CLINIC_SESSION = {
   data: {
-    user: { user_metadata: { app_role: 'clinic_admin' } },
+    user: { app_metadata: { app_role: 'clinic_admin' } },
   },
 }
 
 const OPS_SESSION = {
   data: {
-    user: { user_metadata: { app_role: 'ops_admin' } },
+    user: { app_metadata: { app_role: 'ops_admin' } },
   },
 }
 
@@ -167,13 +167,13 @@ describe('middleware applySecurityHeaders coverage', () => {
 
 const PROVIDER_SESSION = {
   data: {
-    user: { user_metadata: { app_role: 'provider' } },
+    user: { app_metadata: { app_role: 'provider' } },
   },
 }
 
 const MA_SESSION = {
   data: {
-    user: { user_metadata: { app_role: 'medical_assistant' } },
+    user: { app_metadata: { app_role: 'medical_assistant' } },
   },
 }
 

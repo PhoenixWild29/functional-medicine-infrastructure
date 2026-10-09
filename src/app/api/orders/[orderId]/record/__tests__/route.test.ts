@@ -52,7 +52,7 @@ const call = () => GET({} as never, { params: Promise.resolve({ orderId: ORDER_I
 beforeEach(() => {
   getUserMock.mockReset()
   getSessionMock.mockReset()
-  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', user_metadata: { clinic_id: CLINIC } } } })
+  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { clinic_id: CLINIC } } } })
   filters.length = 0
   absorb = false
   orderRow = {

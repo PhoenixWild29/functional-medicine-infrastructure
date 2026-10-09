@@ -30,7 +30,7 @@ import { logPhiAccess, PHI_ACCESS_HASH_ENV } from '../phi-access'
 const USER = {
   id: '11111111-1111-4111-8111-111111111111',
   email: 'dr.chen@sunrise.example',
-  user_metadata: { app_role: 'provider', clinic_id: '22222222-2222-4222-8222-222222222222' },
+  app_metadata: { app_role: 'provider', clinic_id: '22222222-2222-4222-8222-222222222222' },
 }
 const PATIENT = '33333333-3333-4333-8333-333333333333'
 const ORDER = '44444444-4444-4444-8444-444444444444'
@@ -66,7 +66,7 @@ describe('the row', () => {
     expect(rows).toHaveLength(1)
     const row = rows[0]!
     expect(row).toEqual(expect.objectContaining({
-      actor_user_id: USER.id, actor_role: 'provider', clinic_id: USER.user_metadata.clinic_id,
+      actor_user_id: USER.id, actor_role: 'provider', clinic_id: USER.app_metadata.clinic_id,
       patient_id: PATIENT, order_id: ORDER, action: 'view', resource: 'order', route: '/api/orders/[orderId]/record',
     }))
     expect(Date.parse(String(row['occurred_at']))).not.toBeNaN()
@@ -111,7 +111,7 @@ describe('the row', () => {
   })
 
   it('a clinic given for the row (ops viewing a clinic\'s order) wins over the actor\'s', async () => {
-    await logPhiAccess({ user: { id: USER.id, email: 'ops@compoundiq.example', user_metadata: { app_role: 'ops_admin' } }, clinicId: '55555555-5555-4555-8555-555555555555', orderId: ORDER, action: 'view', resource: 'order', route: '/api/ops/orders/[orderId]/detail', headers: null })
+    await logPhiAccess({ user: { id: USER.id, email: 'ops@compoundiq.example', app_metadata: { app_role: 'ops_admin' } }, clinicId: '55555555-5555-4555-8555-555555555555', orderId: ORDER, action: 'view', resource: 'order', route: '/api/ops/orders/[orderId]/detail', headers: null })
     expect(inserted()[0]).toEqual(expect.objectContaining({ actor_role: 'ops_admin', clinic_id: '55555555-5555-4555-8555-555555555555', ip_hash: null, user_agent_hash: null }))
   })
 
