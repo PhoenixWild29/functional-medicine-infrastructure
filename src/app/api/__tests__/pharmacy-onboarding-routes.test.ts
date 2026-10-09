@@ -19,7 +19,10 @@ jest.mock('@/lib/supabase/server', () => ({ createServerClient: async () => ({ a
 const service = { marker: 'service-client' }
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => service }))
 
-const lib = {
+// The mocks are created inside the factories (they run before this
+// module's own constants exist) and read back with requireMock.
+jest.mock('@/lib/pharmacy-onboarding/application', () => ({
+  ...jest.requireActual('@/lib/pharmacy-onboarding/application'),
   loadOnboarding: jest.fn(async () => ({ ok: true, state: { status: 'in_progress' } })),
   saveDetails: jest.fn(async () => ({ ok: true })),
   saveFacility: jest.fn(async () => ({ ok: true })),
@@ -31,25 +34,26 @@ const lib = {
   saveLicense: jest.fn(async () => ({ ok: true })),
   deleteLicense: jest.fn(async () => ({ ok: true })),
   attachLicenseDocument: jest.fn(async () => ({ ok: true })),
-}
-jest.mock('@/lib/pharmacy-onboarding/application', () => ({ ...jest.requireActual('@/lib/pharmacy-onboarding/application'), ...lib }))
-const invites = {
+}))
+jest.mock('@/lib/pharmacy-onboarding/invites', () => ({
   createInvite: jest.fn(async () => ({ ok: true, invite: { inviteId: 'i-1' }, link: 'https://app.example/onboard/pharmacy/x' })),
   listInvites: jest.fn(async () => ({ ok: true, invites: [] })),
   revokeInvite: jest.fn(async () => ({ ok: true, invite: {} })),
   resendInvite: jest.fn(async () => ({ ok: true, invite: {}, link: 'l' })),
   inviteForToken: jest.fn(async () => ({ state: 'pending', pharmacyName: 'Strive', adminEmail: 'd@s.example', expiresAt: 'x' })),
   acceptInvite: jest.fn(async () => ({ ok: true, email: 'd@s.example' })),
-}
-jest.mock('@/lib/pharmacy-onboarding/invites', () => invites)
-const review = {
+}))
+jest.mock('@/lib/pharmacy-onboarding/review', () => ({
   listApplications: jest.fn(async () => ({ ok: true, applications: [] })),
   getApplicationReview: jest.fn(async () => ({ ok: true, review: {} })),
   decideLicense: jest.fn(async () => ({ ok: true })),
   approveApplication: jest.fn(async () => ({ ok: true })),
   sendBackApplication: jest.fn(async () => ({ ok: true })),
-}
-jest.mock('@/lib/pharmacy-onboarding/review', () => review)
+}))
+type Mocked = Record<string, jest.Mock>
+const lib = jest.requireMock('@/lib/pharmacy-onboarding/application') as Mocked
+const invites = jest.requireMock('@/lib/pharmacy-onboarding/invites') as Mocked
+const review = jest.requireMock('@/lib/pharmacy-onboarding/review') as Mocked
 
 import * as wizard from '@/app/api/pharmacy/onboarding/route'
 import * as step from '@/app/api/pharmacy/onboarding/[step]/route'
@@ -104,10 +108,11 @@ describe('the pharmacy portal API', () => {
 
   it('anyone else is refused: signed out 401; other roles (even with a forged user_metadata) 403', async () => {
     signedOut()
-    expect((await wizard.GET(req('GET'))).status).toBe(401)
+    expect((await wizard.GET()).status).toBe(401)
     for (const role of ['ops_admin', 'clinic_admin', 'provider', 'medical_assistant']) {
-      role === 'ops_admin' ? asOps() : as(role)
-      expect((await wizard.GET(req('GET'))).status).toBe(403)
+      if (role === 'ops_admin') asOps()
+      else as(role)
+      expect((await wizard.GET()).status).toBe(403)
       expect((await licenses.POST(req('POST', {}))).status).toBe(403)
     }
     expect(lib.loadOnboarding).not.toHaveBeenCalled()
@@ -116,7 +121,7 @@ describe('the pharmacy portal API', () => {
 
   it('a pharmacy_admin without a pharmacy_id claim is refused', async () => {
     getUserMock.mockResolvedValue({ data: { user: { id: 'u', app_metadata: { app_role: 'pharmacy_admin' } } }, error: null })
-    expect((await wizard.GET(req('GET'))).status).toBe(403)
+    expect((await wizard.GET()).status).toBe(403)
   })
 
   it('a cross-site write is refused', async () => {
@@ -150,10 +155,10 @@ describe('the ops API', () => {
     asOps()
     expect((await opsInvites.POST(req('POST', { pharmacyName: 'Strive', adminEmail: 'd@s.example' }))).status).toBe(200)
     expect(invites.createInvite).toHaveBeenCalledWith(service, { actor: { userId: 'u-ops', role: 'ops_admin' }, pharmacyName: 'Strive', adminEmail: 'd@s.example' })
-    expect((await opsInvites.GET(req('GET'))).status).toBe(200)
+    expect((await opsInvites.GET()).status).toBe(200)
     expect((await revoke.POST(req('POST'), params({ inviteId: 'i-1' }))).status).toBe(200)
     expect((await resend.POST(req('POST'), params({ inviteId: 'i-1' }))).status).toBe(200)
-    expect((await opsApps.GET(req('GET'))).status).toBe(200)
+    expect((await opsApps.GET()).status).toBe(200)
     expect((await opsApp.GET(req('GET'), params({ applicationId: 'a-1' }))).status).toBe(200)
     expect((await decide.POST(req('POST', { decision: 'verify' }), params({ applicationId: 'a-1', state: 'TX' }))).status).toBe(200)
     expect(review.decideLicense).toHaveBeenCalledWith(service, { actor: { userId: 'u-ops', role: 'ops_admin' }, applicationId: 'a-1', state: 'TX', decision: 'verify', note: null })
@@ -168,14 +173,14 @@ describe('the ops API', () => {
       expect((await approve.POST(req('POST'), params({ applicationId: 'a-1' }))).status).toBe(403)
     }
     signedOut()
-    expect((await opsApps.GET(req('GET'))).status).toBe(401)
+    expect((await opsApps.GET()).status).toBe(401)
     expect(invites.createInvite).not.toHaveBeenCalled()
     expect(review.approveApplication).not.toHaveBeenCalled()
   })
 
   it('a library refusal keeps its status and message', async () => {
     asOps()
-    review.approveApplication.mockResolvedValueOnce({ ok: false, status: 409, error: 'Verify every license first.' } as never)
+    review.approveApplication!.mockResolvedValueOnce({ ok: false, status: 409, error: 'Verify every license first.' } as never)
     const res = await approve.POST(req('POST'), params({ applicationId: 'a-1' }))
     expect(res.status).toBe(409)
     expect(await res.json()).toEqual(expect.objectContaining({ error: 'Verify every license first.' }))
@@ -191,7 +196,7 @@ describe('the invite link API (no session)', () => {
   })
 
   it('an unknown link is 404; a cross-site accept is refused', async () => {
-    invites.inviteForToken.mockResolvedValueOnce(null as never)
+    invites.inviteForToken!.mockResolvedValueOnce(null as never)
     expect((await onboard.GET(req('GET'), params({ token: 'tok' }))).status).toBe(404)
     expect((await onboard.POST(req('POST', {}, { 'sec-fetch-site': 'cross-site' }), params({ token: 'tok' }))).status).toBe(403)
   })
