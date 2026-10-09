@@ -173,10 +173,25 @@ describe('ops', () => {
     expect(screen.getByText(/shown once/i)).toBeInTheDocument()
   })
 
+  it('the review: a portal pharmacy with every license verified still waits for its adapter', async () => {
+    fetchMock.mockResolvedValue(reply({ review: {
+      applicationId: 'a-1', pharmacyId: 'p-1', status: 'submitted', stepsCompleted: [], submittedAt: null, reviewNote: null,
+      pharmacy: { name: 'Strive Pharmacy' }, ordering: { method: 'portal', portalUrl: 'https://portal.strive.example', secretsStored: true },
+      adapter: { required: true, configuredAt: null },
+      acceptance: { signerName: 'Dana', signerTitle: 'PIC', acceptedAt: '2026-10-08T00:00:00.000Z', templateVersion: 'v0.1', current: true },
+      catalog: { choice: 'skipped', rowCount: null, warnings: [], rows: [] }, events: [],
+      licenses: [{ state: 'TX', licenseNumber: 'TX-1', expiresOn: '2027-06-30', sterileCompounding: true, verificationStatus: 'verified', verificationNote: null, verifiedAt: null, documentUrl: null }],
+    } }))
+    render(<PharmacyApplicationReview applicationId="a-1" />)
+    expect(await screen.findByRole('button', { name: /^approve$/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /mark adapter configured/i })).toBeEnabled()
+    expect(screen.getByText(/adapter is not configured/i)).toBeInTheDocument()
+  })
+
   it('the review: approve waits for every license; a rejection needs a note', async () => {
     fetchMock.mockResolvedValue(reply({ review: {
       applicationId: 'a-1', pharmacyId: 'p-1', status: 'submitted', stepsCompleted: [], submittedAt: null, reviewNote: null,
-      pharmacy: { name: 'Strive Pharmacy' }, ordering: { method: 'fax', faxNumber: '+15125550199' }, acceptance: null,
+      pharmacy: { name: 'Strive Pharmacy' }, ordering: { method: 'fax', faxNumber: '+15125550199' }, adapter: { required: false, configuredAt: null }, acceptance: null,
       catalog: { choice: 'skipped', rowCount: null, warnings: [], rows: [] }, events: [],
       licenses: [{ state: 'TX', licenseNumber: 'TX-1', expiresOn: '2027-06-30', sterileCompounding: true, verificationStatus: 'pending', verificationNote: null, verifiedAt: null, documentUrl: 'https://storage.example/doc' }],
     } }))

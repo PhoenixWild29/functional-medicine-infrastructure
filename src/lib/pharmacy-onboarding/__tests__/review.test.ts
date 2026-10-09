@@ -18,7 +18,7 @@
 
 import { onboardingFake } from '@/__tests__/helpers/onboarding-fake'
 import { AGREEMENT, agreementTextSha256 } from '../agreement'
-import { listApplications, getApplicationReview, decideLicense, approveApplication, sendBackApplication } from '../review'
+import { listApplications, getApplicationReview, decideLicense, approveApplication, sendBackApplication, markAdapterConfigured } from '../review'
 import { isLivePharmacy } from '@/lib/pharmacies/live'
 
 const NOW = new Date('2026-10-09T12:00:00.000Z')
@@ -34,13 +34,16 @@ const license = (over: Record<string, unknown> = {}) => ({
   is_active: false, verification_status: 'pending', document_path: `${PH}/TX/doc.pdf`, ...over,
 })
 
-function world(over: { status?: string; licenses?: Record<string, unknown>[]; accepted?: boolean } = {}) {
+function world(over: { status?: string; licenses?: Record<string, unknown>[]; accepted?: boolean; method?: string; adapterConfigured?: boolean } = {}) {
   return onboardingFake({
     pharmacies: [{ pharmacy_id: PH, name: 'Strive Pharmacy', legal_name: 'Strive Compounding LLC', npi: '1234567893', ncpdp_id: '1234567', facility_type: '503A', is_active: false, onboarding_status: 'onboarding', integration_tier: 'TIER_2_PORTAL' }],
     pharmacy_onboarding_applications: [{
       application_id: APP, pharmacy_id: PH, status: over.status ?? 'submitted', submitted_at: '2026-10-08T10:00:00.000Z', updated_at: '2026-10-08T10:00:00.000Z',
       steps_completed: ['details', 'facility', 'licenses', 'ordering', 'shipping', 'agreement', 'catalog'],
-      ordering_method: 'portal', ordering_details: { portal_url: 'https://portal.strive.example', vault: { portal_username: 'v-1', portal_password: 'v-2' } },
+      ordering_method: over.method ?? 'portal',
+      ordering_details: (over.method ?? 'portal') === 'fax' ? { fax_number: '+15125550199' } : { portal_url: 'https://portal.strive.example', vault: { portal_username: 'v-1', portal_password: 'v-2' } },
+      adapter_configured_at: over.adapterConfigured ? '2026-10-08T11:00:00.000Z' : null,
+      adapter_configured_by: over.adapterConfigured ? OPS.userId : null,
       catalog_choice: 'uploaded', catalog_row_count: 1, catalog_rows: [{ medication_name: 'Progesterone', form: 'Capsule', dose: '100mg', wholesale_price: 18.5, regulatory_status: 'ACTIVE' }], catalog_warnings: [],
     }],
     pharmacy_state_licenses: over.licenses ?? [license()],
@@ -110,7 +113,7 @@ describe('approve', () => {
   })
 
   it('every license verified and the BAA accepted: the pharmacy becomes active and approved; audit-logged', async () => {
-    const db = world({ licenses: [license({ verification_status: 'verified', is_active: true })] })
+    const db = world({ licenses: [license({ verification_status: 'verified', is_active: true })], adapterConfigured: true })
     expect(await approveApplication(db.client, { actor: OPS, applicationId: APP }, NOW)).toMatchObject({ ok: true })
     expect(pharmacy(db)).toEqual(expect.objectContaining({ is_active: true, onboarding_status: 'approved' }))
     expect(isLivePharmacy(pharmacy(db) as never)).toBe(true)
@@ -119,10 +122,53 @@ describe('approve', () => {
   })
 
   it('the application cannot be marked approved: the pharmacy is put back inactive', async () => {
-    const db = world({ licenses: [license({ verification_status: 'verified', is_active: true })] })
+    const db = world({ licenses: [license({ verification_status: 'verified', is_active: true })], adapterConfigured: true })
     db.failOn('pharmacy_onboarding_applications:update')
     expect(await approveApplication(db.client, { actor: OPS, applicationId: APP }, NOW)).toMatchObject({ ok: false, status: 503 })
     expect(pharmacy(db)).toEqual(expect.objectContaining({ is_active: false, onboarding_status: 'onboarding' }))
+  })
+})
+
+describe('the adapter (API and portal pharmacies)', () => {
+  const verified = [license({ verification_status: 'verified', is_active: true })]
+
+  it('an API or portal pharmacy cannot be approved until ops marks its adapter configured', async () => {
+    const db = world({ licenses: verified })
+    expect(await approveApplication(db.client, { actor: OPS, applicationId: APP }, NOW)).toMatchObject({ ok: false, status: 409, error: expect.stringContaining('adapter') })
+    expect(pharmacy(db)).toEqual(expect.objectContaining({ is_active: false, onboarding_status: 'onboarding' }))
+    expect(await markAdapterConfigured(db.client, { actor: OPS, applicationId: APP, configured: true }, NOW)).toMatchObject({ ok: true })
+    expect(app(db)).toEqual(expect.objectContaining({ adapter_configured_at: NOW.toISOString(), adapter_configured_by: OPS.userId }))
+    expect(await approveApplication(db.client, { actor: OPS, applicationId: APP }, NOW)).toMatchObject({ ok: true })
+    expect(actions(db)).toEqual(['adapter_marked_configured', 'application_approved'])
+  })
+
+  it('a fax pharmacy is approved once its licenses are verified; it has no adapter to mark', async () => {
+    const db = world({ licenses: verified, method: 'fax' })
+    expect(await markAdapterConfigured(db.client, { actor: OPS, applicationId: APP, configured: true }, NOW)).toMatchObject({ ok: false, status: 409 })
+    expect(await approveApplication(db.client, { actor: OPS, applicationId: APP }, NOW)).toMatchObject({ ok: true })
+  })
+
+  it('unmarking clears it; audit-logged', async () => {
+    const db = world({ licenses: verified, adapterConfigured: true })
+    expect(await markAdapterConfigured(db.client, { actor: OPS, applicationId: APP, configured: false }, NOW)).toMatchObject({ ok: true })
+    expect(app(db)).toEqual(expect.objectContaining({ adapter_configured_at: null, adapter_configured_by: null }))
+    expect(actions(db)).toEqual(['adapter_marked_unconfigured'])
+  })
+
+  it('no audit row: nothing is marked', async () => {
+    const db = world({ licenses: verified })
+    db.failOn('pharmacy_onboarding_events:insert')
+    expect(await markAdapterConfigured(db.client, { actor: OPS, applicationId: APP, configured: true }, NOW)).toMatchObject({ ok: false, status: 503 })
+    expect(app(db)['adapter_configured_at']).toBeNull()
+  })
+
+  it('the review says whether an adapter is needed and when it was marked', async () => {
+    const r = await getApplicationReview(world({ adapterConfigured: true }).client, APP)
+    if (!r.ok) throw new Error(r.error)
+    expect(r.review.adapter).toEqual({ required: true, configuredAt: '2026-10-08T11:00:00.000Z' })
+    const fax = await getApplicationReview(world({ method: 'fax' }).client, APP)
+    if (!fax.ok) throw new Error(fax.error)
+    expect(fax.review.adapter).toEqual({ required: false, configuredAt: null })
   })
 })
 

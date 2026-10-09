@@ -186,6 +186,14 @@ describe('ordering', () => {
     expect(app(db)['ordering_details']).toEqual({ fax_number: '+15125550199' })
   })
 
+  it('saving the ordering details again clears ops’ "adapter configured" mark', async () => {
+    const db = world('sent_back')
+    app(db)['adapter_configured_at'] = '2026-10-08T11:00:00.000Z'
+    app(db)['adapter_configured_by'] = 'ops-1'
+    await saveOrdering(db.client, ctx, { method: 'portal', portal: { portalUrl: 'https://portal.strive.example', username: 'u', password: 'p' } })
+    expect(app(db)).toEqual(expect.objectContaining({ adapter_configured_at: null, adapter_configured_by: null }))
+  })
+
   it('Vault unavailable: nothing is saved', async () => {
     const db = world()
     db.failOn('rpc:create_vault_secret')

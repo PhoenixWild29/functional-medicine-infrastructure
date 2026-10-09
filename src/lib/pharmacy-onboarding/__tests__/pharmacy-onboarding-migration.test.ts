@@ -100,6 +100,10 @@ describe('pharmacy_onboarding_applications', () => {
     expect(t).toContain('steps_completed text[] not null')
     expect(t).toMatch(/ordering_method in \('api', ?'portal', ?'fax'\)/)
     expect(t).toMatch(/catalog_choice in \('uploaded', ?'skipped'\)/)
+    // Ops marks an API or portal pharmacy's adapter configured before approval.
+    expect(t).toContain('adapter_configured_at timestamptz')
+    expect(t).toContain('adapter_configured_by uuid')
+    expect(t).toContain('check ((adapter_configured_at is null) = (adapter_configured_by is null))')
     expect(t).not.toMatch(/password|api_key|secret text/)
   })
 })

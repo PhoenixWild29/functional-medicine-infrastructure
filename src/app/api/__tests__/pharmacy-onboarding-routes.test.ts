@@ -49,6 +49,7 @@ jest.mock('@/lib/pharmacy-onboarding/review', () => ({
   decideLicense: jest.fn(async () => ({ ok: true })),
   approveApplication: jest.fn(async () => ({ ok: true })),
   sendBackApplication: jest.fn(async () => ({ ok: true })),
+  markAdapterConfigured: jest.fn(async () => ({ ok: true })),
 }))
 type Mocked = Record<string, jest.Mock>
 const lib = jest.requireMock('@/lib/pharmacy-onboarding/application') as Mocked
@@ -68,6 +69,7 @@ import * as opsApp from '@/app/api/ops/onboarding/pharmacies/[applicationId]/rou
 import * as decide from '@/app/api/ops/onboarding/pharmacies/[applicationId]/licenses/[state]/route'
 import * as approve from '@/app/api/ops/onboarding/pharmacies/[applicationId]/approve/route'
 import * as sendBack from '@/app/api/ops/onboarding/pharmacies/[applicationId]/send-back/route'
+import * as adapter from '@/app/api/ops/onboarding/pharmacies/[applicationId]/adapter/route'
 import * as onboard from '@/app/api/onboard/pharmacy/[token]/route'
 
 const PH = 'ph000000-0000-4000-8000-000000000001'
@@ -164,6 +166,8 @@ describe('the ops API', () => {
     expect(review.decideLicense).toHaveBeenCalledWith(service, { actor: { userId: 'u-ops', role: 'ops_admin' }, applicationId: 'a-1', state: 'TX', decision: 'verify', note: null })
     expect((await approve.POST(req('POST'), params({ applicationId: 'a-1' }))).status).toBe(200)
     expect((await sendBack.POST(req('POST', { note: 'Fix CA' }), params({ applicationId: 'a-1' }))).status).toBe(200)
+    expect((await adapter.POST(req('POST', { configured: true }), params({ applicationId: 'a-1' }))).status).toBe(200)
+    expect(review.markAdapterConfigured).toHaveBeenCalledWith(service, { actor: { userId: 'u-ops', role: 'ops_admin' }, applicationId: 'a-1', configured: true })
   })
 
   it('a pharmacy_admin or clinic user is refused (403), signed out 401', async () => {
@@ -171,6 +175,7 @@ describe('the ops API', () => {
       set()
       expect((await opsInvites.POST(req('POST', {}))).status).toBe(403)
       expect((await approve.POST(req('POST'), params({ applicationId: 'a-1' }))).status).toBe(403)
+      expect((await adapter.POST(req('POST', { configured: true }), params({ applicationId: 'a-1' }))).status).toBe(403)
     }
     signedOut()
     expect((await opsApps.GET()).status).toBe(401)
