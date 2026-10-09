@@ -3,6 +3,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { Providers } from '@/components/providers'
 import { NavSignOutButton } from '@/components/nav-sign-out-button'
 import { BfcacheGuard } from '@/components/bfcache-guard'
+import { getUserRole } from '@/lib/auth/claims'
 
 // Ops Dashboard: auth required, app_role must be ops_admin
 // Cross-clinic access — restricted to operations team only
@@ -25,7 +26,7 @@ export default async function OpsDashboardLayout({
     redirect('/login')
   }
 
-  const appRole = user.user_metadata['app_role'] as string | undefined
+  const appRole = getUserRole(user)
 
   if (appRole !== 'ops_admin') {
     redirect('/unauthorized')

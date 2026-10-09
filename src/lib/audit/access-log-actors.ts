@@ -14,10 +14,17 @@
 //   - CompoundIQ ops staff work across clinics: "CompoundIQ ops", no email.
 //   - anyone else (another clinic, a deleted login): not identified.
 //
+// Role and clinic come from app_metadata (src/lib/auth/claims), never
+// user_metadata: a user who rewrote their own user_metadata could
+// otherwise appear as "CompoundIQ ops" in their clinic's log (hiding who
+// they are), or have their name shown in another clinic's log. The
+// display name may still come from user_metadata; it is only shown.
+//
 // A lookup that fails is not fatal; that actor is just not identified.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export interface AccessLogActor {
   name:  string | null
@@ -55,14 +62,14 @@ export async function resolveAccessLogActors(
     try {
       const { data, error: userError } = await supabase.auth.admin.getUserById(id)
       if (userError || !data?.user) return
-      const meta = (data.user.user_metadata ?? {}) as Record<string, unknown>
-      if (clean(meta['app_role']) === 'ops_admin') {
+      if (getUserRole(data.user) === 'ops_admin') {
         out[id] = { name: 'CompoundIQ ops', email: null }
         return
       }
-      if (clean(meta['clinic_id']) !== clinicId) return
+      if (getUserClinicId(data.user) !== clinicId) return
+      const profile = (data.user.user_metadata ?? {}) as Record<string, unknown>
       out[id] = {
-        name:  providerNames.get(id) ?? clean(meta['full_name']) ?? clean(meta['name']),
+        name:  providerNames.get(id) ?? clean(profile['full_name']) ?? clean(profile['name']),
         email: clean(data.user.email),
       }
     } catch (err) {

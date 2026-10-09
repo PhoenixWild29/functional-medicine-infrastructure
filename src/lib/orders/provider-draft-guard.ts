@@ -21,12 +21,13 @@ import {
   DRAFT_BELONGS_TO_OTHER_PROVIDER_CODE,
   DRAFT_BELONGS_TO_OTHER_PROVIDER_ERROR,
 } from './draft-edit-access'
+import { getUserRole } from '@/lib/auth/claims'
 
 export const PROVIDER_NOT_LINKED_ERROR =
   'Provider account is not linked to a Supabase Auth user. Contact ops to complete provider onboarding before prescribing.'
 
 export interface ProviderDraftGuardInput {
-  /** session.user.user_metadata.app_role */
+  /** getUserRole(session.user) */
   appRole:         unknown
   /** session.user.id */
   userId:          string

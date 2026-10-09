@@ -71,7 +71,7 @@ const preset = (dose: string) => ({ dose, unit: 'units', frequency: 'QW', timing
 beforeEach(() => {
   inserts = []; updates = []; filters = []
   Object.keys(fixtures).forEach(k => delete fixtures[k])
-  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', user_metadata: { clinic_id: CLINIC_ID } } } })
+  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { clinic_id: CLINIC_ID } } } })
   fixtures['providers:await'] = () => ({ data: [{ provider_id: PROVIDER }], error: null })
   fixtures['provider_favorites:await'] = () => ({ data: [], error: null })
   fixtures['provider_favorites:single'] = () => ({ data: { favorite_id: 'fav-1', label: 'Semaglutide' }, error: null })

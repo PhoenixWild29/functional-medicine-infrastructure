@@ -51,7 +51,7 @@ jest.mock('@/lib/supabase/service', () => ({
 }))
 
 function session(role: string, clinicId: string | null = CLINIC_ID) {
-  return { user: { id: 'user-1', user_metadata: { app_role: role, clinic_id: clinicId } } }
+  return { user: { id: 'user-1', app_metadata: { app_role: role, clinic_id: clinicId } } }
 }
 
 function request(body?: unknown): import('next/server').NextRequest {

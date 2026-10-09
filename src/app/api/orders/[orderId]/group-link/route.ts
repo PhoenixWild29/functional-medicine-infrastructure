@@ -33,6 +33,7 @@ import { createServiceClient }        from '@/lib/supabase/service'
 import { generateGroupCheckoutToken } from '@/lib/auth/checkout-token'
 import { serverEnv }                  from '@/lib/env'
 import { logPhiAccess } from '@/lib/audit/phi-access'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const CLINIC_APP_ROLES = ['clinic_admin', 'provider', 'medical_assistant'] as const
@@ -64,9 +65,7 @@ export async function GET(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const appRole = typeof user.user_metadata['app_role'] === 'string'
-    ? user.user_metadata['app_role'] as string
-    : null
+  const appRole = getUserRole(user) ?? null
 
   if (!appRole || !(CLINIC_APP_ROLES as readonly string[]).includes(appRole)) {
     return NextResponse.json(
@@ -75,9 +74,7 @@ export async function GET(
     )
   }
 
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
-    ? user.user_metadata['clinic_id'] as string
-    : null
+  const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }

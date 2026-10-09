@@ -16,6 +16,7 @@ import { SessionBanner }  from '../_components/session-banner'
 import { ProtocolLoadNotices } from './_components/protocol-load-notices'
 import { BatchReviewForm } from './_components/batch-review-form'
 import { getWizardSteps } from '../_lib/wizard-steps'
+import { getUserRole } from '@/lib/auth/claims'
 
 export const metadata = {
   title: 'New Prescription — Review & Send',
@@ -46,7 +47,7 @@ export default async function ReviewPage() {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
 
-  const rawRole = user ? user.user_metadata['app_role'] : undefined
+  const rawRole = user ? getUserRole(user) : undefined
   const appRole = typeof rawRole === 'string' ? rawRole : undefined
   const isProvider = appRole === 'provider'
 

@@ -21,7 +21,7 @@ jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockImplementation(async () => ({
     auth: {
       getUser: () => getUserMock(),
-      getSession: async () => ({ data: { session: { user: { user_metadata: { app_role: 'clinic_admin', clinic_id: 'c-1' } } } } }),
+      getSession: async () => ({ data: { session: { user: { app_metadata: { app_role: 'clinic_admin', clinic_id: 'c-1' } } } } }),
     },
   })),
 }))
@@ -48,7 +48,7 @@ jest.mock('@/lib/supabase/service', () => ({
 }))
 
 const user = (app_role: string) => ({
-  data: { user: { id: 'u-1', email: 'x@clinic.test', user_metadata: { app_role, clinic_id: 'c-1' } } },
+  data: { user: { id: 'u-1', email: 'x@clinic.test', app_metadata: { app_role, clinic_id: 'c-1' } } },
   error: null,
 })
 

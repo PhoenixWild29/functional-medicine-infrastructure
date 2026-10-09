@@ -35,6 +35,7 @@ import { editTargetFromParams } from '../_lib/edit-target'
 import { isProviderRole } from '@/lib/auth/current-provider'
 import { getWizardSteps } from '../_lib/wizard-steps'
 import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export const metadata = {
   title: 'New Prescription — Set Price',
@@ -119,14 +120,12 @@ export default async function MarginPage({ searchParams }: PageProps) {
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return <SessionGuardNotice />
 
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
-    ? user.user_metadata['clinic_id'] as string
-    : undefined
-  const isProvider = user.user_metadata['app_role'] === 'provider'
+  const clinicId = getUserClinicId(user)
+  const isProvider = getUserRole(user) === 'provider'
 
   // WO-100: a provider's step 1 is just "Patient" — they are the provider.
   const WIZARD_STEPS = getWizardSteps({
-    providerIsSelf: isProviderRole(user.user_metadata['app_role']),
+    providerIsSelf: isProviderRole(getUserRole(user)),
     hrefs: { 1: '/new-prescription', 2: '/new-prescription/search' },
   })
 

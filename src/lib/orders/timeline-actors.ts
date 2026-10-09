@@ -7,8 +7,9 @@
 // to something a person recognises:
 //
 //   1. a provider in the order's clinic (providers.user_id) → "First Last"
-//   2. a staff login in the same clinic → user_metadata full_name, then
-//      name, then a role label from app_role ("Medical Assistant",
+//   2. a staff login in the same clinic (app_metadata clinic_id) →
+//      user_metadata full_name, then name, then a role label from the
+//      app_metadata app_role ("Medical Assistant",
 //      "Clinic Admin", "Provider", "Ops"), then no name. An email address
 //      is never used: it is not a person's name and must not render as one.
 //   3. ops staff (cross-clinic, no clinic_id) → "Ops", never a name
@@ -20,6 +21,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export interface TimelineActor {
   name: string | null
@@ -77,19 +79,22 @@ export async function resolveTimelineActors(
     try {
       const { data, error: userError } = await supabase.auth.admin.getUserById(id)
       if (userError || !data?.user) continue
-      const meta = (data.user.user_metadata ?? {}) as Record<string, unknown>
+      // Role and clinic from app_metadata (service-role only); the display
+      // name from user_metadata, which is the user's own and only shown.
+      const role = getUserRole(data.user) ?? null
+      const profile = (data.user.user_metadata ?? {}) as Record<string, unknown>
       // Ops staff work across clinics and carry no clinic_id: show only the
       // role label, never a name, since they are outside this clinic.
-      if (clean(meta['app_role']) === 'ops_admin') {
+      if (role === 'ops_admin') {
         out[id] = { name: roleLabel('ops_admin'), role: 'ops_admin' }
         continue
       }
-      if (clean(meta['clinic_id']) !== clinicId) continue
+      if (getUserClinicId(data.user) !== clinicId) continue
       out[id] = {
         // Never the email: full_name → name → role label → null (the
         // drawer then shows the id).
-        name: clean(meta['full_name']) ?? clean(meta['name']) ?? roleLabel(meta['app_role']),
-        role: clean(meta['app_role']),
+        name: clean(profile['full_name']) ?? clean(profile['name']) ?? roleLabel(role),
+        role,
       }
     } catch (err) {
       console.warn('[timeline-actors] user lookup failed (non-fatal):', err instanceof Error ? err.message : err)

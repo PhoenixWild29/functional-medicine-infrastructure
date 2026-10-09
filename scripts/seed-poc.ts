@@ -26,7 +26,7 @@
 // ⚠️  All data is fake — no real patients, no real credentials
 
 import { createClient } from '@supabase/supabase-js'
-import { POC_CANONICAL_USERS, userMetadataFor } from '../src/lib/poc/canonical-users'
+import { POC_CANONICAL_USERS, pocAppMetadataFor } from '../src/lib/poc/canonical-users'
 import { DEMO_PHARMACIES, refreshDemoData } from '../src/lib/poc/refresh-demo-data'
 import { withPhoneE164 } from '../src/lib/patients/phone'
 
@@ -86,12 +86,15 @@ const IDS = {
 // Canonical user list lives in src/lib/poc/canonical-users.ts so the
 // cron route + in-app reset button can share the exact same values.
 // Keep all credential edits there, not here.
+//
+// Role and clinic go in app_metadata (service role), never user_metadata:
+// any signed-in user can rewrite their own user_metadata.
 
 const AUTH_USERS = POC_CANONICAL_USERS.map(u => ({
-  email:         u.email,
-  password:      u.password,
-  user_metadata: userMetadataFor(u),
-  label:         u.label,
+  email:        u.email,
+  password:     u.password,
+  app_metadata: pocAppMetadataFor(u),
+  label:        u.label,
 }))
 
 async function createAuthUsers() {
@@ -113,7 +116,7 @@ async function createAuthUsers() {
       if (existing) {
         const { error: updateError } = await supabase.auth.admin.updateUserById(existing.id, {
           password:       user.password,
-          user_metadata:  user.user_metadata,
+          app_metadata:   user.app_metadata,
         })
         if (updateError) {
           throw new Error(`Failed to sync ${user.label} (${user.email}): ${updateError.message}`)
@@ -126,7 +129,7 @@ async function createAuthUsers() {
     const { error } = await supabase.auth.admin.createUser({
       email:          user.email,
       password:       user.password,
-      user_metadata:  user.user_metadata,
+      app_metadata:   user.app_metadata,
       email_confirm:  true,   // skip email verification for POC
     })
 

@@ -38,7 +38,7 @@ process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY'] = 'anon'
 const req = (pathname: string) => new NextRequest(new URL(`http://localhost${pathname}`), { method: 'GET' })
 
 function session(appRole: string, factors: Array<{ factor_type: string; status: string }> = [], email = 'dr.chen@clinic.test') {
-  return { data: { user: { id: 'u-1', email, user_metadata: { app_role: appRole }, factors } } }
+  return { data: { user: { id: 'u-1', email, app_metadata: { app_role: appRole }, factors } } }
 }
 const VERIFIED = [{ factor_type: 'totp', status: 'verified' }]
 const claims = (aal: 'aal1' | 'aal2') => ({ data: { claims: { aal, sub: 'u-1' } }, error: null })

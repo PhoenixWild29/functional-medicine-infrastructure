@@ -273,7 +273,7 @@ beforeEach(() => {
       session: {
         user: {
           id: 'auth-uid-provider',
-          user_metadata: {
+          app_metadata: {
             clinic_id: TEST_CLINIC_ID,
             app_role:  'provider',
           },

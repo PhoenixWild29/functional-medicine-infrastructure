@@ -25,7 +25,7 @@
 // What a manual invocation still does:
 //   1. Ensures the four POC Auth users exist with canonical metadata
 //      (creates missing ones with the canonical password; existing
-//      ones get user_metadata only)
+//      ones get app_metadata (role + clinic) only)
 //   2. TOTP enrollment — seed the demo provider's EPCS TOTP so
 //      controlled-substance signings never hit first-time setup
 //   3. Demo-data refresh — fax triage rows, adapter submissions,

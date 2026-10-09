@@ -54,7 +54,9 @@ function makeOrder(overrides: Partial<Record<string, unknown>> = {}): Record<str
 
 // ── Mocks ──────────────────────────────────────────────────────────
 
-const getSessionMock         = jest.fn()
+// The route verifies the caller with getUser() (/api/checkout is a public
+// middleware prefix, so a decoded getSession() cookie is never trusted).
+const getUserMock            = jest.fn()
 const ordersFetchMock        = jest.fn()
 const ordersLinkUpdateMock   = jest.fn()
 const ordersRollbackMock     = jest.fn()
@@ -68,7 +70,7 @@ const pharmaciesFetchMock    = jest.fn((): Promise<{ data: unknown[]; error: nul
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: { getUser: () => getUserMock() },
   }),
 }))
 
@@ -187,7 +189,7 @@ beforeEach(() => {
   // assumes the feature flag is on. Gate tests override locally.
   process.env['PHASE_C_GROUPS_ENABLED'] = 'true'
 
-  getSessionMock.mockReset()
+  getUserMock.mockReset()
   ordersFetchMock.mockReset()
   ordersLinkUpdateMock.mockReset()
   ordersRollbackMock.mockReset()
@@ -210,16 +212,14 @@ beforeEach(() => {
 })
 
 function mockClinicSession(role: string, userId: string = 'caller-uid', clinicId: string | null = TEST_CLINIC_ID) {
-  getSessionMock.mockResolvedValue({
+  getUserMock.mockResolvedValue({
     data: {
-      session: {
-        user: {
-          id: userId,
-          email: `${userId}@e.test`,
-          user_metadata: {
-            app_role: role,
-            ...(clinicId ? { clinic_id: clinicId } : {}),
-          },
+      user: {
+        id: userId,
+        email: `${userId}@e.test`,
+        app_metadata: {
+          app_role: role,
+          ...(clinicId ? { clinic_id: clinicId } : {}),
         },
       },
     },
@@ -230,7 +230,7 @@ function mockClinicSession(role: string, userId: string = 'caller-uid', clinicId
 
 describe('POST /api/checkout/payment-group — auth gating', () => {
   it('returns 401 with no session', async () => {
-    getSessionMock.mockResolvedValue({ data: { session: null } })
+    getUserMock.mockResolvedValue({ data: { user: null } })
     const res = await POST(makeRequest({ orderIds: [ORDER_ID_A, ORDER_ID_B] }))
     expect(res.status).toBe(401)
     expect(ordersFetchMock).not.toHaveBeenCalled()
@@ -503,7 +503,7 @@ describe('POST /api/checkout/payment-group — PHASE_C_GROUPS_ENABLED gate', () 
     mockClinicSession('clinic_admin')
     const res = await POST(makeRequest({ orderIds: [ORDER_ID_A, ORDER_ID_B] }))
     expect(res.status).toBe(503)
-    expect(getSessionMock).not.toHaveBeenCalled()
+    expect(getUserMock).not.toHaveBeenCalled()
   })
 
   it('returns 503 when PHASE_C_GROUPS_ENABLED is "false"', async () => {

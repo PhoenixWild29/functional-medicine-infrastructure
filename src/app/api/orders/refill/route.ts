@@ -60,6 +60,7 @@ import { buildStandardSig } from '@/lib/orders/dose-display'
 import { legacyTitrationFromSig, legacyTitrationDispense } from '@/lib/orders/legacy-titration'
 import { splitDose } from '@/lib/orders/dose'
 import { logPhiAccess } from '@/lib/audit/phi-access'
+import { getUserClinicId } from '@/lib/auth/claims'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,9 +72,7 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
-    ? user.user_metadata['clinic_id'] as string
-    : null
+  const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
 
   let body: { orderIds?: unknown }

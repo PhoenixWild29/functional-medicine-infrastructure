@@ -24,7 +24,7 @@ const call = () => GET({ headers: new Headers() } as never, { params: Promise.re
 
 beforeEach(() => {
   phiLog.mockClear()
-  session = { user: { id: 'ops-1', email: 'ops@compoundiq.example', user_metadata: { app_role: 'ops_admin' } } }
+  session = { user: { id: 'ops-1', email: 'ops@compoundiq.example', app_metadata: { app_role: 'ops_admin' } } }
   db = scriptedDb(c => (c.table === 'orders'
     ? { data: { order_id: ORDER, status: 'PAID_PROCESSING', clinic_id: 'clinic-1', patient_id: 'pt-1', medication_snapshot: { medication_name: 'x' }, created_at: '2026-10-01T00:00:00Z' } }
     : { data: [] }))
@@ -36,9 +36,9 @@ it('a read logs exactly one row: view, order, the order\'s clinic and patient', 
 })
 
 it('a non-ops user, or a missing order, logs nothing', async () => {
-  session = { user: { id: 'u1', user_metadata: { app_role: 'provider', clinic_id: 'clinic-1' } } }
+  session = { user: { id: 'u1', app_metadata: { app_role: 'provider', clinic_id: 'clinic-1' } } }
   expect((await call()).status).toBe(403)
-  session = { user: { id: 'ops-1', user_metadata: { app_role: 'ops_admin' } } }
+  session = { user: { id: 'ops-1', app_metadata: { app_role: 'ops_admin' } } }
   db = scriptedDb(() => ({ data: null }))
   expect((await call()).status).toBe(404)
   expect(phiEntries()).toHaveLength(0)

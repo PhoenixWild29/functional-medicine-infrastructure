@@ -40,8 +40,8 @@ process.env['NEXT_PUBLIC_SUPABASE_URL']      = SUPABASE
 process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY'] = 'anon'
 process.env['NEXT_PUBLIC_SENTRY_DSN']        = `https://publickey@o123.ingest.us.sentry.io/4500000`
 
-const CLINIC = { data: { user: { id: 'u-1', user_metadata: { app_role: 'clinic_admin' } } } }
-const OPS    = { data: { user: { id: 'u-2', user_metadata: { app_role: 'ops_admin' } } } }
+const CLINIC = { data: { user: { id: 'u-1', app_metadata: { app_role: 'clinic_admin' } } } }
+const OPS    = { data: { user: { id: 'u-2', app_metadata: { app_role: 'ops_admin' } } } }
 const NONE   = { data: { user: null } }
 
 function req(pathname: string, headers: Record<string, string> = {}): NextRequest {

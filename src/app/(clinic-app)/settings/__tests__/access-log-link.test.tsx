@@ -29,7 +29,7 @@ jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn(), refre
 
 import SettingsPage from '../page'
 
-const as = (role: string) => ({ id: `u-${role}`, email: `${role}@clinic.example`, user_metadata: { app_role: role, clinic_id: 'c-1' } })
+const as = (role: string) => ({ id: `u-${role}`, email: `${role}@clinic.example`, app_metadata: { app_role: role, clinic_id: 'c-1' } })
 
 it('the clinic admin sees the Access log entry and its link', async () => {
   user = as('clinic_admin')

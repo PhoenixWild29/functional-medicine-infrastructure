@@ -22,6 +22,12 @@
 // with the canonical metadata. The demo doc
 // (docs/archive/source/POC-DEMO-DETAILED.md) credential table must
 // mirror this list.
+//
+// Role and clinic are written to app_metadata (pocAppMetadataFor), never
+// user_metadata. Relative import: scripts/seed-poc.ts imports this module
+// outside the @/ path alias.
+
+import { appMetadataFor } from '../auth/claims'
 
 export type PocUserLabel =
   | 'ops_admin'
@@ -68,9 +74,14 @@ export const POC_CANONICAL_USERS: ReadonlyArray<PocCanonicalUser> = [
   },
 ] as const
 
-export function userMetadataFor(user: PocCanonicalUser): Record<string, unknown> {
-  if (user.label === 'ops_admin') {
-    return { app_role: user.app_role }
-  }
-  return { app_role: user.app_role, clinic_id: POC_CLINIC_ID }
+/**
+ * The app_metadata (role + clinic) a POC user is created or synced with,
+ * written with the service role. Never user_metadata: any signed-in user
+ * can rewrite their own user_metadata.
+ */
+export function pocAppMetadataFor(user: PocCanonicalUser): { app_role: string; clinic_id: string | null } {
+  return appMetadataFor({
+    role:     user.app_role,
+    clinicId: user.label === 'ops_admin' ? null : POC_CLINIC_ID,
+  })
 }
