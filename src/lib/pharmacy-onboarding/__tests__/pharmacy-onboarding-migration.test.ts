@@ -25,7 +25,7 @@
  *     authenticated (they bypassed RLS for every signed-in user).
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 const MIGRATIONS = join(process.cwd(), 'supabase', 'migrations')
@@ -195,3 +195,77 @@ it('the down file removes what this adds', () => {
   }
   expect(d).not.toMatch(/drop table if exists (pharmacies|pharmacy_state_licenses)\b/)
 })
+
+// ── Safe to run twice, and in the right order ────────────────────
+// CI applies the migrations for real on the E2E database, after
+// 20261013000001 (clinic onboarding). Re-running this file must change
+// nothing, and the RLS-coverage check must see every table that exists.
+describe('idempotent', () => {
+  const statements = code.split(';').map(s => s.trim())
+  const before = (needle: string, at: number) => code.lastIndexOf(needle, at) > -1
+
+  it('every policy, trigger and named constraint is dropped if it exists before it is created', () => {
+    for (const m of code.matchAll(/create policy ([a-z_]+) on ([a-z_.]+)/g)) {
+      expect([m[1], before(`drop policy if exists ${m[1]} on ${m[2]}`, m.index!)]).toEqual([m[1], true])
+    }
+    for (const m of code.matchAll(/create trigger ([a-z_]+)/g)) {
+      expect([m[1], before(`drop trigger if exists ${m[1]} on`, m.index!)]).toEqual([m[1], true])
+    }
+    for (const m of code.matchAll(/add constraint ([a-z_]+)/g)) {
+      expect([m[1], before(`drop constraint if exists ${m[1]}`, m.index!)]).toEqual([m[1], true])
+    }
+  })
+
+  it('tables, columns and indexes only if missing; functions replaced; the bucket insert ignores a conflict', () => {
+    expect(code).not.toMatch(/create table (?!if not exists)/)
+    expect(code).not.toMatch(/add column (?!if not exists)/)
+    expect(code).not.toMatch(/create (unique )?index (?!if not exists)/)
+    expect(code).not.toMatch(/create function/)
+    expect(code).toMatch(/insert into storage\.buckets[^;]*on conflict \(id\) do nothing/)
+    expect(statements.length).toBeGreaterThan(10)
+  })
+
+  it('the restrictive policies come from one function that drops before it creates, comparing names as text', () => {
+    const fn = code.slice(code.indexOf('create or replace function apply_pharmacy_admin_scope()'), code.indexOf('$$;', code.indexOf('create or replace function apply_pharmacy_admin_scope()')))
+    expect(fn).toContain("drop policy if exists pharmacy_admin_scope on public.%i")
+    expect(fn).toContain('t.relname::text = any (own)')
+    expect(fn).toContain('c.relrowsecurity')
+    expect(code).toMatch(/select apply_pharmacy_admin_scope\(\);/)
+    expect(code).toContain('revoke all on function apply_pharmacy_admin_scope() from public, anon, authenticated')
+  })
+})
+
+describe('ordering', () => {
+  const names = readdirSync(MIGRATIONS).filter(f => /^\d{14}_.+\.sql$/.test(f)).sort()
+
+  it('this is the last migration, after 20261012000001 (C8) and 20261013000001 (clinic onboarding)', () => {
+    expect(names[names.length - 1]).toBe('20261014000001_pharmacy_onboarding.sql')
+  })
+
+  it('the RLS-coverage check runs last, after the scope policies are applied, before COMMIT', () => {
+    const apply = code.indexOf('select apply_pharmacy_admin_scope();')
+    const check = code.indexOf("raise exception 'public table % has no row level security")
+    expect(apply).toBeGreaterThan(-1)
+    expect(check).toBeGreaterThan(apply)
+    expect(code.slice(check)).not.toMatch(/create table|enable row level security/)
+  })
+
+  it('every table any migration creates has row level security (what the check will find)', () => {
+    const created = new Set<string>()
+    const rls = new Set<string>()
+    for (const f of names) {
+      const c = flat(read(join(MIGRATIONS, f)))
+      for (const m of c.matchAll(/create table (?:if not exists )?(?:public\.)?([a-z_0-9]+) \(/g)) created.add(m[1]!)
+      for (const m of c.matchAll(/alter table (?:if exists )?(?:public\.)?([a-z_0-9]+) enable row level security/g)) rls.add(m[1]!)
+    }
+    expect([...created].filter(t => !rls.has(t))).toEqual([])
+  })
+
+  it('a later migration that creates a table calls apply_pharmacy_admin_scope()', () => {
+    for (const f of names.filter(n => n.slice(0, 14) > '20261014000001')) {
+      const c = flat(read(join(MIGRATIONS, f)))
+      if (/create table/.test(c)) expect([f, c.includes('select apply_pharmacy_admin_scope()')]).toEqual([f, true])
+    }
+  })
+})
+
