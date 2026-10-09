@@ -18,7 +18,10 @@ import {
 import {
   validateDetails, validateFacility, validateLicense, validateOrdering, validateShipping, validateAcceptance, normalizeEmail,
 } from '../validate'
-import { AGREEMENT, agreementTextSha256 } from '../agreement'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { createHash } from 'node:crypto'
+import { AGREEMENT, agreementText, agreementTextSha256 } from '../agreement'
 import { validateCatalogRows } from '@/lib/catalog/validate-csv-rows'
 import { ONBOARDING_STEPS, stepsComplete } from '../steps'
 
@@ -123,12 +126,33 @@ describe('step validation', () => {
 })
 
 describe('the agreement', () => {
-  it('is a DRAFT, versioned, and its hash is the SHA-256 of its text', () => {
+  // The BAA is src/content/legal/baa-draft-v0.1.md (PR #213), not text of
+  // our own. Version "v0.1"; the hash is the SHA-256 of the exact text as
+  // committed (LF line endings, pinned by .gitattributes, so a Windows
+  // checkout hashes the same as production).
+  const file = () => readFileSync(join(process.cwd(), 'src', 'content', 'legal', 'baa-draft-v0.1.md'), 'utf8').replace(/\r\n/g, '\n')
+
+  it('is the v0.1 draft file, with the draft banner kept', () => {
+    expect(AGREEMENT.version).toBe('v0.1')
+    expect(AGREEMENT.key).toBe('baa')
     expect(AGREEMENT.draft).toBe(true)
     expect(AGREEMENT.banner).toBe('Draft, pending legal review')
-    expect(AGREEMENT.key).toBe('pharmacy_baa_terms')
-    expect(AGREEMENT.text).toContain('Business Associate')
-    expect(agreementTextSha256()).toMatch(/^[0-9a-f]{64}$/)
+    expect(AGREEMENT.title).toBe('Business Associate Agreement')
+    expect(agreementText()).toBe(file())
+    expect(agreementText()).toContain('# Business Associate Agreement')
+  })
+
+  it('the stored hash is the SHA-256 of that exact text', () => {
+    expect(agreementTextSha256()).toBe(createHash('sha256').update(file(), 'utf8').digest('hex'))
+  })
+
+  it('line endings are pinned to LF, and the file ships with the routes that read it', () => {
+    expect(readFileSync(join(process.cwd(), '.gitattributes'), 'utf8')).toMatch(/^src\/content\/legal\/\*\.md text eol=lf\r?$/m)
+    const config = readFileSync(join(process.cwd(), 'next.config.ts'), 'utf8')
+    expect(config).toContain('outputFileTracingIncludes')
+    for (const route of ['/api/pharmacy/**', '/pharmacy/**', '/api/ops/onboarding/**']) {
+      expect(config).toContain(`'${route}': ['./src/content/legal/**']`)
+    }
   })
 })
 

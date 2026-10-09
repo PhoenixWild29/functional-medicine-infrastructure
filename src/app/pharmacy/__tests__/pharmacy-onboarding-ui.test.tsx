@@ -28,7 +28,7 @@ import { AcceptInviteForm } from '@/app/onboard/pharmacy/[token]/_components/acc
 import { OnboardingWizard } from '@/app/pharmacy/onboarding/_components/onboarding-wizard'
 import { PharmacyOnboardingSection } from '@/app/(ops-dashboard)/ops/onboarding/_components/pharmacy/pharmacy-onboarding-section'
 import { PharmacyApplicationReview } from '@/app/(ops-dashboard)/ops/onboarding/_components/pharmacy/pharmacy-application-review'
-import { AGREEMENT, agreementTextSha256 } from '@/lib/pharmacy-onboarding/agreement'
+import { AGREEMENT, agreementText, agreementTextSha256 } from '@/lib/pharmacy-onboarding/agreement'
 import type { WizardState } from '@/lib/pharmacy-onboarding/application'
 
 const fetchMock = jest.fn()
@@ -45,7 +45,7 @@ function state(over: Partial<WizardState> = {}): WizardState {
     status: 'in_progress', stepsCompleted: [], reviewNote: null, submittedAt: null,
     pharmacy: { name: 'Strive Pharmacy', ship_carriers: [], ship_to_states: [] },
     licenses: [], ordering: null, catalog: { choice: null, rowCount: null, warnings: [] },
-    agreement: { key: AGREEMENT.key, version: AGREEMENT.version, title: AGREEMENT.title, text: AGREEMENT.text, textSha256: agreementTextSha256(), banner: AGREEMENT.banner, draft: true, acceptance: null },
+    agreement: { key: AGREEMENT.key, version: AGREEMENT.version, title: AGREEMENT.title, text: agreementText(), textSha256: agreementTextSha256(), banner: AGREEMENT.banner, draft: true, acceptance: null },
     ...over,
   }
 }
