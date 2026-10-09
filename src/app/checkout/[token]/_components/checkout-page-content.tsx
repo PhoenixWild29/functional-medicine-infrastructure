@@ -190,7 +190,7 @@ function PaymentForm({ token, smsConsent, intentEndpoint, retailCents, onError, 
       <button
         type="submit"
         disabled={!stripe || !elements || isSubmitting}
-        className="w-full min-h-[48px] rounded-lg bg-primary px-4 py-3 text-base font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        className="w-full min-h-[48px] rounded-lg bg-primary px-4 py-3 text-base font-semibold text-primary-foreground shadow-sm hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         {isSubmitting ? 'Processing…' : `Pay ${toCurrency(retailCents)}`}
       </button>

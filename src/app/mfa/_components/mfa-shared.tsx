@@ -54,7 +54,7 @@ export function CodeForm({ onSubmit, busy, submitLabel, codeRefused = false, onC
       <button
         type="submit"
         disabled={!valid || busy}
-        className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {busy ? 'Checking...' : submitLabel}
       </button>
