@@ -33,8 +33,8 @@ const RX_DEFAULTS_MAX_IDS = 50
 export async function GET(req: NextRequest) {
   // Auth check
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -371,7 +371,7 @@ export async function GET(req: NextRequest) {
         if (ids.length > RX_DEFAULTS_MAX_IDS) {
           return NextResponse.json({ error: `at most ${RX_DEFAULTS_MAX_IDS} ids per request` }, { status: 400 })
         }
-        const clinicId = getUserClinicId(session.user) ?? null
+        const clinicId = getUserClinicId(user) ?? null
         if (!clinicId) {
           return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
         }
