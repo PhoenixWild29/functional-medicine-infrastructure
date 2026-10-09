@@ -7,7 +7,7 @@
  *   - Semaglutide 10 units weekly, qty 1 × 5 mg/mL vial → days supply and
  *     dispense computed (nothing typed).
  *   - GLP-1 formulations default to cold chain + a required clinical
- *     difference pre-selected with the first standard option.
+ *     difference, never pre-selected (C8: the provider chooses it).
  *   - Injectables default to the SubQ kit (IM kit on an IM route);
  *     everything else none / standard.
  *   - A controlled substance with no diagnosis, or a GLP-1 with no
@@ -25,6 +25,8 @@ import {
   formatDiagnosis,
   formatDispense,
   formulationRxDefaults,
+  legacyCatalogRules,
+  MISSING_RX_DETAIL_LABEL,
   missingRxDetails,
   parseQuantityLabel,
   rulesFromFormulation,
@@ -280,9 +282,12 @@ describe('formulationRxDefaults', () => {
 describe('defaultRxDetails', () => {
   const glp1 = formulationRxDefaults({ dosageFormName: 'Injectable Solution', ingredientNames: ['Semaglutide'] })
 
-  it('pre-selects the first clinical difference option when required', () => {
+  // CHANGED (C8): this used to pre-select the first option, so a provider
+  // could sign without ever choosing a reason. Nothing is pre-selected now.
+  it('never pre-selects a clinical difference reason, even when one is required', () => {
     const d = defaultRxDetails(glp1)
-    expect(d.clinicalDifference).toBe(STANDARD_CLINICAL_DIFFERENCE_OPTIONS[0])
+    expect(glp1.requires_clinical_difference).toBe(true)
+    expect(d.clinicalDifference).toBeNull()
     expect(d.shippingType).toBe('cold_chain')
     expect(d.syringeOption).toBe('sc_kit')
     expect(d.refills).toBe(0)
@@ -337,10 +342,46 @@ describe('missingRxDetails / rxDetailsNeedConfirmation', () => {
     expect(missingRxDetails({ ...defaultRxDetails(plain), diagnosisText: '   ' }, rules)).toEqual(['diagnosis'])
   })
 
-  it('Semaglutide with the clinical difference cleared is missing "clinical_difference"', () => {
+  // CHANGED (C8): the default used to satisfy the rule (it was pre-selected).
+  it('Semaglutide is missing "clinical_difference" until the provider picks one', () => {
     const rules = rulesFromFormulation(glp1, null)
-    expect(missingRxDetails(defaultRxDetails(glp1), rules)).toEqual([])
+    expect(missingRxDetails(defaultRxDetails(glp1), rules)).toEqual(['clinical_difference'])
     expect(missingRxDetails({ ...defaultRxDetails(glp1), clinicalDifference: '' }, rules)).toEqual(['clinical_difference'])
+    expect(missingRxDetails({ ...defaultRxDetails(glp1), clinicalDifference: STANDARD_CLINICAL_DIFFERENCE_OPTIONS[0] }, rules)).toEqual([])
+  })
+
+  // C8: the shortage reason only while the commercial product is on FDA's
+  // shortage list; a typed "Other" reason of at least 20 characters.
+  it('the shortage reason is refused unless the commercial product is on the FDA shortage list', () => {
+    const shortage = 'Commercial product is unavailable or on national shortage'
+    const notListed = rulesFromFormulation(glp1, null)
+    expect(notListed.clinicalDifferenceOptions).not.toContain(shortage)
+    expect(missingRxDetails({ ...defaultRxDetails(glp1), clinicalDifference: shortage }, notListed)).toEqual(['clinical_difference_shortage'])
+    const listed = rulesFromFormulation({ ...glp1, shortage_reason_allowed: true }, null)
+    expect(listed.clinicalDifferenceOptions).toContain(shortage)
+    expect(missingRxDetails({ ...defaultRxDetails(glp1), clinicalDifference: shortage }, listed)).toEqual([])
+  })
+
+  it('a typed "Other" reason needs at least 20 characters', () => {
+    const rules = rulesFromFormulation(glp1, null)
+    expect(missingRxDetails({ ...defaultRxDetails(glp1), clinicalDifference: 'sorbitol' }, rules)).toEqual(['clinical_difference_other'])
+    expect(missingRxDetails({ ...defaultRxDetails(glp1), clinicalDifference: 'Patient cannot tolerate sorbitol' }, rules)).toEqual([])
+    expect(MISSING_RX_DETAIL_LABEL.clinical_difference_other).toBe('a clinical difference reason of at least 20 characters')
+    expect(MISSING_RX_DETAIL_LABEL.clinical_difference_shortage).toBe('a different clinical difference reason (the commercial product is not on the FDA shortage list)')
+  })
+
+  it('an older catalog line always needs a reason, without the shortage option', () => {
+    const rules = legacyCatalogRules(null)
+    expect(rules.requiresClinicalDifference).toBe(true)
+    expect(rules.clinicalDifferenceOptions).toHaveLength(4)
+    expect(missingRxDetails(defaultRxDetails(null), rules)).toEqual(['clinical_difference'])
+    expect(rxDetailsNeedConfirmation(rules)).toBe(true)
+  })
+
+  it('a compounding block travels with the rules', () => {
+    const block = { code: 'not_compoundable' as const, message: 'BPC-157: blocked' }
+    expect(rulesFromFormulation({ ...glp1, compounding_block: block }, null).compoundingBlock).toEqual(block)
+    expect(rulesFromFormulation(glp1, null).compoundingBlock).toBeNull()
   })
 
   it('BPC-157 (non-GLP-1, non-controlled) is never missing anything and needs no confirmation', () => {

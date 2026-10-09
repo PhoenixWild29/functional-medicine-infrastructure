@@ -175,7 +175,7 @@ function mockFetch() {
       return res({ data: {
         formulation: builderFormulation(m),
         salt_form: { salt_form_id: `sf-${m.id}`, salt_name: 'Base', abbreviation: null },
-        ingredient: { ingredient_id: `ing-${m.id}`, common_name: m.name, therapeutic_category: 'Other', dea_schedule: null, fda_alert_status: null, fda_alert_message: null, description: null },
+        ingredient: { ingredient_id: `ing-${m.id}`, common_name: m.name, therapeutic_category: 'Other', dea_schedule: null, fda_alert_status: null, fda_alert_message: null, description: null, compounding_status: 'approved_drug_component' },
       } })
     }
     if (level === 'pharmacy_options') {

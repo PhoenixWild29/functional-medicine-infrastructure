@@ -39,6 +39,7 @@ import { legacyTitrationFromSig, legacyTitrationDispense } from '@/lib/orders/le
 import { QuickActionsPanel, useClinicFavorites, type Favorite, type RecentItem, type QuickActionsPanelName } from './quick-actions-panel'
 import { SaveFavoriteButton } from './save-favorite-button'
 import { CONTROLLED_LABEL, isControlledSchedule } from '@/lib/orders/controlled-substance'
+import { COMPOUNDABLE_STATUSES, NOT_COMPOUNDABLE_LABEL, compoundingBlock, ingredientFromRow } from '@/lib/compliance/compounding'
 import { builderStateFromLine, editTargetToParams, type EditTarget } from '../_lib/edit-target'
 import type { BuilderInitialState } from '@/lib/orders/draft-edit'
 import type { SigTimingAndDuration } from '../_lib/sig-recovery'
@@ -73,6 +74,10 @@ interface Ingredient {
   fda_alert_status: string | null
   fda_alert_message: string | null
   description: string | null
+  // Compliance C8
+  compounding_status?: string | null
+  commercial_equivalent?: boolean | null
+  on_fda_shortage?: boolean | null
 }
 
 interface SaltForm {
@@ -113,7 +118,10 @@ interface Formulation {
     ingredient_id: string
     concentration_per_unit: string
     role: string
-    ingredients: { common_name: string; dea_schedule: number | null; fda_alert_status: string | null } | null
+    ingredients: {
+      common_name: string; dea_schedule: number | null; fda_alert_status: string | null
+      compounding_status?: string | null; commercial_equivalent?: boolean | null; on_fda_shortage?: boolean | null
+    } | null
   }>
 }
 
@@ -571,8 +579,19 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   const controlled =
     isControlledSchedule(selectedIngredient?.dea_schedule) ||
     (selectedFormulation?.formulation_ingredients ?? []).some(fi => isControlledSchedule(fi.ingredients?.dea_schedule))
+  // Compliance C8: every ingredient must be one a 503A pharmacy may
+  // compound, and verified as such (the ingredient, and every ingredient
+  // of a combination).
+  const compoundingIngredients = [
+    ...(selectedIngredient ? [selectedIngredient] : []),
+    ...(selectedFormulation?.formulation_ingredients ?? []).flatMap(fi => (fi.ingredients ? [fi.ingredients] : [])),
+  ].map(ingredientFromRow)
+  const notCompoundable = compoundingIngredients.length > 0
+    ? compoundingBlock(selectedFormulation?.name ?? selectedIngredient?.common_name ?? 'This product', compoundingIngredients)
+    : null
   const canAdd = !!(
     !controlled &&
+    !notCompoundable &&
     !packageUnconvertible &&
     selectedFormulation &&
     selectedPharmacy &&
@@ -747,6 +766,11 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
                     {CONTROLLED_LABEL}
                   </span>
                 )}
+                {!COMPOUNDABLE_STATUSES.has(ing.compounding_status ?? '') && (
+                  <span className="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">
+                    {NOT_COMPOUNDABLE_LABEL}
+                  </span>
+                )}
                 {ing.fda_alert_status && (
                   <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
                     {ing.fda_alert_status}
@@ -765,6 +789,14 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
             FDA Alert: {selectedIngredient.fda_alert_status}
           </p>
           <p className="mt-1 text-xs text-amber-700">{selectedIngredient.fda_alert_message}</p>
+        </div>
+      )}
+
+      {/* Compliance C8: not compoundable (or not verified). Continue stays disabled. */}
+      {notCompoundable && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2" data-testid="not-compoundable-label">
+          <p className="text-xs font-medium text-red-700">{NOT_COMPOUNDABLE_LABEL}</p>
+          <p className="mt-0.5 text-xs text-red-700">{notCompoundable.message}</p>
         </div>
       )}
 
