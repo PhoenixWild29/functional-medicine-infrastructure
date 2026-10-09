@@ -45,7 +45,7 @@ const SOURCES = ['src', 'scripts', 'e2e']
   .filter(f => !/database\.types\.ts$/.test(f))
   .map(f => ({ rel: relative(ROOT, f).replace(/\\/g, '/'), code: stripTsComments(readFileSync(f, 'utf8')) }))
 
-const ROLE_KEYS = '(app_role|clinic_id)'
+const ROLE_KEYS = '(app_role|clinic_id|pharmacy_id)'
 
 describe('role and clinic never come from user_metadata (source)', () => {
   it('no direct read of app_role / clinic_id from user_metadata', () => {
