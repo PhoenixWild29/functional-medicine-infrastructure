@@ -16,8 +16,8 @@ import { fakeDb } from '@/lib/orders/__tests__/fake-db'
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
     auth: {
-      getUser: async () => ({ data: { user: { id: 'u1', user_metadata: { clinic_id: 'c1', app_role: 'provider' } } }, error: null }),
-      getSession: async () => ({ data: { session: { user: { id: 'u1', user_metadata: { clinic_id: 'c1', app_role: 'provider' } } } } }),
+      getUser: async () => ({ data: { user: { id: 'u1', app_metadata: { clinic_id: 'c1', app_role: 'provider' } } }, error: null }),
+      getSession: async () => ({ data: { session: { user: { id: 'u1', app_metadata: { clinic_id: 'c1', app_role: 'provider' } } } } }),
     },
   }),
 }))

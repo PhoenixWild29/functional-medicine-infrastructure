@@ -59,7 +59,7 @@ function clinicA(c: ScriptedCall) {
   return undefined
 }
 
-const as = (role: string, clinic: string | null) => ({ id: `u-${role}`, email: `${role}@x.example`, user_metadata: { app_role: role, clinic_id: clinic } })
+const as = (role: string, clinic: string | null) => ({ id: `u-${role}`, email: `${role}@x.example`, app_metadata: { app_role: role, clinic_id: clinic } })
 
 const get = () => GET(new NextRequest(`https://app.test/api/patient-phases?patient_id=${PATIENT_A}`))
 const post = (body: Record<string, unknown>) => POST(new NextRequest('https://app.test/api/patient-phases', { method: 'POST', body: JSON.stringify(body) }))

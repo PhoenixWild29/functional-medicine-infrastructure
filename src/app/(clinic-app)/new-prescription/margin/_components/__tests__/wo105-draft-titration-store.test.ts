@@ -17,7 +17,7 @@ import { draftBody, STEPS, STANDARD_SIG, CLINIC, PATIENT_ID, PROVIDER_ID } from 
 
 let insertedRow: Record<string, unknown> | null = null
 
-const AUTH_USER = { id: 'user-1', user_metadata: { clinic_id: CLINIC, app_role: 'medical_assistant' } }
+const AUTH_USER = { id: 'user-1', app_metadata: { clinic_id: CLINIC, app_role: 'medical_assistant' } }
 // POST /api/orders still gates on getSession() (pre-WO-96 code, not
 // touched by this fix), so the fake provides both.
 jest.mock('@/lib/supabase/server', () => ({

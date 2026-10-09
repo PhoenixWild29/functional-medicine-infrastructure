@@ -31,8 +31,8 @@ let db = scriptedDb(() => undefined)
 // The service role resolves who acted (providers, auth users); it never
 // reads the log itself.
 const getUserById = jest.fn(async (id: string) => {
-  if (id === U_PROVIDER) return { data: { user: { id, email: 'sarah.chen@clinic.example', user_metadata: { app_role: 'provider', clinic_id: CLINIC } } }, error: null }
-  if (id === U_MA) return { data: { user: { id, email: 'ma@clinic.example', user_metadata: { app_role: 'medical_assistant', clinic_id: CLINIC } } }, error: null }
+  if (id === U_PROVIDER) return { data: { user: { id, email: 'sarah.chen@clinic.example', app_metadata: { app_role: 'provider', clinic_id: CLINIC } } }, error: null }
+  if (id === U_MA) return { data: { user: { id, email: 'ma@clinic.example', app_metadata: { app_role: 'medical_assistant', clinic_id: CLINIC } } }, error: null }
   return { data: { user: null }, error: { message: 'not found' } }
 })
 const serviceFrom = jest.fn((table: string) => {
@@ -65,7 +65,7 @@ function answer(c: ScriptedCall) {
   return undefined
 }
 
-const role = (r: string, clinic: string | null = CLINIC) => ({ id: `user-${r}`, email: `${r}@clinic.example`, user_metadata: { app_role: r, clinic_id: clinic } })
+const role = (r: string, clinic: string | null = CLINIC) => ({ id: `user-${r}`, email: `${r}@clinic.example`, app_metadata: { app_role: r, clinic_id: clinic } })
 
 async function html(params: Record<string, string> = {}) {
   const { renderToStaticMarkup } = await import('react-dom/server')

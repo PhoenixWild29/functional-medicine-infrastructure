@@ -25,6 +25,7 @@
 // Max batch: 100 per run to prevent timeout on large backlogs.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { insertStatusHistory } from '@/lib/orders/status-history'
 import { createStripeClient } from '@/lib/stripe/client'
@@ -47,13 +48,8 @@ interface ExpiredOrderRow {
 const PAID_OR_PAYING = new Set(['succeeded', 'processing', 'requires_capture'])
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  // Vercel cron auth: CRON_SECRET bearer token (must be set in all environments).
-  // Unconditional check — fails closed (401) if env var is missing or header is wrong.
-  const cronSecret = process.env['CRON_SECRET']
-  const authHeader = request.headers.get('authorization')
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const denied = cronAuthFailure(request, 'payment-expiry')
+  if (denied) return denied
 
   const supabase = createServiceClient()
   const expiryThreshold = new Date(Date.now() - EXPIRY_INTERVAL_MS).toISOString()

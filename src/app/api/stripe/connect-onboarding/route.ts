@@ -21,6 +21,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createStripeClient } from '@/lib/stripe/client'
 import { serverEnv } from '@/lib/env'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export async function POST(_request: NextRequest): Promise<NextResponse> {
   // Auth gate. getUser() verifies the JWT with the auth server;
@@ -33,16 +34,14 @@ export async function POST(_request: NextRequest): Promise<NextResponse> {
 
   // Only the clinic admin may start or resume onboarding, checked before
   // anything reaches Stripe.
-  if (user.user_metadata?.['app_role'] !== 'clinic_admin') {
+  if (getUserRole(user) !== 'clinic_admin') {
     return NextResponse.json(
       { error: 'Only the clinic admin can set up the payout account.' },
       { status: 403 },
     )
   }
 
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
-    ? user.user_metadata['clinic_id'] as string
-    : null
+  const clinicId = getUserClinicId(user) ?? null
 
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })

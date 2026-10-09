@@ -138,6 +138,7 @@ const NOTES = {
   clinic_not_notified:  '⚠️ The clinic was not notified in-app. Contact the clinic directly.',
   submissions_off:      'Nothing is sent to any pharmacy until PHARMACY_SUBMISSIONS_ENABLED=true.',
   free_text_withheld:   'Pharmacy and patient text is never sent to Slack. Open the order in ops for the details.',
+  portal_no_auto_fax:   'Portal order: not faxed automatically, as the portal submission may already have reached the pharmacy. Check the portal, then resolve the order by hand.',
 } as const
 export type OpsAlertNote = keyof typeof NOTES
 

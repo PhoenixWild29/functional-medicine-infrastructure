@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
 import { cycleLengthFrom, cyclePatternFrom } from '@/lib/orders/cycling'
+import { getUserClinicId } from '@/lib/auth/claims'
 
 export async function GET(req: NextRequest) {
   const supabaseAuth = await createServerClient()
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const supabase = createServiceClient()
-  const clinicId = session.user.user_metadata?.clinic_id
+  const clinicId = getUserClinicId(session.user)
   if (!clinicId) return NextResponse.json({ error: 'No clinic context' }, { status: 403 })
 
   const { searchParams } = new URL(req.url)
@@ -256,7 +257,7 @@ export async function POST(req: NextRequest) {
   const { data: { session } } = await supabaseAuth.auth.getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const clinicId = session.user.user_metadata?.clinic_id
+  const clinicId = getUserClinicId(session.user)
   if (!clinicId) return NextResponse.json({ error: 'No clinic context' }, { status: 403 })
 
   let body: Record<string, unknown>

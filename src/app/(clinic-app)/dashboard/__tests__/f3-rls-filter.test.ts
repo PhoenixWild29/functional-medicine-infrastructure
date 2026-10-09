@@ -83,7 +83,7 @@ describe('F-3 SSR client wiring', () => {
       data: {
         user: {
           id: 'auth-uid-clinic-admin',
-          user_metadata: {
+          app_metadata: {
             clinic_id: 'a1000000-0000-0000-0000-000000000001',
             app_role:  'clinic_admin',
           },
@@ -205,7 +205,7 @@ describe('PHI access log', () => {
   }
 
   it('a rendered dashboard logs exactly one row: view, order_list', async () => {
-    arrange({ id: 'auth-uid-clinic-admin', user_metadata: { clinic_id: 'a1000000-0000-0000-0000-000000000001', app_role: 'clinic_admin' } })
+    arrange({ id: 'auth-uid-clinic-admin', app_metadata: { clinic_id: 'a1000000-0000-0000-0000-000000000001', app_role: 'clinic_admin' } })
     const mod = await import('../page')
     await mod.default()
     expectOnePhiRow({ action: 'view', resource: 'order_list', route: '/dashboard' })

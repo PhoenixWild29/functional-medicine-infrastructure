@@ -32,6 +32,7 @@ import { decideRefund, pendingRefund, issueRefund, refundMetadata, recordPending
 import { routeOrder, submitQueuedFax } from '@/lib/adapters/routing-engine'
 import { pharmacySubmissionsEnabled, PHARMACY_SUBMISSIONS_OFF_MESSAGE } from '@/lib/adapters/submission-switch'
 import type { OrderStatusEnum } from '@/types/database.types'
+import { getUserRole } from '@/lib/auth/claims'
 
 interface Params { params: Promise<{ orderId: string }> }
 
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (user.user_metadata?.['app_role'] !== 'ops_admin') {
+  if (getUserRole(user) !== 'ops_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

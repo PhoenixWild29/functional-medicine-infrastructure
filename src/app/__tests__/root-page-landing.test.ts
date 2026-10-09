@@ -24,7 +24,7 @@ import RootPage from '../page'
 
 function signedInAs(role: string | undefined) {
   getUserMock.mockResolvedValue({
-    data: { user: { id: 'u1', user_metadata: role ? { app_role: role } : {} } },
+    data: { user: { id: 'u1', app_metadata: role ? { app_role: role } : {} } },
   })
 }
 

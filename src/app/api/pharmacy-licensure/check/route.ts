@@ -19,6 +19,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { checkLinesLicensure, type LicensureLine } from '@/lib/compliance/pharmacy-licensure'
+import { getUserRole } from '@/lib/auth/claims'
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
 const CLINIC_ROLES = new Set(['clinic_admin', 'provider', 'medical_assistant'])
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
   const { data: { user }, error: authError } = await supabaseAuth.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!CLINIC_ROLES.has(String(user.user_metadata?.['app_role'] ?? ''))) {
+  if (!CLINIC_ROLES.has(String(getUserRole(user) ?? ''))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

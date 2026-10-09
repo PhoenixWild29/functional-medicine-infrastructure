@@ -101,7 +101,11 @@
     "postcss": "^8.5.12",
     "qs": "^6.15.2",
     "ws": "^8.21.0",
-    "ts-jest": { "handlebars": "^4.7.9" },
-    "minimatch@3.1.5": { "brace-expansion": "^1.1.13" }
+    "ts-jest": {
+      "handlebars": "^4.7.9"
+    },
+    "minimatch@3.1.5": {
+      "brace-expansion": "^1.1.13"
+    }
   }
 }

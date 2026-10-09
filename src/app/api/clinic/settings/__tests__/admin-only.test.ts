@@ -23,7 +23,7 @@ jest.mock('@/lib/supabase/service', () => ({
 
 const req = (body: unknown) => ({ json: async () => body }) as unknown as NextRequest
 function as(role: string) {
-  getSessionMock.mockResolvedValue({ data: { session: { user: { id: 'u', user_metadata: { clinic_id: 'c1', app_role: role } } } } })
+  getSessionMock.mockResolvedValue({ data: { session: { user: { id: 'u', app_metadata: { clinic_id: 'c1', app_role: role } } } } })
 }
 
 const FIELDS: Array<[string, Record<string, unknown>]> = [

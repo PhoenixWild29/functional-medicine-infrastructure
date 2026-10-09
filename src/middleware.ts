@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { verifyCheckoutToken } from '@/lib/auth/checkout-token'
 import { MFA_API_CODES, MFA_PAGES, hasVerifiedTotp, isMfaExemptPath, isMfaRole, mfaEnforcedFor, mfaGate } from '@/lib/auth/mfa'
 import { buildCsp, newNonce, permissionsPolicy } from '@/lib/security/headers'
+import { getUserRole } from '@/lib/auth/claims'
 
 // PR R7-Bucket-1: Apply HIPAA-grade no-store cache headers to every response
 // that touches authenticated state OR PHI. Closes a CRITICAL bfcache leak
@@ -221,7 +222,7 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
   // the Set-Cookie header written by the iteration before it. Only the LAST
   // cookie of the batch ever reached the browser. Supabase stores the session
   // as CHUNKED cookies (sb-<ref>-auth-token.0 and .1) because this app's JWT
-  // carries app_role/clinic_id in user_metadata, so a refresh emits two
+  // carries app_role/clinic_id in app_metadata, so a refresh emits two
   // cookies. The browser therefore ended up with a fresh .1 chunk beside a
   // stale .0 chunk — an unparseable pair — and the next request read no
   // session at all and bounced to /login. Silent, mid-navigation, well inside
@@ -314,7 +315,7 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
     return applySecurityHeaders(redirectWithSessionCookies(loginUrl))
   }
 
-  const appRole = user.user_metadata['app_role'] as string | undefined
+  const appRole = getUserRole(user)
 
   // ── Compliance C3: multi-factor sign-in ────────────────────────────────
   //

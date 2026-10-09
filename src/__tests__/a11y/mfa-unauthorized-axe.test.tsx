@@ -144,11 +144,12 @@ describe('/mfa/challenge', () => {
 
 describe('/unauthorized', () => {
   it('signed in: no axe violations; one main landmark and one h1', async () => {
-    serverUser = { email: 'admin@clinic.test', user_metadata: { app_role: 'clinic_admin' } }
+    serverUser = { email: 'admin@clinic.test', app_metadata: { app_role: 'clinic_admin' } }
     render(await UnauthorizedPage())
     expect(await violations()).toEqual([])
     expect(screen.getAllByRole('main')).toHaveLength(1)
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByText('clinic_admin')).toBeInTheDocument()
   })
 
   it('signed out: no axe violations', async () => {

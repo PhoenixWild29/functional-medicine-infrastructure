@@ -17,7 +17,7 @@ import { POST as postProtocol, GET as getProtocols } from '../../protocols/route
 const CLINIC   = 'c0000000-0000-4000-8000-000000000001'
 const PROVIDER = '22222222-2222-4222-8222-222222222222'
 
-const USER = { id: 'user-1', user_metadata: { clinic_id: CLINIC, app_role: 'provider' } }
+const USER = { id: 'user-1', app_metadata: { clinic_id: CLINIC, app_role: 'provider' } }
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockImplementation(async () => ({
     auth: {

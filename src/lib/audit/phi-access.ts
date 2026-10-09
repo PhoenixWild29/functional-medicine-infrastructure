@@ -19,8 +19,11 @@
 // is down, or a client that cannot be created is logged (error code only,
 // no row values, no ids) and the page or API carries on.
 
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
-export const PHI_ACCESS_HASH_ENV = 'PHI_ACCESS_LOG_HASH_SECRET'
+import { AUDIT_HASH_SECRET_ENV, auditHash, clientIp } from './keyed-hash'
+
+export const PHI_ACCESS_HASH_ENV = AUDIT_HASH_SECRET_ENV
 
 export const PHI_ACTIONS = ['view', 'create', 'update', 'export', 'print', 'sign'] as const
 export type PhiAction = (typeof PHI_ACTIONS)[number]
@@ -51,9 +54,8 @@ export interface PhiActor {
 /** The actor from a Supabase auth user (getUser()). */
 export function phiActorFromUser(user: PhiUser | null | undefined): PhiActor | null {
   if (!user?.id) return null
-  const meta = user.user_metadata ?? {}
-  const role = typeof meta['app_role'] === 'string' && meta['app_role'] ? meta['app_role'] : 'unknown'
-  const clinicId = typeof meta['clinic_id'] === 'string' && meta['clinic_id'] ? meta['clinic_id'] : null
+  const role = getUserRole(user) ?? 'unknown'
+  const clinicId = getUserClinicId(user) ?? null
   return { userId: user.id, role, email: user.email ?? null, clinicId }
 }
 
@@ -61,7 +63,8 @@ export function phiActorFromUser(user: PhiUser | null | undefined): PhiActor | n
 export interface PhiUser {
   id: string
   email?: string | null | undefined
-  user_metadata?: Record<string, unknown> | null | undefined
+  /** Role and clinic are read from app_metadata only (src/lib/auth/claims). */
+  app_metadata?: Record<string, unknown> | null | undefined
 }
 
 export interface PhiAccessEntry {
@@ -95,15 +98,7 @@ async function keyedHash(value: string | null | undefined): Promise<string | nul
     }
     return null
   }
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value))
-  return [...new Uint8Array(mac)].map(b => b.toString(16).padStart(2, '0')).join('')
-}
-
-function clientIp(headers: Headers | null | undefined): string | null {
-  if (!headers) return null
-  const forwarded = headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-  return forwarded || headers.get('x-real-ip')?.trim() || null
+  return auditHash(value)
 }
 
 /** The route as a pattern: no query string, no ids. */

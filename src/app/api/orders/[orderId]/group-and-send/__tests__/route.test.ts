@@ -70,7 +70,7 @@ beforeEach(() => {
   jest.clearAllMocks()
   process.env['PHASE_C_GROUPS_ENABLED'] = 'true'
   getSessionMock.mockResolvedValue({
-    data: { session: { user: { id: 'auth-uid', user_metadata: { app_role: 'clinic_admin', clinic_id: TEST_CLINIC_ID } } } },
+    data: { session: { user: { id: 'auth-uid', app_metadata: { app_role: 'clinic_admin', clinic_id: TEST_CLINIC_ID } } } },
   })
   generateTokenMock.mockResolvedValue('fake.jwt.token')
 })
@@ -116,7 +116,7 @@ describe('POST /api/orders/[orderId]/group-and-send', () => {
 
   test('403 when role is ops_admin', async () => {
     getSessionMock.mockResolvedValueOnce({
-      data: { session: { user: { id: 'u', user_metadata: { app_role: 'ops_admin', clinic_id: TEST_CLINIC_ID } } } },
+      data: { session: { user: { id: 'u', app_metadata: { app_role: 'ops_admin', clinic_id: TEST_CLINIC_ID } } } },
     })
     const res = await POST(
       makeRequest({ siblingOrderIds: [SIBLING_ID] }),

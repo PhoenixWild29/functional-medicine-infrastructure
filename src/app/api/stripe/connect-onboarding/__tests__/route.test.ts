@@ -54,7 +54,7 @@ jest.mock('@/lib/env', () => ({
 beforeEach(() => {
   jest.clearAllMocks()
   getUserMock.mockResolvedValue({
-    data: { user: { id: 'u1', user_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC_ID } } },
+    data: { user: { id: 'u1', app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC_ID } } },
     error: null,
   })
   getSessionMock.mockResolvedValue({ data: { session: null } })
