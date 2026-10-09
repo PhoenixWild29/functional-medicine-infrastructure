@@ -402,7 +402,8 @@ export interface WizardState {
 
 const PHARMACY_COLUMNS = 'name, legal_name, dba_name, address_line1, address_line2, city, state, zip, phone, ncpdp_id, npi, dea_number, facility_type, integration_tier, fax_number, ship_carriers, ships_cold_chain, ship_to_states, order_cutoff_local, onboarding_status, is_active'
 
-function orderingView(app: AppRow): Record<string, unknown> | null {
+/** How orders reach the pharmacy, as shown: never secrets or Vault ids. */
+export function orderingView(app: { ordering_method: string | null; ordering_details: Record<string, unknown> | null }): Record<string, unknown> | null {
   const d = app.ordering_details ?? {}
   const secretsStored = !!d['vault'] && Object.keys(d['vault'] as object).length > 0
   if (app.ordering_method === 'api') return { method: 'api', baseUrl: d['base_url'] ?? null, authType: d['auth_type'] ?? null, secretsStored }
