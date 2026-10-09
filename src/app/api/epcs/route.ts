@@ -28,6 +28,7 @@ import { isNoRows } from '@/lib/supabase/no-rows'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provider'
 import type { Json } from '@/types/database.types'
+import { epcsRequestFields } from '@/lib/epcs/audit-request'
 
 type EpcsCaller =
   | { ok: true; providerId: string }
@@ -265,8 +266,8 @@ export async function POST(req: NextRequest) {
         dea_schedule: typeof body['dea_schedule'] === 'number' ? body['dea_schedule'] : 0,
         medication_name: str(body['medication_name']) ?? '',
         details: (details && typeof details === 'object' ? details : {}) as Json,
-        ip_address: req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? null,
-        user_agent: req.headers.get('user-agent') ?? null,
+        // C10: keyed hashes of the IP and user agent, never the raw values.
+        ...(await epcsRequestFields(req.headers ?? null)),
       })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

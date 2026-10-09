@@ -21,7 +21,9 @@
 
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
-export const PHI_ACCESS_HASH_ENV = 'PHI_ACCESS_LOG_HASH_SECRET'
+import { AUDIT_HASH_SECRET_ENV, auditHash, clientIp } from './keyed-hash'
+
+export const PHI_ACCESS_HASH_ENV = AUDIT_HASH_SECRET_ENV
 
 export const PHI_ACTIONS = ['view', 'create', 'update', 'export', 'print', 'sign'] as const
 export type PhiAction = (typeof PHI_ACTIONS)[number]
@@ -96,15 +98,7 @@ async function keyedHash(value: string | null | undefined): Promise<string | nul
     }
     return null
   }
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value))
-  return [...new Uint8Array(mac)].map(b => b.toString(16).padStart(2, '0')).join('')
-}
-
-function clientIp(headers: Headers | null | undefined): string | null {
-  if (!headers) return null
-  const forwarded = headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-  return forwarded || headers.get('x-real-ip')?.trim() || null
+  return auditHash(value)
 }
 
 /** The route as a pattern: no query string, no ids. */

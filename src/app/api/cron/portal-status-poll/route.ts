@@ -18,6 +18,7 @@
 // Safe to re-run: casTransition prevents double-transitions.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { cronAuthFailure } from '@/lib/cron/auth'
 import { chromium } from 'playwright'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getBrowserLaunchOptions, getBrowserContextOptions } from '@/lib/playwright/config'
@@ -51,11 +52,8 @@ function mapPortalStatus(rawStatus: string): string | null {
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  // Verify Vercel cron secret
-  const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const denied = cronAuthFailure(request, 'portal-status-poll')
+  if (denied) return denied
 
   const supabase = createServiceClient()
 
