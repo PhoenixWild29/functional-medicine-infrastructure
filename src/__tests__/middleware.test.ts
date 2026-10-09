@@ -391,3 +391,24 @@ describe('middleware — /practice', () => {
     expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
   })
 })
+
+// ── Patient Intake PR 2: the public intake link ──────────────
+// The patient has no session: /intake/<token> and /api/intake/<token> must
+// reach the page and route (the token is checked there, against its hash),
+// never bounce to /login, and never touch the Supabase session. The page
+// shows the patient's own details as they type them, so it is no-store.
+describe('middleware — /intake (patient self-intake, no session)', () => {
+  it.each(['/intake/' + 'A'.repeat(43), '/api/intake/' + 'A'.repeat(43)])('%s passes through without auth, no-store', async path => {
+    getUserMock.mockResolvedValue(NO_SESSION)
+    const res = await middleware(makeReq(path))
+    expect(res.headers.get('location')).toBeNull()
+    expectSecurityHeaders(res)
+    expect(getUserMock).not.toHaveBeenCalled()
+  })
+
+  it('a look-alike path is not public: /intakes still needs a session', async () => {
+    getUserMock.mockResolvedValue(NO_SESSION)
+    const res = await middleware(makeReq('/intakes'))
+    expect(res.headers.get('location')).toMatch(/\/login/)
+  })
+})

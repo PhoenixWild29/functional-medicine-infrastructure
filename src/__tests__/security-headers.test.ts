@@ -249,3 +249,18 @@ describe('upgrade-insecure-requests behind a proxy', () => {
     expect(res.headers.get('Content-Security-Policy')).not.toContain('upgrade-insecure-requests')
   })
 })
+
+// ── Patient Intake PR 2: the license scan ────────────────────
+// The intake page reads the license barcode with the camera, in the
+// browser. Only that path may use the camera; everywhere else stays off.
+describe('camera only on the intake page', () => {
+  it('allows camera=(self) on /intake/<token>', async () => {
+    const { permissionsPolicy } = await import('../lib/security/headers')
+    expect(permissionsPolicy('/intake/' + 'A'.repeat(43))).toContain('camera=(self)')
+  })
+
+  it.each(['/', '/login', '/dashboard', '/checkout/abc', '/new-prescription', '/intakes', '/api/intake/x'])('keeps camera=() on %s', async path => {
+    const { permissionsPolicy } = await import('../lib/security/headers')
+    expect(permissionsPolicy(path)).toContain('camera=()')
+  })
+})

@@ -886,3 +886,46 @@ describe('C8: what may be compounded, and the documented reason', () => {
     })
   })
 })
+
+// ── Patient Intake PR 2: held until the patient finishes intake ──
+//
+// A patient added with only a mobile number is 'pending' until they
+// complete their details. Their drafts can be written but not signed: the
+// preflight and the signing check name each line, and nothing is signed,
+// grouped or texted. The intake status comes with the order read (an embed),
+// so it cannot be missed.
+
+describe('patient intake not finished', () => {
+  const pending = { patients: { intake_status: 'pending' } }
+
+  it('refuses the line at signing: 422, intake_pending, nothing signed', async () => {
+    const db = world([draft(1, pending)])
+    const res = await sign(db, [id(1)])
+    expect(res).toMatchObject({ ok: false, status: 422 })
+    if (res.ok) throw new Error('unreachable')
+    expect(res.problems).toEqual([expect.objectContaining({ orderId: id(1), code: 'intake_pending' })])
+    expect(res.problems![0]!.message).toMatch(/has not finished their details/)
+    expect(signingUpdates(db)).toHaveLength(0)
+    expect(db.writes).toHaveLength(0)
+  })
+
+  it('the preflight names it the same way', async () => {
+    const db = world([draft(1, pending)])
+    const check = await checkBatch(db.client, { clinicId: CLINIC, userId: USER_CHEN, orderIds: [id(1)], atSigning: false })
+    expect(check.problems).toEqual([expect.objectContaining({ orderId: id(1), code: 'intake_pending' })])
+  })
+
+  it("one patient's pending intake refuses the whole batch; another patient's line is not signed either", async () => {
+    const db = world([draft(1, pending), draft(2, { patient_id: P2, patients: { intake_status: 'complete' } })])
+    const res = await sign(db, [id(1), id(2)])
+    expect(res).toMatchObject({ ok: false, status: 422 })
+    if (res.ok) throw new Error('unreachable')
+    expect(res.problems!.map(p => [p.orderId, p.code])).toEqual([[id(1), 'intake_pending']])
+    expect(signingUpdates(db)).toHaveLength(0)
+  })
+
+  it('a complete patient signs as before', async () => {
+    const db = world([draft(1, { patients: { intake_status: 'complete' } })])
+    expect(await sign(db, [id(1)])).toMatchObject({ ok: true })
+  })
+})
