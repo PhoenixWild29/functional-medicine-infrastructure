@@ -18,10 +18,17 @@ let db = scriptedDb(() => undefined)
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: async () => ({ data: { session: { user: { id: 'u1' } } } }) },
+    auth: { getUser: async () => ({ data: { user: { id: 'u1', app_metadata: { app_role: 'provider', clinic_id: 'c-1' } } }, error: null }) },
   }),
 }))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
+// The route resolves the signed-in provider from the verified user
+// (providers.user_id); a client-sent provider_id is never trusted.
+jest.mock('@/lib/auth/current-provider', () => ({
+  ...jest.requireActual('@/lib/auth/current-provider'),
+  resolveCurrentProvider: async () => ({ provider_id: 'pr-1', clinic_id: 'c-1', first_name: 'Sarah', last_name: 'Chen', npi_number: '1', signature_hash: null }),
+}))
+
 jest.mock('otplib', () => ({
   TOTP: class {},
   generateSecret: () => 'NEWSECRET',
