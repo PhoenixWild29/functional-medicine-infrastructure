@@ -37,10 +37,9 @@ export async function requireOpsAdmin(): Promise<OpsAccess> {
 }
 
 export interface OnboardingClinic {
-  clinic_id:             string
-  name:                  string
-  onboarding_status:     string
-  stripe_connect_status: string
+  clinic_id:         string
+  name:              string
+  onboarding_status: string
 }
 
 export type AdminAccess =
@@ -60,7 +59,7 @@ export async function requireOnboardingAdmin(opts: { editable?: boolean } = {}):
   const supabase = createServiceClient()
   const { data: clinic, error } = await supabase
     .from('clinics')
-    .select('clinic_id, name, onboarding_status, stripe_connect_status')
+    .select('clinic_id, name, onboarding_status')
     .eq('clinic_id', clinicId)
     .is('deleted_at', null)
     .maybeSingle()

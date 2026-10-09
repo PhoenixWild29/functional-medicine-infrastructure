@@ -11,7 +11,7 @@
 
 import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { ONBOARDING_STEPS, STEP_LABELS } from '@/lib/onboarding/steps'
+import { ONBOARDING_STEPS, STEP_LABELS, NOT_LIVE_STEPS, NOT_LIVE_LABEL } from '@/lib/onboarding/steps'
 import type { OpsClinicOnboarding, OpsInvite } from '@/lib/onboarding/ops'
 import { TextField, FormAlert, InviteLink, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_DANGER } from '@/components/onboarding/fields'
 
@@ -171,7 +171,7 @@ function ClinicReview({ clinic: c, onChanged }: { clinic: OpsClinicOnboarding; o
         {ONBOARDING_STEPS.filter(s => s !== 'review').map(s => (
           <div key={s} className="flex justify-between gap-2">
             <dt className="text-slate-700">{STEP_LABELS[s]}</dt>
-            <dd className={c.steps[s] === 'complete' ? 'text-emerald-800' : 'text-foreground'}>{STEP_STATUS[c.steps[s]]}</dd>
+            <dd className={c.steps[s] === 'complete' ? 'text-emerald-800' : 'text-foreground'}>{NOT_LIVE_STEPS.includes(s) ? NOT_LIVE_LABEL : STEP_STATUS[c.steps[s]]}</dd>
           </div>
         ))}
       </dl>

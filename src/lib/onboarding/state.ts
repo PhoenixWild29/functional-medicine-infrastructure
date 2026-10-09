@@ -4,12 +4,13 @@
 //
 // Everything the wizard shows for one clinic: practice details, step
 // statuses, providers (with licenses, NPI check result and invite
-// status), staff invites, BAA / terms acceptances and payout status.
+// status), staff invites and BAA / terms acceptances. Payout setup is not
+// live for onboarding, so nothing about payouts is read.
 // Read with the service role after the caller is verified as that
 // clinic's admin. No patient data.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, StripeConnectStatusEnum } from '@/types/database.types'
+import type { Database } from '@/types/database.types'
 import { fullStatuses, type OnboardingStatus, type StepKey, type StepStatus } from './steps'
 import { inviteStatus, type InviteStatus } from './tokens'
 import type { AgreementKey } from './agreement-texts'
@@ -30,8 +31,6 @@ export interface OnboardingClinicDetails {
   practiceNpi:         string | null
   taxIdLast4:          string | null
   absorbShipping:      boolean
-  stripeConnectStatus: StripeConnectStatusEnum
-  stripeAccountId:     string | null
 }
 
 export interface OnboardingInviteSummary {
@@ -72,7 +71,7 @@ export async function loadOnboardingState(
 ): Promise<OnboardingState | null> {
   const [clinicRes, stepsRes, providersRes, invitesRes, acceptRes] = await Promise.all([
     supabase.from('clinics')
-      .select('clinic_id, name, onboarding_status, onboarding_review_note, legal_name, dba_name, address_line1, address_line2, city, state, postal_code, contact_phone, practice_npi, tax_id_last4, absorb_shipping, stripe_connect_status, stripe_connect_account_id')
+      .select('clinic_id, name, onboarding_status, onboarding_review_note, legal_name, dba_name, address_line1, address_line2, city, state, postal_code, contact_phone, practice_npi, tax_id_last4, absorb_shipping')
       .eq('clinic_id', clinicId).maybeSingle(),
     supabase.from('clinic_onboarding_steps').select('step, status').eq('clinic_id', clinicId),
     supabase.from('providers').select('provider_id, first_name, last_name, npi_number').eq('clinic_id', clinicId).is('deleted_at', null).order('created_at'),
@@ -124,8 +123,6 @@ export async function loadOnboardingState(
       practiceNpi:         c.practice_npi,
       taxIdLast4:          c.tax_id_last4,
       absorbShipping:      c.absorb_shipping,
-      stripeConnectStatus: c.stripe_connect_status,
-      stripeAccountId:     c.stripe_connect_account_id,
     },
     steps: fullStatuses(stepsRes.data ?? []),
     providers: providers.map(p => {

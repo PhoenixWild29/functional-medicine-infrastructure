@@ -4,9 +4,9 @@
 //
 // Progress is stored server-side (clinic_onboarding_steps), so the admin
 // can leave and resume anywhere: the wizard opens at the first step that
-// is not complete. Staff and payouts are not required to submit (a
-// clinic may have no assistants; Stripe verification can take days and
-// orders stay blocked until the Connect account is active anyway).
+// is not complete. Staff is optional (a clinic may have no assistants).
+// Payouts is shown but not live for onboarding ("available at launch"):
+// it is never completed and never required to submit or approve.
 
 export const ONBOARDING_STEPS = ['practice', 'providers', 'staff', 'baa', 'terms', 'payouts', 'review'] as const
 export type StepKey = (typeof ONBOARDING_STEPS)[number]
@@ -24,6 +24,10 @@ export const STEP_LABELS: Record<StepKey, string> = {
 }
 
 export const REQUIRED_FOR_SUBMIT: ReadonlyArray<StepKey> = ['practice', 'providers', 'baa', 'terms']
+
+/** Shown in the wizard but not live yet: never completed, never blocks. */
+export const NOT_LIVE_STEPS: ReadonlyArray<StepKey> = ['payouts']
+export const NOT_LIVE_LABEL = 'Available at launch'
 
 export type OnboardingStatus = 'invited' | 'in_progress' | 'submitted' | 'changes_requested' | 'approved'
 
@@ -51,6 +55,7 @@ export function fullStatuses(rows: ReadonlyArray<{ step: string; status: string 
 export function firstOpenStep(statuses: StepStatuses): StepKey {
   for (const s of ONBOARDING_STEPS) {
     if (s === 'review') return 'review'
+    if (NOT_LIVE_STEPS.includes(s)) continue
     if (statuses[s] !== 'complete') return s
   }
   return 'review'

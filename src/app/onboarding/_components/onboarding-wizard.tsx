@@ -19,15 +19,16 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { ONBOARDING_STEPS, STEP_LABELS, firstOpenStep, isEditable, canSubmit, type StepKey, type StepStatus } from '@/lib/onboarding/steps'
+import { ONBOARDING_STEPS, STEP_LABELS, NOT_LIVE_STEPS, NOT_LIVE_LABEL, firstOpenStep, isEditable, canSubmit, type StepKey, type StepStatus } from '@/lib/onboarding/steps'
 import { AGREEMENTS, DRAFT_BANNER, type AgreementKey } from '@/lib/onboarding/agreement-texts'
 import type { OnboardingState } from '@/lib/onboarding/state'
 import { US_STATES } from '@/lib/providers/states'
-import { StripeStatusSection } from '@/app/(clinic-app)/settings/_components/stripe-status-section'
 import { TextField, SelectField, CheckboxField, FormAlert, InviteLink, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_DANGER } from '@/components/onboarding/fields'
+import { LegalMarkdown } from '@/components/onboarding/legal-markdown'
 
 const STATES = [...US_STATES].sort()
 const STATUS_TEXT: Record<StepStatus, string> = { complete: 'Complete', in_progress: 'In progress', not_started: 'Not started' }
+const statusText = (s: StepKey, status: StepStatus) => (NOT_LIVE_STEPS.includes(s) ? NOT_LIVE_LABEL : STATUS_TEXT[status])
 
 type Errors = Record<string, string>
 
@@ -98,7 +99,7 @@ export function OnboardingWizard({ state, initialStep }: { state: OnboardingStat
                 >
                   <span><span className="sr-only">Step {i + 1}: </span>{STEP_LABELS[s]}</span>
                   <span className={`text-xs ${s === step ? 'text-primary-foreground' : state.steps[s] === 'complete' ? 'text-emerald-800' : 'text-slate-600'}`}>
-                    {STATUS_TEXT[state.steps[s]]}
+                    {statusText(s, state.steps[s])}
                   </span>
                 </button>
               </li>
@@ -116,7 +117,7 @@ export function OnboardingWizard({ state, initialStep }: { state: OnboardingStat
             {step === 'staff'     && <StaffStep state={state} readOnly={readOnly} onChanged={refresh} onDone={() => { refresh(); next() }} />}
             {step === 'baa'       && <AgreementStep agreement="baa" state={state} readOnly={readOnly} onAccepted={() => { refresh(); next() }} />}
             {step === 'terms'     && <AgreementStep agreement="terms" state={state} readOnly={readOnly} onAccepted={() => { refresh(); next() }} />}
-            {step === 'payouts'   && <PayoutsStep state={state} readOnly={readOnly} onDone={() => { refresh(); next() }} />}
+            {step === 'payouts'   && <PayoutsStep readOnly={readOnly} onNext={next} />}
             {step === 'review'    && <ReviewStep state={state} readOnly={readOnly} onGo={go} onSubmitted={refresh} />}
           </div>
         </section>
@@ -445,7 +446,7 @@ function AgreementStep({ agreement, state, readOnly, onAccepted }: { agreement: 
 
   return (
     <div className="space-y-5">
-      <FormAlert tone="warning"><strong className="font-semibold">{DRAFT_BANNER}.</strong> This {a.title} is a draft template and will be replaced by the final version.</FormAlert>
+      <FormAlert tone="warning" id="agreement-draft-banner"><strong className="font-semibold">{DRAFT_BANNER}.</strong> This {a.title} is a draft template and will be replaced by the final version.</FormAlert>
       <h3 className="text-base font-semibold text-foreground">{a.title} <span className="font-normal text-slate-700">(version {a.version})</span></h3>
       <div
         tabIndex={0}
@@ -453,7 +454,7 @@ function AgreementStep({ agreement, state, readOnly, onAccepted }: { agreement: 
         aria-label={`${a.title} text`}
         className="max-h-80 space-y-3 overflow-y-auto rounded-lg border border-slate-500 bg-background p-4 text-sm leading-relaxed text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {a.text.split('\n\n').map((para, i) => <p key={i}>{para}</p>)}
+        <LegalMarkdown text={a.text} headingLevel={4} />
       </div>
 
       {accepted && current ? (
@@ -485,25 +486,25 @@ function AgreementStep({ agreement, state, readOnly, onAccepted }: { agreement: 
 }
 
 // ── Payouts ──────────────────────────────────────────────────
+//
+// Payout setup is not live for onboarding. The step says so, its control
+// is disabled, and it is never required to submit or approve. No payment
+// provider is called from onboarding.
 
-function PayoutsStep({ state, readOnly, onDone }: { state: OnboardingState; readOnly: boolean; onDone: () => void }) {
-  const [msg, setMsg] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  async function finish() {
-    setBusy(true)
-    const r = await send('/api/onboarding/steps', 'POST', { step: 'payouts' })
-    setBusy(false)
-    if (!r.ok) { setMsg((r.data['error'] as string | undefined) ?? 'This step could not be completed.'); return }
-    onDone()
-  }
+function PayoutsStep({ readOnly, onNext }: { readOnly: boolean; onNext: () => void }) {
   return (
     <div className="space-y-5">
-      <p className="text-sm text-slate-700">
-        Patient payments are paid out to the clinic through Stripe. You can submit before Stripe finishes verifying the account; orders can be sent once payouts are active.
+      <p id="payouts-note" className="text-sm text-slate-700">
+        Payouts to the clinic are set up at launch. You do not need to do anything here to submit, and CompoundIQ does not need it to approve your clinic.
       </p>
-      {msg && <FormAlert>{msg}</FormAlert>}
-      <StripeStatusSection stripeConnectStatus={state.clinic.stripeConnectStatus} stripeAccountId={state.clinic.stripeAccountId} isClinicAdmin={!readOnly} />
-      {!readOnly && <button type="button" className={BUTTON_PRIMARY} onClick={finish} disabled={busy}>Continue</button>}
+      <button type="button" className={BUTTON_SECONDARY} disabled aria-describedby="payouts-note">
+        Payout setup: available at launch
+      </button>
+      {!readOnly && (
+        <div>
+          <button type="button" className={BUTTON_PRIMARY} onClick={onNext}>Continue</button>
+        </div>
+      )}
     </div>
   )
 }
@@ -532,7 +533,7 @@ function ReviewStep({ state, readOnly, onGo, onSubmitted }: { state: OnboardingS
           <div key={s} className="flex flex-wrap items-center justify-between gap-2 p-3">
             <dt className="text-sm font-medium text-foreground">{STEP_LABELS[s]}</dt>
             <dd className="flex items-center gap-3 text-sm">
-              <span className={state.steps[s] === 'complete' ? 'text-emerald-800' : 'text-slate-700'}>{STATUS_TEXT[state.steps[s]]}</span>
+              <span className={state.steps[s] === 'complete' ? 'text-emerald-800' : 'text-slate-700'}>{statusText(s, state.steps[s])}</span>
               <button type="button" className="text-sm font-medium text-primary underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onGo(s)}>
                 Open {STEP_LABELS[s]}
               </button>

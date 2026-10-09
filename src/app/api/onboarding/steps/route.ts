@@ -2,14 +2,12 @@
 // POST /api/onboarding/steps — complete a step (clinic admin)
 // ============================================================
 //
-// { step: 'providers' | 'staff' | 'payouts' } → checked here, then marked
-// complete:
+// { step: 'providers' | 'staff' } → checked here, then marked complete:
 //   providers  at least one provider with a state license
 //   staff      always (assistants are optional)
-//   payouts    always: the Connect status is shown, never required here;
-//              orders stay blocked until the Connect account is active
 // Practice, BAA and terms complete only by saving / accepting them
 // (their own endpoints), so they are 400 here; review is the submit.
+// Payouts is not live for onboarding ("available at launch"): 400.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireOnboardingAdmin, readJson, setStep } from '@/lib/onboarding/access'
@@ -22,7 +20,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const body = await readJson(request)
   if (!body) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   const step = body['step']
-  if (step !== 'providers' && step !== 'staff' && step !== 'payouts') {
+  if (step === 'payouts') {
+    return NextResponse.json({ error: 'Payout setup is available at launch; there is nothing to complete yet.' }, { status: 400 })
+  }
+  if (step !== 'providers' && step !== 'staff') {
     return NextResponse.json({ error: 'This step completes by saving or accepting it.' }, { status: 400 })
   }
 
