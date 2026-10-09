@@ -48,7 +48,7 @@ export default async function UnauthorizedPage() {
   const appRole = getUserRole(user)
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+    <main className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm text-center space-y-6">
 
         {/* Icon */}
@@ -103,6 +103,6 @@ export default async function UnauthorizedPage() {
         </div>
 
       </div>
-    </div>
+    </main>
   )
 }

@@ -17,11 +17,20 @@ export function MfaCard({ title, children }: { title: string; children: React.Re
   )
 }
 
-/** A 6-digit code field; submit is enabled only for exactly six digits. */
-export function CodeForm({ onSubmit, busy, submitLabel }: {
+/** The id of the error a page shows; a refused code is described by it. */
+export const MFA_ERROR_ID = 'mfa-error'
+
+/**
+ * A 6-digit code field; submit is enabled only for exactly six digits.
+ * `codeRefused`: the last code did not match, so the field is marked
+ * invalid and described by the announced error until the user types.
+ */
+export function CodeForm({ onSubmit, busy, submitLabel, codeRefused = false, onCodeChange }: {
   onSubmit: (code: string) => void | Promise<void>
   busy: boolean
   submitLabel: string
+  codeRefused?: boolean
+  onCodeChange?: () => void
 }) {
   const [code, setCode] = useState('')
   const valid = /^\d{6}$/.test(code)
@@ -37,13 +46,15 @@ export function CodeForm({ onSubmit, busy, submitLabel }: {
         autoComplete="one-time-code"
         maxLength={6}
         value={code}
-        onChange={e => setCode(e.target.value.trim())}
-        className="w-full rounded-md border border-input bg-background px-3 py-2 text-center font-mono text-lg tracking-widest focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onChange={e => { setCode(e.target.value.trim()); onCodeChange?.() }}
+        aria-invalid={codeRefused || undefined}
+        aria-describedby={codeRefused ? MFA_ERROR_ID : undefined}
+        className="w-full rounded-md border border-slate-500 bg-background px-3 py-2 text-center font-mono text-lg tracking-widest focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
       <button
         type="submit"
         disabled={!valid || busy}
-        className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {busy ? 'Checking...' : submitLabel}
       </button>
@@ -58,7 +69,7 @@ export function SignOutLink() {
     <button
       type="button"
       onClick={async () => { await supabase.auth.signOut(); redirectToLogin() }}
-      className="text-xs text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-none"
+      className="rounded-sm text-xs text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
       Sign out
     </button>
