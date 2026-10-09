@@ -21,6 +21,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition }       from '@/lib/orders/cas-transition'
 import { sendSlackAlert }      from '@/lib/slack/client'
 import { buildOpsAlert }       from '@/lib/slack/ops-alert'
+import { getUserRole } from '@/lib/auth/claims'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -32,11 +33,11 @@ interface Params { params: Promise<{ faxId: string }> }
 export async function POST(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const { faxId } = await params
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (session.user.user_metadata['app_role'] !== 'ops_admin') {
+  if (getUserRole(user) !== 'ops_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -56,10 +57,10 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
     return NextResponse.json({ error: 'Missing action' }, { status: 400 })
   }
 
-  const actorEmail = session.user.email
-    ? session.user.email
-    : `[no-email, id=${session.user.id}]`
-  const actorId    = session.user.id
+  const actorEmail = user.email
+    ? user.email
+    : `[no-email, id=${user.id}]`
+  const actorId    = user.id
   const supabase   = createServiceClient()
   const now        = new Date().toISOString()
 

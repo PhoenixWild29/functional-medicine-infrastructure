@@ -30,6 +30,7 @@ import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.
 import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
 import { loadExpiringLicenses } from '@/lib/providers/expiring'
 import { LicenseExpiryWarning } from './_components/license-expiry-warning'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export const metadata = {
   title: 'Dashboard',
@@ -85,9 +86,7 @@ export default async function DashboardPage(
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return <SessionGuardNotice />
 
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
-    ? user.user_metadata['clinic_id'] as string
-    : undefined
+  const clinicId = getUserClinicId(user)
 
   if (!clinicId) {
     return (
@@ -98,9 +97,7 @@ export default async function DashboardPage(
     )
   }
 
-  const appRole = typeof user.user_metadata['app_role'] === 'string'
-    ? user.user_metadata['app_role'] as string
-    : undefined
+  const appRole = getUserRole(user)
 
   // F-3 follow-up: provider opt-in clinic view toggle. Only providers
   // can flip the view — for every other role, the toggle is meaningless

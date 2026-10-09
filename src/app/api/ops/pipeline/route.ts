@@ -18,15 +18,16 @@ import { createServiceClient } from '@/lib/supabase/service'
 import type { OrderStatusEnum, IntegrationTierEnum } from '@/types/database.types'
 import type { PipelineOrder } from '@/types/pipeline'
 import { slaSortComparator } from '@/lib/ops/sla-sort'
+import { getUserRole } from '@/lib/auth/claims'
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   // Auth: ops_admin required
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (session.user.user_metadata['app_role'] !== 'ops_admin') {
+  if (getUserRole(user) !== 'ops_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

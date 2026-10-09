@@ -35,7 +35,7 @@ jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.clien
 
 import { PUT } from '../[ingredientId]/compounding/route'
 
-const as = (role: string) => ({ id: `u-${role}`, email: `${role}@x.example`, user_metadata: { app_role: role } })
+const as = (role: string) => ({ id: `u-${role}`, email: `${role}@x.example`, app_metadata: { app_role: role } })
 const req = (body: unknown) => new NextRequest('https://app.test/api/ops/ingredients/x/compounding', { method: 'PUT', body: JSON.stringify(body) })
 const params = (ingredientId = ING) => ({ params: Promise.resolve({ ingredientId }) })
 const GOOD = { status: 'pending_evaluation', commercialEquivalent: false, onFdaShortage: false, source: 'FDA 503A categories page, 2026-04-15' }

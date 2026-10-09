@@ -25,7 +25,7 @@
 // What a manual invocation still does:
 //   1. Ensures the four POC Auth users exist with canonical metadata
 //      (creates missing ones with the canonical password; existing
-//      ones get user_metadata only)
+//      ones get app_metadata (role + clinic) only)
 //   2. TOTP enrollment — seed the demo provider's EPCS TOTP so
 //      controlled-substance signings never hit first-time setup
 //   3. Demo-data refresh — fax triage rows, adapter submissions,
@@ -46,15 +46,14 @@
 // either fails.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { cronAuthFailure } from '@/lib/cron/auth'
 import * as Sentry from '@sentry/nextjs'
 import { createServiceClient } from '@/lib/supabase/service'
 import { syncPocCredentials } from '@/lib/poc/sync-credentials'
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env['CRON_SECRET']}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const denied = cronAuthFailure(request, 'poc-credential-sync')
+  if (denied) return denied
 
   const supabase = createServiceClient()
   // Metadata-only by design. Never pass resetPasswords here.

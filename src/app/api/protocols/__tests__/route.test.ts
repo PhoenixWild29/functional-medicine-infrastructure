@@ -16,12 +16,12 @@ import { NextRequest } from 'next/server'
 
 // ── Mocks ────────────────────────────────────────────────────
 
-const getSessionMock = jest.fn()
+const getUserMock = jest.fn()
 const fromMock       = jest.fn()
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: { getUser: () => getUserMock() },
   }),
 }))
 
@@ -69,7 +69,7 @@ function chain(result: ChainResult): QueryChain {
 const CLINIC = 'clinic-A'
 
 const SESSION_IN_CLINIC = {
-  data: { session: { user: { user_metadata: { clinic_id: CLINIC } } } },
+  data: { user: { app_metadata: { clinic_id: CLINIC } } },
 }
 
 function makeRequest(id?: string): NextRequest {
@@ -87,15 +87,15 @@ beforeEach(() => {
 
 describe('GET /api/protocols?id — live pricing enrichment', () => {
   it('returns 401 without a session', async () => {
-    getSessionMock.mockResolvedValue({ data: { session: null } })
+    getUserMock.mockResolvedValue({ data: { user: null } })
 
     const res = await GET(makeRequest('proto-1'))
     expect(res.status).toBe(401)
   })
 
   it('returns 403 when session has no clinic_id', async () => {
-    getSessionMock.mockResolvedValue({
-      data: { session: { user: { user_metadata: {} } } },
+    getUserMock.mockResolvedValue({
+      data: { user: { user_metadata: {} } },
     })
 
     const res = await GET(makeRequest('proto-1'))
@@ -103,7 +103,7 @@ describe('GET /api/protocols?id — live pricing enrichment', () => {
   })
 
   it('resolves live wholesale_price + formulation_active per item and returns the clinic default markup', async () => {
-    getSessionMock.mockResolvedValue(SESSION_IN_CLINIC)
+    getUserMock.mockResolvedValue(SESSION_IN_CLINIC)
 
     const items = [
       { item_id: 'i1', formulation_id: 'form-live', pharmacy_id: 'ph-1', sort_order: 1 },
@@ -153,7 +153,7 @@ describe('GET /api/protocols?id — live pricing enrichment', () => {
   })
 
   it('returns items with null price and inactive flag when the protocol has no live offerings at all', async () => {
-    getSessionMock.mockResolvedValue(SESSION_IN_CLINIC)
+    getUserMock.mockResolvedValue(SESSION_IN_CLINIC)
 
     fromMock.mockImplementation((table: string) => {
       switch (table) {
@@ -188,7 +188,7 @@ describe('GET /api/protocols?id — live pricing enrichment', () => {
 
   // Compliance C8: each item says whether it can be ordered.
   it('C8: each item carries its compounding block (or null), from its ingredients', async () => {
-    getSessionMock.mockResolvedValue(SESSION_IN_CLINIC)
+    getUserMock.mockResolvedValue(SESSION_IN_CLINIC)
     const ing = (name: string, status: string) => ({ common_name: name, dea_schedule: null, compounding_status: status, commercial_equivalent: false, on_fda_shortage: false })
     const items = [
       { item_id: 'i1', formulation_id: 'form-sema', pharmacy_id: 'ph-1', sort_order: 1, formulations: { name: 'Semaglutide 5mg/mL', salt_forms: { ingredients: ing('Semaglutide', 'approved_drug_component') }, formulation_ingredients: [] } },

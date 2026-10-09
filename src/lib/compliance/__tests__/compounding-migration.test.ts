@@ -75,9 +75,9 @@ describe('the audit log', () => {
     expect(code).toContain('before truncate on ingredient_compounding_history')
   })
 
-  it('only ops reads it', () => {
+  it('only ops reads it (the role from app_metadata, never user_metadata)', () => {
     expect(code).toContain('alter table ingredient_compounding_history enable row level security;')
-    expect(code).toContain("for select to authenticated using ((auth.jwt() -> 'user_metadata' ->> 'app_role') = 'ops_admin')")
+    expect(code).toContain("for select to authenticated using ((auth.jwt() -> 'app_metadata' ->> 'app_role') = 'ops_admin')")
     expect(code.match(/create policy \w+ on ingredient_compounding_history/g)).toHaveLength(1)
   })
 

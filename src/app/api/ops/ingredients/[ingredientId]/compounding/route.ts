@@ -9,12 +9,14 @@
 // trigger on ingredients writes the audit row
 // (ingredient_compounding_history).
 //
-// Auth: ops_admin only, getUser() (never getSession()).
+// Auth: ops_admin only (the role from app_metadata, never user_metadata),
+// getUser() (never getSession()).
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { isCompoundingStatus } from '@/lib/compliance/compounding'
+import { getUserRole } from '@/lib/auth/claims'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -24,7 +26,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (user.user_metadata?.['app_role'] !== 'ops_admin') {
+  if (getUserRole(user) !== 'ops_admin') {
     return NextResponse.json({ error: 'Only ops can change an ingredient\'s compounding status.' }, { status: 403 })
   }
   if (!UUID_RE.test(ingredientId)) return NextResponse.json({ error: 'Invalid ingredient id' }, { status: 400 })

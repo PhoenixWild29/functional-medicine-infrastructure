@@ -8,6 +8,10 @@
 // This page is the redirect target for both scenarios from middleware.
 // Static — no server fetch required.
 
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Payment link expired' }
+
 export default function CheckoutExpiredPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center px-4 py-16">

@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createPaymentGroup }  from '@/lib/payment-group/create-group'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -32,16 +33,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // ── 1. Auth gate ─────────────────────────────────────────────
+  // getUser(), never getSession(): /api/checkout is a public prefix in
+  // middleware, so nothing upstream has verified this cookie, and
+  // getSession() only decodes it (a forged token would carry any role).
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const appRole  = session.user.user_metadata['app_role']  as string | undefined
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
-    : null
+  const appRole  = getUserRole(user)
+  const clinicId = getUserClinicId(user) ?? null
 
   if (appRole !== 'clinic_admin' && appRole !== 'provider' && appRole !== 'medical_assistant') {
     return NextResponse.json({ error: 'Forbidden — clinic-app role required' }, { status: 403 })
@@ -83,7 +85,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     supabase,
     clinicId,
     callerAppRole: appRole,
-    callerUserId:  session.user.id,
+    callerUserId:  user.id,
     orderIds:      body.orderIds,
   })
 

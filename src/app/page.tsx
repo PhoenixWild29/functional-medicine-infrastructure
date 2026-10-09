@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { defaultLandingRoute } from '@/lib/auth/landing-route'
+import { getUserRole } from '@/lib/auth/claims'
 
 // Root entry point — no visible UI, pure role-based redirect.
 // Unauthenticated users land here after email verification or direct nav.
@@ -24,7 +25,7 @@ export default async function RootPage() {
     redirect('/login')
   }
 
-  const appRole = user.user_metadata['app_role'] as string | undefined
+  const appRole = getUserRole(user)
 
   // ops_admin → pipeline; clinic_admin → Practice; provider and
   // medical_assistant → clinic dashboard.

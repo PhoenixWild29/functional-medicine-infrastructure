@@ -25,10 +25,10 @@ let deletes: string[] = []
 let tablesTouched: string[] = []
 const fixtures: Record<string, () => unknown> = {}
 
-const getSessionMock = jest.fn()
+const getUserMock = jest.fn()
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: { getUser: () => getUserMock() },
   }),
 }))
 
@@ -80,8 +80,8 @@ beforeEach(() => {
   deletes = []
   tablesTouched = []
   Object.keys(fixtures).forEach(k => delete fixtures[k])
-  getSessionMock.mockResolvedValue({
-    data: { session: { user: { id: 'auth-uid', user_metadata: { clinic_id: CLINIC_ID, app_role: 'provider' } } } },
+  getUserMock.mockResolvedValue({
+    data: { user: { id: 'auth-uid', app_metadata: { clinic_id: CLINIC_ID, app_role: 'provider' } } },
   })
   fixtures['providers:maybeSingle'] = () => ({ data: { provider_id: PROVIDER_ID }, error: null })
   fixtures['protocol_templates:single'] = () => ({ data: { protocol_id: PROTOCOL_ID, name: 'Weight Loss Starter' }, error: null })
@@ -134,9 +134,9 @@ describe('POST /api/protocols — WO-103 "+ New" from session', () => {
   })
 
   it('returns 401 without a session and 403 without a clinic', async () => {
-    getSessionMock.mockResolvedValueOnce({ data: { session: null } })
+    getUserMock.mockResolvedValueOnce({ data: { user: null } })
     expect((await POST(makeRequest({ name: 'x', items: [LINE] }))).status).toBe(401)
-    getSessionMock.mockResolvedValueOnce({ data: { session: { user: { user_metadata: {} } } } })
+    getUserMock.mockResolvedValueOnce({ data: { user: { user_metadata: {} } } })
     expect((await POST(makeRequest({ name: 'x', items: [LINE] }))).status).toBe(403)
   })
 })

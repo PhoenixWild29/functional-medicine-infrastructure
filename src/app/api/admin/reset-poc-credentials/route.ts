@@ -27,6 +27,7 @@ import { NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { syncPocCredentials } from '@/lib/poc/sync-credentials'
+import { getUserRole } from '@/lib/auth/claims'
 
 // Module-private: Next.js rejects non-handler exports from route files.
 const SESSIONS_REVOKED_MESSAGE =
@@ -34,11 +35,11 @@ const SESSIONS_REVOKED_MESSAGE =
 
 export async function POST(): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (session.user.user_metadata['app_role'] !== 'ops_admin') {
+  if (getUserRole(user) !== 'ops_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

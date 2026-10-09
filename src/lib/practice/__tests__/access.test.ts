@@ -10,7 +10,7 @@
 import { practiceAccess } from '../access'
 import { fakeDb } from '@/lib/orders/__tests__/fake-db'
 
-const user = (app_role: string, clinic_id: string | undefined = 'clinic-1') => ({ user_metadata: { app_role, clinic_id } })
+const user = (app_role: string, clinic_id: string | undefined = 'clinic-1') => ({ app_metadata: { app_role, clinic_id } })
 
 function world(visible: boolean) {
   return fakeDb({ clinics: [{ clinic_id: 'clinic-1', practice_dashboard_visible_to_providers: visible }] })

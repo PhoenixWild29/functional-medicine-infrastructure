@@ -28,6 +28,7 @@ import { insertStatusHistory } from '@/lib/orders/status-history'
 import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provider'
 import { REASSIGN_AUDIT_ACTOR } from '@/lib/orders/reassignment'
 import { logPhiAccess } from '@/lib/audit/phi-access'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
@@ -46,14 +47,12 @@ export async function POST(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
-    ? user.user_metadata['clinic_id'] as string
-    : null
+  const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }
 
-  if (!isProviderRole(user.user_metadata['app_role'])) {
+  if (!isProviderRole(getUserRole(user))) {
     return NextResponse.json({ error: 'Only a provider can take over a draft.' }, { status: 403 })
   }
 

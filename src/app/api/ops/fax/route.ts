@@ -16,6 +16,7 @@ import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { mapFaxRow }           from '@/lib/fax/map-fax-row'
 import type { Enums } from '@/types/database.types'
+import { getUserRole } from '@/lib/auth/claims'
 
 type FaxQueueStatusEnum = Enums<'fax_queue_status_enum'>
 
@@ -56,11 +57,11 @@ export interface FaxQueueResponse {
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (session.user.user_metadata['app_role'] !== 'ops_admin') {
+  if (getUserRole(user) !== 'ops_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

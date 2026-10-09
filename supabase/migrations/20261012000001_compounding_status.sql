@@ -95,7 +95,7 @@ ALTER TABLE ingredient_compounding_history ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS ingredient_compounding_history_ops_select ON ingredient_compounding_history;
 CREATE POLICY ingredient_compounding_history_ops_select ON ingredient_compounding_history FOR SELECT TO authenticated
-  USING ((auth.jwt() -> 'user_metadata' ->> 'app_role') = 'ops_admin');
+  USING ((auth.jwt() -> 'app_metadata' ->> 'app_role') = 'ops_admin');
 
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ingredient_compounding_history FROM anon, authenticated;
 REVOKE UPDATE, DELETE, TRUNCATE ON ingredient_compounding_history FROM service_role;

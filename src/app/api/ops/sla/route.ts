@@ -19,6 +19,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { computeHandoffMetrics } from '@/lib/ops/sla-handoff'
+import { getUserRole } from '@/lib/auth/claims'
 
 export interface SlaRow {
   orderId:          string
@@ -83,11 +84,11 @@ function mapSlaRow(row: unknown): SlaRow {
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (session.user.user_metadata['app_role'] !== 'ops_admin') {
+  if (getUserRole(user) !== 'ops_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

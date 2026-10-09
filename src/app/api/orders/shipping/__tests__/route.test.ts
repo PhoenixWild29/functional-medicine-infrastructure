@@ -67,7 +67,7 @@ function order(id: string, pharmacyId: string, shippingType: string, wholesale: 
 beforeEach(() => {
   getUserMock.mockReset()
   getSessionMock.mockReset()
-  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', user_metadata: { clinic_id: CLINIC, app_role: 'provider' } } } })
+  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { clinic_id: CLINIC, app_role: 'provider' } } } })
   pharmacies = [
     { pharmacy_id: STRIVE,   name: 'Strive Pharmacy',   shipping_fee_standard: 9,  shipping_fee_cold_chain: 22, free_shipping_threshold: null },
     { pharmacy_id: QUICK_RX, name: 'Quick Rx Pharmacy', shipping_fee_standard: 12, shipping_fee_cold_chain: 25, free_shipping_threshold: null },

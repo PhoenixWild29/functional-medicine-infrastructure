@@ -26,15 +26,16 @@ import { NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refreshDemoData, POC_SEED_METADATA_MARKER, DEMO_PHARMACIES } from '@/lib/poc/refresh-demo-data'
+import { getUserRole } from '@/lib/auth/claims'
 
 // ── Shared session gate ─────────────────────────────────────
 async function requireOpsAdmin(): Promise<NextResponse | null> {
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (session.user.user_metadata['app_role'] !== 'ops_admin') {
+  if (getUserRole(user) !== 'ops_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   return null

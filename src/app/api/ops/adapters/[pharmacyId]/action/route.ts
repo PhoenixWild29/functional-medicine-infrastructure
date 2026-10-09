@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getUserRole } from '@/lib/auth/claims'
 
 // BLK-02: UUID v4 pattern for pharmacyId validation
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -24,11 +25,11 @@ interface Params { params: Promise<{ pharmacyId: string }> }
 export async function POST(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const { pharmacyId } = await params
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (session.user.user_metadata['app_role'] !== 'ops_admin') {
+  if (getUserRole(user) !== 'ops_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -50,9 +51,9 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
   }
 
   // NB-07: distinguish no-email sessions in audit logs
-  const actorEmail = session.user.email
-    ? session.user.email
-    : `[no-email, id=${session.user.id}]`
+  const actorEmail = user.email
+    ? user.email
+    : `[no-email, id=${user.id}]`
   const supabase   = createServiceClient()
 
   // Verify pharmacy exists

@@ -36,13 +36,13 @@ function makeRequest(): import('next/server').NextRequest {
 
 // ── Mocks ──────────────────────────────────────────────────────────
 
-const getSessionMock = jest.fn()
+const getUserMock = jest.fn()
 const pharmacyFetchMock = jest.fn()
 const apiConfigFetchMock = jest.fn()
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: { getUser: () => getUserMock() },
   }),
 }))
 
@@ -79,21 +79,19 @@ jest.mock('@/lib/supabase/service', () => ({
 // ── Setup ──────────────────────────────────────────────────────────
 
 beforeEach(() => {
-  getSessionMock.mockReset()
+  getUserMock.mockReset()
   pharmacyFetchMock.mockReset()
   apiConfigFetchMock.mockReset()
 })
 
 function mockOpsAdminSession() {
-  getSessionMock.mockResolvedValue({
+  getUserMock.mockResolvedValue({
     data: {
-      session: {
-        user: {
+      user: {
           email: 'ops@example.test',
           id: 'user-ops',
-          user_metadata: { app_role: 'ops_admin' },
+          app_metadata: { app_role: 'ops_admin' },
         },
-      },
     },
   })
 }
@@ -144,7 +142,7 @@ describe('POST /api/ops/catalog/sync/[pharmacyId] — LF-1 regression', () => {
   })
 
   it('returns 401 for unauthenticated request and does not touch the DB', async () => {
-    getSessionMock.mockResolvedValue({ data: { session: null } })
+    getUserMock.mockResolvedValue({ data: { user: null } })
 
     const res = await POST(makeRequest(), makeParams())
     expect(res.status).toBe(401)
@@ -153,15 +151,13 @@ describe('POST /api/ops/catalog/sync/[pharmacyId] — LF-1 regression', () => {
   })
 
   it('returns 403 for non-ops_admin session', async () => {
-    getSessionMock.mockResolvedValue({
+    getUserMock.mockResolvedValue({
       data: {
-        session: {
-          user: {
+        user: {
             email: 'clinic@example.test',
             id: 'user-clinic',
-            user_metadata: { app_role: 'clinic_admin' },
+            app_metadata: { app_role: 'clinic_admin' },
           },
-        },
       },
     })
 

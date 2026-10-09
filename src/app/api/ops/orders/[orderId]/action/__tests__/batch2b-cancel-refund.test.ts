@@ -29,7 +29,7 @@ const membersFetchMock  = jest.fn()
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getUser: async () => ({ data: { user: { id: 'u-ops', email: 'ops@test', user_metadata: { app_role: 'ops_admin' } } }, error: null }) },
+    auth: { getUser: async () => ({ data: { user: { id: 'u-ops', email: 'ops@test', app_metadata: { app_role: 'ops_admin' } } }, error: null }) },
   }),
 }))
 

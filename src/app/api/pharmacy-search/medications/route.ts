@@ -27,8 +27,8 @@ export interface MedicationSuggestion {
 export async function GET(request: NextRequest): Promise<NextResponse> {
   // Auth gate — must be a clinic-app session
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

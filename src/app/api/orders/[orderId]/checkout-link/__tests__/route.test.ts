@@ -76,9 +76,10 @@ function makeParams() {
   return { params: Promise.resolve({ orderId: TEST_ORDER_ID }) }
 }
 
-function mockSession(user_metadata: Record<string, string>) {
+// Role and clinic live in app_metadata (src/lib/auth/claims).
+function mockSession(app_metadata: Record<string, string>) {
   getSessionMock.mockResolvedValue({
-    data: { session: { user: { user_metadata } } },
+    data: { session: { user: { app_metadata } } },
   })
 }
 

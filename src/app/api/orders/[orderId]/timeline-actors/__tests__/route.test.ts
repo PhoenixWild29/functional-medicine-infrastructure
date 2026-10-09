@@ -62,7 +62,7 @@ beforeEach(() => {
 
 describe('GET /api/orders/[orderId]/timeline-actors', () => {
   it('authenticates with getUser() and scopes the order to the verified user’s clinic', async () => {
-    getUserMock.mockResolvedValue({ data: { user: { id: 'u1', user_metadata: { clinic_id: CLINIC, app_role: 'provider' } } } })
+    getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { clinic_id: CLINIC, app_role: 'provider' } } } })
 
     const res = await call()
     expect(res.status).toBe(200)
@@ -81,12 +81,12 @@ describe('GET /api/orders/[orderId]/timeline-actors', () => {
   })
 
   it('400 when the verified user has no clinic_id', async () => {
-    getUserMock.mockResolvedValue({ data: { user: { id: 'u1', user_metadata: { app_role: 'ops_admin' } } } })
+    getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { app_role: 'ops_admin' } } } })
     expect((await call()).status).toBe(400)
   })
 
   it('404 when the order is not in the caller’s clinic', async () => {
-    getUserMock.mockResolvedValue({ data: { user: { id: 'u1', user_metadata: { clinic_id: CLINIC } } } })
+    getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { clinic_id: CLINIC } } } })
     orderRow = null
     expect((await call()).status).toBe(404)
     expect(resolveMock).not.toHaveBeenCalled()
