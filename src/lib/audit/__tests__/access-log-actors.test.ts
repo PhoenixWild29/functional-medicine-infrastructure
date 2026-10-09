@@ -13,12 +13,19 @@ import { resolveAccessLogActors } from '../access-log-actors'
 const CLINIC = 'a1000000-0000-0000-0000-000000000001'
 const ID = (n: number) => `00000000-0000-4000-8000-00000000000${n}`
 
-const users: Record<string, { email?: string; user_metadata: Record<string, unknown> }> = {
-  [ID(1)]: { email: 'sarah.chen@clinic.example', user_metadata: { app_role: 'provider', clinic_id: CLINIC } },
-  [ID(2)]: { email: 'maria@clinic.example', user_metadata: { app_role: 'medical_assistant', clinic_id: CLINIC, full_name: 'Maria Lopez' } },
-  [ID(3)]: { email: 'nobody-named@clinic.example', user_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC } },
-  [ID(4)]: { email: 'other@elsewhere.example', user_metadata: { app_role: 'provider', clinic_id: 'another-clinic' } },
-  [ID(5)]: { email: 'ops@compoundiq.example', user_metadata: { app_role: 'ops_admin' } },
+// Role and clinic in app_metadata (service role only); the display name in
+// user_metadata (the user's own, only ever shown).
+type FakeUser = { email?: string; app_metadata: Record<string, unknown>; user_metadata?: Record<string, unknown> }
+const users: Record<string, FakeUser> = {
+  [ID(1)]: { email: 'sarah.chen@clinic.example', app_metadata: { app_role: 'provider', clinic_id: CLINIC } },
+  [ID(2)]: { email: 'maria@clinic.example', app_metadata: { app_role: 'medical_assistant', clinic_id: CLINIC }, user_metadata: { full_name: 'Maria Lopez' } },
+  [ID(3)]: { email: 'nobody-named@clinic.example', app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC } },
+  [ID(4)]: { email: 'other@elsewhere.example', app_metadata: { app_role: 'provider', clinic_id: 'another-clinic' } },
+  [ID(5)]: { email: 'ops@compoundiq.example', app_metadata: { app_role: 'ops_admin' } },
+  // An MA in this clinic who rewrote their own user_metadata to look like ops.
+  [ID(6)]: { email: 'ma.hiding@clinic.example', app_metadata: { app_role: 'medical_assistant', clinic_id: CLINIC }, user_metadata: { app_role: 'ops_admin', full_name: 'Hidden MA' } },
+  // A provider of another clinic who rewrote their user_metadata clinic_id to this one.
+  [ID(7)]: { email: 'intruder@elsewhere.example', app_metadata: { app_role: 'provider', clinic_id: 'another-clinic' }, user_metadata: { app_role: 'provider', clinic_id: CLINIC, full_name: 'Intruder' } },
 }
 
 let providerError: unknown = null
@@ -68,6 +75,12 @@ it('a failed lookup is not fatal: the actor is just not identified', async () =>
   const actors = await resolveAccessLogActors(service() as never, CLINIC, [ID(1), ID(2)])
   expect(actors[ID(1)]).toBeUndefined()
   expect(actors[ID(2)]).toEqual({ name: 'Maria Lopez', email: 'maria@clinic.example' })
+})
+
+it('a self-edited user_metadata changes nothing: no hiding as ops, no showing in another clinic', async () => {
+  const actors = await resolveAccessLogActors(service() as never, CLINIC, [ID(6), ID(7)])
+  expect(actors[ID(6)]).toEqual({ name: 'Hidden MA', email: 'ma.hiding@clinic.example' })
+  expect(actors[ID(7)]).toBeUndefined()
 })
 
 it('ids that are not user ids are ignored', async () => {

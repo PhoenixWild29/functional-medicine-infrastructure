@@ -32,6 +32,7 @@ import { RefillPicker, type RefillablePatient, type RefillableOrder } from './_c
 import type { SessionProvider } from '../new-prescription/_context/prescription-session'
 import { refillsUsed, refillAllowance } from '@/lib/orders/refill'
 import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,14 +47,10 @@ export default async function RefillPage(
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return <SessionGuardNotice />
 
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
-    ? user.user_metadata['clinic_id'] as string
-    : null
+  const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) return <SessionGuardNotice />
 
-  const appRole = typeof user.user_metadata['app_role'] === 'string'
-    ? user.user_metadata['app_role'] as string
-    : undefined
+  const appRole = getUserRole(user)
 
   const supabase = createServiceClient()
 

@@ -54,8 +54,8 @@ const rows: Script = c => {
   return undefined
 }
 
-const PROVIDER_USER = { id: 'user-1', email: 'dr.chen@clinic.example', user_metadata: { clinic_id: CLINIC, app_role: 'provider' } }
-const MA_USER = { id: 'user-2', email: 'ma@clinic.example', user_metadata: { clinic_id: CLINIC, app_role: 'medical_assistant' } }
+const PROVIDER_USER = { id: 'user-1', email: 'dr.chen@clinic.example', app_metadata: { clinic_id: CLINIC, app_role: 'provider' } }
+const MA_USER = { id: 'user-2', email: 'ma@clinic.example', app_metadata: { clinic_id: CLINIC, app_role: 'medical_assistant' } }
 
 beforeEach(() => {
   phiLog.mockClear()

@@ -27,6 +27,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
   // Auth gate
@@ -36,15 +37,13 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const clinicId = typeof session.user.user_metadata['clinic_id'] === 'string'
-    ? session.user.user_metadata['clinic_id'] as string
-    : null
+  const clinicId = getUserClinicId(session.user) ?? null
 
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }
 
-  if (session.user.user_metadata['app_role'] !== 'clinic_admin') {
+  if (getUserRole(session.user) !== 'clinic_admin') {
     console.warn(`[clinic/settings] write refused: not the clinic admin | clinic=${clinicId}`)
     return NextResponse.json({ error: 'Only the clinic admin can change clinic settings.' }, { status: 403 })
   }

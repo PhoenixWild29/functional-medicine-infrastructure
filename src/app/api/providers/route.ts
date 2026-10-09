@@ -36,6 +36,7 @@ import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { npiChecksumValid } from '@/lib/providers/npi'
 import { runNpiCheck } from '@/lib/providers/verify-npi'
+import { appMetadataFor, getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 // ── Validation constants ────────────────────────────────────────────
 
@@ -79,10 +80,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const callerRole     = user.user_metadata['app_role']  as string | undefined
-  const callerClinicId = typeof user.user_metadata['clinic_id'] === 'string'
-    ? (user.user_metadata['clinic_id'] as string)
-    : null
+  const callerRole     = getUserRole(user)
+  const callerClinicId = getUserClinicId(user) ?? null
 
   if (callerRole !== 'clinic_admin' && callerRole !== 'ops_admin') {
     return NextResponse.json({ error: 'Forbidden — only clinic_admin or ops_admin can create providers' }, { status: 403 })
@@ -196,7 +195,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     email:         normalizedEmail,
     password:      body.password,
     email_confirm: true,
-    user_metadata: { app_role: 'provider', clinic_id: targetClinicId },
+    // Role and clinic are authorization facts: app_metadata, written with
+    // the service role. Never user_metadata (the user can rewrite that).
+    app_metadata:  appMetadataFor({ role: 'provider', clinicId: targetClinicId }),
   })
 
   if (createUserErr || !createdUser?.user) {

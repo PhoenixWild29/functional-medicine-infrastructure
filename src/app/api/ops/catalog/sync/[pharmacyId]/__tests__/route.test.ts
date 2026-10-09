@@ -91,7 +91,7 @@ function mockOpsAdminSession() {
         user: {
           email: 'ops@example.test',
           id: 'user-ops',
-          user_metadata: { app_role: 'ops_admin' },
+          app_metadata: { app_role: 'ops_admin' },
         },
       },
     },
@@ -159,7 +159,7 @@ describe('POST /api/ops/catalog/sync/[pharmacyId] — LF-1 regression', () => {
           user: {
             email: 'clinic@example.test',
             id: 'user-clinic',
-            user_metadata: { app_role: 'clinic_admin' },
+            app_metadata: { app_role: 'clinic_admin' },
           },
         },
       },

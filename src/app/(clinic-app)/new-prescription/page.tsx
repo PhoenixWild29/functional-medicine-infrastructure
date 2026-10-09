@@ -29,6 +29,7 @@ import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { PatientProviderSelector } from './_components/patient-provider-selector'
 import { getWizardSteps } from './_lib/wizard-steps'
 import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export const metadata = {
   title: 'New Prescription — Select Patient',
@@ -42,9 +43,7 @@ export default async function NewPrescriptionPage() {
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return <SessionGuardNotice />
 
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
-    ? user.user_metadata['clinic_id'] as string
-    : undefined
+  const clinicId = getUserClinicId(user)
 
   if (!clinicId) {
     return (
@@ -56,7 +55,7 @@ export default async function NewPrescriptionPage() {
   }
 
   const supabase = createServiceClient()
-  const providerIsSelf = isProviderRole(user.user_metadata['app_role'])
+  const providerIsSelf = isProviderRole(getUserRole(user))
 
   // Fetch patients (+ providers for the MA path) for this clinic in parallel
   const [patientsResult, providersResult, selfProvider] = await Promise.all([

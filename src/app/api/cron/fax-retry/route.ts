@@ -24,6 +24,7 @@
 // re-evaluate and retry as long as the delay condition still holds.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { submitTier4Fax } from '@/lib/adapters/tier4-fax'
 import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
@@ -35,11 +36,8 @@ const RETRY_DELAY_MS: Record<number, number> = {
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  // Verify Vercel cron secret
-  const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const denied = cronAuthFailure(request, 'fax-retry')
+  if (denied) return denied
 
   // Kill switch: no fax retries while pharmacy submissions are off. The
   // adapter would refuse anyway; skipping here avoids an error per order.

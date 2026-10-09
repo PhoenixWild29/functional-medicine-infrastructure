@@ -14,6 +14,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { todayUtc } from '@/lib/providers/credentials'
 import { CredentialsEditor } from './_components/credentials-editor'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export const metadata = {
   title: 'Team',
@@ -75,11 +76,11 @@ export default async function TeamPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return <SessionGuardNotice />
 
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string' ? user.user_metadata['clinic_id'] as string : null
+  const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) {
     return <SessionGuardNotice title="No clinic linked" message="Your account is not linked to a clinic. Contact your administrator." />
   }
-  const role = user.user_metadata['app_role']
+  const role = getUserRole(user)
   const isAdmin = role === 'clinic_admin'
   if (!isAdmin && role !== 'provider') {
     return (

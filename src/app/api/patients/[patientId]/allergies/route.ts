@@ -32,6 +32,7 @@ import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
 import { validateAllergiesPatch } from '@/lib/patients/allergies'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -57,10 +58,8 @@ async function resolveCaller(): Promise<CallerResult> {
     return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
 
-  const role     = user.user_metadata['app_role'] as string | undefined
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
-    ? (user.user_metadata['clinic_id'] as string)
-    : null
+  const role     = getUserRole(user)
+  const clinicId = getUserClinicId(user) ?? null
 
   if (role !== 'provider' && role !== 'medical_assistant' && role !== 'clinic_admin') {
     return { ok: false, response: NextResponse.json({ error: 'Forbidden — allergies are recorded by clinic staff' }, { status: 403 }) }

@@ -18,7 +18,11 @@
 // Per-breach logic:
 //   1. SUBMISSION breach: fire sendReminder24hSms(), resolve SLA (one-shot)
 //   2. STATUS_UPDATE breach: fire sendReminder48hSms(), resolve SLA (one-shot)
-//   3. ADAPTER_SUBMISSION_ACK breach at escalation_tier = 0:
+//   3. ADAPTER_SUBMISSION_ACK breach at escalation_tier = 0, Tier 2 (portal):
+//      → Never auto-fax: the portal submission may already have reached
+//        the pharmacy. Escalate the tier once (CAS) and alert ops on Slack
+//        and PagerDuty, IDs only. The order stays in SUBMISSION_PENDING.
+//   3b. ADAPTER_SUBMISSION_ACK breach at escalation_tier = 0, other tiers:
 //      → Attempt cascade: CAS SUBMISSION_PENDING → FAX_QUEUED, then submitTier4Fax
 //      → If cascade succeeds: mark SLA resolved, return
 //      → If cascade fails: fall through to escalation
@@ -35,12 +39,15 @@
 // escalateSla uses CAS on escalation_tier to prevent double-escalation).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition } from '@/lib/orders/cas-transition'
 import { submitTier4Fax } from '@/lib/adapters/tier4-fax'
 import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { upsertFaxDeliverySla } from '@/lib/sla/creator'
 import { routeSlaAlert } from '@/lib/slack/alert-router'
+import { buildOpsAlert, sendSlackAlert } from '@/lib/slack/client'
+import { triggerPortalSubmissionUnconfirmed } from '@/lib/pagerduty/client'
 import { sendReminder24hSms, sendReminder48hSms } from '@/lib/sms/triggers'
 import type { Enums } from '@/types/database.types'
 
@@ -305,20 +312,41 @@ async function attemptSmsTrigger(
 }
 
 // ============================================================
+// TIER 2 (PORTAL) ESCALATION: NO AUTO-FAX
+// ============================================================
+
+/** One ops alert, Slack and PagerDuty, IDs and enums only. Failures are logged. */
+async function alertPortalSubmissionUnconfirmed(breach: SlaBreachRow): Promise<void> {
+  const breachDurationMinutes = Math.max(0, Math.round((Date.now() - Date.parse(breach.deadline_at)) / 60_000)) || 0
+  const slack = sendSlackAlert(buildOpsAlert({
+    type:     'sla_breach',
+    orderId:  breach.order_id,
+    pharmacy: breach.pharmacy_slug,
+    status:   breach.order_status,
+    details:  {
+      sla_type:         breach.sla_type,
+      integration_tier: breach.integration_tier,
+      overdue_minutes:  breachDurationMinutes,
+    },
+    notes:    ['portal_no_auto_fax'],
+    actions:  'sla',
+  })).catch(err => console.error(`[sla-check] Tier 2 portal Slack alert failed | order=${breach.order_id}:`, err))
+  const page = triggerPortalSubmissionUnconfirmed({
+    orderId:      breach.order_id,
+    pharmacySlug: breach.pharmacy_slug,
+    orderStatus:  breach.order_status,
+    breachDurationMinutes,
+  }).catch(err => console.error(`[sla-check] Tier 2 portal PagerDuty alert failed | order=${breach.order_id}:`, err))
+  await Promise.all([slack, page])
+}
+
+// ============================================================
 // ROUTE HANDLER
 // ============================================================
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  // NB-10 fix: check for missing/undefined CRON_SECRET before comparison
-  const cronSecret = process.env['CRON_SECRET']
-  if (!cronSecret) {
-    console.error('[sla-check] CRON_SECRET env var is not set')
-    return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 })
-  }
-  const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const denied = cronAuthFailure(request, 'sla-check')
+  if (denied) return denied
 
   const supabase = createServiceClient()
   const now      = new Date().toISOString()
@@ -440,6 +468,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       if (slaType === 'SUBMISSION' || slaType === 'STATUS_UPDATE') {
         await attemptSmsTrigger(orderId, slaType)
         results.push({ orderId, slaType, outcome: 'sms_fired' })
+        continue
+      }
+
+      // ── Tier 2 (portal): never auto-fax; escalate to ops ──────
+      // Owner decision: the portal submission may already have reached the
+      // pharmacy, so a fax could duplicate it. The SLA escalates once (the
+      // CAS on the tier keeps a concurrent or later run from alerting again
+      // from tier 0) and ops gets one alert, Slack and PagerDuty, IDs and
+      // enums only. The order stays SUBMISSION_PENDING for ops to resolve.
+      if (slaType === 'ADAPTER_SUBMISSION_ACK' && escalationTier === 0 && integrationTier === 'TIER_2_PORTAL') {
+        const newTier = await escalateSla(orderId, slaType, escalationTier)
+        if (newTier === null) {
+          results.push({ orderId, slaType, outcome: 'skipped' })
+          continue
+        }
+        await alertPortalSubmissionUnconfirmed(breach)
+        console.info(`[sla-check] Tier 2 portal breach escalated, not faxed | order=${orderId} | tier=${escalationTier}→${newTier}`)
+        results.push({ orderId, slaType, outcome: 'escalated', newTier })
         continue
       }
 

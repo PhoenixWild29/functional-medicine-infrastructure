@@ -26,6 +26,7 @@ import { cyclePatternFromRow } from '@/lib/orders/cycling'
 import { parseOrdersParam, type BatchDraftLine, type BatchPatientView } from '@/lib/orders/batch-sign-view'
 import { BatchSignForm } from './_components/batch-sign-form'
 import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export const metadata = {
   title: 'Sign Prescriptions',
@@ -94,10 +95,10 @@ export default async function BatchSignPage({ searchParams }: PageProps) {
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return <SessionGuardNotice />
 
-  if (user.user_metadata['app_role'] !== 'provider') {
+  if (getUserRole(user) !== 'provider') {
     return <Notice title="Provider signature required" message="Only a provider can sign prescriptions. Ask a provider at your clinic to sign from their dashboard." />
   }
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string' ? user.user_metadata['clinic_id'] as string : undefined
+  const clinicId = getUserClinicId(user)
   if (!clinicId) {
     return <SessionGuardNotice title="No clinic linked" message="Your account is not linked to a clinic. Contact your administrator." />
   }

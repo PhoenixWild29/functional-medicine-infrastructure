@@ -79,7 +79,7 @@ const call = async () => {
 
 beforeEach(() => {
   getUserMock.mockReset()
-  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', user_metadata: { clinic_id: CLINIC } } } })
+  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { clinic_id: CLINIC } } } })
   orderRows = [ldnRow()]
   pharmacyFormulationRows = [{
     pharmacy_id: PHARMACY, formulation_id: FORM, wholesale_price: 45,

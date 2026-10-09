@@ -81,7 +81,7 @@ beforeEach(() => {
   tablesTouched = []
   Object.keys(fixtures).forEach(k => delete fixtures[k])
   getSessionMock.mockResolvedValue({
-    data: { session: { user: { id: 'auth-uid', user_metadata: { clinic_id: CLINIC_ID, app_role: 'provider' } } } },
+    data: { session: { user: { id: 'auth-uid', app_metadata: { clinic_id: CLINIC_ID, app_role: 'provider' } } } },
   })
   fixtures['providers:maybeSingle'] = () => ({ data: { provider_id: PROVIDER_ID }, error: null })
   fixtures['protocol_templates:single'] = () => ({ data: { protocol_id: PROTOCOL_ID, name: 'Weight Loss Starter' }, error: null })

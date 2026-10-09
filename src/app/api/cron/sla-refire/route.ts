@@ -23,6 +23,7 @@
 // Safe to re-run: routeReFireAlert is idempotent via notifications log.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { routeReFireAlert } from '@/lib/slack/alert-router'
 
@@ -33,15 +34,8 @@ const MAX_BATCH_SIZE = 50
 const REFIRE_WINDOW_MS = 15 * 60 * 1000
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  // Auth check — same guard as sla-check
-  const cronSecret = process.env['CRON_SECRET']
-  if (!cronSecret) {
-    console.error('[sla-refire] CRON_SECRET env var is not set')
-    return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 })
-  }
-  if (request.headers.get('authorization') !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const denied = cronAuthFailure(request, 'sla-refire')
+  if (denied) return denied
 
   const supabase    = createServiceClient()
   const refireAfter = new Date(Date.now() - REFIRE_WINDOW_MS).toISOString()

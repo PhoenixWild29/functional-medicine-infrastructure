@@ -47,6 +47,9 @@ function toCurrency(cents: number): string {
   })
 }
 
+/** The payment error's id: an email the server rejected is described by it. */
+const PAY_ERROR_ID = 'checkout-pay-error'
+
 // ============================================================
 // INNER PAYMENT FORM — WO-49 + WO-73
 // ============================================================
@@ -71,12 +74,16 @@ function PaymentForm({ token, smsConsent, intentEndpoint, retailCents, onError, 
   // When entered it is still posted to the intent endpoint, which
   // validates it and rejects a malformed address before payment.
   const [email, setEmail] = useState('')
+  // C10: set when the server rejected the entered address, so the field
+  // is marked invalid and described by the announced error.
+  const [emailRejected, setEmailRejected] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!stripe || !elements) return
 
     setIsSubmitting(true)
+    setEmailRejected(false)
     onError(null)
 
     // Pre-submit call. A blank email is not sent at all; an entered one is
@@ -92,6 +99,7 @@ function PaymentForm({ token, smsConsent, intentEndpoint, retailCents, onError, 
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({})) as { error?: string }
         onError(errBody.error ?? 'Unable to prepare receipt email. Please check your email address and try again.')
+        setEmailRejected(trimmedEmail.length > 0)
         setIsSubmitting(false)
         return
       }
@@ -140,13 +148,15 @@ function PaymentForm({ token, smsConsent, intentEndpoint, retailCents, onError, 
           autoComplete="email"
           inputMode="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => { setEmail(e.target.value); setEmailRejected(false) }}
           placeholder="you@example.com"
           disabled={isSubmitting}
-          className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
+          aria-invalid={emailRejected || undefined}
+          aria-describedby={[smsConsent ? 'checkout-email-help' : null, emailRejected ? PAY_ERROR_ID : null].filter(Boolean).join(' ') || undefined}
+          className="mt-1 block w-full rounded-lg border border-slate-500 bg-background px-3 py-2 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
         />
         {smsConsent && (
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p id="checkout-email-help" className="mt-1 text-xs text-muted-foreground">
             We&rsquo;ll text you to confirm your payment and when your order ships.
           </p>
         )}
@@ -162,13 +172,19 @@ function PaymentForm({ token, smsConsent, intentEndpoint, retailCents, onError, 
           methods. SDK upgraded to @stripe/stripe-js@^7.5.0 to expose `link` in
           PaymentWalletsOption natively (was not in v4 — the cast-through-
           unknown that broke PR #44 commit 3/3 is not needed here). */}
-      <PaymentElement
-        options={{
-          layout:  'tabs',
-          wallets: { applePay: 'auto', googlePay: 'auto', link: 'never' },
-        }}
-        onReady={onReady}
-      />
+      {/* C10: the Payment Element is Stripe's iframe; its fields are
+          labelled by Stripe. The fieldset gives the region a name a screen
+          reader announces on entry. */}
+      <fieldset className="min-w-0 border-0 p-0">
+        <legend className="sr-only">Payment details</legend>
+        <PaymentElement
+          options={{
+            layout:  'tabs',
+            wallets: { applePay: 'auto', googlePay: 'auto', link: 'never' },
+          }}
+          onReady={onReady}
+        />
+      </fieldset>
 
       {/* WO-73: min-h-[48px] — 48px touch target standard, shows amount */}
       <button
@@ -210,7 +226,7 @@ function PaidState({ clinicName }: { clinicName: string }) {
 
 function CancelledState({ clinicName }: { clinicName: string }) {
   return (
-    <div className="space-y-3 text-center" role="alert">
+    <div className="space-y-3 text-center" role="region" aria-label="Payment status">
       <div
         className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted"
         aria-hidden
@@ -360,6 +376,8 @@ export function CheckoutPageContent({
 
       <main className="flex flex-col items-center px-4 pb-10 pt-6" aria-label="Checkout">
         <div className="w-full max-w-[480px] space-y-4">
+          {/* C10: the page's one h1; the visible card says the same thing. */}
+          <h1 className="sr-only">Payment to {clinicName}</h1>
 
           {/* WO-73: Order summary card — "Amount due" label + 32px amount */}
           <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
@@ -370,6 +388,7 @@ export function CheckoutPageContent({
                 className="mb-4 h-10 w-auto max-w-[140px] object-contain"
               />
             )}
+            <div role="group" aria-label={`Amount due: ${toCurrency(retailCents)}`} data-testid="checkout-amount-due">
             <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               Amount due
             </p>
@@ -387,12 +406,10 @@ export function CheckoutPageContent({
                     : clinicName}
                 </p>
               </div>
-              <p
-                className="shrink-0 text-3xl font-bold text-foreground"
-                aria-label={`Amount due: ${toCurrency(retailCents)}`}
-              >
+              <p className="shrink-0 text-3xl font-bold text-foreground">
                 {toCurrency(retailCents)}
               </p>
+            </div>
             </div>
             {/* WO-102: shipping as its own line item */}
             {shippingCents > 0 && (
@@ -466,6 +483,7 @@ export function CheckoutPageContent({
               {/* WO-73: Error: card declined or payment failed — aria-live for screen readers */}
               {payError && (
                 <div
+                  id={PAY_ERROR_ID}
                   role="alert"
                   aria-live="assertive"
                   className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700"
@@ -493,7 +511,7 @@ export function CheckoutPageContent({
                   prevent Stripe's iframe from initializing (clip/size restrictions).
                   The brief transition from skeleton to Elements is acceptable. */}
               {!fetchError && !stripeTimeout && !clientSecret && (
-                <div className="space-y-3" aria-busy="true" aria-label="Loading payment form">
+                <div className="space-y-3" role="status" aria-busy="true" aria-label="Loading payment form">
                   <div className="h-12 animate-pulse rounded-lg bg-muted" />
                   <div className="h-12 animate-pulse rounded-lg bg-muted" />
                   <div className="h-14 animate-pulse rounded-lg bg-muted" />

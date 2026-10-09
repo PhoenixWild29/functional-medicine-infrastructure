@@ -598,11 +598,13 @@ export type Database = {
           details: Json | null
           event_type: string
           ip_address: string | null
+          ip_hash: string | null
           medication_name: string
           order_id: string | null
           patient_id: string | null
           provider_id: string
           user_agent: string | null
+          user_agent_hash: string | null
         }
         Insert: {
           audit_id?: string
@@ -611,11 +613,13 @@ export type Database = {
           details?: Json | null
           event_type: string
           ip_address?: string | null
+          ip_hash?: string | null
           medication_name: string
           order_id?: string | null
           patient_id?: string | null
           provider_id: string
           user_agent?: string | null
+          user_agent_hash?: string | null
         }
         Update: {
           audit_id?: string
@@ -624,11 +628,13 @@ export type Database = {
           details?: Json | null
           event_type?: string
           ip_address?: string | null
+          ip_hash?: string | null
           medication_name?: string
           order_id?: string | null
           patient_id?: string | null
           provider_id?: string
           user_agent?: string | null
+          user_agent_hash?: string | null
         }
         Relationships: [
           {
@@ -979,6 +985,39 @@ export type Database = {
           on_fda_shortage?: boolean
           therapeutic_category?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      legal_holds: {
+        Row: {
+          hold_id: string
+          reason: string
+          released_at: string | null
+          released_by: string | null
+          scope: string
+          set_at: string
+          set_by: string
+          target_id: string
+        }
+        Insert: {
+          hold_id?: string
+          reason: string
+          released_at?: string | null
+          released_by?: string | null
+          scope: string
+          set_at?: string
+          set_by: string
+          target_id: string
+        }
+        Update: {
+          hold_id?: string
+          reason?: string
+          released_at?: string | null
+          released_by?: string | null
+          scope?: string
+          set_at?: string
+          set_by?: string
+          target_id?: string
         }
         Relationships: []
       }
@@ -2871,6 +2910,54 @@ export type Database = {
             referencedColumns: ["clinic_id"]
           },
         ]
+      }
+      retention_runs: {
+        Row: {
+          created_at: string
+          cutoff: string
+          error: string | null
+          finished_at: string
+          id: string
+          mode: string
+          newest_at: string | null
+          oldest_at: string | null
+          policy: string
+          rows_affected: number
+          rows_matched: number
+          run_id: string
+          started_at: string
+        }
+        Insert: {
+          created_at?: string
+          cutoff: string
+          error?: string | null
+          finished_at: string
+          id?: string
+          mode: string
+          newest_at?: string | null
+          oldest_at?: string | null
+          policy: string
+          rows_affected?: number
+          rows_matched: number
+          run_id: string
+          started_at: string
+        }
+        Update: {
+          created_at?: string
+          cutoff?: string
+          error?: string | null
+          finished_at?: string
+          id?: string
+          mode?: string
+          newest_at?: string | null
+          oldest_at?: string | null
+          policy?: string
+          rows_affected?: number
+          rows_matched?: number
+          run_id?: string
+          started_at?: string
+        }
+        Relationships: []
       }
       routes_of_administration: {
         Row: {

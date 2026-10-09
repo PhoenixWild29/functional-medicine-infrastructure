@@ -102,7 +102,7 @@ function body(providerId: string) {
 }
 
 function session(appRole: string, userId = CHEN_AUTH_UID) {
-  return { data: { session: { user: { id: userId, user_metadata: { clinic_id: TEST_CLINIC_ID, app_role: appRole } } } } }
+  return { data: { session: { user: { id: userId, app_metadata: { clinic_id: TEST_CLINIC_ID, app_role: appRole } } } } }
 }
 
 function installHappyFixtures() {

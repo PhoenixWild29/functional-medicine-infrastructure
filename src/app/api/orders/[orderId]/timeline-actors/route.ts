@@ -19,6 +19,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { resolveTimelineActors } from '@/lib/orders/timeline-actors'
+import { getUserClinicId } from '@/lib/auth/claims'
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
@@ -32,9 +33,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
-    ? user.user_metadata['clinic_id'] as string
-    : null
+  const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }

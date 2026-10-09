@@ -72,7 +72,7 @@ function call(orderId = ORDER_A) {
 }
 
 function session(appRole: string, userId = CHEN_UID) {
-  return { data: { session: { user: { id: userId, user_metadata: { clinic_id: CLINIC_ID, app_role: appRole } } } } }
+  return { data: { session: { user: { id: userId, app_metadata: { clinic_id: CLINIC_ID, app_role: appRole } } } } }
 }
 
 beforeEach(() => {

@@ -15,6 +15,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
+import { getUserClinicId, getUserRole, type ClaimsUser } from '@/lib/auth/claims'
 
 export type PracticeAccess =
   | { ok: true; clinicId: string; role: 'clinic_admin' | 'provider' }
@@ -22,11 +23,11 @@ export type PracticeAccess =
 
 export async function practiceAccess(
   supabase: SupabaseClient<Database>,
-  user: { user_metadata?: Record<string, unknown> } | null,
+  user: ClaimsUser | null,
 ): Promise<PracticeAccess> {
   if (!user) return { ok: false, status: 401, error: 'Sign in to see the practice dashboard.' }
-  const role = user.user_metadata?.['app_role']
-  const clinicId = typeof user.user_metadata?.['clinic_id'] === 'string' ? user.user_metadata['clinic_id'] as string : null
+  const role = getUserRole(user)
+  const clinicId = getUserClinicId(user) ?? null
 
   if (role === 'ops_admin') {
     return { ok: false, status: 403, error: "A clinic's practice dashboard is visible to that clinic only." }

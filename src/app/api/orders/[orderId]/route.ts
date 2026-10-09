@@ -32,6 +32,7 @@ import { reallocateDraftSiblingShipping } from '@/lib/orders/apply-bundle-shippi
 import { parseTitrationSteps, isSigMode } from '@/lib/orders/titration'
 import { cyclePatternFrom } from '@/lib/orders/cycling'
 import type { Json } from '@/types/database.types'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 interface RouteContext {
   params: Promise<{ orderId: string }>
@@ -65,15 +66,11 @@ async function loadEditableDraft(orderId: string): Promise<
   if (!user) {
     return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
-  const clinicId = typeof user.user_metadata['clinic_id'] === 'string'
-    ? user.user_metadata['clinic_id'] as string
-    : null
+  const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) {
     return { ok: false, response: NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 }) }
   }
-  const role = typeof user.user_metadata['app_role'] === 'string'
-    ? user.user_metadata['app_role'] as string
-    : null
+  const role = getUserRole(user) ?? null
   const actor: Actor = { userId: user.id, role, clinicId }
 
   if (!orderId) {

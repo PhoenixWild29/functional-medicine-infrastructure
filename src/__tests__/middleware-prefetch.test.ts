@@ -59,8 +59,8 @@ const createServerClientMock = createServerClient as unknown as jest.Mock
 
 const NO_STORE = 'no-store, no-cache, must-revalidate, private'
 
-const CLINIC_SESSION = { data: { user: { user_metadata: { app_role: 'clinic_admin' } } } }
-const MA_SESSION     = { data: { user: { user_metadata: { app_role: 'medical_assistant' } } } }
+const CLINIC_SESSION = { data: { user: { app_metadata: { app_role: 'clinic_admin' } } } }
+const MA_SESSION     = { data: { user: { app_metadata: { app_role: 'medical_assistant' } } } }
 const NO_SESSION     = { data: { user: null } }
 
 function makeReq(pathname: string, headers: Record<string, string> = {}): NextRequest {

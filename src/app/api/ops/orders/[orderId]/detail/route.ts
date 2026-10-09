@@ -17,6 +17,7 @@ import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { isRefundEventRow } from '@/lib/refunds/events'
 import { logPhiAccess } from '@/lib/audit/phi-access'
+import { getUserRole } from '@/lib/auth/claims'
 
 interface Params { params: Promise<{ orderId: string }> }
 
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest, { params }: Params): Promise<Nex
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (user.user_metadata['app_role'] !== 'ops_admin') {
+  if (getUserRole(user) !== 'ops_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

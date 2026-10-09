@@ -139,7 +139,7 @@ function mockSession(role: string | undefined, clinicId?: string) {
         user: {
           id: 'caller-uid',
           email: 'caller@e.test',
-          user_metadata: {
+          app_metadata: {
             ...(role        ? { app_role:  role        } : {}),
             ...(clinicId    ? { clinic_id: clinicId    } : {}),
           },
@@ -335,7 +335,7 @@ describe('POST /api/providers — happy path', () => {
     expect(createUserMock).toHaveBeenCalledWith(expect.objectContaining({
       email:         'new.provider@clinic.test',
       email_confirm: true,
-      user_metadata: { app_role: 'provider', clinic_id: TEST_CLINIC_ID },
+      app_metadata: { app_role: 'provider', clinic_id: TEST_CLINIC_ID },
     }))
     // No rollback called on the happy path
     expect(deleteUserMock).not.toHaveBeenCalled()
@@ -362,7 +362,7 @@ describe('POST /api/providers — happy path', () => {
     const res = await POST(makeRequest(validBody({ clinicId: OTHER_CLINIC_ID })))
     expect(res.status).toBe(201)
     expect(createUserMock).toHaveBeenCalledWith(expect.objectContaining({
-      user_metadata: { app_role: 'provider', clinic_id: OTHER_CLINIC_ID },
+      app_metadata: { app_role: 'provider', clinic_id: OTHER_CLINIC_ID },
     }))
   })
 })
@@ -409,7 +409,7 @@ describe('POST /api/providers — clinic existence pre-check', () => {
 // ── Compliance C4: the NPI is checked on save ─────────────────────
 describe('NPI verification on save', () => {
   beforeEach(() => {
-    getSessionMock.mockResolvedValue({ data: { session: { user: { id: 'admin-user', user_metadata: { app_role: 'clinic_admin', clinic_id: TEST_CLINIC_ID } } } } })
+    getSessionMock.mockResolvedValue({ data: { session: { user: { id: 'admin-user', app_metadata: { app_role: 'clinic_admin', clinic_id: TEST_CLINIC_ID } } } } })
     npiCheckMock.mockResolvedValue({ data: null, error: null })
     clinicCheckMock.mockResolvedValue({ data: { clinic_id: TEST_CLINIC_ID, is_active: true }, error: null })
     createUserMock.mockResolvedValue({ data: { user: { id: 'new-auth-user' } }, error: null })
