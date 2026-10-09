@@ -4,7 +4,8 @@
 //
 // One rule, used by middleware, the MFA pages and Settings:
 //
-//   - Staff roles (provider, medical_assistant, clinic_admin, ops_admin)
+//   - Staff roles (provider, medical_assistant, clinic_admin, ops_admin,
+//     pharmacy_admin; pharmacy_admin is always enforced, ALWAYS_MFA_ROLES)
 //     are covered. Patients use checkout links and have no staff role, so
 //     they are never gated.
 //   - Enforcement: REQUIRE_MFA=true for everyone, or MFA_ENFORCED_EMAILS
@@ -24,7 +25,14 @@
 
 import { serverEnv } from '@/lib/env'
 
-export const MFA_ROLES = ['provider', 'medical_assistant', 'clinic_admin', 'ops_admin'] as const
+export const MFA_ROLES = ['provider', 'medical_assistant', 'clinic_admin', 'ops_admin', 'pharmacy_admin'] as const
+
+/**
+ * Roles for which MFA is always enforced, whatever REQUIRE_MFA says.
+ * A pharmacy_admin signs a BAA and enters order-intake credentials: it
+ * never signs in on a password alone.
+ */
+export const ALWAYS_MFA_ROLES: ReadonlyArray<string> = ['pharmacy_admin']
 export type MfaRole = typeof MFA_ROLES[number]
 
 export type MfaGate = 'ok' | 'enroll' | 'challenge'
@@ -52,6 +60,12 @@ export function mfaEnforcedFor(email: string | null | undefined): boolean {
 }
 
 interface FactorLike { factor_type?: string; status?: string }
+
+/** Whether MFA is enforced for this user: always for ALWAYS_MFA_ROLES, else mfaEnforcedFor. */
+export function mfaEnforcedForUser(role: string | null | undefined, email: string | null | undefined): boolean {
+  if (role && ALWAYS_MFA_ROLES.includes(role)) return true
+  return mfaEnforcedFor(email)
+}
 
 /** A verified TOTP factor on the user (Supabase Auth's user.factors). */
 export function hasVerifiedTotp(user: { factors?: ReadonlyArray<FactorLike> | null }): boolean {

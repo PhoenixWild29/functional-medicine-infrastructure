@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { verifyCheckoutToken } from '@/lib/auth/checkout-token'
-import { MFA_API_CODES, MFA_PAGES, hasVerifiedTotp, isMfaExemptPath, isMfaRole, mfaEnforcedFor, mfaGate } from '@/lib/auth/mfa'
+import { MFA_API_CODES, MFA_PAGES, hasVerifiedTotp, isMfaExemptPath, isMfaRole, mfaEnforcedForUser, mfaGate } from '@/lib/auth/mfa'
 import { buildCsp, newNonce, permissionsPolicy } from '@/lib/security/headers'
 import { getUserRole } from '@/lib/auth/claims'
 
@@ -197,7 +197,10 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
   // 2026-09 prod-logout root cause — '/unauthorized' USED TO BE IN THIS LIST.
   // DO NOT put it back. See the exemption block further down: /unauthorized
   // needs the refresh, it only needs to skip the ROLE gates.
-  const publicRoutes = ['/login', '/auth/callback', '/api/webhooks', '/api/cron', '/api/health', '/api/checkout']
+  // Pharmacy onboarding: the invite link (/onboard/pharmacy/<token>) and its
+  // API are opened before the invitee has an account. The token is checked
+  // by the handler (hashed, single-use, expiring).
+  const publicRoutes = ['/login', '/auth/callback', '/api/webhooks', '/api/cron', '/api/health', '/api/checkout', '/onboard/', '/api/onboard/']
   if (publicRoutes.some(route => pathname.startsWith(route))) {
     return response
   }
@@ -330,7 +333,7 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
   // only read when it can matter, so with enforcement off and no factor
   // the request path is exactly what it was.
   if (!isMfaExemptPath(pathname) && isMfaRole(appRole)) {
-    const enforced = mfaEnforcedFor(user.email)
+    const enforced = mfaEnforcedForUser(appRole, user.email)
     const verifiedFactor = hasVerifiedTotp(user)
     if (enforced || verifiedFactor) {
       const { data: claimsData } = await supabase.auth.getClaims()
@@ -351,6 +354,26 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
       }
     }
   }
+
+  // ── Pharmacy portal (pharmacy onboarding) ──────────────────────────────
+  // A pharmacy_admin reaches only its portal (/pharmacy/*, /api/pharmacy/*)
+  // and the MFA pages. Every clinic and ops page sends it to /unauthorized
+  // and every other API answers 403. No other role reaches the portal.
+  const isPharmacyPortal = pathname === '/pharmacy' || pathname.startsWith('/pharmacy/') || pathname.startsWith('/api/pharmacy/')
+  const denyRequest = (): NextResponse => {
+    if (pathname.startsWith('/api/')) {
+      const forbidden = NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      response.cookies.getAll().forEach(cookie => forbidden.cookies.set(cookie))
+      return applySecurityHeaders(forbidden)
+    }
+    return applySecurityHeaders(redirectWithSessionCookies(new URL('/unauthorized', request.url)))
+  }
+  if (appRole === 'pharmacy_admin') {
+    if (isPharmacyPortal || isMfaExemptPath(pathname)) return applySecurityHeaders(response)
+    if (pathname === '/') return applySecurityHeaders(redirectWithSessionCookies(new URL('/pharmacy/onboarding', request.url)))
+    return denyRequest()
+  }
+  if (isPharmacyPortal) return denyRequest()
 
   // Ops dashboard: ops_admin only
   if (pathname.startsWith('/ops') && appRole !== 'ops_admin') {

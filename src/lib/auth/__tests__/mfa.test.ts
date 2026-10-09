@@ -56,8 +56,8 @@ describe('hasVerifiedTotp', () => {
 })
 
 describe('mfaGate', () => {
-  it('covers provider, medical_assistant, clinic_admin and ops_admin', () => {
-    expect([...MFA_ROLES].sort()).toEqual(['clinic_admin', 'medical_assistant', 'ops_admin', 'provider'])
+  it('covers provider, medical_assistant, clinic_admin, ops_admin and pharmacy_admin', () => {
+    expect([...MFA_ROLES].sort()).toEqual(['clinic_admin', 'medical_assistant', 'ops_admin', 'pharmacy_admin', 'provider'])
   })
 
   it.each(MFA_ROLES)('%s at AAL1 without a factor is sent to enroll when enforced', role => {

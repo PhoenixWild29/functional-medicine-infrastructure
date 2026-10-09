@@ -19,12 +19,12 @@ export interface ClaimsUser {
   app_metadata?: Record<string, unknown> | null | undefined
 }
 
-function claim(user: ClaimsUser | null | undefined, key: 'app_role' | 'clinic_id'): string | undefined {
+function claim(user: ClaimsUser | null | undefined, key: 'app_role' | 'clinic_id' | 'pharmacy_id'): string | undefined {
   const value = user?.app_metadata?.[key]
   return typeof value === 'string' && value !== '' ? value : undefined
 }
 
-/** The user's role (ops_admin, clinic_admin, provider, medical_assistant), or undefined. */
+/** The user's role (ops_admin, clinic_admin, provider, medical_assistant, pharmacy_admin), or undefined. */
 export function getUserRole(user: ClaimsUser | null | undefined): string | undefined {
   return claim(user, 'app_role')
 }
@@ -35,10 +35,20 @@ export function getUserClinicId(user: ClaimsUser | null | undefined): string | u
 }
 
 /**
+ * A pharmacy_admin's pharmacy id (pharmacy onboarding), or undefined. Like
+ * clinic_id it is an authorization fact: app_metadata only.
+ */
+export function getUserPharmacyId(user: ClaimsUser | null | undefined): string | undefined {
+  return claim(user, 'pharmacy_id')
+}
+
+/**
  * The app_metadata a service-role write sets when a user is created or
  * their role changes (auth.admin.createUser / updateUserById). Never put
- * these keys in user_metadata.
+ * these keys in user_metadata. pharmacy_id only for a pharmacy_admin.
  */
-export function appMetadataFor(args: { role: string; clinicId: string | null }): { app_role: string; clinic_id: string | null } {
-  return { app_role: args.role, clinic_id: args.clinicId }
+export function appMetadataFor(args: { role: string; clinicId: string | null; pharmacyId?: string | null }): { app_role: string; clinic_id: string | null; pharmacy_id?: string | null } {
+  return args.pharmacyId !== undefined
+    ? { app_role: args.role, clinic_id: args.clinicId, pharmacy_id: args.pharmacyId }
+    : { app_role: args.role, clinic_id: args.clinicId }
 }
