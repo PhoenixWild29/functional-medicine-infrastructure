@@ -22,6 +22,8 @@ BEGIN
   END LOOP;
 END $$;
 
+DROP FUNCTION IF EXISTS apply_pharmacy_admin_scope();
+
 GRANT SELECT ON webhook_dead_letter_queue TO authenticated;
 GRANT SELECT ON pharmacy_webhook_dead_letter_queue TO authenticated;
 GRANT SELECT ON provider_prescribing_history TO authenticated;

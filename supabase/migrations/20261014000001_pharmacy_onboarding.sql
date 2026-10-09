@@ -287,7 +287,16 @@ GRANT EXECUTE ON FUNCTION delete_vault_secret(UUID) TO service_role;
 -- RESTRICTIVE policies are ANDed with the permissive ones, so the
 -- existing policies are unchanged for every other role. A pharmacy_admin
 -- passes only on its own rows of the four pharmacy-owned tables.
-DO $$
+--
+-- A function, so it is safe to run again (it drops each policy before it
+-- creates it) and so a later migration that adds a table calls it:
+--   SELECT apply_pharmacy_admin_scope();
+-- (a static test fails any later migration that creates a table without
+-- that call). It runs as the migration's owner; nobody else may call it.
+CREATE OR REPLACE FUNCTION apply_pharmacy_admin_scope() RETURNS void
+LANGUAGE plpgsql
+SET search_path = public, pg_catalog
+AS $$
 DECLARE
   t   record;
   own constant text[] := ARRAY['pharmacies', 'pharmacy_state_licenses', 'pharmacy_onboarding_applications', 'pharmacy_agreement_acceptances'];
@@ -302,7 +311,7 @@ BEGIN
        AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = c.oid AND d.deptype = 'e')
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS pharmacy_admin_scope ON public.%I', t.relname);
-    IF t.relname = ANY (own) THEN
+    IF t.relname::text = ANY (own) THEN
       EXECUTE format(
         'CREATE POLICY pharmacy_admin_scope ON public.%I AS RESTRICTIVE FOR ALL TO authenticated '
         'USING ((auth.jwt() -> ''app_metadata'' ->> ''app_role'') IS DISTINCT FROM ''pharmacy_admin'' '
@@ -313,9 +322,16 @@ BEGIN
         'USING ((auth.jwt() -> ''app_metadata'' ->> ''app_role'') IS DISTINCT FROM ''pharmacy_admin'')', t.relname);
     END IF;
   END LOOP;
-END $$;
+END;
+$$;
 
--- ── Check: every public table has RLS and pharmacy_admin_scope ──
+REVOKE ALL ON FUNCTION apply_pharmacy_admin_scope() FROM PUBLIC, anon, authenticated;
+
+-- After every other statement here, so every table that exists now
+-- (20261013000001's included) is covered.
+SELECT apply_pharmacy_admin_scope();
+
+-- ── Check (last): every public table has RLS and pharmacy_admin_scope ──
 DO $$
 DECLARE
   t record;
