@@ -18,6 +18,7 @@ import { TOTP, generateSecret, generateURI, verifySync } from 'otplib'
 import QRCode from 'qrcode'
 import { encryptSecret, decryptSecret } from '@/lib/epcs/crypto'
 import { isNoRows } from '@/lib/supabase/no-rows'
+import { epcsRequestFields } from '@/lib/epcs/audit-request'
 
 // TOTP secret encryption (AES-256-GCM) lives in @/lib/epcs/crypto so the
 // demo pre-enrollment path in @/lib/poc/totp-enrollment can share exactly
@@ -215,8 +216,8 @@ export async function POST(req: NextRequest) {
         dea_schedule: dea_schedule ?? 0,
         medication_name: medication_name ?? '',
         details: details ?? {},
-        ip_address: req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? null,
-        user_agent: req.headers.get('user-agent') ?? null,
+        // C10: keyed hashes of the IP and user agent, never the raw values.
+        ...(await epcsRequestFields(req.headers ?? null)),
       })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

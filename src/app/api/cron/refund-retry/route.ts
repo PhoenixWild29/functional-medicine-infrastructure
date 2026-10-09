@@ -19,6 +19,7 @@
 // and are asked about again next run (same key, same refund).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createStripeClient } from '@/lib/stripe/client'
 import { casTransition } from '@/lib/orders/cas-transition'
@@ -30,10 +31,8 @@ import {
 const MAX_BATCH = 100
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const cronSecret = process.env['CRON_SECRET']
-  if (!cronSecret || request.headers.get('authorization') !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const denied = cronAuthFailure(request, 'refund-retry')
+  if (denied) return denied
 
   const supabase = createServiceClient()
   const { data: pending, error: pendingError } = await supabase
