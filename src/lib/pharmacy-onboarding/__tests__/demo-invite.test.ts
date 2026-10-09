@@ -21,7 +21,7 @@ it('creates one demo invite and returns its link; only the hash is stored', asyn
   const r = await seedDemoPharmacyInvite(db.client, NOW)
   if (!r.ok) throw new Error(r.error)
   expect(r.action).toBe('created')
-  const token = r.link.split('/onboard/pharmacy/')[1]!
+  const token = r.link!.split('/onboard/pharmacy/')[1]!
   expect(db.rows('pharmacy_invites')).toEqual([expect.objectContaining({ pharmacy_name: DEMO_INVITE.pharmacyName, admin_email: DEMO_INVITE.adminEmail, token_hash: hashInviteToken(token) })])
   expect(db.rows('pharmacy_onboarding_events')).toEqual([expect.objectContaining({ action: 'invite_created', actor_role: 'system' })])
 })
