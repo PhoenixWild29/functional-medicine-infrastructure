@@ -26,13 +26,13 @@ import { GET, POST } from '../route'
 
 // ── Mocks ────────────────────────────────────────────────────
 
-const getSessionMock       = jest.fn()
+const getUserMock       = jest.fn()
 const refreshDemoDataMock  = jest.fn()
 const statusQueryMock      = jest.fn()
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getSession: () => getSessionMock() },
+    auth: { getUser: () => getUserMock() },
   }),
 }))
 
@@ -72,22 +72,18 @@ const ORIGINAL_POC_MODE = process.env['POC_MODE']
 
 const OPS_SESSION = {
   data: {
-    session: {
-      user: { app_metadata: { app_role: 'ops_admin' } },
-    },
+    user: { app_metadata: { app_role: 'ops_admin' } },
   },
 }
 
 const CLINIC_SESSION = {
   data: {
-    session: {
-      user: { app_metadata: { app_role: 'clinic_admin' } },
-    },
+    user: { app_metadata: { app_role: 'clinic_admin' } },
   },
 }
 
 beforeEach(() => {
-  getSessionMock.mockReset()
+  getUserMock.mockReset()
   refreshDemoDataMock.mockReset()
   statusQueryMock.mockReset()
 })
@@ -104,14 +100,14 @@ afterAll(() => {
 
 describe('POST /api/admin/refresh-demo-data — auth', () => {
   it('returns 401 when no session', async () => {
-    getSessionMock.mockResolvedValue({ data: { session: null } })
+    getUserMock.mockResolvedValue({ data: { user: null } })
     const res = await POST()
     expect(res.status).toBe(401)
     expect(refreshDemoDataMock).not.toHaveBeenCalled()
   })
 
   it('returns 403 for non-ops_admin role', async () => {
-    getSessionMock.mockResolvedValue(CLINIC_SESSION)
+    getUserMock.mockResolvedValue(CLINIC_SESSION)
     const res = await POST()
     expect(res.status).toBe(403)
     expect(refreshDemoDataMock).not.toHaveBeenCalled()
@@ -122,7 +118,7 @@ describe('POST /api/admin/refresh-demo-data — auth', () => {
 
 describe('POST /api/admin/refresh-demo-data — status-code contract', () => {
   beforeEach(() => {
-    getSessionMock.mockResolvedValue(OPS_SESSION)
+    getUserMock.mockResolvedValue(OPS_SESSION)
   })
 
   it('returns 200 on full success (ok:true)', async () => {
@@ -175,13 +171,13 @@ describe('POST /api/admin/refresh-demo-data — status-code contract', () => {
 
 describe('GET /api/admin/refresh-demo-data — last-refresh status', () => {
   it('returns 401 when no session', async () => {
-    getSessionMock.mockResolvedValue({ data: { session: null } })
+    getUserMock.mockResolvedValue({ data: { user: null } })
     const res = await GET()
     expect(res.status).toBe(401)
   })
 
   it('returns { last_refresh_at, poc_mode } for ops_admin', async () => {
-    getSessionMock.mockResolvedValue(OPS_SESSION)
+    getUserMock.mockResolvedValue(OPS_SESSION)
     statusQueryMock.mockResolvedValue({
       data: { created_at: '2026-04-23T09:58:00.000Z' },
       error: null,
@@ -197,7 +193,7 @@ describe('GET /api/admin/refresh-demo-data — last-refresh status', () => {
   })
 
   it('returns last_refresh_at: null when no seed rows exist', async () => {
-    getSessionMock.mockResolvedValue(OPS_SESSION)
+    getUserMock.mockResolvedValue(OPS_SESSION)
     statusQueryMock.mockResolvedValue({ data: null, error: null })
     process.env['POC_MODE'] = 'true'
 
@@ -208,7 +204,7 @@ describe('GET /api/admin/refresh-demo-data — last-refresh status', () => {
   })
 
   it('returns poc_mode: false when env is unset', async () => {
-    getSessionMock.mockResolvedValue(OPS_SESSION)
+    getUserMock.mockResolvedValue(OPS_SESSION)
     statusQueryMock.mockResolvedValue({ data: null, error: null })
     delete process.env['POC_MODE']
 

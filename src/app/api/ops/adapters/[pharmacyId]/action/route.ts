@@ -25,11 +25,11 @@ interface Params { params: Promise<{ pharmacyId: string }> }
 export async function POST(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const { pharmacyId } = await params
   const supabaseAuth = await createServerClient()
-  const { data: { session } } = await supabaseAuth.auth.getSession()
-  if (!session) {
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (getUserRole(session.user) !== 'ops_admin') {
+  if (getUserRole(user) !== 'ops_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -51,9 +51,9 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
   }
 
   // NB-07: distinguish no-email sessions in audit logs
-  const actorEmail = session.user.email
-    ? session.user.email
-    : `[no-email, id=${session.user.id}]`
+  const actorEmail = user.email
+    ? user.email
+    : `[no-email, id=${user.id}]`
   const supabase   = createServiceClient()
 
   // Verify pharmacy exists
