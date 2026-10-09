@@ -26,6 +26,7 @@ const NAV_TABS = [
   { href: '/ops/sla',      label: 'SLA'       },
   { href: '/ops/adapters', label: 'Adapters'  },
   { href: '/ops/fax',      label: 'Fax Queue' },
+  { href: '/ops/onboarding/pharmacies', label: 'Pharmacy onboarding' },
   { href: '/ops/catalog',  label: 'Catalog'   },
   { href: '/ops/licensure', label: 'Licensure' },
   ...(SHOW_DEMO_TOOLS ? [{ href: '/ops/demo-tools', label: 'Demo Tools' } as const] : []),
