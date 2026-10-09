@@ -258,7 +258,7 @@ describe('load and submit', () => {
 
   it('submit needs every step; then it is submitted, recorded, and locked', async () => {
     const db = world('in_progress', ['details', 'facility'])
-    expect(await submitApplication(db.client, ctx, NOW)).toMatchObject({ ok: false, status: 409, error: expect.stringContaining('Licenses') })
+    expect(await submitApplication(db.client, ctx, NOW)).toMatchObject({ ok: false, status: 409, error: expect.stringContaining('State licenses') })
     const done = world('in_progress', ['details', 'facility', 'licenses', 'ordering', 'shipping', 'agreement', 'catalog'])
     expect(await submitApplication(done.client, ctx, NOW)).toMatchObject({ ok: true })
     expect(app(done)).toEqual(expect.objectContaining({ status: 'submitted', submitted_at: NOW.toISOString() }))
