@@ -78,7 +78,7 @@ describe('ops: list, revoke, resend', () => {
   it('revoke: the link stops working; audit-logged; an accepted invite cannot be revoked', async () => {
     const { db, r, token } = await invited()
     expect(await revokeInvite(db.client, { actor: OPS, inviteId: r.invite.inviteId }, NOW)).toMatchObject({ ok: true })
-    expect((await inviteForToken(db.client, token, NOW))?.state).toBe('revoked')
+    expect(await inviteForToken(db.client, token, NOW)).toEqual(expect.objectContaining({ state: 'revoked' }))
     expect(db.rows('pharmacy_onboarding_events').map(e => e['action'])).toEqual(['invite_created', 'invite_revoked'])
     expect(await revokeInvite(db.client, { actor: OPS, inviteId: r.invite.inviteId }, NOW)).toMatchObject({ ok: false, status: 409 })
   })
