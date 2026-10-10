@@ -32,7 +32,7 @@ function order(id: string, createdH: number, lockedH: number | null) {
   }
 }
 
-const load = (orders: unknown[]) =>
+const load = (orders: Array<ReturnType<typeof order>>) =>
   loadAttention(fakeDb({ orders, inbound_fax_queue: [] }).client, { clinicId: CLINIC, viewerIsProvider: false, nowMs: NOW })
 
 beforeEach(() => { jest.spyOn(console, 'warn').mockImplementation(() => {}) })

@@ -114,8 +114,13 @@ export async function loadAttention(
 
   for (const o of orders) {
     if (o.status === 'AWAITING_PAYMENT') {
-      const since = o.locked_at ?? o.created_at
-      if (nowMs - Date.parse(since) > AWAITING_PAYMENT_HOURS * HOUR) {
+      // The clock starts at signing, as payment-expiry counts it. No
+      // signing time means no clock: skip it and say so, never time it
+      // from created_at.
+      const since = o.locked_at
+      if (!since) {
+        console.warn(`[practice] AWAITING_PAYMENT order has no locked_at, skipped from the unpaid check | order=${o.order_id}`)
+      } else if (nowMs - Date.parse(since) > AWAITING_PAYMENT_HOURS * HOUR) {
         items.push({
           kind: 'awaiting_payment', orderId: o.order_id, since,
           title: `Unpaid for over ${AWAITING_PAYMENT_HOURS} hours`,
