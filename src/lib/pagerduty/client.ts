@@ -228,6 +228,31 @@ export async function triggerPortalSubmissionUnconfirmed(params: PortalSubmissio
 }
 
 /**
+ * A submission SLA breached on an order whose pharmacy's integration tier
+ * is missing or not one we know. It is not faxed automatically (nothing
+ * says the pharmacy takes a fax), so ops is paged. IDs, enums and counts
+ * only; same dedup key as the SLA, so resolving the SLA resolves it.
+ */
+export async function triggerUnknownTierSubmission(params: PortalSubmissionUnconfirmedParams): Promise<void> {
+  const orderStatus = oneOf(ORDER_STATUSES, params.orderStatus)
+  await triggerPagerDutyIncident({
+    dedupKey: slaDedupKey(params.orderId, 'ADAPTER_SUBMISSION_ACK'),
+    summary:  `Submission not confirmed, integration tier unknown, not faxed: Order ${params.orderId}`,
+    severity: 'error',
+    source:   'compoundiq-sla-engine',
+    customDetails: {
+      order_id:                params.orderId,
+      sla_type:                'ADAPTER_SUBMISSION_ACK',
+      pharmacy_slug:           params.pharmacySlug,
+      integration_tier:        'unknown',
+      ...(orderStatus ? { order_status: orderStatus } : {}),
+      auto_fax:                false,
+      breach_duration_minutes: params.breachDurationMinutes,
+    },
+  })
+}
+
+/**
  * Resolves the PagerDuty incident when the SLA is resolved.
  * REQ-SAI-008.4. Call from resolveSlasForTransition for Tier 3 SLAs.
  */
