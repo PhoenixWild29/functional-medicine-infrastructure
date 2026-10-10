@@ -27,7 +27,7 @@ import { AllergyChip, EditableAllergyChip, type SavedAllergies } from './allergy
 import { NewPatientForm, type CreatedPatient, type CreatedIntake } from './new-patient-form'
 import { IntakeChip } from '@/components/intake-chip'
 import { IntakeLinkPanel } from '@/components/intake-link-panel'
-import { patientName } from '@/lib/patients/display'
+import { openPossibleDuplicate, patientName } from '@/lib/patients/display'
 
 // ── Types (match server query) ────────────────────────────────
 
@@ -47,6 +47,10 @@ interface Patient {
   allergies_updated_at: string | null
   /** Patient Intake PR 2: 'pending' until the patient finishes intake. */
   intake_status?: string | null
+  /** Patient Intake PR 2: a possible duplicate flagged at intake (see openPossibleDuplicate). */
+  possible_duplicate_of?: string | null
+  possible_duplicate_dismissed_at?: string | null
+  duplicate?: { first_name: string | null; last_name: string | null; phone?: string | null } | Array<{ first_name: string | null; last_name: string | null; phone?: string | null }> | null
 }
 
 interface Provider {
@@ -193,6 +197,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
       nkda:                 selectedPatient.nkda,
       allergies_updated_at: selectedPatient.allergies_updated_at,
       intake_status:        selectedPatient.intake_status ?? null,
+      possible_duplicate:   openPossibleDuplicate(selectedPatient),
     })
     session.setProvider({
       provider_id:    selectedProvider.provider_id,

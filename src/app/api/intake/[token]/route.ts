@@ -11,7 +11,10 @@
 //      birth, sex, shipping address, allergies or NKDA, current
 //      medications, the SMS decision (with time, source and consent text
 //      version) and the privacy notice acknowledgement (with version).
-//   3. If an order is waiting for payment, the response carries a checkout
+//   3. Another active patient in the clinic with the same mobile + DOB, or
+//      the same name + DOB, flags this one for staff ("Possible duplicate
+//      of <name>"). Never merged.
+//   4. If an order is waiting for payment, the response carries a checkout
 //      link and the page goes straight to payment.
 //
 // Logs carry ids only. The PHI access log needs a signed-in user, so a
@@ -24,6 +27,7 @@ import { resolveIntakeLink, claimIntakeLink, releaseIntakeLink } from '@/lib/int
 import { generateCheckoutToken, generateGroupCheckoutToken } from '@/lib/auth/checkout-token'
 import { normalizeAllergies } from '@/lib/patients/allergies'
 import { serverEnv } from '@/lib/env'
+import { flagPossibleDuplicate } from '@/lib/patients/duplicates'
 import { INTAKE_CONSENT_SOURCE, PRIVACY_NOTICE_VERSION, SMS_CONSENT_TEXT_VERSION } from '@/lib/intake/consent'
 
 const MAX = { name: 100, line: 200, city: 100, meds: 2000, allergy: 200, allergies: 50 }
@@ -157,7 +161,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ to
     })
     .eq('patient_id', patientId)
     .eq('clinic_id', clinicId)
-    .select('patient_id')
+    .select('patient_id, phone_e164')
     .maybeSingle()
   if (error || !saved) {
     console.error('[intake] save failed | link=', linkId, '| code=', error?.code ?? 'no row')
@@ -165,6 +169,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ to
     return NextResponse.json({ error: 'Your details could not be saved. Please try again.' }, { status: 500 })
   }
   console.info(`[intake] completed | patient=${patientId}`)
+
+  // A possible duplicate is flagged for staff, never merged. It cannot fail
+  // this submission: the details are already saved.
+  await flagPossibleDuplicate(supabase, {
+    patientId, clinicId,
+    phoneE164: (saved as { phone_e164?: string | null }).phone_e164 ?? null,
+    firstName: s.firstName, lastName: s.lastName, dateOfBirth: s.dateOfBirth,
+  })
 
   // ── Straight into payment when an order is waiting ──
   let checkoutUrl: string | null = null

@@ -104,7 +104,7 @@ describe('GET (status for the patient header)', () => {
       ? { data: { patient_id: PATIENT_ID, clinic_id: CLINIC_ID, intake_status: 'complete', first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', state: 'TX' } }
       : undefined)
     const res = await GET(req(), ctx())
-    expect(await res.json()).toEqual({ intakeStatus: 'complete', patient: { first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', state: 'TX' } })
+    expect(await res.json()).toEqual({ intakeStatus: 'complete', patient: { first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', state: 'TX' }, duplicate: null })
     expect(db.to('patients')[0]!.filters).toEqual(expect.objectContaining({ patient_id: PATIENT_ID, clinic_id: CLINIC_ID }))
   })
 

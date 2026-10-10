@@ -1652,6 +1652,11 @@ export type Database = {
           intake_completed_at: string | null
           privacy_notice_ack_at: string | null
           privacy_notice_version: string | null
+          possible_duplicate_of: string | null
+          possible_duplicate_matched_on: string | null
+          possible_duplicate_flagged_at: string | null
+          possible_duplicate_dismissed_at: string | null
+          possible_duplicate_dismissed_by: string | null
           state: string | null
           updated_at: string
           zip: string | null
@@ -1688,6 +1693,11 @@ export type Database = {
           intake_completed_at?: string | null
           privacy_notice_ack_at?: string | null
           privacy_notice_version?: string | null
+          possible_duplicate_of?: string | null
+          possible_duplicate_matched_on?: string | null
+          possible_duplicate_flagged_at?: string | null
+          possible_duplicate_dismissed_at?: string | null
+          possible_duplicate_dismissed_by?: string | null
           state?: string | null
           updated_at?: string
           zip?: string | null
@@ -1724,6 +1734,11 @@ export type Database = {
           intake_completed_at?: string | null
           privacy_notice_ack_at?: string | null
           privacy_notice_version?: string | null
+          possible_duplicate_of?: string | null
+          possible_duplicate_matched_on?: string | null
+          possible_duplicate_flagged_at?: string | null
+          possible_duplicate_dismissed_at?: string | null
+          possible_duplicate_dismissed_by?: string | null
           state?: string | null
           updated_at?: string
           zip?: string | null

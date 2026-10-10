@@ -122,13 +122,13 @@ import { INTAKE_LINK_SMS } from '@/lib/sms/templates'
 describe('the intake text template', () => {
   it('allows intake_link in sms_templates and keeps its reference row identical to the app\'s text', () => {
     expect(code).toMatch(/drop constraint if exists sms_templates_template_name_check/)
-    expect(code).toMatch(/add constraint sms_templates_template_name_check check \(template_name in \('payment_link', ?'reminder_24h', ?'reminder_48h', ?'payment_confirmation', ?'shipping_notification', ?'delivered', ?'custom', ?'intake_link'\)\)/)
+    expect(code).toMatch(/add constraint sms_templates_template_name_check check \(template_name in \( ?'payment_link', ?'reminder_24h', ?'reminder_48h', ?'payment_confirmation', ?'shipping_notification', ?'delivered', ?'custom', ?'intake_link' ?\)\)/)
     expect(sql).toContain(`'intake_link',\n  '${INTAKE_LINK_SMS}'`)
   })
 
   it('the down migration removes the row and restores the constraint without it', () => {
     expect(downCode).toMatch(/delete from sms_templates where template_name = 'intake_link'/)
-    expect(downCode).toMatch(/check \(template_name in \('payment_link', ?'reminder_24h', ?'reminder_48h', ?'payment_confirmation', ?'shipping_notification', ?'delivered', ?'custom'\)\)/)
+    expect(downCode).toMatch(/check \(template_name in \( ?'payment_link', ?'reminder_24h', ?'reminder_48h', ?'payment_confirmation', ?'shipping_notification', ?'delivered', ?'custom' ?\)\)/)
   })
 })
 

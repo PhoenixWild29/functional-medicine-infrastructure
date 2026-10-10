@@ -6,7 +6,8 @@
 //   when Twilio is configured, and is returned for staff to copy or email.
 //   Only for a patient of this clinic whose intake is still pending.
 // GET:  the patient's intake status, for the patient header: once the
-//   patient has finished, the name, date of birth and state they gave.
+//   patient has finished, the name, date of birth and state they gave, and
+//   an open "possible duplicate" flag.
 //
 // getUser(), never getSession(); role and clinic from app_metadata.
 
@@ -17,6 +18,7 @@ import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
 import { createIntakeLink } from '@/lib/intake/links'
 import { sendIntakeLinkSms } from '@/lib/intake/sms'
+import { POSSIBLE_DUPLICATE_EMBED, openPossibleDuplicate } from '@/lib/patients/display'
 
 const STAFF_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -66,13 +68,8 @@ export async function POST(request: NextRequest, context: Context): Promise<Next
 
   let smsStatus: string = 'not_sent'
   if (p.phone_e164) {
-    // The clinic's name only labels the text; if it cannot be read the
-    // text says "Your clinic" and still goes out.
-    const { data: clinic, error: clinicError } = await supabase.from('clinics').select('name').eq('clinic_id', c.clinicId).maybeSingle()
-    if (clinicError) console.error('[intake-link] clinic name read failed; text says "Your clinic":', clinicError.message)
     smsStatus = await sendIntakeLinkSms(supabase, {
-      patientId: c.patientId, linkId: link.linkId, toE164: p.phone_e164,
-      clinicName: (clinic as { name?: string } | null)?.name?.trim() || 'Your clinic', url: link.url,
+      patientId: c.patientId, linkId: link.linkId, toE164: p.phone_e164, url: link.url,
     })
   }
   console.info(`[intake-link] new link | patient=${c.patientId} | sms=${smsStatus}`)
@@ -88,7 +85,7 @@ export async function GET(request: NextRequest, context: Context): Promise<NextR
 
   const { data: patient, error } = await supabase
     .from('patients')
-    .select('patient_id, clinic_id, intake_status, first_name, last_name, date_of_birth, state')
+    .select(`patient_id, clinic_id, intake_status, first_name, last_name, date_of_birth, state, ${POSSIBLE_DUPLICATE_EMBED}`)
     .eq('patient_id', c.patientId)
     .eq('clinic_id', c.clinicId)
     .is('deleted_at', null)
@@ -98,7 +95,7 @@ export async function GET(request: NextRequest, context: Context): Promise<NextR
     return NextResponse.json({ error: 'Intake status could not be read' }, { status: 503 })
   }
   if (!patient) return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
-  const p = patient as { intake_status: string | null; first_name: string | null; last_name: string | null; date_of_birth: string | null; state: string | null }
+  const p = patient as { intake_status: string | null; first_name: string | null; last_name: string | null; date_of_birth: string | null; state: string | null } & Parameters<typeof openPossibleDuplicate>[0]
 
   if (p.intake_status === 'pending') {
     return NextResponse.json({ intakeStatus: 'pending', patient: null }, { headers: { 'Cache-Control': 'no-store' } })
@@ -107,5 +104,7 @@ export async function GET(request: NextRequest, context: Context): Promise<NextR
   return NextResponse.json({
     intakeStatus: 'complete',
     patient: { first_name: p.first_name, last_name: p.last_name, date_of_birth: p.date_of_birth, state: p.state },
+    // Patient Intake PR 2: flagged at intake, not yet dismissed.
+    duplicate: openPossibleDuplicate(p),
   }, { headers: { 'Cache-Control': 'no-store' } })
 }

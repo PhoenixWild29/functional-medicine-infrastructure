@@ -19,6 +19,7 @@
 //
 // REQ-GDB-004: Loading, empty, and offline states.
 
+import { POSSIBLE_DUPLICATE_EMBED } from '@/lib/patients/display'
 import { dashboardPatient } from '@/lib/patients/dashboard-patient'
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -94,7 +95,7 @@ function buildDashboardOrder(o: Record<string, unknown>): DashboardOrder {
   const medicationName = snap?.medication_name ?? '—'
   const submissionTier = pharmacySnap?.integration_tier ?? null
 
-  const { patientId, patientName, patientIntakePending } = dashboardPatient(o['patients'])
+  const { patientId, patientName, patientIntakePending, possibleDuplicate } = dashboardPatient(o['patients'])
 
   const createdAt = o['created_at'] as string
   // BLK-04: PAYMENT_EXPIRED also counts as unpaid (payment link expired without payment)
@@ -107,6 +108,7 @@ function buildDashboardOrder(o: Record<string, unknown>): DashboardOrder {
     patientName,
     patientId,
     patientIntakePending,
+    possibleDuplicate,
     medicationName,
     status:            o['status'] as OrderStatusEnum,
     submissionTier,
@@ -181,7 +183,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
           order_id, status, created_at, updated_at, locked_at, payment_group_id, provider_id,
           retail_price_snapshot, wholesale_price_snapshot,
           medication_snapshot, pharmacy_snapshot,
-          patients!inner(patient_id, first_name, last_name, phone, intake_status)
+          patients!inner(patient_id, first_name, last_name, phone, intake_status, ${POSSIBLE_DUPLICATE_EMBED})
         `)
         .eq('clinic_id', clinicId)
         .is('deleted_at', null)

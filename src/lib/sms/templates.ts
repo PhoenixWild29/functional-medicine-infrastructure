@@ -106,6 +106,15 @@ export function renderReminder48hSms(vars: PaymentReminderVars): string {
   return renderTemplate(REMINDER_48H_SMS, paymentVars(vars))
 }
 
+// Patient Intake PR 2: the one text that starts self-intake. No clinic
+// name (it can name a specialty), no patient detail, and how to stop.
+// Kept in step with the intake_link row in sms_templates (20261015000001).
+export const INTAKE_LINK_SMS = 'Your provider has sent you a secure link to complete your details: {{intakeUrl}} Reply STOP to opt out.'
+
+export function renderIntakeLinkSms(vars: { intakeUrl: string }): string {
+  return renderTemplate(INTAKE_LINK_SMS, { intakeUrl: vars.intakeUrl })
+}
+
 /**
  * REQ-SPN-003: Payment confirmation SMS, sent once per paid order or
  * bundle by the Stripe webhook (sendPaymentConfirmationSms).

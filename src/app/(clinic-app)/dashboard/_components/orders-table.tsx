@@ -15,6 +15,7 @@
 //   Order ID: font-mono text-xs text-muted-foreground
 // ============================================================
 
+import { PossibleDuplicateFlag } from '@/components/possible-duplicate-flag'
 import { IntakeChip } from '@/components/intake-chip'
 import { ResendIntakeLink } from '@/components/resend-intake-link'
 import type { DashboardOrder } from '../page'
@@ -162,7 +163,13 @@ export function OrdersTable({ orders, isLoading, isError = false, onRowClick, on
                 <td className="px-3 py-3 font-mono text-xs text-muted-foreground leading-[1.6]">
                   {order.orderId.slice(0, 8)}…
                 </td>
-                <td className="px-3 py-3 text-[14px] text-foreground leading-[1.6]">{order.patientName}</td>
+                <td className="px-3 py-3 text-[14px] text-foreground leading-[1.6]">
+                  {order.patientName}
+                  {/* Patient Intake PR 2: flagged at intake, never merged. */}
+                  {order.possibleDuplicate && order.patientId && (
+                    <PossibleDuplicateFlag className="mt-1" patientId={order.patientId} duplicateName={order.possibleDuplicate.name} />
+                  )}
+                </td>
                 <td className="px-3 py-3 text-[14px] text-foreground leading-[1.6]">{order.medicationName}</td>
                 <td className="px-3 py-3">
                   <StatusBadge status={order.status} className="text-xs" />

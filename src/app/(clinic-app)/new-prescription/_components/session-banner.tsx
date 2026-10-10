@@ -16,6 +16,7 @@
 // If no patient/provider is selected (session not started),
 // redirects back to /new-prescription to select them.
 
+import { PossibleDuplicateFlag } from '@/components/possible-duplicate-flag'
 import { IntakeChip } from '@/components/intake-chip'
 import { ResendIntakeLink } from '@/components/resend-intake-link'
 import { isIntakePending, patientName } from '@/lib/patients/display'
@@ -81,6 +82,8 @@ export function SessionBanner() {
   // Patient Intake PR 2: a patient awaiting details may finish while this
   // session is open. Re-read the status once on mount; when they have
   // finished, bring in the name, date of birth and state they gave.
+  // A possible-duplicate flag set at intake comes back with it. (For a
+  // patient already complete, Select Patient puts the flag in the session.)
   const intakePending = !!patient && isIntakePending(patient)
   useEffect(() => {
     if (!patientId || !intakePending) return
@@ -89,10 +92,15 @@ export function SessionBanner() {
       try {
         const res = await fetch(`/api/patients/${patientId}/intake-link`, { method: 'GET' })
         if (!res.ok) return
-        const body = await res.json() as { intakeStatus?: string; patient?: { first_name: string | null; last_name: string | null; date_of_birth: string | null; state: string | null } | null }
+        const body = await res.json() as {
+          intakeStatus?: string
+          patient?: { first_name: string | null; last_name: string | null; date_of_birth: string | null; state: string | null } | null
+          duplicate?: { patientId: string; name: string } | null
+        }
         if (cancelled || body.intakeStatus !== 'complete') return
         updatePatient({
           intake_status: 'complete',
+          possible_duplicate: body.duplicate ?? null,
           ...(body.patient ? {
             first_name:    body.patient.first_name ?? '',
             last_name:     body.patient.last_name ?? '',
@@ -133,6 +141,14 @@ export function SessionBanner() {
             <p className="text-[11px] text-muted-foreground">
               DOB: {patient.date_of_birth ? formatDob(patient.date_of_birth) : 'not given yet'} — {patient.state ?? 'No state'} — {patient.phone || 'No phone'}
             </p>
+            {patient.possible_duplicate && (
+              <PossibleDuplicateFlag
+                className="mt-1"
+                patientId={patient.patient_id}
+                duplicateName={patient.possible_duplicate.name}
+                onDismissed={() => updatePatient({ possible_duplicate: null })}
+              />
+            )}
             {intakePending && (
               <div className="mt-1 flex flex-wrap items-start gap-2">
                 <IntakeChip intakeStatus="pending" />

@@ -55,6 +55,13 @@ export interface SessionPatient {
    * signed. Absent on sessions saved before PR 2: treated as complete.
    */
   intake_status?: string | null
+  /**
+   * Patient Intake PR 2: an open "possible duplicate" flag (another patient
+   * this one may be), or null. Set by Select Patient, and when a pending
+   * patient's intake completes. Absent on older sessions: no flag shown in
+   * the header (the dashboard still shows it).
+   */
+  possible_duplicate?: { patientId: string; name: string } | null
 }
 
 export interface SessionProvider {

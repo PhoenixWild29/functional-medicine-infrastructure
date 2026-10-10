@@ -49,7 +49,8 @@ export function IntakeLinkPanel({ link, idPrefix = 'intake-link' }: { link: Inta
   }
 
   const subject = 'Complete your details'
-  const body = `Your clinic has sent you a secure link to complete your details: ${link.url}`
+  // The same words as the text, without the SMS opt-out line.
+  const body = `Your provider has sent you a secure link to complete your details: ${link.url}`
   const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
   const until = expiry(link.expiresAt)
 

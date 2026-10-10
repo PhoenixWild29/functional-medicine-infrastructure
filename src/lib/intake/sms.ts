@@ -10,7 +10,7 @@
 //
 // Every outcome is recorded on the link (sms_status); a send or a refusal
 // also goes in sms_log, without an order. Logs carry ids and codes only,
-// never the number or the clinic name.
+// never the number.
 
 import { createTwilioClient } from '@/lib/twilio/client'
 import { isTwilioConfigured } from '@/lib/twilio/config'
@@ -33,7 +33,6 @@ export interface IntakeSmsInput {
   patientId:  string
   linkId:     string
   toE164:     string
-  clinicName: string
   url:        string
 }
 
@@ -85,7 +84,7 @@ export async function sendIntakeLinkSms(db: Db, input: IntakeSmsInput): Promise<
     const message = await createTwilioClient().messages.create({
       to:   input.toE164,
       from: process.env['TWILIO_PHONE_NUMBER']!,
-      body: intakeSmsText(input.clinicName, input.url),
+      body: intakeSmsText(input.url),
     })
     await logSms(db, input, 'sent', message.sid, null)
     await recordOnLink(db, input.linkId, 'sent')

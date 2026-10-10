@@ -83,14 +83,21 @@ describe('patient header', () => {
 })
 
 describe('patient header: possible duplicate', () => {
-  it('shows "Possible duplicate of <name>" with Dismiss, for a complete patient too', async () => {
-    fetchMock.mockImplementation((url: string) => url.endsWith('/intake-link')
-      ? status({ intakeStatus: 'complete', patient: { first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', state: 'TX' }, duplicate: { patientId: 'p-other', name: 'Jane Smyth' } })
-      : status({ data: [] }))
-    seed({ ...PENDING_PATIENT, first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', intake_status: 'complete' })
+  it('a complete patient flagged at intake (as Select Patient puts it in the session): the flag with Dismiss, no extra read', async () => {
+    seed({ ...PENDING_PATIENT, first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', intake_status: 'complete', possible_duplicate: { patientId: 'p-other', name: 'Jane Smyth' } } as typeof PENDING_PATIENT)
     render(<PrescriptionSessionProvider><SessionBanner /></PrescriptionSessionProvider>)
     expect(await screen.findByText('Possible duplicate of Jane Smyth')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Dismiss possible duplicate of Jane Smyth' })).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(c => String(c[0]).endsWith('/intake-link'))).toBe(false)
+  })
+
+  it('a pending patient who finishes and is flagged: the flag arrives with the status read', async () => {
+    fetchMock.mockImplementation((url: string) => url.endsWith('/intake-link')
+      ? status({ intakeStatus: 'complete', patient: { first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', state: 'TX' }, duplicate: { patientId: 'p-other', name: 'Jane Smyth' } })
+      : status({ data: [] }))
+    seed()
+    render(<PrescriptionSessionProvider><SessionBanner /></PrescriptionSessionProvider>)
+    expect(await screen.findByText('Possible duplicate of Jane Smyth')).toBeInTheDocument()
   })
 })
 

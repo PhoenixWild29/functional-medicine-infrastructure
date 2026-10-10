@@ -20,6 +20,12 @@
 --    when a new link is sent (revoked_at). At most one open link per
 --    patient. Written only with the service role; clinic staff may read
 --    their own clinic's rows (RLS on app_metadata, as since 20261010000001).
+-- 3. The intake text (sms_templates 'intake_link'): no clinic name, with the
+--    opt-out. The reference copy of INTAKE_LINK_SMS in src/lib/sms/templates.ts.
+-- 4. Possible duplicate: when a patient completes intake and another active
+--    patient in the clinic has the same mobile and date of birth, or the
+--    same name and date of birth, the new patient is flagged for staff.
+--    Never merged. Staff dismiss the flag; who and when are kept.
 --
 -- Additive except for the relaxed NOT NULLs. Runs after 20261013000001
 -- and 20261014000001.
@@ -81,5 +87,43 @@ CREATE POLICY intake_links_clinic_user_select ON patient_intake_links FOR SELECT
 
 -- No INSERT / UPDATE / DELETE policy: the service role writes these rows.
 REVOKE ALL ON patient_intake_links FROM anon;
+
+-- ── 3. The intake text ───────────────────────────────────────
+ALTER TABLE sms_templates DROP CONSTRAINT IF EXISTS sms_templates_template_name_check;
+ALTER TABLE sms_templates ADD CONSTRAINT sms_templates_template_name_check
+  CHECK (template_name IN (
+    'payment_link', 'reminder_24h', 'reminder_48h',
+    'payment_confirmation', 'shipping_notification', 'delivered', 'custom',
+    'intake_link'
+  ));
+
+INSERT INTO sms_templates (template_name, body_template, trigger_event, is_active)
+VALUES (
+  'intake_link',
+  'Your provider has sent you a secure link to complete your details: {{intakeUrl}} Reply STOP to opt out.',
+  'PATIENT_ADDED_OR_INTAKE_LINK_RESENT',
+  true
+)
+ON CONFLICT (template_name) DO UPDATE
+  SET body_template = EXCLUDED.body_template,
+      trigger_event = EXCLUDED.trigger_event,
+      updated_at    = now();
+
+-- ── 4. Possible duplicate flag ───────────────────────────────
+ALTER TABLE patients
+  ADD COLUMN IF NOT EXISTS possible_duplicate_of UUID REFERENCES patients(patient_id),
+  ADD COLUMN IF NOT EXISTS possible_duplicate_matched_on TEXT
+    CHECK (possible_duplicate_matched_on IS NULL OR possible_duplicate_matched_on IN ('mobile_and_date_of_birth', 'name_and_date_of_birth')),
+  ADD COLUMN IF NOT EXISTS possible_duplicate_flagged_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS possible_duplicate_dismissed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS possible_duplicate_dismissed_by UUID;
+
+ALTER TABLE patients DROP CONSTRAINT IF EXISTS chk_patients_duplicate_not_self;
+ALTER TABLE patients ADD CONSTRAINT chk_patients_duplicate_not_self
+  CHECK (possible_duplicate_of IS DISTINCT FROM patient_id);
+
+COMMENT ON COLUMN patients.possible_duplicate_of IS 'Another patient this one may be (flagged at intake). Never merged; staff dismiss the flag.';
+COMMENT ON COLUMN patients.possible_duplicate_matched_on IS 'mobile_and_date_of_birth | name_and_date_of_birth';
+COMMENT ON COLUMN patients.possible_duplicate_dismissed_by IS 'The auth user (staff) who dismissed the flag.';
 
 COMMIT;

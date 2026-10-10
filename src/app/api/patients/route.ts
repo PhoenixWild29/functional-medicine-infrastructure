@@ -26,6 +26,7 @@ import { logPhiAccess } from '@/lib/audit/phi-access'
 import { toE164, withPhoneE164 } from '@/lib/patients/phone'
 import { mobileLast4, patientName } from '@/lib/patients/display'
 import { checkMobileLineType } from '@/lib/twilio/line-type'
+import { ilikeLiteral } from '@/lib/patients/duplicates'
 import { createIntakeLink } from '@/lib/intake/links'
 import { sendIntakeLinkSms } from '@/lib/intake/sms'
 
@@ -47,15 +48,6 @@ function optionalName(v: unknown): string | null | undefined {
   return t === '' ? null : t
 }
 
-/**
- * A name as a literal ilike value inside a PostgREST or(): the LIKE
- * wildcards (% _ \) escaped, and the value double-quoted when it holds a
- * character the or() syntax reserves (a comma or parenthesis, a quote).
- */
-function exact(v: string): string {
-  const literal = v.replace(/[\\%_]/g, c => `\\${c}`)
-  return /[,()"\\:]/.test(literal) ? `"${literal.replace(/["\\]/g, c => `\\${c}`)}"` : literal
-}
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const sfSite = request.headers.get('sec-fetch-site')
@@ -108,7 +100,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // ── Duplicate check: same mobile, or same first and last name ──
   if (!confirmNew) {
     const or = [`phone_e164.eq.${phone}`]
-    if (firstName && lastName) or.push(`and(first_name.ilike.${exact(firstName)},last_name.ilike.${exact(lastName)})`)
+    if (firstName && lastName) or.push(`and(first_name.ilike.${ilikeLiteral(firstName)},last_name.ilike.${ilikeLiteral(lastName)})`)
     const { data: matches, error: matchError } = await supabase
       .from('patients')
       .select('patient_id, first_name, last_name, date_of_birth, phone, phone_e164, intake_status')
@@ -174,13 +166,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   let intake: { url: string; expiresAt: string; smsStatus: string } | null = null
   const link = await createIntakeLink(supabase, { clinicId, patientId, createdBy: user.id })
   if (link.ok) {
-    // The clinic's name only labels the text; if it cannot be read the
-    // text says "Your clinic" and still goes out.
-    const { data: clinic, error: clinicError } = await supabase.from('clinics').select('name').eq('clinic_id', clinicId).maybeSingle()
-    if (clinicError) console.error('[patients] clinic name read failed; text says "Your clinic":', clinicError.message)
     const smsStatus = await sendIntakeLinkSms(supabase, {
-      patientId, linkId: link.linkId, toE164: phone,
-      clinicName: (clinic as { name?: string } | null)?.name?.trim() || 'Your clinic', url: link.url,
+      patientId, linkId: link.linkId, toE164: phone, url: link.url,
     })
     intake = { url: link.url, expiresAt: link.expiresAt, smsStatus }
   }

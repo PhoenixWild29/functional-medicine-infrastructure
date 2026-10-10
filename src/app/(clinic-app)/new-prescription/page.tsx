@@ -21,6 +21,7 @@
 //   Step 2 — /new-prescription/margin    (margin builder — add to session)
 //   Step 3 — /new-prescription/review    (batch review — sign all + send)
 
+import { POSSIBLE_DUPLICATE_EMBED } from '@/lib/patients/display'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provider'
@@ -62,7 +63,7 @@ export default async function NewPrescriptionPage() {
     supabase
       .from('patients')
       // WO-97: allergies / nkda drive the chip on each patient card.
-      .select('patient_id, first_name, last_name, date_of_birth, phone, state, sms_opt_in, allergies, nkda, allergies_updated_at, intake_status')
+      .select(`patient_id, first_name, last_name, date_of_birth, phone, state, sms_opt_in, allergies, nkda, allergies_updated_at, intake_status, ${POSSIBLE_DUPLICATE_EMBED}`)
       .eq('clinic_id', clinicId)
       .eq('is_active', true)
       .is('deleted_at', null)
