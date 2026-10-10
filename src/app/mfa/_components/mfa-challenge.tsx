@@ -11,7 +11,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
-import { CodeForm, MfaCard, SignOutLink } from './mfa-shared'
+import { CodeForm, MFA_ERROR_ID, MfaCard, SignOutLink } from './mfa-shared'
 
 interface Props {
   /** Where to continue once verified (already made safe by the page). */
@@ -24,6 +24,7 @@ export function MfaChallenge({ destination }: Props) {
   const [factorId, setFactorId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [verifying, setVerifying] = useState(false)
+  const [codeRefused, setCodeRefused] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -49,10 +50,12 @@ export function MfaChallenge({ destination }: Props) {
     if (!factorId) return
     setVerifying(true)
     setError(null)
+    setCodeRefused(false)
     const { error: verifyError } = await supabase.auth.mfa.challengeAndVerify({ factorId, code })
     setVerifying(false)
     if (verifyError) {
       setError('That code did not match. Check the time on your device and try the newest code.')
+      setCodeRefused(true)
       return
     }
     router.refresh()
@@ -64,8 +67,8 @@ export function MfaChallenge({ destination }: Props) {
       <p className="text-sm text-muted-foreground">
         Enter the 6-digit code from your authenticator app to finish signing in.
       </p>
-      {factorId && <CodeForm onSubmit={verify} busy={verifying} submitLabel="Verify" />}
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {factorId && <CodeForm onSubmit={verify} busy={verifying} codeRefused={codeRefused} onCodeChange={() => setCodeRefused(false)} submitLabel="Verify" />}
+      {error && <p id={MFA_ERROR_ID} role="alert" className="text-sm text-red-700">{error}</p>}
       <SignOutLink />
     </MfaCard>
   )
