@@ -450,12 +450,21 @@ describe('a controlled substance is refused at submission', () => {
 describe('compounding status is re-checked at submission', () => {
   it('an ingredient that may not be compounded: SUBMISSION_FAILED, no adapter called', async () => {
     orderLine = { formulation_id: 'f-bpc', catalog_item_id: null, medication_snapshot: { dea_schedule: 0 } }
-    formulationRow = { formulation_id: 'f-bpc', name: 'BPC-157 5mg/mL', salt_forms: { ingredients: { common_name: 'BPC-157', dea_schedule: null, compounding_status: 'pending_evaluation' } }, formulation_ingredients: [] }
+    formulationRow = { formulation_id: 'f-bpc', name: 'BPC-157 5mg/mL', salt_forms: { ingredients: { common_name: 'BPC-157', dea_schedule: null, compounding_status: 'category_2' } }, formulation_ingredients: [] }
     const result = await route()
     expect(result.outcome).toBe('submission_failed')
     expect(adapterCalls()).toBe(0)
     expect(orderStatus).toBe('SUBMISSION_FAILED')
     expect(alertKinds()).toContain('submission_failed')
+  })
+
+  // CHANGED (owner decision): pending FDA evaluation is orderable, so sent.
+  it('an ingredient pending FDA evaluation is sent', async () => {
+    orderLine = { formulation_id: 'f-bpc', catalog_item_id: null, medication_snapshot: { dea_schedule: 0 } }
+    formulationRow = { formulation_id: 'f-bpc', name: 'BPC-157 5mg/mL', salt_forms: { ingredients: { common_name: 'BPC-157', dea_schedule: null, compounding_status: 'pending_evaluation' } }, formulation_ingredients: [] }
+    const result = await route()
+    expect(adapterCalls()).toBe(1)
+    expect(result.outcome).not.toBe('submission_failed')
   })
 
   it('an unverified ingredient is not sent either', async () => {

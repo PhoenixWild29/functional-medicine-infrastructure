@@ -93,6 +93,7 @@ describe('loadRxDefaults', () => {
         requires_clinical_difference: true,
         shortage_reason_allowed: false,
         compounding_block: null,
+        compounding_warning: null,
       },
       deaSchedule: null,
       suggestedDiagnosis: null,
@@ -108,6 +109,7 @@ describe('loadRxDefaults', () => {
         requires_clinical_difference: false,
         shortage_reason_allowed: false,
         compounding_block: null,
+        compounding_warning: null,
       },
       deaSchedule: 3,
       suggestedDiagnosis: { code: 'E29.1', text: 'Testicular hypofunction' },
@@ -152,6 +154,7 @@ describe('loadRxDefaults', () => {
       requires_clinical_difference: true,
       shortage_reason_allowed: false,
       compounding_block: null,
+      compounding_warning: null,
     })
   })
 
@@ -189,11 +192,19 @@ describe('loadRxDefaults', () => {
   })
 
   it('C8: an ingredient that may not be compounded blocks the product, with the reason', async () => {
-    const out = await load(row({ common_name: 'BPC-157', compounding_status: 'pending_evaluation', commercial_equivalent: false, on_fda_shortage: false }, { name: 'BPC-157 5mg/mL Injectable' }))
+    const out = await load(row({ common_name: 'BPC-157', compounding_status: 'category_2', commercial_equivalent: false, on_fda_shortage: false }, { name: 'BPC-157 5mg/mL Injectable' }))
     expect(out.defaults.compounding_block).toEqual({
       code: 'not_compoundable',
-      message: expect.stringContaining('BPC-157 is pending FDA evaluation'),
+      message: expect.stringContaining('BPC-157 is 503A Category 2'),
     })
+    expect(out.defaults.compounding_warning).toBeNull()
+  })
+
+  // Owner decision: pending FDA evaluation is orderable, with a warning.
+  it('pending FDA evaluation: not blocked, and the warning travels with the rules', async () => {
+    const out = await load(row({ common_name: 'BPC-157', compounding_status: 'pending_evaluation', commercial_equivalent: false, on_fda_shortage: false }, { name: 'BPC-157 5mg/mL Injectable' }))
+    expect(out.defaults.compounding_block).toBeNull()
+    expect(out.defaults.compounding_warning).toBe('FDA evaluation pending for this substance. The dispensing pharmacy confirms it can compound it.')
   })
 
   it('C8: an unverified ingredient blocks it too', async () => {

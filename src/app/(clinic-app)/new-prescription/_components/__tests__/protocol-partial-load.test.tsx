@@ -190,15 +190,35 @@ const CONTROLLED_ITEM = item({
 const CONTROLLED_LABEL = 'Controlled substance: prescribe through your EPCS system'
 // Compliance C8: /api/protocols returns each item's compounding block. An
 // item that may not be compounded is labelled and never loaded.
-const BPC_MESSAGE = 'BPC-157 5mg/mL Injectable: BPC-157 is pending FDA evaluation (removed from Category 2, not yet placed in Category 1 or on the bulks list), so it cannot be compounded or ordered through CompoundIQ.'
+const BLOCKED_MESSAGE = 'Peptide X 5mg/mL Injectable: Peptide X is 503A Category 2 (significant safety risks), so it cannot be compounded or ordered through CompoundIQ.'
 const BLOCKED_ITEM = item({
+  item_id: 'item-x',
+  formulation_id: 'formulation-x',
+  pharmacy_id: 'pharmacy-strive',
+  wholesale_price: 50,
+  pharmacy_licensed: true,
+  compounding_block: { code: 'not_compoundable', message: BLOCKED_MESSAGE },
+  sig_text: 'Inject 10 units subcutaneously once daily.',
+  formulations: {
+    formulation_id: 'formulation-x',
+    name: 'Peptide X 5mg/mL Injectable',
+    concentration: '5mg/mL',
+    dosage_forms: { name: 'Injectable Solution' },
+  },
+  pharmacies: { pharmacy_id: 'pharmacy-strive', name: 'Strive Pharmacy', slug: 'strive', integration_tier: 'TIER_4_FAX' },
+})
+// Owner decision: BPC-157 (pending FDA evaluation) is orderable. /api/protocols
+// returns the warning for it, and it loads like any other line.
+const PENDING_WARNING = 'FDA evaluation pending for this substance. The dispensing pharmacy confirms it can compound it.'
+const PENDING_ITEM = item({
   item_id: 'item-bpc',
   formulation_id: 'formulation-bpc',
   pharmacy_id: 'pharmacy-strive',
   wholesale_price: 50,
   pharmacy_licensed: true,
-  compounding_block: { code: 'not_compoundable', message: BPC_MESSAGE },
-  sig_text: 'Inject 10 units subcutaneously once daily.',
+  compounding_block: null,
+  compounding_warning: PENDING_WARNING,
+  sig_text: 'Inject 300mcg subcutaneously once daily for GI support.',
   formulations: {
     formulation_id: 'formulation-bpc',
     name: 'BPC-157 5mg/mL Injectable',
@@ -506,7 +526,7 @@ describe('protocol quick-load: products that may not be compounded (compliance C
     renderPanel()
 
     await openProtocol()
-    expect(screen.getByTestId('protocol-item-not-compoundable-item-bpc')).toHaveTextContent(NOT_COMPOUNDABLE_LABEL)
+    expect(screen.getByTestId('protocol-item-not-compoundable-item-x')).toHaveTextContent(NOT_COMPOUNDABLE_LABEL)
   })
 
   it('loads the other lines and reports the blocked line with the reason', async () => {
@@ -517,10 +537,10 @@ describe('protocol quick-load: products that may not be compounded (compliance C
     fireEvent.click(await openProtocol())
 
     await waitFor(() => expect(screen.getByTestId('rx-count')).toHaveTextContent('1'))
-    expect(screen.getByTestId('rx-names')).not.toHaveTextContent('BPC-157')
+    expect(screen.getByTestId('rx-names')).not.toHaveTextContent('Peptide X')
     expect(mockPush).toHaveBeenCalledWith('/new-prescription/review')
     expect(screen.getByTestId('notice-count')).toHaveTextContent('1')
-    expect(await screen.findByText(BPC_MESSAGE)).toBeInTheDocument()
+    expect(await screen.findByText(BLOCKED_MESSAGE)).toBeInTheDocument()
   })
 
   it('a protocol of only such lines loads nothing and says why', async () => {
@@ -530,8 +550,35 @@ describe('protocol quick-load: products that may not be compounded (compliance C
 
     fireEvent.click(await openProtocol())
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(BPC_MESSAGE)
+    expect(await screen.findByRole('alert')).toHaveTextContent(BLOCKED_MESSAGE)
     expect(screen.getByTestId('rx-count')).toHaveTextContent('0')
     expect(mockPush).not.toHaveBeenCalled()
+  })
+})
+
+// Owner decision: a protocol with BPC-157 (pending FDA evaluation) loads
+// its BPC-157 line, as the demo Weight Loss Protocol must.
+describe('protocol quick-load: pending FDA evaluation loads, with a warning', () => {
+  it('labels the item with the warning, not as excluded', async () => {
+    protocolItems = [LICENSED_ITEM, PENDING_ITEM]
+    seedSession('TX')
+    renderPanel()
+
+    await openProtocol()
+    expect(screen.getByTestId('protocol-item-pending-evaluation-item-bpc')).toHaveTextContent(PENDING_WARNING)
+    expect(screen.queryByTestId('protocol-item-not-compoundable-item-bpc')).not.toBeInTheDocument()
+  })
+
+  it('loads every line, BPC-157 included, with no skip notice', async () => {
+    protocolItems = [LICENSED_ITEM, PENDING_ITEM]
+    seedSession('TX')
+    renderPanel()
+
+    fireEvent.click(await openProtocol())
+
+    await waitFor(() => expect(screen.getByTestId('rx-count')).toHaveTextContent('2'))
+    expect(screen.getByTestId('rx-names')).toHaveTextContent('BPC-157 5mg/mL Injectable')
+    expect(mockPush).toHaveBeenCalledWith('/new-prescription/review')
+    expect(screen.getByTestId('notice-count')).toHaveTextContent('0')
   })
 })

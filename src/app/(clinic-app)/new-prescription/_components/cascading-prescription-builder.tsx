@@ -39,7 +39,7 @@ import { legacyTitrationFromSig, legacyTitrationDispense } from '@/lib/orders/le
 import { QuickActionsPanel, useClinicFavorites, type Favorite, type RecentItem, type QuickActionsPanelName } from './quick-actions-panel'
 import { SaveFavoriteButton } from './save-favorite-button'
 import { CONTROLLED_LABEL, isControlledSchedule } from '@/lib/orders/controlled-substance'
-import { COMPOUNDABLE_STATUSES, NOT_COMPOUNDABLE_LABEL, compoundingBlock, ingredientFromRow } from '@/lib/compliance/compounding'
+import { COMPOUNDABLE_STATUSES, NOT_COMPOUNDABLE_LABEL, PENDING_EVALUATION_WARNING, compoundingBlock, compoundingWarning, ingredientFromRow, isPendingEvaluation } from '@/lib/compliance/compounding'
 import { builderStateFromLine, editTargetToParams, type EditTarget } from '../_lib/edit-target'
 import type { BuilderInitialState } from '@/lib/orders/draft-edit'
 import type { SigTimingAndDuration } from '../_lib/sig-recovery'
@@ -589,6 +589,8 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   const notCompoundable = compoundingIngredients.length > 0
     ? compoundingBlock(selectedFormulation?.name ?? selectedIngredient?.common_name ?? 'This product', compoundingIngredients)
     : null
+  // Owner decision: pending FDA evaluation is orderable, with a warning.
+  const pendingEvaluation = !notCompoundable ? compoundingWarning(compoundingIngredients) : null
   const canAdd = !!(
     !controlled &&
     !notCompoundable &&
@@ -771,6 +773,11 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
                     {NOT_COMPOUNDABLE_LABEL}
                   </span>
                 )}
+                {isPendingEvaluation(ing.compounding_status) && (
+                  <span className="mt-0.5 block text-[10px] font-medium text-amber-700">
+                    {PENDING_EVALUATION_WARNING}
+                  </span>
+                )}
                 {ing.fda_alert_status && (
                   <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
                     {ing.fda_alert_status}
@@ -797,6 +804,13 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2" data-testid="not-compoundable-label">
           <p className="text-xs font-medium text-red-700">{NOT_COMPOUNDABLE_LABEL}</p>
           <p className="mt-0.5 text-xs text-red-700">{notCompoundable.message}</p>
+        </div>
+      )}
+
+      {/* C8, owner decision: pending FDA evaluation. A warning; never blocks. */}
+      {pendingEvaluation && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2" data-testid="pending-evaluation-warning" role="status">
+          <p className="text-xs text-amber-800">{pendingEvaluation}</p>
         </div>
       )}
 
