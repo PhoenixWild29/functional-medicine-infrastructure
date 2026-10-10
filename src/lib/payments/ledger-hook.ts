@@ -1,16 +1,21 @@
 // ============================================================
-// Payments ledger hook point (for Agent D's payments ledger)
+// Payments ledger hook point (charge.refunded)
 // ============================================================
 //
-// Money amounts will live in the payments ledger (Agent D, a later PR).
-// Until then the Stripe webhook records refunds as status-history event
-// rows only, and calls this hook once per refund it has synced. The
-// ledger write plugs in HERE: replace the body, keep the signature.
+// The Stripe webhook calls this once per refund it has synced on
+// charge.refunded, including refunds made in the Stripe Dashboard. It
+// writes the refund to the payments ledger (lib/payments/ledger), keyed
+// on the refund id with the same keys as the API refund paths (the ops
+// "Cancel + Refund" action and the refund-retry cron), so a refund they
+// already recorded is not recorded again, and a redelivery writes nothing.
 //
-// The ledger must be idempotent on `refundId`: the webhook calls this on
-// every delivery of a charge.refunded event, and Stripe redelivers.
-//
-// No ledger code lives here yet, on purpose.
+// Record-only: no money moves here (any reversal the webhook needed was
+// made before this call). Never throws: a ledger failure is logged by
+// refund id only and never fails the webhook; reconciliation catches a
+// missing line.
+
+import { createServiceClient } from '@/lib/supabase/service'
+import { recordWebhookRefundLedger } from './ledger'
 
 export interface RefundLedgerEntry {
   refundId:        string
@@ -25,8 +30,14 @@ export interface RefundLedgerEntry {
   reversedByWebhook: boolean
 }
 
-/** Hook point: the payments ledger records a synced refund here. A no-op until it exists. */
+/** Records a synced refund in the payments ledger. Never throws. */
 export async function recordRefundInLedger(entry: RefundLedgerEntry): Promise<void> {
-  // Agent D: write the refund to the payments ledger here.
-  void entry
+  try {
+    const result = await recordWebhookRefundLedger(createServiceClient(), {
+      refundId: entry.refundId, amountCents: entry.amountCents, currency: entry.currency, orderIds: entry.orderIds,
+    })
+    if (!result.ok) console.error(`[stripe-webhook] ledger: refund ${entry.refundId} not recorded: ${result.error}`)
+  } catch (err) {
+    console.error(`[stripe-webhook] ledger: refund ${entry.refundId} not recorded:`, err instanceof Error ? err.message : err)
+  }
 }

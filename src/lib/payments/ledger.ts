@@ -193,11 +193,56 @@ export interface RefundLedgerInput {
 }
 
 /**
- * A refund Stripe confirmed: a negative refund line and the reversals
+ * One order's share of a refund: a negative refund line and the reversals
  * (Stripe reverses the clinic's transfer and refunds the application fee
- * in proportion). The pharmacy's reversal comes off its payable while it
- * is unpaid; a full reversal voids it.
+ * in proportion). Keyed (refund id, line per party and order), so every
+ * path that sees the same refund (the ops action, the retry cron, the
+ * charge.refunded webhook) writes it once. The pharmacy's reversal comes
+ * off its payable while it is unpaid; a full reversal voids it. Only the
+ * write that inserted the lines adjusts the payable. Throws on failure.
  */
+async function writeRefundForOrder(
+  supabase: Supabase, o: LedgerOrder, split: ReturnType<typeof computeOrderSplit>,
+  refundId: string, refundCents: number, currency: string,
+): Promise<number> {
+  const parts = prorateRefund(split, refundCents)
+  const base = {
+    currency, order_id: o.order_id, payment_group_id: o.payment_group_id,
+    clinic_id: o.clinic_id, pharmacy_id: o.pharmacy_id, status: 'succeeded' as const,
+    stripe_object_id: refundId, source_event_id: refundId,
+  }
+  const line = (entry_type: LedgerEntryType, party: LedgerParty, amount_cents: number): LedgerLine =>
+    ({ ...base, entry_type, party, amount_cents, line_key: lineKey(entry_type, party, o.order_id, o.payment_group_id) })
+  const inserted = await insertLines(supabase, [
+    line('refund', 'platform', -refundCents),
+    line('reversal', 'clinic', -parts.clinic),
+    line('reversal', 'platform', -parts.platform),
+    line('reversal', 'pharmacy', -parts.pharmacy),
+  ])
+  // Already recorded (the same refund seen again): the payable was adjusted then.
+  if (inserted === 0) return 0
+
+  const { data: payable, error: payableError } = await supabase
+    .from('pharmacy_payables')
+    .select('payable_id, amount_cents, reversed_cents, status')
+    .eq('order_id', o.order_id)
+    .maybeSingle()
+  if (payableError) throw new Error(`pharmacy_payables: ${payableError.message}`)
+  if (payable && (payable.status === 'owed' || payable.status === 'scheduled') && parts.pharmacy > 0) {
+    const reversed = Math.min(Number(payable.amount_cents), Number(payable.reversed_cents) + parts.pharmacy)
+    const patch: Record<string, unknown> = { reversed_cents: reversed, updated_at: new Date().toISOString() }
+    if (reversed >= Number(payable.amount_cents)) patch['status'] = 'void'
+    const { error: updateError } = await supabase
+      .from('pharmacy_payables')
+      .update(patch as never)
+      .eq('order_id', o.order_id)
+      .in('status', ['owed', 'scheduled'])
+    if (updateError) throw new Error(`pharmacy_payables: ${updateError.message}`)
+  }
+  return inserted
+}
+
+/** A refund Stripe confirmed for one order (the ops action and the refund-retry cron). */
 export async function recordRefundLedger(supabase: Supabase, input: RefundLedgerInput): Promise<LedgerResult> {
   try {
     const { data: order, error } = await supabase
@@ -210,41 +255,50 @@ export async function recordRefundLedger(supabase: Supabase, input: RefundLedger
     const o = order as unknown as LedgerOrder
     const absorb = await loadAbsorbShipping(supabase, [o.clinic_id])
     const split = computeOrderSplit(o, absorb.get(o.clinic_id))
-    const refundCents = input.amountCents ?? split.chargeCents
-    const parts = prorateRefund(split, refundCents)
+    const inserted = await writeRefundForOrder(supabase, o, split, input.refundId, input.amountCents ?? split.chargeCents, input.currency)
+    return { ok: true, inserted }
+  } catch (err) {
+    return fail(`refund ${input.refundId}`, err)
+  }
+}
 
-    const base = {
-      currency: input.currency, order_id: o.order_id, payment_group_id: o.payment_group_id,
-      clinic_id: o.clinic_id, pharmacy_id: o.pharmacy_id, status: 'succeeded' as const,
-      stripe_object_id: input.refundId, source_event_id: input.refundId,
-    }
-    const line = (entry_type: LedgerEntryType, party: LedgerParty, amount_cents: number): LedgerLine =>
-      ({ ...base, entry_type, party, amount_cents, line_key: lineKey(entry_type, party, o.order_id, o.payment_group_id) })
-    const inserted = await insertLines(supabase, [
-      line('refund', 'platform', -refundCents),
-      line('reversal', 'clinic', -parts.clinic),
-      line('reversal', 'platform', -parts.platform),
-      line('reversal', 'pharmacy', -parts.pharmacy),
-    ])
-    // Already recorded (a retry of the same refund): the payable was adjusted then.
-    if (inserted === 0) return { ok: true, inserted }
+export interface WebhookRefundLedgerInput {
+  refundId:    string
+  amountCents: number
+  currency:    string
+  /** The orders the webhook attributed the refund to (one for a single order). */
+  orderIds:    string[]
+}
 
-    const { data: payable, error: payableError } = await supabase
-      .from('pharmacy_payables')
-      .select('payable_id, amount_cents, reversed_cents, status')
-      .eq('order_id', o.order_id)
-      .maybeSingle()
-    if (payableError) throw new Error(`pharmacy_payables: ${payableError.message}`)
-    if (payable && (payable.status === 'owed' || payable.status === 'scheduled') && parts.pharmacy > 0) {
-      const reversed = Math.min(Number(payable.amount_cents), Number(payable.reversed_cents) + parts.pharmacy)
-      const patch: Record<string, unknown> = { reversed_cents: reversed, updated_at: new Date().toISOString() }
-      if (reversed >= Number(payable.amount_cents)) patch['status'] = 'void'
-      const { error: updateError } = await supabase
-        .from('pharmacy_payables')
-        .update(patch as never)
-        .eq('order_id', o.order_id)
-        .in('status', ['owed', 'scheduled'])
-      if (updateError) throw new Error(`pharmacy_payables: ${updateError.message}`)
+/**
+ * A refund seen on charge.refunded, including one made in the Stripe
+ * Dashboard. One order: the same write as the API refund paths (same
+ * keys, so a refund they already recorded is not recorded again). Several
+ * orders (a Dashboard refund on a bundle): the amount is spread over them
+ * in proportion to what each was charged, the last taking the rounding.
+ */
+export async function recordWebhookRefundLedger(supabase: Supabase, input: WebhookRefundLedgerInput): Promise<LedgerResult> {
+  if (input.orderIds.length === 1) {
+    return recordRefundLedger(supabase, { orderId: input.orderIds[0]!, refundId: input.refundId, amountCents: input.amountCents, currency: input.currency })
+  }
+  try {
+    if (input.orderIds.length === 0) throw new Error('refund has no orders')
+    const { data, error } = await supabase
+      .from('orders')
+      .select(LEDGER_ORDER_COLUMNS)
+      .in('order_id', input.orderIds)
+    if (error) throw new Error(`orders: ${error.message}`)
+    const orders = ((data ?? []) as unknown as LedgerOrder[]).sort((a, b) => a.order_id.localeCompare(b.order_id))
+    if (orders.length === 0) throw new Error('no orders found for the refund')
+    const absorb = await loadAbsorbShipping(supabase, orders.map(o => o.clinic_id))
+    const splits = orders.map(o => computeOrderSplit(o, absorb.get(o.clinic_id)))
+    const total = splits.reduce((a, s) => a + s.chargeCents, 0)
+    let left = input.amountCents
+    let inserted = 0
+    for (let i = 0; i < orders.length; i++) {
+      const share = i === orders.length - 1 ? left : Math.round(input.amountCents * (total > 0 ? splits[i]!.chargeCents / total : 1 / orders.length))
+      left -= share
+      inserted += await writeRefundForOrder(supabase, orders[i]!, splits[i]!, input.refundId, share, input.currency)
     }
     return { ok: true, inserted }
   } catch (err) {
