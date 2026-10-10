@@ -82,6 +82,18 @@ describe('patient header', () => {
   })
 })
 
+describe('patient header: possible duplicate', () => {
+  it('shows "Possible duplicate of <name>" with Dismiss, for a complete patient too', async () => {
+    fetchMock.mockImplementation((url: string) => url.endsWith('/intake-link')
+      ? status({ intakeStatus: 'complete', patient: { first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', state: 'TX' }, duplicate: { patientId: 'p-other', name: 'Jane Smyth' } })
+      : status({ data: [] }))
+    seed({ ...PENDING_PATIENT, first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', intake_status: 'complete' })
+    render(<PrescriptionSessionProvider><SessionBanner /></PrescriptionSessionProvider>)
+    expect(await screen.findByText('Possible duplicate of Jane Smyth')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Dismiss possible duplicate of Jane Smyth' })).toBeInTheDocument()
+  })
+})
+
 describe('Review', () => {
   it('holds Sign & Send with the reason; Save as Draft stays available', async () => {
     seed()

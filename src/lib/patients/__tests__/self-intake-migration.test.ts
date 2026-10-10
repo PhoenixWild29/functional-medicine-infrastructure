@@ -114,3 +114,37 @@ describe('the down migration', () => {
     expect(downCode).toMatch(/drop constraint if exists chk_patients_identity_when_complete/)
   })
 })
+
+// ── Intake decisions (Oct 10): the intake text, and duplicate flags ──
+
+import { INTAKE_LINK_SMS } from '@/lib/sms/templates'
+
+describe('the intake text template', () => {
+  it('allows intake_link in sms_templates and keeps its reference row identical to the app\'s text', () => {
+    expect(code).toMatch(/drop constraint if exists sms_templates_template_name_check/)
+    expect(code).toMatch(/add constraint sms_templates_template_name_check check \(template_name in \('payment_link', ?'reminder_24h', ?'reminder_48h', ?'payment_confirmation', ?'shipping_notification', ?'delivered', ?'custom', ?'intake_link'\)\)/)
+    expect(sql).toContain(`'intake_link',\n  '${INTAKE_LINK_SMS}'`)
+  })
+
+  it('the down migration removes the row and restores the constraint without it', () => {
+    expect(downCode).toMatch(/delete from sms_templates where template_name = 'intake_link'/)
+    expect(downCode).toMatch(/check \(template_name in \('payment_link', ?'reminder_24h', ?'reminder_48h', ?'payment_confirmation', ?'shipping_notification', ?'delivered', ?'custom'\)\)/)
+  })
+})
+
+describe('possible duplicate flag on the patient', () => {
+  it('points at another patient, records what matched and when, and who dismissed it', () => {
+    expect(code).toMatch(/add column if not exists possible_duplicate_of uuid references patients\(patient_id\)/)
+    expect(code).toMatch(/add column if not exists possible_duplicate_matched_on text/)
+    expect(code).toMatch(/add column if not exists possible_duplicate_flagged_at timestamptz/)
+    expect(code).toMatch(/add column if not exists possible_duplicate_dismissed_at timestamptz/)
+    expect(code).toMatch(/add column if not exists possible_duplicate_dismissed_by uuid/)
+    expect(code).toMatch(/possible_duplicate_of is distinct from patient_id/)
+  })
+
+  it('the down migration drops them', () => {
+    for (const c of ['possible_duplicate_of', 'possible_duplicate_matched_on', 'possible_duplicate_flagged_at', 'possible_duplicate_dismissed_at', 'possible_duplicate_dismissed_by']) {
+      expect(downCode).toContain(`drop column if exists ${c}`)
+    }
+  })
+})

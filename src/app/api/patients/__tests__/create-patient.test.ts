@@ -182,12 +182,13 @@ describe('creating the patient', () => {
     }))
   })
 
-  it('texts the link with the clinic name (only the SMS module decides whether it can send)', async () => {
+  it('texts the link, never naming the clinic (only the SMS module decides whether it can send)', async () => {
     sendSmsMock.mockResolvedValue('sent')
     const body = await (await POST(req({ phone: '5125550123' }))).json()
     expect(sendSmsMock).toHaveBeenCalledWith(db.client, expect.objectContaining({
-      patientId: NEW_ID, linkId: 'link-1', toE164: '+15125550123', clinicName: 'Test Clinic', url: 'https://app.test/intake/' + 'T'.repeat(43),
+      patientId: NEW_ID, linkId: 'link-1', toE164: '+15125550123', url: 'https://app.test/intake/' + 'T'.repeat(43),
     }))
+    expect(sendSmsMock.mock.calls[0]![1]).not.toHaveProperty('clinicName')
     expect(body.intake.smsStatus).toBe('sent')
   })
 

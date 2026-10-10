@@ -71,15 +71,54 @@ describe('ResendIntakeLink', () => {
 describe('dashboardPatient (rows on the Dashboard)', () => {
   it('names a complete patient last, first', () => {
     expect(dashboardPatient({ patient_id: 'p', first_name: 'Jane', last_name: 'Smith', phone: '+15125550123', intake_status: 'complete' }))
-      .toEqual({ patientId: 'p', patientName: 'Smith, Jane', patientIntakePending: false })
+      .toEqual({ patientId: 'p', patientName: 'Smith, Jane', patientIntakePending: false, possibleDuplicate: null })
   })
 
   it('a pending patient with no name, from an array embed', () => {
     expect(dashboardPatient([{ patient_id: 'p', first_name: null, last_name: null, phone: '+15125550123', intake_status: 'pending' }]))
-      .toEqual({ patientId: 'p', patientName: 'New patient (mobile ending 0123)', patientIntakePending: true })
+      .toEqual({ patientId: 'p', patientName: 'New patient (mobile ending 0123)', patientIntakePending: true, possibleDuplicate: null })
   })
 
   it('no embed', () => {
-    expect(dashboardPatient(null)).toEqual({ patientId: null, patientName: '—', patientIntakePending: false })
+    expect(dashboardPatient(null)).toEqual({ patientId: null, patientName: '—', patientIntakePending: false, possibleDuplicate: null })
+  })
+})
+
+// ── Intake decisions (Oct 10): "Possible duplicate of <name>" ──
+import { PossibleDuplicateFlag } from '../possible-duplicate-flag'
+
+describe('PossibleDuplicateFlag', () => {
+  it('names the other patient and dismisses through the audited route', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true }) })
+    const onDismissed = jest.fn()
+    render(<PossibleDuplicateFlag patientId={PATIENT_ID} duplicateName="Jane Smyth" onDismissed={onDismissed} />)
+    expect(screen.getByText('Possible duplicate of Jane Smyth')).toBeInTheDocument()
+    expect((await axe(document.body)).violations).toEqual([])
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Dismiss possible duplicate of Jane Smyth' })) })
+    expect(fetchMock).toHaveBeenCalledWith(`/api/patients/${PATIENT_ID}/duplicate-flag`, expect.objectContaining({ method: 'DELETE' }))
+    expect(onDismissed).toHaveBeenCalled()
+    expect(screen.queryByText('Possible duplicate of Jane Smyth')).not.toBeInTheDocument()
+  })
+
+  it('a failed dismiss is announced and the flag stays', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 503, json: async () => ({}) })
+    render(<PossibleDuplicateFlag patientId={PATIENT_ID} duplicateName="Jane Smyth" />)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Dismiss/ })) })
+    expect(screen.getByRole('alert')).toHaveTextContent(/could not be dismissed/i)
+    expect(screen.getByText('Possible duplicate of Jane Smyth')).toBeInTheDocument()
+  })
+})
+
+describe('dashboardPatient: duplicate flag', () => {
+  it('an open flag carries the other patient\'s name', () => {
+    expect(dashboardPatient({
+      patient_id: 'p', first_name: 'Jane', last_name: 'Smith', phone: '+15125550123', intake_status: 'complete',
+      possible_duplicate_of: 'p-other', possible_duplicate_dismissed_at: null, duplicate: { first_name: 'Jane', last_name: 'Smyth', phone: null },
+    })).toEqual(expect.objectContaining({ possibleDuplicate: { patientId: 'p-other', name: 'Jane Smyth' } }))
+  })
+
+  it('a dismissed flag, or none, is null', () => {
+    expect(dashboardPatient({ patient_id: 'p', first_name: 'A', last_name: 'B', possible_duplicate_of: 'x', possible_duplicate_dismissed_at: '2026-10-09T00:00:00Z', duplicate: { first_name: 'C', last_name: 'D' } }).possibleDuplicate).toBeNull()
+    expect(dashboardPatient({ patient_id: 'p', first_name: 'A', last_name: 'B' }).possibleDuplicate).toBeNull()
   })
 })

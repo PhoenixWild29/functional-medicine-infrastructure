@@ -8,13 +8,17 @@
  *   - Twilio counts as configured only when the account SID, auth token
  *     and sending number are all set, and TWILIO_ENABLED is not 'false'.
  *     Prod has no Twilio, so the app must work without it.
- *   - The text carries no PHI: the clinic name and the link, exactly the
- *     spec's wording, nothing about the patient or a prescription.
+ *   - The text carries no PHI and does not name the clinic (a name can
+ *     reveal a specialty): "Your provider has sent you a secure link to
+ *     complete your details: [link] Reply STOP to opt out." A versioned
+ *     template like the other texts (templates.ts, kept in step with its
+ *     sms_templates row).
  */
 
 import { createHash } from 'node:crypto'
 import { hashIntakeToken, isWellFormedIntakeToken, newIntakeToken, INTAKE_LINK_TTL_HOURS } from '../token'
 import { intakeSmsText } from '../sms-text'
+import { INTAKE_LINK_SMS, renderIntakeLinkSms } from '@/lib/sms/templates'
 import { isTwilioConfigured } from '@/lib/twilio/config'
 
 describe('intake token', () => {
@@ -62,13 +66,18 @@ describe('isTwilioConfigured', () => {
 })
 
 describe('the intake text', () => {
-  it('is the spec wording: clinic name and link, nothing else', () => {
-    expect(intakeSmsText('Sunrise Functional Medicine', 'https://app.example.test/intake/abc'))
-      .toBe('Sunrise Functional Medicine has sent you a secure link to complete your details: https://app.example.test/intake/abc')
+  it('is the approved wording, with the opt-out, and no clinic name', () => {
+    expect(intakeSmsText('https://app.example.test/intake/abc'))
+      .toBe('Your provider has sent you a secure link to complete your details: https://app.example.test/intake/abc Reply STOP to opt out.')
   })
 
-  it('names no patient, prescription, medication or pharmacy', () => {
-    const text = intakeSmsText('Test Clinic', 'https://x.test/intake/t')
-    expect(text).not.toMatch(/prescri|medic|pharmac|order|Rx|\bDr\.?\b/i)
+  it('is the versioned template, rendered like the other texts', () => {
+    expect(INTAKE_LINK_SMS).toBe('Your provider has sent you a secure link to complete your details: {{intakeUrl}} Reply STOP to opt out.')
+    expect(renderIntakeLinkSms({ intakeUrl: 'https://x.test/intake/t' })).toBe(intakeSmsText('https://x.test/intake/t'))
+  })
+
+  it('names no clinic, patient, prescription, medication or pharmacy', () => {
+    const text = intakeSmsText('https://x.test/intake/t')
+    expect(text).not.toMatch(/clinic|prescri|medic|pharmac|order|Rx|\bDr\.?\b/i)
   })
 })

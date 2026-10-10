@@ -123,6 +123,8 @@ describe('creating', () => {
     const email = within(panel).getByRole('link', { name: 'Email this link' })
     expect(email.getAttribute('href')).toMatch(/^mailto:\?subject=/)
     expect(decodeURIComponent(email.getAttribute('href')!)).toContain(LINK)
+    // The email says the same as the text, without naming the clinic.
+    expect(decodeURIComponent(email.getAttribute('href')!)).toContain('Your provider has sent you a secure link to complete your details')
 
     await act(async () => { fireEvent.click(within(panel).getByRole('button', { name: 'Copy link' })) })
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(LINK)

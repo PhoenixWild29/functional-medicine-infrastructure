@@ -79,7 +79,8 @@ it('makes a new link, texts it when it can, and returns it to copy', async () =>
   const res = await POST(req(), ctx())
   expect(res.status).toBe(200)
   expect(createLinkMock).toHaveBeenCalledWith(db.client, { clinicId: CLINIC_ID, patientId: PATIENT_ID, createdBy: 'user-1' })
-  expect(sendSmsMock).toHaveBeenCalledWith(db.client, expect.objectContaining({ patientId: PATIENT_ID, linkId: 'link-2', toE164: '+15125550123', clinicName: 'Test Clinic' }))
+  expect(sendSmsMock).toHaveBeenCalledWith(db.client, expect.objectContaining({ patientId: PATIENT_ID, linkId: 'link-2', toE164: '+15125550123' }))
+  expect(sendSmsMock.mock.calls[0]![1]).not.toHaveProperty('clinicName')
   expect(await res.json()).toEqual({ intake: { url: 'https://app.test/intake/x', expiresAt: '2026-10-12T00:00:00.000Z', smsStatus: 'sent' } })
 })
 
@@ -112,5 +113,28 @@ describe('GET (status for the patient header)', () => {
     expect((await GET(req(), ctx())).status).toBe(401)
     script = () => ({ data: null })
     expect((await GET(req(), ctx())).status).toBe(404)
+  })
+})
+
+// ── Intake decisions (Oct 10): the header shows an open duplicate flag ──
+describe('GET carries an open "possible duplicate" flag', () => {
+  it('flagged and not dismissed: the other patient\'s name', async () => {
+    script = c => (c.table === 'patients'
+      ? { data: {
+          patient_id: PATIENT_ID, clinic_id: CLINIC_ID, intake_status: 'complete', first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', state: 'TX',
+          possible_duplicate_of: 'b3000000-0000-4000-8000-000000000001', possible_duplicate_dismissed_at: null,
+          duplicate: { first_name: 'Jane', last_name: 'Smyth', phone: '+15125550123' },
+        } }
+      : undefined)
+    const body = await (await GET(req(), ctx())).json()
+    expect(body.duplicate).toEqual({ patientId: 'b3000000-0000-4000-8000-000000000001', name: 'Jane Smyth' })
+  })
+
+  it('dismissed: no flag', async () => {
+    script = c => (c.table === 'patients'
+      ? { data: { patient_id: PATIENT_ID, clinic_id: CLINIC_ID, intake_status: 'complete', first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', state: 'TX',
+          possible_duplicate_of: 'b3000000-0000-4000-8000-000000000001', possible_duplicate_dismissed_at: '2026-10-09T00:00:00Z', duplicate: { first_name: 'Jane', last_name: 'Smyth' } } }
+      : undefined)
+    expect((await (await GET(req(), ctx())).json()).duplicate).toBeNull()
   })
 })

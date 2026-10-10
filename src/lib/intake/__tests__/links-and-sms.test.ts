@@ -143,7 +143,7 @@ describe('claimIntakeLink / releaseIntakeLink', () => {
 
 describe('sendIntakeLinkSms', () => {
   const TWILIO = { TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 't', TWILIO_PHONE_NUMBER: '+15125550100' }
-  const args = { patientId: PATIENT_ID, linkId: 'link-1', toE164: '+15125550123', clinicName: 'Test Clinic', url: 'https://app.test/intake/x' }
+  const args = { patientId: PATIENT_ID, linkId: 'link-1', toE164: '+15125550123', url: 'https://app.test/intake/x' }
   const patientRow = (extra: Record<string, unknown> = {}) => (c: ScriptedCall): ScriptedAnswer | undefined =>
     c.table === 'patients' ? { data: { sms_opt_in: false, sms_consent_source: null, ...extra } } : undefined
 
@@ -160,7 +160,7 @@ describe('sendIntakeLinkSms', () => {
     expect(await sendIntakeLinkSms(db.client, args)).toBe('sent')
     expect(createMessageMock).toHaveBeenCalledWith(expect.objectContaining({
       to: '+15125550123', from: '+15125550100',
-      body: 'Test Clinic has sent you a secure link to complete your details: https://app.test/intake/x',
+      body: 'Your provider has sent you a secure link to complete your details: https://app.test/intake/x Reply STOP to opt out.',
     }))
     expect(db.to('sms_log', 'insert')[0]!.payload).toEqual(expect.objectContaining({
       order_id: null, patient_id: PATIENT_ID, template_name: 'intake_link', status: 'sent', twilio_message_sid: 'SM123',
@@ -189,6 +189,6 @@ describe('sendIntakeLinkSms', () => {
     const err = jest.spyOn(console, 'error')
     const db = scriptedDb(patientRow())
     expect(await sendIntakeLinkSms(db.client, args)).toBe('failed')
-    expect(JSON.stringify(err.mock.calls)).not.toMatch(/5550123|Test Clinic/)
+    expect(JSON.stringify(err.mock.calls)).not.toMatch(/5550123/)
   })
 })

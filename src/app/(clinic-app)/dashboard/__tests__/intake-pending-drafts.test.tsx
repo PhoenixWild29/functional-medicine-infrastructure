@@ -68,3 +68,11 @@ it('a complete patient\'s draft has no intake badge or resend', () => {
   expect(screen.queryByText('Awaiting patient details')).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Resend link' })).not.toBeInTheDocument()
 })
+
+// ── Intake decisions (Oct 10): a possible duplicate is flagged on the row ──
+it('a row whose patient may be a duplicate says so, with Dismiss', () => {
+  renderDashboard([order(3, { patientName: 'Smith, Jane', patientId: 'p-jane', possibleDuplicate: { patientId: 'p-other', name: 'Jane Smyth' } })])
+  const row = screen.getByRole('row', { name: /Smith, Jane/ })
+  expect(within(row).getByText('Possible duplicate of Jane Smyth')).toBeInTheDocument()
+  expect(within(row).getByRole('button', { name: 'Dismiss possible duplicate of Jane Smyth' })).toBeInTheDocument()
+})

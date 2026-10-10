@@ -174,3 +174,73 @@ describe('next step', () => {
     expect(body).toEqual({ ok: true, checkoutUrl: 'https://app.test/checkout/checkout-token' })
   })
 })
+
+// ── Intake decisions (Oct 10): duplicate check on the patient's submission ──
+//
+// Same clinic, another active patient with the same mobile and date of
+// birth, or the same first and last name and date of birth: the new
+// patient is flagged for staff ("Possible duplicate of <name>"). Never
+// merged, never touches the other patient. The check cannot fail the
+// patient's submission: their details are already saved.
+
+describe('duplicate check on submission', () => {
+  const OTHER = 'b3000000-0000-4000-8000-000000000001'
+  function withMatches(matches: unknown[] | 'down') {
+    script = c => {
+      if (c.table === 'patients' && c.op === 'update') return { data: { patient_id: PATIENT_ID, phone_e164: '+15125550123' } }
+      if (c.table === 'patients' && c.op === 'select') return matches === 'down' ? DB_DOWN : { data: matches }
+      if (c.table === 'orders') return { data: [] }
+      return undefined
+    }
+  }
+  const flagUpdate = () => db.to('patients', 'update').find(c => (c.payload as Record<string, unknown>)['possible_duplicate_of'] !== undefined)
+
+  it('looks in this clinic, at other active patients, by mobile + DOB or name + DOB', async () => {
+    withMatches([])
+    await POST(req(VALID), ctx())
+    const lookup = db.to('patients', 'select')[0]!
+    expect(lookup.filters).toEqual(expect.objectContaining({ clinic_id: CLINIC_ID, is_active: true, date_of_birth: '1985-04-15', 'patient_id:neq': PATIENT_ID }))
+    const orExpr = Object.keys(lookup.filters).find(k => k.endsWith(':or')) ?? ''
+    expect(orExpr).toContain('phone_e164.eq.+15125550123')
+    expect(orExpr).toMatch(/first_name\.ilike\.Jane/)
+    expect(orExpr).toMatch(/last_name\.ilike\.Smith/)
+  })
+
+  it('a match flags the new patient for staff; the other patient is not touched', async () => {
+    withMatches([{ patient_id: OTHER, phone_e164: '+15125550123', first_name: 'Jane', last_name: 'Smith' }])
+    const res = await POST(req(VALID), ctx())
+    expect(res.status).toBe(200)
+    const flag = flagUpdate()!
+    expect(flag.filters).toEqual(expect.objectContaining({ patient_id: PATIENT_ID, clinic_id: CLINIC_ID }))
+    expect(flag.payload).toEqual({
+      possible_duplicate_of: OTHER,
+      possible_duplicate_matched_on: 'mobile_and_date_of_birth',
+      possible_duplicate_flagged_at: expect.any(String),
+      possible_duplicate_dismissed_at: null,
+      possible_duplicate_dismissed_by: null,
+    })
+    expect(db.calls.filter(c => c.filters['patient_id'] === OTHER && c.op !== 'select')).toHaveLength(0)
+    expect(db.calls.some(c => c.op === 'delete')).toBe(false)
+  })
+
+  it('a name + DOB match on another number says so', async () => {
+    withMatches([{ patient_id: OTHER, phone_e164: '+15125550999', first_name: 'jane', last_name: 'SMITH' }])
+    await POST(req(VALID), ctx())
+    expect((flagUpdate()!.payload as Record<string, unknown>)['possible_duplicate_matched_on']).toBe('name_and_date_of_birth')
+  })
+
+  it('no match: no flag', async () => {
+    withMatches([])
+    await POST(req(VALID), ctx())
+    expect(flagUpdate()).toBeUndefined()
+  })
+
+  it('the check could not run: the submission still succeeds, nothing is flagged, and the log has no details', async () => {
+    withMatches('down')
+    const err = jest.spyOn(console, 'error')
+    const res = await POST(req(VALID), ctx())
+    expect(res.status).toBe(200)
+    expect(flagUpdate()).toBeUndefined()
+    expect(JSON.stringify(err.mock.calls)).not.toMatch(/Jane|Smith|1985|5550123/)
+  })
+})
