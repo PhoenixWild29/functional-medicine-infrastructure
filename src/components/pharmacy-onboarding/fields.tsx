@@ -22,8 +22,8 @@ function describedBy(id: string, hint?: ReactNode | undefined, error?: string | 
 function Help({ id, hint, error }: { id: string; hint?: ReactNode | undefined; error?: string | null | undefined }) {
   return (
     <>
-      {hint && <p id={`${id}-hint`} className="mt-1 text-xs text-muted-foreground">{hint}</p>}
-      {error && <p id={`${id}-error`} className="mt-1 text-sm font-medium text-destructive">{error}</p>}
+      {hint && <p id={`${id}-hint`} className="mt-1 text-xs text-muted-foreground dark:text-slate-300">{hint}</p>}
+      {error && <p id={`${id}-error`} className="mt-1 text-sm font-medium text-red-700 dark:text-red-300">{error}</p>}
     </>
   )
 }
@@ -133,7 +133,7 @@ export function RadioGroup(props: {
             />
             <span>
               <span className="block text-sm font-medium text-foreground">{o.label}</span>
-              {o.description && <span className="block text-xs text-muted-foreground">{o.description}</span>}
+              {o.description && <span className="block text-xs text-muted-foreground dark:text-slate-300">{o.description}</span>}
             </span>
           </label>
         ))}
@@ -147,7 +147,7 @@ export function RadioGroup(props: {
 export function FormAlert({ message }: { message: string | null }) {
   if (!message) return null
   return (
-    <div role="alert" className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+    <div role="alert" className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-red-700 dark:text-red-300">
       {message}
     </div>
   )
@@ -161,7 +161,7 @@ export function PrimaryButton(props: { children: ReactNode; type?: 'submit' | 'b
       onClick={onClick}
       disabled={disabled || busy}
       aria-busy={busy || undefined}
-      className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover dark:bg-primary-hover dark:hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {children}
     </button>

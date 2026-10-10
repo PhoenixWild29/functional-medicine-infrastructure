@@ -98,7 +98,7 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">{show(p['name'])}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Status: {STATUS[review.status] ?? review.status}{review.submittedAt ? ` · submitted ${new Date(review.submittedAt).toLocaleDateString()}` : ''}</p>
+        <p className="mt-1 text-sm text-muted-foreground dark:text-slate-300">Status: {STATUS[review.status] ?? review.status}{review.submittedAt ? ` · submitted ${new Date(review.submittedAt).toLocaleDateString()}` : ''}</p>
       </div>
       <FormAlert message={message} />
 
@@ -113,7 +113,7 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
             ['Carriers', p['ship_carriers']], ['Cold chain', p['ships_cold_chain'] === null || p['ships_cold_chain'] === undefined ? null : p['ships_cold_chain'] ? 'Yes' : 'No'],
             ['Ships to', p['ship_to_states']], ['Order cutoff', p['order_cutoff_local']],
           ].map(([k, v]) => (
-            <div key={String(k)} className="flex gap-2"><dt className="min-w-[9rem] text-muted-foreground">{String(k)}</dt><dd className="text-foreground">{show(v)}</dd></div>
+            <div key={String(k)} className="flex gap-2"><dt className="min-w-[9rem] text-muted-foreground dark:text-slate-300">{String(k)}</dt><dd className="text-foreground">{show(v)}</dd></div>
           ))}
         </dl>
       </section>
@@ -127,7 +127,7 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
             {review.ordering['method'] === 'fax' && `Fax to ${show(review.ordering['faxNumber'])}.`}
             {review.ordering['secretsStored'] === true && ' Credentials stored in Vault.'}
           </p>
-        ) : <p className="mt-2 text-sm text-muted-foreground">Not provided.</p>}
+        ) : <p className="mt-2 text-sm text-muted-foreground dark:text-slate-300">Not provided.</p>}
         {review.adapter.required && (
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <p className="text-sm text-foreground">
@@ -152,15 +152,15 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="text-sm">
                   <p className="font-medium text-foreground">{l.state} · {l.licenseNumber}</p>
-                  <p className="text-muted-foreground">Expires {l.expiresOn} · Sterile: {l.sterileCompounding === null ? 'not recorded' : l.sterileCompounding ? 'yes' : 'no'}</p>
-                  {l.verificationNote && <p className="text-muted-foreground">Note: {l.verificationNote}</p>}
+                  <p className="text-muted-foreground dark:text-slate-300">Expires {l.expiresOn} · Sterile: {l.sterileCompounding === null ? 'not recorded' : l.sterileCompounding ? 'yes' : 'no'}</p>
+                  {l.verificationNote && <p className="text-muted-foreground dark:text-slate-300">Note: {l.verificationNote}</p>}
                 </div>
                 <span className="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-foreground">{LICENSE[l.verificationStatus] ?? l.verificationStatus}</span>
               </div>
               <div className="mt-2 flex flex-wrap items-end gap-2">
                 {l.documentUrl
                   ? <a href={l.documentUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[44px] items-center text-sm font-medium text-primary underline underline-offset-4">View {l.state} license document</a>
-                  : <span className="text-sm text-destructive">No document uploaded</span>}
+                  : <span className="text-sm text-red-700 dark:text-red-300">No document uploaded</span>}
                 {reviewable && (
                   <>
                     <label htmlFor={`note-${l.state}`} className="text-sm text-foreground">
@@ -192,10 +192,10 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
           <div className="mt-2 space-y-2 text-sm">
             <p className="text-foreground">{review.catalog.rowCount} rows staged{review.catalog.warnings.length > 0 ? `, ${review.catalog.warnings.length} warnings` : ''}.</p>
             <SecondaryButton disabled={busy || review.status !== 'approved'} onClick={() => void loadCatalog()}>Load into catalog</SecondaryButton>
-            {review.status !== 'approved' && <p className="text-xs text-muted-foreground">Available once the pharmacy is approved.</p>}
+            {review.status !== 'approved' && <p className="text-xs text-muted-foreground dark:text-slate-300">Available once the pharmacy is approved.</p>}
             <p aria-live="polite" className="text-foreground">{catalogResult ?? ''}</p>
           </div>
-        ) : <p className="mt-2 text-sm text-muted-foreground">{review.catalog.choice === 'skipped' ? 'Skipped: CompoundIQ loads it.' : 'Not provided.'}</p>}
+        ) : <p className="mt-2 text-sm text-muted-foreground dark:text-slate-300">{review.catalog.choice === 'skipped' ? 'Skipped: CompoundIQ loads it.' : 'Not provided.'}</p>}
       </section>
 
       {reviewable && (
@@ -209,7 +209,7 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
             <SecondaryButton disabled={busy || !sendBackNote.trim()} onClick={() => void run(`/api/ops/onboarding/pharmacies/${applicationId}/send-back`, { note: sendBackNote })}>Send back</SecondaryButton>
             <PrimaryButton type="button" disabled={!canApprove} busy={busy} onClick={() => void run(`/api/ops/onboarding/pharmacies/${applicationId}/approve`, {})}>Approve</PrimaryButton>
           </div>
-          {!canApprove && <p className="mt-2 text-xs text-muted-foreground">Approve is available when every license is verified, the current BAA is accepted and, for an API or portal pharmacy, its adapter is marked configured.</p>}
+          {!canApprove && <p className="mt-2 text-xs text-muted-foreground dark:text-slate-300">Approve is available when every license is verified, the current BAA is accepted and, for an API or portal pharmacy, its adapter is marked configured.</p>}
         </section>
       )}
 
@@ -217,7 +217,7 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
         <h2 id="history-title" className="text-lg font-semibold text-foreground">History</h2>
         <ol className="mt-2 space-y-1 text-sm">
           {review.events.map((e, i) => (
-            <li key={`${e.occurredAt}-${i}`} className="text-muted-foreground">
+            <li key={`${e.occurredAt}-${i}`} className="text-muted-foreground dark:text-slate-300">
               {new Date(e.occurredAt).toLocaleString()} · {e.action.replace(/_/g, ' ')}{e.stateCode ? ` (${e.stateCode})` : ''} · {e.actorRole.replace(/_/g, ' ')}
             </li>
           ))}

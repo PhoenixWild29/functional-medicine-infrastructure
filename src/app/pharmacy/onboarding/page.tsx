@@ -27,7 +27,7 @@ export default async function PharmacyOnboardingPage() {
         {result?.ok ? (
           <OnboardingWizard initial={result.state} />
         ) : (
-          <div role="alert" className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+          <div role="alert" className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-red-700 dark:text-red-300">
             {result && !result.ok ? result.error : 'Your pharmacy could not be found.'} Reload to try again, or contact CompoundIQ.
           </div>
         )}

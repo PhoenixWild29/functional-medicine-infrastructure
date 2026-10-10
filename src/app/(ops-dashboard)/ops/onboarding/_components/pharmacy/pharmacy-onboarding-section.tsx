@@ -118,7 +118,7 @@ export function PharmacyOnboardingSection() {
               <input id="inviteLink" readOnly value={link.url} className="min-h-[44px] w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" onFocus={e => e.currentTarget.select()} />
               <SecondaryButton onClick={() => void copy()}>Copy link</SecondaryButton>
             </div>
-            <p className="text-xs text-muted-foreground">This link is shown once. Send it to the pharmacy administrator; it works once and expires in 7 days.</p>
+            <p className="text-xs text-muted-foreground dark:text-slate-300">This link is shown once. Send it to the pharmacy administrator; it works once and expires in 7 days.</p>
             <p aria-live="polite" className="text-xs text-foreground">{copied ? 'Copied.' : ''}</p>
           </div>
         )}
@@ -127,12 +127,12 @@ export function PharmacyOnboardingSection() {
       <section aria-labelledby="invites-title">
         <h2 id="invites-title" className="text-lg font-semibold text-foreground">Invites</h2>
         {invites.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">No invites yet.</p>
+          <p className="mt-2 text-sm text-muted-foreground dark:text-slate-300">No invites yet.</p>
         ) : (
           <div className="mt-2 overflow-x-auto rounded-lg border border-border">
             <table className="w-full min-w-[640px] text-sm">
               <caption className="sr-only">Pharmacy invites</caption>
-              <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground dark:text-slate-300">
                 <tr><th scope="col" className="px-3 py-2">Pharmacy</th><th scope="col" className="px-3 py-2">Email</th><th scope="col" className="px-3 py-2">Status</th><th scope="col" className="px-3 py-2">Expires</th><th scope="col" className="px-3 py-2">Sent</th><th scope="col" className="px-3 py-2"><span className="sr-only">Actions</span></th></tr>
               </thead>
               <tbody>
@@ -162,12 +162,12 @@ export function PharmacyOnboardingSection() {
       <section aria-labelledby="applications-title">
         <h2 id="applications-title" className="text-lg font-semibold text-foreground">Applications</h2>
         {applications.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">No applications yet.</p>
+          <p className="mt-2 text-sm text-muted-foreground dark:text-slate-300">No applications yet.</p>
         ) : (
           <div className="mt-2 overflow-x-auto rounded-lg border border-border">
             <table className="w-full min-w-[560px] text-sm">
               <caption className="sr-only">Pharmacy onboarding applications</caption>
-              <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground dark:text-slate-300">
                 <tr><th scope="col" className="px-3 py-2">Pharmacy</th><th scope="col" className="px-3 py-2">Status</th><th scope="col" className="px-3 py-2">Licenses verified</th><th scope="col" className="px-3 py-2">Submitted</th><th scope="col" className="px-3 py-2"><span className="sr-only">Open</span></th></tr>
               </thead>
               <tbody>

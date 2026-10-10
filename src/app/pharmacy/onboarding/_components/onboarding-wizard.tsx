@@ -142,7 +142,7 @@ function ReviewSummary({ state }: { state: WizardState }) {
         return (
           <li key={s.key} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm">
             <span className="text-foreground">{s.label}</span>
-            <span className={done ? 'font-medium text-foreground' : 'text-destructive'}>{done ? 'Done' : 'To do'}</span>
+            <span className={done ? 'font-medium text-foreground' : 'text-red-700 dark:text-red-300'}>{done ? 'Done' : 'To do'}</span>
           </li>
         )
       })}

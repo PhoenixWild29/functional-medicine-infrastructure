@@ -148,7 +148,7 @@ export function LicensesStep({ state, onSaved, onNext }: StepProps) {
                 <span className="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-foreground">{STATUS_LABEL[l.verificationStatus] ?? l.verificationStatus}</span>
               </div>
               {l.verificationStatus === 'rejected' && l.verificationNote && (
-                <p className="mt-2 text-sm text-destructive">CompoundIQ: {l.verificationNote}</p>
+                <p className="mt-2 text-sm text-red-700 dark:text-red-300">CompoundIQ: {l.verificationNote}</p>
               )}
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <label htmlFor={`doc-${l.state}`} className="text-sm text-foreground">
@@ -292,7 +292,7 @@ export function ShippingStep({ state, onSaved }: StepProps) {
             </label>
           ))}
         </div>
-        {errors['carriers'] && <p id="carriers-error" className="mt-1 text-sm font-medium text-destructive">{errors['carriers']}</p>}
+        {errors['carriers'] && <p id="carriers-error" className="mt-1 text-sm font-medium text-red-700 dark:text-red-300">{errors['carriers']}</p>}
       </fieldset>
       <RadioGroup id="coldChain" legend="Do you ship cold chain?" value={cold} onChange={setCold} error={errors['coldChain']} options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
       <fieldset aria-describedby={errors['shipToStates'] ? 'states-error' : undefined}>
@@ -309,7 +309,7 @@ export function ShippingStep({ state, onSaved }: StepProps) {
             </label>
           ))}
         </div>
-        {errors['shipToStates'] && <p id="states-error" className="mt-1 text-sm font-medium text-destructive">{errors['shipToStates']}</p>}
+        {errors['shipToStates'] && <p id="states-error" className="mt-1 text-sm font-medium text-red-700 dark:text-red-300">{errors['shipToStates']}</p>}
       </fieldset>
       <div className="max-w-xs">
         <TextField id="cutoffTime" label="Daily order cutoff" type="time" value={cutoff} onChange={setCutoff} error={errors['cutoffTime']} required hint="Pharmacy local time. Orders after this ship the next business day." />
@@ -354,7 +354,7 @@ export function AgreementStep({ state, onSaved, onNext }: StepProps) {
             <input id="accept" type="checkbox" checked={accepted} onChange={e => setAccepted(e.target.checked)} className="mt-1 h-4 w-4" aria-describedby={errors['accept'] ? 'accept-error' : undefined} />
             <span className="text-sm text-foreground">I have read and accept the {a.title} on behalf of the pharmacy, and I am authorized to do so.</span>
           </label>
-          {errors['accept'] && <p id="accept-error" className="text-sm font-medium text-destructive">{errors['accept']}</p>}
+          {errors['accept'] && <p id="accept-error" className="text-sm font-medium text-red-700 dark:text-red-300">{errors['accept']}</p>}
           <PrimaryButton busy={busy} disabled={!accepted}>Accept and continue</PrimaryButton>
         </form>
       )}
