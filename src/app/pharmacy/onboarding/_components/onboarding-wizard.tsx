@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ONBOARDING_STEPS, SAVED_STEPS, stepsComplete, type StepKey } from '@/lib/pharmacy-onboarding/steps'
 import type { WizardState } from '@/lib/pharmacy-onboarding/application'
-import { FormAlert, PrimaryButton, sendJson } from '@/components/onboarding/fields'
+import { FormAlert, PrimaryButton, sendJson } from '@/components/pharmacy-onboarding/fields'
 import { AgreementStep, CatalogStep, DetailsStep, FacilityStep, LicensesStep, OrderingStep, ShippingStep, type StepProps } from './steps'
 
 const EDITABLE = new Set(['in_progress', 'sent_back'])

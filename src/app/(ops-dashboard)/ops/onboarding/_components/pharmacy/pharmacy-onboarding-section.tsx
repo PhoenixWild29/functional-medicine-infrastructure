@@ -11,7 +11,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
-import { FormAlert, PrimaryButton, SecondaryButton, TextField, fieldErrors, sendJson } from '@/components/onboarding/fields'
+import { FormAlert, PrimaryButton, SecondaryButton, TextField, fieldErrors, sendJson } from '@/components/pharmacy-onboarding/fields'
 
 interface Invite {
   inviteId: string; pharmacyName: string; adminEmail: string; state: string

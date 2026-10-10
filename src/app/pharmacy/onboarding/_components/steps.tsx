@@ -13,7 +13,7 @@ import { useState } from 'react'
 import Papa from 'papaparse'
 import { US_STATES } from '@/lib/providers/states'
 import type { WizardState } from '@/lib/pharmacy-onboarding/application'
-import { FormAlert, PrimaryButton, RadioGroup, SecondaryButton, SelectField, TextField, fieldErrors, sendJson } from '@/components/onboarding/fields'
+import { FormAlert, PrimaryButton, RadioGroup, SecondaryButton, SelectField, TextField, fieldErrors, sendJson } from '@/components/pharmacy-onboarding/fields'
 
 export interface StepProps {
   state:   WizardState

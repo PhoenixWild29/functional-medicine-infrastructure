@@ -12,7 +12,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
-import { FormAlert, PrimaryButton, TextField, fieldErrors, sendJson } from '@/components/onboarding/fields'
+import { FormAlert, PrimaryButton, TextField, fieldErrors, sendJson } from '@/components/pharmacy-onboarding/fields'
 
 const MIN_PASSWORD = 12
 

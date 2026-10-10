@@ -11,7 +11,7 @@
 // the existing ops catalog upload once the pharmacy is approved.
 
 import { useCallback, useEffect, useState } from 'react'
-import { FormAlert, PrimaryButton, SecondaryButton, sendJson } from '@/components/onboarding/fields'
+import { FormAlert, PrimaryButton, SecondaryButton, sendJson } from '@/components/pharmacy-onboarding/fields'
 
 interface Review {
   applicationId: string
