@@ -29,6 +29,7 @@ import { createClient } from '@supabase/supabase-js'
 import { POC_CANONICAL_USERS, pocAppMetadataFor } from '../src/lib/poc/canonical-users'
 import { DEMO_PHARMACIES, refreshDemoData } from '../src/lib/poc/refresh-demo-data'
 import { withPhoneE164 } from '../src/lib/patients/phone'
+import { hashInviteToken, inviteExpiresAt, invitePath, newInviteToken } from '../src/lib/onboarding/tokens'
 
 // ============================================================
 // CONFIG
@@ -551,6 +552,76 @@ async function seedDemoData() {
 // MAIN
 // ============================================================
 
+// ============================================================
+// DEMO CLINIC INVITE (clinic onboarding)
+// ============================================================
+//
+// One clinic admin invite for walking through onboarding in the demo:
+// a demo clinic, inactive and 'invited', and a single-use link that
+// expires in 7 days. The token is random each run and printed ONCE here
+// (only its hash is stored); re-running withdraws the previous pending
+// demo invite and issues a new link. Set DEMO_INVITE_EMAIL to choose the
+// admin email (default onboarding-demo@compoundiq-poc.com) and
+// APP_BASE_URL for the link's host.
+
+const DEMO_ONBOARDING_CLINIC_ID = 'a1000000-0000-0000-0000-000000000010'
+
+async function seedDemoClinicInvite() {
+  console.log('\n── Demo clinic invite (onboarding) ──')
+  const email = (process.env['DEMO_INVITE_EMAIL'] ?? 'onboarding-demo@compoundiq-poc.com').trim().toLowerCase()
+
+  const { data: { users }, error: listError } = await supabase.auth.admin.listUsers({ perPage: 1000 })
+  if (listError) throw new Error(`Failed to list auth users: ${listError.message}`)
+  const ops = users.find(u => u.email === 'ops@compoundiq-poc.com')
+  if (!ops) throw new Error('The POC ops user must exist before the demo invite is seeded')
+  if (users.some(u => u.email === email)) {
+    console.log(`  ⏭   ${email} already has an account; no new demo invite`)
+    return
+  }
+
+  const { error: clinicError } = await supabase.from('clinics').upsert({
+    clinic_id:         DEMO_ONBOARDING_CLINIC_ID,
+    name:              'Demo Wellness Clinic',
+    is_active:         false,
+    onboarding_status: 'invited',
+  }, { onConflict: 'clinic_id', ignoreDuplicates: true })
+  if (clinicError) throw new Error(`Failed to seed the demo onboarding clinic: ${clinicError.message}`)
+
+  const now = new Date().toISOString()
+  const { error: revokeError } = await supabase
+    .from('onboarding_invites')
+    .update({ revoked_at: now, revoked_by: ops.id })
+    .eq('clinic_id', DEMO_ONBOARDING_CLINIC_ID)
+    .eq('kind', 'clinic_admin')
+    .is('accepted_at', null)
+    .is('revoked_at', null)
+  if (revokeError) throw new Error(`Failed to withdraw the previous demo invite: ${revokeError.message}`)
+
+  const token = newInviteToken()
+  const { data: invite, error: inviteError } = await supabase
+    .from('onboarding_invites')
+    .insert({
+      kind:       'clinic_admin',
+      clinic_id:  DEMO_ONBOARDING_CLINIC_ID,
+      email,
+      token_hash: hashInviteToken(token),
+      expires_at: inviteExpiresAt().toISOString(),
+      created_by: ops.id,
+    })
+    .select('invite_id')
+    .single()
+  if (inviteError || !invite) throw new Error(`Failed to seed the demo invite: ${inviteError?.message}`)
+
+  const { error: eventError } = await supabase.from('clinic_onboarding_events').insert({
+    clinic_id: DEMO_ONBOARDING_CLINIC_ID, event: 'invite_created', actor_user_id: ops.id, actor_role: 'ops_admin', invite_id: invite.invite_id,
+  })
+  if (eventError) throw new Error(`Failed to record the demo invite in the onboarding audit log: ${eventError.message}`)
+
+  const base = process.env['APP_BASE_URL'] ?? 'http://localhost:3000'
+  console.log(`  ✅  Demo clinic invite for ${email} (single use, expires in 7 days):`)
+  console.log(`      ${new URL(invitePath('clinic_admin', token), base).toString()}`)
+}
+
 async function main() {
   console.log('╔══════════════════════════════════════════╗')
   console.log('║    CompoundIQ POC Seed Script — WO-54    ║')
@@ -570,6 +641,7 @@ async function main() {
     await seedCatalog()
     await verifySmsTemplates()
     await seedDemoData()
+    await seedDemoClinicInvite()
 
     console.log('\n✅  Seed complete. Test credentials:')
     console.log('   ops@compoundiq-poc.com      / POCAdmin2026!')

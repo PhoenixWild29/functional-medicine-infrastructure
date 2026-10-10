@@ -102,6 +102,8 @@ export type BatchProblemCode =
   | 'rx_details' | 'reprice' | 'below_cost'
   // Compliance C8: an ingredient that may not be compounded, or is not verified
   | 'not_compoundable' | 'compounding_status_unknown'
+  // clinic onboarding: ops has not approved (activated) the clinic
+  | 'clinic_not_approved'
   // Compliance C4: the signing provider's own credentials
   | PrescriberProblemCode
   // a check that could not run
@@ -129,7 +131,7 @@ const PRESCRIBER: ReadonlySet<BatchProblemCode> = new Set(['prescriber_npi_unver
 /** One HTTP status for a set of problems: could-not-run beats everything. */
 export function problemsStatus(problems: ReadonlyArray<BatchProblem>): 503 | 403 | 404 | 409 | 422 {
   if (problems.some(p => UNAVAILABLE.has(p.code))) return 503
-  if (problems.some(p => p.code === 'not_signer' || p.code === 'provider_unlinked' || PRESCRIBER.has(p.code))) return 403
+  if (problems.some(p => p.code === 'not_signer' || p.code === 'provider_unlinked' || p.code === 'clinic_not_approved' || PRESCRIBER.has(p.code))) return 403
   if (problems.some(p => p.code === 'not_found')) return 404
   if (problems.some(p => p.code === 'not_draft')) return 409
   return 422
@@ -302,7 +304,7 @@ export async function checkBatch(
   const formIds     = [...new Set(ordered.map(r => r.formulation_id).filter((id): id is string => !!id))]
 
   const [clinicRes, pharmacyRes, licenseRes, catalogRes, rulesRes] = await Promise.all([
-    supabase.from('clinics').select('stripe_connect_status').eq('clinic_id', clinicId).maybeSingle(),
+    supabase.from('clinics').select('stripe_connect_status, is_active, onboarding_status').eq('clinic_id', clinicId).maybeSingle(),
     pharmacyIds.length
       ? supabase.from('pharmacies').select('pharmacy_id, name, integration_tier, is_active, pharmacy_status, deleted_at, facility_type').in('pharmacy_id', pharmacyIds)
       : Promise.resolve({ data: [], error: null }),
@@ -338,6 +340,12 @@ export async function checkBatch(
 
   if (signer && !/^\d{10}$/.test(signer.npi_number ?? '')) {
     add(null, 'npi', 'Your NPI on file is not valid, so nothing can be signed. Contact your administrator.')
+  }
+  // Clinic onboarding: a clinic signs and sends only once ops has approved
+  // it (onboarding_status 'approved') and it is active. Fails closed: a
+  // clinic row that says neither is refused.
+  if (clinicRes.data?.onboarding_status !== 'approved' || clinicRes.data?.is_active !== true) {
+    add(null, 'clinic_not_approved', 'Your clinic has not been approved by CompoundIQ yet, so nothing can be signed or sent. Finish onboarding, or contact CompoundIQ.')
   }
   if (clinicRes.data?.stripe_connect_status !== 'ACTIVE') {
     add(null, 'stripe', "The clinic's Stripe account is not active, so no payment link can be sent.")

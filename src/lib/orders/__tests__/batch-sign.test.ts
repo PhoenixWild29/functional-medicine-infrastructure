@@ -77,14 +77,14 @@ function ingredient(name: string, over: Record<string, unknown> = {}) {
   }
 }
 
-function world(orders: Array<Record<string, unknown>>) {
+function world(orders: Array<Record<string, unknown>>, clinicOver: Record<string, unknown> = {}) {
   return fakeDb({
     orders,
     providers: [
       { provider_id: CHEN, user_id: USER_CHEN, clinic_id: CLINIC, is_active: true, deleted_at: null, first_name: 'Sarah', last_name: 'Chen', npi_number: '1234567890' },
       { provider_id: PATEL, user_id: 'u-patel', clinic_id: CLINIC, is_active: true, deleted_at: null, first_name: 'Raj', last_name: 'Patel', npi_number: '1987654321' },
     ],
-    clinics: [{ clinic_id: CLINIC, stripe_connect_status: 'ACTIVE' }],
+    clinics: [{ clinic_id: CLINIC, stripe_connect_status: 'ACTIVE', is_active: true, onboarding_status: 'approved', ...clinicOver }],
     pharmacies: [
       { pharmacy_id: 'ph-strive', name: 'Strive', integration_tier: 'TIER_2_PORTAL', is_active: true, pharmacy_status: 'ACTIVE', deleted_at: null },
       { pharmacy_id: 'ph-fax', name: 'Fax Rx', integration_tier: 'TIER_4_FAX', is_active: true, pharmacy_status: 'ACTIVE', deleted_at: null },
@@ -753,6 +753,38 @@ describe('prescriber verification and controlled substances together', () => {
     const db = world([testo(2, { shipping_state_snapshot: 'FL' })])
     const check = await checkBatch(db.client, { clinicId: CLINIC, userId: USER_CHEN, orderIds: [id(2)], atSigning: false })
     expect(codes(check.problems)).toEqual(expect.arrayContaining(['prescriber_license_missing', 'controlled_substance']))
+  })
+})
+
+// ── Clinic onboarding ────────────────────────────────────────
+//
+// A clinic is set up through onboarding and approved by ops. Until then
+// it cannot sign or send anything, whatever else is in order: the check
+// runs on the server, in the same preflight and signing path.
+
+describe('a clinic that ops has not approved cannot sign or send', () => {
+  const codes = (problems: ReadonlyArray<{ code: string }> | undefined) => (problems ?? []).map(p => p.code)
+
+  it.each(['invited', 'in_progress', 'submitted', 'changes_requested'])('onboarding %s: refused with 403, nothing signed', async status => {
+    todayCents.set('f-plain|ph-strive', 10000)
+    const db = world([draft(1)], { onboarding_status: status, is_active: false })
+    const res = await sign(db, [id(1)])
+    if (res.ok) throw new Error('expected a refusal')
+    expect(res.status).toBe(403)
+    expect(codes(res.problems)).toContain('clinic_not_approved')
+    expect(db.writes).toHaveLength(0)
+  })
+
+  it('an inactive clinic is refused even if its status says approved', async () => {
+    todayCents.set('f-plain|ph-strive', 10000)
+    const db = world([draft(1)], { is_active: false })
+    const check = await checkBatch(db.client, { clinicId: CLINIC, userId: USER_CHEN, orderIds: [id(1)], atSigning: false })
+    expect(codes(check.problems)).toContain('clinic_not_approved')
+  })
+
+  it('an approved, active clinic signs as before', async () => {
+    todayCents.set('f-plain|ph-strive', 10000)
+    expect(await sign(world([draft(1)]), [id(1)])).toMatchObject({ ok: true })
   })
 })
 
