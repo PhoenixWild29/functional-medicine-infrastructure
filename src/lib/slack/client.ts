@@ -225,22 +225,40 @@ export function buildStatusHistoryWriteFailedAlert(params: {
   })
 }
 
+/** The only values the Slack "Code" field of an adapter-failure alert may carry. */
+export const ADAPTER_ERROR_CODES = [
+  'order_rejected',
+  'pharmacy_rejected',
+  'fax_send_failed',
+  'circuit_breaker_opened',
+  'fax_sent_status_not_updated',
+  'pharmacy_not_licensed',
+  'fax_permanently_failed',
+  'stripe_dispute',
+  'stripe_dispute_group',
+  'stripe_transfer_failed',
+] as const
+export type AdapterErrorCode = typeof ADAPTER_ERROR_CODES[number]
+const ADAPTER_ERROR_CODE_SET: ReadonlySet<string> = new Set(ADAPTER_ERROR_CODES)
+
 /**
- * A pharmacy submission problem. `errorCode` must be one of OUR codes
- * (e.g. fax_send_failed); a value that is not a single token is dropped.
- * Never pass pharmacy text (a rejection reason or a rejection code) here.
+ * A pharmacy submission problem. `errorCode` is one of OUR fixed codes
+ * (ADAPTER_ERROR_CODES); anything else, such as a pharmacy's rejection
+ * code, is sent as "unknown". Never pass pharmacy text here. The code is
+ * set last, so `details` cannot replace it.
  */
 export function buildAdapterFailureAlert(params: {
   orderId:         string
   pharmacySlug:    string
   integrationTier: string
-  errorCode:       string
+  errorCode:       AdapterErrorCode
   type?:           'adapter_failure' | 'pharmacy_rejected' | 'fax_failed' | 'stripe_dispute' | 'stripe_transfer_failed'
   status?:         string | null
-  details?:        Partial<Record<OpsAlertDetailKey, OpsAlertDetailValue>>
+  details?:        Partial<Record<Exclude<OpsAlertDetailKey, 'code'>, OpsAlertDetailValue>>
 }): SafeSlackPayload {
+  const code = ADAPTER_ERROR_CODE_SET.has(params.errorCode) ? params.errorCode : 'unknown'
   return buildOpsAlert({
     type: params.type ?? 'adapter_failure', orderId: params.orderId, pharmacy: params.pharmacySlug, status: params.status ?? null,
-    details: { code: params.errorCode, integration_tier: params.integrationTier, ...params.details },
+    details: { integration_tier: params.integrationTier, ...params.details, code },
   })
 }
