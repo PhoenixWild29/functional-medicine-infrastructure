@@ -17,6 +17,7 @@
     /* Brand Primary */
     --primary: 221 83% 53%;             /* #2563EB blue-600 */
     --primary-foreground: 0 0% 100%;
+    --primary-hover: 224 76% 48%;       /* #1D4ED8 blue-700: hover shade, 6.7:1 with white */
 
     /* Secondary */
     --secondary: 210 40% 96%;
@@ -71,6 +72,7 @@
     --muted-foreground: 220 20% 55%;    /* #6B7A99 */
     --primary: 217 91% 60%;             /* #3B82F6 blue-500 */
     --primary-foreground: 0 0% 100%;
+    --primary-hover: 221 83% 53%;       /* #2563EB blue-600: hover shade, 5.2:1 with white */
     --secondary: 222 35% 16%;
     --secondary-foreground: 213 27% 92%;
     --destructive: 0 72% 51%;           /* #DC2626 red-600 */

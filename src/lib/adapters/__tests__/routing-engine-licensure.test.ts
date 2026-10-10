@@ -67,7 +67,7 @@ jest.mock('@/lib/supabase/service', () => ({
             formulation_id: 'f-1', catalog_item_id: null, pharmacy_id: 'ph-1',
           }, error: null }))
         case 'formulations':
-          return chain(() => ({ data: { formulation_id: 'f-1', dosage_forms: { name: sterile ? 'Injectable Solution' : 'Capsule', is_sterile: sterile } }, error: null }))
+          return chain(() => ({ data: { formulation_id: 'f-1', dosage_forms: { name: sterile ? 'Injectable Solution' : 'Capsule', is_sterile: sterile }, salt_forms: { ingredients: { common_name: 'Fixture', dea_schedule: null, compounding_status: 'approved_drug_component' } } }, error: null }))
         case 'pharmacy_state_licenses':
           return chain(() => ({ data: licenseRow ? [licenseRow] : [], error: null }))
         case 'circuit_breaker_state':

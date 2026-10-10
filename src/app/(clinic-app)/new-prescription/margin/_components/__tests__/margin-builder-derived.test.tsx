@@ -119,10 +119,14 @@ describe('MarginBuilderForm — derived days supply + dispense', () => {
     const rx = lastSession!.prescriptions[0]!
     expect(rx.frequencyCode).toBe('QW')
     expect(rx.quantityLabel).toBe('5mL vial')
+    // CHANGED (C8): the rules carry the shortage permission and the
+    // compounding block, and offer the shortage reason only when allowed.
     expect(rx.rxRules).toEqual({
       isControlled: false,
       requiresClinicalDifference: true,
-      clinicalDifferenceOptions: [...STANDARD_CLINICAL_DIFFERENCE_OPTIONS],
+      clinicalDifferenceOptions: STANDARD_CLINICAL_DIFFERENCE_OPTIONS.filter(o => o !== 'Commercial product is unavailable or on national shortage'),
+      shortageReasonAllowed: false,
+      compoundingBlock: null,
     })
     expect(rx.rxDetails).toEqual({
       daysSupply: 350,
@@ -132,7 +136,8 @@ describe('MarginBuilderForm — derived days supply + dispense', () => {
       substitutionAllowed: true,
       syringeOption: 'sc_kit',
       shippingType: 'cold_chain',
-      clinicalDifference: STANDARD_CLINICAL_DIFFERENCE_OPTIONS[0],
+      // CHANGED (C8): never pre-selected; the provider chooses it on Review.
+      clinicalDifference: null,
       diagnosisCode: null,
       diagnosisText: null,
       specialInstructions: null,

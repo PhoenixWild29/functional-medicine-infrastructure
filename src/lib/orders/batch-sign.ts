@@ -32,6 +32,10 @@
 //   - provider NPI, clinic Stripe account
 //   - DEA schedule: 2+ or UNKNOWN must go to a Tier 4 fax pharmacy
 //   - rule-required Rx details (controlled → diagnosis; clinical difference)
+//   - C8: every ingredient may be compounded and is verified; an older
+//     catalog line is not recalled or discontinued; the clinical-difference
+//     reason (required for a commercial equivalent or an older catalog
+//     line) is one a signed prescription may carry
 //   - price: the pharmacy's price today. Moved since the draft was saved
 //     → reprice (WO-108); retail under it → below cost. Never signed at a
 //     stale or losing price without the provider editing the line.
@@ -44,14 +48,25 @@
 // information on screen and never blocks.
 
 import { checkLicensure, isSterileProduct, LICENSE_COLUMNS, normalizeFacilityType, todayIso, type LicenseRecord } from '@/lib/compliance/pharmacy-licensure'
-import { FORMULATION_SCHEDULE_SELECT, controlledRefusal, isControlledSchedule, scheduleFromFormulationRow } from './controlled-substance'
+import { controlledRefusal, isControlledSchedule, scheduleFromFormulationRow } from './controlled-substance'
+import {
+  INGREDIENT_COMPOUNDING_COLUMNS,
+  catalogStatusBlock,
+  compoundingBlock,
+  ingredientsFromFormulationRow,
+  requiresClinicalDifference as clinicalDifferenceRequired,
+  shortageReasonAllowed,
+  type IngredientCompounding,
+} from '@/lib/compliance/compounding'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/types/database.types'
 import {
+  clinicalDifferenceOptions,
   missingRxDetails,
   MISSING_RX_DETAIL_LABEL,
   rxDetailsFromRow,
   RX_DETAIL_COLUMN_LIST,
+  STANDARD_CLINICAL_DIFFERENCE_OPTIONS,
 } from './rx-details'
 import { resolveLine } from './resolve-line'
 import { applyBundleShipping } from './apply-bundle-shipping'
@@ -74,6 +89,10 @@ import type { NpiStatus } from '@/lib/providers/npi'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+/** C6 schedule, C5 sterile form, C8 compounding status and reason picklist: one formulations read. */
+const FORMULATION_RULES_SELECT =
+  `formulation_id, requires_clinical_difference, clinical_difference_options, dosage_forms(name, is_sterile), salt_forms(ingredients(dea_schedule, ${INGREDIENT_COMPOUNDING_COLUMNS})), formulation_ingredients(ingredients(dea_schedule, ${INGREDIENT_COMPOUNDING_COLUMNS}))` as const
+
 // ── Problems ─────────────────────────────────────────────────
 
 export type BatchProblemCode =
@@ -81,6 +100,8 @@ export type BatchProblemCode =
   | 'not_found' | 'not_draft' | 'not_signer'
   | 'license' | 'pharmacy' | 'npi' | 'stripe' | 'controlled_substance' | 'controlled_unknown'
   | 'rx_details' | 'reprice' | 'below_cost'
+  // Compliance C8: an ingredient that may not be compounded, or is not verified
+  | 'not_compoundable' | 'compounding_status_unknown'
   // Compliance C4: the signing provider's own credentials
   | PrescriberProblemCode
   // a check that could not run
@@ -128,6 +149,10 @@ export interface BatchLine {
   integrationTier: string | null
   /** The state the draft was written (and the pharmacy license-checked) for. */
   shippingState:  string | null
+  /** The medication snapshot as saved on the draft. */
+  medicationSnapshot: Json | null
+  /** C8: what the signed prescription records about compounding (medication_snapshot.compounding). */
+  compounding:    Record<string, Json>
 }
 
 export interface BatchCheck {
@@ -286,11 +311,12 @@ export async function checkBatch(
       ? supabase.from('pharmacy_state_licenses').select(LICENSE_COLUMNS).in('pharmacy_id', pharmacyIds).eq('is_active', true).is('deleted_at', null)
       : Promise.resolve({ data: [], error: null }),
     catalogIds.length
-      ? supabase.from('catalog').select('item_id, dea_schedule, form').in('item_id', catalogIds)
+      ? supabase.from('catalog').select('item_id, dea_schedule, form, regulatory_status').in('item_id', catalogIds)
       : Promise.resolve({ data: [], error: null }),
     formIds.length
-      // C6 schedule (controlled check) and C5 dosage form (sterile check), one read.
-      ? supabase.from('formulations').select(`formulation_id, requires_clinical_difference, dosage_forms(name, is_sterile), ${FORMULATION_SCHEDULE_SELECT}`).in('formulation_id', formIds)
+      // C6 schedule (controlled check), C5 dosage form (sterile check) and
+      // C8 compounding status and reason picklist, one read.
+      ? supabase.from('formulations').select(FORMULATION_RULES_SELECT).in('formulation_id', formIds)
       : Promise.resolve({ data: [], error: null }),
   ])
 
@@ -370,6 +396,18 @@ export async function checkBatch(
     scheduleFromFormulationRow(f as unknown as Parameters<typeof scheduleFromFormulationRow>[0]),
   ]))
 
+  // Compliance C8: each formulation's ingredients (compounding status) and
+  // reason picklist; each older catalog item's regulatory status.
+  const formulationIngredients = new Map((rulesRes.data ?? []).map(f => [
+    f.formulation_id,
+    ingredientsFromFormulationRow(f as unknown as Parameters<typeof ingredientsFromFormulationRow>[0]),
+  ]))
+  const formulationOptions = new Map((rulesRes.data ?? []).map(f => [
+    f.formulation_id,
+    ((f as { clinical_difference_options?: string[] | null }).clinical_difference_options ?? []),
+  ]))
+  const catalogStatus = new Map((catalogRes.data ?? []).map(c => [c.item_id, (c as { regulatory_status?: string | null }).regulatory_status ?? null]))
+
   const lines: BatchLine[] = []
   const priceable: OrderRow[] = []
   for (const r of ordered) {
@@ -434,19 +472,38 @@ export async function checkBatch(
       add(r, 'controlled_unknown', `${name}: whether this is a controlled substance could not be checked, so nothing was signed. Try again.`)
     }
 
-    // WO-96 rule-required details.
-    let requiresClinicalDifference = false
+    // Compliance C8: every ingredient may be compounded and is verified
+    // (a formulation that could not be read is rules_unavailable below);
+    // an older catalog item is not recalled or discontinued.
+    let ingredients: IngredientCompounding[] = []
+    const legacyLine = !r.formulation_id && !!r.catalog_item_id
+    if (r.formulation_id && !rulesRes.error && formulationIngredients.has(r.formulation_id)) {
+      ingredients = formulationIngredients.get(r.formulation_id) ?? []
+      const block = compoundingBlock(name, ingredients)
+      if (block) add(r, block.code, block.message)
+    } else if (legacyLine) {
+      const block = catalogStatusBlock(name, catalogStatus.get(r.catalog_item_id as string))
+      if (block) add(r, block.code, block.message)
+    }
+
+    // WO-96 rule-required details. C8: the reason is also required for an
+    // ingredient with a commercial equivalent and for every older catalog
+    // line, and must be one a signed prescription may carry.
+    let requiresClinicalDifference = legacyLine
     if (r.formulation_id) {
       if (rulesRes.error || !rules.has(r.formulation_id)) {
         add(r, 'rules_unavailable', `${name}: the clinical-difference requirement could not be checked. Nothing was signed — try again.`)
       } else {
-        requiresClinicalDifference = rules.get(r.formulation_id) === true
+        requiresClinicalDifference = clinicalDifferenceRequired({ flag: rules.get(r.formulation_id) === true, ingredients })
       }
     }
+    const shortageAllowed = shortageReasonAllowed(ingredients)
+    const columnOptions = r.formulation_id ? formulationOptions.get(r.formulation_id) ?? [] : []
     const missing = missingRxDetails(rxDetailsFromRow(r as unknown as Parameters<typeof rxDetailsFromRow>[0]), {
       isControlled: controlled,
       requiresClinicalDifference,
-      clinicalDifferenceOptions: [],
+      clinicalDifferenceOptions: clinicalDifferenceOptions(columnOptions.length > 0 ? columnOptions : STANDARD_CLINICAL_DIFFERENCE_OPTIONS, shortageAllowed),
+      shortageReasonAllowed: shortageAllowed,
     })
     if (missing.length > 0) {
       add(r, 'rx_details', `${name} needs ${missing.map(m => MISSING_RX_DETAIL_LABEL[m]).join(' and ')}. Edit this line to add it.`)
@@ -456,6 +513,16 @@ export async function checkBatch(
       orderId: r.order_id, patientId: r.patient_id, providerId: r.provider_id, pharmacyId: r.pharmacy_id,
       medicationName: name, deaSchedule: deaSchedule >= 0 ? deaSchedule : null, controlled: controlled || deaUnknown, integrationTier: pharmacy?.integration_tier ?? null,
       shippingState: r.shipping_state_snapshot ?? null,
+      medicationSnapshot: r.medication_snapshot,
+      compounding: {
+        ingredients: ingredients.map(i => ({
+          name: i.name, status: i.status, commercial_equivalent: i.commercialEquivalent, on_fda_shortage: i.onFdaShortage,
+          source: i.source, reviewed_at: i.reviewedAt,
+        })),
+        ...(legacyLine ? { catalog_regulatory_status: catalogStatus.get(r.catalog_item_id as string) ?? null } : {}),
+        clinical_difference_required: requiresClinicalDifference,
+        clinical_difference: ((r as { clinical_difference?: string | null }).clinical_difference ?? '').trim() || null,
+      },
     })
     if (problems.length === before && r.status === 'DRAFT') priceable.push(r)
   }
@@ -710,6 +777,27 @@ export async function signBatch(
   // refill_of_order_id.
   const signedAt = new Date().toISOString()
   const signatureHash = await sha256Hex(`${signature.dataUrl}:${signedAt}`)
+
+  // Compliance C8: what was known about compounding when it was signed:
+  // each ingredient's status and its source, and the reason given. Onto
+  // the medication snapshot while still DRAFT (the trigger then freezes
+  // it, and clinical_difference with it). If it cannot be written,
+  // nothing is signed.
+  for (const l of lines) {
+    const base = l.medicationSnapshot && typeof l.medicationSnapshot === 'object' && !Array.isArray(l.medicationSnapshot)
+      ? l.medicationSnapshot as Record<string, Json>
+      : {}
+    const { error: compoundingError } = await supabase
+      .from('orders')
+      .update({ medication_snapshot: { ...base, compounding: { ...l.compounding, checked_at: signedAt } } })
+      .eq('order_id', l.orderId)
+      .eq('status', 'DRAFT')
+    if (compoundingError) {
+      console.error(`[batch-sign] compounding record could not be written | order=${l.orderId}: ${compoundingError.message}`)
+      await unwindGroups()
+      return { ok: false, status: 503, error: 'The compounding record could not be written on the prescriptions. Nothing was signed; try again.' }
+    }
+  }
 
   // The shipping address, onto each patient's drafts (still DRAFT, so the
   // snapshot trigger allows it), stamped with the signing time. The

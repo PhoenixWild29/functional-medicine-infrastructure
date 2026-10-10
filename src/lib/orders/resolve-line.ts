@@ -23,6 +23,13 @@
 import { checkLicensure, isSterileProduct, LICENSE_COLUMNS, normalizeFacilityType, todayIso, type LicenseRecord } from '@/lib/compliance/pharmacy-licensure'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { controlledRefusal, isControlledSchedule } from './controlled-substance'
+import {
+  INGREDIENT_COMPOUNDING_COLUMNS,
+  catalogStatusBlock,
+  compoundingBlock,
+  ingredientsFromFormulationRow,
+  type IngredientCompoundingRow,
+} from '@/lib/compliance/compounding'
 import type { Database, Json } from '@/types/database.types'
 import {
   MAX_PACKAGE_COUNT,
@@ -141,7 +148,7 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
     // Legacy flat catalog — scoped to the pharmacy to prevent spoofing
     const { data, error } = await supabase
       .from('catalog')
-      .select('item_id, medication_name, form, dose, wholesale_price, dea_schedule')
+      .select('item_id, medication_name, form, dose, wholesale_price, dea_schedule, regulatory_status')
       .eq('item_id', input.catalogItemId as string)
       .eq('pharmacy_id', pharmacyId)
       .eq('is_active', true)
@@ -156,6 +163,9 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
     if (isControlledSchedule(data.dea_schedule)) {
       return { ok: false, status: 422, code: 'CONTROLLED_SUBSTANCE', error: controlledRefusal(data.medication_name) }
     }
+    // Compliance C8: a recalled or discontinued catalog item cannot be ordered.
+    const catalogBlock = catalogStatusBlock(data.medication_name, data.regulatory_status)
+    if (catalogBlock) return { ok: false, status: 422, code: 'NOT_COMPOUNDABLE', error: catalogBlock.message }
     medicationItem = data
   } else {
     // V3.0 hierarchical catalog — formulations + pharmacy_formulations
@@ -164,7 +174,8 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
       supabase
         .from('formulations')
         // C5 sterile flag and C6 salt-form schedule, one read.
-        .select('formulation_id, name, concentration, concentration_value, concentration_unit, dosage_forms(name, is_sterile), salt_forms(ingredients(dea_schedule))')
+        // C5 sterile flag, C6 salt-form schedule and C8 compounding status, one read.
+        .select(`formulation_id, name, concentration, concentration_value, concentration_unit, dosage_forms(name, is_sterile), salt_forms(ingredients(dea_schedule, ${INGREDIENT_COMPOUNDING_COLUMNS}))`)
         .eq('formulation_id', formulationId)
         .eq('is_active', true)
         .is('deleted_at', null)
@@ -198,7 +209,7 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
     // no answer, so the line is refused rather than guessed.
     const { data: ingredientRows, error: ingredientError } = await supabase
       .from('formulation_ingredients')
-      .select('ingredients(dea_schedule)')
+      .select(`ingredients(dea_schedule, ${INGREDIENT_COMPOUNDING_COLUMNS})`)
       .eq('formulation_id', formulationId)
 
     if (ingredientError) {
@@ -224,6 +235,17 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
     // A controlled substance cannot be put on a CompoundIQ order.
     if (isControlledSchedule(deaSchedule)) {
       return { ok: false, status: 422, code: 'CONTROLLED_SUBSTANCE', error: controlledRefusal(formResult.data.name) }
+    }
+
+    // Compliance C8: every ingredient must be one a 503A pharmacy may
+    // compound, and verified as such. Not compoundable, or not verified,
+    // cannot be put on an order.
+    const block = compoundingBlock(formResult.data.name, ingredientsFromFormulationRow({
+      salt_forms:              (formResult.data as { salt_forms?: { ingredients?: IngredientCompoundingRow | null } | null }).salt_forms ?? null,
+      formulation_ingredients: (ingredientRows ?? []) as Array<{ ingredients?: IngredientCompoundingRow | null }>,
+    }))
+    if (block) {
+      return { ok: false, status: 422, code: block.code === 'not_compoundable' ? 'NOT_COMPOUNDABLE' : 'COMPOUNDING_STATUS_UNKNOWN', error: block.message }
     }
 
     // WO-101: price from the chosen package when one is named.

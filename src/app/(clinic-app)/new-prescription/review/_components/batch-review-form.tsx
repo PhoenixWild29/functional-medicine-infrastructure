@@ -54,6 +54,7 @@ function logSignatureEvent(component: 'draft-sign-form' | 'batch-review-form', e
 }
 import { usePrescriptionSession, type SessionPrescription } from '../../_context/prescription-session'
 import { CONTROLLED_LABEL, isControlledSchedule } from '@/lib/orders/controlled-substance'
+import { NOT_COMPOUNDABLE_LABEL } from '@/lib/compliance/compounding'
 import { DrugInteractionAlerts } from '../../_components/drug-interaction-alerts'
 import { RxDetailsRow } from './rx-details-row'
 import { AllergyNotice } from './allergy-notice'
@@ -67,6 +68,7 @@ import {
   missingRxDetails,
   MISSING_RX_DETAIL_LABEL,
   rulesFromFormulation,
+  legacyCatalogRules,
   suggestPackageForDispense,
   dispenseInPackageUnit,
   packageUnitMismatchMessage,
@@ -119,7 +121,7 @@ function calcPlatformFeeCents(marginCents: number): number {
  * not to remove the line. (What a refill should do about a moved price
  * is WO-107; this only stops it being sent below cost.)
  */
-type SendBlock = 'controlled' | 'licensure' | 'price' | 'directions' | 'below_cost' | 'reprice' | 'cycle_pattern' | 'package_unit'
+type SendBlock = 'controlled' | 'compounding' | 'licensure' | 'price' | 'directions' | 'below_cost' | 'reprice' | 'cycle_pattern' | 'package_unit'
 
 type SendBlockLine = {
   retailCents: number; wholesaleCents: number; sigText: string; repriceRequired?: boolean | null
@@ -127,6 +129,7 @@ type SendBlockLine = {
   packageUnitMismatch?: string | null
   deaSchedule?: number | null
   licensureProblem?: string | null
+  rxRules?: { compoundingBlock?: { message: string } | null } | null
 }
 
 export function sendBlock(rx: SendBlockLine): SendBlock | null {
@@ -134,6 +137,9 @@ export function sendBlock(rx: SendBlockLine): SendBlock | null {
   // old draft) is never signed or sent through CompoundIQ. Nothing on the
   // line fixes it, so it outranks every other reason.
   if (isControlledSchedule(rx.deaSchedule)) return 'controlled'
+  // Compliance C8: an ingredient that may not be compounded, or is not
+  // verified. Nothing on the line fixes it either.
+  if (rx.rxRules?.compoundingBlock) return 'compounding'
   // Compliance C5: the pharmacy cannot fill it for the patient's shipping
   // state. The fix is another pharmacy, not an edit of this line's price.
   if (rx.licensureProblem) return 'licensure'
@@ -167,6 +173,8 @@ function isUnsendable(rx: SendBlockLine): boolean {
 
 function effectiveRules(rx: SessionPrescription): RxRules {
   if (rx.rxRules) return rx.rxRules
+  // C8: a line from the older flat catalog always needs a reason.
+  if (!rx.formulationId && rx.itemId) return legacyCatalogRules(rx.deaSchedule)
   return rulesFromFormulation(null, rx.deaSchedule)
 }
 
@@ -660,6 +668,7 @@ export function BatchReviewForm({ isProvider }: Props) {
   const belowCostItems = invalidItems.filter(rx => sendBlock(rx) === 'below_cost')
   const repriceItems   = invalidItems.filter(rx => sendBlock(rx) === 'reprice')
   const controlledItems = invalidItems.filter(rx => sendBlock(rx) === 'controlled')
+  const notCompoundableItems = invalidItems.filter(rx => sendBlock(rx) === 'compounding')
   const licensureItems  = invalidItems.filter(rx => sendBlock(rx) === 'licensure')
   const cycleItems     = invalidItems.filter(rx => sendBlock(rx) === 'cycle_pattern' || sendBlock(rx) === 'package_unit')
   const malformedItems = invalidItems.filter(rx => sendBlock(rx) === 'price' || sendBlock(rx) === 'directions')
@@ -943,6 +952,10 @@ export function BatchReviewForm({ isProvider }: Props) {
                     <p className="mt-1 text-xs font-medium text-red-700" data-testid={`controlled-${rx.id}`}>
                       {CONTROLLED_LABEL}. CompoundIQ cannot sign or send it; remove this line.
                     </p>
+                  ) : block === 'compounding' ? (
+                    <p className="mt-1 text-xs font-medium text-red-700" data-testid={`not-compoundable-${rx.id}`}>
+                      {rx.rxRules?.compoundingBlock?.message} Remove this line.
+                    </p>
                   ) : block === 'licensure' ? (
                     <p className="mt-1 text-xs font-medium text-red-700" data-testid={`pharmacy-licensure-${rx.id}`}>
                       {rx.licensureProblem} Choose another pharmacy for this prescription, or remove it.
@@ -1123,6 +1136,12 @@ export function BatchReviewForm({ isProvider }: Props) {
           <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
             {invalidItems.length} prescription{invalidItems.length !== 1 ? 's' : ''} can&apos;t be sent yet
           </p>
+          {notCompoundableItems.length > 0 && (
+            <p className="mt-1 text-xs text-amber-800 dark:text-amber-300" data-testid="review-not-compoundable-banner">
+              {notCompoundableItems.map(rx => rx.medicationName).join(', ')}: {NOT_COMPOUNDABLE_LABEL}. Remove the flagged
+              line{notCompoundableItems.length !== 1 ? 's' : ''} above.
+            </p>
+          )}
           {controlledItems.length > 0 && (
             <p className="mt-1 text-xs text-amber-800 dark:text-amber-300" data-testid="review-controlled-banner">
               {controlledItems.map(rx => rx.medicationName).join(', ')}: {CONTROLLED_LABEL}. Remove the flagged

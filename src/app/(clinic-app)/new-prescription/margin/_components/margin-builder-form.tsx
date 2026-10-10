@@ -509,7 +509,12 @@ function MarginBuilderFormForLine({
   }, [rxDefaults, presetRefills, derived, dispenseOverride, existingDetails])
   // Rule-required fields the Review card will ask the provider to confirm.
   // The draft path below can't collect them here, so it points at Review.
-  const missingForDraft = missingRxDetails(rxDetails, rxRules)
+  // C8: the clinical-difference reason is not one of them. It is never
+  // pre-selected and this step has no field for it, so requiring it here
+  // would make a draft of any product with a commercial equivalent
+  // impossible; the provider chooses it before signing (Review, or the
+  // draft's edit), and signing refuses a line without it.
+  const missingForDraft = missingRxDetails(rxDetails, rxRules).filter(m => m !== 'clinical_difference')
 
   // WO-101: the selected package's price, else the pharmacy formulation's
   // (= its default package's). WO-101a: × the package count.

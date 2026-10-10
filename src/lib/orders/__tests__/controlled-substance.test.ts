@@ -60,7 +60,7 @@ function supabaseWith(opts: { saltSchedule?: number | null; comboSchedules?: Arr
           data: {
             formulation_id: FORM, name: 'Testosterone Cypionate 200mg/mL', concentration: '200 mg/mL',
             dosage_forms: { name: 'Injectable Solution' },
-            salt_forms: { ingredients: { dea_schedule: opts.saltSchedule ?? null } },
+            salt_forms: { ingredients: { common_name: 'Fixture', dea_schedule: opts.saltSchedule ?? null, compounding_status: 'approved_drug_component' } },
           },
           error: null,
         }))
