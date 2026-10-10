@@ -35,7 +35,7 @@ let cached: string | null = null
 /** The agreement text, exactly as committed. */
 export function agreementText(): string {
   if (cached === null) {
-    cached = readFileSync(join(process.cwd(), AGREEMENT.path), 'utf8').replace(/\r\n/g, '\n')
+    cached = readFileSync(join(/*turbopackIgnore: true*/ process.cwd(), AGREEMENT.path), 'utf8').replace(/\r\n/g, '\n')
   }
   return cached
 }
