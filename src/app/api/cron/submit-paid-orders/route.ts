@@ -19,6 +19,9 @@
 // (so the webhook's own after() goes first) and for less than
 // MAX_AGE_HOURS. An older one is left for ops, who see it in the pipeline
 // as PAID_PROCESSING: a prescription should not go out days late unseen.
+// Each run also alerts ops (once per order) about orders past that window
+// and about REROUTE_PENDING orders past their timeout (lib/orders/
+// stuck-orders.ts). No action is taken on them.
 //
 // Kill switch: while PHARMACY_SUBMISSIONS_ENABLED is off this cron routes
 // nothing. It logs each paid order waiting (by id, once per run) and sends
@@ -37,6 +40,7 @@ import { routeOrder } from '@/lib/adapters/routing-engine'
 import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { sendSlackAlert } from '@/lib/slack/client'
 import { buildOpsAlert } from '@/lib/slack/ops-alert'
+import { alertStuckOrders } from '@/lib/orders/stuck-orders'
 
 const STALE_AFTER_MIN = 5
 const MAX_AGE_HOURS   = 24
@@ -102,8 +106,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  console.info(`[submit-paid-orders] checked=${results.length}`, results)
-  return NextResponse.json({ checked: results.length, results })
+  let stuckAlerted = 0
+  try {
+    const stuck = await alertStuckOrders(supabase, Date.now())
+    stuckAlerted = stuck.alerted.length
+  } catch (err) {
+    console.error('[submit-paid-orders] stuck-order sweep failed:', err instanceof Error ? err.message : err)
+  }
+
+  console.info(`[submit-paid-orders] checked=${results.length} stuck_alerted=${stuckAlerted}`, results)
+  return NextResponse.json({ checked: results.length, results, stuck_alerted: stuckAlerted })
 }
 
 async function reportWaitingWhileOff(
