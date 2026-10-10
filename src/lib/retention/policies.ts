@@ -48,6 +48,8 @@ export const NEVER_RETENTION_TARGETS = [
   'legal_holds',           // what retention must not touch
   'order_status_history',  // part of the order record
   'patients',              // the clinic's record, kept per the BAA
+  'agreement_acceptances',    // signed BAA / terms records, append-only by trigger
+  'clinic_onboarding_events', // onboarding audit log (ops approvals), append-only by trigger
 ] as const
 
 export type RetentionAction = 'delete' | 'null_columns' | 'storage_remove'
