@@ -8,11 +8,16 @@
 // revoke or resend invites; review clinics in onboarding (step status)
 // and approve or send back with a note. Every action goes to an
 // ops_admin-only API that audit-logs it.
+//
+// After each action the lists are re-read from GET /api/ops/onboarding
+// (no-store) and shown at once; the router is refreshed too. Relying on
+// router.refresh() alone left the lists stale until a reload. The
+// one-time invite link is separate state, so it stays on screen.
 
 import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { ONBOARDING_STEPS, STEP_LABELS, NOT_LIVE_STEPS, NOT_LIVE_LABEL } from '@/lib/onboarding/steps'
-import type { OpsClinicOnboarding, OpsInvite } from '@/lib/onboarding/ops'
+import type { OpsClinicOnboarding, OpsInvite, OpsOnboarding } from '@/lib/onboarding/ops'
 import { TextField, FormAlert, InviteLink, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_DANGER } from '@/components/onboarding/fields'
 
 type Errors = Record<string, string>
@@ -38,8 +43,25 @@ async function send(url: string, body: unknown): Promise<{ ok: boolean; data: Re
   }
 }
 
-export function OnboardingAdmin({ invites, clinics }: { invites: OpsInvite[]; clinics: OpsClinicOnboarding[] }) {
+export function OnboardingAdmin(props: { invites: OpsInvite[]; clinics: OpsClinicOnboarding[] }) {
   const router = useRouter()
+  // The lists as last re-read after an action; the server's until then.
+  const [fresh, setFresh] = useState<OpsOnboarding | null>(null)
+  const invites = fresh?.invites ?? props.invites
+  const clinics = fresh?.clinics ?? props.clinics
+
+  /** Re-read the lists and show them now; also refresh the server render. */
+  async function reload() {
+    router.refresh()
+    try {
+      const res = await fetch('/api/ops/onboarding', { cache: 'no-store' })
+      if (!res.ok) return
+      const data = await res.json() as Partial<OpsOnboarding>
+      if (Array.isArray(data.invites) && Array.isArray(data.clinics)) setFresh({ invites: data.invites, clinics: data.clinics })
+    } catch {
+      // Keep what is shown; a reload still shows the latest.
+    }
+  }
   const [clinicName, setClinicName] = useState('')
   const [adminEmail, setAdminEmail] = useState('')
   const [errors, setErrors] = useState<Errors>({})
@@ -60,7 +82,7 @@ export function OnboardingAdmin({ invites, clinics }: { invites: OpsInvite[]; cl
     setErrors({})
     setLink({ link: r.data['link'] as string, email: adminEmail.trim().toLowerCase() })
     setClinicName(''); setAdminEmail('')
-    router.refresh()
+    await reload()
   }
 
   async function inviteAction(i: OpsInvite, action: 'revoke' | 'resend') {
@@ -70,7 +92,7 @@ export function OnboardingAdmin({ invites, clinics }: { invites: OpsInvite[]; cl
     if (!r.ok) { setMsg({ tone: 'error', text: (r.data['error'] as string | undefined) ?? 'The invite could not be updated.' }); return }
     if (typeof r.data['link'] === 'string') setLink({ link: r.data['link'], email: i.email })
     else setMsg({ tone: 'success', text: `Invite for ${i.clinicName} revoked.` })
-    router.refresh()
+    await reload()
   }
 
   return (
@@ -95,7 +117,7 @@ export function OnboardingAdmin({ invites, clinics }: { invites: OpsInvite[]; cl
           <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">No clinics are onboarding.</p>
         ) : (
           <ul className="mt-3 space-y-4">
-            {clinics.map(c => <ClinicReview key={c.clinicId} clinic={c} onChanged={() => router.refresh()} />)}
+            {clinics.map(c => <ClinicReview key={c.clinicId} clinic={c} onChanged={() => { void reload() }} />)}
           </ul>
         )}
       </section>
