@@ -69,6 +69,8 @@ interface OrderDetail {
     lockedAt:              string | null
     medicationName:        string | null
     opsAssignee:           string | null
+    /** Payment Flow v1.1: "Payment failed, awaiting retry", or absent/null. */
+    paymentFailedLabel?:   string | null
   }
   history:     StatusHistoryRow[]
   submissions: SubmissionRow[]
@@ -279,6 +281,12 @@ function DetailTab({
             <Field label="Tracking #">{o.trackingNumber}</Field>
             <Field label="Carrier">{o.carrier ?? '—'}</Field>
           </>
+        )}
+        {/* Payment Flow v1.1: a failed payment attempt; the link still works. */}
+        {o.paymentFailedLabel && (
+          <Field label="Payment" className="col-span-2">
+            <span role="status" data-testid="payment-failed-label" className="font-medium text-amber-800">{o.paymentFailedLabel}</span>
+          </Field>
         )}
         {/* AC-OPV-003.5: Payment info */}
         {o.stripePaymentIntentId && (

@@ -26,13 +26,17 @@ import { createStripeClient } from '@/lib/stripe/client'
 import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition } from '@/lib/orders/cas-transition'
 import { serverEnv } from '@/lib/env'
-import { sendSlackAlert, buildAdapterFailureAlert } from '@/lib/slack/client'
+import { sendSlackAlert, buildAdapterFailureAlert, buildStripePaymentAlert } from '@/lib/slack/client'
 import { routeOrder } from '@/lib/adapters/routing-engine'
 import { sendPaymentConfirmationSms } from '@/lib/sms/triggers'
 import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { handleGroupPaymentSucceeded as handleGroupPaymentSucceededImpl } from './handle-group'
 import { handleGroupChargeDisputeCreated as handleGroupChargeDisputeCreatedImpl } from './handle-group-dispute'
+import { handlePaymentFailed } from './handle-payment-failed'
+import { handleChargeRefunded } from './handle-charge-refunded'
+import { handleDisputeStatusChanged } from './handle-dispute-status'
 import { resolvePaymentTarget } from './resolve-payment'
+import { recordRefundInLedger } from '@/lib/payments/ledger-hook'
 
 // ============================================================
 // ROUTE HANDLER
@@ -127,6 +131,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         break
       case 'charge.dispute.created':
         await handleDisputeCreated(event.data.object as Stripe.Dispute)
+        break
+      // Payment Flow v1.1 (each idempotent on the Stripe event / object id).
+      case 'payment_intent.payment_failed':
+        await handlePaymentFailed(event.data.object as Stripe.PaymentIntent, event.id, {
+          supabase: createServiceClient(), sendSlackAlert, buildStripePaymentAlert,
+        })
+        break
+      case 'charge.refunded':
+        await handleChargeRefunded(event.data.object as Stripe.Charge, event.id, {
+          supabase:             createServiceClient(),
+          stripe:               createStripeClient(),
+          casTransition,
+          sendSlackAlert,
+          buildStripePaymentAlert,
+          recordRefundInLedger,
+        })
+        break
+      case 'charge.dispute.updated':
+      case 'charge.dispute.closed':
+        await handleDisputeStatusChanged(event.data.object as Stripe.Dispute, event.type, event.id, {
+          supabase: createServiceClient(), sendSlackAlert, buildStripePaymentAlert,
+          recordDisputeCreated: handleDisputeCreated,
+        })
         break
       // WO-88 grandfather: `transfer.failed` IS a real Stripe webhook event per
       // https://docs.stripe.com/api/events/types#event_types-transfer.failed
