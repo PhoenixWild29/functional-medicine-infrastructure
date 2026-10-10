@@ -24,7 +24,7 @@ it('a pharmacy-supplied code never reaches Slack', () => {
 })
 
 it('details cannot smuggle a code past the list', () => {
-  const details = { code: 'PATIENT_DOB_19800101' } as unknown as Parameters<typeof buildAdapterFailureAlert>[0]['details']
+  const details = { code: 'PATIENT_DOB_19800101' } as unknown as NonNullable<Parameters<typeof buildAdapterFailureAlert>[0]['details']>
   const p = buildAdapterFailureAlert({ ...base, errorCode: 'order_rejected', details })
   expect(JSON.stringify(p)).not.toContain('PATIENT_DOB_19800101')
   expect(codeField(p)).toBe('order_rejected')
