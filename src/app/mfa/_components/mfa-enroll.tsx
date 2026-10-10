@@ -16,7 +16,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
-import { CodeForm, MfaCard, SignOutLink } from './mfa-shared'
+import { CodeForm, MFA_ERROR_ID, MfaCard, SignOutLink } from './mfa-shared'
 
 interface Props {
   /** Where to continue once verified (already made safe by the page). */
@@ -31,6 +31,7 @@ export function MfaEnroll({ destination }: Props) {
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [verifying, setVerifying] = useState(false)
+  const [codeRefused, setCodeRefused] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -60,10 +61,12 @@ export function MfaEnroll({ destination }: Props) {
     if (!enrollment) return
     setVerifying(true)
     setError(null)
+    setCodeRefused(false)
     const { error: verifyError } = await supabase.auth.mfa.challengeAndVerify({ factorId: enrollment.factorId, code })
     setVerifying(false)
     if (verifyError) {
       setError('That code did not match. Check the time on your device and try the newest code.')
+      setCodeRefused(true)
       return
     }
     router.refresh()
@@ -87,10 +90,10 @@ export function MfaEnroll({ destination }: Props) {
               {enrollment.secret}
             </code>
           </div>
-          <CodeForm onSubmit={verify} busy={verifying} submitLabel="Verify and continue" />
+          <CodeForm onSubmit={verify} busy={verifying} codeRefused={codeRefused} onCodeChange={() => setCodeRefused(false)} submitLabel="Verify and continue" />
         </div>
       )}
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {error && <p id={MFA_ERROR_ID} role="alert" className="text-sm text-red-700">{error}</p>}
       <SignOutLink />
     </MfaCard>
   )
