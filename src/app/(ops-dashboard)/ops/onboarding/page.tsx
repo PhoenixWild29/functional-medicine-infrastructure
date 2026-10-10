@@ -30,7 +30,7 @@ export default async function OpsOnboardingPage() {
     <main className="mx-auto max-w-7xl px-4 py-8 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Clinic onboarding</h1>
-        <p className="mt-1 text-sm text-slate-700">
+        <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
           Invite a clinic, follow its setup, and approve it. A clinic cannot sign or send orders until it is approved.
         </p>
       </div>

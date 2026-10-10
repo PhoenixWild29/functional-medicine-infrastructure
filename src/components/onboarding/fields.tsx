@@ -15,9 +15,9 @@ import type { ReactNode, InputHTMLAttributes, SelectHTMLAttributes } from 'react
 
 const INPUT = 'w-full rounded-lg border border-slate-500 bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-50 aria-[invalid=true]:border-red-700'
 
-export const BUTTON_PRIMARY = 'inline-flex min-h-[44px] items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
+export const BUTTON_PRIMARY = 'inline-flex min-h-[44px] items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary-hover dark:bg-primary-hover dark:hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
 export const BUTTON_SECONDARY = 'inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-500 bg-background px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
-export const BUTTON_DANGER = 'inline-flex min-h-[44px] items-center justify-center rounded-lg border border-red-700 bg-background px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
+export const BUTTON_DANGER = 'inline-flex min-h-[44px] items-center justify-center rounded-lg border border-red-700 bg-background px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-400 dark:text-red-300 dark:hover:bg-red-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
 
 function describedBy(...ids: Array<string | null | undefined | false>): string | undefined {
   const s = ids.filter(Boolean).join(' ')
@@ -44,8 +44,8 @@ export function TextField({ id, label, error, hint, ...input }: FieldBase & Omit
         aria-describedby={describedBy(errorId, hintId)}
         {...input}
       />
-      {hint && <p id={hintId!} className="text-xs text-slate-600">{hint}</p>}
-      {error && <p id={errorId!} role="alert" className="text-sm text-red-700">{error}</p>}
+      {hint && <p id={hintId!} className="text-xs text-slate-600 dark:text-slate-300">{hint}</p>}
+      {error && <p id={errorId!} role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
     </div>
   )
 }
@@ -65,8 +65,8 @@ export function SelectField({ id, label, error, hint, children, ...select }: Fie
       >
         {children}
       </select>
-      {hint && <p id={hintId!} className="text-xs text-slate-600">{hint}</p>}
-      {error && <p id={errorId!} role="alert" className="text-sm text-red-700">{error}</p>}
+      {hint && <p id={hintId!} className="text-xs text-slate-600 dark:text-slate-300">{hint}</p>}
+      {error && <p id={errorId!} role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
     </div>
   )
 }
@@ -84,7 +84,7 @@ export function CheckboxField({ id, label, hint, ...input }: Omit<FieldBase, 'er
       />
       <div>
         <label htmlFor={id} className="text-sm font-medium text-foreground">{label}</label>
-        {hint && <p id={hintId} className="text-xs text-slate-600">{hint}</p>}
+        {hint && <p id={hintId} className="text-xs text-slate-600 dark:text-slate-300">{hint}</p>}
       </div>
     </div>
   )

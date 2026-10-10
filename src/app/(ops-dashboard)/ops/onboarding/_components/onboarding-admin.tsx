@@ -77,7 +77,7 @@ export function OnboardingAdmin({ invites, clinics }: { invites: OpsInvite[]; cl
     <div className="space-y-10">
       <section aria-labelledby="new-invite" className="rounded-lg border border-border bg-card p-4 sm:p-6">
         <h2 id="new-invite" className="text-lg font-semibold text-foreground">Invite a clinic</h2>
-        <p className="mt-1 text-sm text-slate-700">Creates the clinic (inactive until you approve it) and a single-use invite for its admin that expires in 7 days.</p>
+        <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">Creates the clinic (inactive until you approve it) and a single-use invite for its admin that expires in 7 days.</p>
         <form onSubmit={create} noValidate className="mt-4 grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
           <TextField id="ops-clinic-name" label="Clinic name" autoComplete="off" value={clinicName} onChange={e => setClinicName(e.target.value)} error={errors['clinicName']} disabled={busy} required />
           <TextField id="ops-admin-email" label="Admin email" type="email" autoComplete="off" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} error={errors['adminEmail']} disabled={busy} required />
@@ -92,7 +92,7 @@ export function OnboardingAdmin({ invites, clinics }: { invites: OpsInvite[]; cl
       <section aria-labelledby="clinics-in-onboarding">
         <h2 id="clinics-in-onboarding" className="text-lg font-semibold text-foreground">Clinics in onboarding</h2>
         {clinics.length === 0 ? (
-          <p className="mt-2 text-sm text-slate-700">No clinics are onboarding.</p>
+          <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">No clinics are onboarding.</p>
         ) : (
           <ul className="mt-3 space-y-4">
             {clinics.map(c => <ClinicReview key={c.clinicId} clinic={c} onChanged={() => router.refresh()} />)}
@@ -103,7 +103,7 @@ export function OnboardingAdmin({ invites, clinics }: { invites: OpsInvite[]; cl
       <section aria-labelledby="clinic-invites">
         <h2 id="clinic-invites" className="text-lg font-semibold text-foreground">Clinic invites</h2>
         {invites.length === 0 ? (
-          <p className="mt-2 text-sm text-slate-700">No invites yet.</p>
+          <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">No invites yet.</p>
         ) : (
           <div className="mt-3 overflow-x-auto rounded-lg border border-border">
             <table className="w-full min-w-[40rem] text-left text-sm">
@@ -165,18 +165,18 @@ function ClinicReview({ clinic: c, onChanged }: { clinic: OpsClinicOnboarding; o
     <li className="rounded-lg border border-border bg-card p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-base font-semibold text-foreground">{c.name}</h3>
-        <span className="text-sm text-slate-700">{STATUS_LABEL[c.onboardingStatus] ?? c.onboardingStatus}{c.submittedAt ? ` · submitted ${fmt(c.submittedAt)}` : ''}</span>
+        <span className="text-sm text-slate-700 dark:text-slate-300">{STATUS_LABEL[c.onboardingStatus] ?? c.onboardingStatus}{c.submittedAt ? ` · submitted ${fmt(c.submittedAt)}` : ''}</span>
       </div>
       <dl className="mt-3 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-3">
         {ONBOARDING_STEPS.filter(s => s !== 'review').map(s => (
           <div key={s} className="flex justify-between gap-2">
-            <dt className="text-slate-700">{STEP_LABELS[s]}</dt>
-            <dd className={c.steps[s] === 'complete' ? 'text-emerald-800' : 'text-foreground'}>{NOT_LIVE_STEPS.includes(s) ? NOT_LIVE_LABEL : STEP_STATUS[c.steps[s]]}</dd>
+            <dt className="text-slate-700 dark:text-slate-300">{STEP_LABELS[s]}</dt>
+            <dd className={c.steps[s] === 'complete' ? 'text-emerald-800 dark:text-emerald-300' : 'text-foreground'}>{NOT_LIVE_STEPS.includes(s) ? NOT_LIVE_LABEL : STEP_STATUS[c.steps[s]]}</dd>
           </div>
         ))}
       </dl>
       {c.onboardingStatus === 'changes_requested' && c.reviewNote && (
-        <p className="mt-3 text-sm text-slate-700">Last note: {c.reviewNote}</p>
+        <p className="mt-3 text-sm text-slate-700 dark:text-slate-300">Last note: {c.reviewNote}</p>
       )}
       {msg && <div className="mt-3"><FormAlert>{msg}</FormAlert></div>}
       {submitted && (
@@ -193,7 +193,7 @@ function ClinicReview({ clinic: c, onChanged }: { clinic: OpsClinicOnboarding; o
               aria-describedby={noteError ? `${noteId}-error` : undefined}
               className="w-full rounded-lg border border-slate-500 bg-background px-3.5 py-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
-            {noteError && <p id={`${noteId}-error`} role="alert" className="text-sm text-red-700">{noteError}</p>}
+            {noteError && <p id={`${noteId}-error`} role="alert" className="text-sm text-red-700 dark:text-red-300">{noteError}</p>}
           </div>
           <div className="flex flex-wrap gap-2">
             <button type="button" className={BUTTON_PRIMARY} disabled={busy} onClick={() => review('approve')}>Approve {c.name}</button>
