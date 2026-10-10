@@ -10,6 +10,8 @@ const piCreate     = jest.fn().mockResolvedValue({ id: 'pi_1' })
 const piUpdate     = jest.fn().mockResolvedValue({ id: 'pi_1' })
 const piRetrieve   = jest.fn().mockResolvedValue({ id: 'pi_1' })
 const refundCreate = jest.fn().mockResolvedValue({ id: 're_1' })
+const reversalCreate = jest.fn().mockResolvedValue({ id: 'trr_1' })
+const feeRefundCreate = jest.fn().mockResolvedValue({ id: 'fr_1' })
 
 jest.mock('stripe', () => {
   return jest.fn().mockImplementation(() => ({
@@ -20,6 +22,8 @@ jest.mock('stripe', () => {
     customers:      { create: jest.fn(), update: jest.fn() },
     charges:        { retrieve: jest.fn(), update: jest.fn() },
     webhooks:       { constructEvent: jest.fn() },
+    transfers:       { retrieve: jest.fn(), createReversal: reversalCreate },
+    applicationFees: { retrieve: jest.fn(), createRefund: feeRefundCreate },
   }))
 })
 
@@ -87,5 +91,16 @@ describe('createStripeClient routes writes through the PHI guard', () => {
     expect(refundCreate).toHaveBeenCalled()
     expect(() => stripe.refunds.create({ payment_intent: 'pi_1', metadata: { reason: 'adverse reaction' } }))
       .toThrow(/reason/)
+  })
+
+  // Payment Flow v1.1: unwinding a Dashboard refund (the charge.refunded webhook).
+  it('guards the transfer reversal and the application fee refund: amount only', async () => {
+    const stripe = createStripeClient()
+    await stripe.transfers.createReversal('tr_1', { amount: 2500 }, { idempotencyKey: 'dashboard-refund:re_1:transfer' })
+    expect(reversalCreate).toHaveBeenCalledWith('tr_1', { amount: 2500 }, { idempotencyKey: 'dashboard-refund:re_1:transfer' })
+    await stripe.applicationFees.createRefund('fee_1', { amount: 375 }, { idempotencyKey: 'dashboard-refund:re_1:fee' })
+    expect(feeRefundCreate).toHaveBeenCalledWith('fee_1', { amount: 375 }, { idempotencyKey: 'dashboard-refund:re_1:fee' })
+    expect(() => stripe.transfers.createReversal('tr_1', { amount: 1, description: 'Semaglutide refund' } as never)).toThrow(/description/)
+    expect(() => stripe.applicationFees.createRefund('fee_1', { amount: 1, metadata: { order_id: 'x' } } as never)).toThrow(/metadata/)
   })
 })

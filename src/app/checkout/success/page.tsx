@@ -106,6 +106,9 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
       patients ( sms_opt_in )
     `)
     .eq('stripe_payment_intent_id', paymentIntentId)
+    // Payment Flow v1.1: a paid bundle's members carry its PaymentIntent
+    // too. A single order only here; a bundle takes the group branch below.
+    .is('payment_group_id', null)
     .maybeSingle()
 
   if (!order) {
