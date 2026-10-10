@@ -53,6 +53,10 @@
     {
       "path": "/api/cron/retention",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-stripe",
+      "schedule": "0 6 * * *"
     }
   ],
 
@@ -114,6 +118,10 @@
       "memory": 512
     },
     "src/app/api/cron/retention/route.ts": {
+      "maxDuration": 300,
+      "memory": 512
+    },
+    "src/app/api/cron/reconcile-stripe/route.ts": {
       "maxDuration": 300,
       "memory": 512
     },

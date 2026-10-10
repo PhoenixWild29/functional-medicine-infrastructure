@@ -77,6 +77,13 @@ jest.mock('@/lib/slack/client', () => ({
   buildAdapterFailureAlert: (args: unknown) => args,
 }))
 
+// The payments ledger has its own tests (ledger-wiring.test.ts).
+jest.mock('@/lib/payments/ledger', () => ({
+  recordPaymentLedger: jest.fn(async () => ({ ok: true, inserted: 4 })),
+  recordDisputeLedger: jest.fn(async () => ({ ok: true, inserted: 1 })),
+  recordLatePaymentLedger: jest.fn(async () => ({ ok: true, inserted: 2 })),
+}))
+
 jest.mock('@/lib/supabase/service', () => ({
   createServiceClient: () => ({
     from: (table: string) => {

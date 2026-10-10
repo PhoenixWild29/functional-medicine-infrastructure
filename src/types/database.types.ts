@@ -988,6 +988,72 @@ export type Database = {
         }
         Relationships: []
       }
+      ledger_entries: {
+        Row: {
+          amount_cents: number
+          clinic_id: string | null
+          created_at: string
+          currency: string
+          entry_id: string
+          entry_type: string
+          line_key: string
+          order_id: string | null
+          party: string
+          payment_group_id: string | null
+          pharmacy_id: string | null
+          source_event_id: string
+          status: string
+          stripe_object_id: string | null
+        }
+        Insert: {
+          amount_cents: number
+          clinic_id?: string | null
+          created_at?: string
+          currency?: string
+          entry_id?: string
+          entry_type: string
+          line_key: string
+          order_id?: string | null
+          party: string
+          payment_group_id?: string | null
+          pharmacy_id?: string | null
+          source_event_id: string
+          status: string
+          stripe_object_id?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          clinic_id?: string | null
+          created_at?: string
+          currency?: string
+          entry_id?: string
+          entry_type?: string
+          line_key?: string
+          order_id?: string | null
+          party?: string
+          payment_group_id?: string | null
+          pharmacy_id?: string | null
+          source_event_id?: string
+          status?: string
+          stripe_object_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ledger_entries_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "ledger_entries_payment_group_id_fkey"
+            columns: ["payment_group_id"]
+            isOneToOne: false
+            referencedRelation: "payment_groups"
+            referencedColumns: ["group_id"]
+          },
+        ]
+      }
       legal_holds: {
         Row: {
           hold_id: string
@@ -1677,6 +1743,44 @@ export type Database = {
           },
         ]
       }
+      payable_events: {
+        Row: {
+          action: string
+          actor_user_id: string
+          created_at: string
+          event_id: string
+          paid_on: string | null
+          payable_id: string
+          reference: string | null
+        }
+        Insert: {
+          action: string
+          actor_user_id: string
+          created_at?: string
+          event_id?: string
+          paid_on?: string | null
+          payable_id: string
+          reference?: string | null
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string
+          created_at?: string
+          event_id?: string
+          paid_on?: string | null
+          payable_id?: string
+          reference?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payable_events_payable_id_fkey"
+            columns: ["payable_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacy_payables"
+            referencedColumns: ["payable_id"]
+          },
+        ]
+      }
       payment_groups: {
         Row: {
           clinic_id: string
@@ -2047,6 +2151,85 @@ export type Database = {
           },
           {
             foreignKeyName: "pharmacy_formulations_pharmacy_id_fkey"
+            columns: ["pharmacy_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacies"
+            referencedColumns: ["pharmacy_id"]
+          },
+        ]
+      }
+      pharmacy_payables: {
+        Row: {
+          amount_cents: number
+          clinic_id: string
+          created_at: string
+          currency: string
+          order_id: string
+          paid_by: string | null
+          paid_on: string | null
+          paid_reference: string | null
+          payable_id: string
+          payment_group_id: string | null
+          pharmacy_id: string
+          reversed_cents: number
+          shipping_cents: number
+          status: string
+          updated_at: string
+          wholesale_cents: number
+        }
+        Insert: {
+          amount_cents: number
+          clinic_id: string
+          created_at?: string
+          currency?: string
+          order_id: string
+          paid_by?: string | null
+          paid_on?: string | null
+          paid_reference?: string | null
+          payable_id?: string
+          payment_group_id?: string | null
+          pharmacy_id: string
+          reversed_cents?: number
+          shipping_cents: number
+          status?: string
+          updated_at?: string
+          wholesale_cents: number
+        }
+        Update: {
+          amount_cents?: number
+          clinic_id?: string
+          created_at?: string
+          currency?: string
+          order_id?: string
+          paid_by?: string | null
+          paid_on?: string | null
+          paid_reference?: string | null
+          payable_id?: string
+          payment_group_id?: string | null
+          pharmacy_id?: string
+          reversed_cents?: number
+          shipping_cents?: number
+          status?: string
+          updated_at?: string
+          wholesale_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pharmacy_payables_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "pharmacy_payables_payment_group_id_fkey"
+            columns: ["payment_group_id"]
+            isOneToOne: false
+            referencedRelation: "payment_groups"
+            referencedColumns: ["group_id"]
+          },
+          {
+            foreignKeyName: "pharmacy_payables_pharmacy_id_fkey"
             columns: ["pharmacy_id"]
             isOneToOne: false
             referencedRelation: "pharmacies"
@@ -2910,6 +3093,45 @@ export type Database = {
             referencedColumns: ["clinic_id"]
           },
         ]
+      }
+      reconciliation_runs: {
+        Row: {
+          created_at: string
+          details: Json
+          error: string | null
+          ledger_cents: number
+          mismatch_count: number
+          recon_date: string
+          run_id: string
+          status: string
+          stripe_cents: number
+          stripe_count: number
+        }
+        Insert: {
+          created_at?: string
+          details?: Json
+          error?: string | null
+          ledger_cents?: number
+          mismatch_count?: number
+          recon_date: string
+          run_id?: string
+          status: string
+          stripe_cents?: number
+          stripe_count?: number
+        }
+        Update: {
+          created_at?: string
+          details?: Json
+          error?: string | null
+          ledger_cents?: number
+          mismatch_count?: number
+          recon_date?: string
+          run_id?: string
+          status?: string
+          stripe_cents?: number
+          stripe_count?: number
+        }
+        Relationships: []
       }
       retention_runs: {
         Row: {

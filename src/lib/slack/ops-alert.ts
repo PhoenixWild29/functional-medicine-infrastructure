@@ -68,6 +68,8 @@ const TITLES = {
   submissions_paused:          '⏸️ Pharmacy submissions are turned off: paid orders are waiting',
   queued_alert:                '⚠️ Ops alert',
   daily_digest:                '📊 CompoundIQ daily digest',
+  reconciliation_mismatch:     '🔴 Stripe reconciliation: the ledger and Stripe disagree',
+  reconciliation_failed:       '🔴 Stripe reconciliation could not run',
 } as const
 export type OpsAlertType = keyof typeof TITLES
 
@@ -101,6 +103,13 @@ const DETAIL_LABELS = {
   count:             'Orders waiting',
   alert_type:        'Alert type',
   severity:          'Severity',
+  // Stripe reconciliation: the day, counts, and Stripe IDs with amounts (minor units).
+  recon_date:        'Day (UTC)',
+  mismatch_count:    'Mismatches',
+  mismatches:        'Stripe ID:ledger/Stripe',
+  ledger_total:      'Ledger total',
+  stripe_total:      'Stripe total',
+  stripe_count:      'Stripe transactions',
   // Daily digest metrics (counts, rates and source:count lists).
   m01_total_webhook_events:            'Webhook events',
   m02_success_rate_by_source:          'Success rate by source',
@@ -138,6 +147,7 @@ const NOTES = {
   clinic_not_notified:  '⚠️ The clinic was not notified in-app. Contact the clinic directly.',
   submissions_off:      'Nothing is sent to any pharmacy until PHARMACY_SUBMISSIONS_ENABLED=true.',
   free_text_withheld:   'Pharmacy and patient text is never sent to Slack. Open the order in ops for the details.',
+  reconciliation_review: 'Record-only: no money was moved. The full list is in reconciliation_runs; compare it with the Stripe dashboard.',
   portal_no_auto_fax:   'Portal order: not faxed automatically, as the portal submission may already have reached the pharmacy. Check the portal, then resolve the order by hand.',
 } as const
 export type OpsAlertNote = keyof typeof NOTES

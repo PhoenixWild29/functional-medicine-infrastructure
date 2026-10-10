@@ -47,6 +47,8 @@ interface Deps {
   supabase: ReturnType<typeof createServiceClient>
   sendSlackAlert: SendSlackAlertFn
   buildAdapterFailureAlert: BuildAdapterFailureAlertFn
+  /** Payments ledger (record-only): the disputed amount on the group. Must not throw; guarded anyway. */
+  recordDisputeLedger?: (groupId: string, clinicId: string | null) => Promise<void>
 }
 
 export async function handleGroupChargeDisputeCreated(
@@ -186,6 +188,15 @@ export async function handleGroupChargeDisputeCreated(
     console.warn(
       `[stripe-webhook] group ${group.group_id} dispute ${dispute.id} has no member orders — marking group DISPUTED without disputes-row insert`,
     )
+  }
+
+  // Payments ledger (record-only): the disputed amount, on the group.
+  if (deps.recordDisputeLedger) {
+    try {
+      await deps.recordDisputeLedger(group.group_id, group.clinic_id ?? null)
+    } catch (err) {
+      console.error(`[stripe-webhook] ledger: dispute ${dispute.id} not recorded:`, err instanceof Error ? err.message : err)
+    }
   }
 
   // ── Per-order log for ops auditability ───────────────────────

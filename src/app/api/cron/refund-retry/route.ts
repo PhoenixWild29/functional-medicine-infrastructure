@@ -23,6 +23,7 @@ import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createStripeClient } from '@/lib/stripe/client'
 import { casTransition } from '@/lib/orders/cas-transition'
+import { recordRefundLedger } from '@/lib/payments/ledger'
 import {
   issueRefund, retrieveRefund, recordPendingRefund, pendingRefund,
   REFUND_RETRY_WINDOW_MS, type RefundableOrder,
@@ -68,6 +69,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (decided.refundId) {
       const known = await retrieveRefund(stripe, decided.refundId)
       if (known.ok && known.status === 'succeeded') {
+        await recordRefund(supabase, order.order_id, known.refundId, decided.target?.amountCents ?? null)
         const done = await casTransition({
           orderId:        order.order_id,
           expectedStatus: 'REFUND_PENDING',
@@ -121,6 +123,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       continue
     }
 
+    await recordRefund(supabase, order.order_id, result.refundId, decided.target.amountCents)
+
     const done = await casTransition({
       orderId:        order.order_id,
       expectedStatus: 'REFUND_PENDING',
@@ -137,4 +141,21 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   console.info(`[refund-retry] run complete | refunded=${refunded} still-pending=${stillPending} failed=${failed} left-for-ops=${leftForOps}`)
   return NextResponse.json({ refunded, stillPending, failed, leftForOps })
+}
+
+// Payments ledger (record-only): a refund Stripe confirmed, keyed by its
+// refund id, so a retry records nothing twice. Never fails the refund or
+// the status change; reconciliation catches a missing line.
+async function recordRefund(
+  supabase: ReturnType<typeof createServiceClient>,
+  orderId: string,
+  refundId: string,
+  amountCents: number | null,
+): Promise<void> {
+  try {
+    const result = await recordRefundLedger(supabase, { orderId, refundId, amountCents, currency: 'usd' })
+    if (!result.ok) console.error(`[refund-retry] ledger: refund ${refundId} not recorded | order=${orderId}: ${result.error}`)
+  } catch (err) {
+    console.error(`[refund-retry] ledger: refund ${refundId} not recorded | order=${orderId}:`, err instanceof Error ? err.message : err)
+  }
 }

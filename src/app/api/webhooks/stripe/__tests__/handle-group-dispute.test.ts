@@ -417,3 +417,25 @@ describe('Phase C Stage 6 — handleGroupChargeDisputeCreated', () => {
     )
   })
 })
+
+describe('payments ledger (record-only)', () => {
+  it('records the disputed amount on the group; a ledger that throws still alerts ops', async () => {
+    const recordDispute = jest.fn().mockRejectedValue(new Error('ledger down'))
+    await handleGroupChargeDisputeCreated(makeDispute(), {
+      supabase: supabaseMock, sendSlackAlert: sendSlackAlertMock, buildAdapterFailureAlert: buildAlertMock,
+      recordDisputeLedger: recordDispute,
+    })
+    expect(recordDispute).toHaveBeenCalledWith('group-aaa', 'clinic-1')
+    expect(sendSlackAlertMock).toHaveBeenCalled()
+  })
+
+  it('a redelivery on an already-DISPUTED group records nothing again', async () => {
+    groupFetchMock.mockResolvedValue({ data: { group_id: 'group-aaa', status: 'DISPUTED', clinic_id: 'clinic-1', stripe_payment_intent_id: 'pi_test_group_1' }, error: null })
+    const recordDispute = jest.fn()
+    await handleGroupChargeDisputeCreated(makeDispute(), {
+      supabase: supabaseMock, sendSlackAlert: sendSlackAlertMock, buildAdapterFailureAlert: buildAlertMock,
+      recordDisputeLedger: recordDispute,
+    })
+    expect(recordDispute).not.toHaveBeenCalled()
+  })
+})

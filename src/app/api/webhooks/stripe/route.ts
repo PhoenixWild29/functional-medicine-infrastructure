@@ -32,6 +32,7 @@ import { sendPaymentConfirmationSms } from '@/lib/sms/triggers'
 import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { handleGroupPaymentSucceeded as handleGroupPaymentSucceededImpl } from './handle-group'
 import { handleGroupChargeDisputeCreated as handleGroupChargeDisputeCreatedImpl } from './handle-group-dispute'
+import { recordPaymentLedger, recordDisputeLedger, recordLatePaymentLedger, type LedgerResult } from '@/lib/payments/ledger'
 
 // ============================================================
 // ROUTE HANDLER
@@ -122,10 +123,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     switch (event.type) {
       case 'payment_intent.succeeded':
-        await handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent)
+        await handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent, event.id)
         break
       case 'charge.dispute.created':
-        await handleDisputeCreated(event.data.object as Stripe.Dispute)
+        await handleDisputeCreated(event.data.object as Stripe.Dispute, event.id)
         break
       // WO-88 grandfather: `transfer.failed` IS a real Stripe webhook event per
       // https://docs.stripe.com/api/events/types#event_types-transfer.failed
@@ -223,7 +224,8 @@ export function DELETE() { return new NextResponse(null, { status: 405 }) }
 // keys can be present without tripping the HIPAA PHI check.
 
 async function handlePaymentIntentSucceeded(
-  paymentIntent: Stripe.PaymentIntent
+  paymentIntent: Stripe.PaymentIntent,
+  eventId: string,
 ): Promise<void> {
   const isGroupPi = typeof paymentIntent.metadata?.['payment_group_id'] === 'string'
 
@@ -243,14 +245,15 @@ async function handlePaymentIntentSucceeded(
   }
 
   if (isGroupPi) {
-    await handleGroupPaymentSucceeded(paymentIntent)
+    await handleGroupPaymentSucceeded(paymentIntent, eventId)
   } else {
-    await handleSoloPaymentSucceeded(paymentIntent)
+    await handleSoloPaymentSucceeded(paymentIntent, eventId)
   }
 }
 
 async function handleSoloPaymentSucceeded(
-  paymentIntent: Stripe.PaymentIntent
+  paymentIntent: Stripe.PaymentIntent,
+  eventId: string,
 ): Promise<void> {
   const supabase = createServiceClient()
 
@@ -313,6 +316,14 @@ async function handleSoloPaymentSucceeded(
   // clinic, or be rejected by Stripe). We only record Stripe's transfer id.
   await recordDestinationTransferId(paymentIntent, order.order_id)
 
+  // Payments ledger (record-only): the order's split, keyed by this
+  // event. Idempotent, so the stranded-resume path may write it again.
+  // Never throws; never blocks fulfilment.
+  await recordLedger(`payment ${paymentIntent.id}`, () => recordPaymentLedger(supabase, {
+    eventId, paymentIntentId: paymentIntent.id, chargeId: chargeIdOf(paymentIntent),
+    currency: paymentIntent.currency, orderIds: [order.order_id], paymentGroupId: null,
+  }))
+
   // AC-SWH-005: V2.0 tier-aware fulfillment branching
   await branchByTier(order.order_id, order.pharmacy_id!)
 }
@@ -340,17 +351,50 @@ async function handleSoloPaymentSucceeded(
 // Thin wrapper that injects the route module's dependencies into the
 // extracted handler (handle-group.ts). Keeps unit-test isolation clean.
 async function handleGroupPaymentSucceeded(
-  paymentIntent: Stripe.PaymentIntent
+  paymentIntent: Stripe.PaymentIntent,
+  eventId: string,
 ): Promise<void> {
+  const supabase = createServiceClient()
   await handleGroupPaymentSucceededImpl(paymentIntent, {
-    supabase:      createServiceClient(),
+    supabase,
     casTransition,
     branchByTier,
     // Batch 2 follow-up: to refund a late payment on an expired bundle.
     stripe:        createStripeClient(),
     // C7: one payment-confirmation text per paid bundle.
     notifyPaymentConfirmed,
+    // Payments ledger (record-only), keyed by this event.
+    recordPaymentLedger: (groupId, orderIds) => recordLedger(`payment ${paymentIntent.id}`, () => recordPaymentLedger(supabase, {
+      eventId, paymentIntentId: paymentIntent.id, chargeId: chargeIdOf(paymentIntent),
+      currency: paymentIntent.currency, orderIds, paymentGroupId: groupId,
+    })),
+    recordLatePaymentLedger: (groupId, clinicId, refundId) => recordLedger(`late payment ${paymentIntent.id}`, () => recordLatePaymentLedger(supabase, {
+      eventId, paymentIntentId: paymentIntent.id, chargeId: chargeIdOf(paymentIntent),
+      amountCents: paymentIntent.amount_received || paymentIntent.amount, currency: paymentIntent.currency,
+      paymentGroupId: groupId, clinicId, refundId,
+    })),
   })
+}
+
+// ------------------------------------------------------------
+// Payments ledger (record-only)
+// ------------------------------------------------------------
+//
+// A ledger write that fails, or throws, is logged by Stripe id only. It
+// never fails the webhook, the payment, fulfilment or the money path:
+// the daily reconciliation and the backfill catch a missing line.
+async function recordLedger(what: string, write: () => Promise<LedgerResult>): Promise<void> {
+  try {
+    const result = await write()
+    if (!result.ok) console.error(`[stripe-webhook] ledger: ${what} not recorded: ${result.error}`)
+  } catch (err) {
+    console.error(`[stripe-webhook] ledger: ${what} not recorded:`, err instanceof Error ? err.message : err)
+  }
+}
+
+function chargeIdOf(paymentIntent: Stripe.PaymentIntent): string | null {
+  const c = paymentIntent.latest_charge
+  return typeof c === 'string' ? c : c?.id ?? null
 }
 
 // ------------------------------------------------------------
@@ -533,7 +577,7 @@ async function branchByTier(orderId: string, pharmacyId: string): Promise<void> 
 // Stripe propagates PaymentIntent metadata onto the Charge + Dispute,
 // so the dispute event payload typically carries the same allow-listed
 // keys the original PI did. The HIPAA allow-list branches per flavor.
-async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
+async function handleDisputeCreated(dispute: Stripe.Dispute, eventId: string): Promise<void> {
   const isGroupDispute = typeof dispute.metadata?.['payment_group_id'] === 'string'
 
   // HIPAA — per-flavor allow-list (mirrors handlePaymentIntentSucceeded).
@@ -553,13 +597,13 @@ async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
   }
 
   if (isGroupDispute) {
-    await handleGroupChargeDisputeCreated(dispute)
+    await handleGroupChargeDisputeCreated(dispute, eventId)
   } else {
-    await handleSoloChargeDisputeCreated(dispute)
+    await handleSoloChargeDisputeCreated(dispute, eventId)
   }
 }
 
-async function handleSoloChargeDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
+async function handleSoloChargeDisputeCreated(dispute: Stripe.Dispute, eventId: string): Promise<void> {
   const supabase = createServiceClient()
 
   // Resolve payment_intent_id from the dispute
@@ -580,7 +624,7 @@ async function handleSoloChargeDisputeCreated(dispute: Stripe.Dispute): Promise<
   // stripped metadata in transit.
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('order_id')
+    .select('order_id, clinic_id')
     .eq('stripe_payment_intent_id', paymentIntentId)
     .maybeSingle()
 
@@ -607,7 +651,7 @@ async function handleSoloChargeDisputeCreated(dispute: Stripe.Dispute): Promise<
       console.warn(
         `[stripe-webhook] dispute ${dispute.id} routed solo but matched a group PI — falling back to group handler | pi=${paymentIntentId}`,
       )
-      await handleGroupChargeDisputeCreated(dispute)
+      await handleGroupChargeDisputeCreated(dispute, eventId)
       return
     }
     console.error(
@@ -654,6 +698,12 @@ async function handleSoloChargeDisputeCreated(dispute: Stripe.Dispute): Promise<
     )
   }
 
+  // Payments ledger (record-only): the disputed amount, keyed by this event.
+  await recordLedger(`dispute ${dispute.id}`, () => recordDisputeLedger(supabase, {
+    eventId, disputeId: dispute.id, amountCents: dispute.amount, currency: dispute.currency, status: dispute.status,
+    orderId: order.order_id, paymentGroupId: null, clinicId: (order as { clinic_id?: string | null }).clinic_id ?? null,
+  }))
+
   // Alert ops — disputes require manual evidence submission
   await sendSlackAlert(
     buildAdapterFailureAlert({
@@ -678,11 +728,18 @@ async function handleSoloChargeDisputeCreated(dispute: Stripe.Dispute): Promise<
 // clean, same pattern as handleGroupPaymentSucceeded.
 async function handleGroupChargeDisputeCreated(
   dispute: Stripe.Dispute,
+  eventId: string,
 ): Promise<void> {
+  const supabase = createServiceClient()
   await handleGroupChargeDisputeCreatedImpl(dispute, {
-    supabase: createServiceClient(),
+    supabase,
     sendSlackAlert,
     buildAdapterFailureAlert,
+    // Payments ledger (record-only), keyed by this event.
+    recordDisputeLedger: (groupId, clinicId) => recordLedger(`dispute ${dispute.id}`, () => recordDisputeLedger(supabase, {
+      eventId, disputeId: dispute.id, amountCents: dispute.amount, currency: dispute.currency, status: dispute.status,
+      orderId: null, paymentGroupId: groupId, clinicId,
+    })),
   })
 }
 

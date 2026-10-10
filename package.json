@@ -18,6 +18,7 @@
     "seed:poc": "dotenv -e .env.local -- tsx scripts/seed-poc.ts",
     "seed:catalog": "dotenv -e .env.local -- tsx scripts/import-catalog-v3.ts",
     "export:catalog-packages": "dotenv -e .env.local -- tsx scripts/export-catalog-v3.ts",
+    "ledger:backfill": "dotenv -e .env.local -- tsx scripts/backfill-ledger.ts",
     "docs:pdf": "bash scripts/md-to-pdf.sh",
     "docs:docx": "bash scripts/md-to-docx.sh"
   },

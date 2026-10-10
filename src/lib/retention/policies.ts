@@ -48,6 +48,10 @@ export const NEVER_RETENTION_TARGETS = [
   'legal_holds',           // what retention must not touch
   'order_status_history',  // part of the order record
   'patients',              // the clinic's record, kept per the BAA
+  'ledger_entries',        // the payments ledger: financial record, append-only by trigger
+  'pharmacy_payables',     // what each pharmacy is owed and was paid
+  'payable_events',        // the audit log of payable changes, append-only by trigger
+  'reconciliation_runs',   // the record of each Stripe reconciliation, append-only by trigger
 ] as const
 
 export type RetentionAction = 'delete' | 'null_columns' | 'storage_remove'

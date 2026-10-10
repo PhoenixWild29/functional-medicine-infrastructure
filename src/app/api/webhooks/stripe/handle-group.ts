@@ -41,6 +41,22 @@ interface Deps {
    * throw (the route's version runs after the response); guarded anyway.
    */
   notifyPaymentConfirmed?: (orderId: string) => void
+  /**
+   * Payments ledger (record-only): the paid members' split, and a late
+   * payment's charge and refund. Must not throw (the route's versions
+   * log and return); guarded anyway.
+   */
+  recordPaymentLedger?: (groupId: string, orderIds: string[]) => Promise<void>
+  recordLatePaymentLedger?: (groupId: string, clinicId: string | null, refundId: string | null) => Promise<void>
+}
+
+async function guarded(what: string, fn: (() => Promise<void>) | undefined): Promise<void> {
+  if (!fn) return
+  try {
+    await fn()
+  } catch (err) {
+    console.error(`[stripe-webhook] ledger: ${what} not recorded:`, err instanceof Error ? err.message : err)
+  }
 }
 
 export async function handleGroupPaymentSucceeded(
@@ -115,7 +131,8 @@ export async function handleGroupPaymentSucceeded(
   const everyMemberExpired = (memberOrders?.length ?? 0) > 0
     && memberOrders!.every(o => o.status === 'PAYMENT_EXPIRED')
   if (group.status === 'EXPIRED' || everyMemberExpired) {
-    await refundLatePayment(supabase, deps.stripe, groupId, paymentIntent, memberOrders ?? [])
+    await refundLatePayment(supabase, deps.stripe, groupId, paymentIntent, memberOrders ?? [], refundId =>
+      guarded(`late payment ${paymentIntent.id}`, deps.recordLatePaymentLedger && (() => deps.recordLatePaymentLedger!(groupId, group.clinic_id ?? null, refundId))))
     return
   }
 
@@ -211,6 +228,10 @@ export async function handleGroupPaymentSucceeded(
       // processed; a redelivery will re-attempt the group update.
       throw new Error(`group ${groupId} member orders transitioned but group status update failed: ${groupUpdateErr.message}`)
     }
+
+    // Payments ledger (record-only): every member's split, on the group.
+    // Idempotent on the event id; never throws.
+    await guarded(`payment ${paymentIntent.id}`, deps.recordPaymentLedger && (() => deps.recordPaymentLedger!(groupId, memberOrders.map(o => o.order_id))))
   } else {
     // Codex 2026-06-11 sweep [CRITICAL]: partial failure must NOT silently
     // leave the group in AWAITING_PAYMENT and tell the route to mark the
@@ -231,6 +252,7 @@ async function refundLatePayment(
   groupId: string,
   paymentIntent: Stripe.PaymentIntent,
   members: ReadonlyArray<{ order_id: string; status: string }>,
+  recordLedger: (refundId: string | null) => Promise<void>,
 ): Promise<void> {
   console.error(`[stripe-webhook] late payment on expired bundle — refunding, not marking PAID | group=${groupId} pi=${paymentIntent.id}`)
   if (!stripe) {
@@ -272,6 +294,9 @@ async function refundLatePayment(
       throw new Error(`late payment on expired group ${groupId}: could not record the refund: ${recordError.message}`)
     }
   }
+
+  // Payments ledger (record-only): the charge, and the refund when Stripe made it.
+  await recordLedger(refund && refund.status !== 'failed' && refund.status !== 'canceled' ? refund.id : null)
 
   if (!refund) {
     throw new Error(`late payment on expired group ${groupId}: refund failed: ${refundError}`)

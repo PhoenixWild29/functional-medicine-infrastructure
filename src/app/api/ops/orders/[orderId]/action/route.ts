@@ -29,6 +29,7 @@ import { casTransition }       from '@/lib/orders/cas-transition'
 import { insertStatusHistory } from '@/lib/orders/status-history'
 import { createStripeClient }  from '@/lib/stripe/client'
 import { decideRefund, pendingRefund, issueRefund, refundMetadata, recordPendingRefund } from '@/lib/refunds/refund'
+import { recordRefundLedger } from '@/lib/payments/ledger'
 import { routeOrder, submitQueuedFax } from '@/lib/adapters/routing-engine'
 import { pharmacySubmissionsEnabled, PHARMACY_SUBMISSIONS_OFF_MESSAGE } from '@/lib/adapters/submission-switch'
 import type { OrderStatusEnum } from '@/types/database.types'
@@ -264,6 +265,8 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
         return NextResponse.json({ ok: true, status: 'REFUND_PENDING', refundId: refund.refundId, refundStatus: refund.status })
       }
 
+      await recordRefund(supabase, orderId, refund.refundId, target.amountCents)
+
       const refundedCas = await casTransition({
         orderId,
         expectedStatus: 'REFUND_PENDING',
@@ -451,3 +454,20 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+// Payments ledger (record-only): a refund Stripe confirmed, keyed by its
+// refund id, so a retry records nothing twice. Never fails the refund or
+// the status change; reconciliation catches a missing line.
+async function recordRefund(
+  supabase: ReturnType<typeof createServiceClient>,
+  orderId: string,
+  refundId: string,
+  amountCents: number | null,
+): Promise<void> {
+  try {
+    const result = await recordRefundLedger(supabase, { orderId, refundId, amountCents, currency: 'usd' })
+    if (!result.ok) console.error(`[ops/action] ledger: refund ${refundId} not recorded | order=${orderId}: ${result.error}`)
+  } catch (err) {
+    console.error(`[ops/action] ledger: refund ${refundId} not recorded | order=${orderId}:`, err instanceof Error ? err.message : err)
+  }
+}

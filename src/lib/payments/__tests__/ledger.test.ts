@@ -81,8 +81,8 @@ describe('recordPaymentLedger', () => {
       expect(l.source_event_id).toBe('evt_1')
       expect(l.line_key).toBe(`${l.entry_type}:${l.party}:${O1}`)
     }
-    const [payable] = d.to('pharmacy_payables', 'upsert')
-    expect(payable!.payload).toEqual(expect.objectContaining({
+    const [payable] = d.to('pharmacy_payables', 'upsert').flatMap(c => c.payload as unknown[])
+    expect(payable).toEqual(expect.objectContaining({
       order_id: O1, pharmacy_id: PHARM, clinic_id: CLINIC, wholesale_cents: 10000, shipping_cents: 900, amount_cents: 10900, status: 'owed',
     }))
   })

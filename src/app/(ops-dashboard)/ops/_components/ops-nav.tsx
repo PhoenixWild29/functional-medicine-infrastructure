@@ -29,6 +29,7 @@ const NAV_TABS = [
   { href: '/ops/catalog',  label: 'Catalog'   },
   { href: '/ops/licensure', label: 'Licensure' },
   { href: '/ops/ingredients', label: 'Ingredients' },
+  { href: '/ops/payables', label: 'Payables' },
   ...(SHOW_DEMO_TOOLS ? [{ href: '/ops/demo-tools', label: 'Demo Tools' } as const] : []),
 ] as const
 

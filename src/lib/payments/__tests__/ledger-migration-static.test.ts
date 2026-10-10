@@ -44,9 +44,9 @@ it('no two migrations share a version', () => {
 
 it.each(TABLES)('%s: created, RLS on, ops-only reads via app_metadata, no write policy', t => {
   const sql = up()
-  expect(sql).toMatch(new RegExp(`CREATE TABLE IF NOT EXISTS (public\.)?${t}\b`))
-  expect(sql).toMatch(new RegExp(`ALTER TABLE (public\.)?${t} ENABLE ROW LEVEL SECURITY`))
-  const policies = [...sql.matchAll(new RegExp(`CREATE POLICY[^;]*ON (public\.)?${t}\b[^;]*;`, 'g'))].map(m => m[0])
+  expect(sql).toMatch(new RegExp(`CREATE TABLE IF NOT EXISTS (public\\.)?${t}\\b`))
+  expect(sql).toMatch(new RegExp(`ALTER TABLE (public\\.)?${t} ENABLE ROW LEVEL SECURITY`))
+  const policies = [...sql.matchAll(new RegExp(`CREATE POLICY[^;]*ON (public\\.)?${t}\\b[^;]*;`, 'g'))].map(m => m[0])
   expect(policies.length).toBeGreaterThan(0)
   for (const p of policies) {
     expect(p).toMatch(/FOR SELECT/)
@@ -60,7 +60,7 @@ it('the ledger records party, amount, currency, type, Stripe object id, status a
   const sql = up()
   const ledger = sql.slice(sql.search(/CREATE TABLE IF NOT EXISTS (public\.)?ledger_entries/))
   for (const col of ['party', 'amount_cents', 'currency', 'entry_type', 'stripe_object_id', 'status', 'created_at', 'source_event_id', 'line_key', 'order_id', 'payment_group_id']) {
-    expect(ledger).toMatch(new RegExp(`\b${col}\b`))
+    expect(ledger).toMatch(new RegExp(`\\b${col}\\b`))
   }
   for (const t of ['charge', 'platform_fee', 'clinic_transfer', 'pharmacy_payable', 'refund', 'dispute', 'reversal']) expect(ledger).toContain(`'${t}'`)
   for (const p of ['platform', 'clinic', 'pharmacy']) expect(ledger).toContain(`'${p}'`)
@@ -70,11 +70,11 @@ it('the ledger records party, amount, currency, type, Stripe object id, status a
 it('payables carry owed / scheduled / paid / void, one per order', () => {
   const sql = up()
   for (const s of ['owed', 'scheduled', 'paid', 'void']) expect(sql).toContain(`'${s}'`)
-  expect(sql).toMatch(/pharmacy_payables[\s\S]*order_id UUID NOT NULL UNIQUE/)
+  expect(sql).toMatch(/pharmacy_payables[\s\S]*order_id\s+UUID\s+NOT NULL UNIQUE/)
 })
 
 it.each(APPEND_ONLY)('%s is append-only by trigger', t => {
-  expect(up()).toMatch(new RegExp(`CREATE TRIGGER \w+\s+BEFORE UPDATE OR DELETE ON (public\.)?${t}\b`))
+  expect(up()).toMatch(new RegExp(`CREATE TRIGGER \\w+\\s+BEFORE UPDATE OR DELETE ON (public\\.)?${t}\\b`))
 })
 
 it('ends by applying the pharmacy admin scope when it exists', () => {
@@ -84,7 +84,7 @@ it('ends by applying the pharmacy admin scope when it exists', () => {
 })
 
 it('the down file drops every table it adds', () => {
-  for (const t of TABLES) expect(down()).toMatch(new RegExp(`DROP TABLE IF EXISTS (public\.)?${t}\b`))
+  for (const t of TABLES) expect(down()).toMatch(new RegExp(`DROP TABLE IF EXISTS (public\\.)?${t}\\b`))
 })
 
 it('the new tables are never retention targets', () => {

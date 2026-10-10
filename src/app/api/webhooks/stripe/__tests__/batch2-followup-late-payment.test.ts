@@ -137,3 +137,40 @@ describe('a normal group payment is unaffected', () => {
     expect(statusUpdates()).toContain('PAID')
   })
 })
+
+describe('payments ledger (record-only)', () => {
+  const recordPayment = jest.fn().mockResolvedValue(undefined)
+  const recordLate = jest.fn().mockResolvedValue(undefined)
+  const invokeWithLedger = () => handleGroupPaymentSucceeded(PI, {
+    supabase: supabaseMock, casTransition: casTransitionMock, branchByTier: branchByTierMock, stripe: stripeMock,
+    recordPaymentLedger: recordPayment, recordLatePaymentLedger: recordLate,
+  } as never)
+  beforeEach(() => { recordPayment.mockReset().mockResolvedValue(undefined); recordLate.mockReset().mockResolvedValue(undefined) })
+
+  it('a late payment records its charge and its refund on the group', async () => {
+    await invokeWithLedger()
+    expect(recordLate).toHaveBeenCalledWith('g-1', 'clinic-1', 're_late')
+    expect(recordPayment).not.toHaveBeenCalled()
+  })
+
+  it('a late payment whose refund failed records the charge alone, and still throws', async () => {
+    refundsCreateMock.mockRejectedValue(new Error('insufficient platform balance'))
+    await expect(invokeWithLedger()).rejects.toThrow()
+    expect(recordLate).toHaveBeenCalledWith('g-1', 'clinic-1', null)
+  })
+
+  it('a paid bundle records every member once the group is PAID; a ledger that throws changes nothing', async () => {
+    membersFetchMock.mockResolvedValue({
+      data: [
+        { order_id: 'o-a', status: 'AWAITING_PAYMENT', pharmacy_id: 'ph-1' },
+        { order_id: 'o-b', status: 'AWAITING_PAYMENT', pharmacy_id: 'ph-1' },
+      ],
+      error: null,
+    })
+    recordPayment.mockRejectedValue(new Error('ledger down'))
+    await expect(invokeWithLedger()).resolves.toBeUndefined()
+    expect(recordPayment).toHaveBeenCalledWith('g-1', ['o-a', 'o-b'])
+    expect(statusUpdates()).toContain('PAID')
+    expect(branchByTierMock).toHaveBeenCalledTimes(2)
+  })
+})

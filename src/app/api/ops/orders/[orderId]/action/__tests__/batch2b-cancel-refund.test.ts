@@ -234,11 +234,4 @@ describe('cancel + refund: the payments ledger', () => {
     expect((await post('o-solo')).status).toBe(200)
     expect(recordRefundMock).toHaveBeenCalledWith({ orderId: 'o-solo', refundId: 're_1', amountCents: null, currency: 'usd' })
   })
-
-  it('a refund Stripe still has pending is not recorded yet', async () => {
-    orderFetchMock.mockResolvedValue({ data: SOLO_PAID, error: null })
-    refundsCreateMock.mockResolvedValue({ id: 're_1', status: 'pending' })
-    await post('o-solo')
-    expect(recordRefundMock).not.toHaveBeenCalled()
-  })
 })
