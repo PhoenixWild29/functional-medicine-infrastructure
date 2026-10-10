@@ -26,6 +26,7 @@ const casTransitionMock = jest.fn()
 const orderFetchMock    = jest.fn()
 const groupFetchMock    = jest.fn()
 const membersFetchMock  = jest.fn()
+const historyFetchMock  = jest.fn()
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
@@ -52,7 +53,7 @@ jest.mock('@/lib/payments/ledger', () => ({
 
 function chain(single: () => unknown, list?: () => unknown): Record<string, unknown> {
   const c: Record<string, unknown> = {}
-  for (const k of ['select', 'eq', 'is', 'in', 'neq', 'order', 'limit']) c[k] = () => c
+  for (const k of ['select', 'eq', 'is', 'in', 'neq', 'order', 'limit', 'contains']) c[k] = () => c
   c['maybeSingle'] = async () => single()
   c['single'] = async () => single()
   c['then'] = (resolve: (r: unknown) => unknown) => Promise.resolve((list ?? single)()).then(resolve)
@@ -64,6 +65,7 @@ jest.mock('@/lib/supabase/service', () => ({
     from: (table: string) => {
       if (table === 'orders')         return { select: () => chain(() => orderFetchMock(), () => membersFetchMock()) }
       if (table === 'payment_groups') return { select: () => chain(() => groupFetchMock()) }
+      if (table === 'order_status_history') return { select: () => chain(() => historyFetchMock()) }
       throw new Error(`Unexpected table in test: ${table}`)
     },
   }),
@@ -89,6 +91,7 @@ beforeEach(() => {
   orderFetchMock.mockReset()
   groupFetchMock.mockReset().mockResolvedValue({ data: null, error: null })
   membersFetchMock.mockReset().mockResolvedValue({ data: [], error: null })
+  historyFetchMock.mockReset().mockResolvedValue({ data: [], error: null })
 })
 
 const SOLO_PAID = {
@@ -133,6 +136,23 @@ describe('cancel + refund — a paid bundle member', () => {
   const member = (id: string, status: string, retail: number) => ({
     order_id: id, status, stripe_payment_intent_id: null, payment_group_id: 'g-1',
     reroute_count: 0, pharmacy_id: 'ph-1', ops_assignee: null, retail_price_snapshot: retail,
+  })
+
+  // Payment Flow v1.1: a paid member now carries the bundle's PaymentIntent.
+  it('a member carrying the bundle PaymentIntent still refunds only its share', async () => {
+    const a = { ...member('o-a', 'PAID_PROCESSING', 200), stripe_payment_intent_id: 'pi_group' }
+    const b = { ...member('o-b', 'PAID_PROCESSING', 250), stripe_payment_intent_id: 'pi_group' }
+    orderFetchMock.mockResolvedValue({ data: a, error: null })
+    groupFetchMock.mockResolvedValue({ data: GROUP, error: null })
+    membersFetchMock.mockResolvedValue({ data: [a, b], error: null })
+
+    const res = await post('o-a')
+
+    expect(res.status).toBe(200)
+    expect(refundsCreateMock).toHaveBeenCalledWith(
+      { payment_intent: 'pi_group', amount: 20000, reverse_transfer: true, refund_application_fee: true },
+      expect.objectContaining({ idempotencyKey: expect.any(String) }),
+    )
   })
 
   it('cancelling one of two paid members refunds that member only', async () => {
@@ -233,5 +253,33 @@ describe('cancel + refund: the payments ledger', () => {
     orderFetchMock.mockResolvedValue({ data: SOLO_PAID, error: null })
     expect((await post('o-solo')).status).toBe(200)
     expect(recordRefundMock).toHaveBeenCalledWith({ orderId: 'o-solo', refundId: 're_1', amountCents: null, currency: 'usd' })
+  })
+})
+
+// Payment Flow v1.1: Stripe's charge.refunded webhook can mark the order
+// REFUNDED for this same refund before our call finishes.
+describe('cancel + refund racing the charge.refunded webhook', () => {
+  it('the webhook marked it REFUNDED for this refund first: success, not a conflict', async () => {
+    orderFetchMock.mockResolvedValue({ data: SOLO_PAID, error: null })
+    casTransitionMock
+      .mockResolvedValueOnce({ success: true, wasAlreadyTransitioned: false })
+      .mockResolvedValueOnce({ success: true, wasAlreadyTransitioned: true })
+    historyFetchMock.mockResolvedValue({ data: [{ order_id: 'o-solo' }], error: null })
+
+    const res = await post('o-solo')
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true, status: 'REFUNDED', refundId: 're_1' })
+  })
+
+  it('left REFUND_PENDING for any other reason: still a conflict', async () => {
+    orderFetchMock.mockResolvedValue({ data: SOLO_PAID, error: null })
+    casTransitionMock
+      .mockResolvedValueOnce({ success: true, wasAlreadyTransitioned: false })
+      .mockResolvedValueOnce({ success: true, wasAlreadyTransitioned: true })
+
+    const res = await post('o-solo')
+
+    expect(res.status).toBe(409)
   })
 })

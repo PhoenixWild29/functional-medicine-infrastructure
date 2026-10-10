@@ -226,6 +226,21 @@ export function buildStatusHistoryWriteFailedAlert(params: {
 }
 
 /**
+ * Payment Flow v1.1: a Stripe payment event ops must see. IDs, Stripe
+ * codes and amounts only; never card data or patient details.
+ */
+export function buildStripePaymentAlert(params: {
+  type:     'stripe_payment_failed' | 'stripe_refund_unsynced' | 'stripe_dispute_lost'
+  orderId:  string | null
+  status?:  string | null
+  details?: Partial<Record<OpsAlertDetailKey, OpsAlertDetailValue>>
+}): SafeSlackPayload {
+  return buildOpsAlert({
+    type: params.type, orderId: params.orderId, pharmacy: 'stripe', status: params.status ?? null, details: params.details ?? {},
+  })
+}
+
+/**
  * A pharmacy submission problem. `errorCode` must be one of OUR codes
  * (e.g. fax_send_failed); a value that is not a single token is dropped.
  * Never pass pharmacy text (a rejection reason or a rejection code) here.

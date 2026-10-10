@@ -15,10 +15,10 @@
 // group PI was created with transfer_data.destination = clinic Connect
 // account, so the full bundled amount is transferred atomically at PI
 // confirmation by Stripe itself. The payment_groups row records the PI
-// id; per-order orders.stripe_payment_intent_id is intentionally NOT
-// stamped to avoid breaking the .single() lookup pattern in other
-// handlers (charge.dispute.created → find order by PI). Dispute
-// handling for groups needs its own follow-up.
+// id, and (Payment Flow v1.1) so does every member order, stamped before
+// the members move to PAID_PROCESSING. Every lookup by PaymentIntent
+// checks the group first (resolve-payment.ts, lib/refunds decideRefund,
+// the success page), so several orders sharing one PI is expected.
 
 import type Stripe from 'stripe'
 import type { createServiceClient } from '@/lib/supabase/service'
@@ -148,6 +148,20 @@ export async function handleGroupPaymentSucceeded(
       throw new Error(`group ${groupId} could not be marked CANCELLED: ${cancelErr.message}`)
     }
     return
+  }
+
+  // Payment Flow v1.1: the bundle's PaymentIntent on every member order
+  // (only where none is recorded: idempotent on redelivery). A write that
+  // fails throws, so Stripe redelivers before any member moves.
+  const { error: stampErr } = await supabase
+    .from('orders')
+    .update({ stripe_payment_intent_id: paymentIntent.id })
+    .eq('payment_group_id', groupId)
+    .is('stripe_payment_intent_id', null)
+    .is('deleted_at', null)
+  if (stampErr) {
+    console.error(`[stripe-webhook] could not record the PaymentIntent on group members | group=${groupId}:`, stampErr.message)
+    throw new Error(`group ${groupId}: PaymentIntent could not be recorded on its orders: ${stampErr.message}`)
   }
 
   // C7: the bundle's one payment-confirmation text is tied to its lowest

@@ -26,13 +26,18 @@ import { createStripeClient } from '@/lib/stripe/client'
 import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition } from '@/lib/orders/cas-transition'
 import { serverEnv } from '@/lib/env'
-import { sendSlackAlert, buildAdapterFailureAlert } from '@/lib/slack/client'
+import { sendSlackAlert, buildAdapterFailureAlert, buildStripePaymentAlert } from '@/lib/slack/client'
 import { routeOrder } from '@/lib/adapters/routing-engine'
 import { sendPaymentConfirmationSms } from '@/lib/sms/triggers'
 import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { handleGroupPaymentSucceeded as handleGroupPaymentSucceededImpl } from './handle-group'
 import { handleGroupChargeDisputeCreated as handleGroupChargeDisputeCreatedImpl } from './handle-group-dispute'
 import { recordPaymentLedger, recordDisputeLedger, recordLatePaymentLedger, type LedgerResult } from '@/lib/payments/ledger'
+import { handlePaymentFailed } from './handle-payment-failed'
+import { handleChargeRefunded } from './handle-charge-refunded'
+import { handleDisputeStatusChanged } from './handle-dispute-status'
+import { resolvePaymentTarget } from './resolve-payment'
+import { recordRefundInLedger } from '@/lib/payments/ledger-hook'
 
 // ============================================================
 // ROUTE HANDLER
@@ -127,6 +132,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         break
       case 'charge.dispute.created':
         await handleDisputeCreated(event.data.object as Stripe.Dispute, event.id)
+        break
+      // Payment Flow v1.1 (each idempotent on the Stripe event / object id).
+      case 'payment_intent.payment_failed':
+        await handlePaymentFailed(event.data.object as Stripe.PaymentIntent, event.id, {
+          supabase: createServiceClient(), sendSlackAlert, buildStripePaymentAlert,
+        })
+        break
+      case 'charge.refunded':
+        await handleChargeRefunded(event.data.object as Stripe.Charge, event.id, {
+          supabase:             createServiceClient(),
+          stripe:               createStripeClient(),
+          casTransition,
+          sendSlackAlert,
+          buildStripePaymentAlert,
+          recordRefundInLedger,
+        })
+        break
+      case 'charge.dispute.updated':
+      case 'charge.dispute.closed':
+        await handleDisputeStatusChanged(event.data.object as Stripe.Dispute, event.type, event.id, {
+          supabase: createServiceClient(), sendSlackAlert, buildStripePaymentAlert,
+          recordDisputeCreated: dispute => handleDisputeCreated(dispute, event.id),
+        })
         break
       // WO-88 grandfather: `transfer.failed` IS a real Stripe webhook event per
       // https://docs.stripe.com/api/events/types#event_types-transfer.failed
@@ -617,43 +645,30 @@ async function handleSoloChargeDisputeCreated(dispute: Stripe.Dispute, eventId: 
     return
   }
 
-  // Resolve order by payment_intent_id. Solo-only lookup — group PIs
-  // intentionally don't stamp orders.stripe_payment_intent_id (see
-  // handle-group.ts). If no order is found AND no group flavor metadata
-  // was present, fall back to a group lookup defensively in case Stripe
-  // stripped metadata in transit.
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .select('order_id, clinic_id')
-    .eq('stripe_payment_intent_id', paymentIntentId)
-    .maybeSingle()
-
-  if (orderError) {
-    // Batch 2A: a chargeback must not be dropped because of a DB blip;
-    // dispute evidence has a deadline.
-    console.error(`[stripe-webhook] dispute ${dispute.id} order lookup failed:`, orderError.message)
-    throw new Error(`dispute ${dispute.id} order lookup failed: ${orderError.message}`)
+  // Payment Flow v1.1: the GROUP first, then the order's own PaymentIntent.
+  // A paid bundle's members now carry its PaymentIntent too, so an order
+  // lookup alone would find several (and .maybeSingle() errors on them).
+  // A group dispute that lost its metadata in transit lands here and goes
+  // to the group handler. Batch 2A: a lookup that fails throws, so a
+  // chargeback is never dropped on a DB blip (evidence has a deadline).
+  let target
+  try {
+    target = await resolvePaymentTarget(supabase, paymentIntentId, null)
+  } catch (lookupErr) {
+    const message = lookupErr instanceof Error ? lookupErr.message : String(lookupErr)
+    console.error(`[stripe-webhook] dispute ${dispute.id} lookup failed:`, message)
+    throw new Error(`dispute ${dispute.id} lookup failed: ${message}`)
   }
 
+  if (target?.kind === 'group') {
+    console.warn(
+      `[stripe-webhook] dispute ${dispute.id} routed solo but matched a group PI — falling back to group handler | pi=${paymentIntentId}`,
+    )
+    await handleGroupChargeDisputeCreated(dispute, eventId)
+    return
+  }
+  const order = target?.orders[0] ?? null
   if (!order) {
-    // Defensive fallback: a group PI's dispute that lost its metadata
-    // would land here. Try the group path before giving up.
-    const { data: maybeGroup, error: maybeGroupError } = await supabase
-      .from('payment_groups')
-      .select('group_id')
-      .eq('stripe_payment_intent_id', paymentIntentId)
-      .maybeSingle()
-    if (maybeGroupError) {
-      console.error(`[stripe-webhook] dispute ${dispute.id} group fallback lookup failed:`, maybeGroupError.message)
-      throw new Error(`dispute ${dispute.id} group lookup failed: ${maybeGroupError.message}`)
-    }
-    if (maybeGroup) {
-      console.warn(
-        `[stripe-webhook] dispute ${dispute.id} routed solo but matched a group PI — falling back to group handler | pi=${paymentIntentId}`,
-      )
-      await handleGroupChargeDisputeCreated(dispute, eventId)
-      return
-    }
     console.error(
       `[stripe-webhook] order not found for dispute ${dispute.id} | pi=${paymentIntentId}`
     )
@@ -701,7 +716,7 @@ async function handleSoloChargeDisputeCreated(dispute: Stripe.Dispute, eventId: 
   // Payments ledger (record-only): the disputed amount, keyed by this event.
   await recordLedger(`dispute ${dispute.id}`, () => recordDisputeLedger(supabase, {
     eventId, disputeId: dispute.id, amountCents: dispute.amount, currency: dispute.currency, status: dispute.status,
-    orderId: order.order_id, paymentGroupId: null, clinicId: (order as { clinic_id?: string | null }).clinic_id ?? null,
+    orderId: order.order_id, paymentGroupId: null, clinicId: dispute.metadata?.['clinic_id'] ?? null,
   }))
 
   // Alert ops — disputes require manual evidence submission

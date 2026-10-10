@@ -74,12 +74,15 @@ export async function decideRefund(supabase: Supabase, order: RefundableOrder): 
   if (!PAID_STATUSES.has(order.status)) return { ok: true, target: null }
 
   // A single order carries its own PaymentIntent: refund it in full, as
-  // the existing refund always has.
-  if (order.stripe_payment_intent_id) {
-    return { ok: true, target: { paymentIntentId: order.stripe_payment_intent_id, amountCents: null, includesShipping: false } }
+  // the existing refund always has. Payment Flow v1.1: a bundle member
+  // carries the BUNDLE's PaymentIntent too (stamped when it is paid), so
+  // the bundle is checked first: refunding that PaymentIntent in full for
+  // one member would refund the whole bundle.
+  if (!order.payment_group_id) {
+    return order.stripe_payment_intent_id
+      ? { ok: true, target: { paymentIntentId: order.stripe_payment_intent_id, amountCents: null, includesShipping: false } }
+      : { ok: true, target: null }
   }
-
-  if (!order.payment_group_id) return { ok: true, target: null }
 
   // A bundle member: the PaymentIntent is on the group, never the order.
   const { data: group, error: groupError } = await supabase
@@ -177,10 +180,33 @@ export async function pendingRefund(supabase: Supabase, order: RefundableOrder):
       amountCents:      typeof meta['refund_amount_cents'] === 'number' ? meta['refund_amount_cents'] : null,
       includesShipping: meta['refund_includes_shipping'] === true,
     }
-  } else if (order.stripe_payment_intent_id) {
+  } else if (order.stripe_payment_intent_id && !order.payment_group_id) {
+    // A single order only: a bundle member's PaymentIntent is the whole
+    // bundle's, and a full refund of it is never this member's to take.
     target = { paymentIntentId: order.stripe_payment_intent_id, amountCents: null, includesShipping: false }
   }
   return { ok: true, pendingSince: row?.created_at ?? null, target, refundId }
+}
+
+/**
+ * Payment Flow v1.1: did the Stripe webhook (charge.refunded) already mark
+ * this order REFUNDED for THIS refund? Stripe can send the event while
+ * our own refund call is still finishing, so our REFUNDED transition can
+ * find the order already moved. That is the same outcome, not a conflict.
+ */
+export async function refundedWithRefund(supabase: Supabase, orderId: string, refundId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('order_status_history')
+    .select('order_id')
+    .eq('order_id', orderId)
+    .eq('new_status', 'REFUNDED')
+    .contains('metadata', { refund_id: refundId })
+    .limit(1)
+  if (error) {
+    console.error(`[refunds] could not check refund ${refundId} on order ${orderId}: ${error.message}`)
+    return false
+  }
+  return (data ?? []).length > 0
 }
 
 /**

@@ -96,10 +96,17 @@ jest.mock('@/lib/supabase/service', () => ({
             eq: () => ({
               single:      () => orderFetchMock(),
               maybeSingle: () => orderFetchMock(),
-              is:          () => membersFetchMock(),
+              // .is() awaited (bundle members), or .is().maybeSingle() (the solo lookup by PaymentIntent, Payment Flow v1.1).
+              is:          () => Object.assign(Promise.resolve(membersFetchMock()), { maybeSingle: () => orderFetchMock() }),
             }),
           }),
-          update: (values: unknown) => ({ eq: (c: string, v: unknown) => orderUpdateMock(values, c, v) }),
+          update: (values: unknown) => ({
+            eq: (c: string, v: unknown) => {
+              // eq() awaited, or eq().is().is() for the bundle's PaymentIntent stamp (Payment Flow v1.1).
+              const result = orderUpdateMock(values, c, v)
+              return Object.assign(Promise.resolve(result), { is: () => ({ is: async () => ({ error: null }) }) })
+            },
+          }),
         }
       }
       if (table === 'payment_groups') {
@@ -211,7 +218,8 @@ describe('ledger from the Stripe webhook', () => {
 
   it('a dispute is recorded, keyed by the event', async () => {
     const dispute = { id: 'du_1', object: 'dispute', amount: 20900, currency: 'usd', status: 'needs_response', reason: 'fraudulent', payment_intent: 'pi_solo_1', metadata: { order_id: 'o-1', clinic_id: 'clinic-1', platform: '8090ai' } }
-    orderFetchMock.mockResolvedValue({ data: { order_id: 'o-1', clinic_id: 'clinic-1' }, error: null })
+    groupFetchMock.mockResolvedValue({ data: null, error: null })
+    orderFetchMock.mockResolvedValue({ data: { order_id: 'o-1', status: 'DELIVERED', payment_group_id: null, stripe_payment_intent_id: 'pi_solo_1', retail_price_snapshot: 200 }, error: null })
     const res = await deliver('charge.dispute.created', dispute, 'evt_dsp_1')
     expect(res.status).toBe(200)
     expect(recordDisputeMock).toHaveBeenCalledWith(expect.objectContaining({

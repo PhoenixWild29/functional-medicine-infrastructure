@@ -28,7 +28,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition }       from '@/lib/orders/cas-transition'
 import { insertStatusHistory } from '@/lib/orders/status-history'
 import { createStripeClient }  from '@/lib/stripe/client'
-import { decideRefund, pendingRefund, issueRefund, refundMetadata, recordPendingRefund } from '@/lib/refunds/refund'
+import { decideRefund, pendingRefund, issueRefund, refundMetadata, recordPendingRefund, refundedWithRefund } from '@/lib/refunds/refund'
 import { recordRefundLedger } from '@/lib/payments/ledger'
 import { routeOrder, submitQueuedFax } from '@/lib/adapters/routing-engine'
 import { pharmacySubmissionsEnabled, PHARMACY_SUBMISSIONS_OFF_MESSAGE } from '@/lib/adapters/submission-switch'
@@ -275,6 +275,11 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
         metadata:       { refund_id: refund.refundId },
       })
       if (refundedCas.wasAlreadyTransitioned) {
+        // Payment Flow v1.1: the charge.refunded webhook can mark it
+        // REFUNDED for this same refund first. Same outcome: success.
+        if (await refundedWithRefund(supabase, orderId, refund.refundId)) {
+          return NextResponse.json({ ok: true, status: 'REFUNDED', refundId: refund.refundId })
+        }
         return NextResponse.json(
           { ok: false, refundId: refund.refundId, error: `Refund ${refund.refundId} was issued, but the order left REFUND_PENDING before it could be marked REFUNDED. Check the order.` },
           { status: 409 },

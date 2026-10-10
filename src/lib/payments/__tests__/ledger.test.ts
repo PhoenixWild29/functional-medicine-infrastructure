@@ -145,7 +145,7 @@ describe('recordDisputeLedger', () => {
     const d = db([order(O1)])
     await recordDisputeLedger(d.client, { eventId: 'evt_d', disputeId: 'du_1', amountCents: 20900, currency: 'usd', status: 'needs_response', orderId: O1, paymentGroupId: null, clinicId: CLINIC })
     const [l] = lines(d)
-    expect(l).toEqual(expect.objectContaining({ entry_type: 'dispute', party: 'platform', amount_cents: -20900, stripe_object_id: 'du_1', status: 'open', source_event_id: 'evt_d', order_id: O1 }))
+    expect(l).toEqual(expect.objectContaining({ entry_type: 'dispute', party: 'platform', amount_cents: -20900, stripe_object_id: 'du_1', status: 'open', source_event_id: 'du_1', order_id: O1 }))
   })
 })
 

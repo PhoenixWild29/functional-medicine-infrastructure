@@ -263,14 +263,19 @@ export interface DisputeLedgerInput {
   clinicId:       string | null
 }
 
-/** charge.dispute.created: the disputed amount, an open negative platform line. */
+/**
+ * charge.dispute.created: the disputed amount, an open negative platform
+ * line. Keyed by the dispute id, not the event: a dispute first seen on
+ * charge.dispute.updated / closed (the created event missed) and its
+ * later created event record one line, not two.
+ */
 export async function recordDisputeLedger(supabase: Supabase, input: DisputeLedgerInput): Promise<LedgerResult> {
   try {
     if (!input.orderId && !input.paymentGroupId) throw new Error('dispute has no order or payment group')
     const inserted = await insertLines(supabase, [{
       entry_type: 'dispute', party: 'platform', amount_cents: -Math.abs(input.amountCents), currency: input.currency,
       order_id: input.orderId, payment_group_id: input.paymentGroupId, clinic_id: input.clinicId, pharmacy_id: null,
-      stripe_object_id: input.disputeId, status: 'open', source_event_id: input.eventId,
+      stripe_object_id: input.disputeId, status: 'open', source_event_id: input.disputeId,
       line_key: lineKey('dispute', 'platform', input.orderId, input.paymentGroupId),
     }])
     return { ok: true, inserted }
