@@ -21,6 +21,7 @@ jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn(), refre
 import { OnboardingWizard } from '@/app/pharmacy/onboarding/_components/onboarding-wizard'
 import { AGREEMENT, agreementText, agreementTextSha256 } from '@/lib/pharmacy-onboarding/agreement'
 import type { WizardState } from '@/lib/pharmacy-onboarding/application'
+import { PHARMACY_TERMS } from '@/lib/onboarding/agreement-texts'
 
 const LONG = 'X'.repeat(200)
 
@@ -32,6 +33,7 @@ function state(over: Partial<WizardState> = {}): WizardState {
     ordering: null,
     catalog: { choice: 'uploaded', rowCount: 2, warnings: [`Row 3: ${LONG}`] },
     agreement: { key: AGREEMENT.key, version: AGREEMENT.version, title: AGREEMENT.title, text: agreementText(), textSha256: agreementTextSha256(), banner: AGREEMENT.banner, draft: true, acceptance: null },
+    terms: { key: 'pharmacy_terms', version: PHARMACY_TERMS.version, title: PHARMACY_TERMS.title, text: PHARMACY_TERMS.text, textSha256: 'x'.repeat(64), banner: 'Draft, pending legal review', draft: true, acceptance: null },
     ...over,
   } as WizardState
 }
@@ -53,7 +55,7 @@ it('the step nav can shrink below its buttons, and the list scrolls inside it', 
   expect(list).toHaveClass('overflow-x-auto')
   // Not a focus stop of its own: every step inside it is a button.
   expect(list).not.toHaveAttribute('tabindex')
-  expect(within(list).getAllByRole('button')).toHaveLength(8)
+  expect(within(list).getAllByRole('button')).toHaveLength(9)
 })
 
 it('long free text wraps: send-back note, license number, ops note, CSV warnings, agreement', () => {
@@ -68,5 +70,5 @@ it('long free text wraps: send-back note, license number, ops note, CSV warnings
   expect(hasUp(screen.getByText(`Row 3: ${LONG}`), 'break-words')).toBe(true)
 
   go('BAA')
-  expect(screen.getByRole('region', { name: 'Agreement text' })).toHaveClass('break-words')
+  expect(screen.getByRole('region', { name: 'Business Associate Agreement text' })).toHaveClass('break-words')
 })

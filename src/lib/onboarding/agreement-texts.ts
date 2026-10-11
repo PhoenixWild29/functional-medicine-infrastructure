@@ -17,13 +17,18 @@
 // own version and hash), via
 // legal-texts.generated.ts (scripts/gen-legal-texts.mjs; a test keeps the
 // two identical). Terms: our own draft, below, until counsel's arrives.
+//
+// Pharmacy Terms of Service: src/content/legal/pharmacy-terms-draft-v0.1.md,
+// version "v0.1", key "pharmacy_terms". A pharmacy accepts it with the BAA
+// (lib/pharmacy-onboarding). It is not one of the clinic's AGREEMENTS, so
+// the clinic agreement routes (isAgreementKey) never take it.
 
-import { BAA_V0_1_TEXT } from './legal-texts.generated'
+import { BAA_V0_1_TEXT, PHARMACY_TERMS_V0_1_TEXT } from './legal-texts.generated'
 
 export type AgreementKey = 'baa' | 'terms'
 
-export interface AgreementTemplate {
-  key:     AgreementKey
+export interface AgreementTemplate<K extends string = AgreementKey> {
+  key:     K
   title:   string
   version: string
   draft:   true
@@ -60,6 +65,10 @@ THIS IS A DRAFT TEMPLATE PENDING LEGAL REVIEW. It will be replaced by the final 
 export const AGREEMENTS: Record<AgreementKey, AgreementTemplate> = {
   baa:   { key: 'baa',   title: 'Business Associate Agreement', version: 'v0.1.1',                draft: true, text: BAA_V0_1_TEXT },
   terms: { key: 'terms', title: 'Terms of Service',             version: 'terms-draft-2026-10.2', draft: true, text: TERMS_TEXT },
+}
+
+export const PHARMACY_TERMS: AgreementTemplate<'pharmacy_terms'> = {
+  key: 'pharmacy_terms', title: 'Pharmacy Terms of Service', version: 'v0.1', draft: true, text: PHARMACY_TERMS_V0_1_TEXT,
 }
 
 export const DRAFT_BANNER = 'Draft, pending legal review'

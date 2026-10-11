@@ -172,8 +172,10 @@ describe('catalog CSV (the ops upload validator)', () => {
 
 describe('steps', () => {
   it('the wizard order, and what complete means', () => {
-    expect(ONBOARDING_STEPS.map(s => s.key)).toEqual(['details', 'facility', 'licenses', 'ordering', 'shipping', 'agreement', 'catalog', 'review'])
-    expect(stepsComplete(['details', 'facility', 'licenses', 'ordering', 'shipping', 'agreement', 'catalog'])).toBe(true)
+    expect(ONBOARDING_STEPS.map(s => s.key)).toEqual(['details', 'facility', 'licenses', 'ordering', 'shipping', 'agreement', 'terms', 'catalog', 'review'])
+    expect(stepsComplete(['details', 'facility', 'licenses', 'ordering', 'shipping', 'agreement', 'terms', 'catalog'])).toBe(true)
+    // The BAA without the Pharmacy Terms of Service is not complete.
+    expect(stepsComplete(['details', 'facility', 'licenses', 'ordering', 'shipping', 'agreement', 'catalog'])).toBe(false)
     expect(stepsComplete(['details', 'facility'])).toBe(false)
   })
 })
