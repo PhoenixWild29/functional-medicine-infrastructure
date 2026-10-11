@@ -242,6 +242,21 @@ export type AdapterErrorCode = typeof ADAPTER_ERROR_CODES[number]
 const ADAPTER_ERROR_CODE_SET: ReadonlySet<string> = new Set(ADAPTER_ERROR_CODES)
 
 /**
+ * Payment Flow v1.1: a Stripe payment event ops must see. IDs, Stripe
+ * codes and amounts only; never card data or patient details.
+ */
+export function buildStripePaymentAlert(params: {
+  type:     'stripe_payment_failed' | 'stripe_refund_unsynced' | 'stripe_dispute_lost'
+  orderId:  string | null
+  status?:  string | null
+  details?: Partial<Record<OpsAlertDetailKey, OpsAlertDetailValue>>
+}): SafeSlackPayload {
+  return buildOpsAlert({
+    type: params.type, orderId: params.orderId, pharmacy: 'stripe', status: params.status ?? null, details: params.details ?? {},
+  })
+}
+
+/**
  * A pharmacy submission problem. `errorCode` is one of OUR fixed codes
  * (ADAPTER_ERROR_CODES); anything else, such as a pharmacy's rejection
  * code, is sent as "unknown". Never pass pharmacy text here. The code is

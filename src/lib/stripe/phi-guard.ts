@@ -59,6 +59,10 @@ export const GUARDED_OPS: Readonly<Record<string, OpRule>> = {
     paramIndex: 0,
     fields: ['payment_intent', 'amount', 'reverse_transfer', 'refund_application_fee', 'metadata'],
   },
+  // Payment Flow v1.1: unwinding a refund issued from the Stripe Dashboard
+  // without reverse_transfer (the webhook reverses it proportionally).
+  'transfers.createReversal':     { paramIndex: 1, fields: ['amount'] },
+  'applicationFees.createRefund': { paramIndex: 1, fields: ['amount'] },
   'accounts.create':     { paramIndex: 0, fields: ['type', 'metadata'] },
   'accountLinks.create': { paramIndex: 0, fields: ['account', 'refresh_url', 'return_url', 'type'] },
   'customers.create':    { paramIndex: 0, fields: [] },
