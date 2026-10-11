@@ -164,6 +164,8 @@ interface ProtocolItem {
   dea_schedule?: number | null
   /** Compliance C8: why this item cannot be ordered (from /api/protocols), or null. */
   compounding_block?: { code: string; message: string } | null
+  /** C8, owner decision: a non-blocking warning (pending FDA evaluation), or null. */
+  compounding_warning?: string | null
   formulations: {
     formulation_id: string
     name: string
@@ -928,6 +930,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
                   {protocolDetail.items.map((item, i) => {
                     const itemControlled = isControlledSchedule(item.dea_schedule)
                     const itemNotCompoundable = !itemControlled && !!item.compounding_block
+                    const itemPendingEvaluation = !itemControlled && !itemNotCompoundable && !!item.compounding_warning
                     const itemUnlicensed = !itemControlled && item.pharmacy_licensed === false
                     const itemUnavailable =
                       !itemControlled && !itemUnlicensed && (!item.formulation_active || item.wholesale_price === null)
@@ -964,6 +967,14 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
                                 title={item.compounding_block?.message}
                               >
                                 {NOT_COMPOUNDABLE_LABEL}: will be excluded
+                              </span>
+                            )}
+                            {itemPendingEvaluation && (
+                              <span
+                                className="mt-0.5 block text-[10px] font-medium text-amber-700"
+                                data-testid={`protocol-item-pending-evaluation-${item.item_id}`}
+                              >
+                                {item.compounding_warning}
                               </span>
                             )}
                           </p>

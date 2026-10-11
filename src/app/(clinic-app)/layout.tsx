@@ -42,13 +42,20 @@ export default async function ClinicAppLayout({
   // (the page itself reports the error).
   let showPractice = appRole === 'clinic_admin'
   const clinicId = getUserClinicId(user)
-  if (appRole === 'provider' && clinicId) {
+  if (clinicId) {
     const { data: clinic } = await supabase
       .from('clinics')
-      .select('practice_dashboard_visible_to_providers')
+      .select('practice_dashboard_visible_to_providers, onboarding_status, is_active')
       .eq('clinic_id', clinicId)
       .maybeSingle()
-    showPractice = clinic?.practice_dashboard_visible_to_providers === true
+    // Clinic onboarding: until ops approves the clinic, its users work in
+    // /onboarding (the admin's wizard; a waiting page for everyone else).
+    // Navigation only: batch-sign refuses an unapproved clinic on the
+    // server, so a clinic that cannot be read here is not blocked.
+    if (clinic && clinic.onboarding_status && clinic.onboarding_status !== 'approved') {
+      redirect('/onboarding')
+    }
+    if (appRole === 'provider') showPractice = clinic?.practice_dashboard_visible_to_providers === true
   }
 
   return (
