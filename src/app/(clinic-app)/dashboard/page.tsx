@@ -17,6 +17,8 @@
 //   retail_price_snapshot / wholesale_price_snapshot are NUMERIC(10,2)
 //   (dollars) in the DB → converted with Math.round(n * 100).
 
+import { createServiceClient } from '@/lib/supabase/service'
+import { isPortalOnboardedClinic } from '@/lib/clinics/portal-clinic'
 import { createServerClient } from '@/lib/supabase/server'
 import { resolveCurrentProvider } from '@/lib/auth/current-provider'
 import type { DraftViewer } from '@/lib/orders/draft-edit-access'
@@ -175,6 +177,9 @@ export default async function DashboardPage(
   }
 
   const stripeConnectStatus = clinicData.stripe_connect_status as StripeConnectStatusEnum
+  // A clinic onboarded through the portal sets up payouts at launch: the
+  // dashboard says so instead of sending it to Stripe onboarding.
+  const payoutsAtLaunch = stripeConnectStatus !== 'ACTIVE' && await isPortalOnboardedClinic(createServiceClient(), clinicId)
 
   // Build DashboardOrder rows with HC-01 integer-cent arithmetic
   const now = Date.now()
@@ -326,6 +331,7 @@ export default async function DashboardPage(
           initialTab={isTabId(resolvedSearchParams.tab) ? resolvedSearchParams.tab : null}
           initialOrderId={typeof resolvedSearchParams.order === 'string' ? resolvedSearchParams.order : null}
           providerViewMode={viewMode}
+          payoutsAtLaunch={payoutsAtLaunch}
         />
       </main>
     </>
