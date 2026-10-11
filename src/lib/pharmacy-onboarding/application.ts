@@ -15,10 +15,11 @@
 import { randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { validateCatalogRows } from '@/lib/catalog/validate-csv-rows'
-import { AGREEMENT, agreementText, agreementTextSha256 } from './agreement'
+import { isPharmacyAgreementKey, pharmacyAgreement, type PharmacyAgreementKey } from './agreement'
+import { currentAcceptances, latestAcceptance, type AcceptanceRow } from './agreements-history'
 import { recordOnboardingEvent } from './events'
 import type { Fail } from './invites'
-import { ONBOARDING_STEPS, SAVED_STEPS, withStep, withoutStep, type SavedStepKey } from './steps'
+import { ONBOARDING_STEPS, SHOWN_STEPS, withStep, withoutStep, type SavedStepKey } from './steps'
 import {
   validateAcceptance, validateDetails, validateFacility, validateLicense, validateOrdering, validateShipping,
   type OrderingMethod,
@@ -303,18 +304,26 @@ export async function saveOrdering(db: SupabaseClient, ctx: WizardCtx, input: Re
 }
 
 // ── f. BAA and terms ─────────────────────────────────────────
+//
+// input.agreement is 'baa' (the default, as before) or 'pharmacy_terms'.
+// The acceptance is recorded with its template_key, version and the
+// server's SHA-256 of the exact text; once per version. The recorded
+// 'agreement' step means both are accepted at their current versions.
+// After submission or approval a new version can still be accepted (from
+// /pharmacy/agreements); the application itself is not changed then.
 
 export async function acceptAgreement(db: SupabaseClient, ctx: WizardCtx, input: Record<string, unknown>, now: Date = new Date()): Promise<{ ok: true } | Fail> {
-  const v = validateAcceptance(input)
+  const key = input['agreement'] === undefined ? 'baa' : input['agreement']
+  if (!isPharmacyAgreementKey(key)) return { ok: false, status: 400, error: 'Choose the BAA or the terms of service.' }
+  const v = validateAcceptance(input, key)
   if (!v.ok) return invalid(v.errors)
-  const r = await editable(db, ctx.pharmacyId)
+  const r = await readApplication(db, ctx.pharmacyId)
   if (!r.ok) return r
 
-  const { data: existing, error: readError } = await db.from('pharmacy_agreement_acceptances')
-    .select('acceptance_id').eq('pharmacy_id', ctx.pharmacyId).eq('template_version', AGREEMENT.version).limit(1)
-  if (readError) return UNAVAILABLE('The agreement could not be recorded.')
-  if ((existing ?? []).length === 0) {
-    // Append-only: who, as whom, when, which version, which exact text.
+  const existing = await latestAcceptance(db, ctx.pharmacyId, key, v.value.template_version)
+  if (!existing.ok) return UNAVAILABLE('The agreement could not be recorded.')
+  if (!existing.row) {
+    // Append-only: who, as whom, when, which agreement, which version, which exact text.
     const { error } = await db.from('pharmacy_agreement_acceptances').insert({
       pharmacy_id: ctx.pharmacyId,
       application_id: r.app.application_id,
@@ -326,9 +335,15 @@ export async function acceptAgreement(db: SupabaseClient, ctx: WizardCtx, input:
       console.error('[pharmacy-onboarding] acceptance could not be recorded:', error.code ?? error.message)
       return UNAVAILABLE('The agreement could not be recorded.')
     }
-    await recordOnboardingEvent(db, { actor: { userId: ctx.userId, role: 'pharmacy_admin' }, action: 'agreement_accepted', pharmacyId: ctx.pharmacyId, applicationId: r.app.application_id, detail: { template_version: AGREEMENT.version } })
+    await recordOnboardingEvent(db, { actor: { userId: ctx.userId, role: 'pharmacy_admin' }, action: 'agreement_accepted', pharmacyId: ctx.pharmacyId, applicationId: r.app.application_id, detail: { template_key: key, template_version: v.value.template_version } })
   }
-  if (!await setSteps(db, r.app, withStep(r.app.steps_completed ?? [], 'agreement'))) return UNAVAILABLE('Your progress could not be saved.')
+
+  if (!EDITABLE.has(r.app.status)) return { ok: true }
+  const current = await currentAcceptances(db, ctx.pharmacyId)
+  if (!current.ok) return UNAVAILABLE('Your progress could not be saved.')
+  const done = r.app.steps_completed ?? []
+  const next = current.baa && current.terms ? withStep(done, 'agreement') : withoutStep(done, 'agreement')
+  if (!await setSteps(db, r.app, next)) return UNAVAILABLE('Your progress could not be saved.')
   return { ok: true }
 }
 
@@ -370,8 +385,12 @@ export async function saveCatalog(
 export async function submitApplication(db: SupabaseClient, ctx: WizardCtx, now: Date = new Date()): Promise<{ ok: true } | Fail> {
   const r = await editable(db, ctx.pharmacyId)
   if (!r.ok) return r
-  const done = r.app.steps_completed ?? []
-  const missing = SAVED_STEPS.filter(s => !done.includes(s))
+  const current = await currentAcceptances(db, ctx.pharmacyId)
+  if (!current.ok) return UNAVAILABLE('Your application could not be submitted.')
+  // The acceptances themselves, not only the recorded step: an 'agreement'
+  // step recorded before the terms existed is not enough.
+  const done = shownSteps(r.app.steps_completed ?? [], current)
+  const missing = SHOWN_STEPS.filter(s => !done.includes(s))
   if (missing.length > 0) {
     const labels = missing.map(s => ONBOARDING_STEPS.find(x => x.key === s)!.label)
     return { ok: false, status: 409, error: `Finish these steps before you submit: ${labels.join(', ')}.` }
@@ -398,7 +417,35 @@ export interface WizardState {
   licenses:       Array<{ state: string; licenseNumber: string; expiresOn: string; sterileCompounding: boolean | null; verificationStatus: string; verificationNote: string | null; hasDocument: boolean }>
   ordering:       Record<string, unknown> | null
   catalog:        { choice: string | null; rowCount: number | null; warnings: string[] }
-  agreement:      { key: string; version: string; title: string; text: string; textSha256: string; banner: string; draft: boolean; acceptance: { signerName: string; signerTitle: string; acceptedAt: string } | null }
+  /** The BAA. */
+  agreement:      AgreementView
+  /** The Pharmacy Terms of Service. */
+  terms:          AgreementView
+}
+
+export interface AgreementView {
+  key: string; version: string; title: string; text: string; textSha256: string; banner: string; draft: boolean
+  acceptance: { signerName: string; signerTitle: string; acceptedAt: string } | null
+}
+
+export function agreementView(key: PharmacyAgreementKey, row: AcceptanceRow | null): AgreementView {
+  const a = pharmacyAgreement(key)
+  return {
+    key: a.key, version: a.version, title: a.title, text: a.text, textSha256: a.textSha256, banner: a.banner, draft: a.draft,
+    acceptance: row ? { signerName: row.signer_name, signerTitle: row.signer_title, acceptedAt: row.accepted_at } : null,
+  }
+}
+
+/**
+ * The wizard's done steps: the recorded ones, except that the BAA
+ * ('agreement') and the terms ('terms') are done when their current
+ * versions are accepted.
+ */
+function shownSteps(recorded: ReadonlyArray<string>, current: { baa: AcceptanceRow | null; terms: AcceptanceRow | null }): string[] {
+  const done = new Set(recorded.filter(s => s !== 'agreement'))
+  if (current.baa) done.add('agreement')
+  if (current.terms) done.add('terms')
+  return SHOWN_STEPS.filter(s => done.has(s))
 }
 
 const PHARMACY_COLUMNS = 'name, legal_name, dba_name, address_line1, address_line2, city, state, zip, phone, ncpdp_id, npi, dea_number, facility_type, integration_tier, fax_number, ship_carriers, ships_cold_chain, ship_to_states, order_cutoff_local, onboarding_status, is_active'
@@ -416,21 +463,19 @@ export function orderingView(app: { ordering_method: string | null; ordering_det
 export async function loadOnboarding(db: SupabaseClient, pharmacyId: string): Promise<{ ok: true; state: WizardState } | Fail> {
   const r = await readApplication(db, pharmacyId)
   if (!r.ok) return r
-  const [pharmacy, licenses, acceptance] = await Promise.all([
+  const [pharmacy, licenses, current] = await Promise.all([
     db.from('pharmacies').select(PHARMACY_COLUMNS).eq('pharmacy_id', pharmacyId).maybeSingle(),
     readLicenses(db, pharmacyId),
-    db.from('pharmacy_agreement_acceptances').select('signer_name, signer_title, accepted_at, template_version')
-      .eq('pharmacy_id', pharmacyId).eq('template_version', AGREEMENT.version).order('accepted_at', { ascending: false }).limit(1),
+    currentAcceptances(db, pharmacyId),
   ])
-  if (pharmacy.error || !pharmacy.data || !licenses || acceptance.error) return UNAVAILABLE('Your application could not be read.')
-  const accepted = ((acceptance.data ?? []) as Array<{ signer_name: string; signer_title: string; accepted_at: string }>)[0] ?? null
+  if (pharmacy.error || !pharmacy.data || !licenses || !current.ok) return UNAVAILABLE('Your application could not be read.')
   const warnings = Array.isArray(r.app.catalog_warnings) ? (r.app.catalog_warnings as unknown[]).map(String) : []
 
   return {
     ok: true,
     state: {
       status: r.app.status,
-      stepsCompleted: r.app.steps_completed ?? [],
+      stepsCompleted: shownSteps(r.app.steps_completed ?? [], current),
       reviewNote: r.app.review_note,
       submittedAt: r.app.submitted_at,
       pharmacy: pharmacy.data as Record<string, unknown>,
@@ -440,11 +485,8 @@ export async function loadOnboarding(db: SupabaseClient, pharmacyId: string): Pr
       })),
       ordering: orderingView(r.app),
       catalog: { choice: r.app.catalog_choice, rowCount: r.app.catalog_row_count, warnings },
-      agreement: {
-        key: AGREEMENT.key, version: AGREEMENT.version, title: AGREEMENT.title, text: agreementText(),
-        textSha256: agreementTextSha256(), banner: AGREEMENT.banner, draft: AGREEMENT.draft,
-        acceptance: accepted ? { signerName: accepted.signer_name, signerTitle: accepted.signer_title, acceptedAt: accepted.accepted_at } : null,
-      },
+      agreement: agreementView('baa', current.baa),
+      terms: agreementView('pharmacy_terms', current.terms),
     },
   }
 }

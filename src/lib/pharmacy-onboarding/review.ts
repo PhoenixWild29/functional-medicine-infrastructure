@@ -13,7 +13,8 @@
 // see it.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { AGREEMENT } from './agreement'
+import { pharmacyAgreement, type PharmacyAgreementKey } from './agreement'
+import { currentAcceptances, latestAcceptance, type AcceptanceRow } from './agreements-history'
 import { LICENSE_DOCUMENT_BUCKET, orderingView } from './application'
 import { AUDIT_UNAVAILABLE, recordOnboardingEvent, type OnboardingActor } from './events'
 import type { Fail } from './invites'
@@ -121,9 +122,31 @@ export interface ApplicationReview {
   licenses:       Array<{ state: string; licenseNumber: string; expiresOn: string; sterileCompounding: boolean | null; verificationStatus: string; verificationNote: string | null; verifiedAt: string | null; documentUrl: string | null }>
   ordering:       Record<string, unknown> | null
   adapter:        { required: boolean; configuredAt: string | null }
-  acceptance:     { signerName: string; signerTitle: string; acceptedAt: string; templateVersion: string; textSha256: string; current: boolean } | null
+  /** The latest acceptance of each agreement (by template_key), or null. */
+  acceptances:    { baa: AcceptanceView | null; terms: AcceptanceView | null }
   catalog:        { choice: string | null; rowCount: number | null; warnings: string[]; rows: unknown[] }
   events:         Array<{ action: string; actorRole: string; occurredAt: string; stateCode: string | null }>
+}
+
+export interface AcceptanceView {
+  title:           string
+  signerName:      string
+  signerTitle:     string
+  acceptedAt:      string
+  templateVersion: string
+  /** The first 12 characters of the recorded SHA-256 of the accepted text. */
+  hashPrefix:      string
+  /** It is the agreement's current version. */
+  current:         boolean
+}
+
+function acceptanceView(key: PharmacyAgreementKey, row: AcceptanceRow | null): AcceptanceView | null {
+  if (!row) return null
+  const a = pharmacyAgreement(key)
+  return {
+    title: a.title, signerName: row.signer_name, signerTitle: row.signer_title, acceptedAt: row.accepted_at,
+    templateVersion: row.template_version, hashPrefix: row.text_sha256.slice(0, 12), current: row.template_version === a.version,
+  }
 }
 
 const PHARMACY_COLUMNS = 'pharmacy_id, name, legal_name, dba_name, address_line1, address_line2, city, state, zip, phone, email, ncpdp_id, npi, dea_number, facility_type, integration_tier, fax_number, ship_carriers, ships_cold_chain, ship_to_states, order_cutoff_local, onboarding_status, is_active'
@@ -132,13 +155,14 @@ export async function getApplicationReview(db: SupabaseClient, applicationId: st
   const r = await readApplication(db, applicationId)
   if (!r.ok) return r
   const pharmacyId = r.app.pharmacy_id
-  const [pharmacy, licenses, acceptance, events] = await Promise.all([
+  const [pharmacy, licenses, baa, terms, events] = await Promise.all([
     db.from('pharmacies').select(PHARMACY_COLUMNS).eq('pharmacy_id', pharmacyId).maybeSingle(),
     readLicenses(db, pharmacyId),
-    db.from('pharmacy_agreement_acceptances').select('signer_name, signer_title, accepted_at, template_version, text_sha256').eq('pharmacy_id', pharmacyId).order('accepted_at', { ascending: false }).limit(1),
+    latestAcceptance(db, pharmacyId, 'baa'),
+    latestAcceptance(db, pharmacyId, 'pharmacy_terms'),
     db.from('pharmacy_onboarding_events').select('action, actor_role, occurred_at, state_code').eq('pharmacy_id', pharmacyId).order('occurred_at', { ascending: false }).limit(50),
   ])
-  if (pharmacy.error || !pharmacy.data || !licenses || acceptance.error || events.error) return UNAVAILABLE('The application could not be read.')
+  if (pharmacy.error || !pharmacy.data || !licenses || !baa.ok || !terms.ok || events.error) return UNAVAILABLE('The application could not be read.')
 
   const bucket = db.storage.from(LICENSE_DOCUMENT_BUCKET)
   const withUrls = await Promise.all(licenses.map(async l => {
@@ -153,7 +177,6 @@ export async function getApplicationReview(db: SupabaseClient, applicationId: st
       verificationStatus: l.verification_status, verificationNote: l.verification_note, verifiedAt: l.verified_at, documentUrl,
     }
   }))
-  const a = ((acceptance.data ?? []) as Array<{ signer_name: string; signer_title: string; accepted_at: string; template_version: string; text_sha256: string }>)[0]
 
   return {
     ok: true,
@@ -164,7 +187,7 @@ export async function getApplicationReview(db: SupabaseClient, applicationId: st
       licenses: withUrls,
       ordering: orderingView(r.app),
       adapter: { required: needsAdapter(r.app.ordering_method), configuredAt: r.app.adapter_configured_at ?? null },
-      acceptance: a ? { signerName: a.signer_name, signerTitle: a.signer_title, acceptedAt: a.accepted_at, templateVersion: a.template_version, textSha256: a.text_sha256, current: a.template_version === AGREEMENT.version } : null,
+      acceptances: { baa: acceptanceView('baa', baa.row), terms: acceptanceView('pharmacy_terms', terms.row) },
       catalog: {
         choice: r.app.catalog_choice, rowCount: r.app.catalog_row_count,
         warnings: Array.isArray(r.app.catalog_warnings) ? (r.app.catalog_warnings as unknown[]).map(String) : [],
@@ -242,17 +265,18 @@ export async function approveApplication(
   if (!r.ok) return r
   const pharmacyId = r.app.pharmacy_id
 
-  const [licenses, acceptance] = await Promise.all([
+  const [licenses, accepted] = await Promise.all([
     readLicenses(db, pharmacyId),
-    db.from('pharmacy_agreement_acceptances').select('acceptance_id').eq('pharmacy_id', pharmacyId).eq('template_version', AGREEMENT.version).limit(1),
+    currentAcceptances(db, pharmacyId),
   ])
-  if (!licenses || acceptance.error) return UNAVAILABLE('The application could not be read.')
+  if (!licenses || !accepted.ok) return UNAVAILABLE('The application could not be read.')
   if (licenses.length === 0) return { ok: false, status: 409, error: 'The pharmacy has no state license.' }
   const notVerified = licenses.filter(l => l.verification_status !== 'verified').map(l => l.state_code)
   if (notVerified.length > 0) return { ok: false, status: 409, error: `Verify every license first. Not verified: ${notVerified.join(', ')}.` }
   const expired = licenses.filter(l => l.expiration_date < today(now))
   if (expired.length > 0) return { ok: false, status: 409, error: `A license has expired since it was verified: ${expired.map(l => `${l.state_code} on ${l.expiration_date}`).join(', ')}.` }
-  if ((acceptance.data ?? []).length === 0) return { ok: false, status: 409, error: 'The pharmacy has not accepted the current BAA.' }
+  if (!accepted.baa) return { ok: false, status: 409, error: 'The pharmacy has not accepted the current BAA.' }
+  if (!accepted.terms) return { ok: false, status: 409, error: 'The pharmacy has not accepted the current Terms of service.' }
   if (!r.app.ordering_method) return { ok: false, status: 409, error: 'The pharmacy has not said how it receives orders.' }
   if (needsAdapter(r.app.ordering_method) && !r.app.adapter_configured_at) {
     return { ok: false, status: 409, error: `Configure the ${r.app.ordering_method === 'api' ? 'API' : 'portal'} adapter and mark it configured before approving.` }

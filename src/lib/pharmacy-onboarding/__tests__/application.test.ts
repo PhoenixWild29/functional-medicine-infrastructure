@@ -21,7 +21,7 @@
  */
 
 import { onboardingFake } from '@/__tests__/helpers/onboarding-fake'
-import { AGREEMENT, agreementTextSha256 } from '../agreement'
+import { AGREEMENT, agreementTextSha256, pharmacyAgreement } from '../agreement'
 import {
   loadOnboarding, saveDetails, saveFacility, saveLicense, deleteLicense, attachLicenseDocument,
   saveOrdering, saveShipping, acceptAgreement, saveCatalog, submitApplication,
@@ -212,7 +212,8 @@ describe('BAA and terms', () => {
       pharmacy_id: PH, application_id: APP, user_id: USER, signer_name: 'Dana Ruiz', signer_title: 'Pharmacist in charge',
       template_key: AGREEMENT.key, template_version: AGREEMENT.version, text_sha256: agreementTextSha256(), accepted_at: NOW.toISOString(),
     })])
-    expect(app(db)['steps_completed']).toEqual(['agreement'])
+    // The recorded 'agreement' step also needs the Pharmacy Terms of Service.
+    expect(app(db)['steps_completed']).toEqual([])
     expect(await acceptAgreement(db.client, ctx, accept, NOW)).toMatchObject({ ok: true })
     expect(db.rows('pharmacy_agreement_acceptances')).toHaveLength(1)
   })
@@ -268,6 +269,11 @@ describe('load and submit', () => {
     const db = world('in_progress', ['details', 'facility'])
     expect(await submitApplication(db.client, ctx, NOW)).toMatchObject({ ok: false, status: 409, error: expect.stringContaining('State licenses') })
     const done = world('in_progress', ['details', 'facility', 'licenses', 'ordering', 'shipping', 'agreement', 'catalog'])
+    // Submit checks the acceptances themselves: the BAA and the terms.
+    for (const key of ['baa', 'pharmacy_terms'] as const) {
+      const a = pharmacyAgreement(key)
+      done.rows('pharmacy_agreement_acceptances').push({ pharmacy_id: PH, user_id: USER, signer_name: 'Dana Ruiz', signer_title: 'PIC', template_key: key, template_version: a.version, text_sha256: a.textSha256, accepted_at: NOW.toISOString() })
+    }
     expect(await submitApplication(done.client, ctx, NOW)).toMatchObject({ ok: true })
     expect(app(done)).toEqual(expect.objectContaining({ status: 'submitted', submitted_at: NOW.toISOString() }))
     expect(done.rows('pharmacy_onboarding_events')).toEqual([expect.objectContaining({ action: 'application_submitted', pharmacy_id: PH, application_id: APP, actor_role: 'pharmacy_admin' })])

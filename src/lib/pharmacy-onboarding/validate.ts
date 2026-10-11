@@ -10,7 +10,7 @@
 import { npiChecksumValid } from '@/lib/providers/npi'
 import { US_STATES } from '@/lib/providers/states'
 import { toE164 } from '@/lib/patients/phone'
-import { AGREEMENT, agreementTextSha256 } from './agreement'
+import { pharmacyAgreement, type PharmacyAgreementKey } from './agreement'
 
 export type Validated<T> = { ok: true; value: T } | { ok: false; errors: Record<string, string> }
 
@@ -231,20 +231,22 @@ export interface AcceptanceValue {
   text_sha256:      string
 }
 
-export function validateAcceptance(input: Record<string, unknown>): Validated<AcceptanceValue> {
+export function validateAcceptance(input: Record<string, unknown>, key: PharmacyAgreementKey = 'baa'): Validated<AcceptanceValue> {
+  const agreement = pharmacyAgreement(key)
   const errors: Record<string, string> = {}
   const name = text(input['signerName'])
   const title = text(input['signerTitle'])
   if (name.length < 2 || name.length > 200) errors['signerName'] = 'Enter your full name.'
   if (title.length < 2 || title.length > 200) errors['signerTitle'] = 'Enter your title.'
   if (input['accept'] !== true) errors['accept'] = 'Confirm that you accept the agreement.'
-  if (input['templateVersion'] !== AGREEMENT.version) errors['templateVersion'] = 'The agreement changed since you opened it. Read it again before accepting.'
-  else if (input['textSha256'] !== agreementTextSha256()) errors['textSha256'] = 'The agreement text does not match. Reload and read it again.'
+  if (input['templateVersion'] !== agreement.version) errors['templateVersion'] = 'The agreement changed since you opened it. Read it again before accepting.'
+  else if (input['textSha256'] !== agreement.textSha256) errors['textSha256'] = 'The agreement text does not match. Reload and read it again.'
   return result(errors, () => ({
     signer_name: name,
     signer_title: title,
-    template_key: AGREEMENT.key,
-    template_version: AGREEMENT.version,
-    text_sha256: agreementTextSha256(),
+    template_key: agreement.key,
+    template_version: agreement.version,
+    // The server's hash of the server's text, never the client's.
+    text_sha256: agreement.textSha256,
   }))
 }

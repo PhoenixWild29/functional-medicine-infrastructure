@@ -13,6 +13,7 @@ import { getUserPharmacyId, getUserRole } from '@/lib/auth/claims'
 import { Providers } from '@/components/providers'
 import { NavSignOutButton } from '@/components/nav-sign-out-button'
 import { BfcacheGuard } from '@/components/bfcache-guard'
+import { PharmacyNav } from './_components/pharmacy-nav'
 
 export const metadata: Metadata = {
   title: 'Pharmacy onboarding | CompoundIQ',
@@ -32,8 +33,9 @@ export default async function PharmacyLayout({ children }: { children: React.Rea
         Skip to main content
       </a>
       <div className="min-h-screen bg-background">
-        <header className="flex items-center justify-between border-b border-border bg-card px-4 py-3">
+        <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border bg-card px-4 py-1">
           <span className="text-sm font-semibold text-foreground">CompoundIQ · Pharmacy</span>
+          <PharmacyNav />
           <NavSignOutButton />
         </header>
         {children}
