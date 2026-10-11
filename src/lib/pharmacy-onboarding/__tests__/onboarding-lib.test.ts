@@ -22,6 +22,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { AGREEMENT, agreementText, agreementTextSha256 } from '../agreement'
+import { AGREEMENTS } from '@/lib/onboarding/agreement-texts'
 import { validateCatalogRows } from '@/lib/catalog/validate-csv-rows'
 import { ONBOARDING_STEPS, stepsComplete } from '../steps'
 
@@ -126,24 +127,24 @@ describe('step validation', () => {
 })
 
 describe('the agreement', () => {
-  // The BAA is src/content/legal/baa-draft-v0.1.md (PR #213), not text of
-  // our own. Version "v0.1"; the hash is the SHA-256 of the exact text as
-  // committed (LF line endings, pinned by .gitattributes, so a Windows
-  // checkout hashes the same as production).
-  const file = () => readFileSync(join(process.cwd(), 'src', 'content', 'legal', 'baa-draft-v0.1.md'), 'utf8').replace(/\r\n/g, '\n')
+  // The BAA is the shared onboarding template (AGREEMENTS.baa, generated
+  // from src/content/legal/; its own test keeps the two identical), never
+  // a copy or a version pinned here. The hash is the SHA-256 of that exact
+  // text (LF line endings).
+  const shared = () => AGREEMENTS.baa
 
-  it('is the v0.1 draft file, with the draft banner kept', () => {
-    expect(AGREEMENT.version).toBe('v0.1')
+  it('is the shared draft template, with the draft banner kept', () => {
+    expect(AGREEMENT.version).toBe(shared().version)
     expect(AGREEMENT.key).toBe('baa')
     expect(AGREEMENT.draft).toBe(true)
     expect(AGREEMENT.banner).toBe('Draft, pending legal review')
     expect(AGREEMENT.title).toBe('Business Associate Agreement')
-    expect(agreementText()).toBe(file())
+    expect(agreementText()).toBe(shared().text)
     expect(agreementText()).toContain('# Business Associate Agreement')
   })
 
   it('the stored hash is the SHA-256 of that exact text', () => {
-    expect(agreementTextSha256()).toBe(createHash('sha256').update(file(), 'utf8').digest('hex'))
+    expect(agreementTextSha256()).toBe(createHash('sha256').update(shared().text, 'utf8').digest('hex'))
   })
 
   it('line endings are pinned to LF, and the file ships with the routes that read it', () => {

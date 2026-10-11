@@ -1,43 +1,35 @@
 // ============================================================
-// Pharmacy BAA: the v0.1 draft template
+// Pharmacy BAA: the shared onboarding template
 // ============================================================
 //
-// The text is src/content/legal/baa-draft-v0.1.md (PR #213), read as
-// committed. DRAFT, pending legal review: shown with that banner wherever
-// it appears. The acceptance record (pharmacy_agreement_acceptances,
-// append-only) stores the key, the version and the SHA-256 of this exact
-// text, so what was accepted can be proven later. A new text is a new file
-// and a new version: an acceptance of an older version is refused, never
-// carried over.
+// Version, title and text come from the one shared source the clinic flow
+// uses too: AGREEMENTS.baa in src/lib/onboarding/agreement-texts.ts, whose
+// text is generated from src/content/legal/ (scripts/gen-legal-texts.mjs,
+// kept identical by a test). Nothing is pinned here, so a new text and
+// version there (e.g. v0.1 to v0.1.1) is what pharmacies are shown, hash
+// and accept. DRAFT, pending legal review: shown with that banner.
 //
-// Exact text: the file's bytes as committed. .gitattributes pins
-// src/content/legal/*.md to LF, and CRLF is folded to LF here as well, so a
-// Windows checkout hashes the same as production. next.config.ts traces the
-// file into every function that reads it.
-//
-// Server only (node:fs).
+// The acceptance record (pharmacy_agreement_acceptances, append-only)
+// stores the key, the version and the SHA-256 of this exact text, so what
+// was accepted can be proven later. An acceptance of another version is
+// not current: the pharmacy accepts the new one.
 
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { createHash } from 'node:crypto'
+import { AGREEMENTS, DRAFT_BANNER } from '@/lib/onboarding/agreement-texts'
+
+const BAA = AGREEMENTS.baa
 
 export const AGREEMENT = {
-  key:     'baa',
-  version: 'v0.1',
-  draft:   true,
-  banner:  'Draft, pending legal review',
-  title:   'Business Associate Agreement',
-  path:    'src/content/legal/baa-draft-v0.1.md',
+  key:     BAA.key,
+  version: BAA.version,
+  draft:   BAA.draft,
+  banner:  DRAFT_BANNER,
+  title:   BAA.title,
 } as const
 
-let cached: string | null = null
-
-/** The agreement text, exactly as committed. */
+/** The agreement text, exactly as the shared source has it (LF). */
 export function agreementText(): string {
-  if (cached === null) {
-    cached = readFileSync(join(/*turbopackIgnore: true*/ process.cwd(), AGREEMENT.path), 'utf8').replace(/\r\n/g, '\n')
-  }
-  return cached
+  return BAA.text
 }
 
 export function agreementTextSha256(text: string = agreementText()): string {
