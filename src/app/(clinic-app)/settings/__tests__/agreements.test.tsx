@@ -15,6 +15,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { configureAxe } from 'jest-axe'
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { AGREEMENTS } from '@/lib/onboarding/agreement-texts'
 
 const CLINIC = 'c0000000-0000-4000-8000-000000000001'
@@ -155,7 +157,7 @@ describe('/settings/agreements/[acceptanceId]', () => {
 
 describe('the Settings nav and the dashboard banner', () => {
   it('Settings links to Agreements in its side nav', () => {
-    const src = require('node:fs').readFileSync(require('node:path').join(process.cwd(), 'src', 'app', '(clinic-app)', 'settings', 'page.tsx'), 'utf8') as string
+    const src = readFileSync(join(process.cwd(), 'src', 'app', '(clinic-app)', 'settings', 'page.tsx'), 'utf8') as string
     expect(src).toMatch(/\{ href: '\/settings\/agreements', +label: 'Agreements' +\}/)
   })
 
@@ -173,7 +175,7 @@ describe('the Settings nav and the dashboard banner', () => {
   })
 
   it('the dashboard shows the banner from loadAgreementNotice (clinic admin only; a failed read shows none)', () => {
-    const src = require('node:fs').readFileSync(require('node:path').join(process.cwd(), 'src', 'app', '(clinic-app)', 'dashboard', 'page.tsx'), 'utf8') as string
+    const src = readFileSync(join(process.cwd(), 'src', 'app', '(clinic-app)', 'dashboard', 'page.tsx'), 'utf8') as string
     expect(src).toMatch(/loadAgreementNotice\(/)
     expect(src).toMatch(/<AgreementUpdateBanner notice=\{agreementNotice\} \/>/)
   })
