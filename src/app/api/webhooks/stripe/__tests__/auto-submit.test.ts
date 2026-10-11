@@ -137,7 +137,13 @@ jest.mock('@/lib/supabase/service', () => ({
               error: null,
             }),
           ),
-          update: () => ({ eq: async () => ({ error: null }) }),
+          update: () => {
+            // eq() awaited (transfer bookkeeping) or eq().is().is() (Payment
+            // Flow v1.1: the bundle's PaymentIntent stamped on its members).
+            const done = Promise.resolve({ error: null })
+            const is2 = { is: async () => ({ error: null }) }
+            return { eq: () => Object.assign(done, { is: () => is2 }) }
+          },
         }
       }
       if (table === 'payment_groups') {

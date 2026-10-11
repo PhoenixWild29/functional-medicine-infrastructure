@@ -20,6 +20,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { isRefundEventRow } from '@/lib/refunds/events'
+import { isPaymentEventRow, paymentFailedLabel } from '@/lib/payments/events'
 import { createBrowserClient } from '@/lib/supabase/client'
 import type { DashboardOrder } from '../page'
 import { getStatusConfig } from '@/lib/orders/status-config'
@@ -148,6 +149,8 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
   const supabaseRef = useRef(createBrowserClient())
 
   const [history,           setHistory]           = useState<StatusHistoryRow[]>([])
+  // Payment Flow v1.1: "Payment failed, awaiting retry" (lib/payments/events).
+  const [paymentFailed,     setPaymentFailed]     = useState<string | null>(null)
   // The order's stored shipping + Rx details (GET /api/orders/[id]/record).
   const [record,            setRecord]            = useState<OrderRecord | null>(null)
   // Shipping rates + absorb setting for the Combine preview.
@@ -177,6 +180,7 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
   useEffect(() => {
     if (!order) {
       setHistory([])
+      setPaymentFailed(null)
       return
     }
 
@@ -192,7 +196,12 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
         // late payment refunded) record facts, not steps in the order's
         // timeline. Filtered by their event name only: other same-status
         // rows — the draft-edit audit (DRAFT → DRAFT) — ARE timeline steps.
-        const rows = ((data ?? []) as StatusHistoryRow[]).filter(r => !isRefundEventRow(r.metadata))
+        // Payment Flow v1.1: the Stripe payment event rows (a failed
+        // attempt, a refund, a dispute status) are skipped the same way,
+        // after the failed-payment label is read from the newest row.
+        const all = (data ?? []) as StatusHistoryRow[]
+        setPaymentFailed(paymentFailedLabel(order.status, all))
+        const rows = all.filter(r => !isRefundEventRow(r.metadata) && !isPaymentEventRow(r.metadata))
         setHistory(rows)
         setIsLoadingHistory(false)
         setActors({})
@@ -204,7 +213,7 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
           })
           .catch(() => { /* non-fatal: ids stay visible */ })
       })
-  }, [order?.orderId])
+  }, [order?.orderId, order?.status])
 
   // Load the order's stored shipping + Rx details whenever the drawer opens
   // on an order. Non-fatal: the split and details fall back to what the
@@ -547,6 +556,12 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
         </div>
 
         <div className="space-y-6 px-5 py-5">
+
+          {paymentFailed && (
+            <div role="status" data-testid="payment-failed-label" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900">
+              {paymentFailed}
+            </div>
+          )}
 
           {/* R10 fix — bundle-link recovery. Once an order is combined into a
               payment group the solo link is rejected server-side (anti-double-
