@@ -330,12 +330,12 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
                     {/* WO-97: allergy chip — plain span here (inside a button) */}
                     <AllergyChip patient={patient} />
                     {patient.state && (
-                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-foreground">
                         {patient.state}
                       </span>
                     )}
                     {!patient.state && (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
                         No state
                       </span>
                     )}
