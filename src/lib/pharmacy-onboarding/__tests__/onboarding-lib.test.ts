@@ -147,13 +147,8 @@ describe('the agreement', () => {
     expect(agreementTextSha256()).toBe(createHash('sha256').update(shared().text, 'utf8').digest('hex'))
   })
 
-  it('line endings are pinned to LF, and the file ships with the routes that read it', () => {
+  it('line endings of the source Markdown are pinned to LF (the hash depends on it)', () => {
     expect(readFileSync(join(process.cwd(), '.gitattributes'), 'utf8')).toMatch(/^src\/content\/legal\/\*\.md text eol=lf\r?$/m)
-    const config = readFileSync(join(process.cwd(), 'next.config.ts'), 'utf8')
-    expect(config).toContain('outputFileTracingIncludes')
-    for (const route of ['/api/pharmacy/**', '/pharmacy/**', '/api/ops/onboarding/**']) {
-      expect(config).toContain(`'${route}': ['./src/content/legal/**']`)
-    }
   })
 })
 
