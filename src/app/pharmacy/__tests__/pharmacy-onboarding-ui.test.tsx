@@ -8,7 +8,7 @@
  *   - The wizard: the steps in order with the current one marked
  *     (aria-current="step"); field errors from the server are shown on
  *     their fields (aria-invalid, aria-describedby) with an alert summary;
- *     the BAA and terms show the DRAFT banner and need the explicit yes;
+ *     the BAA shows the DRAFT banner and needs the explicit yes;
  *     saved secrets are never shown and may be kept; submit is offered
  *     only when every step is done; a sent-back note is shown.
  *   - Ops: creating an invite shows the link once, with a copy button;
@@ -109,22 +109,22 @@ describe('the wizard', () => {
   it('a save moves to the next step with the refreshed state', async () => {
     fetchMock
       .mockResolvedValueOnce(reply({}))
-      .mockResolvedValueOnce(reply(state({ stepsCompleted: ['details'] })))
+      .mockResolvedValueOnce(reply({ state: state({ stepsCompleted: ['details'] }) }))
     render(<OnboardingWizard initial={state()} />)
     fireEvent.click(screen.getByRole('button', { name: /save and continue/i }))
     expect(await screen.findByRole('heading', { name: 'Facility type' })).toBeInTheDocument()
   })
 
-  it('the BAA and terms: DRAFT banner, the text, and the explicit yes', async () => {
+  it('the BAA: DRAFT banner, the text, and the explicit yes', async () => {
     render(<OnboardingWizard initial={state({ stepsCompleted: ['details', 'facility', 'licenses', 'ordering', 'shipping'] })} />)
-    expect(screen.getByRole('heading', { name: 'BAA and terms' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'BAA' })).toBeInTheDocument()
     expect(screen.getByText('Draft, pending legal review')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: /agreement text/i })).toHaveTextContent('Business Associate')
     fireEvent.change(screen.getByLabelText('Your full name'), { target: { value: 'Dana Ruiz' } })
     fireEvent.change(screen.getByLabelText('Your title'), { target: { value: 'PIC' } })
     expect(screen.getByRole('button', { name: /accept and continue/i })).toBeDisabled()
     fireEvent.click(screen.getByLabelText(/I have read and accept/i))
-    fetchMock.mockResolvedValueOnce(reply({})).mockResolvedValueOnce(reply(state()))
+    fetchMock.mockResolvedValueOnce(reply({})).mockResolvedValueOnce(reply({ state: state() }))
     fireEvent.click(screen.getByRole('button', { name: /accept and continue/i }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/pharmacy/onboarding/agreement', expect.objectContaining({ method: 'POST' })))
     const body = JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body)

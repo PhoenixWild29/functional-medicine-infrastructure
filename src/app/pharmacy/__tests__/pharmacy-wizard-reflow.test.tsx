@@ -67,6 +67,6 @@ it('long free text wraps: send-back note, license number, ops note, CSV warnings
   go('Catalog')
   expect(hasUp(screen.getByText(`Row 3: ${LONG}`), 'break-words')).toBe(true)
 
-  go('BAA and terms')
+  go('BAA')
   expect(screen.getByRole('region', { name: 'Agreement text' })).toHaveClass('break-words')
 })
