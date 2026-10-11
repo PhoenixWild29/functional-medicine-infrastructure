@@ -10,15 +10,15 @@
 // it is read-only. Moving to a step puts focus on its heading.
 
 import { useEffect, useRef, useState } from 'react'
-import { ONBOARDING_STEPS, SAVED_STEPS, stepsComplete, type StepKey } from '@/lib/pharmacy-onboarding/steps'
+import { ONBOARDING_STEPS, SHOWN_STEPS, stepsComplete, type StepKey } from '@/lib/pharmacy-onboarding/steps'
 import type { WizardState } from '@/lib/pharmacy-onboarding/application'
 import { FormAlert, PrimaryButton, sendJson } from '@/components/pharmacy-onboarding/fields'
-import { AgreementStep, CatalogStep, DetailsStep, FacilityStep, LicensesStep, OrderingStep, ShippingStep, type StepProps } from './steps'
+import { AgreementStep, CatalogStep, DetailsStep, FacilityStep, LicensesStep, OrderingStep, ShippingStep, TermsStep, type StepProps } from './steps'
 
 const EDITABLE = new Set(['in_progress', 'sent_back'])
 
 function firstOpenStep(done: ReadonlyArray<string>): StepKey {
-  return SAVED_STEPS.find(s => !done.includes(s)) ?? 'review'
+  return SHOWN_STEPS.find(s => !done.includes(s)) ?? 'review'
 }
 
 /**
@@ -144,6 +144,7 @@ export function OnboardingWizard({ initial }: { initial: WizardState }) {
             : step === 'ordering' ? <OrderingStep {...props} />
             : step === 'shipping' ? <ShippingStep {...props} />
             : step === 'agreement' ? <AgreementStep {...props} />
+            : step === 'terms' ? <TermsStep {...props} />
             : step === 'catalog' ? <CatalogStep {...props} />
             : <ReviewStep state={state} onSubmitted={refresh} />}
         </section>
