@@ -197,7 +197,13 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
   // 2026-09 prod-logout root cause — '/unauthorized' USED TO BE IN THIS LIST.
   // DO NOT put it back. See the exemption block further down: /unauthorized
   // needs the refresh, it only needs to skip the ROLE gates.
-  const publicRoutes = ['/login', '/auth/callback', '/api/webhooks', '/api/cron', '/api/health', '/api/checkout']
+  //
+  // Clinic onboarding: the invite pages (/onboard/clinic/<token>,
+  // /onboard/join/<token>) and the accept API are opened by someone who
+  // has no account yet; the token is the credential, checked by hash in
+  // the route. The trailing slashes matter: '/onboard/' must not match the
+  // wizard at '/onboarding', which needs a signed-in clinic admin.
+  const publicRoutes = ['/login', '/auth/callback', '/api/webhooks', '/api/cron', '/api/health', '/api/checkout', '/onboard/', '/api/onboarding/invite/']
   if (publicRoutes.some(route => pathname.startsWith(route))) {
     return response
   }
