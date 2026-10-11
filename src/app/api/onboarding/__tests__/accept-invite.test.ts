@@ -35,6 +35,7 @@ jest.spyOn(console, 'info').mockImplementation(() => {})
 jest.spyOn(console, 'warn').mockImplementation(() => {})
 
 import { POST } from '../invite/accept/route'
+import { inviteAcceptLimiter } from '@/lib/onboarding/accept-rate-limit'
 
 const req = (body: unknown) => new NextRequest('http://localhost/api/onboarding/invite/accept', { method: 'POST', body: JSON.stringify(body) })
 const GOOD = { token: TOKEN, fullName: 'Lauren Perkins', password: 'Correct-Horse-9' }
@@ -61,6 +62,8 @@ function script(row: Record<string, unknown> | null, claimWins = true): Script {
 }
 
 beforeEach(() => {
+  // The route is rate limited per IP; these tests are not about that.
+  inviteAcceptLimiter.reset()
   createUser.mockReset().mockResolvedValue({ data: { user: { id: 'new-user' } }, error: null })
   deleteUser.mockReset().mockResolvedValue({ error: null })
   db = scriptedDb(script(invite()))

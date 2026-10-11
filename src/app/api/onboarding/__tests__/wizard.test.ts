@@ -163,15 +163,17 @@ describe('BAA and terms acceptance', () => {
     expect(db.to('clinic_onboarding_steps', 'upsert')[0]!.payload).toEqual(expect.objectContaining({ step: key, status: 'complete' }))
   })
 
-  it('the BAA acceptance stores version v0.1 and the SHA-256 of the exact v0.1 text', async () => {
-    const res = await acceptAgreement(req({ agreement: 'baa', version: 'v0.1', signerName: 'Lauren Perkins', signerTitle: 'Owner' }))
+  it('the BAA acceptance stores version v0.1.1 and the SHA-256 of the exact v0.1.1 text', async () => {
+    const res = await acceptAgreement(req({ agreement: 'baa', version: 'v0.1.1', signerName: 'Lauren Perkins', signerTitle: 'Owner' }))
     expect(res.status).toBe(201)
     expect(db.to('agreement_acceptances', 'insert')[0]!.payload).toEqual(expect.objectContaining({
-      template_version: 'v0.1', text_sha256: '14367b35e4b4ef51e6ed53d150275474635929a38c9bb900eef8d6e77ebc064e',
+      template_version: 'v0.1.1', text_sha256: 'b26c8364eaa68733a4d47ddd2d07fb554edc1a2f3fb4ed7b962f4bb16e5277d1',
     }))
   })
 
   it('a stale template version is 409', async () => {
+    // v0.1 (with the counsel notes) is no longer the current BAA.
+    expect((await acceptAgreement(req({ agreement: 'baa', version: 'v0.1', signerName: 'L', signerTitle: 'Owner' }))).status).toBe(409)
     const res = await acceptAgreement(req({ agreement: 'baa', version: 'old-1', signerName: 'L', signerTitle: 'Owner' }))
     expect(res.status).toBe(409)
     expect(db.to('agreement_acceptances', 'insert')).toEqual([])
