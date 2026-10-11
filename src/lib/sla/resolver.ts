@@ -150,8 +150,17 @@ interface ResolvedSla { sla_type: string; deadline_at: string | null }
 
 /** Resolve the PagerDuty incident of each resolved SLA that had breached. */
 async function resolveBreachedIncidents(orderId: string, rows: ResolvedSla[], nowIso: string): Promise<void> {
+  const nowMs = Date.parse(nowIso)
   for (const row of rows) {
-    if (!row.deadline_at || row.deadline_at > nowIso) continue
+    if (!row.deadline_at) continue
+    // Compare instants, not strings: Postgres returns "+00:00" (or another
+    // offset) and toISOString() returns "Z", so string order is not time order.
+    const deadlineMs = Date.parse(row.deadline_at)
+    if (Number.isNaN(deadlineMs)) {
+      console.warn(`[sla-resolver] unparseable deadline_at; treated as not breached | order=${orderId} sla=${row.sla_type}`)
+      continue
+    }
+    if (deadlineMs > nowMs) continue
     try {
       await resolveSlaEscalation(orderId, row.sla_type)
     } catch (err) {
