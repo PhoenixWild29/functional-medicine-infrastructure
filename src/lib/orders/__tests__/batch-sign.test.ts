@@ -108,8 +108,9 @@ function world(orders: Array<Record<string, unknown>>, clinicOver: Record<string
       { formulation_id: 'f-nad', requires_clinical_difference: false, salt_forms: { ingredients: ingredient('NAD+', { compounding_status: 'unverified', compounding_status_source: null, compounding_status_reviewed_at: null }) } },
       { formulation_id: 'f-ltx', requires_clinical_difference: false, salt_forms: { ingredients: ingredient('Naltrexone', { commercial_equivalent: true }) } },
       { formulation_id: 'f-sema-short', requires_clinical_difference: true, salt_forms: { ingredients: ingredient('Semaglutide', { commercial_equivalent: true, on_fda_shortage: true }) } },
+      { formulation_id: 'f-cat2', requires_clinical_difference: false, salt_forms: { ingredients: ingredient('Peptide X', { compounding_status: 'category_2' }) } },
       { formulation_id: 'f-combo', requires_clinical_difference: false, salt_forms: null, formulation_ingredients: [
-        { ingredients: ingredient('Cyanocobalamin') }, { ingredients: ingredient('TB-500', { compounding_status: 'pending_evaluation' }) },
+        { ingredients: ingredient('Cyanocobalamin') }, { ingredients: ingredient('Peptide X', { compounding_status: 'category_2' }) },
       ] },
     ],
     patients: [
@@ -796,15 +797,26 @@ describe('C8: what may be compounded, and the documented reason', () => {
   const codes = (problems: ReadonlyArray<{ code: string }> | undefined) => (problems ?? []).map(p => p.code)
 
   it('an ingredient that may not be compounded: refused (422), naming it and why; nothing signed', async () => {
-    const db = world([draft(1), line(2, 'f-bpc')])
+    const db = world([draft(1), line(2, 'f-cat2')])
     const res = await sign(db, [id(1), id(2)])
     if (res.ok) throw new Error('expected a refusal')
     expect(res.status).toBe(422)
     expect(res.problems).toEqual([expect.objectContaining({
       orderId: id(2), code: 'not_compoundable',
-      message: 'f-bpc product: BPC-157 is pending FDA evaluation (removed from Category 2, not yet placed in Category 1 or on the bulks list), so it cannot be compounded or ordered through CompoundIQ.',
+      message: 'f-cat2 product: Peptide X is 503A Category 2 (significant safety risks), so it cannot be compounded or ordered through CompoundIQ.',
     })])
     expect(signingUpdates(db)).toHaveLength(0)
+  })
+
+  // CHANGED (owner decision): pending FDA evaluation is orderable. The
+  // signed prescription records that status and its source.
+  it('an ingredient pending FDA evaluation signs, and the snapshot records pending_evaluation with its source', async () => {
+    const db = world([line(2, 'f-bpc')])
+    expect((await sign(db, [id(2)])).ok).toBe(true)
+    const compounding = (orderRow(db, 2)['medication_snapshot'] as Record<string, Record<string, unknown>>)['compounding']!
+    expect(compounding['ingredients']).toEqual([expect.objectContaining({
+      name: 'BPC-157', status: 'pending_evaluation', source: 'demo data, not verified',
+    })])
   })
 
   it('a combination with one such ingredient is refused too', async () => {
@@ -824,8 +836,10 @@ describe('C8: what may be compounded, and the documented reason', () => {
   })
 
   it('the pre-sign check reports the same', async () => {
-    const check = await checkBatch(world([line(2, 'f-bpc')]).client, { clinicId: CLINIC, userId: USER_CHEN, orderIds: [id(2)], atSigning: false })
+    const check = await checkBatch(world([line(2, 'f-cat2')]).client, { clinicId: CLINIC, userId: USER_CHEN, orderIds: [id(2)], atSigning: false })
     expect(codes(check.problems)).toEqual(['not_compoundable'])
+    const pending = await checkBatch(world([line(2, 'f-bpc')]).client, { clinicId: CLINIC, userId: USER_CHEN, orderIds: [id(2)], atSigning: false })
+    expect(codes(pending.problems)).toEqual([])
   })
 
   it('a commercial equivalent needs a reason even when the formulation flag is off', async () => {
