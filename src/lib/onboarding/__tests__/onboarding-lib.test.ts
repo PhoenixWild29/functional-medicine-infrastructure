@@ -118,11 +118,11 @@ describe('practice details', () => {
 })
 
 describe('agreements', () => {
-  it('the BAA is the v0.1 draft in src/content/legal, word for word, with its exact SHA-256', () => {
+  it('the BAA is the v0.1.1 draft in src/content/legal, word for word, with its exact SHA-256', () => {
     const md = readFileSync(join(process.cwd(), 'src', 'content', 'legal', 'baa-draft-v0.1.md'), 'utf8').replace(/\r\n/g, '\n')
-    expect(AGREEMENTS.baa.version).toBe('v0.1')
+    expect(AGREEMENTS.baa.version).toBe('v0.1.1')
     expect(AGREEMENTS.baa.text).toBe(md)
-    expect(agreementSha256(AGREEMENTS.baa.text)).toBe('14367b35e4b4ef51e6ed53d150275474635929a38c9bb900eef8d6e77ebc064e')
+    expect(agreementSha256(AGREEMENTS.baa.text)).toBe('b26c8364eaa68733a4d47ddd2d07fb554edc1a2f3fb4ed7b962f4bb16e5277d1')
   })
 
   it('the terms stay a draft of our own, versioned', () => {

@@ -26,6 +26,7 @@ const casTransitionMock = jest.fn()
 const groupFetchMock    = jest.fn()
 const groupUpdateMock   = jest.fn().mockResolvedValue({ error: null })
 const membersFetchMock  = jest.fn()
+const stampMock         = jest.fn().mockResolvedValue({ error: null })
 const branchByTierMock  = jest.fn().mockResolvedValue(undefined)
 const errorSpy          = jest.spyOn(console, 'error').mockImplementation(() => {})
 const warnSpy           = jest.spyOn(console, 'warn').mockImplementation(() => {})
@@ -52,6 +53,14 @@ const supabaseMock = {
         select: () => ({
           eq: () => ({
             is: () => membersFetchMock(),
+          }),
+        }),
+        // Payment Flow v1.1: the bundle's PaymentIntent is stamped on its members.
+        update: (values: unknown) => ({
+          eq: (c1: string, v1: unknown) => ({
+            is: (c2: string, v2: unknown) => ({
+              is: async (c3: string, v3: unknown) => stampMock(values, [[c1, v1], [c2, v2], [c3, v3]]),
+            }),
           }),
         }),
       }
@@ -90,6 +99,7 @@ beforeEach(() => {
   groupFetchMock.mockReset()
   groupUpdateMock.mockReset().mockResolvedValue({ error: null })
   membersFetchMock.mockReset()
+  stampMock.mockReset().mockResolvedValue({ error: null })
   branchByTierMock.mockReset().mockResolvedValue(undefined)
   errorSpy.mockClear()
   warnSpy.mockClear()
@@ -142,6 +152,27 @@ describe('Phase C Stage 3 — handleGroupPaymentSucceeded', () => {
     expect(branchByTierMock).toHaveBeenCalledTimes(2)
     expect(branchByTierMock).toHaveBeenCalledWith('o-1', 'pharm-1')
     expect(groupUpdateMock).toHaveBeenCalledTimes(1)
+  })
+
+  // Payment Flow v1.1: the bundle's PaymentIntent on every member order.
+  it('stamps the PaymentIntent on the member orders that have none, before they move', async () => {
+    const order: string[] = []
+    stampMock.mockImplementation(async () => { order.push('stamp'); return { error: null } })
+    casTransitionMock.mockImplementation(async () => { order.push('cas'); return { success: true, wasAlreadyTransitioned: false } })
+
+    await invoke(makeGroupPi())
+
+    expect(stampMock).toHaveBeenCalledWith(
+      { stripe_payment_intent_id: 'pi_test_group_1' },
+      [['payment_group_id', 'group-aaa'], ['stripe_payment_intent_id', null], ['deleted_at', null]],
+    )
+    expect(order[0]).toBe('stamp')
+  })
+
+  it('a stamp that fails throws before any member moves (Stripe redelivers)', async () => {
+    stampMock.mockResolvedValue({ error: { message: 'connection reset' } })
+    await expect(invoke(makeGroupPi())).rejects.toThrow(/PaymentIntent could not be recorded/)
+    expect(casTransitionMock).not.toHaveBeenCalled()
   })
 
   it('is idempotent: returns early when the group is already PAID', async () => {

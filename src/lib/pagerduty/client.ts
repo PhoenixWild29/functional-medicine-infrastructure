@@ -1,6 +1,7 @@
 import { serverEnv } from '@/lib/env'
 import { VALID_TRANSITIONS } from '@/lib/orders/state-machine'
 import type { SlaType } from '@/lib/sla/creator'
+import type { Database } from '@/types/database.types'
 import type { IntegrationTier } from '@/lib/adapters/audit-trail'
 
 // ============================================================
@@ -111,9 +112,36 @@ export async function resolvePagerDutyIncident(
   }
 }
 
-// Convenience: build the standard dedup key for SLA incidents
+// Every SLA type, keyed by both the app union and the database enum: a new
+// value in either is a compile error here until it is added (and a value
+// in neither is an excess-property error).
+type DbSlaType = Database['public']['Enums']['sla_type_enum']
+const SLA_TYPE_KEYS = {
+  PAYMENT:                  true,
+  SUBMISSION:               true,
+  STATUS_UPDATE:            true,
+  FAX_DELIVERY:             true,
+  PHARMACY_ACKNOWLEDGE:     true,
+  PHARMACY_CONFIRMATION:    true,
+  SHIPPING:                 true,
+  REROUTE_RESOLUTION:       true,
+  ADAPTER_SUBMISSION_ACK:   true,
+  PHARMACY_COMPOUNDING_ACK: true,
+} as const satisfies Record<SlaType | DbSlaType, true>
+
+export const PAGERDUTY_SLA_TYPES: readonly SlaType[] = Object.keys(SLA_TYPE_KEYS) as SlaType[]
+
+/** The SLA type as PagerDuty sees it: trimmed, upper case, a known type or UNKNOWN. */
+export function normalizeSlaType(slaType: string): SlaType | 'UNKNOWN' {
+  const t = slaType.trim().toUpperCase()
+  return Object.prototype.hasOwnProperty.call(SLA_TYPE_KEYS, t) ? t as SlaType : 'UNKNOWN'
+}
+
+// The standard dedup key for SLA incidents. Built from the normalized type,
+// so trigger and resolve agree however the caller spelled it, and free
+// text never rides into PagerDuty inside the key.
 export function slaDedupKey(orderId: string, slaType: string): string {
-  return `sla-${orderId}-${slaType}`
+  return `sla-${orderId}-${normalizeSlaType(slaType)}`
 }
 
 // ============================================================
@@ -139,12 +167,6 @@ export interface SlaEscalationParams {
 // an enum-shaped field. cascadeStatus (free text, e.g. "Tier 1 failed →
 // Cascading to Tier 4 (fax)") is no longer accepted: cascadeAttempted says
 // the same thing as a boolean.
-const SLA_TYPES = [
-  'PAYMENT', 'SUBMISSION', 'STATUS_UPDATE', 'FAX_DELIVERY', 'PHARMACY_ACKNOWLEDGE',
-  'PHARMACY_CONFIRMATION', 'SHIPPING', 'REROUTE_RESOLUTION', 'ADAPTER_SUBMISSION_ACK',
-  'PHARMACY_COMPOUNDING_ACK',
-] as const satisfies readonly SlaType[]
-
 const INTEGRATION_TIERS = [
   'TIER_1_API', 'TIER_2_PORTAL', 'TIER_3_SPEC', 'TIER_3_HYBRID', 'TIER_4_FAX',
 ] as const satisfies readonly IntegrationTier[]
@@ -164,7 +186,8 @@ const oneOf = (allowed: ReadonlyArray<string> | ReadonlySet<string>, value: stri
  * and must NOT create PagerDuty incidents.
  */
 export async function triggerSlaEscalation(params: SlaEscalationParams): Promise<void> {
-  const slaType         = oneOf(SLA_TYPES, params.slaType) ?? 'unknown'
+  const normalized      = normalizeSlaType(params.slaType)
+  const slaType         = normalized === 'UNKNOWN' ? 'unknown' : normalized
   const integrationTier = oneOf(INTEGRATION_TIERS, params.integrationTier) ?? 'unknown'
   const orderStatus     = oneOf(ORDER_STATUSES, params.orderStatus)
 
@@ -180,7 +203,7 @@ export async function triggerSlaEscalation(params: SlaEscalationParams): Promise
   }
 
   await triggerPagerDutyIncident({
-    // The dedup key must match resolveSlaEscalation, so it keeps the raw type.
+    // Same normalized key resolveSlaEscalation builds.
     dedupKey: slaDedupKey(params.orderId, params.slaType),
     summary:  `SLA Breach (Tier 3): ${slaType} — Order ${params.orderId}`,
     severity: 'critical',
@@ -220,6 +243,31 @@ export async function triggerPortalSubmissionUnconfirmed(params: PortalSubmissio
       sla_type:                'ADAPTER_SUBMISSION_ACK',
       pharmacy_slug:           params.pharmacySlug,
       integration_tier:        'TIER_2_PORTAL',
+      ...(orderStatus ? { order_status: orderStatus } : {}),
+      auto_fax:                false,
+      breach_duration_minutes: params.breachDurationMinutes,
+    },
+  })
+}
+
+/**
+ * A submission SLA breached on an order whose pharmacy's integration tier
+ * is missing or not one we know. It is not faxed automatically (nothing
+ * says the pharmacy takes a fax), so ops is paged. IDs, enums and counts
+ * only; same dedup key as the SLA, so resolving the SLA resolves it.
+ */
+export async function triggerUnknownTierSubmission(params: PortalSubmissionUnconfirmedParams): Promise<void> {
+  const orderStatus = oneOf(ORDER_STATUSES, params.orderStatus)
+  await triggerPagerDutyIncident({
+    dedupKey: slaDedupKey(params.orderId, 'ADAPTER_SUBMISSION_ACK'),
+    summary:  `Submission not confirmed, integration tier unknown, not faxed: Order ${params.orderId}`,
+    severity: 'error',
+    source:   'compoundiq-sla-engine',
+    customDetails: {
+      order_id:                params.orderId,
+      sla_type:                'ADAPTER_SUBMISSION_ACK',
+      pharmacy_slug:           params.pharmacySlug,
+      integration_tier:        'unknown',
       ...(orderStatus ? { order_status: orderStatus } : {}),
       auto_fax:                false,
       breach_duration_minutes: params.breachDurationMinutes,

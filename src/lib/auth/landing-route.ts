@@ -10,6 +10,7 @@
 export function defaultLandingRoute(appRole: string | undefined): string {
   if (appRole === 'ops_admin')    return '/ops/pipeline'
   if (appRole === 'clinic_admin') return '/practice'
+  if (appRole === 'pharmacy_admin') return '/pharmacy/onboarding'
   return '/dashboard'
 }
 

@@ -18,6 +18,12 @@
 // Any failure after the claim releases it (and removes a created user),
 // so the link can be used again. MFA applies on first sign-in through the
 // normal middleware gate.
+//
+// Rate limited per client IP (the first x-forwarded-for entry): 10
+// attempts per 15 minutes, then 429 with Retry-After, before anything is
+// read. Per IP, so a real invitee is never blocked by someone else's
+// guesses. The token is never logged; a refusal logs only the IP's keyed
+// hash and the outcome.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -25,10 +31,22 @@ import { appMetadataFor } from '@/lib/auth/claims'
 import { readJson } from '@/lib/onboarding/access'
 import { hashInviteToken, inviteStatus, plausibleToken, type InviteKind } from '@/lib/onboarding/tokens'
 import { recordOnboardingEvent } from '@/lib/onboarding/events'
+import { auditHash, clientIp } from '@/lib/audit/keyed-hash'
+import { inviteAcceptLimiter, INVITE_ACCEPT_RATE_LIMITED_MESSAGE } from '@/lib/onboarding/accept-rate-limit'
 
 const MIN_PASSWORD_LENGTH = 12
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const ip = clientIp(request.headers)
+  const limit = inviteAcceptLimiter.check(ip ?? 'unknown')
+  if (!limit.allowed) {
+    console.warn(`[onboarding/accept] rate_limited | ip_hash=${(await auditHash(ip)) ?? 'none'}`)
+    return NextResponse.json(
+      { error: INVITE_ACCEPT_RATE_LIMITED_MESSAGE },
+      { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
+    )
+  }
+
   const body = await readJson(request)
   if (!body) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
 

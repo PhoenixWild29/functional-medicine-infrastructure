@@ -16,8 +16,10 @@ function chain(result: () => unknown) {
   const node: Record<string, unknown> = {}
   node['select']      = () => node
   node['eq']          = () => node
-  node['is']          = () => Promise.resolve({ count: 2, error: null })
   node['maybeSingle'] = () => Promise.resolve({ data: result(), error: null })
+  // Awaited for the member count, or .maybeSingle() after it (the order
+  // lookup also filters payment_group_id IS NULL, Payment Flow v1.1).
+  node['is']          = () => Object.assign(Promise.resolve({ count: 2, error: null }), { maybeSingle: node['maybeSingle'] })
   return node
 }
 
