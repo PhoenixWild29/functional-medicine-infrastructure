@@ -21,6 +21,21 @@ function firstOpenStep(done: ReadonlyArray<string>): StepKey {
   return SAVED_STEPS.find(s => !done.includes(s)) ?? 'review'
 }
 
+/**
+ * The WizardState inside a GET /api/pharmacy/onboarding body. The route
+ * answers through respond(), so the body is { state: WizardState }, not
+ * the state itself. Null when there is no usable state, so a bad body
+ * never replaces the one on screen.
+ */
+export function wizardStateFrom(body: unknown): WizardState | null {
+  if (!body || typeof body !== 'object') return null
+  const s = (body as { state?: unknown }).state
+  if (!s || typeof s !== 'object') return null
+  const { status, stepsCompleted } = s as Partial<WizardState>
+  if (typeof status !== 'string' || !Array.isArray(stepsCompleted) || !stepsCompleted.every(k => typeof k === 'string')) return null
+  return s as WizardState
+}
+
 function nextStep(step: StepKey): StepKey {
   const i = ONBOARDING_STEPS.findIndex(s => s.key === step)
   return ONBOARDING_STEPS[Math.min(i + 1, ONBOARDING_STEPS.length - 1)]!.key
@@ -43,7 +58,8 @@ export function OnboardingWizard({ initial }: { initial: WizardState }) {
     try {
       const res = await fetch('/api/pharmacy/onboarding', { cache: 'no-store' })
       if (!res.ok) throw new Error(String(res.status))
-      const next = await res.json() as WizardState
+      const next = wizardStateFrom(await res.json())
+      if (!next) throw new Error('no wizard state in the response')
       setState(next)
       setLoadError(null)
       return next

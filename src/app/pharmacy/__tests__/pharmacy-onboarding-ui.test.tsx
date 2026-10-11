@@ -109,7 +109,7 @@ describe('the wizard', () => {
   it('a save moves to the next step with the refreshed state', async () => {
     fetchMock
       .mockResolvedValueOnce(reply({}))
-      .mockResolvedValueOnce(reply(state({ stepsCompleted: ['details'] })))
+      .mockResolvedValueOnce(reply({ state: state({ stepsCompleted: ['details'] }) }))
     render(<OnboardingWizard initial={state()} />)
     fireEvent.click(screen.getByRole('button', { name: /save and continue/i }))
     expect(await screen.findByRole('heading', { name: 'Facility type' })).toBeInTheDocument()
@@ -124,7 +124,7 @@ describe('the wizard', () => {
     fireEvent.change(screen.getByLabelText('Your title'), { target: { value: 'PIC' } })
     expect(screen.getByRole('button', { name: /accept and continue/i })).toBeDisabled()
     fireEvent.click(screen.getByLabelText(/I have read and accept/i))
-    fetchMock.mockResolvedValueOnce(reply({})).mockResolvedValueOnce(reply(state()))
+    fetchMock.mockResolvedValueOnce(reply({})).mockResolvedValueOnce(reply({ state: state() }))
     fireEvent.click(screen.getByRole('button', { name: /accept and continue/i }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/pharmacy/onboarding/agreement', expect.objectContaining({ method: 'POST' })))
     const body = JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body)
