@@ -10,7 +10,8 @@
 // {{COVERED_ENTITY_LEGAL_NAME}} contain them.
 //
 // Headings start at `headingLevel` (the page's next level) so the outline
-// stays in order.
+// stays in order. A standalone legal page (/legal/*) starts at 1: the
+// document's '# ' title is the page's h1.
 
 import type { ReactNode } from 'react'
 
@@ -48,15 +49,16 @@ function inline(text: string): ReactNode {
   return parts.map((p, i) => (/^\*\*[^*]+\*\*$/.test(p) ? <strong key={i}>{p.slice(2, -2)}</strong> : p))
 }
 
-export function LegalMarkdown({ text, headingLevel = 4 }: { text: string; headingLevel?: 3 | 4 | 5 }) {
+export function LegalMarkdown({ text, headingLevel = 4 }: { text: string; headingLevel?: 1 | 2 | 3 | 4 | 5 }) {
   return (
     <>
       {parse(text).map((b, i) => {
         switch (b.kind) {
           case 'heading': {
             const level = Math.min(6, headingLevel + b.depth - 1)
-            const Tag = `h${level}` as 'h3' | 'h4' | 'h5' | 'h6'
-            return <Tag key={i} className={b.depth === 1 ? 'text-base font-semibold text-foreground' : 'pt-2 text-sm font-semibold text-foreground'}>{b.text}</Tag>
+            const Tag = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
+            const cls = level === 1 ? 'text-2xl font-bold text-foreground' : b.depth === 1 ? 'text-base font-semibold text-foreground' : 'pt-2 text-sm font-semibold text-foreground'
+            return <Tag key={i} className={cls}>{b.text}</Tag>
           }
           case 'list':
             return <ul key={i} className="list-disc space-y-1 pl-5">{b.items.map((it, j) => <li key={j}>{inline(it)}</li>)}</ul>

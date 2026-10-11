@@ -14,6 +14,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
 import { postLoginDestination } from '@/lib/auth/landing-route'
 import { getUserRole } from '@/lib/auth/claims'
+import { LegalFooter } from '@/components/legal/legal-footer'
 
 const AUTH_CALLBACK_ERROR_MESSAGES: Record<string, string> = {
   auth_callback_failed: 'Email verification failed. Please try signing in again.',
@@ -229,6 +230,7 @@ export default function LoginPage() {
           </Suspense>
 
         </div>
+        <LegalFooter className="mt-8" />
       </main>
 
     </div>

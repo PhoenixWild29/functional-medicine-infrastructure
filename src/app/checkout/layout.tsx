@@ -7,6 +7,7 @@
 // No session required — JWT token validated by Edge Middleware.
 
 import type { Metadata } from 'next'
+import { LegalFooter } from '@/components/legal/legal-footer'
 
 export const metadata: Metadata = {
   title: 'Secure Checkout',
@@ -21,6 +22,7 @@ export default function CheckoutLayout({
   return (
     <div className="min-h-screen bg-background">
       {children}
+      <LegalFooter />
     </div>
   )
 }
