@@ -92,7 +92,13 @@ jest.mock('@/lib/supabase/service', () => ({
               is:          () => membersFetchMock(),
             }),
           }),
-          update: (values: unknown) => ({ eq: (c: string, v: unknown) => orderUpdateMock(values, c, v) }),
+          update: (values: unknown) => ({
+            eq: (c: string, v: unknown) => {
+              // eq() awaited, or eq().is().is() for the bundle's PaymentIntent stamp (Payment Flow v1.1).
+              const result = orderUpdateMock(values, c, v)
+              return Object.assign(Promise.resolve(result), { is: () => ({ is: async () => ({ error: null }) }) })
+            },
+          }),
         }
       }
       if (table === 'payment_groups') {

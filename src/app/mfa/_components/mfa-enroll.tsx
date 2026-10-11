@@ -76,7 +76,7 @@ export function MfaEnroll({ destination }: Props) {
   return (
     <MfaCard title="Set up two-step sign-in">
       <p className="text-sm text-muted-foreground">
-        Your clinic requires a second step when you sign in. Scan this code with an authenticator
+        Your account requires a second step when you sign in. Scan this code with an authenticator
         app (Google Authenticator, 1Password, Authy or similar), then enter the 6-digit code it shows.
       </p>
       {enrollment && (

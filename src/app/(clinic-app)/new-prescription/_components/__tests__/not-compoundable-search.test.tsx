@@ -1,9 +1,12 @@
 /**
  * Compliance C8: an ingredient that may not be compounded (FDA Category 2
- * or 3, withdrawn or removed, pending evaluation, not eligible), or whose
- * status nobody has verified, shows in search as "Not compoundable" and
- * cannot be taken past the dose step (Continue stays disabled), so it
- * never reaches a signable order. A verified, compoundable one goes on.
+ * or 3, withdrawn or removed, not eligible), or whose status nobody has
+ * verified, shows in search as "Not compoundable" and cannot be taken past
+ * the dose step (Continue stays disabled), so it never reaches a signable
+ * order. A verified, compoundable one goes on.
+ *
+ * Owner decision: one pending FDA evaluation is orderable, with a
+ * non-blocking warning in search and on the dose step.
  */
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -76,7 +79,7 @@ function renderBuilder() {
   )
 }
 
-beforeEach(() => { status = 'pending_evaluation' })
+beforeEach(() => { status = 'category_2' })
 
 it('search results label an ingredient that may not be compounded', async () => {
   renderBuilder()
@@ -105,6 +108,28 @@ it('a product that may not be compounded shows why and cannot continue to pricin
   fireEvent.click(within(screen.getByTestId('favorite-fav-bpc')).getByTestId('favorite-custom'))
   const banner = await screen.findByTestId('not-compoundable-label')
   expect(banner).toHaveTextContent(LABEL)
-  expect(banner).toHaveTextContent('BPC-157 is pending FDA evaluation')
+  expect(banner).toHaveTextContent('BPC-157 is 503A Category 2')
   expect(await screen.findByRole('button', { name: /Continue/ })).toBeDisabled()
+})
+
+const WARNING = 'FDA evaluation pending for this substance. The dispensing pharmacy confirms it can compound it.'
+
+describe('pending FDA evaluation (orderable)', () => {
+  beforeEach(() => { status = 'pending_evaluation' })
+
+  it('search shows the warning, not the block label', async () => {
+    renderBuilder()
+    fireEvent.change(screen.getByLabelText('Search medications'), { target: { value: 'BPC' } })
+    const option = await screen.findByRole('button', { name: /BPC-157/ })
+    expect(within(option).getByText(WARNING)).toBeInTheDocument()
+    expect(within(option).queryByText(LABEL)).not.toBeInTheDocument()
+  })
+
+  it('the dose step shows the warning and no block', async () => {
+    renderBuilder()
+    fireEvent.click(await screen.findByRole('button', { name: /^Favorites/ }))
+    fireEvent.click(within(screen.getByTestId('favorite-fav-bpc')).getByTestId('favorite-custom'))
+    expect(await screen.findByTestId('pending-evaluation-warning')).toHaveTextContent(WARNING)
+    expect(screen.queryByTestId('not-compoundable-label')).not.toBeInTheDocument()
+  })
 })

@@ -27,6 +27,9 @@
 --    same name and date of birth, the new patient is flagged for staff.
 --    Never merged. Staff dismiss the flag; who and when are kept.
 --
+-- 5. apply_pharmacy_admin_scope() (20261014000001), last: the new table
+--    gets the restrictive pharmacy_admin_scope policy.
+--
 -- Additive except for the relaxed NOT NULLs. Runs after 20261013000001
 -- and 20261014000001.
 
@@ -125,5 +128,10 @@ ALTER TABLE patients ADD CONSTRAINT chk_patients_duplicate_not_self
 COMMENT ON COLUMN patients.possible_duplicate_of IS 'Another patient this one may be (flagged at intake). Never merged; staff dismiss the flag.';
 COMMENT ON COLUMN patients.possible_duplicate_matched_on IS 'mobile_and_date_of_birth | name_and_date_of_birth';
 COMMENT ON COLUMN patients.possible_duplicate_dismissed_by IS 'The auth user (staff) who dismissed the flag.';
+
+-- ── 5. pharmacy_admin scope (20261014000001) ─────────────────
+-- Last, so patient_intake_links gets the restrictive pharmacy_admin_scope
+-- policy like every other table (a pharmacy admin cannot read it).
+SELECT apply_pharmacy_admin_scope();
 
 COMMIT;

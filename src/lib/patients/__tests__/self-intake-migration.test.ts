@@ -25,7 +25,8 @@ import { join } from 'node:path'
 const MIGRATIONS = join(process.cwd(), 'supabase', 'migrations')
 const FILE = '20261015000001_patient_self_intake.sql'
 const read = (p: string) => (existsSync(p) ? readFileSync(p, 'utf8') : '')
-const sql = read(join(MIGRATIONS, FILE))
+// Line endings normalised: git may check the file out with CRLF.
+const sql = read(join(MIGRATIONS, FILE)).replace(/\r\n/g, '\n')
 const down = read(join(MIGRATIONS, 'down', '20261015000001_down.sql'))
 const flat = (s: string) => s.replace(/--.*$/gm, '').replace(/\s+/g, ' ').toLowerCase()
 const code = flat(sql)
@@ -146,5 +147,14 @@ describe('possible duplicate flag on the patient', () => {
     for (const c of ['possible_duplicate_of', 'possible_duplicate_matched_on', 'possible_duplicate_flagged_at', 'possible_duplicate_dismissed_at', 'possible_duplicate_dismissed_by']) {
       expect(downCode).toContain(`drop column if exists ${c}`)
     }
+  })
+})
+
+describe('pharmacy_admin scope (20261014000001)', () => {
+  it('calls apply_pharmacy_admin_scope() after creating its table, as the last statement', () => {
+    const apply = code.indexOf('select apply_pharmacy_admin_scope();')
+    expect(apply).toBeGreaterThan(code.indexOf('create table if not exists patient_intake_links'))
+    expect(apply).toBeGreaterThan(code.indexOf('alter table patient_intake_links enable row level security'))
+    expect(code.slice(apply)).toMatch(/^select apply_pharmacy_admin_scope\(\); commit;\s*$/)
   })
 })

@@ -29,11 +29,24 @@ const NAV_TABS = [
   { href: '/ops/catalog',  label: 'Catalog'   },
   { href: '/ops/licensure', label: 'Licensure' },
   { href: '/ops/ingredients', label: 'Ingredients' },
+  { href: '/ops/onboarding', label: 'Clinic onboarding' },
+  { href: '/ops/onboarding/pharmacies', label: 'Pharmacy onboarding' },
   ...(SHOW_DEMO_TOOLS ? [{ href: '/ops/demo-tools', label: 'Demo Tools' } as const] : []),
 ] as const
 
+/**
+ * The current tab: the longest href the path is (or is under). A plain
+ * startsWith marked /ops/onboarding current on /ops/onboarding/pharmacies too.
+ */
+function currentHref(pathname: string | null): string | null {
+  if (!pathname) return null
+  const matches = NAV_TABS.map(t => t.href as string).filter(h => pathname === h || pathname.startsWith(`${h}/`) || pathname.startsWith(`${h}?`))
+  return matches.sort((a, b) => b.length - a.length)[0] ?? null
+}
+
 export function OpsNav() {
   const pathname = usePathname()
+  const current = currentHref(pathname)
 
   return (
     <nav
@@ -43,7 +56,7 @@ export function OpsNav() {
       <div className="mx-auto max-w-screen-2xl px-4">
         <div className="flex h-11 items-end gap-0">
           {NAV_TABS.map(tab => {
-            const isActive = pathname?.startsWith(tab.href) ?? false
+            const isActive = tab.href === current
             return (
               <Link
                 key={tab.href}
