@@ -119,15 +119,21 @@ describe('GET (status for the patient header)', () => {
 // ── Intake decisions (Oct 10): the header shows an open duplicate flag ──
 describe('GET carries an open "possible duplicate" flag', () => {
   it('flagged and not dismissed: the other patient\'s name', async () => {
-    script = c => (c.table === 'patients'
-      ? { data: {
-          patient_id: PATIENT_ID, clinic_id: CLINIC_ID, intake_status: 'complete', first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', state: 'TX',
-          possible_duplicate_of: 'b3000000-0000-4000-8000-000000000001', possible_duplicate_dismissed_at: null,
-          duplicate: { first_name: 'Jane', last_name: 'Smyth', phone: '+15125550123' },
-        } }
-      : undefined)
+    // The other patient's name comes from a second, clinic-scoped read (no
+    // self-embed on patients: see duplicate-names.test.ts).
+    script = c => {
+      if (c.table !== 'patients') return undefined
+      if (c.filters['patient_id:in']) return { data: [{ patient_id: 'b3000000-0000-4000-8000-000000000001', first_name: 'Jane', last_name: 'Smyth', phone: '+15125550123' }] }
+      return { data: {
+        patient_id: PATIENT_ID, clinic_id: CLINIC_ID, intake_status: 'complete', first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', state: 'TX',
+        possible_duplicate_of: 'b3000000-0000-4000-8000-000000000001', possible_duplicate_dismissed_at: null,
+      } }
+    }
     const body = await (await GET(req(), ctx())).json()
     expect(body.duplicate).toEqual({ patientId: 'b3000000-0000-4000-8000-000000000001', name: 'Jane Smyth' })
+    const lookup = db.to('patients').find(c => c.filters['patient_id:in'])!
+    expect(lookup.filters).toEqual(expect.objectContaining({ clinic_id: CLINIC_ID }))
+    expect(db.to('patients')[0]!.filters).toEqual(expect.objectContaining({ patient_id: PATIENT_ID, clinic_id: CLINIC_ID }))
   })
 
   it('dismissed: no flag', async () => {
