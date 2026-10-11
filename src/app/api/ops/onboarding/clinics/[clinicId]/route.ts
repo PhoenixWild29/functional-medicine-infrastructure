@@ -1,7 +1,12 @@
 // ============================================================
-// POST /api/ops/onboarding/clinics/[clinicId] (ops_admin)
+// /api/ops/onboarding/clinics/[clinicId] (ops_admin)
 // ============================================================
 //
+// GET   the clinic's review details (practice, providers with the NPI
+//       registry result and licenses, staff invites, agreements,
+//       history): lib/onboarding/review. Read-only.
+//
+// POST:
 // { action: 'approve' }               activate the clinic
 // { action: 'send_back', note }        return it to the admin with a note
 //
@@ -14,6 +19,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireOpsAdmin, readJson } from '@/lib/onboarding/access'
 import { recordOnboardingEvent } from '@/lib/onboarding/events'
 import { UUID_RE } from '@/lib/providers/team-access'
+import { loadClinicReview } from '@/lib/onboarding/review'
+
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ clinicId: string }> }): Promise<NextResponse> {
+  const access = await requireOpsAdmin()
+  if (!access.ok) return access.response
+  const { clinicId } = await params
+  if (!UUID_RE.test(clinicId)) return NextResponse.json({ error: 'Invalid clinic id' }, { status: 400 })
+  try {
+    const review = await loadClinicReview(access.supabase, clinicId)
+    if (!review) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 })
+    return NextResponse.json(review, { headers: { 'cache-control': 'no-store' } })
+  } catch (err) {
+    console.error(`[ops/onboarding] review read failed | clinic=${clinicId}:`, err instanceof Error ? err.message : err)
+    return NextResponse.json({ error: 'The clinic review could not be loaded. Try again.' }, { status: 503 })
+  }
+}
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ clinicId: string }> }): Promise<NextResponse> {
   const access = await requireOpsAdmin()
