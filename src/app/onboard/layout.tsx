@@ -3,7 +3,10 @@
 // ============================================================
 //
 // Minimal, mobile-first shell with a single <main> landmark. No session
-// is read here: the visitor has no account yet.
+// is read here: the visitor has no account yet. The footer links to the
+// public legal pages.
+
+import { LegalFooter } from '@/components/legal/legal-footer'
 
 export default function OnboardLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -14,6 +17,7 @@ export default function OnboardLayout({ children }: { children: React.ReactNode 
         </div>
       </header>
       <main className="mx-auto max-w-xl px-4 py-10">{children}</main>
+      <LegalFooter className="border-t border-border" />
     </div>
   )
 }
