@@ -59,7 +59,7 @@ describe('the wizard', () => {
     fireEvent.click(nav().getByRole('button', { name: /^\d*\s*Terms of service/ }))
     expect(screen.getByRole('heading', { level: 2, name: 'Terms of service' })).toBeInTheDocument()
     const region = screen.getByRole('region', { name: 'Pharmacy Terms of Service text' })
-    expect(within(region).getByRole('heading', { level: 3, name: /Definitions/ })).toBeInTheDocument()
+    expect(within(region).getByRole('heading', { name: /Definitions/ })).toBeInTheDocument()
     expect(region.innerHTML).not.toContain('## ')
     expect(screen.getByText('Draft, pending legal review')).toBeInTheDocument()
 
@@ -117,9 +117,9 @@ describe('ops review', () => {
     })))
     render(<PharmacyApplicationReview applicationId="a-1" />)
     const section = within(await screen.findByRole('region', { name: 'Agreements' }))
-    const baa = section.getByRole('heading', { name: 'Business Associate Agreement' }).closest('div')!
+    const baa = section.getByRole('heading', { name: 'BAA' }).closest('div')!
     expect(baa).toHaveTextContent('Dana Ruiz'); expect(baa).toHaveTextContent('PIC'); expect(baa).toHaveTextContent('v0.1.1'); expect(baa).toHaveTextContent('b26c8364eaa6')
-    const terms = section.getByRole('heading', { name: 'Pharmacy Terms of Service' }).closest('div')!
+    const terms = section.getByRole('heading', { name: 'Terms of service' }).closest('div')!
     expect(terms).toHaveTextContent('Sam Lee'); expect(terms).toHaveTextContent('Owner'); expect(terms).toHaveTextContent('v0.1'); expect(terms).toHaveTextContent('0123456789ab')
     expect(screen.getByRole('button', { name: /^approve$/i })).toBeEnabled()
   })

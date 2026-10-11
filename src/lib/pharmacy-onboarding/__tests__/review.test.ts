@@ -17,7 +17,7 @@
  */
 
 import { onboardingFake } from '@/__tests__/helpers/onboarding-fake'
-import { AGREEMENT, agreementTextSha256 } from '../agreement'
+import { AGREEMENT, agreementTextSha256, pharmacyAgreement } from '../agreement'
 import { listApplications, getApplicationReview, decideLicense, approveApplication, sendBackApplication, markAdapterConfigured } from '../review'
 import { isLivePharmacy } from '@/lib/pharmacies/live'
 
@@ -47,10 +47,17 @@ function world(over: { status?: string; licenses?: Record<string, unknown>[]; ac
       catalog_choice: 'uploaded', catalog_row_count: 1, catalog_rows: [{ medication_name: 'Progesterone', form: 'Capsule', dose: '100mg', wholesale_price: 18.5, regulatory_status: 'ACTIVE' }], catalog_warnings: [],
     }],
     pharmacy_state_licenses: over.licenses ?? [license()],
-    pharmacy_agreement_acceptances: over.accepted === false ? [] : [{
-      pharmacy_id: PH, user_id: 'u-1', signer_name: 'Dana Ruiz', signer_title: 'PIC', template_key: AGREEMENT.key,
-      template_version: AGREEMENT.version, text_sha256: agreementTextSha256(), accepted_at: '2026-10-08T09:00:00.000Z',
-    }],
+    // The BAA (unless accepted: false) and the Pharmacy Terms of Service, each current.
+    pharmacy_agreement_acceptances: [
+      ...(over.accepted === false ? [] : [{
+        pharmacy_id: PH, user_id: 'u-1', signer_name: 'Dana Ruiz', signer_title: 'PIC', template_key: AGREEMENT.key,
+        template_version: AGREEMENT.version, text_sha256: agreementTextSha256(), accepted_at: '2026-10-08T09:00:00.000Z',
+      }]),
+      {
+        pharmacy_id: PH, user_id: 'u-1', signer_name: 'Dana Ruiz', signer_title: 'PIC', template_key: 'pharmacy_terms',
+        template_version: pharmacyAgreement('pharmacy_terms').version, text_sha256: pharmacyAgreement('pharmacy_terms').textSha256, accepted_at: '2026-10-08T09:01:00.000Z',
+      },
+    ],
     pharmacy_onboarding_events: [],
   })
 }
@@ -197,6 +204,6 @@ describe('reading', () => {
     expect(r.review.ordering).toEqual({ method: 'portal', portalUrl: 'https://portal.strive.example', secretsStored: true })
     expect(JSON.stringify(r.review)).not.toMatch(/v-1|v-2|vault/)
     expect(r.review.catalog).toEqual(expect.objectContaining({ choice: 'uploaded', rowCount: 1, rows: [expect.objectContaining({ medication_name: 'Progesterone' })] }))
-    expect(r.review.acceptance).toEqual(expect.objectContaining({ signerName: 'Dana Ruiz', templateVersion: AGREEMENT.version, current: true }))
+    expect(r.review.acceptances.baa).toEqual(expect.objectContaining({ signerName: 'Dana Ruiz', templateVersion: AGREEMENT.version, current: true }))
   })
 })

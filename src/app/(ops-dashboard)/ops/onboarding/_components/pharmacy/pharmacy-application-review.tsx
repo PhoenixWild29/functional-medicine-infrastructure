@@ -6,12 +6,15 @@
 //
 // Each license is verified (C5: document, unexpired, sterile scope) or
 // rejected with a note. Approve is offered only when every license is
-// verified and the current BAA is accepted; the server checks again.
+// verified and the current BAA and Terms of service are accepted (each
+// shown with signer, title, version, time and hash prefix); the server
+// checks again.
 // Approval makes the pharmacy live. The staged catalog is loaded through
 // the existing ops catalog upload once the pharmacy is approved.
 
 import { useCallback, useEffect, useState } from 'react'
 import { FormAlert, PrimaryButton, SecondaryButton, sendJson } from '@/components/pharmacy-onboarding/fields'
+import type { AcceptanceView } from '@/lib/pharmacy-onboarding/review'
 
 interface Review {
   applicationId: string
@@ -23,7 +26,7 @@ interface Review {
   licenses: Array<{ state: string; licenseNumber: string; expiresOn: string; sterileCompounding: boolean | null; verificationStatus: string; verificationNote: string | null; documentUrl: string | null }>
   ordering: Record<string, unknown> | null
   adapter: { required: boolean; configuredAt: string | null }
-  acceptance: { signerName: string; signerTitle: string; acceptedAt: string; templateVersion: string; current: boolean } | null
+  acceptances: { baa: AcceptanceView | null; terms: AcceptanceView | null }
   catalog: { choice: string | null; rowCount: number | null; warnings: string[]; rows: unknown[] }
   events: Array<{ action: string; actorRole: string; occurredAt: string; stateCode: string | null }>
 }
@@ -91,7 +94,8 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
   const reviewable = review.status === 'submitted'
   const allVerified = review.licenses.length > 0 && review.licenses.every(l => l.verificationStatus === 'verified')
   const adapterReady = !review.adapter.required || !!review.adapter.configuredAt
-  const canApprove = reviewable && allVerified && !!review.acceptance?.current && adapterReady
+  const agreementsAccepted = !!review.acceptances.baa?.current && !!review.acceptances.terms?.current
+  const canApprove = reviewable && allVerified && agreementsAccepted && adapterReady
   const p = review.pharmacy
 
   return (
@@ -177,13 +181,12 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
         </ul>
       </section>
 
-      <section aria-labelledby="agreement-title" className="rounded-xl border border-border bg-card p-4">
-        <h2 id="agreement-title" className="text-lg font-semibold text-foreground">BAA</h2>
-        <p className="mt-2 text-sm text-foreground">
-          {review.acceptance
-            ? `Accepted by ${review.acceptance.signerName} (${review.acceptance.signerTitle}) on ${new Date(review.acceptance.acceptedAt).toLocaleString()}, version ${review.acceptance.templateVersion}${review.acceptance.current ? '' : ' (an older version: they must accept the current one)'}.`
-            : 'Not accepted.'}
-        </p>
+      <section aria-labelledby="agreements-title" className="rounded-xl border border-border bg-card p-4">
+        <h2 id="agreements-title" className="text-lg font-semibold text-foreground">Agreements</h2>
+        <div className="mt-2 grid gap-4 sm:grid-cols-2">
+          <AcceptanceCard label="BAA" title="Business Associate Agreement" acceptance={review.acceptances.baa} />
+          <AcceptanceCard label="Terms of service" title="Pharmacy Terms of Service" acceptance={review.acceptances.terms} />
+        </div>
       </section>
 
       <section aria-labelledby="catalog-title" className="rounded-xl border border-border bg-card p-4">
@@ -209,7 +212,7 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
             <SecondaryButton disabled={busy || !sendBackNote.trim()} onClick={() => void run(`/api/ops/onboarding/pharmacies/${applicationId}/send-back`, { note: sendBackNote })}>Send back</SecondaryButton>
             <PrimaryButton type="button" disabled={!canApprove} busy={busy} onClick={() => void run(`/api/ops/onboarding/pharmacies/${applicationId}/approve`, {})}>Approve</PrimaryButton>
           </div>
-          {!canApprove && <p className="mt-2 text-xs text-muted-foreground dark:text-slate-300">Approve is available when every license is verified, the current BAA is accepted and, for an API or portal pharmacy, its adapter is marked configured.</p>}
+          {!canApprove && <p className="mt-2 text-xs text-muted-foreground dark:text-slate-300">Approve is available when every license is verified, the current versions of the BAA and of the Terms of service are accepted and, for an API or portal pharmacy, its adapter is marked configured.</p>}
         </section>
       )}
 
@@ -223,6 +226,27 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
           ))}
         </ol>
       </section>
+    </div>
+  )
+}
+
+/** One agreement's latest acceptance: signer, title, version, time, hash prefix. */
+function AcceptanceCard({ label, title, acceptance: a }: { label: string; title: string; acceptance: AcceptanceView | null }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-border p-3 text-sm">
+      <h3 className="font-semibold text-foreground">{label}</h3>
+      {a ? (
+        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 break-words">
+          <dt className="text-muted-foreground dark:text-slate-300">Agreement</dt><dd className="text-foreground">{a.title}</dd>
+          <dt className="text-muted-foreground dark:text-slate-300">Signer</dt><dd className="text-foreground">{a.signerName}</dd>
+          <dt className="text-muted-foreground dark:text-slate-300">Title</dt><dd className="text-foreground">{a.signerTitle}</dd>
+          <dt className="text-muted-foreground dark:text-slate-300">Version</dt><dd className="text-foreground">{a.templateVersion}{a.current ? '' : ' (older version: the current one must be accepted)'}</dd>
+          <dt className="text-muted-foreground dark:text-slate-300">Accepted</dt><dd className="text-foreground"><time dateTime={a.acceptedAt}>{new Date(a.acceptedAt).toLocaleString()}</time></dd>
+          <dt className="text-muted-foreground dark:text-slate-300">Text hash</dt><dd className="font-mono text-foreground">{a.hashPrefix}</dd>
+        </dl>
+      ) : (
+        <p className="mt-2 text-foreground">{title}: not accepted.</p>
+      )}
     </div>
   )
 }

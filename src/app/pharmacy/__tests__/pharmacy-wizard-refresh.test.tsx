@@ -45,6 +45,7 @@ import { GET } from '@/app/api/pharmacy/onboarding/route'
 import { OnboardingWizard } from '@/app/pharmacy/onboarding/_components/onboarding-wizard'
 import { AGREEMENT, agreementText, agreementTextSha256 } from '@/lib/pharmacy-onboarding/agreement'
 import type { WizardState } from '@/lib/pharmacy-onboarding/application'
+import { PHARMACY_TERMS } from '@/lib/onboarding/agreement-texts'
 
 const fetchMock = jest.fn()
 const reply = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body }) as unknown as Response
@@ -55,6 +56,7 @@ function state(over: Partial<WizardState> = {}): WizardState {
     pharmacy: { name: 'Strive Pharmacy', ship_carriers: [], ship_to_states: [] },
     licenses: [], ordering: null, catalog: { choice: null, rowCount: null, warnings: [] },
     agreement: { key: AGREEMENT.key, version: AGREEMENT.version, title: AGREEMENT.title, text: agreementText(), textSha256: agreementTextSha256(), banner: AGREEMENT.banner, draft: true, acceptance: null },
+    terms: { key: 'pharmacy_terms', version: PHARMACY_TERMS.version, title: PHARMACY_TERMS.title, text: PHARMACY_TERMS.text, textSha256: 'x'.repeat(64), banner: 'Draft, pending legal review', draft: true, acceptance: null },
     ...over,
   }
 }
