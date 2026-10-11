@@ -129,7 +129,7 @@ type SendBlockLine = {
   packageUnitMismatch?: string | null
   deaSchedule?: number | null
   licensureProblem?: string | null
-  rxRules?: { compoundingBlock?: { message: string } | null } | null
+  rxRules?: { compoundingBlock?: { message: string } | null; compoundingWarning?: string | null } | null
 }
 
 export function sendBlock(rx: SendBlockLine): SendBlock | null {
@@ -982,6 +982,12 @@ export function BatchReviewForm({ isProvider }: Props) {
                   ) : block && (
                     <p className="mt-1 text-xs font-medium text-amber-700">
                       Missing {block === 'price' ? 'price' : 'directions'} — remove this line and re-add it from search or a protocol.
+                    </p>
+                  )}
+                  {/* C8, owner decision: pending FDA evaluation. A warning; never blocks. */}
+                  {block !== 'compounding' && rx.rxRules?.compoundingWarning && (
+                    <p className="mt-1 text-xs text-amber-700" data-testid={`pending-evaluation-${rx.id}`}>
+                      {rx.rxRules.compoundingWarning}
                     </p>
                   )}
                   {/* The assumption a titrating protocol line's quantity was

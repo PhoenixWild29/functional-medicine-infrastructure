@@ -31,7 +31,8 @@ const supabaseMock = {
       }
     }
     if (table === 'orders') {
-      return { select: () => ({ eq: () => ({ is: () => membersFetchMock() }) }) }
+      // Payment Flow v1.1: the bundle's PaymentIntent is stamped on its members.
+      return { select: () => ({ eq: () => ({ is: () => membersFetchMock() }) }), update: () => ({ eq: () => ({ is: () => ({ is: async () => ({ error: null }) }) }) }) }
     }
     throw new Error(`Unexpected table in test: ${table}`)
   },

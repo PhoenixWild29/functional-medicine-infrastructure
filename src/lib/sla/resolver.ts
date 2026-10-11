@@ -22,8 +22,14 @@
 //   REROUTE_PENDING       → ADAPTER_SUBMISSION_ACK (pharmacy rejected — rerouting)
 //
 // Idempotent: WHERE resolved_at IS NULL guard prevents double-resolution.
+//
+// PagerDuty: an SLA pages only once it has breached, so each SLA resolved
+// here (or by hand) whose deadline has passed also has its incident
+// resolved (resolveSlaEscalation, same dedup key). A PagerDuty failure is
+// logged, never thrown: the SLA row is already resolved.
 
 import { createServiceClient } from '@/lib/supabase/service'
+import { resolveSlaEscalation } from '@/lib/pagerduty/client'
 import type { OrderStatus } from '@/lib/orders/state-machine'
 import type { SlaType } from '@/lib/sla/creator'
 
@@ -119,12 +125,13 @@ export async function resolveSlasForTransition(
   const supabase = createServiceClient()
   const now = new Date().toISOString()
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('order_sla_deadlines')
     .update({ resolved_at: now })
     .eq('order_id', orderId)
     .in('sla_type', slaTypes)
     .is('resolved_at', null)   // idempotency guard
+    .select('sla_type, deadline_at')
 
   if (error) {
     // NB-01: auto-resolution failures are logged but not thrown — callers
@@ -134,6 +141,25 @@ export async function resolveSlasForTransition(
       `[sla-resolver] failed to resolve SLAs for order ${orderId} on ${newStatus}:`,
       error.message
     )
+    return
+  }
+  await resolveBreachedIncidents(orderId, (data ?? []) as ResolvedSla[], now)
+}
+
+interface ResolvedSla { sla_type: string; deadline_at: string | null }
+
+/** Resolve the PagerDuty incident of each resolved SLA that had breached. */
+async function resolveBreachedIncidents(orderId: string, rows: ResolvedSla[], nowIso: string): Promise<void> {
+  for (const row of rows) {
+    if (!row.deadline_at || row.deadline_at > nowIso) continue
+    try {
+      await resolveSlaEscalation(orderId, row.sla_type)
+    } catch (err) {
+      console.error(
+        `[sla-resolver] PagerDuty incident not resolved | order=${orderId} sla=${row.sla_type}:`,
+        err instanceof Error ? err.message : err,
+      )
+    }
   }
 }
 
@@ -157,7 +183,7 @@ export async function manuallyResolveSla(params: ManualResolveParams): Promise<v
   const supabase = createServiceClient()
   const now = new Date().toISOString()
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('order_sla_deadlines')
     .update({
       resolved_at:      now,
@@ -168,6 +194,7 @@ export async function manuallyResolveSla(params: ManualResolveParams): Promise<v
     .eq('order_id', orderId)
     .eq('sla_type', slaType)
     .is('resolved_at', null)
+    .select('sla_type, deadline_at')
 
   if (error) {
     console.error(
@@ -176,4 +203,5 @@ export async function manuallyResolveSla(params: ManualResolveParams): Promise<v
     )
     throw new Error(`[sla-resolver] manual resolve failed: ${error.message}`)
   }
+  await resolveBreachedIncidents(orderId, (data ?? []) as ResolvedSla[], now)
 }

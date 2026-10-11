@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { isRefundEventRow } from '@/lib/refunds/events'
+import { isPaymentEventRow, paymentFailedLabel } from '@/lib/payments/events'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserRole } from '@/lib/auth/claims'
 
@@ -144,10 +145,13 @@ export async function GET(request: NextRequest, { params }: Params): Promise<Nex
       lockedAt:              o['locked_at'] ?? null,
       medicationName:        medSnap?.medication_name ?? null,
       opsAssignee:           (o['ops_assignee'] as string | null) ?? null,
+      // Payment Flow v1.1: "Payment failed, awaiting retry" while the
+      // newest history row is a failed payment attempt; otherwise null.
+      paymentFailedLabel:    paymentFailedLabel(String(o['status']), (historyResult.data ?? []) as Array<{ created_at: string; metadata: unknown }>),
     },
     // Refund bookkeeping rows are filtered by event name only (ops see
     // them on the pipeline panels); the draft-edit audit rows stay.
-    history:     (historyResult.data ?? []).filter(h => !isRefundEventRow(h.metadata)).map(h => ({
+    history:     (historyResult.data ?? []).filter(h => !isRefundEventRow(h.metadata) && !isPaymentEventRow(h.metadata)).map(h => ({
       historyId:  h.history_id,
       oldStatus:  h.old_status,
       newStatus:  h.new_status,

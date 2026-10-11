@@ -97,7 +97,7 @@ describe('buildOpsAlert: the one allow-list', () => {
 
 describe('the alert builders keep their names and apply the allow-list', () => {
   it('adapter failure: an error code that is free text (a pharmacy rejection reason) is dropped', () => {
-    const payload = buildAdapterFailureAlert({ orderId: ORDER, pharmacySlug: 'portal-plus', integrationTier: 'TIER_1_API', errorCode: FREE_TEXT })
+    const payload = buildAdapterFailureAlert({ orderId: ORDER, pharmacySlug: 'portal-plus', integrationTier: 'TIER_1_API', errorCode: FREE_TEXT as never })
     expectNoPhi(payload)
     expect(JSON.stringify(payload)).toContain(opsOrderUrl(ORDER))
   })

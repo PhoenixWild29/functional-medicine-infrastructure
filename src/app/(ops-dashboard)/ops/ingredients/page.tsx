@@ -79,8 +79,9 @@ export default async function IngredientsPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Ingredients: compounding status</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Only a USP-NF monograph substance, a component of an FDA-approved drug, a 503A bulks list substance or a Category 1
-          substance may be ordered. Everything else, and anything not verified, is blocked. Enter values from FDA&apos;s primary
+          A USP-NF monograph substance, a component of an FDA-approved drug, a 503A bulks list substance or a Category 1
+          substance may be ordered; so may one pending FDA evaluation, with a warning that the dispensing pharmacy confirms it
+          can compound it. Everything else, and anything not verified, is blocked. Enter values from FDA&apos;s primary
           source and cite it; every change is recorded.
         </p>
         <p className="mt-2 text-sm font-medium text-foreground">
