@@ -12,7 +12,9 @@
 // Pure data (no Node APIs): the wizard imports this in the browser. The
 // hash is computed on the server (./agreements.ts).
 //
-// BAA: src/content/legal/baa-draft-v0.1.md (PR #213), version "v0.1", via
+// BAA: src/content/legal/baa-draft-v0.1.md (PR #213), version "v0.1.1"
+// (v0.1 with the notes for counsel removed; v0.1 acceptances keep their
+// own version and hash), via
 // legal-texts.generated.ts (scripts/gen-legal-texts.mjs; a test keeps the
 // two identical). Terms: our own draft, below, until counsel's arrives.
 
@@ -56,7 +58,7 @@ These Terms govern the clinic's use of CompoundIQ ("Service").
 THIS IS A DRAFT TEMPLATE PENDING LEGAL REVIEW. It will be replaced by the final terms before general availability.`
 
 export const AGREEMENTS: Record<AgreementKey, AgreementTemplate> = {
-  baa:   { key: 'baa',   title: 'Business Associate Agreement', version: 'v0.1',                  draft: true, text: BAA_V0_1_TEXT },
+  baa:   { key: 'baa',   title: 'Business Associate Agreement', version: 'v0.1.1',                draft: true, text: BAA_V0_1_TEXT },
   terms: { key: 'terms', title: 'Terms of Service',             version: 'terms-draft-2026-10.2', draft: true, text: TERMS_TEXT },
 }
 

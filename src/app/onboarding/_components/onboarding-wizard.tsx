@@ -8,8 +8,9 @@
 // is stored server-side, so the admin can leave and resume anywhere; the
 // wizard opens at the first step that is not complete. Every save goes
 // to an API route that re-checks the caller and the clinic's state, then
-// the page refreshes from the server. Once submitted (or approved) the
-// wizard is read-only.
+// the wizard re-reads GET /api/onboarding/state (and refreshes the page
+// from the server), so the step list updates as soon as a step completes.
+// Once submitted (or approved) the wizard is read-only.
 //
 // Accessibility (WCAG 2.1 AA, as #206): one <main>, a labelled step
 // navigation with aria-current="step", focus moves to the step heading
@@ -42,9 +43,11 @@ async function send(url: string, method: string, body: unknown): Promise<{ ok: b
   }
 }
 
-export function OnboardingWizard({ state, initialStep }: { state: OnboardingState; initialStep?: StepKey }) {
+export function OnboardingWizard(props: { state: OnboardingState; initialStep?: StepKey }) {
   const router = useRouter()
-  const [step, setStep] = useState<StepKey>(initialStep ?? firstOpenStep(state.steps))
+  const [fresh, setFresh] = useState<OnboardingState | null>(null)
+  const state = fresh ?? props.state
+  const [step, setStep] = useState<StepKey>(props.initialStep ?? firstOpenStep(props.state.steps))
   const headingRef = useRef<HTMLHeadingElement>(null)
   const firstRender = useRef(true)
   const readOnly = !isEditable(state.clinic.onboardingStatus)
@@ -59,7 +62,16 @@ export function OnboardingWizard({ state, initialStep }: { state: OnboardingStat
     const i = ONBOARDING_STEPS.indexOf(step)
     if (i < ONBOARDING_STEPS.length - 1) setStep(ONBOARDING_STEPS[i + 1]!)
   }
-  const refresh = () => router.refresh()
+  async function reload() {
+    router.refresh()
+    try {
+      const res = await fetch('/api/onboarding/state', { cache: 'no-store' })
+      if (!res.ok) return
+      const data = await res.json() as Partial<OnboardingState>
+      if (data.clinic && data.steps && Array.isArray(data.providers) && Array.isArray(data.staff) && data.acceptances) setFresh(data as OnboardingState)
+    } catch { /* keep what is shown */ }
+  }
+  const refresh = () => { void reload() }
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
