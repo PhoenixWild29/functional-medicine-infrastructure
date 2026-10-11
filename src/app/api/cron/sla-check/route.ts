@@ -47,7 +47,7 @@ import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { upsertFaxDeliverySla } from '@/lib/sla/creator'
 import { routeSlaAlert } from '@/lib/slack/alert-router'
 import { buildOpsAlert, sendSlackAlert } from '@/lib/slack/client'
-import { triggerPortalSubmissionUnconfirmed } from '@/lib/pagerduty/client'
+import { triggerPortalSubmissionUnconfirmed, triggerUnknownTierSubmission } from '@/lib/pagerduty/client'
 import { sendReminder24hSms, sendReminder48hSms } from '@/lib/sms/triggers'
 import type { Enums } from '@/types/database.types'
 
@@ -341,6 +341,37 @@ async function alertPortalSubmissionUnconfirmed(breach: SlaBreachRow): Promise<v
 }
 
 // ============================================================
+// UNKNOWN INTEGRATION TIER: NO AUTO-FAX
+// ============================================================
+
+/** Tiers whose submission SLA may cascade to fax (as before: Tier 1, Tier 3, and Tier 4 itself). */
+const FAX_CASCADE_TIERS: ReadonlySet<string> = new Set(['TIER_1_API', 'TIER_3_SPEC', 'TIER_3_HYBRID', 'TIER_4_FAX'])
+
+/** One ops alert, Slack and PagerDuty, IDs and enums only. Failures are logged. */
+async function alertUnknownTierSubmission(breach: SlaBreachRow): Promise<void> {
+  const breachDurationMinutes = Math.max(0, Math.round((Date.now() - Date.parse(breach.deadline_at)) / 60_000)) || 0
+  const slack = sendSlackAlert(buildOpsAlert({
+    type:     'sla_breach',
+    orderId:  breach.order_id,
+    pharmacy: breach.pharmacy_slug,
+    status:   breach.order_status,
+    details:  {
+      sla_type:        breach.sla_type,
+      overdue_minutes: breachDurationMinutes,
+    },
+    notes:    ['unknown_tier_no_auto_fax'],
+    actions:  'sla',
+  })).catch(err => console.error(`[sla-check] unknown-tier Slack alert failed | order=${breach.order_id}:`, err))
+  const page = triggerUnknownTierSubmission({
+    orderId:      breach.order_id,
+    pharmacySlug: breach.pharmacy_slug,
+    orderStatus:  breach.order_status,
+    breachDurationMinutes,
+  }).catch(err => console.error(`[sla-check] unknown-tier PagerDuty alert failed | order=${breach.order_id}:`, err))
+  await Promise.all([slack, page])
+}
+
+// ============================================================
 // ROUTE HANDLER
 // ============================================================
 
@@ -485,6 +516,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         }
         await alertPortalSubmissionUnconfirmed(breach)
         console.info(`[sla-check] Tier 2 portal breach escalated, not faxed | order=${orderId} | tier=${escalationTier}→${newTier}`)
+        results.push({ orderId, slaType, outcome: 'escalated', newTier })
+        continue
+      }
+
+      // ── Unknown or missing integration tier: never auto-fax ──
+      // Only tiers known to take a fax cascade. A missing or new tier value
+      // gets no fax (nothing says the pharmacy takes one); it is logged and
+      // escalated once to ops, Slack and PagerDuty, IDs only.
+      if (slaType === 'ADAPTER_SUBMISSION_ACK' && escalationTier === 0 && !FAX_CASCADE_TIERS.has(integrationTier)) {
+        console.error(`[sla-check] unknown integration tier | order=${orderId} | pharmacy_id=${pharmacyId || 'none'}: not faxed, escalating to ops`)
+        const newTier = await escalateSla(orderId, slaType, escalationTier)
+        if (newTier === null) {
+          results.push({ orderId, slaType, outcome: 'skipped' })
+          continue
+        }
+        await alertUnknownTierSubmission(breach)
         results.push({ orderId, slaType, outcome: 'escalated', newTier })
         continue
       }

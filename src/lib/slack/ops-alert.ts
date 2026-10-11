@@ -64,8 +64,12 @@ const TITLES = {
   sms_failed:                  '📱 SMS delivery failed',
   stripe_dispute:              '🔴 Stripe dispute opened',
   stripe_transfer_failed:      '🔴 Stripe transfer failed',
+  stripe_payment_failed:       '⚠️ Payment failed: the patient can retry on the same link',
+  stripe_refund_unsynced:      '⚠️ Stripe refund needs ops review',
+  stripe_dispute_lost:         '🔴 Stripe dispute lost',
   status_history_write_failed: '🔴 Order status change has no audit row',
   submissions_paused:          '⏸️ Pharmacy submissions are turned off: paid orders are waiting',
+  order_stuck:                 '⚠️ Order stuck: needs ops',
   queued_alert:                '⚠️ Ops alert',
   daily_digest:                '📊 CompoundIQ daily digest',
 } as const
@@ -89,6 +93,10 @@ const DETAIL_LABELS = {
   priority:          'Priority',
   dispute_id:        'Dispute',
   dispute_reason:    'Dispute reason (Stripe code)',
+  dispute_status:    'Dispute status',
+  payment_intent:    'PaymentIntent',
+  refund_id:         'Refund',
+  decline_code:      'Decline reason (Stripe code)',
   transfer_id:       'Transfer',
   group_id:          'Payment group',
   member_count:      'Orders in group',
@@ -138,6 +146,8 @@ const NOTES = {
   clinic_not_notified:  '⚠️ The clinic was not notified in-app. Contact the clinic directly.',
   submissions_off:      'Nothing is sent to any pharmacy until PHARMACY_SUBMISSIONS_ENABLED=true.',
   free_text_withheld:   'Pharmacy and patient text is never sent to Slack. Open the order in ops for the details.',
+  stuck_no_auto_action: 'Nothing was changed automatically. Open the order in ops to resubmit, reroute or refund.',
+  unknown_tier_no_auto_fax: 'Integration tier unknown: not faxed automatically, as nothing says this pharmacy takes a fax. Check its setup, then resolve the order by hand.',
   portal_no_auto_fax:   'Portal order: not faxed automatically, as the portal submission may already have reached the pharmacy. Check the portal, then resolve the order by hand.',
 } as const
 export type OpsAlertNote = keyof typeof NOTES

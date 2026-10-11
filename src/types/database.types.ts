@@ -1943,6 +1943,8 @@ export type Database = {
           catalog_last_synced_at: string | null
           city: string | null
           created_at: string
+          dba_name: string | null
+          dea_number: string | null
           deleted_at: string | null
           email: string | null
           facility_type: string | null
@@ -1950,13 +1952,21 @@ export type Database = {
           free_shipping_threshold: number | null
           integration_tier: Database["public"]["Enums"]["integration_tier_enum"]
           is_active: boolean
+          legal_name: string | null
           name: string
+          ncpdp_id: string | null
+          npi: string | null
+          onboarding_status: string | null
+          order_cutoff_local: string | null
           pharmacy_id: string
           pharmacy_status: string
           phone: string | null
           portal_config_id: string | null
+          ship_carriers: string[]
+          ship_to_states: string[]
           shipping_fee_cold_chain: number
           shipping_fee_standard: number
+          ships_cold_chain: boolean | null
           slug: string
           state: string | null
           supports_real_time_status: boolean
@@ -1975,6 +1985,8 @@ export type Database = {
           catalog_last_synced_at?: string | null
           city?: string | null
           created_at?: string
+          dba_name?: string | null
+          dea_number?: string | null
           deleted_at?: string | null
           email?: string | null
           facility_type?: string | null
@@ -1982,13 +1994,21 @@ export type Database = {
           free_shipping_threshold?: number | null
           integration_tier?: Database["public"]["Enums"]["integration_tier_enum"]
           is_active?: boolean
+          legal_name?: string | null
           name: string
+          ncpdp_id?: string | null
+          npi?: string | null
+          onboarding_status?: string | null
+          order_cutoff_local?: string | null
           pharmacy_id?: string
           pharmacy_status?: string
           phone?: string | null
           portal_config_id?: string | null
+          ship_carriers?: string[]
+          ship_to_states?: string[]
           shipping_fee_cold_chain?: number
           shipping_fee_standard?: number
+          ships_cold_chain?: boolean | null
           slug: string
           state?: string | null
           supports_real_time_status?: boolean
@@ -2007,6 +2027,8 @@ export type Database = {
           catalog_last_synced_at?: string | null
           city?: string | null
           created_at?: string
+          dba_name?: string | null
+          dea_number?: string | null
           deleted_at?: string | null
           email?: string | null
           facility_type?: string | null
@@ -2014,13 +2036,21 @@ export type Database = {
           free_shipping_threshold?: number | null
           integration_tier?: Database["public"]["Enums"]["integration_tier_enum"]
           is_active?: boolean
+          legal_name?: string | null
           name?: string
+          ncpdp_id?: string | null
+          npi?: string | null
+          onboarding_status?: string | null
+          order_cutoff_local?: string | null
           pharmacy_id?: string
           pharmacy_status?: string
           phone?: string | null
           portal_config_id?: string | null
+          ship_carriers?: string[]
+          ship_to_states?: string[]
           shipping_fee_cold_chain?: number
           shipping_fee_standard?: number
+          ships_cold_chain?: boolean | null
           slug?: string
           state?: string | null
           supports_real_time_status?: boolean
@@ -2046,6 +2076,45 @@ export type Database = {
             referencedColumns: ["config_id"]
           },
         ]
+      }
+      pharmacy_agreement_acceptances: {
+        Row: {
+          acceptance_id: string
+          accepted_at: string
+          application_id: string | null
+          pharmacy_id: string
+          signer_name: string
+          signer_title: string
+          template_key: string
+          template_version: string
+          text_sha256: string
+          user_id: string
+        }
+        Insert: {
+          acceptance_id?: string
+          accepted_at?: string
+          application_id?: string | null
+          pharmacy_id: string
+          signer_name: string
+          signer_title: string
+          template_key: string
+          template_version: string
+          text_sha256: string
+          user_id: string
+        }
+        Update: {
+          acceptance_id?: string
+          accepted_at?: string
+          application_id?: string | null
+          pharmacy_id?: string
+          signer_name?: string
+          signer_title?: string
+          template_key?: string
+          template_version?: string
+          text_sha256?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       pharmacy_api_configs: {
         Row: {
@@ -2243,6 +2312,168 @@ export type Database = {
           },
         ]
       }
+      pharmacy_invites: {
+        Row: {
+          accepted_at: string | null
+          accepted_user_id: string | null
+          admin_email: string
+          created_at: string
+          created_by: string
+          expires_at: string
+          invite_id: string
+          last_sent_at: string
+          pharmacy_id: string | null
+          pharmacy_name: string
+          revoked_at: string | null
+          revoked_by: string | null
+          send_count: number
+          token_hash: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_user_id?: string | null
+          admin_email: string
+          created_at?: string
+          created_by: string
+          expires_at: string
+          invite_id?: string
+          last_sent_at?: string
+          pharmacy_id?: string | null
+          pharmacy_name: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          send_count?: number
+          token_hash: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_user_id?: string | null
+          admin_email?: string
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          invite_id?: string
+          last_sent_at?: string
+          pharmacy_id?: string | null
+          pharmacy_name?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          send_count?: number
+          token_hash?: string
+        }
+        Relationships: []
+      }
+      pharmacy_onboarding_applications: {
+        Row: {
+          adapter_configured_at: string | null
+          adapter_configured_by: string | null
+          admin_user_id: string
+          application_id: string
+          approved_at: string | null
+          catalog_choice: string | null
+          catalog_row_count: number | null
+          catalog_rows: Json | null
+          catalog_warnings: Json | null
+          created_at: string
+          invite_id: string | null
+          ordering_details: Json
+          ordering_method: string | null
+          pharmacy_id: string
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          steps_completed: string[]
+          submitted_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          adapter_configured_at?: string | null
+          adapter_configured_by?: string | null
+          admin_user_id: string
+          application_id?: string
+          approved_at?: string | null
+          catalog_choice?: string | null
+          catalog_row_count?: number | null
+          catalog_rows?: Json | null
+          catalog_warnings?: Json | null
+          created_at?: string
+          invite_id?: string | null
+          ordering_details?: Json
+          ordering_method?: string | null
+          pharmacy_id: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          steps_completed?: string[]
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          adapter_configured_at?: string | null
+          adapter_configured_by?: string | null
+          admin_user_id?: string
+          application_id?: string
+          approved_at?: string | null
+          catalog_choice?: string | null
+          catalog_row_count?: number | null
+          catalog_rows?: Json | null
+          catalog_warnings?: Json | null
+          created_at?: string
+          invite_id?: string | null
+          ordering_details?: Json
+          ordering_method?: string | null
+          pharmacy_id?: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          steps_completed?: string[]
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      pharmacy_onboarding_events: {
+        Row: {
+          action: string
+          actor_role: string
+          actor_user_id: string | null
+          application_id: string | null
+          detail: Json
+          event_id: string
+          invite_id: string | null
+          occurred_at: string
+          pharmacy_id: string | null
+          state_code: string | null
+        }
+        Insert: {
+          action: string
+          actor_role: string
+          actor_user_id?: string | null
+          application_id?: string | null
+          detail?: Json
+          event_id?: string
+          invite_id?: string | null
+          occurred_at?: string
+          pharmacy_id?: string | null
+          state_code?: string | null
+        }
+        Update: {
+          action?: string
+          actor_role?: string
+          actor_user_id?: string | null
+          application_id?: string | null
+          detail?: Json
+          event_id?: string
+          invite_id?: string | null
+          occurred_at?: string
+          pharmacy_id?: string | null
+          state_code?: string | null
+        }
+        Relationships: []
+      }
       pharmacy_portal_configs: {
         Row: {
           config_id: string
@@ -2317,6 +2548,7 @@ export type Database = {
       pharmacy_state_licenses: {
         Row: {
           deleted_at: string | null
+          document_path: string | null
           expiration_date: string
           is_active: boolean
           license_number: string
@@ -2324,9 +2556,14 @@ export type Database = {
           pharmacy_id: string
           state_code: string
           sterile_compounding: boolean | null
+          verification_note: string | null
+          verification_status: string
+          verified_at: string | null
+          verified_by: string | null
         }
         Insert: {
           deleted_at?: string | null
+          document_path?: string | null
           expiration_date: string
           is_active?: boolean
           license_number: string
@@ -2334,9 +2571,14 @@ export type Database = {
           pharmacy_id: string
           state_code: string
           sterile_compounding?: boolean | null
+          verification_note?: string | null
+          verification_status?: string
+          verified_at?: string | null
+          verified_by?: string | null
         }
         Update: {
           deleted_at?: string | null
+          document_path?: string | null
           expiration_date?: string
           is_active?: boolean
           license_number?: string
@@ -2344,6 +2586,10 @@ export type Database = {
           pharmacy_id?: string
           state_code?: string
           sterile_compounding?: boolean | null
+          verification_note?: string | null
+          verification_status?: string
+          verified_at?: string | null
+          verified_by?: string | null
         }
         Relationships: [
           {
