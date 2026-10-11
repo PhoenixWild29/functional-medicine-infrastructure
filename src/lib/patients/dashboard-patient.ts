@@ -6,7 +6,7 @@ import { isIntakePending, openPossibleDuplicate, patientName, type NameablePatie
 
 type EmbeddedPatient = NameablePatient & { patient_id?: string | null; intake_status?: string | null } & Parameters<typeof openPossibleDuplicate>[0]
 
-export function dashboardPatient(embed: unknown): {
+export function dashboardPatient(embed: unknown, duplicateNames?: ReadonlyMap<string, NameablePatient>): {
   patientId: string | null
   patientName: string
   patientIntakePending: boolean
@@ -18,6 +18,11 @@ export function dashboardPatient(embed: unknown): {
     patientId: p.patient_id ?? null,
     patientName: patientName(p, 'last-first'),
     patientIntakePending: isIntakePending(p),
-    possibleDuplicate: openPossibleDuplicate(p),
+    possibleDuplicate: openPossibleDuplicate(p, duplicateNames),
   }
+}
+
+/** The orders → patients embed of a row, as one patient (or null). */
+export function embeddedPatient(embed: unknown): { possible_duplicate_of?: string | null; possible_duplicate_dismissed_at?: string | null } | null {
+  return ((Array.isArray(embed) ? embed[0] : embed) ?? null) as { possible_duplicate_of?: string | null; possible_duplicate_dismissed_at?: string | null } | null
 }

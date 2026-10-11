@@ -18,7 +18,8 @@ import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
 import { createIntakeLink } from '@/lib/intake/links'
 import { sendIntakeLinkSms } from '@/lib/intake/sms'
-import { POSSIBLE_DUPLICATE_EMBED, openPossibleDuplicate } from '@/lib/patients/display'
+import { openPossibleDuplicate } from '@/lib/patients/display'
+import { POSSIBLE_DUPLICATE_COLUMNS, loadDuplicateNames, openDuplicateIds } from '@/lib/patients/duplicate-names'
 
 const STAFF_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -85,7 +86,7 @@ export async function GET(request: NextRequest, context: Context): Promise<NextR
 
   const { data: patient, error } = await supabase
     .from('patients')
-    .select(`patient_id, clinic_id, intake_status, first_name, last_name, date_of_birth, state, ${POSSIBLE_DUPLICATE_EMBED}`)
+    .select(`patient_id, clinic_id, intake_status, first_name, last_name, date_of_birth, state, ${POSSIBLE_DUPLICATE_COLUMNS}`)
     .eq('patient_id', c.patientId)
     .eq('clinic_id', c.clinicId)
     .is('deleted_at', null)
@@ -105,6 +106,6 @@ export async function GET(request: NextRequest, context: Context): Promise<NextR
     intakeStatus: 'complete',
     patient: { first_name: p.first_name, last_name: p.last_name, date_of_birth: p.date_of_birth, state: p.state },
     // Patient Intake PR 2: flagged at intake, not yet dismissed.
-    duplicate: openPossibleDuplicate(p),
+    duplicate: openPossibleDuplicate(p, await loadDuplicateNames(supabase, c.clinicId, openDuplicateIds([p]))),
   }, { headers: { 'Cache-Control': 'no-store' } })
 }

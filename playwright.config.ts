@@ -28,8 +28,11 @@ export default defineConfig({
   // Reporters: HTML report always; JUnit for CI artifact upload
   reporter: isCI
     // 'github' writes each failure as a check-run annotation, readable
-    // without downloading the (auth-gated) report artifact.
-    ? [['html', { open: 'never' }], ['junit', { outputFile: 'test-results/junit.xml' }], ['github']]
+    // without downloading the (auth-gated) report artifact. 'list' prints
+    // each test's result as it finishes, so a run cut off by the job
+    // timeout still shows which tests passed, failed or hung (html, junit
+    // and github write nothing until the run ends).
+    ? [['list'], ['html', { open: 'never' }], ['junit', { outputFile: 'test-results/junit.xml' }], ['github']]
     : [['html', { open: 'on-failure' }]],
 
   // Shared test options

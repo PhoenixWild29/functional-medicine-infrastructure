@@ -27,7 +27,7 @@ import { AllergyChip, EditableAllergyChip, type SavedAllergies } from './allergy
 import { NewPatientForm, type CreatedPatient, type CreatedIntake } from './new-patient-form'
 import { IntakeChip } from '@/components/intake-chip'
 import { IntakeLinkPanel } from '@/components/intake-link-panel'
-import { openPossibleDuplicate, patientName } from '@/lib/patients/display'
+import { openPossibleDuplicate, patientName, type NameablePatient } from '@/lib/patients/display'
 
 // ── Types (match server query) ────────────────────────────────
 
@@ -50,7 +50,7 @@ interface Patient {
   /** Patient Intake PR 2: a possible duplicate flagged at intake (see openPossibleDuplicate). */
   possible_duplicate_of?: string | null
   possible_duplicate_dismissed_at?: string | null
-  duplicate?: { first_name: string | null; last_name: string | null; phone?: string | null } | Array<{ first_name: string | null; last_name: string | null; phone?: string | null }> | null
+  duplicate?: NameablePatient | NameablePatient[] | null
 }
 
 interface Provider {
