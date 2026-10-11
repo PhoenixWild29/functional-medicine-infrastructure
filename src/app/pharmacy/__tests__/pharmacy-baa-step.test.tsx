@@ -84,7 +84,7 @@ describe('the step is titled "BAA" (only the BAA is shown)', () => {
     const { unmount } = render(<OnboardingWizard initial={state()} />)
     expect(screen.getByRole('heading', { level: 2, name: 'BAA' })).toBeInTheDocument()
     const nav = screen.getByRole('navigation', { name: 'Onboarding steps' })
-    expect(within(nav).getByRole('button', { name: /^6\s*BAA$/ })).toHaveAttribute('aria-current', 'step')
+    expect(within(nav).getByRole('button', { name: /^BAA$/ })).toHaveAttribute('aria-current', 'step')
     expect(document.body.textContent).not.toMatch(/BAA and terms/i)
     unmount()
 
