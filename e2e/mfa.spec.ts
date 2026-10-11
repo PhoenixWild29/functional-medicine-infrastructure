@@ -93,7 +93,7 @@ test.describe('Compliance C3: multi-factor sign-in (enforced for the E2E MFA use
     // A wrong code is refused and stays on the challenge.
     await page.getByLabel('6-digit code').fill(totpCode(secret, Date.now() - 10 * 60_000))
     await page.getByRole('button', { name: /Verify/ }).click()
-    await expect(page.getByRole('alert')).toContainText('did not match')
+    await expect(page.locator('#mfa-error')).toContainText('did not match')
     await expect(page).toHaveURL(/\/mfa\/challenge/)
 
     await nextTotpWindow(page)
