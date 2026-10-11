@@ -18,7 +18,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { scriptedDb, type ScriptedCall } from '@/__tests__/helpers/scripted-db'
 import { AGREEMENTS } from '@/lib/onboarding/agreement-texts'
-import { BAA_V0_1_0_ARCHIVED_TEXT } from '@/lib/onboarding/legal-texts.generated'
+import { BAA_V0_1_ORIGINAL_TEXT } from '@/lib/onboarding/legal-texts.generated'
 import {
   agreementTextFor, loadClinicAgreements, recordAgreementAcceptance, loadAgreementNotice, verifiedAcceptedText,
 } from '../clinic-agreements'
@@ -47,20 +47,20 @@ function db(rows: Array<Record<string, unknown>>, extra?: (c: ScriptedCall) => u
 
 describe('the texts a clinic may have accepted', () => {
   it('BAA v0.1 is archived word for word (the hash v0.1 acceptances recorded)', () => {
-    expect(sha(BAA_V0_1_0_ARCHIVED_TEXT)).toBe(V01_SHA)
-    const md = readFileSync(join(process.cwd(), 'src', 'content', 'legal', 'archive', 'baa-draft-v0.1.0.md'), 'utf8').replace(/\r\n/g, '\n')
-    expect(BAA_V0_1_0_ARCHIVED_TEXT).toBe(md)
+    expect(sha(BAA_V0_1_ORIGINAL_TEXT)).toBe(V01_SHA)
+    const md = readFileSync(join(process.cwd(), 'src', 'content', 'legal', 'archive', 'baa-draft-v0.1-original.md'), 'utf8').replace(/\r\n/g, '\n')
+    expect(BAA_V0_1_ORIGINAL_TEXT).toBe(md)
   })
 
   it('looks a text up by agreement and version; the current versions are the live templates', () => {
-    expect(agreementTextFor('baa', 'v0.1')).toBe(BAA_V0_1_0_ARCHIVED_TEXT)
+    expect(agreementTextFor('baa', 'v0.1')).toBe(BAA_V0_1_ORIGINAL_TEXT)
     expect(agreementTextFor('baa', AGREEMENTS.baa.version)).toBe(AGREEMENTS.baa.text)
     expect(agreementTextFor('terms', AGREEMENTS.terms.version)).toBe(AGREEMENTS.terms.text)
     expect(agreementTextFor('baa', 'v9')).toBeNull()
   })
 
   it('a text is shown only when its hash matches the acceptance', () => {
-    expect(verifiedAcceptedText({ agreement: 'baa', version: 'v0.1', textSha256: V01_SHA })).toBe(BAA_V0_1_0_ARCHIVED_TEXT)
+    expect(verifiedAcceptedText({ agreement: 'baa', version: 'v0.1', textSha256: V01_SHA })).toBe(BAA_V0_1_ORIGINAL_TEXT)
     expect(verifiedAcceptedText({ agreement: 'baa', version: 'v0.1', textSha256: '0'.repeat(64) })).toBeNull()
     expect(verifiedAcceptedText({ agreement: 'baa', version: 'v9', textSha256: V01_SHA })).toBeNull()
   })

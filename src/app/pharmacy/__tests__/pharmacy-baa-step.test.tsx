@@ -27,6 +27,7 @@ import { PharmacyApplicationReview } from '@/app/(ops-dashboard)/ops/onboarding/
 import { AGREEMENT, agreementText, agreementTextSha256 } from '@/lib/pharmacy-onboarding/agreement'
 import { ONBOARDING_STEPS } from '@/lib/pharmacy-onboarding/steps'
 import type { WizardState } from '@/lib/pharmacy-onboarding/application'
+import { PHARMACY_TERMS } from '@/lib/onboarding/agreement-texts'
 
 const BEFORE_AGREEMENT = ['details', 'facility', 'licenses', 'ordering', 'shipping']
 
@@ -36,6 +37,7 @@ function state(over: Partial<WizardState> = {}): WizardState {
     pharmacy: { name: 'Strive Pharmacy', ship_carriers: [], ship_to_states: [] },
     licenses: [], ordering: null, catalog: { choice: null, rowCount: null, warnings: [] },
     agreement: { key: AGREEMENT.key, version: AGREEMENT.version, title: AGREEMENT.title, text: agreementText(), textSha256: agreementTextSha256(), banner: AGREEMENT.banner, draft: true, acceptance: null },
+    terms: { key: 'pharmacy_terms', version: PHARMACY_TERMS.version, title: PHARMACY_TERMS.title, text: PHARMACY_TERMS.text, textSha256: 'x'.repeat(64), banner: 'Draft, pending legal review', draft: true, acceptance: null },
     ...over,
   }
 }
@@ -97,7 +99,7 @@ describe('the step is titled "BAA" (only the BAA is shown)', () => {
   it('the ops review says BAA too', async () => {
     global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ review: {
       applicationId: 'a-1', pharmacyId: 'p-1', status: 'submitted', stepsCompleted: [], submittedAt: null, reviewNote: null,
-      pharmacy: { name: 'Strive Pharmacy' }, ordering: { method: 'fax', faxNumber: '+15125550199' }, adapter: { required: false, configuredAt: null }, acceptance: null,
+      pharmacy: { name: 'Strive Pharmacy' }, ordering: { method: 'fax', faxNumber: '+15125550199' }, adapter: { required: false, configuredAt: null }, acceptances: { baa: null, terms: null },
       catalog: { choice: 'skipped', rowCount: null, warnings: [], rows: [] }, events: [], licenses: [],
     } }) })) as unknown as typeof fetch
     render(<PharmacyApplicationReview applicationId="a-1" />)

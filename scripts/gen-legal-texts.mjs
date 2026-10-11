@@ -18,9 +18,11 @@ import { createHash } from 'node:crypto'
 const ROOT = process.cwd()
 const SOURCES = [
   { name: 'BAA_V0_1_TEXT', file: 'src/content/legal/baa-draft-v0.1.md' },
-  // Archived: texts a clinic may already have accepted, kept word for word so
-  // /settings/agreements can show them (their SHA-256 is checked there).
-  { name: 'BAA_V0_1_0_ARCHIVED_TEXT', file: 'src/content/legal/archive/baa-draft-v0.1.0.md' },
+  { name: 'PHARMACY_TERMS_V0_1_TEXT', file: 'src/content/legal/pharmacy-terms-draft-v0.1.md' },
+  // Superseded texts, kept word for word so an older acceptance can show
+  // what was accepted (matched by its recorded SHA-256). Never offered for
+  // acceptance.
+  { name: 'BAA_V0_1_ORIGINAL_TEXT', file: 'src/content/legal/archive/baa-draft-v0.1-original.md' },
 ]
 
 const out = [

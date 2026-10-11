@@ -22,7 +22,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import { getUserClinicId, getUserRole, type ClaimsUser } from '@/lib/auth/claims'
 import { AGREEMENTS, agreementSha256, type AgreementKey } from '@/lib/onboarding/agreements'
-import { BAA_V0_1_0_ARCHIVED_TEXT } from '@/lib/onboarding/legal-texts.generated'
+import { BAA_V0_1_ORIGINAL_TEXT } from '@/lib/onboarding/legal-texts.generated'
 
 type Supabase = SupabaseClient<Database>
 
@@ -30,7 +30,7 @@ export const AGREEMENT_KEYS: AgreementKey[] = ['baa', 'terms']
 
 /** Earlier versions a clinic may have accepted, word for word. */
 const ARCHIVE: Record<AgreementKey, Record<string, string>> = {
-  baa:   { 'v0.1': BAA_V0_1_0_ARCHIVED_TEXT },
+  baa:   { 'v0.1': BAA_V0_1_ORIGINAL_TEXT },
   terms: {},
 }
 

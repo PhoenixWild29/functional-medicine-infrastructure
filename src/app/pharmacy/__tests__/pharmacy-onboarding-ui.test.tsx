@@ -30,6 +30,7 @@ import { PharmacyOnboardingSection } from '@/app/(ops-dashboard)/ops/onboarding/
 import { PharmacyApplicationReview } from '@/app/(ops-dashboard)/ops/onboarding/_components/pharmacy/pharmacy-application-review'
 import { AGREEMENT, agreementText, agreementTextSha256 } from '@/lib/pharmacy-onboarding/agreement'
 import type { WizardState } from '@/lib/pharmacy-onboarding/application'
+import { PHARMACY_TERMS } from '@/lib/onboarding/agreement-texts'
 
 const fetchMock = jest.fn()
 beforeEach(() => {
@@ -46,6 +47,7 @@ function state(over: Partial<WizardState> = {}): WizardState {
     pharmacy: { name: 'Strive Pharmacy', ship_carriers: [], ship_to_states: [] },
     licenses: [], ordering: null, catalog: { choice: null, rowCount: null, warnings: [] },
     agreement: { key: AGREEMENT.key, version: AGREEMENT.version, title: AGREEMENT.title, text: agreementText(), textSha256: agreementTextSha256(), banner: AGREEMENT.banner, draft: true, acceptance: null },
+    terms: { key: 'pharmacy_terms', version: PHARMACY_TERMS.version, title: PHARMACY_TERMS.title, text: PHARMACY_TERMS.text, textSha256: 'x'.repeat(64), banner: 'Draft, pending legal review', draft: true, acceptance: null },
     ...over,
   }
 }
@@ -128,7 +130,7 @@ describe('the wizard', () => {
     fireEvent.click(screen.getByRole('button', { name: /accept and continue/i }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/pharmacy/onboarding/agreement', expect.objectContaining({ method: 'POST' })))
     const body = JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body)
-    expect(body).toEqual({ signerName: 'Dana Ruiz', signerTitle: 'PIC', accept: true, templateVersion: AGREEMENT.version, textSha256: agreementTextSha256() })
+    expect(body).toEqual({ agreement: 'baa', signerName: 'Dana Ruiz', signerTitle: 'PIC', accept: true, templateVersion: AGREEMENT.version, textSha256: agreementTextSha256() })
   })
 
   it('ordering: saved secrets are not shown and may be kept', () => {
@@ -143,7 +145,7 @@ describe('the wizard', () => {
     fireEvent.click(screen.getByRole('button', { name: /Review and submit/ }))
     expect(screen.getByRole('button', { name: /submit for review/i })).toBeDisabled()
     unmount()
-    render(<OnboardingWizard initial={state({ stepsCompleted: ['details', 'facility', 'licenses', 'ordering', 'shipping', 'agreement', 'catalog'] })} />)
+    render(<OnboardingWizard initial={state({ stepsCompleted: ['details', 'facility', 'licenses', 'ordering', 'shipping', 'agreement', 'terms', 'catalog'] })} />)
     expect(screen.getByRole('button', { name: /submit for review/i })).toBeEnabled()
   })
 
@@ -178,7 +180,10 @@ describe('ops', () => {
       applicationId: 'a-1', pharmacyId: 'p-1', status: 'submitted', stepsCompleted: [], submittedAt: null, reviewNote: null,
       pharmacy: { name: 'Strive Pharmacy' }, ordering: { method: 'portal', portalUrl: 'https://portal.strive.example', secretsStored: true },
       adapter: { required: true, configuredAt: null },
-      acceptance: { signerName: 'Dana', signerTitle: 'PIC', acceptedAt: '2026-10-08T00:00:00.000Z', templateVersion: 'v0.1', current: true },
+      acceptances: {
+        baa:   { title: 'Business Associate Agreement', signerName: 'Dana', signerTitle: 'PIC', acceptedAt: '2026-10-08T00:00:00.000Z', templateVersion: 'v0.1.1', hashPrefix: 'b26c8364eaa6', current: true },
+        terms: { title: 'Pharmacy Terms of Service', signerName: 'Dana', signerTitle: 'PIC', acceptedAt: '2026-10-08T00:00:00.000Z', templateVersion: 'v0.1', hashPrefix: '770a0ac610e7', current: true },
+      },
       catalog: { choice: 'skipped', rowCount: null, warnings: [], rows: [] }, events: [],
       licenses: [{ state: 'TX', licenseNumber: 'TX-1', expiresOn: '2027-06-30', sterileCompounding: true, verificationStatus: 'verified', verificationNote: null, verifiedAt: null, documentUrl: null }],
     } }))
@@ -191,7 +196,7 @@ describe('ops', () => {
   it('the review: approve waits for every license; a rejection needs a note', async () => {
     fetchMock.mockResolvedValue(reply({ review: {
       applicationId: 'a-1', pharmacyId: 'p-1', status: 'submitted', stepsCompleted: [], submittedAt: null, reviewNote: null,
-      pharmacy: { name: 'Strive Pharmacy' }, ordering: { method: 'fax', faxNumber: '+15125550199' }, adapter: { required: false, configuredAt: null }, acceptance: null,
+      pharmacy: { name: 'Strive Pharmacy' }, ordering: { method: 'fax', faxNumber: '+15125550199' }, adapter: { required: false, configuredAt: null }, acceptances: { baa: null, terms: null },
       catalog: { choice: 'skipped', rowCount: null, warnings: [], rows: [] }, events: [],
       licenses: [{ state: 'TX', licenseNumber: 'TX-1', expiresOn: '2027-06-30', sterileCompounding: true, verificationStatus: 'pending', verificationNote: null, verifiedAt: null, documentUrl: 'https://storage.example/doc' }],
     } }))

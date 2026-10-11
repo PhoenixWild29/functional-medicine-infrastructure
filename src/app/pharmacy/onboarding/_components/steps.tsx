@@ -12,7 +12,7 @@
 import { useState } from 'react'
 import Papa from 'papaparse'
 import { US_STATES } from '@/lib/providers/states'
-import type { WizardState } from '@/lib/pharmacy-onboarding/application'
+import type { AgreementView, WizardState } from '@/lib/pharmacy-onboarding/application'
 import { FormAlert, PrimaryButton, RadioGroup, SecondaryButton, SelectField, TextField, fieldErrors, sendJson } from '@/components/pharmacy-onboarding/fields'
 import { LegalMarkdown } from '@/components/onboarding/legal-markdown'
 
@@ -320,14 +320,30 @@ export function ShippingStep({ state, onSaved }: StepProps) {
   )
 }
 
-// ── f. BAA ────────────────────────────────────────────────────
+// ── f. BAA, and g'. Terms of service ─────────────────────────
 //
-// Only the BAA: the shared terms text (AGREEMENTS.terms) is the clinic's
-// terms of service, so it is not shown here. The Markdown is rendered
-// with the clinic wizard's LegalMarkdown (React text, no injected HTML).
+// Each agreement is rendered with the clinic wizard's LegalMarkdown (React
+// text, no injected HTML) under the draft banner. Accepting posts the
+// agreement's key with the version and hash the pharmacy was shown; the
+// server records its own hash of its own text. The shared terms text
+// (AGREEMENTS.terms) is the clinic's terms, never shown here.
 
 export function AgreementStep({ state, onSaved, onNext }: StepProps) {
-  const a = state.agreement
+  return <AgreementAcceptance agreementKey="baa" view={state.agreement} onAccepted={onSaved} onNext={onNext} />
+}
+
+export function TermsStep({ state, onSaved, onNext }: StepProps) {
+  return <AgreementAcceptance agreementKey="pharmacy_terms" view={state.terms} onAccepted={onSaved} onNext={onNext} />
+}
+
+/** One agreement: its text, and either who accepted it or the form to accept it. */
+export function AgreementAcceptance({ agreementKey, view: a, onAccepted, onNext, continueLabel = 'Continue' }: {
+  agreementKey: 'baa' | 'pharmacy_terms'
+  view:         AgreementView
+  onAccepted:   () => Promise<void>
+  onNext?:      (() => void) | undefined
+  continueLabel?: string | undefined
+}) {
   const [name, setName] = useState('')
   const [title, setTitle] = useState('')
   const [accepted, setAccepted] = useState(false)
@@ -336,19 +352,19 @@ export function AgreementStep({ state, onSaved, onNext }: StepProps) {
   return (
     <div className="space-y-5">
       <p className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">{a.banner}</p>
-      <section role="region" aria-label="Agreement text" tabIndex={0} className="max-h-96 space-y-3 overflow-y-auto break-words rounded-md border border-border bg-muted/30 p-4 text-sm leading-relaxed text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <section role="region" aria-label={`${a.title} text`} tabIndex={0} className="max-h-96 space-y-3 overflow-y-auto break-words rounded-md border border-border bg-muted/30 p-4 text-sm leading-relaxed text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <LegalMarkdown text={a.text} headingLevel={3} />
       </section>
-      <p className="text-xs text-muted-foreground">Version {a.version}</p>
+      <p className="text-xs text-muted-foreground">{a.title}, version {a.version}</p>
       {a.acceptance ? (
         <div className="space-y-3">
           <p className="text-sm text-foreground">Accepted by {a.acceptance.signerName} ({a.acceptance.signerTitle}) on {new Date(a.acceptance.acceptedAt).toLocaleString()}.</p>
-          <PrimaryButton type="button" onClick={onNext}>Continue</PrimaryButton>
+          {onNext && <PrimaryButton type="button" onClick={onNext}>{continueLabel}</PrimaryButton>}
         </div>
       ) : (
         <form noValidate className="space-y-4" onSubmit={e => {
           e.preventDefault()
-          void save('/api/pharmacy/onboarding/agreement', 'POST', { signerName: name, signerTitle: title, accept: accepted, templateVersion: a.version, textSha256: a.textSha256 }, onSaved)
+          void save('/api/pharmacy/onboarding/agreement', 'POST', { agreement: agreementKey, signerName: name, signerTitle: title, accept: accepted, templateVersion: a.version, textSha256: a.textSha256 }, onAccepted)
         }}>
           <FormAlert message={message} />
           <div className="grid gap-4 sm:grid-cols-2">
