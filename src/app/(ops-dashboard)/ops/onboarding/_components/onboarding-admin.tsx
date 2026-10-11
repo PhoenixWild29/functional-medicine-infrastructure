@@ -6,8 +6,11 @@
 //
 // Create a clinic invite (clinic name + admin email) and copy its link;
 // revoke or resend invites; review clinics in onboarding (step status)
-// and approve or send back with a note. Every action goes to an
-// ops_admin-only API that audit-logs it.
+// and approve or send back with a note; each clinic links to its review
+// details (/ops/onboarding/[clinicId]). Approved clinics are listed with
+// when and who approved. Every action goes to an ops_admin-only API that
+// audit-logs it, and approve / send back are confirmed on the page (the
+// clinic leaves the list, so the message is kept above it).
 //
 // After each action the lists are re-read from GET /api/ops/onboarding
 // (no-store) and shown at once; the router is refreshed too. Relying on
@@ -15,9 +18,10 @@
 // one-time invite link is separate state, so it stays on screen.
 
 import { useState, type FormEvent } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ONBOARDING_STEPS, STEP_LABELS, NOT_LIVE_STEPS, NOT_LIVE_LABEL } from '@/lib/onboarding/steps'
-import type { OpsClinicOnboarding, OpsInvite, OpsOnboarding } from '@/lib/onboarding/ops'
+import type { OpsApprovedClinic, OpsClinicOnboarding, OpsInvite, OpsOnboarding } from '@/lib/onboarding/ops'
 import { TextField, FormAlert, InviteLink, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_DANGER } from '@/components/onboarding/fields'
 
 type Errors = Record<string, string>
@@ -32,6 +36,8 @@ const STATUS_LABEL: Record<string, string> = {
 const INVITE_LABEL: Record<string, string> = { pending: 'Pending', accepted: 'Accepted', revoked: 'Revoked', expired: 'Expired' }
 const STEP_STATUS: Record<string, string> = { complete: 'Complete', in_progress: 'In progress', not_started: 'Not started' }
 
+export const REVIEW_LINK = 'inline-flex min-h-[44px] items-center text-sm font-medium text-blue-700 underline underline-offset-2 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+
 const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '—')
 
 async function send(url: string, body: unknown): Promise<{ ok: boolean; data: Record<string, unknown> }> {
@@ -43,12 +49,15 @@ async function send(url: string, body: unknown): Promise<{ ok: boolean; data: Re
   }
 }
 
-export function OnboardingAdmin(props: { invites: OpsInvite[]; clinics: OpsClinicOnboarding[] }) {
+export function OnboardingAdmin(props: { invites: OpsInvite[]; clinics: OpsClinicOnboarding[]; approved?: OpsApprovedClinic[] }) {
   const router = useRouter()
   // The lists as last re-read after an action; the server's until then.
   const [fresh, setFresh] = useState<OpsOnboarding | null>(null)
   const invites = fresh?.invites ?? props.invites
   const clinics = fresh?.clinics ?? props.clinics
+  const approved = fresh?.approved ?? props.approved ?? []
+  // Confirmation of the last approve / send back, kept above the list.
+  const [reviewed, setReviewed] = useState<string | null>(null)
 
   /** Re-read the lists and show them now; also refresh the server render. */
   async function reload() {
@@ -57,7 +66,9 @@ export function OnboardingAdmin(props: { invites: OpsInvite[]; clinics: OpsClini
       const res = await fetch('/api/ops/onboarding', { cache: 'no-store' })
       if (!res.ok) return
       const data = await res.json() as Partial<OpsOnboarding>
-      if (Array.isArray(data.invites) && Array.isArray(data.clinics)) setFresh({ invites: data.invites, clinics: data.clinics })
+      if (Array.isArray(data.invites) && Array.isArray(data.clinics)) {
+        setFresh({ invites: data.invites, clinics: data.clinics, approved: Array.isArray(data.approved) ? data.approved : approved })
+      }
     } catch {
       // Keep what is shown; a reload still shows the latest.
     }
@@ -113,12 +124,46 @@ export function OnboardingAdmin(props: { invites: OpsInvite[]; clinics: OpsClini
 
       <section aria-labelledby="clinics-in-onboarding">
         <h2 id="clinics-in-onboarding" className="text-lg font-semibold text-foreground">Clinics in onboarding</h2>
+        <div aria-live="polite" className="mt-2 empty:hidden">
+          {reviewed && <FormAlert tone="success">{reviewed}</FormAlert>}
+        </div>
         {clinics.length === 0 ? (
           <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">No clinics are onboarding.</p>
         ) : (
           <ul className="mt-3 space-y-4">
-            {clinics.map(c => <ClinicReview key={c.clinicId} clinic={c} onChanged={() => { void reload() }} />)}
+            {clinics.map(c => <ClinicReview key={c.clinicId} clinic={c} onReviewed={message => { setReviewed(message); void reload() }} />)}
           </ul>
+        )}
+      </section>
+
+      <section aria-labelledby="approved-clinics">
+        <h2 id="approved-clinics" className="text-lg font-semibold text-foreground">Approved clinics</h2>
+        {approved.length === 0 ? (
+          <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">No clinics have been approved through onboarding yet.</p>
+        ) : (
+          <div className="mt-3 overflow-x-auto rounded-lg border border-border">
+            <table className="w-full min-w-[36rem] text-left text-sm">
+              <caption className="sr-only">Clinics approved through onboarding</caption>
+              <thead className="bg-muted text-foreground">
+                <tr>
+                  <th scope="col" className="px-3 py-2 font-medium">Clinic</th>
+                  <th scope="col" className="px-3 py-2 font-medium">Approved</th>
+                  <th scope="col" className="px-3 py-2 font-medium">Approved by</th>
+                  <th scope="col" className="px-3 py-2 font-medium"><span className="sr-only">Review details</span></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {approved.map(a => (
+                  <tr key={a.clinicId}>
+                    <th scope="row" className="px-3 py-2 font-normal text-foreground">{a.name}</th>
+                    <td className="px-3 py-2 text-foreground">{fmt(a.approvedAt)}</td>
+                    <td className="px-3 py-2 text-foreground">{a.approvedBy}</td>
+                    <td className="px-3 py-2"><Link href={`/ops/onboarding/${a.clinicId}`} className={REVIEW_LINK}>Review details for {a.name}</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
@@ -165,7 +210,7 @@ export function OnboardingAdmin(props: { invites: OpsInvite[]; clinics: OpsClini
   )
 }
 
-function ClinicReview({ clinic: c, onChanged }: { clinic: OpsClinicOnboarding; onChanged: () => void }) {
+function ClinicReview({ clinic: c, onReviewed }: { clinic: OpsClinicOnboarding; onReviewed: (message: string) => void }) {
   const [note, setNote] = useState('')
   const [noteError, setNoteError] = useState<string | undefined>()
   const [msg, setMsg] = useState<string | null>(null)
@@ -180,7 +225,9 @@ function ClinicReview({ clinic: c, onChanged }: { clinic: OpsClinicOnboarding; o
     setBusy(false)
     if (!r.ok) { setMsg((r.data['error'] as string | undefined) ?? 'The review could not be saved.'); return }
     setNote('')
-    onChanged()
+    onReviewed(action === 'approve'
+      ? `${c.name} approved. It can now sign and send orders.`
+      : `${c.name} sent back with your note. The clinic admin can make the changes and submit again.`)
   }
 
   return (
@@ -189,6 +236,7 @@ function ClinicReview({ clinic: c, onChanged }: { clinic: OpsClinicOnboarding; o
         <h3 className="text-base font-semibold text-foreground">{c.name}</h3>
         <span className="text-sm text-slate-700 dark:text-slate-300">{STATUS_LABEL[c.onboardingStatus] ?? c.onboardingStatus}{c.submittedAt ? ` · submitted ${fmt(c.submittedAt)}` : ''}</span>
       </div>
+      <Link href={`/ops/onboarding/${c.clinicId}`} className={REVIEW_LINK}>Review details for {c.name}</Link>
       <dl className="mt-3 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-3">
         {ONBOARDING_STEPS.filter(s => s !== 'review').map(s => (
           <div key={s} className="flex justify-between gap-2">
