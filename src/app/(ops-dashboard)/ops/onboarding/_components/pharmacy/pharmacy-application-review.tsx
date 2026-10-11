@@ -178,7 +178,7 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
       </section>
 
       <section aria-labelledby="agreement-title" className="rounded-xl border border-border bg-card p-4">
-        <h2 id="agreement-title" className="text-lg font-semibold text-foreground">BAA and terms</h2>
+        <h2 id="agreement-title" className="text-lg font-semibold text-foreground">BAA</h2>
         <p className="mt-2 text-sm text-foreground">
           {review.acceptance
             ? `Accepted by ${review.acceptance.signerName} (${review.acceptance.signerTitle}) on ${new Date(review.acceptance.acceptedAt).toLocaleString()}, version ${review.acceptance.templateVersion}${review.acceptance.current ? '' : ' (an older version: they must accept the current one)'}.`

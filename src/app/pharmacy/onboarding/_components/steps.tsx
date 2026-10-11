@@ -14,6 +14,7 @@ import Papa from 'papaparse'
 import { US_STATES } from '@/lib/providers/states'
 import type { WizardState } from '@/lib/pharmacy-onboarding/application'
 import { FormAlert, PrimaryButton, RadioGroup, SecondaryButton, SelectField, TextField, fieldErrors, sendJson } from '@/components/pharmacy-onboarding/fields'
+import { LegalMarkdown } from '@/components/onboarding/legal-markdown'
 
 export interface StepProps {
   state:   WizardState
@@ -319,7 +320,11 @@ export function ShippingStep({ state, onSaved }: StepProps) {
   )
 }
 
-// ── f. BAA and terms ──────────────────────────────────────────
+// ── f. BAA ────────────────────────────────────────────────────
+//
+// Only the BAA: the shared terms text (AGREEMENTS.terms) is the clinic's
+// terms of service, so it is not shown here. The Markdown is rendered
+// with the clinic wizard's LegalMarkdown (React text, no injected HTML).
 
 export function AgreementStep({ state, onSaved, onNext }: StepProps) {
   const a = state.agreement
@@ -331,8 +336,8 @@ export function AgreementStep({ state, onSaved, onNext }: StepProps) {
   return (
     <div className="space-y-5">
       <p className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">{a.banner}</p>
-      <section role="region" aria-label="Agreement text" tabIndex={0} className="max-h-96 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-4 text-sm leading-relaxed text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        {a.text}
+      <section role="region" aria-label="Agreement text" tabIndex={0} className="max-h-96 space-y-3 overflow-y-auto break-words rounded-md border border-border bg-muted/30 p-4 text-sm leading-relaxed text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <LegalMarkdown text={a.text} headingLevel={3} />
       </section>
       <p className="text-xs text-muted-foreground">Version {a.version}</p>
       {a.acceptance ? (

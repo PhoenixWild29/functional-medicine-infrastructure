@@ -12,7 +12,7 @@ export const ONBOARDING_STEPS: ReadonlyArray<{ key: StepKey; label: string }> = 
   { key: 'licenses',  label: 'State licenses' },
   { key: 'ordering',  label: 'How you receive orders' },
   { key: 'shipping',  label: 'Shipping' },
-  { key: 'agreement', label: 'BAA and terms' },
+  { key: 'agreement', label: 'BAA' },
   { key: 'catalog',   label: 'Catalog' },
   { key: 'review',    label: 'Review and submit' },
 ]
