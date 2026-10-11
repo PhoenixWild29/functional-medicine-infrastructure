@@ -213,7 +213,10 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
   //   Pharmacy: /onboard/pharmacy/<token> and its API under /api/onboard/.
   // The trailing slashes matter: '/onboard/' must not match the clinic
   // wizard at '/onboarding', which needs a signed-in clinic admin.
-  const publicRoutes = ['/login', '/auth/callback', '/api/webhooks', '/api/cron', '/api/health', '/api/checkout', '/onboard/', '/api/onboard/', '/api/onboarding/invite/']
+  //
+  // Legal pages: /legal/privacy and /legal/patient-terms, linked from
+  // checkout, /login and the invite pages, read by visitors with no account.
+  const publicRoutes = ['/login', '/auth/callback', '/api/webhooks', '/api/cron', '/api/health', '/api/checkout', '/onboard/', '/api/onboard/', '/api/onboarding/invite/', '/legal/']
   if (publicRoutes.some(route => pathname.startsWith(route))) {
     return response
   }
