@@ -139,8 +139,8 @@ export function LicensesStep({ state, onSaved, onNext }: StepProps) {
           {state.licenses.map(l => (
             <li key={l.state} className="rounded-lg border border-border p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <p className="font-medium text-foreground">{l.state} · {l.licenseNumber}</p>
+                <div className="min-w-0">
+                  <p className="break-words font-medium text-foreground">{l.state} · {l.licenseNumber}</p>
                   <p className="text-sm text-muted-foreground">
                     Expires {l.expiresOn} · Sterile compounding: {l.sterileCompounding ? 'yes' : 'no'}
                   </p>
@@ -148,7 +148,7 @@ export function LicensesStep({ state, onSaved, onNext }: StepProps) {
                 <span className="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-foreground">{STATUS_LABEL[l.verificationStatus] ?? l.verificationStatus}</span>
               </div>
               {l.verificationStatus === 'rejected' && l.verificationNote && (
-                <p className="mt-2 text-sm text-red-700 dark:text-red-300">CompoundIQ: {l.verificationNote}</p>
+                <p className="mt-2 break-words text-sm text-red-700 dark:text-red-300">CompoundIQ: {l.verificationNote}</p>
               )}
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <label htmlFor={`doc-${l.state}`} className="text-sm text-foreground">
@@ -331,7 +331,7 @@ export function AgreementStep({ state, onSaved, onNext }: StepProps) {
   return (
     <div className="space-y-5">
       <p className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">{a.banner}</p>
-      <section role="region" aria-label="Agreement text" tabIndex={0} className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-4 text-sm leading-relaxed text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <section role="region" aria-label="Agreement text" tabIndex={0} className="max-h-96 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-4 text-sm leading-relaxed text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         {a.text}
       </section>
       <p className="text-xs text-muted-foreground">Version {a.version}</p>
@@ -410,7 +410,7 @@ export function CatalogStep({ state, onSaved, onNext }: StepProps) {
         <div className="rounded-md border border-border p-3 text-sm">
           <p className="text-foreground">{result ? result.rowCount : c.rowCount} rows ready for CompoundIQ to load.</p>
           {(result?.warnings ?? c.warnings).length > 0 && (
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground" aria-label="Rows that need attention">
+            <ul className="mt-2 list-disc space-y-1 break-words pl-5 text-muted-foreground" aria-label="Rows that need attention">
               {(result?.warnings ?? c.warnings).slice(0, 50).map(w => <li key={w}>{w}</li>)}
             </ul>
           )}

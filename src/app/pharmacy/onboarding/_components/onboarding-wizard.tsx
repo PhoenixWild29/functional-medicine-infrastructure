@@ -68,7 +68,9 @@ export function OnboardingWizard({ initial }: { initial: WizardState }) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[16rem_1fr]">
-      <nav aria-label="Onboarding steps" className="lg:sticky lg:top-4 lg:self-start">
+      {/* min-w-0: below lg this grid item would otherwise be as wide as the row of
+          step buttons and push the page sideways; the list scrolls instead. */}
+      <nav aria-label="Onboarding steps" className="min-w-0 lg:sticky lg:top-4 lg:self-start">
         <ol className="flex gap-2 overflow-x-auto pb-2 lg:flex-col lg:overflow-visible">
           {ONBOARDING_STEPS.map((s, i) => {
             const done = s.key !== 'review' && state.stepsCompleted.includes(s.key)
@@ -100,7 +102,7 @@ export function OnboardingWizard({ initial }: { initial: WizardState }) {
         {state.status === 'sent_back' && (
           <div role="status" className="rounded-md border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
             <p className="font-semibold">CompoundIQ sent your application back.</p>
-            {state.reviewNote && <p className="mt-1">{state.reviewNote}</p>}
+            {state.reviewNote && <p className="mt-1 break-words">{state.reviewNote}</p>}
             <p className="mt-1">Make the changes, then submit again from Review and submit.</p>
           </div>
         )}
