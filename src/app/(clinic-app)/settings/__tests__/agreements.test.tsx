@@ -13,7 +13,6 @@
  */
 
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { renderToStaticMarkup } from 'react-dom/server'
 import { configureAxe } from 'jest-axe'
 import { createHash } from 'node:crypto'
 import { AGREEMENTS } from '@/lib/onboarding/agreement-texts'
@@ -65,7 +64,7 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
-const renderPage = async () => render(<main>{await AgreementsPage()}</main>)
+const renderPage = async () => render(<div>{await AgreementsPage()}</div>)
 
 describe('/settings/agreements', () => {
   it('lists each accepted agreement with title, version, signer, date and a View text link', async () => {
@@ -126,8 +125,8 @@ describe('/settings/agreements', () => {
 
   it('a signed-out visitor gets the session notice; nothing is read', async () => {
     user = null
-    const html = renderToStaticMarkup(await AgreementsPage())
-    expect(html).not.toContain('Business Associate Agreement')
+    const { container } = render(<div>{await AgreementsPage()}</div>)
+    expect(container.textContent).not.toContain('Business Associate Agreement')
   })
 })
 

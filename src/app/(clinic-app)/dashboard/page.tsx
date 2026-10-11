@@ -30,6 +30,8 @@ import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.
 import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
 import { loadExpiringLicenses } from '@/lib/providers/expiring'
 import { LicenseExpiryWarning } from './_components/license-expiry-warning'
+import { loadAgreementNotice } from '@/lib/agreements/clinic-agreements'
+import { AgreementUpdateBanner } from './_components/agreement-update-banner'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export const metadata = {
@@ -279,6 +281,10 @@ export default async function DashboardPage(
   // Compliance C4: licenses that expire within 30 days (the admin: every
   // provider's; a provider: their own). Never blocks the page.
   const expiring = await loadExpiringLicenses(supabaseAuth, { clinicId, userId: user.id, role: appRole })
+  // A newer BAA / terms than the clinic accepted: a dismissible notice for
+  // the clinic admin (RLS-scoped read). Never blocks ordering; a failed
+  // read shows nothing.
+  const agreementNotice = await loadAgreementNotice(supabaseAuth, user)
 
   return (
     <>
@@ -295,6 +301,8 @@ export default async function DashboardPage(
           {/* F-3 follow-up: provider-only opt-in clinic view toggle */}
           {isProvider && <ProviderViewToggle viewMode={viewMode} />}
         </div>
+
+        <AgreementUpdateBanner notice={agreementNotice} />
 
         <LicenseExpiryWarning licenses={expiring} />
 
