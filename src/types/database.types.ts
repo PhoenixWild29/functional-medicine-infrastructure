@@ -380,6 +380,20 @@ export type Database = {
       }
       clinics: {
         Row: {
+          address_line1: string | null
+          address_line2: string | null
+          city: string | null
+          dba_name: string | null
+          legal_name: string | null
+          onboarding_review_note: string | null
+          onboarding_reviewed_at: string | null
+          onboarding_reviewed_by: string | null
+          onboarding_status: string
+          onboarding_submitted_at: string | null
+          postal_code: string | null
+          practice_npi: string | null
+          state: string | null
+          tax_id_last4: string | null
           absorb_shipping: boolean
           clinic_id: string
           contact_email: string | null
@@ -397,6 +411,20 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          dba_name?: string | null
+          legal_name?: string | null
+          onboarding_review_note?: string | null
+          onboarding_reviewed_at?: string | null
+          onboarding_reviewed_by?: string | null
+          onboarding_status?: string
+          onboarding_submitted_at?: string | null
+          postal_code?: string | null
+          practice_npi?: string | null
+          state?: string | null
+          tax_id_last4?: string | null
           absorb_shipping?: boolean
           clinic_id?: string
           contact_email?: string | null
@@ -414,6 +442,20 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          dba_name?: string | null
+          legal_name?: string | null
+          onboarding_review_note?: string | null
+          onboarding_reviewed_at?: string | null
+          onboarding_reviewed_by?: string | null
+          onboarding_status?: string
+          onboarding_submitted_at?: string | null
+          postal_code?: string | null
+          practice_npi?: string | null
+          state?: string | null
+          tax_id_last4?: string | null
           absorb_shipping?: boolean
           clinic_id?: string
           contact_email?: string | null
@@ -429,6 +471,153 @@ export type Database = {
           stripe_connect_account_id?: string | null
           stripe_connect_status?: Database["public"]["Enums"]["stripe_connect_status_enum"]
           updated_at?: string
+        }
+        Relationships: []
+      }
+      agreement_acceptances: {
+        Row: {
+          acceptance_id: string
+          accepted_at: string
+          agreement: string
+          clinic_id: string
+          signer_name: string
+          signer_title: string
+          template_version: string
+          text_sha256: string
+          user_id: string
+        }
+        Insert: {
+          acceptance_id?: string
+          accepted_at?: string
+          agreement: string
+          clinic_id: string
+          signer_name: string
+          signer_title: string
+          template_version: string
+          text_sha256: string
+          user_id: string
+        }
+        Update: {
+          acceptance_id?: string
+          accepted_at?: string
+          agreement?: string
+          clinic_id?: string
+          signer_name?: string
+          signer_title?: string
+          template_version?: string
+          text_sha256?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      clinic_onboarding_events: {
+        Row: {
+          actor_role: string | null
+          actor_user_id: string | null
+          clinic_id: string
+          created_at: string
+          event: string
+          event_id: string
+          invite_id: string | null
+          note: string | null
+        }
+        Insert: {
+          actor_role?: string | null
+          actor_user_id?: string | null
+          clinic_id: string
+          created_at?: string
+          event: string
+          event_id?: string
+          invite_id?: string | null
+          note?: string | null
+        }
+        Update: {
+          actor_role?: string | null
+          actor_user_id?: string | null
+          clinic_id?: string
+          created_at?: string
+          event?: string
+          event_id?: string
+          invite_id?: string | null
+          note?: string | null
+        }
+        Relationships: []
+      }
+      clinic_onboarding_steps: {
+        Row: {
+          clinic_id: string
+          status: string
+          step: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          clinic_id: string
+          status?: string
+          step: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          clinic_id?: string
+          status?: string
+          step?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      onboarding_invites: {
+        Row: {
+          accepted_at: string | null
+          accepted_user_id: string | null
+          clinic_id: string
+          created_at: string
+          created_by: string
+          email: string
+          expires_at: string
+          invite_id: string
+          kind: string
+          last_sent_at: string
+          provider_id: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          sent_count: number
+          token_hash: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_user_id?: string | null
+          clinic_id: string
+          created_at?: string
+          created_by: string
+          email: string
+          expires_at: string
+          invite_id?: string
+          kind: string
+          last_sent_at?: string
+          provider_id?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          sent_count?: number
+          token_hash: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_user_id?: string | null
+          clinic_id?: string
+          created_at?: string
+          created_by?: string
+          email?: string
+          expires_at?: string
+          invite_id?: string
+          kind?: string
+          last_sent_at?: string
+          provider_id?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          sent_count?: number
+          token_hash?: string
         }
         Relationships: []
       }

@@ -74,6 +74,8 @@ export interface FormulationRxDefaults {
   shortage_reason_allowed?:     boolean
   /** C8: why this product cannot be ordered (an ingredient's compounding status). */
   compounding_block?:           CompoundingBlockInfo | null
+  /** C8: a non-blocking warning (an ingredient pending FDA evaluation). */
+  compounding_warning?:         string | null
 }
 
 export interface FormulationRxDefaultsInput {
@@ -144,6 +146,8 @@ export interface RxRules {
   shortageReasonAllowed?:     boolean
   /** C8: why this product cannot be ordered, or null. */
   compoundingBlock?:          CompoundingBlockInfo | null
+  /** C8: a non-blocking warning (an ingredient pending FDA evaluation), or null. */
+  compoundingWarning?:        string | null
 }
 
 /** C8 (lib/compliance/compounding): a product that cannot be ordered, and why. */
@@ -154,7 +158,7 @@ export interface CompoundingBlockInfo {
 
 export type RxDetailsSource = Partial<Pick<FormulationRxDefaults,
   'default_syringe_option' | 'default_shipping_type' | 'clinical_difference_options' | 'requires_clinical_difference'
-  | 'shortage_reason_allowed' | 'compounding_block'
+  | 'shortage_reason_allowed' | 'compounding_block' | 'compounding_warning'
 >> | null | undefined
 
 export interface RxDetailsSeed {
@@ -198,6 +202,7 @@ export function rulesFromFormulation(formulation: RxDetailsSource, deaSchedule: 
     clinicalDifferenceOptions:  clinicalDifferenceOptions(formulation?.clinical_difference_options ?? [], shortageAllowed),
     shortageReasonAllowed:      shortageAllowed,
     compoundingBlock:           formulation?.compounding_block ?? null,
+    compoundingWarning:         formulation?.compounding_warning ?? null,
   }
 }
 

@@ -127,6 +127,7 @@ describe('MarginBuilderForm — derived days supply + dispense', () => {
       clinicalDifferenceOptions: STANDARD_CLINICAL_DIFFERENCE_OPTIONS.filter(o => o !== 'Commercial product is unavailable or on national shortage'),
       shortageReasonAllowed: false,
       compoundingBlock: null,
+      compoundingWarning: null,
     })
     expect(rx.rxDetails).toEqual({
       daysSupply: 350,

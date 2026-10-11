@@ -82,6 +82,9 @@ const AUTH_REDIRECT_ALLOWLIST = new Set([
   'src/app/page.tsx',
   'src/app/(clinic-app)/layout.tsx',
   'src/app/(ops-dashboard)/layout.tsx',
+  // Clinic onboarding: a top-level route with no loading.tsx above it, so
+  // its layout runs before anything is flushed (like src/app/page.tsx).
+  'src/app/onboarding/layout.tsx',
   // The pharmacy portal's layout: the top of its own tree, no loading.tsx
   // above it, so it runs before anything is flushed (like the two above).
   'src/app/pharmacy/layout.tsx',

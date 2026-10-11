@@ -4,7 +4,7 @@
 //
 // Demo data, NOT verified regulatory values. The seeded demo ingredients
 // get these so the demo can prescribe; the peptides in regulatory limbo
-// are pending_evaluation, so they are blocked in the demo too, and an
+// are pending_evaluation: orderable, with a warning (owner decision), and an
 // ingredient not listed (5-Amino-1MQ, Adrenal Cortex Extract, Lipo-Mino
 // Mix among them) stays unverified, so blocked as well. Real
 // values are entered on /ops/ingredients from FDA's primary source after
@@ -24,7 +24,7 @@ export interface DemoCompounding {
 }
 
 export const DEMO_COMPOUNDING: ReadonlyArray<DemoCompounding> = [
-  // Peptides pending FDA evaluation: blocked
+  // Peptides pending FDA evaluation: orderable, with a warning (owner decision)
   { name: 'BPC-157',                 status: 'pending_evaluation',       commercialEquivalent: false },
   { name: 'TB-500',                  status: 'pending_evaluation',       commercialEquivalent: false },
   { name: 'MOTS-c',                  status: 'pending_evaluation',       commercialEquivalent: false },
