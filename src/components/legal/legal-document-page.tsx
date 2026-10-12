@@ -1,16 +1,16 @@
 // ============================================================
-// A public legal page: draft banner, version line, the Markdown
+// A public legal page: the Markdown, with its own version line
 // ============================================================
 //
 // Server component. Reads the document's Markdown from src/content/legal/
 // (at build time: the pages are static) and renders it with LegalMarkdown,
-// React text only. No session or database is read: the pages are public.
+// React text only. The text's own line ("Version 1.0. Effective October
+// 12, 2026.") is the version line. No session or database is read: the
+// pages are public.
 
 import { readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { LegalMarkdown } from '@/components/onboarding/legal-markdown'
-import { FormAlert } from '@/components/onboarding/fields'
-import { DRAFT_BANNER } from '@/lib/onboarding/agreement-texts'
 import type { PublicLegalDocument } from '@/lib/legal/public-documents'
 
 export function LegalDocumentPage({ doc }: { doc: PublicLegalDocument }) {
@@ -24,12 +24,6 @@ export function LegalDocumentPage({ doc }: { doc: PublicLegalDocument }) {
         </div>
       </header>
       <main className="mx-auto max-w-3xl space-y-4 px-4 py-10">
-        {doc.draft && (
-          <FormAlert tone="warning">
-            <strong className="font-semibold">{DRAFT_BANNER}.</strong> This document is a draft and will be replaced by the final version.
-          </FormAlert>
-        )}
-        <p className="text-sm text-slate-700 dark:text-slate-300">{`Version ${doc.version}${doc.draft ? ' (draft)' : ''}`}</p>
         <article className="space-y-3 text-sm leading-relaxed text-foreground">
           <LegalMarkdown text={text} headingLevel={1} />
         </article>

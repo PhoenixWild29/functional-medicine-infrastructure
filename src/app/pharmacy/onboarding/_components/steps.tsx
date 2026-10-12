@@ -323,7 +323,7 @@ export function ShippingStep({ state, onSaved }: StepProps) {
 // ── f. BAA, and g'. Terms of service ─────────────────────────
 //
 // Each agreement is rendered with the clinic wizard's LegalMarkdown (React
-// text, no injected HTML) under the draft banner. Accepting posts the
+// text, no injected HTML). Accepting posts the
 // agreement's key with the version and hash the pharmacy was shown; the
 // server records its own hash of its own text. The shared terms text
 // (AGREEMENTS.terms) is the clinic's terms, never shown here.
@@ -351,7 +351,6 @@ export function AgreementAcceptance({ agreementKey, view: a, onAccepted, onNext,
 
   return (
     <div className="space-y-5">
-      <p className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">{a.banner}</p>
       <section role="region" aria-label={`${a.title} text`} tabIndex={0} className="max-h-96 space-y-3 overflow-y-auto break-words rounded-md border border-border bg-muted/30 p-4 text-sm leading-relaxed text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <LegalMarkdown text={a.text} headingLevel={3} />
       </section>

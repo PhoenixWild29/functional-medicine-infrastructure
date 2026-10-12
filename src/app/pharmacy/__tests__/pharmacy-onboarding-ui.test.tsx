@@ -46,8 +46,8 @@ function state(over: Partial<WizardState> = {}): WizardState {
     status: 'in_progress', stepsCompleted: [], reviewNote: null, submittedAt: null,
     pharmacy: { name: 'Strive Pharmacy', ship_carriers: [], ship_to_states: [] },
     licenses: [], ordering: null, catalog: { choice: null, rowCount: null, warnings: [] },
-    agreement: { key: AGREEMENT.key, version: AGREEMENT.version, title: AGREEMENT.title, text: agreementText(), textSha256: agreementTextSha256(), banner: AGREEMENT.banner, draft: true, acceptance: null },
-    terms: { key: 'pharmacy_terms', version: PHARMACY_TERMS.version, title: PHARMACY_TERMS.title, text: PHARMACY_TERMS.text, textSha256: 'x'.repeat(64), banner: 'Draft, pending legal review', draft: true, acceptance: null },
+    agreement: { key: AGREEMENT.key, version: AGREEMENT.version, title: AGREEMENT.title, text: agreementText(), textSha256: agreementTextSha256(), acceptance: null },
+    terms: { key: 'pharmacy_terms', version: PHARMACY_TERMS.version, title: PHARMACY_TERMS.title, text: PHARMACY_TERMS.text, textSha256: 'x'.repeat(64), acceptance: null },
     ...over,
   }
 }
@@ -117,10 +117,11 @@ describe('the wizard', () => {
     expect(await screen.findByRole('heading', { name: 'Facility type' })).toBeInTheDocument()
   })
 
-  it('the BAA: DRAFT banner, the text, and the explicit yes', async () => {
+  it('the BAA: the final v1.0 text (no draft banner) and the explicit yes', async () => {
     render(<OnboardingWizard initial={state({ stepsCompleted: ['details', 'facility', 'licenses', 'ordering', 'shipping'] })} />)
     expect(screen.getByRole('heading', { name: 'BAA' })).toBeInTheDocument()
-    expect(screen.getByText('Draft, pending legal review')).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/draft|pending legal review/i)
+    expect(screen.getByText('Business Associate Agreement, version v1.0')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: /agreement text/i })).toHaveTextContent('Business Associate')
     fireEvent.change(screen.getByLabelText('Your full name'), { target: { value: 'Dana Ruiz' } })
     fireEvent.change(screen.getByLabelText('Your title'), { target: { value: 'PIC' } })

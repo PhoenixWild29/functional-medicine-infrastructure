@@ -21,7 +21,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { ONBOARDING_STEPS, STEP_LABELS, NOT_LIVE_STEPS, NOT_LIVE_LABEL, firstOpenStep, isEditable, canSubmit, type StepKey, type StepStatus } from '@/lib/onboarding/steps'
-import { AGREEMENTS, DRAFT_BANNER, type AgreementKey } from '@/lib/onboarding/agreement-texts'
+import { AGREEMENTS, type AgreementKey } from '@/lib/onboarding/agreement-texts'
 import type { OnboardingState } from '@/lib/onboarding/state'
 import { US_STATES } from '@/lib/providers/states'
 import { TextField, SelectField, CheckboxField, FormAlert, InviteLink, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_DANGER } from '@/components/onboarding/fields'
@@ -458,7 +458,6 @@ function AgreementStep({ agreement, state, readOnly, onAccepted }: { agreement: 
 
   return (
     <div className="space-y-5">
-      <FormAlert tone="warning" id="agreement-draft-banner"><strong className="font-semibold">{DRAFT_BANNER}.</strong> This {a.title} is a draft template and will be replaced by the final version.</FormAlert>
       <h3 className="text-base font-semibold text-foreground">{a.title} <span className="font-normal text-slate-700">(version {a.version})</span></h3>
       <div
         tabIndex={0}

@@ -32,8 +32,8 @@ function state(over: Partial<WizardState> = {}): WizardState {
     licenses: [{ state: 'TX', licenseNumber: `TX-${LONG}`, expiresOn: '2027-06-30', sterileCompounding: true, verificationStatus: 'rejected', verificationNote: `Unreadable ${LONG}`, verifiedAt: null, documentUrl: null }],
     ordering: null,
     catalog: { choice: 'uploaded', rowCount: 2, warnings: [`Row 3: ${LONG}`] },
-    agreement: { key: AGREEMENT.key, version: AGREEMENT.version, title: AGREEMENT.title, text: agreementText(), textSha256: agreementTextSha256(), banner: AGREEMENT.banner, draft: true, acceptance: null },
-    terms: { key: 'pharmacy_terms', version: PHARMACY_TERMS.version, title: PHARMACY_TERMS.title, text: PHARMACY_TERMS.text, textSha256: 'x'.repeat(64), banner: 'Draft, pending legal review', draft: true, acceptance: null },
+    agreement: { key: AGREEMENT.key, version: AGREEMENT.version, title: AGREEMENT.title, text: agreementText(), textSha256: agreementTextSha256(), acceptance: null },
+    terms: { key: 'pharmacy_terms', version: PHARMACY_TERMS.version, title: PHARMACY_TERMS.title, text: PHARMACY_TERMS.text, textSha256: 'x'.repeat(64), acceptance: null },
     ...over,
   } as WizardState
 }

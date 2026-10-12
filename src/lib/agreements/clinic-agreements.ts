@@ -22,22 +22,16 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import { getUserClinicId, getUserRole, type ClaimsUser } from '@/lib/auth/claims'
 import { AGREEMENTS, agreementSha256, type AgreementKey } from '@/lib/onboarding/agreements'
-import { BAA_V0_1_ORIGINAL_TEXT } from '@/lib/onboarding/legal-texts.generated'
+import { archivedAgreementText } from '@/lib/onboarding/agreement-archive'
 
 type Supabase = SupabaseClient<Database>
 
 export const AGREEMENT_KEYS: AgreementKey[] = ['baa', 'terms']
 
-/** Earlier versions a clinic may have accepted, word for word. */
-const ARCHIVE: Record<AgreementKey, Record<string, string>> = {
-  baa:   { 'v0.1': BAA_V0_1_ORIGINAL_TEXT },
-  terms: {},
-}
-
 /** The text of one version of an agreement, if it is known. */
 export function agreementTextFor(agreement: AgreementKey, version: string): string | null {
   if (AGREEMENTS[agreement].version === version) return AGREEMENTS[agreement].text
-  return ARCHIVE[agreement][version] ?? null
+  return archivedAgreementText(agreement, version)
 }
 
 /** The accepted text, only when it is known and its SHA-256 matches the record. */

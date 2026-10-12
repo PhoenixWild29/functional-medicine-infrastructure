@@ -2,8 +2,8 @@
 // /pharmacy/agreements/review/<key>: review and accept the current version
 // ============================================================
 //
-// key is 'baa' or 'pharmacy_terms'. Shows the current text (LegalMarkdown,
-// draft banner) and the same accept form as the wizard; the acceptance is
+// key is 'baa' or 'pharmacy_terms'. Shows the current text (LegalMarkdown)
+// and the same accept form as the wizard; the acceptance is
 // recorded by POST /api/pharmacy/onboarding/agreement with that key. An
 // approved pharmacy can accept a new version here: nothing else changes.
 
