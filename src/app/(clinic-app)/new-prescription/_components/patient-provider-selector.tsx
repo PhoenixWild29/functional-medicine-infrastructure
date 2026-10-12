@@ -73,6 +73,16 @@ interface Props {
 
 // ── Helpers ───────────────────────────────────────────────────
 
+/**
+ * Secondary text (DOB, mobile, NPI). On a selected row or card (the
+ * primary/10 or primary/5 tint) muted text falls under 4.5:1 (4.11 and
+ * 4.40), so it is text-foreground there; elsewhere it stays muted (4.72
+ * on the card). WCAG 1.4.3; ratios in nav-and-badge-contrast.test.ts.
+ */
+function secondaryText(selected: boolean): string {
+  return selected ? 'text-foreground' : 'text-muted-foreground'
+}
+
 function formatDob(iso: string | null): string {
   if (!iso) return 'not given yet'
   try {
@@ -321,7 +331,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
                     <span className="text-sm font-medium text-foreground">
                       {patientName(patient, 'last-first')}
                     </span>
-                    <span className="ml-2 text-xs text-muted-foreground">
+                    <span className={`ml-2 text-xs ${secondaryText(selectedPatientId === patient.patient_id)}`}>
                       DOB: {formatDob(patient.date_of_birth)}
                     </span>
                   </div>
@@ -342,7 +352,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
                   </div>
                 </div>
                 {patient.phone && (
-                  <p className="mt-0.5 text-xs text-muted-foreground">{patient.phone}</p>
+                  <p className={`mt-0.5 text-xs ${secondaryText(selectedPatientId === patient.patient_id)}`}>{patient.phone}</p>
                 )}
               </button>
             ))
@@ -360,7 +370,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
                 {patientName(selectedPatient)}
               </span>
               <IntakeChip intakeStatus={selectedPatient.intake_status} />
-              <span className="text-muted-foreground">
+              <span className={secondaryText(true)}>
                 — {selectedPatient.state ?? 'No state'} — DOB: {formatDob(selectedPatient.date_of_birth)}
               </span>
             </div>
@@ -406,7 +416,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
                     <span className="text-sm font-medium text-foreground">
                       {provider.last_name}, {provider.first_name}
                     </span>
-                    <span className="ml-2 text-xs text-muted-foreground">
+                    <span className={`ml-2 text-xs ${secondaryText(selectedProviderId === provider.provider_id)}`}>
                       NPI: {provider.npi_number}
                     </span>
                   </div>
@@ -417,7 +427,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
                   )}
                 </div>
                 {!provider.signature_hash && (
-                  <p className="mt-1 text-[10px] text-amber-600">No signature on file — will capture during review</p>
+                  <p className="mt-1 text-[10px] text-amber-800">No signature on file — will capture during review</p>
                 )}
               </button>
             ))}
