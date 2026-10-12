@@ -100,6 +100,7 @@ export default async function SettingsPage() {
               ...(canSeeTeam ? [{ href: '#team', label: 'Team' }] : []),
               ...(isClinicAdmin ? [{ href: '#access-log', label: 'Access log' }] : []),
               ...(isClinicAdmin ? [{ href: '#integrations', label: 'Integrations' }] : []),
+              { href: '/settings/agreements', label: 'Agreements' },
             ].map(({ href, label }) => (
               <li key={href}>
                 <a
