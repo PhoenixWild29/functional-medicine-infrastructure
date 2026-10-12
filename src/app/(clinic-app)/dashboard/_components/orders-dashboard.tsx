@@ -417,7 +417,9 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
             >
               {tab.label}
               {count > 0 && (
-                <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium ${isActive ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                // WCAG AA: text-foreground on both tints (text-primary on
+                // primary/10 and muted-foreground on muted were under 4.5:1).
+                <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium ${isActive ? 'bg-primary/10 text-foreground' : 'bg-muted text-foreground'}`}>
                   {count}
                 </span>
               )}
