@@ -87,7 +87,9 @@ describe('/settings/agreements', () => {
     await renderPage()
     const baa = within(screen.getByRole('region', { name: 'Business Associate Agreement' }))
     expect(baa.getByText('A new version is available')).toBeTruthy()
+    expect(AGREEMENTS.baa.version).toBe('v1.0')
     expect(baa.getByRole('region', { name: `Business Associate Agreement ${AGREEMENTS.baa.version} text` })).toBeTruthy()
+    expect(document.body.textContent).not.toMatch(/draft|pending legal review/i)
 
     fireEvent.change(baa.getByLabelText(/Signer name/), { target: { value: 'Jo Park' } })
     fireEvent.change(baa.getByLabelText(/^Title/), { target: { value: 'Owner' } })
