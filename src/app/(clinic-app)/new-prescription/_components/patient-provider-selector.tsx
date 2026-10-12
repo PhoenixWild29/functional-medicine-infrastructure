@@ -38,7 +38,8 @@ interface Patient {
   first_name:    string | null
   last_name:     string | null
   date_of_birth: string | null
-  phone:         string
+  // Patient CSV import: a patient may have an email and no phone.
+  phone:         string | null
   state:         string | null
   sms_opt_in:    boolean
   // WO-97
@@ -199,7 +200,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
       first_name:    selectedPatient.first_name ?? '',
       last_name:     selectedPatient.last_name ?? '',
       date_of_birth: selectedPatient.date_of_birth ?? '',
-      phone:         selectedPatient.phone,
+      phone:         selectedPatient.phone ?? '',
       state:         selectedPatient.state,
       sms_opt_in:    selectedPatient.sms_opt_in,
       // WO-97

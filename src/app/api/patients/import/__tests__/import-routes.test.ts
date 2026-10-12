@@ -43,7 +43,8 @@ const GOOD2 = ['Ravi', 'Patel', '1990-01-02', '', 'ravi@example.test', 'CA', '94
 const BAD = ['', 'Nobody', '13/40/1985', '555', '', 'TX', '78701']
 const MAPPING = { firstName: 0, lastName: 1, dateOfBirth: 2, mobile: 3, email: 4, state: 5, zip: 6 }
 
-function signedIn(role: string, clinicId: string | undefined = CLINIC_ID) {
+// null: no clinic in the claims (undefined would take the default).
+function signedIn(role: string, clinicId: string | null = CLINIC_ID) {
   getUserMock.mockResolvedValue({ data: { user: { id: 'user-1', email: 'ma@clinic.test', app_metadata: { app_role: role, ...(clinicId ? { clinic_id: clinicId } : {}) } } }, error: null })
 }
 const json = (url: string, body: unknown) => new Request(`https://app.test${url}`, {
@@ -51,7 +52,7 @@ const json = (url: string, body: unknown) => new Request(`https://app.test${url}
 }) as unknown as import('next/server').NextRequest
 function upload(content: string | Uint8Array, name = 'patients.csv') {
   const form = new FormData()
-  form.append('file', new Blob([content], { type: 'text/csv' }), name)
+  form.append('file', new Blob([content as BlobPart], { type: 'text/csv' }), name)
   return new Request('https://app.test/api/patients/import/parse', { method: 'POST', body: form }) as unknown as import('next/server').NextRequest
 }
 const csv = (rows: string[][]) => [HEADERS, ...rows].map(r => r.join(',')).join('\n')
@@ -78,7 +79,7 @@ describe('who may import', () => {
     expect((await call()).status).toBe(403)
     signedIn('ops_admin')
     expect((await call()).status).toBe(403)
-    signedIn('clinic_admin', undefined)
+    signedIn('clinic_admin', null)
     expect((await call()).status).toBe(400)
     expect(db.calls).toHaveLength(0)
   })

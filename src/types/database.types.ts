@@ -1691,6 +1691,51 @@ export type Database = {
           },
         ]
       }
+      // Patient CSV import (20261016000002): hand-extended
+      patient_import_batches: {
+        Row: {
+          batch_id: string
+          clinic_id: string
+          created_at: string
+          duplicates_confirmed: number
+          excluded_rows: number
+          file_name: string
+          imported_by: string
+          imported_rows: number
+          total_rows: number
+        }
+        Insert: {
+          batch_id?: string
+          clinic_id: string
+          created_at?: string
+          duplicates_confirmed: number
+          excluded_rows: number
+          file_name: string
+          imported_by: string
+          imported_rows: number
+          total_rows: number
+        }
+        Update: {
+          batch_id?: string
+          clinic_id?: string
+          created_at?: string
+          duplicates_confirmed?: number
+          excluded_rows?: number
+          file_name?: string
+          imported_by?: string
+          imported_rows?: number
+          total_rows?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_import_batches_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+        ]
+      }
       // Patient Intake PR 2 (20261015000001): hand-extended
       patient_intake_links: {
         Row: {
@@ -1825,7 +1870,7 @@ export type Database = {
           last_name: string | null
           nkda: boolean
           patient_id: string
-          phone: string
+          phone: string | null
           primary_provider_id: string | null
           sms_opt_in: boolean
           sex: string | null
@@ -1841,6 +1886,8 @@ export type Database = {
           intake_completed_at: string | null
           privacy_notice_ack_at: string | null
           privacy_notice_version: string | null
+          // Patient CSV import (20261016000002): hand-extended
+          import_batch_id: string | null
           possible_duplicate_of: string | null
           possible_duplicate_matched_on: string | null
           possible_duplicate_flagged_at: string | null
@@ -1867,7 +1914,7 @@ export type Database = {
           last_name?: string | null
           nkda?: boolean
           patient_id?: string
-          phone: string
+          phone?: string | null
           primary_provider_id?: string | null
           sms_opt_in?: boolean
           sex?: string | null
@@ -1882,6 +1929,7 @@ export type Database = {
           intake_completed_at?: string | null
           privacy_notice_ack_at?: string | null
           privacy_notice_version?: string | null
+          import_batch_id?: string | null
           possible_duplicate_of?: string | null
           possible_duplicate_matched_on?: string | null
           possible_duplicate_flagged_at?: string | null
@@ -1908,7 +1956,7 @@ export type Database = {
           last_name?: string | null
           nkda?: boolean
           patient_id?: string
-          phone?: string
+          phone?: string | null
           primary_provider_id?: string | null
           sms_opt_in?: boolean
           sex?: string | null
@@ -1923,6 +1971,7 @@ export type Database = {
           intake_completed_at?: string | null
           privacy_notice_ack_at?: string | null
           privacy_notice_version?: string | null
+          import_batch_id?: string | null
           possible_duplicate_of?: string | null
           possible_duplicate_matched_on?: string | null
           possible_duplicate_flagged_at?: string | null
@@ -3989,6 +4038,19 @@ export type Database = {
         Returns: string
       }
       delete_vault_secret: { Args: { p_secret_id: string }; Returns: undefined }
+      // Patient CSV import (20261016000002): hand-extended
+      import_patient_batch: {
+        Args: {
+          p_clinic_id: string
+          p_imported_by: string
+          p_file_name: string
+          p_total_rows: number
+          p_excluded_rows: number
+          p_duplicates_confirmed: number
+          p_patients: Json
+        }
+        Returns: Json
+      }
       rotate_vault_secret: {
         Args: { p_new_secret: string; p_secret_id: string }
         Returns: undefined

@@ -48,11 +48,11 @@ describe('field parsers', () => {
     expect(parseUsState('XX')).toBeNull()
   })
 
-  it('ZIP: 5 digits or ZIP+4, a 4-digit ZIP that lost its leading zero is repaired', () => {
+  it('ZIP: 5 digits or ZIP+4; a 4-digit ZIP is refused, not guessed at (02134? 72134?)', () => {
     expect(parseZip('78701')).toBe('78701')
     expect(parseZip('78701-1234')).toBe('78701-1234')
     expect(parseZip('787011234')).toBe('78701-1234')
-    expect(parseZip('2134')).toBe('02134')
+    expect(parseZip('2134')).toBeNull()
     expect(parseZip('abc')).toBeNull()
   })
 
