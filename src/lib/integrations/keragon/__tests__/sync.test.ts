@@ -138,11 +138,21 @@ describe('a new patient', () => {
     expect(db.rows('patient_external_ids')).toEqual([expect.objectContaining({ clinic_id: CLINIC, patient_id: out.patientId, system: 'keragon', external_patient_id: 'EHR-DEMO-10001', last_synced_at: NOW.toISOString() })])
   })
 
-  it('without a usable mobile it cannot be created (patients need one): an error, nothing written', async () => {
+  // A patient needs a mobile or an email (chk_patients_phone_or_email, #230).
+  it('with an email and no mobile: created, phone left empty', async () => {
+    const db = world()
+    const p = { ...patientOf(MINIMAL), email: 'riley.example@example.com' }
+    delete (p as { mobile?: string }).mobile
+    const out = await applyPatientEvent(db.client, ctx, p)
+    expect(out).toEqual(expect.objectContaining({ status: 'applied', detail: expect.objectContaining({ action: 'created' }) }))
+    expect(db.rows('patients')[0]).toEqual(expect.objectContaining({ email: 'riley.example@example.com', phone: null, phone_e164: null, source: 'ehr' }))
+  })
+
+  it('with neither a mobile nor an email it cannot be created: an error, nothing written', async () => {
     const db = world()
     const p = { ...patientOf(MINIMAL) }
     delete (p as { mobile?: string }).mobile
-    expect(await applyPatientEvent(db.client, ctx, p)).toEqual(expect.objectContaining({ status: 'error', errorCode: 'mobile_required', patientId: null }))
+    expect(await applyPatientEvent(db.client, ctx, p)).toEqual(expect.objectContaining({ status: 'error', errorCode: 'contact_required', patientId: null }))
     expect(db.rows('patients')).toEqual([])
   })
 })
