@@ -193,3 +193,18 @@ describe('POST /api/checkout/payment-group-intent', () => {
     expect(stripeUpdateMock).not.toHaveBeenCalled()
   })
 })
+
+// ── Patient Intake PR 2 ──────────────────────────────────────
+// Nothing is charged while the patient has not finished intake.
+describe('POST /api/checkout/payment-group-intent — patient intake not finished', () => {
+  test('409 INTAKE_PENDING, and Stripe is never called', async () => {
+    groupFetchMock.mockResolvedValueOnce({
+      data: { group_id: GROUP_ID, status: 'AWAITING_PAYMENT', total_cents: 17500, stripe_payment_intent_id: 'pi_x', clinic_id: TEST_CLINIC_ID, patients: { intake_status: 'pending' } },
+      error: null,
+    })
+    const res = await POST(makeRequest({ token: 'x' }))
+    expect(res.status).toBe(409)
+    expect((await res.json()).code).toBe('INTAKE_PENDING')
+    expect(stripeRetrieveMock).not.toHaveBeenCalled()
+  })
+})

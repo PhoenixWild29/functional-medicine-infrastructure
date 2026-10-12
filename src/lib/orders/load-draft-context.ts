@@ -95,9 +95,10 @@ export async function loadDraftContext(
     orderId: order.order_id,
     patient: {
       patient_id:    patient.patient_id,
-      first_name:    patient.first_name,
-      last_name:     patient.last_name,
-      date_of_birth: patient.date_of_birth,
+      // Patient Intake PR 2: empty until the patient finishes intake.
+      first_name:    patient.first_name ?? '',
+      last_name:     patient.last_name ?? '',
+      date_of_birth: patient.date_of_birth ?? '',
       phone:         patient.phone ?? '',
       state:         patient.state ?? null,
       sms_opt_in:    patient.sms_opt_in,

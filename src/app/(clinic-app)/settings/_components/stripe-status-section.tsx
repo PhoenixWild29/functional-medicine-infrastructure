@@ -25,9 +25,15 @@ interface Props {
   stripeConnectStatus: StripeConnectStatusEnum
   stripeAccountId: string | null
   isClinicAdmin: boolean
+  /**
+   * A clinic onboarded through the portal (isPortalOnboardedClinic): its
+   * payouts are set up at launch. Until they are active the card says so,
+   * with no Stripe wording and no button that starts Stripe Connect.
+   */
+  payoutsAtLaunch?: boolean
 }
 
-export function StripeStatusSection({ stripeConnectStatus, stripeAccountId, isClinicAdmin }: Props) {
+export function StripeStatusSection({ stripeConnectStatus, stripeAccountId, isClinicAdmin, payoutsAtLaunch = false }: Props) {
   const [isLoading, setIsLoading] = useState(false)
   const [error,     setError]     = useState<string | null>(null)
 
@@ -53,6 +59,15 @@ export function StripeStatusSection({ stripeConnectStatus, stripeAccountId, isCl
     stripeConnectStatus === 'ONBOARDING' ||
     stripeConnectStatus === 'RESTRICTED'
   const showOnboardingButton = onboardingOpen && isClinicAdmin
+
+  if (payoutsAtLaunch && stripeConnectStatus !== 'ACTIVE') {
+    return (
+      <section className="rounded-lg border border-border bg-card p-6" aria-labelledby="payouts-heading">
+        <h2 id="payouts-heading" className="text-base font-semibold text-foreground">Payouts</h2>
+        <p className="mt-2 text-sm text-foreground">Payouts: set up at launch.</p>
+      </section>
+    )
+  }
 
   return (
     <section className="rounded-lg border border-border bg-card p-6 space-y-4">

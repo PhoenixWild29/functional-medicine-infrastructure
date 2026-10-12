@@ -8,7 +8,7 @@
  *   - the wizard steps, where to resume, and what submit requires
  *   - practice details: tax ID last 4 only, Type 2 NPI checksum, US
  *     address and phone
- *   - agreements: a draft template with a version and the hash of its
+ *   - agreements: the final v1.0 text with a version and the hash of its
  *     exact text
  */
 
@@ -118,20 +118,23 @@ describe('practice details', () => {
 })
 
 describe('agreements', () => {
-  it('the BAA is the v0.1 draft in src/content/legal, word for word, with its exact SHA-256', () => {
-    const md = readFileSync(join(process.cwd(), 'src', 'content', 'legal', 'baa-draft-v0.1.md'), 'utf8').replace(/\r\n/g, '\n')
-    expect(AGREEMENTS.baa.version).toBe('v0.1')
+  it('the BAA is v1.0 from src/content/legal, word for word, with its exact SHA-256', () => {
+    const md = readFileSync(join(process.cwd(), 'src', 'content', 'legal', 'baa-v1.0.md'), 'utf8').replace(/\r\n/g, '\n')
+    expect(AGREEMENTS.baa.version).toBe('v1.0')
     expect(AGREEMENTS.baa.text).toBe(md)
-    expect(agreementSha256(AGREEMENTS.baa.text)).toBe('14367b35e4b4ef51e6ed53d150275474635929a38c9bb900eef8d6e77ebc064e')
+    expect(agreementSha256(AGREEMENTS.baa.text)).toBe('a332f8da8ce3512da282ee5db024e96def579dae2a404a165441783be0e15b19')
   })
 
-  it('the terms stay a draft of our own, versioned', () => {
-    expect(AGREEMENTS.terms.version).toMatch(/draft/)
+  it('the clinic terms are v1.0 from src/content/legal, word for word, with its exact SHA-256', () => {
+    const md = readFileSync(join(process.cwd(), 'src', 'content', 'legal', 'clinic-terms-v1.0.md'), 'utf8').replace(/\r\n/g, '\n')
+    expect(AGREEMENTS.terms.version).toBe('v1.0')
+    expect(AGREEMENTS.terms.text).toBe(md)
+    expect(agreementSha256(AGREEMENTS.terms.text)).toBe('02e37bb458f5ba008e27b669440f186f1a312a20201b7152e424a40a050410a5')
   })
 
-  it.each(['baa', 'terms'] as const)('%s is a versioned draft whose text hash is SHA-256', key => {
+  it.each(['baa', 'terms'] as const)('%s is a final, versioned text whose hash is SHA-256', key => {
     const a = AGREEMENTS[key]
-    expect(a.draft).toBe(true)
+    expect('draft' in a).toBe(false)
     expect(a.version).toMatch(/^[a-z0-9.-]+$/)
     expect(a.text.length).toBeGreaterThan(200)
     expect(agreementSha256(a.text)).toBe(createHash('sha256').update(a.text, 'utf8').digest('hex'))

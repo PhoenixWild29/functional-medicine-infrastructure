@@ -100,7 +100,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Fetch order — must exist, belong to this clinic, and be awaiting payment
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('order_id, status, retail_price_snapshot, wholesale_price_snapshot, shipping_fee, stripe_payment_intent_id, payment_group_id')
+    .select('order_id, status, retail_price_snapshot, wholesale_price_snapshot, shipping_fee, stripe_payment_intent_id, payment_group_id, patients ( intake_status )')
     .eq('order_id', orderId)
     .eq('clinic_id', clinicId)
     .is('deleted_at', null)
@@ -119,6 +119,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (order.status !== 'AWAITING_PAYMENT') {
     const statusCode = order.status === 'PAID_PROCESSING' || order.status === 'SHIPPED' || order.status === 'DELIVERED' ? 409 : 422
     return NextResponse.json({ error: `Order is not awaiting payment (status=${order.status})` }, { status: statusCode })
+  }
+
+  // Patient Intake PR 2: nothing is charged while the patient has not
+  // finished their details. Signing is refused first; this is the second
+  // line of defence.
+  {
+    const embed = (order as { patients?: { intake_status?: string | null } | Array<{ intake_status?: string | null }> | null }).patients
+    const intake = Array.isArray(embed) ? embed[0]?.intake_status : embed?.intake_status
+    if (intake === 'pending') {
+      return NextResponse.json(
+        { code: 'INTAKE_PENDING', error: 'Your clinic is waiting for your details before you can pay. Please use the link your clinic sent to complete them.' },
+        { status: 409 },
+      )
+    }
   }
 
   // ── Phase C carryover — Codex 2026-06-09 sweep, critical finding #1 ─────

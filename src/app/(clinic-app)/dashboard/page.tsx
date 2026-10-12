@@ -17,6 +17,10 @@
 //   retail_price_snapshot / wholesale_price_snapshot are NUMERIC(10,2)
 //   (dollars) in the DB → converted with Math.round(n * 100).
 
+import { POSSIBLE_DUPLICATE_COLUMNS, loadDuplicateNames, openDuplicateIds } from '@/lib/patients/duplicate-names'
+import { dashboardPatient, embeddedPatient } from '@/lib/patients/dashboard-patient'
+import { createServiceClient } from '@/lib/supabase/service'
+import { isPortalOnboardedClinic } from '@/lib/clinics/portal-clinic'
 import { createServerClient } from '@/lib/supabase/server'
 import { resolveCurrentProvider } from '@/lib/auth/current-provider'
 import type { DraftViewer } from '@/lib/orders/draft-edit-access'
@@ -30,6 +34,8 @@ import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.
 import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
 import { loadExpiringLicenses } from '@/lib/providers/expiring'
 import { LicenseExpiryWarning } from './_components/license-expiry-warning'
+import { loadAgreementNotice } from '@/lib/agreements/clinic-agreements'
+import { AgreementUpdateBanner } from './_components/agreement-update-banner'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export const metadata = {
@@ -69,6 +75,12 @@ export interface DashboardOrder {
   providerId?:       string | null
   /** When the order was signed: its payment link is payable for 72 h from here. */
   lockedAt?:         string | null
+  // Patient Intake PR 2: the patient, and whether they are still to finish
+  // their details (the draft is held; Resend link is offered).
+  patientId?:            string | null
+  patientIntakePending?: boolean
+  /** Flagged at intake as possibly the same person as another patient (never merged). */
+  possibleDuplicate?:    { patientId: string; name: string } | null
 }
 
 export default async function DashboardPage(
@@ -146,7 +158,7 @@ export default async function DashboardPage(
         order_id, status, created_at, updated_at, locked_at, payment_group_id, provider_id,
         retail_price_snapshot, wholesale_price_snapshot,
         medication_snapshot, pharmacy_snapshot,
-        patients!inner(first_name, last_name)
+        patients!inner(patient_id, first_name, last_name, phone, intake_status, ${POSSIBLE_DUPLICATE_COLUMNS})
       `)
       .eq('clinic_id', clinicId)
       .is('deleted_at', null)
@@ -173,6 +185,9 @@ export default async function DashboardPage(
   }
 
   const stripeConnectStatus = clinicData.stripe_connect_status as StripeConnectStatusEnum
+  // A clinic onboarded through the portal sets up payouts at launch: the
+  // dashboard says so instead of sending it to Stripe onboarding.
+  const payoutsAtLaunch = stripeConnectStatus !== 'ACTIVE' && await isPortalOnboardedClinic(createServiceClient(), clinicId)
 
   // Build DashboardOrder rows with HC-01 integer-cent arithmetic
   const now = Date.now()
@@ -190,6 +205,12 @@ export default async function DashboardPage(
       : null,
   }
 
+  // Patient Intake PR 2: the names behind "Possible duplicate of <name>",
+  // in one separate read (never a self-embed on patients).
+  const duplicateNames = await loadDuplicateNames(
+    supabase, clinicId, openDuplicateIds((ordersResult.data ?? []).map(o => embeddedPatient(o.patients))),
+  )
+
   const orders: DashboardOrder[] = (ordersResult.data ?? []).map(o => {
     const retailCents     = Math.round((o.retail_price_snapshot     ?? 0) * 100)
     const wholesaleCents  = Math.round((o.wholesale_price_snapshot  ?? 0) * 100)
@@ -203,10 +224,7 @@ export default async function DashboardPage(
     const submissionTier = pharmacySnap?.integration_tier ?? null
 
     // patients!inner returns object for many-to-one (orders → patients)
-    const patient = Array.isArray(o.patients)
-      ? (o.patients as Array<{ first_name: string; last_name: string }>)[0]
-      : o.patients as { first_name: string; last_name: string } | null
-    const patientName = patient ? `${patient.last_name}, ${patient.first_name}` : '—'
+    const { patientId, patientName, patientIntakePending, possibleDuplicate } = dashboardPatient(o.patients, duplicateNames)
 
     // BLK-04: PAYMENT_EXPIRED also counts as unpaid (patient didn't pay before link expired)
     const isOverdue48h =
@@ -216,6 +234,9 @@ export default async function DashboardPage(
     return {
       orderId:           o.order_id,
       patientName,
+      patientId,
+      patientIntakePending,
+      possibleDuplicate,
       medicationName,
       status:            o.status as OrderStatusEnum,
       submissionTier,
@@ -279,6 +300,10 @@ export default async function DashboardPage(
   // Compliance C4: licenses that expire within 30 days (the admin: every
   // provider's; a provider: their own). Never blocks the page.
   const expiring = await loadExpiringLicenses(supabaseAuth, { clinicId, userId: user.id, role: appRole })
+  // A newer BAA / terms than the clinic accepted: a dismissible notice for
+  // the clinic admin (RLS-scoped read). Never blocks ordering; a failed
+  // read shows nothing.
+  const agreementNotice = await loadAgreementNotice(supabaseAuth, user)
 
   return (
     <>
@@ -295,6 +320,8 @@ export default async function DashboardPage(
           {/* F-3 follow-up: provider-only opt-in clinic view toggle */}
           {isProvider && <ProviderViewToggle viewMode={viewMode} />}
         </div>
+
+        <AgreementUpdateBanner notice={agreementNotice} />
 
         <LicenseExpiryWarning licenses={expiring} />
 
@@ -318,6 +345,7 @@ export default async function DashboardPage(
           initialTab={isTabId(resolvedSearchParams.tab) ? resolvedSearchParams.tab : null}
           initialOrderId={typeof resolvedSearchParams.order === 'string' ? resolvedSearchParams.order : null}
           providerViewMode={viewMode}
+          payoutsAtLaunch={payoutsAtLaunch}
         />
       </main>
     </>

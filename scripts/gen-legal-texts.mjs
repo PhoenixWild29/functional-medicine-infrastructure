@@ -17,7 +17,17 @@ import { createHash } from 'node:crypto'
 
 const ROOT = process.cwd()
 const SOURCES = [
-  { name: 'BAA_V0_1_TEXT', file: 'src/content/legal/baa-draft-v0.1.md' },
+  // Current (final) texts, offered for acceptance.
+  { name: 'BAA_V1_0_TEXT', file: 'src/content/legal/baa-v1.0.md' },
+  { name: 'CLINIC_TERMS_V1_0_TEXT', file: 'src/content/legal/clinic-terms-v1.0.md' },
+  { name: 'PHARMACY_TERMS_V1_0_TEXT', file: 'src/content/legal/pharmacy-terms-v1.0.md' },
+  // Superseded texts, kept word for word so an older acceptance can show
+  // what was accepted (matched by its recorded SHA-256). Never offered for
+  // acceptance; only the server imports them (lib/onboarding/agreement-archive).
+  { name: 'BAA_V0_1_ORIGINAL_TEXT', file: 'src/content/legal/archive/baa-draft-v0.1-original.md' },
+  { name: 'BAA_V0_1_1_TEXT', file: 'src/content/legal/archive/baa-draft-v0.1.1.md' },
+  { name: 'CLINIC_TERMS_DRAFT_2026_10_2_TEXT', file: 'src/content/legal/archive/clinic-terms-draft-2026-10.2.md' },
+  { name: 'PHARMACY_TERMS_V0_1_TEXT', file: 'src/content/legal/archive/pharmacy-terms-draft-v0.1.md' },
 ]
 
 const out = [

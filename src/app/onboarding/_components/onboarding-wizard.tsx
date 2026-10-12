@@ -8,8 +8,9 @@
 // is stored server-side, so the admin can leave and resume anywhere; the
 // wizard opens at the first step that is not complete. Every save goes
 // to an API route that re-checks the caller and the clinic's state, then
-// the page refreshes from the server. Once submitted (or approved) the
-// wizard is read-only.
+// the wizard re-reads GET /api/onboarding/state (and refreshes the page
+// from the server), so the step list updates as soon as a step completes.
+// Once submitted (or approved) the wizard is read-only.
 //
 // Accessibility (WCAG 2.1 AA, as #206): one <main>, a labelled step
 // navigation with aria-current="step", focus moves to the step heading
@@ -20,7 +21,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { ONBOARDING_STEPS, STEP_LABELS, NOT_LIVE_STEPS, NOT_LIVE_LABEL, firstOpenStep, isEditable, canSubmit, type StepKey, type StepStatus } from '@/lib/onboarding/steps'
-import { AGREEMENTS, DRAFT_BANNER, type AgreementKey } from '@/lib/onboarding/agreement-texts'
+import { AGREEMENTS, type AgreementKey } from '@/lib/onboarding/agreement-texts'
 import type { OnboardingState } from '@/lib/onboarding/state'
 import { US_STATES } from '@/lib/providers/states'
 import { TextField, SelectField, CheckboxField, FormAlert, InviteLink, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_DANGER } from '@/components/onboarding/fields'
@@ -42,9 +43,11 @@ async function send(url: string, method: string, body: unknown): Promise<{ ok: b
   }
 }
 
-export function OnboardingWizard({ state, initialStep }: { state: OnboardingState; initialStep?: StepKey }) {
+export function OnboardingWizard(props: { state: OnboardingState; initialStep?: StepKey }) {
   const router = useRouter()
-  const [step, setStep] = useState<StepKey>(initialStep ?? firstOpenStep(state.steps))
+  const [fresh, setFresh] = useState<OnboardingState | null>(null)
+  const state = fresh ?? props.state
+  const [step, setStep] = useState<StepKey>(props.initialStep ?? firstOpenStep(props.state.steps))
   const headingRef = useRef<HTMLHeadingElement>(null)
   const firstRender = useRef(true)
   const readOnly = !isEditable(state.clinic.onboardingStatus)
@@ -59,7 +62,16 @@ export function OnboardingWizard({ state, initialStep }: { state: OnboardingStat
     const i = ONBOARDING_STEPS.indexOf(step)
     if (i < ONBOARDING_STEPS.length - 1) setStep(ONBOARDING_STEPS[i + 1]!)
   }
-  const refresh = () => router.refresh()
+  async function reload() {
+    router.refresh()
+    try {
+      const res = await fetch('/api/onboarding/state', { cache: 'no-store' })
+      if (!res.ok) return
+      const data = await res.json() as Partial<OnboardingState>
+      if (data.clinic && data.steps && Array.isArray(data.providers) && Array.isArray(data.staff) && data.acceptances) setFresh(data as OnboardingState)
+    } catch { /* keep what is shown */ }
+  }
+  const refresh = () => { void reload() }
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
@@ -446,7 +458,6 @@ function AgreementStep({ agreement, state, readOnly, onAccepted }: { agreement: 
 
   return (
     <div className="space-y-5">
-      <FormAlert tone="warning" id="agreement-draft-banner"><strong className="font-semibold">{DRAFT_BANNER}.</strong> This {a.title} is a draft template and will be replaced by the final version.</FormAlert>
       <h3 className="text-base font-semibold text-foreground">{a.title} <span className="font-normal text-slate-700">(version {a.version})</span></h3>
       <div
         tabIndex={0}

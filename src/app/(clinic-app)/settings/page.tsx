@@ -10,6 +10,7 @@
 // REQ-CAD-006: Clinic logo management.
 // REQ-CAD-007: Default markup percentage configuration.
 
+import { isPortalOnboardedClinic } from '@/lib/clinics/portal-clinic'
 import Link from 'next/link'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -61,6 +62,10 @@ export default async function SettingsPage() {
     )
   }
 
+  // A clinic onboarded through the portal sets up payouts at launch: no
+  // Stripe wording and no Stripe Connect button until they are active.
+  const payoutsAtLaunch = clinic.stripe_connect_status !== 'ACTIVE' && await isPortalOnboardedClinic(supabase, clinicId)
+
   // Compliance C2: the access log is the clinic admin's alone.
   const isClinicAdmin = getUserRole(user) === 'clinic_admin'
   // Compliance C4: Team (credentials) for the clinic admin and each provider.
@@ -72,7 +77,9 @@ export default async function SettingsPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-foreground">Clinic Settings</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Manage your clinic profile, Stripe payout account, and default pricing.
+          {payoutsAtLaunch
+            ? 'Manage your clinic profile, payouts, and default pricing.'
+            : 'Manage your clinic profile, Stripe payout account, and default pricing.'}
         </p>
       </div>
 
@@ -86,12 +93,13 @@ export default async function SettingsPage() {
         >
           <ul className="space-y-1">
             {[
-              { href: '#stripe-connect',  label: 'Stripe Connect'  },
+              { href: '#stripe-connect',  label: payoutsAtLaunch ? 'Payouts' : 'Stripe Connect' },
               { href: '#clinic-profile',  label: 'Clinic Profile'  },
               { href: '#notifications',   label: 'Notifications'   },
               { href: '#sign-in-security', label: 'Sign-in Security' },
               ...(canSeeTeam ? [{ href: '#team', label: 'Team' }] : []),
               ...(isClinicAdmin ? [{ href: '#access-log', label: 'Access log' }] : []),
+              { href: '/settings/agreements', label: 'Agreements' },
             ].map(({ href, label }) => (
               <li key={href}>
                 <a
@@ -114,6 +122,7 @@ export default async function SettingsPage() {
               stripeConnectStatus={clinic.stripe_connect_status}
               stripeAccountId={clinic.stripe_connect_account_id ?? null}
               isClinicAdmin={getUserRole(user) === 'clinic_admin'}
+              payoutsAtLaunch={payoutsAtLaunch}
             />
           </div>
 
