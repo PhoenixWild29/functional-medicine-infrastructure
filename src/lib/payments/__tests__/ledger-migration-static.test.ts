@@ -1,7 +1,9 @@
 /**
  * @jest-environment node
  *
- * Payments ledger migration (20261016000001, after A's 20261015000001):
+ * Payments ledger migration (20261018000001: after A's 20261016000002 and
+ * B's 20261017000001, which merge first; an older timestamp after them
+ * would break migration order):
  *   - four tables: ledger_entries, pharmacy_payables, payable_events,
  *     reconciliation_runs
  *   - RLS on each; reads for ops_admin via app_metadata only; no write
@@ -9,7 +11,8 @@
  *   - append-only triggers on the ledger, the payable audit log and the
  *     reconciliation runs
  *   - the ledger is idempotent on (source_event_id, line_key)
- *   - ends with apply_pharmacy_admin_scope() when that function exists
+ *   - ends with SELECT apply_pharmacy_admin_scope(); as the last statement
+ *     before COMMIT (the function is on main since 20261014000001)
  *   - ships with a down file that drops what it adds
  * The new tables are never retention targets.
  */
@@ -20,7 +23,7 @@ import { NEVER_RETENTION_TARGETS } from '@/lib/retention/policies'
 
 const ROOT = path.resolve(__dirname, '..', '..', '..', '..')
 const MIGRATIONS = path.join(ROOT, 'supabase', 'migrations')
-const VERSION = '20261016000001'
+const VERSION = '20261018000001'
 const TABLES = ['ledger_entries', 'pharmacy_payables', 'payable_events', 'reconciliation_runs']
 const APPEND_ONLY = ['ledger_entries', 'payable_events', 'reconciliation_runs']
 
@@ -77,10 +80,17 @@ it.each(APPEND_ONLY)('%s is append-only by trigger', t => {
   expect(up()).toMatch(new RegExp(`CREATE TRIGGER \\w+\\s+BEFORE UPDATE OR DELETE ON (public\\.)?${t}\\b`))
 })
 
-it('ends by applying the pharmacy admin scope when it exists', () => {
-  const sql = up().trimEnd()
-  const tail = sql.slice(sql.lastIndexOf('DO $$'))
-  expect(tail).toMatch(/apply_pharmacy_admin_scope\(\)/)
+it('the last statement before COMMIT is SELECT apply_pharmacy_admin_scope();', () => {
+  const body = up().replace(/\s+$/, '')
+  expect(body).toMatch(/COMMIT;$/)
+  const statementsBeforeCommit = body.slice(0, body.lastIndexOf('COMMIT;')).trim().split(/;\s*\n/).filter(Boolean)
+  expect(statementsBeforeCommit[statementsBeforeCommit.length - 1]!.trim()).toBe('SELECT apply_pharmacy_admin_scope()')
+})
+
+it('sorts after every migration already on main and after A (20261016000002) and B (20261017000001)', () => {
+  const versions = fs.readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).map(f => f.split('_')[0]!).sort()
+  expect(versions[versions.length - 1]).toBe(VERSION)
+  expect(VERSION > '20261017000001').toBe(true)
 })
 
 it('the down file drops every table it adds', () => {
