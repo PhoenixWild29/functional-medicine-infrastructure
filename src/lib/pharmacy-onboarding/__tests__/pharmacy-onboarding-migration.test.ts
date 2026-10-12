@@ -238,8 +238,14 @@ describe('idempotent', () => {
 describe('ordering', () => {
   const names = readdirSync(MIGRATIONS).filter(f => /^\d{14}_.+\.sql$/.test(f)).sort()
 
-  it('this is the last migration, after 20261012000001 (C8) and 20261013000001 (clinic onboarding)', () => {
-    expect(names[names.length - 1]).toBe('20261014000001_pharmacy_onboarding.sql')
+  it('it runs after 20261012000001 (C8) and 20261013000001 (clinic onboarding)', () => {
+    // Later migrations (e.g. 20261015000001, patient intake) may follow;
+    // they must call apply_pharmacy_admin_scope() (tested below).
+    const at = names.indexOf('20261014000001_pharmacy_onboarding.sql')
+    expect(at).toBeGreaterThan(names.findIndex(n => n.startsWith('20261012000001_')))
+    expect(at).toBeGreaterThan(names.findIndex(n => n.startsWith('20261013000001_')))
+    expect(names.findIndex(n => n.startsWith('20261012000001_'))).toBeGreaterThan(-1)
+    expect(names.findIndex(n => n.startsWith('20261013000001_'))).toBeGreaterThan(-1)
   })
 
   it('the RLS-coverage check runs last, after the scope policies are applied, before COMMIT', () => {

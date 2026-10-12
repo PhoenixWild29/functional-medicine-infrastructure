@@ -17,6 +17,8 @@
 //   retail_price_snapshot / wholesale_price_snapshot are NUMERIC(10,2)
 //   (dollars) in the DB → converted with Math.round(n * 100).
 
+import { POSSIBLE_DUPLICATE_COLUMNS, loadDuplicateNames, openDuplicateIds } from '@/lib/patients/duplicate-names'
+import { dashboardPatient, embeddedPatient } from '@/lib/patients/dashboard-patient'
 import { createServiceClient } from '@/lib/supabase/service'
 import { isPortalOnboardedClinic } from '@/lib/clinics/portal-clinic'
 import { createServerClient } from '@/lib/supabase/server'
@@ -71,6 +73,12 @@ export interface DashboardOrder {
   providerId?:       string | null
   /** When the order was signed: its payment link is payable for 72 h from here. */
   lockedAt?:         string | null
+  // Patient Intake PR 2: the patient, and whether they are still to finish
+  // their details (the draft is held; Resend link is offered).
+  patientId?:            string | null
+  patientIntakePending?: boolean
+  /** Flagged at intake as possibly the same person as another patient (never merged). */
+  possibleDuplicate?:    { patientId: string; name: string } | null
 }
 
 export default async function DashboardPage(
@@ -148,7 +156,7 @@ export default async function DashboardPage(
         order_id, status, created_at, updated_at, locked_at, payment_group_id, provider_id,
         retail_price_snapshot, wholesale_price_snapshot,
         medication_snapshot, pharmacy_snapshot,
-        patients!inner(first_name, last_name)
+        patients!inner(patient_id, first_name, last_name, phone, intake_status, ${POSSIBLE_DUPLICATE_COLUMNS})
       `)
       .eq('clinic_id', clinicId)
       .is('deleted_at', null)
@@ -195,6 +203,12 @@ export default async function DashboardPage(
       : null,
   }
 
+  // Patient Intake PR 2: the names behind "Possible duplicate of <name>",
+  // in one separate read (never a self-embed on patients).
+  const duplicateNames = await loadDuplicateNames(
+    supabase, clinicId, openDuplicateIds((ordersResult.data ?? []).map(o => embeddedPatient(o.patients))),
+  )
+
   const orders: DashboardOrder[] = (ordersResult.data ?? []).map(o => {
     const retailCents     = Math.round((o.retail_price_snapshot     ?? 0) * 100)
     const wholesaleCents  = Math.round((o.wholesale_price_snapshot  ?? 0) * 100)
@@ -208,10 +222,7 @@ export default async function DashboardPage(
     const submissionTier = pharmacySnap?.integration_tier ?? null
 
     // patients!inner returns object for many-to-one (orders → patients)
-    const patient = Array.isArray(o.patients)
-      ? (o.patients as Array<{ first_name: string; last_name: string }>)[0]
-      : o.patients as { first_name: string; last_name: string } | null
-    const patientName = patient ? `${patient.last_name}, ${patient.first_name}` : '—'
+    const { patientId, patientName, patientIntakePending, possibleDuplicate } = dashboardPatient(o.patients, duplicateNames)
 
     // BLK-04: PAYMENT_EXPIRED also counts as unpaid (patient didn't pay before link expired)
     const isOverdue48h =
@@ -221,6 +232,9 @@ export default async function DashboardPage(
     return {
       orderId:           o.order_id,
       patientName,
+      patientId,
+      patientIntakePending,
+      possibleDuplicate,
       medicationName,
       status:            o.status as OrderStatusEnum,
       submissionTier,

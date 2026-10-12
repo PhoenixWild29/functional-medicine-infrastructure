@@ -28,8 +28,11 @@ export default defineConfig({
   // Reporters: HTML report always; JUnit for CI artifact upload
   reporter: isCI
     // 'github' writes each failure as a check-run annotation, readable
-    // without downloading the (auth-gated) report artifact.
-    ? [['html', { open: 'never' }], ['junit', { outputFile: 'test-results/junit.xml' }], ['github']]
+    // without downloading the (auth-gated) report artifact. 'list' prints
+    // each test's result as it finishes, so a run cut off by the job
+    // timeout still shows which tests passed, failed or hung (html, junit
+    // and github write nothing until the run ends).
+    ? [['list'], ['html', { open: 'never' }], ['junit', { outputFile: 'test-results/junit.xml' }], ['github']]
     : [['html', { open: 'on-failure' }]],
 
   // Shared test options
@@ -54,7 +57,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testMatch: ['**/clinic-app.spec.ts', '**/ops-dashboard.spec.ts', '**/auth.spec.ts', '**/rbac.spec.ts', '**/feature-flags.spec.ts', '**/checkout.spec.ts', '**/accessibility.spec.ts', '**/accessibility-auth.spec.ts', '**/pharmacy-onboarding-a11y.spec.ts', '**/mfa.spec.ts', '**/legal-pages-a11y.spec.ts'],
+      testMatch: ['**/clinic-app.spec.ts', '**/ops-dashboard.spec.ts', '**/auth.spec.ts', '**/rbac.spec.ts', '**/feature-flags.spec.ts', '**/checkout.spec.ts', '**/accessibility.spec.ts', '**/accessibility-auth.spec.ts', '**/pharmacy-onboarding-a11y.spec.ts', '**/mfa.spec.ts', '**/legal-pages-a11y.spec.ts', '**/intake.spec.ts'],
     },
     {
       name: 'firefox',

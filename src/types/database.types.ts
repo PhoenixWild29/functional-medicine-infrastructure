@@ -1691,6 +1691,61 @@ export type Database = {
           },
         ]
       }
+      // Patient Intake PR 2 (20261015000001): hand-extended
+      patient_intake_links: {
+        Row: {
+          clinic_id: string
+          created_at: string
+          created_by: string | null
+          expires_at: string
+          link_id: string
+          patient_id: string
+          revoked_at: string | null
+          sms_status: string
+          token_hash: string
+          used_at: string | null
+        }
+        Insert: {
+          clinic_id: string
+          created_at?: string
+          created_by?: string | null
+          expires_at: string
+          link_id?: string
+          patient_id: string
+          revoked_at?: string | null
+          sms_status?: string
+          token_hash: string
+          used_at?: string | null
+        }
+        Update: {
+          clinic_id?: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          link_id?: string
+          patient_id?: string
+          revoked_at?: string | null
+          sms_status?: string
+          token_hash?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_intake_links_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+          {
+            foreignKeyName: "patient_intake_links_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["patient_id"]
+          },
+        ]
+      }
       patient_protocol_phases: {
         Row: {
           advanced_by: string | null
@@ -1762,12 +1817,12 @@ export type Database = {
           city: string | null
           clinic_id: string
           created_at: string
-          date_of_birth: string
+          date_of_birth: string | null
           deleted_at: string | null
           email: string | null
-          first_name: string
+          first_name: string | null
           is_active: boolean
-          last_name: string
+          last_name: string | null
           nkda: boolean
           patient_id: string
           phone: string
@@ -1781,6 +1836,16 @@ export type Database = {
           sms_consent_text_version: string | null
           source: string
           intake_status: string
+          // Patient Intake PR 2 (20261015000001): hand-extended
+          current_medications: string | null
+          intake_completed_at: string | null
+          privacy_notice_ack_at: string | null
+          privacy_notice_version: string | null
+          possible_duplicate_of: string | null
+          possible_duplicate_matched_on: string | null
+          possible_duplicate_flagged_at: string | null
+          possible_duplicate_dismissed_at: string | null
+          possible_duplicate_dismissed_by: string | null
           state: string | null
           updated_at: string
           zip: string | null
@@ -1794,12 +1859,12 @@ export type Database = {
           city?: string | null
           clinic_id: string
           created_at?: string
-          date_of_birth: string
+          date_of_birth?: string | null
           deleted_at?: string | null
           email?: string | null
-          first_name: string
+          first_name?: string | null
           is_active?: boolean
-          last_name: string
+          last_name?: string | null
           nkda?: boolean
           patient_id?: string
           phone: string
@@ -1813,6 +1878,15 @@ export type Database = {
           sms_consent_text_version?: string | null
           source?: string
           intake_status?: string
+          current_medications?: string | null
+          intake_completed_at?: string | null
+          privacy_notice_ack_at?: string | null
+          privacy_notice_version?: string | null
+          possible_duplicate_of?: string | null
+          possible_duplicate_matched_on?: string | null
+          possible_duplicate_flagged_at?: string | null
+          possible_duplicate_dismissed_at?: string | null
+          possible_duplicate_dismissed_by?: string | null
           state?: string | null
           updated_at?: string
           zip?: string | null
@@ -1826,12 +1900,12 @@ export type Database = {
           city?: string | null
           clinic_id?: string
           created_at?: string
-          date_of_birth?: string
+          date_of_birth?: string | null
           deleted_at?: string | null
           email?: string | null
-          first_name?: string
+          first_name?: string | null
           is_active?: boolean
-          last_name?: string
+          last_name?: string | null
           nkda?: boolean
           patient_id?: string
           phone?: string
@@ -1845,6 +1919,15 @@ export type Database = {
           sms_consent_text_version?: string | null
           source?: string
           intake_status?: string
+          current_medications?: string | null
+          intake_completed_at?: string | null
+          privacy_notice_ack_at?: string | null
+          privacy_notice_version?: string | null
+          possible_duplicate_of?: string | null
+          possible_duplicate_matched_on?: string | null
+          possible_duplicate_flagged_at?: string | null
+          possible_duplicate_dismissed_at?: string | null
+          possible_duplicate_dismissed_by?: string | null
           state?: string | null
           updated_at?: string
           zip?: string | null

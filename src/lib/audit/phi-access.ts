@@ -43,6 +43,8 @@ export type PhiResource =
   | 'payment_group'
   | 'patient_phases'
   | 'access_log'
+  // Patient Intake PR 2: dismissing "Possible duplicate of <name>".
+  | 'patient_duplicate_flag'
 
 export interface PhiActor {
   userId:   string
