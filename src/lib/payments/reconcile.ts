@@ -146,11 +146,11 @@ async function alert(payload: Parameters<typeof buildOpsAlert>[0]): Promise<void
 }
 
 export async function reconcileDay(supabase: Supabase, stripe: StripeReader, day: string): Promise<ReconResult> {
-  let stripeSide: Awaited<ReturnType<typeof stripeTotals>>
+  let processorSide: Awaited<ReturnType<typeof stripeTotals>>
   let ledgerSide: Map<string, { kind: ReconKind; cents: number }>
   try {
-    stripeSide = await stripeTotals(stripe, day)
-    ledgerSide = await ledgerTotals(supabase, day, [...stripeSide.totals.keys()])
+    processorSide = await stripeTotals(stripe, day)
+    ledgerSide = await ledgerTotals(supabase, day, [...processorSide.totals.keys()])
   } catch (err) {
     const error = (err instanceof Error ? err.message : String(err)).slice(0, 500)
     console.error(`[reconcile-stripe] ${day} could not be reconciled:`, error)
@@ -160,8 +160,8 @@ export async function reconcileDay(supabase: Supabase, stripe: StripeReader, day
   }
 
   const mismatches: ReconMismatch[] = []
-  for (const id of new Set([...stripeSide.totals.keys(), ...ledgerSide.keys()])) {
-    const s = stripeSide.totals.get(id)
+  for (const id of new Set([...processorSide.totals.keys(), ...ledgerSide.keys()])) {
+    const s = processorSide.totals.get(id)
     const l = ledgerSide.get(id)
     const stripeCents = s?.cents ?? 0
     const ledgerCents = l?.cents ?? 0
@@ -172,11 +172,11 @@ export async function reconcileDay(supabase: Supabase, stripe: StripeReader, day
 
   const sum = (m: Map<string, { cents: number }>) => [...m.values()].reduce((a, t) => a + t.cents, 0)
   const ledgerTotal = sum(ledgerSide)
-  const stripeTotal = sum(stripeSide.totals)
+  const stripeTotal = sum(processorSide.totals)
   const status = mismatches.length === 0 ? 'matched' : 'mismatch'
   await recordRun(supabase, {
     recon_date: day, status, ledger_cents: ledgerTotal, stripe_cents: stripeTotal,
-    stripe_count: stripeSide.count, mismatch_count: mismatches.length, details: mismatches,
+    stripe_count: processorSide.count, mismatch_count: mismatches.length, details: mismatches,
   })
 
   if (status === 'mismatch') {
@@ -185,12 +185,12 @@ export async function reconcileDay(supabase: Supabase, stripe: StripeReader, day
       type: 'reconciliation_mismatch',
       details: {
         recon_date: day, mismatch_count: mismatches.length, mismatches: mismatchToken(mismatches),
-        ledger_total: ledgerTotal, stripe_total: stripeTotal, stripe_count: stripeSide.count,
+        ledger_total: ledgerTotal, stripe_total: stripeTotal, stripe_count: processorSide.count,
       },
       notes: ['reconciliation_review'],
     })
   } else {
-    console.info(`[reconcile-stripe] ${day}: matched (${stripeSide.count} Stripe transaction(s))`)
+    console.info(`[reconcile-stripe] ${day}: matched (${processorSide.count} Stripe transaction(s))`)
   }
   return { status, mismatchCount: mismatches.length }
 }
