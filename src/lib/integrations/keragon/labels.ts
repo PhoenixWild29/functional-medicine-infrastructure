@@ -19,7 +19,7 @@ export const ERROR_LABEL: Record<string, string> = {
   stale_signature:   'A request was signed more than 5 minutes before it arrived (check Keragon\'s clock).',
   missing_signature: 'A request had no signature or timestamp.',
   invalid_payload:   'A request did not match the patient contract.',
-  mobile_required:   'A new patient had no mobile number.',
+  contact_required:  'A new patient had neither a mobile number nor an email.',
   patient_inactive:  'The linked patient has been removed.',
   read_failed:       'A temporary database error; Keragon retries.',
   write_failed:      'A temporary database error; Keragon retries.',

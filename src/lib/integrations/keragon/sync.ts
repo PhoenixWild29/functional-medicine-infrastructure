@@ -131,12 +131,13 @@ async function createPatient(
   db: SupabaseClient, ctx: Ctx, fields: PatientSyncFields, externalId: string,
   flag: { of: string; matchedOn: string; reason: string; candidates: number } | null,
 ): Promise<SyncOutcome> {
+  // A patient needs a mobile or an email (chk_patients_phone_or_email).
   const { phone, ...rest } = fields
-  if (!phone) return fail('mobile_required')
+  if (!phone && !rest.email) return fail('contact_required')
   const row = withPhoneE164({
     clinic_id: ctx.clinicId,
     ...rest,
-    phone,
+    phone: phone ?? null,
     source: 'ehr',
     external_id: externalId,
     intake_status: 'complete',

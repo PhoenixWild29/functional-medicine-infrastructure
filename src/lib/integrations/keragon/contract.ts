@@ -15,8 +15,8 @@
 //     "first_name", "last_name":          required
 //     "date_of_birth": "YYYY-MM-DD",      required, a real past date
 //     "sex": "female" | "male" | "unknown"            optional
-//     "mobile": "+15125550147" or a US 10-digit number required to create a patient
-//     "email": "..."                                  optional
+//     "mobile": "+15125550147" or a US 10-digit number   one of mobile or email is required to create a patient
+//     "email": "..."                                     (see above)
 //     "address": { "line1", "line2", "city", "state" (2 letters), "zip" } optional
 //     "allergies": ["..."]                             optional (replaces the list)
 //     "no_known_drug_allergies": true | false          optional

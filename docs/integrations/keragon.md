@@ -88,8 +88,8 @@ connection.
 | `patient.first_name`, `last_name` | yes | up to 100 characters |
 | `patient.date_of_birth` | yes | `YYYY-MM-DD`, a real date, not in the future |
 | `patient.sex` | no | `female`, `male` or `unknown` |
-| `patient.mobile` | to create a patient | E.164 (`+15125550147`) or a 10-digit US number |
-| `patient.email` | no | an email address |
+| `patient.mobile` | a mobile or an email, to create a patient | E.164 (`+15125550147`) or a 10-digit US number |
+| `patient.email` | a mobile or an email, to create a patient | an email address |
 | `patient.address` | no | `line1`, `line2`, `city`, `state` (2 letters), `zip` (`12345` or `12345-6789`) |
 | `patient.allergies` | no | up to 50 strings; replaces the list |
 | `patient.no_known_drug_allergies` | no | `true` / `false` |
@@ -128,7 +128,7 @@ consent**, and sync never changes it.
 | 200 | `applied`, `skipped` (nothing changed) or `flagged` | continue |
 | 401 | unknown or disconnected connection; missing, bad or stale signature | fix the setup; do not retry as is |
 | 409 | this `event_id` was already received | stop (already done) |
-| 422 | the payload does not match the contract (fields named in `errors`), or a new patient has no mobile | fix the data |
+| 422 | the payload does not match the contract (fields named in `errors`), or a new patient has neither a mobile nor an email | fix the data |
 | 503 | a temporary error on our side | retry with the same `event_id` |
 
 The body is `{ "status", "event_id", "patient_id", "error_code"? }`.
