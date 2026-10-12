@@ -89,6 +89,11 @@ import { sendPaymentLinkSms, sendShippingNotificationSms, sendDeliveredSms } fro
 import { carrierTrackingUrl } from '@/lib/shipping/tracking-url'
 
 const SHIPPING_TEMPLATE = 'Hi {{patientFirstName}}, your order has shipped! Track your package: {{trackingUrl}}'
+const TEMPLATES: Record<string, string> = {
+  shipping_notification: SHIPPING_TEMPLATE,
+  payment_link:          'Hi {{patientFirstName}}, your payment link: {{checkoutUrl}}',
+  delivered:             'Hi {{patientFirstName}}, your order was delivered.',
+}
 
 /** A real orders row has tracking_number and carrier; there is no tracking_url. */
 function orderRow(carrier: string | null, trackingNumber: string | null) {
@@ -105,7 +110,7 @@ function orderRow(carrier: string | null, trackingNumber: string | null) {
 function world(row: ReturnType<typeof orderRow>): Script {
   return c => {
     if (c.table === 'orders') return { data: row }
-    if (c.table === 'sms_templates') return { data: { body_template: c.filters['template_name'] === 'shipping_notification' ? SHIPPING_TEMPLATE : 'Hi {{patientFirstName}}: {{checkoutUrl}}' } }
+    if (c.table === 'sms_templates') return { data: { body_template: TEMPLATES[String(c.filters['template_name'])] } }
     if (c.table === 'patients') return { data: { sms_opt_in: true } }
     if (c.table === 'sms_log' && c.head) return { count: 0 }
     return undefined
