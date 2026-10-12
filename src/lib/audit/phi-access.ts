@@ -154,6 +154,59 @@ export async function logPhiAccess(entry: PhiAccessEntry): Promise<void> {
   }
 }
 
+const MANY_CHUNK = 500
+
+/**
+ * One phi_access_log row per patient, for a write that touches many
+ * patients at once (the patient CSV import): the same actor, action,
+ * resource and route on each, written in chunks of 500. Like
+ * logPhiAccess, it resolves in every case and logs no row value.
+ */
+export async function logPhiAccessMany(
+  entry: Omit<PhiAccessEntry, 'patientId' | 'orderId'>,
+  patientIds: ReadonlyArray<string>,
+): Promise<void> {
+  try {
+    if (patientIds.length === 0) return
+    const actor = phiActorFromUser(entry.user)
+    if (!actor) return
+    if (!(PHI_ACTIONS as readonly string[]).includes(entry.action) || !RESOURCE_RE.test(entry.resource)) {
+      console.error(`[phi-access] refused entries with an unknown action or resource | route=${routePattern(entry.route)}`)
+      return
+    }
+    const [actorEmailHash, ipHash, userAgentHash] = await Promise.all([
+      keyedHash(actor.email?.trim().toLowerCase()),
+      keyedHash(clientIp(entry.headers)),
+      keyedHash(entry.headers?.get('user-agent') ?? null),
+    ])
+    const occurredAt = new Date().toISOString()
+    const base = {
+      occurred_at:      occurredAt,
+      actor_user_id:    actor.userId,
+      actor_role:       ROLE_RE.test(actor.role) ? actor.role : 'unknown',
+      actor_email_hash: actorEmailHash,
+      clinic_id:        entry.clinicId ?? actor.clinicId ?? null,
+      order_id:         null,
+      action:           entry.action,
+      resource:         entry.resource,
+      route:            routePattern(entry.route),
+      ip_hash:          ipHash,
+      user_agent_hash:  userAgentHash,
+    }
+    const { createServiceClient } = await import('@/lib/supabase/service')
+    const db = createServiceClient()
+    for (let i = 0; i < patientIds.length; i += MANY_CHUNK) {
+      const rows = patientIds.slice(i, i + MANY_CHUNK).map(patientId => ({ ...base, patient_id: patientId }))
+      const { error } = await db.from('phi_access_log').insert(rows)
+      if (error) {
+        console.error(`[phi-access] phi_access_log insert failed | code=${(error as { code?: string }).code ?? 'unknown'} | route=${base.route} | rows=${rows.length}`)
+      }
+    }
+  } catch (err) {
+    console.error(`[phi-access] phi_access_log write failed | ${err instanceof Error ? err.name : 'error'} | route=${routePattern(entry.route)}`)
+  }
+}
+
 /**
  * The current request's headers, for a Server Component (a page has no
  * Request object). null outside a request (a test, a build), never a throw.

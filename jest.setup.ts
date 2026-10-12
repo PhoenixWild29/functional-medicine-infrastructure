@@ -12,4 +12,5 @@ import '@testing-library/jest-dom'
 jest.mock('@/lib/audit/phi-access', () => ({
   ...jest.requireActual('@/lib/audit/phi-access'),
   logPhiAccess: jest.fn(async () => undefined),
+  logPhiAccessMany: jest.fn(async () => undefined),
 }))

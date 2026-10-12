@@ -57,7 +57,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testMatch: ['**/clinic-app.spec.ts', '**/ops-dashboard.spec.ts', '**/auth.spec.ts', '**/rbac.spec.ts', '**/feature-flags.spec.ts', '**/checkout.spec.ts', '**/accessibility.spec.ts', '**/accessibility-auth.spec.ts', '**/pharmacy-onboarding-a11y.spec.ts', '**/mfa.spec.ts', '**/legal-pages-a11y.spec.ts', '**/intake.spec.ts', '**/ehr-sync-keragon.spec.ts'],
+      testMatch: ['**/clinic-app.spec.ts', '**/ops-dashboard.spec.ts', '**/auth.spec.ts', '**/rbac.spec.ts', '**/feature-flags.spec.ts', '**/checkout.spec.ts', '**/accessibility.spec.ts', '**/accessibility-auth.spec.ts', '**/pharmacy-onboarding-a11y.spec.ts', '**/mfa.spec.ts', '**/legal-pages-a11y.spec.ts', '**/intake.spec.ts', '**/patient-import.spec.ts', '**/ehr-sync-keragon.spec.ts'],
     },
     {
       name: 'firefox',
