@@ -84,7 +84,7 @@ it('the last statement before COMMIT is SELECT apply_pharmacy_admin_scope();', (
   const body = up().replace(/\s+$/, '')
   expect(body).toMatch(/COMMIT;$/)
   const statementsBeforeCommit = body.slice(0, body.lastIndexOf('COMMIT;')).trim().split(/;\s*\n/).filter(Boolean)
-  expect(statementsBeforeCommit[statementsBeforeCommit.length - 1]!.trim()).toBe('SELECT apply_pharmacy_admin_scope()')
+  expect(statementsBeforeCommit[statementsBeforeCommit.length - 1]!.trim().replace(/;$/, '')).toBe('SELECT apply_pharmacy_admin_scope()')
 })
 
 it('sorts after every migration already on main and after A (20261016000002) and B (20261017000001)', () => {

@@ -26,10 +26,11 @@
 -- service role can set). No write policies: the service role writes.
 -- No patient data in any of these tables: IDs and amounts only.
 --
--- Ordered after 20261015000001 (A). Ends by applying the pharmacy admin
--- scope (B's apply_pharmacy_admin_scope(), 20261014000001) when that
--- function exists; when it does not yet, B's migration covers these
--- tables when it runs, as it scopes every public table.
+-- Version 20261018000001: after A's 20261016000002 and B's 20261017000001,
+-- which merge first (an older timestamp after them would break migration
+-- order). Ends with apply_pharmacy_admin_scope() (20261014000001) as the
+-- last statement before COMMIT, so the new tables get the restrictive
+-- pharmacy_admin_scope policy like every other public table.
 
 BEGIN;
 
@@ -177,14 +178,7 @@ CREATE TRIGGER reconciliation_runs_no_truncate
   BEFORE TRUNCATE ON reconciliation_runs
   FOR EACH STATEMENT EXECUTE FUNCTION payments_append_only();
 
--- ── 5. Pharmacy admin scope (B) ──────────────────────────────
-DO $$
-BEGIN
-  IF to_regprocedure('apply_pharmacy_admin_scope()') IS NOT NULL THEN
-    PERFORM apply_pharmacy_admin_scope();
-  ELSE
-    RAISE NOTICE 'apply_pharmacy_admin_scope() not present yet; its migration scopes these tables when it runs';
-  END IF;
-END $$;
+-- ── 5. Pharmacy admin scope (last statement before COMMIT) ──
+SELECT apply_pharmacy_admin_scope();
 
 COMMIT;

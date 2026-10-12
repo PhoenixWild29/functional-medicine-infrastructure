@@ -1,4 +1,4 @@
--- Down migration for 20261016000001_payments_ledger.sql
+-- Down migration for 20261018000001_payments_ledger.sql
 -- Atomic: either the whole rollback lands or none of it does.
 --
 -- WARNING: drops the payments ledger, the pharmacy payables, their audit
