@@ -154,3 +154,30 @@ describe('never throws into the request', () => {
     expect(inserted()).toHaveLength(0)
   })
 })
+
+// ── Patient CSV import: many rows in one write ──
+import { logPhiAccessMany } from '../phi-access'
+
+describe('logPhiAccessMany', () => {
+  const P = (n: number) => `33333333-3333-4333-8333-${String(n).padStart(12, '0')}`
+
+  it('one row per patient, the same actor, action and route, in chunks of 500', async () => {
+    const ids = Array.from({ length: 1201 }, (_, i) => P(i))
+    await logPhiAccessMany({ user: USER, action: 'create', resource: 'patient', route: '/api/patients/import', headers: headers() }, ids)
+    const calls = db.to('phi_access_log', 'insert')
+    expect(calls.map(c => (c.payload as unknown[]).length)).toEqual([500, 500, 201])
+    const rows = calls.flatMap(c => c.payload as Array<Record<string, unknown>>)
+    expect(rows.map(r => r['patient_id'])).toEqual(ids)
+    expect(new Set(rows.map(r => r['actor_user_id']))).toEqual(new Set([USER.id]))
+    expect(rows.every(r => r['action'] === 'create' && r['resource'] === 'patient' && r['route'] === '/api/patients/import')).toBe(true)
+    expect(JSON.stringify(rows)).not.toContain('203.0.113.7')
+  })
+
+  it('no ids: nothing written; an unknown action: nothing written; never throws', async () => {
+    await logPhiAccessMany({ user: USER, action: 'create', resource: 'patient', route: '/x', headers: null }, [])
+    await logPhiAccessMany({ user: USER, action: 'nope' as never, resource: 'patient', route: '/x', headers: null }, [P(1)])
+    expect(inserted()).toHaveLength(0)
+    db = scriptedDb(() => DB_DOWN)
+    await expect(logPhiAccessMany({ user: USER, action: 'create', resource: 'patient', route: '/x', headers: null }, [P(1)])).resolves.toBeUndefined()
+  })
+})

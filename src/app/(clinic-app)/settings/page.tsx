@@ -20,6 +20,7 @@ import { StripeStatusSection } from './_components/stripe-status-section'
 import { SignInSecuritySection } from './_components/sign-in-security-section'
 import { hasVerifiedTotp, mfaEnforcedFor } from '@/lib/auth/mfa'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { IMPORT_ROLES } from '@/lib/patients/import/roles'
 
 export const metadata = {
   title: 'Clinic Settings',
@@ -70,6 +71,9 @@ export default async function SettingsPage() {
   const isClinicAdmin = getUserRole(user) === 'clinic_admin'
   // Compliance C4: Team (credentials) for the clinic admin and each provider.
   const canSeeTeam = isClinicAdmin || getUserRole(user) === 'provider'
+  // Patient Intake PR 5: CSV import, for the clinic admin and medical
+  // assistants. Providers do not see the link (the page shows them a notice).
+  const canImportPatients = IMPORT_ROLES.has(getUserRole(user) ?? '')
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
@@ -98,6 +102,7 @@ export default async function SettingsPage() {
               { href: '#notifications',   label: 'Notifications'   },
               { href: '#sign-in-security', label: 'Sign-in Security' },
               ...(canSeeTeam ? [{ href: '#team', label: 'Team' }] : []),
+              ...(canImportPatients ? [{ href: '#patients', label: 'Patients' }] : []),
               ...(isClinicAdmin ? [{ href: '#access-log', label: 'Access log' }] : []),
               { href: '/settings/agreements', label: 'Agreements' },
             ].map(({ href, label }) => (
@@ -158,6 +163,24 @@ export default async function SettingsPage() {
                   className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
                 >
                   {isClinicAdmin ? 'Manage the team' : 'View my credentials'}
+                </Link>
+              </section>
+            </div>
+          )}
+
+          {/* Patient Intake PR 5: import patients, clinic admin and MA */}
+          {canImportPatients && (
+            <div id="patients" className="scroll-mt-6">
+              <section className="rounded-lg border border-border bg-card p-6 space-y-3" data-testid="settings-patients">
+                <h2 className="text-base font-semibold text-foreground">Patients</h2>
+                <p className="text-sm text-muted-foreground">
+                  Import existing patients from a CSV export of your EHR or a spreadsheet. Every row is checked before anything is saved.
+                </p>
+                <Link
+                  href="/settings/patients/import"
+                  className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
+                >
+                  Import patients
                 </Link>
               </section>
             </div>
