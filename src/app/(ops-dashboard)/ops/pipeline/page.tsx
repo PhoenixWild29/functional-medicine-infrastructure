@@ -24,6 +24,7 @@ import { PipelineView } from './_components/pipeline-view'
 import { StuckRefundsPanel, LatePaymentsPanel } from './_components/stuck-refunds-panel'
 import { listStuckRefunds, listLatePayments } from '@/lib/refunds/stuck'
 import { slaSortComparator } from '@/lib/ops/sla-sort'
+import { deadlinePassed } from '@/lib/sla/deadline'
 import type { PipelineOrder, FilterOption } from '@/types/pipeline'
 
 // Re-export for legacy consumers still importing from this page file
@@ -43,7 +44,7 @@ export default async function PipelinePage(
   // A Slack alert's "Open in ops" link: /ops/pipeline?order=<id> opens that order.
   const initialOrderId = ((await props.searchParams)?.order ?? '').trim() || null
   const supabase = createServiceClient()
-  const now = new Date().toISOString()
+  const nowMs = Date.now()
 
   // Fetch in parallel: orders + SLA deadlines + filter option lists
   const [ordersResult, slasResult, clinicsResult, pharmaciesResult] = await Promise.all([
@@ -87,7 +88,7 @@ export default async function PipelinePage(
   // SLA rows are sorted ASC by deadline_at, so first encounter per order = nearest
   const slaMap = new Map<string, { nearestDeadline: string; hasBreach: boolean }>()
   for (const sla of (slasResult.data ?? [])) {
-    const isBreached = sla.deadline_at < now
+    const isBreached = deadlinePassed(sla.deadline_at, nowMs)
     const existing   = slaMap.get(sla.order_id)
     if (!existing) {
       slaMap.set(sla.order_id, {
