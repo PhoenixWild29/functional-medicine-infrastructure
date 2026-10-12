@@ -82,3 +82,30 @@ describe('the classes in the source', () => {
     expect(src).not.toMatch(/bg-amber-100 px-2 py-0\.5 text-\[10px\] font-medium text-amber-700/)
   })
 })
+
+// ── #227 run 3: selected-row and selected-card tints in Select Patient ──
+// text-muted-foreground on bg-primary/10 (the selected patient / provider
+// row) measured 4.11:1 light, 4.33:1 dark; on bg-primary/5 (the selected
+// patient card) 4.40:1 light. Secondary text there is now text-foreground.
+// The "No signature on file" note was amber-600 (3.19:1 on the card,
+// 2.77:1 on the selected tint); now amber-800.
+describe.each(['light', 'dark'] as const)('selected tints, %s', theme => {
+  const card = () => token('card', theme)
+  it.each([0.1, 0.05])('text-foreground on primary/%s over the card is at least 4.5:1', alpha => {
+    expect(contrast(token('foreground', theme), mix(token('primary', theme), card(), alpha))).toBeGreaterThanOrEqual(4.5)
+  })
+})
+
+it('light: muted text on the primary/10 and primary/5 tints was under 4.5:1 (what axe found)', () => {
+  const card = token('card', 'light')
+  expect(contrast(token('muted-foreground', 'light'), mix(token('primary', 'light'), card, 0.1))).toBeLessThan(4.5)
+  expect(contrast(token('muted-foreground', 'light'), mix(token('primary', 'light'), card, 0.05))).toBeLessThan(4.5)
+})
+
+it('"No signature on file": amber-800 on the selected tint and on the card is at least 4.5:1 (amber-600 was not)', () => {
+  const card = token('card', 'light')
+  const tint = mix(token('primary', 'light'), card, 0.1)
+  expect(contrast(hex('#92400e'), tint)).toBeGreaterThanOrEqual(4.5)
+  expect(contrast(hex('#92400e'), card)).toBeGreaterThanOrEqual(4.5)
+  expect(contrast(hex('#d97706'), card)).toBeLessThan(4.5)
+})
