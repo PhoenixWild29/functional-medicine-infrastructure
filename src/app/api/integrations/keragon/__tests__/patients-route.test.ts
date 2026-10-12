@@ -31,7 +31,7 @@ import * as connection from '../connection/route'
 import * as secret from '../connection/secret/route'
 
 const CLINIC = 'c1000000-0000-4000-8000-000000000001'
-const CONN = 'cn000000-0000-4000-8000-000000000001'
+const CONN = 'c0000000-0000-4000-8000-0000000000c1'
 const SECRET = 'kgn_whsec_route_test_secret_0123456789abcdef'
 const fixture = (name: string) => readFileSync(join(process.cwd(), 'src/lib/integrations/keragon/__fixtures__', name), 'utf8')
 
@@ -104,7 +104,7 @@ describe('authentication (no session involved)', () => {
   it('no connection header, an unknown or disconnected connection: 401', async () => {
     world()
     expect((await signed(fixture('patient-upsert-full.json'), { connection: null })).status).toBe(401)
-    expect((await signed(fixture('patient-upsert-full.json'), { connection: 'cn000000-0000-4000-8000-00000000dead' })).status).toBe(401)
+    expect((await signed(fixture('patient-upsert-full.json'), { connection: 'c0000000-0000-4000-8000-00000000dead' })).status).toBe(401)
     expect((await signed(fixture('patient-upsert-full.json'), { connection: 'not-a-uuid' })).status).toBe(401)
     world({ connected: false })
     db.rows('ehr_connections').push({ connection_id: CONN, clinic_id: CLINIC, provider: 'keragon', secret_vault_id: null, disconnected_at: '2026-10-12T00:00:00Z' })
@@ -128,6 +128,20 @@ describe('replay and payload', () => {
     expect(again.status).toBe(409)
     expect(db.rows('patients')).toHaveLength(1)
     expect(db.rows('ehr_sync_events')).toHaveLength(1)
+  })
+
+  it('a delivery that failed for a temporary reason (503) is processed when Keragon retries the same event id', async () => {
+    world()
+    const body = fixture('patient-upsert-full.json')
+    db.failOn('patients:insert')
+    const first = await signed(body)
+    expect(first.status).toBe(503)
+    expect(db.rows('ehr_sync_events')).toEqual([expect.objectContaining({ status: 'error', error_code: 'write_failed' })])
+    db.clearFailures()
+    const retry = await signed(body)
+    expect(retry.status).toBe(200)
+    expect(db.rows('ehr_sync_events')).toEqual([expect.objectContaining({ status: 'applied', error_code: null })])
+    expect(db.rows('patients')).toHaveLength(1)
   })
 
   it('an invalid payload: 422 with the fields named, logged as an error with no PHI', async () => {
@@ -168,7 +182,7 @@ describe('the clinic admin routes', () => {
     expect([...db.vault.values()].map(v => v.secret)).toEqual([body.secret])
     expect(JSON.stringify(db.rows('ehr_connections'))).not.toContain(body.secret)
 
-    const view = await (await connection.GET(req('GET'))).json() as Record<string, unknown>
+    const view = await (await connection.GET()).json() as Record<string, unknown>
     expect(JSON.stringify(view)).not.toContain(body.secret)
     expect(JSON.stringify(view)).not.toContain('secret_vault_id')
   })
@@ -199,7 +213,7 @@ describe('the clinic admin routes', () => {
     world()
     await signed(fixture('patient-upsert-full.json'))
     asUser('clinic_admin')
-    const view = await (await connection.GET(req('GET'))).json() as { connection: { status: string; lastSuccessAt: string | null }; events: Array<Record<string, unknown>> }
+    const view = await (await connection.GET()).json() as { connection: { status: string; lastSuccessAt: string | null }; events: Array<Record<string, unknown>> }
     expect(view.connection).toEqual(expect.objectContaining({ connectionId: CONN, status: 'connected', lastSuccessAt: expect.any(String) }))
     expect(view.events).toEqual([expect.objectContaining({ eventId: 'evt_demo_0001', status: 'applied' })])
   })
@@ -210,10 +224,10 @@ describe('the clinic admin routes', () => {
       asUser(role)
       expect((await secret.POST(req('POST'))).status).toBe(403)
       expect((await connection.DELETE(req('DELETE'))).status).toBe(403)
-      expect((await connection.GET(req('GET'))).status).toBe(403)
+      expect((await connection.GET()).status).toBe(403)
     }
     getUserMock.mockResolvedValue({ data: { user: null }, error: { message: 'no session' } })
-    expect((await connection.GET(req('GET'))).status).toBe(401)
+    expect((await connection.GET()).status).toBe(401)
     asUser('clinic_admin')
     expect((await secret.POST(req('POST', { 'sec-fetch-site': 'cross-site' }))).status).toBe(403)
     expect(db.vault.get('vault-1')!.secret).toBe(SECRET)
