@@ -111,12 +111,12 @@ describe('onboarding wizard', () => {
     expect(screen.getByLabelText('Title')).toBeInTheDocument()
   })
 
-  it('the BAA (v0.1 Markdown) renders as headings and lists, not raw Markdown', () => {
+  it('the BAA (v1.0 Markdown) renders as headings and lists, not raw Markdown', () => {
     render(<OnboardingWizard state={STATE} initialStep="baa" />)
     expect(screen.getByRole('heading', { name: '1. Definitions' })).toBeInTheDocument()
     expect(screen.getAllByRole('listitem').length).toBeGreaterThan(10)
     expect(screen.queryByText(/^## /)).not.toBeInTheDocument()
-    expect(screen.getByText(/version v0\.1/i)).toBeInTheDocument()
+    expect(screen.getByText(/version v1\.0/i)).toBeInTheDocument()
   })
 
   it('payouts: setup is not live, so the control is disabled and nothing mentions Stripe', () => {

@@ -34,7 +34,7 @@ beforeEach(() => {
     if (url === '/api/onboarding/agreements' && init?.method === 'POST') {
       server = {
         ...server, steps: { ...server.steps, baa: 'complete' },
-        acceptances: { baa: { version: 'v0.1.1', signerName: 'Lauren Perkins', signerTitle: 'Owner', acceptedAt: '2026-10-11T12:00:00Z' } },
+        acceptances: { baa: { version: 'v1.0', signerName: 'Lauren Perkins', signerTitle: 'Owner', acceptedAt: '2026-10-11T12:00:00Z' } },
       }
       return { ok: true, status: 201, json: async () => ({ ok: true }) }
     }

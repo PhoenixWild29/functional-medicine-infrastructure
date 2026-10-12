@@ -14,7 +14,7 @@ import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { LegalMarkdown } from '@/components/onboarding/legal-markdown'
 import { TextField, CheckboxField, FormAlert, BUTTON_PRIMARY } from '@/components/onboarding/fields'
-import { DRAFT_BANNER, type AgreementKey } from '@/lib/onboarding/agreement-texts'
+import type { AgreementKey } from '@/lib/onboarding/agreement-texts'
 
 type Errors = Record<string, string>
 
@@ -65,9 +65,6 @@ export function AcceptAgreementVersion({ agreement, title, version, text }: { ag
 
   return (
     <div className="space-y-4">
-      <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        <strong className="font-semibold">{DRAFT_BANNER}.</strong> This {title} is a draft template and will be replaced by the final version.
-      </p>
       <div
         tabIndex={0}
         role="region"

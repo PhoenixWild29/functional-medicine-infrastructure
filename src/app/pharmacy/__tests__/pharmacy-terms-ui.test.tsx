@@ -31,7 +31,7 @@ const reply = (body: unknown, status = 200) => ({ ok: status < 400, status, json
 
 const view = (key: 'baa' | 'pharmacy_terms', acceptance: WizardState['agreement']['acceptance'] = null) => {
   const a = pharmacyAgreement(key)
-  return { key: a.key, version: a.version, title: a.title, text: a.text, textSha256: a.textSha256, banner: a.banner, draft: true, acceptance }
+  return { key: a.key, version: a.version, title: a.title, text: a.text, textSha256: a.textSha256, acceptance }
 }
 
 function state(over: Partial<WizardState> = {}): WizardState {

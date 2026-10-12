@@ -7,7 +7,7 @@
  *     7 days; a link is /onboard/pharmacy/<token>.
  *   - Invite state from the row: accepted, revoked, expired or pending.
  *   - Each wizard step's input is validated and normalized server-side.
- *   - The BAA and terms are a DRAFT template, versioned, with a text hash
+ *   - The BAA and terms are final (v1.0), versioned, with a text hash
  *     the acceptance record stores.
  *   - The catalog CSV uses the ops upload format and validator.
  */
@@ -133,11 +133,12 @@ describe('the agreement', () => {
   // text (LF line endings).
   const shared = () => AGREEMENTS.baa
 
-  it('is the shared draft template, with the draft banner kept', () => {
+  it('is the shared final v1.0 text, with no draft flag or banner', () => {
     expect(AGREEMENT.version).toBe(shared().version)
+    expect(AGREEMENT.version).toBe('v1.0')
     expect(AGREEMENT.key).toBe('baa')
-    expect(AGREEMENT.draft).toBe(true)
-    expect(AGREEMENT.banner).toBe('Draft, pending legal review')
+    expect('draft' in AGREEMENT).toBe(false)
+    expect('banner' in AGREEMENT).toBe(false)
     expect(AGREEMENT.title).toBe('Business Associate Agreement')
     expect(agreementText()).toBe(shared().text)
     expect(agreementText()).toContain('# Business Associate Agreement')
