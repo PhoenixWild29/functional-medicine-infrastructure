@@ -353,3 +353,25 @@ describe('POST /api/checkout/payment-intent — WO-102 shipping', () => {
     expect(createArgs.application_fee_amount).toBe(9500 + 1425 + 2500)
   })
 })
+
+// ── Patient Intake PR 2 ──────────────────────────────────────
+// Nothing is charged while the patient has not finished intake. Signing is
+// refused first, so this is the second line of defence.
+describe('POST /api/checkout/payment-intent — patient intake not finished', () => {
+  it('409 INTAKE_PENDING, and Stripe is never called', async () => {
+    orderFetchMock.mockResolvedValue({ data: { ...VALID_ORDER, patients: { intake_status: 'pending' } }, error: null })
+    const res = await POST(makeRequest({ token: 'good.jwt' }))
+    expect(res.status).toBe(409)
+    expect((await res.json()).code).toBe('INTAKE_PENDING')
+    expect(stripeRetrieveMock).not.toHaveBeenCalled()
+    expect(stripeCreateMock).not.toHaveBeenCalled()
+    expect(stripeUpdateMock).not.toHaveBeenCalled()
+  })
+
+  it('a complete patient is not held', async () => {
+    orderFetchMock.mockResolvedValue({ data: { ...VALID_ORDER, patients: { intake_status: 'complete' } }, error: null })
+    stripeRetrieveMock.mockResolvedValue({ id: 'pi_existing', client_secret: 'cs', status: 'requires_payment_method' })
+    const res = await POST(makeRequest({ token: 'good.jwt' }))
+    expect(res.status).not.toBe(409)
+  })
+})

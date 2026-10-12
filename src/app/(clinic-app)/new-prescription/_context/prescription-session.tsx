@@ -48,6 +48,20 @@ export interface SessionPatient {
   // and must never be offered as "not recorded" with a Confirm NKDA
   // button that would overwrite a real list.
   allergiesLoadFailed?:  boolean | null
+  /**
+   * Patient Intake PR 2: 'pending' for a patient added with only a mobile
+   * number who has not finished intake (first_name, last_name and
+   * date_of_birth are '' until then). Their drafts can be saved but not
+   * signed. Absent on sessions saved before PR 2: treated as complete.
+   */
+  intake_status?: string | null
+  /**
+   * Patient Intake PR 2: an open "possible duplicate" flag (another patient
+   * this one may be), or null. Set by Select Patient, and when a pending
+   * patient's intake completes. Absent on older sessions: no flag shown in
+   * the header (the dashboard still shows it).
+   */
+  possible_duplicate?: { patientId: string; name: string } | null
 }
 
 export interface SessionProvider {

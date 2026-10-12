@@ -102,12 +102,16 @@ export type BatchProblemCode =
   | 'rx_details' | 'reprice' | 'below_cost'
   // Compliance C8: an ingredient that may not be compounded, or is not verified
   | 'not_compoundable' | 'compounding_status_unknown'
+  // clinic onboarding: ops has not approved (activated) the clinic
+  | 'clinic_not_approved'
   // Compliance C4: the signing provider's own credentials
   | PrescriberProblemCode
   // a check that could not run
   | 'orders_unavailable' | 'provider_unavailable' | 'provider_unlinked' | 'credentials_unavailable'
   | 'compliance_unavailable' | 'rules_unavailable' | 'price_unavailable'
   | 'allergy_unavailable' | 'interactions_unavailable'
+  // Patient Intake PR 2: the patient has not finished their details.
+  | 'intake_pending'
 
 export interface BatchProblem {
   /** The line it is about; null when it is about the batch as a whole. */
@@ -129,7 +133,7 @@ const PRESCRIBER: ReadonlySet<BatchProblemCode> = new Set(['prescriber_npi_unver
 /** One HTTP status for a set of problems: could-not-run beats everything. */
 export function problemsStatus(problems: ReadonlyArray<BatchProblem>): 503 | 403 | 404 | 409 | 422 {
   if (problems.some(p => UNAVAILABLE.has(p.code))) return 503
-  if (problems.some(p => p.code === 'not_signer' || p.code === 'provider_unlinked' || PRESCRIBER.has(p.code))) return 403
+  if (problems.some(p => p.code === 'not_signer' || p.code === 'provider_unlinked' || p.code === 'clinic_not_approved' || PRESCRIBER.has(p.code))) return 403
   if (problems.some(p => p.code === 'not_found')) return 404
   if (problems.some(p => p.code === 'not_draft')) return 409
   return 422
@@ -181,11 +185,18 @@ interface OrderRow {
 
 const ORDER_SELECT = `order_id, status, patient_id, provider_id, catalog_item_id, formulation_id, pharmacy_id,
   retail_price_snapshot, wholesale_price_snapshot, shipping_state_snapshot, medication_snapshot,
-  package_id, package_count, ${RX_DETAIL_COLUMN_LIST}`
+  package_id, package_count, ${RX_DETAIL_COLUMN_LIST},
+  patients ( intake_status )`
 
 function snap(row: { medication_snapshot: Json | null }): Record<string, unknown> {
   const s = row.medication_snapshot
   return s && typeof s === 'object' && !Array.isArray(s) ? s as Record<string, unknown> : {}
+}
+
+function intakeStatusOf(row: { [key: string]: unknown }): string | null {
+  const embed = row['patients'] as { intake_status?: unknown } | Array<{ intake_status?: unknown }> | null | undefined
+  const p = Array.isArray(embed) ? embed[0] : embed
+  return typeof p?.intake_status === 'string' ? p.intake_status : null
 }
 
 function medicationNameOf(row: { medication_snapshot: Json | null }): string {
@@ -302,7 +313,7 @@ export async function checkBatch(
   const formIds     = [...new Set(ordered.map(r => r.formulation_id).filter((id): id is string => !!id))]
 
   const [clinicRes, pharmacyRes, licenseRes, catalogRes, rulesRes] = await Promise.all([
-    supabase.from('clinics').select('stripe_connect_status').eq('clinic_id', clinicId).maybeSingle(),
+    supabase.from('clinics').select('stripe_connect_status, is_active, onboarding_status').eq('clinic_id', clinicId).maybeSingle(),
     pharmacyIds.length
       ? supabase.from('pharmacies').select('pharmacy_id, name, integration_tier, is_active, pharmacy_status, deleted_at, facility_type').in('pharmacy_id', pharmacyIds)
       : Promise.resolve({ data: [], error: null }),
@@ -338,6 +349,12 @@ export async function checkBatch(
 
   if (signer && !/^\d{10}$/.test(signer.npi_number ?? '')) {
     add(null, 'npi', 'Your NPI on file is not valid, so nothing can be signed. Contact your administrator.')
+  }
+  // Clinic onboarding: a clinic signs and sends only once ops has approved
+  // it (onboarding_status 'approved') and it is active. Fails closed: a
+  // clinic row that says neither is refused.
+  if (clinicRes.data?.onboarding_status !== 'approved' || clinicRes.data?.is_active !== true) {
+    add(null, 'clinic_not_approved', 'Your clinic has not been approved by CompoundIQ yet, so nothing can be signed or sent. Finish onboarding, or contact CompoundIQ.')
   }
   if (clinicRes.data?.stripe_connect_status !== 'ACTIVE') {
     add(null, 'stripe', "The clinic's Stripe account is not active, so no payment link can be sent.")
@@ -414,6 +431,13 @@ export async function checkBatch(
     const name = medicationNameOf(r)
     const pharmacy = r.pharmacy_id ? pharmacies.get(r.pharmacy_id) : undefined
     const before = problems.length
+
+    // Patient Intake PR 2: a patient added with only a mobile number is
+    // 'pending' until they finish their details. Their drafts are held:
+    // nothing is signed, grouped or texted until then.
+    if (intakeStatusOf(r) === 'pending') {
+      add(r, 'intake_pending', `${name}: the patient has not finished their details yet. Nothing was signed; resend the intake link or wait for them to finish.`)
+    }
 
     // C5: an unexpired, live license in the shipping state, covering
     // sterile compounding (or a 503B facility) for a sterile product.

@@ -128,8 +128,10 @@ export function SidebarNav({ userEmail, userRole, showPractice = false }: Props)
         onClick={() => setMobileOpen(false)}
         className={cn(
           'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-[var(--duration-fast)]',
+          // Active: text-foreground on the primary tint (16.7:1 light,
+          // 13.4:1 dark). text-primary on it was under 4.5:1 (WCAG 1.4.3).
           isActive
-            ? 'bg-primary/10 text-primary'
+            ? 'bg-primary/10 text-foreground'
             : 'text-muted-foreground hover:bg-muted hover:text-foreground',
           collapsed && 'justify-center px-2',
         )}

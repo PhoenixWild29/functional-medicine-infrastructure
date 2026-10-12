@@ -380,6 +380,20 @@ export type Database = {
       }
       clinics: {
         Row: {
+          address_line1: string | null
+          address_line2: string | null
+          city: string | null
+          dba_name: string | null
+          legal_name: string | null
+          onboarding_review_note: string | null
+          onboarding_reviewed_at: string | null
+          onboarding_reviewed_by: string | null
+          onboarding_status: string
+          onboarding_submitted_at: string | null
+          postal_code: string | null
+          practice_npi: string | null
+          state: string | null
+          tax_id_last4: string | null
           absorb_shipping: boolean
           clinic_id: string
           contact_email: string | null
@@ -397,6 +411,20 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          dba_name?: string | null
+          legal_name?: string | null
+          onboarding_review_note?: string | null
+          onboarding_reviewed_at?: string | null
+          onboarding_reviewed_by?: string | null
+          onboarding_status?: string
+          onboarding_submitted_at?: string | null
+          postal_code?: string | null
+          practice_npi?: string | null
+          state?: string | null
+          tax_id_last4?: string | null
           absorb_shipping?: boolean
           clinic_id?: string
           contact_email?: string | null
@@ -414,6 +442,20 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          dba_name?: string | null
+          legal_name?: string | null
+          onboarding_review_note?: string | null
+          onboarding_reviewed_at?: string | null
+          onboarding_reviewed_by?: string | null
+          onboarding_status?: string
+          onboarding_submitted_at?: string | null
+          postal_code?: string | null
+          practice_npi?: string | null
+          state?: string | null
+          tax_id_last4?: string | null
           absorb_shipping?: boolean
           clinic_id?: string
           contact_email?: string | null
@@ -429,6 +471,153 @@ export type Database = {
           stripe_connect_account_id?: string | null
           stripe_connect_status?: Database["public"]["Enums"]["stripe_connect_status_enum"]
           updated_at?: string
+        }
+        Relationships: []
+      }
+      agreement_acceptances: {
+        Row: {
+          acceptance_id: string
+          accepted_at: string
+          agreement: string
+          clinic_id: string
+          signer_name: string
+          signer_title: string
+          template_version: string
+          text_sha256: string
+          user_id: string
+        }
+        Insert: {
+          acceptance_id?: string
+          accepted_at?: string
+          agreement: string
+          clinic_id: string
+          signer_name: string
+          signer_title: string
+          template_version: string
+          text_sha256: string
+          user_id: string
+        }
+        Update: {
+          acceptance_id?: string
+          accepted_at?: string
+          agreement?: string
+          clinic_id?: string
+          signer_name?: string
+          signer_title?: string
+          template_version?: string
+          text_sha256?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      clinic_onboarding_events: {
+        Row: {
+          actor_role: string | null
+          actor_user_id: string | null
+          clinic_id: string
+          created_at: string
+          event: string
+          event_id: string
+          invite_id: string | null
+          note: string | null
+        }
+        Insert: {
+          actor_role?: string | null
+          actor_user_id?: string | null
+          clinic_id: string
+          created_at?: string
+          event: string
+          event_id?: string
+          invite_id?: string | null
+          note?: string | null
+        }
+        Update: {
+          actor_role?: string | null
+          actor_user_id?: string | null
+          clinic_id?: string
+          created_at?: string
+          event?: string
+          event_id?: string
+          invite_id?: string | null
+          note?: string | null
+        }
+        Relationships: []
+      }
+      clinic_onboarding_steps: {
+        Row: {
+          clinic_id: string
+          status: string
+          step: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          clinic_id: string
+          status?: string
+          step: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          clinic_id?: string
+          status?: string
+          step?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      onboarding_invites: {
+        Row: {
+          accepted_at: string | null
+          accepted_user_id: string | null
+          clinic_id: string
+          created_at: string
+          created_by: string
+          email: string
+          expires_at: string
+          invite_id: string
+          kind: string
+          last_sent_at: string
+          provider_id: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          sent_count: number
+          token_hash: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_user_id?: string | null
+          clinic_id: string
+          created_at?: string
+          created_by: string
+          email: string
+          expires_at: string
+          invite_id?: string
+          kind: string
+          last_sent_at?: string
+          provider_id?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          sent_count?: number
+          token_hash: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_user_id?: string | null
+          clinic_id?: string
+          created_at?: string
+          created_by?: string
+          email?: string
+          expires_at?: string
+          invite_id?: string
+          kind?: string
+          last_sent_at?: string
+          provider_id?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          sent_count?: number
+          token_hash?: string
         }
         Relationships: []
       }
@@ -1568,6 +1757,61 @@ export type Database = {
           },
         ]
       }
+      // Patient Intake PR 2 (20261015000001): hand-extended
+      patient_intake_links: {
+        Row: {
+          clinic_id: string
+          created_at: string
+          created_by: string | null
+          expires_at: string
+          link_id: string
+          patient_id: string
+          revoked_at: string | null
+          sms_status: string
+          token_hash: string
+          used_at: string | null
+        }
+        Insert: {
+          clinic_id: string
+          created_at?: string
+          created_by?: string | null
+          expires_at: string
+          link_id?: string
+          patient_id: string
+          revoked_at?: string | null
+          sms_status?: string
+          token_hash: string
+          used_at?: string | null
+        }
+        Update: {
+          clinic_id?: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          link_id?: string
+          patient_id?: string
+          revoked_at?: string | null
+          sms_status?: string
+          token_hash?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_intake_links_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+          {
+            foreignKeyName: "patient_intake_links_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["patient_id"]
+          },
+        ]
+      }
       patient_protocol_phases: {
         Row: {
           advanced_by: string | null
@@ -1639,12 +1883,12 @@ export type Database = {
           city: string | null
           clinic_id: string
           created_at: string
-          date_of_birth: string
+          date_of_birth: string | null
           deleted_at: string | null
           email: string | null
-          first_name: string
+          first_name: string | null
           is_active: boolean
-          last_name: string
+          last_name: string | null
           nkda: boolean
           patient_id: string
           phone: string
@@ -1658,6 +1902,16 @@ export type Database = {
           sms_consent_text_version: string | null
           source: string
           intake_status: string
+          // Patient Intake PR 2 (20261015000001): hand-extended
+          current_medications: string | null
+          intake_completed_at: string | null
+          privacy_notice_ack_at: string | null
+          privacy_notice_version: string | null
+          possible_duplicate_of: string | null
+          possible_duplicate_matched_on: string | null
+          possible_duplicate_flagged_at: string | null
+          possible_duplicate_dismissed_at: string | null
+          possible_duplicate_dismissed_by: string | null
           state: string | null
           updated_at: string
           zip: string | null
@@ -1671,12 +1925,12 @@ export type Database = {
           city?: string | null
           clinic_id: string
           created_at?: string
-          date_of_birth: string
+          date_of_birth?: string | null
           deleted_at?: string | null
           email?: string | null
-          first_name: string
+          first_name?: string | null
           is_active?: boolean
-          last_name: string
+          last_name?: string | null
           nkda?: boolean
           patient_id?: string
           phone: string
@@ -1690,6 +1944,15 @@ export type Database = {
           sms_consent_text_version?: string | null
           source?: string
           intake_status?: string
+          current_medications?: string | null
+          intake_completed_at?: string | null
+          privacy_notice_ack_at?: string | null
+          privacy_notice_version?: string | null
+          possible_duplicate_of?: string | null
+          possible_duplicate_matched_on?: string | null
+          possible_duplicate_flagged_at?: string | null
+          possible_duplicate_dismissed_at?: string | null
+          possible_duplicate_dismissed_by?: string | null
           state?: string | null
           updated_at?: string
           zip?: string | null
@@ -1703,12 +1966,12 @@ export type Database = {
           city?: string | null
           clinic_id?: string
           created_at?: string
-          date_of_birth?: string
+          date_of_birth?: string | null
           deleted_at?: string | null
           email?: string | null
-          first_name?: string
+          first_name?: string | null
           is_active?: boolean
-          last_name?: string
+          last_name?: string | null
           nkda?: boolean
           patient_id?: string
           phone?: string
@@ -1722,6 +1985,15 @@ export type Database = {
           sms_consent_text_version?: string | null
           source?: string
           intake_status?: string
+          current_medications?: string | null
+          intake_completed_at?: string | null
+          privacy_notice_ack_at?: string | null
+          privacy_notice_version?: string | null
+          possible_duplicate_of?: string | null
+          possible_duplicate_matched_on?: string | null
+          possible_duplicate_flagged_at?: string | null
+          possible_duplicate_dismissed_at?: string | null
+          possible_duplicate_dismissed_by?: string | null
           state?: string | null
           updated_at?: string
           zip?: string | null
@@ -1858,6 +2130,8 @@ export type Database = {
           catalog_last_synced_at: string | null
           city: string | null
           created_at: string
+          dba_name: string | null
+          dea_number: string | null
           deleted_at: string | null
           email: string | null
           facility_type: string | null
@@ -1865,13 +2139,21 @@ export type Database = {
           free_shipping_threshold: number | null
           integration_tier: Database["public"]["Enums"]["integration_tier_enum"]
           is_active: boolean
+          legal_name: string | null
           name: string
+          ncpdp_id: string | null
+          npi: string | null
+          onboarding_status: string | null
+          order_cutoff_local: string | null
           pharmacy_id: string
           pharmacy_status: string
           phone: string | null
           portal_config_id: string | null
+          ship_carriers: string[]
+          ship_to_states: string[]
           shipping_fee_cold_chain: number
           shipping_fee_standard: number
+          ships_cold_chain: boolean | null
           slug: string
           state: string | null
           supports_real_time_status: boolean
@@ -1890,6 +2172,8 @@ export type Database = {
           catalog_last_synced_at?: string | null
           city?: string | null
           created_at?: string
+          dba_name?: string | null
+          dea_number?: string | null
           deleted_at?: string | null
           email?: string | null
           facility_type?: string | null
@@ -1897,13 +2181,21 @@ export type Database = {
           free_shipping_threshold?: number | null
           integration_tier?: Database["public"]["Enums"]["integration_tier_enum"]
           is_active?: boolean
+          legal_name?: string | null
           name: string
+          ncpdp_id?: string | null
+          npi?: string | null
+          onboarding_status?: string | null
+          order_cutoff_local?: string | null
           pharmacy_id?: string
           pharmacy_status?: string
           phone?: string | null
           portal_config_id?: string | null
+          ship_carriers?: string[]
+          ship_to_states?: string[]
           shipping_fee_cold_chain?: number
           shipping_fee_standard?: number
+          ships_cold_chain?: boolean | null
           slug: string
           state?: string | null
           supports_real_time_status?: boolean
@@ -1922,6 +2214,8 @@ export type Database = {
           catalog_last_synced_at?: string | null
           city?: string | null
           created_at?: string
+          dba_name?: string | null
+          dea_number?: string | null
           deleted_at?: string | null
           email?: string | null
           facility_type?: string | null
@@ -1929,13 +2223,21 @@ export type Database = {
           free_shipping_threshold?: number | null
           integration_tier?: Database["public"]["Enums"]["integration_tier_enum"]
           is_active?: boolean
+          legal_name?: string | null
           name?: string
+          ncpdp_id?: string | null
+          npi?: string | null
+          onboarding_status?: string | null
+          order_cutoff_local?: string | null
           pharmacy_id?: string
           pharmacy_status?: string
           phone?: string | null
           portal_config_id?: string | null
+          ship_carriers?: string[]
+          ship_to_states?: string[]
           shipping_fee_cold_chain?: number
           shipping_fee_standard?: number
+          ships_cold_chain?: boolean | null
           slug?: string
           state?: string | null
           supports_real_time_status?: boolean
@@ -1961,6 +2263,45 @@ export type Database = {
             referencedColumns: ["config_id"]
           },
         ]
+      }
+      pharmacy_agreement_acceptances: {
+        Row: {
+          acceptance_id: string
+          accepted_at: string
+          application_id: string | null
+          pharmacy_id: string
+          signer_name: string
+          signer_title: string
+          template_key: string
+          template_version: string
+          text_sha256: string
+          user_id: string
+        }
+        Insert: {
+          acceptance_id?: string
+          accepted_at?: string
+          application_id?: string | null
+          pharmacy_id: string
+          signer_name: string
+          signer_title: string
+          template_key: string
+          template_version: string
+          text_sha256: string
+          user_id: string
+        }
+        Update: {
+          acceptance_id?: string
+          accepted_at?: string
+          application_id?: string | null
+          pharmacy_id?: string
+          signer_name?: string
+          signer_title?: string
+          template_key?: string
+          template_version?: string
+          text_sha256?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       pharmacy_api_configs: {
         Row: {
@@ -2158,6 +2499,168 @@ export type Database = {
           },
         ]
       }
+      pharmacy_invites: {
+        Row: {
+          accepted_at: string | null
+          accepted_user_id: string | null
+          admin_email: string
+          created_at: string
+          created_by: string
+          expires_at: string
+          invite_id: string
+          last_sent_at: string
+          pharmacy_id: string | null
+          pharmacy_name: string
+          revoked_at: string | null
+          revoked_by: string | null
+          send_count: number
+          token_hash: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_user_id?: string | null
+          admin_email: string
+          created_at?: string
+          created_by: string
+          expires_at: string
+          invite_id?: string
+          last_sent_at?: string
+          pharmacy_id?: string | null
+          pharmacy_name: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          send_count?: number
+          token_hash: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_user_id?: string | null
+          admin_email?: string
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          invite_id?: string
+          last_sent_at?: string
+          pharmacy_id?: string | null
+          pharmacy_name?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          send_count?: number
+          token_hash?: string
+        }
+        Relationships: []
+      }
+      pharmacy_onboarding_applications: {
+        Row: {
+          adapter_configured_at: string | null
+          adapter_configured_by: string | null
+          admin_user_id: string
+          application_id: string
+          approved_at: string | null
+          catalog_choice: string | null
+          catalog_row_count: number | null
+          catalog_rows: Json | null
+          catalog_warnings: Json | null
+          created_at: string
+          invite_id: string | null
+          ordering_details: Json
+          ordering_method: string | null
+          pharmacy_id: string
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          steps_completed: string[]
+          submitted_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          adapter_configured_at?: string | null
+          adapter_configured_by?: string | null
+          admin_user_id: string
+          application_id?: string
+          approved_at?: string | null
+          catalog_choice?: string | null
+          catalog_row_count?: number | null
+          catalog_rows?: Json | null
+          catalog_warnings?: Json | null
+          created_at?: string
+          invite_id?: string | null
+          ordering_details?: Json
+          ordering_method?: string | null
+          pharmacy_id: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          steps_completed?: string[]
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          adapter_configured_at?: string | null
+          adapter_configured_by?: string | null
+          admin_user_id?: string
+          application_id?: string
+          approved_at?: string | null
+          catalog_choice?: string | null
+          catalog_row_count?: number | null
+          catalog_rows?: Json | null
+          catalog_warnings?: Json | null
+          created_at?: string
+          invite_id?: string | null
+          ordering_details?: Json
+          ordering_method?: string | null
+          pharmacy_id?: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          steps_completed?: string[]
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      pharmacy_onboarding_events: {
+        Row: {
+          action: string
+          actor_role: string
+          actor_user_id: string | null
+          application_id: string | null
+          detail: Json
+          event_id: string
+          invite_id: string | null
+          occurred_at: string
+          pharmacy_id: string | null
+          state_code: string | null
+        }
+        Insert: {
+          action: string
+          actor_role: string
+          actor_user_id?: string | null
+          application_id?: string | null
+          detail?: Json
+          event_id?: string
+          invite_id?: string | null
+          occurred_at?: string
+          pharmacy_id?: string | null
+          state_code?: string | null
+        }
+        Update: {
+          action?: string
+          actor_role?: string
+          actor_user_id?: string | null
+          application_id?: string | null
+          detail?: Json
+          event_id?: string
+          invite_id?: string | null
+          occurred_at?: string
+          pharmacy_id?: string | null
+          state_code?: string | null
+        }
+        Relationships: []
+      }
       pharmacy_payables: {
         Row: {
           amount_cents: number
@@ -2311,6 +2814,7 @@ export type Database = {
       pharmacy_state_licenses: {
         Row: {
           deleted_at: string | null
+          document_path: string | null
           expiration_date: string
           is_active: boolean
           license_number: string
@@ -2318,9 +2822,14 @@ export type Database = {
           pharmacy_id: string
           state_code: string
           sterile_compounding: boolean | null
+          verification_note: string | null
+          verification_status: string
+          verified_at: string | null
+          verified_by: string | null
         }
         Insert: {
           deleted_at?: string | null
+          document_path?: string | null
           expiration_date: string
           is_active?: boolean
           license_number: string
@@ -2328,9 +2837,14 @@ export type Database = {
           pharmacy_id: string
           state_code: string
           sterile_compounding?: boolean | null
+          verification_note?: string | null
+          verification_status?: string
+          verified_at?: string | null
+          verified_by?: string | null
         }
         Update: {
           deleted_at?: string | null
+          document_path?: string | null
           expiration_date?: string
           is_active?: boolean
           license_number?: string
@@ -2338,6 +2852,10 @@ export type Database = {
           pharmacy_id?: string
           state_code?: string
           sterile_compounding?: boolean | null
+          verification_note?: string | null
+          verification_status?: string
+          verified_at?: string | null
+          verified_by?: string | null
         }
         Relationships: [
           {

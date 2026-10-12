@@ -48,6 +48,8 @@ export const NEVER_RETENTION_TARGETS = [
   'legal_holds',           // what retention must not touch
   'order_status_history',  // part of the order record
   'patients',              // the clinic's record, kept per the BAA
+  'agreement_acceptances',    // signed BAA / terms records, append-only by trigger
+  'clinic_onboarding_events', // onboarding audit log (ops approvals), append-only by trigger
   'ledger_entries',        // the payments ledger: financial record, append-only by trigger
   'pharmacy_payables',     // what each pharmacy is owed and was paid
   'payable_events',        // the audit log of payable changes, append-only by trigger

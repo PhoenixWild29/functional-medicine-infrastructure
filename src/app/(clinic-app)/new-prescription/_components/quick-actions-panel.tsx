@@ -42,6 +42,7 @@
 // nothing to review. Loads are idempotent: lines already present in
 // the session are never added twice.
 
+import { patientName } from '@/lib/patients/display'
 import { useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
@@ -164,6 +165,8 @@ interface ProtocolItem {
   dea_schedule?: number | null
   /** Compliance C8: why this item cannot be ordered (from /api/protocols), or null. */
   compounding_block?: { code: string; message: string } | null
+  /** C8, owner decision: a non-blocking warning (pending FDA evaluation), or null. */
+  compounding_warning?: string | null
   formulations: {
     formulation_id: string
     name: string
@@ -622,7 +625,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
   // in a fixed order, A–Z inside each group.
   const favoriteGroups = groupFavorites(
     visibleFavorites,
-    session.patient ? { patientId: session.patient.patient_id, name: `${session.patient.first_name} ${session.patient.last_name}` } : null,
+    session.patient ? { patientId: session.patient.patient_id, name: patientName(session.patient) } : null,
   )
   // A Recent item is already a favorite when a practice card for that
   // formulation + pharmacy carries its dose.
@@ -775,7 +778,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
                     key={fav.favorite_id}
                     favorite={fav}
                     patientState={patientState}
-                    patient={session.patient ? { patientId: session.patient.patient_id, name: `${session.patient.first_name} ${session.patient.last_name}` } : null}
+                    patient={session.patient ? { patientId: session.patient.patient_id, name: patientName(session.patient) } : null}
                     onCancel={() => setEditingFav(null)}
                     onSaved={async () => {
                       await queryClient.invalidateQueries({ queryKey: ['provider-favorites'] })
@@ -928,6 +931,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
                   {protocolDetail.items.map((item, i) => {
                     const itemControlled = isControlledSchedule(item.dea_schedule)
                     const itemNotCompoundable = !itemControlled && !!item.compounding_block
+                    const itemPendingEvaluation = !itemControlled && !itemNotCompoundable && !!item.compounding_warning
                     const itemUnlicensed = !itemControlled && item.pharmacy_licensed === false
                     const itemUnavailable =
                       !itemControlled && !itemUnlicensed && (!item.formulation_active || item.wholesale_price === null)
@@ -964,6 +968,14 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
                                 title={item.compounding_block?.message}
                               >
                                 {NOT_COMPOUNDABLE_LABEL}: will be excluded
+                              </span>
+                            )}
+                            {itemPendingEvaluation && (
+                              <span
+                                className="mt-0.5 block text-[10px] font-medium text-amber-700"
+                                data-testid={`protocol-item-pending-evaluation-${item.item_id}`}
+                              >
+                                {item.compounding_warning}
                               </span>
                             )}
                           </p>

@@ -21,6 +21,7 @@
 //   Step 2 — /new-prescription/margin    (margin builder — add to session)
 //   Step 3 — /new-prescription/review    (batch review — sign all + send)
 
+import { POSSIBLE_DUPLICATE_COLUMNS, loadDuplicateNames, openDuplicateIds } from '@/lib/patients/duplicate-names'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provider'
@@ -62,11 +63,12 @@ export default async function NewPrescriptionPage() {
     supabase
       .from('patients')
       // WO-97: allergies / nkda drive the chip on each patient card.
-      .select('patient_id, first_name, last_name, date_of_birth, phone, state, sms_opt_in, allergies, nkda, allergies_updated_at')
+      .select(`patient_id, first_name, last_name, date_of_birth, phone, state, sms_opt_in, allergies, nkda, allergies_updated_at, intake_status, ${POSSIBLE_DUPLICATE_COLUMNS}`)
       .eq('clinic_id', clinicId)
       .eq('is_active', true)
       .is('deleted_at', null)
-      .order('last_name', { ascending: true }),
+      // Patient Intake PR 2: patients awaiting details (no name yet) first.
+      .order('last_name', { ascending: true, nullsFirst: true }),
     providerIsSelf
       ? Promise.resolve({ data: [] })
       : supabase
@@ -94,7 +96,14 @@ export default async function NewPrescriptionPage() {
     )
   }
 
-  const patients  = patientsResult.data ?? []
+  // Patient Intake PR 2: duplicate flags' names, one separate read (never
+  // a self-embed on patients).
+  const patientRows = patientsResult.data ?? []
+  const duplicateNames = await loadDuplicateNames(supabase, clinicId, openDuplicateIds(patientRows))
+  const patients = patientRows.map(p => ({
+    ...p,
+    duplicate: p.possible_duplicate_of ? duplicateNames.get(p.possible_duplicate_of) ?? null : null,
+  }))
   const providers = providersResult.data ?? []
   const WIZARD_STEPS = getWizardSteps({ providerIsSelf })
 

@@ -32,6 +32,7 @@ import {
 import {
   INGREDIENT_COMPOUNDING_COLUMNS,
   compoundingBlock,
+  compoundingWarning,
   ingredientFromRow,
   requiresClinicalDifference,
   shortageReasonAllowed,
@@ -196,6 +197,7 @@ function resolveDefaults(row: FormulationRow, ingredientRows: IngredientRow[]): 
     clinical_difference_options:  clinicalDifferenceOptions(options, shortageAllowed),
     shortage_reason_allowed:      shortageAllowed,
     compounding_block:            compoundingBlock(row.name ?? 'This product', ingredients),
+    compounding_warning:          compoundingWarning(ingredients),
   }
 }
 

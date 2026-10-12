@@ -69,6 +69,7 @@ const TITLES = {
   stripe_dispute_lost:         '🔴 Stripe dispute lost',
   status_history_write_failed: '🔴 Order status change has no audit row',
   submissions_paused:          '⏸️ Pharmacy submissions are turned off: paid orders are waiting',
+  order_stuck:                 '⚠️ Order stuck: needs ops',
   queued_alert:                '⚠️ Ops alert',
   daily_digest:                '📊 CompoundIQ daily digest',
   reconciliation_mismatch:     '🔴 Stripe reconciliation: the ledger and Stripe disagree',
@@ -155,6 +156,8 @@ const NOTES = {
   submissions_off:      'Nothing is sent to any pharmacy until PHARMACY_SUBMISSIONS_ENABLED=true.',
   free_text_withheld:   'Pharmacy and patient text is never sent to Slack. Open the order in ops for the details.',
   reconciliation_review: 'Record-only: no money was moved. The full list is in reconciliation_runs; compare it with the Stripe dashboard.',
+  stuck_no_auto_action: 'Nothing was changed automatically. Open the order in ops to resubmit, reroute or refund.',
+  unknown_tier_no_auto_fax: 'Integration tier unknown: not faxed automatically, as nothing says this pharmacy takes a fax. Check its setup, then resolve the order by hand.',
   portal_no_auto_fax:   'Portal order: not faxed automatically, as the portal submission may already have reached the pharmacy. Check the portal, then resolve the order by hand.',
 } as const
 export type OpsAlertNote = keyof typeof NOTES

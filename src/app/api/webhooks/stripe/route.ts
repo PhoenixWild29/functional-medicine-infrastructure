@@ -156,6 +156,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           recordDisputeCreated: dispute => handleDisputeCreated(dispute, event.id),
         })
         break
+      // Payment Flow v1.1 (each idempotent on the Stripe event / object id).
+      case 'payment_intent.payment_failed':
+        await handlePaymentFailed(event.data.object as Stripe.PaymentIntent, event.id, {
+          supabase: createServiceClient(), sendSlackAlert, buildStripePaymentAlert,
+        })
+        break
+      case 'charge.refunded':
+        await handleChargeRefunded(event.data.object as Stripe.Charge, event.id, {
+          supabase:             createServiceClient(),
+          stripe:               createStripeClient(),
+          casTransition,
+          sendSlackAlert,
+          buildStripePaymentAlert,
+          recordRefundInLedger,
+        })
+        break
+      case 'charge.dispute.updated':
+      case 'charge.dispute.closed':
+        await handleDisputeStatusChanged(event.data.object as Stripe.Dispute, event.type, event.id, {
+          supabase: createServiceClient(), sendSlackAlert, buildStripePaymentAlert,
+          recordDisputeCreated: dispute => handleDisputeCreated(dispute, event.id),
+        })
+        break
       // WO-88 grandfather: `transfer.failed` IS a real Stripe webhook event per
       // https://docs.stripe.com/api/events/types#event_types-transfer.failed
       // but the @types/stripe Event union in v14 doesn't include it. Cast is

@@ -77,14 +77,14 @@ function ingredient(name: string, over: Record<string, unknown> = {}) {
   }
 }
 
-function world(orders: Array<Record<string, unknown>>) {
+function world(orders: Array<Record<string, unknown>>, clinicOver: Record<string, unknown> = {}) {
   return fakeDb({
     orders,
     providers: [
       { provider_id: CHEN, user_id: USER_CHEN, clinic_id: CLINIC, is_active: true, deleted_at: null, first_name: 'Sarah', last_name: 'Chen', npi_number: '1234567890' },
       { provider_id: PATEL, user_id: 'u-patel', clinic_id: CLINIC, is_active: true, deleted_at: null, first_name: 'Raj', last_name: 'Patel', npi_number: '1987654321' },
     ],
-    clinics: [{ clinic_id: CLINIC, stripe_connect_status: 'ACTIVE' }],
+    clinics: [{ clinic_id: CLINIC, stripe_connect_status: 'ACTIVE', is_active: true, onboarding_status: 'approved', ...clinicOver }],
     pharmacies: [
       { pharmacy_id: 'ph-strive', name: 'Strive', integration_tier: 'TIER_2_PORTAL', is_active: true, pharmacy_status: 'ACTIVE', deleted_at: null },
       { pharmacy_id: 'ph-fax', name: 'Fax Rx', integration_tier: 'TIER_4_FAX', is_active: true, pharmacy_status: 'ACTIVE', deleted_at: null },
@@ -108,8 +108,9 @@ function world(orders: Array<Record<string, unknown>>) {
       { formulation_id: 'f-nad', requires_clinical_difference: false, salt_forms: { ingredients: ingredient('NAD+', { compounding_status: 'unverified', compounding_status_source: null, compounding_status_reviewed_at: null }) } },
       { formulation_id: 'f-ltx', requires_clinical_difference: false, salt_forms: { ingredients: ingredient('Naltrexone', { commercial_equivalent: true }) } },
       { formulation_id: 'f-sema-short', requires_clinical_difference: true, salt_forms: { ingredients: ingredient('Semaglutide', { commercial_equivalent: true, on_fda_shortage: true }) } },
+      { formulation_id: 'f-cat2', requires_clinical_difference: false, salt_forms: { ingredients: ingredient('Peptide X', { compounding_status: 'category_2' }) } },
       { formulation_id: 'f-combo', requires_clinical_difference: false, salt_forms: null, formulation_ingredients: [
-        { ingredients: ingredient('Cyanocobalamin') }, { ingredients: ingredient('TB-500', { compounding_status: 'pending_evaluation' }) },
+        { ingredients: ingredient('Cyanocobalamin') }, { ingredients: ingredient('Peptide X', { compounding_status: 'category_2' }) },
       ] },
     ],
     patients: [
@@ -755,6 +756,38 @@ describe('prescriber verification and controlled substances together', () => {
   })
 })
 
+// ── Clinic onboarding ────────────────────────────────────────
+//
+// A clinic is set up through onboarding and approved by ops. Until then
+// it cannot sign or send anything, whatever else is in order: the check
+// runs on the server, in the same preflight and signing path.
+
+describe('a clinic that ops has not approved cannot sign or send', () => {
+  const codes = (problems: ReadonlyArray<{ code: string }> | undefined) => (problems ?? []).map(p => p.code)
+
+  it.each(['invited', 'in_progress', 'submitted', 'changes_requested'])('onboarding %s: refused with 403, nothing signed', async status => {
+    todayCents.set('f-plain|ph-strive', 10000)
+    const db = world([draft(1)], { onboarding_status: status, is_active: false })
+    const res = await sign(db, [id(1)])
+    if (res.ok) throw new Error('expected a refusal')
+    expect(res.status).toBe(403)
+    expect(codes(res.problems)).toContain('clinic_not_approved')
+    expect(db.writes).toHaveLength(0)
+  })
+
+  it('an inactive clinic is refused even if its status says approved', async () => {
+    todayCents.set('f-plain|ph-strive', 10000)
+    const db = world([draft(1)], { is_active: false })
+    const check = await checkBatch(db.client, { clinicId: CLINIC, userId: USER_CHEN, orderIds: [id(1)], atSigning: false })
+    expect(codes(check.problems)).toContain('clinic_not_approved')
+  })
+
+  it('an approved, active clinic signs as before', async () => {
+    todayCents.set('f-plain|ph-strive', 10000)
+    expect(await sign(world([draft(1)]), [id(1)])).toMatchObject({ ok: true })
+  })
+})
+
 // ── Compliance C8: compounding status and the documented reason ──
 describe('C8: what may be compounded, and the documented reason', () => {
   const REASON = 'Patient requires a dose or strength not commercially available'
@@ -764,15 +797,26 @@ describe('C8: what may be compounded, and the documented reason', () => {
   const codes = (problems: ReadonlyArray<{ code: string }> | undefined) => (problems ?? []).map(p => p.code)
 
   it('an ingredient that may not be compounded: refused (422), naming it and why; nothing signed', async () => {
-    const db = world([draft(1), line(2, 'f-bpc')])
+    const db = world([draft(1), line(2, 'f-cat2')])
     const res = await sign(db, [id(1), id(2)])
     if (res.ok) throw new Error('expected a refusal')
     expect(res.status).toBe(422)
     expect(res.problems).toEqual([expect.objectContaining({
       orderId: id(2), code: 'not_compoundable',
-      message: 'f-bpc product: BPC-157 is pending FDA evaluation (removed from Category 2, not yet placed in Category 1 or on the bulks list), so it cannot be compounded or ordered through CompoundIQ.',
+      message: 'f-cat2 product: Peptide X is 503A Category 2 (significant safety risks), so it cannot be compounded or ordered through CompoundIQ.',
     })])
     expect(signingUpdates(db)).toHaveLength(0)
+  })
+
+  // CHANGED (owner decision): pending FDA evaluation is orderable. The
+  // signed prescription records that status and its source.
+  it('an ingredient pending FDA evaluation signs, and the snapshot records pending_evaluation with its source', async () => {
+    const db = world([line(2, 'f-bpc')])
+    expect((await sign(db, [id(2)])).ok).toBe(true)
+    const compounding = (orderRow(db, 2)['medication_snapshot'] as Record<string, Record<string, unknown>>)['compounding']!
+    expect(compounding['ingredients']).toEqual([expect.objectContaining({
+      name: 'BPC-157', status: 'pending_evaluation', source: 'demo data, not verified',
+    })])
   })
 
   it('a combination with one such ingredient is refused too', async () => {
@@ -792,8 +836,10 @@ describe('C8: what may be compounded, and the documented reason', () => {
   })
 
   it('the pre-sign check reports the same', async () => {
-    const check = await checkBatch(world([line(2, 'f-bpc')]).client, { clinicId: CLINIC, userId: USER_CHEN, orderIds: [id(2)], atSigning: false })
+    const check = await checkBatch(world([line(2, 'f-cat2')]).client, { clinicId: CLINIC, userId: USER_CHEN, orderIds: [id(2)], atSigning: false })
     expect(codes(check.problems)).toEqual(['not_compoundable'])
+    const pending = await checkBatch(world([line(2, 'f-bpc')]).client, { clinicId: CLINIC, userId: USER_CHEN, orderIds: [id(2)], atSigning: false })
+    expect(codes(pending.problems)).toEqual([])
   })
 
   it('a commercial equivalent needs a reason even when the formulation flag is off', async () => {
@@ -884,5 +930,48 @@ describe('C8: what may be compounded, and the documented reason', () => {
       expect(signingUpdates(db)).toHaveLength(0)
       expect(orderRow(db, 2)['status']).toBe('DRAFT')
     })
+  })
+})
+
+// ── Patient Intake PR 2: held until the patient finishes intake ──
+//
+// A patient added with only a mobile number is 'pending' until they
+// complete their details. Their drafts can be written but not signed: the
+// preflight and the signing check name each line, and nothing is signed,
+// grouped or texted. The intake status comes with the order read (an embed),
+// so it cannot be missed.
+
+describe('patient intake not finished', () => {
+  const pending = { patients: { intake_status: 'pending' } }
+
+  it('refuses the line at signing: 422, intake_pending, nothing signed', async () => {
+    const db = world([draft(1, pending)])
+    const res = await sign(db, [id(1)])
+    expect(res).toMatchObject({ ok: false, status: 422 })
+    if (res.ok) throw new Error('unreachable')
+    expect(res.problems).toEqual([expect.objectContaining({ orderId: id(1), code: 'intake_pending' })])
+    expect(res.problems![0]!.message).toMatch(/has not finished their details/)
+    expect(signingUpdates(db)).toHaveLength(0)
+    expect(db.writes).toHaveLength(0)
+  })
+
+  it('the preflight names it the same way', async () => {
+    const db = world([draft(1, pending)])
+    const check = await checkBatch(db.client, { clinicId: CLINIC, userId: USER_CHEN, orderIds: [id(1)], atSigning: false })
+    expect(check.problems).toEqual([expect.objectContaining({ orderId: id(1), code: 'intake_pending' })])
+  })
+
+  it("one patient's pending intake refuses the whole batch; another patient's line is not signed either", async () => {
+    const db = world([draft(1, pending), draft(2, { patient_id: P2, patients: { intake_status: 'complete' } })])
+    const res = await sign(db, [id(1), id(2)])
+    expect(res).toMatchObject({ ok: false, status: 422 })
+    if (res.ok) throw new Error('unreachable')
+    expect(res.problems!.map(p => [p.orderId, p.code])).toEqual([[id(1), 'intake_pending']])
+    expect(signingUpdates(db)).toHaveLength(0)
+  })
+
+  it('a complete patient signs as before', async () => {
+    const db = world([draft(1, { patients: { intake_status: 'complete' } })])
+    expect(await sign(db, [id(1)])).toMatchObject({ ok: true })
   })
 })

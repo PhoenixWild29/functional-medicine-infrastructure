@@ -19,6 +19,9 @@
 //
 // REQ-GDB-004: Loading, empty, and offline states.
 
+import { POSSIBLE_DUPLICATE_COLUMNS, loadDuplicateNames, openDuplicateIds } from '@/lib/patients/duplicate-names'
+import type { NameablePatient } from '@/lib/patients/display'
+import { dashboardPatient, embeddedPatient } from '@/lib/patients/dashboard-patient'
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -77,11 +80,21 @@ interface Props {
    * and tab counts follow the toggle with the stat cards.
    */
   providerViewMode?: 'mine' | 'clinic'
+  /**
+   * A clinic onboarded through the portal (isPortalOnboardedClinic): its
+   * payouts are set up at launch, so it is not sent to Stripe onboarding.
+   * Absent or false: today's wording.
+   */
+  payoutsAtLaunch?: boolean
 }
+
+/** Shown to a portal clinic until its payouts are active. */
+const LAUNCH_COPY = 'Ordering opens at launch, once payouts are set up. CompoundIQ will contact you.'
+
 
 // ── Query function (Supabase browser client) ────────────────
 
-function buildDashboardOrder(o: Record<string, unknown>): DashboardOrder {
+function buildDashboardOrder(o: Record<string, unknown>, duplicateNames?: ReadonlyMap<string, NameablePatient>): DashboardOrder {
   const retailCents     = Math.round(((o['retail_price_snapshot']    as number) ?? 0) * 100)
   const wholesaleCents  = Math.round(((o['wholesale_price_snapshot'] as number) ?? 0) * 100)
   const marginCents     = Math.max(0, retailCents - wholesaleCents)
@@ -93,10 +106,7 @@ function buildDashboardOrder(o: Record<string, unknown>): DashboardOrder {
   const medicationName = snap?.medication_name ?? '—'
   const submissionTier = pharmacySnap?.integration_tier ?? null
 
-  const patient = Array.isArray(o['patients'])
-    ? (o['patients'] as Array<{ first_name: string; last_name: string }>)[0]
-    : o['patients'] as { first_name: string; last_name: string } | null
-  const patientName = patient ? `${patient.last_name}, ${patient.first_name}` : '—'
+  const { patientId, patientName, patientIntakePending, possibleDuplicate } = dashboardPatient(o['patients'], duplicateNames)
 
   const createdAt = o['created_at'] as string
   // BLK-04: PAYMENT_EXPIRED also counts as unpaid (payment link expired without payment)
@@ -107,6 +117,9 @@ function buildDashboardOrder(o: Record<string, unknown>): DashboardOrder {
   return {
     orderId:           o['order_id'] as string,
     patientName,
+    patientId,
+    patientIntakePending,
+    possibleDuplicate,
     medicationName,
     status:            o['status'] as OrderStatusEnum,
     submissionTier,
@@ -125,7 +138,7 @@ function buildDashboardOrder(o: Record<string, unknown>): DashboardOrder {
 
 // ── Component ───────────────────────────────────────────────
 
-export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, viewer, initialTab, initialOrderId, providerViewMode = 'mine' }: Props) {
+export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, viewer, initialTab, initialOrderId, providerViewMode = 'mine', payoutsAtLaunch = false }: Props) {
   const router = useRouter()
   // The clinic view's poll carries the same header the server render
   // used; without it the poll read "My patients" rows under the clinic
@@ -181,7 +194,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
           order_id, status, created_at, updated_at, locked_at, payment_group_id, provider_id,
           retail_price_snapshot, wholesale_price_snapshot,
           medication_snapshot, pharmacy_snapshot,
-          patients!inner(first_name, last_name)
+          patients!inner(patient_id, first_name, last_name, phone, intake_status, ${POSSIBLE_DUPLICATE_COLUMNS})
         `)
         .eq('clinic_id', clinicId)
         .is('deleted_at', null)
@@ -192,7 +205,10 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
         console.error('[dashboard] orders poll failed:', error.message, '| clinic=', clinicId)
         throw new Error(error.message)
       }
-      return (data ?? []).map(o => buildDashboardOrder(o as unknown as Record<string, unknown>))
+      const rows = (data ?? []) as unknown as Array<Record<string, unknown>>
+      // Patient Intake PR 2: duplicate flags' names, one separate read.
+      const duplicateNames = await loadDuplicateNames(supabase, clinicId, openDuplicateIds(rows.map(o => embeddedPatient(o['patients']))))
+      return rows.map(o => buildDashboardOrder(o, duplicateNames))
     },
     initialData:    initialOrders,
     refetchInterval: 30 * 1000,  // REQ-GDB-001: 30-second polling
@@ -237,7 +253,8 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
   // another provider is taken over with Sign as me (WO-100) first; it is
   // never counted here, never ticked, and never signed under their name.
   const myDraftIds = viewer?.isProvider && viewer.providerId
-    ? orders.filter(o => o.status === 'DRAFT' && o.providerId === viewer.providerId).map(o => o.orderId)
+    // Patient Intake PR 2: a draft held for a patient's details cannot be signed yet.
+    ? orders.filter(o => o.status === 'DRAFT' && o.providerId === viewer.providerId && !o.patientIntakePending).map(o => o.orderId)
     : []
   const mySignable = new Set(myDraftIds)
   const chosenDraftIds = [...draftSelection].filter(id => mySignable.has(id))
@@ -366,8 +383,12 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
                 role="tooltip"
                 className="pointer-events-none absolute right-0 top-full mt-1.5 z-10 w-56 rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
               >
-                Stripe onboarding required. Complete setup in{' '}
-                <a href="/settings" className="underline">Settings</a>.
+                {payoutsAtLaunch ? LAUNCH_COPY : (
+                  <>
+                    Stripe onboarding required. Complete setup in{' '}
+                    <a href="/settings" className="underline">Settings</a>.
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -446,6 +467,8 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
                   <p className="mt-1 text-sm text-muted-foreground">
                     Create your first prescription to get started.
                   </p>
+                ) : payoutsAtLaunch ? (
+                  <p className="mt-1 text-sm text-muted-foreground">{LAUNCH_COPY}</p>
                 ) : (
                   <p className="mt-1 text-sm text-muted-foreground">
                     Complete{' '}
