@@ -11,7 +11,10 @@
 //
 // Views never contain the secret or its Vault id. Server only.
 
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient as UntypedClient } from '@supabase/supabase-js'
+import type { Database } from '@/types/database.types'
+
+type SupabaseClient = UntypedClient<Database>
 import { newSharedSecret } from './signature'
 
 export const WEBHOOK_PATH = '/api/integrations/keragon/patients'
@@ -143,7 +146,8 @@ export async function disconnect(db: SupabaseClient, input: { clinicId: string; 
     .update({ secret_vault_id: null, disconnected_at: now.toISOString(), disconnected_by: input.userId })
     .eq('connection_id', r.row.connection_id).select(COLUMNS).single()
   if (error || !data) return UNAVAILABLE('The connection could not be disconnected.')
-  const { error: vaultError } = await db.rpc('delete_vault_secret', { p_secret_id: r.row.secret_vault_id })
+  // Connected, so the Vault id is set (connectionStatus above).
+  const { error: vaultError } = await db.rpc('delete_vault_secret', { p_secret_id: r.row.secret_vault_id as string })
   if (vaultError) console.error(`[ehr-sync] the Vault secret of a disconnected connection could not be deleted | connection=${r.row.connection_id}`)
   return { ok: true, connection: connectionView(data as ConnectionRow) }
 }

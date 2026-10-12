@@ -18,7 +18,7 @@ import { onboardingFake } from '@/__tests__/helpers/onboarding-fake'
 
 const CLINIC = 'c1000000-0000-4000-8000-000000000001'
 const OTHER = 'c1000000-0000-4000-8000-000000000002'
-const PATIENT = 'p1000000-0000-4000-8000-000000000001'
+const PATIENT = 'a1000000-0000-4000-8000-000000000001'
 
 let db = onboardingFake()
 const getUserMock = jest.fn()
@@ -48,7 +48,7 @@ beforeEach(() => {
     change(),
     change({ field: 'email', old_value: 'old@example.com', new_value: 'new@example.com', applied: true, changed_at: '2026-10-12T16:00:00Z' }),
     change({ clinic_id: OTHER, field: 'zip' }),
-    change({ patient_id: 'p1000000-0000-4000-8000-000000000009', field: 'state' }),
+    change({ patient_id: 'a1000000-0000-4000-8000-000000000009', field: 'state' }),
   ] })
 })
 

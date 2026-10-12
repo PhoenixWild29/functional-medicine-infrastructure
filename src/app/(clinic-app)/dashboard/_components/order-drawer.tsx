@@ -35,6 +35,7 @@ import {
 } from '@/lib/orders/rx-details'
 import { computeBundleShipping, type PharmacyShippingRates } from '@/lib/orders/shipping'
 import type { OrderRecord } from '@/app/api/orders/[orderId]/record/route'
+import { EhrChangesSection } from '@/components/ehr-changes-section'
 
 interface Props {
   order: DashboardOrder | null
@@ -880,6 +881,9 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
               <p className="text-sm text-muted-foreground">Dispatch: {order.submissionTier.replace(/_/g, ' ')}</p>
             )}
           </section>
+
+          {/* Patient Intake PR 5b: what EHR sync changed or kept on this patient */}
+          {order.patientId && <EhrChangesSection key={order.patientId} patientId={order.patientId} />}
 
           {/* Financial split — REQ-GDB-002 */}
           <section className="rounded-lg border border-border bg-muted/40 p-4 space-y-2">

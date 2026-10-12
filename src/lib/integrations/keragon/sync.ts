@@ -23,7 +23,10 @@
 //
 // The result goes to the sync log: ids, codes and field names only.
 
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient as UntypedClient } from '@supabase/supabase-js'
+import type { Database } from '@/types/database.types'
+
+type SupabaseClient = UntypedClient<Database>
 import { withPhoneE164 } from '@/lib/patients/phone'
 import type { KeragonPatient } from './contract'
 import { SELF_INTAKE_FIELDS, toPatientFields, type PatientSyncFields, type SyncField } from './mapping'
@@ -128,10 +131,12 @@ async function createPatient(
   db: SupabaseClient, ctx: Ctx, fields: PatientSyncFields, externalId: string,
   flag: { of: string; matchedOn: string; reason: string; candidates: number } | null,
 ): Promise<SyncOutcome> {
-  if (!fields.phone) return fail('mobile_required')
+  const { phone, ...rest } = fields
+  if (!phone) return fail('mobile_required')
   const row = withPhoneE164({
     clinic_id: ctx.clinicId,
-    ...fields,
+    ...rest,
+    phone,
     source: 'ehr',
     external_id: externalId,
     intake_status: 'complete',

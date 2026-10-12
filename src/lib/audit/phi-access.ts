@@ -45,6 +45,8 @@ export type PhiResource =
   | 'access_log'
   // Patient Intake PR 2: dismissing "Possible duplicate of <name>".
   | 'patient_duplicate_flag'
+  // Patient Intake PR 5b: what EHR sync changed or kept on a patient.
+  | 'patient_ehr_changes'
 
 export interface PhiActor {
   userId:   string

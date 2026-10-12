@@ -116,7 +116,10 @@ consent**, and sync never changes it.
    address or allergies, the patient's value stays, the EHR's value is kept
    in `patient_field_changes` (`applied = false`), and the event is flagged.
    Every field sync does change is recorded there too, with the old and new
-   values (clinic staff only).
+   values (clinic staff only). Staff see both on the patient record (the
+   order drawer), under **Changes from EHR**: the field, the value we kept,
+   the EHR's value, applied or kept, and the date. Opening it is written to
+   the PHI access log.
 
 ## Responses
 

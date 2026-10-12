@@ -11,7 +11,7 @@ import { configureAxe } from 'jest-axe'
 import { EhrChangesSection } from '../ehr-changes-section'
 
 const axe = configureAxe({ runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } })
-const PATIENT = 'p1000000-0000-4000-8000-000000000001'
+const PATIENT = 'a1000000-0000-4000-8000-000000000001'
 const fetchMock = jest.fn()
 beforeEach(() => { fetchMock.mockReset(); global.fetch = fetchMock as unknown as typeof fetch })
 const reply = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body }) as unknown as Response
@@ -35,7 +35,7 @@ it('lists each change: plain label, value we kept, EHR value, outcome, date', as
   expect(rows[2]).toHaveTextContent('No known drug allergies'); expect(rows[2]).toHaveTextContent('Yes'); expect(rows[2]).toHaveTextContent('No')
   expect(rows[3]).toHaveTextContent('Mobile')
   expect(rows[0]!.textContent).toMatch(/2026/)
-  expect(within(section).getByText(/patient entered/i)).toBeInTheDocument()
+  expect(within(section).getByText(/the patient entered at intake/i)).toBeInTheDocument()
 })
 
 it('nothing when there are no changes', async () => {

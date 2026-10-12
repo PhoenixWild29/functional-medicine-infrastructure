@@ -18,7 +18,10 @@
 //      and codes; the connection its last event / success / error.
 // Nothing here logs PHI: ids, codes and field names only.
 
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient as UntypedClient } from '@supabase/supabase-js'
+import type { Database, Json } from '@/types/database.types'
+
+type SupabaseClient = UntypedClient<Database>
 import { CONNECTION_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, verifySignature } from './signature'
 import { connectionSecret, noteConnectionError } from './connection'
 import { parsePatientEvent } from './contract'
@@ -104,7 +107,7 @@ export async function handleKeragonWebhook(
   }
 
   const { error: logError } = await db.from('ehr_sync_events').update({
-    status: outcome.status, patient_id: outcome.patientId, detail: outcome.detail, error_code: outcome.errorCode ?? null, processed_at: new Date().toISOString(),
+    status: outcome.status, patient_id: outcome.patientId, detail: outcome.detail as Json, error_code: outcome.errorCode ?? null, processed_at: new Date().toISOString(),
   }).eq('sync_event_id', syncEventId)
   if (logError) console.error(`[ehr-sync] outcome not logged | event=${event.eventId}:`, logError.code ?? logError.message)
 
