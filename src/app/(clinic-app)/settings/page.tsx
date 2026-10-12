@@ -99,6 +99,7 @@ export default async function SettingsPage() {
               { href: '#sign-in-security', label: 'Sign-in Security' },
               ...(canSeeTeam ? [{ href: '#team', label: 'Team' }] : []),
               ...(isClinicAdmin ? [{ href: '#access-log', label: 'Access log' }] : []),
+              { href: '/settings/agreements', label: 'Agreements' },
             ].map(({ href, label }) => (
               <li key={href}>
                 <a
