@@ -31,7 +31,7 @@ const reply = (body: unknown, status = 200) => ({ ok: status < 400, status, json
 
 const view = (key: 'baa' | 'pharmacy_terms', acceptance: WizardState['agreement']['acceptance'] = null) => {
   const a = pharmacyAgreement(key)
-  return { key: a.key, version: a.version, title: a.title, text: a.text, textSha256: a.textSha256, banner: a.banner, draft: true, acceptance }
+  return { key: a.key, version: a.version, title: a.title, text: a.text, textSha256: a.textSha256, acceptance }
 }
 
 function state(over: Partial<WizardState> = {}): WizardState {
@@ -54,14 +54,15 @@ describe('the wizard', () => {
     expect(labels[labels.indexOf('BAA') + 1]).toBe('Terms of service')
   })
 
-  it('the step renders the terms with LegalMarkdown under the draft banner, and records the acceptance', async () => {
+  it('the step renders the final v1.0 terms with LegalMarkdown (no draft banner), and records the acceptance', async () => {
     render(<OnboardingWizard initial={state({ stepsCompleted: ['details', 'facility', 'licenses', 'ordering', 'shipping', 'agreement'] })} />)
     fireEvent.click(nav().getByRole('button', { name: /^\d*\s*Terms of service/ }))
     expect(screen.getByRole('heading', { level: 2, name: 'Terms of service' })).toBeInTheDocument()
     const region = screen.getByRole('region', { name: 'Pharmacy Terms of Service text' })
     expect(within(region).getByRole('heading', { name: /Definitions/ })).toBeInTheDocument()
     expect(region.innerHTML).not.toContain('## ')
-    expect(screen.getByText('Draft, pending legal review')).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/draft|pending legal review/i)
+    expect(screen.getByText('Pharmacy Terms of Service, version v1.0')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Your full name'), { target: { value: 'Dana Ruiz' } })
     fireEvent.change(screen.getByLabelText('Your title'), { target: { value: 'Pharmacist in charge' } })

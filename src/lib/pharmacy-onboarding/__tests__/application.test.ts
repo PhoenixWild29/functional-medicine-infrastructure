@@ -262,7 +262,8 @@ describe('load and submit', () => {
     expect(r.state.licenses).toEqual([expect.objectContaining({ state: 'TX', verificationStatus: 'pending', hasDocument: false })])
     expect(r.state.ordering).toEqual({ method: 'portal', portalUrl: 'https://portal.strive.example', secretsStored: true })
     expect(JSON.stringify(r.state)).not.toMatch(/vault|pw-1/)
-    expect(r.state.agreement).toEqual(expect.objectContaining({ version: AGREEMENT.version, banner: 'Draft, pending legal review', acceptance: null }))
+    expect(r.state.agreement).toEqual(expect.objectContaining({ version: AGREEMENT.version, acceptance: null }))
+    expect(r.state.agreement).not.toHaveProperty('banner')
   })
 
   it('submit needs every step; then it is submitted, recorded, and locked', async () => {
