@@ -32,7 +32,7 @@ import { sendPaymentConfirmationSms } from '@/lib/sms/triggers'
 import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { handleGroupPaymentSucceeded as handleGroupPaymentSucceededImpl } from './handle-group'
 import { handleGroupChargeDisputeCreated as handleGroupChargeDisputeCreatedImpl } from './handle-group-dispute'
-import { recordPaymentLedger, recordDisputeLedger, recordLatePaymentLedger, type LedgerResult } from '@/lib/payments/ledger'
+import { recordPaymentLedger, recordDisputeLedger, recordLatePaymentLedger, recordDisputeStatusLedger, recordTransferFailedLedger, type LedgerResult } from '@/lib/payments/ledger'
 import { handlePaymentFailed } from './handle-payment-failed'
 import { handleChargeRefunded } from './handle-charge-refunded'
 import { handleDisputeStatusChanged } from './handle-dispute-status'
@@ -154,29 +154,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         await handleDisputeStatusChanged(event.data.object as Stripe.Dispute, event.type, event.id, {
           supabase: createServiceClient(), sendSlackAlert, buildStripePaymentAlert,
           recordDisputeCreated: dispute => handleDisputeCreated(dispute, event.id),
-        })
-        break
-      // Payment Flow v1.1 (each idempotent on the Stripe event / object id).
-      case 'payment_intent.payment_failed':
-        await handlePaymentFailed(event.data.object as Stripe.PaymentIntent, event.id, {
-          supabase: createServiceClient(), sendSlackAlert, buildStripePaymentAlert,
-        })
-        break
-      case 'charge.refunded':
-        await handleChargeRefunded(event.data.object as Stripe.Charge, event.id, {
-          supabase:             createServiceClient(),
-          stripe:               createStripeClient(),
-          casTransition,
-          sendSlackAlert,
-          buildStripePaymentAlert,
-          recordRefundInLedger,
-        })
-        break
-      case 'charge.dispute.updated':
-      case 'charge.dispute.closed':
-        await handleDisputeStatusChanged(event.data.object as Stripe.Dispute, event.type, event.id, {
-          supabase: createServiceClient(), sendSlackAlert, buildStripePaymentAlert,
-          recordDisputeCreated: dispute => handleDisputeCreated(dispute, event.id),
+          // Payments ledger (record-only): withdrawal, and reinstatement when won.
+          recordDisputeLedger: (dispute, orderIds) => recordLedger(`dispute ${dispute.id}`, () => recordDisputeStatusLedger(createServiceClient(), {
+            eventId: event.id, disputeId: dispute.id, amountCents: dispute.amount, currency: dispute.currency, status: dispute.status, orderIds,
+          })),
         })
         break
       // WO-88 grandfather: `transfer.failed` IS a real Stripe webhook event per
@@ -187,6 +168,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, no-restricted-syntax
       case 'transfer.failed' as any:
         await handleTransferFailed(event.data.object as Stripe.Transfer)
+        // Payments ledger (record-only), after the handler: the clinic's share
+        // is back on the platform. Keyed by the transfer; found by its order,
+        // or by the transfer id the payment recorded (destination-charge
+        // transfers carry no metadata). A handler error skips it; Stripe's
+        // redelivery runs both again. Never throws.
+        await recordTransferFailed(event.data.object as Stripe.Transfer)
         break
       case 'account.updated':
         await handleAccountUpdated(event.data.object as Stripe.Account)
@@ -441,6 +428,13 @@ async function recordLedger(what: string, write: () => Promise<LedgerResult>): P
   } catch (err) {
     console.error(`[stripe-webhook] ledger: ${what} not recorded:`, err instanceof Error ? err.message : err)
   }
+}
+
+async function recordTransferFailed(transfer: Stripe.Transfer): Promise<void> {
+  await recordLedger(`failed transfer ${transfer.id}`, () => recordTransferFailedLedger(createServiceClient(), {
+    transferId: transfer.id, amountCents: transfer.amount, currency: transfer.currency,
+    orderId: typeof transfer.metadata?.['order_id'] === 'string' ? transfer.metadata['order_id'] : null,
+  }))
 }
 
 function chargeIdOf(paymentIntent: Stripe.PaymentIntent): string | null {

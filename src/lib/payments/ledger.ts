@@ -318,23 +318,99 @@ export interface DisputeLedgerInput {
 }
 
 /**
- * charge.dispute.created: the disputed amount, an open negative platform
- * line. Keyed by the dispute id, not the event: a dispute first seen on
- * charge.dispute.updated / closed (the created event missed) and its
- * later created event record one line, not two.
+ * A dispute, from charge.dispute.created and every later status change.
+ * Keyed by the dispute id, not the event, so each line is written once
+ * however many events report it (including a dispute first seen on
+ * charge.dispute.updated / closed because the created event was missed):
+ *
+ *   - an inquiry (status warning_*): Stripe withdraws nothing, so nothing
+ *     is recorded; if it escalates, the next status records the withdrawal
+ *   - any other status: the withdrawal, a negative platform line ('open')
+ *   - won: also the reinstatement, the same amount back ('won')
+ *   - lost: nothing more; the withdrawal stands
  */
 export async function recordDisputeLedger(supabase: Supabase, input: DisputeLedgerInput): Promise<LedgerResult> {
   try {
+    if (input.status.startsWith('warning_')) return { ok: true, inserted: 0 }
     if (!input.orderId && !input.paymentGroupId) throw new Error('dispute has no order or payment group')
-    const inserted = await insertLines(supabase, [{
-      entry_type: 'dispute', party: 'platform', amount_cents: -Math.abs(input.amountCents), currency: input.currency,
+    const amount = Math.abs(input.amountCents)
+    const key = lineKey('dispute', 'platform', input.orderId, input.paymentGroupId)
+    const base = {
+      entry_type: 'dispute' as const, party: 'platform' as const, currency: input.currency,
       order_id: input.orderId, payment_group_id: input.paymentGroupId, clinic_id: input.clinicId, pharmacy_id: null,
-      stripe_object_id: input.disputeId, status: 'open', source_event_id: input.disputeId,
-      line_key: lineKey('dispute', 'platform', input.orderId, input.paymentGroupId),
+      stripe_object_id: input.disputeId, source_event_id: input.disputeId,
+    }
+    const lines: LedgerLine[] = [{ ...base, amount_cents: -amount, status: 'open', line_key: key }]
+    if (input.status === 'won') lines.push({ ...base, amount_cents: amount, status: 'won', line_key: `${key}:won` })
+    return { ok: true, inserted: await insertLines(supabase, lines) }
+  } catch (err) {
+    return fail(`dispute ${input.disputeId}`, err)
+  }
+}
+
+/**
+ * charge.dispute.updated / closed: the same lines, placed on the dispute's
+ * order (a single order) or its bundle, exactly as the created event keyed
+ * them. Never throws.
+ */
+export async function recordDisputeStatusLedger(
+  supabase: Supabase,
+  input: { eventId: string; disputeId: string; amountCents: number; currency: string; status: string; orderIds: string[] },
+): Promise<LedgerResult> {
+  try {
+    if (input.status.startsWith('warning_')) return { ok: true, inserted: 0 }
+    if (input.orderIds.length === 0) throw new Error('dispute has no orders')
+    const { data, error } = await supabase
+      .from('orders')
+      .select('order_id, clinic_id, payment_group_id')
+      .in('order_id', input.orderIds)
+    if (error) throw new Error(`orders: ${error.message}`)
+    const rows = (data ?? []) as Array<{ order_id: string; clinic_id: string | null; payment_group_id: string | null }>
+    const first = rows[0]
+    if (!first) throw new Error('dispute orders not found')
+    const groupId = rows.find(r => r.payment_group_id)?.payment_group_id ?? null
+    return await recordDisputeLedger(supabase, {
+      eventId: input.eventId, disputeId: input.disputeId, amountCents: input.amountCents, currency: input.currency, status: input.status,
+      orderId: groupId ? null : first.order_id, paymentGroupId: groupId, clinicId: first.clinic_id,
+    })
+  } catch (err) {
+    return fail(`dispute ${input.disputeId}`, err)
+  }
+}
+
+export interface TransferFailedLedgerInput {
+  transferId:  string
+  amountCents: number
+  currency:    string
+  /** From the transfer's metadata; destination-charge transfers carry none. */
+  orderId:     string | null
+}
+
+/**
+ * transfer.failed: the clinic's share did not reach the clinic and is back
+ * on the platform. A negative clinic reversal, keyed by the transfer. The
+ * order is the one in the transfer's metadata, else the one whose payment
+ * recorded this transfer id (orders.stripe_transfer_id). Never throws.
+ */
+export async function recordTransferFailedLedger(supabase: Supabase, input: TransferFailedLedgerInput): Promise<LedgerResult> {
+  try {
+    const query = supabase.from('orders').select('order_id, clinic_id, pharmacy_id, payment_group_id')
+    const { data, error } = await (input.orderId
+      ? query.eq('order_id', input.orderId)
+      : query.eq('stripe_transfer_id', input.transferId)
+    ).maybeSingle()
+    if (error) throw new Error(`orders: ${error.message}`)
+    const o = data as { order_id: string; clinic_id: string; pharmacy_id: string | null; payment_group_id: string | null } | null
+    if (!o) throw new Error('no order for the transfer')
+    const inserted = await insertLines(supabase, [{
+      entry_type: 'reversal', party: 'clinic', amount_cents: -Math.abs(input.amountCents), currency: input.currency,
+      order_id: o.order_id, payment_group_id: o.payment_group_id, clinic_id: o.clinic_id, pharmacy_id: o.pharmacy_id,
+      stripe_object_id: input.transferId, status: 'failed', source_event_id: input.transferId,
+      line_key: `reversal:clinic:${o.order_id}:transfer_failed`,
     }])
     return { ok: true, inserted }
   } catch (err) {
-    return fail(`dispute ${input.disputeId}`, err)
+    return fail(`failed transfer ${input.transferId}`, err)
   }
 }
 
