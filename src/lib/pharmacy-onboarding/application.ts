@@ -424,14 +424,14 @@ export interface WizardState {
 }
 
 export interface AgreementView {
-  key: string; version: string; title: string; text: string; textSha256: string; banner: string; draft: boolean
+  key: string; version: string; title: string; text: string; textSha256: string
   acceptance: { signerName: string; signerTitle: string; acceptedAt: string } | null
 }
 
 export function agreementView(key: PharmacyAgreementKey, row: AcceptanceRow | null): AgreementView {
   const a = pharmacyAgreement(key)
   return {
-    key: a.key, version: a.version, title: a.title, text: a.text, textSha256: a.textSha256, banner: a.banner, draft: a.draft,
+    key: a.key, version: a.version, title: a.title, text: a.text, textSha256: a.textSha256,
     acceptance: row ? { signerName: row.signer_name, signerTitle: row.signer_title, acceptedAt: row.accepted_at } : null,
   }
 }

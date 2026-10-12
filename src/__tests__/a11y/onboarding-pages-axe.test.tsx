@@ -5,7 +5,7 @@
  * step and the ops onboarding screen, checked with axe, plus what axe
  * cannot see in jsdom: every field has a visible label, errors are tied
  * to their field, controls show a focus ring, and the draft agreements
- * say they are drafts pending legal review.
+ * are the final v1.0 texts, with no draft banner.
  */
 
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react'
@@ -102,19 +102,21 @@ describe('onboarding wizard', () => {
     expect(nav.querySelector('[aria-current="step"]')!.textContent).toMatch(/providers/i)
   })
 
-  it.each(['baa', 'terms'] as StepKey[])('the %s step says it is a draft pending legal review', step => {
+  it.each(['baa', 'terms'] as StepKey[])('the %s step shows the final v1.0 text, with no draft banner', step => {
     render(<OnboardingWizard state={STATE} initialStep={step} />)
-    expect(document.getElementById('agreement-draft-banner')!.textContent).toMatch(/draft, pending legal review/i)
+    expect(document.getElementById('agreement-draft-banner')).toBeNull()
+    expect(document.body.textContent).not.toMatch(/draft|pending legal review/i)
+    expect(screen.getByText(/\(version v1\.0\)/)).toBeInTheDocument()
     expect(screen.getByLabelText('Signer name')).toBeInTheDocument()
     expect(screen.getByLabelText('Title')).toBeInTheDocument()
   })
 
-  it('the BAA (v0.1 Markdown) renders as headings and lists, not raw Markdown', () => {
+  it('the BAA (v1.0 Markdown) renders as headings and lists, not raw Markdown', () => {
     render(<OnboardingWizard state={STATE} initialStep="baa" />)
     expect(screen.getByRole('heading', { name: '1. Definitions' })).toBeInTheDocument()
     expect(screen.getAllByRole('listitem').length).toBeGreaterThan(10)
     expect(screen.queryByText(/^## /)).not.toBeInTheDocument()
-    expect(screen.getByText(/version v0\.1/i)).toBeInTheDocument()
+    expect(screen.getByText(/version v1\.0/i)).toBeInTheDocument()
   })
 
   it('payouts: setup is not live, so the control is disabled and nothing mentions Stripe', () => {
