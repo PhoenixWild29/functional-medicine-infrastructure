@@ -77,8 +77,9 @@ test.describe('Patient Intake PR 5: CSV import', () => {
     expect(await axeViolations(page)).toEqual([])
 
     // 1. Upload: no file is an error, announced.
+    // Scoped to main: Next's route announcer is also role=alert.
     await page.getByRole('button', { name: 'Upload and check columns' }).click()
-    await expect(page.getByRole('alert')).toContainText('Choose a .csv file')
+    await expect(page.getByRole('main').getByRole('alert')).toContainText('Choose a .csv file')
     await expect(page.getByLabel('CSV file')).toHaveAttribute('aria-invalid', 'true')
     expect(await axeViolations(page)).toEqual([])
     await page.getByLabel('CSV file').setInputFiles(SAMPLE_PATH)
@@ -91,7 +92,7 @@ test.describe('Patient Intake PR 5: CSV import', () => {
     await expect(page.getByLabel(/^Date of birth/)).toHaveValue('')
     expect(await axeViolations(page)).toEqual([])
     await page.getByRole('button', { name: 'Check rows' }).click()
-    await expect(page.getByRole('alert')).toContainText('date of birth')
+    await expect(page.getByRole('main').getByRole('alert')).toContainText('date of birth')
     expect(await axeViolations(page)).toEqual([])
     await page.getByLabel(/^Date of birth/).selectOption({ label: 'Pt Birth Dt' })
     await page.getByRole('button', { name: 'Check rows' }).click()
@@ -117,7 +118,7 @@ test.describe('Patient Intake PR 5: CSV import', () => {
 
     // 4. Import.
     await page.getByRole('button', { name: 'Import 3 patients' }).click()
-    await expect(page.getByRole('status')).toContainText('Imported 3 patients', { timeout: 15_000 })
+    await expect(page.getByRole('main').getByRole('status')).toContainText('Imported 3 patients', { timeout: 15_000 })
     expect(await axeViolations(page)).toEqual([])
 
     // The patients: complete, csv_import, no SMS consent, from one batch.
