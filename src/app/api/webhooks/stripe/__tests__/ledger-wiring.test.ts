@@ -33,6 +33,8 @@ const sendConfirmMock     = jest.fn()
 const recordPaymentMock   = jest.fn()
 const recordDisputeMock   = jest.fn()
 const disputeUpsertMock   = jest.fn()
+const recordTransferFailedMock = jest.fn()
+const transferFailureInsertMock = jest.fn()
 const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
 jest.spyOn(console, 'warn').mockImplementation(() => {})
 jest.spyOn(console, 'info').mockImplementation(() => {})
@@ -73,6 +75,8 @@ jest.mock('@/lib/payments/ledger', () => ({
   recordPaymentLedger: (_s: unknown, a: unknown) => recordPaymentMock(a),
   recordDisputeLedger: (_s: unknown, a: unknown) => recordDisputeMock(a),
   recordLatePaymentLedger: jest.fn(async () => ({ ok: true, inserted: 0 })),
+  recordDisputeStatusLedger: jest.fn(async () => ({ ok: true, inserted: 0 })),
+  recordTransferFailedLedger: (_s: unknown, a: unknown) => recordTransferFailedMock(a),
 }))
 
 jest.mock('@/lib/slack/client', () => ({
@@ -114,6 +118,9 @@ jest.mock('@/lib/supabase/service', () => ({
           select: () => ({ eq: () => ({ maybeSingle: () => groupFetchMock() }) }),
           update: () => ({ eq: () => ({ eq: () => groupUpdateMock() }) }),
         }
+      }
+      if (table === 'transfer_failures') {
+        return { insert: (v: unknown) => transferFailureInsertMock(v) }
       }
       if (table === 'disputes' || table === 'dispute_orders') {
         return { upsert: (v: unknown) => disputeUpsertMock(table, v) }
@@ -173,6 +180,8 @@ beforeEach(() => {
   recordPaymentMock.mockReset().mockResolvedValue({ ok: true, inserted: 4 })
   recordDisputeMock.mockReset().mockResolvedValue({ ok: true, inserted: 1 })
   disputeUpsertMock.mockReset().mockResolvedValue({ error: null })
+  recordTransferFailedMock.mockReset().mockResolvedValue({ ok: true, inserted: 1 })
+  transferFailureInsertMock.mockReset().mockResolvedValue({ error: null })
   errorSpy.mockClear()
 })
 
@@ -225,5 +234,19 @@ describe('ledger from the Stripe webhook', () => {
     expect(recordDisputeMock).toHaveBeenCalledWith(expect.objectContaining({
       eventId: 'evt_dsp_1', disputeId: 'du_1', amountCents: 20900, currency: 'usd', orderId: 'o-1', paymentGroupId: null,
     }))
+  })
+
+  it('transfer.failed: the clinic share returning to the platform is recorded, keyed by the transfer', async () => {
+    orderFetchMock.mockResolvedValue({ data: { order_id: 'o-1', clinic_id: 'clinic-1' }, error: null })
+    const res = await deliver('transfer.failed', { id: 'tr_9', object: 'transfer', amount: 8500, currency: 'usd', metadata: { order_id: 'o-1' } }, 'evt_tf')
+    expect(res.status).toBe(200)
+    expect(recordTransferFailedMock).toHaveBeenCalledWith({ transferId: 'tr_9', amountCents: 8500, currency: 'usd', orderId: 'o-1' })
+  })
+
+  it('transfer.failed without an order on the transfer (a destination charge): still recorded, by transfer id; a ledger that throws never fails the webhook', async () => {
+    recordTransferFailedMock.mockRejectedValue(new Error('ledger down'))
+    const res = await deliver('transfer.failed', { id: 'tr_8', object: 'transfer', amount: 8500, currency: 'usd', metadata: {} }, 'evt_tf2')
+    expect(res.status).toBe(200)
+    expect(recordTransferFailedMock).toHaveBeenCalledWith({ transferId: 'tr_8', amountCents: 8500, currency: 'usd', orderId: null })
   })
 })

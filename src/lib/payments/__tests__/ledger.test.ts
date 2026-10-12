@@ -15,7 +15,7 @@
 
 import { scriptedDb, type Script } from '@/__tests__/helpers/scripted-db'
 import { computeOrderSplit } from '../split'
-import { recordPaymentLedger, recordRefundLedger, recordDisputeLedger, recordLatePaymentLedger } from '../ledger'
+import { recordPaymentLedger, recordRefundLedger, recordDisputeLedger, recordLatePaymentLedger, recordDisputeStatusLedger, recordTransferFailedLedger } from '../ledger'
 
 const CLINIC = 'c0000000-0000-4000-8000-000000000001'
 const PHARM  = 'f0000000-0000-4000-8000-000000000001'
@@ -156,5 +156,76 @@ describe('recordLatePaymentLedger', () => {
     const ls = lines(d)
     expect(pick(ls, 'charge', 'platform')[0]).toEqual(expect.objectContaining({ amount_cents: 30000, payment_group_id: GROUP, order_id: null }))
     expect(pick(ls, 'refund', 'platform')[0]).toEqual(expect.objectContaining({ amount_cents: -30000, stripe_object_id: 're_l' }))
+  })
+})
+
+describe('dispute statuses (record-only)', () => {
+  const base = { eventId: 'evt_d', disputeId: 'du_1', amountCents: 20900, currency: 'usd', orderId: O1, paymentGroupId: null, clinicId: CLINIC }
+
+  it('an inquiry (warning_*) withdraws no funds: nothing is recorded', async () => {
+    const d = db([order(O1)])
+    expect(await recordDisputeLedger(d.client, { ...base, status: 'warning_needs_response' })).toEqual({ ok: true, inserted: 0 })
+    expect(d.to('ledger_entries', 'upsert')).toEqual([])
+  })
+
+  it('won: the withdrawal (idempotent) and the reinstatement, both keyed by the dispute', async () => {
+    const d = db([order(O1)])
+    await recordDisputeLedger(d.client, { ...base, status: 'won' })
+    const ls = lines(d)
+    expect(ls).toEqual([
+      expect.objectContaining({ entry_type: 'dispute', amount_cents: -20900, status: 'open', source_event_id: 'du_1', line_key: `dispute:platform:${O1}` }),
+      expect.objectContaining({ entry_type: 'dispute', amount_cents: 20900, status: 'won', source_event_id: 'du_1', line_key: `dispute:platform:${O1}:won`, stripe_object_id: 'du_1' }),
+    ])
+  })
+
+  it('lost or under review: the withdrawal only', async () => {
+    for (const status of ['lost', 'under_review']) {
+      const d = db([order(O1)])
+      await recordDisputeLedger(d.client, { ...base, status })
+      expect(lines(d).map(l => l.amount_cents)).toEqual([-20900])
+    }
+  })
+
+  it('a status change finds the dispute’s order or bundle the same way the created event did', async () => {
+    const solo = db([order(O1)])
+    await recordDisputeStatusLedger(solo.client, { eventId: 'evt_u', disputeId: 'du_1', amountCents: 20900, currency: 'usd', status: 'won', orderIds: [O1] })
+    expect(lines(solo).map(l => l.line_key)).toEqual([`dispute:platform:${O1}`, `dispute:platform:${O1}:won`])
+
+    const bundle = db([order(O1, { payment_group_id: GROUP }), order(O2, { payment_group_id: GROUP })])
+    await recordDisputeStatusLedger(bundle.client, { eventId: 'evt_u', disputeId: 'du_2', amountCents: 40900, currency: 'usd', status: 'needs_response', orderIds: [O1, O2] })
+    expect(lines(bundle)).toEqual([expect.objectContaining({ line_key: `dispute:platform:group:${GROUP}`, payment_group_id: GROUP, order_id: null, amount_cents: -40900 })])
+  })
+
+  it('a status change it cannot place is reported, never thrown', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    const d = db([], false, c => (c.table === 'orders' ? { error: { message: 'down' } } : undefined))
+    await expect(recordDisputeStatusLedger(d.client, { eventId: 'e', disputeId: 'du_3', amountCents: 1, currency: 'usd', status: 'lost', orderIds: [O1] }))
+      .resolves.toEqual({ ok: false, error: expect.any(String) })
+  })
+})
+
+describe('recordTransferFailedLedger', () => {
+  it('a failed transfer: the clinic share comes back to the platform, one line keyed by the transfer', async () => {
+    const d = db([order(O1)])
+    const r = await recordTransferFailedLedger(d.client, { transferId: 'tr_1', amountCents: 8500, currency: 'usd', orderId: O1 })
+    expect(r).toEqual({ ok: true, inserted: 1 })
+    expect(lines(d)).toEqual([expect.objectContaining({
+      entry_type: 'reversal', party: 'clinic', amount_cents: -8500, status: 'failed', order_id: O1,
+      stripe_object_id: 'tr_1', source_event_id: 'tr_1', line_key: `reversal:clinic:${O1}:transfer_failed`,
+    })])
+  })
+
+  it('no order on the transfer: found by the transfer id the payment recorded', async () => {
+    const d = db([order(O1)])
+    await recordTransferFailedLedger(d.client, { transferId: 'tr_1', amountCents: 8500, currency: 'usd', orderId: null })
+    expect(d.to('orders', 'select')[0]!.filters['stripe_transfer_id']).toBe('tr_1')
+    expect(lines(d)).toHaveLength(1)
+  })
+
+  it('no order found: reported, never thrown, nothing written', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    const d = db([])
+    expect(await recordTransferFailedLedger(d.client, { transferId: 'tr_x', amountCents: 1, currency: 'usd', orderId: null })).toEqual({ ok: false, error: expect.any(String) })
+    expect(d.to('ledger_entries', 'upsert')).toEqual([])
   })
 })
