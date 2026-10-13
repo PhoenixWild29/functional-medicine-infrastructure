@@ -104,10 +104,3 @@ describe('what is stored', () => {
     expect(t).not.toMatch(/first_name|last_name|date_of_birth|phone|email|address|allerg|payload/)
   })
 })
-
-it('redefines the Vault helpers on Vault\'s own API (see src/__tests__/vault-helpers-static.test.ts)', () => {
-  expect(code).toContain('return vault.create_secret(p_secret, p_name)')
-  expect(code).toContain('perform vault.update_secret(p_secret_id, p_new_secret)')
-  // Before apply_pharmacy_admin_scope() and COMMIT, inside the one transaction.
-  expect(code.indexOf('create or replace function create_vault_secret')).toBeLessThan(code.indexOf('select apply_pharmacy_admin_scope();'))
-})

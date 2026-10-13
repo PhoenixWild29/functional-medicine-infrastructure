@@ -28,6 +28,8 @@ const DIR = join(process.cwd(), 'supabase', 'migrations')
 const FILES = readdirSync(DIR).filter(f => f.endsWith('.sql')).sort()
 const flat = (s: string) => s.replace(/\r\n/g, '\n').replace(/--.*$/gm, '').replace(/\s+/g, ' ').toLowerCase()
 const MIGRATIONS = FILES.map(f => ({ file: f, code: flat(readFileSync(join(DIR, f), 'utf8')) }))
+/** The migration that moves the helpers onto Vault's API (its own file: 20261017000001 was already applied on E2E). */
+const FIX = '20261017000002_vault_helpers_use_vault_api.sql'
 
 /** The body of the last CREATE [OR REPLACE] FUNCTION <name>(...) ... $$; in effect, and where. */
 function latestDefinition(name: string): { file: string; body: string } | null {
@@ -57,8 +59,9 @@ describe.each([
 ])('%s', (name, api, sig) => {
   const def = latestDefinition(name)!
 
-  it('is defined', () => {
+  it('is defined, last, in 20261017000002_vault_helpers_use_vault_api.sql', () => {
     expect(def).not.toBeNull()
+    expect(def.file).toBe(FIX)
   })
 
   it(`writes through ${api.slice(0, -1)}, never vault.secrets directly`, () => {
@@ -82,6 +85,7 @@ describe.each([
 
 it('delete_vault_secret stays service_role only, with a fixed search_path', () => {
   const def = latestDefinition('delete_vault_secret')!
+  expect(def.file).toBe(FIX)
   expect(def.body).toContain('security definer')
   expect(def.body).toMatch(/set search_path = ''/)
   const g = grantsAfter('delete_vault_secret', def.file)
@@ -105,3 +109,26 @@ it('no app code writes vault.secrets directly (only the helpers, through RPC)', 
   })
   expect(offenders).toEqual([])
 })
+
+describe('20261017000002_vault_helpers_use_vault_api.sql', () => {
+  const sql = MIGRATIONS.find(m => m.file === FIX)?.code ?? ''
+  const down = flat(readFileSync(join(DIR, 'down', '20261017000002_down.sql'), 'utf8'))
+
+  it("sorts after 20261017000001 and before D's 20261018000001", () => {
+    expect(FIX > '20261017000001_~').toBe(true)
+    expect(FIX < '20261018000001').toBe(true)
+  })
+
+  it('is one transaction with only the three helpers and their grants: no table, no data', () => {
+    expect(sql).toMatch(/^\s*begin;/)
+    expect(sql).toMatch(/commit;\s*$/)
+    const outside = sql.replace(/\$\$.*?\$\$/g, '')
+    expect(outside).not.toMatch(/create table|alter table|drop |insert into|update \w+ set|delete from/)
+    expect((sql.match(/create or replace function/g) ?? []).length).toBe(3)
+  })
+
+  it('the down migration restores nothing (the old helpers are broken)', () => {
+    expect(down).toMatch(/^\s*begin;\s*commit;\s*$/)
+  })
+})
+
