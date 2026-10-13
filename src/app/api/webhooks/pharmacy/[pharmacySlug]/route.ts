@@ -33,6 +33,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { readVaultSecret } from '@/lib/vault/read-secret'
 import { casTransition } from '@/lib/orders/cas-transition'
 import { sendSlackAlert, buildAdapterFailureAlert } from '@/lib/slack/client'
 import type { OrderStatus } from '@/lib/orders/state-machine'
@@ -107,20 +108,16 @@ export async function POST(
     return NextResponse.json({ error: 'Webhook not configured' }, { status: 403 })
   }
 
-  // Decrypt secret via vault.decrypted_secrets view (service_role only)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: vaultRow, error: vaultError } = await (supabase as any).schema('vault')
-    .from('decrypted_secrets')
-    .select('decrypted_secret')
-    .eq('id', apiConfig.webhook_secret_vault_id)
-    .maybeSingle()
+  // Decrypt through the read_vault_secret RPC (service_role only): the
+  // vault schema is not exposed to PostgREST.
+  const vaultRead = await readVaultSecret(supabase, apiConfig.webhook_secret_vault_id)
 
-  if (vaultError) {
-    console.error(`[pharmacy-webhook] vault read failed for pharmacy ${pharmacySlug}:`, vaultError.message)
+  if (!vaultRead.ok && vaultRead.reason === 'error') {
+    console.error(`[pharmacy-webhook] vault read failed for pharmacy ${pharmacySlug} | code=${vaultRead.code}`)
     return NextResponse.json({ error: 'Temporarily unavailable' }, { status: 500 })
   }
 
-  if (!vaultRow?.decrypted_secret) {
+  if (!vaultRead.ok) {
     console.error(
       `[pharmacy-webhook] failed to read vault secret ${apiConfig.webhook_secret_vault_id} for pharmacy ${pharmacySlug}`
     )
@@ -133,7 +130,7 @@ export async function POST(
   const isValid = await verifyPharmacySignature(
     signature,
     rawBody,
-    vaultRow.decrypted_secret
+    vaultRead.secret
   )
 
   if (!isValid) {

@@ -184,7 +184,7 @@ export default async function RefillPage(
           first_name:    p.first_name,
           last_name:     p.last_name,
           date_of_birth: p.date_of_birth,
-          phone:         p.phone,
+          phone:         p.phone ?? '',
           state:         p.state,
           sms_opt_in:    p.sms_opt_in,
           allergies:            p.allergies ?? [],

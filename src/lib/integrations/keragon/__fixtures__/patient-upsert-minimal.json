@@ -1,0 +1,12 @@
+{
+  "event_id": "evt_demo_0002",
+  "event_type": "patient.upsert",
+  "occurred_at": "2026-10-12T15:05:00Z",
+  "patient": {
+    "external_patient_id": "EHR-DEMO-10002",
+    "first_name": "Riley",
+    "last_name": "Example",
+    "date_of_birth": "1990-01-31",
+    "mobile": "(512) 555-0148"
+  }
+}
