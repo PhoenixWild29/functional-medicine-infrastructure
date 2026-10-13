@@ -19,6 +19,7 @@ import type { OrderStatusEnum, IntegrationTierEnum } from '@/types/database.type
 import type { PipelineOrder } from '@/types/pipeline'
 import { slaSortComparator } from '@/lib/ops/sla-sort'
 import { getUserRole } from '@/lib/auth/claims'
+import { deadlinePassed } from '@/lib/sla/deadline'
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   // Auth: ops_admin required
@@ -43,7 +44,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     : []
 
   const supabase = createServiceClient()
-  const now      = new Date().toISOString()
+  const nowMs    = Date.now()
 
   // Build orders query
   let query = supabase
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // Build per-order SLA urgency map
   const slaMap = new Map<string, { nearestDeadline: string; hasBreach: boolean }>()
   for (const sla of (slasResult.data ?? [])) {
-    const isBreached = sla.deadline_at < now
+    const isBreached = deadlinePassed(sla.deadline_at, nowMs)
     const existing   = slaMap.get(sla.order_id)
     if (!existing) {
       slaMap.set(sla.order_id, { nearestDeadline: sla.deadline_at, hasBreach: isBreached })

@@ -44,6 +44,7 @@ beforeEach(() => {
   sendSlackAlertMock.mockReset().mockResolvedValue(undefined)
   jest.spyOn(console, 'error').mockImplementation(() => {})
   jest.spyOn(console, 'info').mockImplementation(() => {})
+  jest.spyOn(console, 'warn').mockImplementation(() => {})
 })
 afterEach(() => jest.restoreAllMocks())
 
@@ -52,15 +53,18 @@ it('the thresholds: 24 hours in PAID_PROCESSING, a REROUTE_PENDING timeout', () 
   expect(REROUTE_PENDING_TIMEOUT_MIN).toBeGreaterThan(0)
 })
 
-it('queries each state by how long it has sat there', async () => {
+it('reads every order in each state; how long it has sat there comes from its status history, not updated_at', async () => {
   const db = world()
   await alertStuckOrders(db.client, NOW)
   const reads = db.to('orders', 'select')
   const paid = reads.find(c => c.filters['status'] === 'PAID_PROCESSING')!
   const reroute = reads.find(c => c.filters['status'] === 'REROUTE_PENDING')!
-  expect(paid.filters['updated_at:lt']).toBe(minsAgo(PAID_PROCESSING_STUCK_HOURS * 60))
-  expect(reroute.filters['updated_at:lt']).toBe(minsAgo(REROUTE_PENDING_TIMEOUT_MIN))
+  // updated_at moves on any write, so it cannot bound the read.
+  expect(paid.filters['updated_at:lt']).toBeUndefined()
+  expect(reroute.filters['updated_at:lt']).toBeUndefined()
   expect(paid.filters['deleted_at:is']).toBeNull()
+  const history = db.to('order_status_history', 'select')
+  expect(history.map(c => c.filters['new_status']).sort()).toEqual(['PAID_PROCESSING', 'REROUTE_PENDING'])
 })
 
 it('one Slack alert per stuck order, IDs only, and nothing is done to the order', async () => {
@@ -77,7 +81,7 @@ it('one Slack alert per stuck order, IDs only, and nothing is done to the order'
   expect(db.calls.filter(c => c.op === 'rpc')).toEqual([])
 })
 
-it('each alert is recorded, already sent, keyed by order, status and when it entered it', async () => {
+it('each alert is recorded, already sent, keyed by order, status and when it entered it (updated_at when there is no history row)', async () => {
   const db = world()
   await alertStuckOrders(db.client, NOW)
   const inserts = db.to('ops_alert_queue', 'insert').map(c => c.payload as Record<string, unknown>)
