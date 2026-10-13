@@ -11,8 +11,10 @@
 // failOn('auth:createUser'), failOn('storage:upload'),
 // failOn('rpc:create_vault_secret') make that call answer an error.
 // Unique columns can be declared per table to mimic constraints; a
-// composite key is written 'a+b'. schema('vault').from('decrypted_secrets')
-// reads the secrets create_vault_secret stored; delete_vault_secret removes one.
+// composite key is written 'a+b'. rpc('read_vault_secret') reads the
+// secrets create_vault_secret stored; delete_vault_secret removes one. Like
+// the real API, schema('vault') is refused: the vault schema is not
+// exposed to PostgREST (supabase/config.toml [api] schemas).
 
 type Row = Record<string, unknown>
 
@@ -135,9 +137,13 @@ export function onboardingFake(seed: Record<string, Row[]> = {}, opts: { unique?
     from: (t: string) => builder(t),
     schema: (name: string) => (name === 'vault'
       ? {
-          from: (t: string) => {
-            tables['decrypted_secrets'] = [...vault].map(([id, v]) => ({ id, name: v.name, decrypted_secret: v.secret }))
-            return builder(t)
+          from: () => {
+            const refused = { data: null, error: { message: 'The schema must be one of the following: public, storage, graphql_public', code: 'PGRST106' } }
+            const q: Record<string, unknown> = {}
+            for (const m of ['select', 'eq', 'limit', 'order']) q[m] = () => q
+            q['maybeSingle'] = q['single'] = async () => refused
+            q['then'] = (resolve: (v: unknown) => unknown) => Promise.resolve(refused).then(resolve)
+            return q
           },
         }
       : client),
@@ -149,6 +155,9 @@ export function onboardingFake(seed: Record<string, Row[]> = {}, opts: { unique?
         const id = uuid()
         vault.set(id, { name: String(args['p_name']), secret: String(args['p_secret']) })
         return { data: id, error: null }
+      }
+      if (fn === 'read_vault_secret') {
+        return { data: vault.get(String(args['p_secret_id']))?.secret ?? null, error: null }
       }
       if (fn === 'delete_vault_secret') {
         vault.delete(String(args['p_secret_id']))

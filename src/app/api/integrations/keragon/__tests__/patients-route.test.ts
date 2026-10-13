@@ -112,10 +112,36 @@ describe('authentication (no session involved)', () => {
     expect(db.rows('patients')).toEqual([])
   })
 
-  it('the secret cannot be read (Vault down): 503 so Keragon retries', async () => {
+  it('the secret cannot be read (Vault down): 503 so Keragon retries, and the log says why (a code, no secret)', async () => {
     world()
-    db.failOn('decrypted_secrets:select')
+    db.failOn('rpc:read_vault_secret')
     expect((await signed(fixture('patient-upsert-full.json'))).status).toBe(503)
+    const logged = (console.error as jest.Mock).mock.calls.map(c => c.map(String).join(' ')).join(' ')
+    expect(logged).toMatch(/\[ehr-sync\] 503 \| reason=vault_read_failed \| connection=c0000000-0000-4000-8000-0000000000c1/)
+    expect(logged).not.toContain(SECRET)
+  })
+
+  it('reads the secret through the read_vault_secret RPC (the vault schema is not exposed to PostgREST)', async () => {
+    world()
+    expect((await signed(fixture('patient-upsert-full.json'))).status).toBe(200)
+    expect(db.calls.filter(c => c.kind === 'rpc' && c.name === 'read_vault_secret')).toHaveLength(1)
+  })
+
+  it('every other 503 logs its reason too: the event log write', async () => {
+    world()
+    db.failOn('ehr_sync_events:insert')
+    expect((await signed(fixture('patient-upsert-full.json'))).status).toBe(503)
+    const logged = (console.error as jest.Mock).mock.calls.map(c => c.map(String).join(' ')).join(' ')
+    expect(logged).toMatch(/\[ehr-sync\] 503 \| reason=event_log_failed/)
+  })
+
+  it('a retryable processing error logs its reason', async () => {
+    world()
+    db.failOn('patients:insert')
+    expect((await signed(fixture('patient-upsert-full.json'))).status).toBe(503)
+    const logged = (console.error as jest.Mock).mock.calls.map(c => c.map(String).join(' ')).join(' ')
+    expect(logged).toMatch(/\[ehr-sync\] 503 \| reason=write_failed \| connection=\S+ \| event=evt_demo_0001/)
+    expect(logged).not.toMatch(/Jordan|Sample|1985-04-12/)
   })
 })
 
