@@ -19,6 +19,7 @@
     "seed:catalog": "dotenv -e .env.local -- tsx scripts/import-catalog-v3.ts",
     "seed:pharmacy-invite": "dotenv -e .env.local -- tsx scripts/seed-demo-pharmacy-invite.ts",
     "export:catalog-packages": "dotenv -e .env.local -- tsx scripts/export-catalog-v3.ts",
+    "ledger:backfill": "dotenv -e .env.local -- tsx scripts/backfill-ledger.ts",
     "docs:pdf": "bash scripts/md-to-pdf.sh",
     "docs:docx": "bash scripts/md-to-docx.sh"
   },

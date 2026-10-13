@@ -38,6 +38,12 @@ jest.mock('@/lib/orders/cas-transition', () => ({
   casTransition: (args: unknown) => casTransitionMock(args),
 }))
 
+// Payments ledger (record-only): a refund Stripe confirms is recorded.
+const recordRefundMock = jest.fn()
+jest.mock('@/lib/payments/ledger', () => ({
+  recordRefundLedger: (_s: unknown, a: unknown) => recordRefundMock(a),
+}))
+
 /** A chain that remembers its eq() filters, so the answer can depend on them. */
 function chain(answer: (filters: Record<string, unknown>) => unknown): Record<string, unknown> {
   const filters: Record<string, unknown> = {}
@@ -137,5 +143,26 @@ describe('refund retry', () => {
     await run()
 
     expect(casTransitionMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('refund retry: the payments ledger', () => {
+  beforeEach(() => recordRefundMock.mockReset().mockResolvedValue({ ok: true, inserted: 4 }))
+
+  it('a refund Stripe confirms is recorded, keyed by its refund id', async () => {
+    await run()
+    expect(recordRefundMock).toHaveBeenCalledWith({ orderId: 'o-1', refundId: 're_1', amountCents: null, currency: 'usd' })
+  })
+
+  it('a refund still pending at Stripe is not recorded yet', async () => {
+    refundsCreateMock.mockResolvedValue({ id: 're_1', status: 'pending' })
+    await run()
+    expect(recordRefundMock).not.toHaveBeenCalled()
+  })
+
+  it('a ledger write that fails does not stop the refund completing', async () => {
+    recordRefundMock.mockResolvedValue({ ok: false, error: 'down' })
+    await run()
+    expect(casTransitionMock).toHaveBeenCalledWith(expect.objectContaining({ newStatus: 'REFUNDED' }))
   })
 })

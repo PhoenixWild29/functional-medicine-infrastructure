@@ -92,3 +92,21 @@ it('a dispute we never saw open is recorded first by the created handler', async
   expect(recordDisputeCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 'dp_1' }))
   expect(db.to('disputes', 'update')).toHaveLength(0)
 })
+
+describe('payments ledger (record-only)', () => {
+  it('each status change is handed to the ledger with the dispute and its orders; a ledger that throws changes nothing', async () => {
+    const { db, history } = world({ links: ['o-1'], orders: [{ order_id: 'o-1', status: 'SHIPPED' }] })
+    const recordDisputeLedger = jest.fn().mockRejectedValue(new Error('ledger down'))
+    await handleDisputeStatusChanged(dispute('won'), 'charge.dispute.closed', 'evt_w', { ...deps(db), recordDisputeLedger })
+    expect(recordDisputeLedger).toHaveBeenCalledWith(expect.objectContaining({ id: 'dp_1', status: 'won' }), ['o-1'])
+    expect(history).toHaveLength(1)
+  })
+
+  it('a redelivery of a status already recorded still reaches the (idempotent) ledger', async () => {
+    const { db } = world({ links: ['o-1'], orders: [{ order_id: 'o-1', status: 'SHIPPED' }] })
+    const recordDisputeLedger = jest.fn().mockResolvedValue(undefined)
+    await handleDisputeStatusChanged(dispute('won'), 'charge.dispute.closed', 'evt_w', { ...deps(db), recordDisputeLedger })
+    await handleDisputeStatusChanged(dispute('won'), 'charge.dispute.closed', 'evt_w', { ...deps(db), recordDisputeLedger })
+    expect(recordDisputeLedger).toHaveBeenCalledTimes(2)
+  })
+})
