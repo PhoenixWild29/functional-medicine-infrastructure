@@ -25,8 +25,12 @@ import { buildOpsAlert } from '@/lib/slack/ops-alert'
 export const PAID_PROCESSING_STUCK_HOURS = 24
 export const REROUTE_PENDING_TIMEOUT_MIN = 60
 const STUCK_ALERT_TYPE = 'order_stuck'
-/** Orders alerted per state per run; the rest go on the next run. */
+/** New alerts sent per state per run; the rest go on the next run. */
 const BATCH_LIMIT = 25
+/** Orders read per state per run. Far above what should ever be stuck. */
+const CANDIDATE_LIMIT = 500
+/** Order ids per order_status_history read (keeps the request URL short). */
+const HISTORY_CHUNK = 100
 
 type StuckStatus = 'PAID_PROCESSING' | 'REROUTE_PENDING'
 
@@ -40,6 +44,14 @@ export interface StuckOrdersResult {
   errors:  string[]
 }
 
+interface Overdue { orderId: string; since: string; sinceMs: number }
+
+// The clock is when the order ENTERED its current status: its latest
+// order_status_history row into that status. orders.updated_at moves on
+// any write (a note, a tracking number), which would restart the clock
+// and change the dedup key, so it is only a fallback for an order with
+// no history row. updated_at cannot even pre-filter the read: an order
+// written to a minute ago may have entered the status days ago.
 export async function alertStuckOrders(
   supabase: SupabaseClient<Database>,
   nowMs: number,
@@ -47,38 +59,97 @@ export async function alertStuckOrders(
   const result: StuckOrdersResult = { alerted: [], errors: [] }
 
   for (const status of Object.keys(THRESHOLD_MIN) as StuckStatus[]) {
-    const cutoff = new Date(nowMs - THRESHOLD_MIN[status] * 60_000).toISOString()
+    const cutoffMs = nowMs - THRESHOLD_MIN[status] * 60_000
     const { data: rows, error } = await supabase
       .from('orders')
       .select('order_id, status, updated_at')
       .eq('status', status)
       .is('deleted_at', null)
-      .lt('updated_at', cutoff)
       .order('updated_at', { ascending: true })
-      .limit(BATCH_LIMIT)
+      .limit(CANDIDATE_LIMIT)
     if (error) {
       console.error(`[stuck-orders] ${status} lookup failed:`, error.message)
       result.errors.push(`${status} lookup failed`)
       continue
     }
+    const candidates = rows ?? []
+    if (candidates.length === 0) continue
+    if (candidates.length >= CANDIDATE_LIMIT) {
+      console.warn(`[stuck-orders] ${status} has at least ${CANDIDATE_LIMIT} orders; only the first ${CANDIDATE_LIMIT} were checked`)
+    }
 
-    for (const row of rows ?? []) {
-      const since = row.updated_at
-      if (!(await claimStuckAlert(supabase, row.order_id, status, since, result))) continue
-      const stuckMinutes = Math.max(0, Math.round((nowMs - Date.parse(since)) / 60_000)) || 0
+    const entered = await statusEntryTimes(supabase, status, candidates.map(r => r.order_id))
+    if (!entered) {
+      result.errors.push(`${status} history lookup failed`)
+      continue
+    }
+
+    const overdue: Overdue[] = []
+    for (const row of candidates) {
+      let since = entered.get(row.order_id)
+      if (since === undefined) {
+        console.warn(`[stuck-orders] no status history row; using updated_at | order=${row.order_id}`)
+        since = row.updated_at
+      }
+      const sinceMs = Date.parse(since)
+      if (Number.isNaN(sinceMs) || sinceMs >= cutoffMs) continue
+      overdue.push({ orderId: row.order_id, since, sinceMs })
+    }
+    overdue.sort((a, b) => a.sinceMs - b.sinceMs)
+
+    let sent = 0
+    for (const { orderId, since, sinceMs } of overdue) {
+      if (sent >= BATCH_LIMIT) break
+      if (!(await claimStuckAlert(supabase, orderId, status, since, result))) continue
+      const stuckMinutes = Math.max(0, Math.round((nowMs - sinceMs) / 60_000)) || 0
       await sendSlackAlert(buildOpsAlert({
         type:    'order_stuck',
-        orderId: row.order_id,
+        orderId,
         status,
         details: { overdue_minutes: stuckMinutes },
         notes:   ['stuck_no_auto_action'],
-      })).catch(err => console.error(`[stuck-orders] Slack alert failed | order=${row.order_id}:`, err))
-      console.info(`[stuck-orders] alerted | order=${row.order_id} | status=${status} | minutes=${stuckMinutes}`)
-      result.alerted.push(row.order_id)
+      })).catch(err => console.error(`[stuck-orders] Slack alert failed | order=${orderId}:`, err))
+      console.info(`[stuck-orders] alerted | order=${orderId} | status=${status} | minutes=${stuckMinutes}`)
+      result.alerted.push(orderId)
+      sent++
     }
   }
 
   return result
+}
+
+/**
+ * When each order last entered `status`, as the created_at string of its
+ * latest order_status_history row into it (that exact string is the dedup
+ * key, so it never changes while the order stays put). Orders with no
+ * such row are absent from the map. Null if the history cannot be read:
+ * the caller then alerts nothing rather than guess a clock.
+ */
+async function statusEntryTimes(
+  supabase: SupabaseClient<Database>,
+  status: StuckStatus,
+  orderIds: string[],
+): Promise<Map<string, string> | null> {
+  const latest = new Map<string, { at: string; ms: number }>()
+  for (let i = 0; i < orderIds.length; i += HISTORY_CHUNK) {
+    const ids = orderIds.slice(i, i + HISTORY_CHUNK)
+    const { data, error } = await supabase
+      .from('order_status_history')
+      .select('order_id, created_at')
+      .in('order_id', ids)
+      .eq('new_status', status)
+    if (error) {
+      console.error(`[stuck-orders] ${status} history lookup failed:`, error.message)
+      return null
+    }
+    for (const h of data ?? []) {
+      const ms = Date.parse(h.created_at)
+      if (Number.isNaN(ms)) continue
+      const prev = latest.get(h.order_id)
+      if (!prev || ms > prev.ms) latest.set(h.order_id, { at: h.created_at, ms })
+    }
+  }
+  return new Map([...latest].map(([id, v]) => [id, v.at]))
 }
 
 async function claimStuckAlert(

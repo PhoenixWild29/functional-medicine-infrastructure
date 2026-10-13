@@ -19,6 +19,7 @@ import { isRefundEventRow } from '@/lib/refunds/events'
 import { isPaymentEventRow, paymentFailedLabel } from '@/lib/payments/events'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserRole } from '@/lib/auth/claims'
+import { deadlinePassed } from '@/lib/sla/deadline'
 
 interface Params { params: Promise<{ orderId: string }> }
 
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest, { params }: Params): Promise<Nex
   }
 
   const supabase = createServiceClient()
-  const now = new Date().toISOString()
+  const nowMs = Date.now()
 
   const [orderResult, historyResult, submissionsResult, slasResult] = await Promise.all([
     supabase
@@ -116,7 +117,7 @@ export async function GET(request: NextRequest, { params }: Params): Promise<Nex
     escalationTier: s.escalation_tier,
     acknowledgedAt: s.acknowledged_at,
     resolvedAt:     s.resolved_at,
-    isBreached:     s.deadline_at < now && !s.resolved_at,
+    isBreached:     deadlinePassed(s.deadline_at, nowMs) && !s.resolved_at,
   }))
 
   return NextResponse.json({

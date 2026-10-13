@@ -28,6 +28,12 @@ interface Deps {
   buildStripePaymentAlert: typeof BuildFn
   /** charge.dispute.created's handler: records a dispute we never saw open. */
   recordDisputeCreated:    (dispute: Stripe.Dispute) => Promise<void>
+  /**
+   * Payments ledger (record-only): the dispute's withdrawal and, when
+   * won, its reinstatement. Idempotent on the dispute id; must not throw
+   * (guarded anyway).
+   */
+  recordDisputeLedger?:    (dispute: Stripe.Dispute, orderIds: string[]) => Promise<void>
 }
 
 export async function handleDisputeStatusChanged(
@@ -75,6 +81,16 @@ export async function handleDisputeStatusChanged(
   if (orderIds.length === 0) {
     console.error(`[stripe-webhook] ${eventType}: dispute ${dispute.id} has no order on record`)
     return
+  }
+
+  // Payments ledger, before the idempotency check below: the ledger is
+  // idempotent itself, and a redelivery retries a write that failed.
+  if (deps.recordDisputeLedger) {
+    try {
+      await deps.recordDisputeLedger(dispute, orderIds)
+    } catch (err) {
+      console.error(`[stripe-webhook] ledger: dispute ${dispute.id} not recorded:`, err instanceof Error ? err.message : err)
+    }
   }
 
   // Already recorded at this status? Nothing more to do.
