@@ -108,7 +108,8 @@ describe('sendSms checks opt-in itself', () => {
 
 describe('payment texts carry no PHI', () => {
   const ORDER_CONTEXT = {
-    tracking_url: null,
+    tracking_number: null,
+    carrier: null,
     patients: { patient_id: 'pt-1', first_name: 'Alex', phone: '+15125550123', sms_opt_in: true },
     clinics: { clinic_id: 'c-1', name: 'Sunrise Weight Loss Clinic' },
     providers: { last_name: 'Chen' },

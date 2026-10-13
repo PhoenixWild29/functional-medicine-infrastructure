@@ -35,6 +35,7 @@ import {
   renderDeliveredSms,
   buildPaymentConfirmationBody,
 } from '@/lib/sms/templates'
+import { carrierTrackingUrl } from '@/lib/shipping/tracking-url'
 
 // ============================================================
 // ORDER DATA FETCHER
@@ -48,6 +49,7 @@ interface OrderSmsContext {
   clinicName:             string
   clinicId:               string
   providerLastName:       string   // REQ-SCL-002: for "Dr. {{providerLastName}}" in payment_link
+  /** Built from orders.carrier + orders.tracking_number; null for an unknown carrier. */
   trackingUrl:            string | null
   supportsRealTimeStatus: boolean
 }
@@ -62,7 +64,8 @@ async function getOrderSmsContext(orderId: string): Promise<OrderSmsContext | nu
   const { data, error } = await supabase
     .from('orders')
     .select(`
-      tracking_url,
+      tracking_number,
+      carrier,
       patients!inner (
         patient_id,
         first_name,
@@ -112,7 +115,12 @@ async function getOrderSmsContext(orderId: string): Promise<OrderSmsContext | nu
     clinicName:             String(clinic['name']          ?? ''),
     clinicId:               String(clinic['clinic_id']     ?? ''),
     providerLastName:       provider ? String(provider['last_name'] ?? '') : '',
-    trackingUrl:            row['tracking_url'] != null ? String(row['tracking_url']) : null,
+    // orders has no tracking_url column: the link comes from the carrier
+    // and the tracking number (selecting tracking_url failed every read).
+    trackingUrl:            carrierTrackingUrl(
+      row['carrier'] != null ? String(row['carrier']) : null,
+      row['tracking_number'] != null ? String(row['tracking_number']) : null,
+    ),
     supportsRealTimeStatus: Boolean(pharmacy?.['supports_real_time_status'] ?? false),
   }
 }
