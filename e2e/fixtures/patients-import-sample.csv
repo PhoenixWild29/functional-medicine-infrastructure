@@ -1,0 +1,6 @@
+First Name,Last Name,Pt Birth Dt,Cell Phone,Email,Address 1,City,State,Zip,Gender,Allergies
+Ada,Importspec,1984-05-12,(626) 555-0101,ada@patient-import.e2e.test,100 Congress Ave,Austin,TX,78701,F,Penicillin; Sulfa
+Ben,Importspec,07/04/1990,,ben@patient-import.e2e.test,200 Lamar Blvd,Austin,Texas,78704,M,NKDA
+Cal,Importspec,02/30/1980,(626) 555-0103,,300 Guadalupe St,Austin,TX,78701,M,
+Ada,Importspec,5/12/1984,626-555-0101,,100 Congress Ave,Austin,TX,78701,F,Penicillin
+Dee,Importspec,19721130,+1 626 555 0105,dee@patient-import.e2e.test,400 Red River St,Austin,TX,78701-1234,F,

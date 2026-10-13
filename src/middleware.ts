@@ -216,7 +216,12 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
   //
   // Legal pages: /legal/privacy and /legal/patient-terms, linked from
   // checkout, /login and the invite pages, read by visitors with no account.
-  const publicRoutes = ['/login', '/auth/callback', '/api/webhooks', '/api/cron', '/api/health', '/api/checkout', '/onboard/', '/api/onboard/', '/api/onboarding/invite/', '/legal/']
+  //
+  // EHR sync: POST /api/integrations/keragon/patients is server to server;
+  // each request is authenticated by its HMAC signature with the clinic's
+  // shared secret (lib/integrations/keragon/webhook.ts). Only that path:
+  // the connection routes beside it need a signed-in clinic admin.
+  const publicRoutes = ['/login', '/auth/callback', '/api/webhooks', '/api/cron', '/api/health', '/api/checkout', '/onboard/', '/api/onboard/', '/api/onboarding/invite/', '/legal/', '/api/integrations/keragon/patients']
   if (publicRoutes.some(route => pathname.startsWith(route))) {
     return response
   }
