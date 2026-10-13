@@ -38,11 +38,12 @@ it('exists with a down migration; one transaction; numbered 20261017000001', () 
   expect(FILE > '20261016000001_~').toBe(true)
 })
 
-it('is additive: creates its own tables, alters and drops nothing that exists', () => {
+it('is additive: creates its own tables, alters and drops nothing that exists, deletes or updates no rows', () => {
   expect(code).not.toMatch(/\balter table (?!ehr_connections|patient_external_ids|ehr_sync_events|patient_field_changes)/)
   expect(code).not.toMatch(/\bdrop table\b/)
   expect(code).not.toMatch(/\bdrop column\b/)
-  expect(code).not.toMatch(/\bdelete from\b|\bupdate \w+ set\b/)
+  // Function bodies ($$ ... $$) are not run by the migration itself.
+  expect(code.replace(/\$\$.*?\$\$/g, '')).not.toMatch(/\bdelete from\b|\bupdate \w+ set\b/)
   for (const t of NEW_TABLES) expect(tableBody(t)).not.toBe('')
 })
 
@@ -102,4 +103,11 @@ describe('what is stored', () => {
     expect(t).toContain("status in ('received', 'applied', 'skipped', 'flagged', 'error')")
     expect(t).not.toMatch(/first_name|last_name|date_of_birth|phone|email|address|allerg|payload/)
   })
+})
+
+it('redefines the Vault helpers on Vault\'s own API (see src/__tests__/vault-helpers-static.test.ts)', () => {
+  expect(code).toContain('return vault.create_secret(p_secret, p_name)')
+  expect(code).toContain('perform vault.update_secret(p_secret_id, p_new_secret)')
+  // Before apply_pharmacy_admin_scope() and COMMIT, inside the one transaction.
+  expect(code.indexOf('create or replace function create_vault_secret')).toBeLessThan(code.indexOf('select apply_pharmacy_admin_scope();'))
 })

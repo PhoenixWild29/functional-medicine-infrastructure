@@ -7,6 +7,9 @@
 -- holds the values sync changed or kept. Patients created by sync stay
 -- (source 'ehr', external_id). Delete each connection's Vault secret
 -- (delete_vault_secret) before running this, or it is left orphaned.
+-- The Vault helpers redefined in section 5 are kept on purpose: the
+-- 20260317000005 versions wrote vault.secrets directly, which Supabase
+-- Vault refuses ("permission denied for function _crypto_aead_det_noncegen").
 
 BEGIN;
 
