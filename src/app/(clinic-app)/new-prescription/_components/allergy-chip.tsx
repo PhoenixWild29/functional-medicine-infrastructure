@@ -81,10 +81,13 @@ export async function loadAllergies(patientId: string): Promise<SavedAllergies> 
 
 // ── Chip ──────────────────────────────────────────────────────
 
+// WCAG AA in both modes: -800 on -100 in light, -300 on the solid -950
+// in dark (a translucent tint made the ratio depend on the surface under
+// the chip: card, page or a selected row).
 const CHIP_TONE: Record<ReturnType<typeof allergyStatus>['kind'], string> = {
-  nkda:         'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300',
-  recorded:     'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
-  not_recorded: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
+  nkda:         'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  recorded:     'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
+  not_recorded: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
 }
 
 interface AllergyChipProps {
@@ -107,7 +110,7 @@ export function AllergyChip({ patient, onClick, expanded, className = '', loadin
   if (loading) {
     return (
       <span
-        className={`inline-flex max-w-full items-center gap-1 truncate rounded-full px-2 py-0.5 text-[11px] font-medium leading-4 bg-muted text-muted-foreground ${className}`}
+        className={`inline-flex max-w-full items-center gap-1 truncate rounded-full px-2 py-0.5 text-[11px] font-medium leading-4 bg-muted text-foreground ${className}`}
         data-testid="allergy-chip-loading"
         data-allergy-status="loading"
         title="Loading allergies"
@@ -121,7 +124,7 @@ export function AllergyChip({ patient, onClick, expanded, className = '', loadin
   if ((patient as { allergiesLoadFailed?: boolean | null } | null | undefined)?.allergiesLoadFailed) {
     return (
       <span
-        className={`inline-flex max-w-full items-center gap-1 truncate rounded-full px-2 py-0.5 text-[11px] font-medium leading-4 bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300 ${className}`}
+        className={`inline-flex max-w-full items-center gap-1 truncate rounded-full px-2 py-0.5 text-[11px] font-medium leading-4 bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 ${className}`}
         data-testid="allergy-chip-load-error"
         data-allergy-status="load_failed"
         title="Allergies could not be loaded — this is an error, not an empty record"

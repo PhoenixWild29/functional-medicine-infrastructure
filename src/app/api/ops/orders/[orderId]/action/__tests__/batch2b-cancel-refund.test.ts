@@ -45,6 +45,12 @@ jest.mock('@/lib/orders/cas-transition', () => ({
 }))
 jest.mock('@/lib/orders/status-history', () => ({ insertStatusHistory: jest.fn().mockResolvedValue(true) }))
 
+// Payments ledger (record-only): a refund Stripe confirms is recorded.
+const recordRefundMock = jest.fn().mockResolvedValue({ ok: true, inserted: 4 })
+jest.mock('@/lib/payments/ledger', () => ({
+  recordRefundLedger: (_s: unknown, a: unknown) => recordRefundMock(a),
+}))
+
 function chain(single: () => unknown, list?: () => unknown): Record<string, unknown> {
   const c: Record<string, unknown> = {}
   for (const k of ['select', 'eq', 'is', 'in', 'neq', 'order', 'limit', 'contains']) c[k] = () => c
@@ -237,6 +243,16 @@ describe('cancel + refund — a transition that no-ops is reported', () => {
 
     expect(res.status).toBe(409)
     expect(body.ok).not.toBe(true)
+  })
+})
+
+describe('cancel + refund: the payments ledger', () => {
+  beforeEach(() => recordRefundMock.mockClear())
+
+  it('a confirmed full refund is recorded, keyed by its refund id', async () => {
+    orderFetchMock.mockResolvedValue({ data: SOLO_PAID, error: null })
+    expect((await post('o-solo')).status).toBe(200)
+    expect(recordRefundMock).toHaveBeenCalledWith({ orderId: 'o-solo', refundId: 're_1', amountCents: null, currency: 'usd' })
   })
 })
 

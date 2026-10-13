@@ -30,6 +30,9 @@ export function PharmacyOnboardingSection() {
   const [invites, setInvites] = useState<Invite[]>([])
   const [applications, setApplications] = useState<Application[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
+  // The lists load in the browser: until the first load finishes, show a
+  // loading state, never "No invites yet" (which would flash first).
+  const [loaded, setLoaded] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -50,6 +53,7 @@ export function PharmacyOnboardingSection() {
       setInvites(iData.invites ?? [])
       setApplications(aData.applications ?? [])
       setLoadError(null)
+      setLoaded(true)
     } catch {
       setLoadError('Invites and applications could not be loaded. Refresh to try again.')
     }
@@ -126,7 +130,9 @@ export function PharmacyOnboardingSection() {
 
       <section aria-labelledby="invites-title">
         <h2 id="invites-title" className="text-lg font-semibold text-foreground">Invites</h2>
-        {invites.length === 0 ? (
+        {!loaded ? (
+          !loadError && <p role="status" className="mt-2 text-sm text-muted-foreground dark:text-slate-300">Loading invites…</p>
+        ) : invites.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground dark:text-slate-300">No invites yet.</p>
         ) : (
           <div className="mt-2 overflow-x-auto rounded-lg border border-border">
@@ -161,7 +167,9 @@ export function PharmacyOnboardingSection() {
 
       <section aria-labelledby="applications-title">
         <h2 id="applications-title" className="text-lg font-semibold text-foreground">Applications</h2>
-        {applications.length === 0 ? (
+        {!loaded ? (
+          !loadError && <p role="status" className="mt-2 text-sm text-muted-foreground dark:text-slate-300">Loading applications…</p>
+        ) : applications.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground dark:text-slate-300">No applications yet.</p>
         ) : (
           <div className="mt-2 overflow-x-auto rounded-lg border border-border">
