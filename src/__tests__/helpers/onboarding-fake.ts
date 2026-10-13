@@ -10,7 +10,11 @@
 // rotate_vault_secret). Every call is recorded; failOn('table:op'),
 // failOn('auth:createUser'), failOn('storage:upload'),
 // failOn('rpc:create_vault_secret') make that call answer an error.
-// Unique columns can be declared per table to mimic constraints.
+// Unique columns can be declared per table to mimic constraints; a
+// composite key is written 'a+b'. rpc('read_vault_secret') reads the
+// secrets create_vault_secret stored; delete_vault_secret removes one. Like
+// the real API, schema('vault') is refused: the vault schema is not
+// exposed to PostgREST (supabase/config.toml [api] schemas).
 
 type Row = Record<string, unknown>
 
@@ -58,8 +62,9 @@ export function onboardingFake(seed: Record<string, Row[]> = {}, opts: { unique?
           const keys = op === 'upsert' && onConflict ? onConflict.split(',').map(s => s.trim()) : null
           const existing = keys ? rows.find(x => keys.every(k => x[k] === r[k])) : undefined
           if (existing) { Object.assign(existing, r); out.push({ ...existing }); continue }
-          for (const col of unique) {
-            if (r[col] != null && rows.some(x => x[col] === r[col])) return { data: null, error: { message: `duplicate key value violates unique constraint (${col})`, code: '23505' }, count: null }
+          for (const key of unique) {
+            const cols = key.split('+')
+            if (cols.every(c => r[c] != null) && rows.some(x => cols.every(c => x[c] === r[c]))) return { data: null, error: { message: `duplicate key value violates unique constraint (${key})`, code: '23505' }, count: null }
           }
           const idCol = idColFor(table)
           if (idCol && r[idCol] === undefined) r[idCol] = uuid()
@@ -120,11 +125,28 @@ export function onboardingFake(seed: Record<string, Row[]> = {}, opts: { unique?
       pharmacy_agreement_acceptances: 'acceptance_id',
       pharmacy_onboarding_events: 'event_id',
       pharmacies: 'pharmacy_id',
+      patients: 'patient_id',
+      ehr_connections: 'connection_id',
+      patient_external_ids: 'link_id',
+      ehr_sync_events: 'sync_event_id',
+      patient_field_changes: 'change_id',
     } as Record<string, string>)[table] ?? null
   }
 
-  const client = {
+  const client: Record<string, unknown> = {
     from: (t: string) => builder(t),
+    schema: (name: string) => (name === 'vault'
+      ? {
+          from: () => {
+            const refused = { data: null, error: { message: 'The schema must be one of the following: public, storage, graphql_public', code: 'PGRST106' } }
+            const q: Record<string, unknown> = {}
+            for (const m of ['select', 'eq', 'limit', 'order']) q[m] = () => q
+            q['maybeSingle'] = q['single'] = async () => refused
+            q['then'] = (resolve: (v: unknown) => unknown) => Promise.resolve(refused).then(resolve)
+            return q
+          },
+        }
+      : client),
     rpc: async (fn: string, args: Row) => {
       calls.push({ kind: 'rpc', name: fn, op: 'call', payload: args })
       const error = fail(`rpc:${fn}`)
@@ -133,6 +155,13 @@ export function onboardingFake(seed: Record<string, Row[]> = {}, opts: { unique?
         const id = uuid()
         vault.set(id, { name: String(args['p_name']), secret: String(args['p_secret']) })
         return { data: id, error: null }
+      }
+      if (fn === 'read_vault_secret') {
+        return { data: vault.get(String(args['p_secret_id']))?.secret ?? null, error: null }
+      }
+      if (fn === 'delete_vault_secret') {
+        vault.delete(String(args['p_secret_id']))
+        return { data: null, error: null }
       }
       if (fn === 'rotate_vault_secret') {
         const v = vault.get(String(args['p_secret_id']))

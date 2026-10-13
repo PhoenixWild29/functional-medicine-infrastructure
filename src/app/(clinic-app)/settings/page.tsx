@@ -104,6 +104,7 @@ export default async function SettingsPage() {
               ...(canSeeTeam ? [{ href: '#team', label: 'Team' }] : []),
               ...(canImportPatients ? [{ href: '#patients', label: 'Patients' }] : []),
               ...(isClinicAdmin ? [{ href: '#access-log', label: 'Access log' }] : []),
+              ...(isClinicAdmin ? [{ href: '#integrations', label: 'Integrations' }] : []),
               { href: '/settings/agreements', label: 'Agreements' },
             ].map(({ href, label }) => (
               <li key={href}>
@@ -199,6 +200,24 @@ export default async function SettingsPage() {
                   className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
                 >
                   Open the access log
+                </Link>
+              </section>
+            </div>
+          )}
+
+          {/* Patient Intake v1.1 PR 5b: EHR sync (Keragon), clinic admin only */}
+          {isClinicAdmin && (
+            <div id="integrations" className="scroll-mt-6">
+              <section className="rounded-lg border border-border bg-card p-6 space-y-3" data-testid="settings-integrations">
+                <h2 className="text-base font-semibold text-foreground">Integrations</h2>
+                <p className="text-sm text-muted-foreground">
+                  EHR sync: send patients from your EHR through Keragon. Connect, rotate the shared secret, disconnect, and see the sync log.
+                </p>
+                <Link
+                  href="/settings/integrations"
+                  className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
+                >
+                  Open EHR sync
                 </Link>
               </section>
             </div>

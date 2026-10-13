@@ -34,7 +34,7 @@ const params = { params: Promise.resolve({ pharmacySlug: 'acme' }) }
 const script: Script = c => {
   if (c.table === 'pharmacies') return { data: { pharmacy_id: 'ph-1', slug: 'acme', name: 'Acme' } }
   if (c.table === 'pharmacy_api_configs') return { data: { webhook_secret_vault_id: 'v-1' } }
-  if (c.table === 'decrypted_secrets') return { data: { decrypted_secret: SECRET } }
+  if (c.table === 'read_vault_secret') return { data: SECRET }
   if (c.table === 'pharmacy_webhook_events' && c.op === 'insert') return { data: { id: 'pwe-1' } }
   if (c.table === 'adapter_submissions') return { data: { order_id: 'o-1' } }
   if (c.table === 'orders') return { data: { order_id: 'o-1', status: 'PHARMACY_ACKNOWLEDGED', clinic_id: 'c-1' } }

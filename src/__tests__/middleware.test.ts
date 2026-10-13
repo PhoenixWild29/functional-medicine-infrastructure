@@ -412,3 +412,28 @@ describe('middleware — /intake (patient self-intake, no session)', () => {
     expect(res.headers.get('location')).toMatch(/\/login/)
   })
 })
+
+// ───────────────────────────────────────────────────────
+// EHR sync (Keragon): the inbound webhook is server to server
+// ───────────────────────────────────────────────────────
+//
+// POST /api/integrations/keragon/patients authenticates each request by
+// its HMAC signature (lib/integrations/keragon/webhook.ts), so the
+// middleware lets it through without a session. The clinic admin routes
+// beside it are not public.
+
+describe('middleware: the Keragon webhook is public, its admin routes are not', () => {
+  it('passes the webhook through with no session lookup', async () => {
+    getUserMock.mockResolvedValue(NO_SESSION)
+    const res = await middleware(new NextRequest(new URL('http://localhost/api/integrations/keragon/patients'), { method: 'POST' }))
+    expect(getUserMock).not.toHaveBeenCalled()
+    expect(res.headers.get('location')).toBeNull()
+    expect(res.status).toBe(200)
+  })
+
+  it('still checks the session on the connection routes', async () => {
+    getUserMock.mockResolvedValue(NO_SESSION)
+    await middleware(makeReq('/api/integrations/keragon/connection'))
+    expect(getUserMock).toHaveBeenCalled()
+  })
+})
