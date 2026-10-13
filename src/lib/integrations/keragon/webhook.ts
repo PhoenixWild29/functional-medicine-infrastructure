@@ -44,7 +44,10 @@ export async function handleKeragonWebhook(
 
   const conn = await connectionSecret(db, connectionId)
   if (!conn.ok) {
-    if (conn.reason === 'unavailable') return { status: 503, body: { error: 'Temporarily unavailable. Retry.' } }
+    if (conn.reason === 'unavailable') {
+      console.error(`[ehr-sync] 503 | reason=${conn.stage} | connection=${connectionId} | code=${conn.code}`)
+      return { status: 503, body: { error: 'Temporarily unavailable. Retry.' } }
+    }
     console.warn(`[ehr-sync] request for an unknown or disconnected connection | connection=${connectionId}`)
     return UNAUTHORIZED
   }
@@ -92,7 +95,7 @@ export async function handleKeragonWebhook(
     }
     syncEventId = p.sync_event_id
   } else if (claimError || !claimed) {
-    console.error(`[ehr-sync] event could not be logged | connection=${connectionId}:`, claimError?.code ?? 'no row')
+    console.error(`[ehr-sync] 503 | reason=event_log_failed | connection=${connectionId} | event=${event.eventId} | code=${claimError?.code ?? 'no_row'}`)
     return { status: 503, body: { error: 'Temporarily unavailable. Retry.' } }
   } else {
     syncEventId = (claimed as { sync_event_id: string }).sync_event_id
@@ -118,6 +121,9 @@ export async function handleKeragonWebhook(
 
   const result = { status: outcome.status, event_id: event.eventId, patient_id: outcome.patientId, ...(outcome.errorCode ? { error_code: outcome.errorCode } : {}) }
   if (outcome.status !== 'error') return { status: 200, body: result }
-  if (RETRYABLE.has(outcome.errorCode ?? '')) return { status: 503, body: { ...result, error: 'Temporarily unavailable. Retry.' } }
+  if (RETRYABLE.has(outcome.errorCode ?? '')) {
+    console.error(`[ehr-sync] 503 | reason=${outcome.errorCode} | connection=${connectionId} | event=${event.eventId}`)
+    return { status: 503, body: { ...result, error: 'Temporarily unavailable. Retry.' } }
+  }
   return { status: 422, body: { ...result, error: 'The patient could not be synced.' } }
 }

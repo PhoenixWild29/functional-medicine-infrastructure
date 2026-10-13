@@ -4283,6 +4283,10 @@ export type Database = {
         }
         Returns: Json
       }
+      read_vault_secret: {
+        Args: { p_secret_id: string }
+        Returns: string | null
+      }
       rotate_vault_secret: {
         Args: { p_new_secret: string; p_secret_id: string }
         Returns: undefined

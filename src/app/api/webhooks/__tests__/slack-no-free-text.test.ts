@@ -47,7 +47,7 @@ beforeEach(() => {
   db = scriptedDb(c => {
     if (c.table === 'pharmacies') return { data: { pharmacy_id: 'ph-1', slug: 'portal-plus', name: 'Portal Plus Pharmacy' } }
     if (c.table === 'pharmacy_api_configs') return { data: { webhook_secret_vault_id: 'v-1' } }
-    if (c.table === 'decrypted_secrets') return { data: { decrypted_secret: SECRET } }
+    if (c.table === 'read_vault_secret') return { data: SECRET }
     if (c.table === 'pharmacy_webhook_events' && c.op === 'insert') return { data: { id: 'pwe-1' } }
     if (c.table === 'adapter_submissions') return { data: { order_id: ORDER } }
     if (c.table === 'orders') return { data: { order_id: ORDER, status: 'PHARMACY_ACKNOWLEDGED', clinic_id: 'c-1' } }

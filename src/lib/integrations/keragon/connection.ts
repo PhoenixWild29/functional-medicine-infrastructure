@@ -16,6 +16,7 @@ import type { Database } from '@/types/database.types'
 
 type SupabaseClient = UntypedClient<Database>
 import { newSharedSecret } from './signature'
+import { readVaultSecret } from '@/lib/vault/read-secret'
 
 export const WEBHOOK_PATH = '/api/integrations/keragon/patients'
 export const PROVIDER = 'keragon'
@@ -171,21 +172,21 @@ export async function listConnections(db: SupabaseClient): Promise<{ ok: true; c
 
 export type SecretLookup =
   | { ok: true; connectionId: string; clinicId: string; secret: string }
-  | { ok: false; reason: 'unknown' | 'unavailable' }
+  | { ok: false; reason: 'unknown' }
+  /** A temporary failure; stage and code (never the secret) are for the log. */
+  | { ok: false; reason: 'unavailable'; stage: 'connection_read_failed' | 'vault_read_failed'; code: string }
 
 /** The connection and its secret, or unknown (not found, not connected). */
 export async function connectionSecret(db: SupabaseClient, connectionId: string): Promise<SecretLookup> {
   const { data, error } = await db.from('ehr_connections').select(COLUMNS).eq('connection_id', connectionId).eq('provider', PROVIDER).maybeSingle()
-  if (error) return { ok: false, reason: 'unavailable' }
+  if (error) return { ok: false, reason: 'unavailable', stage: 'connection_read_failed', code: error.code || 'unknown' }
   const row = data as ConnectionRow | null
   if (!row || connectionStatus(row) !== 'connected') return { ok: false, reason: 'unknown' }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: vaultRow, error: vaultError } = await (db as any).schema('vault').from('decrypted_secrets')
-    .select('decrypted_secret').eq('id', row.secret_vault_id).maybeSingle()
-  if (vaultError) return { ok: false, reason: 'unavailable' }
-  const secret = (vaultRow as { decrypted_secret?: string } | null)?.decrypted_secret
-  if (!secret) return { ok: false, reason: 'unknown' }
-  return { ok: true, connectionId: row.connection_id, clinicId: row.clinic_id, secret }
+  // Through the read_vault_secret RPC: the vault schema is not exposed to PostgREST.
+  const read = await readVaultSecret(db, row.secret_vault_id as string)
+  if (!read.ok && read.reason === 'error') return { ok: false, reason: 'unavailable', stage: 'vault_read_failed', code: read.code }
+  if (!read.ok) return { ok: false, reason: 'unknown' }
+  return { ok: true, connectionId: row.connection_id, clinicId: row.clinic_id, secret: read.secret }
 }
 
 /** Note an error on the connection (a code only). Failures are logged. */

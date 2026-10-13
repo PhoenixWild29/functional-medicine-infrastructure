@@ -19,6 +19,7 @@
 // For basic: the vault secret is "username:password".
 
 import { createServiceClient } from '@/lib/supabase/service'
+import { readVaultSecret } from '@/lib/vault/read-secret'
 
 /**
  * Retrieves and decrypts a vault secret by its UUID.
@@ -26,22 +27,15 @@ import { createServiceClient } from '@/lib/supabase/service'
  * Throws if the secret is not found or Vault query fails.
  */
 export async function getVaultSecret(vaultSecretId: string): Promise<string> {
-  const supabase = createServiceClient()
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any).schema('vault')
-    .from('decrypted_secrets')
-    .select('decrypted_secret')
-    .eq('id', vaultSecretId)
-    .single()
-
-  if (error || !data?.decrypted_secret) {
+  // Through the read_vault_secret RPC (20261017000003): the vault schema is
+  // not exposed to PostgREST, so reads through the vault schema are refused.
+  const read = await readVaultSecret(createServiceClient(), vaultSecretId)
+  if (!read.ok) {
     throw new Error(
-      `[vault] failed to retrieve secret ${vaultSecretId}: ${error?.message ?? 'secret not found or empty'}`
+      `[vault] failed to retrieve secret ${vaultSecretId}: ${read.reason === 'error' ? `read failed (${read.code})` : 'secret not found or empty'}`
     )
   }
-
-  return data.decrypted_secret
+  return read.secret
 }
 
 // ============================================================

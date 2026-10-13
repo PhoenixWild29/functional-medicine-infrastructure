@@ -129,7 +129,7 @@ describe('pharmacy webhook', () => {
     if (m) return m
     if (c.table === 'pharmacies') return { data: PHARMACY }
     if (c.table === 'pharmacy_api_configs') return { data: { webhook_secret_vault_id: 'v-1' } }
-    if (c.table === 'decrypted_secrets') return { data: { decrypted_secret: SECRET } }
+    if (c.table === 'read_vault_secret') return { data: SECRET }
     if (c.table === 'pharmacy_webhook_events' && c.op === 'insert') return { data: { id: 'pwe-1' } }
     return undefined
   }
@@ -142,7 +142,7 @@ describe('pharmacy webhook', () => {
   })
 
   it('a failed secret read answers 500 so the pharmacy retries (was 403)', async () => {
-    db = scriptedDb(script(c => (c.table === 'decrypted_secrets' ? DB_DOWN : undefined)))
+    db = scriptedDb(script(c => (c.table === 'read_vault_secret' ? DB_DOWN : undefined)))
     const res = await pharmacyWebhook(signed('{}'), params)
     expect(res.status).toBe(500)
   })
