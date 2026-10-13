@@ -1,0 +1,23 @@
+{
+  "event_id": "evt_demo_0001",
+  "event_type": "patient.upsert",
+  "occurred_at": "2026-10-12T15:00:00Z",
+  "patient": {
+    "external_patient_id": "EHR-DEMO-10001",
+    "first_name": "Jordan",
+    "last_name": "Sample",
+    "date_of_birth": "1985-04-12",
+    "sex": "female",
+    "mobile": "+15125550147",
+    "email": "jordan.sample@example.com",
+    "address": {
+      "line1": "100 Example St",
+      "line2": "Apt 4",
+      "city": "Austin",
+      "state": "TX",
+      "zip": "78701"
+    },
+    "allergies": ["Penicillin", "Sulfa"],
+    "no_known_drug_allergies": false
+  }
+}

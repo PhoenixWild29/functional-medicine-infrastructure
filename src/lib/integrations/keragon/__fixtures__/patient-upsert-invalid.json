@@ -1,0 +1,12 @@
+{
+  "event_id": "evt_demo_0003",
+  "event_type": "patient.upsert",
+  "occurred_at": "2026-10-12T15:10:00Z",
+  "patient": {
+    "first_name": "Casey",
+    "last_name": "Invalid",
+    "date_of_birth": "1990-02-30",
+    "sex": "x",
+    "mobile": "12"
+  }
+}

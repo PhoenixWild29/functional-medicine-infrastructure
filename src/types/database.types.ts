@@ -567,6 +567,132 @@ export type Database = {
         }
         Relationships: []
       }
+      ehr_connections: {
+        Row: {
+          clinic_id: string
+          connected_at: string | null
+          connection_id: string
+          created_at: string
+          disconnected_at: string | null
+          disconnected_by: string | null
+          last_error_at: string | null
+          last_error_code: string | null
+          last_event_at: string | null
+          last_success_at: string | null
+          provider: string
+          secret_rotated_at: string | null
+          secret_rotated_by: string | null
+          secret_vault_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          clinic_id: string
+          connected_at?: string | null
+          connection_id?: string
+          created_at?: string
+          disconnected_at?: string | null
+          disconnected_by?: string | null
+          last_error_at?: string | null
+          last_error_code?: string | null
+          last_event_at?: string | null
+          last_success_at?: string | null
+          provider?: string
+          secret_rotated_at?: string | null
+          secret_rotated_by?: string | null
+          secret_vault_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          clinic_id?: string
+          connected_at?: string | null
+          connection_id?: string
+          created_at?: string
+          disconnected_at?: string | null
+          disconnected_by?: string | null
+          last_error_at?: string | null
+          last_error_code?: string | null
+          last_event_at?: string | null
+          last_success_at?: string | null
+          provider?: string
+          secret_rotated_at?: string | null
+          secret_rotated_by?: string | null
+          secret_vault_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ehr_connections_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+        ]
+      }
+      ehr_sync_events: {
+        Row: {
+          clinic_id: string
+          connection_id: string
+          detail: Json
+          error_code: string | null
+          event_id: string | null
+          event_type: string | null
+          patient_id: string | null
+          processed_at: string | null
+          received_at: string
+          status: string
+          sync_event_id: string
+        }
+        Insert: {
+          clinic_id: string
+          connection_id: string
+          detail?: Json
+          error_code?: string | null
+          event_id?: string | null
+          event_type?: string | null
+          patient_id?: string | null
+          processed_at?: string | null
+          received_at?: string
+          status?: string
+          sync_event_id?: string
+        }
+        Update: {
+          clinic_id?: string
+          connection_id?: string
+          detail?: Json
+          error_code?: string | null
+          event_id?: string | null
+          event_type?: string | null
+          patient_id?: string | null
+          processed_at?: string | null
+          received_at?: string
+          status?: string
+          sync_event_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ehr_sync_events_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+          {
+            foreignKeyName: "ehr_sync_events_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "ehr_connections"
+            referencedColumns: ["connection_id"]
+          },
+          {
+            foreignKeyName: "ehr_sync_events_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["patient_id"]
+          },
+        ]
+      }
       onboarding_invites: {
         Row: {
           accepted_at: string | null
@@ -1757,6 +1883,157 @@ export type Database = {
           },
         ]
       }
+      // Patient CSV import (20261016000002): hand-extended
+      patient_external_ids: {
+        Row: {
+          clinic_id: string
+          external_patient_id: string
+          last_synced_at: string | null
+          link_id: string
+          linked_at: string
+          patient_id: string
+          system: string
+        }
+        Insert: {
+          clinic_id: string
+          external_patient_id: string
+          last_synced_at?: string | null
+          link_id?: string
+          linked_at?: string
+          patient_id: string
+          system: string
+        }
+        Update: {
+          clinic_id?: string
+          external_patient_id?: string
+          last_synced_at?: string | null
+          link_id?: string
+          linked_at?: string
+          patient_id?: string
+          system?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_external_ids_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+          {
+            foreignKeyName: "patient_external_ids_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["patient_id"]
+          },
+        ]
+      }
+      patient_field_changes: {
+        Row: {
+          applied: boolean
+          change_id: string
+          changed_at: string
+          clinic_id: string
+          field: string
+          new_value: string | null
+          old_value: string | null
+          patient_id: string
+          source: string
+          sync_event_id: string | null
+        }
+        Insert: {
+          applied: boolean
+          change_id?: string
+          changed_at?: string
+          clinic_id: string
+          field: string
+          new_value?: string | null
+          old_value?: string | null
+          patient_id: string
+          source: string
+          sync_event_id?: string | null
+        }
+        Update: {
+          applied?: boolean
+          change_id?: string
+          changed_at?: string
+          clinic_id?: string
+          field?: string
+          new_value?: string | null
+          old_value?: string | null
+          patient_id?: string
+          source?: string
+          sync_event_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_field_changes_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+          {
+            foreignKeyName: "patient_field_changes_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["patient_id"]
+          },
+          {
+            foreignKeyName: "patient_field_changes_sync_event_id_fkey"
+            columns: ["sync_event_id"]
+            isOneToOne: false
+            referencedRelation: "ehr_sync_events"
+            referencedColumns: ["sync_event_id"]
+          },
+        ]
+      }
+      patient_import_batches: {
+        Row: {
+          batch_id: string
+          clinic_id: string
+          created_at: string
+          duplicates_confirmed: number
+          excluded_rows: number
+          file_name: string
+          imported_by: string
+          imported_rows: number
+          total_rows: number
+        }
+        Insert: {
+          batch_id?: string
+          clinic_id: string
+          created_at?: string
+          duplicates_confirmed: number
+          excluded_rows: number
+          file_name: string
+          imported_by: string
+          imported_rows: number
+          total_rows: number
+        }
+        Update: {
+          batch_id?: string
+          clinic_id?: string
+          created_at?: string
+          duplicates_confirmed?: number
+          excluded_rows?: number
+          file_name?: string
+          imported_by?: string
+          imported_rows?: number
+          total_rows?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_import_batches_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+        ]
+      }
       // Patient Intake PR 2 (20261015000001): hand-extended
       patient_intake_links: {
         Row: {
@@ -1891,7 +2168,7 @@ export type Database = {
           last_name: string | null
           nkda: boolean
           patient_id: string
-          phone: string
+          phone: string | null
           primary_provider_id: string | null
           sms_opt_in: boolean
           sex: string | null
@@ -1907,6 +2184,8 @@ export type Database = {
           intake_completed_at: string | null
           privacy_notice_ack_at: string | null
           privacy_notice_version: string | null
+          // Patient CSV import (20261016000002): hand-extended
+          import_batch_id: string | null
           possible_duplicate_of: string | null
           possible_duplicate_matched_on: string | null
           possible_duplicate_flagged_at: string | null
@@ -1933,7 +2212,7 @@ export type Database = {
           last_name?: string | null
           nkda?: boolean
           patient_id?: string
-          phone: string
+          phone?: string | null
           primary_provider_id?: string | null
           sms_opt_in?: boolean
           sex?: string | null
@@ -1948,6 +2227,7 @@ export type Database = {
           intake_completed_at?: string | null
           privacy_notice_ack_at?: string | null
           privacy_notice_version?: string | null
+          import_batch_id?: string | null
           possible_duplicate_of?: string | null
           possible_duplicate_matched_on?: string | null
           possible_duplicate_flagged_at?: string | null
@@ -1974,7 +2254,7 @@ export type Database = {
           last_name?: string | null
           nkda?: boolean
           patient_id?: string
-          phone?: string
+          phone?: string | null
           primary_provider_id?: string | null
           sms_opt_in?: boolean
           sex?: string | null
@@ -1989,6 +2269,7 @@ export type Database = {
           intake_completed_at?: string | null
           privacy_notice_ack_at?: string | null
           privacy_notice_version?: string | null
+          import_batch_id?: string | null
           possible_duplicate_of?: string | null
           possible_duplicate_matched_on?: string | null
           possible_duplicate_flagged_at?: string | null
@@ -4211,6 +4492,23 @@ export type Database = {
         Returns: string
       }
       delete_vault_secret: { Args: { p_secret_id: string }; Returns: undefined }
+      // Patient CSV import (20261016000002): hand-extended
+      import_patient_batch: {
+        Args: {
+          p_clinic_id: string
+          p_imported_by: string
+          p_file_name: string
+          p_total_rows: number
+          p_excluded_rows: number
+          p_duplicates_confirmed: number
+          p_patients: Json
+        }
+        Returns: Json
+      }
+      read_vault_secret: {
+        Args: { p_secret_id: string }
+        Returns: string | null
+      }
       rotate_vault_secret: {
         Args: { p_new_secret: string; p_secret_id: string }
         Returns: undefined
