@@ -38,6 +38,12 @@ let queryFilters: Array<{ table: string; filters: Array<[string, unknown]> }> = 
 
 const getSessionMock = jest.fn()
 
+// Pending review (lib/onboarding/approval-guard) is tested in
+// src/__tests__/pending-review-guard.test.ts; the clinic here is approved.
+jest.mock('@/lib/onboarding/approval-guard', () => ({
+  ...jest.requireActual('@/lib/onboarding/approval-guard'),
+  refuseUnlessApproved: async () => null,
+}))
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
     auth: { getSession: () => getSessionMock(), getUser: () => userFromSession(getSessionMock()) },

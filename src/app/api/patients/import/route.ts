@@ -15,6 +15,7 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { logPhiAccessMany } from '@/lib/audit/phi-access'
 import { mappingErrors } from '@/lib/patients/import/mapping'
 import { importCaller, readIndexes, readRowsBody } from '@/lib/patients/import/request'
@@ -23,6 +24,10 @@ import { reviewImport } from '@/lib/patients/import/review'
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const caller = await importCaller(request)
   if ('response' in caller) return caller.response
+  // Pending review: nothing is imported until ops approves the clinic
+  // (lib/onboarding/approval-guard).
+  const pendingReview = await refuseUnlessApproved(createServiceClient(), caller.clinicId)
+  if (pendingReview) return pendingReview
 
   let body: unknown
   try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid request' }, { status: 400 }) }

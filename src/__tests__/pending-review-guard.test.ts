@@ -56,7 +56,7 @@ const params = <T,>(p: T) => ({ params: Promise.resolve(p) })
 type Call = { name: string; role?: string; run: () => Promise<Response> }
 const ROUTES: Call[] = [
   { name: 'save a draft (POST /api/orders)', run: async () => (await import('@/app/api/orders/route')).POST(req('/api/orders', 'POST', { patientId: PATIENT, providerId: 'p1', formulationId: 'f1', pharmacyId: 'ph1', retailCents: 10000, sigText: 'Take one daily' })) },
-  { name: 'edit a draft (PATCH /api/orders/[orderId])', run: async () => (await import('@/app/api/orders/[orderId]/route')).PATCH(req(`/api/orders/${ORDER}`, 'PATCH', { pharmacyId: 'ph1', retailCents: 10000, sigText: 'x' }), params({ orderId: ORDER })) },
+  { name: 'edit a draft (PATCH /api/orders/[orderId])', run: async () => (await import('@/app/api/orders/[orderId]/route')).PATCH(req(`/api/orders/${ORDER}`, 'PATCH', { formulationId: 'f1', pharmacyId: 'ph1', retailCents: 10000, sigText: 'Take one daily' }), params({ orderId: ORDER })) },
   { name: 'remove a draft (DELETE /api/orders/[orderId])', run: async () => (await import('@/app/api/orders/[orderId]/route')).DELETE(req(`/api/orders/${ORDER}`, 'DELETE'), params({ orderId: ORDER })) },
   { name: 'sign (POST /api/orders/batch-sign)', run: async () => (await import('@/app/api/orders/batch-sign/route')).POST(req('/api/orders/batch-sign', 'POST', { orderIds: [ORDER], signature: {} })) },
   { name: 'pre-sign check (POST /api/orders/batch-sign/check)', run: async () => (await import('@/app/api/orders/batch-sign/check/route')).POST(req('/api/orders/batch-sign/check', 'POST', { orderIds: [ORDER] })) },

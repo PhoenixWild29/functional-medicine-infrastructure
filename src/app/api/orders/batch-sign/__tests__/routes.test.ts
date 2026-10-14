@@ -11,6 +11,12 @@ import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log
 import type { NextRequest } from 'next/server'
 
 const getUserMock = jest.fn()
+// Pending review (lib/onboarding/approval-guard) is tested in
+// src/__tests__/pending-review-guard.test.ts; the clinic here is approved.
+jest.mock('@/lib/onboarding/approval-guard', () => ({
+  ...jest.requireActual('@/lib/onboarding/approval-guard'),
+  refuseUnlessApproved: async () => null,
+}))
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({ auth: { getUser: () => getUserMock() } }),
 }))

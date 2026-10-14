@@ -80,6 +80,7 @@ import { createSlasForTransition } from '@/lib/sla/creator'
 import { sendPaymentLinkSms } from '@/lib/sms/triggers'
 import { serverEnv } from '@/lib/env'
 import { resolveSigner } from '@/lib/auth/signer'
+import { isApprovedClinic, PENDING_REVIEW_MESSAGE } from '@/lib/onboarding/approval-guard'
 
 type Supabase = SupabaseClient<Database>
 
@@ -354,8 +355,9 @@ export async function checkBatch(
   // Clinic onboarding: a clinic signs and sends only once ops has approved
   // it (onboarding_status 'approved') and it is active. Fails closed: a
   // clinic row that says neither is refused.
-  if (clinicRes.data?.onboarding_status !== 'approved' || clinicRes.data?.is_active !== true) {
-    add(null, 'clinic_not_approved', 'Your clinic has not been approved by CompoundIQ yet, so nothing can be signed or sent. Finish onboarding, or contact CompoundIQ.')
+  // Same rule and words as every other write (lib/onboarding/approval-guard).
+  if (!isApprovedClinic(clinicRes.data)) {
+    add(null, 'clinic_not_approved', PENDING_REVIEW_MESSAGE)
   }
   if (clinicRes.data?.stripe_connect_status !== 'ACTIVE') {
     add(null, 'stripe', "The clinic's Stripe account is not active, so no payment link can be sent.")
