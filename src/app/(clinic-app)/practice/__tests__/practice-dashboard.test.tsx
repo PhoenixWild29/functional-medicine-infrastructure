@@ -49,6 +49,15 @@ describe('PracticeDashboard', () => {
     expect(screen.getByTestId('practice-excluded-cancelled')).toHaveTextContent('$110.00')
   })
 
+  it('no platform fee: no Platform fees card, the monthly fee is noted as billed separately, payout is after wholesale only', async () => {
+    render(<PracticeDashboard viewerIsProvider={false} />)
+    expect(await screen.findByTestId('practice-payout')).toHaveTextContent('$95.00')
+    expect(screen.queryByTestId('practice-fee')).not.toBeInTheDocument()
+    expect(screen.queryByText(/platform fee/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/15%/)).not.toBeInTheDocument()
+    expect(screen.getByTestId('practice-fee-note')).toHaveTextContent('CompoundIQ’s monthly fee is billed separately and is not taken from orders.')
+  })
+
   it('each needs-attention item links to where it is fixed', async () => {
     render(<PracticeDashboard viewerIsProvider={false} />)
     const item = await screen.findByTestId('attention-reprice-d1')
