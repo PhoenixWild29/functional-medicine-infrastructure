@@ -34,6 +34,10 @@ import { refillsUsed, refillAllowance, isRefillableStatus } from '@/lib/orders/r
 import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
+export const metadata = {
+  title: 'Refill | CompoundIQ',
+}
+
 export const dynamic = 'force-dynamic'
 
 /** Orders scanned for refillable history. A clinic's recent work, not all time. */
