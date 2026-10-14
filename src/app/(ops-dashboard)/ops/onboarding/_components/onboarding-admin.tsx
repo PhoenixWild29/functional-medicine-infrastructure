@@ -24,6 +24,9 @@ import { ONBOARDING_STEPS, STEP_LABELS, NOT_LIVE_STEPS, NOT_LIVE_LABEL } from '@
 import type { OpsApprovedClinic, OpsClinicOnboarding, OpsInvite, OpsOnboarding } from '@/lib/onboarding/ops'
 import { TextField, FormAlert, InviteLink, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_DANGER } from '@/components/onboarding/fields'
 
+// Self sign-up (/get-started), not an invite.
+const SELF_SIGNUP_LABEL = 'inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground'
+
 type Errors = Record<string, string>
 
 const STATUS_LABEL: Record<string, string> = {
@@ -234,6 +237,12 @@ function ClinicReview({ clinic: c, onReviewed }: { clinic: OpsClinicOnboarding; 
     <li className="rounded-lg border border-border bg-card p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-base font-semibold text-foreground">{c.name}</h3>
+        {c.signupSource === 'self_serve' && (
+          <span className="inline-flex gap-1">
+            <span className={SELF_SIGNUP_LABEL}>Signed up on their own</span>
+            {c.signupKind === 'solo_provider' && <span className={SELF_SIGNUP_LABEL}>Solo provider</span>}
+          </span>
+        )}
         <span className="text-sm text-slate-700 dark:text-slate-300">{STATUS_LABEL[c.onboardingStatus] ?? c.onboardingStatus}{c.submittedAt ? ` · submitted ${fmt(c.submittedAt)}` : ''}</span>
       </div>
       <Link href={`/ops/onboarding/${c.clinicId}`} className={REVIEW_LINK}>Review details for {c.name}</Link>

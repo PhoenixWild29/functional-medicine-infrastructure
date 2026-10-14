@@ -39,6 +39,7 @@ interface AppRow {
   approved_at:       string | null
   updated_at:        string | null
   adapter_configured_at: string | null
+  signup_source?:    string | null
 }
 
 interface LicenseRow {
@@ -52,7 +53,7 @@ interface LicenseRow {
   verified_at:         string | null
 }
 
-const APP_COLUMNS = 'application_id, pharmacy_id, status, steps_completed, ordering_method, ordering_details, catalog_choice, catalog_rows, catalog_row_count, catalog_warnings, review_note, submitted_at, reviewed_at, approved_at, updated_at, adapter_configured_at'
+const APP_COLUMNS = 'application_id, pharmacy_id, status, steps_completed, ordering_method, ordering_details, catalog_choice, catalog_rows, catalog_row_count, catalog_warnings, review_note, submitted_at, reviewed_at, approved_at, updated_at, adapter_configured_at, signup_source'
 
 /** API and portal pharmacies need an adapter set up by ops (endpoints, selectors); fax does not. */
 const needsAdapter = (method: string | null) => method === 'api' || method === 'portal'
@@ -81,6 +82,8 @@ export interface ApplicationListItem {
   status:        string
   submittedAt:   string | null
   updatedAt:     string | null
+  /** 'self_serve' (signed up at /get-started), 'invite', or null. */
+  signupSource:  string | null
   licenses:      { total: number; verified: number; pending: number; rejected: number }
 }
 
@@ -104,7 +107,7 @@ export async function listApplications(db: SupabaseClient): Promise<{ ok: true; 
       const count = (s: string) => mine.filter(l => l.verification_status === s).length
       return {
         applicationId: a.application_id, pharmacyId: a.pharmacy_id, pharmacyName: names.get(a.pharmacy_id) ?? '',
-        status: a.status, submittedAt: a.submitted_at, updatedAt: a.updated_at,
+        status: a.status, submittedAt: a.submitted_at, updatedAt: a.updated_at, signupSource: a.signup_source ?? null,
         licenses: { total: mine.length, verified: count('verified'), pending: count('pending'), rejected: count('rejected') },
       }
     }),

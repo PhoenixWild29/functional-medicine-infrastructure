@@ -133,7 +133,7 @@ describe('Pharmacy onboarding: "Signed up on their own"', () => {
       : reply({ invites: [] }))) as unknown as typeof fetch
     await act(async () => { render(<PharmacyOnboardingSection />) })
     const table = await screen.findByRole('table', { name: 'Pharmacy onboarding applications' })
-    const row = (name: string) => within(table).getByText(name).closest('tr')!
+    const row = (name: string) => within(table).getAllByText(name)[0]!.closest('tr')!
     expect(within(row('Strive Compounding')).getByText('Signed up on their own')).toBeInTheDocument()
     expect(within(row('Fax Rx')).queryByText('Signed up on their own')).toBeNull()
   })
