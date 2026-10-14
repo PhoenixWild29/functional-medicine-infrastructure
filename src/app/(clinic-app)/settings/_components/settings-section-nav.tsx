@@ -32,7 +32,10 @@ export function SettingsSectionNav({ items }: { items: ReadonlyArray<SettingsNav
     const els = ids.map(id => document.getElementById(id)).filter((el): el is HTMLElement => el !== null)
     if (els.length === 0) return
     const doc = document.documentElement
-    if (window.innerHeight + window.scrollY >= doc.scrollHeight - 2) {
+    // At the bottom of a page that scrolls, the last section is current:
+    // it can never reach the top. (A page that does not scroll uses tops.)
+    const scrolls = doc.scrollHeight > window.innerHeight
+    if (scrolls && window.innerHeight + window.scrollY >= doc.scrollHeight - 2) {
       setActive(els[els.length - 1]!.id)
       return
     }
