@@ -27,7 +27,7 @@ import type { DraftViewer } from '@/lib/orders/draft-edit-access'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { RevenueSummary }    from './_components/revenue-summary'
 import { OrdersDashboard }   from './_components/orders-dashboard'
-import { isTabId }           from './_lib/tabs'
+import { isTabId, dashboardKpis } from './_lib/tabs'
 import { paymentLinkCounts } from '@/lib/orders/payment-link'
 import { ProviderViewToggle } from './_components/provider-view-toggle'
 import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.types'
@@ -136,9 +136,8 @@ export default async function DashboardPage(
         })
       : supabaseAuth
 
-  // MTD window: first day of current month 00:00:00 UTC
+  // MTD window (first day of the month, 00:00 UTC): dashboardKpis / ordersForView.
   const nowDate    = new Date()
-  const mtdStart   = new Date(Date.UTC(nowDate.getUTCFullYear(), nowDate.getUTCMonth(), 1)).toISOString()
   // Prior-year same-month window for trend comparison
   const pyStart    = new Date(Date.UTC(nowDate.getUTCFullYear() - 1, nowDate.getUTCMonth(), 1)).toISOString()
   const pyEnd      = new Date(Date.UTC(nowDate.getUTCFullYear() - 1, nowDate.getUTCMonth() + 1, 1)).toISOString()
@@ -258,15 +257,10 @@ export default async function DashboardPage(
     'DRAFT', 'PAYMENT_EXPIRED', 'CANCELLED', 'REFUNDED', 'REFUND_PENDING',
   ])
 
-  // MTD metrics (current month)
-  const mtdOrders = orders.filter(o => o.createdAt >= mtdStart)
-  let mtdRevenueCents = 0
-  let mtdCompletedCount = 0
-
-  for (const o of mtdOrders) {
-    if (!EXCLUDED_FROM_REVENUE.has(o.status)) mtdRevenueCents += o.retailCents
-    if (o.status === 'DELIVERED') mtdCompletedCount++
-  }
+  // MTD cards, counted with the same filter as the rows each card opens
+  // (?period=mtd): click-through, 14 Oct, a card's number disagreed with
+  // the list it opened.
+  const kpis = dashboardKpis(orders, nowDate.getTime())
 
   // WO-106: Pending Payment counts what its tab shows — every open
   // payment link, not just this month's. The card now links to that tab
@@ -327,11 +321,11 @@ export default async function DashboardPage(
 
         {/* Metric cards — WO-71 */}
         <RevenueSummary
-          totalOrdersMtd={mtdOrders.length}
-          totalRevenueCents={mtdRevenueCents}
+          totalOrdersMtd={kpis.totalOrdersMtd}
+          totalRevenueCents={kpis.revenueMtdCents}
           pendingPaymentCount={pendingPaymentCount}
           expiredPaymentCount={expiredPaymentCount}
-          completedMtd={mtdCompletedCount}
+          shippedMtd={kpis.shippedMtd}
           priorYearOrdersMtd={priorYearOrdersMtd}
           priorYearRevenueCents={priorYearRevenueCents}
         />

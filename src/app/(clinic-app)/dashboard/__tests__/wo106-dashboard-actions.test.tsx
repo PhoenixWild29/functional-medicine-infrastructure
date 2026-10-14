@@ -132,7 +132,7 @@ describe('the KPI cards go where they point', () => {
       totalOrdersMtd={12}
       totalRevenueCents={250000}
       pendingPaymentCount={3}
-      completedMtd={7}
+      shippedMtd={7}
       priorYearOrdersMtd={8}
       priorYearRevenueCents={180000}
     />,
@@ -140,13 +140,14 @@ describe('the KPI cards go where they point', () => {
 
   it('every card is a link to its tab, reachable by keyboard', () => {
     cards()
-    expect(screen.getByTestId('kpi-card-total-orders')).toHaveAttribute('href', '/dashboard?tab=all')
-    expect(screen.getByTestId('kpi-card-revenue')).toHaveAttribute('href', '/dashboard?tab=all')
+    // Month-to-date cards open their tab for this month (?period=mtd).
+    expect(screen.getByTestId('kpi-card-total-orders')).toHaveAttribute('href', '/dashboard?tab=all&period=mtd')
+    expect(screen.getByTestId('kpi-card-revenue')).toHaveAttribute('href', '/dashboard?tab=all&period=mtd')
     expect(screen.getByTestId('kpi-card-pending-payment')).toHaveAttribute('href', '/dashboard?tab=awaiting_payment')
-    expect(screen.getByTestId('kpi-card-completed')).toHaveAttribute('href', '/dashboard?tab=shipped')
+    expect(screen.getByTestId('kpi-card-shipped')).toHaveAttribute('href', '/dashboard?tab=shipped&period=mtd')
     // An <a href> is focusable and Enter-activated by the browser; a div
     // with an onClick is neither, which is why these are links.
-    for (const id of ['total-orders', 'revenue', 'pending-payment', 'completed']) {
+    for (const id of ['total-orders', 'revenue', 'pending-payment', 'shipped']) {
       expect(screen.getByTestId(`kpi-card-${id}`).tagName).toBe('A')
     }
   })

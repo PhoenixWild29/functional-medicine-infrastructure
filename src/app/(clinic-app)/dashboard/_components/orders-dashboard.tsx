@@ -30,37 +30,13 @@ import type { DashboardOrder } from '../page'
 import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.types'
 import { OrdersTable }  from './orders-table'
 import { OrdersKanban } from './orders-kanban'
-import { isTabId, type TabId } from '../_lib/tabs'
+import { isTabId, isPeriod, ordersForView, ordersInPeriod, TABS, type TabDef, type TabId, type Period } from '../_lib/tabs'
 import { paymentLinkCounts } from '@/lib/orders/payment-link'
 import type { DraftViewer } from '@/lib/orders/draft-edit-access'
 import { OrderDrawer }  from './order-drawer'
 import { batchSignHref, MAX_BATCH_ORDERS } from '@/lib/orders/batch-sign-view'
 
-// ── Status tab definitions ──────────────────────────────────
-
-interface TabDef {
-  id:       TabId
-  label:    string
-  statuses: OrderStatusEnum[] | null  // null = all statuses
-}
-
-const TABS: TabDef[] = [
-  { id: 'all',             label: 'All',              statuses: null },
-  { id: 'drafts',          label: 'Drafts',           statuses: ['DRAFT'] },
-  { id: 'awaiting_payment',label: 'Pending Payment', statuses: ['AWAITING_PAYMENT', 'PAYMENT_EXPIRED'] },
-  { id: 'submitting',      label: 'Submitting',       statuses: ['SUBMISSION_PENDING', 'FAX_QUEUED', 'FAX_DELIVERED'] },
-  { id: 'processing',      label: 'Processing',       statuses: [
-      'PAID_PROCESSING', 'PHARMACY_ACKNOWLEDGED', 'PHARMACY_COMPOUNDING',
-      'PHARMACY_PROCESSING', 'READY_TO_SHIP',
-    ],
-  },
-  { id: 'shipped',         label: 'Shipped',          statuses: ['SHIPPED', 'DELIVERED'] },
-  { id: 'errors',          label: 'Errors',           statuses: [
-      'SUBMISSION_FAILED', 'FAX_FAILED', 'PHARMACY_REJECTED', 'REROUTE_PENDING',
-      'ERROR_PAYMENT_FAILED', 'ERROR_COMPLIANCE_HOLD', 'DISPUTED',
-    ],
-  },
-]
+// ── Status tabs: TABS, in ../_lib/tabs (shared with the KPI cards) ──
 
 // ── Props ───────────────────────────────────────────────────
 
@@ -167,6 +143,15 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
   const tabFromUrl: TabId = urlTab !== null ? (isTabId(urlTab) ? urlTab : 'all') : (initialTab ?? 'all')
   const [activeTab,       setActiveTab]       = useState<TabId>(tabFromUrl)
   useEffect(() => { setActiveTab(tabFromUrl) }, [tabFromUrl])
+  // ?period=mtd: a month-to-date KPI card opened this list, so the rows
+  // (and the tab counts) are the ones that card counted.
+  const urlPeriod = searchParams?.get('period') ?? null
+  const period: Period = isPeriod(urlPeriod) ? urlPeriod : null
+  const clearPeriod = useCallback(() => {
+    const params = new URLSearchParams(searchParams?.toString() ?? '')
+    params.delete('period')
+    router.replace(`/dashboard?${params.toString()}`, { scroll: false })
+  }, [router, searchParams])
   const selectTab = useCallback((id: TabId) => {
     setActiveTab(id)
     const params = new URLSearchParams(searchParams?.toString() ?? '')
@@ -233,19 +218,16 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
     ? orders.find(o => o.orderId === selectedOrderId) ?? null
     : null
 
-  // ── Filter by active tab ────────────────────────────────
-  const activeTabDef = TABS.find(t => t.id === activeTab)!
-  const filteredOrders = activeTabDef.statuses === null
-    ? orders
-    : orders.filter(o => activeTabDef.statuses!.includes(o.status))
+  // ── Filter by active tab (and the period, when a card set one) ──
+  const periodOrders = ordersInPeriod(orders, period)
+  const filteredOrders = ordersForView(orders, activeTab, period)
 
   // ── Tab count badges ────────────────────────────────────
   function tabCount(tab: TabDef): number {
-    if (tab.statuses === null) return orders.length
     // The badge counts open links only, like the Pending Payment card;
     // the tab still lists the expired ones.
-    if (tab.id === 'awaiting_payment') return paymentLinkCounts(orders).open
-    return orders.filter(o => tab.statuses!.includes(o.status)).length
+    if (tab.id === 'awaiting_payment') return paymentLinkCounts(periodOrders).open
+    return ordersForView(orders, tab.id, period).length
   }
 
   // ── WO-99: Sign all / Sign selected ─────────────────────
@@ -428,6 +410,20 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
         })}
       </div>
 
+      {/* ── The period a KPI card opened this list with ── */}
+      {period === 'mtd' && (
+        <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="period-filter">
+          <span className="rounded-full bg-muted px-3 py-1 text-foreground">Showing orders created this month</span>
+          <button
+            type="button"
+            onClick={clearPeriod}
+            className="text-sm text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Show all dates
+          </button>
+        </div>
+      )}
+
       {/* ── WO-99: Sign all (N) — the provider's own drafts ── */}
       {activeTab === 'drafts' && myDraftIds.length > 0 && (
         <div className="flex flex-wrap items-center gap-2" data-testid="drafts-sign-bar">
@@ -529,7 +525,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
       {filteredOrders.length > 0 && (
         <p className="text-xs text-right text-muted-foreground">
           {isFetching && <span className="mr-2 text-muted-foreground">↻ Refreshing…</span>}
-          Showing {filteredOrders.length} of {orders.length} orders
+          Showing {filteredOrders.length} of {periodOrders.length} orders
         </p>
       )}
 

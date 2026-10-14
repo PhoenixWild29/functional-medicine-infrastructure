@@ -48,7 +48,7 @@ function cards(pending: number, expired: number) {
       totalRevenueCents={250000}
       pendingPaymentCount={pending}
       expiredPaymentCount={expired}
-      completedMtd={7}
+      shippedMtd={7}
       priorYearOrdersMtd={8}
       priorYearRevenueCents={180000}
     />,
