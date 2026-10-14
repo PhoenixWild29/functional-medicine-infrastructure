@@ -14,7 +14,7 @@
     "format:check": "prettier --check .",
     "format:write": "prettier --write .",
     "db:types": "bash scripts/regen-db-types.sh",
-    "db:migrate": "supabase db push",
+    "db:migrate": "npx supabase@2.120.0 db push",
     "seed:poc": "dotenv -e .env.local -- tsx scripts/seed-poc.ts",
     "seed:catalog": "dotenv -e .env.local -- tsx scripts/import-catalog-v3.ts",
     "seed:pharmacy-invite": "dotenv -e .env.local -- tsx scripts/seed-demo-pharmacy-invite.ts",

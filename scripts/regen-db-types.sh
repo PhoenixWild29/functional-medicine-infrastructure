@@ -48,7 +48,7 @@ ERR_PATH="${OUT_PATH}.stderr.tmp"
 # stderr captures the CLI's upgrade warnings + any real errors so we
 # can inspect them without polluting the TS file.
 echo "[regen-db-types] Generating types for project ${PROJECT_REF}..."
-if ! supabase gen types typescript --project-id "${PROJECT_REF}" > "${TMP_PATH}" 2> "${ERR_PATH}"; then
+if ! npx supabase@2.120.0 gen types typescript --project-id "${PROJECT_REF}" > "${TMP_PATH}" 2> "${ERR_PATH}"; then
   echo "[regen-db-types] ERROR: supabase gen types failed. stderr:"
   cat "${ERR_PATH}" >&2
   rm -f "${TMP_PATH}" "${ERR_PATH}"
