@@ -550,8 +550,8 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
         onClick={onClose}
       />
 
-      {/* Drawer panel */}
-      <aside
+      {/* Drawer panel (a div: <aside> may not take role="dialog") */}
+      <div
         role="dialog"
         aria-modal="true"
         aria-label={`Order details — ${orderDisplayNumber(order.orderId)}`}
@@ -1041,7 +1041,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
           </section>
 
         </div>
-      </aside>
+      </div>
     </>
   )
 }
