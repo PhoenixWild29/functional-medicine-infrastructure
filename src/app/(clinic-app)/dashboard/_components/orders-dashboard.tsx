@@ -381,6 +381,9 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
       <div className="flex gap-1 flex-wrap border-b border-border pb-px" role="tablist" aria-label="Order status filters">
         {TABS.map(tab => {
           const count = tabCount(tab)
+          // Pending Payment: the open count is the card's number; expired
+          // links are rows of this tab too, so they get their own count.
+          const expired = tab.id === 'awaiting_payment' ? paymentLinkCounts(periodOrders).expired : 0
           const isActive = activeTab === tab.id
           return (
             <button
@@ -403,6 +406,11 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
                 // primary/10 and muted-foreground on muted were under 4.5:1).
                 <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium ${isActive ? 'bg-primary/10 text-foreground' : 'bg-muted text-foreground'}`}>
                   {count}
+                </span>
+              )}
+              {expired > 0 && (
+                <span data-testid="tab-expired-count" className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+                  {expired} expired
                 </span>
               )}
             </button>
