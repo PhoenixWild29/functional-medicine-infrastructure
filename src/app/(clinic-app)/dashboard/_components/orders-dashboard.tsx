@@ -64,6 +64,17 @@ interface Props {
   payoutsAtLaunch?: boolean
 }
 
+/** An empty tab with no filter set says what the tab holds. */
+const EMPTY_TAB_TEXT: Record<TabId, string> = {
+  all:              'No orders found',
+  drafts:           'No draft orders',
+  awaiting_payment: 'No orders are waiting for payment',
+  submitting:       'No orders are being submitted',
+  processing:       'No orders are being processed',
+  shipped:          'No orders have shipped',
+  errors:           'No orders need attention',
+}
+
 /** Shown to a portal clinic until its payouts are active. */
 const LAUNCH_COPY = 'Ordering opens at launch, once payouts are set up. CompoundIQ will contact you.'
 
@@ -493,17 +504,21 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
                 </button>
               )}
             </>
-          ) : (
+          ) : period !== null ? (
+            // A real filter (the month-to-date period) emptied the tab.
             <>
               <p className="text-sm font-medium text-foreground">No orders match your filters</p>
               <button
                 type="button"
-                onClick={() => selectTab('all')}
-                className="text-sm text-primary underline-offset-2 hover:underline focus-visible:outline-none"
+                onClick={clearPeriod}
+                className="text-sm text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Clear filters
               </button>
             </>
+          ) : (
+            // A tab is not a filter: say what it holds, no Clear filters.
+            <p className="text-sm font-medium text-foreground">{EMPTY_TAB_TEXT[activeTab]}</p>
           )}
         </div>
       )}
