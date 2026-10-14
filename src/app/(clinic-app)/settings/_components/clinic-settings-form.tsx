@@ -160,7 +160,7 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
         <p className="text-xs text-muted-foreground">
           Off (default): pharmacy shipping is passed to the patient at cost, once per pharmacy per order.
           On: the clinic pays it out of its payout and the patient is not charged shipping.
-          Shipping is never part of the margin or the platform fee.
+          Shipping is never part of the margin.
         </p>
       </div>
 

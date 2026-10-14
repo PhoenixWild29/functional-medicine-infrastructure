@@ -6,7 +6,7 @@
  *
  * "Package: 1 mL vial (suggested for 30 days)" with its price and a
  * dropdown; hidden when the pharmacy has a single package. Changing it
- * recomputes wholesale, retail, platform fee and clinic margin, and the
+ * recomputes wholesale, retail and clinic margin, and the
  * quantity the line stores.
  */
 
@@ -112,10 +112,10 @@ describe('MarginBuilderForm — WO-101 package (vial size)', () => {
     expect(screen.getByTestId('package-summary')).toHaveTextContent('Package: 1 mL vial (suggested for 30 days) · $95.00')
     expect(screen.getByLabelText('Package')).toHaveValue('pkg-1')
     expect(lockedWholesale()).toBe('$95.00')
-    // 100% default markup → $190.00; fee 15% of the $95 margin; clinic keeps the rest.
+    // 100% default markup → $190.00; no platform fee, so the clinic keeps the $95 margin.
     expect(screen.getByLabelText(/Retail Price/)).toHaveValue(190)
-    expect(marginSummary()).toContain('$14.25')
-    expect(marginSummary()).toContain('$80.75')
+    expect(marginSummary()).not.toMatch(/platform fee|15%/i)   // no platform fee is taken
+    expect(marginSummary()).toContain('$95.00')
   })
 
   it('40 units weekly for 30 days → suggests the 2.5 mL vial and the price moves to $165.00', () => {
@@ -123,8 +123,8 @@ describe('MarginBuilderForm — WO-101 package (vial size)', () => {
     expect(screen.getByTestId('package-summary')).toHaveTextContent('Package: 2.5 mL vial (suggested for 30 days) · $165.00')
     expect(lockedWholesale()).toBe('$165.00')
     expect(screen.getByLabelText(/Retail Price/)).toHaveValue(330)
-    expect(marginSummary()).toContain('$24.75')   // 15% of $165
-    expect(marginSummary()).toContain('$140.25')
+    expect(marginSummary()).not.toMatch(/platform fee|15%/i)   // no platform fee is taken
+    expect(marginSummary()).toContain('$165.00')
   })
 
   it('the dropdown lists every package with its price and marks the suggestion', () => {
@@ -137,7 +137,7 @@ describe('MarginBuilderForm — WO-101 package (vial size)', () => {
     ])
   })
 
-  it('changing the package updates wholesale, retail, platform fee, clinic margin and the stored quantity', async () => {
+  it('changing the package updates wholesale, retail, clinic margin and the stored quantity', async () => {
     renderMargin()
     fireEvent.change(screen.getByLabelText('Package'), { target: { value: 'pkg-5' } })
 
@@ -145,8 +145,8 @@ describe('MarginBuilderForm — WO-101 package (vial size)', () => {
     expect(lockedWholesale()).toBe('$285.00')
     // Retail keeps the 2× markup the provider had: $190 × 285 / 95.
     expect(screen.getByLabelText(/Retail Price/)).toHaveValue(570)
-    expect(marginSummary()).toContain('$42.75')   // 15% of $285
-    expect(marginSummary()).toContain('$242.25')
+    expect(marginSummary()).not.toMatch(/platform fee|15%/i)   // no platform fee is taken
+    expect(marginSummary()).toContain('$285.00')
 
     fireEvent.click(screen.getByRole('button', { name: /^Review & Send/ }))
     await waitFor(() => expect(lastSession?.prescriptions).toHaveLength(1))

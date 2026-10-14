@@ -5,8 +5,9 @@
 // The same arithmetic the checkout uses for the destination charge
 // (stripeSplit): the patient pays retail plus shipping (unless the clinic
 // absorbs shipping); the application fee keeps wholesale + shipping for
-// the pharmacy and 15% of the margin for the platform; the clinic gets the
-// rest. The four parts always sum to the charge.
+// the pharmacy (plus platformFeeCents(), which is 0: CompoundIQ bills a
+// flat monthly fee outside the app); the clinic gets the rest. The parts
+// always sum to the charge.
 //
 // Record-only: this computes what was split. It never moves money.
 

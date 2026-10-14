@@ -116,7 +116,7 @@ describe('a line priced below today’s wholesale', () => {
     // retail 6000 - wholesale 9500 = -3500. The fee on a loss is 0, so
     // the card's clinic margin is the whole -$35.00, not -$29.75.
     expect(screen.getByText('Clinic margin: $-35.00')).toBeInTheDocument()
-    expect(screen.getByTestId('review-platform-fee')).toHaveTextContent('$0.00')
+    expect(screen.queryByTestId('review-platform-fee')).not.toBeInTheDocument()
     expect(screen.getByTestId('review-clinic-payout')).toHaveTextContent('$-35.00')
   })
 })
@@ -128,8 +128,8 @@ describe('a line priced above cost', () => {
     expect(screen.queryByTestId('below-cost-line-refill')).not.toBeInTheDocument()
     expect(screen.getByText('Sign in the signature box above to enable sending.')).toBeInTheDocument()
     // 19000 - 9500 = 9500 margin, fee 1425, payout 8075.
-    expect(screen.getByTestId('review-platform-fee')).toHaveTextContent('$14.25')
-    expect(screen.getByText('Clinic margin: $80.75')).toBeInTheDocument()
+    expect(screen.queryByTestId('review-platform-fee')).not.toBeInTheDocument()
+    expect(screen.getByText('Clinic margin: $95.00')).toBeInTheDocument()
   })
 })
 

@@ -6,7 +6,7 @@
 //
 // REQ-CAD-004: Filterable order history table.
 //   Columns: Order #, Patient, Medication, Status, Retail Price,
-//            Platform Fee, Clinic Payout, Date.
+//            Clinic Payout, Date. (No platform fee is taken from orders.)
 //
 // All monetary values are pre-computed as integer cents (HC-01) by the
 // Server Component and formatted here for display.
@@ -113,13 +113,12 @@ export function OrderHistoryTable({ orders, isLoading = false }: Props) {
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Medication</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Status</th>
                 <th className="px-3 py-2.5 text-right font-medium text-muted-foreground">Retail</th>
-                <th className="px-3 py-2.5 text-right font-medium text-muted-foreground">Platform Fee</th>
                 <th className="px-3 py-2.5 text-right font-medium text-muted-foreground">Your Payout</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Date</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {[1, 2, 3, 4, 5].map(i => <SkeletonTableRow key={i} cols={8} />)}
+              {[1, 2, 3, 4, 5].map(i => <SkeletonTableRow key={i} cols={7} />)}
             </tbody>
           </table>
         </div>
@@ -139,7 +138,6 @@ export function OrderHistoryTable({ orders, isLoading = false }: Props) {
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Medication</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Status</th>
                 <th className="px-3 py-2.5 text-right font-medium text-muted-foreground">Retail</th>
-                <th className="px-3 py-2.5 text-right font-medium text-muted-foreground">Platform Fee</th>
                 <th className="px-3 py-2.5 text-right font-medium text-muted-foreground">Your Payout</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Date</th>
               </tr>
@@ -157,7 +155,6 @@ export function OrderHistoryTable({ orders, isLoading = false }: Props) {
                       <StatusBadge status={order.status} className="text-xs" />
                     </td>
                     <td className="px-3 py-2.5 text-right text-foreground">{toCurrency(order.retailCents)}</td>
-                    <td className="px-3 py-2.5 text-right text-muted-foreground">{toCurrency(order.platformFeeCents)}</td>
                     <td className="px-3 py-2.5 text-right font-medium text-emerald-600">{toCurrency(order.clinicPayoutCents)}</td>
                     <td className="px-3 py-2.5 text-muted-foreground">{formatDate(order.createdAt)}</td>
                   </tr>
