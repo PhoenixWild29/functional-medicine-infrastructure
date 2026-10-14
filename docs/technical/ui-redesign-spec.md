@@ -295,7 +295,7 @@ Phase 15 introduced major UX changes to the prescription creation flow. These bu
    - Prescription cards: medication, pharmacy, form, dose, sig, wholesale, retail, clinic margin
    - "Remove" link per card
    - "+ Add Another Prescription" dashed border button
-   - Combined totals section: total retail, total platform fee (15%), total est. clinic margin
+   - Combined totals section: total retail, shipping, clinic payout, patient total. No platform fee line: no percentage platform fee is taken from orders. CompoundIQ charges each clinic a flat monthly fee under a signed order form, billed separately. The Stripe application fee is pharmacy wholesale plus shipping only.
    - Single provider signature pad with "Signing N prescriptions for [Patient]" label
    - "Sign & Send All N Prescriptions" / "Sign & Send Payment Link" (adapts to count)
    - Confirmation dialog with total amount, count, patient name, phone, 72-hour warning
@@ -314,7 +314,7 @@ Phase 15 introduced major UX changes to the prescription creation flow. These bu
 7. **Provider Sign Page** (`/new-prescription/sign/[orderId]`)
    - Patient info card (left: name, DOB, state, phone / right: provider name, NPI)
    - Prescription detail card (medication, form, dose, pharmacy, sig)
-   - Financial summary card (wholesale, retail, platform fee, est. clinic margin)
+   - Financial summary card (wholesale, retail, est. clinic margin; no platform fee)
    - Signature pad with provider name + NPI label
    - "Sign & Send Payment Link" button + confirmation dialog
    - "Back to Dashboard" secondary action

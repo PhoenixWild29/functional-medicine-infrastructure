@@ -214,7 +214,7 @@ Shipping is a real cost that currently doesn't exist in the app. It lives on the
 ### Behavior
 - Shipping fee = pharmacy fee by `orders.shipping_type` (WO-96), applied **once per pharmacy per bundle**, not per Rx.
 - Margin page: shipping shown as a line under wholesale, outside the margin calc (passed through to patient at cost by default; clinic setting to absorb it).
-- Review page: totals show Subtotal, Shipping (by pharmacy), Platform fee, Clinic payout, Patient total.
+- Review page: totals show Subtotal, Shipping (by pharmacy), Clinic payout, Patient total. (Updated 2026-10: no percentage platform fee is taken from orders. CompoundIQ charges each clinic a flat monthly fee under a signed order form, billed separately. The Stripe application fee is pharmacy wholesale plus shipping only.)
 - Checkout page: Shipping line item.
 - Review page: if the session spans > 1 pharmacy, a notice: "2 pharmacies → 2 shipping charges ($X). Route all to Strive to save $Y" with a one-click re-route when every item is available there and licensed.
 
@@ -223,7 +223,7 @@ Shipping is a real cost that currently doesn't exist in the app. It lives on the
 - [ ] Semaglutide via Quick Rx (cold) + BPC-157 via Strive (standard) → shipping $25 + $9, shown on review and checkout.
 - [ ] Both via Strive → shipping $22 once (cold covers both).
 - [ ] Multi-pharmacy notice appears with correct savings and re-route works.
-- [ ] Platform fee is not charged on shipping.
+- [ ] No platform fee is charged on anything; the application fee is wholesale plus shipping, passed on to the pharmacy at cost.
 - [ ] Payment intent amount = subtotal + shipping.
 
 ---
@@ -445,7 +445,7 @@ The ops dashboard scoped to one clinic, for the practice owner/manager. Script v
 
 ### Behavior
 - New route `/practice` for `clinic_admin` (and providers when `clinics.practice_dashboard_visible_to_providers = true`). The toggle is a column on `clinics`, beside the clinic's other settings (`absorb_shipping`, `default_markup_pct`); there is no `clinic_settings` table. Migration `20260923000001`, default `false`, merged alone (rule 7).
-- Cards: Scripts (period), Patient revenue, Clinic payout, Platform fees, Shipping passed through, Avg margin %. Period selector: Today / 7d / 30d / MTD / custom.
+- Cards: Scripts (period), Patient revenue, Clinic payout, Shipping passed through, Avg margin %, and the note "CompoundIQ's monthly fee is billed separately and is not taken from orders." (Updated 2026-10: the Platform fees card was removed; no percentage fee is taken.) Period selector: Today / 7d / 30d / MTD / custom.
 - Table: by provider, by pharmacy, by medication. Export CSV.
 - **Needs attention** queue: awaiting payment > 72h, submission failed, unmatched fax for this clinic, drafts older than 48h.
 - Settings → Clinic Profile: toggle for provider visibility. Also fix the markup help text ("Example: 150 = 150% of wholesale (1.5× markup)" contradicts the stored 40 → 1.4×).
