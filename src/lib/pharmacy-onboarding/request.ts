@@ -36,12 +36,12 @@ async function verifiedUser() {
   return error || !user ? null : user
 }
 
-export async function pharmacyAdmin(): Promise<{ ok: true; ctx: WizardCtx } | { ok: false; response: NextResponse }> {
+export async function pharmacyAdmin(): Promise<{ ok: true; ctx: WizardCtx; emailConfirmedAt: string | null } | { ok: false; response: NextResponse }> {
   const user = await verifiedUser()
   if (!user) return { ok: false, response: json({ error: 'Unauthorized' }, 401) }
   const pharmacyId = getUserPharmacyId(user)
   if (getUserRole(user) !== 'pharmacy_admin' || !pharmacyId) return { ok: false, response: json({ error: 'Forbidden' }, 403) }
-  return { ok: true, ctx: { pharmacyId, userId: user.id } }
+  return { ok: true, ctx: { pharmacyId, userId: user.id }, emailConfirmedAt: user.email_confirmed_at ?? null }
 }
 
 export async function opsAdmin(): Promise<{ ok: true; actor: OnboardingActor } | { ok: false; response: NextResponse }> {

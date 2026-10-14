@@ -13,6 +13,8 @@ import type { Database } from '@/types/database.types'
 export type OnboardingEvent =
   | 'invite_created' | 'invite_revoked' | 'invite_resent' | 'invite_accepted'
   | 'submitted' | 'approved' | 'sent_back'
+  /** A clinic or solo provider signed up at /get-started (no invite). */
+  | 'self_signup'
 
 export async function recordOnboardingEvent(
   supabase: SupabaseClient<Database>,
