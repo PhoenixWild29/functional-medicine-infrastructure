@@ -188,11 +188,19 @@ describe('middleware F-3 — /new-prescription/sign/[orderId] provider-only', ()
     expectSecurityHeaders(res)
   })
 
-  it('redirects clinic_admin to /unauthorized', async () => {
+  // Self sign-up, decision 1: a solo provider is a clinic_admin who is
+  // also a provider. The middleware cannot read the provider record, so a
+  // clinic_admin reaches the sign page and the page asks the shared
+  // helper (lib/auth/signer); a plain admin sees "Provider signature
+  // required" there and the sign API answers 403. (Updated: this used to
+  // redirect every clinic_admin.)
+  it('lets a clinic_admin through to the batch page with the order selected (the page decides who signs)', async () => {
     getUserMock.mockResolvedValue(CLINIC_SESSION)
     const res = await middleware(makeReq(TEST_SIGN_PATH))
-    expect(res.status).toBe(307)
-    expect(res.headers.get('location')).toContain('/unauthorized')
+    expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
+    const location = new URL(res.headers.get('location')!)
+    expect(location.pathname).toBe('/new-prescription/sign')
+    expect(location.searchParams.get('orders')).toBe('00000000-0000-4000-8000-000000000001')
     expectSecurityHeaders(res)
   })
 
@@ -236,11 +244,10 @@ describe('middleware F-3 — /new-prescription/sign/[orderId] provider-only', ()
     expect(res.headers.get('location')).toContain('/unauthorized')
   })
 
-  it('redirects clinic_admin from exact /new-prescription/sign (no trailing slash)', async () => {
+  it('does NOT block clinic_admin on exact /new-prescription/sign (the page asks lib/auth/signer)', async () => {
     getUserMock.mockResolvedValue(CLINIC_SESSION)
     const res = await middleware(makeReq('/new-prescription/sign'))
-    expect(res.status).toBe(307)
-    expect(res.headers.get('location')).toContain('/unauthorized')
+    expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
   })
 
   it('does NOT block provider on exact /new-prescription/sign', async () => {
