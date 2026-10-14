@@ -150,6 +150,17 @@ function formatDateTime(iso: string): string {
 
 export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer }: Props) {
   const router = useRouter()
+  // Escape closes the drawer, and focus moves into it when it opens
+  // (WCAG 2.1.2 / 2.4.3); the dashboard returns focus to the row on close.
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const isOpen = order !== null
+  useEffect(() => {
+    if (!isOpen) return
+    closeButtonRef.current?.focus()
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [isOpen, onClose])
   // BLK-03: stable ref prevents stale closure + avoids re-running effect when client recreated
   const supabaseRef = useRef(createBrowserClient())
 
@@ -553,6 +564,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
             <h2 className="font-semibold text-foreground font-mono text-sm">{order.orderId}</h2>
           </div>
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
             aria-label="Close drawer"

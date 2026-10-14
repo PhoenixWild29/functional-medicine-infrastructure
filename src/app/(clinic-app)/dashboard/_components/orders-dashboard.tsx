@@ -22,7 +22,7 @@
 import { POSSIBLE_DUPLICATE_COLUMNS, loadDuplicateNames, openDuplicateIds } from '@/lib/patients/duplicate-names'
 import type { NameablePatient } from '@/lib/patients/display'
 import { dashboardPatient, embeddedPatient } from '@/lib/patients/dashboard-patient'
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
@@ -262,12 +262,25 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
     })
   }, [])
 
+  // The element that opened the drawer, so focus can go back to it on
+  // close (WCAG 2.4.3). The row itself (data-order-id) when it is still on
+  // screen; otherwise whatever had focus when the drawer opened.
+  const drawerOpener = useRef<{ orderId: string; element: Element | null } | null>(null)
   const handleRowClick = useCallback((order: DashboardOrder) => {
+    drawerOpener.current = { orderId: order.orderId, element: document.activeElement }
     setSelectedOrderId(order.orderId)
   }, [])
 
   const handleCloseDrawer = useCallback(() => {
     setSelectedOrderId(null)
+    const opener = drawerOpener.current
+    drawerOpener.current = null
+    if (!opener) return
+    setTimeout(() => {
+      const row = document.querySelector<HTMLElement>(`[data-order-id="${CSS.escape(opener.orderId)}"]`)
+      const target = row ?? (opener.element instanceof HTMLElement && opener.element.isConnected ? opener.element : null)
+      target?.focus()
+    }, 0)
   }, [])
 
   // QA post-combine fix: when the drawer bundles orders into a payment
