@@ -38,9 +38,12 @@ const fixture = (name: string) => readFileSync(join(process.cwd(), 'src/lib/inte
 const asUser = (role: string, clinicId: string | null = CLINIC) =>
   getUserMock.mockResolvedValue({ data: { user: { id: `u-${role}`, app_metadata: { app_role: role, clinic_id: clinicId }, user_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC } } }, error: null })
 
-function world(opts: { connected?: boolean; patients?: Record<string, unknown>[] } = {}) {
+// Self sign-up, decision 2: only an approved clinic syncs. The fixture
+// clinic is approved unless a test says otherwise. (Updated: the clinic
+// row had no onboarding_status before.)
+function world(opts: { connected?: boolean; patients?: Record<string, unknown>[]; clinic?: Record<string, unknown> } = {}) {
   db = onboardingFake({
-    clinics: [{ clinic_id: CLINIC, name: 'Demo Clinic' }],
+    clinics: [{ clinic_id: CLINIC, name: 'Demo Clinic', onboarding_status: 'approved', is_active: true, ...opts.clinic }],
     ehr_connections: [],
     ehr_sync_events: [],
     patients: opts.patients ?? [],
@@ -190,6 +193,57 @@ describe('replay and payload', () => {
     const res = await signed(fixture('patient-upsert-full.json'))
     expect(await res.json()).toEqual(expect.objectContaining({ status: 'flagged' }))
     expect(JSON.stringify(db.rows('ehr_sync_events'))).not.toMatch(/Jordan|Sample|Morgan|1985-04-12|5125550147|example\.com|Penicillin|Austin/)
+  })
+})
+
+// Self sign-up, decision 2: a clinic ops has not approved writes no
+// patients from its EHR. 403 with a clear reason; the refusal is logged
+// (ehr_sync_events + the connection's last error) so ops sees it on Ops
+// Dashboard > EHR sync. Same guard as every other write.
+describe('a clinic that is not approved yet', () => {
+  it('a correctly signed event: 403 with the reason, no patient written, logged for ops', async () => {
+    world({ clinic: { onboarding_status: 'submitted', is_active: false } })
+    const res = await signed(fixture('patient-upsert-full.json'))
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual(expect.objectContaining({
+      error: 'This clinic has not been approved by CompoundIQ yet, so no patients are synced. Nothing was saved.',
+      error_code: 'clinic_not_approved',
+      event_id: 'evt_demo_0001',
+    }))
+    expect(db.rows('patients')).toEqual([])
+    expect(db.rows('patient_external_ids')).toEqual([])
+    expect(db.rows('ehr_sync_events')).toEqual([expect.objectContaining({
+      connection_id: CONN, clinic_id: CLINIC, event_id: 'evt_demo_0001', status: 'error', error_code: 'clinic_not_approved', patient_id: null,
+    })])
+    expect(db.rows('ehr_connections')[0]).toEqual(expect.objectContaining({ last_error_code: 'clinic_not_approved', last_error_at: expect.any(String) }))
+  })
+
+  it('a bad signature is still 401 (approval is never revealed to an unauthenticated caller)', async () => {
+    world({ clinic: { onboarding_status: 'submitted', is_active: false } })
+    expect((await signed(fixture('patient-upsert-full.json'), { secret: 'not-the-secret' })).status).toBe(401)
+  })
+
+  it('once approved, Keragon redelivering the same event id is applied', async () => {
+    world({ clinic: { onboarding_status: 'in_progress', is_active: false } })
+    const body = fixture('patient-upsert-full.json')
+    expect((await signed(body)).status).toBe(403)
+    Object.assign(db.rows('clinics')[0]!, { onboarding_status: 'approved', is_active: true })
+    const retry = await signed(body)
+    expect(retry.status).toBe(200)
+    expect(db.rows('patients')).toHaveLength(1)
+    expect(db.rows('ehr_sync_events')).toEqual([expect.objectContaining({ status: 'applied', error_code: null })])
+  })
+
+  it('the clinic cannot be read: 503 so Keragon retries; nothing written', async () => {
+    world()
+    db.failOn('clinics:select')
+    expect((await signed(fixture('patient-upsert-full.json'))).status).toBe(503)
+    expect(db.rows('patients')).toEqual([])
+  })
+
+  it('ops sees the reason in words', async () => {
+    const { errorText } = await import('@/lib/integrations/keragon/labels')
+    expect(errorText('clinic_not_approved')).toBe('The clinic is not approved yet, so its EHR patients were refused. Approve it in Clinic onboarding; Keragon can then resend.')
   })
 })
 
