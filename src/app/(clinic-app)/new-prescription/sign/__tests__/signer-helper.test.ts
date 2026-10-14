@@ -23,3 +23,12 @@ it('the sign page, batch-sign and its check all decide with resolveSigner', () =
   expect(check).toMatch(/resolveSigner\(/)
   expect(check).not.toMatch(/getUserRole\(user\) !== 'provider'/)
 })
+
+it('Review offers Sign & Send, and the prescriber check runs, for whoever resolveSigner lets sign', () => {
+  const review = read('src/app/(clinic-app)/new-prescription/review/page.tsx')
+  expect(review).toMatch(/resolveSigner\(/)
+  expect(review).not.toMatch(/const isProvider = appRole === 'provider'/)
+  const prescriber = read('src/app/api/prescriber-check/route.ts')
+  expect(prescriber).toMatch(/resolveSigner\(/)
+  expect(prescriber).not.toMatch(/getUserRole\(user\) !== 'provider'/)
+})
