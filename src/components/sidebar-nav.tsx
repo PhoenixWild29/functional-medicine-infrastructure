@@ -211,8 +211,11 @@ export function SidebarNav({ userEmail, userRole, showPractice = false }: Props)
               collapsed && 'justify-center px-2',
             )}
             title={collapsed ? 'Sign out' : undefined}
+            // The icon rail shows the icon only: name the button (a title
+            // is not an accessible name).
+            aria-label={collapsed ? 'Sign out' : undefined}
           >
-            <LogOut className="h-4 w-4 flex-shrink-0" />
+            <LogOut className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
             {!collapsed && <span>{signingOut ? 'Signing out…' : 'Sign out'}</span>}
           </button>
 
