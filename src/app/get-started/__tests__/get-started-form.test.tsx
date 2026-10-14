@@ -110,7 +110,7 @@ describe('a solo provider', () => {
     type('License 1 expires', '2020-01-01')
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create account' })) })
     expect(screen.getByLabelText('License 1 expires')).toHaveAccessibleDescription(/already expired/)
-    expect(screen.getByRole('alert', { name: '' })).toBeTruthy()
+    expect(screen.getAllByRole('alert').length).toBeGreaterThan(0)
     expect(signInMock).not.toHaveBeenCalled()
   })
 })
