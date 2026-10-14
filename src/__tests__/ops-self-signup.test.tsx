@@ -12,7 +12,7 @@ import { configureAxe } from 'jest-axe'
 import { onboardingFake } from '@/__tests__/helpers/onboarding-fake'
 import { scriptedDb } from '@/__tests__/helpers/scripted-db'
 
-let pathname = '/ops/pipeline'
+const pathname = '/ops/pipeline'
 jest.mock('next/navigation', () => ({ usePathname: () => pathname, useRouter: () => ({ refresh: jest.fn(), push: jest.fn() }) }))
 
 import { OpsNav } from '@/app/(ops-dashboard)/ops/_components/ops-nav'

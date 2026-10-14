@@ -125,7 +125,8 @@ export async function addProviderRecord(
       }, { onConflict: 'provider_id,state' })
     if (licErr) {
       console.error(`[provider-record] license save failed | provider=${row.provider_id}: ${licErr.message}`)
-      await db.from('provider_state_licenses').delete().eq('provider_id', row.provider_id)
+      const { error: licRbErr } = await db.from('provider_state_licenses').delete().eq('provider_id', row.provider_id)
+      if (licRbErr) console.error(`[provider-record] licenses left after a failed save | provider=${row.provider_id}: ${licRbErr.message}`)
       const { error: rbErr } = await db.from('providers').delete().eq('provider_id', row.provider_id)
       if (rbErr) console.error(`[provider-record] orphan provider left | provider=${row.provider_id}: ${rbErr.message}`)
       return { ok: false, status: 500, error: 'The license could not be saved, so the provider was not added. Try again.' }
