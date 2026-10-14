@@ -36,6 +36,7 @@ import {
 import { computeBundleShipping, type PharmacyShippingRates } from '@/lib/orders/shipping'
 import type { OrderRecord } from '@/app/api/orders/[orderId]/record/route'
 import { EhrChangesSection } from '@/components/ehr-changes-section'
+import { orderDisplayNumber } from '@/lib/orders/order-number'
 
 interface Props {
   order: DashboardOrder | null
@@ -537,7 +538,7 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
       <aside
         role="dialog"
         aria-modal="true"
-        aria-label={`Order details — ${order.orderId.slice(0, 8)}`}
+        aria-label={`Order details — ${orderDisplayNumber(order.orderId)}`}
         className="fixed inset-y-0 right-0 z-50 w-full md:max-w-md overflow-y-auto bg-card border-l border-border shadow-2xl"
       >
         {/* Header */}

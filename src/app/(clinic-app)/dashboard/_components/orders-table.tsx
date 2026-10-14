@@ -22,6 +22,7 @@ import type { DashboardOrder } from '../page'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { SkeletonTableRow } from '@/components/ui/skeleton'
 import Link from 'next/link'
+import { orderDisplayNumber } from '@/lib/orders/order-number'
 
 interface Props {
   orders:     DashboardOrder[]
@@ -143,7 +144,7 @@ export function OrdersTable({ orders, isLoading, isError = false, onRowClick, on
                 style={isErr ? { borderLeft: '4px solid #A84B2F' } : undefined}
                 tabIndex={0}
                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onRowClick(order) }}
-                aria-label={`${isErr ? 'Error — ' : ''}Order ${order.orderId.slice(0, 8)} — ${order.patientName} — ${order.status}`}
+                aria-label={`${isErr ? 'Error — ' : ''}Order ${orderDisplayNumber(order.orderId)} — ${order.patientName} — ${order.status}`}
               >
                 {draftSelection && (
                   <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
@@ -161,7 +162,7 @@ export function OrdersTable({ orders, isLoading, isError = false, onRowClick, on
                   </td>
                 )}
                 <td className="px-3 py-3 font-mono text-xs text-muted-foreground leading-[1.6]">
-                  {order.orderId.slice(0, 8)}…
+                  <span title={order.orderId}>{orderDisplayNumber(order.orderId)}</span>
                 </td>
                 <td className="px-3 py-3 text-[14px] text-foreground leading-[1.6]">
                   {order.patientName}
