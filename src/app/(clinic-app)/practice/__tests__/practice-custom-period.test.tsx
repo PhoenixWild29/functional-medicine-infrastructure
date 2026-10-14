@@ -9,7 +9,7 @@
 
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { PracticeDashboard } from '../_components/practice-dashboard'
-import { breakdownCsv, practiceTotals, breakdown, type PracticeOrder } from '@/lib/practice/metrics'
+import { practiceTotals, breakdown, type PracticeOrder } from '@/lib/practice/metrics'
 
 jest.mock('next/link', () => ({ __esModule: true, default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a> }))
 
