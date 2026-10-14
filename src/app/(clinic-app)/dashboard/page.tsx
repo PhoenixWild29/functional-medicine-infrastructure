@@ -81,6 +81,10 @@ export interface DashboardOrder {
   patientIntakePending?: boolean
   /** Flagged at intake as possibly the same person as another patient (never merged). */
   possibleDuplicate?:    { patientId: string; name: string } | null
+  /** Refills the prescriber authorized; with refillOfOrderId, decides whether Refill is offered. */
+  refills?:              number | null
+  /** Set on a refill: the order it refilled (its source prescription). */
+  refillOfOrderId?:      string | null
 }
 
 export default async function DashboardPage(
@@ -156,7 +160,7 @@ export default async function DashboardPage(
       .select(`
         order_id, status, created_at, updated_at, locked_at, payment_group_id, provider_id,
         retail_price_snapshot, wholesale_price_snapshot,
-        medication_snapshot, pharmacy_snapshot,
+        medication_snapshot, pharmacy_snapshot, refills, refill_of_order_id,
         patients!inner(patient_id, first_name, last_name, phone, intake_status, ${POSSIBLE_DUPLICATE_COLUMNS})
       `)
       .eq('clinic_id', clinicId)
@@ -249,6 +253,8 @@ export default async function DashboardPage(
       paymentGroupId:    o.payment_group_id,
       providerId:        o.provider_id ?? null,
       lockedAt:          o.locked_at ?? null,
+      refills:           o.refills ?? null,
+      refillOfOrderId:   o.refill_of_order_id ?? null,
     }
   })
 

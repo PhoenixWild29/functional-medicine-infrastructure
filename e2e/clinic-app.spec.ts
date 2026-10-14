@@ -2294,7 +2294,7 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
         formulation_id:           TEST_IDS.formulation,
         clinic_id:                TEST_IDS.clinic,
         pharmacy_id:              TEST_IDS.pharmacyTier1,
-        status:                   'AWAITING_PAYMENT',
+        status:                   'DELIVERED',  // only a paid or dispensed order can be refilled
         quantity:                 1,
         wholesale_price_snapshot: 100.00,
         retail_price_snapshot:    200.00,
@@ -2440,7 +2440,7 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
         formulation_id:           TEST_IDS.glp1Formulation,
         clinic_id:                TEST_IDS.clinic,
         pharmacy_id:              TEST_IDS.pharmacyTier1,
-        status:                   'AWAITING_PAYMENT',
+        status:                   'DELIVERED',  // only a paid or dispensed order can be refilled
         quantity:                 1,
         wholesale_price_snapshot: 80.00,
         retail_price_snapshot:    190.00,
@@ -3649,8 +3649,8 @@ test.describe('Clinic App — dashboard KPI cards and row Refill', () => {
   })
 
   test('a row Refill on a refill order preselects the patient and ticks its source prescription', async ({ page }) => {
-    const source = await insertOrder({ refills: 2 })
-    const refill = await insertOrder({ refill_of_order_id: source })
+    const source = await insertOrder({ refills: 2, status: 'DELIVERED' })
+    const refill = await insertOrder({ refill_of_order_id: source, status: 'DELIVERED' })
 
     await loginAs(page, TEST_USERS.provider)
     await page.getByTestId(`row-refill-${refill}`).click()
@@ -3659,13 +3659,11 @@ test.describe('Clinic App — dashboard KPI cards and row Refill', () => {
     await expect(page.getByTestId(`refill-order-${source}`)).toBeChecked()
   })
 
-  test('a row Refill on a prescription with no refills preselects the patient, the line unticked', async ({ page }) => {
-    const order = await insertOrder({ refills: 0 })
+  test('a prescription with no refills authorized: the row says so, with no Refill link', async ({ page }) => {
+    const order = await insertOrder({ refills: 0, status: 'DELIVERED' })
 
     await loginAs(page, TEST_USERS.provider)
-    await page.getByTestId(`row-refill-${order}`).click()
-    await expect(page).toHaveURL(url => url.pathname === '/refill' && url.searchParams.get('order') === order, { timeout: 15_000 })
-    await expect(page.getByTestId('refill-patient-select')).toHaveValue(TEST_IDS.patient)
-    await expect(page.getByTestId(`refill-order-${order}`)).not.toBeChecked()
+    await expect(page.getByTestId(`row-no-refills-${order}`)).toHaveText('No refills left', { timeout: 15_000 })
+    await expect(page.getByTestId(`row-refill-${order}`)).toHaveCount(0)
   })
 })

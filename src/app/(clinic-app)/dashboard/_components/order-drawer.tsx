@@ -37,9 +37,12 @@ import { computeBundleShipping, type PharmacyShippingRates } from '@/lib/orders/
 import type { OrderRecord } from '@/app/api/orders/[orderId]/record/route'
 import { EhrChangesSection } from '@/components/ehr-changes-section'
 import { orderDisplayNumber } from '@/lib/orders/order-number'
+import { refillRowState } from '@/lib/orders/refill'
 
 interface Props {
   order: DashboardOrder | null
+  /** Every loaded order, to count this prescription's refills. */
+  allOrders?: DashboardOrder[]
   onClose: () => void
   /** QA post-combine fix: notify the parent that these orders joined a
    *  payment group so it patches the polling cache immediately (drawer
@@ -145,7 +148,7 @@ function formatDateTime(iso: string): string {
 }
 
 
-export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
+export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer }: Props) {
   const router = useRouter()
   // BLK-03: stable ref prevents stale closure + avoids re-running effect when client recreated
   const supabaseRef = useRef(createBrowserClient())
@@ -524,6 +527,8 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
   const canIssuePaymentLink =
     order.status === 'AWAITING_PAYMENT' || order.status === 'PAYMENT_EXPIRED'
   const isExpired = order.status === 'PAYMENT_EXPIRED'
+  // Refill: only a paid or dispensed order, and only while refills are left.
+  const refill = refillRowState(order, allOrders ?? [order])
 
   return (
     <>
@@ -794,7 +799,12 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
               it opens with this order selected and shows the patient's
               other refillable prescriptions beside it, which is how a
               one-off becomes a multiple and shipping stays one charge. */}
-          {order.status !== 'DRAFT' && (
+          {refill.kind === 'none_left' && (
+            <p data-testid="drawer-no-refills" className="rounded-md border border-border bg-muted px-4 py-2 text-sm text-foreground">
+              {refill.message}
+            </p>
+          )}
+          {refill.kind === 'refill' && (
             <button
               type="button"
               data-testid="drawer-refill"

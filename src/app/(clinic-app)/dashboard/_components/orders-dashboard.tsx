@@ -120,6 +120,8 @@ function buildDashboardOrder(o: Record<string, unknown>, duplicateNames?: Readon
     paymentGroupId:    (o['payment_group_id'] as string | null) ?? null,
     providerId:        (o['provider_id'] as string | null) ?? null,
     lockedAt:          (o['locked_at'] as string | null) ?? null,
+    refills:           (o['refills'] as number | null) ?? null,
+    refillOfOrderId:   (o['refill_of_order_id'] as string | null) ?? null,
   }
 }
 
@@ -189,7 +191,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
         .select(`
           order_id, status, created_at, updated_at, locked_at, payment_group_id, provider_id,
           retail_price_snapshot, wholesale_price_snapshot,
-          medication_snapshot, pharmacy_snapshot,
+          medication_snapshot, pharmacy_snapshot, refills, refill_of_order_id,
           patients!inner(patient_id, first_name, last_name, phone, intake_status, ${POSSIBLE_DUPLICATE_COLUMNS})
         `)
         .eq('clinic_id', clinicId)
@@ -528,6 +530,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
         viewMode === 'table' ? (
           <OrdersTable
             orders={filteredOrders}
+            allOrders={orders}
             isLoading={isFetching && orders.length === 0}
             isError={isError}
             onRowClick={handleRowClick}
@@ -553,7 +556,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
       )}
 
       {/* ── Slide-out drawer — REQ-GDB-002 ── */}
-      <OrderDrawer order={selectedOrder} onClose={handleCloseDrawer} onGroupCreated={handleGroupCreated} viewer={viewer} />
+      <OrderDrawer order={selectedOrder} allOrders={orders} onClose={handleCloseDrawer} onGroupCreated={handleGroupCreated} viewer={viewer} />
 
     </div>
   )
