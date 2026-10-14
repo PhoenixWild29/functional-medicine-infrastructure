@@ -26,8 +26,7 @@ jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.clien
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: async () => ({
     auth: { getUser: async () => ({ data: { user: { id: 'u-1', email: 'a@b.test', app_metadata: { app_role: role, clinic_id: CLINIC } } }, error: null }) },
-    from: (t: string) => db.client.from(t),
-    rpc: (...a: unknown[]) => (db.client as unknown as { rpc: (...b: unknown[]) => unknown }).rpc?.(...a),
+    from: (t: string) => (db.client as unknown as { from: (t: string) => unknown }).from(t),
   }),
 }))
 // Nothing here may reach Stripe, SMS or the PHI log for real.
