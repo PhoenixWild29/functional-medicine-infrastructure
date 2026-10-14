@@ -6,8 +6,11 @@
  *     /onboard/join/<token>) and the accept API are reachable signed out
  *     (the token is the credential); the wizard (/onboarding) and its APIs
  *     are not, and /onboarding is not mistaken for /onboard/
- *   - the clinic app sends any user of a clinic that ops has not approved
- *     to /onboarding; an approved clinic is unchanged
+ *   - self sign-up, pending review: the clinic app no longer holds an
+ *     unapproved clinic on /onboarding. Everyone can look around, under a
+ *     banner that links to the remaining setup steps; writes are refused
+ *     on the server (lib/onboarding/approval-guard). (Updated: this used
+ *     to assert the redirect to /onboarding.)
  */
 
 import { NextRequest } from 'next/server'
@@ -71,26 +74,45 @@ jest.mock('@/components/main-content-offset', () => ({ MainContentOffset: ({ chi
 jest.mock('@/components/clinic-error-boundary', () => ({ ClinicErrorBoundary: ({ children }: { children: unknown }) => children }))
 jest.mock('@/components/bfcache-guard', () => ({ BfcacheGuard: () => null }))
 jest.mock('@/components/hipaa-timeout', () => ({ HipaaTimeout: () => null }))
+jest.mock('@/components/pending-review-banner', () => ({ PendingReviewBanner: function PendingReviewBanner() { return null } }))
+
+// The rendered tree, searched for the banner by component name.
+function hasBanner(node: unknown): boolean {
+  if (!node || typeof node !== 'object') return false
+  if (Array.isArray(node)) return node.some(hasBanner)
+  const el = node as { type?: unknown; props?: { children?: unknown } }
+  if (typeof el.type === 'function' && (el.type as { name?: string }).name === 'PendingReviewBanner') return true
+  return hasBanner(el.props?.children)
+}
 
 import ClinicAppLayout from '../app/(clinic-app)/layout'
 
-describe('clinic app: an unapproved clinic goes to onboarding', () => {
+describe('clinic app: pending review (an unapproved clinic looks around under a banner)', () => {
   beforeEach(() => { redirectMock.mockClear(); currentUser = layoutUser })
 
-  it.each(['invited', 'in_progress', 'submitted', 'changes_requested'])('onboarding %s: redirected to /onboarding', async status => {
+  it.each(['invited', 'in_progress', 'submitted', 'changes_requested'])('onboarding %s: the app renders, with the banner, no redirect', async status => {
     clinicRow = { practice_dashboard_visible_to_providers: false, onboarding_status: status, is_active: false }
-    await expect(ClinicAppLayout({ children: null })).rejects.toThrow('NEXT_REDIRECT:/onboarding')
+    const tree = await ClinicAppLayout({ children: null })
+    expect(redirectMock).not.toHaveBeenCalled()
+    expect(hasBanner(tree)).toBe(true)
   })
 
-  it('a provider of an unapproved clinic is redirected too', async () => {
+  it('a provider of an unapproved clinic sees the banner too', async () => {
     currentUser = { ...layoutUser, app_metadata: { app_role: 'provider', clinic_id: layoutUser.app_metadata.clinic_id } }
     clinicRow = { practice_dashboard_visible_to_providers: false, onboarding_status: 'in_progress', is_active: false }
-    await expect(ClinicAppLayout({ children: null })).rejects.toThrow('NEXT_REDIRECT:/onboarding')
+    expect(hasBanner(await ClinicAppLayout({ children: null }))).toBe(true)
+    expect(redirectMock).not.toHaveBeenCalled()
   })
 
-  it('an approved clinic renders the app', async () => {
+  it('approved but switched off: the banner (writes are refused the same way)', async () => {
+    clinicRow = { practice_dashboard_visible_to_providers: false, onboarding_status: 'approved', is_active: false }
+    expect(hasBanner(await ClinicAppLayout({ children: null }))).toBe(true)
+  })
+
+  it('an approved clinic renders the app with no banner', async () => {
     clinicRow = { practice_dashboard_visible_to_providers: false, onboarding_status: 'approved', is_active: true }
-    await expect(ClinicAppLayout({ children: null })).resolves.toBeTruthy()
+    const tree = await ClinicAppLayout({ children: null })
     expect(redirectMock).not.toHaveBeenCalled()
+    expect(hasBanner(tree)).toBe(false)
   })
 })
