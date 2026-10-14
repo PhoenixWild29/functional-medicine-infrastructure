@@ -3283,7 +3283,8 @@ test.describe('Clinic App — WO-107 practice dashboard', () => {
     // The link opens that order on the dashboard.
     await queue.getByTestId(`attention-submission_failed-${failed}`).getByRole('link').click()
     await expect(page).toHaveURL(new RegExp(`/dashboard\\?order=${failed}`), { timeout: 15_000 })
-    await expect(page.getByRole('dialog', { name: `Order details — ${failed.slice(0, 8)}` })).toBeVisible({ timeout: 15_000 })
+    // The drawer names the order by its short number: first 4 and last 4 of the ID.
+    await expect(page.getByRole('dialog', { name: `Order details — ${failed.slice(0, 4)}…${failed.slice(-4)}` })).toBeVisible({ timeout: 15_000 })
   })
 
   test('RBAC both ways: provider denied until the admin shares it, cannot share it themselves; ops never', async ({ page }) => {
