@@ -42,6 +42,17 @@ describe('middleware: who can reach onboarding', () => {
     expect(location(res)).toBeNull()
   })
 
+  // Self sign-up: /get-started and its API are public (a visitor has no
+  // account yet). Nothing else is opened by the prefix.
+  it.each([['/get-started', 'GET'], ['/api/signup', 'POST']])('%s is reachable signed out', async (path, method) => {
+    const res = await middleware(req(path, method))
+    expect(location(res)).toBeNull()
+  })
+
+  it.each(['/get-started-admin', '/api/signup-admin', '/api/signups'])('%s is not opened by the prefix', async path => {
+    expect(location(await middleware(req(path)))).toBe('/login')
+  })
+
   it.each(['/onboarding', '/api/onboarding/practice', '/api/ops/onboarding'])('%s needs a signed-in user', async path => {
     const res = await middleware(req(path))
     expect(location(res)).toBe('/login')
