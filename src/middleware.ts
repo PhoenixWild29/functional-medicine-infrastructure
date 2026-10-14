@@ -5,6 +5,7 @@ import { verifyCheckoutToken } from '@/lib/auth/checkout-token'
 import { MFA_API_CODES, MFA_PAGES, hasVerifiedTotp, isMfaExemptPath, isMfaRole, mfaEnforcedForUser, mfaGate } from '@/lib/auth/mfa'
 import { buildCsp, newNonce, permissionsPolicy } from '@/lib/security/headers'
 import { getUserRole } from '@/lib/auth/claims'
+import { mayOpenSignPage } from '@/lib/auth/signer'
 
 // PR R7-Bucket-1: Apply HIPAA-grade no-store cache headers to every response
 // that touches authenticated state OR PHI. Closes a CRITICAL bfcache leak
@@ -425,9 +426,14 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
   // (asserted in src/__tests__/middleware.test.ts). The session died on
   // the DESTINATION page, not on this hop — see the /unauthorized block
   // above.
+  //
+  // Self sign-up, decision 1: a clinic_admin may also be a provider (a
+  // solo practice). The middleware cannot read the provider record, so a
+  // clinic_admin reaches the page and the page asks lib/auth/signer (as
+  // the sign API does); a plain admin is told only a provider can sign.
   if (
     (pathname === '/new-prescription/sign' || pathname.startsWith('/new-prescription/sign/'))
-    && appRole !== 'provider'
+    && !mayOpenSignPage(appRole)
   ) {
     return applySecurityHeaders(redirectWithSessionCookies(new URL('/unauthorized', request.url)))
   }
@@ -447,7 +453,7 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
   // the page: a redirect() from inside the (clinic-app) Suspense boundary
   // hangs instead of navigating.
   const singleDraft = /^\/new-prescription\/sign\/([^/]+)\/?$/.exec(pathname)
-  if (singleDraft && appRole === 'provider') {
+  if (singleDraft && mayOpenSignPage(appRole)) {
     const target = new URL('/new-prescription/sign', request.url)
     target.searchParams.set('orders', decodeURIComponent(singleDraft[1]!))
     return applySecurityHeaders(redirectWithSessionCookies(target))

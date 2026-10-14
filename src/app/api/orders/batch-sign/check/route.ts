@@ -17,6 +17,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { checkBatch, parseOrderIds } from '@/lib/orders/batch-sign'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { resolveSigner } from '@/lib/auth/signer'
 
 const COULD_NOT_RUN = new Set(['orders_unavailable', 'provider_unavailable', 'compliance_unavailable'])
 
@@ -27,9 +28,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
-  if (getUserRole(user) !== 'provider') {
-    return NextResponse.json({ error: 'Only a provider can sign prescriptions.' }, { status: 403 })
-  }
+  // The same answer as signing (lib/auth/signer): a provider, or a solo
+  // admin who is also a verified provider.
+  const supabase = createServiceClient()
+  const who = await resolveSigner(supabase, { userId: user.id, clinicId, role: getUserRole(user) ?? null })
+  if (!who.ok) return NextResponse.json({ error: who.message }, { status: who.status })
 
   let body: { orderIds?: unknown }
   try {
@@ -40,7 +43,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const parsed = parseOrderIds(body.orderIds)
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })
 
-  const check = await checkBatch(createServiceClient(), { clinicId, userId: user.id, orderIds: parsed.ids, atSigning: false })
+  const check = await checkBatch(supabase, { clinicId, userId: user.id, orderIds: parsed.ids, atSigning: false })
   const couldNotRun = check.problems.find(p => COULD_NOT_RUN.has(p.code))
   if (couldNotRun) {
     console.error(`[batch-sign/check] could not run: ${couldNotRun.code}`)

@@ -79,6 +79,7 @@ import { insertStatusHistory, type StatusHistoryRow } from './status-history'
 import { createSlasForTransition } from '@/lib/sla/creator'
 import { sendPaymentLinkSms } from '@/lib/sms/triggers'
 import { serverEnv } from '@/lib/env'
+import { resolveSigner } from '@/lib/auth/signer'
 
 type Supabase = SupabaseClient<Database>
 
@@ -703,9 +704,11 @@ export async function signBatch(
     signature: unknown
   },
 ): Promise<SignBatchResult> {
-  if (input.appRole !== 'provider') {
-    return { ok: false, status: 403, error: 'Only a provider can sign prescriptions.' }
-  }
+  // Who may sign: a provider, or a clinic_admin who is also a provider
+  // with a verified NPI (a solo practice). The sign page asks the same
+  // helper. checkBatch then requires every line to be the signer's own.
+  const who = await resolveSigner(supabase, { userId: input.userId, clinicId: input.clinicId, role: input.appRole })
+  if (!who.ok) return { ok: false, status: who.status, error: who.message }
   const parsed = parseOrderIds(input.orderIds)
   if (!parsed.ok) return { ok: false, status: 400, error: parsed.error }
   const orderIds = parsed.ids
