@@ -20,10 +20,10 @@
 import { NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
+import { PENDING_REVIEW_CODE, PENDING_REVIEW_MESSAGE } from './pending-review-copy'
 
 /** The banner's words, also every refusal's (no em dashes in UI copy). */
-export const PENDING_REVIEW_MESSAGE = "We're verifying your licenses. You can look around; ordering opens once you're approved."
-export const PENDING_REVIEW_CODE = 'CLINIC_PENDING_REVIEW'
+export { PENDING_REVIEW_CODE, PENDING_REVIEW_MESSAGE }
 export const APPROVAL_UNAVAILABLE_MESSAGE = 'We could not check your clinic just now. Nothing was saved. Try again.'
 
 export type ClinicApproval =

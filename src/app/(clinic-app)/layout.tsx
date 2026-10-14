@@ -1,4 +1,6 @@
 import { redirect } from 'next/navigation'
+import { PendingReviewBanner } from '@/components/pending-review-banner'
+import { isApprovedClinic } from '@/lib/onboarding/approval-guard'
 import { createServerClient } from '@/lib/supabase/server'
 import { Providers } from '@/components/providers'
 import { SidebarNav } from '@/components/sidebar-nav'
@@ -41,6 +43,7 @@ export default async function ClinicAppLayout({
   // the admin has shared it. A toggle that cannot be read hides the link
   // (the page itself reports the error).
   let showPractice = appRole === 'clinic_admin'
+  let pendingReview = false
   const clinicId = getUserClinicId(user)
   if (clinicId) {
     const { data: clinic } = await supabase
@@ -48,13 +51,12 @@ export default async function ClinicAppLayout({
       .select('practice_dashboard_visible_to_providers, onboarding_status, is_active')
       .eq('clinic_id', clinicId)
       .maybeSingle()
-    // Clinic onboarding: until ops approves the clinic, its users work in
-    // /onboarding (the admin's wizard; a waiting page for everyone else).
-    // Navigation only: batch-sign refuses an unapproved clinic on the
-    // server, so a clinic that cannot be read here is not blocked.
-    if (clinic && clinic.onboarding_status && clinic.onboarding_status !== 'approved') {
-      redirect('/onboarding')
-    }
+    // Pending review (self sign-up): until ops approves the clinic its users
+    // can look around, under a banner linking to the remaining setup
+    // steps. Every write that matters is refused on the server
+    // (lib/onboarding/approval-guard), so a clinic that cannot be read
+    // here shows no banner but is still refused there.
+    pendingReview = !!clinic && !isApprovedClinic(clinic)
     if (appRole === 'provider') showPractice = clinic?.practice_dashboard_visible_to_providers === true
   }
 
@@ -69,6 +71,7 @@ export default async function ClinicAppLayout({
 
         {/* Main content — offset adjusts dynamically with sidebar collapse state */}
         <MainContentOffset>
+          {pendingReview && <PendingReviewBanner />}
           <ClinicErrorBoundary>
             {children}
           </ClinicErrorBoundary>
