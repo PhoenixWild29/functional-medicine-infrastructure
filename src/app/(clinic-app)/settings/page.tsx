@@ -229,8 +229,7 @@ export default async function SettingsPage() {
               <h2 className="text-base font-semibold text-foreground">Notifications</h2>
               <p className="text-sm text-muted-foreground">
                 Email and SMS notification preferences are not yet configurable.
-                Order status updates are sent automatically based on your clinic&apos;s
-                registered contact email.
+                Automatic order status emails and texts are not turned on yet.
               </p>
               <p className="inline-flex items-center rounded-md border border-border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
                 Coming soon — configurable preferences
