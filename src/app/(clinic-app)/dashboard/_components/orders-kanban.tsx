@@ -32,6 +32,7 @@ import type { DashboardOrder } from '../page'
 import type { OrderStatusEnum } from '@/types/database.types'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { SkeletonKanbanCard } from '@/components/ui/skeleton'
+import { orderDisplayNumber } from '@/lib/orders/order-number'
 
 // ── Lane definitions ─────────────────────────────────────────
 
@@ -143,7 +144,7 @@ function DraggableCard({
       {/* Order ID + overdue indicator */}
       <p className="font-mono text-[11px] text-muted-foreground">
         {order.isOverdue48h && <span className="mr-1" title="Payment overdue 48h+" aria-label="Overdue">⏰</span>}
-        {order.orderId.slice(0, 8)}…
+        <span title={order.orderId}>{orderDisplayNumber(order.orderId)}</span>
       </p>
 
       {/* Patient name */}
@@ -206,7 +207,7 @@ function OverlayCard({ order }: { order: DashboardOrder }) {
       className="rounded-lg border border-border bg-card p-3 shadow-xl w-48"
       style={isError ? { borderLeft: '4px solid #A84B2F' } : {}}
     >
-      <p className="font-mono text-[11px] text-muted-foreground">{order.orderId.slice(0, 8)}…</p>
+      <p className="font-mono text-[11px] text-muted-foreground">{orderDisplayNumber(order.orderId)}</p>
       <p className="mt-1 text-sm font-medium text-foreground leading-tight">{order.patientName}</p>
       <p className="mt-0.5 text-[13px] text-muted-foreground">{order.medicationName}</p>
     </div>

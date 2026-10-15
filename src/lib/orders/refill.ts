@@ -34,6 +34,31 @@ import { FREQUENCY_OPTIONS } from '@/app/(clinic-app)/new-prescription/_componen
 // ── Refill authorization ────────────────────────────────────
 
 /**
+ * Orders that can be refilled: paid, and on their way to (or with) the
+ * patient. A draft, an unpaid or expired payment link, a cancelled,
+ * refunded or disputed order, or one stuck in an error (failed
+ * submission or fax, rejected, rerouting, on hold) was never dispensed,
+ * so there is nothing to refill (click-through, 14 Oct).
+ */
+export const REFILL_SOURCE_STATUSES: ReadonlySet<string> = new Set([
+  'PAID_PROCESSING',
+  'SUBMISSION_PENDING',
+  'FAX_QUEUED',
+  'FAX_DELIVERED',
+  'PHARMACY_ACKNOWLEDGED',
+  'PHARMACY_COMPOUNDING',
+  'PHARMACY_PROCESSING',
+  'READY_TO_SHIP',
+  'SHIPPED',
+  'DELIVERED',
+])
+
+export function isRefillableStatus(status: string): boolean {
+  return REFILL_SOURCE_STATUSES.has(status)
+}
+
+
+/**
  * Statuses that do not consume an authorized refill. The patient never
  * received these, so the authorization is still theirs to use.
  */
@@ -169,4 +194,34 @@ function formatShortDate(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
   return `${d.getUTCDate()} ${d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })}`
+}
+
+// ── The Refill control on a dashboard row or the order drawer ─
+
+export interface RefillRowOrder {
+  orderId:          string
+  status:           string
+  refills?:         number | null
+  refillOfOrderId?: string | null
+}
+
+export type RefillRowState =
+  | { kind: 'hidden' }
+  | { kind: 'refill' }
+  | { kind: 'none_left'; message: string }
+
+/**
+ * What the row and the drawer show: nothing (not paid), the Refill link,
+ * or why there is no refill left. Counted against the SOURCE
+ * prescription from the orders already loaded; when the source is not
+ * among them, the link is shown and /refill decides.
+ */
+export function refillRowState(order: RefillRowOrder, loaded: ReadonlyArray<RefillRowOrder>): RefillRowState {
+  if (!isRefillableStatus(order.status)) return { kind: 'hidden' }
+  const sourceId = order.refillOfOrderId ?? order.orderId
+  const source = sourceId === order.orderId ? order : loaded.find(o => o.orderId === sourceId)
+  if (!source || source.refills === undefined) return { kind: 'refill' }
+  const used = refillsUsed(loaded.filter(o => o.refillOfOrderId === sourceId))
+  const allowance = refillAllowance(source.refills, used)
+  return allowance.allowed ? { kind: 'refill' } : { kind: 'none_left', message: allowance.message ?? 'No refills left.' }
 }

@@ -48,7 +48,7 @@ function cards(pending: number, expired: number) {
       totalRevenueCents={250000}
       pendingPaymentCount={pending}
       expiredPaymentCount={expired}
-      completedMtd={7}
+      shippedMtd={7}
       priorYearOrdersMtd={8}
       priorYearRevenueCents={180000}
     />,
@@ -72,7 +72,7 @@ describe('the Pending Payment card', () => {
 })
 
 describe('the Pending Payment tab count', () => {
-  it('counts only open links, while the tab still lists the expired ones', () => {
+  it('counts open links, with the expired ones as a separate count; the tab lists both', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
     render(
       <QueryClientProvider client={queryClient}>
@@ -89,7 +89,7 @@ describe('the Pending Payment tab count', () => {
       </QueryClientProvider>,
     )
     const pendingTab = screen.getByRole('tab', { name: /Pending Payment/ })
-    expect(pendingTab).toHaveTextContent(/^Pending Payment1$/)
+    expect(pendingTab).toHaveTextContent(/^Pending Payment12 expired$/)
     const table = screen.getByRole('table')
     for (const name of ['Open Med', 'Stale Med', 'Expired Med']) expect(within(table).getByText(name)).toBeInTheDocument()
   })

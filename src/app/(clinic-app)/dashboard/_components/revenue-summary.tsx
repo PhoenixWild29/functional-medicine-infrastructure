@@ -20,7 +20,8 @@ interface Props {
   pendingPaymentCount: number
   /** Links that have expired unpaid — not open, shown as a line under the card. */
   expiredPaymentCount?: number
-  completedMtd:        number
+  /** Shipped or delivered, created this month: the rows of Shipped for this month. */
+  shippedMtd:          number
   // Prior year same-month metrics for trend
   priorYearOrdersMtd:  number
   priorYearRevenueCents: number
@@ -60,7 +61,7 @@ export function RevenueSummary({
   totalRevenueCents,
   pendingPaymentCount,
   expiredPaymentCount = 0,
-  completedMtd,
+  shippedMtd,
   priorYearOrdersMtd,
   priorYearRevenueCents,
   isLoading = false,
@@ -83,7 +84,7 @@ export function RevenueSummary({
   const cards = [
     {
       id:          'total-orders',
-      tab:         'all',
+      href:        '/dashboard?tab=all&period=mtd',
       label:       'Total Orders',
       sublabel:    'Month to date',
       value:       totalOrdersMtd === 0 ? '—' : totalOrdersMtd.toLocaleString('en-US'),
@@ -94,7 +95,7 @@ export function RevenueSummary({
     },
     {
       id:          'revenue',
-      tab:         'all',
+      href:        '/dashboard?tab=all&period=mtd',
       label:       'Revenue',
       sublabel:    'Month to date',
       value:       totalRevenueCents === 0 ? '—' : toCurrency(totalRevenueCents),
@@ -105,7 +106,8 @@ export function RevenueSummary({
     },
     {
       id:          'pending-payment',
-      tab:         'awaiting_payment',
+      // Open links of any age: the tab with every date.
+      href:        '/dashboard?tab=awaiting_payment',
       label:       'Pending Payment',
       sublabel:    'Open payment links',
       value:       pendingPaymentCount === 0 ? '—' : pendingPaymentCount.toLocaleString('en-US'),
@@ -113,12 +115,12 @@ export function RevenueSummary({
       showTrend:   false,
     },
     {
-      id:          'completed',
-      tab:         'shipped',
-      label:       'Completed',
-      sublabel:    'Delivered this month',
-      value:       completedMtd === 0 ? '—' : completedMtd.toLocaleString('en-US'),
-      emptyTip:    'No completed orders this month',
+      id:          'shipped',
+      href:        '/dashboard?tab=shipped&period=mtd',
+      label:       'Shipped',
+      sublabel:    'Month to date',
+      value:       shippedMtd === 0 ? '—' : shippedMtd.toLocaleString('en-US'),
+      emptyTip:    'No orders shipped this month',
       showTrend:   false,
     },
   ]
@@ -130,10 +132,11 @@ export function RevenueSummary({
         // Coniku-Nicklos, 2026-09-11 (01:32:09): "I was going to click
         // under the total orders … It takes you right there." A link,
         // not a div with an onClick, so it is keyboard reachable and
-        // opens in a new tab like any other link.
+        // opens in a new tab like any other link. It opens its tab with
+        // the same period, so the number is the number of rows it opens.
         <Link
           key={card.id}
-          href={`/dashboard?tab=${card.tab}`}
+          href={card.href}
           data-testid={`kpi-card-${card.id}`}
           aria-label={`${card.label}: ${card.value}. Show these orders.`}
           className="block rounded-xl border border-border bg-card p-5 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

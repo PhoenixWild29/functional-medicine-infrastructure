@@ -237,8 +237,10 @@ export function RefillPicker({ patients, provider, preselectOrderId = null, pres
                     <span className="block text-sm font-medium text-foreground">
                       {order.medicationName}
                       {order.dose && <span className="text-muted-foreground"> · {order.dose}</span>}
+                      {/* A real space, not only a margin: the text read "5mg/mLtitration". */}
+                      {order.isTitration && ' '}
                       {order.isTitration && (
-                        <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                        <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
                           titration
                         </span>
                       )}
