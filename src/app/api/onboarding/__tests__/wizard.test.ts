@@ -13,10 +13,7 @@ import { scriptedDb, type Script, type ScriptedCall } from '@/__tests__/helpers/
 
 const CLINIC   = '11111111-1111-4111-8111-111111111111'
 const PROVIDER = '33333333-3333-4333-8333-333333333333'
-// Self sign-up, decision 5: submit needs a confirmed email. Invited
-// admins are created confirmed. (Updated: the fixture had no
-// email_confirmed_at.)
-const ADMIN    = { id: 'admin-1', email: 'lauren@sunrise.test', email_confirmed_at: '2026-10-01T00:00:00Z', app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC } }
+const ADMIN    = { id: 'admin-1', email: 'lauren@sunrise.test', app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC } }
 
 let user: unknown = ADMIN
 let db = scriptedDb(() => undefined)
@@ -238,19 +235,16 @@ describe('submit', () => {
     expect(db.to('clinics', 'update')).toEqual([])
   })
 
-  it('an admin whose email is not confirmed cannot submit: 403, nothing changes', async () => {
+  // Self sign-up: no email step before review (ops confirms the email and
+  // phone with them before approving).
+  it('submits with no email step, whatever email_confirmed_at says', async () => {
     user = { ...ADMIN, email_confirmed_at: null }
     db = scriptedDb(clinicWith('in_progress', c => (c.table === 'clinic_onboarding_steps' && c.op === 'select'
       ? { data: ['practice', 'providers', 'baa', 'terms'].map(step => ({ step, status: 'complete' })) }
       : undefined)))
     const res = await submit()
-    expect(res.status).toBe(403)
-    expect(await res.json()).toEqual(expect.objectContaining({
-      code: 'EMAIL_NOT_CONFIRMED',
-      error: 'Your email address is not confirmed yet, so this cannot be submitted for review. You can keep filling in your setup. Contact CompoundIQ if you need help.',
-    }))
-    expect(db.to('clinics', 'update')).toEqual([])
-    expect(db.to('clinic_onboarding_events', 'insert')).toEqual([])
+    expect(res.status).toBe(200)
+    expect(db.to('clinics', 'update')[0]!.payload).toEqual(expect.objectContaining({ onboarding_status: 'submitted' }))
   })
 
   it('submits for ops review and logs it', async () => {

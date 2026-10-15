@@ -15,8 +15,9 @@
  *     application, then the existing pharmacy wizard
  *   - every clinic is created inactive, in onboarding, signup_source
  *     'self_serve'; a 'self_signup' event is logged
- *   - the login is created with its email NOT confirmed (an invite proves
- *     the address; this does not). Submit for review waits for it.
+ *   - the login is created with its email already confirmed, as invites
+ *     are, so sign-in works whatever the hosted "Confirm email" setting
+ *     is. Ops confirms the email and phone before approving.
  *   - password 12+ characters; a duplicate email gets a neutral answer and
  *     nothing is left behind; a failure part way removes what was made.
  */
@@ -81,7 +82,7 @@ describe('a solo provider', () => {
       app_metadata: { app_role: 'clinic_admin', clinic_id: clinic!['clinic_id'] },
       user_metadata: { full_name: 'Dana Ruiz' },
     }))
-    expect(created(db)[0]!['email_confirm']).toBe(false)
+    expect(created(db)[0]!['email_confirm']).toBe(true)
 
     const [provider] = db.rows('providers')
     expect(provider).toEqual(expect.objectContaining({
@@ -159,7 +160,7 @@ describe('a clinic or practice', () => {
       name: 'Sunrise Functional Medicine', is_active: false, onboarding_status: 'in_progress', signup_source: 'self_serve', signup_kind: 'clinic',
     }))
     expect(db.users[0]).toEqual(expect.objectContaining({ app_metadata: { app_role: 'clinic_admin', clinic_id: clinic!['clinic_id'] } }))
-    expect(created(db)[0]!['email_confirm']).toBe(false)
+    expect(created(db)[0]!['email_confirm']).toBe(true)
     expect(db.rows('providers')).toEqual([])
     expect(lookupNpiMock).not.toHaveBeenCalled()
     expect(db.rows('clinic_onboarding_events')).toEqual([expect.objectContaining({ event: 'self_signup', actor_role: 'clinic_admin' })])
@@ -183,7 +184,7 @@ describe('a compounding pharmacy', () => {
     // prescribers (unchanged).
     expect(pharmacy).toEqual(expect.objectContaining({ name: 'Strive Compounding', is_active: false, onboarding_status: 'onboarding', integration_tier: 'TIER_4_FAX', email: 'dana.ruiz@example.test' }))
     expect(db.users[0]).toEqual(expect.objectContaining({ app_metadata: { app_role: 'pharmacy_admin', clinic_id: null, pharmacy_id: pharmacy!['pharmacy_id'] } }))
-    expect(created(db)[0]!['email_confirm']).toBe(false)
+    expect(created(db)[0]!['email_confirm']).toBe(true)
     expect(db.rows('pharmacy_onboarding_applications')).toEqual([expect.objectContaining({
       pharmacy_id: pharmacy!['pharmacy_id'], invite_id: null, admin_user_id: db.users[0]!.id, status: 'in_progress', signup_source: 'self_serve',
     })])

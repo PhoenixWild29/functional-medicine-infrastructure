@@ -73,9 +73,7 @@ import * as adapter from '@/app/api/ops/onboarding/pharmacies/[applicationId]/ad
 import * as onboard from '@/app/api/onboard/pharmacy/[token]/route'
 
 const PH = 'ph000000-0000-4000-8000-000000000001'
-// Decision 5: submit needs a confirmed email (invited admins are created
-// confirmed). (Updated: the fixture had no email_confirmed_at.)
-const asPharmacyAdmin = (emailConfirmedAt: string | null = '2026-10-01T00:00:00Z') => getUserMock.mockResolvedValue({ data: { user: { id: 'u-ph', email_confirmed_at: emailConfirmedAt, app_metadata: { app_role: 'pharmacy_admin', pharmacy_id: PH } } }, error: null })
+const asPharmacyAdmin = () => getUserMock.mockResolvedValue({ data: { user: { id: 'u-ph', app_metadata: { app_role: 'pharmacy_admin', pharmacy_id: PH } } }, error: null })
 const asOps = () => getUserMock.mockResolvedValue({ data: { user: { id: 'u-ops', app_metadata: { app_role: 'ops_admin' } } }, error: null })
 const as = (role: string) => getUserMock.mockResolvedValue({ data: { user: { id: `u-${role}`, app_metadata: { app_role: role, clinic_id: 'c-1' }, user_metadata: { app_role: 'pharmacy_admin', pharmacy_id: PH } } }, error: null })
 const signedOut = () => getUserMock.mockResolvedValue({ data: { user: null }, error: { message: 'no session' } })
@@ -97,14 +95,11 @@ describe('the pharmacy portal API', () => {
     expect(res.headers.get('cache-control')).toBe('no-store')
   })
 
-  it('submit with an unconfirmed email: 403, the application is not submitted; other steps still save', async () => {
-    asPharmacyAdmin(null)
+  it('submit has no email step: a login with email_confirmed_at null reaches submitApplication', async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: 'u-ph', email_confirmed_at: null, app_metadata: { app_role: 'pharmacy_admin', pharmacy_id: PH } } }, error: null })
     lib.submitApplication!.mockClear()
-    const res = await step.POST(req('POST', {}), params({ step: 'submit' }))
-    expect(res.status).toBe(403)
-    expect(await res.json()).toEqual(expect.objectContaining({ code: 'EMAIL_NOT_CONFIRMED' }))
-    expect(lib.submitApplication).not.toHaveBeenCalled()
-    expect((await step.PUT(req('PUT', {}), params({ step: 'details' }))).status).toBe(200)
+    expect((await step.POST(req('POST', {}), params({ step: 'submit' }))).status).toBe(200)
+    expect(lib.submitApplication).toHaveBeenCalled()
   })
 
   it('each step reaches its handler; an unknown step is 404', async () => {
