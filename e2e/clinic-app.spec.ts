@@ -2636,7 +2636,7 @@ test.describe("Clinic App — WO-106 a refill below today's wholesale", () => {
         formulation_id:           TEST_IDS.glp1Formulation,
         clinic_id:                TEST_IDS.clinic,
         pharmacy_id:              TEST_IDS.pharmacyTier1,
-        status:                   'AWAITING_PAYMENT',
+        status:                   'DELIVERED',  // only a paid or dispensed order can be refilled
         quantity:                 1,
         wholesale_price_snapshot: 50.00,
         retail_price_snapshot:    60.00,
@@ -2727,7 +2727,7 @@ test.describe('Clinic App — WO-108 repricing a refill', () => {
         formulation_id:           TEST_IDS.glp1Formulation,
         clinic_id:                TEST_IDS.clinic,
         pharmacy_id:              TEST_IDS.pharmacyTier1,
-        status:                   'AWAITING_PAYMENT',
+        status:                   'DELIVERED',  // only a paid or dispensed order can be refilled
         quantity:                 1,
         wholesale_price_snapshot: wholesale,
         retail_price_snapshot:    retail,
