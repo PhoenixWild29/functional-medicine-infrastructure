@@ -30,9 +30,13 @@ import { resolveCurrentProvider } from '@/lib/auth/current-provider'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { RefillPicker, type RefillablePatient, type RefillableOrder } from './_components/refill-picker'
 import type { SessionProvider } from '../new-prescription/_context/prescription-session'
-import { refillsUsed, refillAllowance } from '@/lib/orders/refill'
+import { refillsUsed, refillAllowance, isRefillableStatus } from '@/lib/orders/refill'
 import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+
+export const metadata = {
+  title: 'Refill | CompoundIQ',
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -148,6 +152,9 @@ export default async function RefillPage(
     // A refill of a refill is refilled against ITS source's
     // authorization, so only original orders are offered.
     if (row.refill_of_order_id) continue
+    // Only a paid or dispensed order has anything to refill (not an
+    // unpaid or expired link, a cancelled or failed order).
+    if (!isRefillableStatus(row.status)) continue
 
     const p = row.patients
     if (!p) continue

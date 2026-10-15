@@ -22,9 +22,13 @@ import type { DashboardOrder } from '../page'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { SkeletonTableRow } from '@/components/ui/skeleton'
 import Link from 'next/link'
+import { orderDisplayNumber } from '@/lib/orders/order-number'
+import { refillRowState } from '@/lib/orders/refill'
 
 interface Props {
   orders:     DashboardOrder[]
+  /** Every loaded order, to count a prescription's refills (defaults to `orders`). */
+  allOrders?: DashboardOrder[]
   isLoading:  boolean
   isError?:   boolean
   onRowClick: (order: DashboardOrder) => void
@@ -84,7 +88,7 @@ function TableHead({ withSelect = false }: { withSelect?: boolean }) {
   )
 }
 
-export function OrdersTable({ orders, isLoading, isError = false, onRowClick, onRetry, draftSelection }: Props) {
+export function OrdersTable({ orders, allOrders = orders, isLoading, isError = false, onRowClick, onRetry, draftSelection }: Props) {
   // Error state
   if (isError) {
     return (
@@ -130,6 +134,7 @@ export function OrdersTable({ orders, isLoading, isError = false, onRowClick, on
         <tbody>
           {orders.map(order => {
             const isErr  = ERROR_STATUSES.has(order.status)
+            const refill = refillRowState(order, allOrders)
             const rowCls = order.isOverdue48h
               ? 'bg-amber-50 hover:bg-amber-100 cursor-pointer border-b border-border transition-colors duration-[var(--duration-fast)]'
               : 'hover:bg-muted/40 cursor-pointer border-b border-border transition-colors duration-[var(--duration-fast)]'
@@ -143,7 +148,7 @@ export function OrdersTable({ orders, isLoading, isError = false, onRowClick, on
                 style={isErr ? { borderLeft: '4px solid #A84B2F' } : undefined}
                 tabIndex={0}
                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onRowClick(order) }}
-                aria-label={`${isErr ? 'Error — ' : ''}Order ${order.orderId.slice(0, 8)} — ${order.patientName} — ${order.status}`}
+                aria-label={`${isErr ? 'Error — ' : ''}Order ${orderDisplayNumber(order.orderId)} — ${order.patientName} — ${order.status}`}
               >
                 {draftSelection && (
                   <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
@@ -161,7 +166,7 @@ export function OrdersTable({ orders, isLoading, isError = false, onRowClick, on
                   </td>
                 )}
                 <td className="px-3 py-3 font-mono text-xs text-muted-foreground leading-[1.6]">
-                  {order.orderId.slice(0, 8)}…
+                  <span title={order.orderId}>{orderDisplayNumber(order.orderId)}</span>
                 </td>
                 <td className="px-3 py-3 text-[14px] text-foreground leading-[1.6]">
                   {order.patientName}
@@ -198,11 +203,19 @@ export function OrdersTable({ orders, isLoading, isError = false, onRowClick, on
                 <td className="px-3 py-3 text-[13px] text-muted-foreground leading-[1.6]">
                   {formatDate(order.updatedAt)}
                 </td>
-                {/* WO-106: a draft has not been filled, so it cannot be
-                    refilled — it is edited or signed instead. stopPropagation
-                    keeps the row's own click (open the drawer) out of it. */}
+                {/* WO-106: only a paid or dispensed order can be refilled
+                    (not a draft, an expired link, a cancelled or failed
+                    order); with no refills left the row says so instead of
+                    linking to a page where everything is disabled.
+                    stopPropagation keeps the row's own click (open the
+                    drawer) out of it. */}
                 <td className="px-3 py-3 text-right">
-                  {order.status !== 'DRAFT' && (
+                  {refill.kind === 'none_left' && (
+                    <span data-testid={`row-no-refills-${order.orderId}`} title={refill.message} className="text-xs text-muted-foreground">
+                      No refills left
+                    </span>
+                  )}
+                  {refill.kind === 'refill' && (
                     <Link
                       href={`/refill?order=${encodeURIComponent(order.orderId)}`}
                       data-testid={`row-refill-${order.orderId}`}

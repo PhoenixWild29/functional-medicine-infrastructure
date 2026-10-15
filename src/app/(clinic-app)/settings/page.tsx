@@ -22,6 +22,7 @@ import { hasVerifiedTotp, mfaEnforcedFor } from '@/lib/auth/mfa'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { IMPORT_ROLES } from '@/lib/patients/import/roles'
 import { countRecentSignups } from '@/lib/intake/signup-links'
+import { SettingsSectionNav } from './_components/settings-section-nav'
 
 export const metadata = {
   title: 'Clinic Settings',
@@ -98,28 +99,19 @@ export default async function SettingsPage() {
           className="hidden md:block w-44 flex-shrink-0 sticky top-6"
           aria-label="Settings sections"
         >
-          <ul className="space-y-1">
-            {[
-              { href: '#stripe-connect',  label: payoutsAtLaunch ? 'Payouts' : 'Stripe Connect' },
-              { href: '#clinic-profile',  label: 'Clinic Profile'  },
-              { href: '#notifications',   label: 'Notifications'   },
-              { href: '#sign-in-security', label: 'Sign-in Security' },
-              ...(canSeeTeam ? [{ href: '#team', label: 'Team' }] : []),
-              ...(canImportPatients ? [{ href: '#patients', label: 'Patients' }] : []),
-              ...(isClinicAdmin ? [{ href: '#access-log', label: 'Access log' }] : []),
-              ...(isClinicAdmin ? [{ href: '#integrations', label: 'Integrations' }] : []),
-              { href: '/settings/agreements', label: 'Agreements' },
-            ].map(({ href, label }) => (
-              <li key={href}>
-                <a
-                  href={href}
-                  className="block rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  {label}
-                </a>
-              </li>
-            ))}
-          </ul>
+          {/* In the order of the sections below, so the marked section
+              (aria-current) is the one in view. */}
+          <SettingsSectionNav items={[
+            { href: '#stripe-connect',  label: payoutsAtLaunch ? 'Payouts' : 'Stripe Connect' },
+            { href: '#clinic-profile',  label: 'Clinic Profile'  },
+            { href: '#sign-in-security', label: 'Sign-in Security' },
+            ...(canSeeTeam ? [{ href: '#team', label: 'Team' }] : []),
+            ...(canImportPatients ? [{ href: '#patients', label: 'Patients' }] : []),
+            ...(isClinicAdmin ? [{ href: '#access-log', label: 'Access log' }] : []),
+            ...(isClinicAdmin ? [{ href: '#integrations', label: 'Integrations' }] : []),
+            { href: '#notifications',   label: 'Notifications'   },
+            { href: '/settings/agreements', label: 'Agreements' },
+          ]} />
         </nav>
 
         {/* ── Sections ── */}

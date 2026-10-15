@@ -222,8 +222,11 @@ jobs:
       # Uses the session-pooler connection string. E2E_DATABASE_URL must be a
       # fully percent-encoded Postgres connection string (e.g. from `supabase db
       # connection-string --linked` against the E2E project).
+      # Supabase CLI pinned: supabase@2.121.0 (Oct 14, 2026) ships no linux-x64
+      # binary ("No matching Supabase CLI binary package found"), so an unpinned
+      # npx broke every E2E run. 2.120.0 is the last version that ran green here.
       - name: Sync E2E Supabase schema (apply migrations)
-        run: npx supabase db push --db-url "$E2E_DATABASE_URL" --include-all --yes
+        run: npx supabase@2.120.0 db push --db-url "$E2E_DATABASE_URL" --include-all --yes
         env:
           E2E_DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
 

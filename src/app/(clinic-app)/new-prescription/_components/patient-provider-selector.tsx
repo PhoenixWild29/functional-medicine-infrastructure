@@ -73,6 +73,11 @@ interface Props {
    * provider list is hidden and this provider is pinned to the session.
    */
   selfProvider?: Provider | null
+  /**
+   * '+ New Protocol' on the dashboard: after the patient and provider,
+   * the search step opens with the Protocols panel.
+   */
+  nextPanel?: 'protocols' | null
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -99,7 +104,7 @@ function formatDob(iso: string | null): string {
 
 // ── Component ─────────────────────────────────────────────────
 
-export function PatientProviderSelector({ patients: initialPatients, providers, selfProvider = null }: Props) {
+export function PatientProviderSelector({ patients: initialPatients, providers, selfProvider = null, nextPanel = null }: Props) {
   const router = useRouter()
   const session = usePrescriptionSession()
 
@@ -221,8 +226,9 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
       signature_hash: selectedProvider.signature_hash,
     })
 
-    // Navigate to pharmacy search
-    router.push('/new-prescription/search')
+    // Navigate to pharmacy search (with the Protocols panel open when
+    // the provider came from '+ New Protocol').
+    router.push(nextPanel === 'protocols' ? '/new-prescription/search?panel=protocols' : '/new-prescription/search')
   }
 
   // If there's already prescriptions in the session, show option to continue
@@ -468,7 +474,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
               : 'bg-muted text-muted-foreground cursor-not-allowed'
           }`}
         >
-          Continue to Pharmacy Search
+          {nextPanel === 'protocols' ? 'Continue to Protocols' : 'Continue to Pharmacy Search'}
         </button>
       </div>
     </div>
