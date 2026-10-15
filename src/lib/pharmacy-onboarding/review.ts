@@ -129,6 +129,8 @@ export interface ApplicationReview {
   acceptances:    { baa: AcceptanceView | null; terms: AcceptanceView | null }
   catalog:        { choice: string | null; rowCount: number | null; warnings: string[]; rows: unknown[] }
   events:         Array<{ action: string; actorRole: string; occurredAt: string; stateCode: string | null }>
+  /** 'self_serve' (signed up at /get-started), 'invite', or null. */
+  signupSource:   string | null
 }
 
 export interface AcceptanceView {
@@ -186,6 +188,7 @@ export async function getApplicationReview(db: SupabaseClient, applicationId: st
     review: {
       applicationId, pharmacyId, status: r.app.status, stepsCompleted: r.app.steps_completed ?? [],
       submittedAt: r.app.submitted_at, reviewNote: r.app.review_note,
+      signupSource: r.app.signup_source ?? null,
       pharmacy: pharmacy.data as Record<string, unknown>,
       licenses: withUrls,
       ordering: orderingView(r.app),

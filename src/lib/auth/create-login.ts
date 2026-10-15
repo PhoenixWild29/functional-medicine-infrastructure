@@ -6,9 +6,10 @@
 // role, clinic and pharmacy go in app_metadata (claims.ts), never
 // user_metadata, which the user could rewrite.
 //
-// emailConfirmed: an invite proves the address (its link was sent there),
-// so invited accounts are created confirmed. A self sign-up is not, and
-// "Submit for review" waits until it is (lib/signup/email-confirmed).
+// Every login is created with its email confirmed: an invite proves the
+// address (its link was sent there), and a self sign-up's email and phone
+// are confirmed by ops before approval. Sign-in therefore works whatever
+// the hosted "Confirm email" setting is.
 //
 // Passwords: 12 or more characters, at most 72 bytes (bcrypt's limit).
 
@@ -31,12 +32,12 @@ export type CreateLoginResult =
 export async function createLogin(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: SupabaseClient<any>,
-  input: { email: string; password: string; fullName: string; appMetadata: Record<string, unknown>; emailConfirmed: boolean },
+  input: { email: string; password: string; fullName: string; appMetadata: Record<string, unknown> },
 ): Promise<CreateLoginResult> {
   const { data, error } = await db.auth.admin.createUser({
     email:         input.email,
     password:      input.password,
-    email_confirm: input.emailConfirmed,
+    email_confirm: true,
     app_metadata:  input.appMetadata,
     user_metadata: { full_name: input.fullName },
   })

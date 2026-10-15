@@ -22,6 +22,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ONBOARDING_STEPS, STEP_LABELS, NOT_LIVE_STEPS, NOT_LIVE_LABEL } from '@/lib/onboarding/steps'
 import type { OpsApprovedClinic, OpsClinicOnboarding, OpsInvite, OpsOnboarding } from '@/lib/onboarding/ops'
+import { SELF_SIGNUP_APPROVE_NOTE } from '@/lib/onboarding/self-signup-note'
 import { TextField, FormAlert, InviteLink, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_DANGER } from '@/components/onboarding/fields'
 
 // Self sign-up (/get-started), not an invite.
@@ -274,8 +275,11 @@ function ClinicReview({ clinic: c, onReviewed }: { clinic: OpsClinicOnboarding; 
             />
             {noteError && <p id={`${noteId}-error`} role="alert" className="text-sm text-red-700 dark:text-red-300">{noteError}</p>}
           </div>
+          {c.signupSource === 'self_serve' && (
+            <p id={`${noteId}-self-signup`} className="text-sm font-medium text-foreground">{SELF_SIGNUP_APPROVE_NOTE}</p>
+          )}
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={BUTTON_PRIMARY} disabled={busy} onClick={() => review('approve')}>Approve {c.name}</button>
+            <button type="button" className={BUTTON_PRIMARY} disabled={busy} onClick={() => review('approve')} aria-describedby={c.signupSource === 'self_serve' ? `${noteId}-self-signup` : undefined}>Approve {c.name}</button>
             <button type="button" className={BUTTON_SECONDARY} disabled={busy} onClick={() => review('send_back')}>Send {c.name} back</button>
           </div>
         </div>

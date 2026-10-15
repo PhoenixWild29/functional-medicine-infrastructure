@@ -280,7 +280,6 @@ export async function acceptInvite(
   const login = await createLogin(db, {
     email: invite.admin_email, password, fullName,
     appMetadata: appMetadataFor({ role: 'pharmacy_admin', clinicId: null, pharmacyId }),
-    emailConfirmed: true,
   })
   if (!login.ok) {
     await dropPharmacy()

@@ -5,7 +5,6 @@ import type { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { saveDetails, saveFacility, saveOrdering, saveShipping, saveCatalog, acceptAgreement, submitApplication } from '@/lib/pharmacy-onboarding/application'
 import { bodyOf, crossSiteRefusal, json, pharmacyAdmin, respond } from '@/lib/pharmacy-onboarding/request'
-import { refuseUnlessEmailConfirmed } from '@/lib/signup/email-confirmed'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,11 +30,6 @@ export async function POST(request: NextRequest, context: Context) {
   if (step !== 'agreement' && step !== 'submit') return json({ error: 'Not found' }, 404)
   const who = await pharmacyAdmin()
   if (!who.ok) return who.response
-  // Decision 5: a self sign-up confirms its email before it is reviewed.
-  if (step === 'submit') {
-    const unconfirmed = refuseUnlessEmailConfirmed({ email_confirmed_at: who.emailConfirmedAt })
-    if (unconfirmed) return unconfirmed
-  }
   const db = createServiceClient()
   return respond(step === 'agreement'
     ? await acceptAgreement(db, who.ctx, await bodyOf(request))

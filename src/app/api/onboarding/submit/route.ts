@@ -11,15 +11,11 @@ import { NextResponse } from 'next/server'
 import { requireOnboardingAdmin, setStep } from '@/lib/onboarding/access'
 import { canSubmit, fullStatuses } from '@/lib/onboarding/steps'
 import { recordOnboardingEvent } from '@/lib/onboarding/events'
-import { refuseUnlessEmailConfirmed } from '@/lib/signup/email-confirmed'
 
 export async function POST(): Promise<NextResponse> {
   const access = await requireOnboardingAdmin({ editable: true })
   if (!access.ok) return access.response
   const { user, clinicId, supabase } = access
-  // Decision 5: a self sign-up confirms its email before it is reviewed.
-  const unconfirmed = refuseUnlessEmailConfirmed(user)
-  if (unconfirmed) return unconfirmed
 
   const { data: rows, error } = await supabase.from('clinic_onboarding_steps').select('step, status').eq('clinic_id', clinicId)
   if (error) return NextResponse.json({ error: 'Your progress could not be read. Try again.' }, { status: 503 })

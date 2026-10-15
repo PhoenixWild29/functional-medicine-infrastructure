@@ -22,8 +22,9 @@
 //
 // Clinics start inactive and 'in_progress' with signup_source 'self_serve';
 // the clinic or pharmacy event log gets 'self_signup'. Logins are made the
-// same way as invited ones (lib/auth/create-login) but with the email NOT
-// confirmed: "Submit for review" waits for it (lib/signup/email-confirmed).
+// same way as invited ones (lib/auth/create-login), email confirmed, so
+// sign-in works at once. Ops confirms the email and phone with them before
+// approving (the note beside Approve on the ops review pages).
 //
 // Abuse: the route rate limits per IP; a filled honeypot field is answered
 // like a success and creates nothing; a duplicate email gets a neutral
@@ -149,7 +150,6 @@ async function clinicSignup(db: Db, input: {
   const login = await createLogin(db, {
     email: input.email, password: input.password, fullName: input.fullName,
     appMetadata: appMetadataFor({ role: 'clinic_admin', clinicId }),
-    emailConfirmed: false,
   })
   if (!login.ok) {
     await dropClinic()
@@ -193,7 +193,6 @@ async function pharmacySignup(db: Db, input: { email: string; password: string; 
   const login = await createLogin(db, {
     email: input.email, password: input.password, fullName: input.fullName,
     appMetadata: appMetadataFor({ role: 'pharmacy_admin', clinicId: null, pharmacyId: pharmacy.pharmacyId }),
-    emailConfirmed: false,
   })
   if (!login.ok) {
     await pharmacy.drop()

@@ -106,12 +106,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (error) console.error(`[onboarding/accept] CRITICAL: claim could not be released | invite=${invite.invite_id}: ${error.message}`)
   }
 
-  // 2. The account, with role and clinic in app_metadata. Confirmed: the
+  // 2. The account, with role and clinic in app_metadata, confirmed: the
   //    invite link proved the address (lib/auth/create-login).
   const login = await createLogin(supabase, {
     email: invite.email, password, fullName,
     appMetadata: appMetadataFor({ role: kind, clinicId: invite.clinic_id }),
-    emailConfirmed: true,
   })
   if (!login.ok) {
     await release()
