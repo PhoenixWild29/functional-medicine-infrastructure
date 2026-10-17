@@ -67,7 +67,7 @@ export default async function NewPrescriptionPage(
     supabase
       .from('patients')
       // WO-97: allergies / nkda drive the chip on each patient card.
-      .select(`patient_id, first_name, last_name, date_of_birth, phone, state, sms_opt_in, allergies, nkda, allergies_updated_at, intake_status, ${POSSIBLE_DUPLICATE_COLUMNS}`)
+      .select(`patient_id, first_name, last_name, date_of_birth, phone, state, sms_opt_in, allergies, nkda, allergies_updated_at, intake_status, source, ${POSSIBLE_DUPLICATE_COLUMNS}`)
       .eq('clinic_id', clinicId)
       .eq('is_active', true)
       .is('deleted_at', null)

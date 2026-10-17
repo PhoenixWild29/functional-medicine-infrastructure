@@ -21,6 +21,7 @@ import { SignInSecuritySection } from './_components/sign-in-security-section'
 import { hasVerifiedTotp, mfaEnforcedFor } from '@/lib/auth/mfa'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { IMPORT_ROLES } from '@/lib/patients/import/roles'
+import { countRecentSignups } from '@/lib/intake/signup-links'
 import { SettingsSectionNav } from './_components/settings-section-nav'
 
 export const metadata = {
@@ -75,6 +76,8 @@ export default async function SettingsPage() {
   // Patient Intake PR 5: CSV import, for the clinic admin and medical
   // assistants. Providers do not see the link (the page shows them a notice).
   const canImportPatients = IMPORT_ROLES.has(getUserRole(user) ?? '')
+  // Patient Intake PR 3: new patients from the sign-up link, a count only.
+  const recentSignups = canImportPatients ? await countRecentSignups(supabase, clinicId) : null
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
@@ -174,6 +177,21 @@ export default async function SettingsPage() {
                   className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
                 >
                   Import patients
+                </Link>
+                {/* Patient Intake PR 3: the clinic's sign-up link and QR code */}
+                <p className="text-sm text-muted-foreground">
+                  New patients can sign up themselves from your clinic&apos;s sign-up link or its printed QR code.
+                </p>
+                {recentSignups !== null && (
+                  <p className="text-sm text-foreground" data-testid="settings-new-signups">
+                    {recentSignups} new {recentSignups === 1 ? 'sign-up' : 'sign-ups'} in the last 7 days
+                  </p>
+                )}
+                <Link
+                  href="/settings/patients/signup-link"
+                  className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
+                >
+                  Patient sign-up link
                 </Link>
               </section>
             </div>

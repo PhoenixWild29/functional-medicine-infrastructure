@@ -88,8 +88,13 @@ it('the last statement before COMMIT is SELECT apply_pharmacy_admin_scope();', (
 })
 
 it('sorts after every migration already on main and after A (20261016000002) and B (20261017000001)', () => {
+  // Later migrations (20261019000001 onward) may follow it; none may share
+  // its number or land between it and B.
   const versions = fs.readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).map(f => f.split('_')[0]!).sort()
-  expect(versions[versions.length - 1]).toBe(VERSION)
+  const upToLedger = versions.filter(v => v <= VERSION)
+  expect(upToLedger[upToLedger.length - 1]).toBe(VERSION)
+  expect(upToLedger.filter(v => v === VERSION)).toHaveLength(1)
+  expect(upToLedger[upToLedger.length - 2]! <= '20261017000003').toBe(true)
   expect(VERSION > '20261017000001').toBe(true)
 })
 
