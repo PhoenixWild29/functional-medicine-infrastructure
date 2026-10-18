@@ -22,7 +22,7 @@
 import { POSSIBLE_DUPLICATE_COLUMNS, loadDuplicateNames, openDuplicateIds } from '@/lib/patients/duplicate-names'
 import type { NameablePatient } from '@/lib/patients/display'
 import { dashboardPatient, embeddedPatient } from '@/lib/patients/dashboard-patient'
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
@@ -30,38 +30,14 @@ import type { DashboardOrder } from '../page'
 import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.types'
 import { OrdersTable }  from './orders-table'
 import { OrdersKanban } from './orders-kanban'
-import { isTabId, type TabId } from '../_lib/tabs'
+import { isTabId, isPeriod, ordersForView, ordersInPeriod, TABS, type TabDef, type TabId, type Period } from '../_lib/tabs'
 import { paymentLinkCounts } from '@/lib/orders/payment-link'
 import type { DraftViewer } from '@/lib/orders/draft-edit-access'
 import { OrderDrawer }  from './order-drawer'
 import { batchSignHref, MAX_BATCH_ORDERS } from '@/lib/orders/batch-sign-view'
 import { platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
 
-// ── Status tab definitions ──────────────────────────────────
-
-interface TabDef {
-  id:       TabId
-  label:    string
-  statuses: OrderStatusEnum[] | null  // null = all statuses
-}
-
-const TABS: TabDef[] = [
-  { id: 'all',             label: 'All',              statuses: null },
-  { id: 'drafts',          label: 'Drafts',           statuses: ['DRAFT'] },
-  { id: 'awaiting_payment',label: 'Pending Payment', statuses: ['AWAITING_PAYMENT', 'PAYMENT_EXPIRED'] },
-  { id: 'submitting',      label: 'Submitting',       statuses: ['SUBMISSION_PENDING', 'FAX_QUEUED', 'FAX_DELIVERED'] },
-  { id: 'processing',      label: 'Processing',       statuses: [
-      'PAID_PROCESSING', 'PHARMACY_ACKNOWLEDGED', 'PHARMACY_COMPOUNDING',
-      'PHARMACY_PROCESSING', 'READY_TO_SHIP',
-    ],
-  },
-  { id: 'shipped',         label: 'Shipped',          statuses: ['SHIPPED', 'DELIVERED'] },
-  { id: 'errors',          label: 'Errors',           statuses: [
-      'SUBMISSION_FAILED', 'FAX_FAILED', 'PHARMACY_REJECTED', 'REROUTE_PENDING',
-      'ERROR_PAYMENT_FAILED', 'ERROR_COMPLIANCE_HOLD', 'DISPUTED',
-    ],
-  },
-]
+// ── Status tabs: TABS, in ../_lib/tabs (shared with the KPI cards) ──
 
 // ── Props ───────────────────────────────────────────────────
 
@@ -87,6 +63,17 @@ interface Props {
    * Absent or false: today's wording.
    */
   payoutsAtLaunch?: boolean
+}
+
+/** An empty tab with no filter set says what the tab holds. */
+const EMPTY_TAB_TEXT: Record<TabId, string> = {
+  all:              'No orders found',
+  drafts:           'No draft orders',
+  awaiting_payment: 'No orders are waiting for payment',
+  submitting:       'No orders are being submitted',
+  processing:       'No orders are being processed',
+  shipped:          'No orders have shipped',
+  errors:           'No orders need attention',
 }
 
 /** Shown to a portal clinic until its payouts are active. */
@@ -134,6 +121,8 @@ function buildDashboardOrder(o: Record<string, unknown>, duplicateNames?: Readon
     paymentGroupId:    (o['payment_group_id'] as string | null) ?? null,
     providerId:        (o['provider_id'] as string | null) ?? null,
     lockedAt:          (o['locked_at'] as string | null) ?? null,
+    refills:           (o['refills'] as number | null) ?? null,
+    refillOfOrderId:   (o['refill_of_order_id'] as string | null) ?? null,
   }
 }
 
@@ -168,6 +157,15 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
   const tabFromUrl: TabId = urlTab !== null ? (isTabId(urlTab) ? urlTab : 'all') : (initialTab ?? 'all')
   const [activeTab,       setActiveTab]       = useState<TabId>(tabFromUrl)
   useEffect(() => { setActiveTab(tabFromUrl) }, [tabFromUrl])
+  // ?period=mtd: a month-to-date KPI card opened this list, so the rows
+  // (and the tab counts) are the ones that card counted.
+  const urlPeriod = searchParams?.get('period') ?? null
+  const period: Period = isPeriod(urlPeriod) ? urlPeriod : null
+  const clearPeriod = useCallback(() => {
+    const params = new URLSearchParams(searchParams?.toString() ?? '')
+    params.delete('period')
+    router.replace(`/dashboard?${params.toString()}`, { scroll: false })
+  }, [router, searchParams])
   const selectTab = useCallback((id: TabId) => {
     setActiveTab(id)
     const params = new URLSearchParams(searchParams?.toString() ?? '')
@@ -194,7 +192,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
         .select(`
           order_id, status, created_at, updated_at, locked_at, payment_group_id, provider_id,
           retail_price_snapshot, wholesale_price_snapshot,
-          medication_snapshot, pharmacy_snapshot,
+          medication_snapshot, pharmacy_snapshot, refills, refill_of_order_id,
           patients!inner(patient_id, first_name, last_name, phone, intake_status, ${POSSIBLE_DUPLICATE_COLUMNS})
         `)
         .eq('clinic_id', clinicId)
@@ -234,19 +232,16 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
     ? orders.find(o => o.orderId === selectedOrderId) ?? null
     : null
 
-  // ── Filter by active tab ────────────────────────────────
-  const activeTabDef = TABS.find(t => t.id === activeTab)!
-  const filteredOrders = activeTabDef.statuses === null
-    ? orders
-    : orders.filter(o => activeTabDef.statuses!.includes(o.status))
+  // ── Filter by active tab (and the period, when a card set one) ──
+  const periodOrders = ordersInPeriod(orders, period)
+  const filteredOrders = ordersForView(orders, activeTab, period)
 
   // ── Tab count badges ────────────────────────────────────
   function tabCount(tab: TabDef): number {
-    if (tab.statuses === null) return orders.length
     // The badge counts open links only, like the Pending Payment card;
     // the tab still lists the expired ones.
-    if (tab.id === 'awaiting_payment') return paymentLinkCounts(orders).open
-    return orders.filter(o => tab.statuses!.includes(o.status)).length
+    if (tab.id === 'awaiting_payment') return paymentLinkCounts(periodOrders).open
+    return ordersForView(orders, tab.id, period).length
   }
 
   // ── WO-99: Sign all / Sign selected ─────────────────────
@@ -268,12 +263,25 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
     })
   }, [])
 
+  // The element that opened the drawer, so focus can go back to it on
+  // close (WCAG 2.4.3). The row itself (data-order-id) when it is still on
+  // screen; otherwise whatever had focus when the drawer opened.
+  const drawerOpener = useRef<{ orderId: string; element: Element | null } | null>(null)
   const handleRowClick = useCallback((order: DashboardOrder) => {
+    drawerOpener.current = { orderId: order.orderId, element: document.activeElement }
     setSelectedOrderId(order.orderId)
   }, [])
 
   const handleCloseDrawer = useCallback(() => {
     setSelectedOrderId(null)
+    const opener = drawerOpener.current
+    drawerOpener.current = null
+    if (!opener) return
+    setTimeout(() => {
+      const row = document.querySelector<HTMLElement>(`[data-order-id="${CSS.escape(opener.orderId)}"]`)
+      const target = row ?? (opener.element instanceof HTMLElement && opener.element.isConnected ? opener.element : null)
+      target?.focus()
+    }, 0)
   }, [])
 
   // QA post-combine fix: when the drawer bundles orders into a payment
@@ -400,6 +408,9 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
       <div className="flex gap-1 flex-wrap border-b border-border pb-px" role="tablist" aria-label="Order status filters">
         {TABS.map(tab => {
           const count = tabCount(tab)
+          // Pending Payment: the open count is the card's number; expired
+          // links are rows of this tab too, so they get their own count.
+          const expired = tab.id === 'awaiting_payment' ? paymentLinkCounts(periodOrders).expired : 0
           const isActive = activeTab === tab.id
           return (
             <button
@@ -424,10 +435,29 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
                   {count}
                 </span>
               )}
+              {expired > 0 && (
+                <span data-testid="tab-expired-count" className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+                  {expired} expired
+                </span>
+              )}
             </button>
           )
         })}
       </div>
+
+      {/* ── The period a KPI card opened this list with ── */}
+      {period === 'mtd' && (
+        <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="period-filter">
+          <span className="rounded-full bg-muted px-3 py-1 text-foreground">Showing orders created this month</span>
+          <button
+            type="button"
+            onClick={clearPeriod}
+            className="text-sm text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Show all dates
+          </button>
+        </div>
+      )}
 
       {/* ── WO-99: Sign all (N) — the provider's own drafts ── */}
       {activeTab === 'drafts' && myDraftIds.length > 0 && (
@@ -490,17 +520,21 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
                 </button>
               )}
             </>
-          ) : (
+          ) : period !== null ? (
+            // A real filter (the month-to-date period) emptied the tab.
             <>
               <p className="text-sm font-medium text-foreground">No orders match your filters</p>
               <button
                 type="button"
-                onClick={() => selectTab('all')}
-                className="text-sm text-primary underline-offset-2 hover:underline focus-visible:outline-none"
+                onClick={clearPeriod}
+                className="text-sm text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Clear filters
               </button>
             </>
+          ) : (
+            // A tab is not a filter: say what it holds, no Clear filters.
+            <p className="text-sm font-medium text-foreground">{EMPTY_TAB_TEXT[activeTab]}</p>
           )}
         </div>
       )}
@@ -510,6 +544,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
         viewMode === 'table' ? (
           <OrdersTable
             orders={filteredOrders}
+            allOrders={orders}
             isLoading={isFetching && orders.length === 0}
             isError={isError}
             onRowClick={handleRowClick}
@@ -530,12 +565,12 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
       {filteredOrders.length > 0 && (
         <p className="text-xs text-right text-muted-foreground">
           {isFetching && <span className="mr-2 text-muted-foreground">↻ Refreshing…</span>}
-          Showing {filteredOrders.length} of {orders.length} orders
+          Showing {filteredOrders.length} of {periodOrders.length} orders
         </p>
       )}
 
       {/* ── Slide-out drawer — REQ-GDB-002 ── */}
-      <OrderDrawer order={selectedOrder} onClose={handleCloseDrawer} onGroupCreated={handleGroupCreated} viewer={viewer} />
+      <OrderDrawer order={selectedOrder} allOrders={orders} onClose={handleCloseDrawer} onGroupCreated={handleGroupCreated} viewer={viewer} />
 
     </div>
   )

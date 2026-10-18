@@ -2295,7 +2295,7 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
         formulation_id:           TEST_IDS.formulation,
         clinic_id:                TEST_IDS.clinic,
         pharmacy_id:              TEST_IDS.pharmacyTier1,
-        status:                   'AWAITING_PAYMENT',
+        status:                   'DELIVERED',  // only a paid or dispensed order can be refilled
         quantity:                 1,
         wholesale_price_snapshot: 100.00,
         retail_price_snapshot:    200.00,
@@ -2441,7 +2441,7 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
         formulation_id:           TEST_IDS.glp1Formulation,
         clinic_id:                TEST_IDS.clinic,
         pharmacy_id:              TEST_IDS.pharmacyTier1,
-        status:                   'AWAITING_PAYMENT',
+        status:                   'DELIVERED',  // only a paid or dispensed order can be refilled
         quantity:                 1,
         wholesale_price_snapshot: 80.00,
         retail_price_snapshot:    190.00,
@@ -2637,7 +2637,7 @@ test.describe("Clinic App — WO-106 a refill below today's wholesale", () => {
         formulation_id:           TEST_IDS.glp1Formulation,
         clinic_id:                TEST_IDS.clinic,
         pharmacy_id:              TEST_IDS.pharmacyTier1,
-        status:                   'AWAITING_PAYMENT',
+        status:                   'DELIVERED',  // only a paid or dispensed order can be refilled
         quantity:                 1,
         wholesale_price_snapshot: 50.00,
         retail_price_snapshot:    60.00,
@@ -2728,7 +2728,7 @@ test.describe('Clinic App — WO-108 repricing a refill', () => {
         formulation_id:           TEST_IDS.glp1Formulation,
         clinic_id:                TEST_IDS.clinic,
         pharmacy_id:              TEST_IDS.pharmacyTier1,
-        status:                   'AWAITING_PAYMENT',
+        status:                   'DELIVERED',  // only a paid or dispensed order can be refilled
         quantity:                 1,
         wholesale_price_snapshot: wholesale,
         retail_price_snapshot:    retail,
@@ -3285,7 +3285,8 @@ test.describe('Clinic App — WO-107 practice dashboard', () => {
     // The link opens that order on the dashboard.
     await queue.getByTestId(`attention-submission_failed-${failed}`).getByRole('link').click()
     await expect(page).toHaveURL(new RegExp(`/dashboard\\?order=${failed}`), { timeout: 15_000 })
-    await expect(page.getByRole('dialog', { name: `Order details — ${failed.slice(0, 8)}` })).toBeVisible({ timeout: 15_000 })
+    // The drawer names the order by its short number: first 4 and last 4 of the ID.
+    await expect(page.getByRole('dialog', { name: `Order details — ${failed.slice(0, 4)}…${failed.slice(-4)}` })).toBeVisible({ timeout: 15_000 })
   })
 
   test('RBAC both ways: provider denied until the admin shares it, cannot share it themselves; ops never', async ({ page }) => {
@@ -3651,8 +3652,8 @@ test.describe('Clinic App — dashboard KPI cards and row Refill', () => {
   })
 
   test('a row Refill on a refill order preselects the patient and ticks its source prescription', async ({ page }) => {
-    const source = await insertOrder({ refills: 2 })
-    const refill = await insertOrder({ refill_of_order_id: source })
+    const source = await insertOrder({ refills: 2, status: 'DELIVERED' })
+    const refill = await insertOrder({ refill_of_order_id: source, status: 'DELIVERED' })
 
     await loginAs(page, TEST_USERS.provider)
     await page.getByTestId(`row-refill-${refill}`).click()
@@ -3661,13 +3662,11 @@ test.describe('Clinic App — dashboard KPI cards and row Refill', () => {
     await expect(page.getByTestId(`refill-order-${source}`)).toBeChecked()
   })
 
-  test('a row Refill on a prescription with no refills preselects the patient, the line unticked', async ({ page }) => {
-    const order = await insertOrder({ refills: 0 })
+  test('a prescription with no refills authorized: the row says so, with no Refill link', async ({ page }) => {
+    const order = await insertOrder({ refills: 0, status: 'DELIVERED' })
 
     await loginAs(page, TEST_USERS.provider)
-    await page.getByTestId(`row-refill-${order}`).click()
-    await expect(page).toHaveURL(url => url.pathname === '/refill' && url.searchParams.get('order') === order, { timeout: 15_000 })
-    await expect(page.getByTestId('refill-patient-select')).toHaveValue(TEST_IDS.patient)
-    await expect(page.getByTestId(`refill-order-${order}`)).not.toBeChecked()
+    await expect(page.getByTestId(`row-no-refills-${order}`)).toHaveText('No refills left', { timeout: 15_000 })
+    await expect(page.getByTestId(`row-refill-${order}`)).toHaveCount(0)
   })
 })

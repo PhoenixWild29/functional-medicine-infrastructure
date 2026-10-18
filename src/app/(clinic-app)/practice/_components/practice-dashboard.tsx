@@ -64,7 +64,12 @@ function ErrorBlock({ testId, title, error, onRetry }: { testId: string; title: 
 }
 
 export function PracticeDashboard({ viewerIsProvider }: { viewerIsProvider: boolean }) {
+  // `period` is what is loaded. Custom opens the date fields without
+  // changing it, so the cards stay on screen while dates are chosen; both
+  // dates set loads the custom period, and Cancel goes back to `preset`.
   const [period, setPeriod] = useState('30d')
+  const [preset, setPreset] = useState('30d')
+  const [customOpen, setCustomOpen] = useState(false)
   const [custom, setCustom] = useState({ from: '', to: '' })
   const [attempt, setAttempt] = useState(0)
   const [result, setResult] = useState<{ key: string; load: Load } | null>(null)
@@ -75,6 +80,23 @@ export function PracticeDashboard({ viewerIsProvider }: { viewerIsProvider: bool
     : `period=${period}`
   const requestKey = `${query}#${attempt}`
   const ready = period !== 'custom' || (custom.from !== '' && custom.to !== '')
+
+  function choosePreset(key: string) {
+    setCustomOpen(false)
+    setPreset(key)
+    setPeriod(key)
+  }
+  function setCustomDate(field: 'from' | 'to', value: string) {
+    const next = { ...custom, [field]: value }
+    setCustom(next)
+    // Both dates: load the custom period. Until then the period before stays.
+    setPeriod(next.from !== '' && next.to !== '' ? 'custom' : preset)
+  }
+  function cancelCustom() {
+    setCustomOpen(false)
+    setCustom({ from: '', to: '' })
+    setPeriod(preset)
+  }
 
   useEffect(() => {
     if (!ready) return
@@ -115,23 +137,34 @@ export function PracticeDashboard({ viewerIsProvider }: { viewerIsProvider: bool
     <div className="space-y-6">
       {/* Period */}
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Period">
-        {PERIODS.map(p => (
-          <button
-            key={p.key}
-            type="button"
-            aria-pressed={period === p.key}
-            data-testid={`period-${p.key}`}
-            onClick={() => setPeriod(p.key)}
-            className={`rounded-md border px-3 py-1.5 text-xs font-medium ${period === p.key ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-foreground hover:bg-accent'}`}
-          >
-            {p.label}
-          </button>
-        ))}
-        {period === 'custom' && (
-          <span className="flex items-center gap-1 text-xs">
-            <input type="date" aria-label="From" value={custom.from} onChange={e => setCustom(c => ({ ...c, from: e.target.value }))} className="rounded border border-border px-2 py-1" />
+        {PERIODS.map(p => {
+          const pressed = p.key === 'custom' ? customOpen : !customOpen && period === p.key
+          return (
+            <button
+              key={p.key}
+              type="button"
+              aria-pressed={pressed}
+              data-testid={`period-${p.key}`}
+              onClick={() => (p.key === 'custom' ? setCustomOpen(true) : choosePreset(p.key))}
+              className={`rounded-md border px-3 py-1.5 text-xs font-medium ${pressed ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-foreground hover:bg-accent'}`}
+            >
+              {p.label}
+            </button>
+          )
+        })}
+        {customOpen && (
+          <span className="flex flex-wrap items-center gap-1 text-xs">
+            <input type="date" aria-label="From" value={custom.from} onChange={e => setCustomDate('from', e.target.value)} className="rounded border border-border px-2 py-1" />
             <span>to</span>
-            <input type="date" aria-label="To" value={custom.to} onChange={e => setCustom(c => ({ ...c, to: e.target.value }))} className="rounded border border-border px-2 py-1" />
+            <input type="date" aria-label="To" value={custom.to} onChange={e => setCustomDate('to', e.target.value)} className="rounded border border-border px-2 py-1" />
+            <button
+              type="button"
+              onClick={cancelCustom}
+              className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Cancel
+            </button>
+            {period !== 'custom' && <span className="text-muted-foreground">Choose both dates.</span>}
           </span>
         )}
       </div>

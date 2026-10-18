@@ -413,6 +413,26 @@ describe('middleware — /intake (patient self-intake, no session)', () => {
   })
 })
 
+// ── Patient Intake PR 3: the clinic's public sign-up link ────
+// A new patient has no session: /join/<token> and /api/join/<token> reach
+// the page and route (the token is checked there, against its hash),
+// never bounce to /login, and never touch the Supabase session.
+describe('middleware — /join (clinic sign-up link, no session)', () => {
+  it.each(['/join/' + 'A'.repeat(43), '/api/join/' + 'A'.repeat(43)])('%s passes through without auth', async path => {
+    getUserMock.mockResolvedValue(NO_SESSION)
+    const res = await middleware(makeReq(path))
+    expect(res.headers.get('location')).toBeNull()
+    expectSecurityHeaders(res)
+    expect(getUserMock).not.toHaveBeenCalled()
+  })
+
+  it('a look-alike path is not public: /joined still needs a session', async () => {
+    getUserMock.mockResolvedValue(NO_SESSION)
+    const res = await middleware(makeReq('/joined'))
+    expect(res.headers.get('location')).toMatch(/\/login/)
+  })
+})
+
 // ───────────────────────────────────────────────────────
 // EHR sync (Keragon): the inbound webhook is server to server
 // ───────────────────────────────────────────────────────
