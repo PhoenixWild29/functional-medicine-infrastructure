@@ -1,6 +1,6 @@
 /**
  * WO-102 on the price step: shipping shows as a line under wholesale,
- * OUTSIDE the margin calculation (platform fee and clinic margin are
+ * OUTSIDE the margin calculation (clinic margin is
  * unchanged by it), passed to the patient at cost by default, absorbed
  * when the clinic chooses. It is what this line adds to the session's
  * shipping — once per pharmacy.
@@ -108,8 +108,8 @@ describe('MarginBuilderForm — WO-102 shipping line', () => {
     )
     // Platform fee and clinic margin are computed on retail − wholesale only.
     const summary = screen.getByText('Margin Summary').parentElement!.textContent ?? ''
-    expect(summary).toContain('$14.25')   // 15% of $95
-    expect(summary).toContain('$80.75')
+    expect(summary).not.toMatch(/platform fee|15%/i)   // no platform fee is taken
+    expect(summary).toContain('$95.00')
   })
 
   it('a second cold-chain line to the same pharmacy adds nothing — it ships in the same box', async () => {

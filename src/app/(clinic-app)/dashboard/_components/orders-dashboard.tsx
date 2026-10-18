@@ -35,6 +35,7 @@ import { paymentLinkCounts } from '@/lib/orders/payment-link'
 import type { DraftViewer } from '@/lib/orders/draft-edit-access'
 import { OrderDrawer }  from './order-drawer'
 import { batchSignHref, MAX_BATCH_ORDERS } from '@/lib/orders/batch-sign-view'
+import { platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
 
 // ── Status tabs: TABS, in ../_lib/tabs (shared with the KPI cards) ──
 
@@ -85,7 +86,7 @@ function buildDashboardOrder(o: Record<string, unknown>, duplicateNames?: Readon
   const retailCents     = Math.round(((o['retail_price_snapshot']    as number) ?? 0) * 100)
   const wholesaleCents  = Math.round(((o['wholesale_price_snapshot'] as number) ?? 0) * 100)
   const marginCents     = Math.max(0, retailCents - wholesaleCents)
-  const platformFeeCents = Math.round(marginCents * 15 / 100)
+  const platformFeeCents = platformFeeFor(marginCents)   // 0: flat monthly fee billed outside the app
   const clinicPayoutCents = marginCents - platformFeeCents
 
   const snap = o['medication_snapshot'] as { medication_name?: string } | null

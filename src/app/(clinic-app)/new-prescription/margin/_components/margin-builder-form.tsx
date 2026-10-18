@@ -7,7 +7,8 @@
 // REQ-DMB-001: Locked wholesale cost display with pharmacy name.
 // REQ-DMB-002: Editable retail price with [1.5x][2x][2.5x][3x] multipliers.
 // REQ-DMB-003: Default markup pre-population from clinics.default_markup_pct.
-// REQ-DMB-004: Real-time margin calculation (margin %, platform fee, clinic margin).
+// REQ-DMB-004: Real-time margin calculation (margin %, clinic margin). No
+//   platform fee is taken from orders (a flat monthly fee is billed separately).
 // REQ-DMB-005: Retail >= wholesale validation (client-side; DB CHECK is safety net).
 // REQ-DMB-006: >5x wholesale amber warning with acknowledgment.
 // REQ-DMB-007: <$10 clinic margin amber warning.
@@ -25,8 +26,8 @@
 // WO-101: when the pharmacy sells the formulation in more than one priced
 // package (vial size), "Package: 2.5 mL vial (suggested for 30 days)"
 // sits under the formulation line with its price and a dropdown. The
-// package drives wholesale, and with it retail, platform fee, clinic
-// margin and the quantity the order stores. One package → no control.
+// package drives wholesale, and with it retail, clinic margin and the
+// quantity the order stores. One package → no control.
 //
 // WO-101a: when no single vial holds the Rx, the suggestion is a count of
 // one package — "Package: 2 × 5 mL vials (suggested for 90 days) ·
@@ -35,7 +36,7 @@
 // the pharmacy has one package and one of it covers the Rx.
 //
 // WO-102: shipping shows as a line under wholesale, outside the margin
-// calculation (the platform fee is never charged on it). It is what this
+// calculation. It is what this
 // line adds to the session's shipping — once per pharmacy, so a second
 // prescription to the same pharmacy adds nothing unless it upgrades the
 // shipment to cold chain.
@@ -83,7 +84,7 @@ import { SaveFavoriteButton } from '../../_components/save-favorite-button'
 import { formatDoseWithMg } from '@/lib/orders/dose-display'
 import { presetDurationFromDays } from '@/lib/orders/favorite-presets'
 import { dosingDaysIn, type CyclePattern } from '@/lib/orders/cycling'
-import { computeBundleShipping, type PharmacyShippingRates } from '@/lib/orders/shipping'
+import { computeBundleShipping, type PharmacyShippingRates, platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
 
 // ── Cent arithmetic helpers — HC-01 ──────────────────────────
 // Convert a NUMERIC(10,2) server value (JS float64) to integer cents once.
@@ -97,11 +98,8 @@ function toCurrency(cents: number): string {
   return (cents / 100).toFixed(2)
 }
 
-// Platform fee: 15% of margin, rounded to nearest cent.
-// Cent-precision: Math.round(marginCents * 15 / 100) avoids float drift.
-function calcPlatformFeeCents(marginCents: number): number {
-  return Math.round(marginCents * 15 / 100)
-}
+// The platform's share of the margin: lib/orders/shipping platformFeeCents(),
+// which is 0 (CompoundIQ bills a flat monthly fee outside the app).
 
 // Pre-populate retail price from default_markup_pct.
 // default_markup_pct = 50.00 → retail = wholesale * 1.50
@@ -578,13 +576,13 @@ function MarginBuilderFormForLine({
 
   // NB-04: wrap all derived margin values in one useMemo to avoid
   // recalculating on unrelated state changes.
-  const { marginCents, platformFeeCents, clinicMarginCents, marginPct } = useMemo(() => {
+  const { marginCents, clinicMarginCents, marginPct } = useMemo(() => {
     const marginCents = retailCents - wholesaleCents
-    const platformFeeCents = marginCents > 0 ? calcPlatformFeeCents(marginCents) : 0
-    // BLK-01: unconditional subtraction per formula spec (retail - wholesale - platform_fee)
+    const platformFeeCents = platformFeeFor(marginCents)
+    // BLK-01: unconditional subtraction (retail - wholesale - platform fee, which is 0)
     const clinicMarginCents = marginCents - platformFeeCents
     const marginPct = retailCents > 0 ? (marginCents / retailCents) * 100 : 0
-    return { marginCents, platformFeeCents, clinicMarginCents, marginPct }
+    return { marginCents, clinicMarginCents, marginPct }
   }, [retailCents, wholesaleCents])
 
   // ── Validation states ─────────────────────────────────────────
@@ -611,8 +609,7 @@ function MarginBuilderFormForLine({
 
   // ── WO-101: package change ───────────────────────────────────
   // Wholesale follows the package; retail keeps the markup the provider
-  // had (retail ÷ wholesale), so platform fee and clinic margin recompute
-  // with it.
+  // had (retail ÷ wholesale), so the clinic margin recomputes with it.
   function repriceRetail(nextWholesaleCents: number) {
     if (wholesaleCents > 0 && retailCents > 0) {
       setRetailInput(toCurrency(Math.round(retailCents * nextWholesaleCents / wholesaleCents)))
@@ -1082,12 +1079,6 @@ function MarginBuilderFormForLine({
             <span className="text-muted-foreground">Margin %</span>
             <span className="font-medium text-foreground text-right">
               {marginPct.toFixed(1)}%
-            </span>
-
-            <span className="text-muted-foreground">Platform fee</span>
-            <span className="font-medium text-foreground text-right">
-              ${toCurrency(platformFeeCents)}{' '}
-              <span className="text-xs text-muted-foreground">(15% of margin)</span>
             </span>
 
             <span className="text-muted-foreground">Est. clinic margin</span>
