@@ -28,6 +28,8 @@ export default async function PharmacyLayout({ children }: { children: React.Rea
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login?redirectTo=%2Fpharmacy%2Fonboarding')
   if (getUserRole(user) !== 'pharmacy_admin' || !getUserPharmacyId(user)) redirect('/unauthorized')
+  // First-run coaching: the pharmacy's setup checklist (from real data) and,
+  // while it is hidden and not done, "Show setup checklist" in the header.
   const coaching = coachingPrefs(user)
 
   return (
@@ -45,7 +47,6 @@ export default async function PharmacyLayout({ children }: { children: React.Rea
             <NavSignOutButton />
           </div>
         </header>
-        {/* First-run coaching: the pharmacy's setup steps, from real data. */}
         <div className="mx-auto max-w-5xl px-4 pt-4 empty:hidden">
           <SetupChecklistCard />
         </div>
