@@ -37,6 +37,7 @@ import { LicenseExpiryWarning } from './_components/license-expiry-warning'
 import { loadAgreementNotice } from '@/lib/agreements/clinic-agreements'
 import { AgreementUpdateBanner } from './_components/agreement-update-banner'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { ProtocolSavedNotice } from './_components/protocol-saved-notice'
 
 export const metadata = {
   title: 'Dashboard',
@@ -322,6 +323,8 @@ export default async function DashboardPage(
         </div>
 
         <AgreementUpdateBanner notice={agreementNotice} />
+
+        <ProtocolSavedNotice />
 
         <LicenseExpiryWarning licenses={expiring} />
 

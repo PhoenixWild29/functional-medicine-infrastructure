@@ -356,7 +356,9 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
             <button
               type="button"
               disabled={!isStripeActive}
-              onClick={() => router.push('/new-prescription?panel=protocols')}
+              // A protocol is a template: created directly, no patient
+              // (Lauren, 18 Oct). Back here on save or Cancel.
+              onClick={() => router.push('/protocols/new?from=%2Fdashboard')}
               className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               + New Protocol
