@@ -37,6 +37,7 @@ import { LicenseExpiryWarning } from './_components/license-expiry-warning'
 import { loadAgreementNotice } from '@/lib/agreements/clinic-agreements'
 import { AgreementUpdateBanner } from './_components/agreement-update-banner'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { SetupChecklistCard } from '@/components/coaching/setup-checklist-card'
 
 export const metadata = {
   title: 'Dashboard',
@@ -322,6 +323,9 @@ export default async function DashboardPage(
         </div>
 
         <AgreementUpdateBanner notice={agreementNotice} />
+
+        {/* First-run coaching: steps for this role, from real data (client-loaded). */}
+        <SetupChecklistCard />
 
         <LicenseExpiryWarning licenses={expiring} />
 

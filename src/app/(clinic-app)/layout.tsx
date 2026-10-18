@@ -8,6 +8,7 @@ import { BfcacheGuard } from '@/components/bfcache-guard'
 import { HipaaTimeout } from '@/components/hipaa-timeout'
 import { serverEnv } from '@/lib/env'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { coachingPrefs } from '@/lib/coaching/prefs'
 
 // Clinic App: auth required, app_role must be clinic_user
 // Accessible to: clinic_admin, provider, medical_assistant
@@ -36,6 +37,9 @@ export default async function ClinicAppLayout({
 
   const userEmail = user.email ?? ''
   const userRole  = appRole
+  // First-run coaching: "Show setup checklist" in the user menu while the
+  // user has hidden a checklist that is not done.
+  const coaching = coachingPrefs(user)
 
   // WO-107: the Practice link — the clinic admin always; a provider when
   // the admin has shared it. A toggle that cannot be read hides the link
@@ -65,7 +69,7 @@ export default async function ClinicAppLayout({
       <HipaaTimeout timeoutMinutes={serverEnv.idleTimeoutMinutes()} />
       {/* md: 56px icon-rail offset | xl: 240px sidebar (or 56px if collapsed) */}
       <div className="min-h-screen bg-background">
-        <SidebarNav userEmail={userEmail} userRole={userRole} showPractice={showPractice} />
+        <SidebarNav userEmail={userEmail} userRole={userRole} showPractice={showPractice} showChecklistLink={coaching.checklistHidden && !coaching.checklistDone} />
 
         {/* Main content — offset adjusts dynamically with sidebar collapse state */}
         <MainContentOffset>
