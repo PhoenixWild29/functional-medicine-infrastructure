@@ -10,14 +10,14 @@
 // one plain message (an unknown token is not told apart); a database error
 // is not shown as inactive. A link whose clinic is not approved yet (or is
 // switched off) shows the same plain message: the clinic is checked here
-// before the form renders (lib/onboarding/approval-guard), and the 410 on
+// before the form renders (lib/onboarding/clinic-approval), and the 410 on
 // submit stays as the backstop.
 
 import type { Metadata } from 'next'
 import { createServiceClient } from '@/lib/supabase/service'
 import { resolveSignupLink } from '@/lib/intake/signup-links'
 import { IntakeFlow } from '@/app/intake/[token]/_components/intake-flow'
-import { clinicApproval } from '@/lib/onboarding/approval-guard'
+import { clinicApproval } from '@/lib/onboarding/clinic-approval'
 
 export const dynamic = 'force-dynamic'
 

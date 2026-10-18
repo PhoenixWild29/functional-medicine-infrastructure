@@ -24,11 +24,11 @@ jest.mock('@/app/intake/[token]/_components/intake-flow', () => ({
 }))
 
 // Self sign-up: the link's clinic must be approved (lib/onboarding/
-// approval-guard). Approved unless a test says otherwise. (Updated: the
-// page never read the clinic before.)
+// clinic-approval, the read behind the approval guard). Approved unless a
+// test says otherwise. (Updated: the page never read the clinic before.)
 const approvalMock = jest.fn()
-jest.mock('@/lib/onboarding/approval-guard', () => ({
-  ...jest.requireActual('@/lib/onboarding/approval-guard'),
+jest.mock('@/lib/onboarding/clinic-approval', () => ({
+  ...jest.requireActual('@/lib/onboarding/clinic-approval'),
   clinicApproval: (...a: unknown[]) => approvalMock(...a),
 }))
 
