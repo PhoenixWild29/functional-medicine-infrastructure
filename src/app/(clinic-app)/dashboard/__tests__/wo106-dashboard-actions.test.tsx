@@ -70,10 +70,10 @@ describe('the three actions', () => {
     expect(screen.getByRole('button', { name: 'Refill' })).toBeInTheDocument()
   })
 
-  it('New Protocol opens the flow with the Protocols panel, Refill opens the picker', () => {
+  it('New Protocol opens protocol creation (no patient), Refill opens the picker', () => {
     renderDashboard()
     fireEvent.click(screen.getByRole('button', { name: '+ New Protocol' }))
-    expect(mockPush).toHaveBeenCalledWith('/new-prescription?panel=protocols')
+    expect(mockPush).toHaveBeenCalledWith('/protocols/new?from=%2Fdashboard')
     fireEvent.click(screen.getByRole('button', { name: 'Refill' }))
     expect(mockPush).toHaveBeenCalledWith('/refill')
   })
