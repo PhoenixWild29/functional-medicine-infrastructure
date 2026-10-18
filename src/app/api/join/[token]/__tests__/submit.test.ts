@@ -63,7 +63,11 @@ let logs: string[] = []
 beforeEach(() => {
   joinSubmitLimiter.reset()
   db = scriptedDb(c => script(c))
-  script = c => (c.op === 'rpc' ? { data: { status: 'created', patient_id: PATIENT_ID, clinic_id: CLINIC_ID } } : undefined)
+  // The link's clinic is approved unless a test says otherwise (self
+  // sign-up: the approval guard). (Updated: the clinic was never read.)
+  script = c => (c.op === 'rpc'
+    ? { data: { status: 'created', patient_id: PATIENT_ID, clinic_id: CLINIC_ID } }
+    : c.table === 'clinics' ? { data: { onboarding_status: 'approved', is_active: true } } : undefined)
   resolveMock.mockReset().mockResolvedValue({ state: 'open', linkId: LINK_ID, clinicId: CLINIC_ID, clinicName: 'Test Clinic' })
   flagMock.mockReset().mockResolvedValue(null)
   logs = []
@@ -72,6 +76,33 @@ beforeEach(() => {
   }
 })
 afterEach(() => jest.restoreAllMocks())
+
+// Self sign-up: a clinic ops has not approved receives no patients from
+// its sign-up link. The patient sees the inactive-link message; nothing is
+// written. Same guard as every other write (lib/onboarding/approval-guard).
+describe('a clinic that is not approved', () => {
+  it.each([
+    ['in onboarding', { onboarding_status: 'in_progress', is_active: false }],
+    ['submitted for review', { onboarding_status: 'submitted', is_active: false }],
+    ['approved but switched off', { onboarding_status: 'approved', is_active: false }],
+  ])('%s: 410, the inactive-link message, no patient created', async (_l, clinic) => {
+    script = c => (c.table === 'clinics' ? { data: clinic } : c.op === 'rpc' ? { data: { status: 'created', patient_id: PATIENT_ID, clinic_id: CLINIC_ID } } : undefined)
+    const res = await POST(req(VALID), ctx())
+    expect(res.status).toBe(410)
+    expect((await res.json()).error).toBe('This link is no longer active. Contact your clinic.')
+    expect(rpcs()).toHaveLength(0)
+    expect(flagMock).not.toHaveBeenCalled()
+    // The guard read the LINK's clinic.
+    expect(db.to('clinics').map(c => c.filters['clinic_id'])).toEqual([CLINIC_ID])
+  })
+
+  it('the clinic cannot be read: 503, nothing written', async () => {
+    script = c => (c.table === 'clinics' ? { error: { message: 'down' } } : undefined)
+    const res = await POST(req(VALID), ctx())
+    expect(res.status).toBe(503)
+    expect(rpcs()).toHaveLength(0)
+  })
+})
 
 describe('the link', () => {
   it('turned off or revoked: 410 with the plain message, nothing written', async () => {
