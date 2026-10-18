@@ -59,6 +59,9 @@ const req = (body: unknown, ip = '203.0.113.7') => new Request(`https://app.test
 const ctx = (token = TOKEN) => ({ params: Promise.resolve({ token }) })
 const rpcs = () => db.to('signup_link_create_patient', 'rpc')
 
+const approvedClinic = (c: ScriptedCall): ScriptedAnswer | undefined =>
+  (c.table === 'clinics' ? { data: { onboarding_status: 'approved', is_active: true } } : undefined)
+
 let logs: string[] = []
 beforeEach(() => {
   joinSubmitLimiter.reset()
@@ -67,7 +70,7 @@ beforeEach(() => {
   // sign-up: the approval guard). (Updated: the clinic was never read.)
   script = c => (c.op === 'rpc'
     ? { data: { status: 'created', patient_id: PATIENT_ID, clinic_id: CLINIC_ID } }
-    : c.table === 'clinics' ? { data: { onboarding_status: 'approved', is_active: true } } : undefined)
+    : approvedClinic(c))
   resolveMock.mockReset().mockResolvedValue({ state: 'open', linkId: LINK_ID, clinicId: CLINIC_ID, clinicName: 'Test Clinic' })
   flagMock.mockReset().mockResolvedValue(null)
   logs = []
@@ -128,7 +131,7 @@ describe('the link', () => {
   })
 
   it('turned off between the page and the submit (the function finds it inactive): 410', async () => {
-    script = c => (c.op === 'rpc' ? { data: { status: 'inactive' } } : undefined)
+    script = c => (c.op === 'rpc' ? { data: { status: 'inactive' } } : approvedClinic(c))
     const res = await POST(req(VALID), ctx())
     expect(res.status).toBe(410)
     expect(flagMock).not.toHaveBeenCalled()
@@ -155,7 +158,7 @@ describe('abuse limits', () => {
   })
 
   it('the daily cap: the function refuses the 51st of the day, 429, nothing flagged', async () => {
-    script = c => (c.op === 'rpc' ? { data: { status: 'cap' } } : undefined)
+    script = c => (c.op === 'rpc' ? { data: { status: 'cap' } } : approvedClinic(c))
     const res = await POST(req(VALID), ctx())
     expect(res.status).toBe(429)
     expect((await res.json()).error).toMatch(/cannot take more sign-ups today/i)
@@ -223,7 +226,7 @@ describe('a valid sign-up', () => {
   })
 
   it('a database error: 500, nothing flagged', async () => {
-    script = c => (c.op === 'rpc' ? { error: { message: 'boom', code: 'XX000' } } : undefined)
+    script = c => (c.op === 'rpc' ? { error: { message: 'boom', code: 'XX000' } } : approvedClinic(c))
     const res = await POST(req(VALID), ctx())
     expect(res.status).toBe(500)
     expect(flagMock).not.toHaveBeenCalled()
@@ -231,7 +234,7 @@ describe('a valid sign-up', () => {
 
   it('logs carry no name, date of birth, mobile or address', async () => {
     await POST(req(VALID), ctx())
-    script = c => (c.op === 'rpc' ? { error: { message: 'boom', code: 'XX000' } } : undefined)
+    script = c => (c.op === 'rpc' ? { error: { message: 'boom', code: 'XX000' } } : approvedClinic(c))
     await POST(req(VALID), ctx())
     const all = logs.join('\n')
     for (const phi of ['Jane', 'Smith', '1985-04-15', '5550142', '123 Main', 'Levothyroxine']) expect(all).not.toContain(phi)
