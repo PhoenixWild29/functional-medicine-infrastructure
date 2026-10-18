@@ -20,8 +20,22 @@ export interface ClaimsUser {
 }
 
 function claim(user: ClaimsUser | null | undefined, key: 'app_role' | 'clinic_id' | 'pharmacy_id'): string | undefined {
+  if (isDeactivated(user)) return undefined
   const value = user?.app_metadata?.[key]
   return typeof value === 'string' && value !== '' ? value : undefined
+}
+
+/**
+ * Team invites: a clinic admin deactivated this team member
+ * (set_clinic_member_active, service role, migration 20261021000001). A
+ * deactivated user has no role and no clinic, so nothing lets them act;
+ * the middleware signs them out. app_metadata only, like every claim.
+ */
+export const ACCOUNT_DEACTIVATED_MESSAGE = 'Your access has been turned off. Contact your clinic admin.'
+
+export function isDeactivated(user: ClaimsUser | null | undefined): boolean {
+  const value = user?.app_metadata?.['deactivated_at']
+  return typeof value === 'string' && value !== ''
 }
 
 /** The user's role (ops_admin, clinic_admin, provider, medical_assistant, pharmacy_admin), or undefined. */

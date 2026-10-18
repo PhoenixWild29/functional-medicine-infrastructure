@@ -4,7 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { verifyCheckoutToken } from '@/lib/auth/checkout-token'
 import { MFA_API_CODES, MFA_PAGES, hasVerifiedTotp, isMfaExemptPath, isMfaRole, mfaEnforcedForUser, mfaGate } from '@/lib/auth/mfa'
 import { buildCsp, newNonce, permissionsPolicy } from '@/lib/security/headers'
-import { getUserRole } from '@/lib/auth/claims'
+import { getUserRole, isDeactivated, ACCOUNT_DEACTIVATED_MESSAGE } from '@/lib/auth/claims'
 import { mayOpenSignPage } from '@/lib/auth/signer'
 
 // PR R7-Bucket-1: Apply HIPAA-grade no-store cache headers to every response
@@ -349,6 +349,23 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
     // ops" link) must open that order after sign-in. postLoginDestination
     // only accepts an in-app path, so a query cannot send the user away.
     loginUrl.searchParams.set('redirectTo', pathname + request.nextUrl.search)
+    return applySecurityHeaders(redirectWithSessionCookies(loginUrl))
+  }
+
+  // Team invites: a deactivated team member (app_metadata deactivated_at)
+  // cannot act. Sign-in is banned and their sessions are gone, but an
+  // access token issued before that is refused here: getUser() returns the
+  // current app_metadata. A page signs them out on this browser and says
+  // why on /login; an API route answers 403.
+  if (isDeactivated(user)) {
+    if (pathname.startsWith('/api/')) {
+      const refused = NextResponse.json({ error: ACCOUNT_DEACTIVATED_MESSAGE, code: 'ACCOUNT_DEACTIVATED' }, { status: 403 })
+      response.cookies.getAll().forEach(cookie => refused.cookies.set(cookie))
+      return applySecurityHeaders(refused)
+    }
+    await supabase.auth.signOut({ scope: 'local' })
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('error', 'deactivated')
     return applySecurityHeaders(redirectWithSessionCookies(loginUrl))
   }
 

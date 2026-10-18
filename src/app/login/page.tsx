@@ -13,12 +13,14 @@ import { useState, FormEvent, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
 import { postLoginDestination } from '@/lib/auth/landing-route'
-import { getUserRole } from '@/lib/auth/claims'
+import { getUserRole, ACCOUNT_DEACTIVATED_MESSAGE } from '@/lib/auth/claims'
 import Link from 'next/link'
 import { LegalFooter } from '@/components/legal/legal-footer'
 
 const AUTH_CALLBACK_ERROR_MESSAGES: Record<string, string> = {
   auth_callback_failed: 'Email verification failed. Please try signing in again.',
+  // Team invites: the middleware signed out a deactivated team member.
+  deactivated: ACCOUNT_DEACTIVATED_MESSAGE,
 }
 
 // Separated into its own component so that useSearchParams() is inside a Suspense boundary
@@ -54,6 +56,12 @@ function LoginForm() {
       password,
     })
 
+    // Team invites: a deactivated team member's sign-in is banned.
+    if ((authError as { code?: string } | null)?.code === 'user_banned') {
+      setError(ACCOUNT_DEACTIVATED_MESSAGE)
+      setLoading(false)
+      return
+    }
     if (authError || !data.session || !data.user) {
       setError('Invalid email or password. Please try again.')
       setCredentialsRefused(true)
