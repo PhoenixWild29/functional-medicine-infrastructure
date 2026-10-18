@@ -11,6 +11,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import { inviteStatus, type InviteKind } from '@/lib/onboarding/tokens'
+export { ROLE_LABEL } from './display'
 
 type Service = SupabaseClient<Database>
 
@@ -34,12 +35,6 @@ export interface PendingInvite {
 }
 
 export const LAST_ADMIN_MESSAGE = 'A clinic needs at least one active clinic admin. Invite or reactivate another admin first.'
-
-export const ROLE_LABEL: Record<string, string> = {
-  clinic_admin: 'Clinic admin',
-  provider: 'Provider',
-  medical_assistant: 'Medical assistant',
-}
 
 /** The clinic's logins, or null when they could not be read. */
 export async function listTeamMembers(supabase: Service, clinicId: string): Promise<TeamMember[] | null> {

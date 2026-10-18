@@ -72,7 +72,9 @@ export default async function SettingsPage() {
   // Compliance C2: the access log is the clinic admin's alone.
   const isClinicAdmin = getUserRole(user) === 'clinic_admin'
   // Compliance C4: Team (credentials) for the clinic admin and each provider.
-  const canSeeTeam = isClinicAdmin || getUserRole(user) === 'provider'
+  // Team invites: medical assistants see the team too, read-only.
+  const isMedicalAssistant = getUserRole(user) === 'medical_assistant'
+  const canSeeTeam = isClinicAdmin || getUserRole(user) === 'provider' || isMedicalAssistant
   // Patient Intake PR 5: CSV import, for the clinic admin and medical
   // assistants. Providers do not see the link (the page shows them a notice).
   const canImportPatients = IMPORT_ROLES.has(getUserRole(user) ?? '')
@@ -151,14 +153,16 @@ export default async function SettingsPage() {
                 <h2 className="text-base font-semibold text-foreground">Team</h2>
                 <p className="text-sm text-muted-foreground">
                   {isClinicAdmin
-                    ? 'Each provider’s NPI status and state licenses. A provider signs only with a verified NPI and an active license in the patient’s state.'
-                    : 'Your NPI status and state licenses, as your clinic admin recorded them.'}
+                    ? 'Add providers, invite medical assistants and clinic admins, and turn off access for anyone who leaves. Each provider’s NPI status and state licenses. A provider signs only with a verified NPI and an active license in the patient’s state.'
+                    : isMedicalAssistant
+                      ? 'Your clinic’s team, as your clinic admin manages it.'
+                      : 'Your NPI status and state licenses, as your clinic admin recorded them.'}
                 </p>
                 <Link
                   href="/settings/team"
                   className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
                 >
-                  {isClinicAdmin ? 'Manage the team' : 'View my credentials'}
+                  {isClinicAdmin ? 'Manage the team' : isMedicalAssistant ? 'View the team' : 'View my credentials'}
                 </Link>
               </section>
             </div>
