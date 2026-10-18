@@ -162,6 +162,8 @@ it('the down file refuses while anyone is deactivated, then reverses everything'
   expect(down).toContain('drop function if exists clinic_team_members(uuid)')
   expect(down).toContain('drop column if exists subject_user_id')
   expect(down).toContain('drop column if exists invitee_name')
-  expect(down).not.toContain("'member_deactivated'")
-  expect(down).toContain("'self_signup'")
+  // The restored event list: every event before this migration, no member events.
+  const restored = down.slice(down.indexOf('add constraint chk_onboarding_events_event'), down.indexOf(');', down.indexOf('add constraint chk_onboarding_events_event')))
+  expect(restored).not.toContain("'member_deactivated'")
+  expect(restored).toContain("'self_signup'")
 })
