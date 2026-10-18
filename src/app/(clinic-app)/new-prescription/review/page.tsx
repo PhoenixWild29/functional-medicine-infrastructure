@@ -16,7 +16,9 @@ import { SessionBanner }  from '../_components/session-banner'
 import { ProtocolLoadNotices } from './_components/protocol-load-notices'
 import { BatchReviewForm } from './_components/batch-review-form'
 import { getWizardSteps } from '../_lib/wizard-steps'
-import { getUserRole } from '@/lib/auth/claims'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { createServiceClient } from '@/lib/supabase/service'
+import { resolveSigner } from '@/lib/auth/signer'
 
 export const metadata = {
   title: 'New Prescription — Review & Send',
@@ -49,11 +51,17 @@ export default async function ReviewPage() {
 
   const rawRole = user ? getUserRole(user) : undefined
   const appRole = typeof rawRole === 'string' ? rawRole : undefined
-  const isProvider = appRole === 'provider'
+  const clinicId = user ? getUserClinicId(user) : undefined
+  // Who signs: the same helper as the sign API (lib/auth/signer). A solo
+  // admin who is also a verified provider gets Sign & Send too.
+  const signer = user && clinicId
+    ? await resolveSigner(createServiceClient(), { userId: user.id, clinicId, role: appRole ?? null })
+    : null
+  const isProvider = signer?.ok === true
 
   // WO-100: a provider's step 1 is just "Patient" — they are the provider.
   const WIZARD_STEPS = getWizardSteps({
-    providerIsSelf: isProvider,
+    providerIsSelf: appRole === 'provider',
     hrefs: { 1: '/new-prescription', 2: '/new-prescription/search' },
   })
 

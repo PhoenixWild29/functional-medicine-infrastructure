@@ -14,6 +14,11 @@
 //   5. The event id is claimed in ehr_sync_events (unique per connection).
 //      Already there: 409, unless the earlier attempt failed for a reason
 //      a retry can fix (then this delivery takes over that row).
+//   5a. The clinic must be approved (lib/onboarding/approval-guard, the
+//      guard on every write). Not yet: 403 clinic_not_approved, no patient
+//      written, the refusal logged on the event log and the connection so
+//      ops sees it on Ops Dashboard > EHR sync. Keragon resending the same
+//      event after approval takes over that row. Clinic unreadable: 503.
 //   6. Applied (lib sync); the log row gets the outcome, the patient id
 //      and codes; the connection its last event / success / error.
 // Nothing here logs PHI: ids, codes and field names only.
@@ -26,12 +31,14 @@ import { CONNECTION_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, verifySignature 
 import { connectionSecret, noteConnectionError } from './connection'
 import { parsePatientEvent } from './contract'
 import { applyPatientEvent, type SyncOutcome } from './sync'
+import { clinicApproval } from '@/lib/onboarding/approval-guard'
 
 export interface WebhookResult { status: number; body: Record<string, unknown> }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 /** Failures a later delivery of the same event may get past. */
-const RETRYABLE = new Set(['read_failed', 'write_failed', 'link_conflict', 'processing_failed'])
+const RETRYABLE = new Set(['read_failed', 'write_failed', 'link_conflict', 'processing_failed', 'clinic_not_approved'])
+export const CLINIC_NOT_APPROVED_MESSAGE = 'This clinic has not been approved by CompoundIQ yet, so no patients are synced. Nothing was saved.'
 const UNAUTHORIZED: WebhookResult = { status: 401, body: { error: 'Unauthorized' } }
 
 export async function handleKeragonWebhook(
@@ -79,6 +86,24 @@ export async function handleKeragonWebhook(
     return { status: 422, body: { error: 'The payload does not match the contract.', errors: parsed.errors, event_id: parsed.eventId } }
   }
   const event = parsed.event
+
+  // Only an approved clinic receives patients (decision 2).
+  const approval = await clinicApproval(db, conn.clinicId)
+  if (approval.state === 'unavailable') {
+    console.error(`[ehr-sync] 503 | reason=clinic_read_failed | connection=${connectionId} | event=${event.eventId}`)
+    return { status: 503, body: { error: 'Temporarily unavailable. Retry.' } }
+  }
+  if (approval.state === 'pending') {
+    const { error: refusedLogError } = await db.from('ehr_sync_events').insert({
+      connection_id: connectionId, clinic_id: conn.clinicId, event_id: event.eventId, event_type: event.eventType,
+      status: 'error', error_code: 'clinic_not_approved', patient_id: null, received_at: now.toISOString(), processed_at: now.toISOString(),
+    })
+    // 23505: this event was refused (or seen) before; the row already says so.
+    if (refusedLogError && refusedLogError.code !== '23505') console.error(`[ehr-sync] refusal not logged | connection=${connectionId} | event=${event.eventId}:`, refusedLogError.code ?? refusedLogError.message)
+    await noteConnectionError(db, connectionId, 'clinic_not_approved', now)
+    console.warn(`[ehr-sync] 403 | reason=clinic_not_approved | connection=${connectionId} | event=${event.eventId}`)
+    return { status: 403, body: { error: CLINIC_NOT_APPROVED_MESSAGE, error_code: 'clinic_not_approved', event_id: event.eventId } }
+  }
 
   // Claim the event id.
   let syncEventId: string

@@ -18,7 +18,7 @@
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
-import { resolveCurrentProvider } from '@/lib/auth/current-provider'
+import { mayOpenSignPage, resolveSigner, SIGNER_COPY } from '@/lib/auth/signer'
 import { loadShippingRates } from '@/lib/orders/apply-bundle-shipping'
 import { rxDetailsFromRow, RX_DETAIL_COLUMN_LIST } from '@/lib/orders/rx-details'
 import { parseTitrationSteps } from '@/lib/orders/titration'
@@ -95,7 +95,8 @@ export default async function BatchSignPage({ searchParams }: PageProps) {
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return <SessionGuardNotice />
 
-  if (getUserRole(user) !== 'provider') {
+  const role = getUserRole(user) ?? null
+  if (!mayOpenSignPage(role)) {
     return <Notice title="Provider signature required" message="Only a provider can sign prescriptions. Ask a provider at your clinic to sign from their dashboard." />
   }
   const clinicId = getUserClinicId(user)
@@ -103,11 +104,20 @@ export default async function BatchSignPage({ searchParams }: PageProps) {
     return <SessionGuardNotice title="No clinic linked" message="Your account is not linked to a clinic. Contact your administrator." />
   }
 
+  // Who may sign: the same helper as POST /api/orders/batch-sign. A
+  // clinic_admin signs only as their own linked, NPI-verified provider.
   const supabase = createServiceClient()
-  const me = await resolveCurrentProvider(supabase, { userId: user.id, clinicId })
-  if (!me) {
-    return <Notice title="Provider record not found" message="Your login is not linked to a provider in this clinic, so nothing can be signed. Contact your administrator." />
+  const signer = await resolveSigner(supabase, { userId: user.id, clinicId, role })
+  if (!signer.ok) {
+    if (signer.status === 503) {
+      return <Notice title="Provider record could not be loaded" message="This is an error, not a refusal. Reload the page to try again." />
+    }
+    if (role === 'provider') {
+      return <Notice title="Provider record not found" message="Your login is not linked to a provider in this clinic, so nothing can be signed. Contact your administrator." />
+    }
+    return <Notice title="Provider signature required" message={signer.message === SIGNER_COPY.unverified ? signer.message : 'Only a provider can sign prescriptions. Ask a provider at your clinic to sign from their dashboard.'} />
   }
+  const me = signer.provider
 
   const requested = parseOrdersParam(params['orders'])
   if (requested.length === 0) {

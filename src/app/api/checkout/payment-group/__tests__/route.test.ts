@@ -68,6 +68,12 @@ const groupRollbackMock      = jest.fn()
 const stripeCreatePiMock     = jest.fn()
 const pharmaciesFetchMock    = jest.fn((): Promise<{ data: unknown[]; error: null }> => Promise.resolve({ data: [], error: null }))
 
+// Pending review (lib/onboarding/approval-guard) is tested in
+// src/__tests__/pending-review-guard.test.ts; the clinic here is approved.
+jest.mock('@/lib/onboarding/approval-guard', () => ({
+  ...jest.requireActual('@/lib/onboarding/approval-guard'),
+  refuseUnlessApproved: async () => null,
+}))
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
     auth: { getUser: () => getUserMock() },

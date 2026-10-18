@@ -2,8 +2,10 @@
 // /onboarding — clinic onboarding (signed-in clinic users)
 // ============================================================
 //
-// Outside the (clinic-app) group on purpose: that layout sends users of
-// an unapproved clinic HERE, so it cannot also wrap this page. Auth is
+// Outside the (clinic-app) group: the wizard has its own plain shell.
+// Since self sign-up, an unapproved clinic is no longer held here; it
+// looks around the app under a banner that links here, so the header
+// links back into the app. Auth is
 // getUser() (never getSession()); role from app_metadata. MFA is enforced
 // for staff roles by middleware, as everywhere else. HIPAA idle logoff
 // applies.
@@ -30,7 +32,12 @@ export default async function OnboardingLayout({ children }: { children: React.R
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
           <span className="text-lg font-bold tracking-tight text-foreground">CompoundIQ</span>
-          <NavSignOutButton />
+          <div className="flex items-center gap-4">
+            <a href="/dashboard" className="text-sm font-medium text-primary underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              Go to the app
+            </a>
+            <NavSignOutButton />
+          </div>
         </div>
       </header>
       {children}

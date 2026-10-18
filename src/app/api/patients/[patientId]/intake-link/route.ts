@@ -14,6 +14,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
 import { createIntakeLink } from '@/lib/intake/links'
@@ -45,6 +46,10 @@ async function caller(request: NextRequest, context: Context) {
 export async function POST(request: NextRequest, context: Context): Promise<NextResponse> {
   const c = await caller(request, context)
   if ('error' in c) return c.error
+  // Pending review: no link reaches a patient until ops approves the
+  // clinic (lib/onboarding/approval-guard).
+  const pendingReview = await refuseUnlessApproved(createServiceClient(), c.clinicId)
+  if (pendingReview) return pendingReview
   const supabase = createServiceClient()
 
   const { data: patient, error } = await supabase

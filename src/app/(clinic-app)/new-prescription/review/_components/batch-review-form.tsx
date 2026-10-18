@@ -90,6 +90,7 @@ import { formatDoseWithMg } from '@/lib/orders/dose-display'
 import { bundleTotals, platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
 import { useBundleShipping, ShippingLines, MultiPharmacyNoticeBanner } from './bundle-shipping'
 import { checkSignature, signatureFromPad, SIGNATURE_REJECTION_COPY, type SignatureCheck } from '@/lib/orders/signature'
+import { PENDING_REVIEW_CODE, refusalText } from '@/lib/onboarding/pending-review-copy'
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -737,6 +738,7 @@ export function BatchReviewForm({ isProvider }: Props) {
       })
       if (!sendRes.ok) {
         const err = await sendRes.json().catch(() => ({})) as { error?: string; code?: string }
+        if (err.code === PENDING_REVIEW_CODE) throw new Error(refusalText(err, ''))
         const message = err.error ?? 'Unknown error'
         throw new Error(/nothing was signed/i.test(message) ? message : `${message} Nothing was signed.`)
       }
@@ -777,8 +779,9 @@ export function BatchReviewForm({ isProvider }: Props) {
         body: JSON.stringify(orderPostBody(rx, patient, provider, effectiveDetails(rx))),
       })
       if (!orderRes.ok) {
-        const err = await orderRes.json()
-        throw new Error(`Order ${i + 1} (${rx.medicationName}) failed: ${err.error ?? 'Unknown error'}`)
+        const err = await orderRes.json().catch(() => ({})) as { error?: string; code?: string }
+        // Pending review: the banner's words as they are.
+        throw new Error(refusalText(err, `Order ${i + 1} (${rx.medicationName}) failed: `))
       }
       const { orderId } = await orderRes.json() as { orderId: string }
       createdOrderIdsRef.current.set(rx.id, orderId)

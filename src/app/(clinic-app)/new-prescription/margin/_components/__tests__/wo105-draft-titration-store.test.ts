@@ -20,6 +20,12 @@ let insertedRow: Record<string, unknown> | null = null
 const AUTH_USER = { id: 'user-1', app_metadata: { clinic_id: CLINIC, app_role: 'medical_assistant' } }
 // POST /api/orders still gates on getSession() (pre-WO-96 code, not
 // touched by this fix), so the fake provides both.
+// Pending review (lib/onboarding/approval-guard) is tested in
+// src/__tests__/pending-review-guard.test.ts; the clinic here is approved.
+jest.mock('@/lib/onboarding/approval-guard', () => ({
+  ...jest.requireActual('@/lib/onboarding/approval-guard'),
+  refuseUnlessApproved: async () => null,
+}))
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockImplementation(async () => ({
     auth: {

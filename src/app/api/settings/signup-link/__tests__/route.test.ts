@@ -33,7 +33,26 @@ jest.mock('@/lib/intake/signup-links', () => ({
   setSignupLinkEnabled: (...a: unknown[]) => enableMock(...a),
 }))
 
+// Self sign-up: the approval guard (lib/onboarding/approval-guard). The
+// clinic is approved unless a test says otherwise.
+const approvalMock = jest.fn()
+jest.mock('@/lib/onboarding/approval-guard', () => ({
+  ...jest.requireActual('@/lib/onboarding/approval-guard'),
+  refuseUnlessApproved: (...a: unknown[]) => approvalMock(...a),
+}))
+
 import { POST } from '../route'
+
+const BANNER = "We're verifying your licenses. You can look around; ordering opens once you're approved."
+/** A clinic row as the real guard reads it. */
+const clinicDb = (row: Record<string, unknown>) => ({
+  from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: row, error: null }) }) }) }),
+})
+function notApproved() {
+  const actual = jest.requireActual('@/lib/onboarding/approval-guard') as typeof import('@/lib/onboarding/approval-guard')
+  approvalMock.mockImplementation((_db: unknown, clinicId: string) =>
+    actual.refuseUnlessApproved(clinicDb({ onboarding_status: 'submitted', is_active: false }) as never, clinicId))
+}
 
 function signedIn(role: string, clinicId: string | null = CLINIC_ID) {
   getUserMock.mockResolvedValue({ data: { user: { id: 'user-1', app_metadata: { app_role: role, ...(clinicId ? { clinic_id: clinicId } : {}) } } }, error: null })
@@ -47,9 +66,31 @@ beforeEach(() => {
   getSessionMock.mockReset()
   createMock.mockReset().mockResolvedValue({ ok: true, link: LINK })
   enableMock.mockReset().mockResolvedValue({ ok: true, link: { ...LINK, enabled: false } })
+  approvalMock.mockReset().mockResolvedValue(null)
   jest.spyOn(console, 'error').mockImplementation(() => {})
 })
 afterEach(() => jest.restoreAllMocks())
+
+describe('a clinic that is not approved', () => {
+  it.each([['create', 'make a new link (or the first one)'], ['enable', 'turn it on']])('%s (%s): 403 with the banner wording, nothing changed', async action => {
+    signedIn('clinic_admin')
+    notApproved()
+    const res = await POST(req({ action }))
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: BANNER, code: 'CLINIC_PENDING_REVIEW' })
+    expect(createMock).not.toHaveBeenCalled()
+    expect(enableMock).not.toHaveBeenCalled()
+    // The caller's clinic, from the claims.
+    expect(approvalMock).toHaveBeenCalledWith(expect.anything(), CLINIC_ID)
+  })
+
+  it('turning a link off is still allowed', async () => {
+    signedIn('clinic_admin')
+    notApproved()
+    expect((await POST(req({ action: 'disable' }))).status).toBe(200)
+    expect(enableMock).toHaveBeenCalledWith(expect.anything(), { clinicId: CLINIC_ID, enabled: false })
+  })
+})
 
 describe('who may', () => {
   it('no session: 401', async () => {

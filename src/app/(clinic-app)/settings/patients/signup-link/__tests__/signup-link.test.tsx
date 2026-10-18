@@ -121,6 +121,18 @@ describe('the panel', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Link copied.')
   })
 
+  // Self sign-up: a clinic under review cannot create or turn on a link
+  // (the server refuses), but Copy and Print of an existing link stay
+  // allowed: neither calls the server, so the approval guard never applies.
+  it('Copy and Print make no server call (they stay allowed while the clinic is under review)', async () => {
+    render(<main><SignupLinkPanel clinicName="Sunrise Wellness" initial={LINK} canManage /></main>)
+    await click('Copy link')
+    await click('Print')
+    expect(writeText).toHaveBeenCalledWith(URL_1)
+    expect(printMock).toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('Print prints a page with the clinic name and the QR code, and no patient data', async () => {
     render(<main><SignupLinkPanel clinicName="Sunrise Wellness" initial={LINK} canManage /></main>)
     const sheet = screen.getByTestId('signup-print-sheet')

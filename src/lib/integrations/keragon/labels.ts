@@ -25,6 +25,7 @@ export const ERROR_LABEL: Record<string, string> = {
   write_failed:      'A temporary database error; Keragon retries.',
   link_conflict:     'Two deliveries raced; Keragon retries.',
   processing_failed: 'An unexpected error; Keragon retries.',
+  clinic_not_approved: 'The clinic is not approved yet, so its EHR patients were refused. Approve it in Clinic onboarding; Keragon can then resend.',
 }
 
 /** Plain labels for the patient fields EHR sync can change. */

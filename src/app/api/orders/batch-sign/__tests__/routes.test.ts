@@ -11,6 +11,12 @@ import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log
 import type { NextRequest } from 'next/server'
 
 const getUserMock = jest.fn()
+// Pending review (lib/onboarding/approval-guard) is tested in
+// src/__tests__/pending-review-guard.test.ts; the clinic here is approved.
+jest.mock('@/lib/onboarding/approval-guard', () => ({
+  ...jest.requireActual('@/lib/onboarding/approval-guard'),
+  refuseUnlessApproved: async () => null,
+}))
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({ auth: { getUser: () => getUserMock() } }),
 }))
@@ -32,6 +38,10 @@ jest.mock('@/lib/orders/batch-sign', () => {
   }
 })
 
+// Who may sign is the shared helper's answer (lib/auth/signer).
+const resolveSignerMock = jest.fn()
+jest.mock('@/lib/auth/signer', () => ({ resolveSigner: (...a: unknown[]) => resolveSignerMock(...a) }))
+
 const ID = 'a0000000-0000-4000-8000-000000000001'
 
 function req(body: unknown, headers: Record<string, string> = {}) {
@@ -48,6 +58,10 @@ beforeEach(() => {
   getUserMock.mockReset()
   signBatchMock.mockReset()
   checkBatchMock.mockReset()
+  resolveSignerMock.mockReset().mockImplementation(async (_db: unknown, who: { role: string | null }) =>
+    who.role === 'provider'
+      ? { ok: true, provider: { provider_id: 'p1' } }
+      : { ok: false, status: 403, message: 'Only a provider can sign prescriptions.' })
   jest.spyOn(console, 'error').mockImplementation(() => {})
 })
 afterEach(() => { jest.restoreAllMocks() })
@@ -91,6 +105,20 @@ describe('POST /api/orders/batch-sign/check', () => {
   it('providers only', async () => {
     user('medical_assistant')
     expect((await checkPOST(req({ orderIds: [ID] }))).status).toBe(403)
+    expect(checkBatchMock).not.toHaveBeenCalled()
+  })
+
+  // Self sign-up, decision 1: the same helper as signing decides.
+  it('a solo admin with a linked, verified provider may check; a plain admin gets 403', async () => {
+    user('clinic_admin')
+    resolveSignerMock.mockResolvedValueOnce({ ok: true, provider: { provider_id: 'p-solo' } })
+    checkBatchMock.mockResolvedValue({ lines: [], problems: [], signer: null })
+    expect((await checkPOST(req({ orderIds: [ID] }))).status).toBe(200)
+    expect(resolveSignerMock).toHaveBeenCalledWith(expect.anything(), { userId: 'u-clinic_admin', clinicId: 'c1', role: 'clinic_admin' })
+
+    checkBatchMock.mockClear()
+    const plain = await checkPOST(req({ orderIds: [ID] }))
+    expect(plain.status).toBe(403)
     expect(checkBatchMock).not.toHaveBeenCalled()
   })
 

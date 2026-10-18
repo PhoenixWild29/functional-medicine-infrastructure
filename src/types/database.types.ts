@@ -440,6 +440,8 @@ export type Database = {
           onboarding_submitted_at: string | null
           postal_code: string | null
           practice_npi: string | null
+          signup_kind: string | null
+          signup_source: string | null
           state: string | null
           tax_id_last4: string | null
           absorb_shipping: boolean
@@ -471,6 +473,8 @@ export type Database = {
           onboarding_submitted_at?: string | null
           postal_code?: string | null
           practice_npi?: string | null
+          signup_kind?: string | null
+          signup_source?: string | null
           state?: string | null
           tax_id_last4?: string | null
           absorb_shipping?: boolean
@@ -502,6 +506,8 @@ export type Database = {
           onboarding_submitted_at?: string | null
           postal_code?: string | null
           practice_npi?: string | null
+          signup_kind?: string | null
+          signup_source?: string | null
           state?: string | null
           tax_id_last4?: string | null
           absorb_shipping?: boolean
@@ -2902,6 +2908,7 @@ export type Database = {
           review_note: string | null
           reviewed_at: string | null
           reviewed_by: string | null
+          signup_source: string | null
           status: string
           steps_completed: string[]
           submitted_at: string | null
@@ -2925,6 +2932,7 @@ export type Database = {
           review_note?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          signup_source?: string | null
           status?: string
           steps_completed?: string[]
           submitted_at?: string | null
@@ -2948,6 +2956,7 @@ export type Database = {
           review_note?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          signup_source?: string | null
           status?: string
           steps_completed?: string[]
           submitted_at?: string | null

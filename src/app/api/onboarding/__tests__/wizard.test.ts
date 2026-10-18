@@ -235,6 +235,18 @@ describe('submit', () => {
     expect(db.to('clinics', 'update')).toEqual([])
   })
 
+  // Self sign-up: no email step before review (ops confirms the email and
+  // phone with them before approving).
+  it('submits with no email step, whatever email_confirmed_at says', async () => {
+    user = { ...ADMIN, email_confirmed_at: null }
+    db = scriptedDb(clinicWith('in_progress', c => (c.table === 'clinic_onboarding_steps' && c.op === 'select'
+      ? { data: ['practice', 'providers', 'baa', 'terms'].map(step => ({ step, status: 'complete' })) }
+      : undefined)))
+    const res = await submit()
+    expect(res.status).toBe(200)
+    expect(db.to('clinics', 'update')[0]!.payload).toEqual(expect.objectContaining({ onboarding_status: 'submitted' }))
+  })
+
   it('submits for ops review and logs it', async () => {
     db = scriptedDb(clinicWith('changes_requested', c => (c.table === 'clinic_onboarding_steps' && c.op === 'select'
       ? { data: ['practice', 'providers', 'baa', 'terms'].map(step => ({ step, status: 'complete' })) }
