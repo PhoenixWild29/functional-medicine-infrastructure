@@ -23,6 +23,15 @@ jest.mock('@/app/intake/[token]/_components/intake-flow', () => ({
   },
 }))
 
+// Self sign-up: the link's clinic must be approved (lib/onboarding/
+// approval-guard). Approved unless a test says otherwise. (Updated: the
+// page never read the clinic before.)
+const approvalMock = jest.fn()
+jest.mock('@/lib/onboarding/approval-guard', () => ({
+  ...jest.requireActual('@/lib/onboarding/approval-guard'),
+  clinicApproval: (...a: unknown[]) => approvalMock(...a),
+}))
+
 import JoinPage, { metadata } from '../page'
 
 const axe = configureAxe({ runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'] }, rules: { region: { enabled: true } } })
@@ -32,7 +41,10 @@ async function renderPage() {
   render(await JoinPage({ params: Promise.resolve({ token: TOKEN }) }))
 }
 
-beforeEach(() => { resolveMock.mockReset(); flowProps.mockReset() })
+beforeEach(() => {
+  resolveMock.mockReset(); flowProps.mockReset()
+  approvalMock.mockReset().mockResolvedValue({ state: 'approved' })
+})
 
 it('has a page title and is not indexed', () => {
   expect(metadata.title).toBe('Sign up as a new patient')
@@ -53,6 +65,29 @@ it.each(['inactive', 'invalid'])('%s: "This link is no longer active. Contact yo
   expect(screen.getByRole('main')).toHaveTextContent('This link is no longer active. Contact your clinic.')
   expect(flowProps).not.toHaveBeenCalled()
   expect((await axe(document.body)).violations).toEqual([])
+})
+
+// Self sign-up: a clinic that is not approved (or is switched off) gets
+// the inactive-link message instead of the form, checked on the server
+// before anything renders. The 410 on submit stays as the backstop.
+it('an open link whose clinic is not approved: "This link is no longer active. Contact your clinic." instead of the form', async () => {
+  resolveMock.mockResolvedValue({ state: 'open', linkId: 'l', clinicId: 'c-pending', clinicName: 'Test Clinic' })
+  approvalMock.mockResolvedValue({ state: 'pending', onboardingStatus: 'submitted' })
+  await renderPage()
+  expect(approvalMock).toHaveBeenCalledWith(expect.anything(), 'c-pending')
+  expect(flowProps).not.toHaveBeenCalled()
+  expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+  expect(screen.getByRole('main')).toHaveTextContent('This link is no longer active. Contact your clinic.')
+  expect(screen.queryByText('Test Clinic')).toBeNull()
+  expect((await axe(document.body)).violations).toEqual([])
+})
+
+it('an open link whose clinic cannot be checked: try again later, no form', async () => {
+  resolveMock.mockResolvedValue({ state: 'open', linkId: 'l', clinicId: 'c', clinicName: 'Test Clinic' })
+  approvalMock.mockResolvedValue({ state: 'unavailable' })
+  await renderPage()
+  expect(flowProps).not.toHaveBeenCalled()
+  expect(screen.getByRole('main')).toHaveTextContent(/could not be opened right now/)
 })
 
 it('unavailable: try again later, not "no longer active"', async () => {
