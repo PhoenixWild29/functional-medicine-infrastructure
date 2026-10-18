@@ -36,7 +36,11 @@ export const metadata = {
   title: 'New Prescription — Select Patient',
 }
 
-export default async function NewPrescriptionPage() {
+export default async function NewPrescriptionPage(
+  props: { searchParams?: Promise<{ panel?: string }> } = {},
+) {
+  // '+ New Protocol' on the dashboard: the Protocols panel opens after this step.
+  const panel = (await props.searchParams)?.panel === 'protocols' ? 'protocols' : null
   // getUser(), never getSession() — middleware owns token rotation.
   // No redirect() from this streamed page body — see
   // @/components/session-guard-notice for why.
@@ -63,7 +67,7 @@ export default async function NewPrescriptionPage() {
     supabase
       .from('patients')
       // WO-97: allergies / nkda drive the chip on each patient card.
-      .select(`patient_id, first_name, last_name, date_of_birth, phone, state, sms_opt_in, allergies, nkda, allergies_updated_at, intake_status, ${POSSIBLE_DUPLICATE_COLUMNS}`)
+      .select(`patient_id, first_name, last_name, date_of_birth, phone, state, sms_opt_in, allergies, nkda, allergies_updated_at, intake_status, source, ${POSSIBLE_DUPLICATE_COLUMNS}`)
       .eq('clinic_id', clinicId)
       .eq('is_active', true)
       .is('deleted_at', null)
@@ -123,12 +127,14 @@ export default async function NewPrescriptionPage() {
             {selfProvider
               ? `Prescribing as ${selfProvider.first_name} ${selfProvider.last_name}. Select the patient to begin.`
               : 'Select the patient and prescribing provider to begin.'}
+            {panel === 'protocols' && ' The protocol list opens next.'}
           </p>
         </div>
 
         <PatientProviderSelector
           patients={patients}
           providers={providers}
+          nextPanel={panel}
           selfProvider={selfProvider ? {
             provider_id:    selfProvider.provider_id,
             first_name:     selfProvider.first_name,

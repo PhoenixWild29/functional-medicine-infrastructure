@@ -36,9 +36,13 @@ import {
 import { computeBundleShipping, type PharmacyShippingRates } from '@/lib/orders/shipping'
 import type { OrderRecord } from '@/app/api/orders/[orderId]/record/route'
 import { EhrChangesSection } from '@/components/ehr-changes-section'
+import { orderDisplayNumber } from '@/lib/orders/order-number'
+import { refillRowState } from '@/lib/orders/refill'
 
 interface Props {
   order: DashboardOrder | null
+  /** Every loaded order, to count this prescription's refills. */
+  allOrders?: DashboardOrder[]
   onClose: () => void
   /** QA post-combine fix: notify the parent that these orders joined a
    *  payment group so it patches the polling cache immediately (drawer
@@ -144,8 +148,19 @@ function formatDateTime(iso: string): string {
 }
 
 
-export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
+export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer }: Props) {
   const router = useRouter()
+  // Escape closes the drawer, and focus moves into it when it opens
+  // (WCAG 2.1.2 / 2.4.3); the dashboard returns focus to the row on close.
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const isOpen = order !== null
+  useEffect(() => {
+    if (!isOpen) return
+    closeButtonRef.current?.focus()
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [isOpen, onClose])
   // BLK-03: stable ref prevents stale closure + avoids re-running effect when client recreated
   const supabaseRef = useRef(createBrowserClient())
 
@@ -523,6 +538,8 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
   const canIssuePaymentLink =
     order.status === 'AWAITING_PAYMENT' || order.status === 'PAYMENT_EXPIRED'
   const isExpired = order.status === 'PAYMENT_EXPIRED'
+  // Refill: only a paid or dispensed order, and only while refills are left.
+  const refill = refillRowState(order, allOrders ?? [order])
 
   return (
     <>
@@ -533,11 +550,11 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
         onClick={onClose}
       />
 
-      {/* Drawer panel */}
-      <aside
+      {/* Drawer panel (a div: <aside> may not take role="dialog") */}
+      <div
         role="dialog"
         aria-modal="true"
-        aria-label={`Order details — ${order.orderId.slice(0, 8)}`}
+        aria-label={`Order details — ${orderDisplayNumber(order.orderId)}`}
         className="fixed inset-y-0 right-0 z-50 w-full md:max-w-md overflow-y-auto bg-card border-l border-border shadow-2xl"
       >
         {/* Header */}
@@ -547,6 +564,7 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
             <h2 className="font-semibold text-foreground font-mono text-sm">{order.orderId}</h2>
           </div>
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
             aria-label="Close drawer"
@@ -793,7 +811,12 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
               it opens with this order selected and shows the patient's
               other refillable prescriptions beside it, which is how a
               one-off becomes a multiple and shipping stays one charge. */}
-          {order.status !== 'DRAFT' && (
+          {refill.kind === 'none_left' && (
+            <p data-testid="drawer-no-refills" className="rounded-md border border-border bg-muted px-4 py-2 text-sm text-foreground">
+              {refill.message}
+            </p>
+          )}
+          {refill.kind === 'refill' && (
             <button
               type="button"
               data-testid="drawer-refill"
@@ -1018,7 +1041,7 @@ export function OrderDrawer({ order, onClose, onGroupCreated, viewer }: Props) {
           </section>
 
         </div>
-      </aside>
+      </div>
     </>
   )
 }

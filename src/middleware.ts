@@ -192,6 +192,14 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
     return applySecurityHeaders(response)
   }
 
+  // Patient Intake PR 3: a clinic's public sign-up link (and its QR code).
+  // No session, the same as the intake link: the token is checked in the
+  // page and the route against its stored hash. '/join/' with its trailing
+  // slash: '/onboard/join/' and '/joined' are not this.
+  if (pathname.startsWith('/join/') || pathname.startsWith('/api/join/')) {
+    return applySecurityHeaders(response)
+  }
+
   // Public routes — no auth required
   // /api/webhooks must be public — Stripe/Documo/Twilio arrive without a session
   // BLK-1 (cowork): /api/cron and /api/health must be public.

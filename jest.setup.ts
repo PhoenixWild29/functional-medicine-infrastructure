@@ -2,6 +2,13 @@
 // toHaveAttribute, toHaveTextContent, etc. Imported once globally via
 // jest.config's setupFilesAfterEach option.
 import '@testing-library/jest-dom'
+import { TextDecoder as NodeTextDecoder, TextEncoder as NodeTextEncoder } from 'node:util'
+
+// Every browser has TextEncoder; jsdom does not. The qrcode package (the
+// sign-up link's QR code, drawn in the browser) encodes with it.
+if (typeof globalThis.TextEncoder === 'undefined') {
+  Object.assign(globalThis, { TextEncoder: NodeTextEncoder, TextDecoder: NodeTextDecoder })
+}
 
 // Compliance C2: every server path that reads or writes PHI calls
 // logPhiAccess, which inserts into phi_access_log through the service

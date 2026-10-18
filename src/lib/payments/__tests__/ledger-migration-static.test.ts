@@ -87,12 +87,14 @@ it('the last statement before COMMIT is SELECT apply_pharmacy_admin_scope();', (
   expect(statementsBeforeCommit[statementsBeforeCommit.length - 1]!.trim().replace(/;$/, '')).toBe('SELECT apply_pharmacy_admin_scope()')
 })
 
-// Updated: this asserted the ledger was the newest migration overall,
-// which every later migration (20261020000001, self sign-up) breaks. What
-// matters is that it sorts after what it builds on.
-it('sorts after A (20261016000002) and B (20261017000001), and its version is unique', () => {
-  const versions = fs.readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).map(f => f.split('_')[0]!)
-  expect(versions.filter(v => v === VERSION)).toHaveLength(1)
+it('sorts after every migration already on main and after A (20261016000002) and B (20261017000001)', () => {
+  // Later migrations (20261019000001 onward) may follow it; none may share
+  // its number or land between it and B.
+  const versions = fs.readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).map(f => f.split('_')[0]!).sort()
+  const upToLedger = versions.filter(v => v <= VERSION)
+  expect(upToLedger[upToLedger.length - 1]).toBe(VERSION)
+  expect(upToLedger.filter(v => v === VERSION)).toHaveLength(1)
+  expect(upToLedger[upToLedger.length - 2]! <= '20261017000003').toBe(true)
   expect(VERSION > '20261017000001').toBe(true)
 })
 

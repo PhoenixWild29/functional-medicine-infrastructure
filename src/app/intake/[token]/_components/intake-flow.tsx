@@ -17,11 +17,18 @@
 // inputs (no iOS zoom), 44px targets; errors announced (an alert summary)
 // and tied to each field (aria-invalid + aria-describedby). Nothing the
 // patient types is logged.
+//
+// Patient Intake PR 3, variant 'signup': the same steps from a clinic's
+// standing sign-up link (/join/<token>). The first step also asks for the
+// mobile number, and carries a honeypot field no person sees or reaches.
+// Submits to /api/join/<token>; afterwards it says only that the clinic
+// has the details (never whether the person was already a patient).
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { parseAamva, isNewHampshire } from '@/lib/intake/aamva'
 import { ID_SCAN_PURPOSE, SMS_CONSENT_TEXT } from '@/lib/intake/consent'
 import { normalizeAllergies } from '@/lib/patients/allergies'
+import { toE164 } from '@/lib/patients/phone'
 import { US_STATES } from '@/lib/geo/us-states'
 import { navigateTo } from '@/lib/browser/navigate'
 import { LicenseScanner } from './license-scanner'
@@ -31,6 +38,8 @@ type Sex = 'female' | 'male' | 'unknown' | ''
 
 interface Answers {
   privacyNotice: boolean
+  mobile: string
+  website: string
   sms: boolean
   licenseState: string
   firstName: string
@@ -48,7 +57,7 @@ interface Answers {
 }
 
 const EMPTY: Answers = {
-  privacyNotice: false, sms: false, licenseState: '',
+  privacyNotice: false, mobile: '', website: '', sms: false, licenseState: '',
   firstName: '', lastName: '', dateOfBirth: '', sex: '',
   line1: '', line2: '', city: '', state: '', zip: '',
   allergyChoice: '', allergies: '', currentMedications: '',
@@ -73,9 +82,10 @@ function realPastDate(v: string): boolean {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d && y >= 1900 && dt.getTime() <= Date.now()
 }
 
-function validate(step: Step, a: Answers): Errors {
+function validate(step: Step, a: Answers, signup: boolean): Errors {
   const e: Errors = {}
   if (step === 'consent' && !a.privacyNotice) e.privacyNotice = 'Please confirm you have read the privacy notice.'
+  if (step === 'consent' && signup && !toE164(a.mobile)) e.mobile = 'Enter your mobile number, including the area code.'
   if (step === 'details') {
     if (!a.firstName.trim()) e.firstName = 'Enter your first name.'
     if (!a.lastName.trim()) e.lastName = 'Enter your last name.'
@@ -102,7 +112,8 @@ const primaryButton =
 const secondaryButton =
   'min-h-[44px] w-full rounded-lg border border-slate-500 px-4 py-2 text-base font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
 
-export function IntakeFlow({ token, clinicName }: { token: string; clinicName: string }) {
+export function IntakeFlow({ token, clinicName, variant = 'link' }: { token: string; clinicName: string; variant?: 'link' | 'signup' }) {
+  const signup = variant === 'signup'
   const uid = useId()
   const id = (k: string) => `${uid}-${k}`
   const [step, setStep] = useState<Step>('consent')
@@ -128,7 +139,7 @@ export function IntakeFlow({ token, clinicName }: { token: string; clinicName: s
   }
 
   const next = (to: Step) => {
-    const e = validate(step, a)
+    const e = validate(step, a, signup)
     if (Object.values(e).some(Boolean)) { setErrors(e); return }
     setErrors({})
     setStep(to)
@@ -160,11 +171,12 @@ export function IntakeFlow({ token, clinicName }: { token: string; clinicName: s
     setSubmitting(true)
     setSubmitError(null)
     try {
-      const res = await fetch(`/api/intake/${token}`, {
+      const res = await fetch(signup ? `/api/join/${token}` : `/api/intake/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           consent: { privacyNotice: a.privacyNotice, sms: a.sms },
+          ...(signup ? { contact: { mobile: a.mobile.trim() }, website: a.website } : {}),
           details: { firstName: a.firstName.trim(), lastName: a.lastName.trim(), dateOfBirth: a.dateOfBirth, sex: a.sex },
           address: { line1: a.line1.trim(), line2: a.line2.trim(), city: a.city.trim(), state: a.state, zip: a.zip.trim() },
           health: {
@@ -182,7 +194,9 @@ export function IntakeFlow({ token, clinicName }: { token: string; clinicName: s
         return
       }
       setSubmitError(
-        res.status === 410 || res.status === 404
+        signup && (res.status === 410 || res.status === 404 || res.status === 429)
+          ? (body.error ?? 'This link is no longer active. Contact your clinic.')
+          : res.status === 410 || res.status === 404
           ? 'This link has expired or was already used. Please ask your clinic to send you a new one.'
           : res.status === 400
           ? (body.error ?? 'Please check your answers.')
@@ -209,8 +223,12 @@ export function IntakeFlow({ token, clinicName }: { token: string; clinicName: s
 
   return (
     <main className="mx-auto min-h-screen max-w-md px-4 pb-12 pt-6">
-      <h1 className="text-2xl font-semibold text-foreground">Complete your details</h1>
-      <p className="mt-1 text-sm text-muted-foreground">{clinicName} asked you to complete your details. It takes about 3 minutes.</p>
+      <h1 className="text-2xl font-semibold text-foreground">{signup ? 'Sign up as a new patient' : 'Complete your details'}</h1>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {signup
+          ? `${clinicName} uses this form to register new patients. It takes about 3 minutes.`
+          : `${clinicName} asked you to complete your details. It takes about 3 minutes.`}
+      </p>
       {stepNumber >= 0 && <p className="mt-3 text-sm text-muted-foreground">Step {stepNumber + 1} of {NUMBERED.length}</p>}
 
       <section aria-labelledby={id('step')} className="mt-2 space-y-4">
@@ -245,6 +263,22 @@ export function IntakeFlow({ token, clinicName }: { token: string; clinicName: s
               </div>
               {fieldError('privacyNotice')}
             </div>
+            {signup && (
+              <div>
+                <label htmlFor={id('mobile')} className="block text-base font-medium text-foreground">Mobile number</label>
+                <input id={id('mobile')} type="tel" inputMode="tel" autoComplete="tel" value={a.mobile} onChange={e => set('mobile', e.target.value)}
+                  aria-invalid={err('mobile') ? true : undefined} aria-describedby={desc('mobile')} className={input(!!err('mobile'))} />
+                {fieldError('mobile')}
+              </div>
+            )}
+            {signup && (
+              // Honeypot: off screen, hidden from assistive tech, out of the
+              // tab order. Only a bot fills it in.
+              <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
+                <label htmlFor={id('website')}>Website</label>
+                <input id={id('website')} name="website" type="text" tabIndex={-1} autoComplete="off" value={a.website} onChange={e => set('website', e.target.value)} />
+              </div>
+            )}
             <div className="flex items-start gap-3">
               <input
                 id={id('sms')}
@@ -413,6 +447,7 @@ export function IntakeFlow({ token, clinicName }: { token: string; clinicName: s
           <div className="space-y-4">
             <dl className="space-y-3 rounded-lg border border-border p-3 text-base">
               <div><dt className="text-sm text-muted-foreground">Name</dt><dd className="text-foreground">{a.firstName} {a.lastName}</dd></div>
+              {signup && <div><dt className="text-sm text-muted-foreground">Mobile number</dt><dd className="text-foreground">{a.mobile.trim()}</dd></div>}
               <div><dt className="text-sm text-muted-foreground">Date of birth</dt><dd className="text-foreground">{a.dateOfBirth}</dd></div>
               <div>
                 <dt className="text-sm text-muted-foreground">Shipping address</dt>
@@ -435,7 +470,9 @@ export function IntakeFlow({ token, clinicName }: { token: string; clinicName: s
         {step === 'done' && (
           <div className="space-y-4">
             <p className="text-base text-foreground">Your details were sent to {clinicName}.</p>
-            {checkoutUrl ? (
+            {signup ? (
+              <p className="text-base text-muted-foreground">Your clinic will contact you about next steps.</p>
+            ) : checkoutUrl ? (
               <a href={checkoutUrl} className={`${primaryButton} block text-center`}>Continue to payment</a>
             ) : (
               <p className="text-base text-muted-foreground">Your clinic will send you a link to pay once your prescription is ready.</p>

@@ -15,6 +15,7 @@ import { useState } from 'react'
 import type { OrderStatusEnum } from '@/types/database.types'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { SkeletonTableRow } from '@/components/ui/skeleton'
+import { orderDisplayNumber } from '@/lib/orders/order-number'
 
 // OrderRow: financial history view used by this component (WO-30).
 // For the full operational DashboardOrder type see DashboardOrder in ../page.
@@ -149,7 +150,7 @@ export function OrderHistoryTable({ orders, isLoading = false }: Props) {
                 return (
                   <tr key={order.orderId} className="hover:bg-muted/30">
                     <td className="px-3 py-2.5 font-mono text-xs text-muted-foreground">
-                      {order.orderId.slice(0, 8)}…
+                      <span title={order.orderId}>{orderDisplayNumber(order.orderId)}</span>
                     </td>
                     <td className="px-3 py-2.5 text-foreground">{order.patientName}</td>
                     <td className="px-3 py-2.5 text-foreground">{order.medicationName}</td>

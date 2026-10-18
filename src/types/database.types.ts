@@ -378,6 +378,54 @@ export type Database = {
           },
         ]
       }
+      // Clinic sign-up link (20261019000001): hand-extended
+      clinic_signup_links: {
+        Row: {
+          clinic_id: string
+          created_at: string
+          created_by: string | null
+          enabled: boolean
+          last_used_at: string | null
+          link_id: string
+          revoked_at: string | null
+          revoked_by: string | null
+          token_hash: string
+          use_count: number
+        }
+        Insert: {
+          clinic_id: string
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          last_used_at?: string | null
+          link_id?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          token_hash: string
+          use_count?: number
+        }
+        Update: {
+          clinic_id?: string
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          last_used_at?: string | null
+          link_id?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          token_hash?: string
+          use_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clinic_signup_links_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+        ]
+      }
       clinics: {
         Row: {
           address_line1: string | null
@@ -2192,6 +2240,8 @@ export type Database = {
           privacy_notice_version: string | null
           // Patient CSV import (20261016000002): hand-extended
           import_batch_id: string | null
+          // Clinic sign-up link (20261019000001): hand-extended
+          signup_link_id: string | null
           possible_duplicate_of: string | null
           possible_duplicate_matched_on: string | null
           possible_duplicate_flagged_at: string | null
@@ -2234,6 +2284,7 @@ export type Database = {
           privacy_notice_ack_at?: string | null
           privacy_notice_version?: string | null
           import_batch_id?: string | null
+          signup_link_id?: string | null
           possible_duplicate_of?: string | null
           possible_duplicate_matched_on?: string | null
           possible_duplicate_flagged_at?: string | null
@@ -2276,6 +2327,7 @@ export type Database = {
           privacy_notice_ack_at?: string | null
           privacy_notice_version?: string | null
           import_batch_id?: string | null
+          signup_link_id?: string | null
           possible_duplicate_of?: string | null
           possible_duplicate_matched_on?: string | null
           possible_duplicate_flagged_at?: string | null
@@ -4501,6 +4553,11 @@ export type Database = {
         Returns: string
       }
       delete_vault_secret: { Args: { p_secret_id: string }; Returns: undefined }
+      // Clinic sign-up link (20261019000001): hand-extended
+      signup_link_create_patient: {
+        Args: { p_link_id: string; p_daily_cap: number; p_patient: Json }
+        Returns: Json
+      }
       // Patient CSV import (20261016000002): hand-extended
       import_patient_batch: {
         Args: {
