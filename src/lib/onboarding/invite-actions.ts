@@ -85,7 +85,7 @@ export const INVITE_COLUMNS = 'invite_id, kind, clinic_id, email, accepted_at, r
 /** Create a pending invite; returns the link (carrying the token) once. */
 export async function createInvite(
   supabase: SupabaseClient<Database>,
-  i: { kind: InviteKind; clinicId: string; email: string; providerId?: string | null; createdBy: string; actorRole: string },
+  i: { kind: InviteKind; clinicId: string; email: string; providerId?: string | null; inviteeName?: string | null; createdBy: string; actorRole: string },
 ): Promise<{ ok: true; inviteId: string; link: string; expiresAt: string } | { ok: false; error: string }> {
   const token = newInviteToken()
   const expiresAt = inviteExpiresAt().toISOString()
@@ -96,6 +96,8 @@ export async function createInvite(
       clinic_id:   i.clinicId,
       email:       i.email,
       provider_id: i.providerId ?? null,
+      // Team invites: the name typed for a medical assistant or admin invite.
+      invitee_name: i.inviteeName?.trim() || null,
       token_hash:  hashInviteToken(token),
       expires_at:  expiresAt,
       created_by:  i.createdBy,
