@@ -10,7 +10,9 @@
 //      gets a success answer and nothing is read or saved (lib/intake/
 //      join-abuse).
 //   2. The link must be on and not revoked: otherwise "This link is no
-//      longer active. Contact your clinic."
+//      longer active. Contact your clinic." The same answer when the
+//      link's clinic is not approved yet (self sign-up: the approval guard,
+//      lib/onboarding/approval-guard); a clinic that cannot be read is 503.
 //   3. The same details as self-intake, plus the patient's mobile number.
 //   4. One database function creates the patient in the LINK's clinic
 //      (never one from the request): complete, source 'signup_link', with
@@ -37,6 +39,7 @@ import { validateIntakeSubmission } from '@/lib/intake/submission'
 import { INTAKE_CONSENT_SOURCE, PRIVACY_NOTICE_VERSION, SMS_CONSENT_TEXT_VERSION } from '@/lib/intake/consent'
 import { toE164 } from '@/lib/patients/phone'
 import { flagPossibleDuplicate } from '@/lib/patients/duplicates'
+import { clinicApproval } from '@/lib/onboarding/approval-guard'
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
 
@@ -67,6 +70,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ to
     if (link.state === 'unavailable') return NextResponse.json({ error: 'Please try again in a moment.' }, { status: 503, headers: NO_STORE })
     return NextResponse.json({ error: JOIN_INACTIVE_MESSAGE }, { status: link.state === 'invalid' ? 404 : 410, headers: NO_STORE })
   }
+  // A clinic under review receives no patients: to the patient, the link
+  // is simply not active.
+  const approval = await clinicApproval(supabase, link.clinicId)
+  if (approval.state === 'unavailable') return NextResponse.json({ error: 'Please try again in a moment.' }, { status: 503, headers: NO_STORE })
+  if (approval.state === 'pending') return NextResponse.json({ error: JOIN_INACTIVE_MESSAGE }, { status: 410, headers: NO_STORE })
 
   const contact = (body as { contact?: { mobile?: unknown } }).contact
   const mobile = typeof contact?.mobile === 'string' ? toE164(contact.mobile) : null

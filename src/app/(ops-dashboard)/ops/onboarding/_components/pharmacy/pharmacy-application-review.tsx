@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { FormAlert, PrimaryButton, SecondaryButton, sendJson } from '@/components/pharmacy-onboarding/fields'
 import type { AcceptanceView } from '@/lib/pharmacy-onboarding/review'
+import { SELF_SIGNUP_APPROVE_NOTE } from '@/lib/onboarding/self-signup-note'
 
 interface Review {
   applicationId: string
@@ -29,6 +30,7 @@ interface Review {
   acceptances: { baa: AcceptanceView | null; terms: AcceptanceView | null }
   catalog: { choice: string | null; rowCount: number | null; warnings: string[]; rows: unknown[] }
   events: Array<{ action: string; actorRole: string; occurredAt: string; stateCode: string | null }>
+  signupSource?: string | null
 }
 
 const STATUS: Record<string, string> = { in_progress: 'In progress', submitted: 'Ready for review', sent_back: 'Sent back', approved: 'Approved' }
@@ -204,13 +206,16 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
       {reviewable && (
         <section aria-labelledby="decision-title" className="rounded-xl border border-border bg-card p-4">
           <h2 id="decision-title" className="text-lg font-semibold text-foreground">Decision</h2>
+          {review.signupSource === 'self_serve' && (
+            <p id="self-signup-note" className="mt-2 text-sm font-medium text-foreground">{SELF_SIGNUP_APPROVE_NOTE}</p>
+          )}
           <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-end">
             <div className="flex-1">
               <label htmlFor="sendBackNote" className="block text-sm font-medium text-foreground">Note to the pharmacy</label>
               <textarea id="sendBackNote" value={sendBackNote} onChange={e => setSendBackNote(e.target.value)} maxLength={1000} rows={3} className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-base text-foreground" />
             </div>
             <SecondaryButton disabled={busy || !sendBackNote.trim()} onClick={() => void run(`/api/ops/onboarding/pharmacies/${applicationId}/send-back`, { note: sendBackNote })}>Send back</SecondaryButton>
-            <PrimaryButton type="button" disabled={!canApprove} busy={busy} onClick={() => void run(`/api/ops/onboarding/pharmacies/${applicationId}/approve`, {})}>Approve</PrimaryButton>
+            <PrimaryButton type="button" disabled={!canApprove} busy={busy} aria-describedby={review.signupSource === 'self_serve' ? 'self-signup-note' : undefined} onClick={() => void run(`/api/ops/onboarding/pharmacies/${applicationId}/approve`, {})}>Approve</PrimaryButton>
           </div>
           {!canApprove && <p className="mt-2 text-xs text-muted-foreground dark:text-slate-300">Approve is available when every license is verified, the current versions of the BAA and of the Terms of service are accepted and, for an API or portal pharmacy, its adapter is marked configured.</p>}
         </section>

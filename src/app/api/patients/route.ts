@@ -21,6 +21,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { toE164, withPhoneE164 } from '@/lib/patients/phone'
@@ -61,6 +62,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!STAFF_ROLES.has(getUserRole(user) ?? '')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const clinicId = getUserClinicId(user)
   if (!clinicId) return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
+  // Pending review: nothing is ordered, signed or sent until ops approves
+  // the clinic (lib/onboarding/approval-guard).
+  const pendingReview = await refuseUnlessApproved(createServiceClient(), clinicId)
+  if (pendingReview) return pendingReview
 
   let body: Record<string, unknown>
   try {

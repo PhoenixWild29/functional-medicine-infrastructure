@@ -25,6 +25,12 @@ const OTHER_CLINIC = 'bbbbbbbb-bbbb-4bbb-9bbb-bbbbbbbbbbbb'
 const BATCH_ID = 'c0000000-0000-4000-8000-000000000001'
 
 const getUserMock = jest.fn()
+// Pending review (lib/onboarding/approval-guard) is tested in
+// src/__tests__/pending-review-guard.test.ts; the clinic here is approved.
+jest.mock('@/lib/onboarding/approval-guard', () => ({
+  ...jest.requireActual('@/lib/onboarding/approval-guard'),
+  refuseUnlessApproved: async () => null,
+}))
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn(async () => ({ auth: { getUser: () => getUserMock() } })),
 }))

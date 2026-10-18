@@ -105,7 +105,7 @@ describe('ops: every clinic', () => {
       { ...base, connectionId: 'c0000000-0000-4000-8000-0000000000c2', status: 'disconnected', disconnectedAt: '2026-10-11T00:00:00Z', clinicId: 'c-2', clinicName: 'Other Clinic' },
     ]} />)
     const rows = within(screen.getByRole('table', { name: 'EHR sync connections' })).getAllByRole('row').slice(1)
-    expect(rows[0]).toHaveTextContent('Demo Clinic'); expect(rows[0]).toHaveTextContent('Connected'); expect(rows[0]).toHaveTextContent('bad_signature')
+    expect(rows[0]).toHaveTextContent('Demo Clinic'); expect(rows[0]).toHaveTextContent('Connected'); expect(rows[0]).toHaveTextContent(/signature did not match/i)
     expect(rows[1]).toHaveTextContent('Other Clinic'); expect(rows[1]).toHaveTextContent('Disconnected')
   })
 

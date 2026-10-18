@@ -1,7 +1,7 @@
 // Ops: every clinic's EHR sync (Keragon) connection, read-only.
 
 import type { ConnectionView } from '@/lib/integrations/keragon/connection'
-import { CONNECTION_STATUS_LABEL } from '@/lib/integrations/keragon/labels'
+import { CONNECTION_STATUS_LABEL, errorText } from '@/lib/integrations/keragon/labels'
 
 type Row = ConnectionView & { clinicId: string; clinicName: string }
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-US') : 'Never')
@@ -28,7 +28,7 @@ export function EhrConnectionsTable({ connections }: { connections: Row[] }) {
               <td className="px-3 py-2 text-foreground">{CONNECTION_STATUS_LABEL[c.status] ?? c.status}</td>
               <td className="px-3 py-2 text-foreground">{when(c.lastSuccessAt)}</td>
               <td className="px-3 py-2 text-foreground">{when(c.lastEventAt)}</td>
-              <td className="px-3 py-2 text-foreground">{c.lastErrorCode ? `${c.lastErrorCode} (${when(c.lastErrorAt)})` : '—'}</td>
+              <td className="px-3 py-2 text-foreground">{c.lastErrorCode ? `${errorText(c.lastErrorCode)} (${when(c.lastErrorAt)})` : '—'}</td>
             </tr>
           ))}
         </tbody>

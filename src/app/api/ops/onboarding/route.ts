@@ -44,7 +44,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { data: clinic, error: clinicErr } = await supabase
     .from('clinics')
-    .insert({ name: clinicName, is_active: false, onboarding_status: 'invited' })
+    .insert({ name: clinicName, is_active: false, onboarding_status: 'invited', signup_source: 'invite' })
     .select('clinic_id')
     .single()
   if (clinicErr || !clinic) {

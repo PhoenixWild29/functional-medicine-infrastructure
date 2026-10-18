@@ -79,6 +79,8 @@ import { insertStatusHistory, type StatusHistoryRow } from './status-history'
 import { createSlasForTransition } from '@/lib/sla/creator'
 import { sendPaymentLinkSms } from '@/lib/sms/triggers'
 import { serverEnv } from '@/lib/env'
+import { resolveSigner } from '@/lib/auth/signer'
+import { isApprovedClinic, PENDING_REVIEW_MESSAGE } from '@/lib/onboarding/approval-guard'
 
 type Supabase = SupabaseClient<Database>
 
@@ -353,8 +355,9 @@ export async function checkBatch(
   // Clinic onboarding: a clinic signs and sends only once ops has approved
   // it (onboarding_status 'approved') and it is active. Fails closed: a
   // clinic row that says neither is refused.
-  if (clinicRes.data?.onboarding_status !== 'approved' || clinicRes.data?.is_active !== true) {
-    add(null, 'clinic_not_approved', 'Your clinic has not been approved by CompoundIQ yet, so nothing can be signed or sent. Finish onboarding, or contact CompoundIQ.')
+  // Same rule and words as every other write (lib/onboarding/approval-guard).
+  if (!isApprovedClinic(clinicRes.data)) {
+    add(null, 'clinic_not_approved', PENDING_REVIEW_MESSAGE)
   }
   if (clinicRes.data?.stripe_connect_status !== 'ACTIVE') {
     add(null, 'stripe', "The clinic's Stripe account is not active, so no payment link can be sent.")
@@ -703,9 +706,11 @@ export async function signBatch(
     signature: unknown
   },
 ): Promise<SignBatchResult> {
-  if (input.appRole !== 'provider') {
-    return { ok: false, status: 403, error: 'Only a provider can sign prescriptions.' }
-  }
+  // Who may sign: a provider, or a clinic_admin who is also a provider
+  // with a verified NPI (a solo practice). The sign page asks the same
+  // helper. checkBatch then requires every line to be the signer's own.
+  const who = await resolveSigner(supabase, { userId: input.userId, clinicId: input.clinicId, role: input.appRole })
+  if (!who.ok) return { ok: false, status: who.status, error: who.message }
   const parsed = parseOrderIds(input.orderIds)
   if (!parsed.ok) return { ok: false, status: 400, error: parsed.error }
   const orderIds = parsed.ids

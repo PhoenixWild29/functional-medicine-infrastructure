@@ -95,6 +95,13 @@ describe('the pharmacy portal API', () => {
     expect(res.headers.get('cache-control')).toBe('no-store')
   })
 
+  it('submit has no email step: a login with email_confirmed_at null reaches submitApplication', async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: 'u-ph', email_confirmed_at: null, app_metadata: { app_role: 'pharmacy_admin', pharmacy_id: PH } } }, error: null })
+    lib.submitApplication!.mockClear()
+    expect((await step.POST(req('POST', {}), params({ step: 'submit' }))).status).toBe(200)
+    expect(lib.submitApplication).toHaveBeenCalled()
+  })
+
   it('each step reaches its handler; an unknown step is 404', async () => {
     asPharmacyAdmin()
     for (const [name, fn] of [['details', lib.saveDetails], ['ordering', lib.saveOrdering], ['shipping', lib.saveShipping], ['catalog', lib.saveCatalog]] as const) {

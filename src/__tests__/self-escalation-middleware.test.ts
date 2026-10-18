@@ -64,8 +64,11 @@ describe('self-edited user_metadata grants nothing in middleware', () => {
     expect(location(await middleware(req('/practice')))).toBe('/unauthorized')
   })
 
-  it('clinic admin who wrote app_role=provider does not reach the signing page', async () => {
-    getUserMock.mockResolvedValue(signedIn('clinic_admin', 'provider'))
+  // Self sign-up, decision 1: a clinic_admin now reaches the sign page
+  // (the page asks lib/auth/signer), so the self-escalation case is a
+  // medical assistant. (Updated: this used a clinic_admin.)
+  it('medical assistant who wrote app_role=provider does not reach the signing page', async () => {
+    getUserMock.mockResolvedValue(signedIn('medical_assistant', 'provider'))
     expect(location(await middleware(req('/new-prescription/sign')))).toBe('/unauthorized')
   })
 

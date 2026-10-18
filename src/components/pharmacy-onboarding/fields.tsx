@@ -153,7 +153,7 @@ export function FormAlert({ message }: { message: string | null }) {
   )
 }
 
-export function PrimaryButton(props: { children: ReactNode; type?: 'submit' | 'button' | undefined; onClick?: (() => void) | undefined; disabled?: boolean | undefined; busy?: boolean | undefined }) {
+export function PrimaryButton(props: { children: ReactNode; type?: 'submit' | 'button' | undefined; onClick?: (() => void) | undefined; disabled?: boolean | undefined; busy?: boolean | undefined; 'aria-describedby'?: string | undefined }) {
   const { children, type = 'submit', onClick, disabled, busy } = props
   return (
     <button
@@ -161,6 +161,7 @@ export function PrimaryButton(props: { children: ReactNode; type?: 'submit' | 'b
       onClick={onClick}
       disabled={disabled || busy}
       aria-busy={busy || undefined}
+      aria-describedby={props['aria-describedby']}
       className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover dark:bg-primary-hover dark:hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {children}

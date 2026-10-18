@@ -35,6 +35,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isLivePharmacy, type PharmacyLiveness } from '@/lib/pharmacies/live'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import {
   refillsUsed,
   refillAllowance,
@@ -74,6 +75,10 @@ export async function POST(request: NextRequest) {
 
   const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
+  // Pending review: nothing is ordered, signed or sent until ops approves
+  // the clinic (lib/onboarding/approval-guard).
+  const pendingReview = await refuseUnlessApproved(createServiceClient(), clinicId)
+  if (pendingReview) return pendingReview
 
   let body: { orderIds?: unknown }
   try {

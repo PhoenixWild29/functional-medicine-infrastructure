@@ -85,7 +85,7 @@ describe('POST /api/ops/onboarding: create a clinic invite', () => {
     const token = m![1]!
 
     const [clinic] = db.to('clinics', 'insert')
-    expect(clinic!.payload).toEqual(expect.objectContaining({ name: 'Blue Cedar Wellness', is_active: false, onboarding_status: 'invited' }))
+    expect(clinic!.payload).toEqual(expect.objectContaining({ name: 'Blue Cedar Wellness', is_active: false, onboarding_status: 'invited', signup_source: 'invite' }))
 
     const [invite] = db.to('onboarding_invites', 'insert')
     const row = invite!.payload as Record<string, unknown>

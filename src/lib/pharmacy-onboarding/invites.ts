@@ -9,6 +9,7 @@
 import { randomBytes } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { appMetadataFor } from '@/lib/auth/claims'
+import { createLogin, passwordProblem, removeLogin } from '@/lib/auth/create-login'
 import { AUDIT_UNAVAILABLE, recordOnboardingEvent, type OnboardingActor } from './events'
 import { generateInviteToken, hashInviteToken, inviteExpiry, inviteLink, inviteState, isWellFormedToken, type InviteState } from './invite-token'
 import { normalizeEmail } from './validate'
@@ -188,11 +189,61 @@ export async function inviteForToken(
   return { state: inviteState(r, now), pharmacyName: r.pharmacy_name, adminEmail: r.admin_email, expiresAt: r.expires_at }
 }
 
-const MIN_PASSWORD = 12
-
 function slugFor(name: string): string {
   const base = name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'pharmacy'
   return `${base}-${randomBytes(3).toString('hex')}`
+}
+
+// ── Shared with self sign-up (lib/signup/self-serve) ─────────
+
+type SetupFail = { ok: false; status: number; error: string }
+
+/**
+ * An onboarding pharmacy: inactive, so it never reaches the builder or
+ * routing until ops approves. `drop` removes it after a later step fails.
+ */
+export async function createOnboardingPharmacy(
+  db: SupabaseClient,
+  input: { name: string; email: string },
+): Promise<{ ok: true; pharmacyId: string; drop: () => Promise<void> } | SetupFail> {
+  const { data: pharmacy, error } = await db.from('pharmacies').insert({
+    name: input.name,
+    slug: slugFor(input.name),
+    integration_tier: 'TIER_4_FAX',
+    is_active: false,
+    onboarding_status: 'onboarding',
+    email: input.email,
+  }).select('pharmacy_id').single()
+  if (error || !pharmacy) {
+    console.error('[pharmacy-onboarding] pharmacy could not be created:', error?.code ?? 'no row')
+    return { ok: false, status: 503, error: 'Your account could not be created. Try again.' }
+  }
+  const pharmacyId = (pharmacy as { pharmacy_id: string }).pharmacy_id
+  const drop = async () => {
+    const { error: dropError } = await db.from('pharmacies').delete().eq('pharmacy_id', pharmacyId)
+    if (dropError) console.error(`[pharmacy-onboarding] CRITICAL: onboarding pharmacy not removed after a failed setup | pharmacy=${pharmacyId}:`, dropError.code ?? dropError.message)
+  }
+  return { ok: true, pharmacyId, drop }
+}
+
+/** The pharmacy's application, in progress, recording where it came from. */
+export async function createApplication(
+  db: SupabaseClient,
+  input: { pharmacyId: string; adminUserId: string; inviteId: string | null; signupSource: 'invite' | 'self_serve' },
+): Promise<{ ok: true; applicationId: string } | SetupFail> {
+  const { data, error } = await db.from('pharmacy_onboarding_applications').insert({
+    pharmacy_id: input.pharmacyId,
+    invite_id: input.inviteId,
+    admin_user_id: input.adminUserId,
+    status: 'in_progress',
+    steps_completed: [],
+    signup_source: input.signupSource,
+  }).select('application_id').single()
+  if (error || !data) {
+    console.error('[pharmacy-onboarding] application could not be created:', error?.code ?? 'no row')
+    return { ok: false, status: 503, error: 'Your account could not be created. Try again.' }
+  }
+  return { ok: true, applicationId: (data as { application_id: string }).application_id }
 }
 
 export async function acceptInvite(
@@ -204,8 +255,8 @@ export async function acceptInvite(
   const fullName = typeof input.fullName === 'string' ? input.fullName.trim() : ''
   const password = typeof input.password === 'string' ? input.password : ''
   if (fullName.length < 2 || fullName.length > 100) errors['fullName'] = 'Enter your full name.'
-  if (password.length < MIN_PASSWORD) errors['password'] = `Use at least ${MIN_PASSWORD} characters.`
-  else if (new TextEncoder().encode(password).length > 72) errors['password'] = 'Use at most 72 characters.'
+  const weak = passwordProblem(password)
+  if (weak) errors['password'] = weak
   if (Object.keys(errors).length > 0) return { ok: false, status: 400, error: 'Check the highlighted fields.', errors }
 
   if (!isWellFormedToken(input.token)) return { ok: false, status: 404, error: 'This invite link is not valid.' }
@@ -220,45 +271,24 @@ export async function acceptInvite(
 
   // 1. The pharmacy, inactive while onboarding (it never reaches the
   //    builder or routing until ops approves).
-  const { data: pharmacy, error: pharmacyError } = await db.from('pharmacies').insert({
-    name: invite.pharmacy_name,
-    slug: slugFor(invite.pharmacy_name),
-    integration_tier: 'TIER_4_FAX',
-    is_active: false,
-    onboarding_status: 'onboarding',
-    email: invite.admin_email,
-  }).select('pharmacy_id').single()
-  if (pharmacyError || !pharmacy) {
-    console.error('[pharmacy-onboarding] pharmacy could not be created:', pharmacyError?.code ?? 'no row')
-    return { ok: false, status: 503, error: 'Your account could not be created. Try again.' }
-  }
-  const pharmacyId = (pharmacy as { pharmacy_id: string }).pharmacy_id
-  // Undo steps: each failure is logged; the pharmacy left behind is inactive.
-  const dropPharmacy = async () => {
-    const { error } = await db.from('pharmacies').delete().eq('pharmacy_id', pharmacyId)
-    if (error) console.error(`[pharmacy-onboarding] CRITICAL: onboarding pharmacy not removed after a failed acceptance | pharmacy=${pharmacyId}:`, error.code ?? error.message)
-  }
+  const pharmacy = await createOnboardingPharmacy(db, { name: invite.pharmacy_name, email: invite.admin_email })
+  if (!pharmacy.ok) return pharmacy
+  const { pharmacyId, drop: dropPharmacy } = pharmacy
 
   // 2. The account: role and pharmacy in app_metadata (service role only).
-  const { data: created, error: userError } = await db.auth.admin.createUser({
-    email: invite.admin_email,
-    password,
-    email_confirm: true,
-    app_metadata: appMetadataFor({ role: 'pharmacy_admin', clinicId: null, pharmacyId }),
-    user_metadata: { full_name: fullName },
+  //    Confirmed: the invite link proved the address.
+  const login = await createLogin(db, {
+    email: invite.admin_email, password, fullName,
+    appMetadata: appMetadataFor({ role: 'pharmacy_admin', clinicId: null, pharmacyId }),
   })
-  if (userError || !created?.user) {
+  if (!login.ok) {
     await dropPharmacy()
-    const exists = (userError as { code?: string } | null)?.code === 'email_exists' || /already/i.test(userError?.message ?? '')
-    if (exists) return { ok: false, status: 409, error: 'An account already uses this email. Sign in, or ask CompoundIQ for an invite to another email.' }
-    console.error('[pharmacy-onboarding] account could not be created:', (userError as { code?: string } | null)?.code ?? 'no user')
+    if (login.reason === 'exists') return { ok: false, status: 409, error: 'An account already uses this email. Sign in, or ask CompoundIQ for an invite to another email.' }
+    console.error('[pharmacy-onboarding] account could not be created:', login.message)
     return { ok: false, status: 503, error: 'Your account could not be created. Try again.' }
   }
-  const userId = created.user.id
-  const dropUser = async () => {
-    const { error } = await db.auth.admin.deleteUser(userId)
-    if (error) console.error(`[pharmacy-onboarding] CRITICAL: pharmacy_admin account not removed after a failed acceptance | user=${userId}:`, error.message)
-  }
+  const userId = login.userId
+  const dropUser = () => removeLogin(db, userId, 'pharmacy-onboarding')
 
   // 3. Claim the invite: single use, still open, not expired.
   const { data: claimed, error: claimError } = await db.from('pharmacy_invites')
@@ -278,24 +308,17 @@ export async function acceptInvite(
   }
 
   // 4. The application.
-  const { data: application, error: appError } = await db.from('pharmacy_onboarding_applications').insert({
-    pharmacy_id: pharmacyId,
-    invite_id: invite.invite_id,
-    admin_user_id: userId,
-    status: 'in_progress',
-    steps_completed: [],
-  }).select('application_id').single()
-  if (appError || !application) {
+  const application = await createApplication(db, { pharmacyId, adminUserId: userId, inviteId: invite.invite_id, signupSource: 'invite' })
+  if (!application.ok) {
     await unclaim()
     await dropUser()
     await dropPharmacy()
-    console.error('[pharmacy-onboarding] application could not be created:', appError?.code ?? 'no row')
-    return { ok: false, status: 503, error: 'Your account could not be created. Try again.' }
+    return application
   }
 
   await recordOnboardingEvent(db, {
     actor: { userId, role: 'pharmacy_admin' }, action: 'invite_accepted',
-    inviteId: invite.invite_id, pharmacyId, applicationId: (application as { application_id: string }).application_id,
+    inviteId: invite.invite_id, pharmacyId, applicationId: application.applicationId,
   })
   return { ok: true, email: invite.admin_email }
 }
