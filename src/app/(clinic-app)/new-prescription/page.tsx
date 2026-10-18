@@ -31,6 +31,8 @@ import { PatientProviderSelector } from './_components/patient-provider-selector
 import { getWizardSteps } from './_lib/wizard-steps'
 import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { FirstPrescriptionTips } from '@/components/coaching/first-prescription-tips'
+import { coachingPrefs } from '@/lib/coaching/prefs'
 
 export const metadata = {
   title: 'New Prescription — Select Patient',
@@ -120,6 +122,8 @@ export default async function NewPrescriptionPage(
   return (
     <>
       <main className="mx-auto max-w-2xl px-4 py-8">
+        {/* First-run coaching: short tips on the user's first New Prescription. */}
+        <FirstPrescriptionTips seen={coachingPrefs(user).rxTipsSeen} />
         <div className="mb-6">
           <WizardProgress steps={WIZARD_STEPS} currentStep={1} />
           <h1 className="mt-4 text-2xl font-bold text-foreground">New Prescription</h1>
