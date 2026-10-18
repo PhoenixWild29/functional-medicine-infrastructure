@@ -15,6 +15,7 @@ import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { todayUtc } from '@/lib/providers/credentials'
 import { CredentialsEditor } from './_components/credentials-editor'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { EmptyState } from '@/components/coaching/empty-state'
 
 export const metadata = {
   title: 'Team',
@@ -137,11 +138,19 @@ export default async function TeamPage() {
         </p>
       </div>
 
-      {providers.length === 0 && (
+      {providers.length === 0 && (isAdmin ? (
+        // First-run coaching: say what to do next. Adding a provider after
+        // approval is done by CompoundIQ until an in-app invite exists.
+        <EmptyState
+          testId="team-empty"
+          title="No providers yet"
+          body="Ask your CompoundIQ contact to add your providers. Each one appears here with their NPI check and state licenses."
+        />
+      ) : (
         <p className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground" data-testid="team-empty">
-          {isAdmin ? 'No active providers in this clinic yet.' : 'Your login is not linked to a provider record. Contact your administrator.'}
+          Your login is not linked to a provider record. Contact your administrator.
         </p>
-      )}
+      ))}
 
       {providers.map(p => {
         const v = verifications.get(p.provider_id)

@@ -29,6 +29,7 @@ import { IntakeChip } from '@/components/intake-chip'
 import { SignupChip } from '@/components/signup-chip'
 import { IntakeLinkPanel } from '@/components/intake-link-panel'
 import { openPossibleDuplicate, patientName, type NameablePatient } from '@/lib/patients/display'
+import { EmptyState } from '@/components/coaching/empty-state'
 
 // ── Types (match server query) ────────────────────────────────
 
@@ -318,11 +319,16 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
         {/* Patient list */}
         <div className="mt-3 max-h-60 overflow-y-auto rounded-md border border-border">
           {filteredPatients.length === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-              {patients.length === 0
-                ? 'No patients found for this clinic.'
-                : 'No patients match your search.'}
-            </div>
+            patients.length === 0 ? (
+              // First-run coaching: say what to do, with the action.
+              <EmptyState
+                title="No patients yet"
+                body="Add your first patient to start a prescription."
+                action={{ label: 'Add a patient', onClick: () => { setShowNewPatient(true); setNewIntake(null) } }}
+              />
+            ) : (
+              <div className="px-4 py-6 text-center text-sm text-muted-foreground">No patients match your search.</div>
+            )
           ) : (
             filteredPatients.map(patient => (
               <button
