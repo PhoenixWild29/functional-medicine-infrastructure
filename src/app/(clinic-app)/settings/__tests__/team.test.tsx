@@ -7,8 +7,10 @@
  *     and licenses, and the controls to add or edit a license and re-run
  *     the NPI check;
  *   - a provider sees only their own credentials, read-only;
- *   - a medical assistant gets a notice and nothing is read;
- *   - read through the SESSION client (RLS), scoped to the user's clinic;
+ *   - a medical assistant sees the team list read-only, and no credentials;
+ *   - credentials are read through the SESSION client (RLS), scoped to the
+ *     user's clinic; the service role only for the team list and pending
+ *     invites (clinic_team_members is service-role only; team invites);
  *   - a read failure says so, never an empty team;
  *   - Settings links to the page for the admin and providers only.
  */
@@ -23,7 +25,15 @@ const PATEL = 'a2000000-0000-0000-0000-000000000003'
 
 let user: unknown = null
 let db = scriptedDb(() => undefined)
-const serviceClient = jest.fn(() => { throw new Error('the Team page must read through the session client') })
+const SERVICE = { service: true }
+const serviceClient = jest.fn(() => SERVICE)
+const membersMock = jest.fn()
+const invitesMock = jest.fn()
+jest.mock('@/lib/team/team', () => ({
+  ...jest.requireActual('@/lib/team/team'),
+  listTeamMembers: (...a: unknown[]) => membersMock(...a),
+  listPendingInvites: (...a: unknown[]) => invitesMock(...a),
+}))
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: async () => ({ ...(db.client as object), auth: { getUser: async () => ({ data: { user } }) } }),
@@ -66,6 +76,8 @@ const html = async () => renderToStaticMarkup(await TeamPage())
 beforeEach(() => {
   db = scriptedDb(answer)
   serviceClient.mockClear()
+  membersMock.mockReset().mockResolvedValue([{ userId: 'u-medical_assistant', email: 'ma@clinic.example', name: 'Mia Assistant', role: 'medical_assistant', deactivatedAt: null, lastSignInAt: null }])
+  invitesMock.mockReset().mockResolvedValue([])
   jest.spyOn(console, 'error').mockImplementation(() => {})
 })
 afterEach(() => jest.restoreAllMocks())
@@ -92,9 +104,11 @@ describe('the clinic admin', () => {
     expect(out.match(/Re-run NPI check/g)).toHaveLength(2)
   })
 
-  it('reads through the session client, scoped to the clinic, never the service role', async () => {
+  it('reads credentials through the session client, scoped to the clinic; the service role only for the team list and invites', async () => {
     await html()
-    expect(serviceClient).not.toHaveBeenCalled()
+    expect(db.calls.map(c => c.table)).toEqual(expect.arrayContaining(['providers', 'provider_npi_verifications', 'provider_state_licenses']))
+    expect(membersMock).toHaveBeenCalledWith(SERVICE, CLINIC)
+    expect(invitesMock).toHaveBeenCalledWith(SERVICE, CLINIC)
     const providers = db.calls.find(c => c.table === 'providers')!
     expect(providers.filters).toEqual(expect.objectContaining({ clinic_id: CLINIC, is_active: true }))
     expect(providers.filters).not.toHaveProperty('user_id')
@@ -157,15 +171,36 @@ describe('a provider', () => {
   })
 })
 
-it('a medical assistant gets a notice, and nothing is read', async () => {
+it('a medical assistant sees the team read-only, and no credentials are read', async () => {
   user = as('medical_assistant')
   const out = await html()
-  expect(out).toContain('data-testid="team-not-available"')
+  expect(out).toContain('Mia Assistant')
+  expect(out).not.toContain('Add a provider')
+  expect(out).not.toContain('team-provider-')
   expect(db.calls).toHaveLength(0)
+  expect(membersMock).toHaveBeenCalledWith(SERVICE, CLINIC)
+  expect(invitesMock).not.toHaveBeenCalled()
+})
+
+it('a provider sees the team read-only, with no invites read', async () => {
+  user = as('provider')
+  const out = await html()
+  expect(out).toContain('Mia Assistant')
+  expect(out).not.toContain('Add a provider')
+  expect(invitesMock).not.toHaveBeenCalled()
+})
+
+it('the team list could not be read: says so, credentials still shown', async () => {
+  user = as('clinic_admin')
+  membersMock.mockResolvedValue(null)
+  const out = await html()
+  expect(out).toContain('data-testid="team-members-error"')
+  expect(out).toContain('team-provider-')
 })
 
 it('no user: nothing is read', async () => {
   user = null
   await html()
   expect(db.calls).toHaveLength(0)
+  expect(membersMock).not.toHaveBeenCalled()
 })

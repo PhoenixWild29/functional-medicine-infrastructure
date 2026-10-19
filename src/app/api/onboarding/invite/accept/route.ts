@@ -34,6 +34,7 @@ import { recordOnboardingEvent } from '@/lib/onboarding/events'
 import { auditHash, clientIp } from '@/lib/audit/keyed-hash'
 import { inviteAcceptLimiter, INVITE_ACCEPT_RATE_LIMITED_MESSAGE } from '@/lib/onboarding/accept-rate-limit'
 import { createLogin, passwordProblem, removeLogin } from '@/lib/auth/create-login'
+import { isApprovedClinic } from '@/lib/onboarding/approval-guard'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const ip = clientIp(request.headers)
@@ -162,9 +163,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   })
   console.info(`[onboarding/accept] account created | invite=${invite.invite_id} role=${kind}`)
 
+  // Team invites: a clinic admin invited to an approved clinic (Settings >
+  // Team) goes into the app; one invited during onboarding, to the wizard.
+  let next = '/'
+  if (kind === 'clinic_admin') {
+    const { data: clinic, error: clinicReadErr } = await supabase
+      .from('clinics')
+      .select('onboarding_status, is_active')
+      .eq('clinic_id', invite.clinic_id)
+      .maybeSingle()
+    if (clinicReadErr) console.error(`[onboarding/accept] clinic status not read | clinic=${invite.clinic_id}: ${clinicReadErr.message}`)
+    next = isApprovedClinic(clinic) ? '/' : '/onboarding'
+  }
+
   return NextResponse.json({
     email: invite.email,
     role:  kind,
-    next:  kind === 'clinic_admin' ? '/onboarding' : '/',
+    next,
   }, { status: 201 })
 }

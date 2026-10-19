@@ -2,7 +2,8 @@
  * @jest-environment node
  *
  * Compliance C4: Settings shows the Team entry (nav and section) to the
- * clinic admin and to providers. Medical assistants never see it.
+ * clinic admin and to providers. Team invites: medical assistants see it
+ * too, to view the team read-only.
  */
 
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -46,9 +47,9 @@ it('a provider sees it too, to view their own credentials', async () => {
   expect(out).toContain('View my credentials')
 })
 
-it('a medical assistant does not', async () => {
+it('a medical assistant sees it too, to view the team (team invites: read-only)', async () => {
   user = as('medical_assistant')
   const out = renderToStaticMarkup(await SettingsPage())
-  expect(out).not.toContain('settings-team')
-  expect(out).not.toContain('/settings/team')
+  expect(out).toContain('href="/settings/team"')
+  expect(out).toContain('View the team')
 })

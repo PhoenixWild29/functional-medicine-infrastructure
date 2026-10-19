@@ -574,6 +574,8 @@ export type Database = {
           event_id: string
           invite_id: string | null
           note: string | null
+          // Team invites (20261021000001): hand-extended
+          subject_user_id: string | null
         }
         Insert: {
           actor_role?: string | null
@@ -584,6 +586,7 @@ export type Database = {
           event_id?: string
           invite_id?: string | null
           note?: string | null
+          subject_user_id?: string | null
         }
         Update: {
           actor_role?: string | null
@@ -594,6 +597,7 @@ export type Database = {
           event_id?: string
           invite_id?: string | null
           note?: string | null
+          subject_user_id?: string | null
         }
         Relationships: []
       }
@@ -757,6 +761,8 @@ export type Database = {
           email: string
           expires_at: string
           invite_id: string
+          // Team invites (20261021000001): hand-extended
+          invitee_name: string | null
           kind: string
           last_sent_at: string
           provider_id: string | null
@@ -774,6 +780,7 @@ export type Database = {
           email: string
           expires_at: string
           invite_id?: string
+          invitee_name?: string | null
           kind: string
           last_sent_at?: string
           provider_id?: string | null
@@ -791,6 +798,7 @@ export type Database = {
           email?: string
           expires_at?: string
           invite_id?: string
+          invitee_name?: string | null
           kind?: string
           last_sent_at?: string
           provider_id?: string | null
@@ -4543,6 +4551,22 @@ export type Database = {
       }
     }
     Functions: {
+      // Team invites (20261021000001): hand-extended
+      clinic_team_members: {
+        Args: { p_clinic_id: string }
+        Returns: {
+          user_id: string
+          email: string
+          full_name: string | null
+          role: string | null
+          deactivated_at: string | null
+          last_sign_in_at: string | null
+        }[]
+      }
+      set_clinic_member_active: {
+        Args: { p_clinic_id: string; p_user_id: string; p_active: boolean; p_actor: string }
+        Returns: Json
+      }
       backfill_cycle_patterns: {
         Args: never
         Returns: { favorites_updated: number; protocol_items_updated: number }[]

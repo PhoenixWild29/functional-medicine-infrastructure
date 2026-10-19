@@ -15,14 +15,16 @@ export interface InviteForPage {
   clinicName: string
   email:      string
   status:     InviteStatus | 'not_found'
+  /** Team invites: the name the clinic admin typed, or empty. */
+  inviteeName: string
 }
 
 export async function lookupInviteForPage(token: string, expectAdmin: boolean): Promise<InviteForPage> {
-  const notFound: InviteForPage = { kind: expectAdmin ? 'clinic_admin' : 'provider', clinicName: '', email: '', status: 'not_found' }
+  const notFound: InviteForPage = { kind: expectAdmin ? 'clinic_admin' : 'provider', clinicName: '', email: '', status: 'not_found', inviteeName: '' }
   if (!plausibleToken(token)) return notFound
   const { data, error } = await createServiceClient()
     .from('onboarding_invites')
-    .select('kind, email, accepted_at, revoked_at, expires_at, clinics(name)')
+    .select('kind, email, invitee_name, accepted_at, revoked_at, expires_at, clinics(name)')
     .eq('token_hash', hashInviteToken(token))
     .maybeSingle()
   if (error) {
@@ -38,5 +40,6 @@ export async function lookupInviteForPage(token: string, expectAdmin: boolean): 
     clinicName: (data.clinics as { name?: string } | null)?.name ?? 'your clinic',
     email:      data.email,
     status:     inviteStatus(data),
+    inviteeName: (data as { invitee_name?: string | null }).invitee_name ?? '',
   }
 }

@@ -31,6 +31,8 @@ interface Props {
   clinicName: string
   email:      string
   status:     InviteStatus | 'not_found'
+  /** Team invites: the name the clinic admin typed; the invitee can change it. */
+  inviteeName?: string
 }
 
 const UNAVAILABLE: Record<Exclude<Props['status'], 'pending'>, { title: string; body: string }> = {
@@ -40,9 +42,9 @@ const UNAVAILABLE: Record<Exclude<Props['status'], 'pending'>, { title: string; 
   not_found: { title: 'This invite link is not valid', body: 'Check that you copied the whole link, or ask for a new one.' },
 }
 
-export function AcceptInviteForm({ token, kind, clinicName, email, status }: Props) {
+export function AcceptInviteForm({ token, kind, clinicName, email, status, inviteeName = '' }: Props) {
   const router = useRouter()
-  const [fullName, setFullName] = useState('')
+  const [fullName, setFullName] = useState(inviteeName)
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
