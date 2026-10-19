@@ -38,6 +38,7 @@ import { loadAgreementNotice } from '@/lib/agreements/clinic-agreements'
 import { AgreementUpdateBanner } from './_components/agreement-update-banner'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { ProtocolSavedNotice } from './_components/protocol-saved-notice'
+import { platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
 
 export const metadata = {
   title: 'Dashboard',
@@ -219,7 +220,7 @@ export default async function DashboardPage(
     const retailCents     = Math.round((o.retail_price_snapshot     ?? 0) * 100)
     const wholesaleCents  = Math.round((o.wholesale_price_snapshot  ?? 0) * 100)
     const marginCents     = Math.max(0, retailCents - wholesaleCents)
-    const platformFeeCents = Math.round(marginCents * 15 / 100)
+    const platformFeeCents = platformFeeFor(marginCents)   // 0: flat monthly fee billed outside the app
     const clinicPayoutCents = marginCents - platformFeeCents
 
     const snap = o.medication_snapshot as { medication_name?: string } | null

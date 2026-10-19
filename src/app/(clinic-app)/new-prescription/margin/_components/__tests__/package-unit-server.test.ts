@@ -15,6 +15,12 @@ let insertedRow: Record<string, unknown> | null = null
 let formulationRow: Record<string, unknown> = {}
 
 const AUTH_USER = { id: 'user-1', app_metadata: { clinic_id: CLINIC, app_role: 'medical_assistant' } }
+// Pending review (lib/onboarding/approval-guard) is tested in
+// src/__tests__/pending-review-guard.test.ts; the clinic here is approved.
+jest.mock('@/lib/onboarding/approval-guard', () => ({
+  ...jest.requireActual('@/lib/onboarding/approval-guard'),
+  refuseUnlessApproved: async () => null,
+}))
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockImplementation(async () => ({
     auth: {

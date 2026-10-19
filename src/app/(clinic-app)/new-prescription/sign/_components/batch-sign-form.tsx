@@ -404,7 +404,6 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
                     <span>{toCurrency(s.feeCents)}</span>
                   </div>
                 ))}
-                <div className="flex justify-between text-xs text-muted-foreground"><span>Platform fee (15% of margin)</span><span>{toCurrency(totals.platformFeeCents)}</span></div>
                 <div className="flex justify-between text-xs text-emerald-600"><span>Clinic payout</span><span>{toCurrency(totals.clinicPayoutCents)}</span></div>
                 <div className="mt-1 flex justify-between border-t border-border pt-1 font-semibold">
                   <span>Patient total — one payment link</span>

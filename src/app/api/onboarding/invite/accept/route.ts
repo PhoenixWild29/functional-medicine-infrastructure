@@ -33,8 +33,7 @@ import { hashInviteToken, inviteStatus, plausibleToken, type InviteKind } from '
 import { recordOnboardingEvent } from '@/lib/onboarding/events'
 import { auditHash, clientIp } from '@/lib/audit/keyed-hash'
 import { inviteAcceptLimiter, INVITE_ACCEPT_RATE_LIMITED_MESSAGE } from '@/lib/onboarding/accept-rate-limit'
-
-const MIN_PASSWORD_LENGTH = 12
+import { createLogin, passwordProblem, removeLogin } from '@/lib/auth/create-login'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const ip = clientIp(request.headers)
@@ -56,7 +55,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!plausibleToken(token)) return NextResponse.json({ error: 'This invite link is not valid.' }, { status: 404 })
   const errors: Record<string, string> = {}
   if (!fullName) errors['fullName'] = 'Enter your full name.'
-  if (password.length < MIN_PASSWORD_LENGTH) errors['password'] = `Use at least ${MIN_PASSWORD_LENGTH} characters.`
+  const weak = passwordProblem(password)
+  if (weak) errors['password'] = weak
   if (Object.keys(errors).length > 0) return NextResponse.json({ error: 'Check the highlighted fields.', errors }, { status: 400 })
 
   const supabase = createServiceClient()
@@ -106,32 +106,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (error) console.error(`[onboarding/accept] CRITICAL: claim could not be released | invite=${invite.invite_id}: ${error.message}`)
   }
 
-  // 2. The account, with role and clinic in app_metadata.
-  const { data: created, error: createErr } = await supabase.auth.admin.createUser({
-    email:         invite.email,
-    password,
-    email_confirm: true,
-    app_metadata:  appMetadataFor({ role: kind, clinicId: invite.clinic_id }),
-    user_metadata: { full_name: fullName },
+  // 2. The account, with role and clinic in app_metadata, confirmed: the
+  //    invite link proved the address (lib/auth/create-login).
+  const login = await createLogin(supabase, {
+    email: invite.email, password, fullName,
+    appMetadata: appMetadataFor({ role: kind, clinicId: invite.clinic_id }),
   })
-  if (createErr || !created?.user) {
+  if (!login.ok) {
     await release()
-    const msg = createErr?.message ?? 'unknown'
-    if (/already/i.test(msg)) {
+    if (login.reason === 'exists') {
       return NextResponse.json({ error: 'An account with this email already exists. Sign in instead, or ask CompoundIQ for help.' }, { status: 409 })
     }
-    if (/password/i.test(msg)) {
-      return NextResponse.json({ error: 'That password is not strong enough. Try a longer one.', errors: { password: msg } }, { status: 400 })
+    if (login.reason === 'weak_password') {
+      return NextResponse.json({ error: 'That password is not strong enough. Try a longer one.', errors: { password: login.message } }, { status: 400 })
     }
-    console.error(`[onboarding/accept] createUser failed | invite=${invite.invite_id}: ${msg}`)
+    console.error(`[onboarding/accept] createUser failed | invite=${invite.invite_id}: ${login.message}`)
     return NextResponse.json({ error: 'Your account could not be created. Try again.' }, { status: 500 })
   }
-  const userId = created.user.id
+  const userId = login.userId
 
   const rollback = async (why: string) => {
     console.error(`[onboarding/accept] rolling back | invite=${invite.invite_id} user=${userId}: ${why}`)
-    const { error } = await supabase.auth.admin.deleteUser(userId)
-    if (error) console.error(`[onboarding/accept] CRITICAL: user could not be removed | user=${userId}: ${error.message}`)
+    await removeLogin(supabase, userId, 'onboarding/accept')
     await release()
     return NextResponse.json({ error: 'Your account could not be set up. Try again.' }, { status: 500 })
   }

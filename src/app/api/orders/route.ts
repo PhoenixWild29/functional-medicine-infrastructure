@@ -28,6 +28,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { resolveProtocolLinkage, type ProtocolLinkage } from '@/lib/protocols/resolve-instance'
 import { rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
@@ -55,6 +56,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }
+  // Pending review: nothing is ordered, signed or sent until ops approves
+  // the clinic (lib/onboarding/approval-guard).
+  const pendingReview = await refuseUnlessApproved(createServiceClient(), clinicId)
+  if (pendingReview) return pendingReview
   const appRole = getUserRole(user) ?? null
 
   // WO-87 (B1 hotfix): Accept EITHER a legacy catalog item OR a V3.0

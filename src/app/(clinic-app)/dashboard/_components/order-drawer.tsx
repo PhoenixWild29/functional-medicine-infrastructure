@@ -5,8 +5,8 @@
 // ============================================================
 //
 // REQ-GDB-002: Slide-out drawer showing:
-//   - Financial split (wholesale, retail, shipping, platform fee, clinic
-//     payout, patient total) — shipping is the order's stored snapshot, so
+//   - Financial split (wholesale, retail, shipping, clinic payout,
+//     patient total; no platform fee is taken from orders) — shipping is the order's stored snapshot, so
 //     the record reconciles with what checkout charges
 //   - Rx details (read-only; the WO-96 columns the order stores, with the
 //     Review card's labels)
@@ -941,10 +941,6 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Margin</span>
                   <span className="text-foreground">{toCurrency(marginCents)}</span>
-                </div>
-                <div className="flex justify-between mt-0.5">
-                  <span className="text-muted-foreground">Platform fee (15%)</span>
-                  <span className="text-muted-foreground">−{toCurrency(order.platformFeeCents)}</span>
                 </div>
               </div>
               <div className="border-t border-border pt-1.5 flex justify-between font-semibold">

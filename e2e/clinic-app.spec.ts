@@ -1911,9 +1911,10 @@ test.describe('Clinic App — WO-101: vial size is suggested from the Rx and pri
     await expect(page.getByTestId('package-summary')).toHaveText('Package: 5 mL vial (changed by provider) · $285.00')
     const retailAt285 = Math.round(retailAt95 * 285 / 95 * 100) / 100
     await expect(retail).toHaveValue(retailAt285.toFixed(2))
-    // Same integer-cent rule as the form: 15% of the margin, rounded to the cent.
-    const feeAt285 = Math.round((Math.round(retailAt285 * 100) - 28500) * 15 / 100) / 100
-    await expect(summary).toContainText(`$${feeAt285.toFixed(2)}`)
+    // No platform fee is taken: the clinic keeps the whole margin.
+    const marginAt285 = (Math.round(retailAt285 * 100) - 28500) / 100
+    await expect(summary).toContainText(`$${marginAt285.toFixed(2)}`)
+    await expect(summary).not.toContainText('Platform fee')
     // Days supply / dispense still follow the Rx.
     await expect(page.getByTestId('dispense-value')).toHaveText('0.4 mL')
 
@@ -2119,8 +2120,8 @@ test.describe('Clinic App — WO-102: shipping once per pharmacy per order', () 
     await expect(page.getByTestId(`shipping-${TIER4}`)).toContainText('Test Pharmacy Tier4 (cold chain)')
     await expect(page.getByTestId(`shipping-${TIER2}`)).toContainText('$9.00')
     await expect(page.getByTestId('review-subtotal')).toHaveText('$390.00')
-    // 15% of the ($95 + $100) margin — shipping never carries the fee.
-    await expect(page.getByTestId('review-platform-fee')).toHaveText('$29.25')
+    // No platform fee is taken (a flat monthly fee is billed outside the app).
+    await expect(page.getByTestId('review-platform-fee')).toHaveCount(0)
     await expect(page.getByTestId('review-patient-total')).toHaveText('$424.00')
     await expect(page.getByTestId('multi-pharmacy-message')).toHaveText(
       '2 pharmacies → 2 shipping charges ($34.00). Route all to Test Pharmacy Tier2 to save $12.00.',
@@ -2604,9 +2605,9 @@ test.describe('Clinic App — WO-106 a reload does not lose the session', () => 
 //
 // Repricing is WO-107. What is pinned here is the safety: the refusal is
 // on screen BEFORE the signature, and the two places that state the
-// clinic's loss agree. The line card used to compute the platform fee as
-// 15% of a negative margin — a negative fee — so it read -$29.75 against
-// totals of -$35.00, as if the platform rebated 15% of the loss.
+// clinic's loss agree. (The line card once computed a percentage platform
+// fee on a negative margin and read a different loss from the totals; no
+// platform fee is taken now, and both read the margin.)
 test.describe("Clinic App — WO-106 a refill below today's wholesale", () => {
   test.beforeAll(async () => {
     await seedStaticData()
@@ -2684,8 +2685,8 @@ test.describe("Clinic App — WO-106 a refill below today's wholesale", () => {
     await expect(page.getByTestId('review-below-cost-banner')).toContainText('priced below what the pharmacy charges today')
 
     // One loss, stated the same way in both places: retail $60 against
-    // wholesale $95 is -$35.00, and the platform fee on a loss is $0.00.
-    await expect(page.getByTestId('review-platform-fee')).toHaveText('$0.00')
+    // wholesale $95 is -$35.00. No platform fee is taken.
+    await expect(page.getByTestId('review-platform-fee')).toHaveCount(0)
     await expect(page.getByTestId('review-clinic-payout')).toHaveText('$-35.00')
     await expect(page.getByText(/Clinic margin: \$-35\.00/)).toBeVisible()
   })
@@ -3224,16 +3225,17 @@ test.describe('Clinic App — WO-107 practice dashboard', () => {
     const c = (v: number | null) => Math.round(Number(v ?? 0) * 100)
     const revenue = paid.reduce((s, r) => s + c(r.retail_price_snapshot), 0)
     const wholesale = paid.reduce((s, r) => s + c(r.wholesale_price_snapshot), 0)
-    const fee = paid.reduce((s, r) => s + Math.max(0, Math.round((c(r.retail_price_snapshot) - c(r.wholesale_price_snapshot)) * 0.15)), 0)
     const groups = new Set(paid.map(r => r.payment_group_id).filter(Boolean))
     const shipping = paid.filter(r => !r.payment_group_id).reduce((s, r) => s + c(r.shipping_fee), 0) + (groups.size ? 900 : 0)
 
     await loginAs(page, TEST_USERS.clinicAdmin)
     await page.goto('/practice')
     await expect(page.getByTestId('practice-revenue')).toHaveText(money(revenue), { timeout: 20_000 })
-    await expect(page.getByTestId('practice-fee')).toHaveText(money(fee))
+    // No platform fee card: the monthly fee is billed outside the app.
+    await expect(page.getByTestId('practice-fee')).toHaveCount(0)
+    await expect(page.getByTestId('practice-fee-note')).toHaveText('CompoundIQ’s monthly fee is billed separately and is not taken from orders.')
     await expect(page.getByTestId('practice-shipping')).toHaveText(money(shipping))
-    await expect(page.getByTestId('practice-payout')).toHaveText(money(revenue - wholesale - fee))
+    await expect(page.getByTestId('practice-payout')).toHaveText(money(revenue - wholesale))
     await expect(page.getByTestId('practice-scripts')).toHaveText('6')
     // The numbers, spelled out: revenue 559.00, shipping 9 once + 12 = 21.00.
     expect([revenue, shipping]).toEqual([55900, 2100])
@@ -3248,7 +3250,7 @@ test.describe('Clinic App — WO-107 practice dashboard', () => {
       trs.map(tr => Array.from(tr.querySelectorAll('td')).map(td => td.textContent!.trim()).join(',')))
     const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId('practice-export').click()])
     const csv = readFileSync((await download.path())!, 'utf8').trim().split('\n')
-    expect(csv[0]).toBe('Provider,Scripts,Revenue,Wholesale,Platform fee,Margin')
+    expect(csv[0]).toBe('Provider,Scripts,Revenue,Wholesale,Margin')
     expect(csv.slice(1)).toEqual(tableRows)
   })
 

@@ -32,6 +32,10 @@ export interface OpsClinicOnboarding {
   submittedAt:      string | null
   reviewNote:       string | null
   steps:            Record<StepKey, StepStatus>
+  /** 'self_serve' (signed up at /get-started), 'invite', or null (before either). */
+  signupSource?:    string | null
+  /** For a self sign-up: 'clinic' or 'solo_provider'. */
+  signupKind?:      string | null
 }
 
 export interface OpsApprovedClinic {
@@ -55,7 +59,7 @@ export async function loadOpsOnboarding(supabase: SupabaseClient<Database>, now:
       .order('created_at', { ascending: false })
       .limit(200),
     supabase.from('clinics')
-      .select('clinic_id, name, onboarding_status, onboarding_submitted_at, onboarding_review_note')
+      .select('clinic_id, name, onboarding_status, onboarding_submitted_at, onboarding_review_note, signup_source, signup_kind')
       .neq('onboarding_status', 'approved')
       .is('deleted_at', null)
       .order('onboarding_submitted_at', { ascending: false, nullsFirst: false })
@@ -101,6 +105,8 @@ export async function loadOpsOnboarding(supabase: SupabaseClient<Database>, now:
       submittedAt:      c.onboarding_submitted_at,
       reviewNote:       c.onboarding_review_note,
       steps:            fullStatuses((stepsRes.data ?? []).filter(s => s.clinic_id === c.clinic_id)),
+      signupSource:     c.signup_source ?? null,
+      signupKind:       c.signup_kind ?? null,
     })),
     approved: approvedRows.map(r => ({
       clinicId:   r.clinic_id,

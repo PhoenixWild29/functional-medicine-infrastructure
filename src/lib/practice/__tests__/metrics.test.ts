@@ -69,7 +69,8 @@ function directSum(orders: PracticeOrder[], groups: PracticeGroupShipping[], abs
   const paid = orders.filter(o => !notTaken.has(o.status))
   const revenue = paid.reduce((s, o) => s + o.retailCents, 0)
   const wholesale = paid.reduce((s, o) => s + o.wholesaleCents, 0)
-  const fee = paid.reduce((s, o) => s + (o.retailCents > o.wholesaleCents ? Math.round((o.retailCents - o.wholesaleCents) * 0.15) : 0), 0)
+  // No platform fee is taken from orders (flat monthly fee billed outside the app).
+  const fee = 0
   const groupIds = new Set(paid.map(o => o.paymentGroupId).filter(Boolean))
   const shipping = paid.filter(o => !o.paymentGroupId).reduce((s, o) => s + o.shippingFeeCents, 0)
     + groups.filter(g => groupIds.has(g.groupId)).reduce((s, g) => s + g.shippingTotalCents, 0)
@@ -91,9 +92,9 @@ describe('the totals reconcile to a direct sum over the same orders', () => {
   it('the numbers, spelled out', () => {
     const t = practiceTotals(ORDERS, GROUPS, { absorbShipping: false })
     expect(t.revenueCents).toBe(19000 + 13000 + 15000 + 12000 + 11000 + 9000)             // 79,000
-    expect(t.platformFeeCents).toBe(1425 + 975 + 900 + 600 + 900 + 0)                      // 4,800
+    expect(t.platformFeeCents).toBe(0)                                                      // no platform fee
     expect(t.shippingCents).toBe(2200 + 900 + 1200)                                         // g-1 once, g-2 once, solo
-    expect(t.clinicPayoutCents).toBe(79000 - (9500 + 6500 + 9000 + 8000 + 5000 + 9500) - 4800)
+    expect(t.clinicPayoutCents).toBe(79000 - (9500 + 6500 + 9000 + 8000 + 5000 + 9500))
     expect(t.scripts).toBe(13)
     expect(t.drafts).toBe(1)
   })
@@ -151,9 +152,9 @@ describe('breakdowns and the CSV export', () => {
   it('the CSV is the table: same rows, same order, same numbers', () => {
     const rows = breakdown(ORDERS, 'pharmacy')
     const csv = breakdownCsv(rows, 'pharmacy').trim().split('\n')
-    expect(csv[0]).toBe('Pharmacy,Scripts,Revenue,Wholesale,Platform fee,Margin')
+    expect(csv[0]).toBe('Pharmacy,Scripts,Revenue,Wholesale,Margin')
     expect(csv.slice(1)).toEqual(rows.map(r =>
-      [r.label, r.scripts, (r.revenueCents / 100).toFixed(2), (r.wholesaleCents / 100).toFixed(2), (r.platformFeeCents / 100).toFixed(2), (r.marginCents / 100).toFixed(2)].join(',')))
+      [r.label, r.scripts, (r.revenueCents / 100).toFixed(2), (r.wholesaleCents / 100).toFixed(2), (r.marginCents / 100).toFixed(2)].join(',')))
   })
 
   it('quotes a label with a comma', () => {

@@ -30,6 +30,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }         from '@/lib/supabase/server'
 import { createServiceClient }        from '@/lib/supabase/service'
+import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { generateGroupCheckoutToken } from '@/lib/auth/checkout-token'
 import { serverEnv }                  from '@/lib/env'
 import { logPhiAccess } from '@/lib/audit/phi-access'
@@ -78,6 +79,10 @@ export async function GET(
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }
+  // Pending review: nothing is ordered, signed or sent until ops approves
+  // the clinic (lib/onboarding/approval-guard).
+  const pendingReview = await refuseUnlessApproved(createServiceClient(), clinicId)
+  if (pendingReview) return pendingReview
 
   const supabase = createServiceClient()
 

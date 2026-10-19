@@ -25,7 +25,8 @@
 // session app_role claim.
 //
 // WO-102: totals show Subtotal, Shipping per pharmacy (once per pharmacy,
-// never per prescription), Platform fee, Clinic payout and Patient total.
+// never per prescription), Clinic payout and Patient total. No platform
+// fee is taken from orders (a flat monthly fee is billed separately).
 // Sending creates every draft first, has the server allocate shipping
 // across the send (POST /api/orders/shipping), and only then signs — so
 // each pharmacy's shipping sits on one order before any payment link goes
@@ -86,9 +87,10 @@ import { structuredLineInputs } from '@/lib/orders/draft-edit'
 import { SaveFavoriteButton } from '../../_components/save-favorite-button'
 import { splitDose } from '@/lib/orders/dose'
 import { formatDoseWithMg } from '@/lib/orders/dose-display'
-import { bundleTotals } from '@/lib/orders/shipping'
+import { bundleTotals, platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
 import { useBundleShipping, ShippingLines, MultiPharmacyNoticeBanner } from './bundle-shipping'
 import { checkSignature, signatureFromPad, SIGNATURE_REJECTION_COPY, type SignatureCheck } from '@/lib/orders/signature'
+import { PENDING_REVIEW_CODE, refusalText } from '@/lib/onboarding/pending-review-copy'
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -96,13 +98,9 @@ function toCurrency(cents: number): string {
   return '$' + (cents / 100).toFixed(2)
 }
 
-function calcPlatformFeeCents(marginCents: number): number {
-  // Floored at zero, exactly as bundleTotals does it. Unfloored, a line
-  // priced below cost produced a NEGATIVE fee, and the card read a
-  // smaller loss than the totals — as if the platform rebated 15% of the
-  // clinic's loss. One loss, stated one way.
-  return marginCents > 0 ? Math.round(marginCents * 15 / 100) : 0
-}
+// The platform's share of a line's margin: lib/orders/shipping
+// platformFeeCents(), the one source bundleTotals uses too, so the card and
+// the totals state one loss one way. It is 0 (flat monthly fee).
 
 // fix/review-send-flow: a session line is un-sendable when it carries
 // no price or a too-short sig. Both are rejected by /api/orders (400:
@@ -655,10 +653,9 @@ export function BatchReviewForm({ isProvider }: Props) {
   const allergyStatusUnknown = patient?.allergiesLoadFailed === true || allergiesLoading
 
   // Calculate totals — WO-102: shipping once per pharmacy, outside the
-  // margin (the platform fee is never charged on it).
+  // margin.
   const totals = bundleTotals(prescriptions, bundle.shipping.totalCents, { absorbShipping: bundle.absorbShipping })
   const totalRetailCents = totals.subtotalCents
-  const totalPlatformFeeCents = totals.platformFeeCents
   const totalClinicPayoutCents = totals.clinicPayoutCents
 
   // fix/review-send-flow: pre-flight validation. These lines would 400
@@ -741,6 +738,7 @@ export function BatchReviewForm({ isProvider }: Props) {
       })
       if (!sendRes.ok) {
         const err = await sendRes.json().catch(() => ({})) as { error?: string; code?: string }
+        if (err.code === PENDING_REVIEW_CODE) throw new Error(refusalText(err, ''))
         const message = err.error ?? 'Unknown error'
         throw new Error(/nothing was signed/i.test(message) ? message : `${message} Nothing was signed.`)
       }
@@ -781,8 +779,9 @@ export function BatchReviewForm({ isProvider }: Props) {
         body: JSON.stringify(orderPostBody(rx, patient, provider, effectiveDetails(rx))),
       })
       if (!orderRes.ok) {
-        const err = await orderRes.json()
-        throw new Error(`Order ${i + 1} (${rx.medicationName}) failed: ${err.error ?? 'Unknown error'}`)
+        const err = await orderRes.json().catch(() => ({})) as { error?: string; code?: string }
+        // Pending review: the banner's words as they are.
+        throw new Error(refusalText(err, `Order ${i + 1} (${rx.medicationName}) failed: `))
       }
       const { orderId } = await orderRes.json() as { orderId: string }
       createdOrderIdsRef.current.set(rx.id, orderId)
@@ -932,7 +931,7 @@ export function BatchReviewForm({ isProvider }: Props) {
 
         {prescriptions.map((rx, index) => {
           const marginCents = rx.retailCents - rx.wholesaleCents
-          const platformFeeCents = calcPlatformFeeCents(marginCents)
+          const platformFeeCents = platformFeeFor(marginCents)
           const clinicMarginCents = marginCents - platformFeeCents
           const block = sendBlock(rx)
           const invalid = block !== null
@@ -1125,11 +1124,7 @@ export function BatchReviewForm({ isProvider }: Props) {
         </div>
         {/* WO-102: shipping per pharmacy — once per pharmacy, not per Rx */}
         <ShippingLines shipping={bundle.shipping} absorbShipping={bundle.absorbShipping} rates={bundle.rates} unpriced={bundle.unpriced} pending={bundle.pending} />
-        <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-          <span>Platform fee (15% of margin, not charged on shipping)</span>
-          <span data-testid="review-platform-fee">{toCurrency(totalPlatformFeeCents)}</span>
-        </div>
-        <div className="flex items-center justify-between text-xs text-emerald-600 font-medium">
+        <div className="mt-2 flex items-center justify-between text-xs text-emerald-600 font-medium">
           <span>Clinic payout</span>
           <span data-testid="review-clinic-payout">{toCurrency(totalClinicPayoutCents)}</span>
         </div>

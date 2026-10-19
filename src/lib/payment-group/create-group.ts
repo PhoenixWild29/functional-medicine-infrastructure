@@ -13,7 +13,7 @@
 import type { createServiceClient } from '@/lib/supabase/service'
 import { createStripeClient }       from '@/lib/stripe/client'
 import { bundleDescription }        from '@/lib/stripe/phi-guard'
-import { computeBundleShipping, dollarsToCents, stripeSplit } from '@/lib/orders/shipping'
+import { computeBundleShipping, dollarsToCents, platformFeeCents, stripeSplit } from '@/lib/orders/shipping'
 import { loadShippingRates }        from '@/lib/orders/apply-bundle-shipping'
 
 export interface CreateGroupInput {
@@ -146,14 +146,14 @@ export async function createPaymentGroup(input: CreateGroupInput): Promise<Creat
     const marginCents    = Math.max(0, retailCents - wholesaleCents)
     retailTotalCents      += retailCents
     wholesaleTotalCents   += wholesaleCents
-    platformFeeTotalCents += Math.round(marginCents * 15 / 100)
+    platformFeeTotalCents += platformFeeCents(marginCents)
   }
 
   // WO-102: the group ships once per pharmacy across its orders (cold
   // chain covers a pharmacy's items when any needs it; the free-shipping
   // threshold applies to that pharmacy's subtotal). The patient pays it at
   // cost unless the clinic absorbs it; it passes through the application
-  // fee with the wholesale and never carries the 15%.
+  // fee with the wholesale. No platform fee is taken on anything.
   let shippingTotalCents = 0
   let absorbShipping = false
   try {
