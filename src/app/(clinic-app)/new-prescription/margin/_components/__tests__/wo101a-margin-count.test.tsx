@@ -5,7 +5,7 @@
  *   "Package: 2 × 5 mL vials (suggested for 90 days) · $570.00"
  *
  * The provider can change the package or the count; either recomputes
- * wholesale, retail, platform fee and clinic margin. Count 1 reads
+ * wholesale, retail and clinic margin. Count 1 reads
  * exactly as WO-101. Hidden only when the pharmacy has one package and
  * one of it covers the Rx.
  */
@@ -121,8 +121,8 @@ describe('MarginBuilderForm — WO-101a package count', () => {
     expect(lockedWholesale()).toBe('$570.00')
     // 100% default markup on the total.
     expect(screen.getByLabelText(/Retail Price/)).toHaveValue(1140)
-    expect(marginSummary()).toContain('$85.50')    // 15% of $570
-    expect(marginSummary()).toContain('$484.50')
+    expect(marginSummary()).not.toMatch(/platform fee|15%/i)   // no platform fee is taken
+    expect(marginSummary()).toContain('$570.00')
     expect(screen.queryByText(/does not cover/)).not.toBeInTheDocument()
   })
 
@@ -138,8 +138,8 @@ describe('MarginBuilderForm — WO-101a package count', () => {
     expect(screen.getByTestId('package-summary')).toHaveTextContent('Package: 3 × 5 mL vials (changed by provider) · $855.00')
     expect(lockedWholesale()).toBe('$855.00')
     expect(screen.getByLabelText(/Retail Price/)).toHaveValue(1710)   // 2× markup kept
-    expect(marginSummary()).toContain('$128.25')   // 15% of $855
-    expect(marginSummary()).toContain('$726.75')
+    expect(marginSummary()).not.toMatch(/platform fee|15%/i)   // no platform fee is taken
+    expect(marginSummary()).toContain('$855.00')
   })
 
   it('the count is clamped to 1..20', () => {

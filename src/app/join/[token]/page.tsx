@@ -8,12 +8,16 @@
 // self-intake flow in sign-up mode with the clinic's name, and nothing
 // about any patient. A link that is turned off, revoked or unknown shows
 // one plain message (an unknown token is not told apart); a database error
-// is not shown as inactive.
+// is not shown as inactive. A link whose clinic is not approved yet (or is
+// switched off) shows the same plain message: the clinic is checked here
+// before the form renders (lib/onboarding/clinic-approval), and the 410 on
+// submit stays as the backstop.
 
 import type { Metadata } from 'next'
 import { createServiceClient } from '@/lib/supabase/service'
 import { resolveSignupLink } from '@/lib/intake/signup-links'
 import { IntakeFlow } from '@/app/intake/[token]/_components/intake-flow'
+import { clinicApproval } from '@/lib/onboarding/clinic-approval'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,13 +28,15 @@ export const metadata: Metadata = {
 
 export default async function JoinPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
-  const link = await resolveSignupLink(createServiceClient(), token)
+  const supabase = createServiceClient()
+  const link = await resolveSignupLink(supabase, token)
+  const approval = link.state === 'open' ? (await clinicApproval(supabase, link.clinicId)).state : null
 
-  if (link.state === 'open') {
+  if (link.state === 'open' && approval === 'approved') {
     return <IntakeFlow token={token} clinicName={link.clinicName} variant="signup" />
   }
 
-  const copy = link.state === 'unavailable'
+  const copy = link.state === 'unavailable' || approval === 'unavailable'
     ? { title: 'This page could not be opened right now', body: 'Please try again in a few minutes.' }
     : { title: 'This link is no longer active', body: 'This link is no longer active. Contact your clinic.' }
   return (

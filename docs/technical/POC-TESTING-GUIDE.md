@@ -117,7 +117,7 @@ The flow has a 3-step progress indicator (Patient & Provider → Add Prescriptio
 
 **Step 2 — Margin & Pricing** (`/new-prescription/margin`)
 - Wholesale cost locked and read-only. Quick multiplier buttons (1.5x, 2x, 2.5x, 3x)
-- Real-time margin calculation: margin %, platform fee, est. clinic margin
+- Real-time margin calculation: margin %, est. clinic margin (no platform fee line: no percentage platform fee is taken from orders. CompoundIQ charges each clinic a flat monthly fee under a signed order form, billed separately. The Stripe application fee is pharmacy wholesale plus shipping only)
 - Enter prescription directions (Sig) — minimum 10 characters
 - Three action buttons:
   - **"Add & Search Another"** — saves this prescription and returns to Step 1 for another medication
@@ -126,7 +126,7 @@ The flow has a 3-step progress indicator (Patient & Provider → Add Prescriptio
 
 **Step 3 — Batch Review & Sign** (`/new-prescription/review`)
 - All prescriptions in the session displayed with medication, pharmacy, pricing, and sig
-- Combined totals: total retail, total platform fee, total est. clinic margin
+- Combined totals: total retail, shipping, clinic payout, patient total (no platform fee)
 - Single provider signature pad — one signature covers all prescriptions
 - "Sign & Send All" sends payment links for every prescription
 

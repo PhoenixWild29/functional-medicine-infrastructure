@@ -9,7 +9,9 @@
 //
 //   charge           platform  + what the patient paid
 //   clinic_transfer  clinic    + charge less the application fee
-//   platform_fee     platform  + 15% of the margin
+//   platform_fee     platform  + the platform's share: none under the flat
+//                               monthly fee (PLATFORM_FEE_PCT 0), so no line
+//                               is written; lines from before keep their values
 //   pharmacy_payable pharmacy  + wholesale + shipping, and a
 //                                pharmacy_payables row ('owed')
 //
@@ -131,7 +133,8 @@ export async function writePaymentLines(supabase: Supabase, input: PaymentLinesI
       lines.push({ ...base, entry_type, party, amount_cents, stripe_object_id, line_key: lineKey(entry_type, party, order.order_id, groupId) })
     add('charge', 'platform', split.chargeCents, input.stripeObjectId)
     add('clinic_transfer', 'clinic', split.clinicTransferCents, input.stripeObjectId)
-    add('platform_fee', 'platform', split.platformFeeCents, input.stripeObjectId)
+    // No platform fee is taken (flat monthly fee): no zero line is written.
+    if (split.platformFeeCents !== 0) add('platform_fee', 'platform', split.platformFeeCents, input.stripeObjectId)
     add('pharmacy_payable', 'pharmacy', split.pharmacyPayableCents, input.stripeObjectId)
     if (order.pharmacy_id) {
       payables.push({
@@ -201,8 +204,38 @@ export interface RefundLedgerInput {
  * off its payable while it is unpaid; a full reversal voids it. Only the
  * write that inserted the lines adjusts the payable. Throws on failure.
  */
+type OrderSplit = ReturnType<typeof computeOrderSplit>
+
+/**
+ * The split an order was actually paid under: its recorded payment lines
+ * when it has them (an order paid under the old 15% fee keeps that
+ * split), otherwise the split computed from its snapshots today. Refunds
+ * are reversed against it, as Stripe reverses the transfer and refunds
+ * the application fee that were really taken.
+ */
+async function orderSplit(supabase: Supabase, o: LedgerOrder, absorbShipping: boolean | undefined): Promise<OrderSplit> {
+  const computed = computeOrderSplit(o, absorbShipping)
+  const { data, error } = await supabase
+    .from('ledger_entries')
+    .select('entry_type, party, amount_cents')
+    .eq('order_id', o.order_id)
+    .in('entry_type', ['charge', 'clinic_transfer', 'platform_fee', 'pharmacy_payable'])
+  if (error) throw new Error(`ledger_entries: ${error.message}`)
+  const rows = (data ?? []) as Array<{ entry_type: string; amount_cents: number }>
+  const sum = (t: string) => rows.filter(r => r.entry_type === t).reduce((a, r) => a + Number(r.amount_cents), 0)
+  const charge = sum('charge')
+  if (charge <= 0) return computed
+  return {
+    ...computed,
+    chargeCents:          charge,
+    clinicTransferCents:  sum('clinic_transfer'),
+    platformFeeCents:     sum('platform_fee'),
+    pharmacyPayableCents: sum('pharmacy_payable'),
+  }
+}
+
 async function writeRefundForOrder(
-  supabase: Supabase, o: LedgerOrder, split: ReturnType<typeof computeOrderSplit>,
+  supabase: Supabase, o: LedgerOrder, split: OrderSplit,
   refundId: string, refundCents: number, currency: string,
 ): Promise<number> {
   const parts = prorateRefund(split, refundCents)
@@ -218,7 +251,7 @@ async function writeRefundForOrder(
     line('reversal', 'clinic', -parts.clinic),
     line('reversal', 'platform', -parts.platform),
     line('reversal', 'pharmacy', -parts.pharmacy),
-  ])
+  ].filter(l => l.entry_type === 'refund' || l.amount_cents !== 0))
   // Already recorded (the same refund seen again): the payable was adjusted then.
   if (inserted === 0) return 0
 
@@ -254,7 +287,7 @@ export async function recordRefundLedger(supabase: Supabase, input: RefundLedger
     if (!order) throw new Error('order not found')
     const o = order as unknown as LedgerOrder
     const absorb = await loadAbsorbShipping(supabase, [o.clinic_id])
-    const split = computeOrderSplit(o, absorb.get(o.clinic_id))
+    const split = await orderSplit(supabase, o, absorb.get(o.clinic_id))
     const inserted = await writeRefundForOrder(supabase, o, split, input.refundId, input.amountCents ?? split.chargeCents, input.currency)
     return { ok: true, inserted }
   } catch (err) {
@@ -291,7 +324,7 @@ export async function recordWebhookRefundLedger(supabase: Supabase, input: Webho
     const orders = ((data ?? []) as unknown as LedgerOrder[]).sort((a, b) => a.order_id.localeCompare(b.order_id))
     if (orders.length === 0) throw new Error('no orders found for the refund')
     const absorb = await loadAbsorbShipping(supabase, orders.map(o => o.clinic_id))
-    const splits = orders.map(o => computeOrderSplit(o, absorb.get(o.clinic_id)))
+    const splits = await Promise.all(orders.map(o => orderSplit(supabase, o, absorb.get(o.clinic_id))))
     const total = splits.reduce((a, s) => a + s.chargeCents, 0)
     let left = input.amountCents
     let inserted = 0

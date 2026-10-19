@@ -165,15 +165,15 @@ describe('planReroute — re-pricing a line at the target', () => {
   })
 })
 
-describe('stripeSplit — payment intent amount = subtotal + shipping; fee never on shipping', () => {
-  it('pass-through: amount includes shipping; application fee = wholesale + 15% margin + shipping at cost', () => {
+describe('stripeSplit — payment intent amount = subtotal + shipping; no platform fee', () => {
+  it('pass-through: amount includes shipping; application fee = wholesale + shipping at cost, no platform share', () => {
     expect(stripeSplit({ retailCents: 19000, wholesaleCents: 9500, shippingCents: 2500 })).toEqual({
       amountCents:         21500,
-      applicationFeeCents: 9500 + 1425 + 2500,
+      applicationFeeCents: 9500 + 2500,
     })
   })
 
-  it('the 15% is identical with and without shipping', () => {
+  it('shipping passes through the application fee at cost', () => {
     const a = stripeSplit({ retailCents: 19000, wholesaleCents: 9500, shippingCents: 0 })
     const b = stripeSplit({ retailCents: 19000, wholesaleCents: 9500, shippingCents: 2500 })
     expect(b.applicationFeeCents - a.applicationFeeCents).toBe(2500)
@@ -183,7 +183,7 @@ describe('stripeSplit — payment intent amount = subtotal + shipping; fee never
   it('clinic absorbs: patient pays the subtotal, the shipping still reaches the pharmacy out of the clinic share', () => {
     expect(stripeSplit({ retailCents: 19000, wholesaleCents: 9500, shippingCents: 2500, absorbShipping: true })).toEqual({
       amountCents:         19000,
-      applicationFeeCents: 13425,
+      applicationFeeCents: 9500 + 2500,
     })
   })
 

@@ -476,12 +476,12 @@ describe('POST /api/checkout/payment-group — happy path', () => {
     expect(body.totalCents).toBe(30000)
     expect(body.orderCount).toBe(2)
 
-    // application_fee_amount = (60*100 + (40*100 * 0.15)) + (100*100 + (100*100 * 0.15))
-    //                       = 6600 + 11500 = 18100
+    // No platform fee: application_fee_amount = the wholesale the platform
+    // pays on to the pharmacy = 60*100 + 100*100 = 16000
     expect(stripeCreatePiMock).toHaveBeenCalledWith(
       expect.objectContaining({
         amount: 30000,
-        application_fee_amount: 18100,
+        application_fee_amount: 16000,
       }),
       expect.objectContaining({ idempotencyKey: 'checkout-group-pi-v2-group-uuid-new' }),
     )
@@ -616,9 +616,9 @@ describe('POST /api/checkout/payment-group — WO-102 shipping', () => {
     expect((await res.json() as { totalCents: number }).totalCents).toBe(32000 + 3400)
 
     expect(groupInsertMock).toHaveBeenCalledWith(expect.objectContaining({ total_cents: 35400, shipping_total: 34 }))
-    // application fee = wholesale (16000) + 15% of margin (1425 + 975) + shipping at cost (3400)
+    // application fee = wholesale (16000) + shipping at cost (3400); no platform fee
     expect(stripeCreatePiMock).toHaveBeenCalledWith(
-      expect.objectContaining({ amount: 35400, application_fee_amount: 16000 + 2400 + 3400 }),
+      expect.objectContaining({ amount: 35400, application_fee_amount: 16000 + 3400 }),
       expect.anything(),
     )
   })
@@ -654,7 +654,7 @@ describe('POST /api/checkout/payment-group — WO-102 shipping', () => {
     expect(res.status).toBe(201)
     expect(groupInsertMock).toHaveBeenCalledWith(expect.objectContaining({ total_cents: 32000, shipping_total: 22 }))
     expect(stripeCreatePiMock).toHaveBeenCalledWith(
-      expect.objectContaining({ amount: 32000, application_fee_amount: 16000 + 2400 + 2200 }),
+      expect.objectContaining({ amount: 32000, application_fee_amount: 16000 + 2200 }),
       expect.anything(),
     )
   })

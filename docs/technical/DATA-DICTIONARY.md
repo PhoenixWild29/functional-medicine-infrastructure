@@ -307,7 +307,7 @@ The central order table. Contains the prescription, pricing, and fulfillment sta
 | **Snapshot fields (frozen at AWAITING_PAYMENT):** | | |
 | wholesale_price_snapshot | NUMERIC(10,2) | Locked wholesale cost at time of signature |
 | retail_price | NUMERIC(10,2) | Patient-facing price set by the clinic |
-| platform_fee | NUMERIC(10,2) | CompoundIQ's fee (15% of margin spread) |
+| platform_fee | (not stored) | Not a column: no percentage platform fee is taken from orders. CompoundIQ charges each clinic a flat monthly fee under a signed order form, billed separately. The Stripe application fee is pharmacy wholesale plus shipping only. |
 | medication_name_snapshot | TEXT | Locked medication name |
 | form_snapshot / strength_snapshot | TEXT | Locked formulation details |
 | pharmacy_name_snapshot | TEXT | Locked pharmacy name |

@@ -124,19 +124,19 @@ describe('allocateShippingToOrders — per-order snapshots sum to the bundle', (
   })
 })
 
-describe('bundleTotals — platform fee is never charged on shipping', () => {
+describe('bundleTotals — no platform fee; shipping outside the margin', () => {
   const lines = [{ retailCents: 19000, wholesaleCents: 9500 }, { retailCents: 13000, wholesaleCents: 6500 }]
 
-  it('pass-through (default): patient total = subtotal + shipping; fee on margin only', () => {
+  it('pass-through (default): patient total = subtotal + shipping; payout = margin', () => {
     const t = bundleTotals(lines, 3400)
     expect(t).toEqual({
       subtotalCents:        32000,
       wholesaleCents:       16000,
       shippingCents:        3400,
-      platformFeeCents:     2400,    // 15% × $95 + 15% × $65 — shipping excluded
+      platformFeeCents:     0,       // flat monthly fee billed outside the app
       patientShippingCents: 3400,
       patientTotalCents:    35400,
-      clinicPayoutCents:    13600,   // $160 margin − $24 fee
+      clinicPayoutCents:    16000,   // the $160 margin
     })
   })
 
@@ -149,8 +149,8 @@ describe('bundleTotals — platform fee is never charged on shipping', () => {
     expect(t).toEqual(expect.objectContaining({
       patientShippingCents: 0,
       patientTotalCents:    32000,
-      platformFeeCents:     2400,
-      clinicPayoutCents:    13600 - 3400,
+      platformFeeCents:     0,
+      clinicPayoutCents:    16000 - 3400,
     }))
   })
 })

@@ -26,31 +26,8 @@ import { PENDING_REVIEW_CODE, PENDING_REVIEW_MESSAGE } from './pending-review-co
 export { PENDING_REVIEW_CODE, PENDING_REVIEW_MESSAGE }
 export const APPROVAL_UNAVAILABLE_MESSAGE = 'We could not check your clinic just now. Nothing was saved. Try again.'
 
-export type ClinicApproval =
-  | { state: 'approved' }
-  | { state: 'pending'; onboardingStatus: string | null }
-  | { state: 'unavailable' }
-
-export function isApprovedClinic(row: { onboarding_status?: string | null; is_active?: boolean | null } | null | undefined): boolean {
-  return row?.onboarding_status === 'approved' && row?.is_active === true
-}
-
-export async function clinicApproval(
-  supabase: SupabaseClient<Database>,
-  clinicId: string,
-): Promise<ClinicApproval> {
-  const { data, error } = await supabase
-    .from('clinics')
-    .select('onboarding_status, is_active')
-    .eq('clinic_id', clinicId)
-    .maybeSingle()
-  if (error) {
-    console.error(`[approval-guard] clinic could not be read | clinic=${clinicId}:`, error.message)
-    return { state: 'unavailable' }
-  }
-  if (isApprovedClinic(data)) return { state: 'approved' }
-  return { state: 'pending', onboardingStatus: data?.onboarding_status ?? null }
-}
+export { clinicApproval, isApprovedClinic, type ClinicApproval } from './clinic-approval'
+import { clinicApproval } from './clinic-approval'
 
 /**
  * null when the clinic is approved; otherwise the response to return

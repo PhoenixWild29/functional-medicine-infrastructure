@@ -116,7 +116,7 @@ describe('a refund made in the Stripe Dashboard', () => {
     const { ledgerRows } = world({ orders: [order('o-1')] })
     await run(stripeMock([refund()]))
 
-    expect(ledgerRows).toHaveLength(4)
+    expect(ledgerRows).toHaveLength(3)   // refund + clinic and pharmacy reversals (no platform fee)
     expect(ledgerRows.every(r => r['source_event_id'] === 're_dash' && r['stripe_object_id'] === 're_dash' && r['order_id'] === 'o-1')).toBe(true)
     expect(ledgerRows.find(r => r['entry_type'] === 'refund')).toEqual(expect.objectContaining({ party: 'platform', amount_cents: -20900 }))
     expect(sum(ledgerRows.filter(r => r['entry_type'] === 'reversal'))).toBe(-20900)
@@ -141,7 +141,7 @@ describe('a refund made in the Stripe Dashboard', () => {
     const { ledgerRows } = world({ orders: [order('o-1')] })
     await run(stripeMock([refund()]))
     await recordRefundInLedger({ refundId: 're_dash', paymentIntentId: 'pi_1', chargeId: 'ch_1', amountCents: 20900, currency: 'usd', orderIds: ['o-1'], paymentGroupId: null, reversedByWebhook: true })
-    expect(ledgerRows).toHaveLength(4)
+    expect(ledgerRows).toHaveLength(3)   // refund + clinic and pharmacy reversals (no platform fee)
     expect(payableUpdates()).toHaveLength(1)
   })
 })
@@ -150,11 +150,11 @@ describe('an API refund followed by its charge.refunded webhook', () => {
   it('is written once: the webhook finds the lines the API path wrote, and the payable is adjusted once', async () => {
     const { ledgerRows } = world({ orders: [order('o-1', { status: 'REFUNDED' })] })
     // The ops Cancel + Refund action (or the retry cron) records it first.
-    expect(await recordRefundLedger(db.client, { orderId: 'o-1', refundId: 're_api', amountCents: null, currency: 'usd' })).toEqual({ ok: true, inserted: 4 })
+    expect(await recordRefundLedger(db.client, { orderId: 'o-1', refundId: 're_api', amountCents: null, currency: 'usd' })).toEqual({ ok: true, inserted: 3 })
 
     await run(stripeMock([refund({ id: 're_api', transfer_reversal: 'trr_auto' as never })]))
 
-    expect(ledgerRows).toHaveLength(4)
+    expect(ledgerRows).toHaveLength(3)   // refund + clinic and pharmacy reversals (no platform fee)
     expect(ledgerRows.every(r => r['source_event_id'] === 're_api')).toBe(true)
     expect(payableUpdates()).toHaveLength(1)
   })

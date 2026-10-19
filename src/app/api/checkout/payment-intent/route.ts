@@ -8,8 +8,9 @@
 //
 // REQ-PSR-001: Single PaymentIntent per order — idempotent retrieval if
 //   stripe_payment_intent_id already set on the order.
-// REQ-PSR-002: Connect split routing via application_fee_amount (platform 15%
-//   of margin) and transfer_data.destination (clinic Stripe Connect account).
+// REQ-PSR-002: Connect split routing via application_fee_amount (what the
+//   platform pays on to the pharmacy) and transfer_data.destination (clinic
+//   Stripe Connect account). No platform fee is taken (flat monthly fee).
 // REQ-PSR-005: Idempotent — returns existing PI if order already has one.
 // REQ-OAS-008 / REQ-PSR-008: Zero PHI in Stripe metadata — only order_id,
 //   clinic_id, and platform identifier permitted.
@@ -32,7 +33,7 @@ import { verifyCheckoutToken } from '@/lib/auth/checkout-token'
 import { createStripeClient } from '@/lib/stripe/client'
 import { NEUTRAL_DESCRIPTION } from '@/lib/stripe/phi-guard'
 import { createServiceClient } from '@/lib/supabase/service'
-import { stripeSplit } from '@/lib/orders/shipping'
+import { platformFeeCents, stripeSplit } from '@/lib/orders/shipping'
 
 // PR #15: syntactic email validation (was for Stripe receipt_email; C7
 // stopped sending it to Stripe).
@@ -194,31 +195,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const wholesaleCents = Math.round((order.wholesale_price_snapshot ?? 0) * 100)
   const marginCents    = Math.max(0, retailCents - wholesaleCents)
 
-  // REQ-PSR-002: Platform fee = 15% of margin; clinic receives 85% of margin.
+  // REQ-PSR-002: Stripe Connect split. The patient is charged retail; the
+  // platform retains `application_fee_amount` to pay the pharmacy; the rest
+  // goes to the clinic's Connect account. No platform fee is taken
+  // (platformFeeCents() is 0: CompoundIQ bills a flat monthly fee outside
+  // the app), so:
   //
-  // Platform responsibilities: pay wholesale to pharmacy + retain 15% of margin.
-  // Stripe Connect splits: charge patient `retailCents`, retain `application_fee_amount`
-  // for platform, transfer remainder to clinic's Connect account.
+  //   application_fee_amount = wholesale (+ shipping)
+  //   clinic receives        = retail − wholesale  (− shipping when absorbed)
   //
-  // application_fee_amount = wholesale + 15% of margin
-  //   → Platform retains wholesale (covers pharmacy payment) + its 15% earn.
-  //   → Clinic Connect receives: retail − (wholesale + 15% margin) = 85% of margin ✓
-  //
-  // Example: retail=$100, wholesale=$60, margin=$40
-  //   platformFee = $60 + $6 = $66 retained by platform
-  //   clinic receives = $100 − $66 = $34 = 85% × $40 ✓
+  // Example: retail=$100, wholesale=$60 → fee $60, clinic receives $40.
   //
   // WO-102: shipping (orders.shipping_fee — once per pharmacy per bundle)
   // is added to the charge unless the clinic absorbs it, and passes through
-  // the application fee at cost with the wholesale; the 15% never applies
-  // to it. See stripeSplit.
+  // the application fee at cost with the wholesale. See stripeSplit.
   const shippingCents = Math.round((order.shipping_fee ?? 0) * 100)
-  const { amountCents, applicationFeeCents: platformFeeCents } = stripeSplit({
+  const { amountCents, applicationFeeCents } = stripeSplit({
     retailCents,
     wholesaleCents,
     shippingCents,
     absorbShipping:   clinic.absorb_shipping === true,
-    platformFeeCents: Math.round(marginCents * 15 / 100),
+    platformFeeCents: platformFeeCents(marginCents),
   })
 
   try {
@@ -228,8 +225,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // BLK-02: Stripe idempotency key scoped to orderId prevents duplicate PIs on
     //   concurrent requests (e.g., double-tap on mobile, network retry). Stripe
     //   returns the same PI object for all calls sharing the same idempotency key.
-    // REQ-PSR-002: application_fee_amount = wholesale + 15% of margin (platform retains);
-    //              transfer_data.destination = clinic Connect account (gets 85% of margin).
+    // REQ-PSR-002: application_fee_amount = wholesale + shipping (paid on to the
+    //              pharmacy; no platform fee); transfer_data.destination = clinic
+    //              Connect account (gets the rest).
     // REQ-OAS-008 / REQ-PSR-008: Zero PHI in metadata.
     //
     // POC mode: if the clinic's Connect account is a placeholder (not yet onboarded),
@@ -241,7 +239,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         amount:   amountCents,
         currency: 'usd',
         ...(isPocPlaceholder ? {} : {
-          application_fee_amount: platformFeeCents,
+          application_fee_amount: applicationFeeCents,
           transfer_data: { destination: clinic.stripe_connect_account_id },
         }),
         // C7: opaque ids only.
