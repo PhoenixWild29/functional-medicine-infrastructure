@@ -166,13 +166,20 @@ test.describe('Team invites', () => {
     const { data: after } = await admin().auth.admin.getUserById(maUser!.id)
     expect(after.user?.app_metadata?.['deactivated_at']).toEqual(expect.any(String))
 
-    // The MA's open session is refused on the next page, and sign-in is refused.
+    // The MA's open session is refused on the next page. Deactivation deletes
+    // their sessions and refresh tokens, so the middleware usually finds no
+    // user and sends them to sign in (/login?redirectTo=...); a still-valid
+    // access token gets /login?error=deactivated. Either way: /login, and no
+    // dashboard.
     await ma.page.goto('/dashboard')
-    await expect(ma.page).toHaveURL(/\/login\?error=deactivated/, { timeout: 15_000 })
-    await expect(ma.page.getByRole('main').getByRole('alert')).toContainText('Your access has been turned off.')
+    await expect(ma.page).toHaveURL(url => new URL(url).pathname === '/login', { timeout: 15_000 })
+    await expect(ma.page.getByRole('heading', { level: 1, name: 'Sign in' })).toBeVisible()
+    await expect(ma.page.getByRole('heading', { level: 1, name: 'Dashboard' })).toHaveCount(0)
+
+    // Signing in again is refused, and says why.
     await signIn(ma.page, MA_EMAIL, PASSWORD)
-    await expect(ma.page.getByRole('main').getByRole('alert')).toContainText('Your access has been turned off.', { timeout: 15_000 })
-    await expect(ma.page).toHaveURL(/\/login/)
+    await expect(ma.page.getByRole('main').getByRole('alert')).toContainText('Your access has been turned off. Contact your clinic admin.', { timeout: 15_000 })
+    await expect(ma.page).toHaveURL(url => new URL(url).pathname === '/login')
 
     await provider.context.close()
     await ma.context.close()
