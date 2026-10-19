@@ -61,14 +61,32 @@ function composeSig(item: ItemDraft): string {
   return [item.sigPrefix || 'Take', item.doseAmount, item.doseUnit, freq].map(s => s.trim()).filter(Boolean).join(' ')
 }
 
-// Every active formulation, read once; filtered by ingredient in the browser.
-let formulationsOnce: Promise<Formulation[]> | null = null
-function loadFormulations(): Promise<Formulation[]> {
-  formulationsOnce ??= fetch('/api/formulations?level=formulations')
-    .then(r => (r.ok ? r.json() : { data: [] }))
-    .then((j: { data?: Formulation[] }) => j.data ?? [])
-    .catch(() => { formulationsOnce = null; return [] })
-  return formulationsOnce
+async function getData<T>(url: string): Promise<T[]> {
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return []
+    return ((await res.json()) as { data?: T[] }).data ?? []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * The formulations of one ingredient, as the prescription builder finds
+ * them: through the ingredient's salt forms (formulations.salt_form_id,
+ * how a single-ingredient product is linked), plus combination products
+ * that list it in formulation_ingredients. E2E #242: matching on
+ * formulation_ingredients alone missed every single-ingredient product.
+ */
+async function formulationsFor(ingredientId: string): Promise<Formulation[]> {
+  const salts = await getData<{ salt_form_id: string }>(`/api/formulations?level=salt_forms&ingredient_id=${encodeURIComponent(ingredientId)}`)
+  const [bySalt, all] = await Promise.all([
+    Promise.all(salts.map(s => getData<Formulation>(`/api/formulations?level=formulations&salt_form_id=${encodeURIComponent(s.salt_form_id)}`))).then(r => r.flat()),
+    getData<Formulation>('/api/formulations?level=formulations'),
+  ])
+  const combos = all.filter(f => (f.formulation_ingredients ?? []).some(fi => fi.ingredient_id === ingredientId))
+  const seen = new Set<string>()
+  return [...bySalt, ...combos].filter(f => (seen.has(f.formulation_id) ? false : (seen.add(f.formulation_id), true)))
 }
 
 export function NewProtocolForm({ createdBy, returnTo }: { createdBy: string | null; returnTo: string }) {
@@ -223,8 +241,7 @@ function ItemEditor({ index, item, onChange, onRemove }: {
     setFormulations(null)
     setPharmacies(null)
     onChange({ formulationId: '', sigPrefix: '', pharmacyId: '', quantity: '' })
-    const all = await loadFormulations()
-    setFormulations(all.filter(f => (f.formulation_ingredients ?? []).some(fi => fi.ingredient_id === ing.ingredient_id)))
+    setFormulations(await formulationsFor(ing.ingredient_id))
   }
 
   async function pickFormulation(formulationId: string) {
