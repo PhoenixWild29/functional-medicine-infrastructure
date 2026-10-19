@@ -22,6 +22,12 @@ const FORM     = 'f0000000-0000-4000-8000-00000000c0de'
 const SOURCE   = '45e03578-e208-468d-a35b-ab9bc82320ae'
 
 const getUserMock = jest.fn()
+// Pending review (lib/onboarding/approval-guard) is tested in
+// src/__tests__/pending-review-guard.test.ts; the clinic here is approved.
+jest.mock('@/lib/onboarding/approval-guard', () => ({
+  ...jest.requireActual('@/lib/onboarding/approval-guard'),
+  refuseUnlessApproved: async () => null,
+}))
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockImplementation(async () => ({
     auth: { getUser: () => getUserMock() },

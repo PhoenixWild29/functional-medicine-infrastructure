@@ -7,6 +7,9 @@
 //   { action: 'create' }   make a new link; the old one stops working
 //   { action: 'disable' }  turn it off (patients are told it is no longer active)
 //   { action: 'enable' }   turn it back on
+// Create and enable are refused (403, the banner wording) until ops
+// approves the clinic (lib/onboarding/approval-guard). Turning a link off
+// stays allowed; Copy and Print never reach the server.
 // The clinic comes from the caller's claims (claims.ts), never the request.
 // getUser(), never getSession(). Same-origin only. Logs carry ids only.
 
@@ -15,6 +18,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { createSignupLink, setSignupLinkEnabled } from '@/lib/intake/signup-links'
+import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 
 const FAILED = 'The sign-up link could not be changed. Try again.'
 
@@ -41,6 +45,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const service = createServiceClient()
+  if (action === 'create' || action === 'enable') {
+    const pendingReview = await refuseUnlessApproved(service, clinicId)
+    if (pendingReview) return pendingReview
+  }
   if (action === 'create') {
     const r = await createSignupLink(service, { clinicId, createdBy: user.id })
     if (!r.ok) return NextResponse.json({ error: FAILED }, { status: 500 })

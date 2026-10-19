@@ -22,7 +22,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ONBOARDING_STEPS, STEP_LABELS, NOT_LIVE_STEPS, NOT_LIVE_LABEL } from '@/lib/onboarding/steps'
 import type { OpsApprovedClinic, OpsClinicOnboarding, OpsInvite, OpsOnboarding } from '@/lib/onboarding/ops'
+import { SELF_SIGNUP_APPROVE_NOTE } from '@/lib/onboarding/self-signup-note'
 import { TextField, FormAlert, InviteLink, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_DANGER } from '@/components/onboarding/fields'
+
+// Self sign-up (/get-started), not an invite.
+const SELF_SIGNUP_LABEL = 'inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground'
 
 type Errors = Record<string, string>
 
@@ -234,6 +238,12 @@ function ClinicReview({ clinic: c, onReviewed }: { clinic: OpsClinicOnboarding; 
     <li className="rounded-lg border border-border bg-card p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-base font-semibold text-foreground">{c.name}</h3>
+        {c.signupSource === 'self_serve' && (
+          <span className="inline-flex gap-1">
+            <span className={SELF_SIGNUP_LABEL}>Signed up on their own</span>
+            {c.signupKind === 'solo_provider' && <span className={SELF_SIGNUP_LABEL}>Solo provider</span>}
+          </span>
+        )}
         <span className="text-sm text-slate-700 dark:text-slate-300">{STATUS_LABEL[c.onboardingStatus] ?? c.onboardingStatus}{c.submittedAt ? ` · submitted ${fmt(c.submittedAt)}` : ''}</span>
       </div>
       <Link href={`/ops/onboarding/${c.clinicId}`} className={REVIEW_LINK}>Review details for {c.name}</Link>
@@ -265,8 +275,11 @@ function ClinicReview({ clinic: c, onReviewed }: { clinic: OpsClinicOnboarding; 
             />
             {noteError && <p id={`${noteId}-error`} role="alert" className="text-sm text-red-700 dark:text-red-300">{noteError}</p>}
           </div>
+          {c.signupSource === 'self_serve' && (
+            <p id={`${noteId}-self-signup`} className="text-sm font-medium text-foreground">{SELF_SIGNUP_APPROVE_NOTE}</p>
+          )}
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={BUTTON_PRIMARY} disabled={busy} onClick={() => review('approve')}>Approve {c.name}</button>
+            <button type="button" className={BUTTON_PRIMARY} disabled={busy} onClick={() => review('approve')} aria-describedby={c.signupSource === 'self_serve' ? `${noteId}-self-signup` : undefined}>Approve {c.name}</button>
             <button type="button" className={BUTTON_SECONDARY} disabled={busy} onClick={() => review('send_back')}>Send {c.name} back</button>
           </div>
         </div>

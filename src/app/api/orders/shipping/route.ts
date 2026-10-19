@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { applyBundleShipping, MAX_BUNDLE_ORDERS } from '@/lib/orders/apply-bundle-shipping'
 import { getUserClinicId } from '@/lib/auth/claims'
 
@@ -31,6 +32,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }
+  // Pending review: nothing is ordered, signed or sent until ops approves
+  // the clinic (lib/onboarding/approval-guard).
+  const pendingReview = await refuseUnlessApproved(createServiceClient(), clinicId)
+  if (pendingReview) return pendingReview
 
   let body: { orderIds?: unknown }
   try {

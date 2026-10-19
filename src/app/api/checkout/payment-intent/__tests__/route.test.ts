@@ -232,9 +232,10 @@ describe('POST /api/checkout/payment-intent — new PI create + email', () => {
     ])
     expect(createArgs['description']).toBe('CompoundIQ order')
     expect(createArgs['metadata']).toEqual({ order_id: 'o-1', clinic_id: 'c-1', platform: '8090ai' })
-    // Amounts and routing unchanged: retail $300, wholesale $150, fee = 150 + 15% of 150.
+    // Retail $300, wholesale $150: no platform fee, so the application fee
+    // is the wholesale the platform pays on to the pharmacy.
     expect(createArgs['amount']).toBe(30000)
-    expect(createArgs['application_fee_amount']).toBe(17250)
+    expect(createArgs['application_fee_amount']).toBe(15000)
     expect(createArgs['transfer_data']).toEqual({ destination: 'acct_test_123' })
   })
 
@@ -318,7 +319,7 @@ describe('POST /api/checkout/payment-intent — WO-102 shipping', () => {
     stripeCreateMock.mockResolvedValue({ id: 'pi_new', client_secret: 'pi_new_secret_yyy' })
   })
 
-  it('charges retail + the order\'s shipping; application fee adds shipping at cost, 15% on margin only', async () => {
+  it('charges retail + the order\'s shipping; application fee is wholesale + shipping at cost, no platform fee', async () => {
     orderFetchMock.mockResolvedValue({
       data: { ...VALID_ORDER, stripe_payment_intent_id: null, retail_price_snapshot: 190, wholesale_price_snapshot: 95, shipping_fee: 25 },
       error: null,
@@ -327,7 +328,7 @@ describe('POST /api/checkout/payment-intent — WO-102 shipping', () => {
     expect(res.status).toBe(200)
     const createArgs = stripeCreateMock.mock.calls[0]![0] as Record<string, unknown>
     expect(createArgs.amount).toBe(21500)
-    expect(createArgs.application_fee_amount).toBe(9500 + 1425 + 2500)
+    expect(createArgs.application_fee_amount).toBe(9500 + 2500)
   })
 
   it('an order whose pharmacy shipping sits on a sibling order (shipping_fee 0) is charged retail only', async () => {
@@ -338,7 +339,7 @@ describe('POST /api/checkout/payment-intent — WO-102 shipping', () => {
     await POST(makeRequest({ token: 'ok' }))
     const createArgs = stripeCreateMock.mock.calls[0]![0] as Record<string, unknown>
     expect(createArgs.amount).toBe(13000)
-    expect(createArgs.application_fee_amount).toBe(6500 + 975)
+    expect(createArgs.application_fee_amount).toBe(6500)
   })
 
   it('clinic absorbs shipping → patient charged retail; shipping still paid on out of the clinic share', async () => {
@@ -350,7 +351,7 @@ describe('POST /api/checkout/payment-intent — WO-102 shipping', () => {
     await POST(makeRequest({ token: 'ok' }))
     const createArgs = stripeCreateMock.mock.calls[0]![0] as Record<string, unknown>
     expect(createArgs.amount).toBe(19000)
-    expect(createArgs.application_fee_amount).toBe(9500 + 1425 + 2500)
+    expect(createArgs.application_fee_amount).toBe(9500 + 2500)
   })
 })
 

@@ -14,17 +14,19 @@
 //     not taken, or given back, is never mixed in; each is its own
 //     labelled line — awaiting payment, payment expired, payment failed,
 //     refund pending, refunded, cancelled, disputed.
-//   - Platform fee = 15% of each line's margin (floored at zero), exactly
-//     as checkout charges it (lib/orders/shipping bundleTotals)
+//   - No platform fee is taken from orders (lib/orders/shipping
+//     platformFeeCents() is 0: CompoundIQ bills a flat monthly fee outside
+//     the app). The fee fields stay for the arithmetic and are 0; they are
+//     not shown or exported
 //   - Shipping is counted once per payment: a payment group's
 //     shipping_total once for the group, a solo order's shipping_fee once
-//   - Clinic payout = revenue − wholesale − platform fee − shipping when
-//     the clinic absorbs it (passed-through shipping is the patient's)
+//   - Clinic payout = revenue − wholesale − shipping when the clinic
+//     absorbs it (passed-through shipping is the patient's)
 //
 // Pure: integer cents in and out. No React, no Supabase.
 
 import type { OrderStatusEnum } from '@/types/database.types'
-import { PLATFORM_FEE_PCT } from '@/lib/orders/shipping'
+import { platformFeeCents } from '@/lib/orders/shipping'
 
 export type PeriodKey = 'today' | '7d' | '30d' | 'mtd' | 'custom'
 
@@ -124,7 +126,7 @@ export interface PracticeTotals {
   shippingCents:    number
   absorbShipping:   boolean
   clinicPayoutCents: number
-  /** Margin before the platform fee, as a % of revenue; null with no revenue. */
+  /** Margin, as a % of revenue; null with no revenue. */
   avgMarginPct:     number | null
   excluded:         Record<ExcludedBucket, { count: number; retailCents: number }>
 }
@@ -138,13 +140,12 @@ export interface BreakdownRow {
   revenueCents:     number
   wholesaleCents:   number
   platformFeeCents: number
-  /** Revenue − wholesale − platform fee. Shipping is per payment, not per prescription. */
+  /** Revenue − wholesale. Shipping is per payment, not per prescription. */
   marginCents:      number
 }
 
 export function lineFeeCents(retailCents: number, wholesaleCents: number): number {
-  const margin = retailCents - wholesaleCents
-  return margin > 0 ? Math.round(margin * PLATFORM_FEE_PCT / 100) : 0
+  return platformFeeCents(retailCents - wholesaleCents)
 }
 
 export function inPeriod(o: Pick<PracticeOrder, 'createdAt'>, period: Pick<Period, 'from' | 'to'>): boolean {
@@ -233,7 +234,7 @@ function csvCell(v: string): string {
 
 /** The on-screen table as CSV — same rows, same columns, same order. */
 export function breakdownCsv(rows: ReadonlyArray<BreakdownRow>, dimension: Dimension): string {
-  const header = [DIMENSION_HEADER[dimension], 'Scripts', 'Revenue', 'Wholesale', 'Platform fee', 'Margin']
-  const lines = rows.map(r => [csvCell(r.label), String(r.scripts), money(r.revenueCents), money(r.wholesaleCents), money(r.platformFeeCents), money(r.marginCents)].join(','))
+  const header = [DIMENSION_HEADER[dimension], 'Scripts', 'Revenue', 'Wholesale', 'Margin']
+  const lines = rows.map(r => [csvCell(r.label), String(r.scripts), money(r.revenueCents), money(r.wholesaleCents), money(r.marginCents)].join(','))
   return [header.join(','), ...lines].join('\n') + '\n'
 }

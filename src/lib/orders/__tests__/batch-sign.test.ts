@@ -210,6 +210,39 @@ describe('who signs', () => {
     expect(orderRow(db, 1)['status']).toBe('DRAFT')
   })
 
+  // Self sign-up, decision 1: a solo provider signs up as a clinic_admin
+  // who is also a provider. They sign only as their own linked provider,
+  // and only once its NPI passed the registry check.
+  it('a solo admin with a linked, verified provider signs as that provider', async () => {
+    const db = world([draft(1)])
+    const res = await sign(db, [id(1)], { appRole: 'clinic_admin' })
+    expect(res).toMatchObject({ ok: true })
+    expect(signingUpdates(db)).toHaveLength(1)
+    expect(signingUpdates(db)[0]!.patch).toMatchObject({ status: 'AWAITING_PAYMENT' })
+  })
+
+  it('a plain clinic_admin (no linked provider) gets 403 and nothing is signed', async () => {
+    const db = world([draft(1)])
+    const res = await signBatch(db.client, { clinicId: CLINIC, userId: 'u-admin', appRole: 'clinic_admin', orderIds: [id(1)], signature: GOOD_SIGNATURE })
+    expect(res).toMatchObject({ ok: false, status: 403 })
+    expect(db.writes).toHaveLength(0)
+  })
+
+  it("a solo admin whose provider's NPI did not pass the registry check gets 403", async () => {
+    const db = world([draft(1)])
+    db.tables['provider_npi_verifications']!.find(v => v['provider_id'] === CHEN)!['status'] = 'mismatch'
+    const res = await sign(db, [id(1)], { appRole: 'clinic_admin' })
+    expect(res).toMatchObject({ ok: false, status: 403 })
+    expect(db.writes).toHaveLength(0)
+  })
+
+  it("a solo admin cannot sign another provider's draft", async () => {
+    const db = world([draft(1, { provider_id: PATEL })])
+    const res = await sign(db, [id(1)], { appRole: 'clinic_admin' })
+    expect(res).toMatchObject({ ok: false, status: 403 })
+    expect(signingUpdates(db)).toHaveLength(0)
+  })
+
   it('a login with no provider row cannot sign', async () => {
     const db = world([draft(1)])
     const res = await signBatch(db.client, { clinicId: CLINIC, userId: 'u-nobody', appRole: 'provider', orderIds: [id(1)], signature: GOOD_SIGNATURE })

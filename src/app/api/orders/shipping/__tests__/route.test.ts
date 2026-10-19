@@ -15,6 +15,12 @@ const QUICK_RX = 'a4000000-0000-0000-0000-000000000002'
 
 const getUserMock = jest.fn()
 const getSessionMock = jest.fn()
+// Pending review (lib/onboarding/approval-guard) is tested in
+// src/__tests__/pending-review-guard.test.ts; the clinic here is approved.
+jest.mock('@/lib/onboarding/approval-guard', () => ({
+  ...jest.requireActual('@/lib/onboarding/approval-guard'),
+  refuseUnlessApproved: async () => null,
+}))
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockImplementation(async () => ({
     auth: { getUser: () => getUserMock(), getSession: () => getSessionMock() },

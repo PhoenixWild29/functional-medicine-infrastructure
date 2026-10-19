@@ -19,11 +19,14 @@ interface Invite {
 }
 interface Application {
   applicationId: string; pharmacyName: string; status: string; submittedAt: string | null
+  signupSource?: string | null
   licenses: { total: number; verified: number; pending: number; rejected: number }
 }
 
 const STATE_LABEL: Record<string, string> = { pending: 'Waiting', expired: 'Expired', accepted: 'Accepted', revoked: 'Revoked' }
 const APP_STATUS: Record<string, string> = { in_progress: 'In progress', submitted: 'Ready for review', sent_back: 'Sent back', approved: 'Approved' }
+// Self sign-up (/get-started), not an invite.
+const SELF_SIGNUP_LABEL = 'ml-2 inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground'
 const date = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString() : '—')
 
 export function PharmacyOnboardingSection() {
@@ -181,7 +184,10 @@ export function PharmacyOnboardingSection() {
               <tbody>
                 {applications.map(a => (
                   <tr key={a.applicationId} className="border-t border-border">
-                    <td className="px-3 py-2 text-foreground">{a.pharmacyName}</td>
+                    <td className="px-3 py-2 text-foreground">
+                      {a.pharmacyName}
+                      {a.signupSource === 'self_serve' && <span className={SELF_SIGNUP_LABEL}>Signed up on their own</span>}
+                    </td>
                     <td className="px-3 py-2 text-foreground">{APP_STATUS[a.status] ?? a.status}</td>
                     <td className="px-3 py-2 text-foreground">{a.licenses.verified} of {a.licenses.total}</td>
                     <td className="px-3 py-2 text-foreground">{date(a.submittedAt)}</td>

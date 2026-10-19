@@ -119,7 +119,8 @@ describe('the invitee', () => {
     const created = db.calls.find(c => c.kind === 'auth' && c.name === 'createUser')!.payload as Record<string, unknown>
     expect(created['email_confirm']).toBe(true)
 
-    expect(db.rows('pharmacy_onboarding_applications')).toEqual([expect.objectContaining({ pharmacy_id: pharmacy!['pharmacy_id'], admin_user_id: user!.id, status: 'in_progress' })])
+    // Self sign-up: an invited application records where it came from.
+    expect(db.rows('pharmacy_onboarding_applications')).toEqual([expect.objectContaining({ pharmacy_id: pharmacy!['pharmacy_id'], admin_user_id: user!.id, status: 'in_progress', signup_source: 'invite' })])
     expect(db.rows('pharmacy_invites')[0]).toEqual(expect.objectContaining({ accepted_user_id: user!.id, pharmacy_id: pharmacy!['pharmacy_id'], accepted_at: NOW.toISOString() }))
     expect(db.rows('pharmacy_onboarding_events').map(e => e['action'])).toEqual(['invite_created', 'invite_accepted'])
 

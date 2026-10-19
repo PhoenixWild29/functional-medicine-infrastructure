@@ -46,7 +46,15 @@ function currentHref(pathname: string | null): string | null {
   return matches.sort((a, b) => b.length - a.length)[0] ?? null
 }
 
-export function OpsNav() {
+/** Self sign-ups not yet approved, per onboarding tab (null: unknown, no badge). */
+export interface OpsNavBadges { clinics: number | null; pharmacies: number | null }
+
+const BADGE_FOR: Record<string, keyof OpsNavBadges> = {
+  '/ops/onboarding': 'clinics',
+  '/ops/onboarding/pharmacies': 'pharmacies',
+}
+
+export function OpsNav({ badges }: { badges?: OpsNavBadges } = {}) {
   const pathname = usePathname()
   const current = currentHref(pathname)
 
@@ -59,6 +67,8 @@ export function OpsNav() {
         <div className="flex h-11 items-end gap-0">
           {NAV_TABS.map(tab => {
             const isActive = tab.href === current
+            const badgeKey = BADGE_FOR[tab.href]
+            const badge = badgeKey && badges ? badges[badgeKey] : null
             return (
               <Link
                 key={tab.href}
@@ -73,6 +83,11 @@ export function OpsNav() {
                 aria-current={isActive ? 'page' : undefined}
               >
                 {tab.label}
+                {typeof badge === 'number' && badge > 0 && (
+                  <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs font-medium text-foreground">
+                    {' '}{badge}<span className="sr-only"> new</span>
+                  </span>
+                )}
               </Link>
             )
           })}

@@ -7,9 +7,11 @@
  * nothing twice:
  *   charge           platform   + what the patient paid (retail + shipping, unless the clinic absorbs it)
  *   clinic_transfer  clinic     + the clinic's share (charge - application fee)
- *   platform_fee     platform   + 15% of the margin
  *   pharmacy_payable pharmacy   + wholesale + shipping (also a pharmacy_payables row, 'owed')
- * The four sum to the charge. Refunds and disputes are negative lines.
+ * No platform fee is taken (a flat monthly fee is billed outside the app),
+ * so no platform_fee line is written for new payments; rows written under
+ * the old 15% fee keep their values, and a refund of such an order is
+ * split as it was recorded. The lines sum to the charge. Refunds and disputes are negative lines.
  * The writer never throws: a failed write is logged and reported.
  */
 
@@ -47,13 +49,13 @@ const pick = (ls: Line[], type: string, party: string) => ls.filter(l => l.entry
 describe('computeOrderSplit', () => {
   it('splits a $200 retail / $100 wholesale / $9 shipping order', () => {
     expect(computeOrderSplit(order(O1), false)).toEqual({
-      chargeCents: 20900, platformFeeCents: 1500, pharmacyPayableCents: 10900, clinicTransferCents: 8500, wholesaleCents: 10000, shippingCents: 900,
+      chargeCents: 20900, platformFeeCents: 0, pharmacyPayableCents: 10900, clinicTransferCents: 10000, wholesaleCents: 10000, shippingCents: 900,
     })
   })
 
   it('a clinic that absorbs shipping is charged less and pays the shipping from its share', () => {
     const s = computeOrderSplit(order(O1), true)
-    expect(s).toEqual(expect.objectContaining({ chargeCents: 20000, pharmacyPayableCents: 10900, platformFeeCents: 1500, clinicTransferCents: 7600 }))
+    expect(s).toEqual(expect.objectContaining({ chargeCents: 20000, pharmacyPayableCents: 10900, platformFeeCents: 0, clinicTransferCents: 9100 }))
   })
 
   it('the parts always sum to the charge', () => {
@@ -70,12 +72,12 @@ describe('recordPaymentLedger', () => {
   it('a solo order: four lines from the snapshots, keyed by the event, and an owed payable', async () => {
     const d = db([order(O1)])
     const res = await recordPaymentLedger(d.client, { eventId: 'evt_1', paymentIntentId: 'pi_1', chargeId: 'ch_1', currency: 'usd', orderIds: [O1], paymentGroupId: null })
-    expect(res).toEqual({ ok: true, inserted: 4 })
+    expect(res).toEqual({ ok: true, inserted: 3 })
     const ls = lines(d)
-    expect(ls).toHaveLength(4)
+    expect(ls).toHaveLength(3)
     expect(pick(ls, 'charge', 'platform')[0]).toEqual(expect.objectContaining({ amount_cents: 20900, stripe_object_id: 'ch_1', status: 'succeeded', currency: 'usd' }))
-    expect(pick(ls, 'clinic_transfer', 'clinic')[0]!.amount_cents).toBe(8500)
-    expect(pick(ls, 'platform_fee', 'platform')[0]!.amount_cents).toBe(1500)
+    expect(pick(ls, 'clinic_transfer', 'clinic')[0]!.amount_cents).toBe(10000)
+    expect(pick(ls, 'platform_fee', 'platform')).toEqual([])
     expect(pick(ls, 'pharmacy_payable', 'pharmacy')[0]).toEqual(expect.objectContaining({ amount_cents: 10900, order_id: O1 }))
     for (const l of ls) {
       expect(l.source_event_id).toBe('evt_1')
@@ -91,7 +93,7 @@ describe('recordPaymentLedger', () => {
     const d = db([order(O1, { payment_group_id: GROUP }), order(O2, { payment_group_id: GROUP, shipping_fee: 0 })])
     await recordPaymentLedger(d.client, { eventId: 'evt_2', paymentIntentId: 'pi_g', chargeId: 'ch_g', currency: 'usd', orderIds: [O1, O2], paymentGroupId: GROUP })
     const ls = lines(d)
-    expect(ls).toHaveLength(8)
+    expect(ls).toHaveLength(6)
     expect(new Set(ls.map(l => l.payment_group_id))).toEqual(new Set([GROUP]))
     expect(pick(ls, 'charge', 'platform').map(l => l.amount_cents)).toEqual([20900, 20000])
     expect(pick(ls, 'charge', 'platform').every(l => l.stripe_object_id === 'ch_g')).toBe(true)
@@ -113,8 +115,8 @@ describe('recordRefundLedger', () => {
     expect(res.ok).toBe(true)
     const ls = lines(d)
     expect(pick(ls, 'refund', 'platform')[0]).toEqual(expect.objectContaining({ amount_cents: -20900, stripe_object_id: 're_1', source_event_id: 're_1' }))
-    expect(pick(ls, 'reversal', 'clinic')[0]!.amount_cents).toBe(-8500)
-    expect(pick(ls, 'reversal', 'platform')[0]!.amount_cents).toBe(-1500)
+    expect(pick(ls, 'reversal', 'clinic')[0]!.amount_cents).toBe(-10000)
+    expect(pick(ls, 'reversal', 'platform')).toEqual([])
     expect(pick(ls, 'reversal', 'pharmacy')[0]!.amount_cents).toBe(-10900)
     const [upd] = d.to('pharmacy_payables', 'update')
     expect(upd!.payload).toEqual(expect.objectContaining({ reversed_cents: 10900, status: 'void' }))
@@ -128,9 +130,26 @@ describe('recordRefundLedger', () => {
     const reversals = ls.filter(l => l.entry_type === 'reversal').reduce((s, l) => s + l.amount_cents, 0)
     expect(pick(ls, 'refund', 'platform')[0]!.amount_cents).toBe(-10450)
     expect(reversals).toBe(-10450)
-    expect(pick(ls, 'reversal', 'clinic')[0]!.amount_cents).toBe(-4250)
+    expect(pick(ls, 'reversal', 'clinic')[0]!.amount_cents).toBe(-5000)
     const [upd] = d.to('pharmacy_payables', 'update')
     expect((upd!.payload as Record<string, unknown>)['status']).toBeUndefined()
+  })
+
+  it('an order paid under the old 15% fee is refunded as it was recorded: the platform share comes back too', async () => {
+    const recorded = [
+      { entry_type: 'charge', party: 'platform', amount_cents: 20900 },
+      { entry_type: 'clinic_transfer', party: 'clinic', amount_cents: 8500 },
+      { entry_type: 'platform_fee', party: 'platform', amount_cents: 1500 },
+      { entry_type: 'pharmacy_payable', party: 'pharmacy', amount_cents: 10900 },
+    ]
+    const d = db([order(O1)], false, c => (c.table === 'ledger_entries' && c.op === 'select' ? { data: recorded } : undefined))
+    await recordRefundLedger(d.client, { orderId: O1, refundId: 're_old', amountCents: null, currency: 'usd' })
+    const ls = lines(d)
+    expect(pick(ls, 'reversal', 'clinic')[0]!.amount_cents).toBe(-8500)
+    expect(pick(ls, 'reversal', 'platform')[0]!.amount_cents).toBe(-1500)
+    expect(pick(ls, 'reversal', 'pharmacy')[0]!.amount_cents).toBe(-10900)
+    const q = d.to('ledger_entries', 'select')[0]!
+    expect(q.filters).toEqual(expect.objectContaining({ order_id: O1 }))
   })
 
   it('a refund already recorded (same refund id) does not touch the payable again', async () => {

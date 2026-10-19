@@ -133,10 +133,10 @@ describe('WO-98 — Edit at Review', () => {
     expect(card).toHaveTextContent('$210.00')
     expect(card).toHaveTextContent('233-day supply')
     expect(card).not.toHaveTextContent('10 units')
-    // Totals: 210 + 120 = 330; margin 115 + 25 = 140 → fee 21.00 → payout 119.00
+    // Totals: 210 + 120 = 330; margin 115 + 25 = 140 → payout 140.00 (no platform fee)
     expect(screen.getByTestId('review-subtotal')).toHaveTextContent('$330.00')
-    expect(screen.getByTestId('review-platform-fee')).toHaveTextContent('$21.00')
-    expect(screen.getByTestId('review-clinic-payout')).toHaveTextContent('$119.00')
+    expect(screen.queryByTestId('review-platform-fee')).not.toBeInTheDocument()
+    expect(screen.getByTestId('review-clinic-payout')).toHaveTextContent('$140.00')
     expect(screen.getByTestId('review-patient-total')).toHaveTextContent('$330.00')
     expect(screen.getByText(/2\. BPC-157/)).toBeInTheDocument()
   })

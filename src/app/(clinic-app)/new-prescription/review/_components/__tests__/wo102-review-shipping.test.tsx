@@ -111,8 +111,8 @@ describe('Review totals — WO-102', () => {
     expect(screen.getByTestId(`shipping-${QUICK_RX}`)).toHaveTextContent('Shipping — Quick Rx Pharmacy (cold chain)')
     expect(screen.getByTestId(`shipping-${STRIVE}`)).toHaveTextContent('Shipping — Strive Pharmacy (standard)$9.00')
     expect(screen.getByTestId('review-subtotal')).toHaveTextContent('$320.00')
-    expect(screen.getByTestId('review-platform-fee')).toHaveTextContent('$24.00')   // 15% × ($95 + $65) — no shipping
-    expect(screen.getByTestId('review-clinic-payout')).toHaveTextContent('$136.00')
+    expect(screen.queryByTestId('review-platform-fee')).not.toBeInTheDocument()   // no platform fee is taken
+    expect(screen.getByTestId('review-clinic-payout')).toHaveTextContent('$160.00')   // the $160 margin: no platform fee
     expect(screen.getByTestId('review-patient-total')).toHaveTextContent('$354.00')
   })
 

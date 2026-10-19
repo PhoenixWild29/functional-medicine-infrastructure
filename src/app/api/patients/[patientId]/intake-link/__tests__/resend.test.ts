@@ -14,6 +14,12 @@ const CLINIC_ID  = 'aaaaaaaa-aaaa-4aaa-9aaa-aaaaaaaaaaaa'
 const PATIENT_ID = 'b3000000-0000-4000-8000-000000000009'
 
 const getUserMock = jest.fn()
+// Pending review (lib/onboarding/approval-guard) is tested in
+// src/__tests__/pending-review-guard.test.ts; the clinic here is approved.
+jest.mock('@/lib/onboarding/approval-guard', () => ({
+  ...jest.requireActual('@/lib/onboarding/approval-guard'),
+  refuseUnlessApproved: async () => null,
+}))
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn(async () => ({ auth: { getUser: () => getUserMock() } })),
 }))

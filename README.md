@@ -15,7 +15,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and PR co
 |-------|-----------|
 | Framework | Next.js 16 (App Router, TypeScript) |
 | Database | Supabase (PostgreSQL 15, RLS, Auth, Vault, Storage) |
-| Payments | Stripe Connect Express |
+| Payments | Stripe Connect Express destination charges. The application fee is pharmacy wholesale plus shipping only; the clinic receives the rest. No percentage platform fee: CompoundIQ's flat monthly fee is billed separately under a signed order form. |
 | SMS | Twilio Programmable Messaging |
 | Fax | Documo mFax API v2 |
 | Monitoring | Sentry (PHI-scrubbed) |

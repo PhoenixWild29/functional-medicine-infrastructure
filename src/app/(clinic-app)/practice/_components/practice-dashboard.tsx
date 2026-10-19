@@ -225,11 +225,12 @@ function Numbers({ totals, rows, dimension, onDimension, onExport }: {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3" data-testid="practice-cards">
         <Card testId="practice-scripts" label="Scripts" value={String(totals.scripts)} note={`${totals.collectedCount} paid · ${totals.drafts} draft${totals.drafts !== 1 ? 's' : ''} not counted`} />
         <Card testId="practice-revenue" label="Patient revenue (collected)" value={money(totals.revenueCents)} note="Paid orders only" />
-        <Card testId="practice-payout" label="Clinic payout" value={money(totals.clinicPayoutCents)} note={totals.absorbShipping ? 'After wholesale, platform fee and absorbed shipping' : 'After wholesale and platform fee'} />
-        <Card testId="practice-fee" label="Platform fees" value={money(totals.platformFeeCents)} note="15% of margin, never of shipping" />
+        <Card testId="practice-payout" label="Clinic payout" value={money(totals.clinicPayoutCents)} note={totals.absorbShipping ? 'After wholesale and absorbed shipping' : 'After wholesale'} />
         <Card testId="practice-shipping" label={totals.absorbShipping ? 'Shipping absorbed by the clinic' : 'Shipping passed through'} value={money(totals.shippingCents)} note="Once per payment, not per prescription" />
         <Card testId="practice-margin" label="Avg margin" value={totals.avgMarginPct == null ? '—' : `${totals.avgMarginPct.toFixed(1)}%`} note={totals.avgMarginPct == null ? 'No paid orders in the period' : '(Revenue − wholesale) ÷ revenue'} />
       </div>
+
+      <p className="text-xs text-muted-foreground" data-testid="practice-fee-note">CompoundIQ’s monthly fee is billed separately and is not taken from orders.</p>
 
       <div className="rounded-lg border border-border bg-muted/20 p-3 text-xs" data-testid="practice-excluded">
         <p className="font-semibold text-foreground">Not in revenue</p>
@@ -275,20 +276,18 @@ function Numbers({ totals, rows, dimension, onDimension, onExport }: {
                 <th className="px-3 py-2 text-right">Scripts</th>
                 <th className="px-3 py-2 text-right">Revenue</th>
                 <th className="px-3 py-2 text-right">Wholesale</th>
-                <th className="px-3 py-2 text-right">Platform fee</th>
                 <th className="px-3 py-2 text-right">Margin</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
-                <tr><td colSpan={6} className="px-3 py-4 text-center text-xs text-muted-foreground">No paid orders in this period.</td></tr>
+                <tr><td colSpan={5} className="px-3 py-4 text-center text-xs text-muted-foreground">No paid orders in this period.</td></tr>
               ) : rows.map(r => (
                 <tr key={r.key} className="border-b border-border last:border-0" data-testid="practice-row">
                   <td className="px-3 py-2">{r.label}</td>
                   <td className="px-3 py-2 text-right">{r.scripts}</td>
                   <td className="px-3 py-2 text-right font-mono">{(r.revenueCents / 100).toFixed(2)}</td>
                   <td className="px-3 py-2 text-right font-mono">{(r.wholesaleCents / 100).toFixed(2)}</td>
-                  <td className="px-3 py-2 text-right font-mono">{(r.platformFeeCents / 100).toFixed(2)}</td>
                   <td className="px-3 py-2 text-right font-mono">{(r.marginCents / 100).toFixed(2)}</td>
                 </tr>
               ))}

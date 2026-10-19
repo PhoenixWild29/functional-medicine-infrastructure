@@ -14,6 +14,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
 import { postLoginDestination } from '@/lib/auth/landing-route'
 import { getUserRole } from '@/lib/auth/claims'
+import Link from 'next/link'
 import { LegalFooter } from '@/components/legal/legal-footer'
 
 const AUTH_CALLBACK_ERROR_MESSAGES: Record<string, string> = {
@@ -228,6 +229,13 @@ export default function LoginPage() {
           <Suspense>
             <LoginForm />
           </Suspense>
+
+          {/* Self sign-up: no invite needed. */}
+          <p className="mt-6 text-center text-sm">
+            <Link href="/get-started" className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              New to CompoundIQ? Get started
+            </Link>
+          </p>
 
         </div>
         <LegalFooter className="mt-8" />

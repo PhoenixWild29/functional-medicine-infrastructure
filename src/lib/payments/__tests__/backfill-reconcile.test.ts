@@ -59,7 +59,7 @@ describe('backfillLedger', () => {
     const res = await backfillLedger(d.client, { apply: true })
     expect(res).toEqual(expect.objectContaining({ dryRun: false, toBackfill: 1, written: 1, failed: 0 }))
     const ls = d.to('ledger_entries', 'upsert').flatMap(c => c.payload as Array<{ source_event_id: string; order_id: string }>)
-    expect(ls.length).toBe(4)
+    expect(ls.length).toBe(3)   // charge, clinic transfer, pharmacy payable: no platform fee
     expect(ls.every(l => l.source_event_id === `backfill:${O1}` && l.order_id === O1)).toBe(true)
   })
 

@@ -163,23 +163,36 @@ export function allocateShippingToOrders<T extends { orderId: string } & Shippin
   return out
 }
 
-export const PLATFORM_FEE_PCT = 15
+// ── Platform fee ───────────────────────────────────────────
+//
+// Decision (Sam, 2026-10): CompoundIQ charges each clinic a flat monthly
+// fee under a signed order form, billed outside the app. The app takes no
+// percentage of margin: this is the ONE config value for it, and it is 0.
+// Every fee calculation goes through platformFeeCents(); none uses a
+// literal. Fees already taken on past orders stay where they were
+// recorded (the payments ledger is append-only).
+export const PLATFORM_FEE_PCT = 0
+
+/** The platform's share of one line's margin: 0 under the flat monthly fee. Never of shipping. */
+export function platformFeeCents(marginCents: number): number {
+  return marginCents > 0 ? Math.round(marginCents * PLATFORM_FEE_PCT / 100) : 0
+}
 
 export interface BundleTotals {
   subtotalCents:     number   // retail, what the prescriptions cost
   wholesaleCents:    number
   shippingCents:     number   // bundle shipping (once per pharmacy)
-  platformFeeCents:  number   // 15% of margin — never of shipping
+  platformFeeCents:  number   // platformFeeCents() per line: 0 (flat monthly fee billed outside the app)
   /** Shipping the patient pays: all of it by default, 0 when the clinic absorbs it. */
   patientShippingCents: number
   patientTotalCents: number   // subtotal + patientShipping — the Stripe amount
-  clinicPayoutCents: number   // margin − platform fee − (shipping when absorbed)
+  clinicPayoutCents: number   // price − wholesale − (shipping when absorbed)
 }
 
 /**
- * Review / checkout / payment-intent totals. Platform fee is 15% of the
- * margin (retail − wholesale), rounded per line exactly as before; shipping
- * never enters it.
+ * Review / checkout / payment-intent totals. No platform fee is taken
+ * (platformFeeCents() is 0), so the clinic's payout is the patient price
+ * less wholesale, and less shipping when the clinic absorbs it.
  */
 export function bundleTotals(
   lines: ReadonlyArray<{ retailCents: number; wholesaleCents: number }>,
@@ -188,12 +201,12 @@ export function bundleTotals(
 ): BundleTotals {
   let subtotalCents = 0
   let wholesaleCents = 0
-  let platformFeeCents = 0
+  let feeCents = 0
   for (const l of lines) {
     subtotalCents += l.retailCents
     wholesaleCents += l.wholesaleCents
     const margin = l.retailCents - l.wholesaleCents
-    platformFeeCents += margin > 0 ? Math.round(margin * PLATFORM_FEE_PCT / 100) : 0
+    feeCents += platformFeeCents(margin)
   }
   const absorb = opts.absorbShipping === true
   const patientShippingCents = absorb ? 0 : shippingCents
@@ -201,17 +214,17 @@ export function bundleTotals(
     subtotalCents,
     wholesaleCents,
     shippingCents,
-    platformFeeCents,
+    platformFeeCents: feeCents,
     patientShippingCents,
     patientTotalCents: subtotalCents + patientShippingCents,
-    clinicPayoutCents: subtotalCents - wholesaleCents - platformFeeCents - (absorb ? shippingCents : 0),
+    clinicPayoutCents: subtotalCents - wholesaleCents - feeCents - (absorb ? shippingCents : 0),
   }
 }
 
 export interface StripeSplit {
   /** What the patient is charged. */
   amountCents:          number
-  /** What the platform retains: wholesale + 15% of margin + shipping (both paid on to the pharmacy). */
+  /** What the platform retains: wholesale + shipping, both paid on to the pharmacy. No platform share. */
   applicationFeeCents:  number
 }
 
@@ -220,11 +233,11 @@ export interface StripeSplit {
  * group), REQ-PSR-002 extended by WO-102:
  *
  *   amount                 = retail + shipping        (shipping 0 when the clinic absorbs it)
- *   application_fee_amount = wholesale + 15% × margin + shipping
+ *   application_fee_amount = wholesale + shipping   (+ platformFeeCents(margin), which is 0)
  *
- * The platform pays the pharmacy the wholesale AND its shipping, so the
- * shipping passes through the application fee at cost — the 15% is taken
- * on the margin only. When the clinic absorbs shipping the patient is not
+ * The platform pays the pharmacy the wholesale AND its shipping, so both
+ * pass through the application fee at cost; the clinic's Connect account
+ * receives the rest. When the clinic absorbs shipping the patient is not
  * charged it and it comes out of the clinic's share. The fee is capped at
  * the amount (Stripe rejects a larger fee).
  */
@@ -233,12 +246,12 @@ export function stripeSplit(input: {
   wholesaleCents:  number
   shippingCents:   number
   absorbShipping?: boolean | null
-  /** Platform fee already summed per line (groups); defaults to 15% of this margin. */
+  /** Platform fee already summed per line (groups); defaults to platformFeeCents(margin), 0. */
   platformFeeCents?: number
 }): StripeSplit {
   const shipping = Math.max(0, Math.round(input.shippingCents))
   const margin = Math.max(0, input.retailCents - input.wholesaleCents)
-  const platformFee = input.platformFeeCents ?? Math.round(margin * PLATFORM_FEE_PCT / 100)
+  const platformFee = input.platformFeeCents ?? platformFeeCents(margin)
   const amountCents = input.retailCents + (input.absorbShipping === true ? 0 : shipping)
   const applicationFeeCents = Math.min(amountCents, input.wholesaleCents + platformFee + shipping)
   return { amountCents, applicationFeeCents }

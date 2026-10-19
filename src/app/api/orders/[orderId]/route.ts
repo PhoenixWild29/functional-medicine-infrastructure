@@ -23,6 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
 import { RX_DETAIL_COLUMN_LIST, rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
 import { resolveLine, lineSourceKind } from '@/lib/orders/resolve-line'
@@ -70,6 +71,10 @@ async function loadEditableDraft(orderId: string): Promise<
   if (!clinicId) {
     return { ok: false, response: NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 }) }
   }
+  // Pending review: nothing is ordered, signed or sent until ops approves
+  // the clinic (lib/onboarding/approval-guard).
+  const pendingReview = await refuseUnlessApproved(createServiceClient(), clinicId)
+  if (pendingReview) return { ok: false, response: pendingReview }
   const role = getUserRole(user) ?? null
   const actor: Actor = { userId: user.id, role, clinicId }
 

@@ -128,6 +128,22 @@ describe('accepting a provider or staff invite', () => {
   })
 })
 
+// Self sign-up, decision 5: "Submit for review" waits for a confirmed
+// email. Every invite (clinic admin, provider, medical assistant: the
+// clinic invite and the team invites) proves the address by its link, so
+// the account is created already confirmed and never waits.
+describe('every invited account is created with its email confirmed', () => {
+  it.each([
+    ['clinic_admin', invite()],
+    ['provider', invite({ kind: 'provider', provider_id: PROVIDER, email: 'dr.chen@sunrise.test' })],
+    ['medical_assistant', invite({ kind: 'medical_assistant', email: 'ma@sunrise.test' })],
+  ])('%s', async (_kind, row) => {
+    db = scriptedDb(script(row))
+    expect((await POST(req(GOOD))).status).toBe(201)
+    expect((createUser.mock.calls[0]![0] as Record<string, unknown>)['email_confirm']).toBe(true)
+  })
+})
+
 describe('refused invites create no account', () => {
   it.each([
     ['unknown',  null],
