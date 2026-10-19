@@ -109,3 +109,32 @@ it('Cancel goes back to where the user came from', () => {
   render(<NewProtocolForm createdBy={null} returnTo="/dashboard" />)
   expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute('href', '/dashboard')
 })
+
+// E2E #242: the catalog links a single-ingredient formulation to its
+// ingredient through its salt form (formulations.salt_form_id), with no
+// formulation_ingredients row. Such a formulation must be offered, as the
+// prescription builder offers it (ingredient → salt forms → formulations).
+// A combination product found through formulation_ingredients still is.
+it('offers formulations linked through the ingredient\'s salt form, and combinations', async () => {
+  fetchMock.mockImplementation(async (url: string) => {
+    if (url.startsWith('/api/formulations?level=ingredients')) return ok({ data: [{ ingredient_id: 'ing-test', common_name: 'Test Compound E2E' }] })
+    if (url === '/api/formulations?level=salt_forms&ingredient_id=ing-test') return ok({ data: [{ salt_form_id: 'salt-1', salt_name: 'HCl' }] })
+    if (url === '/api/formulations?level=formulations&salt_form_id=salt-1') {
+      return ok({ data: [{ formulation_id: 'f-single', name: 'Test Compound E2E Injectable 10 mg/mL', formulation_ingredients: [] }] })
+    }
+    if (url === '/api/formulations?level=formulations') {
+      return ok({ data: [
+        { formulation_id: 'f-single', name: 'Test Compound E2E Injectable 10 mg/mL', formulation_ingredients: [] },
+        { formulation_id: 'f-combo', name: 'Combo with Test Compound', formulation_ingredients: [{ ingredient_id: 'ing-test' }, { ingredient_id: 'ing-b' }] },
+        { formulation_id: 'f-other', name: 'Unrelated', formulation_ingredients: [{ ingredient_id: 'ing-x' }] },
+      ] })
+    }
+    return { ok: false, status: 404, json: async () => ({}) }
+  })
+  render(<NewProtocolForm createdBy={null} returnTo="/dashboard" />)
+  fireEvent.change(screen.getByLabelText('Search medications'), { target: { value: 'test' } })
+  fireEvent.click(await screen.findByRole('button', { name: 'Test Compound E2E' }))
+  const select = await screen.findByLabelText('Formulation')
+  const options = within(select).getAllByRole('option').map(o => o.textContent)
+  expect(options).toEqual(['Choose a formulation', 'Test Compound E2E Injectable 10 mg/mL', 'Combo with Test Compound'])
+})
