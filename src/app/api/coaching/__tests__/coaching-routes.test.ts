@@ -78,6 +78,8 @@ describe('GET /api/coaching/checklist', () => {
       if (c.table === 'agreement_acceptances') {
         return { data: (['baa', 'terms'] as const).map(k => ({ acceptance_id: k, agreement: k, template_version: AGREEMENTS[k].version, text_sha256: 'x', signer_name: 'L', signer_title: 'O', accepted_at: '2026-10-01T00:00:00Z' })) }
       }
+      if (c.table === 'clinic_team_members') return { data: [{ user_id: 'u-1', email: 'a@c.test', full_name: null, role: 'clinic_admin', deactivated_at: null, last_sign_in_at: null }, { user_id: 'u-2', email: 'p@c.test', full_name: null, role: 'provider', deactivated_at: null, last_sign_in_at: null }] }
+      if (c.table === 'onboarding_invites') return { data: [] }
       return { count: 1 }
     })
     const body = await (await GET()).json()

@@ -86,13 +86,21 @@ describe('buildChecklist', () => {
 
 describe('loadChecklist reads real data, scoped to the caller', () => {
   const CLINIC = 'c-1'
+  const member = (userId: string, deactivatedAt: string | null = null) => ({
+    user_id: userId, email: `${userId}@clinic.test`, full_name: null, role: 'provider', deactivated_at: deactivatedAt, last_sign_in_at: null,
+  })
+  const invite = (expiresAt: string) => ({
+    invite_id: 'i-1', kind: 'staff', email: 'ma@clinic.test', invitee_name: null, provider_id: null,
+    expires_at: expiresAt, last_sent_at: '2026-10-01T00:00:00Z', accepted_at: null, revoked_at: null,
+  })
   const user = (role: string, extra: Record<string, unknown> = {}) => ({ id: 'u-1', app_metadata: { app_role: role, clinic_id: CLINIC, ...extra } })
 
-  it('clinic admin: from the clinic, its agreements, providers, patients and signed orders', async () => {
+  it('clinic admin: from the clinic, its agreements, the Team page members and invites, patients and signed orders', async () => {
     const db = scriptedDb((c: ScriptedCall) => {
       if (c.table === 'clinics') return { data: { onboarding_status: 'approved', legal_name: 'Sunrise PLLC' } }
       if (c.table === 'agreement_acceptances') return { data: [] }
-      if (c.table === 'providers') return { count: 2 }
+      if (c.table === 'clinic_team_members') return { data: [member('u-1'), member('u-2')] }
+      if (c.table === 'onboarding_invites') return { data: [] }
       if (c.table === 'patients') return { count: 0 }
       if (c.table === 'orders') return { count: 1 }
       return undefined
@@ -102,11 +110,46 @@ describe('loadChecklist reads real data, scoped to the caller', () => {
       ['practice', true], ['agreements', false], ['team', true], ['patients', false], ['first-prescription', true],
     ])
     for (const call of db.calls) {
-      if (['clinics', 'providers', 'patients', 'orders', 'agreement_acceptances'].includes(call.table)) {
+      if (['clinics', 'patients', 'orders', 'agreement_acceptances', 'onboarding_invites'].includes(call.table)) {
         expect(call.filters['clinic_id']).toBe(CLINIC)
       }
     }
+    // The Team page's data source (lib/team/team), not a query of its own.
+    expect(db.calls.find(c => c.table === 'clinic_team_members')!.payload).toEqual({ p_clinic_id: CLINIC })
+    expect(db.to('providers', 'select')).toEqual([])
     expect(db.to('orders', 'select')[0]!.filters['locked_at:not']).toEqual(['is', null])
+  })
+
+  describe('"Add your team" ticks with an active member besides the admin, or a pending invite', () => {
+    const teamDone = async (members: unknown[], invites: unknown[]) => {
+      const db = scriptedDb((c: ScriptedCall) => {
+        if (c.table === 'clinics') return { data: { onboarding_status: 'approved', legal_name: 'Sunrise PLLC' } }
+        if (c.table === 'agreement_acceptances') return { data: [] }
+        if (c.table === 'clinic_team_members') return { data: members }
+        if (c.table === 'onboarding_invites') return { data: invites }
+        return { count: 0 }
+      })
+      const c = await loadChecklist(db.client as never, user('clinic_admin'))
+      return c!.steps.find(s => s.id === 'team')!
+    }
+    it('links to Settings > Team', async () => {
+      expect((await teamDone([], [])).href).toBe('/settings/team')
+    })
+    it('only the admin: to do', async () => {
+      expect((await teamDone([member('u-1')], [])).done).toBe(false)
+    })
+    it('another active member: done', async () => {
+      expect((await teamDone([member('u-1'), member('u-2')], [])).done).toBe(true)
+    })
+    it('another member, deactivated: to do', async () => {
+      expect((await teamDone([member('u-1'), member('u-2', '2026-10-01T00:00:00Z')], [])).done).toBe(false)
+    })
+    it('a pending invite: done', async () => {
+      expect((await teamDone([member('u-1')], [invite(new Date(Date.now() + 86400000).toISOString())])).done).toBe(true)
+    })
+    it('only an expired invite: to do', async () => {
+      expect((await teamDone([member('u-1')], [invite('2026-01-01T00:00:00Z')])).done).toBe(false)
+    })
   })
 
   it('medical assistant: from the PHI access log rows they wrote', async () => {

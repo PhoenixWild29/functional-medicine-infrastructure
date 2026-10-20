@@ -83,8 +83,9 @@ it('no protocols: "Save this session as a protocol" opens the protocol form', as
   expect(screen.getByTestId('new-protocol-form')).toBeInTheDocument()
 })
 
-it('no team: Settings > Team uses the shared empty state with what to do next', () => {
+it('no team: Settings > Team uses the shared empty state, its button going to Settings > Team', () => {
   const page = readFileSync(join(process.cwd(), 'src', 'app', '(clinic-app)', 'settings', 'team', 'page.tsx'), 'utf8')
   expect(page).toMatch(/<EmptyState/)
   expect(page).toContain('No providers yet')
+  expect(page).toMatch(/action=\{\{ label: 'Add a provider', href: '\/settings\/team' \}\}/)
 })

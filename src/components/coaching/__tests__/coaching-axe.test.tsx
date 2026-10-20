@@ -55,7 +55,7 @@ it('empty states, with a link and with a button', async () => {
     <main>
       <EmptyState title="No patients yet" body="Add your first patient to start a prescription." action={{ label: 'Add a patient', onClick: () => {} }} />
       <EmptyState title="No orders yet" action={{ label: 'New Prescription', href: '/new-prescription' }} />
-      <EmptyState title="No providers yet" body="Ask your CompoundIQ contact to add your providers." />
+      <EmptyState title="No providers yet" body="Add a provider in Team. Each one appears here with their NPI check and state licenses." action={{ label: 'Add a provider', href: '/settings/team' }} />
     </main>,
   )
   expect(await ids(container)).toEqual([])
