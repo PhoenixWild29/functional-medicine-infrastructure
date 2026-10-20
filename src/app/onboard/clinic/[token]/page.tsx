@@ -9,5 +9,5 @@ export const metadata = { title: 'Set up your clinic | CompoundIQ', referrer: 'n
 export default async function ClinicInvitePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
   const invite = await lookupInviteForPage(token, true)
-  return <AcceptInviteForm token={token} kind={invite.kind} clinicName={invite.clinicName} email={invite.email} status={invite.status} />
+  return <AcceptInviteForm token={token} kind={invite.kind} clinicName={invite.clinicName} email={invite.email} status={invite.status} inviteeName={invite.inviteeName} />
 }

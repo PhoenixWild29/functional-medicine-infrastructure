@@ -3670,3 +3670,61 @@ test.describe('Clinic App — dashboard KPI cards and row Refill', () => {
     await expect(page.getByTestId(`row-refill-${order}`)).toHaveCount(0)
   })
 })
+
+// ============================================================
+// + New Protocol creates a protocol with no patient (Lauren, 18 Oct)
+// ============================================================
+// A protocol is a template. From the dashboard, + New Protocol opens
+// /protocols/new: no patient or provider step. Saved, it comes back to
+// the dashboard with "Protocol saved", and the protocol loads into a
+// prescription from the New Prescription Protocols panel.
+
+test.describe('Clinic App — create a protocol without a patient', () => {
+  const PROTOCOL_NAME = `E2E protocol ${Date.now()}`
+
+  test.beforeAll(async () => { await seedStaticData() })
+  test.afterAll(async () => {
+    const supabase = createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
+    const { data } = await supabase.from('protocol_templates').select('protocol_id').eq('clinic_id', TEST_IDS.clinic).eq('name', PROTOCOL_NAME)
+    for (const row of data ?? []) {
+      await supabase.from('protocol_items').delete().eq('protocol_id', row.protocol_id)
+      await supabase.from('protocol_templates').delete().eq('protocol_id', row.protocol_id)
+    }
+  })
+  test.afterEach(async () => { await cleanupTestOrders() })
+
+  test('from the dashboard with no patient, then used in a prescription', async ({ page }) => {
+    await loginAs(page, TEST_USERS.provider)
+    await page.getByRole('button', { name: '+ New Protocol' }).click()
+    await expect(page).toHaveURL(/\/protocols\/new/, { timeout: 15_000 })
+    await expect(page.getByRole('heading', { level: 1, name: 'New protocol' })).toBeVisible()
+    await expect(page.getByLabel('Search patients')).toHaveCount(0)
+
+    await page.getByLabel('Protocol name').fill(PROTOCOL_NAME)
+    await page.getByLabel('Search medications').fill(TEST_CATALOG.ingredientName)
+    await page.getByRole('button', { name: TEST_CATALOG.ingredientName }).click()
+    await page.getByLabel('Formulation').selectOption({ label: TEST_CATALOG.formulationName })
+    await page.getByLabel('Pharmacy').selectOption({ label: 'Test Pharmacy Tier1' })
+    await page.getByLabel('Dose', { exact: true }).fill('10')
+    await page.getByLabel('Dose unit').fill('mg')
+    await page.getByLabel('Frequency').selectOption('QD')
+    await page.getByRole('button', { name: 'Save protocol' }).click()
+
+    await expect(page).toHaveURL(/\/dashboard\?protocolSaved=/, { timeout: 15_000 })
+    await expect(page.getByRole('status').filter({ hasText: `Protocol saved: ${PROTOCOL_NAME}` })).toBeVisible()
+
+    // Now use it: a prescription for the test patient, from the Protocols panel.
+    await page.goto('/new-prescription')
+    await page.getByLabel('Search patients').fill('Test')
+    await page.getByRole('button', { name: /Patient,\s*Test/i }).click()
+    await pickProviderIfListed(page)
+    await page.getByRole('button', { name: 'Continue to Pharmacy Search' }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/search/, { timeout: 10_000 })
+    await page.getByRole('button', { name: /^Protocols \(\d+\)$/ }).click()
+    const panel = page.getByTestId('protocols-panel')
+    await panel.getByRole('button', { name: new RegExp(PROTOCOL_NAME) }).click()
+    await panel.getByRole('button', { name: /Load 1 Medications? into Session/ }).click()
+    await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 15_000 })
+    await expect(page.getByText(TEST_CATALOG.formulationName).first()).toBeVisible()
+  })
+})

@@ -3,19 +3,30 @@
 // /settings/team
 // ============================================================
 //
-// Each provider's NPI status and state licenses. The clinic admin sees the
-// clinic's providers and can add or edit licenses and re-run the NPI check;
-// a provider sees their own credentials, read-only; a medical assistant
-// gets a notice. Read through the session client (RLS: own clinic only).
-// Full invite and add-provider flows come later.
+// Team invites: everyone in the clinic sees the team (name, email, role,
+// active or deactivated); medical assistants and providers read-only. The
+// clinic admin also adds providers, invites medical assistants and clinic
+// admins, manages pending invites, and deactivates or reactivates members
+// (TeamPanel; the routes under /api/team). The team list comes from
+// clinic_team_members and the invites from onboarding_invites, both with
+// the service role after the role check (no patient data).
+//
+// Compliance C4: each provider's NPI status and state licenses, read
+// through the session client (RLS: own clinic only). The clinic admin sees
+// every provider and can add or edit licenses and re-run the NPI check; a
+// provider sees their own credentials, read-only; a medical assistant sees
+// none.
 
 import Link from 'next/link'
 import { createServerClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { todayUtc } from '@/lib/providers/credentials'
 import { CredentialsEditor } from './_components/credentials-editor'
+import { TeamPanel } from './_components/team-panel'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { EmptyState } from '@/components/coaching/empty-state'
+import { listPendingInvites, listTeamMembers } from '@/lib/team/team'
 
 export const metadata = {
   title: 'Team',
@@ -83,13 +94,49 @@ export default async function TeamPage() {
   }
   const role = getUserRole(user)
   const isAdmin = role === 'clinic_admin'
-  if (!isAdmin && role !== 'provider') {
+  if (!isAdmin && role !== 'provider' && role !== 'medical_assistant') {
     return (
       <main className="mx-auto max-w-5xl px-4 py-8">
         <section className="rounded-lg border border-border bg-card p-6" data-testid="team-not-available">
           <h1 className="text-lg font-semibold text-foreground">Team</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Provider credentials are shown to the clinic admin and to each provider.</p>
+          <p className="mt-2 text-sm text-muted-foreground">The team is shown to the clinic&apos;s staff.</p>
         </section>
+      </main>
+    )
+  }
+
+  // Team invites: the team list (everyone) and pending invites (the admin).
+  const service = createServiceClient()
+  const [members, invites] = await Promise.all([
+    listTeamMembers(service, clinicId),
+    isAdmin ? listPendingInvites(service, clinicId) : Promise.resolve([]),
+  ])
+  const teamSection = members === null || invites === null ? (
+    <section role="alert" className="rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-800" data-testid="team-members-error">
+      The team list could not be loaded. This is an error, not an empty team. Reload the page to try again.
+    </section>
+  ) : (
+    <TeamPanel members={members} invites={invites} canManage={isAdmin} currentUserId={user.id} />
+  )
+
+  const header = (
+    <div>
+      <Link href="/settings" className="text-xs text-muted-foreground underline hover:text-foreground">Clinic Settings</Link>
+      <h1 className="mt-2 text-2xl font-bold text-foreground">Team</h1>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {isAdmin
+          ? 'Add providers, invite medical assistants and clinic admins, and turn off access for anyone who leaves. A provider can sign a prescription only with a verified NPI and an active license in the patient’s state.'
+          : 'Your clinic’s team. Your clinic admin manages who is on it.'}
+      </p>
+    </div>
+  )
+
+  // A medical assistant sees the team, and no provider credentials.
+  if (role === 'medical_assistant') {
+    return (
+      <main className="mx-auto max-w-5xl px-4 py-8 space-y-6">
+        {header}
+        {teamSection}
       </main>
     )
   }
@@ -129,14 +176,13 @@ export default async function TeamPage() {
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 space-y-6">
-      <div>
-        <Link href="/settings" className="text-xs text-muted-foreground underline hover:text-foreground">Clinic Settings</Link>
-        <h1 className="mt-2 text-2xl font-bold text-foreground">Team</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          A provider can sign a prescription only with a verified NPI and an active license in the patient&apos;s state.
-          {isAdmin ? ' Add or update licenses and re-run the NPI check here.' : ' Your clinic admin keeps these up to date.'}
-        </p>
-      </div>
+      {header}
+      {teamSection}
+
+      <h2 className="text-lg font-semibold text-foreground">Provider credentials</h2>
+      <p className="text-sm text-muted-foreground">
+        {isAdmin ? 'Add or update licenses and re-run the NPI check here.' : 'Your clinic admin keeps these up to date.'}
+      </p>
 
       {providers.length === 0 && (isAdmin ? (
         // First-run coaching: say what to do next. Adding a provider after
@@ -159,7 +205,7 @@ export default async function TeamPage() {
         return (
           <section key={p.provider_id} className="rounded-lg border border-border bg-card p-6 space-y-4" data-testid={`team-provider-${p.provider_id}`}>
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="text-base font-semibold text-foreground">{p.first_name} {p.last_name}</h2>
+              <h3 className="text-base font-semibold text-foreground">{p.first_name} {p.last_name}</h3>
               <p className="text-sm text-muted-foreground">
                 NPI {p.npi_number}{' '}
                 <span className={npi.ok ? TONE.ok : TONE.bad} data-testid={`npi-status-${p.provider_id}`}>{npi.label}</span>

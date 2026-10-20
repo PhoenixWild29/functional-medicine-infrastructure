@@ -38,6 +38,7 @@ import { loadAgreementNotice } from '@/lib/agreements/clinic-agreements'
 import { AgreementUpdateBanner } from './_components/agreement-update-banner'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { SetupChecklistCard } from '@/components/coaching/setup-checklist-card'
+import { ProtocolSavedNotice } from './_components/protocol-saved-notice'
 import { platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
 
 export const metadata = {
@@ -327,6 +328,7 @@ export default async function DashboardPage(
 
         {/* First-run coaching: steps for this role, from real data (client-loaded). */}
         <SetupChecklistCard />
+        <ProtocolSavedNotice />
 
         <LicenseExpiryWarning licenses={expiring} />
 
