@@ -8,7 +8,9 @@
 // with the service role, scoped by the caller's own claims.
 //
 //   clinic_admin       practice details, BAA and terms at their current
-//                      versions, a provider, a patient, a prescription
+//                      versions, a team (another active member or a
+//                      pending invite, read as Settings > Team reads them),
+//                      a patient, a prescription
 //                      sent (signed); the approval line until approved
 //   provider           NPI verified, a protocol created or prescribed
 //                      from, a prescription signed (their own)
@@ -21,6 +23,7 @@ import type { Database } from '@/types/database.types'
 import { getUserClinicId, getUserPharmacyId, getUserRole, type ClaimsUser } from '@/lib/auth/claims'
 import { resolveCurrentProvider } from '@/lib/auth/current-provider'
 import { AGREEMENT_KEYS, loadClinicAgreements } from '@/lib/agreements/clinic-agreements'
+import { listPendingInvites, listTeamMembers } from '@/lib/team/team'
 
 type Db = SupabaseClient<Database>
 
@@ -104,12 +107,15 @@ async function count(q: PromiseLike<{ count: number | null; error: { message: st
   return n ?? 0
 }
 
-async function clinicAdminFacts(db: Db, clinicId: string): Promise<ChecklistFacts> {
+async function clinicAdminFacts(db: Db, userId: string, clinicId: string): Promise<ChecklistFacts> {
   const { data: clinic, error } = await db.from('clinics').select('onboarding_status, legal_name').eq('clinic_id', clinicId).maybeSingle()
   fail('the clinic', error)
   const agreements = await loadClinicAgreements(db, clinicId)
-  const [providers, patients, sent] = await Promise.all([
-    count(db.from('providers').select('provider_id', { count: 'exact', head: true }).eq('clinic_id', clinicId).is('deleted_at', null), 'providers'),
+  // The team as Settings > Team reads it (lib/team/team): another active
+  // member besides this admin, or an invite still pending.
+  const [members, invites] = await Promise.all([listTeamMembers(db, clinicId), listPendingInvites(db, clinicId)])
+  if (members === null || invites === null) throw new Error('setup checklist: the team could not be read')
+  const [patients, sent] = await Promise.all([
     count(db.from('patients').select('patient_id', { count: 'exact', head: true }).eq('clinic_id', clinicId).is('deleted_at', null), 'patients'),
     count(db.from('orders').select('order_id', { count: 'exact', head: true }).eq('clinic_id', clinicId).not('locked_at', 'is', null), 'orders'),
   ])
@@ -119,7 +125,7 @@ async function clinicAdminFacts(db: Db, clinicId: string): Promise<ChecklistFact
     approved:           row?.onboarding_status === 'approved',
     practiceDetails:    !!row?.legal_name?.trim(),
     agreementsAccepted: AGREEMENT_KEYS.every(k => agreements[k].latest !== null && !agreements[k].updateAvailable),
-    hasTeam:            providers > 0,
+    hasTeam:            members.some(m => m.userId !== userId && !m.deactivatedAt) || invites.some(i => i.status === 'pending'),
     hasPatients:        patients > 0,
     sentPrescription:   sent > 0,
   }
@@ -178,7 +184,7 @@ export async function loadChecklist(db: Db, user: ClaimsUser & { id: string }): 
   }
   const clinicId = getUserClinicId(user)
   if (!clinicId) return null
-  if (role === 'clinic_admin') return buildChecklist(role, await clinicAdminFacts(db, clinicId))
+  if (role === 'clinic_admin') return buildChecklist(role, await clinicAdminFacts(db, user.id, clinicId))
   if (role === 'provider') return buildChecklist(role, await providerFacts(db, user.id, clinicId))
   if (role === 'medical_assistant') return buildChecklist(role, await assistantFacts(db, user.id, clinicId))
   return null

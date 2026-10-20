@@ -185,12 +185,12 @@ export default async function TeamPage() {
       </p>
 
       {providers.length === 0 && (isAdmin ? (
-        // First-run coaching: say what to do next. Adding a provider after
-        // approval is done by CompoundIQ until an in-app invite exists.
+        // First-run coaching: say what to do next, with the action.
         <EmptyState
           testId="team-empty"
           title="No providers yet"
-          body="Ask your CompoundIQ contact to add your providers. Each one appears here with their NPI check and state licenses."
+          body="Add a provider in Team. Each one appears here with their NPI check and state licenses."
+          action={{ label: 'Add a provider', href: '/settings/team' }}
         />
       ) : (
         <p className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground" data-testid="team-empty">
