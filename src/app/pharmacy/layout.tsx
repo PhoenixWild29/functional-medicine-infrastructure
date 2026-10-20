@@ -14,6 +14,9 @@ import { Providers } from '@/components/providers'
 import { NavSignOutButton } from '@/components/nav-sign-out-button'
 import { BfcacheGuard } from '@/components/bfcache-guard'
 import { PharmacyNav } from './_components/pharmacy-nav'
+import { SetupChecklistCard } from '@/components/coaching/setup-checklist-card'
+import { ShowChecklistLink } from '@/components/coaching/show-checklist-link'
+import { coachingPrefs } from '@/lib/coaching/prefs'
 
 export const metadata: Metadata = {
   title: 'Pharmacy onboarding | CompoundIQ',
@@ -25,6 +28,9 @@ export default async function PharmacyLayout({ children }: { children: React.Rea
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login?redirectTo=%2Fpharmacy%2Fonboarding')
   if (getUserRole(user) !== 'pharmacy_admin' || !getUserPharmacyId(user)) redirect('/unauthorized')
+  // First-run coaching: the pharmacy's setup checklist (from real data) and,
+  // while it is hidden and not done, "Show setup checklist" in the header.
+  const coaching = coachingPrefs(user)
 
   return (
     <Providers>
@@ -36,8 +42,14 @@ export default async function PharmacyLayout({ children }: { children: React.Rea
         <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border bg-card px-4 py-1">
           <span className="text-sm font-semibold text-foreground">CompoundIQ · Pharmacy</span>
           <PharmacyNav />
-          <NavSignOutButton />
+          <div className="flex items-center gap-3">
+            {coaching.checklistHidden && !coaching.checklistDone && <ShowChecklistLink home="/pharmacy/onboarding" />}
+            <NavSignOutButton />
+          </div>
         </header>
+        <div className="mx-auto max-w-5xl px-4 pt-4 empty:hidden">
+          <SetupChecklistCard />
+        </div>
         {children}
       </div>
     </Providers>

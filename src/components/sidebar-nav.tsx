@@ -28,6 +28,7 @@ import {
 import { cn } from '@/lib/utils'
 import { createBrowserClient } from '@/lib/supabase/client'
 import { redirectToLogin } from '@/lib/auth/redirect-to-login'
+import { ShowChecklistLink } from './coaching/show-checklist-link'
 
 interface NavItem {
   href:  string
@@ -47,9 +48,11 @@ interface Props {
   userRole:  string
   /** WO-107: the clinic admin, or a provider the admin shared the practice dashboard with. */
   showPractice?: boolean
+  /** First-run coaching: the user hid the setup checklist and it is not done. */
+  showChecklistLink?: boolean
 }
 
-export function SidebarNav({ userEmail, userRole, showPractice = false }: Props) {
+export function SidebarNav({ userEmail, userRole, showPractice = false, showChecklistLink = false }: Props) {
   const navItems = NAV_ITEMS.filter(item => item.href !== '/practice' || showPractice)
   const pathname = usePathname()
 
@@ -200,6 +203,11 @@ export function SidebarNav({ userEmail, userRole, showPractice = false }: Props)
                 <p className="truncate text-xs font-medium text-foreground">{userEmail.split('@')[0]}</p>
                 <p className="text-[10px] text-muted-foreground">{roleLabel(userRole)}</p>
               </div>
+            </div>
+          )}
+          {!collapsed && showChecklistLink && (
+            <div className="px-3 py-1">
+              <ShowChecklistLink home="/dashboard" />
             </div>
           )}
           <button

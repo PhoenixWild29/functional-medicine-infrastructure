@@ -25,6 +25,7 @@ import { todayUtc } from '@/lib/providers/credentials'
 import { CredentialsEditor } from './_components/credentials-editor'
 import { TeamPanel } from './_components/team-panel'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { EmptyState } from '@/components/coaching/empty-state'
 import { listPendingInvites, listTeamMembers } from '@/lib/team/team'
 
 export const metadata = {
@@ -183,11 +184,19 @@ export default async function TeamPage() {
         {isAdmin ? 'Add or update licenses and re-run the NPI check here.' : 'Your clinic admin keeps these up to date.'}
       </p>
 
-      {providers.length === 0 && (
+      {providers.length === 0 && (isAdmin ? (
+        // First-run coaching: say what to do next, with the action.
+        <EmptyState
+          testId="team-empty"
+          title="No providers yet"
+          body="Add a provider in Team. Each one appears here with their NPI check and state licenses."
+          action={{ label: 'Add a provider', href: '/settings/team' }}
+        />
+      ) : (
         <p className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground" data-testid="team-empty">
-          {isAdmin ? 'No active providers in this clinic yet.' : 'Your login is not linked to a provider record. Contact your administrator.'}
+          Your login is not linked to a provider record. Contact your administrator.
         </p>
-      )}
+      ))}
 
       {providers.map(p => {
         const v = verifications.get(p.provider_id)

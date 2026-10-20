@@ -65,6 +65,7 @@ import {
   type DosePreset,
 } from '@/lib/orders/favorite-presets'
 import type { TitrationStep } from '@/lib/orders/titration'
+import { EmptyState } from '@/components/coaching/empty-state'
 
 // ── Types ───────────────────────────────────
 
@@ -888,9 +889,11 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
             </p>
           )}
           {protocols.length === 0 && !newProtocolOpen && (
-            <p className="rounded-md border border-dashed border-border px-3 py-3 text-center text-xs text-muted-foreground">
-              No protocols yet. Add prescriptions to the session, then use + New to save them as one.
-            </p>
+            <EmptyState
+              title="No protocols yet"
+              body="Add prescriptions to this session, then save them as a protocol your clinic can reuse."
+              action={{ label: 'Save this session as a protocol', onClick: () => { setProtocolSaved(null); setProtocolSaveError(null); setNewProtocolOpen(true) } }}
+            />
           )}
           {protocols.map(proto => (
             <div key={proto.protocol_id} className="rounded-md border border-border">
