@@ -226,3 +226,77 @@ describe('creating the patient', () => {
     expect(all).not.toMatch(/5550123|Zelda|Quixote/)
   })
 })
+
+// Patient Intake PR 4: after staff review a face sheet's values in the
+// form, the same create path saves them. The optional details are checked
+// like the patient's own intake; the duplicate check, 'pending' intake
+// status and intake link are exactly as without them (the patient still
+// confirms the privacy notice and texts from their link).
+describe('reviewed details from a face sheet', () => {
+  const DETAILS = {
+    phone: '(512) 555-0142', firstName: 'Jane', lastName: 'Smith', state: 'TX',
+    dateOfBirth: '1985-04-15', sex: 'female', email: 'Jane@Example.com',
+    addressLine1: '123 Main St', addressLine2: 'Apt 4', city: 'Austin', zip: '78701',
+    allergies: ['Penicillin', ' penicillin ', 'Sulfa'], nkda: false, currentMedications: 'Levothyroxine 50 mcg daily',
+  }
+
+  it('saves them, still pending, still source staff, with the intake link', async () => {
+    const res = await POST(req(DETAILS))
+    expect(res.status).toBe(201)
+    const insert = db.to('patients', 'insert')[0]!.payload as Record<string, unknown>
+    expect(insert).toEqual(expect.objectContaining({
+      first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', sex: 'female', email: 'jane@example.com',
+      address_line1: '123 Main St', address_line2: 'Apt 4', city: 'Austin', state: 'TX', zip: '78701',
+      allergies: ['Penicillin', 'Sulfa'], nkda: false, allergies_updated_at: expect.any(String),
+      current_medications: 'Levothyroxine 50 mcg daily',
+      intake_status: 'pending', source: 'staff', sms_opt_in: false,
+    }))
+    expect(createLinkMock).toHaveBeenCalled()
+    const body = await res.json()
+    expect(body.patient).toEqual(expect.objectContaining({ date_of_birth: '1985-04-15', intake_status: 'pending', allergies: ['Penicillin', 'Sulfa'], nkda: false }))
+  })
+
+  it('NKDA with no allergies is saved as NKDA', async () => {
+    await POST(req({ phone: '5125550123', nkda: true }))
+    expect(db.to('patients', 'insert')[0]!.payload).toEqual(expect.objectContaining({ nkda: true, allergies: [], allergies_updated_at: expect.any(String) }))
+  })
+
+  it('nothing given for allergies leaves them unrecorded (the patient answers in intake)', async () => {
+    await POST(req({ phone: '5125550123', firstName: 'Jane' }))
+    const insert = db.to('patients', 'insert')[0]!.payload as Record<string, unknown>
+    expect(insert).not.toHaveProperty('allergies_updated_at')
+    expect(insert).not.toHaveProperty('nkda')
+  })
+
+  it('the duplicate check is the same: same mobile is a 409 with nothing written', async () => {
+    happyDb([{ patient_id: 'p-old', first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', phone: '+15125550142', phone_e164: '+15125550142', intake_status: 'complete' }])
+    const res = await POST(req(DETAILS))
+    expect(res.status).toBe(409)
+    expect(db.to('patients', 'insert')).toHaveLength(0)
+  })
+
+  it.each([
+    ['dateOfBirth', { dateOfBirth: '2099-01-01' }],
+    ['dateOfBirth', { dateOfBirth: '1985-02-30' }],
+    ['sex', { sex: 'F' }],
+    ['email', { email: 'not an email' }],
+    ['addressLine1', { addressLine1: 'x'.repeat(201) }],
+    ['city', { city: 'x'.repeat(101) }],
+    ['zip', { zip: '787' }],
+    ['allergies', { allergies: 'Penicillin' }],
+    ['allergies', { allergies: ['Penicillin'], nkda: true }],
+    ['currentMedications', { currentMedications: 'x'.repeat(2001) }],
+  ])('%s that is not valid: 400 naming the field, nothing written', async (field, over) => {
+    const res = await POST(req({ phone: '5125550123', ...over }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).field).toBe(field)
+    expect(db.to('patients', 'insert')).toHaveLength(0)
+  })
+
+  it('never logs a detail', async () => {
+    const log = jest.spyOn(console, 'info')
+    const err = jest.spyOn(console, 'error')
+    await POST(req(DETAILS))
+    expect(JSON.stringify([...log.mock.calls, ...err.mock.calls])).not.toMatch(/Jane|Smith|1985|Penicillin|Austin|example|Levothyroxine/i)
+  })
+})

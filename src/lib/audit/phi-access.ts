@@ -42,6 +42,8 @@ export type PhiResource =
   | 'payment_link'
   | 'payment_group'
   | 'patient_phases'
+  // Patient Intake PR 4: a face sheet read to prefill + New patient (no patient yet).
+  | 'face_sheet_fill'
   | 'access_log'
   // Patient Intake PR 2: dismissing "Possible duplicate of <name>".
   | 'patient_duplicate_flag'

@@ -7,6 +7,12 @@
 // from an intake link on their phone; until then their intake_status is
 // 'pending' and their orders are held (no signing, no payment).
 //
+// Patient Intake PR 4: when staff fill the form from a face sheet, they
+// review and edit the other details it gave (date of birth, sex, email,
+// address, allergies or NKDA, medications) and they are saved here too,
+// checked by lib/patients/staff-details. Nothing else changes: same
+// duplicate check, still 'pending', still the intake link.
+//
 //   400  a field is missing or malformed ({ field })
 //   409  POSSIBLE_DUPLICATE: a patient in this clinic with the same mobile,
 //        or the same first and last name. Nothing is written; staff pick the
@@ -30,6 +36,7 @@ import { checkMobileLineType } from '@/lib/twilio/line-type'
 import { ilikeLiteral } from '@/lib/patients/duplicates'
 import { createIntakeLink } from '@/lib/intake/links'
 import { sendIntakeLinkSms } from '@/lib/intake/sms'
+import { staffDetails } from '@/lib/patients/staff-details'
 
 const STAFF_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
 const NAME_MAX = 100
@@ -90,6 +97,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     state = s
   }
   const confirmNew = body['confirmNew'] === true
+  const details = staffDetails(body)
+  if ('field' in details) return bad(details.field, details.error)
 
   // ── Line Type (only when Twilio is configured) ──
   const lineType = await checkMobileLineType(phone)
@@ -152,6 +161,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       date_of_birth: null,
       phone,
       state,
+      ...details.columns,
       intake_status: 'pending',
       source:        'staff',
       sms_opt_in:    false,
@@ -183,13 +193,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       patient_id: patientId,
       first_name: firstName,
       last_name: lastName,
-      date_of_birth: null,
+      date_of_birth: details.columns.date_of_birth ?? null,
       phone,
       state,
       sms_opt_in: false,
-      allergies: row['allergies'] ?? null,
-      nkda: row['nkda'] ?? false,
-      allergies_updated_at: row['allergies_updated_at'] ?? null,
+      allergies: details.columns.allergies ?? row['allergies'] ?? null,
+      nkda: details.columns.nkda ?? row['nkda'] ?? false,
+      allergies_updated_at: details.columns.allergies_updated_at ?? row['allergies_updated_at'] ?? null,
       intake_status: 'pending',
     },
     intake,
