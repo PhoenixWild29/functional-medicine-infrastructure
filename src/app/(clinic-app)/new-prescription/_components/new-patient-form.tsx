@@ -11,7 +11,7 @@
 // Never merged.
 //
 // PR 4, "Drop a face sheet": staff drop or choose a PDF, PNG or JPG (up to
-// 10 MB) or paste its text; POST /api/patients/face-sheet reads it and the
+// 4 MB) or paste its text; POST /api/patients/face-sheet reads it and the
 // values prefill this form, with the other details the sheet gave (date of
 // birth, sex, email, address, allergies or NKDA, medications). Each field
 // that came from the sheet says so in its label. Nothing is saved until
@@ -78,10 +78,11 @@ interface SheetFields {
   allergies: string[] | null; nkda: boolean | null; currentMedications: string | null
 }
 
-const MAX_SHEET_BYTES = 10 * 1024 * 1024
+// 4 MB, as lib/face-sheet/config (Vercel refuses bodies over about 4.5 MB).
+const MAX_SHEET_BYTES = 4 * 1024 * 1024
 const SHEET_TYPES = ['application/pdf', 'image/png', 'image/jpeg']
 const SHEET_EXT = /\.(pdf|png|jpe?g)$/i
-const TOO_BIG = 'That file is over 10 MB. Choose a smaller file, or paste the text instead.'
+const TOO_BIG = 'That file is over 4 MB. Choose a smaller file, or paste the text instead.'
 const WRONG_TYPE = 'Choose a PDF, PNG or JPG file.'
 
 function formatDob(iso: string | null): string {
@@ -298,7 +299,7 @@ export function NewPatientForm({ onCreated, onUseExisting, onCancel, faceSheet =
         >
           <legend className="px-1 text-sm font-semibold text-foreground">Drop a face sheet</legend>
           <p id={ids.sheetHint} className="text-xs text-muted-foreground">
-            Drop it here, choose it, or paste its text: a PDF, PNG or JPG, up to 10 MB. It is read to fill this form and not kept. Check every field before you add the patient.
+            Drop it here, choose it, or paste its text: a PDF, PNG or JPG, up to 4 MB. It is read to fill this form and not kept. Check every field before you add the patient.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className="inline-flex rounded-md focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">

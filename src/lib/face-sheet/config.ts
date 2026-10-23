@@ -10,8 +10,11 @@
 export type FaceSheetStatus = 'ready' | 'not_configured' | 'off'
 
 export const FACE_SHEET_NOT_SET_UP = 'Face sheet fill is not set up.'
-/** The largest face sheet accepted (also checked in the browser before upload). */
-export const MAX_FACE_SHEET_BYTES = 10 * 1024 * 1024
+/**
+ * The largest face sheet accepted (also checked in the browser before
+ * upload). 4 MB: Vercel refuses request bodies over about 4.5 MB.
+ */
+export const MAX_FACE_SHEET_BYTES = 4 * 1024 * 1024
 
 export function faceSheetStatus(): FaceSheetStatus {
   if (process.env['FACE_SHEET_AI_ENABLED']?.trim().toLowerCase() === 'false') return 'off'

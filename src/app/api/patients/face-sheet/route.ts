@@ -3,7 +3,7 @@
 // ============================================================
 //
 // Staff drop a face sheet (multipart field "file": a PDF, PNG or JPG up to
-// 10 MB, checked by its first bytes) or paste its text (JSON { text }).
+// 4 MB, checked by its first bytes) or paste its text (JSON { text }).
 // Claude reads it (lib/face-sheet/extract) and the answer prefills the
 // new-patient form. Nothing is saved here: staff review and edit every
 // value, then save through POST /api/patients as usual (duplicate check,
@@ -13,7 +13,7 @@
 //   400  pasted text empty, too long or not text
 //   401 / 403                 signed out / not clinic staff / clinic under review
 //   404  FACE_SHEET_OFF       FACE_SHEET_AI_ENABLED is "false"
-//   413  over 10 MB           415  not a PDF, PNG or JPG
+//   413  over 4 MB            415  not a PDF, PNG or JPG
 //   422  nothing readable     429  20 an hour per user (Retry-After)
 //   503  not set up (no ANTHROPIC_API_KEY), busy, or unavailable
 //
@@ -61,7 +61,7 @@ function sniff(bytes: Uint8Array): FaceSheetMediaType | null {
   return null
 }
 
-const TOO_BIG = 'That file is over 10 MB. Choose a smaller file, or paste the text instead.'
+const TOO_BIG = 'That file is over 4 MB. Choose a smaller file, or paste the text instead.'
 const WRONG_TYPE = 'Choose a PDF, PNG or JPG file.'
 
 async function readInput(request: NextRequest): Promise<FaceSheetInput | NextResponse> {
