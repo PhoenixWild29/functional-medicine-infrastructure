@@ -107,7 +107,7 @@ async function openDoseStep() {
 }
 
 async function continueParams(): Promise<URLSearchParams> {
-  const cont = await screen.findByRole('button', { name: 'Continue — Set Retail Price' })
+  const cont = await screen.findByRole('button', { name: 'Continue to Set Retail Price' })
   await waitFor(() => expect(cont).toBeEnabled())
   fireEvent.click(cont)
   const url = mockPush.mock.calls[mockPush.mock.calls.length - 1]![0] as string

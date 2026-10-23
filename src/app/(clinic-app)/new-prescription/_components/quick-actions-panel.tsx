@@ -367,7 +367,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
       // Total block: nothing would reach the review step, so there is
       // nothing to advance to. Stay here with the full per-item reason.
       setProtocolLoadError(
-        `No medications loaded for this ${patientState} patient — ${skippedMessages.join('; ')}.`
+        `No medications loaded for this ${patientState} patient: ${skippedMessages.join('; ')}.`
       )
       return
     }
@@ -383,7 +383,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
     })))
 
     if (unavailable.length > 0) {
-      setProtocolLoadError(`${unavailable.join('; ')} — protocol not loaded.`)
+      setProtocolLoadError(`${unavailable.join('; ')}. Protocol not loaded.`)
       return
     }
 
@@ -466,7 +466,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
       // work happened; say so instead, in amber rather than red.
       const parts = [
         `All ${alreadyInSession.length} medication${alreadyInSession.length !== 1 ? 's' : ''} ` +
-        `from this protocol ${alreadyInSession.length !== 1 ? 'are' : 'is'} already in this session — nothing was added.`,
+        `from this protocol ${alreadyInSession.length !== 1 ? 'are' : 'is'} already in this session. Nothing was added.`,
       ]
       if (skippedMessages.length > 0) {
         parts.push(`Still skipped for this ${patientState} patient: ${skippedMessages.join('; ')}.`)
@@ -953,7 +953,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
                             )}
                             {itemUnlicensed && (
                               <span className="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">
-                                not licensed in {patientState} — will be skipped
+                                not licensed in {patientState}, will be skipped
                               </span>
                             )}
                             {itemControlled && (
@@ -1159,12 +1159,12 @@ function FavoriteCard({
 
       {isUnavailable && (
         <p className="mt-1 text-[10px] text-amber-700">
-          No longer in the catalog — remove this favorite and choose a replacement.
+          No longer in the catalog. Remove this favorite and choose a replacement.
         </p>
       )}
       {!isUnavailable && isUnlicensed && (
         <p className="mt-1 text-[10px] text-red-700">
-          {fav.pharmacies?.name ?? 'The pinned pharmacy'} is not licensed in {patientState} — choose a licensed pharmacy for this patient.
+          {fav.pharmacies?.name ?? 'The pinned pharmacy'} is not licensed in {patientState}. Choose a licensed pharmacy for this patient.
         </p>
       )}
       {fav.use_count > 0 && (

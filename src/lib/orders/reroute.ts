@@ -275,7 +275,7 @@ export function multiPharmacyNotice(
   // Not a saving: say so rather than advertise the shipping alone.
   const message = plan.shippingDeltaCents < 0 && changed.length > 0
     ? `${head}. Routing all to ${to} would save ${money(plan.shippingDeltaCents)} on shipping, but medication prices would ` +
-      `${plan.medicationDeltaCents > 0 ? 'rise' : 'fall'} ${money(plan.medicationDeltaCents)} (${priceList}) — ` +
+      `${plan.medicationDeltaCents > 0 ? 'rise' : 'fall'} ${money(plan.medicationDeltaCents)} (${priceList}): ` +
       `${plan.netDeltaCents === 0 ? 'no net saving' : `${money(plan.netDeltaCents)} more overall`}, so it is not suggested.`
     : `${head}.`
   return { pharmacyCount: pharmacyIds.length, currentShippingCents: current.totalCents, plan, offerReroute: false, message }

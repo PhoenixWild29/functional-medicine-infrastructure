@@ -117,7 +117,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // If we get here the group is in a broken state — log loudly.
     console.error(`[payment-group-intent] group has no stripe_payment_intent_id | group=${groupId}`)
     return NextResponse.json(
-      { error: 'Group payment is not initialized — contact your clinic' },
+      { error: 'Group payment is not initialized. Contact your clinic' },
       { status: 500 },
     )
   }
@@ -140,7 +140,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (!existingPi.client_secret || existingPi.status === 'canceled') {
       return NextResponse.json(
-        { error: 'Group payment is no longer available — contact your clinic' },
+        { error: 'Group payment is no longer available. Contact your clinic' },
         { status: 410 },
       )
     }

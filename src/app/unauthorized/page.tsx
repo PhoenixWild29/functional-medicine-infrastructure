@@ -37,7 +37,7 @@ import { SignOutButton } from './_components/sign-out-button'
 import { getUserRole } from '@/lib/auth/claims'
 
 export const metadata = {
-  title: 'Access Denied — CompoundIQ',
+  title: 'Access Denied | CompoundIQ',
 }
 
 export default async function UnauthorizedPage() {

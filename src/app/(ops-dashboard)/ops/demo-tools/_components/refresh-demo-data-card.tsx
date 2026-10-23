@@ -117,14 +117,14 @@ export function RefreshDemoDataCard() {
           <h2 className="text-base font-medium">Refresh Demo Data</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Re-seeds the Ops fax queue and pharmacy adapter submissions so the dashboard
-            shows fresh, realistic data for investor demos. Click right before a demo —
+            shows fresh, realistic data for investor demos. Click right before a demo:
             adapter health cards classify &ldquo;green&rdquo; only when the most recent
             success was within 15 minutes, so stale data reads as degraded.
           </p>
           <ul className="mt-2 list-disc pl-5 text-xs text-muted-foreground space-y-0.5">
             <li>Fax queue: 4 rows (RECEIVED, MATCHED, UNMATCHED, PROCESSING)</li>
             <li>Adapter submissions: 200 rows (4 healthy + 1 degraded pharmacy)</li>
-            <li>Safe to click any time — idempotent, only touches rows with the poc-seed- prefix</li>
+            <li>Safe to click any time: idempotent, only touches rows with the poc-seed- prefix</li>
           </ul>
           <LastRefreshLine status={status} />
         </div>
@@ -150,14 +150,14 @@ export function RefreshDemoDataCard() {
             Ran at {new Date(report.ran_at).toLocaleString()}
             {report.skipped === 'not_poc_mode' && (
               <span className="ml-2 rounded bg-muted px-1 py-0.5 text-[10px] uppercase">
-                skipped — POC_MODE not set
+                skipped: POC_MODE not set
               </span>
             )}
           </p>
           <ul className="mt-2 space-y-1 text-sm">
             <li className="flex items-center gap-2">
               <StatusDot state={report.scaffolding.action === 'error' ? 'error' : 'ok'} />
-              <span className="text-xs">Scaffolding — {report.scaffolding.action}</span>
+              <span className="text-xs">Scaffolding: {report.scaffolding.action}</span>
               {report.scaffolding.error && (
                 <span className="text-xs text-destructive">({report.scaffolding.error})</span>
               )}
@@ -169,7 +169,7 @@ export function RefreshDemoDataCard() {
                     handled), error = hard fail (red), skipped = POC_MODE off. */}
                 <StatusDot state={e2eCleanupDotState(report.e2e_leak_cleanup.action)} />
                 <span className="text-xs">
-                  E2E leak cleanup — {report.e2e_leak_cleanup.action}
+                  E2E leak cleanup: {report.e2e_leak_cleanup.action}
                   {report.e2e_leak_cleanup.action === 'soft_deleted' && (
                     ` (${report.e2e_leak_cleanup.soft_deleted} row${report.e2e_leak_cleanup.soft_deleted === 1 ? '' : 's'} soft-deleted)`
                   )}
@@ -183,7 +183,7 @@ export function RefreshDemoDataCard() {
               {/* PR #9: green ONLY when actually refreshed. skipped is a WARN, not a success. */}
               <StatusDot state={refreshOpDotState(report.fax_seed.action)} />
               <span className="text-xs">
-                Fax seed — {report.fax_seed.action}
+                Fax seed: {report.fax_seed.action}
                 {report.fax_seed.action === 'refreshed' && (
                   ` (deleted ${report.fax_seed.pre_delete}, inserted ${report.fax_seed.inserted})`
                 )}
@@ -195,7 +195,7 @@ export function RefreshDemoDataCard() {
             <li className="flex items-center gap-2">
               <StatusDot state={refreshOpDotState(report.submission_seed.action)} />
               <span className="text-xs">
-                Submissions seed — {report.submission_seed.action}
+                Submissions seed: {report.submission_seed.action}
                 {report.submission_seed.action === 'refreshed' && (
                   ` (deleted ${report.submission_seed.pre_delete}, inserted ${report.submission_seed.inserted})`
                 )}
@@ -216,7 +216,7 @@ type DotState = 'ok' | 'warn' | 'error'
 function StatusDot({ state }: { state: DotState }) {
   // 3-state dot: ok (emerald), warn (amber — e.g., skipped),
   // error (destructive). Previously a boolean-green dot rendered
-  // next to a "skipped — POC_MODE not set" badge, visually
+  // next to a "skipped: POC_MODE not set" badge, visually
   // contradicting itself (cowork PR #9).
   const cls =
     state === 'ok'    ? 'bg-emerald-500' :
@@ -254,7 +254,7 @@ function LastRefreshLine({ status }: { status: DemoDataStatus | null }) {
   if (!status) {
     return (
       <p className="mt-3 text-xs text-muted-foreground">
-        Last refresh — <span className="font-mono">checking…</span>
+        Last refresh: <span className="font-mono">checking…</span>
       </p>
     )
   }
@@ -264,7 +264,7 @@ function LastRefreshLine({ status }: { status: DemoDataStatus | null }) {
       <p className="mt-3 flex items-center gap-2 text-xs">
         <StatusDot state="error" />
         <span className="text-destructive">
-          POC_MODE not set in env — Refresh Demo Data will skip silently. Set <code className="rounded bg-muted px-1">POC_MODE=true</code> in Vercel before demo.
+          POC_MODE not set in env. Refresh Demo Data will skip silently. Set <code className="rounded bg-muted px-1">POC_MODE=true</code> in Vercel before demo.
         </span>
       </p>
     )
@@ -274,7 +274,7 @@ function LastRefreshLine({ status }: { status: DemoDataStatus | null }) {
     return (
       <p className="mt-3 flex items-center gap-2 text-xs">
         <StatusDot state="error" />
-        <span className="text-destructive">Last refresh — never. Click Refresh Demo Data before demo.</span>
+        <span className="text-destructive">Last refresh: never. Click Refresh Demo Data before demo.</span>
       </p>
     )
   }
@@ -288,13 +288,13 @@ function LastRefreshLine({ status }: { status: DemoDataStatus | null }) {
                    'error'
   const hint =
     dotState === 'ok'   ? 'inside the 15-minute green-freshness window' :
-    dotState === 'warn' ? 'outside the green window — click Refresh before demo' :
-                          'stale — click Refresh Demo Data before demo'
+    dotState === 'warn' ? 'outside the green window, click Refresh before demo' :
+                          'stale, click Refresh Demo Data before demo'
   return (
     <p className="mt-3 flex items-center gap-2 text-xs">
       <StatusDot state={dotState} />
       <span className="text-muted-foreground">
-        Last refresh — <span className="font-mono">{ageLabel}</span> ({hint})
+        Last refresh: <span className="font-mono">{ageLabel}</span> ({hint})
       </span>
     </p>
   )

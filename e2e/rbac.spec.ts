@@ -148,8 +148,8 @@ test.describe('RBAC — Cross-Clinic Data Isolation', () => {
     await expect(page).toHaveURL(/\/ops\/pipeline/, { timeout: 15_000 })
 
     // Filter by PAID_PROCESSING status via sidebar button
-    // STATUS_LABEL maps PAID_PROCESSING → 'Paid — Processing'
-    await page.getByRole('button', { name: 'Paid — Processing' }).click()
+    // STATUS_LABEL maps PAID_PROCESSING → 'Paid, processing'
+    await page.getByRole('button', { name: 'Paid, processing' }).click()
 
     await expect(
       page.locator(`[data-order-id="${order.order_id}"]`)

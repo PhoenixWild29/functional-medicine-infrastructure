@@ -70,7 +70,7 @@ function renderPicker() {
 
 const PRICES_UNREADABLE = {
   ok: false, status: 503,
-  json: async () => ({ error: "Today's package prices could not be read, so this refill cannot be priced. Nothing was changed — try again." }),
+  json: async () => ({ error: "Today's package prices could not be read, so this refill cannot be priced. Nothing was changed. Try again." }),
 }
 
 describe('refill — the prices could not be read', () => {

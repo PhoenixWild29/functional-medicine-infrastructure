@@ -131,9 +131,9 @@ describe('MarginBuilderForm — WO-101 package (vial size)', () => {
     renderMargin()
     const options = Array.from((screen.getByLabelText('Package') as HTMLSelectElement).options).map(o => o.textContent)
     expect(options).toEqual([
-      '1 mL vial — $95.00 (suggested)',
-      '2.5 mL vial — $165.00',
-      '5 mL vial — $285.00',
+      '1 mL vial: $95.00 (suggested)',
+      '2.5 mL vial: $165.00',
+      '5 mL vial: $285.00',
     ])
   })
 
@@ -195,7 +195,7 @@ describe('MarginBuilderForm — WO-101 package (vial size)', () => {
 
   it('no duration selected → the pharmacy default package, labelled as such', () => {
     renderMargin({ dose: '40 units', presetDose: '40 units', presetDurationDays: null })
-    expect(screen.getByTestId('package-summary')).toHaveTextContent('Package: 1 mL vial (default package — no duration selected) · $95.00')
+    expect(screen.getByTestId('package-summary')).toHaveTextContent('Package: 1 mL vial (default package, no duration selected) · $95.00')
   })
 
   it('Save as Draft sends the package id so the server prices from it', async () => {

@@ -178,7 +178,7 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
             <span>Show the practice dashboard to providers</span>
           </label>
           <p className="text-xs text-muted-foreground">
-            Off (default): only clinic admins see the practice dashboard — revenue, payout and margin for the whole
+            Off (default): only clinic admins see the practice dashboard: revenue, payout and margin for the whole
             clinic. On: the clinic&apos;s providers see it too.
           </p>
         </div>

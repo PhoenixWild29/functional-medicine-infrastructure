@@ -84,7 +84,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const callerClinicId = getUserClinicId(user) ?? null
 
   if (callerRole !== 'clinic_admin' && callerRole !== 'ops_admin') {
-    return NextResponse.json({ error: 'Forbidden — only clinic_admin or ops_admin can create providers' }, { status: 403 })
+    return NextResponse.json({ error: 'Forbidden: only clinic_admin or ops_admin can create providers' }, { status: 403 })
   }
 
   // 2. Body parse + validate

@@ -106,7 +106,7 @@ describe('findUnlicensedItems — skip pinned pharmacies unlicensed in patient s
       { name: 'Progesterone Capsule 100mg', pharmacyName: 'Portal Plus Pharmacy', pharmacyLicensed: false },
     ], 'CA')
     expect(result).toEqual([
-      'Progesterone Capsule 100mg — Portal Plus Pharmacy is not licensed in CA',
+      'Progesterone Capsule 100mg: Portal Plus Pharmacy is not licensed in CA',
     ])
   })
 
@@ -125,7 +125,7 @@ describe('findUnlicensedItems — skip pinned pharmacies unlicensed in patient s
       { ...licensed, name: 'B', pharmacyName: 'Hybrid Labs Pharmacy', pharmacyLicensed: false },
     ], 'NY')
     expect(result).toHaveLength(2)
-    expect(result[0]).toBe('A — Strive Pharmacy is not licensed in NY')
-    expect(result[1]).toBe('B — Hybrid Labs Pharmacy is not licensed in NY')
+    expect(result[0]).toBe('A: Strive Pharmacy is not licensed in NY')
+    expect(result[1]).toBe('B: Hybrid Labs Pharmacy is not licensed in NY')
   })
 })

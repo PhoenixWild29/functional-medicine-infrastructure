@@ -157,7 +157,7 @@ export function ResetCredentialsCard({ users }: { users: PocUserRow[] }) {
                   aria-hidden
                 />
                 <span className="font-mono text-xs">{r.email}</span>
-                <span className="text-xs text-muted-foreground">— {r.action}</span>
+                <span className="text-xs text-muted-foreground">({r.action})</span>
                 {r.error && <span className="text-xs text-destructive">({r.error})</span>}
               </li>
             ))}
@@ -182,12 +182,12 @@ export function ResetCredentialsCard({ users }: { users: PocUserRow[] }) {
                 aria-hidden
               />
               <span className="text-muted-foreground">
-                Demo data refresh —{' '}
+                Demo data refresh:{' '}
                 {report.demo_data_refresh.ok
                   ? (report.demo_data_refresh.skipped === 'not_poc_mode'
                       ? <span>skipped (POC_MODE off)</span>
                       : <span className="text-emerald-700">synced</span>)
-                  : <span className="text-amber-700">failed — check logs / Sentry</span>}
+                  : <span className="text-amber-700">failed, check logs / Sentry</span>}
               </span>
             </p>
           )}

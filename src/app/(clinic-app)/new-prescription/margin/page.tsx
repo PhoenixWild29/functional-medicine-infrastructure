@@ -1,5 +1,5 @@
 // ============================================================
-// New Prescription — Step 2: Dynamic Margin Builder — WO-28
+// New Prescription: Step 2: Dynamic Margin Builder — WO-28
 // /new-prescription/margin?pharmacyId=<id>&itemId=<id>
 // ============================================================
 //
@@ -38,7 +38,7 @@ import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export const metadata = {
-  title: 'New Prescription — Set Price',
+  title: 'New Prescription: Set Price',
 }
 
 interface PageProps {
@@ -326,7 +326,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
           currentStep={2}
         />
         <h1 className="mt-4 text-2xl font-bold text-foreground">
-          {editTarget && editTarget.kind !== 'draft-add' ? 'Edit Prescription — Price & Directions' : 'Set Retail Price'}
+          {editTarget && editTarget.kind !== 'draft-add' ? 'Edit Prescription: Price & Directions' : 'Set Retail Price'}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {editTarget && editTarget.kind !== 'draft-add'

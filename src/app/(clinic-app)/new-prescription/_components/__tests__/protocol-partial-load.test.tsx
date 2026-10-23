@@ -340,7 +340,7 @@ describe('protocol quick-load — partial success advances', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByText(
-        'Progesterone Capsule 100mg — Portal Plus Pharmacy is not licensed in CA',
+        'Progesterone Capsule 100mg: Portal Plus Pharmacy is not licensed in CA',
       ),
     ).toBeInTheDocument()
   })

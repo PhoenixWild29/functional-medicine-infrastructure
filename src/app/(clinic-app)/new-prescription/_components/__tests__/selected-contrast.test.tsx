@@ -48,7 +48,7 @@ it('the selected-patient card: its secondary line is text-foreground', () => {
   renderSelector()
   fireEvent.click(screen.getByRole('button', { name: /Demo, Alex/ }))
   const card = screen.getByTestId('selected-patient-card')
-  expect(within(card).getByText(/— TX — DOB:/)).toHaveClass('text-foreground')
+  expect(within(card).getByText(/TX, DOB:/)).toHaveClass('text-foreground')
 })
 
 it('the selected provider row: NPI in text-foreground; "No signature on file" is amber-800, never amber-600', () => {

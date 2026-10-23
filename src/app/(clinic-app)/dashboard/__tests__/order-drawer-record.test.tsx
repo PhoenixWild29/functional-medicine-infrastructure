@@ -108,7 +108,7 @@ function renderDrawer() {
 describe('OrderDrawer — financial split reconciles with checkout', () => {
   it('shows shipping as its own line and a patient total of $253.00', async () => {
     renderDrawer()
-    await waitFor(() => expect(screen.getByTestId('drawer-shipping')).toHaveTextContent('Shipping — Strive Pharmacy (cold chain)$22.00'))
+    await waitFor(() => expect(screen.getByTestId('drawer-shipping')).toHaveTextContent('Shipping: Strive Pharmacy (cold chain)$22.00'))
     expect(screen.getByTestId('drawer-patient-total')).toHaveTextContent('$253.00')
     expect(screen.getByTestId('drawer-clinic-payout')).toHaveTextContent('$115.60')
     expect(screen.queryByTestId('drawer-shipping-absorbed')).not.toBeInTheDocument()
@@ -118,7 +118,7 @@ describe('OrderDrawer — financial split reconciles with checkout', () => {
   it('clinic absorbs shipping: says so, patient total excludes it, payout carries it', async () => {
     absorbed = true
     renderDrawer()
-    await waitFor(() => expect(screen.getByTestId('drawer-shipping-absorbed')).toHaveTextContent('Shipping is absorbed by the clinic — not charged to the patient.'))
+    await waitFor(() => expect(screen.getByTestId('drawer-shipping-absorbed')).toHaveTextContent('Shipping is absorbed by the clinic, not charged to the patient.'))
     expect(screen.getByTestId('drawer-patient-total')).toHaveTextContent('$231.00')
     expect(screen.getByTestId('drawer-clinic-payout')).toHaveTextContent('$93.60')   // 115.60 − 22.00
   })
@@ -136,7 +136,7 @@ describe('OrderDrawer — Rx details (read-only, Review card labels)', () => {
     expect(value('syringe-option')).toBe('SubQ syringe kit')
     expect(value('shipping')).toBe('Cold chain (refrigerated)')
     expect(value('clinical-difference')).toBe('Patient requires a dose or strength not commercially available')
-    expect(value('diagnosis')).toBe('E66.9 — Obesity, unspecified')
+    expect(value('diagnosis')).toBe('E66.9: Obesity, unspecified')
     expect(value('special-instructions')).toBe('—')
     for (const label of ['Days supply', 'Dispense', 'Refills', 'Substitution', 'Syringe option', 'Shipping', 'Clinical difference', 'Diagnosis', 'Special instructions']) {
       expect(within(section).getByText(label)).toBeInTheDocument()
@@ -148,8 +148,8 @@ describe('OrderDrawer — Combine preview includes shipping once per pharmacy', 
   it('Strive cold chain covers both Strive orders ($22 once) + Quick Rx standard ($12)', async () => {
     renderDrawer()
     const preview = await screen.findByTestId('bundle-preview')
-    await waitFor(() => expect(within(preview).getByTestId(`bundle-shipping-${STRIVE}`)).toHaveTextContent('Shipping — Strive Pharmacy (cold chain)$22.00'))
-    expect(within(preview).getByTestId(`bundle-shipping-${QUICK_RX}`)).toHaveTextContent('Shipping — Quick Rx Pharmacy (standard)$12.00')
+    await waitFor(() => expect(within(preview).getByTestId(`bundle-shipping-${STRIVE}`)).toHaveTextContent('Shipping: Strive Pharmacy (cold chain)$22.00'))
+    expect(within(preview).getByTestId(`bundle-shipping-${QUICK_RX}`)).toHaveTextContent('Shipping: Quick Rx Pharmacy (standard)$12.00')
     expect(within(preview).getByTestId('bundle-subtotal')).toHaveTextContent('$457.00')   // 231 + 130 + 96
     expect(within(preview).getByTestId('bundle-total')).toHaveTextContent('$491.00')       // + 22 + 12
 
@@ -164,7 +164,7 @@ describe('OrderDrawer — Combine preview includes shipping once per pharmacy', 
     renderDrawer()
     const preview = await screen.findByTestId('bundle-preview')
     await waitFor(() => expect(within(preview).getByTestId(`bundle-shipping-${STRIVE}`)).toBeInTheDocument())
-    expect(within(preview).getByText('Shipping is absorbed by the clinic — not charged to the patient.')).toBeInTheDocument()
+    expect(within(preview).getByText('Shipping is absorbed by the clinic, not charged to the patient.')).toBeInTheDocument()
     expect(within(preview).getByTestId('bundle-total')).toHaveTextContent('$457.00')
   })
 })

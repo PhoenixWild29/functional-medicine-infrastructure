@@ -246,7 +246,7 @@ export default async function SettingsPage() {
                 Automatic order status emails and texts are not turned on yet.
               </p>
               <p className="inline-flex items-center rounded-md border border-border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
-                Coming soon — configurable preferences
+                Coming soon: configurable preferences
               </p>
             </section>
           </div>

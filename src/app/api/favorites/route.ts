@@ -57,7 +57,7 @@ async function failLoud(handler: () => Promise<NextResponse>): Promise<NextRespo
     return await handler()
   } catch (err) {
     if (!(err instanceof FavoritesReadError)) throw err
-    return NextResponse.json({ error: 'Favorites could not be loaded or saved. Nothing was changed — try again.' }, { status: 500 })
+    return NextResponse.json({ error: 'Favorites could not be loaded or saved. Nothing was changed. Try again.' }, { status: 500 })
   }
 }
 

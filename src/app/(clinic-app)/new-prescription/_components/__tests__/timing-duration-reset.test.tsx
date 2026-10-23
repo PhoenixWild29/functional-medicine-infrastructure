@@ -194,7 +194,7 @@ describe('timing + duration never carry into a new prescription', () => {
     expect(step.timing).toHaveValue('')
     expect(step.duration).toHaveValue('')
     // The quantity default is not computed from a duration.
-    expect(await screen.findByTestId('quantity-default-hint')).toHaveTextContent('Smallest package listed — change if needed.')
+    expect(await screen.findByTestId('quantity-default-hint')).toHaveTextContent('Smallest package listed. Change if needed.')
   })
 
   it('same session, second line: the no-duration favorite resets both after the 90-day one', async () => {
@@ -229,8 +229,8 @@ describe('timing + duration never carry into a new prescription', () => {
     fireEvent.change(step.amount, { target: { value: '10' } })
     fireEvent.change(step.frequency, { target: { value: 'QD' } })
     fireEvent.click(await screen.findByRole('button', { name: /Strive Pharmacy/ }))
-    expect(screen.getByTestId('quantity-default-hint')).toHaveTextContent('Smallest package listed — change if needed.')
-    const cont = screen.getByRole('button', { name: 'Continue — Set Retail Price' })
+    expect(screen.getByTestId('quantity-default-hint')).toHaveTextContent('Smallest package listed. Change if needed.')
+    const cont = screen.getByRole('button', { name: 'Continue to Set Retail Price' })
     await waitFor(() => expect(cont).toBeEnabled())
     fireEvent.click(cont)
     const url = new URL(mockPush.mock.calls[0]![0] as string, 'http://localhost')
@@ -266,6 +266,6 @@ describe('timing + duration never carry into a new prescription', () => {
     expect(doseStep().timing).toHaveValue('BEDTIME')
     expect(doseStep().duration).toHaveValue('CUSTOM')
     expect(screen.getByPlaceholderText('Days')).toHaveValue(45)
-    expect(await screen.findByTestId('quantity-default-hint')).toHaveTextContent('Smallest package that covers 45 days — change if needed.')
+    expect(await screen.findByTestId('quantity-default-hint')).toHaveTextContent('Smallest package that covers 45 days. Change if needed.')
   })
 })

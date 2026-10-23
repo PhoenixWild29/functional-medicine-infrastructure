@@ -266,7 +266,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (clinic.order_intake_blocked || clinic.stripe_connect_status !== 'ACTIVE') {
     return NextResponse.json(
-      { error: 'Order intake is blocked — complete Stripe onboarding in Settings' },
+      { error: 'Order intake is blocked. Complete Stripe onboarding in Settings' },
       { status: 422 }
     )
   }

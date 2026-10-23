@@ -11,7 +11,7 @@
  * message strings API routes return to the screen, and the lib modules
  * whose strings are shown. Not scanned: logs (console.*), internal errors
  * (throw new Error), and machine-facing text (fax cover, Slack, PagerDuty,
- * the OpenAPI spec).
+ * the OpenAPI spec, cron jobs' ops alerts).
  *
  * Punctuation means an em dash with a space on at least one side. A lone
  * placeholder ('—', >—<) has none.
@@ -69,7 +69,7 @@ const UI_LIB = [
 ]
 
 // Machine-facing, not on a screen.
-const MACHINE = /src\/app\/api\/spec\//
+const MACHINE = /src\/app\/api\/(spec|cron)\//
 
 const PUNCTUATION_DASH = /\s—|—\s/
 const NOT_SHOWN = /console\.|throw new Error\(|logger\./

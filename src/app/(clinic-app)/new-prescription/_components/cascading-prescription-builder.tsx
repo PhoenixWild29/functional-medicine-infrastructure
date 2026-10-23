@@ -868,9 +868,9 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
               >
                 <p className="text-sm font-medium text-foreground">{f.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {f.dosage_forms?.name} — {f.routes_of_administration?.name}
-                  {f.excipient_base && ` — ${f.excipient_base}`}
-                  {f.dosage_forms?.is_sterile && ' — Sterile'}
+                  {f.dosage_forms?.name}, {f.routes_of_administration?.name}
+                  {f.excipient_base && `, ${f.excipient_base}`}
+                  {f.dosage_forms?.is_sterile && ', Sterile'}
                 </p>
               </button>
             ))}
@@ -937,7 +937,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
                     <p className="text-sm font-medium text-foreground">{po.pharmacies?.name}</p>
                     <p className="text-xs text-muted-foreground">
                       {po.pharmacies?.integration_tier?.replace('TIER_', 'Tier ').replace('_', ' ')}
-                      {po.estimated_turnaround_days && ` — ~${po.estimated_turnaround_days} days`}
+                      {po.estimated_turnaround_days && `, ~${po.estimated_turnaround_days} days`}
                     </p>
                   </div>
                   <div className="text-right">
@@ -999,8 +999,8 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
               {!quantityPicked && (
                 <p className="mt-1 text-[10px] text-muted-foreground" data-testid="quantity-default-hint">
                   {effectiveDurationDays != null
-                    ? `Smallest package that covers ${effectiveDurationDays} days — change if needed.`
-                    : 'Smallest package listed — change if needed.'}
+                    ? `Smallest package that covers ${effectiveDurationDays} days. Change if needed.`
+                    : 'Smallest package listed. Change if needed.'}
                 </p>
               )}
             </div>
@@ -1053,7 +1053,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
             disabled={!canAdd}
             className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            Continue — Set Retail Price
+            Continue to Set Retail Price
           </button>
         </div>
       )}

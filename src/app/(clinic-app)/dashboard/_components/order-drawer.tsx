@@ -141,7 +141,7 @@ function describeDiff(diff: Record<string, unknown> | undefined): string {
 /** "Shipping — Strive Pharmacy (cold chain)", as the Review card labels it. */
 function shippingLabel(pharmacyName: string | null | undefined, shippingType: string | null | undefined): string {
   const type = shippingType === 'cold_chain' ? 'cold chain' : 'standard'
-  return `Shipping — ${pharmacyName || 'pharmacy'} (${type})`
+  return `Shipping: ${pharmacyName || 'pharmacy'} (${type})`
 }
 
 function toCurrency(cents: number): string {
@@ -565,7 +565,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`Order details — ${orderDisplayNumber(order.orderId)}`}
+        aria-label={`Order details: ${orderDisplayNumber(order.orderId)}`}
         className="fixed inset-y-0 right-0 z-50 w-full md:max-w-md overflow-y-auto bg-card border-l border-border shadow-2xl"
       >
         {/* Header */}
@@ -603,7 +603,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
               <p className="text-sm font-semibold text-emerald-800">Part of a Payment Bundle</p>
               <p className="mt-1 text-xs text-emerald-700">
                 {groupInfo
-                  ? `${groupInfo.orderCount} prescription${groupInfo.orderCount === 1 ? '' : 's'} · ${toCurrency(groupInfo.totalCents)} — the patient pays once for all bundled items.`
+                  ? `${groupInfo.orderCount} prescription${groupInfo.orderCount === 1 ? '' : 's'} · ${toCurrency(groupInfo.totalCents)}. The patient pays once for all bundled items.`
                   : isLoadingGroupInfo
                     ? 'Loading bundle details…'
                     : 'The patient pays once for all bundled prescriptions.'}
@@ -720,7 +720,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
                           </div>
                         ))}
                         {absorbed && shipping && shipping.totalCents > 0 && (
-                          <p className="text-[10px] text-muted-foreground">Shipping is absorbed by the clinic — not charged to the patient.</p>
+                          <p className="text-[10px] text-muted-foreground">Shipping is absorbed by the clinic, not charged to the patient.</p>
                         )}
                         <div className="flex items-center justify-between font-semibold">
                           <span className="text-foreground">Patient total</span>
@@ -939,7 +939,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
               )}
               {record && shippingAbsorbed && shippingCents > 0 && (
                 <p className="text-[11px] text-muted-foreground" data-testid="drawer-shipping-absorbed">
-                  Shipping is absorbed by the clinic — not charged to the patient.
+                  Shipping is absorbed by the clinic, not charged to the patient.
                 </p>
               )}
               {record && (

@@ -1,5 +1,5 @@
 // ============================================================
-// New Prescription — Step 3: Batch Review & Send — WO-29 + WO-80
+// New Prescription: Step 3: Batch Review & Send — WO-29 + WO-80
 // /new-prescription/review
 // ============================================================
 //
@@ -21,7 +21,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { resolveSigner } from '@/lib/auth/signer'
 
 export const metadata = {
-  title: 'New Prescription — Review & Send',
+  title: 'New Prescription: Review & Send',
 }
 
 export default async function ReviewPage() {

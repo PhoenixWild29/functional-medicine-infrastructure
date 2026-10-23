@@ -108,8 +108,8 @@ describe('Review totals — WO-102', () => {
   it('Semaglutide via Quick Rx (cold) + BPC-157 via Strive (standard): shipping $25 + $9, patient total includes it, fee does not', async () => {
     renderReview([SEMA_QUICK_RX, BPC_STRIVE])
     await waitFor(() => expect(screen.getByTestId(`shipping-${QUICK_RX}`)).toHaveTextContent('$25.00'))
-    expect(screen.getByTestId(`shipping-${QUICK_RX}`)).toHaveTextContent('Shipping — Quick Rx Pharmacy (cold chain)')
-    expect(screen.getByTestId(`shipping-${STRIVE}`)).toHaveTextContent('Shipping — Strive Pharmacy (standard)$9.00')
+    expect(screen.getByTestId(`shipping-${QUICK_RX}`)).toHaveTextContent('Shipping: Quick Rx Pharmacy (cold chain)')
+    expect(screen.getByTestId(`shipping-${STRIVE}`)).toHaveTextContent('Shipping: Strive Pharmacy (standard)$9.00')
     expect(screen.getByTestId('review-subtotal')).toHaveTextContent('$320.00')
     expect(screen.queryByTestId('review-platform-fee')).not.toBeInTheDocument()   // no platform fee is taken
     expect(screen.getByTestId('review-clinic-payout')).toHaveTextContent('$160.00')   // the $160 margin: no platform fee
@@ -119,8 +119,8 @@ describe('Review totals — WO-102', () => {
   it('both via Strive: $22 once — one shipment, cold chain covers both', async () => {
     renderReview([SEMA_STRIVE, BPC_STRIVE])
     await waitFor(() => expect(screen.getByTestId(`shipping-${STRIVE}`)).toHaveTextContent('$22.00'))
-    expect(screen.getByTestId(`shipping-${STRIVE}`)).toHaveTextContent('Shipping — Strive Pharmacy (cold chain, 2 items in one shipment)')
-    expect(within(screen.getByTestId('shipping-breakdown')).getAllByText(/^Shipping —/)).toHaveLength(1)
+    expect(screen.getByTestId(`shipping-${STRIVE}`)).toHaveTextContent('Shipping: Strive Pharmacy (cold chain, 2 items in one shipment)')
+    expect(within(screen.getByTestId('shipping-breakdown')).getAllByText(/^Shipping:/)).toHaveLength(1)
     expect(screen.getByTestId('review-patient-total')).toHaveTextContent('$342.00')
     expect(screen.queryByTestId('multi-pharmacy-notice')).not.toBeInTheDocument()
   })

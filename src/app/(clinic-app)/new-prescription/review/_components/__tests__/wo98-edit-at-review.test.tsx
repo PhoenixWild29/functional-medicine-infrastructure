@@ -114,7 +114,7 @@ describe('WO-98 — Edit at Review', () => {
     // WO-102: Subtotal and Patient total (no shipping here) both read $310.00.
     expect(screen.getByTestId('review-subtotal')).toHaveTextContent('$310.00')   // 190 + 120
 
-    // What the margin page does on "Save Changes — Back to Review".
+    // What the margin page does on "Save Changes and Back to Review".
     act(() => {
       tap.api!.updatePrescription('line-sema', {
         dose: '15 units',

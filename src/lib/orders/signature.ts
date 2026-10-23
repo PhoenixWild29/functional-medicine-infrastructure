@@ -37,8 +37,8 @@ export type SignatureCheck =
 
 export const SIGNATURE_REJECTION_COPY: Record<SignatureRejection, string> = {
   format:          'A valid provider signature is required.',
-  too_few_strokes: `Sign with at least ${MIN_SIGNATURE_STROKES} strokes — a dot or a single line is not a signature.`,
-  too_narrow:      `Sign across the pad — the signature must span at least ${Math.round(MIN_SIGNATURE_WIDTH_FRACTION * 100)}% of its width.`,
+  too_few_strokes: `Sign with at least ${MIN_SIGNATURE_STROKES} strokes. A dot or a single line is not a signature.`,
+  too_narrow:      `Sign across the pad. The signature must span at least ${Math.round(MIN_SIGNATURE_WIDTH_FRACTION * 100)}% of its width.`,
 }
 
 function isPoint(p: unknown): p is SignaturePoint {

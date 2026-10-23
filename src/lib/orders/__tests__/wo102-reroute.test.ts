@@ -106,7 +106,7 @@ describe('multiPharmacyNotice', () => {
     expect(n.offerReroute).toBe(false)
     expect(n.message).toBe(
       '2 pharmacies → 2 shipping charges ($34.00). Routing all to Strive Pharmacy would save $12.00 on shipping, ' +
-      'but medication prices would rise $140.00 (Semaglutide Injectable 5 mg/mL $190.00 → $330.00) — $128.00 more overall, so it is not suggested.',
+      'but medication prices would rise $140.00 (Semaglutide Injectable 5 mg/mL $190.00 → $330.00): $128.00 more overall, so it is not suggested.',
     )
     expect(n.message).not.toMatch(/Route all to/)
   })

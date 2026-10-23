@@ -138,7 +138,7 @@ export default async function BatchSignPage({ searchParams }: PageProps) {
   }
   const patientIds = [...new Set((requestedRows ?? []).filter(r => r.status === 'DRAFT').map(r => r.patient_id))]
   if (patientIds.length === 0) {
-    return <Notice title="Nothing left to sign" message="These prescriptions are no longer drafts — they may already have been signed." />
+    return <Notice title="Nothing left to sign" message="These prescriptions are no longer drafts. They may already have been signed." />
   }
 
   // Every draft of those patients: mine are signable, others need Sign as me.

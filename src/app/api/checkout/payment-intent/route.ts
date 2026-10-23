@@ -90,7 +90,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // (with groupId, no orderId) must go through /api/checkout/payment-group-intent.
   if (!payload.orderId) {
     return NextResponse.json(
-      { error: 'This token is a group checkout token — use the group intent endpoint.' },
+      { error: 'This token is a group checkout token. Use the group intent endpoint.' },
       { status: 400 },
     )
   }

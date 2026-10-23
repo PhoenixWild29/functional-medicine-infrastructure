@@ -78,7 +78,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (deleteErr) {
     console.error(`[ops/catalog/rollback] soft-delete failed | pharmacy=${pharmacyId}:`, deleteErr.message)
-    return NextResponse.json({ error: 'Rollback failed — could not remove current catalog' }, { status: 500 })
+    return NextResponse.json({ error: 'Rollback failed: could not remove current catalog' }, { status: 500 })
   }
 
   // Restore items from the target version using upload_history_id FK (reliable, no timestamp window)
@@ -107,11 +107,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (restoreErr) {
       console.error(`[ops/catalog/rollback] restore failed | pharmacy=${pharmacyId}:`, restoreErr.message)
-      return NextResponse.json({ error: 'Rollback failed — could not restore target catalog' }, { status: 500 })
+      return NextResponse.json({ error: 'Rollback failed: could not restore target catalog' }, { status: 500 })
     }
 
     return NextResponse.json({
-      error: 'Target version has no items to restore — it may predate upload tracking',
+      error: 'Target version has no items to restore. It may predate upload tracking',
     }, { status: 409 })
   }
 
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (flagsErr) {
     console.error(`[ops/catalog/rollback] version flags not saved | pharmacy=${pharmacyId}:`, flagsErr.message)
     return NextResponse.json({
-      error: `Catalog items were restored, but the active version could not be recorded. The version list may show v${tv['version_number']} as inactive — run the rollback again.`,
+      error: `Catalog items were restored, but the active version could not be recorded. The version list may show v${tv['version_number']} as inactive. Run the rollback again.`,
     }, { status: 500 })
   }
 

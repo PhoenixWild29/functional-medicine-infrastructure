@@ -65,7 +65,7 @@ function renderEdit(durationDays: number) {
 
 async function save() {
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: /Save Changes — Back to Review/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Save Changes and Back to Review/ }))
   })
 }
 

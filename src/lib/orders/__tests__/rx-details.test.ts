@@ -504,7 +504,7 @@ describe('display helpers', () => {
   })
 
   it('formats a diagnosis from code and/or text', () => {
-    expect(formatDiagnosis('E29.1', 'Testicular hypofunction')).toBe('E29.1 — Testicular hypofunction')
+    expect(formatDiagnosis('E29.1', 'Testicular hypofunction')).toBe('E29.1: Testicular hypofunction')
     expect(formatDiagnosis('E29.1', null)).toBe('E29.1')
     expect(formatDiagnosis(null, 'Hypogonadism')).toBe('Hypogonadism')
     expect(formatDiagnosis('', '  ')).toBeNull()

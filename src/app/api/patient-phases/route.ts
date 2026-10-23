@@ -39,7 +39,7 @@ async function resolveCaller(change: boolean): Promise<Caller> {
   const role = getUserRole(user) ?? null
   const clinicId = getUserClinicId(user) ?? null
   if (!clinicId || !role || !STAFF_ROLES.has(role)) {
-    return { ok: false, response: NextResponse.json({ error: 'Forbidden — protocol phases are kept by clinic staff' }, { status: 403 }) }
+    return { ok: false, response: NextResponse.json({ error: 'Forbidden: protocol phases are kept by clinic staff' }, { status: 403 }) }
   }
   if (change && role !== 'provider') {
     return { ok: false, response: NextResponse.json({ error: 'Only a provider can change a patient\'s protocol phase.' }, { status: 403 }) }
@@ -48,7 +48,7 @@ async function resolveCaller(change: boolean): Promise<Caller> {
 }
 
 const NOT_FOUND = () => NextResponse.json({ error: 'Not found' }, { status: 404 })
-const READ_FAILED = () => NextResponse.json({ error: 'The record could not be read. Nothing was changed — try again.' }, { status: 500 })
+const READ_FAILED = () => NextResponse.json({ error: 'The record could not be read. Nothing was changed. Try again.' }, { status: 500 })
 // A failed write answers this, never the database's own text (it can quote
 // the row); the detail is logged.
 const WRITE_FAILED = () => NextResponse.json({ error: 'The change could not be saved. Nothing was changed, try again.' }, { status: 500 })
@@ -82,7 +82,7 @@ async function trackingInClinic(
     .maybeSingle()
   if (currentErr) {
     console.error('[patient-phases] current phase read failed:', currentErr.message, '| tracking=', trackingId)
-    return { ok: false, response: NextResponse.json({ error: 'The current phase could not be read. Nothing was changed — try again.' }, { status: 500 }) }
+    return { ok: false, response: NextResponse.json({ error: 'The current phase could not be read. Nothing was changed. Try again.' }, { status: 500 }) }
   }
   const row = current as { current_phase: string; patient_id: string } | null
   if (!row) return { ok: false, response: NextResponse.json({ error: 'Tracking not found' }, { status: 404 }) }
@@ -240,7 +240,7 @@ export async function POST(req: NextRequest) {
           error: `The phase was advanced to ${new_phase}, but its history could not be recorded and the change could not be undone. Contact support before advancing again.`,
         }, { status: 500 })
       }
-      return NextResponse.json({ error: 'The phase change could not be recorded. Nothing was changed — try again.' }, { status: 500 })
+      return NextResponse.json({ error: 'The phase change could not be recorded. Nothing was changed. Try again.' }, { status: 500 })
     }
 
     // Compliance C2: the patient's protocol phase changed.

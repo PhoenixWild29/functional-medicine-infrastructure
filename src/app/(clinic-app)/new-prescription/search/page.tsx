@@ -1,5 +1,5 @@
 // ============================================================
-// New Prescription — Step 1: Pharmacy Search — WO-27 + WO-80
+// New Prescription: Step 1: Pharmacy Search — WO-27 + WO-80
 // /new-prescription/search
 // ============================================================
 //
@@ -30,7 +30,7 @@ import { getWizardSteps }    from '../_lib/wizard-steps'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 export const metadata = {
-  title: 'New Prescription — Find a Pharmacy',
+  title: 'New Prescription: Find a Pharmacy',
 }
 
 interface PageProps {
@@ -91,7 +91,7 @@ export default async function PharmacySearchPage({ searchParams }: PageProps) {
           </p>
           {editTarget?.kind === 'draft' && draft && (
             <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="draft-edit-notice">
-              Editing draft line <strong>{draft.medicationName}</strong> — the draft keeps its order id.
+              Editing draft line <strong>{draft.medicationName}</strong>. The draft keeps its order id.
             </p>
           )}
         </div>

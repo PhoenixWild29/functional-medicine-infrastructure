@@ -217,7 +217,7 @@ export async function resolveLine(supabase: ServiceClient, input: ResolveLineInp
       return {
         ok: false,
         status: 503,
-        error: 'Could not determine whether this medication is a controlled substance. Nothing was created — try again.',
+        error: 'Could not determine whether this medication is a controlled substance. Nothing was created. Try again.',
       }
     }
 

@@ -139,7 +139,7 @@ export function SessionBanner() {
               {patientName(patient)}
             </p>
             <p className="text-[11px] text-muted-foreground">
-              DOB: {patient.date_of_birth ? formatDob(patient.date_of_birth) : 'not given yet'} — {patient.state ?? 'No state'} — {patient.phone || 'No phone'}
+              DOB: {patient.date_of_birth ? formatDob(patient.date_of_birth) : 'not given yet'}, {patient.state ?? 'No state'}, {patient.phone || 'No phone'}
             </p>
             {patient.possible_duplicate && (
               <PossibleDuplicateFlag

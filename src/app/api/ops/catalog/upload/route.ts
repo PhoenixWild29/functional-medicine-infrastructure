@@ -124,7 +124,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Read as empty, the delta and the price-change check would be wrong.
   if (prevErr) {
     console.error(`[ops/catalog/upload] previous catalog read failed | pharmacy=${pharmacyId}:`, prevErr.message)
-    return NextResponse.json({ error: 'The current catalog could not be read. Nothing was changed — try again.' }, { status: 500 })
+    return NextResponse.json({ error: 'The current catalog could not be read. Nothing was changed. Try again.' }, { status: 500 })
   }
 
   const prevMap = new Map<string, { item_id: string; wholesale_price: number }>()
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (lastVersionErr) {
       console.error(`[ops/catalog/upload] version read failed | pharmacy=${pharmacyId}:`, lastVersionErr.message)
-      return NextResponse.json({ error: 'The catalog version history could not be read. Nothing was changed — try again.' }, { status: 500 })
+      return NextResponse.json({ error: 'The catalog version history could not be read. Nothing was changed. Try again.' }, { status: 500 })
     }
 
     nextVersion = ((lastVersion as Record<string, unknown> | null)?.['version_number'] as number ?? 0) + 1
