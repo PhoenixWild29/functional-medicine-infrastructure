@@ -5,13 +5,17 @@
 // Legal name, DBA, address, phone, practice NPI (Type 2, optional), tax
 // ID last 4 only, and who pays shipping. Validated server-side; a whole
 // tax ID is refused. Saving marks the step complete.
+//
+// Also Settings > Clinic Profile: an approved clinic's admin may save
+// them (a submitted clinic stays locked until CompoundIQ responds). Who
+// pays shipping changes only when the request sends it; Settings does not.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireOnboardingAdmin, readJson, setStep } from '@/lib/onboarding/access'
 import { validatePracticeDetails } from '@/lib/onboarding/practice'
 
 export async function PUT(request: NextRequest): Promise<NextResponse> {
-  const access = await requireOnboardingAdmin({ editable: true })
+  const access = await requireOnboardingAdmin({ editable: true, allowApproved: true })
   if (!access.ok) return access.response
   const { user, clinicId, supabase } = access
 
@@ -34,7 +38,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       contact_phone:   p.phone,
       practice_npi:    p.practiceNpi,
       tax_id_last4:    p.taxIdLast4,
-      absorb_shipping: p.absorbShipping,
+      ...(typeof body['absorbShipping'] === 'boolean' ? { absorb_shipping: p.absorbShipping } : {}),
       updated_at:      new Date().toISOString(),
     })
     .eq('clinic_id', clinicId)

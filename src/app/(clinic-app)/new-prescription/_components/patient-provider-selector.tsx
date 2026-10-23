@@ -389,7 +389,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
               <IntakeChip intakeStatus={selectedPatient.intake_status} />
               <SignupChip source={selectedPatient.source} />
               <span className={secondaryText(true)}>
-                {selectedPatient.state ?? 'No state'}, DOB: {formatDob(selectedPatient.date_of_birth)}
+                · {selectedPatient.state ?? 'No state'}, DOB: {formatDob(selectedPatient.date_of_birth)}
               </span>
             </div>
             {/* WO-97: clickable chip → inline editor, saves to the patient */}

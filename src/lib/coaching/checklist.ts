@@ -109,7 +109,7 @@ async function count(q: PromiseLike<{ count: number | null; error: { message: st
 }
 
 async function clinicAdminFacts(db: Db, userId: string, clinicId: string): Promise<ChecklistFacts> {
-  const { data: clinic, error } = await db.from('clinics').select('onboarding_status, legal_name').eq('clinic_id', clinicId).maybeSingle()
+  const { data: clinic, error } = await db.from('clinics').select('onboarding_status').eq('clinic_id', clinicId).maybeSingle()
   fail('the clinic', error)
   const agreements = await loadClinicAgreements(db, clinicId)
   // The team as Settings > Team reads it (lib/team/team): another active
@@ -120,16 +120,14 @@ async function clinicAdminFacts(db: Db, userId: string, clinicId: string): Promi
     count(db.from('patients').select('patient_id', { count: 'exact', head: true }).eq('clinic_id', clinicId).is('deleted_at', null), 'patients'),
     count(db.from('orders').select('order_id', { count: 'exact', head: true }).eq('clinic_id', clinicId).not('locked_at', 'is', null), 'orders'),
   ])
-  const row = clinic as { onboarding_status?: string | null; legal_name?: string | null } | null
+  const row = clinic as { onboarding_status?: string | null } | null
   const approved = row?.onboarding_status === 'approved'
-  // Not approved: done as the wizard's Practice details step is done
-  // (clinic_onboarding_steps, the wizard's own record). Approved: the name.
-  let practiceDetails = !!row?.legal_name?.trim()
-  if (!approved) {
-    const { data: step, error: stepError } = await db.from('clinic_onboarding_steps').select('status').eq('clinic_id', clinicId).eq('step', 'practice').maybeSingle()
-    fail('the practice details step', stepError)
-    practiceDetails = (step as { status?: string } | null)?.status === 'complete'
-  }
+  // Done as the wizard's Practice details step is done
+  // (clinic_onboarding_steps, the wizard's own record), approved or not:
+  // Settings > Clinic Profile saves through the same API and marks it.
+  const { data: step, error: stepError } = await db.from('clinic_onboarding_steps').select('status').eq('clinic_id', clinicId).eq('step', 'practice').maybeSingle()
+  fail('the practice details step', stepError)
+  const practiceDetails = (step as { status?: string } | null)?.status === 'complete'
   return {
     kind: 'clinic_admin',
     approved,
