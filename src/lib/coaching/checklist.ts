@@ -64,7 +64,8 @@ export function buildChecklist(_role: CoachingRole, f: ChecklistFacts): Checklis
     case 'clinic_admin':
       notice = f.approved ? null : WAITING_FOR_APPROVAL
       steps = [
-        { id: 'practice',           label: 'Enter your practice details',       href: '/settings#clinic-profile', done: f.practiceDetails },
+        // Until approved, practice details live in the onboarding wizard.
+        { id: 'practice',           label: 'Enter your practice details',       href: f.approved ? '/settings#clinic-profile' : '/onboarding', done: f.practiceDetails },
         { id: 'agreements',         label: 'Accept the BAA and terms',          href: '/settings/agreements',     done: f.agreementsAccepted },
         { id: 'team',               label: 'Add your team',                     href: '/settings/team',           done: f.hasTeam },
         { id: 'patients',           label: 'Add patients: import, a sign-up link or one at a time', href: '/settings#patients', done: f.hasPatients },
@@ -120,10 +121,19 @@ async function clinicAdminFacts(db: Db, userId: string, clinicId: string): Promi
     count(db.from('orders').select('order_id', { count: 'exact', head: true }).eq('clinic_id', clinicId).not('locked_at', 'is', null), 'orders'),
   ])
   const row = clinic as { onboarding_status?: string | null; legal_name?: string | null } | null
+  const approved = row?.onboarding_status === 'approved'
+  // Not approved: done as the wizard's Practice details step is done
+  // (clinic_onboarding_steps, the wizard's own record). Approved: the name.
+  let practiceDetails = !!row?.legal_name?.trim()
+  if (!approved) {
+    const { data: step, error: stepError } = await db.from('clinic_onboarding_steps').select('status').eq('clinic_id', clinicId).eq('step', 'practice').maybeSingle()
+    fail('the practice details step', stepError)
+    practiceDetails = (step as { status?: string } | null)?.status === 'complete'
+  }
   return {
     kind: 'clinic_admin',
-    approved:           row?.onboarding_status === 'approved',
-    practiceDetails:    !!row?.legal_name?.trim(),
+    approved,
+    practiceDetails,
     agreementsAccepted: AGREEMENT_KEYS.every(k => agreements[k].latest !== null && !agreements[k].updateAvailable),
     hasTeam:            members.some(m => m.userId !== userId && !m.deactivatedAt) || invites.some(i => i.status === 'pending'),
     hasPatients:        patients > 0,
