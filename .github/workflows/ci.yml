@@ -214,9 +214,18 @@ jobs:
         run: npx playwright install --with-deps
         if: steps.playwright-cache.outputs.cache-hit != 'true'
 
+      # apt mirror hangs (Oct 23 2026, #247 and #248): cap each attempt and retry.
       - name: Install Playwright OS dependencies
-        run: npx playwright install-deps
         if: steps.playwright-cache.outputs.cache-hit == 'true'
+        timeout-minutes: 6
+        run: |
+          for attempt in 1 2 3; do
+            if timeout 300 npx playwright install-deps; then exit 0; fi
+            echo "playwright install-deps attempt $attempt failed or timed out"
+            if [ "$attempt" -lt 3 ]; then sleep 10; fi
+          done
+          echo "playwright install-deps failed 3 times"
+          exit 1
 
       # Keep the E2E Supabase project's schema in sync with supabase/migrations/.
       # Uses the session-pooler connection string. E2E_DATABASE_URL must be a
