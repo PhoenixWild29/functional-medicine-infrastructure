@@ -5,7 +5,7 @@
  *
  *   - Clinic staff only (provider, medical assistant, clinic admin): getUser()
  *     and the app_metadata role. 20 reads an hour per user.
- *   - A PDF, PNG or JPG up to 10 MB (multipart field "file"), checked by its
+ *   - A PDF, PNG or JPG up to 4 MB (multipart field "file"), checked by its
  *     first bytes, or pasted text (JSON { text }).
  *   - FACE_SHEET_AI_ENABLED (on unless "false"); no ANTHROPIC_API_KEY means
  *     "Face sheet fill is not set up" and manual entry stays.
@@ -143,12 +143,24 @@ describe('the file', () => {
     expect(extractMock.mock.calls[0]![0]).toEqual(expect.objectContaining({ kind: 'file', mediaType }))
   })
 
-  it('over 10 MB: 413 with the limit, nothing read', async () => {
-    const big = Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.alloc(10 * 1024 * 1024)])
+  // Vercel refuses request bodies over about 4.5 MB, so the limit is 4 MB.
+  it('over 4 MB: 413 with the limit, nothing read', async () => {
+    const big = Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.alloc(4 * 1024 * 1024)])
     const res = await POST(fileReq(big))
     expect(res.status).toBe(413)
-    expect((await res.json()).error).toBe('That file is over 10 MB. Choose a smaller file, or paste the text instead.')
+    expect((await res.json()).error).toBe('That file is over 4 MB. Choose a smaller file, or paste the text instead.')
     expect(extractMock).not.toHaveBeenCalled()
+  })
+
+  it('exactly 4 MB is read', async () => {
+    const atLimit = Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.alloc(4 * 1024 * 1024 - 9)])
+    expect(atLimit.length).toBe(4 * 1024 * 1024)
+    expect((await POST(fileReq(atLimit))).status).toBe(200)
+  })
+
+  it('the limit is 4 MB, in one place', async () => {
+    const { MAX_FACE_SHEET_BYTES } = await import('@/lib/face-sheet/config')
+    expect(MAX_FACE_SHEET_BYTES).toBe(4 * 1024 * 1024)
   })
 
   it.each([

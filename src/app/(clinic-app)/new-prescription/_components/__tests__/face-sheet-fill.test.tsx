@@ -2,7 +2,7 @@
  * Patient Intake PR 4: "Drop a face sheet" in New Prescription > Select
  * Patient > + New patient.
  *
- *   - Staff drop or choose a PDF, PNG or JPG (up to 10 MB, checked before
+ *   - Staff drop or choose a PDF, PNG or JPG (up to 4 MB, checked before
  *     upload too), or paste the text.
  *   - The values read prefill the new-patient form; fields that came from
  *     the face sheet say so. Nothing is saved until staff click Add patient,
@@ -56,10 +56,10 @@ beforeEach(() => {
 })
 
 describe('the entry point', () => {
-  it('"Drop a face sheet" in + New patient: drop or choose a PDF, PNG or JPG up to 10 MB, or paste text; axe clean', async () => {
+  it('"Drop a face sheet" in + New patient: drop or choose a PDF, PNG or JPG up to 4 MB, or paste text; axe clean', async () => {
     renderForm()
     const box = screen.getByRole('group', { name: 'Drop a face sheet' })
-    expect(within(box).getByText(/PDF, PNG or JPG, up to 10 MB/)).toBeInTheDocument()
+    expect(within(box).getByText(/PDF, PNG or JPG, up to 4 MB/)).toBeInTheDocument()
     const input = within(box).getByLabelText(/Choose a face sheet/) as HTMLInputElement
     expect(input.type).toBe('file')
     expect(input.accept).toBe('application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg')
@@ -170,11 +170,18 @@ describe('reading a face sheet', () => {
 })
 
 describe('refused before upload, and errors', () => {
-  it('over 10 MB: said at once, nothing sent', async () => {
+  // Vercel refuses request bodies over about 4.5 MB, so the limit is 4 MB.
+  it('over 4 MB: said at once, nothing sent', async () => {
     renderForm()
-    await chooseFile(pdf(10 * 1024 * 1024 + 1))
-    expect(screen.getByRole('alert')).toHaveTextContent('That file is over 10 MB. Choose a smaller file, or paste the text instead.')
+    await chooseFile(pdf(4 * 1024 * 1024 + 1))
+    expect(screen.getByRole('alert')).toHaveTextContent('That file is over 4 MB. Choose a smaller file, or paste the text instead.')
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('exactly 4 MB is sent', async () => {
+    renderForm()
+    await chooseFile(pdf(4 * 1024 * 1024))
+    expect(callsTo('/api/patients/face-sheet')).toHaveLength(1)
   })
 
   it('not a PDF, PNG or JPG: said at once, nothing sent', async () => {
