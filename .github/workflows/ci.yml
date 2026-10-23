@@ -220,7 +220,7 @@ jobs:
         timeout-minutes: 6
         run: |
           for attempt in 1 2 3; do
-            if timeout 300 npx playwright install-deps; then exit 0; fi
+            if timeout 110 npx playwright install-deps; then exit 0; fi
             echo "playwright install-deps attempt $attempt failed or timed out"
             if [ "$attempt" -lt 3 ]; then sleep 10; fi
           done
