@@ -105,6 +105,7 @@ describe('loadChecklist reads real data, scoped to the caller', () => {
   it('clinic admin: from the clinic, its agreements, the Team page members and invites, patients and signed orders', async () => {
     const db = scriptedDb((c: ScriptedCall) => {
       if (c.table === 'clinics') return { data: { onboarding_status: 'approved', legal_name: 'Sunrise PLLC' } }
+      if (c.table === 'clinic_onboarding_steps') return { data: { status: 'complete' } }
       if (c.table === 'agreement_acceptances') return { data: [] }
       if (c.table === 'clinic_team_members') return { data: [member('u-1'), member('u-2')] }
       if (c.table === 'onboarding_invites') return { data: [] }
@@ -156,6 +157,27 @@ describe('loadChecklist reads real data, scoped to the caller', () => {
     })
     it('only an expired invite: to do', async () => {
       expect((await teamDone([member('u-1')], [invite('2026-01-01T00:00:00Z')])).done).toBe(false)
+    })
+  })
+
+  describe('practice details, approved: links to Settings > Clinic Profile, ticked from the wizard step data', () => {
+    const approvedPractice = async (stepStatus: string | null, legalName: string | null) => {
+      const db = scriptedDb((c: ScriptedCall) => {
+        if (c.table === 'clinics') return { data: { onboarding_status: 'approved', legal_name: legalName } }
+        if (c.table === 'clinic_onboarding_steps') return { data: stepStatus ? { status: stepStatus } : null }
+        if (c.table === 'agreement_acceptances') return { data: [] }
+        if (c.table === 'clinic_team_members' || c.table === 'onboarding_invites') return { data: [] }
+        return { count: 0 }
+      })
+      const c = await loadChecklist(db.client as never, user('clinic_admin'))
+      return c!.steps[0]!
+    }
+    it('the step is complete: done, linking to /settings#clinic-profile', async () => {
+      const step = await approvedPractice('complete', 'Sunrise PLLC')
+      expect(step).toEqual(expect.objectContaining({ href: '/settings#clinic-profile', done: true }))
+    })
+    it('a legal name alone is not the wizard step data: to do', async () => {
+      expect((await approvedPractice(null, 'Sunrise PLLC')).done).toBe(false)
     })
   })
 

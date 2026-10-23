@@ -51,6 +51,13 @@ it('the selected-patient card: its secondary line is text-foreground', () => {
   expect(within(card).getByText(/TX, DOB:/)).toHaveClass('text-foreground')
 })
 
+it('the selected-patient card: a visible separator between the chips and "TX, DOB: ..."', () => {
+  renderSelector()
+  fireEvent.click(screen.getByRole('button', { name: /Demo, Alex/ }))
+  const line = within(screen.getByTestId('selected-patient-card')).getByText(/TX, DOB:/)
+  expect(line.textContent).toMatch(/^\s*·\s+TX, DOB:/)
+})
+
 it('the selected provider row: NPI in text-foreground; "No signature on file" is amber-800, never amber-600', () => {
   renderSelector()
   fireEvent.click(screen.getByRole('button', { name: /Patel, Marcus/ }))
