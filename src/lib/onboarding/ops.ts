@@ -13,6 +13,7 @@ import type { Database } from '@/types/database.types'
 import { fullStatuses, type OnboardingStatus, type StepKey, type StepStatus } from './steps'
 import { inviteStatus, type InviteStatus } from './tokens'
 import { resolveActorNames, ROLE_LABELS } from './review'
+import { loadProviderSummaries, type ProviderSummary } from './provider-review'
 
 export interface OpsInvite {
   inviteId:   string
@@ -36,6 +37,8 @@ export interface OpsClinicOnboarding {
   signupSource?:    string | null
   /** For a self sign-up: 'clinic' or 'solo_provider'. */
   signupKind?:      string | null
+  /** Its providers: name, email, account holder, invite, NPI verified (lib/onboarding/provider-review). */
+  providers?:       ProviderSummary[]
 }
 
 export interface OpsApprovedClinic {
@@ -86,6 +89,7 @@ export async function loadOpsOnboarding(supabase: SupabaseClient<Database>, now:
     ? await supabase.from('clinic_onboarding_steps').select('clinic_id, step, status').in('clinic_id', clinicIds)
     : { data: [], error: null }
   if (stepsRes.error) throw new Error(`onboarding steps could not be read: ${stepsRes.error.message}`)
+  const providers = await loadProviderSummaries(supabase, clinics.map(c => ({ clinicId: c.clinic_id, signupSource: c.signup_source ?? null })))
 
   return {
     invites: (invRes.data ?? []).map(i => ({
@@ -107,6 +111,7 @@ export async function loadOpsOnboarding(supabase: SupabaseClient<Database>, now:
       steps:            fullStatuses((stepsRes.data ?? []).filter(s => s.clinic_id === c.clinic_id)),
       signupSource:     c.signup_source ?? null,
       signupKind:       c.signup_kind ?? null,
+      providers:        providers.get(c.clinic_id) ?? [],
     })),
     approved: approvedRows.map(r => ({
       clinicId:   r.clinic_id,

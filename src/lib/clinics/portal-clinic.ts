@@ -8,6 +8,10 @@
 // launch, so the dashboard and Settings say so instead of asking for
 // Stripe onboarding.
 //
+// A clinic that signed up on its own (signup_source 'self_serve') is a
+// portal clinic too, with no invite: it never sees the live Stripe
+// onboarding button.
+//
 // Existing clinics (onboarded before the portal) have the default status
 // and no invite. If the check cannot run, the clinic is treated as
 // existing: today's screens, which are always safe to show.
@@ -27,7 +31,7 @@ type Q = {
 
 export async function isPortalOnboardedClinic(db: Db, clinicId: string): Promise<boolean> {
   const [clinicRes, invitesRes] = await Promise.all([
-    (db.from('clinics') as Q).select('onboarding_status').eq('clinic_id', clinicId).maybeSingle(),
+    (db.from('clinics') as Q).select('onboarding_status, signup_source').eq('clinic_id', clinicId).maybeSingle(),
     (db.from('onboarding_invites') as Q)
       .select('invite_id', { count: 'exact', head: true })
       .eq('clinic_id', clinicId)
@@ -37,6 +41,8 @@ export async function isPortalOnboardedClinic(db: Db, clinicId: string): Promise
     console.error('[portal-clinic] check could not run; showing the standard payout screens | clinic=', clinicId)
     return false
   }
-  const status = (clinicRes.data as { onboarding_status?: string | null } | null)?.onboarding_status
-  return !!status && (invitesRes.count ?? 0) > 0
+  const row = clinicRes.data as { onboarding_status?: string | null; signup_source?: string | null } | null
+  const status = row?.onboarding_status
+  if (!status) return false
+  return row?.signup_source === 'self_serve' || (invitesRes.count ?? 0) > 0
 }
