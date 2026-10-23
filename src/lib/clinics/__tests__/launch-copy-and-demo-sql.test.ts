@@ -33,7 +33,7 @@ describe('the demo payouts script', () => {
 
   it('sets the placeholder and ACTIVE only for approved, live portal clinics with no Connect account', () => {
     const f = flat()
-    expect(f).toMatch(/update clinics c set stripe_connect_account_id = 'poc_placeholder', stripe_connect_status = 'active'/)
+    expect(f).toMatch(/update clinics c set stripe_connect_account_id = 'poc_placeholder_' \|\| c\.clinic_id, stripe_connect_status = 'active'/)
     expect(f).toContain("c.onboarding_status = 'approved'")
     expect(f).toContain('c.deleted_at is null')
     expect(f).toMatch(/\(c\.stripe_connect_account_id is null or c\.stripe_connect_account_id = ''\)/)

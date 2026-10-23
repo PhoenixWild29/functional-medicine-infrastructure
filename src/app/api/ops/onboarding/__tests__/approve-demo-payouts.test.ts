@@ -4,7 +4,8 @@
  * Ordering opens on approval, on the demo payout path Sunrise uses: when
  * ops approves a clinic (invited or self sign-up) that has no Stripe
  * Connect account, the approval write also sets stripe_connect_account_id
- * 'poc_placeholder' and stripe_connect_status 'ACTIVE', and the approval
+ * 'poc_placeholder_<clinic_id>' (unique per clinic: the column is UNIQUE and
+ * Sunrise holds 'poc_placeholder') and stripe_connect_status 'ACTIVE', and the approval
  * history note says "Demo payout account set on approval".
  *
  *   - Behind DEMO_PAYOUTS_ON_APPROVAL, on unless it is 'false'.
@@ -59,16 +60,28 @@ it('no Connect account: the approval write sets the placeholder and ACTIVE, only
   expect(db.to('clinics', 'update')).toHaveLength(1)
   expect(update()?.payload).toMatchObject({
     is_active: true, onboarding_status: 'approved',
-    stripe_connect_account_id: 'poc_placeholder', stripe_connect_status: 'ACTIVE',
+    stripe_connect_account_id: `poc_placeholder_${CLINIC}`, stripe_connect_status: 'ACTIVE',
   })
-  expect(update()?.filters).toMatchObject({ clinic_id: CLINIC, onboarding_status: 'submitted', 'stripe_connect_account_id:is': null })
+  expect(update()?.filters).toMatchObject({ clinic_id: CLINIC, onboarding_status: 'submitted', 'stripe_connect_account_id.is.null,stripe_connect_account_id.eq.:or': undefined })
   expect(eventNote()).toContain(NOTE)
 })
 
 it('an empty-string account id counts as none', async () => {
   script = clinic('')
   await POST(req({ action: 'approve' }), ctx)
-  expect(update()?.payload).toMatchObject({ stripe_connect_account_id: 'poc_placeholder', stripe_connect_status: 'ACTIVE' })
+  expect(update()?.payload).toMatchObject({ stripe_connect_account_id: `poc_placeholder_${CLINIC}`, stripe_connect_status: 'ACTIVE' })
+  // The write matches NULL or empty, so an empty id is really replaced.
+  expect(Object.keys(update()?.filters ?? {})).toContain('stripe_connect_account_id.is.null,stripe_connect_account_id.eq.:or')
+})
+
+it('two clinics approved in a row: each gets its own placeholder (the column is UNIQUE)', async () => {
+  const OTHER = '22222222-2222-4222-8222-222222222222'
+  script = clinic(null)
+  expect((await POST(req({ action: 'approve' }), ctx)).status).toBe(200)
+  expect((await POST(req({ action: 'approve' }), { params: Promise.resolve({ clinicId: OTHER }) })).status).toBe(200)
+  const ids = db.to('clinics', 'update').map(u => (u.payload as { stripe_connect_account_id: string }).stripe_connect_account_id)
+  expect(ids).toEqual([`poc_placeholder_${CLINIC}`, `poc_placeholder_${OTHER}`])
+  expect(new Set(ids).size).toBe(2)
 })
 
 it('a real Connect account is never touched: approval as today', async () => {
@@ -78,7 +91,7 @@ it('a real Connect account is never touched: approval as today', async () => {
   const payload = update()?.payload as Record<string, unknown>
   expect(payload).not.toHaveProperty('stripe_connect_account_id')
   expect(payload).not.toHaveProperty('stripe_connect_status')
-  expect(update()?.filters).not.toHaveProperty('stripe_connect_account_id:is')
+  expect(Object.keys(update()?.filters ?? {}).some(k => k.includes('stripe_connect_account_id'))).toBe(false)
   expect(eventNote()).toBeNull()
 })
 
