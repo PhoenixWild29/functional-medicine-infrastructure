@@ -33,7 +33,8 @@ const ctx = { params: Promise.resolve({ clinicId: CLINIC }) }
 
 function clinicWith(npi: Array<{ provider_id: string; status: string }>) {
   return (c: ScriptedCall): ScriptedAnswer | undefined => {
-    if (c.table === 'clinics' && c.op === 'select') return { data: { clinic_id: CLINIC, name: 'Blue Cedar', onboarding_status: 'submitted', signup_source: 'invite' } }
+    // A real Connect account, so the demo-payout path (approve-demo-payouts.test) stays out of these notes.
+    if (c.table === 'clinics' && c.op === 'select') return { data: { clinic_id: CLINIC, name: 'Blue Cedar', onboarding_status: 'submitted', signup_source: 'invite', stripe_connect_account_id: 'acct_1RealAccount' } }
     if (c.table === 'providers') return { data: [
       { provider_id: 'p1', clinic_id: CLINIC, first_name: 'Ana', last_name: 'Ortiz', user_id: null },
       { provider_id: 'p2', clinic_id: CLINIC, first_name: 'Ben', last_name: 'Cole', user_id: null },

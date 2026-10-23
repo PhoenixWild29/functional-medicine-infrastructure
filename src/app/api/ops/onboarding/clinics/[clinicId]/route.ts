@@ -23,6 +23,7 @@ import { requireOpsAdmin, readJson } from '@/lib/onboarding/access'
 import { recordOnboardingEvent } from '@/lib/onboarding/events'
 import { UUID_RE } from '@/lib/providers/team-access'
 import { loadClinicReview } from '@/lib/onboarding/review'
+import { DEMO_PAYOUT_NOTE, demoPayoutFields, needsDemoPayouts, onlyWithoutPayoutAccount } from '@/lib/clinics/demo-payouts'
 import { LICENSE_CHECK_REQUIRED_MESSAGE, licenseCheckNote, loadProviderSummaries, type ProviderSummary } from '@/lib/onboarding/provider-review'
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ clinicId: string }> }): Promise<NextResponse> {
@@ -94,16 +95,33 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
   }
 
+  // Ordering opens on approval (lib/clinics/demo-payouts, on by default): a
+  // clinic with no payout account gets the demo one Sunrise uses, in the
+  // same write as the approval. A real account is never overwritten: the
+  // write is conditional on there being none.
+  const needsPayouts = action === 'approve' ? await needsDemoPayouts(supabase, clinicId) : false
+  if (needsPayouts === null) return NextResponse.json({ error: 'The clinic could not be read. Try again.' }, { status: 503 })
+  const demoPayouts = needsPayouts
+
   const now = new Date().toISOString()
   const patch = action === 'approve'
-    ? { is_active: true, onboarding_status: 'approved', onboarding_reviewed_at: now, onboarding_reviewed_by: user.id, onboarding_review_note: null, updated_at: now }
+    ? {
+        is_active: true, onboarding_status: 'approved', onboarding_reviewed_at: now, onboarding_reviewed_by: user.id, onboarding_review_note: null, updated_at: now,
+        ...(demoPayouts ? demoPayoutFields() : {}),
+      }
     : { onboarding_status: 'changes_requested', onboarding_reviewed_at: now, onboarding_reviewed_by: user.id, onboarding_review_note: note, updated_at: now }
 
-  const { error: updErr } = await supabase
+  let write = supabase
     .from('clinics')
     .update(patch)
     .eq('clinic_id', clinicId)
     .eq('onboarding_status', 'submitted')
+  if (demoPayouts) write = onlyWithoutPayoutAccount(write)
+  const { data: updated, error: updErr } = demoPayouts ? await write.select('clinic_id') : { ...(await write), data: null }
+  if (!updErr && demoPayouts && Array.isArray(updated) && updated.length === 0) {
+    return NextResponse.json({ error: 'The clinic changed while you were reviewing it. Reload and try again.' }, { status: 409 })
+  }
+  if (demoPayouts) approvalNote = [approvalNote, DEMO_PAYOUT_NOTE].filter(Boolean).join(' ')
   if (updErr) {
     console.error(`[ops/onboarding] review failed | clinic=${clinicId} action=${action}: ${updErr.message}`)
     return NextResponse.json({ error: 'The review could not be saved. Try again.' }, { status: 500 })

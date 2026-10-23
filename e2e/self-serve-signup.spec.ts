@@ -234,6 +234,15 @@ test.describe('Self sign-up', () => {
     await expect(ops.getByText(`${name} approved. It can now sign and send orders.`)).toBeVisible({ timeout: 15_000 })
     const { data: event } = await db.from('clinic_onboarding_events').select('note').eq('clinic_id', clinic!.clinic_id).eq('event', 'approved').single()
     expect(event!.note).toContain('I checked this provider’s license with the state board')
+
+    // Ordering opens on approval: the demo payout account is set, and the
+    // clinic's admin (still signed in) sees + New Prescription enabled.
+    expect(event!.note).toContain('Demo payout account set on approval')
+    const { data: payouts } = await db.from('clinics').select('stripe_connect_account_id, stripe_connect_status').eq('clinic_id', clinic!.clinic_id).single()
+    expect(payouts).toEqual({ stripe_connect_account_id: 'poc_placeholder', stripe_connect_status: 'ACTIVE' })
+    await page.goto('/dashboard')
+    await expect(page.getByRole('button', { name: '+ New Prescription' })).toBeEnabled({ timeout: 15_000 })
+    await expect(page.getByText('Ordering opens at launch')).toHaveCount(0)
   })
 
   test('a pharmacy: /login > Get started > two-step setup for its portal; inactive, no orders; ops sees it labelled', async ({ page, browser }) => {
