@@ -6,6 +6,8 @@
  * It links to the remaining setup steps. axe clean.
  */
 
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { render, screen } from '@testing-library/react'
 import { configureAxe } from 'jest-axe'
 import { PendingReviewBanner } from '../pending-review-banner'
@@ -52,7 +54,7 @@ describe('after the clinic has submitted for review', () => {
   })
 
   it('the clinic layout tells the banner when the clinic has submitted', () => {
-    const layout = require('node:fs').readFileSync(require('node:path').join(process.cwd(), 'src', 'app', '(clinic-app)', 'layout.tsx'), 'utf8') as string
+    const layout = readFileSync(join(process.cwd(), 'src', 'app', '(clinic-app)', 'layout.tsx'), 'utf8')
     expect(layout).toMatch(/<PendingReviewBanner submitted=\{clinicSubmitted\} \/>/)
     expect(layout).toMatch(/clinicSubmitted = clinic\?\.onboarding_status === 'submitted'/)
   })

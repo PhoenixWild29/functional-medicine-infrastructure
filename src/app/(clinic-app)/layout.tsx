@@ -48,6 +48,7 @@ export default async function ClinicAppLayout({
   // (the page itself reports the error).
   let showPractice = appRole === 'clinic_admin'
   let pendingReview = false
+  let clinicSubmitted = false
   const clinicId = getUserClinicId(user)
   if (clinicId) {
     const { data: clinic } = await supabase
@@ -61,6 +62,8 @@ export default async function ClinicAppLayout({
     // (lib/onboarding/approval-guard), so a clinic that cannot be read
     // here shows no banner but is still refused there.
     pendingReview = !!clinic && !isApprovedClinic(clinic)
+    // Submitted for review: the banner says so instead of listing steps.
+    clinicSubmitted = clinic?.onboarding_status === 'submitted'
     if (appRole === 'provider') showPractice = clinic?.practice_dashboard_visible_to_providers === true
   }
 
@@ -75,7 +78,7 @@ export default async function ClinicAppLayout({
 
         {/* Main content — offset adjusts dynamically with sidebar collapse state */}
         <MainContentOffset>
-          {pendingReview && <PendingReviewBanner />}
+          {pendingReview && <PendingReviewBanner submitted={clinicSubmitted} />}
           <ClinicErrorBoundary>
             {children}
           </ClinicErrorBoundary>
