@@ -182,25 +182,38 @@ test.describe('Self sign-up', () => {
     test.setTimeout(120_000)
     const address = email('unverified')
     const name = `E2E Unverified Practice ${RUN}`
-    await startFromLogin(page, /solo practice/)
-    await fillCommon(page, address, 'Practice name', name)
-    await page.getByLabel('NPI', { exact: true }).fill(fictionalNpi())
-    await page.getByLabel('License 1 state').selectOption('TX')
-    await page.getByLabel('License 1 number').fill('TX-E2E-5678')
-    await page.getByLabel('License 1 expires').fill('2099-06-30')
-    await page.getByRole('button', { name: 'Create account' }).click()
-    await page.waitForURL('**/dashboard', { timeout: 30_000 })
 
-    // Test setup (service role): the clinic is submitted for review, and the
-    // fictional NPI is recorded as not found in the registry (as NPPES would).
+    // Test setup with the service role, not /get-started: every CI sign-up
+    // shares one IP, and the public form is rate limited. These are the rows
+    // a solo-provider self sign-up writes (lib/signup/self-serve): an
+    // inactive self_serve clinic, its confirmed clinic_admin login, and the
+    // provider linked to that login with a license. Then, as for review: the
+    // clinic is submitted, and the fictional NPI is recorded as not found in
+    // the registry (as NPPES would). Cleanup finds it by the login's email.
     const db = e2eService()
-    const { data: clinic } = await db.from('clinics').select('clinic_id').eq('name', name).single()
-    const { data: provider } = await db.from('providers').select('provider_id, npi_number').eq('clinic_id', clinic!.clinic_id).single()
-    const { error: submitErr } = await db.from('clinics').update({ onboarding_status: 'submitted', onboarding_submitted_at: new Date().toISOString() }).eq('clinic_id', clinic!.clinic_id)
-    expect(submitErr).toBeNull()
-    await db.from('provider_npi_verifications').delete().eq('provider_id', provider!.provider_id)
+    const now = new Date().toISOString()
+    const { data: clinic, error: clinicErr } = await db.from('clinics').insert({
+      name, is_active: false, onboarding_status: 'submitted', onboarding_submitted_at: now, signup_source: 'self_serve', signup_kind: 'solo_provider',
+    }).select('clinic_id').single()
+    expect(clinicErr).toBeNull()
+    const { data: login, error: loginErr } = await db.auth.admin.createUser({
+      email: address, password: PASSWORD, email_confirm: true,
+      app_metadata: { app_role: 'clinic_admin', clinic_id: clinic!.clinic_id }, user_metadata: { full_name: 'Dana Ruiz' },
+    })
+    expect(loginErr).toBeNull()
+    const userId = login.user!.id
+    const npiNumber = fictionalNpi()
+    const { data: provider, error: providerErr } = await db.from('providers').insert({
+      clinic_id: clinic!.clinic_id, user_id: userId, first_name: 'Dana', last_name: 'Ruiz', npi_number: npiNumber,
+      license_state: 'TX', license_number: 'TX-E2E-5678', signature_on_file: false, is_active: true,
+    }).select('provider_id').single()
+    expect(providerErr).toBeNull()
+    const { error: licenseErr } = await db.from('provider_state_licenses').insert({
+      provider_id: provider!.provider_id, state: 'TX', license_number: 'TX-E2E-5678', expires_on: '2099-06-30', verified_at: now, verified_by: userId, source: 'manual',
+    })
+    expect(licenseErr).toBeNull()
     const { error: npiErr } = await db.from('provider_npi_verifications').insert({
-      provider_id: provider!.provider_id, npi: provider!.npi_number, status: 'not_found', reason: 'No provider with this NPI in the registry.', source: 'nppes', checked_at: new Date().toISOString(),
+      provider_id: provider!.provider_id, npi: npiNumber, status: 'not_found', reason: 'No provider with this NPI in the registry.', source: 'nppes', checked_at: now,
     })
     expect(npiErr).toBeNull()
 
@@ -235,11 +248,13 @@ test.describe('Self sign-up', () => {
     const { data: event } = await db.from('clinic_onboarding_events').select('note').eq('clinic_id', clinic!.clinic_id).eq('event', 'approved').single()
     expect(event!.note).toContain('I checked this provider’s license with the state board')
 
-    // Ordering opens on approval: the demo payout account is set, and the
-    // clinic's admin (still signed in) sees + New Prescription enabled.
+    // Ordering opens on approval: the clinic's own demo payout account is set
+    // (unique per clinic; Sunrise keeps 'poc_placeholder'), and the clinic's
+    // admin sees + New Prescription enabled.
     expect(event!.note).toContain('Demo payout account set on approval')
     const { data: payouts } = await db.from('clinics').select('stripe_connect_account_id, stripe_connect_status').eq('clinic_id', clinic!.clinic_id).single()
-    expect(payouts).toEqual({ stripe_connect_account_id: 'poc_placeholder', stripe_connect_status: 'ACTIVE' })
+    expect(payouts).toEqual({ stripe_connect_account_id: `poc_placeholder_${clinic!.clinic_id}`, stripe_connect_status: 'ACTIVE' })
+    await signIn(page, address, PASSWORD)
     await page.goto('/dashboard')
     await expect(page.getByRole('button', { name: '+ New Prescription' })).toBeEnabled({ timeout: 15_000 })
     await expect(page.getByText('Ordering opens at launch')).toHaveCount(0)

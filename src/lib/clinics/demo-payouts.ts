@@ -3,11 +3,13 @@
 // ============================================================
 //
 // When ops approves a clinic (invited or self sign-up) that has no Stripe
-// Connect account, the approval write also gives it the demo payout
-// placeholder Sunrise uses: stripe_connect_account_id 'poc_placeholder'
-// (checkout treats it as the platform's own account) and status ACTIVE.
-// A real Connect account id is never overwritten: the write is made
-// conditional on there being none.
+// Connect account, the approval write also gives it a demo payout
+// placeholder like Sunrise's: stripe_connect_account_id
+// 'poc_placeholder_<clinic_id>' (the column is UNIQUE and Sunrise holds the
+// bare 'poc_placeholder', so each clinic gets its own; checkout treats both
+// forms as the platform's own account, lib/stripe/demo-account) and status
+// ACTIVE. A real Connect account id is never overwritten: the write is made
+// conditional on there being none (NULL or empty).
 //
 // DEMO_PAYOUTS_ON_APPROVAL: on unless it is exactly "false".
 //
@@ -22,7 +24,8 @@ type Q = {
   maybeSingle: () => Promise<{ data: unknown; error: { message: string } | null }>
 }
 
-export const DEMO_PAYOUT_ACCOUNT_ID = 'poc_placeholder'
+/** The bare placeholder Sunrise holds; an approved clinic gets this plus `_<clinic_id>`. */
+export const DEMO_PAYOUT_ACCOUNT_PREFIX = 'poc_placeholder'
 export const DEMO_PAYOUT_NOTE = 'Demo payout account set on approval.'
 
 export function demoPayoutsOnApproval(): boolean {
@@ -46,11 +49,11 @@ export async function needsDemoPayouts(db: Db, clinicId: string): Promise<boolea
 }
 
 /** The fields the approval write adds when needsDemoPayouts is true. */
-export function demoPayoutFields(): { stripe_connect_account_id: string; stripe_connect_status: 'ACTIVE' } {
-  return { stripe_connect_account_id: DEMO_PAYOUT_ACCOUNT_ID, stripe_connect_status: 'ACTIVE' }
+export function demoPayoutFields(clinicId: string): { stripe_connect_account_id: string; stripe_connect_status: 'ACTIVE' } {
+  return { stripe_connect_account_id: `${DEMO_PAYOUT_ACCOUNT_PREFIX}_${clinicId}`, stripe_connect_status: 'ACTIVE' }
 }
 
-/** Makes an update apply only while the clinic still has no Connect account. */
-export function onlyWithoutPayoutAccount<T extends { is: (col: string, v: null) => T }>(write: T): T {
-  return write.is('stripe_connect_account_id', null)
+/** Makes an update apply only while the clinic still has no Connect account (NULL or empty). */
+export function onlyWithoutPayoutAccount<T extends { or: (filters: string) => T }>(write: T): T {
+  return write.or('stripe_connect_account_id.is.null,stripe_connect_account_id.eq.')
 }

@@ -15,6 +15,7 @@ import { createStripeClient }       from '@/lib/stripe/client'
 import { bundleDescription }        from '@/lib/stripe/phi-guard'
 import { computeBundleShipping, dollarsToCents, platformFeeCents, stripeSplit } from '@/lib/orders/shipping'
 import { loadShippingRates }        from '@/lib/orders/apply-bundle-shipping'
+import { isDemoPayoutPlaceholder } from '@/lib/stripe/demo-account'
 
 export interface CreateGroupInput {
   supabase:  ReturnType<typeof createServiceClient>
@@ -253,7 +254,7 @@ export async function createPaymentGroup(input: CreateGroupInput): Promise<Creat
     }
 
     const connectAccountId = clinic.stripe_connect_account_id
-    const isPocPlaceholder = connectAccountId === 'poc_placeholder'
+    const isPocPlaceholder = isDemoPayoutPlaceholder(connectAccountId)
 
     const pi = await stripe.paymentIntents.create(
       {

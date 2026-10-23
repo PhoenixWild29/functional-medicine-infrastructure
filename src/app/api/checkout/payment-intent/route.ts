@@ -34,6 +34,7 @@ import { createStripeClient } from '@/lib/stripe/client'
 import { NEUTRAL_DESCRIPTION } from '@/lib/stripe/phi-guard'
 import { createServiceClient } from '@/lib/supabase/service'
 import { platformFeeCents, stripeSplit } from '@/lib/orders/shipping'
+import { isDemoPayoutPlaceholder } from '@/lib/stripe/demo-account'
 
 // PR #15: syntactic email validation (was for Stripe receipt_email; C7
 // stopped sending it to Stripe).
@@ -232,7 +233,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     //
     // POC mode: if the clinic's Connect account is a placeholder (not yet onboarded),
     // omit Connect routing so the POC can complete end-to-end without a real account.
-    const isPocPlaceholder = clinic.stripe_connect_account_id === 'poc_placeholder'
+    const isPocPlaceholder = isDemoPayoutPlaceholder(clinic.stripe_connect_account_id)
 
     const pi = await stripe.paymentIntents.create(
       {

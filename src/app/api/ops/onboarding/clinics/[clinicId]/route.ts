@@ -107,7 +107,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const patch = action === 'approve'
     ? {
         is_active: true, onboarding_status: 'approved', onboarding_reviewed_at: now, onboarding_reviewed_by: user.id, onboarding_review_note: null, updated_at: now,
-        ...(demoPayouts ? demoPayoutFields() : {}),
+        ...(demoPayouts ? demoPayoutFields(clinicId) : {}),
       }
     : { onboarding_status: 'changes_requested', onboarding_reviewed_at: now, onboarding_reviewed_by: user.id, onboarding_review_note: note, updated_at: now }
 
