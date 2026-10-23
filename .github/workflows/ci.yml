@@ -283,6 +283,10 @@ jobs:
           # E2E account only (e2e/mfa.spec.ts). REQUIRE_MFA stays unset, so
           # every other test account signs in with a password, as before.
           MFA_ENFORCED_EMAILS: 'test-mfa-admin@compoundiq.test'
+          # Patient Intake PR 4: a placeholder so New Prescription offers
+          # "Drop a face sheet". e2e/face-sheet-fill.spec.ts answers the read
+          # in the browser (page.route), so no request reaches Anthropic.
+          ANTHROPIC_API_KEY: 'sk-ant-e2e-placeholder-never-used'
           # WO-99: batch signing forms one payment group per patient, as in
           # production (flag on since 2026-06-14). The E2E clinic's Connect
           # account is poc_placeholder, so the group PaymentIntent carries no

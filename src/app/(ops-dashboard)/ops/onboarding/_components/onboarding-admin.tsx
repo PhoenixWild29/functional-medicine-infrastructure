@@ -23,6 +23,7 @@ import { useRouter } from 'next/navigation'
 import { ONBOARDING_STEPS, STEP_LABELS, NOT_LIVE_STEPS, NOT_LIVE_LABEL } from '@/lib/onboarding/steps'
 import type { OpsApprovedClinic, OpsClinicOnboarding, OpsInvite, OpsOnboarding } from '@/lib/onboarding/ops'
 import { SELF_SIGNUP_APPROVE_NOTE } from '@/lib/onboarding/self-signup-note'
+import { ACCOUNT_HOLDER_LABEL, LICENSE_CHECK_LABEL, unverifiedWarning } from '@/lib/onboarding/provider-review'
 import { TextField, FormAlert, InviteLink, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_DANGER } from '@/components/onboarding/fields'
 
 // Self sign-up (/get-started), not an invite.
@@ -221,11 +222,14 @@ function ClinicReview({ clinic: c, onReviewed }: { clinic: OpsClinicOnboarding; 
   const [busy, setBusy] = useState(false)
   const submitted = c.onboardingStatus === 'submitted'
   const noteId = `note-${c.clinicId}`
+  // A provider whose NPI is not verified: Approve waits for the state-board license check.
+  const unverified = (c.providers ?? []).filter(p => !p.npiVerified)
+  const [licenseChecked, setLicenseChecked] = useState(false)
 
   async function review(action: 'approve' | 'send_back') {
     if (action === 'send_back' && !note.trim()) { setNoteError('Write what the clinic needs to change.'); return }
     setNoteError(undefined); setBusy(true); setMsg(null)
-    const r = await send(`/api/ops/onboarding/clinics/${c.clinicId}`, { action, note })
+    const r = await send(`/api/ops/onboarding/clinics/${c.clinicId}`, action === 'approve' && unverified.length > 0 ? { action, note, licenseChecked } : { action, note })
     setBusy(false)
     if (!r.ok) { setMsg((r.data['error'] as string | undefined) ?? 'The review could not be saved.'); return }
     setNote('')
@@ -255,6 +259,26 @@ function ClinicReview({ clinic: c, onReviewed }: { clinic: OpsClinicOnboarding; 
           </div>
         ))}
       </dl>
+      {(c.providers ?? []).length > 0 && (
+        <ul className="mt-3 space-y-1 text-sm" aria-label={`Providers at ${c.name}`}>
+          {c.providers!.map(p => (
+            <li key={p.providerId} className="text-foreground">
+              <span className="font-medium">{p.name}</span>
+              <span className="text-slate-700 dark:text-slate-300">
+                {' · '}{p.email ?? 'No email yet'}
+                {' · '}{p.accountHolder ? ACCOUNT_HOLDER_LABEL : p.inviteStatus ? `Invite ${INVITE_LABEL[p.inviteStatus]?.toLowerCase() ?? p.inviteStatus}` : 'Not invited'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {unverified.length > 0 && (
+        <div className="mt-3 space-y-1 rounded-lg border border-amber-400 bg-amber-50 p-3 dark:border-amber-400 dark:bg-amber-950">
+          {unverified.map(p => (
+            <p key={p.providerId} id={`unverified-${c.clinicId}-${p.providerId}`} className="text-sm font-medium text-amber-950 dark:text-amber-100">{unverifiedWarning(p.name)}</p>
+          ))}
+        </div>
+      )}
       {c.onboardingStatus === 'changes_requested' && c.reviewNote && (
         <p className="mt-3 text-sm text-slate-700 dark:text-slate-300">Last note: {c.reviewNote}</p>
       )}
@@ -278,8 +302,22 @@ function ClinicReview({ clinic: c, onReviewed }: { clinic: OpsClinicOnboarding; 
           {c.signupSource === 'self_serve' && (
             <p id={`${noteId}-self-signup`} className="text-sm font-medium text-foreground">{SELF_SIGNUP_APPROVE_NOTE}</p>
           )}
+          {unverified.length > 0 && (
+            <div className="flex items-start gap-2">
+              <input
+                id={`license-check-${c.clinicId}`}
+                type="checkbox"
+                checked={licenseChecked}
+                onChange={e => setLicenseChecked(e.target.checked)}
+                disabled={busy}
+                aria-describedby={unverified.map(p => `unverified-${c.clinicId}-${p.providerId}`).join(' ')}
+                className="mt-0.5 h-4 w-4 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              <label htmlFor={`license-check-${c.clinicId}`} className="text-sm font-medium text-foreground">{LICENSE_CHECK_LABEL}</label>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={BUTTON_PRIMARY} disabled={busy} onClick={() => review('approve')} aria-describedby={c.signupSource === 'self_serve' ? `${noteId}-self-signup` : undefined}>Approve {c.name}</button>
+            <button type="button" className={BUTTON_PRIMARY} disabled={busy || (unverified.length > 0 && !licenseChecked)} onClick={() => review('approve')} aria-describedby={c.signupSource === 'self_serve' ? `${noteId}-self-signup` : undefined}>Approve {c.name}</button>
             <button type="button" className={BUTTON_SECONDARY} disabled={busy} onClick={() => review('send_back')}>Send {c.name} back</button>
           </div>
         </div>

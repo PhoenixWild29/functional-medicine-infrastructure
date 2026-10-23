@@ -20,6 +20,7 @@
 
 import { useState } from 'react'
 import type { StripeConnectStatusEnum } from '@/types/database.types'
+import { payoutAccountLabel } from '@/lib/stripe/demo-account'
 
 interface Props {
   stripeConnectStatus: StripeConnectStatusEnum
@@ -122,7 +123,7 @@ export function StripeStatusSection({ stripeConnectStatus, stripeAccountId, isCl
             Your Stripe account is fully verified. Clinic payouts are enabled.
             {stripeAccountId && (
               <span className="block mt-0.5 font-mono text-xs opacity-70">
-                Account: {stripeAccountId}
+                Account: {payoutAccountLabel(stripeAccountId)}
               </span>
             )}
           </p>
