@@ -26,3 +26,34 @@ it('is axe clean', async () => {
   const { container } = render(<main><PendingReviewBanner /></main>)
   expect((await axe(container)).violations).toEqual([])
 })
+
+// Lauren, 23 Oct: once the clinic has submitted for review, the banner
+// says so instead of pointing at remaining setup steps, and links to
+// what was submitted. Before submission it is unchanged.
+describe('after the clinic has submitted for review', () => {
+  it('says it was submitted and links to what was submitted', () => {
+    render(<PendingReviewBanner submitted />)
+    const banner = screen.getByRole('region', { name: 'Account under review' })
+    expect(banner).toHaveTextContent("Submitted. We're reviewing your clinic; ordering opens once you're approved.")
+    expect(screen.getByRole('link', { name: 'View what you submitted' })).toHaveAttribute('href', '/onboarding')
+    expect(screen.queryByRole('link', { name: 'See your remaining setup steps' })).toBeNull()
+    expect(banner.textContent).not.toMatch(/—/)
+  })
+
+  it('before submission the text is unchanged', () => {
+    render(<PendingReviewBanner submitted={false} />)
+    expect(screen.getByRole('link', { name: 'See your remaining setup steps' })).toHaveAttribute('href', '/onboarding')
+    expect(screen.queryByText(/^Submitted\./)).toBeNull()
+  })
+
+  it('is axe clean', async () => {
+    const { container } = render(<main><PendingReviewBanner submitted /></main>)
+    expect((await axe(container)).violations).toEqual([])
+  })
+
+  it('the clinic layout tells the banner when the clinic has submitted', () => {
+    const layout = require('node:fs').readFileSync(require('node:path').join(process.cwd(), 'src', 'app', '(clinic-app)', 'layout.tsx'), 'utf8') as string
+    expect(layout).toMatch(/<PendingReviewBanner submitted=\{clinicSubmitted\} \/>/)
+    expect(layout).toMatch(/clinicSubmitted = clinic\?\.onboarding_status === 'submitted'/)
+  })
+})
