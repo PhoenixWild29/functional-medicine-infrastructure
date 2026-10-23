@@ -178,6 +178,64 @@ test.describe('Self sign-up', () => {
     await expect(item.getByText('Signed up on their own')).toBeVisible({ timeout: 15_000 })
   })
 
+  test('ops review: the account holder shows their email; an unverified NPI keeps Approve disabled until the license check is ticked', async ({ page, browser }) => {
+    test.setTimeout(120_000)
+    const address = email('unverified')
+    const name = `E2E Unverified Practice ${RUN}`
+    await startFromLogin(page, /solo practice/)
+    await fillCommon(page, address, 'Practice name', name)
+    await page.getByLabel('NPI', { exact: true }).fill(fictionalNpi())
+    await page.getByLabel('License 1 state').selectOption('TX')
+    await page.getByLabel('License 1 number').fill('TX-E2E-5678')
+    await page.getByLabel('License 1 expires').fill('2099-06-30')
+    await page.getByRole('button', { name: 'Create account' }).click()
+    await page.waitForURL('**/dashboard', { timeout: 30_000 })
+
+    // Test setup (service role): the clinic is submitted for review, and the
+    // fictional NPI is recorded as not found in the registry (as NPPES would).
+    const db = e2eService()
+    const { data: clinic } = await db.from('clinics').select('clinic_id').eq('name', name).single()
+    const { data: provider } = await db.from('providers').select('provider_id, npi_number').eq('clinic_id', clinic!.clinic_id).single()
+    const { error: submitErr } = await db.from('clinics').update({ onboarding_status: 'submitted', onboarding_submitted_at: new Date().toISOString() }).eq('clinic_id', clinic!.clinic_id)
+    expect(submitErr).toBeNull()
+    await db.from('provider_npi_verifications').delete().eq('provider_id', provider!.provider_id)
+    const { error: npiErr } = await db.from('provider_npi_verifications').insert({
+      provider_id: provider!.provider_id, npi: provider!.npi_number, status: 'not_found', reason: 'No provider with this NPI in the registry.', source: 'nppes', checked_at: new Date().toISOString(),
+    })
+    expect(npiErr).toBeNull()
+
+    const ops = await (await browser.newContext()).newPage()
+    await signIn(ops, TEST_USERS.opsAdmin.email, TEST_USERS.opsAdmin.password)
+    await ops.goto('/ops/onboarding')
+    const card = ops.getByRole('listitem').filter({ has: ops.getByRole('heading', { level: 3, name }) })
+    const providers = card.getByRole('list', { name: `Providers at ${name}` })
+    await expect(providers).toContainText(address, { timeout: 15_000 })
+    await expect(providers).toContainText('Account holder (signed up on their own)')
+    await expect(card.getByText('Dana Ruiz’s NPI was not found in the national registry. Check their license with the state board before approving.')).toBeVisible()
+
+    const approve = card.getByRole('button', { name: `Approve ${name}` })
+    await expect(approve).toBeDisabled()
+    const results = await new AxeBuilder({ page: ops }).withTags(WCAG_TAGS).analyze()
+    expect(results.violations.map(v => v.id)).toEqual([])
+
+    await card.getByRole('checkbox', { name: 'I checked this provider’s license with the state board' }).check()
+    await expect(approve).toBeEnabled()
+
+    // The review page: the account holder's email and the warning.
+    const review = await ops.context().newPage()
+    await review.goto(`/ops/onboarding/${clinic!.clinic_id}`)
+    await expect(review.getByText('Account holder (signed up on their own)')).toBeVisible({ timeout: 15_000 })
+    await expect(review.getByText(address)).toBeVisible()
+    await expect(review.getByText(/Dana Ruiz’s NPI was not found in the national registry/)).toBeVisible()
+    const reviewAxe = await new AxeBuilder({ page: review }).withTags(WCAG_TAGS).analyze()
+    expect(reviewAxe.violations.map(v => v.id)).toEqual([])
+
+    await approve.click()
+    await expect(ops.getByText(`${name} approved. It can now sign and send orders.`)).toBeVisible({ timeout: 15_000 })
+    const { data: event } = await db.from('clinic_onboarding_events').select('note').eq('clinic_id', clinic!.clinic_id).eq('event', 'approved').single()
+    expect(event!.note).toContain('I checked this provider’s license with the state board')
+  })
+
   test('a pharmacy: /login > Get started > two-step setup for its portal; inactive, no orders; ops sees it labelled', async ({ page, browser }) => {
     const address = email('pharmacy')
     const name = `E2E Signup Pharmacy ${RUN}`

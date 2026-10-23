@@ -101,9 +101,10 @@ describe('the queue card', () => {
   it('shows the account holder with their email and the label', async () => {
     render(<OnboardingAdmin invites={[]} clinics={[CARD]} approved={[]} />)
     const card = screen.getByRole('heading', { level: 3, name: 'Solo Practice' }).closest('li')!
-    expect(within(card).getByText(/Sol Owner/)).toBeInTheDocument()
-    expect(within(card).getByText(/solo@practice\.test/)).toBeInTheDocument()
-    expect(within(card).getByText(/Account holder \(signed up on their own\)/)).toBeInTheDocument()
+    const providers = within(card).getByRole('list', { name: 'Providers at Solo Practice' })
+    expect(providers).toHaveTextContent('Sol Owner')
+    expect(providers).toHaveTextContent('solo@practice.test')
+    expect(providers).toHaveTextContent('Account holder (signed up on their own)')
     expect(card.textContent).not.toContain('Not invited')
     expect(await violations()).toEqual([])
   })

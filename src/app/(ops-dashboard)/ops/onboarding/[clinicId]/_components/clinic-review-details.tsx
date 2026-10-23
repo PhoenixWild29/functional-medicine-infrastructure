@@ -12,6 +12,7 @@
 
 import type { ReactNode } from 'react'
 import type { ClinicReview, ReviewProvider } from '@/lib/onboarding/review'
+import { ACCOUNT_HOLDER_LABEL, unverifiedWarning } from '@/lib/onboarding/provider-review'
 
 const MUTED = 'text-slate-700 dark:text-slate-300'
 
@@ -74,7 +75,7 @@ function ProviderCard({ p }: { p: ReviewProvider }) {
             {p.npi.reason && <span>{p.npi.reason}</span>}
           </span>
         </Field>
-        <Field label="Invite">{p.invite ? `Invite ${INVITE_LABEL[p.invite.status]?.toLowerCase() ?? p.invite.status}` : 'Not invited'}</Field>
+        <Field label="Invite">{p.accountHolder ? ACCOUNT_HOLDER_LABEL : p.invite ? `Invite ${INVITE_LABEL[p.invite.status]?.toLowerCase() ?? p.invite.status}` : 'Not invited'}</Field>
       </dl>
       <h4 className="mt-3 text-sm font-medium text-foreground">Licenses</h4>
       {p.licenses.length === 0 ? (
@@ -110,6 +111,13 @@ export function ClinicReviewDetails({ review }: { review: ClinicReview }) {
 
   return (
     <div className="space-y-6">
+      {(review.unverifiedProviders ?? []).length > 0 && (
+        <div data-testid="unverified-providers" className="space-y-1 rounded-lg border border-amber-400 bg-amber-50 p-4 dark:border-amber-400 dark:bg-amber-950">
+          {review.unverifiedProviders!.map(name => (
+            <p key={name} className="text-sm font-medium text-amber-950 dark:text-amber-100">{unverifiedWarning(name)}</p>
+          ))}
+        </div>
+      )}
       <Section id="review-practice" title="Practice">
         <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Legal name">{dash(c.legalName)}</Field>

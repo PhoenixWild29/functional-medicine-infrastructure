@@ -10,7 +10,10 @@
 // { action: 'approve' }               activate the clinic
 // { action: 'send_back', note }        return it to the admin with a note
 //
-// Only a SUBMITTED clinic can be reviewed (409 otherwise). Approval sets
+// Approving a clinic with a provider whose NPI is not verified in the
+// national registry needs { licenseChecked: true } (422 otherwise): ops
+// checked that license with the state board. The approval event's note
+// records it. Only a SUBMITTED clinic can be reviewed (409 otherwise). Approval sets
 // clinics.is_active and onboarding_status 'approved': from then on the
 // clinic can sign and send (batch-sign checks both). Both actions record
 // who and when on the clinic and in the onboarding audit log.
@@ -20,6 +23,7 @@ import { requireOpsAdmin, readJson } from '@/lib/onboarding/access'
 import { recordOnboardingEvent } from '@/lib/onboarding/events'
 import { UUID_RE } from '@/lib/providers/team-access'
 import { loadClinicReview } from '@/lib/onboarding/review'
+import { LICENSE_CHECK_REQUIRED_MESSAGE, licenseCheckNote, loadProviderSummaries, type ProviderSummary } from '@/lib/onboarding/provider-review'
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ clinicId: string }> }): Promise<NextResponse> {
   const access = await requireOpsAdmin()
@@ -69,6 +73,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Only a submitted clinic can be approved or sent back.' }, { status: 409 })
   }
 
+  // A provider whose NPI is not verified in the national registry: approve
+  // only after ops confirms they checked the license with the state board
+  // (licenseChecked: true). The confirmation is the approval event's note.
+  let approvalNote: string | null = null
+  if (action === 'approve') {
+    let summaries: ProviderSummary[]
+    try {
+      summaries = (await loadProviderSummaries(supabase, [{ clinicId, signupSource: null }])).get(clinicId) ?? []
+    } catch (err) {
+      console.error(`[ops/onboarding] providers read failed | clinic=${clinicId}:`, err instanceof Error ? err.message : err)
+      return NextResponse.json({ error: 'The clinic’s providers could not be checked. Try again.' }, { status: 503 })
+    }
+    const unverified = summaries.filter(p => !p.npiVerified).map(p => p.name)
+    if (unverified.length > 0) {
+      if (body['licenseChecked'] !== true) {
+        return NextResponse.json({ error: LICENSE_CHECK_REQUIRED_MESSAGE, code: 'LICENSE_CHECK_REQUIRED', unverified }, { status: 422 })
+      }
+      approvalNote = licenseCheckNote(unverified)
+    }
+  }
+
   const now = new Date().toISOString()
   const patch = action === 'approve'
     ? { is_active: true, onboarding_status: 'approved', onboarding_reviewed_at: now, onboarding_reviewed_by: user.id, onboarding_review_note: null, updated_at: now }
@@ -86,7 +111,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   await recordOnboardingEvent(supabase, {
     clinicId, event: action === 'approve' ? 'approved' : 'sent_back', actorUserId: user.id, actorRole: 'ops_admin',
-    note: action === 'send_back' ? note : null,
+    note: action === 'send_back' ? note : approvalNote,
   })
   console.info(`[ops/onboarding] clinic ${action === 'approve' ? 'approved' : 'sent back'} | clinic=${clinicId} by=${user.id}`)
   return NextResponse.json({ ok: true, onboardingStatus: patch.onboarding_status })

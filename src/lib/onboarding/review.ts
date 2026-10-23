@@ -25,6 +25,7 @@ import type { Database } from '@/types/database.types'
 import type { NpiStatus } from '@/lib/providers/npi'
 import { loadOnboardingState, type OnboardingClinicDetails, type OnboardingInviteSummary, type OnboardingProvider } from './state'
 import type { OnboardingEvent } from './events'
+import { loadProviderSummaries } from './provider-review'
 
 type Supabase = SupabaseClient<Database>
 
@@ -37,6 +38,8 @@ export interface ReviewClinic extends OnboardingClinicDetails {
 
 export interface ReviewProvider extends Omit<OnboardingProvider, 'npiStatus'> {
   email: string | null
+  /** Self sign-up: the provider who signed up (their own login, no invite). */
+  accountHolder?: boolean
   npi: {
     status:       NpiStatus | null
     reason:       string | null
@@ -68,6 +71,8 @@ export interface ClinicReview {
   staff:      OnboardingInviteSummary[]
   agreements: ReviewAgreement[]
   history:    ReviewHistoryEntry[]
+  /** Providers whose NPI is not verified in the national registry (approval needs the state-board license check). */
+  unverifiedProviders?: string[]
 }
 
 export const ROLE_LABELS: Record<string, string> = {
@@ -107,7 +112,7 @@ export async function loadClinicReview(supabase: Supabase, clinicId: string, now
   const providerIds = state.providers.map(p => p.providerId)
   const [clinicRes, invitesRes, npiRes, acceptRes, eventsRes] = await Promise.all([
     supabase.from('clinics')
-      .select('onboarding_submitted_at, onboarding_reviewed_at, onboarding_reviewed_by')
+      .select('onboarding_submitted_at, onboarding_reviewed_at, onboarding_reviewed_by, signup_source')
       .eq('clinic_id', clinicId).maybeSingle(),
     supabase.from('onboarding_invites')
       .select('provider_id, email, created_at')
@@ -131,7 +136,9 @@ export async function loadClinicReview(supabase: Supabase, clinicId: string, now
   const failed = clinicRes.error ?? invitesRes.error ?? npiRes.error ?? acceptRes.error ?? eventsRes.error
   if (failed) throw new Error(`clinic review could not be read: ${failed.message}`)
 
-  const c = clinicRes.data as { onboarding_submitted_at: string | null; onboarding_reviewed_at: string | null; onboarding_reviewed_by: string | null } | null
+  const c = clinicRes.data as { onboarding_submitted_at: string | null; onboarding_reviewed_at: string | null; onboarding_reviewed_by: string | null; signup_source?: string | null } | null
+  // The account holder and NPI verification, as the queue card shows them.
+  const summaries = new Map(((await loadProviderSummaries(supabase, [{ clinicId, signupSource: c?.signup_source ?? null }])).get(clinicId) ?? []).map(p => [p.providerId, p]))
   const events = ((eventsRes.data ?? []) as Array<{ event_id: string; event: string; actor_user_id: string | null; actor_role: string | null; note: string | null; created_at: string }>)
     .slice().sort((a, b) => a.created_at.localeCompare(b.created_at))
   const names = await resolveActorNames(supabase, [...events.map(e => e.actor_user_id), c?.onboarding_reviewed_by])
@@ -168,11 +175,13 @@ export async function loadClinicReview(supabase: Supabase, clinicId: string, now
       const registryName = n ? [n.registry_first_name, n.registry_last_name].filter(Boolean).join(' ') || null : null
       return {
         ...p,
-        email: providerEmails.get(p.providerId) ?? p.invite?.email ?? null,
+        email: summaries.get(p.providerId)?.accountHolder ? summaries.get(p.providerId)!.email : providerEmails.get(p.providerId) ?? p.invite?.email ?? null,
+        accountHolder: summaries.get(p.providerId)?.accountHolder === true,
         npi: { status: (n?.status as NpiStatus | undefined) ?? null, reason: n?.reason ?? null, registryName, checkedAt: n?.checked_at ?? null },
       }
     }),
     staff: state.staff,
+    unverifiedProviders: [...summaries.values()].filter(p => !p.npiVerified).map(p => p.name),
     agreements,
     history: events.map(e => {
       const role = e.actor_role ? ROLE_LABELS[e.actor_role] ?? e.actor_role : 'System'
