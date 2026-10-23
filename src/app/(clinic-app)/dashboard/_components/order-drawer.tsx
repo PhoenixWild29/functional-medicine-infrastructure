@@ -95,6 +95,17 @@ const DRAFT_EVENT_LABEL: Record<string, string> = {
   draft_line_removed: 'Draft line removed',
 }
 
+/**
+ * The line under a draft event. "still a draft" only while the order is
+ * one: once it was signed (or its link expired) it has moved on, and a
+ * created draft reads "saved as a draft".
+ */
+function draftEventDetail(event: string, diff: Record<string, unknown> | undefined, status: string): string {
+  if (event === 'draft_edited') return describeDiff(diff)
+  if (status === 'DRAFT') return 'still a draft'
+  return event === 'draft_created' ? 'saved as a draft' : ''
+}
+
 const DIFF_FIELD_LABEL: Record<string, string> = {
   'medication_snapshot.prescribed_dose':  'dose',
   'medication_snapshot.frequency_code':   'frequency',
@@ -1012,8 +1023,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
                           {DRAFT_EVENT_LABEL[row.metadata.event]}
                         </p>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {row.metadata.event === 'draft_edited' ? describeDiff(row.metadata.diff) : 'still a draft'}
-                          {row.changed_by && ` · ${actorDisplayName(actors, row.changed_by)}`}
+                          {[draftEventDetail(row.metadata.event, row.metadata.diff, order.status), actorDisplayName(actors, row.changed_by)].filter(Boolean).join(' · ')}
                         </p>
                       </>
                     ) : (
