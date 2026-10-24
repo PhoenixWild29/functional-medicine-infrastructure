@@ -17,7 +17,7 @@ export const metadata = {
 
 export default function OpsPharmacyOnboardingPage() {
   return (
-    <main className="mx-auto max-w-7xl space-y-6 px-4 py-8">
+    <div className="mx-auto max-w-7xl space-y-6 px-4 py-8">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Pharmacy onboarding</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground dark:text-slate-300">
@@ -26,6 +26,6 @@ export default function OpsPharmacyOnboardingPage() {
         </p>
       </div>
       <PharmacyOnboardingSection />
-    </main>
+    </div>
   )
 }

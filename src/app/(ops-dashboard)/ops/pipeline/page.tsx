@@ -88,16 +88,19 @@ export default async function PipelinePage(
   ])
 
   return (
-    <div className="space-y-3">
-      <StuckRefundsPanel result={stuckRefunds} />
-      <LatePaymentsPanel result={latePayments} />
-      <PipelineView
-        initialOrders={orders}
-        clinicOptions={clinics}
-        pharmacyOptions={pharmacies}
-        initialOrderId={initialOrderId}
-        initialFilters={initialFilters}
-      />
-    </div>
+    <>
+      <h1 className="sr-only">Pipeline</h1>
+      <div className="space-y-3">
+        <StuckRefundsPanel result={stuckRefunds} />
+        <LatePaymentsPanel result={latePayments} />
+        <PipelineView
+          initialOrders={orders}
+          clinicOptions={clinics}
+          pharmacyOptions={pharmacies}
+          initialOrderId={initialOrderId}
+          initialFilters={initialFilters}
+        />
+      </div>
+    </>
   )
 }

@@ -181,6 +181,9 @@ export default async function AdaptersPage() {
   }
 
   return (
-    <AdapterHealthMonitor initialData={initialData} />
+    <>
+      <h1 className="sr-only">Adapters</h1>
+      <AdapterHealthMonitor initialData={initialData} />
+    </>
   )
 }
