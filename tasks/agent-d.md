@@ -1,25 +1,15 @@
-task-id: D-2026-10-24-06
+task-id: D-2026-10-24-07
 status: ready
 ---
-Thanks for D-2026-10-24-05. C1 is the most important find today. Its migration goes to Sam first. H1 waits for Sam's decision (he decided on Oct 23 that new clinics order right after approval using the demo payout account, and prod Stripe keys are live; your H1 fix turns that off). Do NOT change H1 further.
+Thanks for D-2026-10-24-06 (#259 unblocked and merged, fax migration renumbered to 20261024000003, security follow-ups pushed).
 
-Four parts, in order. Push each branch when its part is done.
+Next: your finding L5, done safely. Pre-existing permissive user-write RLS policies let any clinic user (now any stranger with a self sign-up JWT, for their own new clinic) write through PostgREST and bypass the API's approval guard and signing checks: orders_clinic_user_insert/update, patients_clinic_user_insert/update, providers_clinic_user_insert/update, payment_groups_clinic_user_insert/update, provider_npi_verifications_admin_write, provider_state_licenses_admin_write.
 
-PART 1. Unblock PR #259 (B's ops-pipeline-tier-filter). It conflicts with main (#257 added an sr-only h1 to the ops pipeline page and made the ops layout wrapper the single <main>; B rewrote pipeline page.tsx and pipeline-view.tsx). `git fetch origin && git checkout -B ops-pipeline-tier-filter origin/ops-pipeline-tier-filter && git merge origin/main`. Resolve keeping both: B's filters (URL, SQL tier filter, chips) and C's landmarks (the sr-only h1 "Pipeline" before the page root, no <main> in the page). Run `npm run lint` (0 warnings), tsc, the pipeline tests (B's 3 suites), C's landmarks-static-guard test, build. Push ops-pipeline-tier-filter (normal push). Report in the merge commit body.
+Branch: `git fetch origin && git checkout -b rls-user-write-lockdown origin/security-review-oct24` (stacked on your rls_hardening branch, so migrations stay in order; this one will be the next number after 20261024000003, i.e. 20261024000004).
 
-PART 2. Migration numbering. Three branches now use 20261024 timestamps: yours 20261024000001_rls_hardening (security-review-oct24), C's 20261024000002_treatment_proposals (proposals-pr1-data-model), A's 20261024000001_phi_access_log_fax_id (ops-fax-viewer-documo). Two are 000001. Final order: rls_hardening 20261024000001 (first, critical), treatment_proposals 20261024000002, phi_access_log_fax_id becomes 20261024000003. On ops-fax-viewer-documo: `git checkout -B ops-fax-viewer-documo origin/ops-fax-viewer-documo`, git mv the migration and its down file to 20261024000003, update every test or comment that names the old file (A's fax-pdf-migration-and-viewer-wiring test), `git merge origin/main`, lint 0 warnings, tsc, fax tests, push ops-fax-viewer-documo. Report the new file names in the commit body.
-
-PART 3. On security-review-oct24: `git merge origin/main`, lint/tsc/Jest, push. No other change.
-
-PART 4. Your low-risk recommendations, new branch `git checkout -b security-followups-oct24 origin/main`, red tests first for each:
-- M1 remainder: GET /api/protocols (protocols/route.ts:52, 94, 135, 136, 160, 234) returns no raw DB text; log it, answer a plain message.
-- L6: one shared helper that refuses anything but Sec-Fetch-Site same-origin or none (or a missing header), used by every write route you listed as F(L6). Keep the existing 403 wording.
-- L9: pharmacy license document type by magic bytes (reuse face-sheet's sniff()).
-- L10: failure-reason returns only known codes (unknown -> null code, generic reason).
-- L11: the 409 POSSIBLE_DUPLICATE path writes phi_access_log rows (logPhiAccessMany) for the patients it reveals.
-- L13: protocol create: created_by derived from the caller when the caller is a provider; an MA may not attribute to another provider (403). Clinic admin unchanged.
-- L14: ops catalog upload enforces MAX_CATALOG_ROWS server-side.
-Do NOT do in this branch: L5 policy drops, L7 shared rate-limit store, L8, L12, M2, M3, zod 4, instrumentation.ts (server-side Sentry stays off by Sam's Oct 6 decision until a Sentry BAA). List them as still open.
-`npm run lint` (0 warnings), tsc, Jest, build. Push security-followups-oct24 (normal push, no PR). Full report in the final commit body.
+1. Prove, per table, that no app code path writes it with a user (anon key + session) client: trace every insert/update/upsert/delete on these tables in src (including libs that take a client parameter: batch-sign, apply-bundle-shipping, keragon sync, duplicates, refill, reroute, intake, signup link, team, onboarding) back to createServiceClient or a user client. Produce a table: table, writer file:line, client type. Any user-client writer: change it to the service client only if the route already authorizes properly (getUser, claims, approval guard), with a red test; otherwise report and stop for that table.
+2. Write migration 20261024000004_rls_user_write_lockdown.sql (+ down): for each table proven safe, DROP POLICY the user write policy and REVOKE INSERT, UPDATE, DELETE, TRUNCATE FROM anon, authenticated. Keep every SELECT policy. End with `SELECT apply_pharmacy_admin_scope();`. Test it on PGlite with Supabase default grants: a clinic_admin JWT can no longer insert/update those tables via SQL as authenticated; service role still can; selects unchanged.
+3. Run the full Jest suite and the E2E-relevant integration tests you can run locally; CI runs E2E on the PR.
+4. `npm run lint` (0 warnings), tsc, Jest, build. Push rls-user-write-lockdown (normal push, no PR). Report in the final commit body: the writer table, any code changed, the migration SQL in full (Sam runs it on prod before merge), PGlite proof, local results, head SHA.
 
 Do not touch the production database, Vercel, Stripe or secrets.
