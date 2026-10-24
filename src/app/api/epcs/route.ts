@@ -21,7 +21,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
-import { TOTP, generateSecret, generateURI, verifySync } from 'otplib'
+import { generateSecret, generateURI, verifySync } from 'otplib'
 import QRCode from 'qrcode'
 import { encryptSecret, decryptSecret } from '@/lib/epcs/crypto'
 import { isNoRows } from '@/lib/supabase/no-rows'

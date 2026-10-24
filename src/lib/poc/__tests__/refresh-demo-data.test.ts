@@ -364,7 +364,7 @@ describe('ensureDemoScaffolding — pharmacies (PR #11)', () => {
             if (table === 'pharmacies') pharmacyInserts++
             return Promise.resolve({ error: null })
           },
-          upsert(payload: Record<string, unknown>[] | Record<string, unknown>, _opts?: unknown) {
+          upsert(payload: Record<string, unknown>[] | Record<string, unknown>) {
             calls.push({ op: `${table}.upsert`, args: [payload] })
             if (table === 'circuit_breaker_state') {
               cbUpsertCalls.push(Array.isArray(payload) ? payload : [payload])

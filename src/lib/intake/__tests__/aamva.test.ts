@@ -14,6 +14,11 @@ import { parseAamva, isNewHampshire } from '../aamva'
 // Fields per AAMVA DL/ID Card Design Standard: DCS family name, DAC first
 // name, DAD middle, DBB date of birth, DBC sex (1 male, 2 female, 9 not
 // specified), DAG street 1, DAH street 2, DAI city, DAJ state, DAK zip.
+/** The fields without one of them (a field that is absent from the barcode). */
+function without(fields: Record<string, string>, drop: string): Record<string, string> {
+  return Object.fromEntries(Object.entries(fields).filter(([k]) => k !== drop))
+}
+
 function barcode(fields: Record<string, string>, iin = '636015', header = 'ANSI ') {
   const body = Object.entries(fields).map(([k, v]) => `${k}${v}`).join('\n')
   return `@\n\u001e\r${header}${iin}100102DL00410288ZT03290015DL${body}\r`
@@ -36,8 +41,7 @@ describe('parseAamva', () => {
   it('maps sex 1 to male and 9 (or missing) to unknown', () => {
     expect(parseAamva(barcode({ ...TX, DBC: '1' }))!.sex).toBe('male')
     expect(parseAamva(barcode({ ...TX, DBC: '9' }))!.sex).toBe('unknown')
-    const { DBC: _drop, ...noSex } = TX
-    expect(parseAamva(barcode(noSex))!.sex).toBe('unknown')
+    expect(parseAamva(barcode(without(TX, 'DBC')))!.sex).toBe('unknown')
   })
 
   it('keeps ZIP+4 as 12345-6789 when the last four are not zeros', () => {
@@ -50,8 +54,7 @@ describe('parseAamva', () => {
   })
 
   it('uses DCT (older versions: given names) when DAC is absent', () => {
-    const { DAC: _d, ...old } = TX
-    expect(parseAamva(barcode({ ...old, DCT: 'JANE MARIE' }))!.firstName).toBe('Jane')
+    expect(parseAamva(barcode({ ...without(TX, 'DAC'), DCT: 'JANE MARIE' }))!.firstName).toBe('Jane')
   })
 
   it('returns null for text that is not an AAMVA barcode', () => {

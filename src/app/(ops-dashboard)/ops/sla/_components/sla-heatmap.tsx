@@ -113,6 +113,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
   const handoff = data?.handoff ?? initialHandoff
 
   // BLK-04: now refreshes each time polled data arrives, preventing stale color classification
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- data is the trigger, not an input: a new poll result takes a new "now"
   const now = useMemo(() => Date.now(), [data])
 
   // ── Apply view filter — REQ-SHE-005 ────────────────────────

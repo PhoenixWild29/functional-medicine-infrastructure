@@ -7,7 +7,6 @@
  */
 
 import { POST } from '../route'
-import type { NextRequest } from 'next/server'
 
 const CLINIC_ID = '22222222-2222-4222-8222-222222222222'
 
@@ -69,7 +68,7 @@ beforeEach(() => {
 
 describe('POST /api/stripe/connect-onboarding (C7)', () => {
   it('authenticates with getUser() and creates the Express account with only type and clinic_id', async () => {
-    const res = await POST({} as NextRequest)
+    const res = await POST()
     expect(res.status).toBe(200)
     expect(getUserMock).toHaveBeenCalled()
     expect(getSessionMock).not.toHaveBeenCalled()
@@ -79,14 +78,14 @@ describe('POST /api/stripe/connect-onboarding (C7)', () => {
   })
 
   it('creates the account link with only the account, URLs and type', async () => {
-    await POST({} as NextRequest)
+    await POST()
     const link = accountLinksMock.mock.calls[0]![0] as Record<string, unknown>
     expect(Object.keys(link).sort()).toEqual(['account', 'refresh_url', 'return_url', 'type'])
   })
 
   it('returns 401 when there is no verified user', async () => {
     getUserMock.mockResolvedValue({ data: { user: null }, error: null })
-    const res = await POST({} as NextRequest)
+    const res = await POST()
     expect(res.status).toBe(401)
     expect(accountsCreateMock).not.toHaveBeenCalled()
   })

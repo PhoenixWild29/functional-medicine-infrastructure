@@ -1,5 +1,4 @@
 import * as Sentry from '@sentry/nextjs'
-import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 // ============================================================
 // Sentry User Context — WO-40

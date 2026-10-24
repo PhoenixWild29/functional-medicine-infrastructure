@@ -95,18 +95,25 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
   const [activeTab,   setActiveTab]   = useState<'detail' | 'history' | 'submissions' | 'sla'>('detail')
   const [actionLoading, setActionLoading] = useState(false)
 
-  useEffect(() => {
-    if (!order) {
-      setDetail(null)
-      setDetailError(null)
-      return
-    }
-
-    setIsLoading(true)
+  // A different order (or none): reset while rendering, when the order
+  // changes (React's pattern for adjusting state to an input); the fetch
+  // below stays an effect.
+  const orderId = order?.orderId ?? null
+  const [shownOrderId, setShownOrderId] = useState<string | null>(null)
+  if (orderId !== shownOrderId) {
+    setShownOrderId(orderId)
     setDetailError(null)
-    setActiveTab('detail')
+    if (orderId) {
+      setIsLoading(true)
+      setActiveTab('detail')
+    } else {
+      setDetail(null)
+    }
+  }
 
-    fetch(`/api/ops/orders/${order.orderId}/detail`)
+  useEffect(() => {
+    if (!orderId) return
+    fetch(`/api/ops/orders/${orderId}/detail`)
       .then(async res => {
         if (!res.ok) {
           const err = await res.json() as { error?: string }
@@ -119,7 +126,7 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
         setDetailError(err instanceof Error ? err.message : 'Failed to load order detail')
       })
       .finally(() => setIsLoading(false))
-  }, [order?.orderId])
+  }, [orderId])
 
   if (!order) return null
 

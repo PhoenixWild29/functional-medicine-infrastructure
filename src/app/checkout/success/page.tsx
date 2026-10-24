@@ -39,22 +39,6 @@ interface PageProps {
 
 export const dynamic = 'force-dynamic'
 
-// Typed result shape for the success page order lookup
-interface SuccessOrderRow {
-  order_id:                string
-  retail_price_snapshot:   number | null
-  clinic_id:               string
-  clinics: {
-    name:          string
-    contact_phone: string | null
-    contact_email: string | null
-  } | null
-  pharmacies: {
-    supports_real_time_status: boolean
-    average_turnaround_days:   number | null
-  } | null
-}
-
 // WO-73: CSS-only animated checkmark (no external animation library)
 const CHECKMARK_STYLE = `
   @keyframes checkmark-draw {

@@ -15,7 +15,7 @@
 // Auth: ops_admin only.
 // Uses service client (circuit_breaker_state has RESTRICTIVE RLS).
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { computeAdapterStatus, percentile } from '@/lib/ops/adapter-health'
@@ -66,7 +66,7 @@ export interface AdaptersResponse {
 
 // NB-01: computeAdapterStatus and percentile are imported from @/lib/ops/adapter-health
 
-export async function GET(_request: NextRequest): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) {
