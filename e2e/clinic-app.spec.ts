@@ -534,7 +534,9 @@ test.describe('Clinic App — Order Zero-PHI Validation', () => {
     const token = await generateCheckoutToken(order.order_id, TEST_IDS.patient, TEST_IDS.clinic)
 
     await page.goto(`/checkout/${token}`)
-    await expect(page.getByText('$200.00')).toBeVisible({ timeout: 10_000 })
+    // The amount due, not getByText('$200.00'): once the payment form loads
+    // the "Pay $200.00" button matches too (strict-mode flake).
+    await expect(page.getByTestId('checkout-amount-due')).toContainText('$200.00', { timeout: 10_000 })
 
     // Medication name must NOT appear on checkout page (HIPAA minimum necessary)
     await expect(page.getByText(/Test Compound Injectable/i)).not.toBeVisible()
@@ -2841,6 +2843,13 @@ async function createDraftViaApi(page: Page, over: Record<string, unknown> = {})
     },
   })
   const body = await res.json()
+  if (res.status() !== 201) {
+    // Flake evidence (run 40095958621: 404 "Provider not found" once, then
+    // passed): record the provider row the API looked for.
+    const svc = createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
+    const { data: row } = await svc.from('providers').select('provider_id, clinic_id, is_active, deleted_at, user_id').eq('provider_id', (over['providerId'] as string | undefined) ?? TEST_IDS.provider).maybeSingle()
+    console.warn(`[createDraftViaApi] ${res.status()} ${JSON.stringify(body.error ?? null)} | provider row: ${JSON.stringify(row)}`)
+  }
   expect({ status: res.status(), error: body.error ?? null }).toEqual({ status: 201, error: null })
   return body.orderId as string
 }

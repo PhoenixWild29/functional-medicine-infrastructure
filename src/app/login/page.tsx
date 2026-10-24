@@ -9,7 +9,7 @@
 // Mobile: single column, form only.
 // Entry point for all authenticated users (clinic staff + ops admin).
 
-import { useState, FormEvent, Suspense } from 'react'
+import { useEffect, useRef, useState, FormEvent, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
 import { postLoginDestination } from '@/lib/auth/landing-route'
@@ -43,6 +43,20 @@ function LoginForm() {
   // C10: the fields are marked invalid only when the credentials were
   // refused, not for an auth-callback error that is not about them.
   const [credentialsRefused, setCredentialsRefused] = useState(false)
+
+  // The form is server-rendered: an email and password typed or autofilled
+  // before React hydrates are in the inputs but not in state, which would
+  // leave "Sign in" disabled. Take them from the inputs once hydrated.
+  const emailRef = useRef<HTMLInputElement>(null)
+  const passwordRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const typedEmail = emailRef.current?.value ?? ''
+    const typedPassword = passwordRef.current?.value ?? ''
+    // Syncing state from the DOM (an external system) is what this effect is for.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (typedEmail) setEmail(prev => prev || typedEmail)
+    if (typedPassword) setPassword(prev => prev || typedPassword)
+  }, [])
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -105,6 +119,7 @@ function LoginForm() {
           Email address
         </label>
         <input
+          ref={emailRef}
           id="email"
           type="email"
           autoComplete="email"
@@ -125,6 +140,7 @@ function LoginForm() {
           Password
         </label>
         <input
+          ref={passwordRef}
           id="password"
           type="password"
           autoComplete="current-password"

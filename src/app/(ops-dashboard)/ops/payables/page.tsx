@@ -32,7 +32,7 @@ export default async function PayablesPage() {
   const today = new Date().toISOString().slice(0, 10)
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 space-y-6">
+    <div className="mx-auto max-w-7xl px-4 py-8 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Pharmacy payables</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -47,6 +47,6 @@ export default async function PayablesPage() {
           The payables could not be loaded. Refresh to try again.
         </div>
       )}
-    </main>
+    </div>
   )
 }

@@ -24,7 +24,9 @@ jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn(), refre
 import { TeamPanel } from '../_components/team-panel'
 import type { PendingInvite, TeamMember } from '@/lib/team/team'
 
-const axe = configureAxe({ runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } })
+// Violations only: the helper reads nothing else, and skipping the passes and
+// incomplete node lists makes each run about a quarter faster.
+const axe = configureAxe({ runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }, resultTypes: ['violations'] })
 async function violations(): Promise<string[]> {
   const r = await axe(document.body)
   return r.violations.map(v => `${v.id}: ${v.nodes.map(n => n.target.join(' ')).join(', ')}`)
