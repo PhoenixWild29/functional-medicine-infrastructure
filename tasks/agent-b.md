@@ -1,9 +1,10 @@
-task-id: B-2026-10-23-05
+task-id: B-2026-10-24-02
 status: ready
 ---
-PR #248 (Agent C's branch `lauren-polish-oct23`, head 296e18c) fails one E2E test because C changed the app copy but missed one E2E expectation. C is not responding, so you fix it on C's branch.
+Dependabot PR #117 (branch `dependabot/npm_and_yarn/npm_and_yarn-9540407142`, head 738e5e48c105ec220fc382806a666d97adc9d2d2) bumps next 16.2.6 to 16.4.3 (includes critical RCE security fixes), sharp 0.34.5 to 0.35.5, brace-expansion, fast-uri, nanoid. Lint, tsc, Jest, Build and Vercel are green. E2E (Playwright) failed: run 40100758270, job 120892644222 (14:16Z to 14:35Z). Main (1414c38) E2E was green on #251 at 13:51Z, so the failure is most likely caused by the upgrade, but it could be a flake.
 
-1. `git fetch origin && git checkout -B lauren-polish-oct23 origin/lauren-polish-oct23` (head must be 296e18c82641eb7aced467370a558bdc48443996).
-2. In `e2e/clinic-app.spec.ts` line 2167 the expected text still has an em dash: `$220.00) — $11.00 more overall, so it is not suggested.` The app (src/lib/orders/reroute.ts line ~279, see its unit test src/lib/orders/__tests__/wo102-reroute.test.ts:109) now renders `$220.00): $11.00 more overall, so it is not suggested.` Change only that expectation so it matches the app: replace `) — $11.00` with `): $11.00`. Do not change app code.
-3. Check no other `toHaveText`/`getByText` expectation in e2e/ still contains an em dash that the app no longer renders (test titles and comments are fine).
-4. Run lint and tsc (Jest unaffected). Commit on lauren-polish-oct23 and push to origin lauren-polish-oct23 (normal push, no force). Put the report (new head SHA, the changed line) in the commit message body. Do not open a PR (it exists, #248).
+1. Read the failure: `gh run view 40100758270 --repo PhoenixWild29/functional-medicine-infrastructure --log-failed` (and `gh run download 40100758270 -n playwright-report` if an artifact exists). List every failing test with its error.
+2. `git fetch origin && git checkout -B deps-next-16-4-3 origin/dependabot/npm_and_yarn/npm_and_yarn-9540407142` (head must be 738e5e4). Then `npm ci`.
+3. Decide: if the failures are unrelated flakes (timeouts that also appear on main runs, apt hangs), say so with evidence and change nothing. Otherwise find the root cause in Next 16.3/16.4 behaviour changes (e.g. proxy.ts/middleware, redirects, cookies, server actions, image optimisation, caching defaults) or sharp 0.35, and fix it in app code or config on deps-next-16-4-3. Fix the app, not the test, unless the test asserts something the upgrade legitimately changed. Do not downgrade next below 16.4.1 (security). Do not touch the production database, Vercel, Stripe or secrets.
+4. Run lint, tsc, Jest and build locally; run the failing Playwright specs locally if your setup allows.
+5. Commit on deps-next-16-4-3 and push to origin deps-next-16-4-3 (normal push). Do not open a PR (the orchestrator will open it and close #117). Put the full report in the commit message body: each failing test, root cause, what you changed (files and lines), local results, new head SHA. If you conclude it is a flake and changed nothing, push an empty commit (`git commit --allow-empty`) with that report.
