@@ -24,6 +24,13 @@ jest.mock('next/navigation', () => ({ useRouter: () => ({ push, refresh, replace
 const signInWithPassword = jest.fn(async () => ({ data: {}, error: null }))
 jest.mock('@/lib/supabase/client', () => ({ createBrowserClient: () => ({ auth: { signInWithPassword } }) }))
 
+// After the account is made and signed in, a full navigation (lib/auth/
+// full-navigation): Next 16.3+ reuses an earlier redirect for a route.
+const navigateFullyMock = jest.fn()
+jest.mock('@/lib/auth/full-navigation', () => ({
+  ...jest.requireActual('@/lib/auth/full-navigation'),
+  navigateFully: (path: string) => navigateFullyMock(path),
+}))
 import { AcceptInviteForm } from '@/app/onboard/pharmacy/[token]/_components/accept-invite-form'
 import { OnboardingWizard } from '@/app/pharmacy/onboarding/_components/onboarding-wizard'
 import { PharmacyOnboardingSection } from '@/app/(ops-dashboard)/ops/onboarding/_components/pharmacy/pharmacy-onboarding-section'
@@ -71,7 +78,8 @@ describe('the invite page', () => {
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'a long passphrase 42' } })
     fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'a long passphrase 42' } })
     fireEvent.click(screen.getByRole('button', { name: /create account/i }))
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/mfa/enroll?redirectTo=%2Fpharmacy%2Fonboarding'))
+    await waitFor(() => expect(navigateFullyMock).toHaveBeenCalledWith('/mfa/enroll?redirectTo=%2Fpharmacy%2Fonboarding'))
+    expect(push).not.toHaveBeenCalled()
     expect(fetchMock).toHaveBeenCalledWith('/api/onboard/pharmacy/tok', expect.objectContaining({ method: 'POST', body: JSON.stringify({ fullName: 'Dana Ruiz', password: 'a long passphrase 42' }) }))
     expect(signInWithPassword).toHaveBeenCalledWith({ email: 'dana@strive.example', password: 'a long passphrase 42' })
   })
