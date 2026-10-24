@@ -34,6 +34,7 @@ import { parseTitrationSteps, isSigMode } from '@/lib/orders/titration'
 import { cyclePatternFrom } from '@/lib/orders/cycling'
 import type { Json } from '@/types/database.types'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { revokeProposalLinkForOrder } from '@/lib/proposals/propose'
 
 interface RouteContext {
   params: Promise<{ orderId: string }>
@@ -42,7 +43,7 @@ interface RouteContext {
 const DRAFT_SELECT = `order_id, status, clinic_id, patient_id, provider_id, formulation_id, catalog_item_id, pharmacy_id,
   retail_price_snapshot, wholesale_price_snapshot, medication_snapshot, pharmacy_snapshot, sig_text,
   shipping_state_snapshot, package_id, package_label, package_count, payment_group_id,
-  sig_mode, titration_steps, cycle_on_days, cycle_off_days, ${RX_DETAIL_COLUMN_LIST}`
+  sig_mode, titration_steps, cycle_on_days, cycle_off_days, proposal_option_id, ${RX_DETAIL_COLUMN_LIST}`
 
 interface Actor {
   userId:   string
@@ -133,6 +134,16 @@ async function loadEditableDraft(orderId: string): Promise<
   }
 
   return { ok: true, actor, draft: draft as unknown as DraftRow, supabase, user: user }
+}
+
+/**
+ * Patient protocol choice: a line in a plan sent to the patient changed,
+ * so the plan's link stops working until it is sent again (which runs
+ * every signing check again). Lines in no plan touch no proposal.
+ */
+async function revokeLinkIfProposed(supabase: ReturnType<typeof createServiceClient>, clinicId: string, draft: DraftRow): Promise<void> {
+  if (!(draft as { proposal_option_id?: string | null }).proposal_option_id) return
+  await revokeProposalLinkForOrder(supabase, { clinicId, orderId: draft.order_id })
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext): Promise<NextResponse> {
@@ -258,6 +269,8 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     return NextResponse.json({ error: 'Failed to update draft' }, { status: 500 })
   }
 
+  await revokeLinkIfProposed(supabase, actor.clinicId, draft)
+
   // WO-102: a changed pharmacy or shipping type moves shipping between
   // this patient's draft lines — re-allocate once per pharmacy.
   const owner = draft as unknown as { patient_id: string; provider_id: string }
@@ -296,6 +309,8 @@ export async function DELETE(request: NextRequest, context: RouteContext): Promi
     console.error('[orders/edit] draft soft-delete failed:', deleteError.message)
     return NextResponse.json({ error: 'Failed to remove draft' }, { status: 500 })
   }
+
+  await revokeLinkIfProposed(supabase, actor.clinicId, draft)
 
   // WO-102: the removed line may have carried its pharmacy's shipping.
   const owner = draft as unknown as { patient_id: string; provider_id: string }
