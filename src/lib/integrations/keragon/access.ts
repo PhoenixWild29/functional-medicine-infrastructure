@@ -8,6 +8,7 @@
 // then use the service role.
 
 import { NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import type { User } from '@supabase/supabase-js'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -30,5 +31,5 @@ export async function requireClinicAdmin(): Promise<ClinicAdminAccess> {
 
 /** A write from another site is refused (the browser says so). */
 export function crossSite(request: { headers: { get(name: string): string | null } }): NextResponse | null {
-  return request.headers.get('sec-fetch-site') === 'cross-site' ? NextResponse.json({ error: 'Forbidden' }, { status: 403 }) : null
+  return refuseCrossSite(request, 'Forbidden')
 }

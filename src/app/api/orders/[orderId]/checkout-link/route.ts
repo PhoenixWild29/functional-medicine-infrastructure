@@ -30,6 +30,7 @@
 // PAID_PROCESSING and onward (payment complete), and anything else.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
@@ -61,10 +62,9 @@ export async function POST(
   // CSRF: reject cross-site POSTs. Same-origin requests from our own app
   // send Sec-Fetch-Site: same-origin. Direct navigations / absent headers
   // (e.g., curl) are fine because they lack a third-party cross-site cookie.
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') {
-    return NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 })
-  }
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
+
 
   // Auth gate
   const supabaseAuth = await createServerClient()
