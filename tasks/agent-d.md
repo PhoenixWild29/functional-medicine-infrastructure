@@ -1,17 +1,15 @@
-task-id: D-2026-10-24-03
+task-id: D-2026-10-24-04
 status: ready
 ---
-Thanks for D-2026-10-24-02 (Next 16.4 follow-through; PR opens after the running E2E).
+Thanks for D-2026-10-24-03 (proxy.ts; PR opens in turn).
 
-Step 0: main now has #253 and #254 (B: lint 57 warnings to 0, and `npm run lint` is `eslint . --max-warnings=0`, so ANY warning fails CI). `git fetch origin`, check out next-16-4-followthrough, `git merge origin/main`, resolve conflicts (B also touched signup-link and other files), `npm run lint` must show 0 warnings, rerun tsc and the suites you changed, push next-16-4-followthrough (normal push).
+Next: CI throughput. PRs merge one at a time because E2E shares one E2E Supabase and a single concurrency group. Today a PR's E2E often starts 10 to 15 minutes after its other checks finish (e.g. #256: other checks done 18:44Z, E2E started 18:57Z) and then takes 13 to 17 minutes. With four agents pushing, this is the bottleneck.
 
-Task: your follow-up 1, middleware.ts -> proxy.ts. A's navigation audit is merged (#253), so the area is free.
+Branch: `git fetch origin && git checkout -b ci-e2e-throughput origin/main`.
 
-Branch: `git checkout -b middleware-to-proxy origin/main`.
-1. `git mv src/middleware.ts src/proxy.ts`, rename the export to `proxy`, keep config.matcher. Check what changes because proxy runs on Node.js, not Edge: anything Edge-specific in the file or its imports, the CSP nonce generation, crypto usage, cookie handling with @supabase/ssr, header size, and performance (cold start). Read the Next 16 proxy docs in node_modules/next/dist/docs.
-2. Sentry: if @sentry/nextjs (10.63) has a proxy-aware option, switch autoInstrumentMiddleware accordingly; otherwise explain.
-3. Update every comment and doc that cites src/middleware.ts, and every test that imports '@/middleware'. All middleware Jest suites must pass unchanged in behaviour.
-4. Add a test that pins the headers (CSP with nonce, HSTS, no-store on authed pages) and the redirects (signed-out -> /login?redirectTo, MFA gate, role gates, deactivated) through the proxy.
-5. `npm run lint` (0 warnings), tsc, Jest, build (the middleware deprecation warning must be gone). Commit and push to origin middleware-to-proxy (normal push, no PR). Full report in the final commit message body: Step 0 outcome and head of next-16-4-followthrough, runtime differences found, changes, tests, build warnings before/after, local results, head SHA, and anything Sam must check on the Vercel preview (CSP headers, redirects).
+1. Measure: use the public GitHub REST API (unauthenticated is fine for a public repo; do not use stored credentials) over the last 30 ci.yml runs: for each, event (push vs pull_request), branch, queued/started/completed times of the E2E job, and whether it was cancelled. Find what the E2E concurrency group waits on. Likely: agent pushes to feature branches without a PR trigger push-event runs that take the same E2E group; and/or main pushes run E2E after merges.
+2. Fix the queueing: E2E should run for pull_request events (and main after merge only if needed), not for pushes to branches without a PR. Lint, tsc, Jest and Build may still run on every push. Keep the shared E2E group so two E2E runs never overlap. Make sure a PR's E2E is never cancelled by an unrelated branch push.
+3. Speed: profile the E2E job steps (install, Playwright browsers and OS deps, schema sync, build, test). Cache what is safely cacheable (npm, Playwright browsers keyed on version, Next build cache), skip work done twice, and check whether the webkit project must run on every PR (keep it if it catches real bugs; it caught the login hydration race today). Do not shard against the shared database unless tests are isolated; say if sharding is possible.
+4. Report before/after estimates. Commit and push to origin ci-e2e-throughput (normal push, no PR). Full report in the final commit message body: measurements (table), root cause of the wait, changes, expected effect, risks, head SHA.
 
-Do not touch the production database, Vercel, Stripe or secrets.
+Do not touch the production database, Vercel, Stripe, repository settings or secrets.
