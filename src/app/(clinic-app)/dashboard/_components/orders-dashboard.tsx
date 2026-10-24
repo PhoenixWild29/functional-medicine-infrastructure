@@ -30,7 +30,8 @@ import type { DashboardOrder } from '../page'
 import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.types'
 import { OrdersTable }  from './orders-table'
 import { OrdersKanban } from './orders-kanban'
-import { isTabId, isPeriod, ordersForView, ordersInPeriod, TABS, type TabDef, type TabId, type Period } from '../_lib/tabs'
+import { isProposedOrder, isTabId, isPeriod, ordersForView, ordersInPeriod, TABS, type TabDef, type TabId, type Period } from '../_lib/tabs'
+import { PROPOSAL_EMBED, dashboardProposal } from '@/lib/proposals/dashboard'
 import { paymentLinkCounts } from '@/lib/orders/payment-link'
 import type { DraftViewer } from '@/lib/orders/draft-edit-access'
 import { OrderDrawer }  from './order-drawer'
@@ -63,12 +64,15 @@ interface Props {
    * Absent or false: today's wording.
    */
   payoutsAtLaunch?: boolean
+  /** Patient protocol choice: a provider or clinic admin sends plans (a medical assistant prepares). */
+  canSendProposals?: boolean
 }
 
 /** An empty tab with no filter set says what the tab holds. */
 const EMPTY_TAB_TEXT: Record<TabId, string> = {
   all:              'No orders found',
   drafts:           'No draft orders',
+  proposed:         'No plans are waiting for a patient to choose',
   awaiting_payment: 'No orders are waiting for payment',
   submitting:       'No orders are being submitted',
   processing:       'No orders are being processed',
@@ -123,12 +127,13 @@ function buildDashboardOrder(o: Record<string, unknown>, duplicateNames?: Readon
     lockedAt:          (o['locked_at'] as string | null) ?? null,
     refills:           (o['refills'] as number | null) ?? null,
     refillOfOrderId:   (o['refill_of_order_id'] as string | null) ?? null,
+    proposal:          dashboardProposal(o),
   }
 }
 
 // ── Component ───────────────────────────────────────────────
 
-export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, viewer, initialTab, initialOrderId, providerViewMode = 'mine', payoutsAtLaunch = false }: Props) {
+export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, viewer, initialTab, initialOrderId, providerViewMode = 'mine', payoutsAtLaunch = false, canSendProposals = false }: Props) {
   const router = useRouter()
   // The clinic view's poll carries the same header the server render
   // used; without it the poll read "My patients" rows under the clinic
@@ -192,8 +197,9 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
         .select(`
           order_id, status, created_at, updated_at, locked_at, payment_group_id, provider_id,
           retail_price_snapshot, wholesale_price_snapshot,
-          medication_snapshot, pharmacy_snapshot, refills, refill_of_order_id,
-          patients!inner(patient_id, first_name, last_name, phone, intake_status, ${POSSIBLE_DUPLICATE_COLUMNS})
+          medication_snapshot, pharmacy_snapshot, refills, refill_of_order_id, proposal_required,
+          patients!inner(patient_id, first_name, last_name, phone, intake_status, ${POSSIBLE_DUPLICATE_COLUMNS}),
+          ${PROPOSAL_EMBED}
         `)
         .eq('clinic_id', clinicId)
         .is('deleted_at', null)
@@ -250,7 +256,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
   // never counted here, never ticked, and never signed under their name.
   const myDraftIds = viewer?.isProvider && viewer.providerId
     // Patient Intake PR 2: a draft held for a patient's details cannot be signed yet.
-    ? orders.filter(o => o.status === 'DRAFT' && o.providerId === viewer.providerId && !o.patientIntakePending).map(o => o.orderId)
+    ? orders.filter(o => o.status === 'DRAFT' && !isProposedOrder(o) && o.providerId === viewer.providerId && !o.patientIntakePending).map(o => o.orderId)
     : []
   const mySignable = new Set(myDraftIds)
   const chosenDraftIds = [...draftSelection].filter(id => mySignable.has(id))
@@ -572,7 +578,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
       )}
 
       {/* ── Slide-out drawer — REQ-GDB-002 ── */}
-      <OrderDrawer order={selectedOrder} allOrders={orders} onClose={handleCloseDrawer} onGroupCreated={handleGroupCreated} viewer={viewer} />
+      <OrderDrawer order={selectedOrder} allOrders={orders} onClose={handleCloseDrawer} onGroupCreated={handleGroupCreated} viewer={viewer} canSendProposals={canSendProposals} />
 
     </div>
   )

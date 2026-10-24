@@ -90,6 +90,9 @@ import { bundleTotals, platformFeeCents as platformFeeFor } from '@/lib/orders/s
 import { useBundleShipping, ShippingLines, MultiPharmacyNoticeBanner } from './bundle-shipping'
 import { checkSignature, signatureFromPad, SIGNATURE_REJECTION_COPY, type SignatureCheck } from '@/lib/orders/signature'
 import { PENDING_REVIEW_CODE, refusalText } from '@/lib/onboarding/pending-review-copy'
+import { ProposalOptions, alignPlan, defaultProposalPlan, planProblems, proposalOptionsBody, type ProposalLine, type ProposalPlan } from './proposal-options'
+import { PlanLinkPanel } from '@/components/proposals/plan-link-panel'
+import type { SentLink } from '@/lib/proposals/propose'
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -307,11 +310,17 @@ function doseWithMg(rx: SessionPrescription): string {
 // server 403 in batch-sign remains the real gate regardless.
 interface Props {
   isProvider: boolean
+  /**
+   * Patient protocol choice: 'send' (a provider or clinic admin sends the
+   * plan), 'prepare' (a medical assistant saves it for them to send), or
+   * null (no plan option). The server decides again (lib/proposals/propose).
+   */
+  proposalRole?: 'send' | 'prepare' | null
 }
 
 // ── Component ─────────────────────────────────────────────────
 
-export function BatchReviewForm({ isProvider }: Props) {
+export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
   const router = useRouter()
   const session = usePrescriptionSession()
   const sigCanvasRef = useRef<SignatureCanvas>(null)
@@ -332,6 +341,14 @@ export function BatchReviewForm({ isProvider }: Props) {
   // Non-provider "Save as Draft" flow (batched WO-77 pattern)
   const [isSavingDraft, setIsSavingDraft] = useState(false)
   const [draftError, setDraftError] = useState<string | null>(null)
+
+  // Patient protocol choice (PR 2): send a plan for the patient to choose
+  // from instead of signing now.
+  const [choiceMode, setChoiceMode] = useState(false)
+  const [proposalPlan, setProposalPlan] = useState<ProposalPlan | null>(null)
+  const [isProposing, setIsProposing] = useState(false)
+  const [proposalErrors, setProposalErrors] = useState<string[]>([])
+  const [proposalResult, setProposalResult] = useState<{ proposalId: string; status: 'draft' | 'sent'; link: SentLink | null } | null>(null)
 
   // WO-102: shipping rates, absorb setting, per-pharmacy breakdown and the
   // multi-pharmacy notice. Called before any early return (hook order).
@@ -645,6 +662,34 @@ export function BatchReviewForm({ isProvider }: Props) {
 
   const { patient, provider, prescriptions } = session
 
+  // Patient protocol choice: Review's lines, and the plan for them.
+  const proposalLines: ProposalLine[] = prescriptions.map(rx => ({
+    id: rx.id, medicationName: rx.medicationName, protocolId: rx.protocolId ?? null, protocolName: rx.protocolName ?? null,
+  }))
+  const plan = proposalPlan ? alignPlan(proposalPlan, proposalLines) : null
+
+  if (proposalResult) {
+    return (
+      <div className="space-y-4" data-testid="proposal-sent">
+        <div role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">
+          {proposalResult.status === 'sent'
+            ? 'The plan was sent for the patient to choose. Nothing is signed or charged until you sign what they choose.'
+            : 'The plan is saved. The provider or a clinic admin sends it from the dashboard Proposed tab.'}
+        </div>
+        {proposalResult.link && (
+          <PlanLinkPanel proposalId={proposalResult.proposalId} url={proposalResult.link.url} expiresAt={proposalResult.link.expiresAt} texting={proposalResult.link.texting} />
+        )}
+        <button
+          type="button"
+          onClick={() => router.push('/dashboard?tab=proposed')}
+          className="w-full rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Go to the dashboard
+        </button>
+      </div>
+    )
+  }
+
   // Batch 1: checks that could not run. Each blocks sending and says so
   // on screen — an unanswered clinical question is not a clean result.
   // Unknown = the read failed, or has not resolved yet (fields absent).
@@ -830,6 +875,50 @@ export function BatchReviewForm({ isProvider }: Props) {
           ? { rxDetails: { ...rx.rxDetails, dispenseQuantity: line.dispenseQuantity, dispenseUnit: line.dispenseUnit } }
           : {}),
       })
+    }
+  }
+
+  // ── Patient protocol choice: send the plan (PR 2) ───────────
+  // Every line is saved as a DRAFT (reusing drafts a retry already
+  // made), then POST /api/proposals tags them to their options and, for
+  // a provider or clinic admin, makes the plan link. The server runs
+  // every signing check first and answers with sign's own words.
+  async function handleSendForChoice() {
+    if (!patient || !provider || !plan) return
+    const problems = planProblems(plan)
+    if (problems.length > 0) {
+      setProposalErrors(problems)
+      return
+    }
+    setIsProposing(true)
+    setProposalErrors([])
+    try {
+      await createDrafts('Saving prescription')
+      setSubmitProgress(proposalRole === 'send' ? 'Checking and sending the plan...' : 'Saving the plan...')
+      const res = await fetch('/api/proposals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientId:  patient.patient_id,
+          providerId: provider.provider_id,
+          send:       proposalRole === 'send',
+          options:    proposalOptionsBody(plan, proposalLines, lineId => createdOrderIdsRef.current.get(lineId) ?? ''),
+        }),
+      })
+      const body = await res.json().catch(() => ({})) as { error?: string; problems?: Array<{ message?: string }>; proposalId?: string; status?: 'draft' | 'sent'; link?: SentLink | null }
+      if (!res.ok) {
+        const lines = (body.problems ?? []).map(pr => pr.message).filter((m): m is string => typeof m === 'string')
+        setProposalErrors(lines.length > 0 ? lines : [body.error ?? 'The plan could not be sent. Try again.'])
+        return
+      }
+      // The session is cleared once this page is left (as after Sign & Send).
+      clearSessionOnUnmountRef.current = true
+      setProposalResult({ proposalId: body.proposalId ?? '', status: body.status ?? 'sent', link: body.link ?? null })
+    } catch (err) {
+      setProposalErrors([err instanceof Error ? err.message : 'An unexpected error occurred'])
+    } finally {
+      setSubmitProgress(null)
+      setIsProposing(false)
     }
   }
 
@@ -1185,6 +1274,50 @@ export function BatchReviewForm({ isProvider }: Props) {
         </div>
       )}
 
+      {/* Patient protocol choice: a plan for the patient to choose from,
+          instead of signing now (docs/design/patient-protocol-choice.md). */}
+      {proposalRole && (
+        <section aria-labelledby="patient-choice-heading" className="space-y-4 rounded-lg border border-border bg-card p-4">
+          <h2 id="patient-choice-heading" className="text-base font-semibold text-foreground">Let the patient choose</h2>
+          <label htmlFor="patient-choice-toggle" className="flex min-h-[44px] items-center gap-2 text-sm text-foreground">
+            <input
+              id="patient-choice-toggle"
+              type="checkbox"
+              checked={choiceMode}
+              disabled={isBusy || isProposing}
+              onChange={e => {
+                setChoiceMode(e.target.checked)
+                if (e.target.checked && !proposalPlan) setProposalPlan(defaultProposalPlan(proposalLines))
+              }}
+            />
+            Send the patient a plan to choose from, instead of signing now
+          </label>
+          {choiceMode && plan && (
+            <>
+              <ProposalOptions lines={proposalLines} plan={plan} onChange={setProposalPlan} disabled={isProposing} />
+              {proposalErrors.length > 0 && (
+                <div role="alert" data-testid="proposal-errors" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  <ul className="list-disc space-y-1 pl-5">{proposalErrors.map(e => <li key={e}>{e}</li>)}</ul>
+                </div>
+              )}
+              {isProposing && submitProgress && <p role="status" className="text-sm text-muted-foreground">{submitProgress}</p>}
+              <button
+                type="button"
+                onClick={() => void handleSendForChoice()}
+                disabled={isProposing || prescriptions.length === 0 || hasInvalidItems || hasMissingDetails}
+                className="w-full rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {isProposing ? 'Sending...' : proposalRole === 'send' ? 'Send to patient for choice' : 'Save the plan for the provider to send'}
+              </button>
+              <p className="text-xs text-muted-foreground">
+                Nothing is signed or charged now. Every signing check runs first, and only the items the patient chooses are signed later.
+              </p>
+            </>
+          )}
+        </section>
+      )}
+
+      {!choiceMode && (<>
       {/* Provider signature — providers only. Non-providers can't sign
           (server returns 403), so the canvas is hidden for them. */}
       {isProvider && (
@@ -1401,6 +1534,7 @@ export function BatchReviewForm({ isProvider }: Props) {
         </div>
       )}
 
+      </>)}
     </div>
   )
 }

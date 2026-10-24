@@ -29,7 +29,7 @@ it('as the provider: exactly what checkBatch finds for that provider signing', a
   expect(asProvider.problems).toEqual(asUser.problems)
   expect(asProvider.lines).toEqual(asUser.lines)
   expect(asProvider.signer).toEqual(asUser.signer)
-  expect(asProvider.problems.map(p => p.code)).toEqual(['controlled_substance', 'below_cost'])
+  expect(asProvider.problems.map(p => p.code)).toEqual(['controlled_substance', 'rx_details', 'below_cost'])
 })
 
 it('checkBatch is canSign as the user', async () => {

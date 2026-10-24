@@ -78,7 +78,7 @@ export function world(orders: Array<Record<string, unknown>>, over: WorldOverrid
     ],
     patients: [
       { patient_id: P1, clinic_id: CLINIC, first_name: 'Jordan', last_name: 'Lee', phone_e164: '+15125550123', sms_opt_in: true, allergies: ['sulfa'], nkda: false },
-      { patient_id: P2, clinic_id: CLINIC, first_name: 'Ana', last_name: 'Ruiz', phone_e164: null, sms_opt_in: false, allergies: [], nkda: true },
+      { patient_id: P2, clinic_id: CLINIC, first_name: 'Ana', last_name: 'Ruiz', phone_e164: '+15125550199', sms_opt_in: false, allergies: [], nkda: true },
     ],
     drug_interactions: [],
     provider_npi_verifications: [

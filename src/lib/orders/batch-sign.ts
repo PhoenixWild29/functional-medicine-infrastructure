@@ -229,6 +229,8 @@ export function parseOrderIds(raw: unknown): { ok: true; ids: string[] } | { ok:
  * checks (allergy status, drug interactions), which the page runs with its
  * own components and retry; the signing request runs them again because
  * it is the gate that cannot be skipped.
+ *
+ * checkBatch is canSign as the signed-in user.
  */
 export async function checkBatch(
   supabase: Supabase,
@@ -239,7 +241,30 @@ export async function checkBatch(
    */
   input: { clinicId: string; userId: string | null; orderIds: string[]; atSigning: boolean },
 ): Promise<BatchCheck> {
-  const { clinicId, userId, orderIds } = input
+  return canSign(supabase, { clinicId: input.clinicId, orderIds: input.orderIds, as: { userId: input.userId }, atSigning: input.atSigning })
+}
+
+/**
+ * Who the lines would be signed by: the signed-in user (sign), or a
+ * provider named by id (patient protocol choice: a clinic admin may send
+ * a plan on the provider's behalf, and every check, C4 included, is the
+ * prescriber's).
+ */
+export type SignAs = { userId: string | null } | { providerId: string }
+
+/**
+ * Would these lines sign? Every check batch sign runs, read only, with the
+ * same problems and words. Used by sign (checkBatch) and by propose
+ * (lib/proposals/propose), so a patient is never offered a line that
+ * could not be signed.
+ */
+export async function canSign(
+  supabase: Supabase,
+  input: { clinicId: string; orderIds: string[]; as: SignAs; atSigning: boolean },
+): Promise<BatchCheck> {
+  const { clinicId, orderIds } = input
+  const userId = 'userId' in input.as ? input.as.userId : null
+  const providerId = 'providerId' in input.as ? input.as.providerId : null
   const problems: BatchProblem[] = []
   const add = (row: { order_id: string; medication_snapshot: Json | null } | null, code: BatchProblemCode, message: string) =>
     problems.push({ orderId: row?.order_id ?? null, medicationName: row ? medicationNameOf(row) : null, code, message })
@@ -268,7 +293,16 @@ export async function checkBatch(
   }
 
   // ── Who is signing ──
-  const signerRead = userId === null
+  const signerRead = providerId !== null
+    ? await supabase
+      .from('providers')
+      .select('provider_id, first_name, last_name, npi_number')
+      .eq('provider_id', providerId)
+      .eq('clinic_id', clinicId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .maybeSingle()
+    : userId === null
     ? { data: null, error: null }
     : await supabase
     .from('providers')
@@ -282,6 +316,10 @@ export async function checkBatch(
   if (signerError) {
     console.error('[batch-sign] signing provider could not be read:', signerError.message)
     add(null, 'provider_unavailable', 'Your provider record could not be read. Nothing was signed. Try again.')
+    return { lines: [], problems, signer: null }
+  }
+  if (!signer && providerId !== null) {
+    add(null, 'provider_unlinked', 'The prescribing provider is not active in this clinic, so nothing can be sent for them.')
     return { lines: [], problems, signer: null }
   }
   if (!signer && userId !== null) {

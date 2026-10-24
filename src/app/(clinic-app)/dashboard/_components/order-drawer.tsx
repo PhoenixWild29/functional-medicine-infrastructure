@@ -40,6 +40,8 @@ import { orderDisplayNumber } from '@/lib/orders/order-number'
 import { refillRowState } from '@/lib/orders/refill'
 import { isSubmissionFailure, submissionFailureNotice } from '@/lib/orders/submission-failure'
 import type { SubmissionFailure } from '@/app/api/orders/[orderId]/failure-reason/route'
+import { ProposalPanel } from './proposal-panel'
+import { isProposedOrder } from '../_lib/tabs'
 
 interface Props {
   order: DashboardOrder | null
@@ -52,6 +54,8 @@ interface Props {
   onGroupCreated: (groupId: string, orderIds: string[]) => void
   /** WO-98 × WO-100: the signed-in viewer. Absent → WO-98 behaviour. */
   viewer?: DraftViewer | undefined
+  /** Patient protocol choice: the viewer is a provider or clinic admin. */
+  canSendProposals?: boolean
 }
 
 interface BundlableSibling {
@@ -161,7 +165,9 @@ function formatDateTime(iso: string): string {
 }
 
 
-export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer }: Props) {
+export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer, canSendProposals = false }: Props) {
+  // Patient protocol choice: a DRAFT in an open plan (the Proposed tab).
+  const proposed = order ? isProposedOrder(order) : false
   const router = useRouter()
   // Escape closes the drawer, and focus moves into it when it opens
   // (WCAG 2.1.2 / 2.4.3); the dashboard returns focus to the row on close.
@@ -870,8 +876,34 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
             </button>
           )}
 
+          {/* Patient protocol choice: a proposed draft waits for the
+              patient; it is signed only once chosen (PR 4), never from
+              here. Editing it turns the plan link off until a new one
+              is sent. */}
+          {proposed && order.proposal && (
+            <div className="space-y-2">
+              <ProposalPanel
+                proposal={order.proposal}
+                canSend={canSendProposals && (!viewer?.isProvider || viewer.providerId === order.providerId)}
+                onChanged={() => router.refresh()}
+              />
+              {draftEditMode(viewer, order.providerId) === 'edit' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose()
+                    router.push(`/new-prescription/search?editOrder=${order.orderId}`)
+                  }}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  Edit prescription (the patient&apos;s link turns off until you send a new one)
+                </button>
+              )}
+            </div>
+          )}
+
           {/* WO-77: Review & Sign CTA for DRAFT orders */}
-          {order.status === 'DRAFT' && (
+          {order.status === 'DRAFT' && !proposed && (
             <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-4">
               <p className="text-sm font-semibold text-amber-800">Awaiting Provider Signature</p>
               <p className="mt-1 text-xs text-amber-700">

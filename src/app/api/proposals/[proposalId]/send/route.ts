@@ -1,0 +1,27 @@
+// ============================================================
+// POST /api/proposals/[proposalId]/send: send a prepared plan, or a new link
+// ============================================================
+//
+// Patient protocol choice, PR 2. Every signing check runs again (canSign);
+// a new token replaces the old one, so the previous link stops working.
+// 200 { proposalId, resent, link: { url, expiresAt, texting } }.
+
+import { NextResponse, type NextRequest } from 'next/server'
+import { sendProposal } from '@/lib/proposals/propose'
+import { failureResponse, proposalCaller, proposalIdFrom } from '@/lib/proposals/request'
+
+type Context = { params: Promise<{ proposalId: string }> }
+
+export async function POST(request: NextRequest, context: Context): Promise<NextResponse> {
+  const c = await proposalCaller(request)
+  if ('response' in c) return c.response
+  const proposalId = await proposalIdFrom(context)
+  if (!proposalId) return NextResponse.json({ error: 'Invalid plan id' }, { status: 400 })
+
+  const res = await sendProposal(c.db, { clinicId: c.clinicId, caller: c.caller, proposalId })
+  if (!res.ok) return failureResponse(res)
+  return NextResponse.json(
+    { proposalId: res.proposalId, resent: res.resent, link: res.link },
+    { status: 200, headers: { 'Cache-Control': 'no-store' } },
+  )
+}

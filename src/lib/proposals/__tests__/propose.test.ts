@@ -122,7 +122,7 @@ describe('a controlled item is never proposable', () => {
         { label: 'Option B', protocolId: null, lines: [{ orderId: id(2), required: false }] },
       ],
     })
-    expect(res).toMatchObject({ ok: false, status: 422, problems: [expect.objectContaining({ orderId: id(2), code: 'controlled_substance' })] })
+    expect(res).toMatchObject({ ok: false, status: 422, problems: expect.arrayContaining([expect.objectContaining({ orderId: id(2), code: 'controlled_substance' })]) })
     expect(order(db, 2)['proposal_option_id']).toBeNull()
     expect(db.writes).toHaveLength(0)
   })

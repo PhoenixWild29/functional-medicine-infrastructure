@@ -40,6 +40,7 @@ import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { SetupChecklistCard } from '@/components/coaching/setup-checklist-card'
 import { ProtocolSavedNotice } from './_components/protocol-saved-notice'
 import { platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
+import { PROPOSAL_EMBED, dashboardProposal, type DashboardProposal } from '@/lib/proposals/dashboard'
 
 export const metadata = {
   title: 'Dashboard',
@@ -88,6 +89,8 @@ export interface DashboardOrder {
   refills?:              number | null
   /** Set on a refill: the order it refilled (its source prescription). */
   refillOfOrderId?:      string | null
+  /** Patient protocol choice: the plan this draft is offered in (Proposed tab), or null. */
+  proposal?:             DashboardProposal | null
 }
 
 export default async function DashboardPage(
@@ -163,8 +166,9 @@ export default async function DashboardPage(
       .select(`
         order_id, status, created_at, updated_at, locked_at, payment_group_id, provider_id,
         retail_price_snapshot, wholesale_price_snapshot,
-        medication_snapshot, pharmacy_snapshot, refills, refill_of_order_id,
-        patients!inner(patient_id, first_name, last_name, phone, intake_status, ${POSSIBLE_DUPLICATE_COLUMNS})
+        medication_snapshot, pharmacy_snapshot, refills, refill_of_order_id, proposal_required,
+        patients!inner(patient_id, first_name, last_name, phone, intake_status, ${POSSIBLE_DUPLICATE_COLUMNS}),
+        ${PROPOSAL_EMBED}
       `)
       .eq('clinic_id', clinicId)
       .is('deleted_at', null)
@@ -258,6 +262,7 @@ export default async function DashboardPage(
       lockedAt:          o.locked_at ?? null,
       refills:           o.refills ?? null,
       refillOfOrderId:   o.refill_of_order_id ?? null,
+      proposal:          dashboardProposal(o as unknown as Parameters<typeof dashboardProposal>[0]),
     }
   })
 
@@ -353,6 +358,7 @@ export default async function DashboardPage(
           initialOrderId={typeof resolvedSearchParams.order === 'string' ? resolvedSearchParams.order : null}
           providerViewMode={viewMode}
           payoutsAtLaunch={payoutsAtLaunch}
+          canSendProposals={appRole === 'provider' || appRole === 'clinic_admin'}
         />
       </main>
     </>
