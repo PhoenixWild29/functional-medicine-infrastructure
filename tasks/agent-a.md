@@ -1,16 +1,19 @@
-task-id: A-2026-10-24-03
+task-id: A-2026-10-24-04
 status: ready
 ---
-Thanks for A-2026-10-24-02 (opened as PR #253; E2E running).
+Thanks for A-2026-10-24-03 (fax viewer). Its migration 20261024000001 goes to Sam to run on prod before that PR merges; I handle that.
 
-Next: Issue Log item 72. Inbound faxes live only in Documo; the ops fax viewer points at a Supabase storage bucket `fax-pdfs` that does not exist, so ops cannot open an inbound fax.
+Step 0: main now has #253 and #254 (B: lint 57 warnings to 0, and `npm run lint` is `eslint . --max-warnings=0`, so ANY warning fails CI). `git fetch origin`, check out ops-fax-viewer-documo, `git merge origin/main`, resolve conflicts (B touched fax-triage-queue.tsx: a module-level NO_FAXES constant; keep both changes), then `npm run lint` must show 0 warnings, rerun tsc and the fax tests, push ops-fax-viewer-documo (normal push).
 
-Branch: `git fetch origin && git checkout -b ops-fax-viewer-documo origin/main`.
+Task: bump eslint-config-next to match next 16.4.3 (D's follow-up). It pulls eslint-plugin-react-hooks 7.0.1 -> 7.1.1, whose React Compiler rules flag 5 sites plus about 16 set-state-in-effect warnings (D's list):
+  - dashboard/_components/order-drawer.tsx:314 and :316 react-hooks/immutability (fetchGroupLink / fetchBundlableSiblings declared below the useEffect that calls them)
+  - new-prescription/margin/_components/margin-builder-form.tsx:522 (x2) react-hooks/preserve-manual-memoization (wholesaleCents useMemo)
+  - margin-builder-form.tsx:810 react-hooks/refs (clearSessionRef.current assigned during render)
 
-1. Find the ops fax viewer (search for `fax-pdfs`, inbound fax, Documo webhook handler, ops fax pages and API routes) and the Documo client already in the repo. Write down how an inbound fax arrives today (webhook payload, what is stored in which table) and what the viewer expects.
-2. Make the viewer work without the missing bucket. Preferred: an ops-only server route that fetches the fax PDF from Documo on demand by its Documo id (using the existing Documo client and env vars; never log or return credentials), streams it with `Content-Type: application/pdf`, `Cache-Control: no-store`, and writes one phi_access_log row per view (who, which fax, no content). If the repo's design clearly intends storing PDFs in Supabase storage instead, add a migration for a private `fax-pdfs` bucket with ops-only policies plus the webhook upload; say which you chose and why. If a migration is needed, do not run it anywhere but the E2E/test setup; put the SQL in the report.
-3. Ops only (ops_admin role from app_metadata via getUser), same-origin, rate limited like other ops routes. Clinic and pharmacy users get 403. Missing or expired fax: plain message in the viewer, no stack trace.
-4. Red tests first (route auth, PHI log row, no credential leakage, viewer states), then the fix. jest-axe on the viewer. Mock Documo in tests; no real network.
-5. Run lint, tsc, Jest (--maxWorkers=3), build. Commit and push to origin ops-fax-viewer-documo (normal push, no PR). Full report in the final commit message body: how faxes flow, the option chosen, files, tests, migration (if any) with its SQL, local results, head SHA.
+Branch: `git checkout -b eslint-config-next-16-4 origin/main`.
+1. Bump eslint-config-next (and only what it requires) to 16.4.3. Keep lockfile changes minimal; keep the libc markers on native optional packages.
+2. Fix every new error and warning properly in code (move the fetchers above the effect or into useCallback, a ref-updating effect for the latest-ref pattern, fix the memo deps). No rule changes in eslint.config.mjs, no blanket disables; a scoped eslint-disable-next-line with a reason only where a fix would change behaviour, listed in the report.
+3. Red tests first for any component whose code you restructure (behaviour unchanged).
+4. `npm run lint` (0 errors, 0 warnings), tsc, Jest (--maxWorkers=3), build. Commit and push to origin eslint-config-next-16-4 (normal push, no PR). Full report in the final commit message body: Step 0 outcome and head of ops-fax-viewer-documo, versions before/after, every finding and fix (file:line), disables with reasons, local results, head SHA.
 
-Do not touch the production database, Vercel, Stripe, Documo or secrets.
+Do not touch the production database, Vercel, Stripe or secrets.

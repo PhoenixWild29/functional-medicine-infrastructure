@@ -1,19 +1,16 @@
-task-id: C-2026-10-24-03
+task-id: C-2026-10-24-04
 status: ready
 ---
-Thanks for C-2026-10-24-02 (the five flake fixes). The batch-sign 404 needs the job log; I will read it and come back to you.
+Thanks for C-2026-10-24-03 (landmarks, 55 routes). Flake fixes are PR #255 (CI running).
 
-Your branch e2e-flake-first-run-checklist and A's PR #253 (branch nav-after-redirect-audit) both change src/app/login/page.tsx (you: hydration refs; A: navigateFully after sign-in). A's PR merges first.
+Step 0: main now has #254 (B: lint 57 warnings to 0, and `npm run lint` is `eslint . --max-warnings=0`, so ANY warning fails CI). `git fetch origin`, check out a11y-landmarks, `git merge origin/main`, resolve any conflicts (B edited sidebar-nav.tsx: SidebarContent/NavLink became render functions; you made the mobile bar a <header>; keep both), `npm run lint` must show 0 warnings, rerun tsc and your landmark tests, push a11y-landmarks (normal push).
 
-Step 0 (do it whenever it applies, before and after the task below): `git fetch origin`. If origin/main contains A's commit "fix(auth): full navigation after sign-in, sign-up and invite acceptance", then on e2e-flake-first-run-checklist run `git merge origin/main`, resolve login/page.tsx keeping both changes (your hydration sync and A's navigateFully, no router.push after sign-in), rerun your login and hydration tests plus A's login-landing test, then push e2e-flake-first-run-checklist (normal push). If A's commit is not on main yet when you finish the task below, wait up to 30 minutes checking every 5, then do it; if still not there, say so in the report.
+Task: upgrade React 18 to React 19 (D's follow-up: Next 16 warns React 18 is deprecated and removed in Next 17; the App Router already renders with Next's bundled React 19 canary while Jest uses react-dom 18.3.1, so tests and production differ).
 
-Task: Issue Log item 94 and landmark accessibility.
-
-Branch: `git fetch origin && git checkout -b a11y-landmarks origin/main`.
-
-1. /onboard/pharmacy renders two <main> elements. Fix it so every page has exactly one main landmark (layouts vs pages).
-2. Audit every route for the same class of problem: duplicate or missing main, nested landmarks, duplicate banner/contentinfo/navigation without labels, page without an h1. Use a Jest test that renders each layout + page combination you can, or a Playwright pass over the public and signed-in routes with axe rules landmark-one-main, landmark-unique, landmark-no-duplicate-banner, landmark-no-duplicate-contentinfo, page-has-heading-one, region. List every route checked.
-3. Fix all findings without changing visible design. Add a guard test so a second main cannot come back.
-4. Run lint, tsc, Jest, build. Commit and push to origin a11y-landmarks (normal push, no PR). Full report in the final commit message body: Step 0 outcome (merge done or not, conflicts and how resolved, head of e2e-flake-first-run-checklist), routes checked, findings, fixes, tests, local results, head SHA.
+Branch: `git checkout -b react-19 origin/main`.
+1. Bump react, react-dom, @types/react, @types/react-dom to 19. Check peer ranges for @testing-library/react (and jest-dom, user-event), radix packages, react-hook-form, @dnd-kit, react-query, sentry, jest-axe and anything else that peers on react; bump only what is required. Keep lockfile changes minimal; keep libc markers.
+2. Fix every type and runtime break (forwardRef/ref-as-prop, removed APIs like ReactDOM.render, findDOMNode, string refs, defaultProps on function components, propTypes, act import from react-dom/test-utils -> react, useFormState -> useActionState, JSX namespace types). Follow the official React 19 upgrade guide.
+3. Run the full Jest suite under React 19 and fix failures in code, not by loosening tests. No timeouts raised.
+4. `npm run lint` (0 warnings), tsc, Jest (default workers and --maxWorkers=3), build (the React 18 deprecation warning must be gone). Commit and push to origin react-19 (normal push, no PR). Full report in the final commit message body: Step 0 outcome and head of a11y-landmarks, versions before/after, every break and fix (file:line), local results, head SHA.
 
 Do not touch the production database, Vercel, Stripe or secrets.
