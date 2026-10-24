@@ -3,14 +3,14 @@
 // /checkout/[token]
 // ============================================================
 //
-// Server Component — token validated by Edge Middleware before render.
+// Server Component — token validated by the proxy (src/proxy.ts) before render.
 // Middleware sets either:
 //   x-checkout-order-id  (solo flavor — existing flow)
 //   x-checkout-group-id  (group flavor — Phase C multi-Rx bundle)
 // plus x-checkout-clinic-id either way.
 //
 // REQ-GCX-001: Mobile-first responsive design (320px-428px primary).
-// REQ-GCX-002: Token validation via Edge Middleware (already done before this page renders).
+// REQ-GCX-002: Token validation in the proxy (already done before this page renders).
 // REQ-GCX-003: White-labeled checkout with clinic logo.
 // REQ-GCX-004: Order summary with generic language only (no medication names).
 // REQ-GCX-005/006/007: Token/order state handling below.

@@ -32,7 +32,7 @@ export async function createServerClient(
           // loading.tsx forever).
           //
           // Swallowing is the documented @supabase/ssr pattern: session
-          // refresh + cookie persistence is owned by src/middleware.ts,
+          // refresh + cookie persistence is owned by src/proxy.ts,
           // which runs on every protected route and CAN set cookies.
           // Callers here only ever need to READ the session.
           try {

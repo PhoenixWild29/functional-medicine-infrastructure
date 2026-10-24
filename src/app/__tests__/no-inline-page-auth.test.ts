@@ -31,7 +31,7 @@
  *
  * Two invariants, both enforced here:
  *
- *   A. src/middleware.ts is the ONLY context that may rotate AND persist
+ *   A. src/proxy.ts is the ONLY context that may rotate AND persist
  *      the Supabase token pair. Pages and layouts read with getUser(),
  *      never getSession().
  *
@@ -49,7 +49,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 
 const APP_DIR = join(process.cwd(), 'src', 'app')
-const MIDDLEWARE = join(process.cwd(), 'src', 'middleware.ts')
+const MIDDLEWARE = join(process.cwd(), 'src', 'proxy.ts')
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {

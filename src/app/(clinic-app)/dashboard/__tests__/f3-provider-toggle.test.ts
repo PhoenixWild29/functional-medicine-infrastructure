@@ -20,7 +20,7 @@
  *      user is a provider — and NOT otherwise.
  *
  * 2026-09 prod-logout sweep: the page reads identity with auth.getUser()
- * rather than auth.getSession(). Only src/middleware.ts may rotate and
+ * rather than auth.getSession(). Only src/proxy.ts may rotate and
  * persist the Supabase token pair.
  *
  * The full RLS verification (does the policy actually broaden visibility

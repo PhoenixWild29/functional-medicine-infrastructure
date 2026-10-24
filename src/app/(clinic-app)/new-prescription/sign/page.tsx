@@ -11,7 +11,7 @@
 // Reached from the dashboard (Sign all / Sign selected), the drawer, and
 // /new-prescription/sign/<id>, which redirects here with that order.
 //
-// Provider only: src/middleware.ts sends every other role to
+// Provider only: src/proxy.ts sends every other role to
 // /unauthorized for this exact path and the /sign/ prefix; the check
 // below is the belt behind it, and batch-sign refuses anyone else.
 

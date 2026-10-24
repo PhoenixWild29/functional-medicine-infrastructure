@@ -2,7 +2,7 @@
 // /ops/onboarding/pharmacies: invite and review pharmacies
 // ============================================================
 //
-// Auth: ops_admin only, enforced by src/middleware.ts and the
+// Auth: ops_admin only, enforced by src/proxy.ts and the
 // (ops-dashboard) layout, as on every ops page; the APIs check again.
 // The section is its own component so the clinic onboarding section on
 // /ops/onboarding merges beside it.

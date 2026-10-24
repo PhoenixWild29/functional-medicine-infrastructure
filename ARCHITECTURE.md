@@ -36,7 +36,7 @@ The codebase serves three distinct audiences through a single Next.js applicatio
   → clinic roles → /dashboard
 ```
 
-Role claims are stored in `app_metadata.app_role` and `app_metadata.clinic_id` (written only with the service role; read through `src/lib/auth/claims.ts`). Never read them from `user_metadata`, which any signed-in user can rewrite. The middleware (`src/middleware.ts`) enforces role checks on every request. Layouts provide a second layer of defense.
+Role claims are stored in `app_metadata.app_role` and `app_metadata.clinic_id` (written only with the service role; read through `src/lib/auth/claims.ts`). Never read them from `user_metadata`, which any signed-in user can rewrite. The middleware (`src/proxy.ts`) enforces role checks on every request. Layouts provide a second layer of defense.
 
 ### Patients (Stateless Checkout Token)
 
@@ -45,7 +45,7 @@ AWAITING_PAYMENT transition
   → generateCheckoutToken() → 72h JWT (order_id, clinic_id)
   → SMS link: https://app.compoundiq.com/checkout/<token>
 
-/checkout/<token> (Edge Middleware)
+/checkout/<token> (proxy, src/proxy.ts)
   → verifyCheckoutToken()
   → invalid/expired → /checkout/expired
   → valid → forwards x-checkout-order-id header to Server Components
@@ -168,7 +168,7 @@ Pharmacy API keys and portal passwords are stored in Supabase Vault (AES-256-GCM
 ## Key Architecture Decisions
 
 **Why Next.js App Router?**
-Server Components eliminate API round-trips for data-heavy clinic UI. Edge Middleware handles checkout token validation at the CDN edge without a cold start.
+Server Components eliminate API round-trips for data-heavy clinic UI. The proxy (src/proxy.ts, Node.js runtime since Next 16) validates checkout tokens before the page renders.
 
 **Why Supabase Vault over BYTEA encryption?**
 Vault manages key rotation, audit logging, and access control as a first-class feature. BYTEA encryption requires managing the encryption key in environment variables — a worse security posture.

@@ -8,7 +8,7 @@
 // and date, audit-logged) and the remittance CSV. Record-only: marking a
 // line paid records a payment made outside this system.
 //
-// Auth: ops_admin only, enforced OUTSIDE this component (src/middleware.ts
+// Auth: ops_admin only, enforced OUTSIDE this component (src/proxy.ts
 // and (ops-dashboard)/layout.tsx), as on every ops page; the mark and
 // remittance routes check it again. No Supabase auth client here.
 

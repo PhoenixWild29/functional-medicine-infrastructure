@@ -11,7 +11,7 @@ export const baseConfig: NextConfig = {
 
   // Compliance C9: HSTS, X-Frame-Options, nosniff and Referrer-Policy on
   // every path, static assets included. The per-request CSP and the
-  // Permissions-Policy are set by src/middleware.ts.
+  // Permissions-Policy are set by src/proxy.ts.
   async headers() {
     return [{ source: '/:path*', headers: [...STATIC_SECURITY_HEADERS] }]
   },
@@ -44,7 +44,11 @@ export default withSentryConfig(baseConfig, {
   // Disable Sentry telemetry
   telemetry: false,
 
-  // Automatically instrument Next.js routes
+  // Automatically instrument Next.js routes. Webpack builds only: Sentry
+  // applies no build-time instrumentation under Turbopack (the default
+  // builder since Next 16). autoInstrumentMiddleware covers src/proxy.ts
+  // as well as middleware.ts (@sentry/nextjs 10.63 has no separate proxy
+  // option).
   webpack: {
     autoInstrumentServerFunctions: true,
     autoInstrumentMiddleware: true,

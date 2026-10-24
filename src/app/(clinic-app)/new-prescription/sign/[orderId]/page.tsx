@@ -2,7 +2,7 @@
 // /new-prescription/sign/[orderId] — moved to the batch sign page (WO-99)
 // ============================================================
 //
-// src/middleware.ts redirects this path to /new-prescription/sign?orders=<id>
+// src/proxy.ts redirects this path to /new-prescription/sign?orders=<id>
 // before it renders (a redirect() from inside the (clinic-app) Suspense
 // boundary hangs instead of navigating). This page is only reached if that
 // redirect is ever bypassed, and then it links on rather than signing.

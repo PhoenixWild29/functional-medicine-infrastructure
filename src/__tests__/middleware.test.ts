@@ -18,7 +18,7 @@
  * 'middleware refreshed-cookie propagation' block at the bottom.
  */
 
-import { middleware } from '../middleware'
+import { proxy } from '../proxy'
 import { NextRequest } from 'next/server'
 
 // ── Mocks ─────────────────────────────────────────────────
@@ -100,26 +100,26 @@ beforeEach(() => {
 describe('middleware applySecurityHeaders coverage', () => {
   it('sets no-store on authenticated /dashboard response', async () => {
     getUserMock.mockResolvedValue(CLINIC_SESSION)
-    const res = await middleware(makeReq('/dashboard'))
+    const res = await proxy(makeReq('/dashboard'))
     expectSecurityHeaders(res)
   })
 
   it('sets no-store on authenticated /ops/pipeline response (ops_admin)', async () => {
     getUserMock.mockResolvedValue(OPS_SESSION)
-    const res = await middleware(makeReq('/ops/pipeline'))
+    const res = await proxy(makeReq('/ops/pipeline'))
     expectSecurityHeaders(res)
   })
 
   it('sets no-store on the unauthenticated → /login redirect (no session)', async () => {
     getUserMock.mockResolvedValue(NO_SESSION)
-    const res = await middleware(makeReq('/dashboard'))
+    const res = await proxy(makeReq('/dashboard'))
     expect(res.status).toBe(307)
     expectSecurityHeaders(res)
   })
 
   it('sets no-store on the wrong-role → /unauthorized redirect (clinic user hits /ops)', async () => {
     getUserMock.mockResolvedValue(CLINIC_SESSION)
-    const res = await middleware(makeReq('/ops/pipeline'))
+    const res = await proxy(makeReq('/ops/pipeline'))
     expect(res.status).toBe(307)
     expectSecurityHeaders(res)
   })
@@ -132,24 +132,24 @@ describe('middleware applySecurityHeaders coverage', () => {
       iat:       0,
       exp:       9999999999,
     })
-    const res = await middleware(makeReq('/checkout/some.jwt.token'))
+    const res = await proxy(makeReq('/checkout/some.jwt.token'))
     expectSecurityHeaders(res)
   })
 
   it('sets no-store on expired-token → /checkout/expired redirect', async () => {
     verifyCheckoutTokenMock.mockResolvedValue(null)
-    const res = await middleware(makeReq('/checkout/bad.jwt.token'))
+    const res = await proxy(makeReq('/checkout/bad.jwt.token'))
     expect(res.status).toBe(307)
     expectSecurityHeaders(res)
   })
 
   it('does NOT set no-store on /login (public route)', async () => {
-    const res = await middleware(makeReq('/login'))
+    const res = await proxy(makeReq('/login'))
     expectNoSecurityHeaders(res)
   })
 
   it('does NOT set no-store on /auth/callback (Supabase OAuth code exchange)', async () => {
-    const res = await middleware(makeReq('/auth/callback'))
+    const res = await proxy(makeReq('/auth/callback'))
     expectNoSecurityHeaders(res)
   })
 })
@@ -182,7 +182,7 @@ const TEST_SIGN_PATH = '/new-prescription/sign/00000000-0000-4000-8000-000000000
 describe('middleware F-3 — /new-prescription/sign/[orderId] provider-only', () => {
   it('redirects medical_assistant to /unauthorized', async () => {
     getUserMock.mockResolvedValue(MA_SESSION)
-    const res = await middleware(makeReq(TEST_SIGN_PATH))
+    const res = await proxy(makeReq(TEST_SIGN_PATH))
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/unauthorized')
     expectSecurityHeaders(res)
@@ -196,7 +196,7 @@ describe('middleware F-3 — /new-prescription/sign/[orderId] provider-only', ()
   // redirect every clinic_admin.)
   it('lets a clinic_admin through to the batch page with the order selected (the page decides who signs)', async () => {
     getUserMock.mockResolvedValue(CLINIC_SESSION)
-    const res = await middleware(makeReq(TEST_SIGN_PATH))
+    const res = await proxy(makeReq(TEST_SIGN_PATH))
     expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
     const location = new URL(res.headers.get('location')!)
     expect(location.pathname).toBe('/new-prescription/sign')
@@ -206,7 +206,7 @@ describe('middleware F-3 — /new-prescription/sign/[orderId] provider-only', ()
 
   it('lets a provider session through (no redirect to /unauthorized)', async () => {
     getUserMock.mockResolvedValue(PROVIDER_SESSION)
-    const res = await middleware(makeReq(TEST_SIGN_PATH))
+    const res = await proxy(makeReq(TEST_SIGN_PATH))
     // Provider passes the F-3 guard; no /unauthorized redirect
     expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
     expectSecurityHeaders(res)
@@ -214,21 +214,21 @@ describe('middleware F-3 — /new-prescription/sign/[orderId] provider-only', ()
 
   it('does NOT block clinic_admin from the parent /new-prescription route (MA + clinic_admin can still prep drafts)', async () => {
     getUserMock.mockResolvedValue(CLINIC_SESSION)
-    const res = await middleware(makeReq('/new-prescription'))
+    const res = await proxy(makeReq('/new-prescription'))
     expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
     expectSecurityHeaders(res)
   })
 
   it('does NOT block medical_assistant from the parent /new-prescription route', async () => {
     getUserMock.mockResolvedValue(MA_SESSION)
-    const res = await middleware(makeReq('/new-prescription'))
+    const res = await proxy(makeReq('/new-prescription'))
     expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
     expectSecurityHeaders(res)
   })
 
   it('does NOT block /new-prescription/review (only /sign/ is provider-only)', async () => {
     getUserMock.mockResolvedValue(MA_SESSION)
-    const res = await middleware(makeReq('/new-prescription/review'))
+    const res = await proxy(makeReq('/new-prescription/review'))
     expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
     expectSecurityHeaders(res)
   })
@@ -239,20 +239,20 @@ describe('middleware F-3 — /new-prescription/sign/[orderId] provider-only', ()
   // both forms are blocked.
   it('redirects medical_assistant from exact /new-prescription/sign (no trailing slash)', async () => {
     getUserMock.mockResolvedValue(MA_SESSION)
-    const res = await middleware(makeReq('/new-prescription/sign'))
+    const res = await proxy(makeReq('/new-prescription/sign'))
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/unauthorized')
   })
 
   it('does NOT block clinic_admin on exact /new-prescription/sign (the page asks lib/auth/signer)', async () => {
     getUserMock.mockResolvedValue(CLINIC_SESSION)
-    const res = await middleware(makeReq('/new-prescription/sign'))
+    const res = await proxy(makeReq('/new-prescription/sign'))
     expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
   })
 
   it('does NOT block provider on exact /new-prescription/sign', async () => {
     getUserMock.mockResolvedValue(PROVIDER_SESSION)
-    const res = await middleware(makeReq('/new-prescription/sign'))
+    const res = await proxy(makeReq('/new-prescription/sign'))
     expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
   })
 
@@ -260,7 +260,7 @@ describe('middleware F-3 — /new-prescription/sign/[orderId] provider-only', ()
   // sign page with that order pre-selected.
   it('redirects a provider from /new-prescription/sign/<id> to the batch page with that order selected', async () => {
     getUserMock.mockResolvedValue(PROVIDER_SESSION)
-    const res = await middleware(makeReq(TEST_SIGN_PATH))
+    const res = await proxy(makeReq(TEST_SIGN_PATH))
     expect(res.status).toBe(307)
     const location = new URL(res.headers.get('location')!)
     expect(location.pathname).toBe('/new-prescription/sign')
@@ -270,7 +270,7 @@ describe('middleware F-3 — /new-prescription/sign/[orderId] provider-only', ()
 
   it('does not redirect the batch page itself', async () => {
     getUserMock.mockResolvedValue(PROVIDER_SESSION)
-    const res = await middleware(makeReq('/new-prescription/sign'))
+    const res = await proxy(makeReq('/new-prescription/sign'))
     expect(res.headers.get('location')).toBeNull()
   })
 })
@@ -321,20 +321,20 @@ function expectCarriesBothChunks(res: Response): void {
 describe('middleware refreshed-cookie propagation', () => {
   it('carries every refreshed cookie on the pass-through branch (ops_admin on /ops)', async () => {
     respondWithRefresh(OPS_SESSION)
-    const res = await middleware(makeReq('/ops/pipeline'))
+    const res = await proxy(makeReq('/ops/pipeline'))
     expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
     expectCarriesBothChunks(res)
   })
 
   it('carries every refreshed cookie on the pass-through branch (clinic user on /dashboard)', async () => {
     respondWithRefresh(CLINIC_SESSION)
-    const res = await middleware(makeReq('/dashboard'))
+    const res = await proxy(makeReq('/dashboard'))
     expectCarriesBothChunks(res)
   })
 
   it('carries every refreshed cookie on the /unauthorized role-gate redirect', async () => {
     respondWithRefresh(CLINIC_SESSION)
-    const res = await middleware(makeReq('/ops/pipeline'))
+    const res = await proxy(makeReq('/ops/pipeline'))
     // Gate must still be strict
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/unauthorized')
@@ -343,7 +343,7 @@ describe('middleware refreshed-cookie propagation', () => {
 
   it('carries every refreshed cookie on the provider-only sign-gate redirect', async () => {
     respondWithRefresh(MA_SESSION)
-    const res = await middleware(makeReq(TEST_SIGN_PATH))
+    const res = await proxy(makeReq(TEST_SIGN_PATH))
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/unauthorized')
     expectCarriesBothChunks(res)
@@ -351,7 +351,7 @@ describe('middleware refreshed-cookie propagation', () => {
 
   it('carries cookie writes on the /login redirect so a failed refresh clears them', async () => {
     respondWithRefresh(NO_SESSION)
-    const res = await middleware(makeReq('/ops/catalog'))
+    const res = await proxy(makeReq('/ops/catalog'))
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/login')
     expect(res.headers.get('location')).toContain('redirectTo=%2Fops%2Fcatalog')
@@ -360,7 +360,7 @@ describe('middleware refreshed-cookie propagation', () => {
 
   it('the /login redirect keeps the query: an /ops/pipeline?order= link opens that order after sign-in', async () => {
     respondWithRefresh(NO_SESSION)
-    const res = await middleware(makeReq('/ops/pipeline?order=d1000000-0000-4000-8000-000000000001'))
+    const res = await proxy(makeReq('/ops/pipeline?order=d1000000-0000-4000-8000-000000000001'))
     expect(res.status).toBe(307)
     const location = new URL(res.headers.get('location')!)
     expect(location.pathname).toBe('/login')
@@ -369,7 +369,7 @@ describe('middleware refreshed-cookie propagation', () => {
 
   it('uses getUser(), not getSession(), so role claims come from a verified JWT', async () => {
     respondWithRefresh(OPS_SESSION)
-    await middleware(makeReq('/ops/pipeline'))
+    await proxy(makeReq('/ops/pipeline'))
     expect(getUserMock).toHaveBeenCalled()
   })
 })
@@ -384,7 +384,7 @@ describe('middleware — /practice', () => {
     ['medical_assistant', MA_SESSION],
   ])('sends %s to /unauthorized', async (_role, session) => {
     getUserMock.mockResolvedValue(session)
-    const res = await middleware(makeReq('/practice'))
+    const res = await proxy(makeReq('/practice'))
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/unauthorized')
   })
@@ -394,7 +394,7 @@ describe('middleware — /practice', () => {
     ['provider', PROVIDER_SESSION],
   ])('lets %s through (the page checks the provider toggle)', async (_role, session) => {
     getUserMock.mockResolvedValue(session)
-    const res = await middleware(makeReq('/practice'))
+    const res = await proxy(makeReq('/practice'))
     expect(res.headers.get('location') ?? '').not.toContain('/unauthorized')
   })
 })
@@ -407,7 +407,7 @@ describe('middleware — /practice', () => {
 describe('middleware — /intake (patient self-intake, no session)', () => {
   it.each(['/intake/' + 'A'.repeat(43), '/api/intake/' + 'A'.repeat(43)])('%s passes through without auth, no-store', async path => {
     getUserMock.mockResolvedValue(NO_SESSION)
-    const res = await middleware(makeReq(path))
+    const res = await proxy(makeReq(path))
     expect(res.headers.get('location')).toBeNull()
     expectSecurityHeaders(res)
     expect(getUserMock).not.toHaveBeenCalled()
@@ -415,7 +415,7 @@ describe('middleware — /intake (patient self-intake, no session)', () => {
 
   it('a look-alike path is not public: /intakes still needs a session', async () => {
     getUserMock.mockResolvedValue(NO_SESSION)
-    const res = await middleware(makeReq('/intakes'))
+    const res = await proxy(makeReq('/intakes'))
     expect(res.headers.get('location')).toMatch(/\/login/)
   })
 })
@@ -427,7 +427,7 @@ describe('middleware — /intake (patient self-intake, no session)', () => {
 describe('middleware — /join (clinic sign-up link, no session)', () => {
   it.each(['/join/' + 'A'.repeat(43), '/api/join/' + 'A'.repeat(43)])('%s passes through without auth', async path => {
     getUserMock.mockResolvedValue(NO_SESSION)
-    const res = await middleware(makeReq(path))
+    const res = await proxy(makeReq(path))
     expect(res.headers.get('location')).toBeNull()
     expectSecurityHeaders(res)
     expect(getUserMock).not.toHaveBeenCalled()
@@ -435,7 +435,7 @@ describe('middleware — /join (clinic sign-up link, no session)', () => {
 
   it('a look-alike path is not public: /joined still needs a session', async () => {
     getUserMock.mockResolvedValue(NO_SESSION)
-    const res = await middleware(makeReq('/joined'))
+    const res = await proxy(makeReq('/joined'))
     expect(res.headers.get('location')).toMatch(/\/login/)
   })
 })
@@ -452,7 +452,7 @@ describe('middleware — /join (clinic sign-up link, no session)', () => {
 describe('middleware: the Keragon webhook is public, its admin routes are not', () => {
   it('passes the webhook through with no session lookup', async () => {
     getUserMock.mockResolvedValue(NO_SESSION)
-    const res = await middleware(new NextRequest(new URL('http://localhost/api/integrations/keragon/patients'), { method: 'POST' }))
+    const res = await proxy(new NextRequest(new URL('http://localhost/api/integrations/keragon/patients'), { method: 'POST' }))
     expect(getUserMock).not.toHaveBeenCalled()
     expect(res.headers.get('location')).toBeNull()
     expect(res.status).toBe(200)
@@ -460,7 +460,7 @@ describe('middleware: the Keragon webhook is public, its admin routes are not', 
 
   it('still checks the session on the connection routes', async () => {
     getUserMock.mockResolvedValue(NO_SESSION)
-    await middleware(makeReq('/api/integrations/keragon/connection'))
+    await proxy(makeReq('/api/integrations/keragon/connection'))
     expect(getUserMock).toHaveBeenCalled()
   })
 })

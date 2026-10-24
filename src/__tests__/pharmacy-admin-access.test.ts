@@ -29,7 +29,7 @@ jest.mock('@supabase/ssr', () => ({
 process.env['NEXT_PUBLIC_SUPABASE_URL'] = 'http://localhost'
 process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY'] = 'anon'
 
-import { middleware } from '../middleware'
+import { proxy } from '../proxy'
 
 const PHARMACY = 'a4000000-0000-4000-8000-0000000000aa'
 const pharmacyAdmin = (factors: unknown[] = [{ factor_type: 'totp', status: 'verified' }]) => ({
@@ -75,7 +75,7 @@ describe('middleware', () => {
   it('a pharmacy_admin reaches /pharmacy/* and /api/pharmacy/*', async () => {
     for (const path of ['/pharmacy/onboarding', '/api/pharmacy/onboarding']) {
       getUserMock.mockResolvedValue(pharmacyAdmin())
-      const res = await middleware(req(path))
+      const res = await proxy(req(path))
       expect(location(res)).toBe('')
     }
   })
@@ -83,12 +83,12 @@ describe('middleware', () => {
   it('a pharmacy_admin is refused every clinic and ops page and API', async () => {
     for (const path of ['/dashboard', '/new-prescription/search', '/patients', '/practice', '/settings', '/refill', '/ops/pipeline', '/ops/onboarding/pharmacies']) {
       getUserMock.mockResolvedValue(pharmacyAdmin())
-      const res = await middleware(req(path))
+      const res = await proxy(req(path))
       expect([path, location(res)]).toEqual([path, expect.stringContaining('/unauthorized')])
     }
     for (const path of ['/api/orders', '/api/patients/x/allergies', '/api/formulations', '/api/ops/catalog', '/api/ops/onboarding/pharmacy-invites']) {
       getUserMock.mockResolvedValue(pharmacyAdmin())
-      const res = await middleware(req(path))
+      const res = await proxy(req(path))
       expect([path, res.status]).toEqual([path, 403])
     }
   })
@@ -96,38 +96,38 @@ describe('middleware', () => {
   it('MFA pages stay reachable for a pharmacy_admin', async () => {
     getUserMock.mockResolvedValue(pharmacyAdmin([]))
     getClaimsMock.mockResolvedValue({ data: { claims: { aal: 'aal1' } } })
-    expect(location(await middleware(req('/mfa/enroll')))).toBe('')
+    expect(location(await proxy(req('/mfa/enroll')))).toBe('')
   })
 
   it('MFA is required even with REQUIRE_MFA off: no factor goes to enroll, a factor is challenged', async () => {
     getClaimsMock.mockResolvedValue({ data: { claims: { aal: 'aal1' } } })
     getUserMock.mockResolvedValue(pharmacyAdmin([]))
-    expect(location(await middleware(req('/pharmacy/onboarding')))).toContain('/mfa/enroll')
+    expect(location(await proxy(req('/pharmacy/onboarding')))).toContain('/mfa/enroll')
     getUserMock.mockResolvedValue(pharmacyAdmin())
-    expect(location(await middleware(req('/pharmacy/onboarding')))).toContain('/mfa/challenge')
+    expect(location(await proxy(req('/pharmacy/onboarding')))).toContain('/mfa/challenge')
     getUserMock.mockResolvedValue(pharmacyAdmin([]))
-    expect((await middleware(req('/api/pharmacy/onboarding'))).status).toBe(401)
+    expect((await proxy(req('/api/pharmacy/onboarding'))).status).toBe(401)
   })
 
   it('no other role reaches the pharmacy portal', async () => {
     for (const role of ['ops_admin', 'clinic_admin', 'provider', 'medical_assistant']) {
       getUserMock.mockResolvedValue(session(role))
-      expect([role, location(await middleware(req('/pharmacy/onboarding')))]).toEqual([role, expect.stringContaining('/unauthorized')])
+      expect([role, location(await proxy(req('/pharmacy/onboarding')))]).toEqual([role, expect.stringContaining('/unauthorized')])
       getUserMock.mockResolvedValue(session(role))
-      expect([role, (await middleware(req('/api/pharmacy/onboarding'))).status]).toEqual([role, 403])
+      expect([role, (await proxy(req('/api/pharmacy/onboarding'))).status]).toEqual([role, 403])
     }
   })
 
   it('the invite link and its API need no session', async () => {
     getUserMock.mockResolvedValue({ data: { user: null } })
     for (const path of ['/onboard/pharmacy/abc', '/api/onboard/pharmacy/abc']) {
-      const res = await middleware(req(path))
+      const res = await proxy(req(path))
       expect([path, location(res)]).toEqual([path, ''])
     }
   })
 
   it('a signed-out visit to the portal goes to /login', async () => {
     getUserMock.mockResolvedValue({ data: { user: null } })
-    expect(location(await middleware(req('/pharmacy/onboarding')))).toContain('/login')
+    expect(location(await proxy(req('/pharmacy/onboarding')))).toContain('/login')
   })
 })

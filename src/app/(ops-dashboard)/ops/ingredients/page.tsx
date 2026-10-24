@@ -9,7 +9,7 @@
 // to change them. An ingredient that may not be compounded, or is not
 // verified, cannot be ordered. Recent changes come from the audit log.
 //
-// Auth: ops_admin only, enforced OUTSIDE this component (src/middleware.ts
+// Auth: ops_admin only, enforced OUTSIDE this component (src/proxy.ts
 // and (ops-dashboard)/layout.tsx), as on every ops page. The write goes
 // through PUT /api/ops/ingredients/[id]/compounding, which checks again.
 

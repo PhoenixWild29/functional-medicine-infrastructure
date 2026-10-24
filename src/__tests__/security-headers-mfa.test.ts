@@ -13,7 +13,7 @@
  */
 
 import { NextRequest } from 'next/server'
-import { middleware } from '../middleware'
+import { proxy } from '../proxy'
 
 const getUserMock   = jest.fn()
 const getClaimsMock = jest.fn()
@@ -48,7 +48,7 @@ afterAll(() => { delete process.env['REQUIRE_MFA'] })
 
 describe.each(['/mfa/enroll', '/mfa/challenge'])('%s', (path) => {
   it('allows the QR code (data: image) and Supabase, and keeps scripts nonce-only', async () => {
-    const policy = csp(await middleware(req(path)))
+    const policy = csp(await proxy(req(path)))
     expect(policy['img-src']).toEqual(expect.arrayContaining(["'self'", 'data:']))
     expect(policy['connect-src']).toEqual(expect.arrayContaining(["'self'", SUPABASE]))
     expect(policy['script-src']).not.toContain("'unsafe-inline'")
@@ -58,7 +58,7 @@ describe.each(['/mfa/enroll', '/mfa/challenge'])('%s', (path) => {
 
 describe('the MFA gate answers carry the headers', () => {
   it('a page at AAL1 is redirected to enrollment with CSP and Permissions-Policy', async () => {
-    const res = await middleware(req('/dashboard'))
+    const res = await proxy(req('/dashboard'))
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/mfa/enroll')
     csp(res)
@@ -67,7 +67,7 @@ describe('the MFA gate answers carry the headers', () => {
 
   it('an API call at AAL1 with a verified factor gets 401 with CSP', async () => {
     getUserMock.mockResolvedValue(clinicUser([{ factor_type: 'totp', status: 'verified' }]))
-    const res = await middleware(req('/api/orders'))
+    const res = await proxy(req('/api/orders'))
     expect(res.status).toBe(401)
     csp(res)
   })
