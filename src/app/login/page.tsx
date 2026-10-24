@@ -10,9 +10,10 @@
 // Entry point for all authenticated users (clinic staff + ops admin).
 
 import { useState, FormEvent, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
 import { postLoginDestination } from '@/lib/auth/landing-route'
+import { navigateFully } from '@/lib/auth/full-navigation'
 import { getUserRole, ACCOUNT_DEACTIVATED_MESSAGE } from '@/lib/auth/claims'
 import Link from 'next/link'
 import { LegalFooter } from '@/components/legal/legal-footer'
@@ -26,7 +27,6 @@ const AUTH_CALLBACK_ERROR_MESSAGES: Record<string, string> = {
 // Separated into its own component so that useSearchParams() is inside a Suspense boundary
 // (required in Next.js 16 for static page generation of /login).
 function LoginForm() {
-  const router       = useRouter()
   const searchParams = useSearchParams()
   const redirectTo   = searchParams.get('redirectTo')
 
@@ -69,17 +69,19 @@ function LoginForm() {
       return
     }
 
-    // NB-02: router.refresh() ensures the Next.js server cache sees the new session
-    // before the protected Server Component renders on the redirect target.
-    router.refresh()
-
+    // A full navigation, not router.refresh() + router.push(): the destination
+    // was usually redirected to /login before sign-in (that is how the user got
+    // here), and since Next 16.3 the client router reuses that redirect, so a
+    // push would not move. A full load reaches the middleware with the new
+    // session (lib/auth/full-navigation).
+    //
     // Role-aware redirect: honour ?redirectTo first, then fall back by role
     // (the clinic admin lands on Practice). NB-1 (cowork): absolute and
     // protocol-relative targets (//evil.com) are ignored; see landing-route.ts.
     // The role comes from the user the auth server just returned for this
     // sign-in, not from a decoded session cookie.
     const appRole = getUserRole(data.user)
-    router.push(postLoginDestination(appRole, redirectTo))
+    navigateFully(postLoginDestination(appRole, redirectTo))
   }
 
   return (

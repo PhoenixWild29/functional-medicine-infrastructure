@@ -12,6 +12,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
+import { navigateFully } from '@/lib/auth/full-navigation'
 import { FormAlert, PrimaryButton, TextField, fieldErrors, sendJson } from '@/components/pharmacy-onboarding/fields'
 
 const MIN_PASSWORD = 12
@@ -54,7 +55,10 @@ export function AcceptInviteForm({ token, pharmacyName, adminEmail }: { token: s
       router.push('/login?redirectTo=%2Fpharmacy%2Fonboarding')
       return
     }
-    router.push(`/mfa/enroll?redirectTo=${encodeURIComponent('/pharmacy/onboarding')}`)
+    // A full navigation: the session changed in this page, and since Next 16.3
+    // the client router reuses a redirect it already saw for a route
+    // (lib/auth/full-navigation).
+    navigateFully(`/mfa/enroll?redirectTo=${encodeURIComponent('/pharmacy/onboarding')}`)
   }
 
   return (

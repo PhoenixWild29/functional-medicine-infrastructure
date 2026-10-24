@@ -18,6 +18,7 @@
 import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
+import { navigateFully, sameOriginPath } from '@/lib/auth/full-navigation'
 import { TextField, SelectField, FormAlert, BUTTON_PRIMARY, BUTTON_SECONDARY } from '@/components/onboarding/fields'
 import { US_STATES } from '@/lib/geo/us-states'
 
@@ -114,8 +115,10 @@ export function GetStartedForm() {
         router.push('/login?redirectTo=' + encodeURIComponent(next))
         return
       }
-      router.refresh()
-      router.push(next)
+      // A full navigation, not router.refresh() + router.push(): the session
+      // changed in this page, and since Next 16.3 the client router reuses a
+      // redirect it already saw for the destination (lib/auth/full-navigation).
+      navigateFully(sameOriginPath(next))
     } catch {
       setFormError('Network error. Check your connection and try again.')
       setBusy(false)
