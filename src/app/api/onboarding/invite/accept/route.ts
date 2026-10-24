@@ -119,7 +119,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'An account with this email already exists. Sign in instead, or ask CompoundIQ for help.' }, { status: 409 })
     }
     if (login.reason === 'weak_password') {
-      return NextResponse.json({ error: 'That password is not strong enough. Try a longer one.', errors: { password: login.message } }, { status: 400 })
+      return NextResponse.json({ error: 'That password is not strong enough. Try a longer one.', errors: { password: 'That password is not strong enough. Try a longer one.' } }, { status: 400 })
     }
     console.error(`[onboarding/accept] createUser failed | invite=${invite.invite_id}: ${login.message}`)
     return NextResponse.json({ error: 'Your account could not be created. Try again.' }, { status: 500 })
