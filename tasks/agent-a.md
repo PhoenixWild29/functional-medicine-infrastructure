@@ -1,12 +1,17 @@
-task-id: A-2026-10-24-07
+task-id: A-2026-10-24-08
 status: ready
 ---
-Thanks for A-2026-10-24-06 (lint fix pushed, c9f3391) and the cleanup script (4f46190).
+Thanks for A-2026-10-24-07 (#261 re-merged, CI green; it merges after #264).
 
-PR #261 (eslint-config-next-16-4) now conflicts with main again: #259 (B's ops pipeline filters, merged as caf340b) rewrote src/app/(ops-dashboard)/ops/pipeline/_components/pipeline-view.tsx and page.tsx, which you also changed ("Updated Ns ago" from the query, 1 s clock). GitHub did not start CI for your push because of the conflict. #262 (B's E2E specs, c6def9c) also merged.
+If #261 then conflicts again (#263 React 19 changed package.json and package-lock.json), I will put that back in your queue; do not pre-empt it.
 
-1. `git fetch origin && git checkout -B eslint-config-next-16-4 origin/eslint-config-next-16-4 && git merge origin/main`.
-2. Resolve keeping both: B's filter logic (URL filters, SQL tier filter, placeholder narrowing, chips, counts) and your react-hooks 7.1 fixes ("Updated Ns ago" = max(mount, dataUpdatedAt, errorUpdatedAt) with the 1 s clock, no Date.now() in render). Then re-run `npm run lint` and fix any new 7.1 findings in code merged since your last merge (#259, #262), same approach as before.
-3. `npm run lint` (0 errors, 0 warnings), tsc, Jest (--maxWorkers=3; B's 3 pipeline suites and your updated-ago test must pass), build. Push eslint-config-next-16-4 (normal push). Report in the merge or final commit body: conflicts and how resolved, new findings and fixes, local results, head SHA.
+Next: three small security follow-ups from D's review (D's report is in commit acde0fc on security-review-oct24 and 089551b on security-followups-oct24).
+
+Branch: `git fetch origin && git checkout -b security-followups-2 origin/main` (if #264 is not on main yet, branch from origin/security-followups-oct24 instead and say so; it will merge after #264).
+
+1. L8: client IP for rate limits and keyed hashes (lib/audit/keyed-hash.ts:26 and wherever the IP is read): prefer x-vercel-forwarded-for, then x-real-ip, then the first x-forwarded-for hop. One helper, used everywhere. Tests for each header combination.
+2. L12: set_clinic_member_active reactivation clears every ban (banned_until NULL), including a ban set for another reason. Fix so reactivation clears only a ban this flow set. This needs a migration: write it as the next free number after 20261024000004 (D's rls lockdown) unless that number is taken on a pushed branch; check `git ls-tree` of origin/security-review-oct24, origin/proposals-pr1-data-model, origin/ops-fax-viewer-documo, origin/rls-user-write-lockdown first and report the number you used. Test on PGlite. Put the SQL in the report (Sam runs it on prod).
+3. L6 follow-up: move the routes that still carry their own inline Sec-Fetch-Site check (team, checkout-link, batch-sign, patients and the rest D listed) onto lib/security/same-origin.ts refuseCrossSite, keeping each route's wording. Tests stay green; add the same-site/cross-site cases for each moved route.
+4. `npm run lint` (0 warnings), tsc, Jest (--maxWorkers=3), build. Push security-followups-2 (normal push, no PR). Full report in the final commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.

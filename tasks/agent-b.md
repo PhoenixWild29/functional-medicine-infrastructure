@@ -1,20 +1,16 @@
-task-id: B-2026-10-24-07
+task-id: B-2026-10-24-08
 status: ready
 ---
-Thanks for B-2026-10-24-06 (proposals PR 2, 06ccf28).
+Thanks for B-2026-10-24-07 (proposals PR 4, 5c579c1). C is merging it into PR 5.
 
-Next: patient protocol choice, PR 4 of 5: sign the choice. C is building PR 3 (patient page /plan/[token], choose/re-choose/decline) on proposals-pr3-patient-page, stacked on PR 1. Build PR 4 stacked on your PR 2.
+Next: D's M2/M3 from the security review (commit acde0fc on security-review-oct24), the parts that need no email sending (there is no email provider; do NOT switch logins to unconfirmed-until-email-click).
 
-Branch: `git fetch origin && git checkout -b proposals-pr4-sign-choice origin/proposals-pr2-provider-propose`.
+Branch: `git fetch origin && git checkout -b signup-squatting origin/main`.
 
-Build as the design's section 1 step 4-5 and section 6 row 4 say (decisions approved by Sam 2026-10-24, in the design doc on PR 1):
-- When a proposal is chosen (status chosen, chosen_option_id and proposal_choice_items set by PR 3's API), the provider sees it in the existing signature queue (WO-77): "<first name> chose <option label> (<n> of <m> items)", plus an in-app clinic notification. Read only the PR 1 tables; do not depend on PR 3 code (use the PR 1 lib and seed rows in tests).
-- Signing: the provider opens the chosen lines and signs through the existing batch sign with exactly the chosen order ids (required items of the option + kept optional items). Batch sign runs every check again, allocates shipping, creates the payment group for 2+ or the solo checkout, sends the existing payment link (texting rules unchanged; when texting is off, the existing copy-link path for the payment link applies).
-- Unchosen DRAFTs of the proposal go DRAFT -> CANCELLED, never signed. Proposal -> signed, signed_at, link dies (token revoked), 'signed' event.
-- A check that fails at sign (license lapsed, price moved, compounding status) stops signing for the whole choice and tells the provider plainly; the proposal stays chosen.
-- Repricing (WO-108) at signing as today; protocol_instances created or advanced at signing only (decision 8).
-- Proposal expiry cron: sent or chosen-but-unsigned past expires_at -> expired, DRAFTs cancelled, idempotent, 'expired' event. Register it like the other crons.
-- Red tests first: batch sign called with exactly the chosen ids; unchosen never get a signature hash; failed check stops signing and leaves the proposal chosen; group vs solo; expiry cron idempotent; role tests (provider signs; clinic admin may sign only as their own linked provider per existing signer rules; MA cannot).
-- `npm run lint` (0 warnings), tsc, Jest (--maxWorkers=3), build. Commit and push proposals-pr4-sign-choice (normal push, no PR). Full report in the final commit body: files, tests, local results, head SHA, what PR 5 (end-to-end) needs.
+1. M3, NPI squatting: today self-serve.ts:121-123 refuses an NPI already on any live provider with 409 NPI_TAKEN before anything is created, so a stranger can claim a real prescriber's NPI and block it, and probe which NPIs are customers. Change: uniqueness is enforced among APPROVED clinics' providers. A pending (unapproved) self-serve provider row does not block another sign-up with the same NPI; at ops approval, if the NPI is already on an approved clinic's live provider, Approve is refused with a clear ops-only message, and the ops review page flags "NPI also claimed by <n> other pending sign-up(s)". The public sign-up answer for an NPI that is taken by an approved clinic is the same generic response as any other validation failure the form can show for NPI (no customer-probing difference). Check every DB unique constraint/index on providers.npi_number; if one blocks this, propose the migration (number after the highest 20261024 one on any pushed branch; report it) and test on PGlite.
+2. M2, email enumeration: the duplicate-email 409 at /api/signup lets anyone probe which emails have accounts. Make the response for "email already has an account" indistinguishable to the client from a successful submit where possible WITHOUT sending email: e.g. a neutral 202 "If this email can be used, your account is ready to sign in; otherwise sign in or reset your password" for both paths, while still creating nothing on the duplicate path. If that cannot be done without breaking the sign-up flow (the new user is signed in right after), explain and keep the 409 but rate-limit it harder and log it; say which you chose and why.
+3. Ops: a way for ops to delete an unapproved self-serve sign-up (clinic, login, provider rows) from the ops review page, with confirmation and an onboarding event. Service role, ops_admin only, same-origin.
+4. Red tests first; E2E: extend e2e/self-serve-signup.spec.ts for the NPI case and the ops delete.
+5. `npm run lint` (0 warnings), tsc, Jest (--maxWorkers=3), build. Push signup-squatting (normal push, no PR). Full report in the final commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
