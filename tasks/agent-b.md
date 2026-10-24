@@ -1,22 +1,20 @@
-task-id: B-2026-10-24-06
+task-id: B-2026-10-24-07
 status: ready
 ---
-Thanks for B-2026-10-24-05 (E2E coverage; PR in turn).
+Thanks for B-2026-10-24-06 (proposals PR 2, 06ccf28).
 
-Next: patient protocol choice, PR 2 of 5: provider propose. Sam approved D's design (docs/design/patient-protocol-choice.md) with all 9 recommendations as written, plus: the plan link must not depend on texting (no Twilio account). C is building PR 1 (data model, migration, src/lib/proposals token and status machine) on branch proposals-pr1-data-model and is updating the design doc with the decisions.
+Next: patient protocol choice, PR 4 of 5: sign the choice. C is building PR 3 (patient page /plan/[token], choose/re-choose/decline) on proposals-pr3-patient-page, stacked on PR 1. Build PR 4 stacked on your PR 2.
 
-Step 0: wait until origin/proposals-pr1-data-model exists and its head commit message is C's final report (it contains the migration SQL). Check every 5 minutes (`git fetch origin`). Do not start PR 2 code before then; while waiting, read the design doc, src/lib/orders/batch-sign.ts (checkBatch), batch-review-form.tsx, the dashboard tabs and the intake link code. If it has not appeared within 90 minutes, push a commit "BLOCKED: PR 1 not pushed" on a branch proposals-pr2-provider-propose and stop.
+Branch: `git fetch origin && git checkout -b proposals-pr4-sign-choice origin/proposals-pr2-provider-propose`.
 
-Branch: `git checkout -b proposals-pr2-provider-propose origin/proposals-pr1-data-model` (stacked on PR 1; it will be rebased onto main after PR 1 merges).
-
-Build PR 2 as the design's section 6 row 2 says, plus the copy-link addition:
-- Split checkBatch into a read-only canSign(lines) used by both propose and sign; sign behaviour unchanged (existing batch-sign tests must stay green untouched).
-- Review: group lines into options (Option A, B...) with a patient-facing label (max 80), each loaded protocol its own option by default, Required star per line (on by default).
-- "Send to patient for choice": POST /api/proposals creates the proposal + options, tags the DRAFTs (proposal_option_id, proposal_required), writes a token (PR 1 lib), records a 'sent' event. Provider or clinic admin on the provider's behalf may send; MA may prepare but gets 403 on send. Same auth stack as other clinic routes (getUser, app_metadata claims, approval guard, same-origin).
-- After sending, the provider sees the plan link with "Copy link" and "Show QR code" (QR as one SVG path, like D's sign-up link QR). Copy and QR record link_copied / qr_shown events. The SMS goes out only when texting is enabled (TWILIO_ENABLED and the patient's opt-in), using a new name-free template under the same opt-in-gate test pattern; when texting is off, no send is attempted and the UI says "Texting is not set up, copy the link or show the QR code".
-- Dashboard: a Proposed tab ("Awaiting patient choice"); proposed DRAFTs hidden from Drafts. Edit, cancel (DRAFT -> CANCELLED, proposal cancelled, link revoked) and re-send (revokes the previous link).
-- No patient page yet (PR 3).
-- Red tests first: table-driven tests that every C4/C5/C6/C8/price refusal blocks propose with the same message as sign; controlled item never proposable; role tests; Proposed vs Drafts; cancel and re-send revoke; copy/QR events; no SMS when texting is off; jest-axe on the new UI.
-- `npm run lint` (0 warnings), tsc, Jest (--maxWorkers=3), build. Commit and push proposals-pr2-provider-propose (normal push, no PR). Full report in the final commit body: files, routes, tests, local results, head SHA, and anything PR 3 needs from PR 2.
+Build as the design's section 1 step 4-5 and section 6 row 4 say (decisions approved by Sam 2026-10-24, in the design doc on PR 1):
+- When a proposal is chosen (status chosen, chosen_option_id and proposal_choice_items set by PR 3's API), the provider sees it in the existing signature queue (WO-77): "<first name> chose <option label> (<n> of <m> items)", plus an in-app clinic notification. Read only the PR 1 tables; do not depend on PR 3 code (use the PR 1 lib and seed rows in tests).
+- Signing: the provider opens the chosen lines and signs through the existing batch sign with exactly the chosen order ids (required items of the option + kept optional items). Batch sign runs every check again, allocates shipping, creates the payment group for 2+ or the solo checkout, sends the existing payment link (texting rules unchanged; when texting is off, the existing copy-link path for the payment link applies).
+- Unchosen DRAFTs of the proposal go DRAFT -> CANCELLED, never signed. Proposal -> signed, signed_at, link dies (token revoked), 'signed' event.
+- A check that fails at sign (license lapsed, price moved, compounding status) stops signing for the whole choice and tells the provider plainly; the proposal stays chosen.
+- Repricing (WO-108) at signing as today; protocol_instances created or advanced at signing only (decision 8).
+- Proposal expiry cron: sent or chosen-but-unsigned past expires_at -> expired, DRAFTs cancelled, idempotent, 'expired' event. Register it like the other crons.
+- Red tests first: batch sign called with exactly the chosen ids; unchosen never get a signature hash; failed check stops signing and leaves the proposal chosen; group vs solo; expiry cron idempotent; role tests (provider signs; clinic admin may sign only as their own linked provider per existing signer rules; MA cannot).
+- `npm run lint` (0 warnings), tsc, Jest (--maxWorkers=3), build. Commit and push proposals-pr4-sign-choice (normal push, no PR). Full report in the final commit body: files, tests, local results, head SHA, what PR 5 (end-to-end) needs.
 
 Do not touch the production database, Vercel, Stripe or secrets.
