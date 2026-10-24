@@ -24,7 +24,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePrescriptionSession } from '../_context/prescription-session'
 import { AllergyChip, EditableAllergyChip, type SavedAllergies } from './allergy-chip'
-import { NewPatientForm, type CreatedPatient, type CreatedIntake, type FaceSheetAvailability } from './new-patient-form'
+import { NewPatientForm, type CreatedPatient, type CreatedIntake } from './new-patient-form'
 import { IntakeChip } from '@/components/intake-chip'
 import { SignupChip } from '@/components/signup-chip'
 import { IntakeLinkPanel } from '@/components/intake-link-panel'
@@ -69,8 +69,8 @@ interface Provider {
 interface Props {
   patients:  Patient[]
   providers: Provider[]
-  /** Patient Intake PR 4: "Drop a face sheet" in + New patient (lib/face-sheet/config). */
-  faceSheet?: FaceSheetAvailability
+  /** Patient Intake PR 4: "Drop a face sheet" in + New patient, only when available (lib/face-sheet/config). */
+  faceSheetAvailable?: boolean
   /**
    * WO-100: the signed-in user's own provider row. When present the
    * provider list is hidden and this provider is pinned to the session.
@@ -107,7 +107,7 @@ function formatDob(iso: string | null): string {
 
 // ── Component ─────────────────────────────────────────────────
 
-export function PatientProviderSelector({ patients: initialPatients, providers, selfProvider = null, nextPanel = null, faceSheet = 'off' }: Props) {
+export function PatientProviderSelector({ patients: initialPatients, providers, selfProvider = null, nextPanel = null, faceSheetAvailable = false }: Props) {
   const router = useRouter()
   const session = usePrescriptionSession()
 
@@ -297,7 +297,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
 
         {showNewPatient && (
           <NewPatientForm
-            faceSheet={faceSheet}
+            faceSheetAvailable={faceSheetAvailable}
             onCreated={handleCreated}
             onUseExisting={handleUseExisting}
             onCancel={() => { setShowNewPatient(false); newPatientButtonRef.current?.focus() }}
