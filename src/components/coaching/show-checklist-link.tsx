@@ -8,7 +8,7 @@
 // Stores the choice (POST /api/coaching/prefs) and brings the card back:
 // on the home page by telling the card to reload, elsewhere by going home.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { SHOW_CHECKLIST_EVENT } from './setup-checklist-card'
 
@@ -16,6 +16,10 @@ export function ShowChecklistLink({ home, className = '' }: { home: string; clas
   const router = useRouter()
   const pathname = usePathname()
   const [busy, setBusy] = useState(false)
+  // Server-rendered: until hydrated a click has no handler and is lost,
+  // so the button is disabled until then (a click waits for it).
+  const [hydrated, setHydrated] = useState(false)
+  useEffect(() => { setHydrated(true) }, [])
 
   async function show() {
     setBusy(true)
@@ -36,7 +40,7 @@ export function ShowChecklistLink({ home, className = '' }: { home: string; clas
     <button
       type="button"
       onClick={() => void show()}
-      disabled={busy}
+      disabled={busy || !hydrated}
       className={`text-left text-xs font-medium text-foreground underline underline-offset-2 hover:text-primary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${className}`}
     >
       Show setup checklist

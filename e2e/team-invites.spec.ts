@@ -159,7 +159,10 @@ test.describe('Team invites', () => {
     await members.getByRole('button', { name: `Deactivate Mo ${LAST_NAME}` }).click()
     await expect(page.getByText(`Mo ${LAST_NAME} will not be able to sign in`)).toBeVisible()
     expect(await axeViolations(page)).toEqual([])
+    // Wait for the save itself, so a failed save fails here with its status.
+    const saved = page.waitForResponse(r => r.url().includes(`/api/team/members/${maUser!.id}`) && r.request().method() === 'POST')
     await page.getByRole('button', { name: 'Yes, deactivate' }).click()
+    expect((await saved).status()).toBe(200)
     await expect(members.getByRole('button', { name: `Reactivate Mo ${LAST_NAME}` })).toBeVisible({ timeout: 15_000 })
     expect(await axeViolations(page)).toEqual([])
 

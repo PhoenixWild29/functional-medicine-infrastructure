@@ -71,6 +71,12 @@ export function TeamPanel({ members, invites, canManage, currentUserId }: Props)
   // Members
   const [confirming, setConfirming] = useState<TeamMember | null>(null)
   const [memberError, setMemberError] = useState<string | null>(null)
+  // A saved deactivate/reactivate shows at once, not only once
+  // router.refresh() returns. Kept for the list it was made against: the
+  // server's next list (after the refresh) replaces it.
+  const [override, setOverride] = useState<{ base: TeamMember[]; map: Record<string, string | null> }>({ base: members, map: {} })
+  const activeOverride = override.base === members ? override.map : {}
+  const shownMembers = members.map(m => (m.userId in activeOverride ? { ...m, deactivatedAt: activeOverride[m.userId] ?? null } : m))
 
   // Add a provider
   const [provider, setProvider] = useState({ firstName: '', lastName: '', email: '', npiNumber: '' })
@@ -151,6 +157,7 @@ export function TeamPanel({ members, invites, canManage, currentUserId }: Props)
       setMemberError(typeof r.data['error'] === 'string' ? r.data['error'] : 'The change could not be saved. Try again.')
       return
     }
+    setOverride(prev => ({ base: members, map: { ...(prev.base === members ? prev.map : {}), [member.userId]: active ? null : new Date().toISOString() } }))
     router.refresh()
   }
 
@@ -185,7 +192,7 @@ export function TeamPanel({ members, invites, canManage, currentUserId }: Props)
               </tr>
             </thead>
             <tbody>
-              {members.map(m => (
+              {shownMembers.map(m => (
                 <tr key={m.userId} className="border-t border-border">
                   <td className="py-2 pr-4 text-foreground">{displayName(m)}</td>
                   <td className="py-2 pr-4 text-foreground">{m.email}</td>
