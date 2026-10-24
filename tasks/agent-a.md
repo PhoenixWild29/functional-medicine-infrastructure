@@ -1,19 +1,23 @@
-task-id: A-2026-10-24-04
+task-id: A-2026-10-24-05
 status: ready
 ---
-Thanks for A-2026-10-24-03 (fax viewer). Its migration 20261024000001 goes to Sam to run on prod before that PR merges; I handle that.
+Thanks for A-2026-10-24-04 (eslint-config-next 16.4.3; PR in turn).
 
-Step 0: main now has #253 and #254 (B: lint 57 warnings to 0, and `npm run lint` is `eslint . --max-warnings=0`, so ANY warning fails CI). `git fetch origin`, check out ops-fax-viewer-documo, `git merge origin/main`, resolve conflicts (B touched fax-triage-queue.tsx: a module-level NO_FAXES constant; keep both changes), then `npm run lint` must show 0 warnings, rerun tsc and the fax tests, push ops-fax-viewer-documo (normal push).
+Next: Issue Log item 95, a test-data cleanup script for prod, to be run BY SAM ONLY after Lauren has reviewed the test data. You write and test it; nobody runs it on prod now.
 
-Task: bump eslint-config-next to match next 16.4.3 (D's follow-up). It pulls eslint-plugin-react-hooks 7.0.1 -> 7.1.1, whose React Compiler rules flag 5 sites plus about 16 set-state-in-effect warnings (D's list):
-  - dashboard/_components/order-drawer.tsx:314 and :316 react-hooks/immutability (fetchGroupLink / fetchBundlableSiblings declared below the useEffect that calls them)
-  - new-prescription/margin/_components/margin-builder-form.tsx:522 (x2) react-hooks/preserve-manual-memoization (wholesaleCents useMemo)
-  - margin-builder-form.tsx:810 react-hooks/refs (clearSessionRef.current assigned during render)
+Branch: `git fetch origin && git checkout -b test-data-cleanup-script origin/main`.
 
-Branch: `git checkout -b eslint-config-next-16-4 origin/main`.
-1. Bump eslint-config-next (and only what it requires) to 16.4.3. Keep lockfile changes minimal; keep the libc markers on native optional packages.
-2. Fix every new error and warning properly in code (move the fetchers above the effect or into useCallback, a ref-updating effect for the latest-ref pattern, fix the memo deps). No rule changes in eslint.config.mjs, no blanket disables; a scoped eslint-disable-next-line with a reason only where a fix would change behaviour, listed in the report.
-3. Red tests first for any component whose code you restructure (behaviour unchanged).
-4. `npm run lint` (0 errors, 0 warnings), tsc, Jest (--maxWorkers=3), build. Commit and push to origin eslint-config-next-16-4 (normal push, no PR). Full report in the final commit message body: Step 0 outcome and head of ops-fax-viewer-documo, versions before/after, every finding and fix (file:line), disables with reasons, local results, head SHA.
+Test data to remove (match by stable identifiers, never by broad patterns that could hit Sunrise demo data or real future data):
+- QA Test Clinic and all its accounts, invites, onboarding steps/events, agreements acceptances, providers, licenses, patients, orders and their children.
+- QA Test Pharmacy (application, licenses, terms, adapter config, catalog if any) and its pharmacy_admin login.
+- Intake Test patient (Sunrise), QAImport Alpha, Bravo, Charlie (Sunrise), QAKeragon Echo and the QA Keragon connection (and its Vault secret).
+- Beta Test Practice (beta-test-provider@sunrise-clinic.com) and Beta Test Practice 2 (beta-test-provider2@sunrise-clinic.com): clinics, logins, providers, licenses, onboarding rows.
+- Beta Test MA (beta-test-ma@sunrise-clinic.com) at Sunrise: login and membership only; Sunrise itself stays.
+- Anything created by E2E-style emails on prod if present (list what you match on).
+
+1. Read the schema (supabase/migrations) and list every table with a FK or logical link to these rows, including auth.users, auth.identities, auth.sessions, auth.mfa_factors, Vault secrets, storage objects, phi_access_log (append-only: do NOT delete; say how it is handled), ledger and payables, sla and notification logs, onboarding events.
+2. Write `scripts/cleanup/2026-10-24-test-data-cleanup.sql`: one transaction; a preview section first (SELECT counts per table for exactly what will be removed); then the deletes in FK-safe order; a final verification SELECT with expected zeros; idempotent (safe to run twice); refuses (RAISE EXCEPTION) if any matched clinic is Sunrise or if a match count is larger than expected.
+3. Test it on PGlite or a local Postgres with all migrations applied and seeded copies of these rows plus Sunrise demo rows; prove Sunrise and the demo pharmacies are untouched and the script is idempotent. Add a Jest test that runs it on PGlite if the repo already has that harness (D used one for #245).
+4. Commit and push to origin test-data-cleanup-script (normal push, no PR). Full report in the final commit message body: what is matched and how, every table touched with counts from your test, what is deliberately kept (phi_access_log, audit events) and why, expected verification output, head SHA.
 
 Do not touch the production database, Vercel, Stripe or secrets.

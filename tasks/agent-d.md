@@ -1,15 +1,25 @@
-task-id: D-2026-10-24-04
+task-id: D-2026-10-24-05
 status: ready
 ---
-Thanks for D-2026-10-24-03 (proxy.ts; PR opens in turn).
+Thanks for D-2026-10-24-04 (CI throughput; PR goes in right after the current one).
 
-Next: CI throughput. PRs merge one at a time because E2E shares one E2E Supabase and a single concurrency group. Today a PR's E2E often starts 10 to 15 minutes after its other checks finish (e.g. #256: other checks done 18:44Z, E2E started 18:57Z) and then takes 13 to 17 minutes. With four agents pushing, this is the bottleneck.
+Next: security review of everything added Oct 14 to 24 (#237 to #257 plus open branches you can see), before real clinics.
 
-Branch: `git fetch origin && git checkout -b ci-e2e-throughput origin/main`.
+Branch: `git fetch origin && git checkout -b security-review-oct24 origin/main`.
 
-1. Measure: use the public GitHub REST API (unauthenticated is fine for a public repo; do not use stored credentials) over the last 30 ci.yml runs: for each, event (push vs pull_request), branch, queued/started/completed times of the E2E job, and whether it was cancelled. Find what the E2E concurrency group waits on. Likely: agent pushes to feature branches without a PR trigger push-event runs that take the same E2E group; and/or main pushes run E2E after merges.
-2. Fix the queueing: E2E should run for pull_request events (and main after merge only if needed), not for pushes to branches without a PR. Lint, tsc, Jest and Build may still run on every push. Keep the shared E2E group so two E2E runs never overlap. Make sure a PR's E2E is never cancelled by an unrelated branch push.
-3. Speed: profile the E2E job steps (install, Playwright browsers and OS deps, schema sync, build, test). Cache what is safely cacheable (npm, Playwright browsers keyed on version, Next build cache), skip work done twice, and check whether the webkit project must run on every PR (keep it if it catches real bugs; it caught the login hydration race today). Do not shard against the shared database unless tests are isolated; say if sharding is possible.
-4. Report before/after estimates. Commit and push to origin ci-e2e-throughput (normal push, no PR). Full report in the final commit message body: measurements (table), root cause of the wait, changes, expected effect, risks, head SHA.
+For every new or changed route handler, server action and RPC/SECURITY DEFINER function since Oct 14 (self-serve sign-up, team invites/deactivate, protocol create, sign-up link /join, face-sheet AI, failure-reason, uploads limits, ops approval, demo payouts, fax PDF if on main), check and table:
+- auth: getUser (never getSession), role and clinic from app_metadata claims, deactivated users refused, approval guard where writes need it;
+- tenant isolation: clinic_id from claims, RLS or explicit filter, no IDs trusted from the body;
+- same-origin / CSRF stance consistent with the rest of the app;
+- rate limits on anything public or expensive (sign-up, /join, face-sheet, fax view);
+- input validation (zod or equivalent), size limits, magic-byte checks on uploads;
+- PHI: nothing in logs, Slack, Sentry, Stripe; phi_access_log rows where PHI is viewed;
+- SECURITY DEFINER functions: fixed search_path, EXECUTE revoked from anon/authenticated where meant for service_role;
+- error bodies: no stack traces or raw DB messages.
+Also run `npm audit --omit=dev` and report anything high or critical with a fix path.
 
-Do not touch the production database, Vercel, Stripe, repository settings or secrets.
+Fix real findings with red tests first (small, behaviour-preserving changes). Anything that needs a migration: write it, test it in the E2E/test setup only, and put the SQL in the report (Sam runs prod SQL). Anything risky or debatable: report with file:line and a recommendation, do not change.
+
+`npm run lint` (0 warnings), tsc, Jest, build. Commit and push to origin security-review-oct24 (normal push, no PR). Full report in the final commit message body: the route table with pass/fail per check, findings by severity, fixes, migrations with SQL, npm audit summary, head SHA.
+
+Do not touch the production database, Vercel, Stripe or secrets.
