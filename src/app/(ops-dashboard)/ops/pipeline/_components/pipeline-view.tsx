@@ -121,7 +121,7 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions, in
   const [actionError,     setActionError]    = useState<string | null>(null)
 
   // ── 10-second polling — REQ-OPV-001 ────────────────────────
-  const { data: ordersData, isError, isFetching, refetch } = useQuery({
+  const { data: ordersData, isError, isFetching, refetch, dataUpdatedAt, errorUpdatedAt } = useQuery({
     queryKey:        ['ops-pipeline', filters],
     queryFn:         async () => {
       const params = new URLSearchParams()
@@ -180,24 +180,18 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions, in
     selectedGroup !== null
 
   // ── Last updated timestamp ───────────────────────────────────
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<number>(Date.now())
-  const [secondsAgo,    setSecondsAgo]    = useState(0)
+  // When the last fetch finished (with data or with an error), from the
+  // query itself; never earlier than this view opened.
+  const [mountedAt] = useState(() => Date.now())
+  const lastUpdatedAt = Math.max(mountedAt, dataUpdatedAt, errorUpdatedAt)
 
-  // Track last successful fetch time
+  // Live "Xs ago" counter: the clock ticks each second.
+  const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    if (!isFetching) {
-      setLastUpdatedAt(Date.now())
-      setSecondsAgo(0)
-    }
-  }, [isFetching])
-
-  // Live "Xs ago" counter
-  useEffect(() => {
-    const id = setInterval(() => {
-      setSecondsAgo(Math.round((Date.now() - lastUpdatedAt) / 1000))
-    }, 1000)
+    const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
-  }, [lastUpdatedAt])
+  }, [])
+  const secondsAgo = Math.max(0, Math.round((now - lastUpdatedAt) / 1000))
 
   // ── Current user for claim ───────────────────────────────────
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null)

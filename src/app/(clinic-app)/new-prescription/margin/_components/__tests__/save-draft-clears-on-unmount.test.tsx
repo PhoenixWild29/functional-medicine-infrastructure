@@ -38,13 +38,14 @@ function Probe() {
   return null
 }
 
-let unmountForm: () => void = () => {}
+// The route change: the price step unmounts, the session provider stays.
+const unmountForm = () => fireEvent.click(screen.getByRole('button', { name: 'Leave the price step' }))
 function Page() {
   const [shown, setShown] = useState(true)
-  unmountForm = () => setShown(false)
   return (
     <PrescriptionSessionProvider>
       <Probe />
+      <button type="button" onClick={() => setShown(false)}>Leave the price step</button>
       {shown && (
         <MarginBuilderForm
           pharmacyId="pharmacy-strive" itemId={null} formulationId="formulation-sema" pharmacyName="Strive Pharmacy"
