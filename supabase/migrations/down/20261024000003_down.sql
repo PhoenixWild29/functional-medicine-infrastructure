@@ -1,4 +1,4 @@
--- Down migration for 20261024000001_phi_access_log_fax_id.sql
+-- Down migration for 20261024000003_phi_access_log_fax_id.sql
 -- Atomic: either the whole rollback lands or none of it does.
 --
 -- Refuses while any fax view is recorded: dropping the column would erase
@@ -12,7 +12,7 @@ DECLARE
 BEGIN
   SELECT count(*) INTO fax_views FROM phi_access_log WHERE fax_id IS NOT NULL;
   IF fax_views > 0 THEN
-    RAISE EXCEPTION 'Cannot roll back 20261024000001: % fax view(s) recorded in phi_access_log', fax_views;
+    RAISE EXCEPTION 'Cannot roll back 20261024000003: % fax view(s) recorded in phi_access_log', fax_views;
   END IF;
 END $$;
 

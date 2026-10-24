@@ -2,7 +2,7 @@
  * @jest-environment node
  *
  * Ops opening an inbound fax: logPhiAccess records which fax
- * (phi_access_log.fax_id, migration 20261024000001), with who and when,
+ * (phi_access_log.fax_id, migration 20261024000003), with who and when,
  * and nothing from the fax itself. Rows without a fax are unchanged (no
  * fax_id key), so every existing caller writes exactly what it wrote before.
  */

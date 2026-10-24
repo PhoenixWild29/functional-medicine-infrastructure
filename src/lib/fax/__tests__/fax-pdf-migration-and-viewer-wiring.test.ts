@@ -4,7 +4,7 @@
  * Issue Log 72: the inbound fax viewer no longer points at a Supabase
  * bucket `fax-pdfs` (it does not exist; inbound faxes live only in Documo).
  * Each fax row carries the ops-only route that fetches the PDF from Documo.
- * Migration 20261024000001 adds phi_access_log.fax_id, so a view records
+ * Migration 20261024000003 adds phi_access_log.fax_id, so a view records
  * which fax; additive, safe to apply twice, with a down file.
  */
 
@@ -34,12 +34,12 @@ it('no code refers to a fax-pdfs bucket any more', () => {
   expect(offenders).toEqual([])
 })
 
-describe('migration 20261024000001', () => {
+describe('migration 20261024000003', () => {
   const DIR = join(process.cwd(), 'supabase', 'migrations')
   const read = (p: string) => (existsSync(p) ? readFileSync(p, 'utf8').replace(/\r\n/g, '\n') : '')
   const flat = (s: string) => s.replace(/--.*$/gm, '').replace(/\s+/g, ' ').toLowerCase()
-  const code = flat(read(join(DIR, '20261024000001_phi_access_log_fax_id.sql')))
-  const down = flat(read(join(DIR, 'down', '20261024000001_down.sql')))
+  const code = flat(read(join(DIR, '20261024000003_phi_access_log_fax_id.sql')))
+  const down = flat(read(join(DIR, 'down', '20261024000003_down.sql')))
 
   it('exists with a down file, one transaction each', () => {
     expect(code).toMatch(/^\s*begin;.*commit;\s*$/)

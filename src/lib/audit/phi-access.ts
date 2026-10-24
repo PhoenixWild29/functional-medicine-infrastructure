@@ -84,7 +84,7 @@ export interface PhiAccessEntry {
   route:      string
   patientId?: string | null
   orderId?:   string | null
-  /** The inbound fax (inbound_fax_queue.fax_id), migration 20261024000001. */
+  /** The inbound fax (inbound_fax_queue.fax_id), migration 20261024000003. */
   faxId?:     string | null
   /** The clinic whose data it is, when not the actor's own (ops). */
   clinicId?:  string | null
