@@ -136,7 +136,7 @@ describe('a solo provider', () => {
   // are customers). The provider row is unclaimed until ops approves.
   it.each([
     ['another pending sign-up has it', { npi_claimed: false }],
-    ['an approved clinic's provider holds it', { npi_claimed: true }],
+    ['an approved clinic’s provider holds it', { npi_claimed: true }],
   ])('an NPI %s: the same answer as any sign-up, and the new provider is unclaimed', async (_label, existing) => {
     const db = world()
     db.rows('providers').push({ provider_id: 'p-x', clinic_id: 'c-x', npi_number: NPI, deleted_at: null, ...existing })

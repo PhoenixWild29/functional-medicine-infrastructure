@@ -16,9 +16,13 @@
 const signupMock = jest.fn()
 jest.mock('@/lib/signup/self-serve', () => ({ selfServeSignup: (...a: unknown[]) => signupMock(...a) }))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => ({}) }))
+// An opaque stand-in for the keyed hash: the value itself never appears.
+function opaque(v: string): string {
+  return `h${[...v].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) % 1_000_000_007, 7)}`
+}
 jest.mock('@/lib/audit/keyed-hash', () => ({
   clientIp: (h: Headers) => h.get('x-forwarded-for'),
-  auditHash: async (v: string | null) => (v ? `hash(${v})` : null),
+  auditHash: async (v: string | null) => (v ? opaque(v) : null),
 }))
 
 import { POST } from '../route'
@@ -44,8 +48,9 @@ it('a duplicate: the neutral 409, logged with hashes only', async () => {
   const res = await POST(req('1.1.1.1', 'Taken@Example.test'))
   expect(res.status).toBe(409)
   expect(await res.json()).toEqual({ error: DUP.error })
-  expect(logs.join('\n')).toContain('[signup] duplicate_email | ip_hash=hash(1.1.1.1) | email_hash=hash(taken@example.test)')
-  expect(logs.join('\n')).not.toMatch(/Taken@Example|taken@example\.test(?!\))/i)
+  // The email is normalised (as sign-up stores it) before it is hashed.
+  expect(logs.join('\n')).toContain(`[signup] duplicate_email | ip_hash=${opaque('1.1.1.1')} | email_hash=${opaque('taken@example.test')}`)
+  expect(logs.join('\n')).not.toMatch(/taken@example/i)
 })
 
 it(`after ${DUPLICATE_EMAIL_LIMIT} duplicates in an hour, every sign-up from that IP is 429 (and not even read)`, async () => {

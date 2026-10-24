@@ -46,6 +46,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // provider's self sign-up (lib/onboarding/provider-record).
   const added = await addProviderRecord(supabase, {
     clinicId, userId: null, firstName, lastName, npiNumber, licenses: [license], actorId: user.id,
+    // The wizard: the clinic is not approved yet, so it holds no NPI until
+    // ops approves (security review M3).
+    npiClaimed: false,
   })
   if (!added.ok) {
     return NextResponse.json({ error: added.error, ...(added.errors ? { errors: added.errors } : {}) }, { status: added.status })

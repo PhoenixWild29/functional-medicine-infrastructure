@@ -162,7 +162,7 @@ describe('add a provider', () => {
     expect(await res.json()).toEqual({ providerId: 'p-new', npiStatus: 'verified', inviteId: INVITE, link: 'https://app.test/onboard/join/TOKEN', expiresAt: '2026-10-25T00:00:00Z' })
     expect(addProviderMock).toHaveBeenCalledWith(db.client, {
       clinicId: CLINIC, userId: null, firstName: 'Priya', lastName: 'Shah', npiNumber: '1234567893',
-      licenses: PROVIDER.licenses, deaNumber: null, actorId: ADMIN,
+      licenses: PROVIDER.licenses, deaNumber: null, actorId: ADMIN, npiClaimed: true,
     })
     expect(createInviteMock).toHaveBeenCalledWith(db.client, { kind: 'provider', clinicId: CLINIC, email: 'priya@sunrise.test', providerId: 'p-new', createdBy: ADMIN, actorRole: 'clinic_admin' })
   })
