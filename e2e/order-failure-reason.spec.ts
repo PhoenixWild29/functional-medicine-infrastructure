@@ -76,7 +76,7 @@ test.describe('#251 clinic order drawer: why sending to the pharmacy failed', ()
     ids.notFailed    = bySig('E2E failure reason: not failed')
 
     const { error: subError } = await db.from('adapter_submissions').insert({
-      order_id: ids.declined, pharmacy_id: TEST_IDS.pharmacyTier1, status: 'REJECTED',
+      order_id: ids.declined, pharmacy_id: TEST_IDS.pharmacyTier1, tier: 'TIER_1_API', status: 'REJECTED',
       error_code: 'REJECTED', error_message: 'E2E raw adapter message: must never be shown',
       completed_at: new Date().toISOString(),
     })
