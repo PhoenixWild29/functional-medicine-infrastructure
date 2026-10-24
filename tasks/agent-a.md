@@ -1,23 +1,12 @@
-task-id: A-2026-10-24-05
+task-id: A-2026-10-24-06
 status: ready
 ---
-Thanks for A-2026-10-24-04 (eslint-config-next 16.4.3; PR in turn).
+If you have not yet finished and pushed A-2026-10-24-05 (the test-data cleanup script on test-data-cleanup-script), finish it and push it first, with its report, exactly as that task said. Then do this.
 
-Next: Issue Log item 95, a test-data cleanup script for prod, to be run BY SAM ONLY after Lauren has reviewed the test data. You write and test it; nobody runs it on prod now.
+PR #261 (your branch eslint-config-next-16-4, head 885e4da) failed only the Lint (ESLint) check in CI (run 40131054552, job 120982650522). CI lints the merge with current main, and main has gained code since your base 903186b: #255 (login hydration refs and Show-checklist hydration, team-panel row override), #256 (QR as one path, axe helpers, /api/health on Node), #257 (landmarks), #258 (ci.yml), #260 (face-sheet availability). The react-hooks 7.1 rules most likely flag some of that new code.
 
-Branch: `git fetch origin && git checkout -b test-data-cleanup-script origin/main`.
-
-Test data to remove (match by stable identifiers, never by broad patterns that could hit Sunrise demo data or real future data):
-- QA Test Clinic and all its accounts, invites, onboarding steps/events, agreements acceptances, providers, licenses, patients, orders and their children.
-- QA Test Pharmacy (application, licenses, terms, adapter config, catalog if any) and its pharmacy_admin login.
-- Intake Test patient (Sunrise), QAImport Alpha, Bravo, Charlie (Sunrise), QAKeragon Echo and the QA Keragon connection (and its Vault secret).
-- Beta Test Practice (beta-test-provider@sunrise-clinic.com) and Beta Test Practice 2 (beta-test-provider2@sunrise-clinic.com): clinics, logins, providers, licenses, onboarding rows.
-- Beta Test MA (beta-test-ma@sunrise-clinic.com) at Sunrise: login and membership only; Sunrise itself stays.
-- Anything created by E2E-style emails on prod if present (list what you match on).
-
-1. Read the schema (supabase/migrations) and list every table with a FK or logical link to these rows, including auth.users, auth.identities, auth.sessions, auth.mfa_factors, Vault secrets, storage objects, phi_access_log (append-only: do NOT delete; say how it is handled), ledger and payables, sla and notification logs, onboarding events.
-2. Write `scripts/cleanup/2026-10-24-test-data-cleanup.sql`: one transaction; a preview section first (SELECT counts per table for exactly what will be removed); then the deletes in FK-safe order; a final verification SELECT with expected zeros; idempotent (safe to run twice); refuses (RAISE EXCEPTION) if any matched clinic is Sunrise or if a match count is larger than expected.
-3. Test it on PGlite or a local Postgres with all migrations applied and seeded copies of these rows plus Sunrise demo rows; prove Sunrise and the demo pharmacies are untouched and the script is idempotent. Add a Jest test that runs it on PGlite if the repo already has that harness (D used one for #245).
-4. Commit and push to origin test-data-cleanup-script (normal push, no PR). Full report in the final commit message body: what is matched and how, every table touched with counts from your test, what is deliberately kept (phi_access_log, audit events) and why, expected verification output, head SHA.
+1. `git fetch origin && git checkout -B eslint-config-next-16-4 origin/eslint-config-next-16-4 && git merge origin/main`.
+2. `npm ci` then `npm run lint`. Fix every finding properly in code, the same way you did the first 24 (render-time state adjustment, readers applied in .then, latest-ref in an effect). No eslint config changes, no blanket disables; a scoped disable with a reason only where a fix would change behaviour (e.g. sessionStorage/localStorage restore after hydration), listed in the report. Characterization tests first for anything you restructure. C's login hydration sync in src/app/login/page.tsx must keep working (its tests: e2e-flake-hydration, login-landing).
+3. `npm run lint` (0 errors, 0 warnings), tsc, Jest (--maxWorkers=3), build. Push eslint-config-next-16-4 (normal push). Full report in the final commit body: each new finding (file:line, rule), the fix, disables with reasons, local results, head SHA.
 
 Do not touch the production database, Vercel, Stripe or secrets.
