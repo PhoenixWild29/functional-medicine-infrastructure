@@ -292,6 +292,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     queryKey: ['formulation-list', selectedSaltForm?.salt_form_id, selectedIngredient?.ingredient_id],
     queryFn: () => {
       const params: Record<string, string> = {}
+      if (selectedIngredient) params.ingredient_id = selectedIngredient.ingredient_id
       if (selectedSaltForm) params.salt_form_id = selectedSaltForm.salt_form_id
       return fetchLevel<Formulation>('formulations', params)
     },

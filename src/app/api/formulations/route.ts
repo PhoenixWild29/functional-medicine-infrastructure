@@ -13,6 +13,7 @@
 //   ?level=dosage_forms&ingredient_id=xxx → available dosage forms
 //   ?level=routes&dosage_form_id=xxx → routes for a dosage form
 //   ?level=formulations&ingredient_id=xxx&dosage_form_id=xxx&route_id=xxx → matching formulations
+//     (ingredient_id: its salt-form products plus the combinations that contain it)
 //   ?level=pharmacy_options&formulation_id=xxx&state=TX → pharmacies offering this formulation in state
 //   ?level=rx_defaults&ids=a,b,c → WO-96 Rx detail defaults + rules per formulation
 //
@@ -217,6 +218,11 @@ export async function GET(req: NextRequest) {
           .eq('is_active', true)
           .is('deleted_at', null)
 
+        if (ingredientId) {
+          const ids = await ingredientFormulationIds(supabase, ingredientId)
+          if (ids.length === 0) return NextResponse.json({ level: 'formulations', data: [] })
+          query = query.in('formulation_id', ids)
+        }
         if (saltFormId) query = query.eq('salt_form_id', saltFormId)
         if (dosageFormId) query = query.eq('dosage_form_id', dosageFormId)
         if (routeId) query = query.eq('route_id', routeId)
@@ -386,4 +392,32 @@ export async function GET(req: NextRequest) {
     console.error('[formulations] query failed:', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
+}
+
+/**
+ * The formulations of one ingredient: single-ingredient products linked
+ * through its salt forms (formulations.salt_form_id), plus combination
+ * products that list it in formulation_ingredients. The same two links
+ * the dosage_forms level follows. A failed read throws (a 500), never
+ * "no filter".
+ */
+async function ingredientFormulationIds(
+  supabase: ReturnType<typeof createServiceClient>,
+  ingredientId: string,
+): Promise<string[]> {
+  const [salts, combos] = await Promise.all([
+    supabase.from('salt_forms').select('salt_form_id').eq('ingredient_id', ingredientId),
+    supabase.from('formulation_ingredients').select('formulation_id').eq('ingredient_id', ingredientId),
+  ])
+  if (salts.error) throw salts.error
+  if (combos.error) throw combos.error
+
+  const saltIds = (salts.data ?? []).map(s => s.salt_form_id)
+  const ids = new Set((combos.data ?? []).map(c => c.formulation_id))
+  if (saltIds.length > 0) {
+    const bySalt = await supabase.from('formulations').select('formulation_id').in('salt_form_id', saltIds)
+    if (bySalt.error) throw bySalt.error
+    for (const f of bySalt.data ?? []) ids.add(f.formulation_id)
+  }
+  return [...ids]
 }
