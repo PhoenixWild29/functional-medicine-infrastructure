@@ -809,7 +809,10 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
   }
 
   // ── WO-102: create (or reuse) a DRAFT per session line ───────
-  async function createDrafts(progressLabel: string): Promise<string[]> {
+  // Patient protocol choice (decision 8): a plan's drafts start no protocol
+  // instance; the chosen lines start or advance it when they are signed
+  // (the plan's option keeps the protocol).
+  async function createDrafts(progressLabel: string, opts: { withoutProtocol?: boolean } = {}): Promise<string[]> {
     if (!patient || !provider) return []
     const ids: string[] = []
     for (let i = 0; i < prescriptions.length; i++) {
@@ -820,7 +823,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
       const orderRes = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(orderPostBody(rx, patient, provider, effectiveDetails(rx))),
+        body: JSON.stringify({ ...orderPostBody(rx, patient, provider, effectiveDetails(rx)), ...(opts.withoutProtocol ? { protocolId: null } : {}) }),
       })
       if (!orderRes.ok) {
         const err = await orderRes.json().catch(() => ({})) as { error?: string; code?: string }
@@ -893,7 +896,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
     setIsProposing(true)
     setProposalErrors([])
     try {
-      await createDrafts('Saving prescription')
+      await createDrafts('Saving prescription', { withoutProtocol: true })
       setSubmitProgress(proposalRole === 'send' ? 'Checking and sending the plan...' : 'Saving the plan...')
       const res = await fetch('/api/proposals', {
         method: 'POST',

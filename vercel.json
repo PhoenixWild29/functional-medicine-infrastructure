@@ -19,6 +19,10 @@
       "schedule": "*/15 * * * *"
     },
     {
+      "path": "/api/cron/proposal-expiry",
+      "schedule": "20 * * * *"
+    },
+    {
       "path": "/api/cron/refund-retry",
       "schedule": "0 * * * *"
     },
@@ -94,6 +98,10 @@
       "memory": 512
     },
     "src/app/api/cron/payment-expiry/route.ts": {
+      "maxDuration": 300,
+      "memory": 512
+    },
+    "src/app/api/cron/proposal-expiry/route.ts": {
       "maxDuration": 300,
       "memory": 512
     },

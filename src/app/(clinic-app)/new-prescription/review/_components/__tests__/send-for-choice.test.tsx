@@ -102,6 +102,10 @@ it('a provider: options by protocol, Sign & Send hidden, the plan sent with its 
   expect(screen.getByText('Texting is not set up, copy the link or show the QR code')).toBeInTheDocument()
 
   expect(calls('/api/orders')).toHaveLength(3)
+  // Decision 8: a plan's drafts start no protocol instance; the chosen
+  // lines start or advance it when they are signed (the option keeps the
+  // protocol).
+  expect(calls('/api/orders').map(c => JSON.parse(String((c[1] as RequestInit).body)).protocolId)).toEqual([null, null, null])
   const body = JSON.parse(String((calls('/api/proposals')[0]![1] as RequestInit).body))
   expect(body).toEqual({
     patientId: PATIENT.patient_id, providerId: PROVIDER.provider_id, send: true,

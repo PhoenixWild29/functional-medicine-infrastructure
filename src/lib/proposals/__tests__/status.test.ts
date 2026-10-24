@@ -6,7 +6,8 @@
  *   - draft: sent, or cancelled
  *   - sent: chosen, declined, expired (7 days unchosen), cancelled
  *   - chosen: chosen again (the patient changes their mind until the
- *     provider signs), signed, declined, cancelled
+ *     provider signs), signed, declined, expired (PR 4: chosen but never
+ *     signed by expires_at), cancelled
  *   - signed, declined, expired, cancelled: final
  */
 
@@ -16,7 +17,7 @@ import { PROPOSAL_TRANSITIONS, assertProposalTransition, canTransitionProposal, 
 const ALLOWED: Record<string, string[]> = {
   draft: ['sent', 'cancelled'],
   sent: ['chosen', 'declined', 'expired', 'cancelled'],
-  chosen: ['chosen', 'signed', 'declined', 'cancelled'],
+  chosen: ['chosen', 'signed', 'declined', 'expired', 'cancelled'],
   signed: [],
   declined: [],
   expired: [],
