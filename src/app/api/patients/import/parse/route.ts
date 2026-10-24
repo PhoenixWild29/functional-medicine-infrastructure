@@ -4,7 +4,7 @@
 //
 // The uploaded .csv is parsed here, on the server, and never stored: the
 // response carries its header row, its patient rows and a suggested column
-// mapping, and the file is gone when the request ends. 5 MB and 5,000 rows
+// mapping, and the file is gone when the request ends. 4 MB and 5,000 rows
 // at most. Clinic admin and medical assistants only.
 
 import { NextResponse, type NextRequest } from 'next/server'
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const file = form.get('file')
   if (!file || typeof file === 'string') return bad('Choose a .csv file to upload.')
   if (!/\.csv$/i.test(file.name)) return bad('The file must be a .csv (export it from your EHR or spreadsheet as CSV).')
-  if (file.size > MAX_IMPORT_BYTES) return bad('The file is larger than 5 MB. Split it into smaller files.', 413)
+  if (file.size > MAX_IMPORT_BYTES) return bad('The file is larger than 4 MB. Split it into smaller files.', 413)
 
   let parsed: string[][]
   try {

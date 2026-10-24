@@ -24,6 +24,7 @@ import { useState, useMemo, useCallback } from 'react'
 import { useQuery, useQueryClient }       from '@tanstack/react-query'
 import { useDropzone }                    from 'react-dropzone'
 import Papa                               from 'papaparse'
+import { MAX_REQUEST_BYTES, jsonBodyTooLarge } from '@/lib/uploads/limits'
 import type {
   CatalogResponse, CatalogItem, CatalogUploadVersion,
   NormalizedEntry, PharmacySyncStatus,
@@ -131,6 +132,14 @@ export function CatalogManager({ initialData }: Props) {
     setUploadError(null)
     setUploadResult(null)
 
+    // 4 MB: the rows go through a Vercel Function, which refuses bodies over
+    // about 4.5 MB (lib/uploads/limits). The file, then the JSON it becomes.
+    const tooLarge = 'This catalog is more than 4 MB to send at once. Split it into smaller files and upload each one.'
+    if (file.size > MAX_REQUEST_BYTES) {
+      setUploadError(tooLarge)
+      return
+    }
+
     Papa.parse<Record<string, string>>(file, {
       header:       true,
       skipEmptyLines: true,
@@ -143,12 +152,18 @@ export function CatalogManager({ initialData }: Props) {
           return
         }
 
+        const body = { pharmacyId: uploadPharmacyId, rows: results.data }
+        if (jsonBodyTooLarge(body)) {
+          setUploadError(tooLarge)
+          return
+        }
+
         setIsUploading(true)
         try {
           const res = await fetch('/api/ops/catalog/upload', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ pharmacyId: uploadPharmacyId, rows: results.data }),
+            body:    JSON.stringify(body),
           })
           const json = await res.json() as UploadResult | { error: string; warnings?: string[] }
           if (!res.ok) {

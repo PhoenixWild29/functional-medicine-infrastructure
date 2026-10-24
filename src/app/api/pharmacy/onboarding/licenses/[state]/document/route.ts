@@ -1,5 +1,5 @@
 // POST /api/pharmacy/onboarding/licenses/<state>/document (multipart, field "file"):
-// the license document, to the private bucket. PDF, PNG or JPEG, 10 MB.
+// the license document, to the private bucket. PDF, PNG or JPEG, 4 MB (lib/uploads/limits).
 import type { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { attachLicenseDocument, MAX_DOCUMENT_BYTES } from '@/lib/pharmacy-onboarding/application'
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ st
     file = null
   }
   if (!file) return json({ error: 'Choose a file to upload.' }, 400)
-  if (file.size > MAX_DOCUMENT_BYTES) return json({ error: 'The file must be under 10 MB.' }, 400)
+  if (file.size > MAX_DOCUMENT_BYTES) return json({ error: 'The file must be under 4 MB.' }, 400)
   const bytes = new Uint8Array(await file.arrayBuffer())
   return respond(await attachLicenseDocument(createServiceClient(), who.ctx, state, { name: file.name, type: file.type, size: bytes.byteLength, bytes }))
 }

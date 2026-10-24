@@ -18,6 +18,7 @@ import { validateCatalogRows } from '@/lib/catalog/validate-csv-rows'
 import { isPharmacyAgreementKey, pharmacyAgreement, type PharmacyAgreementKey } from './agreement'
 import { currentAcceptances, latestAcceptance, type AcceptanceRow } from './agreements-history'
 import { recordOnboardingEvent } from './events'
+import { MAX_REQUEST_BYTES, MAX_REQUEST_LABEL } from '@/lib/uploads/limits'
 import type { Fail } from './invites'
 import { ONBOARDING_STEPS, SHOWN_STEPS, withStep, withoutStep, type SavedStepKey } from './steps'
 import {
@@ -26,7 +27,8 @@ import {
 } from './validate'
 
 export const LICENSE_DOCUMENT_BUCKET = 'pharmacy-license-documents'
-export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
+/** 4 MB: the upload goes through a Vercel Function (lib/uploads/limits). */
+export const MAX_DOCUMENT_BYTES = MAX_REQUEST_BYTES
 export const DOCUMENT_TYPES: Readonly<Record<string, string>> = { 'application/pdf': 'pdf', 'image/png': 'png', 'image/jpeg': 'jpg' }
 export const MAX_CATALOG_ROWS = 5000
 const EDITABLE = new Set(['in_progress', 'sent_back'])
@@ -205,7 +207,7 @@ export async function attachLicenseDocument(db: SupabaseClient, ctx: WizardCtx, 
   if (!state) return { ok: false, status: 400, error: 'Unknown state.' }
   const ext = DOCUMENT_TYPES[file.type]
   if (!ext) return { ok: false, status: 400, error: 'Upload the license as a PDF, PNG or JPEG.' }
-  if (file.size <= 0 || file.size > MAX_DOCUMENT_BYTES) return { ok: false, status: 400, error: 'The file must be under 10 MB.' }
+  if (file.size <= 0 || file.size > MAX_DOCUMENT_BYTES) return { ok: false, status: 400, error: `The file must be under ${MAX_REQUEST_LABEL}.` }
 
   const r = await editable(db, ctx.pharmacyId)
   if (!r.ok) return r
