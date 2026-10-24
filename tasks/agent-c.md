@@ -1,6 +1,15 @@
-task-id: C-2026-10-24-01
+task-id: C-2026-10-24-02
 status: ready
 ---
-Branch `clinic-drawer-failure-reason` from origin/main. No migration (if one is needed, push a commit starting "BLOCKED:" explaining why and stop). Push only, no PR. Red test then fix.
+Thanks for C-2026-10-24-01 (merged as #251). Next: E2E stability.
 
-When an order is in SUBMISSION_FAILED (or another failed submission state), the clinic order drawer must say why, in plain words, and what happens next. The reason already exists: the ops pipeline drawer reads it from `adapter_submissions.error_code` / `error_message` (latest failed submission for the order). Show in the clinic drawer a short line such as "Sending to <pharmacy> failed: <plain reason>. CompoundIQ ops has been alerted and will re-route or retry." Map known error codes to plain words; never show raw stack traces, internal ids or secrets; no em dashes. Read it with the clinic's own session (RLS) or a clinic-scoped server route; if RLS blocks adapter_submissions for clinic users, add a clinic-scoped API route that returns only {code, plainReason, pharmacyName, at}, guarded by getUser + app_metadata clinic_id. jest-axe on the drawer state. Lint, tsc, Jest, build green. Full report in the body of your final commit message.
+On #117's run 40100758270 `e2e/first-run-checklist.spec.ts:66` was flaky (failed, then passed on retry). Flakes cost us 15-20 minutes per E2E rerun and make real failures harder to see.
+
+Branch: `git fetch origin && git checkout -b e2e-flake-first-run-checklist origin/main`.
+
+1. Read the spec at :66 and the component it drives. Find why it can fail once and pass on retry (race on data load, missing await on navigation/network, timing-based waits, shared state between tests, order-dependent data). Use the check-run annotations of recent runs (`gh run list --workflow ci.yml --limit 20`, then `gh run view <id> --log-failed`) to find this and any other spec marked flaky in the last 20 E2E runs on main and PRs.
+2. Fix the root cause in the test (proper web-first assertions, waiting for the specific response or element, isolated data) or in the app if the app has a real race. Never add fixed sleeps, never raise global timeouts, never mark tests skip/fixme.
+3. Do the same for every other spec you found flaky in step 1 (list them).
+4. Run lint, tsc, Jest; run the changed specs locally if your setup allows (if a local Supabase cannot start, say so). Commit and push to origin e2e-flake-first-run-checklist (normal push, no PR). Full report in the final commit message body: each flaky spec, evidence (run ids), root cause, fix, local results, head SHA.
+
+Do not touch the production database, Vercel, Stripe or secrets.

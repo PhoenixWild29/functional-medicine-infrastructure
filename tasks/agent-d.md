@@ -1,8 +1,16 @@
-task-id: D-2026-10-24-01
+task-id: D-2026-10-24-02
 status: ready
 ---
-DESIGN ONLY, no code, no branch changes except the report. Feature: patient-facing protocol selection (from the Sep 11 2026 meeting, deferred Sep 14): the provider proposes one or more protocols for a patient; the patient chooses which to start before paying.
+Thanks for the patient protocol choice design (D-2026-10-24-01); Sam is answering the 9 questions, the build waits for that.
 
-Read the current code for protocols, payment groups (src/lib/payment-group), the patient checkout (/checkout) and intake links, and the Sep 11 transcript in docs/practitioner-feedback/. Then write a design report covering: (1) the provider flow (how they propose 2+ protocols to a patient, what is signed and when; nothing can be sent to a pharmacy before the patient chooses and pays); (2) the patient flow on the phone (no login, secure link like checkout, what they see, PHI rules: no medication names in SMS); (3) data model changes and whether a migration is needed; (4) how it fits payment groups and the existing checkout; (5) compliance (prescriber signs only what is dispensed; controlled substances stay blocked); (6) PR breakdown with test plan; (7) open questions for Sam, each with your recommended answer.
+Next: Next 16.4.3 upgrade follow-through. Main (ed64893) now runs next 16.4.3 and sharp 0.35.5 (#252). B fixed the MFA navigation regression; A is auditing client navigation after redirects (do not touch that area: router.push/replace after auth or gate changes).
 
-Push the report as `docs/design/patient-protocol-choice.md` on a new branch `design-patient-protocol-choice` from origin/main, with the summary in the commit message body. No PR.
+Branch: `git fetch origin && git checkout -b next-16-4-followthrough origin/main`.
+
+1. Read the Next 16.3 and 16.4 upgrade notes and changelogs (node_modules/next and the release notes) and list every deprecation or behaviour change that applies to this codebase: middleware vs proxy.ts naming, caching/revalidation defaults, cookies()/headers() async APIs, Image Optimization config (remotePatterns, SVG, sharp 0.35), server actions, route handler defaults, `experimental` flags in next.config, Turbopack build differences, React version requirements.
+2. Run `next build` and `next lint`/tsc and collect every warning or deprecation notice. Check the Vercel preview build log is not needed: use the local build.
+3. Fix what applies (no behaviour change unless the old behaviour is now broken). For anything risky, do not change it; describe it in the report with file:line and a recommendation.
+4. Jest stability: B saw jsdom/axe suites (signup-link, new-patient, face-sheet-fill, team-panel) hit the 5 s per-test timeout under default workers locally. Find why those suites are slow (axe on large trees, unmocked timers, real network) and make them fast; do not just raise the timeout. CI's Jest job must stay green.
+5. Run lint, tsc, Jest (default workers and --maxWorkers=3), build. Commit and push to origin next-16-4-followthrough (normal push, no PR). Full report in the final commit message body: each applicable change from step 1 with what you did, build warnings before/after, Jest timings before/after for those suites, local results, head SHA.
+
+Do not touch the production database, Vercel, Stripe or secrets.

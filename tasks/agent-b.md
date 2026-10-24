@@ -1,10 +1,13 @@
-task-id: B-2026-10-24-02
+task-id: B-2026-10-24-03
 status: ready
 ---
-Dependabot PR #117 (branch `dependabot/npm_and_yarn/npm_and_yarn-9540407142`, head 738e5e48c105ec220fc382806a666d97adc9d2d2) bumps next 16.2.6 to 16.4.3 (includes critical RCE security fixes), sharp 0.34.5 to 0.35.5, brace-expansion, fast-uri, nanoid. Lint, tsc, Jest, Build and Vercel are green. E2E (Playwright) failed: run 40100758270, job 120892644222 (14:16Z to 14:35Z). Main (1414c38) E2E was green on #251 at 13:51Z, so the failure is most likely caused by the upgrade, but it could be a flake.
+Thanks for B-2026-10-24-02 (merged as #252). Next: lint warning cleanup (Master Tracker item 20, "Batch 3 lint"). Main (ed64893) has 0 lint errors and 57 warnings.
 
-1. Read the failure: `gh run view 40100758270 --repo PhoenixWild29/functional-medicine-infrastructure --log-failed` (and `gh run download 40100758270 -n playwright-report` if an artifact exists). List every failing test with its error.
-2. `git fetch origin && git checkout -B deps-next-16-4-3 origin/dependabot/npm_and_yarn/npm_and_yarn-9540407142` (head must be 738e5e4). Then `npm ci`.
-3. Decide: if the failures are unrelated flakes (timeouts that also appear on main runs, apt hangs), say so with evidence and change nothing. Otherwise find the root cause in Next 16.3/16.4 behaviour changes (e.g. proxy.ts/middleware, redirects, cookies, server actions, image optimisation, caching defaults) or sharp 0.35, and fix it in app code or config on deps-next-16-4-3. Fix the app, not the test, unless the test asserts something the upgrade legitimately changed. Do not downgrade next below 16.4.1 (security). Do not touch the production database, Vercel, Stripe or secrets.
-4. Run lint, tsc, Jest and build locally; run the failing Playwright specs locally if your setup allows.
-5. Commit on deps-next-16-4-3 and push to origin deps-next-16-4-3 (normal push). Do not open a PR (the orchestrator will open it and close #117). Put the full report in the commit message body: each failing test, root cause, what you changed (files and lines), local results, new head SHA. If you conclude it is a flake and changed nothing, push an empty commit (`git commit --allow-empty`) with that report.
+Branch: `git fetch origin && git checkout -b lint-warnings-zero origin/main`.
+
+1. Run lint and list all 57 warnings by rule and file.
+2. Fix every warning without changing behaviour: unused vars/imports, missing hook dependencies (fix properly; if adding a dependency would change behaviour, restructure with useCallback/useRef or explain and use a scoped eslint-disable-next-line with a reason comment), `<img>` vs next/image (only where safe; otherwise a scoped disable with reason), any-types, etc. No blanket disables, no rule changes in the eslint config.
+3. Then make warnings fail CI: add `--max-warnings=0` to the lint script used by the Lint (ESLint) job, so the count cannot grow back.
+4. Run lint (0 errors, 0 warnings), tsc, Jest (--maxWorkers=3), build. Commit (several commits are fine) and push to origin lint-warnings-zero (normal push, no PR). Full report in the final commit message body: warnings by rule before, what you did for each group, every eslint-disable you added with its reason (file:line), local results, head SHA.
+
+Do not touch the production database, Vercel, Stripe or secrets.
