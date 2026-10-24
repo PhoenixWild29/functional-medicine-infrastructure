@@ -14,11 +14,13 @@
 // Auth: ops_admin only.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { Enums } from '@/types/database.types'
 import { getUserRole } from '@/lib/auth/claims'
 import { validateCatalogRows } from '@/lib/catalog/validate-csv-rows'
+import { MAX_CATALOG_ROWS } from '@/lib/pharmacy-onboarding/application'
 
 type RegulatoryStatusEnum = Enums<'regulatory_status_enum'>
 
@@ -53,6 +55,8 @@ export interface UploadResult {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) {
@@ -77,6 +81,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const rows = body['rows']
   if (!Array.isArray(rows) || rows.length === 0) {
     return NextResponse.json({ error: 'rows must be a non-empty array' }, { status: 400 })
+  }
+  // The browser checks the size too; the server cap is the one that holds.
+  if (rows.length > MAX_CATALOG_ROWS) {
+    return NextResponse.json({ error: `A catalog upload can have at most ${MAX_CATALOG_ROWS} rows.` }, { status: 400 })
   }
 
   const actorEmail = user.email

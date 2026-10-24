@@ -1,0 +1,62 @@
+/**
+ * @jest-environment node
+ *
+ * Security review follow-up (L6): one same-origin rule for writes. A
+ * browser write is accepted only when Sec-Fetch-Site is "same-origin" or
+ * "none", or the header is absent (curl, server-to-server). "same-site"
+ * (a sibling subdomain) and "cross-site" are refused with 403 before any
+ * session is read. Each route keeps the 403 wording it had.
+ */
+
+import { NextRequest } from 'next/server'
+import { refuseCrossSite, isCrossSiteWrite } from '@/lib/security/same-origin'
+
+const sessionRead = jest.fn(() => { throw new Error('the session was read before the same-origin check') })
+jest.mock('@/lib/supabase/server', () => ({ createServerClient: () => sessionRead() }))
+jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => { throw new Error('the service client was made before the same-origin check') } }))
+jest.spyOn(console, 'error').mockImplementation(() => {})
+
+const ID = '11111111-1111-4111-8111-111111111111'
+const TOKEN = 'A'.repeat(43)
+
+describe('the rule', () => {
+  const h = (v?: string) => new Headers(v === undefined ? {} : { 'sec-fetch-site': v })
+  it.each([[undefined, false], ['same-origin', false], ['none', false], ['same-site', true], ['cross-site', true], ['SAME-ORIGIN', false]])('Sec-Fetch-Site %s: refused %s', (v, refused) => {
+    expect(isCrossSiteWrite(h(v))).toBe(refused)
+  })
+
+  it('the default wording, and a route\'s own', async () => {
+    const r1 = refuseCrossSite(new Request('https://app.test/x', { method: 'POST', headers: { 'sec-fetch-site': 'same-site' } }))
+    expect(r1?.status).toBe(403)
+    expect(await r1!.json()).toEqual({ error: 'Cross-site requests are not permitted' })
+    const r2 = refuseCrossSite(new Request('https://app.test/x', { method: 'POST', headers: { 'sec-fetch-site': 'cross-site' } }), 'Forbidden')
+    expect(await r2!.json()).toEqual({ error: 'Forbidden' })
+    expect(refuseCrossSite(new Request('https://app.test/x', { method: 'POST' }))).toBeNull()
+  })
+})
+
+type Handler = (req: NextRequest, ctx: { params: Promise<Record<string, string>> }) => Promise<Response>
+const ROUTES: Array<[string, () => Promise<Handler>, Record<string, string>, string]> = [
+  ['POST /api/signup', async () => (await import('@/app/api/signup/route')).POST as unknown as Handler, {}, 'Forbidden'],
+  ['POST /api/join/[token]', async () => (await import('@/app/api/join/[token]/route')).POST as unknown as Handler, { token: TOKEN }, 'Cross-site requests are not permitted'],
+  ['POST /api/onboarding/invite/accept', async () => (await import('@/app/api/onboarding/invite/accept/route')).POST as unknown as Handler, {}, 'Cross-site requests are not permitted'],
+  ['POST /api/protocols', async () => (await import('@/app/api/protocols/route')).POST as unknown as Handler, {}, 'Cross-site requests are not permitted'],
+  ['POST /api/pharmacy/onboarding/licenses/[state]/document', async () => (await import('@/app/api/pharmacy/onboarding/licenses/[state]/document/route')).POST as unknown as Handler, { state: 'TX' }, 'Forbidden'],
+  ['POST /api/ops/onboarding', async () => (await import('@/app/api/ops/onboarding/route')).POST as unknown as Handler, {}, 'Cross-site requests are not permitted'],
+  ['POST /api/ops/onboarding/clinics/[clinicId]', async () => (await import('@/app/api/ops/onboarding/clinics/[clinicId]/route')).POST as unknown as Handler, { clinicId: ID }, 'Cross-site requests are not permitted'],
+  ['POST /api/ops/fax/[faxId]/action', async () => (await import('@/app/api/ops/fax/[faxId]/action/route')).POST as unknown as Handler, { faxId: ID }, 'Cross-site requests are not permitted'],
+  ['POST /api/ops/orders/[orderId]/action', async () => (await import('@/app/api/ops/orders/[orderId]/action/route')).POST as unknown as Handler, { orderId: ID }, 'Cross-site requests are not permitted'],
+  ['POST /api/ops/catalog/upload', async () => (await import('@/app/api/ops/catalog/upload/route')).POST as unknown as Handler, {}, 'Cross-site requests are not permitted'],
+]
+
+describe.each(ROUTES)('%s', (_name, load, params, wording) => {
+  it.each(['same-site', 'cross-site'])('Sec-Fetch-Site %s: 403 with its wording, before any session read', async site => {
+    sessionRead.mockClear()
+    const handler = await load()
+    const req = new NextRequest('https://app.test/api/x', { method: 'POST', headers: { 'sec-fetch-site': site, 'content-type': 'application/json' }, body: '{}' })
+    const res = await handler(req, { params: Promise.resolve(params) })
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: wording })
+    expect(sessionRead).not.toHaveBeenCalled()
+  })
+})

@@ -33,6 +33,7 @@ import { logPhiAccess } from '@/lib/audit/phi-access'
 import { extractFaceSheet, type FaceSheetInput, type FaceSheetMediaType, type FaceSheetResult } from '@/lib/face-sheet/extract'
 import { FACE_SHEET_NOT_SET_UP, MAX_FACE_SHEET_BYTES, faceSheetStatus } from '@/lib/face-sheet/config'
 import { FACE_SHEET_RATE_LIMITED_MESSAGE, faceSheetLimiter } from '@/lib/face-sheet/rate-limit'
+import { sniffDocumentType } from '@/lib/uploads/sniff'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -54,12 +55,7 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
   NextResponse.json(body, { status, headers: { ...NO_STORE, ...headers } })
 
 /** What the file is, from its first bytes (never the name or declared type). */
-function sniff(bytes: Uint8Array): FaceSheetMediaType | null {
-  if (bytes.length >= 5 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46 && bytes[4] === 0x2d) return 'application/pdf'
-  if (bytes.length >= 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((b, i) => bytes[i] === b)) return 'image/png'
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg'
-  return null
-}
+const sniff = (bytes: Uint8Array): FaceSheetMediaType | null => sniffDocumentType(bytes)
 
 const TOO_BIG = 'That file is over 4 MB. Choose a smaller file, or paste the text instead.'
 const WRONG_TYPE = 'Choose a PDF, PNG or JPG file.'

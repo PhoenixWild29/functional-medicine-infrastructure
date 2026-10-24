@@ -26,6 +26,7 @@
 // hash and the outcome.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServiceClient } from '@/lib/supabase/service'
 import { appMetadataFor } from '@/lib/auth/claims'
 import { readJson } from '@/lib/onboarding/access'
@@ -37,6 +38,8 @@ import { createLogin, passwordProblem, removeLogin } from '@/lib/auth/create-log
 import { isApprovedClinic } from '@/lib/onboarding/approval-guard'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const ip = clientIp(request.headers)
   const limit = inviteAcceptLimiter.check(ip ?? 'unknown')
   if (!limit.allowed) {

@@ -23,6 +23,7 @@
 // after the response so a slow pharmacy never holds the ops UI.
 
 import { NextRequest, NextResponse, after } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition }       from '@/lib/orders/cas-transition'
@@ -40,6 +41,8 @@ interface Params { params: Promise<{ orderId: string }> }
 const MAX_REROUTES = 2  // HC-06
 
 export async function POST(request: NextRequest, { params }: Params): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const { orderId } = await params
   const supabaseAuth = await createServerClient()
   // getUser() verifies the token with Supabase; a cookie session alone is not trusted.

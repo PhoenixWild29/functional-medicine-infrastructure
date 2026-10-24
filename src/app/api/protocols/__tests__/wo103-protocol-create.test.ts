@@ -38,6 +38,7 @@ function makeChain(table: string): ChainBuilder {
   const passthrough = () => builder
   builder['select'] = passthrough
   builder['eq'] = passthrough
+  builder['is'] = passthrough
   builder['insert'] = (row: unknown) => { inserts.push({ table, row }); return builder }
   builder['delete'] = () => { deletes.push(table); return builder }
   builder['maybeSingle'] = () => {
@@ -119,7 +120,8 @@ describe('POST /api/protocols — WO-103 "+ New" from session', () => {
     expect(tablesTouched).toEqual([])
   })
 
-  it('refuses a created_by outside the clinic', async () => {
+  it('refuses a created_by outside the clinic (clinic admin)', async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: 'auth-uid', app_metadata: { clinic_id: CLINIC_ID, app_role: 'clinic_admin' } } } })
     fixtures['providers:maybeSingle'] = () => ({ data: null, error: null })
     const res = await POST(makeRequest({ name: 'x', created_by: 'someone-else', items: [LINE] }))
     expect(res.status).toBe(403)
@@ -138,5 +140,47 @@ describe('POST /api/protocols — WO-103 "+ New" from session', () => {
     expect((await POST(makeRequest({ name: 'x', items: [LINE] }))).status).toBe(401)
     getUserMock.mockResolvedValueOnce({ data: { user: { user_metadata: {} } } })
     expect((await POST(makeRequest({ name: 'x', items: [LINE] }))).status).toBe(403)
+  })
+})
+
+// Security review follow-up (L13): who a protocol is attributed to.
+//   - A provider: always themself (their linked provider row), whatever
+//     created_by says; no linked row means no attribution.
+//   - A medical assistant: never a provider. created_by is not trusted
+//     (it would tick that provider's "used a protocol" checklist step);
+//     the protocol is saved with no creator.
+//   - A clinic admin: as before, any provider of the clinic.
+describe('POST /api/protocols: created_by comes from the caller', () => {
+  const as = (role: string) => getUserMock.mockResolvedValue({ data: { user: { id: 'auth-uid', app_metadata: { clinic_id: CLINIC_ID, app_role: role } } } })
+  const template = () => inserts.find(i => i.table === 'protocol_templates')?.row as Record<string, unknown> | undefined
+
+  it('a provider naming someone else: attributed to themself', async () => {
+    as('provider')
+    const res = await POST(makeRequest({ name: 'x', created_by: 'a2000000-0000-0000-0000-000000000099', items: [LINE] }))
+    expect(res.status).toBeLessThan(300)
+    expect(template()?.['created_by']).toBe(PROVIDER_ID)
+  })
+
+  it('a provider with no linked provider row: no creator', async () => {
+    as('provider')
+    fixtures['providers:maybeSingle'] = () => ({ data: null, error: null })
+    const res = await POST(makeRequest({ name: 'x', created_by: PROVIDER_ID, items: [LINE] }))
+    expect(res.status).toBeLessThan(300)
+    expect(template()?.['created_by']).toBeNull()
+  })
+
+  it('a medical assistant naming a provider: saved with no creator, the provider is never looked up', async () => {
+    as('medical_assistant')
+    const res = await POST(makeRequest({ name: 'x', created_by: PROVIDER_ID, items: [LINE] }))
+    expect(res.status).toBeLessThan(300)
+    expect(template()?.['created_by']).toBeNull()
+    expect(tablesTouched).not.toContain('providers')
+  })
+
+  it('a clinic admin naming a provider of the clinic: as before', async () => {
+    as('clinic_admin')
+    const res = await POST(makeRequest({ name: 'x', created_by: PROVIDER_ID, items: [LINE] }))
+    expect(res.status).toBeLessThan(300)
+    expect(template()?.['created_by']).toBe(PROVIDER_ID)
   })
 })
