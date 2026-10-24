@@ -1,14 +1,16 @@
-task-id: A-2026-10-24-02
+task-id: A-2026-10-24-03
 status: ready
 ---
-Main is now on Next 16.4.3 (#252, ed64893). Agent B found that in Next 16.3+ the client router reuses a redirect it already saw for a route: if a client navigation to X was redirected by middleware (or a server redirect) earlier in the same tab, a later router.push/replace(X) makes no request for X, so the middleware never sees new session state and the page does not move. B fixed MfaEnroll and MfaChallenge with `navigateFully` (src/lib/auth/full-navigation.ts, window.location.replace). B flagged the same pattern, untested, in login, accept-invite and /get-started (router.refresh() then router.push(next)).
+Thanks for A-2026-10-24-02 (opened as PR #253; E2E running).
 
-Branch: `git fetch origin && git checkout -b nav-after-redirect-audit origin/main`.
+Next: Issue Log item 72. Inbound faxes live only in Documo; the ops fax viewer points at a Supabase storage bucket `fax-pdfs` that does not exist, so ops cannot open an inbound fax.
 
-1. Find every client navigation in src/ that happens right after auth, session, approval or onboarding state changes (sign-in, sign-out, accept invite, get-started/sign-up, MFA, onboarding wizard submit, clinic approval/ordering gate, pharmacy onboarding, role switch, any `router.refresh()` followed by `router.push/replace`). For each, decide whether the destination can have been redirected earlier in the same tab by middleware or a server redirect (read src/middleware.ts or proxy.ts and every `redirect(` in server components/layouts).
-2. Where it can, switch to `navigateFully` (same-origin paths only; keep any existing destination sanitising such as postLoginDestination). Where it cannot, leave it and say why in the report.
-3. Add Playwright coverage for the riskiest case not already covered: a signed-out user opens a gated page (e.g. /practice), is sent to /login?redirectTo=..., signs in, and lands on the gated page; plus the same through /accept-invite if a fixture exists. Reuse existing E2E helpers and fixtures; do not add migrations.
-4. Update or add Jest tests for every changed component.
-5. Run lint, tsc, Jest (--maxWorkers=3), build. Commit and push to origin nav-after-redirect-audit (normal push, no PR). Full report in the final commit message body: every navigation site found (file:line), decision and reason, changes, tests, local results, head SHA.
+Branch: `git fetch origin && git checkout -b ops-fax-viewer-documo origin/main`.
 
-Do not touch the production database, Vercel, Stripe or secrets.
+1. Find the ops fax viewer (search for `fax-pdfs`, inbound fax, Documo webhook handler, ops fax pages and API routes) and the Documo client already in the repo. Write down how an inbound fax arrives today (webhook payload, what is stored in which table) and what the viewer expects.
+2. Make the viewer work without the missing bucket. Preferred: an ops-only server route that fetches the fax PDF from Documo on demand by its Documo id (using the existing Documo client and env vars; never log or return credentials), streams it with `Content-Type: application/pdf`, `Cache-Control: no-store`, and writes one phi_access_log row per view (who, which fax, no content). If the repo's design clearly intends storing PDFs in Supabase storage instead, add a migration for a private `fax-pdfs` bucket with ops-only policies plus the webhook upload; say which you chose and why. If a migration is needed, do not run it anywhere but the E2E/test setup; put the SQL in the report.
+3. Ops only (ops_admin role from app_metadata via getUser), same-origin, rate limited like other ops routes. Clinic and pharmacy users get 403. Missing or expired fax: plain message in the viewer, no stack trace.
+4. Red tests first (route auth, PHI log row, no credential leakage, viewer states), then the fix. jest-axe on the viewer. Mock Documo in tests; no real network.
+5. Run lint, tsc, Jest (--maxWorkers=3), build. Commit and push to origin ops-fax-viewer-documo (normal push, no PR). Full report in the final commit message body: how faxes flow, the option chosen, files, tests, migration (if any) with its SQL, local results, head SHA.
+
+Do not touch the production database, Vercel, Stripe, Documo or secrets.
