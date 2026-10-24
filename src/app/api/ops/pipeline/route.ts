@@ -35,7 +35,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(request.url)
   const clinicId   = searchParams.get('clinicId')   ?? ''
   const pharmacyId = searchParams.get('pharmacyId') ?? ''
-  const tier       = searchParams.get('tier')        ?? ''
   const dateFrom   = searchParams.get('dateFrom')    ?? ''
   const dateTo     = searchParams.get('dateTo')      ?? ''
   const statusParam = searchParams.get('statuses')  ?? ''

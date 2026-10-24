@@ -48,6 +48,9 @@ interface Props {
 
 // ── Component ─────────────────────────────────────────────────
 
+/** One empty list (not a new one each render), so the memos below stay stable. */
+const NO_FAXES: never[] = []
+
 export function FaxTriageQueue({ initialData }: Props) {
   const [statusFilter,  setStatusFilter]  = useState('all')
   const [selectedFax,   setSelectedFax]   = useState<FaxEntry | null>(null)
@@ -80,7 +83,7 @@ export function FaxTriageQueue({ initialData }: Props) {
   })
 
   // NB-08: data may be undefined for filtered views before first fetch
-  const faxes = data?.faxes ?? []
+  const faxes = data?.faxes ?? NO_FAXES
 
   // Update selectedFax from latest poll data
   const selectedFaxLive = useMemo(

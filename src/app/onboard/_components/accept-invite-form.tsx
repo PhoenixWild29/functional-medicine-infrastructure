@@ -14,6 +14,7 @@
 import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
+import { navigateFully, sameOriginPath } from '@/lib/auth/full-navigation'
 import { TextField, FormAlert, BUTTON_PRIMARY } from '@/components/onboarding/fields'
 import type { InviteKind, InviteStatus } from '@/lib/onboarding/tokens'
 
@@ -94,8 +95,11 @@ export function AcceptInviteForm({ token, kind, clinicName, email, status, invit
         router.push('/login?redirectTo=' + encodeURIComponent(data.next ?? '/'))
         return
       }
-      router.refresh()
-      router.push(data.next ?? '/')
+      // A full navigation, not router.refresh() + router.push(): the session
+      // changed in this page, and the destination ('/' or '/onboarding') may
+      // have been redirected to /login earlier in this tab; since Next 16.3 the
+      // client router reuses that redirect (lib/auth/full-navigation).
+      navigateFully(sameOriginPath(data.next))
     } catch {
       setFormError('Network error. Check your connection and try again.')
       setBusy(false)
