@@ -382,6 +382,7 @@ export function CheckoutPageContent({
           {/* WO-73: Order summary card — "Amount due" label + 32px amount */}
           <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
             {logoUrl && (
+              // eslint-disable-next-line @next/next/no-img-element -- the clinic logo is any URL the clinic set; next/image needs every host in images.remotePatterns, which is empty
               <img
                 src={logoUrl}
                 alt={`${clinicName} logo`}

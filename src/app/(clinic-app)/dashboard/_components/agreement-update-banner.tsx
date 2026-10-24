@@ -24,6 +24,7 @@ function readDismissed(key: string): boolean {
 export function AgreementUpdateBanner({ notice }: { notice: AgreementNotice | null }) {
   const storageKey = notice ? keyFor(notice) : ''
   const [dismissed, setDismissed] = useState(() => (notice && typeof window !== 'undefined' ? readDismissed(storageKey) : false))
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- re-reads the dismissal from localStorage after hydration and when the notice changes; the server render has no localStorage
   useEffect(() => { if (notice) setDismissed(readDismissed(storageKey)) }, [notice, storageKey])
 
   if (!notice || dismissed) return null

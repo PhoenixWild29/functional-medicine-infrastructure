@@ -111,8 +111,6 @@ interface Props {
 // ── Component ─────────────────────────────────────────────────
 
 export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions, initialOrderId = null }: Props) {
-  const supabase = createBrowserClient()
-
   const [filters,         setFilters]        = useState<Filters>(EMPTY_FILTERS)
   const [selectedGroup,   setSelectedGroup]  = useState<string | null>(null)
   const [selectedOrder,   setSelectedOrder]  = useState<PipelineOrder | null>(
@@ -205,7 +203,7 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions, in
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null)
   // BLK-02: useEffect (not useState) for side effects
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    createBrowserClient().auth.getUser().then(({ data }) => {
       setCurrentUserEmail(data.user?.email ?? null)
     })
   }, [])
@@ -276,7 +274,8 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions, in
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
   }

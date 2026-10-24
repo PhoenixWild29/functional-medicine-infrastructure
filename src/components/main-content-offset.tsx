@@ -20,6 +20,7 @@ export function MainContentOffset({ children }: { children: React.ReactNode }) {
     // Restore persisted collapse state on mount
     try {
       const saved = localStorage.getItem('sidebar-collapsed')
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restores the saved sidebar state from localStorage after hydration; the server renders the expanded default
       if (saved === 'true') setCollapsed(true)
     } catch { /* localStorage not available */ }
 
