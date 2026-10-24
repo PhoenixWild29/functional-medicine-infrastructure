@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js'
 import { generateCheckoutToken } from '../src/lib/auth/checkout-token'
 
 async function main() {

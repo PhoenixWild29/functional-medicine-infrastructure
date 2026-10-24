@@ -64,6 +64,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
   useEffect(() => {
     try {
       const saved = localStorage.getItem('sidebar-collapsed')
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restores the saved sidebar state from localStorage after hydration; the server renders the expanded default
       if (saved === 'true') setIsCollapsed(true)
     } catch {
       // localStorage not available (SSR)
@@ -96,12 +97,17 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
   }
 
   // ── Nav item ───────────────────────────────────────
+  //
+  // Render functions, not components defined inside SidebarNav: a component
+  // declared here would be a new type on every render, so React would
+  // remount the whole sidebar each time (losing focus and child state).
 
-  function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
+  function renderNavLink(item: NavItem, collapsed: boolean) {
     const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
     const Icon = item.icon
     return (
       <Link
+        key={item.href}
         href={item.href}
         // 2026-09 prod silent-logout fix — DO NOT REMOVE.
         //
@@ -150,7 +156,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
 
   // ── Sidebar content ──────────────────────────────────
 
-  function SidebarContent({ collapsed }: { collapsed: boolean }) {
+  function renderSidebarContent(collapsed: boolean) {
     return (
       <div className="flex h-full flex-col">
         {/* Logo */}
@@ -184,9 +190,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
 
         {/* Nav items */}
         <nav className="flex-1 overflow-y-auto p-2 space-y-0.5" aria-label="Main navigation">
-          {navItems.map(item => (
-            <NavLink key={item.href} item={item} collapsed={collapsed} />
-          ))}
+          {navItems.map(item => renderNavLink(item, collapsed))}
         </nav>
 
         {/* User footer */}
@@ -268,10 +272,10 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
         {/* On xl: show full or collapsed based on state.
             On md–lg: always show icon-rail (collapsed=true) */}
         <div className="hidden xl:flex flex-col h-full">
-          <SidebarContent collapsed={isCollapsed} />
+          {renderSidebarContent(isCollapsed)}
         </div>
         <div className="flex xl:hidden flex-col h-full">
-          <SidebarContent collapsed={true} />
+          {renderSidebarContent(true)}
         </div>
       </aside>
 
@@ -319,7 +323,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
                   <X className="h-4 w-4" />
                 </button>
               </div>
-              <SidebarContent collapsed={false} />
+              {renderSidebarContent(false)}
             </aside>
           </>
         )}

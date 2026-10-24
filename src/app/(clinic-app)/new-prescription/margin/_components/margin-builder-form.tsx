@@ -83,7 +83,7 @@ import { DerivedDispense, EMPTY_OVERRIDE, resolveDispense, type DispenseOverride
 import { SaveFavoriteButton } from '../../_components/save-favorite-button'
 import { formatDoseWithMg } from '@/lib/orders/dose-display'
 import { presetDurationFromDays } from '@/lib/orders/favorite-presets'
-import { dosingDaysIn, type CyclePattern } from '@/lib/orders/cycling'
+import { type CyclePattern } from '@/lib/orders/cycling'
 import { computeBundleShipping, type PharmacyShippingRates, platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
 
 // ── Cent arithmetic helpers — HC-01 ──────────────────────────

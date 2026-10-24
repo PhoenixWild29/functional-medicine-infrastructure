@@ -25,10 +25,7 @@ import { useQuery, useQueryClient }       from '@tanstack/react-query'
 import { useDropzone }                    from 'react-dropzone'
 import Papa                               from 'papaparse'
 import { MAX_REQUEST_BYTES, jsonBodyTooLarge } from '@/lib/uploads/limits'
-import type {
-  CatalogResponse, CatalogItem, CatalogUploadVersion,
-  NormalizedEntry, PharmacySyncStatus,
-} from '@/app/api/ops/catalog/route'
+import type { CatalogResponse, CatalogUploadVersion } from '@/app/api/ops/catalog/route'
 import type { UploadResult, PriceDiscrepancy } from '@/app/api/ops/catalog/upload/route'
 
 // ── Tab types ─────────────────────────────────────────────────

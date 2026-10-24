@@ -43,7 +43,7 @@ function event(partial: Partial<ErrorEvent>): ErrorEvent {
 
 describe('phiBeforeSend', () => {
   it('strips patient fields from extra by key', () => {
-    const out = phiBeforeSend(event({ extra: { patient: PATIENT, orderId: 'o-1' } }), {})
+    const out = phiBeforeSend(event({ extra: { patient: PATIENT, orderId: 'o-1' } }))
     expectNoPhi(out)
     expect(JSON.stringify(out)).toContain('o-1')
     expect(JSON.stringify(out)).toContain('pt-123') // ids survive
@@ -53,7 +53,7 @@ describe('phiBeforeSend', () => {
     const out = phiBeforeSend(event({
       contexts: { order: { ...PATIENT } } as never,
       tags: { patient_name: 'Janet Quixley', email: 'janet.q@example.com' },
-    }), {})
+    }))
     expectNoPhi(out)
   })
 
@@ -61,7 +61,7 @@ describe('phiBeforeSend', () => {
     const out = phiBeforeSend(event({
       exception: { values: [{ type: 'Error', value: 'boom', stacktrace: { frames: [{ vars: { patient: PATIENT, full_name: 'Janet Quixley' } }] } }] },
       breadcrumbs: [{ category: 'console', message: 'x', data: { arguments: [PATIENT] } }],
-    }), {})
+    }))
     expectNoPhi(out)
   })
 
@@ -69,14 +69,14 @@ describe('phiBeforeSend', () => {
     const out = phiBeforeSend(event({
       message: 'send failed to janet.q@example.com / (512) 555-0142',
       exception: { values: [{ type: 'Error', value: 'sms to (512) 555-0142 failed' }] },
-    }), {})
+    }))
     expectNoPhi(out)
   })
 
   it('never sends request bodies or cookies', () => {
     const out = phiBeforeSend(event({
       request: { url: 'https://app.test/api/patients?email=janet.q@example.com', data: JSON.stringify(PATIENT), cookies: { sb: 'session' } },
-    }), {})
+    }))
     expect(out!.request!.data).toBeUndefined()
     expect(out!.request!.cookies).toBeUndefined()
     expectNoPhi(out)
@@ -85,7 +85,7 @@ describe('phiBeforeSend', () => {
   it('keeps only id, clinic and role on the user', () => {
     const out = phiBeforeSend(event({
       user: { id: 'u-1', email: 'janet.q@example.com', username: 'Janet Quixley', ip_address: '1.2.3.4' },
-    }), {})
+    }))
     expect(out!.user).toEqual({ id: 'u-1' })
   })
 })

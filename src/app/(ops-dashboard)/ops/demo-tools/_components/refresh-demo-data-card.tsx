@@ -279,6 +279,7 @@ function LastRefreshLine({ status }: { status: DemoDataStatus | null }) {
     )
   }
 
+  // eslint-disable-next-line react-hooks/purity -- the age is relative to this render on purpose: each re-render (a new status, a refresh) shows the current age
   const ageMs      = Date.now() - new Date(status.last_refresh_at).getTime()
   const ageMin     = Math.round(ageMs / 60_000)
   const ageLabel   = ageMin < 1 ? 'just now' : ageMin === 1 ? '1 min ago' : `${ageMin} min ago`

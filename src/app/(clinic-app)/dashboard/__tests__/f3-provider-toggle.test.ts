@@ -106,7 +106,7 @@ const getUserMock = jest.fn()
 const createServerClientMock = jest.fn()
 
 jest.mock('next/navigation', () => ({
-  redirect: (_url: string) => { throw new Error('REDIRECT') },
+  redirect: () => { throw new Error('REDIRECT') },
 }))
 
 jest.mock('@/lib/supabase/server', () => ({

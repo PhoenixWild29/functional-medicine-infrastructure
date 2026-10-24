@@ -44,7 +44,6 @@ import SignatureCanvas from 'react-signature-canvas'
 // with the draft-sign canvas during the next cowork walkthrough.
 // REMOVE THIS INSTRUMENTATION once F5 is root-caused.
 function logSignatureEvent(component: 'draft-sign-form' | 'batch-review-form', event: 'onBegin' | 'onEnd') {
-  // eslint-disable-next-line no-console
   console.log(`[F5-diag] ${component} ${event} fired`)
   Sentry.addBreadcrumb({
     category: 'signature',
