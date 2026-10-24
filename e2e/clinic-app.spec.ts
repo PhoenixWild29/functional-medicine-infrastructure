@@ -2164,7 +2164,7 @@ test.describe('Clinic App — WO-102: shipping once per pharmacy per order', () 
 
     await expect(page.getByTestId('multi-pharmacy-message')).toHaveText(
       '2 pharmacies → 2 shipping charges ($34.00). Routing all to Test Pharmacy Tier4 would save $9.00 on shipping, ' +
-      `but medication prices would rise $20.00 (${TEST_CATALOG.formulationName} $200.00 → $220.00) — $11.00 more overall, so it is not suggested.`,
+      `but medication prices would rise $20.00 (${TEST_CATALOG.formulationName} $200.00 → $220.00): $11.00 more overall, so it is not suggested.`,
       { timeout: 15_000 },
     )
     await expect(page.getByRole('button', { name: /Route all to/ })).toHaveCount(0)
