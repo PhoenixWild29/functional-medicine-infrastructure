@@ -35,6 +35,8 @@ jest.mock('@/lib/proposals/plan', () => ({
   declinePlan: (...a: unknown[]) => declinePlan(...a),
 }))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => ({}) }))
+const notifyClinicOfChoice = jest.fn()
+jest.mock('@/lib/proposals/queue', () => ({ notifyClinicOfChoice: (...a: unknown[]) => notifyClinicOfChoice(...a) }))
 jest.spyOn(console, 'error').mockImplementation(() => {})
 
 import { GET, POST } from '../route'
@@ -118,11 +120,12 @@ describe('POST quote, choose, decline (each re-checks the date of birth)', () =>
     expect(verifyPlanDob).toHaveBeenCalled()
   })
 
-  it('choose: ok and the plan as it now stands', async () => {
+  it('choose: ok and the plan as it now stands; the clinic is notified (PR 4 queue)', async () => {
     const res = await post({ action: 'choose', dob: '1985-04-15', optionId: 'o-a', orderIds: ['x'] })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ ok: true, rechosen: false, plan: PLAN })
     expect(choosePlan).toHaveBeenCalledWith(expect.anything(), PROPOSAL, { optionId: 'o-a', orderIds: ['x'] }, expect.any(Date))
+    expect(notifyClinicOfChoice).toHaveBeenCalledWith(expect.anything(), { proposalId: 'p-1' })
   })
 
   it('choose refused by the rules: its status and message', async () => {
@@ -130,6 +133,7 @@ describe('POST quote, choose, decline (each re-checks the date of birth)', () =>
     const res = await post({ action: 'choose', dob: '1985-04-15', optionId: 'o-a', orderIds: [] })
     expect(res.status).toBe(400)
     expect(await res.json()).toEqual({ error: 'Items your provider marked as essential must stay in the plan.', code: 'required' })
+    expect(notifyClinicOfChoice).not.toHaveBeenCalled()
   })
 
   it('decline', async () => {

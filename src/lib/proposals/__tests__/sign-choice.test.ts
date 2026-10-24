@@ -150,7 +150,10 @@ describe('signing the choice', () => {
   it('the proposal is signed, its link dies, and signed is recorded with the count', async () => {
     const db = chosenWorld()
     await sign(db)
-    expect(proposal(db)).toMatchObject({ status: 'signed', signed_at: NOW.toISOString(), token_hash: null })
+    // PR 5: the hash is kept, so the plan link shows "Your provider has approved
+    // your plan" (PR 3 looks the proposal up by it); the signed status alone
+    // closes the plan.
+    expect(proposal(db)).toMatchObject({ status: 'signed', signed_at: NOW.toISOString(), token_hash: hashProposalToken(TOKEN) })
     expect(events(db)).toEqual(['signed'])
     expect(db.tables['treatment_proposal_events']![0]).toMatchObject({ actor: 'provider', actor_user_id: USER_CHEN, option_id: OPT_A, item_count: 2 })
   })
