@@ -87,10 +87,13 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
 
   // Rules can arrive after mount (lines resolved from /api/formulations
   // level=rx_defaults) — open the row once we learn confirmation is needed.
+  // Adjusted while rendering (not in an effect) when the answer changes.
   const needsConfirmation = rxDetailsNeedConfirmation(rules)
-  useEffect(() => {
+  const [sawConfirmation, setSawConfirmation] = useState(needsConfirmation)
+  if (sawConfirmation !== needsConfirmation) {
+    setSawConfirmation(needsConfirmation)
     if (needsConfirmation) setOpen(true)
-  }, [needsConfirmation])
+  }
 
   // Focus the first rule-required empty field when the row opens for it.
   useEffect(() => {

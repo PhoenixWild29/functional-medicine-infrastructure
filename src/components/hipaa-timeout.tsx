@@ -36,7 +36,6 @@ export function HipaaTimeout({ timeoutMinutes = DEFAULT_IDLE_TIMEOUT_MINUTES }: 
   const warningTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const timeoutTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const countdownRef     = useRef<ReturnType<typeof setInterval> | null>(null)
-  const lastActivityRef  = useRef<number>(Date.now())
   // BLK-07: ref mirrors showWarning so onActivity closure reads current value
   // without needing to be recreated (useEffect has [] dep array by design).
   const showWarningRef   = useRef(false)
@@ -49,15 +48,12 @@ export function HipaaTimeout({ timeoutMinutes = DEFAULT_IDLE_TIMEOUT_MINUTES }: 
   }, [supabase])
 
   // ── Reset all timers ──────────────────────────────────────────
-  const resetTimers = useCallback(() => {
+  // Restarts the warning and sign-out timers. Timers only: no state is set
+  // here, so the mount effect can call it.
+  const armTimers = useCallback(() => {
     if (warningTimerRef.current)  clearTimeout(warningTimerRef.current)
     if (timeoutTimerRef.current)  clearTimeout(timeoutTimerRef.current)
     if (countdownRef.current)     clearInterval(countdownRef.current)
-
-    setShowWarning(false)
-    showWarningRef.current = false  // BLK-07: sync ref when resetting
-    setCountdown(LEAD_SECONDS)
-    lastActivityRef.current = Date.now()
 
     warningTimerRef.current = setTimeout(() => {
       setShowWarning(true)
@@ -81,9 +77,19 @@ export function HipaaTimeout({ timeoutMinutes = DEFAULT_IDLE_TIMEOUT_MINUTES }: 
     }, TIMEOUT_MS)
   }, [forceSignOut, WARNING_MS, TIMEOUT_MS, LEAD_SECONDS])
 
+  // Activity or "Stay active": the warning closes and the timers restart.
+  const resetTimers = useCallback(() => {
+    setShowWarning(false)
+    showWarningRef.current = false  // BLK-07: sync ref when resetting
+    setCountdown(LEAD_SECONDS)
+    armTimers()
+  }, [armTimers, LEAD_SECONDS])
+
   // ── Activity listener ─────────────────────────────────────────
   useEffect(() => {
-    resetTimers()
+    // On mount the warning is closed and the countdown is full already:
+    // only the timers start.
+    armTimers()
 
     function onActivity() {
       // BLK-07: read from ref — the closure captures the initial value of

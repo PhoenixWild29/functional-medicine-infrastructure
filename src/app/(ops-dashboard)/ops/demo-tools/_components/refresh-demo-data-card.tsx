@@ -54,6 +54,18 @@ interface DemoDataStatus {
   poc_mode:        boolean
 }
 
+// The last refresh time and POC_MODE. Null when it cannot be read
+// (non-fatal: the status line keeps showing "checking").
+async function readDemoDataStatus(): Promise<DemoDataStatus | null> {
+  try {
+    const res = await fetch('/api/admin/refresh-demo-data', { method: 'GET' })
+    if (!res.ok) return null
+    return (await res.json()) as DemoDataStatus
+  } catch {
+    return null
+  }
+}
+
 export function RefreshDemoDataCard() {
   const [busy, setBusy]     = useState(false)
   const [report, setReport] = useState<DemoDataRefreshReport | null>(null)
@@ -68,14 +80,10 @@ export function RefreshDemoDataCard() {
   // glance. Previously the only signal was clicking the button
   // and hoping — silent skips (e.g., POC_MODE unset) went
   // unnoticed until the Ops dashboard rendered Idle cards.
-  async function fetchStatus() {
-    try {
-      const res = await fetch('/api/admin/refresh-demo-data', { method: 'GET' })
-      if (!res.ok) return
-      setStatus((await res.json()) as DemoDataStatus)
-    } catch {
-      // Non-fatal: the status line just shows "unknown"
-    }
+  function fetchStatus() {
+    return readDemoDataStatus().then(next => {
+      if (next) setStatus(next)
+    })
   }
 
   useEffect(() => {
