@@ -300,3 +300,29 @@ describe('reviewed details from a face sheet', () => {
     expect(JSON.stringify([...log.mock.calls, ...err.mock.calls])).not.toMatch(/Jane|Smith|1985|Penicillin|Austin|example|Levothyroxine/i)
   })
 })
+
+// Security review follow-up (L11): the 409 shows existing patients' name,
+// date of birth and mobile last 4, so each one shown is a PHI view.
+describe('duplicate check: the patients it shows are logged', () => {
+  it('one phi_access_log view row per candidate, on the 409', async () => {
+    const { logPhiAccessMany } = jest.requireMock('@/lib/audit/phi-access') as { logPhiAccessMany: jest.Mock }
+    logPhiAccessMany.mockClear()
+    happyDb([
+      { patient_id: 'p-1', first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', phone_e164: '+15125550123', intake_status: 'complete' },
+      { patient_id: 'p-2', first_name: 'Janet', last_name: 'Smith', date_of_birth: '1990-01-01', phone_e164: '+15125550999', intake_status: 'pending' },
+    ])
+    const res = await POST(req({ phone: '(512) 555-0123', firstName: 'Janet', lastName: 'Smith' }))
+    expect(res.status).toBe(409)
+    expect(logPhiAccessMany).toHaveBeenCalledTimes(1)
+    const [entry, ids] = logPhiAccessMany.mock.calls[0]!
+    expect(entry).toMatchObject({ action: 'view', resource: 'patient', route: '/api/patients' })
+    expect(ids).toEqual(['p-1', 'p-2'])
+  })
+
+  it('no match: nothing logged as a view', async () => {
+    const { logPhiAccessMany } = jest.requireMock('@/lib/audit/phi-access') as { logPhiAccessMany: jest.Mock }
+    logPhiAccessMany.mockClear()
+    await POST(req({ phone: '(512) 555-0123' }))
+    expect(logPhiAccessMany).not.toHaveBeenCalled()
+  })
+})
