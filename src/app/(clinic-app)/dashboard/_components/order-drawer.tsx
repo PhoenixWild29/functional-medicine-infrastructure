@@ -225,8 +225,10 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
     return () => { cancelled = true }
   }, [order?.orderId, order?.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const historyOrderId = order?.orderId
+  const historyOrderStatus = order?.status
   useEffect(() => {
-    if (!order) {
+    if (!historyOrderId || !historyOrderStatus) {
       setHistory([])
       setPaymentFailed(null)
       return
@@ -237,7 +239,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
     supabaseRef.current
       .from('order_status_history')
       .select('old_status, new_status, changed_by, created_at, metadata')
-      .eq('order_id', order.orderId)
+      .eq('order_id', historyOrderId)
       .order('created_at', { ascending: true })
       .then(({ data }) => {
         // Refund bookkeeping rows (a refund Stripe is still processing, a
@@ -248,20 +250,20 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
         // attempt, a refund, a dispute status) are skipped the same way,
         // after the failed-payment label is read from the newest row.
         const all = (data ?? []) as StatusHistoryRow[]
-        setPaymentFailed(paymentFailedLabel(order.status, all))
+        setPaymentFailed(paymentFailedLabel(historyOrderStatus, all))
         const rows = all.filter(r => !isRefundEventRow(r.metadata) && !isPaymentEventRow(r.metadata))
         setHistory(rows)
         setIsLoadingHistory(false)
         setActors({})
         if (!rows.some(r => r.changed_by)) return
-        fetch(`/api/orders/${order.orderId}/timeline-actors`)
+        fetch(`/api/orders/${historyOrderId}/timeline-actors`)
           .then(res => (res.ok ? res.json() : null))
           .then((json: { actors?: Record<string, TimelineActor> } | null) => {
             if (json?.actors) setActors(json.actors)
           })
           .catch(() => { /* non-fatal: ids stay visible */ })
       })
-  }, [order?.orderId, order?.status])
+  }, [historyOrderId, historyOrderStatus])
 
   // Load the order's stored shipping + Rx details whenever the drawer opens
   // on an order. Non-fatal: the split and details fall back to what the

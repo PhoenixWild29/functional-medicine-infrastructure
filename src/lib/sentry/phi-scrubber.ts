@@ -1,4 +1,4 @@
-import type { Breadcrumb, ErrorEvent, EventHint } from '@sentry/nextjs'
+import type { Breadcrumb, ErrorEvent } from '@sentry/nextjs'
 
 // PHI scrubbing patterns for Sentry beforeSend hook.
 //
@@ -143,7 +143,7 @@ export function phiBeforeBreadcrumb(crumb: Breadcrumb): Breadcrumb | null {
   return out
 }
 
-export function phiBeforeSend(event: ErrorEvent, _hint: EventHint): ErrorEvent | null {
+export function phiBeforeSend(event: ErrorEvent): ErrorEvent | null {
   // Scrub breadcrumbs (the same rules as beforeBreadcrumb, in case one was
   // recorded before the hook was installed).
   // NOTE: Event.breadcrumbs is Breadcrumb[] (a plain array in v8+),

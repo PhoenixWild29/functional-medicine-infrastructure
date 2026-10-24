@@ -347,6 +347,7 @@ export function PrescriptionSessionProvider({ children }: { children: ReactNode 
         // rather than trust the shape, so old sessions keep working.
         const parsed = JSON.parse(saved) as Partial<PrescriptionSessionState>
         if (parsed.patient && parsed.provider) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect -- restores the session from sessionStorage after mount (no storage on the server); children rely on this order, see isRestored
           setState({
             patient:       parsed.patient,
             provider:      parsed.provider,

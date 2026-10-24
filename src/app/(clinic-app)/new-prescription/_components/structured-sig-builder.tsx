@@ -343,9 +343,14 @@ export function StructuredSigBuilder({
   useEffect(() => {
     onCycleChange?.(cyclePattern ? { ...cyclePattern, lengthDays: cycleDays } : null)
   }, [cyclePattern, cycleDays, onCycleChange])
-  useEffect(() => {
+  // A pattern was entered: the "pattern required" note is answered. Done
+  // while rendering, when the pattern changes (React's pattern for
+  // adjusting state to an input), instead of in an effect.
+  const [lastCyclePattern, setLastCyclePattern] = useState(cyclePattern)
+  if (cyclePattern !== lastCyclePattern) {
+    setLastCyclePattern(cyclePattern)
     if (cyclePattern) setPatternRequired(false)
-  }, [cyclePattern])
+  }
   useEffect(() => {
     onDurationDaysChange?.(durationDays)
   }, [durationDays, onDurationDaysChange])

@@ -16,14 +16,14 @@
 //
 // Response: { url: string }  — redirect the browser to this URL.
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createStripeClient } from '@/lib/stripe/client'
 import { serverEnv } from '@/lib/env'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
-export async function POST(_request: NextRequest): Promise<NextResponse> {
+export async function POST(): Promise<NextResponse> {
   // Auth gate. getUser() verifies the JWT with the auth server;
   // getSession() only decodes the cookie, so clinic_id would be forgeable.
   const supabaseAuth = await createServerClient()

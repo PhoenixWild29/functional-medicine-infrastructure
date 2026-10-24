@@ -107,7 +107,6 @@ type UpdateCall = {
 }
 
 let updateCalls: UpdateCall[] = []
-let lastFromTable: string | null = null
 
 const getSessionMock = jest.fn()
 
@@ -124,8 +123,7 @@ jest.mock('@/lib/supabase/server', () => ({
 }))
 
 // Fixtures returned by the terminal .maybeSingle() / .single() calls.
-// Each is set per-test; the proxy below picks them up by current
-// "lastFromTable" state.
+// Each is set per-test; the proxy below picks them up by table.
 const fixtures: Record<string, () => unknown> = {}
 
 function makeChain(table: string): ChainBuilder {
@@ -188,7 +186,6 @@ function makeChain(table: string): ChainBuilder {
 jest.mock('@/lib/supabase/service', () => ({
   createServiceClient: jest.fn().mockReturnValue({
     from: (table: string) => {
-      lastFromTable = table
       return makeChain(table)
     },
   }),
@@ -271,7 +268,6 @@ function installHappyFixtures() {
 
 beforeEach(() => {
   updateCalls = []
-  lastFromTable = null
   Object.keys(fixtures).forEach((k) => delete fixtures[k])
 
   getSessionMock.mockResolvedValue({

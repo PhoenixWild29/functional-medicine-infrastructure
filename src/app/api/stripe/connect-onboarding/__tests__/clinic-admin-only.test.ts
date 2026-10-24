@@ -9,7 +9,6 @@
  * Stripe is mocked; nothing here reaches a real account.
  */
 
-import type { NextRequest } from 'next/server'
 import { POST } from '../route'
 
 const getUserMock         = jest.fn()
@@ -52,7 +51,7 @@ const user = (app_role: string) => ({
   error: null,
 })
 
-const post = () => POST({} as NextRequest)
+const post = () => POST()
 
 const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
 const infoSpy  = jest.spyOn(console, 'info').mockImplementation(() => {})
