@@ -16,6 +16,7 @@
 
 import { render, screen, fireEvent, act, within } from '@testing-library/react'
 import { configureAxe } from 'jest-axe'
+import QRCode from 'qrcode'
 
 let user: unknown = null
 jest.mock('@/lib/supabase/server', () => ({
@@ -109,9 +110,28 @@ describe('the panel', () => {
     expect(screen.getByLabelText('Sign-up link')).toHaveValue(URL_1)
     const qr = screen.getAllByRole('img', { name: 'QR code for the patient sign-up link' })[0]!
     expect(qr.tagName.toLowerCase()).toBe('svg')
-    expect(qr.querySelectorAll('rect').length).toBeGreaterThan(50)
+    // The dark modules are one path, not one rect each: a 33x33 code was
+    // about 570 rects per copy (two copies with the print sheet), so every
+    // query and axe pass walked over a thousand nodes.
+    expect(qr.querySelectorAll('*').length).toBe(2)
     expect(screen.getByText(/Used 4 times/)).toBeInTheDocument()
     expect(await violations()).toEqual([])
+  })
+
+  it('the QR path draws exactly the dark modules of the encoded link, inside the quiet zone', () => {
+    render(<main><SignupLinkPanel clinicName="Sunrise Wellness" initial={LINK} canManage /></main>)
+    const qr = screen.getAllByRole('img', { name: 'QR code for the patient sign-up link' })[0]!
+    const d = qr.querySelector('path')!.getAttribute('d')!
+    const drawn = new Set<string>()
+    for (const [, x, y, w] of d.matchAll(/M(\d+) (\d+)h(\d+)v1h-\d+z/g)) {
+      for (let i = 0; i < Number(w); i++) drawn.add(`${Number(x) + i - 4},${Number(y) - 4}`)
+    }
+    const { modules } = QRCode.create(URL_1, { errorCorrectionLevel: 'M' })
+    const dark = new Set<string>()
+    for (let r = 0; r < modules.size; r++) for (let c = 0; c < modules.size; c++) if (modules.get(r, c)) dark.add(`${c},${r}`)
+    expect(dark.size).toBeGreaterThan(50)
+    expect([...drawn].sort()).toEqual([...dark].sort())
+    expect(qr.getAttribute('viewBox')).toBe(`0 0 ${modules.size + 8} ${modules.size + 8}`)
   })
 
   it('Copy puts the link on the clipboard and says so', async () => {
