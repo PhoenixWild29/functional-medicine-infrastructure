@@ -27,7 +27,7 @@ export default async function OpsOnboardingPage() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 space-y-6">
+    <div className="mx-auto max-w-7xl px-4 py-8 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Clinic onboarding</h1>
         <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
@@ -41,6 +41,6 @@ export default async function OpsOnboardingPage() {
           Onboarding could not be loaded. Refresh to try again.
         </div>
       )}
-    </main>
+    </div>
   )
 }

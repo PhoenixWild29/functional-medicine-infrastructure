@@ -23,9 +23,10 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
     <>
       <HipaaTimeout timeoutMinutes={serverEnv.idleTimeoutMinutes()} />
       <OpsNav badges={badges} />
-      <div className="mx-auto max-w-screen-2xl px-4 py-6">
+      {/* The ops pages' one <main> landmark (Issue Log 94). */}
+      <main className="mx-auto max-w-screen-2xl px-4 py-6">
         {children}
-      </div>
+      </main>
     </>
   )
 }
