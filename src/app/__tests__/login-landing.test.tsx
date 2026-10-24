@@ -18,6 +18,15 @@ jest.mock('next/navigation', () => ({
   useSearchParams: () => searchParams,
 }))
 
+// After sign-in the page navigates fully (lib/auth/full-navigation): the
+// destination may have been redirected to /login earlier in this tab, and
+// since Next 16.3 the client router reuses that redirect.
+const navigateFullyMock = jest.fn()
+jest.mock('@/lib/auth/full-navigation', () => ({
+  ...jest.requireActual('@/lib/auth/full-navigation'),
+  navigateFully: (path: string) => navigateFullyMock(path),
+}))
+
 jest.mock('@/lib/supabase/client', () => ({
   createBrowserClient: () => ({ auth: { signInWithPassword: signInMock } }),
 }))
@@ -43,44 +52,53 @@ beforeEach(() => {
   refreshMock.mockClear()
   signInMock.mockReset()
   searchParams = new URLSearchParams()
+  navigateFullyMock.mockClear()
 })
 
 describe('login post-sign-in redirect', () => {
   it('lands the clinic admin on the Practice dashboard', async () => {
     signInReturns('clinic_admin')
     await submitLogin()
-    expect(pushMock).toHaveBeenCalledWith('/practice')
+    expect(navigateFullyMock).toHaveBeenCalledWith('/practice')
   })
 
   it('lands a provider on /dashboard', async () => {
     signInReturns('provider')
     await submitLogin()
-    expect(pushMock).toHaveBeenCalledWith('/dashboard')
+    expect(navigateFullyMock).toHaveBeenCalledWith('/dashboard')
   })
 
   it('lands a medical assistant on /dashboard', async () => {
     signInReturns('medical_assistant')
     await submitLogin()
-    expect(pushMock).toHaveBeenCalledWith('/dashboard')
+    expect(navigateFullyMock).toHaveBeenCalledWith('/dashboard')
   })
 
   it('lands ops on the pipeline', async () => {
     signInReturns('ops_admin')
     await submitLogin()
-    expect(pushMock).toHaveBeenCalledWith('/ops/pipeline')
+    expect(navigateFullyMock).toHaveBeenCalledWith('/ops/pipeline')
   })
 
   it('honours ?redirectTo over the admin default', async () => {
     searchParams = new URLSearchParams('redirectTo=/dashboard')
     signInReturns('clinic_admin')
     await submitLogin()
-    expect(pushMock).toHaveBeenCalledWith('/dashboard')
+    expect(navigateFullyMock).toHaveBeenCalledWith('/dashboard')
   })
 
   it('ignores a protocol-relative ?redirectTo and uses the admin default', async () => {
     searchParams = new URLSearchParams('redirectTo=//evil.example.com')
     signInReturns('clinic_admin')
     await submitLogin()
-    expect(pushMock).toHaveBeenCalledWith('/practice')
+    expect(navigateFullyMock).toHaveBeenCalledWith('/practice')
   })
+})
+
+it('a full navigation, never the client router: a destination redirected to /login before sign-in would otherwise be reused', async () => {
+  searchParams = new URLSearchParams('redirectTo=%2Fpractice')
+  signInReturns('clinic_admin')
+  await submitLogin()
+  expect(navigateFullyMock).toHaveBeenCalledWith('/practice')
+  expect(pushMock).not.toHaveBeenCalled()
 })

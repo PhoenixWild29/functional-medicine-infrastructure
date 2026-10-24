@@ -17,6 +17,11 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock, refresh: refreshMock, replace: jest.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }))
+const navigateFullyMock = jest.fn()
+jest.mock('@/lib/auth/full-navigation', () => ({
+  ...jest.requireActual('@/lib/auth/full-navigation'),
+  navigateFully: (path: string) => navigateFullyMock(path),
+}))
 const signInMock = jest.fn()
 jest.mock('@/lib/supabase/client', () => ({ createBrowserClient: () => ({ auth: { signInWithPassword: signInMock } }) }))
 
@@ -28,7 +33,7 @@ const fetchMock = jest.fn()
 const reply = (status: number, body: unknown) => ({ ok: status < 400, status, json: async () => body })
 
 beforeEach(() => {
-  pushMock.mockClear(); refreshMock.mockClear()
+  pushMock.mockClear(); refreshMock.mockClear(); navigateFullyMock.mockClear()
   signInMock.mockReset().mockResolvedValue({ data: {}, error: null })
   fetchMock.mockReset().mockResolvedValue(reply(201, { email: 'dana@example.test', next: '/dashboard' }))
   global.fetch = fetchMock as unknown as typeof fetch
@@ -95,7 +100,7 @@ describe('a solo provider', () => {
       licenses: [{ state: 'TX', licenseNumber: 'TX-MD-1234', expiresOn: '2099-06-30' }, { state: 'OK', licenseNumber: 'OK-5678', expiresOn: '2099-01-31' }],
     })
     expect(signInMock).toHaveBeenCalledWith({ email: 'dana@example.test', password: 'a long passphrase 42' })
-    expect(pushMock).toHaveBeenCalledWith('/dashboard')
+    expect(navigateFullyMock).toHaveBeenCalledWith('/dashboard')
   })
 
   it("the server's field errors show on their fields (a license's expiry)", async () => {
@@ -125,7 +130,7 @@ describe('a clinic and a pharmacy', () => {
     type('Clinic or practice name', 'Sunrise Functional Medicine')
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create account' })) })
     expect(JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body)).toEqual(expect.objectContaining({ kind: 'clinic', organizationName: 'Sunrise Functional Medicine' }))
-    expect(pushMock).toHaveBeenCalledWith('/onboarding')
+    expect(navigateFullyMock).toHaveBeenCalledWith('/onboarding')
   })
 
   it('a pharmacy: says two-step verification is set up at first sign-in; goes to the pharmacy wizard', async () => {
@@ -137,7 +142,7 @@ describe('a clinic and a pharmacy', () => {
     type('Pharmacy name', 'Strive Compounding')
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create account' })) })
     expect(JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body)).toEqual(expect.objectContaining({ kind: 'pharmacy', organizationName: 'Strive Compounding' }))
-    expect(pushMock).toHaveBeenCalledWith('/pharmacy/onboarding')
+    expect(navigateFullyMock).toHaveBeenCalledWith('/pharmacy/onboarding')
   })
 })
 
