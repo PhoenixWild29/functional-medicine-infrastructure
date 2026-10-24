@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
+import { navigateFully } from '@/lib/auth/full-navigation'
 import { CodeForm, MFA_ERROR_ID, MfaCard, SignOutLink } from './mfa-shared'
 
 interface Props {
@@ -58,8 +59,10 @@ export function MfaChallenge({ destination }: Props) {
       setCodeRefused(true)
       return
     }
-    router.refresh()
-    router.replace(destination)
+    // A full page load, not the client router: since Next 16.3 the router
+    // replays the AAL1 redirect it saw for this destination and never asks
+    // the server again (lib/auth/full-navigation).
+    navigateFully(destination)
   }
 
   return (
