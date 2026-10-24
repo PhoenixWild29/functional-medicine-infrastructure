@@ -3,10 +3,9 @@
  *
  * Security review, Oct 24: the ops approval write.
  *
- *   - Demo payouts never apply with a live Stripe key. A placeholder account
- *     makes checkout charge the patient with no Connect routing, so with
- *     sk_live_ keys the money would stay on the platform. With a live key
- *     the approval is made as if DEMO_PAYOUTS_ON_APPROVAL were "false".
+ *   - Demo payouts on approval: on unless DEMO_PAYOUTS_ON_APPROVAL is
+ *     "false". (H1, never with a live Stripe key, is split out to the
+ *     demo-payouts-live-key-guard branch until Sam decides.)
  *   - Every approval and send-back counts the rows it changed. If the
  *     clinic left "submitted" between the read and the write (a second
  *     reviewer won), it answers 409 and records no event; before, only the
@@ -53,33 +52,13 @@ beforeEach(() => {
 })
 afterAll(() => { process.env = saved })
 
-describe('demo payouts and the Stripe key', () => {
-  it('a test key or none: on unless the flag is "false"', () => {
+describe('demo payouts on approval', () => {
+  it('on unless the flag is "false"', () => {
     expect(demoPayoutsOnApproval()).toBe(true)
     process.env['STRIPE_SECRET_KEY'] = 'sk_test_abc'
     expect(demoPayoutsOnApproval()).toBe(true)
     process.env['DEMO_PAYOUTS_ON_APPROVAL'] = 'false'
     expect(demoPayoutsOnApproval()).toBe(false)
-  })
-
-  it('a live key: always off, whatever the flag says', () => {
-    process.env['STRIPE_SECRET_KEY'] = 'sk_live_abc'
-    expect(demoPayoutsOnApproval()).toBe(false)
-    process.env['DEMO_PAYOUTS_ON_APPROVAL'] = 'true'
-    expect(demoPayoutsOnApproval()).toBe(false)
-    process.env['STRIPE_SECRET_KEY'] = 'rk_live_abc'
-    expect(demoPayoutsOnApproval()).toBe(false)
-  })
-
-  it('a live key: the approval sets no placeholder account', async () => {
-    process.env['STRIPE_SECRET_KEY'] = 'sk_live_abc'
-    script = clinic([{ clinic_id: CLINIC }])
-    const res = await POST(req({ action: 'approve' }), ctx)
-    expect(res.status).toBe(200)
-    const payload = db.to('clinics', 'update')[0]?.payload as Record<string, unknown>
-    expect(payload).toMatchObject({ is_active: true, onboarding_status: 'approved' })
-    expect(payload).not.toHaveProperty('stripe_connect_account_id')
-    expect(payload).not.toHaveProperty('stripe_connect_status')
   })
 })
 
