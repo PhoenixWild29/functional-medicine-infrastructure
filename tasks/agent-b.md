@@ -1,20 +1,22 @@
-task-id: B-2026-10-24-05
+task-id: B-2026-10-24-06
 status: ready
 ---
-Thanks for B-2026-10-24-04 (tier filter and ingredient_id; PR opens when its turn in the E2E queue comes).
+Thanks for B-2026-10-24-05 (E2E coverage; PR in turn).
 
-Next: end-to-end coverage for features merged in the last two days that have only unit tests. Each must be proven in a real browser against the E2E Supabase in CI.
+Next: patient protocol choice, PR 2 of 5: provider propose. Sam approved D's design (docs/design/patient-protocol-choice.md) with all 9 recommendations as written, plus: the plan link must not depend on texting (no Twilio account). C is building PR 1 (data model, migration, src/lib/proposals token and status machine) on branch proposals-pr1-data-model and is updating the design doc with the decisions.
 
-Branch: `git fetch origin && git checkout -b e2e-oct24-coverage origin/main`.
+Step 0: wait until origin/proposals-pr1-data-model exists and its head commit message is C's final report (it contains the migration SQL). Check every 5 minutes (`git fetch origin`). Do not start PR 2 code before then; while waiting, read the design doc, src/lib/orders/batch-sign.ts (checkBatch), batch-review-form.tsx, the dashboard tabs and the intake link code. If it has not appeared within 90 minutes, push a commit "BLOCKED: PR 1 not pushed" on a branch proposals-pr2-provider-propose and stop.
 
-Add Playwright specs (reuse existing helpers, fixtures and TEST_IDS; service-role setup and cleanup in beforeAll/afterAll; no fixed sleeps):
-1. #251 clinic order drawer failure reason: seed an order in SUBMISSION_FAILED with an adapter_submissions row (error_code e.g. REJECTED, pharmacy from the snapshot), open it as the clinic admin, assert the line "Sending to <pharmacy> failed: the pharmacy declined the order. CompoundIQ ops has been alerted and will re-route or retry."; and the generic line when no submission row exists; nothing for a non-failed order.
-2. #250 4 MB upload limit: in the pharmacy onboarding license upload and Settings > Patients > Import, choose a file just over 4 MB and assert the plain message shown before upload (no request sent, or a 413 handled with the message); a small file still works.
-3. #245 demo payout label: a clinic with stripe_connect_account_id 'poc_placeholder_<id>' shows "Demo payout account" in Settings; never the raw id.
-4. #248 submitted banner and checklist link: an unapproved clinic that submitted sees "Submitted. We're reviewing your clinic; ordering opens once you're approved." and "View what you submitted"; the "Enter your practice details" item links to /onboarding when unapproved and to Settings when approved.
-5. #247 ops approval gate: ops review of a clinic whose only provider NPI is not in the registry shows the warning; Approve is disabled until "I checked this provider's license with the state board" is ticked.
-Skip any that already have E2E (search e2e/ first) and say which.
+Branch: `git checkout -b proposals-pr2-provider-propose origin/proposals-pr1-data-model` (stacked on PR 1; it will be rebased onto main after PR 1 merges).
 
-Run lint (0 warnings), tsc, Jest; run the new specs locally if you can (if no local Supabase, say so; CI runs them). Commit and push to origin e2e-oct24-coverage (normal push, no PR). Full report in the final commit message body: each spec, what it asserts, what was already covered, local results, head SHA.
+Build PR 2 as the design's section 6 row 2 says, plus the copy-link addition:
+- Split checkBatch into a read-only canSign(lines) used by both propose and sign; sign behaviour unchanged (existing batch-sign tests must stay green untouched).
+- Review: group lines into options (Option A, B...) with a patient-facing label (max 80), each loaded protocol its own option by default, Required star per line (on by default).
+- "Send to patient for choice": POST /api/proposals creates the proposal + options, tags the DRAFTs (proposal_option_id, proposal_required), writes a token (PR 1 lib), records a 'sent' event. Provider or clinic admin on the provider's behalf may send; MA may prepare but gets 403 on send. Same auth stack as other clinic routes (getUser, app_metadata claims, approval guard, same-origin).
+- After sending, the provider sees the plan link with "Copy link" and "Show QR code" (QR as one SVG path, like D's sign-up link QR). Copy and QR record link_copied / qr_shown events. The SMS goes out only when texting is enabled (TWILIO_ENABLED and the patient's opt-in), using a new name-free template under the same opt-in-gate test pattern; when texting is off, no send is attempted and the UI says "Texting is not set up, copy the link or show the QR code".
+- Dashboard: a Proposed tab ("Awaiting patient choice"); proposed DRAFTs hidden from Drafts. Edit, cancel (DRAFT -> CANCELLED, proposal cancelled, link revoked) and re-send (revokes the previous link).
+- No patient page yet (PR 3).
+- Red tests first: table-driven tests that every C4/C5/C6/C8/price refusal blocks propose with the same message as sign; controlled item never proposable; role tests; Proposed vs Drafts; cancel and re-send revoke; copy/QR events; no SMS when texting is off; jest-axe on the new UI.
+- `npm run lint` (0 warnings), tsc, Jest (--maxWorkers=3), build. Commit and push proposals-pr2-provider-propose (normal push, no PR). Full report in the final commit body: files, routes, tests, local results, head SHA, and anything PR 3 needs from PR 2.
 
 Do not touch the production database, Vercel, Stripe or secrets.
