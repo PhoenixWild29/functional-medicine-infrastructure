@@ -87,5 +87,5 @@ it('shows the refusal and keeps Continue disabled', async () => {
   fireEvent.click(row)
 
   expect(await screen.findByTestId('package-unit-mismatch')).toHaveTextContent('The 5 mg vial package is not measured in mL')
-  expect(screen.getByRole('button', { name: 'Continue — Set Retail Price' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Continue to Set Retail Price' })).toBeDisabled()
 })

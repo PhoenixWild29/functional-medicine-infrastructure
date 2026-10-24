@@ -98,12 +98,12 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
         return NextResponse.json({
           error: currentStatus === 'PROCESSED' || currentStatus === 'ARCHIVED'
             ? 'Fax already processed'
-            : 'Fax must be in MATCHED state to acknowledge — use manual_match first',
+            : 'Fax must be in MATCHED state to acknowledge. Use manual_match first',
         }, { status: 409 })
       }
       const orderId = faxRaw['matched_order_id'] as string | null
       if (!orderId) {
-        return NextResponse.json({ error: 'No matched order — use manual_match first' }, { status: 409 })
+        return NextResponse.json({ error: 'No matched order. Use manual_match first' }, { status: 409 })
       }
 
       // CAS transition on the order
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
         })
       } catch (err) {
         console.error(`[ops/fax/action] acknowledge CAS failed | fax=${faxId} order=${orderId}:`, err)
-        return NextResponse.json({ error: 'Order transition failed — check order status' }, { status: 409 })
+        return NextResponse.json({ error: 'Order transition failed. Check order status' }, { status: 409 })
       }
 
       // Resolve PHARMACY_ACK SLA
@@ -180,7 +180,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
       if (!(REJECT_ALLOWED as readonly string[]).includes(currentStatus)) {
         return NextResponse.json({
           error: currentStatus === 'PROCESSING'
-            ? 'Fax is currently being processed — try again shortly'
+            ? 'Fax is currently being processed. Try again shortly'
             : 'Fax already processed or archived',
         }, { status: 409 })
       }
@@ -199,7 +199,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
         })
       } catch (err) {
         console.error(`[ops/fax/action] reject CAS failed | fax=${faxId} order=${orderId}:`, err)
-        return NextResponse.json({ error: 'Order transition failed — check order status' }, { status: 409 })
+        return NextResponse.json({ error: 'Order transition failed. Check order status' }, { status: 409 })
       }
 
       // Resolve all open SLAs for this order
@@ -297,7 +297,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
       }
       // BLK-04: block archiving while fax is in-flight — server is authoritative
       if (currentStatus === 'PROCESSING') {
-        return NextResponse.json({ error: 'Fax is currently being processed — cannot archive' }, { status: 409 })
+        return NextResponse.json({ error: 'Fax is currently being processed, cannot archive' }, { status: 409 })
       }
 
       const { error: updateErr } = await supabase

@@ -73,8 +73,10 @@ describe('who may use the wizard', () => {
     expect((await savePractice(req(PRACTICE, 'PUT'))).status).toBe(401)
   })
 
-  it.each(['submitted', 'approved'])('a %s clinic cannot be edited (409)', async status => {
-    db = scriptedDb(clinicWith(status))
+  // An approved clinic's admin may now save practice details from
+  // Settings > Clinic Profile (practice-from-settings.test.ts).
+  it('a submitted clinic cannot be edited (409)', async () => {
+    db = scriptedDb(clinicWith('submitted'))
     expect((await savePractice(req(PRACTICE, 'PUT'))).status).toBe(409)
     expect(db.calls.filter(c => c.op !== 'select')).toEqual([])
   })

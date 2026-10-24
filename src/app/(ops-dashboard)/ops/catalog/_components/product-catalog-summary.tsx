@@ -54,7 +54,7 @@ export function ProductCatalogSummary({ counts }: { counts: ProductCatalogCounts
           Product Catalog
         </h2>
         <span className="text-[11px] text-muted-foreground">
-          Hierarchical catalog powering the prescription builder — read-only here
+          Hierarchical catalog powering the prescription builder, read-only here
         </span>
       </div>
 

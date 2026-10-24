@@ -144,7 +144,7 @@ export async function POST(
 
   const movedIds = (moved ?? []).map(m => m.order_id)
   if (!movedIds.includes(order.order_id)) {
-    return NextResponse.json({ error: 'Draft changed while reassigning — reload and try again' }, { status: 409 })
+    return NextResponse.json({ error: 'Draft changed while reassigning. Reload and try again' }, { status: 409 })
   }
 
   // Audit: one row per reassigned order. Status is unchanged (DRAFT →

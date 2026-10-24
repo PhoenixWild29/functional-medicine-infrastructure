@@ -333,7 +333,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
     if (providerErr) {
       console.error('[protocols] creator lookup failed:', providerErr.message)
-      return NextResponse.json({ error: 'The protocol could not be saved. Nothing was changed — try again.' }, { status: 500 })
+      return NextResponse.json({ error: 'The protocol could not be saved. Nothing was changed. Try again.' }, { status: 500 })
     }
     if (!provider) return NextResponse.json({ error: 'Provider not in clinic' }, { status: 403 })
   }
@@ -372,7 +372,7 @@ export async function POST(req: NextRequest) {
         error: `The protocol's items could not be saved, and an empty protocol "${protocol.name}" was left in the list. Delete it and try again.`,
       }, { status: 500 })
     }
-    return NextResponse.json({ error: 'The protocol could not be saved. Nothing was saved — try again.' }, { status: 500 })
+    return NextResponse.json({ error: 'The protocol could not be saved. Nothing was saved. Try again.' }, { status: 500 })
   }
 
   return NextResponse.json({ data: { ...protocol, item_count: items.length } }, { status: 201 })

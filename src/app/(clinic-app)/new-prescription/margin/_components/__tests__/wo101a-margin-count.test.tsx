@@ -196,7 +196,7 @@ describe('MarginBuilderForm — WO-101a package count', () => {
       dose: '1 mL', presetDose: '1 mL', presetFrequency: 'QD', presetDurationDays: 150,
       presetSigText: 'Inject 1 mL subcutaneously once daily for 150 days',
     })
-    expect(screen.getByTestId('package-summary')).toHaveTextContent('Package: 20 × 5 mL vials (20 is the most per prescription — does not cover 150 days) · $5700.00')
+    expect(screen.getByTestId('package-summary')).toHaveTextContent('Package: 20 × 5 mL vials (20 is the most per prescription and does not cover 150 days) · $5700.00')
   })
 
   it('editing a session line keeps its package and count', async () => {

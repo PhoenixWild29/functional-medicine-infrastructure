@@ -1009,7 +1009,7 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
     await expect(page.getByRole('button', { name: 'Add & Search Another' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: /Save as Draft/ })).toHaveCount(0)
     await page.locator('#retail-price').fill('250.00')
-    await page.getByRole('button', { name: 'Save Changes — Back to Review' }).click()
+    await page.getByRole('button', { name: 'Save Changes and Back to Review' }).click()
     await expect(page).toHaveURL(/\/new-prescription\/review$/, { timeout: 10_000 })
 
     // Same card (same line id, still second), new dose, totals recomputed: 200 + 250.
@@ -1907,7 +1907,7 @@ test.describe('Clinic App — WO-101: vial size is suggested from the Rx and pri
     // a) the provider selects the vial size; b) cost changes with it.
     // exact: WO-101a added "Number of packages" beside this dropdown, and
     // getByLabel matches substrings by default.
-    await page.getByLabel('Package', { exact: true }).selectOption({ label: '5 mL vial — $285.00' })
+    await page.getByLabel('Package', { exact: true }).selectOption({ label: '5 mL vial: $285.00' })
     await expect(page.getByTestId('package-summary')).toHaveText('Package: 5 mL vial (changed by provider) · $285.00')
     const retailAt285 = Math.round(retailAt95 * 285 / 95 * 100) / 100
     await expect(retail).toHaveValue(retailAt285.toFixed(2))
@@ -2164,7 +2164,7 @@ test.describe('Clinic App — WO-102: shipping once per pharmacy per order', () 
 
     await expect(page.getByTestId('multi-pharmacy-message')).toHaveText(
       '2 pharmacies → 2 shipping charges ($34.00). Routing all to Test Pharmacy Tier4 would save $9.00 on shipping, ' +
-      `but medication prices would rise $20.00 (${TEST_CATALOG.formulationName} $200.00 → $220.00) — $11.00 more overall, so it is not suggested.`,
+      `but medication prices would rise $20.00 (${TEST_CATALOG.formulationName} $200.00 → $220.00): $11.00 more overall, so it is not suggested.`,
       { timeout: 15_000 },
     )
     await expect(page.getByRole('button', { name: /Route all to/ })).toHaveCount(0)
@@ -2255,7 +2255,7 @@ test.describe('Clinic App — WO-101b: pharmacy sizes come from priced packages 
     await expect(page.getByTestId('package-summary')).toHaveText('Package: 3 × 1 mL vials (suggested for 90 days) · $285.00')
     const packageOptions = page.getByLabel('Package', { exact: true }).locator('option')
     await expect(packageOptions).toHaveCount(1)
-    await expect(packageOptions).toHaveText(['1 mL vial — $95.00 (suggested)'])
+    await expect(packageOptions).toHaveText(['1 mL vial: $95.00 (suggested)'])
     await expect(page.getByText(/3 mL vial/)).toHaveCount(0)
   })
 })
@@ -2504,7 +2504,7 @@ test.describe('Clinic App — WO-106 refill navigation', () => {
     await page.getByTestId('refill-start').click()
     await expect(page).toHaveURL(/\/new-prescription\/margin/, { timeout: 15_000 })
     await expect(page.getByTestId('reprice-notice')).toContainText('was $80.00')
-    await page.getByRole('button', { name: /Save Changes — Back to Review/ }).click()
+    await page.getByRole('button', { name: /Save Changes and Back to Review/ }).click()
     await expectReviewRendered(page)
     await expect(page.getByText(/40 units/).first()).toBeVisible()
     await expect(page.getByText(/dispense 1\.6 mL/).first()).toBeVisible()
@@ -2766,10 +2766,10 @@ test.describe('Clinic App — WO-108 repricing a refill', () => {
     await expect(page.getByTestId('reprice-notice')).toContainText('was $50.00')
 
     // Accepting the suggestion lands on Review at the new price. The
-    // price step's own submit reads "Save Changes — Back to Review" when
+    // price step's own submit reads "Save Changes and Back to Review" when
     // it is editing a session line; the banner's "Review & Send" is a
     // shortcut that does NOT save (pinned separately below).
-    await page.getByRole('button', { name: /Save Changes — Back to Review/ }).click()
+    await page.getByRole('button', { name: /Save Changes and Back to Review/ }).click()
     await expect(page).toHaveURL(/\/new-prescription\/review/, { timeout: 15_000 })
     await expect(page.getByTestId('review-subtotal')).toHaveText('$114.00')
     await expect(page.getByTestId(/^below-cost-/)).toHaveCount(0)
@@ -3101,7 +3101,7 @@ test.describe('Clinic App — WO-99 batch sign', () => {
 
     await page.goto(`/new-prescription/sign?orders=${good},${moved},${belowNow}`)
     await expect(page.getByTestId(`line-problem-${moved}`)).toContainText("the pharmacy's price changed since this draft was saved ($90.00 → $100.00)", { timeout: 15_000 })
-    await expect(page.getByTestId(`line-problem-${belowNow}`)).toContainText('priced below cost — $95.00 retail against $100.00 wholesale')
+    await expect(page.getByTestId(`line-problem-${belowNow}`)).toContainText('priced below cost: $95.00 retail against $100.00 wholesale')
     await drawSignature(page)
     await expect(page.getByRole('button', { name: 'Sign & Send 3 Prescriptions' })).toBeDisabled()
     await expect(page.getByTestId('send-blocked-reason')).toContainText(TEST_CATALOG.formulationName)
@@ -3240,7 +3240,7 @@ test.describe('Clinic App — WO-107 practice dashboard', () => {
     // The numbers, spelled out: revenue 559.00, shipping 9 once + 12 = 21.00.
     expect([revenue, shipping]).toEqual([55900, 2100])
     // Money not taken is labelled on its own line.
-    await expect(page.getByTestId('practice-excluded-refunded')).toContainText('Refunded — excluded from revenue (1)')
+    await expect(page.getByTestId('practice-excluded-refunded')).toContainText('Refunded, excluded from revenue (1)')
     await expect(page.getByTestId('practice-excluded-refunded')).toContainText('$180.00')
     await expect(page.getByTestId('practice-excluded-cancelled')).toContainText('$170.00')
     await expect(page.getByTestId('practice-excluded-awaiting')).toContainText('$160.00')
@@ -3286,7 +3286,7 @@ test.describe('Clinic App — WO-107 practice dashboard', () => {
     await queue.getByTestId(`attention-submission_failed-${failed}`).getByRole('link').click()
     await expect(page).toHaveURL(new RegExp(`/dashboard\\?order=${failed}`), { timeout: 15_000 })
     // The drawer names the order by its short number: first 4 and last 4 of the ID.
-    await expect(page.getByRole('dialog', { name: `Order details — ${failed.slice(0, 4)}…${failed.slice(-4)}` })).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('dialog', { name: `Order details: ${failed.slice(0, 4)}…${failed.slice(-4)}` })).toBeVisible({ timeout: 15_000 })
   })
 
   test('RBAC both ways: provider denied until the admin shares it, cannot share it themselves; ops never', async ({ page }) => {

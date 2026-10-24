@@ -214,7 +214,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
         })
         if (cancelled.wasAlreadyTransitioned) {
           return NextResponse.json(
-            { ok: false, error: `The order's status changed before it could be cancelled (was ${currentStatus}). Nothing was changed — refresh and check it.` },
+            { ok: false, error: `The order's status changed before it could be cancelled (was ${currentStatus}). Nothing was changed. Refresh and check it.` },
             { status: 409 },
           )
         }
@@ -234,7 +234,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
         // But a no-op is reported, never answered as success.
         if (pendingCas.wasAlreadyTransitioned) {
           return NextResponse.json(
-            { ok: false, error: `The order's status changed before the cancel applied (was ${currentStatus}). Nothing was refunded — refresh and check it.` },
+            { ok: false, error: `The order's status changed before the cancel applied (was ${currentStatus}). Nothing was refunded. Refresh and check it.` },
             { status: 409 },
           )
         }

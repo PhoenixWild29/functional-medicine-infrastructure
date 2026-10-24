@@ -37,13 +37,13 @@ export function StuckRefundsPanel({ result }: { result: StuckRefundsResult }) {
       ) : (
         <>
           <p className="font-semibold">
-            {result.rows.length} stuck refund{result.rows.length !== 1 ? 's' : ''} — automatic retry has stopped.
+            {result.rows.length} stuck refund{result.rows.length !== 1 ? 's' : ''}. Automatic retry has stopped.
             Check each PaymentIntent in Stripe and resolve by hand.
           </p>
           <ul className="mt-1 space-y-0.5">
             {result.rows.map(r => (
               <li key={r.orderId} data-testid={`stuck-refund-${r.orderId}`} className="font-mono text-xs">
-                {r.orderId} — ${(r.retailCents / 100).toFixed(2)} retail — {formatSince(r.pendingSince)}
+                {r.orderId}, ${(r.retailCents / 100).toFixed(2)} retail, {formatSince(r.pendingSince)}
               </li>
             ))}
           </ul>
@@ -71,12 +71,12 @@ export function LatePaymentsPanel({ result }: { result: LatePaymentsResult }) {
   return (
     <section data-testid="late-payments" className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
       <p className="font-semibold">
-        {result.rows.length} late payment{result.rows.length !== 1 ? 's' : ''} on expired bundles — refunded, not fulfilled.
+        {result.rows.length} late payment{result.rows.length !== 1 ? 's' : ''} on expired bundles: refunded, not fulfilled.
       </p>
       <ul className="mt-1 space-y-0.5">
         {result.rows.map(r => (
           <li key={r.groupId} data-testid={`late-payment-${r.groupId}`} className="font-mono text-xs">
-            {r.groupId} — {r.paymentIntent ?? 'unknown PaymentIntent'} —{' '}
+            {r.groupId}, {r.paymentIntent ?? 'unknown PaymentIntent'},{' '}
             {r.refundOk
               ? `refunded (${r.refundId ?? 'refund id unknown'})`
               : `refund FAILED, still owed: ${r.error ?? 'unknown error'}`}

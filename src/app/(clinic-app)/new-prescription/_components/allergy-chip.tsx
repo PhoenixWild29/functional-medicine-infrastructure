@@ -127,7 +127,7 @@ export function AllergyChip({ patient, onClick, expanded, className = '', loadin
         className={`inline-flex max-w-full items-center gap-1 truncate rounded-full px-2 py-0.5 text-[11px] font-medium leading-4 bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 ${className}`}
         data-testid="allergy-chip-load-error"
         data-allergy-status="load_failed"
-        title="Allergies could not be loaded — this is an error, not an empty record"
+        title="Allergies could not be loaded. This is an error, not an empty record"
       >
         Allergies: could not load
       </span>
@@ -152,7 +152,7 @@ export function AllergyChip({ patient, onClick, expanded, className = '', loadin
       className={`${base} cursor-pointer underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
       data-testid="allergy-chip"
       data-allergy-status={status.kind}
-      title={`${label} — click to edit`}
+      title={`${label}. Click to edit`}
     >
       {/* Label only — no decorative glyph, so the button's text IS the
           chip state (tests and screen readers read it verbatim). The

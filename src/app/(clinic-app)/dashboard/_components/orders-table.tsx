@@ -148,7 +148,7 @@ export function OrdersTable({ orders, allOrders = orders, isLoading, isError = f
                 style={isErr ? { borderLeft: '4px solid #A84B2F' } : undefined}
                 tabIndex={0}
                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onRowClick(order) }}
-                aria-label={`${isErr ? 'Error — ' : ''}Order ${orderDisplayNumber(order.orderId)} — ${order.patientName} — ${order.status}`}
+                aria-label={`${isErr ? 'Error: ' : ''}Order ${orderDisplayNumber(order.orderId)}, ${order.patientName}, ${order.status}`}
               >
                 {draftSelection && (
                   <td className="px-3 py-3" onClick={e => e.stopPropagation()}>

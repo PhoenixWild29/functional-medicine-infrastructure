@@ -9,6 +9,7 @@
  */
 
 import { render, screen, fireEvent, within } from '@testing-library/react'
+import { configureAxe } from 'jest-axe'
 import { PrescriptionSessionProvider } from '../../_context/prescription-session'
 import { PatientProviderSelector } from '../patient-provider-selector'
 
@@ -48,7 +49,21 @@ it('the selected-patient card: its secondary line is text-foreground', () => {
   renderSelector()
   fireEvent.click(screen.getByRole('button', { name: /Demo, Alex/ }))
   const card = screen.getByTestId('selected-patient-card')
-  expect(within(card).getByText(/— TX — DOB:/)).toHaveClass('text-foreground')
+  expect(within(card).getByText(/TX, DOB:/)).toHaveClass('text-foreground')
+})
+
+it('the selected-patient card: a visible separator between the chips and "TX, DOB: ..."', () => {
+  renderSelector()
+  fireEvent.click(screen.getByRole('button', { name: /Demo, Alex/ }))
+  const line = within(screen.getByTestId('selected-patient-card')).getByText(/TX, DOB:/)
+  expect(line.textContent).toMatch(/^\s*·\s+TX, DOB:/)
+})
+
+it('the selected-patient card is axe clean', async () => {
+  renderSelector()
+  fireEvent.click(screen.getByRole('button', { name: /Demo, Alex/ }))
+  const axe = configureAxe({ runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'] } })
+  expect((await axe(screen.getByTestId('selected-patient-card'))).violations.map(v => v.id)).toEqual([])
 })
 
 it('the selected provider row: NPI in text-foreground; "No signature on file" is amber-800, never amber-600', () => {

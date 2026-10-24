@@ -188,19 +188,19 @@ export function ShippingLines({ shipping, absorbShipping, rates, unpriced = new 
       {shipping.byPharmacy.map(p => (
         <div key={p.pharmacyId} className="mt-1 flex items-center justify-between text-xs text-muted-foreground" data-testid={`shipping-${p.pharmacyId}`}>
           <span>
-            Shipping — {p.pharmacyName || 'pharmacy'} ({p.shippingType === 'cold_chain' ? 'cold chain' : 'standard'}
+            Shipping: {p.pharmacyName || 'pharmacy'} ({p.shippingType === 'cold_chain' ? 'cold chain' : 'standard'}
             {p.itemCount > 1 ? `, ${p.itemCount} items in one shipment` : ''})
             {p.waived && rates.get(p.pharmacyId)?.freeShippingThresholdCents != null
-              ? ` — free over ${money(rates.get(p.pharmacyId)!.freeShippingThresholdCents!)}`
+              ? `, free over ${money(rates.get(p.pharmacyId)!.freeShippingThresholdCents!)}`
               : ''}
           </span>
           {/* No rates read: a fee shown here would be invented. The server
               prices shipping again when the order is sent. */}
-          <span>{pending.has(p.pharmacyId) ? 'Loading…' : unpriced.has(p.pharmacyId) ? 'could not be loaded — added when sent' : money(p.feeCents)}</span>
+          <span>{pending.has(p.pharmacyId) ? 'Loading…' : unpriced.has(p.pharmacyId) ? 'could not be loaded, added when sent' : money(p.feeCents)}</span>
         </div>
       ))}
       {absorbShipping && shipping.totalCents > 0 && (
-        <p className="mt-1 text-[10px] text-muted-foreground">Shipping is absorbed by the clinic — not charged to the patient.</p>
+        <p className="mt-1 text-[10px] text-muted-foreground">Shipping is absorbed by the clinic, not charged to the patient.</p>
       )}
     </div>
   )

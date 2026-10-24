@@ -41,7 +41,7 @@ export default async function PracticePage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Practice Dashboard</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Script volume, what was collected, and what the practice kept — for orders created in the period.
+            Script volume, what was collected, and what the practice kept, for orders created in the period.
           </p>
         </div>
         <PracticeDashboard viewerIsProvider={access.role === 'provider'} />

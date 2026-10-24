@@ -87,5 +87,5 @@ export function findUnlicensedItems(
   if (!patientState) return []
   return items
     .filter(item => item.pharmacyLicensed === false)
-    .map(item => `${item.name} — ${item.pharmacyName} is not licensed in ${patientState}`)
+    .map(item => `${item.name}: ${item.pharmacyName} is not licensed in ${patientState}`)
 }

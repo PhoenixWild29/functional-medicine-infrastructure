@@ -178,7 +178,7 @@ export function validateTitrationSteps(
         problem: 'crosses_formulations',
         message:
           'These steps use more than one capsule strength, which is more than one compounded product. ' +
-          'Add one line per strength — this line can hold the steps at a single strength.',
+          'Add one line per strength. This line can hold the steps at a single strength.',
       }
     }
   }

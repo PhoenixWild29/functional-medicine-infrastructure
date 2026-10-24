@@ -16,6 +16,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { ClinicSettingsForm } from './_components/clinic-settings-form'
+import { PracticeDetailsForm } from './_components/practice-details-form'
 import { StripeStatusSection } from './_components/stripe-status-section'
 import { SignInSecuritySection } from './_components/sign-in-security-section'
 import { hasVerifiedTotp, mfaEnforcedFor } from '@/lib/auth/mfa'
@@ -51,7 +52,7 @@ export default async function SettingsPage() {
 
   const { data: clinic } = await supabase
     .from('clinics')
-    .select('clinic_id, name, logo_url, default_markup_pct, absorb_shipping, practice_dashboard_visible_to_providers, stripe_connect_status, stripe_connect_account_id')
+    .select('clinic_id, name, logo_url, default_markup_pct, absorb_shipping, practice_dashboard_visible_to_providers, stripe_connect_status, stripe_connect_account_id, legal_name, dba_name, address_line1, address_line2, city, state, postal_code, contact_phone, practice_npi, tax_id_last4')
     .eq('clinic_id', clinicId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -139,6 +140,24 @@ export default async function SettingsPage() {
               practiceVisibleToProviders={clinic.practice_dashboard_visible_to_providers === true}
               isClinicAdmin={getUserRole(user) === 'clinic_admin'}
             />
+            {/* The onboarding wizard's practice details, same API; admin edits */}
+            <div className="mt-6">
+              <PracticeDetailsForm
+                canEdit={isClinicAdmin}
+                details={{
+                  legalName:    clinic.legal_name ?? '',
+                  dbaName:      clinic.dba_name ?? '',
+                  addressLine1: clinic.address_line1 ?? '',
+                  addressLine2: clinic.address_line2 ?? '',
+                  city:         clinic.city ?? '',
+                  state:        clinic.state ?? '',
+                  postalCode:   clinic.postal_code ?? '',
+                  phone:        clinic.contact_phone ?? '',
+                  practiceNpi:  clinic.practice_npi ?? '',
+                  taxIdLast4:   clinic.tax_id_last4 ?? '',
+                }}
+              />
+            </div>
           </div>
 
           {/* Compliance C3: two-step sign-in for this account */}
@@ -246,7 +265,7 @@ export default async function SettingsPage() {
                 Automatic order status emails and texts are not turned on yet.
               </p>
               <p className="inline-flex items-center rounded-md border border-border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
-                Coming soon — configurable preferences
+                Coming soon: configurable preferences
               </p>
             </section>
           </div>

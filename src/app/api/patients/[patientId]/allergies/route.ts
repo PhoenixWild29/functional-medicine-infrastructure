@@ -62,7 +62,7 @@ async function resolveCaller(): Promise<CallerResult> {
   const clinicId = getUserClinicId(user) ?? null
 
   if (role !== 'provider' && role !== 'medical_assistant' && role !== 'clinic_admin') {
-    return { ok: false, response: NextResponse.json({ error: 'Forbidden — allergies are recorded by clinic staff' }, { status: 403 }) }
+    return { ok: false, response: NextResponse.json({ error: 'Forbidden: allergies are recorded by clinic staff' }, { status: 403 }) }
   }
   if (!clinicId) {
     return { ok: false, response: NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 }) }
@@ -173,7 +173,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
     if (recorded.length > 0) {
       console.info(`[patients/allergies PATCH] confirm-NKDA refused: patient=${patientId} has ${recorded.length} recorded allergies`)
       return NextResponse.json(
-        { error: 'This patient has allergies on file. Confirm NKDA cannot clear them — use the allergy editor to change the list.' },
+        { error: 'This patient has allergies on file. Confirm NKDA cannot clear them. Use the allergy editor to change the list.' },
         { status: 409 },
       )
     }

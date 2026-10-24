@@ -47,7 +47,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const clinicId = getUserClinicId(user) ?? null
 
   if (appRole !== 'clinic_admin' && appRole !== 'provider' && appRole !== 'medical_assistant') {
-    return NextResponse.json({ error: 'Forbidden — clinic-app role required' }, { status: 403 })
+    return NextResponse.json({ error: 'Forbidden: clinic-app role required' }, { status: 403 })
   }
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })

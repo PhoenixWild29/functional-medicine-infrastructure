@@ -256,7 +256,7 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions, in
 
     const failed = results.filter(r => r.status === 'rejected').length
     if (failed > 0) {
-      setActionError(`${failed} of ${selectedIds.size} orders could not be processed — check each order's current status`)
+      setActionError(`${failed} of ${selectedIds.size} orders could not be processed. Check each order's current status`)
     }
     setSelectedIds(new Set())
     setBulkLoading(false)
@@ -392,7 +392,7 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions, in
         {/* ── Error banner ── */}
         {isError && (
           <div className="flex items-center justify-between rounded-md border border-orange-300 bg-orange-50 px-4 py-2.5 text-sm text-orange-800" role="alert">
-            <span>Connection lost — showing cached data</span>
+            <span>Connection lost. Showing cached data</span>
             <button
               type="button"
               onClick={() => void refetch()}

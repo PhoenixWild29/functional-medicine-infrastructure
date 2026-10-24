@@ -552,7 +552,7 @@ export function StructuredSigBuilder({
           className="space-y-3 rounded-md border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-800 dark:bg-amber-950/20"
         >
           <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">
-            Titration schedule — one step per dose change
+            Titration schedule: one step per dose change
           </p>
 
           <div className="space-y-2">
@@ -653,7 +653,7 @@ export function StructuredSigBuilder({
       {sigMode === 'cycling' && (
         <div data-testid="cycling-builder" className="space-y-3 rounded-md border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-800 dark:bg-blue-950/20">
           <p className="text-xs font-semibold text-blue-800 dark:text-blue-200">
-            Cycling Schedule — On/Off Pattern
+            Cycling Schedule: On/Off Pattern
           </p>
 
           {patternRequired && !cyclePattern && (
@@ -792,8 +792,8 @@ export function StructuredSigBuilder({
               'text-muted-foreground'
             }`}>
               {charCount} / {NCPDP_SIG_LIMIT} characters
-              {isOverLimit && ' — exceeds NCPDP limit'}
-              {!isOverLimit && isNearLimit && ' — approaching limit'}
+              {isOverLimit && ', exceeds NCPDP limit'}
+              {!isOverLimit && isNearLimit && ', approaching limit'}
             </span>
             {sigMode !== 'standard' && (
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">

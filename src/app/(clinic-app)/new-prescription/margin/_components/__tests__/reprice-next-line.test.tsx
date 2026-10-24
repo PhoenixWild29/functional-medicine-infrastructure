@@ -126,7 +126,7 @@ function tree(props: React.ComponentProps<typeof MarginBuilderForm>) {
 
 async function save() {
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: /Save Changes — Back to Review/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Save Changes and Back to Review/ }))
   })
 }
 

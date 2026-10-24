@@ -60,7 +60,7 @@ export function AllergyNotice({ patient, onSaved }: Props) {
           Allergies could not be loaded for {patientName(patient)}.
         </p>
         <p className="mt-0.5 text-xs">
-          This is an error, not an empty record — they may have allergies on file. Nothing about this patient
+          This is an error, not an empty record. They may have allergies on file. Nothing about this patient
           has been changed.
         </p>
         <button

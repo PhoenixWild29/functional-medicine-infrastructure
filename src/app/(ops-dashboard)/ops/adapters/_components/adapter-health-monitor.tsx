@@ -163,7 +163,7 @@ export function AdapterHealthMonitor({ initialData }: Props) {
       {/* ── Error banners ── */}
       {isError && (
         <div className="flex items-center justify-between rounded-md border border-orange-300 bg-orange-50 px-4 py-2.5 text-sm text-orange-800" role="alert">
-          <span>Connection lost — showing cached data</span>
+          <span>Connection lost. Showing cached data</span>
           <button type="button" onClick={() => void refetch()} className="underline focus-visible:outline-none">Retry</button>
         </div>
       )}
@@ -343,13 +343,13 @@ function PharmacyCard({
       {/* Circuit breaker detail */}
       {cb?.state === 'OPEN' && cb.cooldownUntil && (
         <div className="mx-4 mb-2 rounded border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] text-red-700">
-          Breaker open — cooldown until {new Date(cb.cooldownUntil).toLocaleTimeString()}
+          Breaker open, cooldown until {new Date(cb.cooldownUntil).toLocaleTimeString()}
           {' · '}{cb.failureCount} consecutive failures
         </div>
       )}
       {cb?.state === 'HALF_OPEN' && (
         <div className="mx-4 mb-2 rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-[10px] text-amber-700">
-          Half-open — testing recovery ({cb.failureCount} failure{cb.failureCount !== 1 ? 's' : ''})
+          Half-open, testing recovery ({cb.failureCount} failure{cb.failureCount !== 1 ? 's' : ''})
         </div>
       )}
 

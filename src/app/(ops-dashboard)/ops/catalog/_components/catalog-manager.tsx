@@ -279,7 +279,7 @@ export function CatalogManager({ initialData }: Props) {
           </div>
         </div>
         <p className="text-[11px] text-muted-foreground">
-          Flat per-pharmacy price-list import path — one row per pharmacy medication. Separate from the
+          Flat per-pharmacy price-list import path: one row per pharmacy medication. Separate from the
           hierarchical Product Catalog above, which is what the prescription builder uses.
         </p>
       </div>
@@ -287,7 +287,7 @@ export function CatalogManager({ initialData }: Props) {
       {/* ── Error banners ── */}
       {isError && (
         <div className="flex items-center justify-between rounded-md border border-orange-300 bg-orange-50 px-4 py-2.5 text-sm text-orange-800" role="alert">
-          <span>Connection lost — showing cached data</span>
+          <span>Connection lost. Showing cached data</span>
           <button type="button" onClick={() => void refetch()} className="underline focus-visible:outline-none">Retry</button>
         </div>
       )}
@@ -300,7 +300,7 @@ export function CatalogManager({ initialData }: Props) {
 
       {/* ── Upload section ── */}
       <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-        <p className="text-sm font-medium text-foreground">Upload Pharmacy Price List CSV — REQ-CTM-001</p>
+        <p className="text-sm font-medium text-foreground">Upload Pharmacy Price List CSV (REQ-CTM-001)</p>
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <label className="flex items-center gap-1.5 text-muted-foreground">
             Pharmacy:
@@ -347,7 +347,7 @@ export function CatalogManager({ initialData }: Props) {
 
         {uploadResult && (
           <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800 space-y-1">
-            <p className="font-medium">Upload successful — Version {uploadResult.versionNumber}</p>
+            <p className="font-medium">Upload successful: Version {uploadResult.versionNumber}</p>
             <p>{uploadResult.rowsInserted} rows inserted | +{uploadResult.delta.added} added, ~{uploadResult.delta.modified} modified, -{uploadResult.delta.removed} removed</p>
             {uploadResult.priceDiscrepancies.length > 0 && (
               <PriceDiscrepancyAlert discrepancies={uploadResult.priceDiscrepancies} />
@@ -371,7 +371,7 @@ export function CatalogManager({ initialData }: Props) {
           onClick={() => setShowManualEntry(p => !p)}
           className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
         >
-          <span>Manual Entry — REQ-CTM-009</span>
+          <span>Manual Entry (REQ-CTM-009)</span>
           <span className="text-muted-foreground text-xs">{showManualEntry ? '▲' : '▼'}</span>
         </button>
         {showManualEntry && (
@@ -562,7 +562,7 @@ export function CatalogManager({ initialData }: Props) {
           {/* Compare selector hint — BLK-06 */}
           {compareSelected.length > 0 && compareSelected.length < 2 && (
             <div className="flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-xs text-blue-700">
-              <span>1 version selected — select one more to compare</span>
+              <span>1 version selected. Select one more to compare</span>
               <button type="button" onClick={() => setCompareSelected([])} className="underline focus-visible:outline-none">Clear</button>
             </div>
           )}
@@ -784,7 +784,7 @@ function PriceDiscrepancyAlert({ discrepancies }: { discrepancies: PriceDiscrepa
             <span className={`rounded-full px-1 py-0 text-[10px] font-bold ${d.direction === 'increase' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
               {d.direction === 'increase' ? '↑' : '↓'} {d.changePct}%
             </span>
-            <span>{d.medicationName} {d.form} {d.dose} — ${d.oldPrice.toFixed(2)} → ${d.newPrice.toFixed(2)}</span>
+            <span>{d.medicationName} {d.form} {d.dose}: ${d.oldPrice.toFixed(2)} → ${d.newPrice.toFixed(2)}</span>
           </li>
         ))}
         {discrepancies.length > 10 && <li>…and {discrepancies.length - 10} more</li>}

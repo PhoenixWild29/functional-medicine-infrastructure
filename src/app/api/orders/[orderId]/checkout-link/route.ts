@@ -87,7 +87,7 @@ export async function POST(
 
   if (!clinicId) {
     return NextResponse.json(
-      { error: 'Your account is not assigned to a clinic — contact support' },
+      { error: 'Your account is not assigned to a clinic. Contact support' },
       { status: 400 }
     )
   }

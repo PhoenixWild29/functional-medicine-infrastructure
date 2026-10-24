@@ -86,7 +86,7 @@ export function DrugInteractionAlerts({ medicationNames, onCheckUnavailable }: D
       >
         <p className="font-semibold">Drug interaction check could not run.</p>
         <p className="mt-0.5 text-xs">
-          This is an error, not a clear result — these medications have not been checked against each other.
+          This is an error, not a clear result. These medications have not been checked against each other.
           You can still save a draft.
         </p>
         {/* Re-runs this one check in place. The query stays in its error

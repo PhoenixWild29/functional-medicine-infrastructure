@@ -112,7 +112,7 @@ export default async function RefillPage(
           >
             <p className="font-semibold">Prescriptions could not be loaded for refill.</p>
             <p className="mt-1">
-              This is an error, not an empty list — nothing has been refilled. Try again, and if it
+              This is an error, not an empty list. Nothing has been refilled. Try again, and if it
               persists, report the code below.
             </p>
             <p className="mt-3 font-mono text-xs" data-testid="refill-load-error-detail">

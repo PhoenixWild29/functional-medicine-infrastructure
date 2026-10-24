@@ -201,7 +201,7 @@ describe('the titration step table', () => {
     fireEvent.change(within(table).getByLabelText('Step 1 weeks'), { target: { value: '4' } })
     await waitFor(() => expect(screen.getByTestId('titration-total')).toBeInTheDocument())
 
-    const cont = await screen.findByRole('button', { name: 'Continue — Set Retail Price' })
+    const cont = await screen.findByRole('button', { name: 'Continue to Set Retail Price' })
     await waitFor(() => expect(cont).toBeEnabled())
     fireEvent.click(cont)
 
@@ -246,7 +246,7 @@ describe('multi-strength titrations fail loudly', () => {
     expect(problem).toHaveTextContent(/one line per strength/i)
     // No total is offered, and the line cannot be priced.
     expect(screen.queryByTestId('titration-total')).not.toBeInTheDocument()
-    const cont = screen.queryByRole('button', { name: 'Continue — Set Retail Price' })
+    const cont = screen.queryByRole('button', { name: 'Continue to Set Retail Price' })
     if (cont) expect(cont).toBeDisabled()
   })
 })
@@ -276,7 +276,7 @@ describe('switching modes never leaves a half-titration behind', () => {
     fireEvent.change(screen.getByLabelText('Dose amount'), { target: { value: '20' } })
     fireEvent.change(screen.getByLabelText('Dose unit'), { target: { value: 'units' } })
     fireEvent.change(screen.getByLabelText('Frequency'), { target: { value: 'QW' } })
-    const cont = await screen.findByRole('button', { name: 'Continue — Set Retail Price' })
+    const cont = await screen.findByRole('button', { name: 'Continue to Set Retail Price' })
     await waitFor(() => expect(cont).toBeEnabled())
     fireEvent.click(cont)
 

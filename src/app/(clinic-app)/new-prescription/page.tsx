@@ -1,5 +1,5 @@
 // ============================================================
-// New Prescription — Step 0: Select Patient (& Provider) — WO-80 + WO-100
+// New Prescription: Step 0: Select Patient (& Provider) — WO-80 + WO-100
 // /new-prescription
 // ============================================================
 //
@@ -36,7 +36,7 @@ import { FirstPrescriptionTips } from '@/components/coaching/first-prescription-
 import { coachingPrefs } from '@/lib/coaching/prefs'
 
 export const metadata = {
-  title: 'New Prescription — Select Patient',
+  title: 'New Prescription: Select Patient',
 }
 
 export default async function NewPrescriptionPage(

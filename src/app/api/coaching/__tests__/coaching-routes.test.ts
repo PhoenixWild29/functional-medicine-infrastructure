@@ -75,6 +75,7 @@ describe('GET /api/coaching/checklist', () => {
     const { AGREEMENTS } = await import('@/lib/onboarding/agreement-texts')
     db = scriptedDb((c: ScriptedCall) => {
       if (c.table === 'clinics') return { data: { onboarding_status: 'approved', legal_name: 'Sunrise' } }
+      if (c.table === 'clinic_onboarding_steps') return { data: { status: 'complete' } }
       if (c.table === 'agreement_acceptances') {
         return { data: (['baa', 'terms'] as const).map(k => ({ acceptance_id: k, agreement: k, template_version: AGREEMENTS[k].version, text_sha256: 'x', signer_name: 'L', signer_title: 'O', accepted_at: '2026-10-01T00:00:00Z' })) }
       }

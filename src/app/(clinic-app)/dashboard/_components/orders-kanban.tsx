@@ -139,7 +139,7 @@ function DraggableCard({
         isDragging ? 'shadow-lg opacity-50' : 'shadow-sm hover:shadow-md',
         order.isOverdue48h ? 'bg-amber-50 border-amber-300' : 'border-border',
       ].join(' ')}
-      aria-label={`${order.medicationName} — ${order.patientName}`}
+      aria-label={`${order.medicationName}, ${order.patientName}`}
     >
       {/* Order ID + overdue indicator */}
       <p className="font-mono text-[11px] text-muted-foreground">

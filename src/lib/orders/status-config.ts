@@ -34,7 +34,7 @@ export const ORDER_STATUS_CONFIG: Record<OrderStatusEnum, StatusConfig> = {
     textColor: '#991B1B',
   },
   PAID_PROCESSING: {
-    label:     'Paid — Processing',
+    label:     'Paid, processing',
     color:     '#2563EB',
     textColor: '#1E40AF',
   },

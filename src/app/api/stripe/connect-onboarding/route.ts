@@ -70,7 +70,7 @@ export async function POST(_request: NextRequest): Promise<NextResponse> {
   // Disallow DEACTIVATED accounts — requires platform legal review
   if (clinic.stripe_connect_status === 'DEACTIVATED') {
     return NextResponse.json(
-      { error: 'Account deactivated — contact platform support' },
+      { error: 'Account deactivated. Contact platform support' },
       { status: 403 }
     )
   }

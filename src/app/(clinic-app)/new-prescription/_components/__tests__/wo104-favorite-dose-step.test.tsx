@@ -145,7 +145,7 @@ describe('favorite chip → dose step (structured, no sig parsing)', () => {
     expect(screen.queryByTestId('favorites-panel')).not.toBeInTheDocument()
 
     // The pinned pharmacy is selected; Continue prices as normal.
-    const cont = await screen.findByRole('button', { name: 'Continue — Set Retail Price' })
+    const cont = await screen.findByRole('button', { name: 'Continue to Set Retail Price' })
     await waitFor(() => expect(cont).toBeEnabled())
     fireEvent.click(cont)
     expect(mockPush).toHaveBeenCalledTimes(1)

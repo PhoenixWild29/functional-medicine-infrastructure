@@ -19,7 +19,7 @@
 // non-provider signer. That 403 is the authoritative gate and is
 // unchanged. Here we hide the signature canvas + "Sign & Send" for
 // non-providers (medical_assistant, clinic_admin, ops_admin) and
-// offer the existing "Save as Draft — Provider Signs Later" action
+// offer the existing "Save as Draft: Provider Signs Later" action
 // instead, so an MA never sees a Sign button that would only 403 on
 // submit. isProvider is resolved server-side in page.tsx from the
 // session app_role claim.
@@ -304,7 +304,7 @@ function doseWithMg(rx: SessionPrescription): string {
 // ── Props ─────────────────────────────────────────────────────
 // isProvider is derived server-side (review/page.tsx) from the
 // session app_role claim. Providers get the Sign & Send UI;
-// everyone else gets "Save as Draft — Provider Signs Later". The
+// everyone else gets "Save as Draft: Provider Signs Later". The
 // server 403 in batch-sign remains the real gate regardless.
 interface Props {
   isProvider: boolean
@@ -947,7 +947,7 @@ export function BatchReviewForm({ isProvider }: Props) {
                     {index + 1}. {rx.medicationName}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {rx.form} — <span data-testid={`dose-display-${rx.id}`}>{doseWithMg(rx)}</span> — {rx.pharmacyName}
+                    {rx.form}, <span data-testid={`dose-display-${rx.id}`}>{doseWithMg(rx)}</span>, {rx.pharmacyName}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground italic">
                     Sig: {rx.sigText}
@@ -980,12 +980,12 @@ export function BatchReviewForm({ isProvider }: Props) {
                     </p>
                   ) : block === 'below_cost' ? (
                     <p className="mt-1 text-xs font-medium text-amber-700" data-testid={`below-cost-${rx.id}`}>
-                      Priced below cost — {toCurrency(rx.retailCents)} retail against {toCurrency(rx.wholesaleCents)} wholesale
+                      Priced below cost: {toCurrency(rx.retailCents)} retail against {toCurrency(rx.wholesaleCents)} wholesale
                       today. Edit the price to continue; this cannot be sent as it stands.
                     </p>
                   ) : block && (
                     <p className="mt-1 text-xs font-medium text-amber-700">
-                      Missing {block === 'price' ? 'price' : 'directions'} — remove this line and re-add it from search or a protocol.
+                      Missing {block === 'price' ? 'price' : 'directions'}. Remove this line and re-add it from search or a protocol.
                     </p>
                   )}
                   {/* C8, owner decision: pending FDA evaluation. A warning; never blocks. */}
@@ -1165,7 +1165,7 @@ export function BatchReviewForm({ isProvider }: Props) {
             <p className="mt-1 text-xs text-amber-800 dark:text-amber-300" data-testid="review-below-cost-banner">
               {belowCostItems.map(rx => rx.medicationName).join(', ')} {belowCostItems.length !== 1 ? 'are' : 'is'} priced
               below what the pharmacy charges today. Edit the price on the flagged prescription
-              {belowCostItems.length !== 1 ? 's' : ''} above — sending below cost is refused when the order is created, after
+              {belowCostItems.length !== 1 ? 's' : ''} above. Sending below cost is refused when the order is created, after
               the signature.
             </p>
           )}
@@ -1178,7 +1178,7 @@ export function BatchReviewForm({ isProvider }: Props) {
           {malformedItems.length > 0 && (
             <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
               {malformedItems.map(rx => rx.medicationName).join(', ')} {malformedItems.length !== 1 ? 'are' : 'is'} missing a price
-              or prescription directions — usually leftovers from a protocol added before pricing was fixed. Remove the flagged
+              or prescription directions, usually leftovers from a protocol added before pricing was fixed. Remove the flagged
               line{malformedItems.length !== 1 ? 's' : ''} above and re-add {malformedItems.length !== 1 ? 'them' : 'it'} from search
               or the protocol, or use Start Over to clear the session.
             </p>
@@ -1191,10 +1191,10 @@ export function BatchReviewForm({ isProvider }: Props) {
       {isProvider && (
         <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Provider Signature — {provider.first_name} {provider.last_name}
+            Provider Signature: {provider.first_name} {provider.last_name}
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            NPI: {provider.npi_number} — Signing {prescriptions.length} prescription{prescriptions.length !== 1 ? 's' : ''} for {patientName(patient)}
+            NPI: {provider.npi_number}. Signing {prescriptions.length} prescription{prescriptions.length !== 1 ? 's' : ''} for {patientName(patient)}
           </p>
 
           <div className="mt-3 rounded-lg border border-border bg-white">
@@ -1306,7 +1306,7 @@ export function BatchReviewForm({ isProvider }: Props) {
               {intakePending
                 ? `${patientName(patient)} has not finished their details yet. Save as draft now; you can sign once they finish.`
                 : allergiesLoading
-                ? 'Loading the allergy status for this patient — sending waits for it.'
+                ? 'Loading the allergy status for this patient. Sending waits for it.'
                 : allergyStatusUnknown
                 ? 'The allergy status for this patient could not be loaded. Retry it above to enable sending.'
                 : rulesLoadFailed
@@ -1377,7 +1377,7 @@ export function BatchReviewForm({ isProvider }: Props) {
             disabled={isSavingDraft || prescriptions.length === 0 || hasInvalidItems || hasMissingDetails}
             className="w-full rounded-lg border border-border bg-background px-6 py-3 text-sm font-semibold text-foreground shadow-sm hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            {isSavingDraft ? 'Saving...' : 'Save as Draft — Provider Signs Later'}
+            {isSavingDraft ? 'Saving...' : 'Save as Draft: Provider Signs Later'}
           </button>
           {hasInvalidItems && (
             <p className="text-center text-xs text-amber-700">

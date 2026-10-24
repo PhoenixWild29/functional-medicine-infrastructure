@@ -95,6 +95,17 @@ const DRAFT_EVENT_LABEL: Record<string, string> = {
   draft_line_removed: 'Draft line removed',
 }
 
+/**
+ * The line under a draft event. "still a draft" only while the order is
+ * one: once it was signed (or its link expired) it has moved on, and a
+ * created draft reads "saved as a draft".
+ */
+function draftEventDetail(event: string, diff: Record<string, unknown> | undefined, status: string): string {
+  if (event === 'draft_edited') return describeDiff(diff)
+  if (status === 'DRAFT') return 'still a draft'
+  return event === 'draft_created' ? 'saved as a draft' : ''
+}
+
 const DIFF_FIELD_LABEL: Record<string, string> = {
   'medication_snapshot.prescribed_dose':  'dose',
   'medication_snapshot.frequency_code':   'frequency',
@@ -130,7 +141,7 @@ function describeDiff(diff: Record<string, unknown> | undefined): string {
 /** "Shipping — Strive Pharmacy (cold chain)", as the Review card labels it. */
 function shippingLabel(pharmacyName: string | null | undefined, shippingType: string | null | undefined): string {
   const type = shippingType === 'cold_chain' ? 'cold chain' : 'standard'
-  return `Shipping — ${pharmacyName || 'pharmacy'} (${type})`
+  return `Shipping: ${pharmacyName || 'pharmacy'} (${type})`
 }
 
 function toCurrency(cents: number): string {
@@ -554,7 +565,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`Order details — ${orderDisplayNumber(order.orderId)}`}
+        aria-label={`Order details: ${orderDisplayNumber(order.orderId)}`}
         className="fixed inset-y-0 right-0 z-50 w-full md:max-w-md overflow-y-auto bg-card border-l border-border shadow-2xl"
       >
         {/* Header */}
@@ -592,7 +603,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
               <p className="text-sm font-semibold text-emerald-800">Part of a Payment Bundle</p>
               <p className="mt-1 text-xs text-emerald-700">
                 {groupInfo
-                  ? `${groupInfo.orderCount} prescription${groupInfo.orderCount === 1 ? '' : 's'} · ${toCurrency(groupInfo.totalCents)} — the patient pays once for all bundled items.`
+                  ? `${groupInfo.orderCount} prescription${groupInfo.orderCount === 1 ? '' : 's'} · ${toCurrency(groupInfo.totalCents)}. The patient pays once for all bundled items.`
                   : isLoadingGroupInfo
                     ? 'Loading bundle details…'
                     : 'The patient pays once for all bundled prescriptions.'}
@@ -709,7 +720,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
                           </div>
                         ))}
                         {absorbed && shipping && shipping.totalCents > 0 && (
-                          <p className="text-[10px] text-muted-foreground">Shipping is absorbed by the clinic — not charged to the patient.</p>
+                          <p className="text-[10px] text-muted-foreground">Shipping is absorbed by the clinic, not charged to the patient.</p>
                         )}
                         <div className="flex items-center justify-between font-semibold">
                           <span className="text-foreground">Patient total</span>
@@ -928,7 +939,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
               )}
               {record && shippingAbsorbed && shippingCents > 0 && (
                 <p className="text-[11px] text-muted-foreground" data-testid="drawer-shipping-absorbed">
-                  Shipping is absorbed by the clinic — not charged to the patient.
+                  Shipping is absorbed by the clinic, not charged to the patient.
                 </p>
               )}
               {record && (
@@ -1012,8 +1023,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
                           {DRAFT_EVENT_LABEL[row.metadata.event]}
                         </p>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {row.metadata.event === 'draft_edited' ? describeDiff(row.metadata.diff) : 'still a draft'}
-                          {row.changed_by && ` · ${actorDisplayName(actors, row.changed_by)}`}
+                          {[draftEventDetail(row.metadata.event, row.metadata.diff, order.status), actorDisplayName(actors, row.changed_by)].filter(Boolean).join(' · ')}
                         </p>
                       </>
                     ) : (

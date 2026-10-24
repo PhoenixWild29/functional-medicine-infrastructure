@@ -254,7 +254,7 @@ export async function checkBatch(
     .is('deleted_at', null)
   if (ordersError) {
     console.error('[batch-sign] orders could not be read:', ordersError.message)
-    add(null, 'orders_unavailable', 'The prescriptions could not be loaded. Nothing was signed — try again.')
+    add(null, 'orders_unavailable', 'The prescriptions could not be loaded. Nothing was signed. Try again.')
     return { lines: [], problems, signer: null }
   }
   const rows = (orderData ?? []) as unknown as OrderRow[]
@@ -264,7 +264,7 @@ export async function checkBatch(
   }
   const ordered = orderIds.map(id => byId.get(id)).filter((r): r is OrderRow => !!r)
   for (const r of ordered) {
-    if (r.status !== 'DRAFT') add(r, 'not_draft', `${medicationNameOf(r)} is no longer a draft (${r.status}) — it may already have been signed.`)
+    if (r.status !== 'DRAFT') add(r, 'not_draft', `${medicationNameOf(r)} is no longer a draft (${r.status}). It may already have been signed.`)
   }
 
   // ── Who is signing ──
@@ -281,7 +281,7 @@ export async function checkBatch(
   const { data: signer, error: signerError } = signerRead
   if (signerError) {
     console.error('[batch-sign] signing provider could not be read:', signerError.message)
-    add(null, 'provider_unavailable', 'Your provider record could not be read. Nothing was signed — try again.')
+    add(null, 'provider_unavailable', 'Your provider record could not be read. Nothing was signed. Try again.')
     return { lines: [], problems, signer: null }
   }
   if (!signer && userId !== null) {
@@ -335,7 +335,7 @@ export async function checkBatch(
 
   if (clinicRes.error || pharmacyRes.error || licenseRes.error) {
     console.error('[batch-sign] compliance reads failed:', (clinicRes.error ?? pharmacyRes.error ?? licenseRes.error)?.message)
-    add(null, 'compliance_unavailable', 'The compliance checks could not be run. Nothing was signed — try again.')
+    add(null, 'compliance_unavailable', 'The compliance checks could not be run. Nothing was signed. Try again.')
     return { lines: [], problems, signer }
   }
   if (catalogRes.error) {
@@ -373,7 +373,7 @@ export async function checkBatch(
     ])
     if (verificationRes.error || licensesRes.error) {
       console.error('[batch-sign] prescriber credentials could not be read:', (verificationRes.error ?? licensesRes.error)?.message)
-      add(null, 'credentials_unavailable', 'Your license and NPI records could not be read. Nothing was signed — try again.')
+      add(null, 'credentials_unavailable', 'Your license and NPI records could not be read. Nothing was signed. Try again.')
     }
     // The other checks still run, so every block shows (C6 included).
     const mine = ordered.filter(r => r.provider_id === signer.provider_id)
@@ -519,7 +519,7 @@ export async function checkBatch(
     let requiresClinicalDifference = legacyLine
     if (r.formulation_id) {
       if (rulesRes.error || !rules.has(r.formulation_id)) {
-        add(r, 'rules_unavailable', `${name}: the clinical-difference requirement could not be checked. Nothing was signed — try again.`)
+        add(r, 'rules_unavailable', `${name}: the clinical-difference requirement could not be checked. Nothing was signed. Try again.`)
       } else {
         requiresClinicalDifference = clinicalDifferenceRequired({ flag: rules.get(r.formulation_id) === true, ingredients })
       }
@@ -576,14 +576,14 @@ export async function checkBatch(
     const saved  = cents(r.wholesale_price_snapshot)
     if (!today.ok) {
       if (today.status >= 500) {
-        add(r, 'price_unavailable', `${name}: today's price could not be read. Nothing was signed — try again.`)
+        add(r, 'price_unavailable', `${name}: today's price could not be read. Nothing was signed. Try again.`)
       } else {
         add(r, 'reprice', `${name}: the pharmacy no longer offers it as saved (${today.error}). Edit this line to choose what to send.`)
       }
       continue
     }
     if (retail < today.wholesaleCents || retail < saved) {
-      add(r, 'below_cost', `${name} is priced below cost — ${money(retail)} retail against ${money(Math.max(today.wholesaleCents, saved))} wholesale. Edit the price to continue.`)
+      add(r, 'below_cost', `${name} is priced below cost: ${money(retail)} retail against ${money(Math.max(today.wholesaleCents, saved))} wholesale. Edit the price to continue.`)
     } else if (today.wholesaleCents !== saved) {
       add(r, 'reprice', `${name}: the pharmacy's price changed since this draft was saved (${money(saved)} → ${money(today.wholesaleCents)}). Edit this line to confirm what the patient pays.`)
     }
@@ -604,13 +604,13 @@ export async function checkBatch(
   if (allergyRes.error) {
     console.error('[batch-sign] allergy status read failed:', allergyRes.error.message)
     for (const l of lines) {
-      problems.push({ orderId: l.orderId, medicationName: l.medicationName, code: 'allergy_unavailable', message: `${l.medicationName}: the patient's allergy status could not be checked. Nothing was signed — try again.` })
+      problems.push({ orderId: l.orderId, medicationName: l.medicationName, code: 'allergy_unavailable', message: `${l.medicationName}: the patient's allergy status could not be checked. Nothing was signed. Try again.` })
     }
   }
   if (interactionRes.error) {
     console.error('[batch-sign] drug interaction check could not run:', interactionRes.error.message)
     for (const l of lines) {
-      problems.push({ orderId: l.orderId, medicationName: l.medicationName, code: 'interactions_unavailable', message: `${l.medicationName}: the drug interaction check could not be run. Nothing was signed — try again.` })
+      problems.push({ orderId: l.orderId, medicationName: l.medicationName, code: 'interactions_unavailable', message: `${l.medicationName}: the drug interaction check could not be run. Nothing was signed. Try again.` })
     }
   } else {
     for (const pid of patientIds) {
@@ -735,7 +735,7 @@ export async function signBatch(
       status,
       error: check.problems.length === 1
         ? check.problems[0]!.message
-        : `${check.problems.length} problems — nothing was signed. Each is shown against its line.`,
+        : `${check.problems.length} problems. Nothing was signed. Each is shown against its line.`,
       problems: check.problems,
     }
   }
@@ -869,7 +869,7 @@ export async function signBatch(
   if (signError || !signedRows || signedRows.length === 0) {
     console.error('[batch-sign] signing update failed:', signError?.message ?? 'no rows matched')
     await unwindGroups()
-    return { ok: false, status: signError ? 500 : 409, error: 'The prescriptions could not be signed — they may have changed. Nothing was signed; refresh and try again.' }
+    return { ok: false, status: signError ? 500 : 409, error: 'The prescriptions could not be signed. They may have changed. Nothing was signed; refresh and try again.' }
   }
   if (signedRows.length !== orderIds.length) {
     // Only reachable if a draft changed between the checks above and this

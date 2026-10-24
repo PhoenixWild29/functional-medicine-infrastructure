@@ -71,13 +71,13 @@ export const EXCLUDED_BUCKETS = ['awaiting', 'expired', 'payment_failed', 'refun
 export type ExcludedBucket = typeof EXCLUDED_BUCKETS[number]
 
 export const BUCKET_LABEL: Record<ExcludedBucket, string> = {
-  awaiting:       'Awaiting payment — not yet collected',
-  expired:        'Payment link expired — never collected',
-  payment_failed: 'Payment failed — not collected',
-  refund_pending: 'Refund in progress — excluded from revenue',
-  refunded:       'Refunded — excluded from revenue',
-  cancelled:      'Cancelled — excluded from revenue',
-  disputed:       'Disputed — excluded until the dispute closes',
+  awaiting:       'Awaiting payment, not yet collected',
+  expired:        'Payment link expired, never collected',
+  payment_failed: 'Payment failed, not collected',
+  refund_pending: 'Refund in progress, excluded from revenue',
+  refunded:       'Refunded, excluded from revenue',
+  cancelled:      'Cancelled, excluded from revenue',
+  disputed:       'Disputed, excluded until the dispute closes',
 }
 
 export function bucketOf(status: OrderStatusEnum | string): MoneyBucket {
@@ -232,7 +232,7 @@ function csvCell(v: string): string {
   return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
 }
 
-/** The on-screen table as CSV — same rows, same columns, same order. */
+/** The on-screen table as CSV: same rows, same columns, same order. */
 export function breakdownCsv(rows: ReadonlyArray<BreakdownRow>, dimension: Dimension): string {
   const header = [DIMENSION_HEADER[dimension], 'Scripts', 'Revenue', 'Wholesale', 'Margin']
   const lines = rows.map(r => [csvCell(r.label), String(r.scripts), money(r.revenueCents), money(r.wholesaleCents), money(r.marginCents)].join(','))

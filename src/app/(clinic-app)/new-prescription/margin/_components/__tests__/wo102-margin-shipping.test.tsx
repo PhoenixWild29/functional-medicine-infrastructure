@@ -104,7 +104,7 @@ describe('MarginBuilderForm — WO-102 shipping line', () => {
   it('first item to Strive (Semaglutide, cold chain) → $22.00, passed to the patient, outside the margin', () => {
     renderMargin()
     expect(screen.getByTestId('shipping-line')).toHaveTextContent(
-      'Shipping (cold chain): $22.00 — charged once for Strive Pharmacy, however many prescriptions it ships. Passed to the patient at cost; not part of the margin.',
+      'Shipping (cold chain): $22.00, charged once for Strive Pharmacy, however many prescriptions it ships. Passed to the patient at cost; not part of the margin.',
     )
     // Platform fee and clinic margin are computed on retail − wholesale only.
     const summary = screen.getByText('Margin Summary').parentElement!.textContent ?? ''

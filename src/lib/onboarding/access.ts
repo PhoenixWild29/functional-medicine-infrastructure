@@ -9,7 +9,9 @@
 //   requireOnboardingAdmin() the clinic admin of their own clinic; with
 //                            { editable: true }, only while onboarding is
 //                            open (in progress or sent back), so a
-//                            submitted or approved clinic is 409
+//                            submitted or approved clinic is 409;
+//                            { allowApproved: true } also lets an
+//                            approved clinic through (Settings edits)
 //
 // Writes use the service role, after these checks.
 
@@ -46,7 +48,7 @@ export type AdminAccess =
   | { ok: true; user: User; clinicId: string; clinic: OnboardingClinic; supabase: Service }
   | { ok: false; response: NextResponse }
 
-export async function requireOnboardingAdmin(opts: { editable?: boolean } = {}): Promise<AdminAccess> {
+export async function requireOnboardingAdmin(opts: { editable?: boolean; allowApproved?: boolean } = {}): Promise<AdminAccess> {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
@@ -69,7 +71,8 @@ export async function requireOnboardingAdmin(opts: { editable?: boolean } = {}):
   }
   if (!clinic) return { ok: false, response: NextResponse.json({ error: 'Clinic not found' }, { status: 404 }) }
 
-  if (opts.editable && !isEditable(clinic.onboarding_status)) {
+  const approvedAllowed = opts.allowApproved === true && clinic.onboarding_status === 'approved'
+  if (opts.editable && !approvedAllowed && !isEditable(clinic.onboarding_status)) {
     const message = clinic.onboarding_status === 'approved'
       ? 'Your clinic is approved; onboarding is closed.'
       : 'Your onboarding has been submitted for review and cannot be changed until CompoundIQ responds.'

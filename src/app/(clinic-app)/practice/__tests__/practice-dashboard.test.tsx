@@ -44,7 +44,7 @@ describe('PracticeDashboard', () => {
   it('shows the numbers; refunded and cancelled are labelled, not revenue', async () => {
     render(<PracticeDashboard viewerIsProvider={false} />)
     expect(await screen.findByTestId('practice-revenue')).toHaveTextContent('$190.00')
-    expect(screen.getByTestId('practice-excluded-refunded')).toHaveTextContent('Refunded — excluded from revenue (1)')
+    expect(screen.getByTestId('practice-excluded-refunded')).toHaveTextContent('Refunded, excluded from revenue (1)')
     expect(screen.getByTestId('practice-excluded-refunded')).toHaveTextContent('$130.00')
     expect(screen.getByTestId('practice-excluded-cancelled')).toHaveTextContent('$110.00')
   })

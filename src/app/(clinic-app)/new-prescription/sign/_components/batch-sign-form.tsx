@@ -210,7 +210,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
     const failedAllergy = activePatients.find(p => allergy[p.patientId]?.state === 'failed')
     const noInteractions = activePatients.find(p => interactionsUnavailable[p.patientId])
     const firstLineProblem = [...lineProblems.entries()][0]
-    if (loadingAllergy) blocked = `Loading the allergy status for ${nameOf(loadingAllergy)} — sending waits for it.`
+    if (loadingAllergy) blocked = `Loading the allergy status for ${nameOf(loadingAllergy)}. Sending waits for it.`
     else if (failedAllergy) blocked = `The allergy status for ${nameOf(failedAllergy)} could not be loaded. Retry it above to enable sending.`
     else if (noInteractions) blocked = `The drug interaction check for ${nameOf(noInteractions)} could not run. Retry it above to enable sending.`
     else if (check.state === 'loading' || check.state === 'idle') blocked = 'Checking the selected prescriptions…'
@@ -329,7 +329,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Patient</p>
                 <p className="text-sm font-semibold text-foreground">{nameOf(p)}</p>
-                <p className="text-xs text-muted-foreground">DOB: {p.dob} — {p.state} — {p.phone || 'no phone'}</p>
+                <p className="text-xs text-muted-foreground">DOB: {p.dob}, {p.state}, {p.phone || 'no phone'}</p>
               </div>
               <AllergyChip patient={allergyPatient} loading={state.state === 'loading'} />
             </div>
@@ -400,13 +400,13 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
                 <div className="flex justify-between"><span className="text-muted-foreground">Subtotal ({chosen.length})</span><span>{toCurrency(totals.subtotalCents)}</span></div>
                 {shipping.byPharmacy.map(s => (
                   <div key={s.pharmacyId} className="flex justify-between text-xs text-muted-foreground" data-testid={`batch-shipping-${p.patientId}-${s.pharmacyId}`}>
-                    <span>Shipping — {s.pharmacyName || 'pharmacy'} ({s.itemCount} item{s.itemCount !== 1 ? 's' : ''}, once){absorbShipping ? ', absorbed by the clinic' : ''}</span>
+                    <span>Shipping: {s.pharmacyName || 'pharmacy'} ({s.itemCount} item{s.itemCount !== 1 ? 's' : ''}, once){absorbShipping ? ', absorbed by the clinic' : ''}</span>
                     <span>{toCurrency(s.feeCents)}</span>
                   </div>
                 ))}
                 <div className="flex justify-between text-xs text-emerald-600"><span>Clinic payout</span><span>{toCurrency(totals.clinicPayoutCents)}</span></div>
                 <div className="mt-1 flex justify-between border-t border-border pt-1 font-semibold">
-                  <span>Patient total — one payment link</span>
+                  <span>Patient total, one payment link</span>
                   <span data-testid={`batch-patient-total-${p.patientId}`}>{toCurrency(totals.patientTotalCents)}</span>
                 </div>
               </div>
@@ -420,9 +420,9 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
       {allLines.length > 0 && (<>
       {/* One signature pad for the whole batch. */}
       <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Provider Signature — {signer.name}</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Provider Signature: {signer.name}</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          NPI: {signer.npi} — signing {selectedLines.length} prescription{selectedLines.length !== 1 ? 's' : ''}
+          NPI: {signer.npi}, signing {selectedLines.length} prescription{selectedLines.length !== 1 ? 's' : ''}
           {activePatients.length > 0 ? ` for ${activePatients.map(nameOf).join(', ')}` : ''}
         </p>
         <div className="mt-3 rounded-lg border border-border bg-white">
@@ -448,7 +448,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
 
       {activePatients.length > 0 && (
         <p className="text-xs text-muted-foreground" data-testid="batch-send-summary">
-          Sends {activePatients.length} payment link{activePatients.length !== 1 ? 's' : ''} — one per patient — totaling {toCurrency(grandTotalCents)}.
+          Sends {activePatients.length} payment link{activePatients.length !== 1 ? 's' : ''}, one per patient, totaling {toCurrency(grandTotalCents)}.
           Links expire in 72 hours; signed prescriptions are locked.
         </p>
       )}
@@ -567,7 +567,7 @@ function DraftLineItem({ line, checked, problems, disabled, removing, onToggle, 
           />
           <span className="min-w-0">
             <span className="block text-sm font-semibold text-foreground">{line.medicationName}</span>
-            <span className="block text-xs text-muted-foreground">{line.form} — {line.dose} — {line.pharmacyName}</span>
+            <span className="block text-xs text-muted-foreground">{line.form}, {line.dose}, {line.pharmacyName}</span>
             <span className="mt-1 block text-xs italic text-muted-foreground">Sig: {line.sigText}</span>
             {line.sigMode === 'titration' && line.titrationSteps.length > 0 && (
               <span className="mt-1 block text-[11px] text-muted-foreground" data-testid={`titration-steps-${line.orderId}`}>

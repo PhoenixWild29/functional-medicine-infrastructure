@@ -466,7 +466,7 @@ export function CheckoutPageContent({
                   HSA / FSA
                 </span>
                 <span className="text-xs text-emerald-800">
-                  Eligible — enter your HSA/FSA debit card like a regular credit card
+                  Eligible: enter your HSA/FSA debit card like a regular credit card
                 </span>
               </div>
 

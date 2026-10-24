@@ -107,8 +107,8 @@ describe('Review shipping after protocol lines were edited', () => {
     mockFetch(0)
     renderReview()
     const breakdown = await screen.findByTestId('shipping-breakdown')
-    await waitFor(() => expect(breakdown).toHaveTextContent('Shipping — Portal Plus Pharmacy (standard, 2 items in one shipment)$11.00'))
-    expect(within(breakdown).getAllByText(/Shipping —/)).toHaveLength(1)
+    await waitFor(() => expect(breakdown).toHaveTextContent('Shipping: Portal Plus Pharmacy (standard, 2 items in one shipment)$11.00'))
+    expect(within(breakdown).getAllByText(/Shipping:/)).toHaveLength(1)
   })
 
   it('a failed rates read names the pharmacy and never shows a $0.00 fee', async () => {
@@ -117,7 +117,7 @@ describe('Review shipping after protocol lines were edited', () => {
     const breakdown = await screen.findByTestId('shipping-breakdown')
     await waitFor(() => expect(shippingCalls).toBeGreaterThan(0))
     await waitFor(() => expect(breakdown).toHaveTextContent(/Portal Plus Pharmacy/))
-    expect(breakdown).not.toHaveTextContent('Shipping — pharmacy')
+    expect(breakdown).not.toHaveTextContent('Shipping: pharmacy')
     expect(breakdown).not.toHaveTextContent('$0.00')
     expect(breakdown).toHaveTextContent(/could not be loaded/)
   })
@@ -149,6 +149,6 @@ describe('Review shipping after protocol lines were edited', () => {
     await act(async () => {
       latest.session!.updatePrescription('dhea', { sigText: 'Take one capsule by mouth each morning with breakfast.' })
     })
-    await waitFor(() => expect(breakdown).toHaveTextContent('Shipping — Portal Plus Pharmacy (standard, 2 items in one shipment)$11.00'))
+    await waitFor(() => expect(breakdown).toHaveTextContent('Shipping: Portal Plus Pharmacy (standard, 2 items in one shipment)$11.00'))
   })
 })

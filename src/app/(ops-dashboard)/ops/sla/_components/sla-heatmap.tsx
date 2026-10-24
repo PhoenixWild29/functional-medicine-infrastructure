@@ -215,7 +215,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
       {/* ── Error banner ── */}
       {isError && (
         <div className="flex items-center justify-between rounded-md border border-orange-300 bg-orange-50 px-4 py-2.5 text-sm text-orange-800" role="alert">
-          <span>Connection lost — showing cached data</span>
+          <span>Connection lost. Showing cached data</span>
           <button type="button" onClick={() => void refetch()} className="underline hover:no-underline focus-visible:outline-none">
             Retry
           </button>
@@ -299,7 +299,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
                   key={ackKey}
                   className={`rounded-lg border p-3 ${styles.card}`}
                   role="article"
-                  aria-label={`${SLA_LABELS[row.slaType] ?? row.slaType} — ${row.orderNumber ?? row.orderId.slice(0, 8)}`}
+                  aria-label={`${SLA_LABELS[row.slaType] ?? row.slaType}: ${row.orderNumber ?? row.orderId.slice(0, 8)}`}
                 >
                   {/* Header: SLA type + color badge */}
                   <div className="flex items-start justify-between gap-2">
@@ -408,7 +408,7 @@ function SlaProgressBar({ row, now, color }: { row: SlaRow; now: number; color: 
       aria-valuenow={pct}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-label={`${pct}% of SLA window remaining — ${color === 'red' ? 'Critical' : color === 'yellow' ? 'Approaching' : 'On track'}`}
+      aria-label={`${pct}% of SLA window remaining, ${color === 'red' ? 'Critical' : color === 'yellow' ? 'Approaching' : 'On track'}`}
     >
       <div
         className={`h-full rounded-full transition-all duration-500 ${barColor}`}

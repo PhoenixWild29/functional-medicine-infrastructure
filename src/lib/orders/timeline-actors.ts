@@ -103,8 +103,12 @@ export async function resolveTimelineActors(
   return out
 }
 
-/** What the drawer prints for an actor: the name, else the raw id. */
+/** What a scheduled job (changed_by 'cron:<job>') is shown as. */
+export const AUTOMATIC_ACTOR = 'CompoundIQ (automatic)'
+
+/** What the drawer prints for an actor: a cron job as CompoundIQ (automatic), else the name, else the raw id. */
 export function actorDisplayName(actors: Record<string, TimelineActor> | null | undefined, userId: string | null | undefined): string | null {
   if (!userId) return null
+  if (userId.startsWith('cron:')) return AUTOMATIC_ACTOR
   return actors?.[userId]?.name ?? userId
 }

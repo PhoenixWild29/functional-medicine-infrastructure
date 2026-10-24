@@ -158,7 +158,7 @@ export async function POST(_request: NextRequest, { params }: Params): Promise<N
   // Read as empty, the delta and the price-change check would be wrong.
   if (prevErr) {
     console.error(`[ops/catalog/sync] previous catalog read failed | pharmacy=${pharmacyId}:`, prevErr.message)
-    return NextResponse.json({ error: 'The current catalog could not be read. Nothing was changed — try again.' }, { status: 500 })
+    return NextResponse.json({ error: 'The current catalog could not be read. Nothing was changed. Try again.' }, { status: 500 })
   }
 
   const prevSet = new Set<string>()
@@ -194,7 +194,7 @@ export async function POST(_request: NextRequest, { params }: Params): Promise<N
 
     if (lastVersionErr) {
       console.error(`[ops/catalog/sync] version read failed | pharmacy=${pharmacyId}:`, lastVersionErr.message)
-      return NextResponse.json({ error: 'The catalog version history could not be read. Nothing was changed — try again.' }, { status: 500 })
+      return NextResponse.json({ error: 'The catalog version history could not be read. Nothing was changed. Try again.' }, { status: 500 })
     }
 
     nextVersion = ((lastVersion as Record<string, unknown> | null)?.['version_number'] as number ?? 0) + 1

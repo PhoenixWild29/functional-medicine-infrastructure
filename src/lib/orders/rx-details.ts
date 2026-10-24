@@ -1169,7 +1169,7 @@ export function formatDispense(quantity: number | null | undefined, unit: string
 export function formatDiagnosis(code: string | null | undefined, text: string | null | undefined): string | null {
   const c = blankToNull(code)
   const t = blankToNull(text)
-  if (c && t) return `${c} — ${t}`
+  if (c && t) return `${c}: ${t}`
   return c ?? t ?? null
 }
 

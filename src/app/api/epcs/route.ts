@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
     if (error || !data) {
       console.error('[epcs] status lookup failed:', error?.message ?? 'provider not found', '| provider=', providerId)
       return NextResponse.json(
-        { error: 'Authenticator status could not be read. Nothing was changed — try again.' },
+        { error: 'Authenticator status could not be read. Nothing was changed. Try again.' },
         { status: 503 },
       )
     }
@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
     if (providerError) {
       console.error('[epcs] setup provider lookup failed:', providerError.message, '| provider=', provider_id)
       return NextResponse.json(
-        { error: 'Enrolment could not start because the provider record could not be read. Nothing was changed — try again.' },
+        { error: 'Enrolment could not start because the provider record could not be read. Nothing was changed. Try again.' },
         { status: 503 },
       )
     }
@@ -204,7 +204,7 @@ export async function POST(req: NextRequest) {
     if (providerError && !isNoRows(providerError)) {
       console.error('[epcs] verify provider lookup failed:', providerError.message, '| provider=', provider_id)
       return NextResponse.json(
-        { error: 'The authenticator could not be checked. Nothing was changed — try again.' },
+        { error: 'The authenticator could not be checked. Nothing was changed. Try again.' },
         { status: 500 },
       )
     }

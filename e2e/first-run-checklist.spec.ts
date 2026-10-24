@@ -11,7 +11,8 @@ import { seedStaticData, TEST_IDS, TEST_USERS } from './fixtures/seed'
 // stores the choice in the admin's user_metadata; "Show setup checklist"
 // in the user menu brings it back.
 //
-// The test clinic's practice name is cleared for the run, so at least one
+// The test clinic's Practice details step row (clinic_onboarding_steps,
+// what the step ticks from) is removed for the run, so at least one
 // step is to do and the checklist cannot be complete (complete is stored
 // for good). The admin's coaching preferences are reset before and after.
 
@@ -46,18 +47,19 @@ async function signIn(page: Page) {
 }
 
 test.describe('First-run coaching: the clinic admin setup checklist', () => {
-  let legalName: string | null = null
+  let practiceStep: Record<string, unknown> | null = null
+  const stepRow = () => e2eService().from('clinic_onboarding_steps').select('*').eq('clinic_id', TEST_IDS.clinic).eq('step', 'practice')
 
   test.beforeAll(async () => {
     await seedStaticData()
-    const { data } = await e2eService().from('clinics').select('legal_name').eq('clinic_id', TEST_IDS.clinic).single()
-    legalName = (data as { legal_name: string | null } | null)?.legal_name ?? null
-    await e2eService().from('clinics').update({ legal_name: null }).eq('clinic_id', TEST_IDS.clinic)
+    const { data } = await stepRow().maybeSingle()
+    practiceStep = (data as Record<string, unknown> | null) ?? null
+    await e2eService().from('clinic_onboarding_steps').delete().eq('clinic_id', TEST_IDS.clinic).eq('step', 'practice')
     await resetCoaching()
   })
 
   test.afterAll(async () => {
-    await e2eService().from('clinics').update({ legal_name: legalName }).eq('clinic_id', TEST_IDS.clinic)
+    if (practiceStep) await e2eService().from('clinic_onboarding_steps').upsert(practiceStep, { onConflict: 'clinic_id,step' })
     await resetCoaching()
   })
 

@@ -186,10 +186,10 @@ function packageSuggestionText(s: NonNullable<ReturnType<typeof suggestPackage>>
   if (s.reason === 'covers' || s.reason === 'multiple') return s.daysSupply != null ? `suggested for ${s.daysSupply} days` : 'suggested'
   if (s.reason === 'capped') {
     return s.daysSupply != null
-      ? `${MAX_PACKAGE_COUNT} is the most per prescription — does not cover ${s.daysSupply} days`
+      ? `${MAX_PACKAGE_COUNT} is the most per prescription and does not cover ${s.daysSupply} days`
       : `${MAX_PACKAGE_COUNT} is the most per prescription`
   }
-  return 'default package — no duration selected'
+  return 'default package, no duration selected'
 }
 
 // ── Multiplier buttons ────────────────────────────────────────
@@ -818,8 +818,8 @@ function MarginBuilderFormForLine({
     if (!rxSession.patient || !rxSession.provider) return
     if (missingForDraft.length > 0) {
       setDraftError(
-        `This prescription needs ${missingForDraft.map(m => MISSING_RX_DETAIL_LABEL[m]).join(' and ')} — ` +
-        'use Review & Send to fill in Rx details before saving a draft.',
+        `This prescription needs ${missingForDraft.map(m => MISSING_RX_DETAIL_LABEL[m]).join(' and ')}. ` +
+        'Use Review & Send to fill in Rx details before saving a draft.',
       )
       return
     }
@@ -940,7 +940,7 @@ function MarginBuilderFormForLine({
                   >
                     {packages.map(p => (
                       <option key={p.id} value={p.id}>
-                        {p.label} — ${toCurrency(toCents(p.wholesalePrice))}{p.id === suggestion.package.id ? ' (suggested)' : ''}
+                        {p.label}: ${toCurrency(toCents(p.wholesalePrice))}{p.id === suggestion.package.id ? ' (suggested)' : ''}
                       </option>
                     ))}
                   </select>
@@ -952,7 +952,7 @@ function MarginBuilderFormForLine({
               <p className="mt-2 text-xs text-muted-foreground" data-testid="shipping-line">
                 Shipping ({shippingLine.coldChain ? 'cold chain' : 'standard'}):{' '}
                 <span className="font-medium text-foreground" data-testid="shipping-line-amount">${toCurrency(shippingLine.addsCents)}</span>
-                {' — '}
+                {', '}
                 {shippingLine.waived
                   ? `free: this pharmacy's order meets its $${toCurrency(shippingRates?.freeShippingThresholdCents ?? 0)} free-shipping threshold`
                   : shippingLine.sharedWith > 0 && shippingLine.addsCents === 0
@@ -1012,7 +1012,7 @@ function MarginBuilderFormForLine({
           <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
             {sessionLine?.marginBasis === 'clinic_default'
               ? 'The original order has no usable margin to carry forward, so the price below is your clinic’s default markup. Change it if it is wrong.'
-              : 'The price below keeps the margin the original order was written at. Change it if it is wrong — the patient pays what you confirm here.'}
+              : 'The price below keeps the margin the original order was written at. Change it if it is wrong. The patient pays what you confirm here.'}
           </p>
         </div>
       )}
@@ -1145,7 +1145,7 @@ function MarginBuilderFormForLine({
         >
           {sigText.length === 0
             ? 'Minimum 10 characters required'
-            : `${sigTrimmed.length} characters${sigTrimmed.length < 10 ? ' — minimum 10 required' : ''}`}
+            : `${sigTrimmed.length} characters${sigTrimmed.length < 10 ? ', minimum 10 required' : ''}`}
         </p>
 
         {/* WO-96: derived days supply + dispense, read-only with override.
@@ -1192,7 +1192,7 @@ function MarginBuilderFormForLine({
           {isSavingLine
             ? 'Saving...'
             : editTarget?.kind === 'session'
-              ? 'Save Changes — Back to Review'
+              ? 'Save Changes and Back to Review'
               : editTarget?.kind === 'draft'
                 ? 'Save Changes to Draft'
                 : editTarget?.kind === 'draft-add'
@@ -1207,7 +1207,7 @@ function MarginBuilderFormForLine({
       )}
       {!isEditing && !isDraftMode && rxSession.prescriptionCount > 0 && (
         <p className="text-center text-xs text-muted-foreground">
-          {rxSession.prescriptionCount} prescription{rxSession.prescriptionCount !== 1 ? 's' : ''} already in session — this will add one more
+          {rxSession.prescriptionCount} prescription{rxSession.prescriptionCount !== 1 ? 's' : ''} already in session. This will add one more
         </p>
       )}
 
@@ -1220,7 +1220,7 @@ function MarginBuilderFormForLine({
           disabled={!canContinue || isSavingDraft || !rxSession.isSessionStarted}
           className="w-full rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          {isSavingDraft ? 'Saving...' : 'Save as Draft — Provider Signs Later'}
+          {isSavingDraft ? 'Saving...' : 'Save as Draft: Provider Signs Later'}
         </button>
         <p className="mt-1 text-center text-[10px] text-muted-foreground">
           Creates the order without signing. The provider can review and sign from the dashboard.

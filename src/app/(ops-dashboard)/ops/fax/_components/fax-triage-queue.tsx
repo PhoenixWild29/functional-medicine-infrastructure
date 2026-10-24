@@ -151,7 +151,7 @@ export function FaxTriageQueue({ initialData }: Props) {
         {/* Error banners */}
         {isError && (
           <div className="flex items-center justify-between rounded-md border border-orange-300 bg-orange-50 px-4 py-2.5 text-sm text-orange-800" role="alert">
-            <span>Connection lost — showing cached data</span>
+            <span>Connection lost. Showing cached data</span>
             <button type="button" onClick={() => void refetch()} className="underline focus-visible:outline-none">Retry</button>
           </div>
         )}
@@ -301,7 +301,7 @@ export function FaxTriageQueue({ initialData }: Props) {
           {/* Anomaly warning — REQ-FTQ-006 */}
           {selectedFaxLive.isAnomalyTier && (
             <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-[11px] text-red-700">
-              <strong>⚠ Tier Anomaly</strong> — Fax received from{' '}
+              <strong>⚠ Tier Anomaly</strong>: Fax received from{' '}
               <strong>{selectedFaxLive.pharmacyTier}</strong> pharmacy (API-capable).
               This likely indicates an integration issue. Investigate before acknowledging.
             </div>
@@ -415,7 +415,7 @@ export function FaxTriageQueue({ initialData }: Props) {
               {/* Manual match — hidden once PROCESSED */}
               {selectedFaxLive.status !== 'PROCESSED' && (
               <div className="space-y-1">
-                <p className="text-[10px] text-muted-foreground">Manual match — enter order ID:</p>
+                <p className="text-[10px] text-muted-foreground">Manual match: enter order ID</p>
                 <div className="flex gap-1.5">
                   {/* NB-07: UUID client-side validation before submit */}
                   <input

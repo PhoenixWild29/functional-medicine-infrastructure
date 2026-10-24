@@ -86,7 +86,7 @@ function who(row: QueueOrderRow): string {
   const med = (row.medication_snapshot as Record<string, unknown> | null)?.['medication_name']
   const p = Array.isArray(row.patients) ? row.patients[0] : row.patients
   const patient = p ? `${p.first_name} ${p.last_name}` : 'patient'
-  return `${typeof med === 'string' && med ? med : 'Prescription'} — ${patient}`
+  return `${typeof med === 'string' && med ? med : 'Prescription'}: ${patient}`
 }
 
 export async function loadAttention(
@@ -224,7 +224,7 @@ export async function loadAttention(
     for (const r of stuck.rows) {
       items.push({
         kind: 'stuck_refund', orderId: r.orderId, since: r.pendingSince,
-        title: 'Refund stuck — platform support is resolving it',
+        title: 'Refund stuck. Platform support is resolving it',
         detail: `$${(r.retailCents / 100).toFixed(2)} refund pending ${r.pendingSince ? `since ${r.pendingSince.slice(0, 10)}` : '(start unknown)'}`,
         href: orderHref(r.orderId), hrefLabel: 'Open the order',
       })
@@ -236,7 +236,7 @@ export async function loadAttention(
     for (const l of late.rows) {
       items.push({
         kind: 'late_payment', orderId: l.orderId, since: l.at,
-        title: l.refundOk ? 'Late payment on an expired bundle — refunded' : 'Late payment on an expired bundle — refund FAILED, still owed',
+        title: l.refundOk ? 'Late payment on an expired bundle, refunded' : 'Late payment on an expired bundle: refund FAILED, still owed',
         detail: l.refundOk ? `Refund ${l.refundId ?? ''}`.trim() : (l.error ?? 'Refund failed'),
         href: orderHref(l.orderId), hrefLabel: 'Open the order',
       })

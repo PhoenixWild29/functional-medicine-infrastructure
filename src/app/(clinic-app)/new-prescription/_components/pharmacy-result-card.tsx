@@ -87,7 +87,7 @@ export function PharmacyResultCard({ result }: Props) {
         {/* Suspended pharmacy warning — REQ-SCS-005 */}
         {isSuspended && (
           <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-800">
-            <span aria-hidden>⚠</span> Suspended — verify before ordering
+            <span aria-hidden>⚠</span> Suspended: verify before ordering
           </span>
         )}
 
@@ -101,7 +101,7 @@ export function PharmacyResultCard({ result }: Props) {
         {/* DEA controlled substance warning — REQ-SCS-011 */}
         {isDea && (
           <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-100 text-red-800">
-            <span aria-hidden>⛔</span> DEA Schedule {result.dea_schedule} — Fax only
+            <span aria-hidden>⛔</span> DEA Schedule {result.dea_schedule}: Fax only
           </span>
         )}
       </div>
@@ -110,7 +110,7 @@ export function PharmacyResultCard({ result }: Props) {
       {result.average_turnaround_days != null && (
         <p className="mt-2 text-xs text-muted-foreground">
           Typical turnaround: {result.average_turnaround_days} business day{result.average_turnaround_days !== 1 ? 's' : ''}{' '}
-          — <em>Typical, not guaranteed</em>
+          (<em>typical, not guaranteed</em>)
         </p>
       )}
     </button>

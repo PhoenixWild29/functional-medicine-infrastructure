@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
     if (currentError) {
       console.error('[refill] formulations could not be read:', currentError.message)
       return NextResponse.json(
-        { error: "Today's formulation details could not be read, so this refill cannot be sized. Nothing was changed — try again." },
+        { error: "Today's formulation details could not be read, so this refill cannot be sized. Nothing was changed. Try again." },
         { status: 503 },
       )
     }
@@ -202,7 +202,7 @@ export async function POST(request: NextRequest) {
     if (pfError) {
       console.error('[refill] package prices could not be read:', pfError.message)
       return NextResponse.json(
-        { error: "Today's package prices could not be read, so this refill cannot be priced. Nothing was changed — try again." },
+        { error: "Today's package prices could not be read, so this refill cannot be priced. Nothing was changed. Try again." },
         { status: 503 },
       )
     }

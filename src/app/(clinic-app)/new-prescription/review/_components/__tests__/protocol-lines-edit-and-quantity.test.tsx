@@ -268,7 +268,7 @@ async function editAndSaveUnchanged(rxBefore: SessionPrescription, m: Med) {
       </PrescriptionSessionProvider>
     </QueryClientProvider>,
   )
-  const cont = await screen.findByRole('button', { name: 'Continue — Set Retail Price' }, { timeout: 5000 })
+  const cont = await screen.findByRole('button', { name: 'Continue to Set Retail Price' }, { timeout: 5000 })
   await waitFor(() => expect(cont).toBeEnabled(), { timeout: 5000 })
   mockPush.mockClear()
   fireEvent.click(cont)
@@ -287,7 +287,7 @@ async function editAndSaveUnchanged(rxBefore: SessionPrescription, m: Med) {
 
 async function saveChanges() {
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: /Save Changes — Back to Review/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Save Changes and Back to Review/ }))
   })
 }
 

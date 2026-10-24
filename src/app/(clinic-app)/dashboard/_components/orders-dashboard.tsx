@@ -308,7 +308,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
       {/* ── Offline / error banner — REQ-GDB-004 ── */}
       {isError && (
         <div className="flex items-center justify-between rounded-md border border-orange-300 bg-orange-50 px-4 py-3 text-sm text-orange-800" role="alert">
-          <span>Connection lost — displaying cached data</span>
+          <span>Connection lost. Showing cached data</span>
           {/* BLK-02: call TanStack Query refetch — not a raw supabase query */}
           <button
             type="button"
@@ -351,7 +351,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
               needs to be a button for refill". Protocol opens the same
               flow with the Protocols panel already open; Refill opens a
               patient picker limited to patients with prior orders. Both
-              sit behind the same Stripe gate as New Prescription — a
+              sit behind the same Stripe gate as New Prescription: a
               clinic that cannot take payment cannot prescribe. */}
           <div className="relative group">
             <button
