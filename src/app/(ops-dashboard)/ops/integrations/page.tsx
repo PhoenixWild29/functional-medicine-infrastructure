@@ -24,7 +24,7 @@ export const metadata = {
 export default async function OpsIntegrationsPage() {
   const r = await listConnections(createServiceClient())
   return (
-    <main className="mx-auto max-w-7xl space-y-6 px-4 py-8">
+    <div className="mx-auto max-w-7xl space-y-6 px-4 py-8">
       <div>
         <h1 className="text-2xl font-bold text-foreground">EHR sync</h1>
         <p className="mt-1 text-sm text-muted-foreground dark:text-slate-300">
@@ -34,6 +34,6 @@ export default async function OpsIntegrationsPage() {
       {r.ok ? <EhrConnectionsTable connections={r.connections} /> : (
         <div role="alert" className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-red-700 dark:text-red-300">{r.error}</div>
       )}
-    </main>
+    </div>
   )
 }
