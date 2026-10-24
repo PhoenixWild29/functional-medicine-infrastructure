@@ -11,6 +11,7 @@
 // once, here) carries the token. The action is audit-logged.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { serverEnv } from '@/lib/env'
 import { requireOpsAdmin, readJson, cleanEmail } from '@/lib/onboarding/access'
 import { hashInviteToken, inviteExpiresAt, invitePath, newInviteToken } from '@/lib/onboarding/tokens'
@@ -29,6 +30,8 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const access = await requireOpsAdmin()
   if (!access.ok) return access.response
   const { user, supabase } = access

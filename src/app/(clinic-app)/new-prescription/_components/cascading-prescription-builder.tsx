@@ -272,6 +272,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     queryKey: ['formulation-list', selectedSaltForm?.salt_form_id, selectedIngredient?.ingredient_id],
     queryFn: () => {
       const params: Record<string, string> = {}
+      if (selectedIngredient) params.ingredient_id = selectedIngredient.ingredient_id
       if (selectedSaltForm) params.salt_form_id = selectedSaltForm.salt_form_id
       return fetchLevel<Formulation>('formulations', params)
     },
@@ -298,11 +299,10 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
   }, [favorites, selectedFormulation])
 
   // ── Auto-select salt form if only one ───────────────────
-  useEffect(() => {
-    if (saltForms.length === 1 && !selectedSaltForm) {
-      setSelectedSaltForm(saltForms[0] ?? null)
-    }
-  }, [saltForms, selectedSaltForm])
+  // While rendering, not in an effect: once set, the condition is false.
+  if (saltForms.length === 1 && !selectedSaltForm && saltForms[0]) {
+    setSelectedSaltForm(saltForms[0])
+  }
 
   // ── WO-98: reopen an existing line with the cascade pre-selected ──
   // One fetch resolves formulation + salt form + ingredient; the

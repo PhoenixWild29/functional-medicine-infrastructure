@@ -19,6 +19,7 @@
 // who and when on the clinic and in the onboarding audit log.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { requireOpsAdmin, readJson } from '@/lib/onboarding/access'
 import { recordOnboardingEvent } from '@/lib/onboarding/events'
 import { UUID_RE } from '@/lib/providers/team-access'
@@ -42,6 +43,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ clinicId: string }> }): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const access = await requireOpsAdmin()
   if (!access.ok) return access.response
   const { user, supabase } = access

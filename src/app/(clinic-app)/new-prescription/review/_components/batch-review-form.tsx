@@ -353,11 +353,16 @@ export function BatchReviewForm({ isProvider }: Props) {
   // signature. Only explicit problems block here; batch-sign is the gate.
   const [prescriberProblems, setPrescriberProblems] = useState<Array<{ code: string; message: string }>>([])
   const patientShippingState = session.patient?.state ?? null
+  // Nothing to ask (not a provider, or no state yet): no problems. Cleared
+  // while rendering when that happens, not in the effect below.
+  const prescriberCheckState = isProvider && patientShippingState ? patientShippingState : null
+  const [checkedPrescriberState, setCheckedPrescriberState] = useState(prescriberCheckState)
+  if (checkedPrescriberState !== prescriberCheckState) {
+    setCheckedPrescriberState(prescriberCheckState)
+    if (prescriberCheckState === null) setPrescriberProblems([])
+  }
   useEffect(() => {
-    if (!isProvider || !patientShippingState) {
-      setPrescriberProblems([])
-      return
-    }
+    if (!isProvider || !patientShippingState) return
     let cancelled = false
     void (async () => {
       try {

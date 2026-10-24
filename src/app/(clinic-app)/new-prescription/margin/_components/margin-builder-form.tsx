@@ -516,11 +516,9 @@ function MarginBuilderFormForLine({
   const missingForDraft = missingRxDetails(rxDetails, rxRules).filter(m => m !== 'clinical_difference')
 
   // WO-101: the selected package's price, else the pharmacy formulation's
-  // (= its default package's). WO-101a: × the package count.
-  const wholesaleCents = useMemo(
-    () => selectedPackage ? toCents(selectedPackage.wholesalePrice) * packageCount : toCents(wholesalePrice),
-    [selectedPackage, packageCount, wholesalePrice],
-  )
+  // (= its default package's). WO-101a: × the package count. A number from
+  // two multiplications, so no memo: hooks that depend on it compare by value.
+  const wholesaleCents = selectedPackage ? toCents(selectedPackage.wholesalePrice) * packageCount : toCents(wholesalePrice)
 
   // ── WO-102: shipping this line adds to the session ────────────
   // The session's other lines (not the one being edited) plus this one,
@@ -806,8 +804,10 @@ function MarginBuilderFormForLine({
   // committed and no /new-prescription page can redirect any more.
   // Same pattern as batch-review-form.tsx.
   const clearSessionOnUnmountRef = useRef(false)
+  // The latest clearSession, kept current after each commit (a ref is not
+  // written during render) for the unmount cleanup below.
   const clearSessionRef = useRef(rxSession.clearSession)
-  clearSessionRef.current = rxSession.clearSession
+  useEffect(() => { clearSessionRef.current = rxSession.clearSession })
   useEffect(() => () => {
     if (clearSessionOnUnmountRef.current) clearSessionRef.current()
   }, [])
