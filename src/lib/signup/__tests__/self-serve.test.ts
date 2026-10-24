@@ -130,13 +130,26 @@ describe('a solo provider', () => {
     expect(db.rows('clinics')).toEqual([])
   })
 
-  it('an NPI already registered to a provider: 409 on the field, nothing created', async () => {
+  // Security review M3: the NPI is checked at ops approval, not here. A
+  // pending sign-up never blocks another, and an NPI an approved clinic
+  // holds gets exactly the answer any new NPI gets (no probing which NPIs
+  // are customers). The provider row is unclaimed until ops approves.
+  it.each([
+    ['another pending sign-up has it', { npi_claimed: false }],
+    ['an approved clinic's provider holds it', { npi_claimed: true }],
+  ])('an NPI %s: the same answer as any sign-up, and the new provider is unclaimed', async (_label, existing) => {
     const db = world()
-    db.rows('providers').push({ provider_id: 'p-x', clinic_id: 'c-x', npi_number: NPI, deleted_at: null })
+    db.rows('providers').push({ provider_id: 'p-x', clinic_id: 'c-x', npi_number: NPI, deleted_at: null, ...existing })
     const r = await selfServeSignup(db.client, SOLO)
-    expect(r).toEqual(expect.objectContaining({ ok: false, status: 409, errors: { npiNumber: 'This NPI is already registered.' } }))
-    expect(db.users).toEqual([])
-    expect(db.rows('clinics')).toEqual([])
+    expect(r).toEqual({ ok: true, email: 'dana.ruiz@example.test', next: '/dashboard', npiStatus: 'verified' })
+    const mine = db.rows('providers').filter(p => p['provider_id'] !== 'p-x')
+    expect(mine).toEqual([expect.objectContaining({ npi_number: NPI, npi_claimed: false })])
+  })
+
+  it('a new NPI: the provider row is unclaimed too (claimed at approval)', async () => {
+    const db = world()
+    await selfServeSignup(db.client, SOLO)
+    expect(db.rows('providers')[0]).toEqual(expect.objectContaining({ npi_claimed: false }))
   })
 
   it('a failure part way (the license) removes the login, the provider and the clinic', async () => {
@@ -206,7 +219,7 @@ describe('every kind', () => {
     const db = world()
     db.users.push({ id: 'u-existing', email: 'dana.ruiz@example.test', app_metadata: {}, user_metadata: {} })
     const r = await selfServeSignup(db.client, input)
-    expect(r).toEqual({ ok: false, status: 409, error: DUPLICATE_EMAIL_MESSAGE })
+    expect(r).toEqual({ ok: false, status: 409, code: 'DUPLICATE_EMAIL', error: DUPLICATE_EMAIL_MESSAGE })
     expect(db.rows('clinics')).toEqual([])
     expect(db.rows('pharmacies')).toEqual([])
     expect(db.rows('providers')).toEqual([])
