@@ -108,11 +108,11 @@ describe('licenses', () => {
     expect(app(db)['steps_completed']).toEqual([])
   })
 
-  it('a document: PDF or image up to 10 MB, private bucket under the pharmacy, license back to pending, step complete', async () => {
+  it('a document: PDF or image up to 4 MB (the Vercel Function body limit), private bucket under the pharmacy, license back to pending, step complete', async () => {
     const db = world()
     await saveLicense(db.client, ctx, LICENSE, NOW)
     expect(await attachLicenseDocument(db.client, ctx, 'TX', { name: 'x.exe', type: 'application/x-msdownload', size: 10, bytes: new Uint8Array(10) })).toMatchObject({ ok: false, status: 400 })
-    expect(await attachLicenseDocument(db.client, ctx, 'TX', pdf(11 * 1024 * 1024))).toMatchObject({ ok: false, status: 400 })
+    expect(await attachLicenseDocument(db.client, ctx, 'TX', pdf(4 * 1024 * 1024 + 1))).toMatchObject({ ok: false, status: 400, error: 'The file must be under 4 MB.' })
     expect(await attachLicenseDocument(db.client, ctx, 'TX', pdf())).toMatchObject({ ok: true })
     const lic = db.rows('pharmacy_state_licenses').find(l => l['pharmacy_id'] === PH)!
     expect(String(lic['document_path'])).toMatch(new RegExp(`^${PH}/TX/[0-9a-f-]{36}\\.pdf$`))

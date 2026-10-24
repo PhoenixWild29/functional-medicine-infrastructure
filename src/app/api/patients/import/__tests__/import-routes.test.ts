@@ -4,7 +4,7 @@
  * Patient CSV import routes (Patient Intake spec v1.1, PR 5).
  *
  *   POST /api/patients/import/parse     multipart: the .csv is parsed on
- *        the server (5 MB, 5,000 rows) and never stored; headers, rows and
+ *        the server (4 MB, 5,000 rows) and never stored; headers, rows and
  *        a suggested mapping come back.
  *   POST /api/patients/import/validate  every row checked with a mapping;
  *        possible duplicates against the clinic's active patients.
@@ -116,8 +116,10 @@ describe('parse', () => {
     expect((await res.json()).error).toMatch(msg)
   })
 
-  it('413 over 5 MB; 400 over 5,000 rows', async () => {
-    expect((await PARSE(upload(new Uint8Array(5 * 1024 * 1024 + 1).fill(97)))).status).toBe(413)
+  it('413 over 4 MB (the Vercel Function body limit); 400 over 5,000 rows', async () => {
+    const tooBig = await PARSE(upload(new Uint8Array(4 * 1024 * 1024 + 1).fill(97)))
+    expect(tooBig.status).toBe(413)
+    expect((await tooBig.json()).error).toBe('The file is larger than 4 MB. Split it into smaller files.')
     const many = Array.from({ length: 5001 }, () => GOOD)
     const res = await PARSE(upload(csv(many)))
     expect(res.status).toBe(400)
