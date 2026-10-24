@@ -23,7 +23,6 @@ import { POST } from '../route'
 // ── Helpers ────────────────────────────────────────────────────────
 
 const TEST_CLINIC_ID    = 'aaaaaaaa-aaaa-4aaa-9aaa-aaaaaaaaaaaa'
-const OTHER_CLINIC_ID   = 'cccccccc-cccc-4ccc-9ccc-cccccccccccc'
 const TEST_PATIENT_ID   = 'bbbbbbbb-bbbb-4bbb-9bbb-bbbbbbbbbbbb'
 const OTHER_PATIENT_ID  = 'dddddddd-dddd-4ddd-9ddd-dddddddddddd'
 const TEST_PROVIDER_ID  = 'eeeeeeee-eeee-4eee-9eee-eeeeeeeeeeee'

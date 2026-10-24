@@ -22,7 +22,7 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { usePrescriptionSession, type SessionPatient, type SessionProvider } from '../_context/prescription-session'
+import { usePrescriptionSession } from '../_context/prescription-session'
 import { AllergyChip, EditableAllergyChip, type SavedAllergies } from './allergy-chip'
 import { NewPatientForm, type CreatedPatient, type CreatedIntake, type FaceSheetAvailability } from './new-patient-form'
 import { IntakeChip } from '@/components/intake-chip'
@@ -138,6 +138,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
     if (selfProvider) return
     const single = providers.length === 1 ? providers[0] : undefined
     if (single && !selectedProviderId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- picks the only provider once the provider list and the restored session are known, as before
       setSelectedProviderId(single.provider_id)
     }
   }, [providers, selectedProviderId, selfProvider])
@@ -147,6 +148,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
   // else — e.g. a shared workstation.
   useEffect(() => {
     if (session.patient && !selectedPatientId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- follows the session, which is restored from sessionStorage in an effect after mount
       setSelectedPatientId(session.patient.patient_id)
     }
     if (selfProvider) {

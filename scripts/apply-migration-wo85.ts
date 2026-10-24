@@ -39,7 +39,7 @@ async function main() {
     const { error } = await supabase.rpc('exec_sql', { query: stmt })
     if (error) {
       // Try via .from() raw — fallback: use fetch directly
-      const res = await fetch(
+      await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/`,
         {
           method: 'POST',

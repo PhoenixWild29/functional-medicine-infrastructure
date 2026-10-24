@@ -197,7 +197,6 @@ export async function GET(req: NextRequest) {
 
       // ── Level 5: Matching formulations ───────────────────
       case 'formulations': {
-        const ingredientId = searchParams.get('ingredient_id')
         const saltFormId = searchParams.get('salt_form_id')
         const dosageFormId = searchParams.get('dosage_form_id')
         const routeId = searchParams.get('route_id')

@@ -116,7 +116,6 @@ function localToUtc(
   // Pass 2: compute the offset and correct
   // Offset = local time - UTC time
   const localParts = toLocalParts(candidate, timezone)
-  const localMinutes = localParts.hour * 60 + localParts.minute
   const targetMinutes = hour * 60 + minute
 
   // Check if dates also differ (DST edge case near midnight)

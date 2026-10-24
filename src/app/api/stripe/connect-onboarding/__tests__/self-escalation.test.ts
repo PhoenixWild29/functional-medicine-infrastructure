@@ -6,7 +6,6 @@
  * a provider: 403, and nothing reaches Stripe. Stripe is mocked.
  */
 
-import type { NextRequest } from 'next/server'
 import { POST } from '../route'
 
 const getUserMock        = jest.fn()
@@ -63,7 +62,7 @@ describe('connect onboarding ignores self-edited user_metadata', () => {
       { app_role: 'provider', clinic_id: CLINIC_A },
       { app_role: 'clinic_admin', clinic_id: CLINIC_B },
     ))
-    const res = await POST({} as NextRequest)
+    const res = await POST()
     expect(res.status).toBe(403)
     expect(accountsCreateMock).not.toHaveBeenCalled()
     expect(accountLinksMock).not.toHaveBeenCalled()
@@ -74,7 +73,7 @@ describe('connect onboarding ignores self-edited user_metadata', () => {
       { app_role: 'clinic_admin', clinic_id: CLINIC_A },
       { app_role: 'clinic_admin', clinic_id: CLINIC_B },
     ))
-    const res = await POST({} as NextRequest)
+    const res = await POST()
     expect(res.status).toBe(200)
     expect(clinicEqMock).toHaveBeenCalledWith('clinic_id', CLINIC_A)
     expect(clinicEqMock).not.toHaveBeenCalledWith('clinic_id', CLINIC_B)
