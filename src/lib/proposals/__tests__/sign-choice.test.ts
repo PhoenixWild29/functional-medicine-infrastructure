@@ -185,9 +185,9 @@ describe('signing the choice', () => {
 
 describe('a check that fails at sign stops the whole choice', () => {
   it.each([
-    ['the price moved', () => todayCents.set('f-plain|ph-strive', 12000), undefined],
-    ['the license lapsed', () => undefined, { provider_state_licenses: [{ provider_id: CHEN, state: 'TX', license_number: 'TX-MD-001234', expires_on: '2026-01-31' }] }],
-    ['the compounding status changed', () => undefined, undefined, { formulation_id: 'f-cat2' }],
+    ['the price moved', (): void => { todayCents.set('f-plain|ph-strive', 12000) }, undefined, undefined],
+    ['the license lapsed', (): void => undefined, { provider_state_licenses: [{ provider_id: CHEN, state: 'TX', license_number: 'TX-MD-001234', expires_on: '2026-01-31' }] }, undefined],
+    ['the compounding status changed', (): void => undefined, undefined, { formulation_id: 'f-cat2' }],
   ] as const)('%s: nothing signed or cancelled, the proposal stays chosen, the reason is given', async (_name, before, tables, line1) => {
     before()
     const db = chosenWorld({

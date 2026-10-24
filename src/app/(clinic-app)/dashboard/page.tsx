@@ -41,6 +41,8 @@ import { SetupChecklistCard } from '@/components/coaching/setup-checklist-card'
 import { ProtocolSavedNotice } from './_components/protocol-saved-notice'
 import { platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
 import { PROPOSAL_EMBED, dashboardProposal, type DashboardProposal } from '@/lib/proposals/dashboard'
+import { loadChosenProposals } from '@/lib/proposals/queue'
+import { ChosenPlansQueue } from './_components/chosen-plans-queue'
 
 export const metadata = {
   title: 'Dashboard',
@@ -215,6 +217,11 @@ export default async function DashboardPage(
       : null,
   }
 
+  // Patient protocol choice, PR 4: plans the patient chose, waiting to be
+  // signed. The session client: the proposal tables have clinic read
+  // policies (F-3: dashboard SSR never uses the service role).
+  const chosenPlans = await loadChosenProposals(supabaseAuth, clinicId)
+
   // Patient Intake PR 2: the names behind "Possible duplicate of <name>",
   // in one separate read (never a self-embed on patients).
   const duplicateNames = await loadDuplicateNames(
@@ -336,6 +343,15 @@ export default async function DashboardPage(
         <ProtocolSavedNotice />
 
         <LicenseExpiryWarning licenses={expiring} />
+
+        {/* Patient protocol choice, PR 4: chosen plans in the signature queue. */}
+        {chosenPlans.ok ? (
+          <ChosenPlansQueue plans={chosenPlans.plans} viewerProviderId={viewer.providerId} isClinicAdmin={appRole === 'clinic_admin'} />
+        ) : (
+          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            Plans waiting to be signed could not be loaded. This is an error, not an empty list. Reload the page to try again.
+          </p>
+        )}
 
         {/* Metric cards — WO-71 */}
         <RevenueSummary

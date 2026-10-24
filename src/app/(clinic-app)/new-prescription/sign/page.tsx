@@ -11,6 +11,12 @@
 // Reached from the dashboard (Sign all / Sign selected), the drawer, and
 // /new-prescription/sign/<id>, which redirects here with that order.
 //
+// Patient protocol choice, PR 4: ?proposal=<id> signs what a patient chose
+// (the dashboard's "Plans ready to sign"). The page lists exactly the
+// chosen lines, fixed, and Sign & Send goes to POST
+// /api/proposals/[id]/sign. A plan's drafts never show in the ordinary
+// mode: they are signed only through their plan.
+//
 // Provider only: src/middleware.ts sends every other role to
 // /unauthorized for this exact path and the /sign/ prefix; the check
 // below is the belt behind it, and batch-sign refuses anyone else.
@@ -27,6 +33,7 @@ import { parseOrdersParam, type BatchDraftLine, type BatchPatientView } from '@/
 import { BatchSignForm } from './_components/batch-sign-form'
 import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { choiceSummary, loadChosenProposals } from '@/lib/proposals/queue'
 
 export const metadata = {
   title: 'Sign Prescriptions',
@@ -119,7 +126,25 @@ export default async function BatchSignPage({ searchParams }: PageProps) {
   }
   const me = signer.provider
 
-  const requested = parseOrdersParam(params['orders'])
+  // ── Patient protocol choice: sign what the patient chose ──
+  const proposalParam = typeof params['proposal'] === 'string' ? params['proposal'] : null
+  let plan: { proposalId: string; summary: string; orderIds: string[] } | null = null
+  if (proposalParam !== null) {
+    const chosen = await loadChosenProposals(supabase, clinicId)
+    if (!chosen.ok) {
+      return <Notice title="The plan could not be loaded" message="This is an error, not an empty list. Reload the page to try again." />
+    }
+    const found = chosen.plans.find(p => p.proposalId === proposalParam)
+    if (!found) {
+      return <Notice title="Nothing to sign" message="This plan is not waiting to be signed. It may already be signed, or the patient has not chosen yet." />
+    }
+    if (found.providerId !== me.provider_id) {
+      return <Notice title="Another provider's plan" message="Only the provider the plan was made for can sign it." />
+    }
+    plan = { proposalId: found.proposalId, summary: choiceSummary(found), orderIds: found.chosenOrderIds }
+  }
+
+  const requested = plan ? plan.orderIds : parseOrdersParam(params['orders'])
   if (requested.length === 0) {
     return <Notice title="No prescriptions selected" message="Choose drafts to sign from the Drafts tab on your dashboard." />
   }
@@ -142,15 +167,18 @@ export default async function BatchSignPage({ searchParams }: PageProps) {
   }
 
   // Every draft of those patients: mine are signable, others need Sign as me.
+  // A plan's drafts only through their plan: exactly the chosen ones there,
+  // none here otherwise.
+  const draftsQuery = supabase
+    .from('orders')
+    .select(LINE_SELECT)
+    .eq('clinic_id', clinicId)
+    .in('patient_id', patientIds)
+    .eq('status', 'DRAFT')
+    .eq('is_active', true)
+    .is('deleted_at', null)
   const [linesRes, patientsRes, clinicRes] = await Promise.all([
-    supabase
-      .from('orders')
-      .select(LINE_SELECT)
-      .eq('clinic_id', clinicId)
-      .in('patient_id', patientIds)
-      .eq('status', 'DRAFT')
-      .eq('is_active', true)
-      .is('deleted_at', null)
+    (plan ? draftsQuery.in('order_id', plan.orderIds) : draftsQuery.is('proposal_option_id', null))
       .order('created_at', { ascending: true }),
     supabase
       .from('patients')
@@ -226,6 +254,7 @@ export default async function BatchSignPage({ searchParams }: PageProps) {
           signer={{ providerId: me.provider_id, name: `${me.first_name} ${me.last_name}`, npi: me.npi_number }}
           rates={[...rates.values()]}
           absorbShipping={(clinicRes.data as { absorb_shipping?: boolean } | null)?.absorb_shipping === true}
+          {...(plan ? { proposal: { proposalId: plan.proposalId, summary: plan.summary } } : {})}
         />
       </main>
     </>
