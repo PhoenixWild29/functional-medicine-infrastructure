@@ -277,8 +277,8 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
 
       {/* ── Mobile: top bar + slide-over drawer ── */}
       <div className="md:hidden">
-        {/* Sticky top bar */}
-        <div className="sticky top-0 z-30 flex h-12 items-center justify-between border-b border-border bg-card px-4">
+        {/* Sticky top bar: the page's banner on phones (Issue Log 94) */}
+        <header className="sticky top-0 z-30 flex h-12 items-center justify-between border-b border-border bg-card px-4">
           <div className="flex items-center gap-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary">
               <svg width="12" height="12" viewBox="0 0 32 32" fill="none" aria-hidden>
@@ -298,7 +298,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
           >
             <Menu className="h-4.5 w-4.5" />
           </button>
-        </div>
+        </header>
 
         {/* Slide-over overlay */}
         {mobileOpen && (

@@ -14,11 +14,11 @@ export const metadata = {
 export default async function OpsPharmacyApplicationPage({ params }: { params: Promise<{ applicationId: string }> }) {
   const { applicationId } = await params
   return (
-    <main className="mx-auto max-w-5xl space-y-4 px-4 py-8">
+    <div className="mx-auto max-w-5xl space-y-4 px-4 py-8">
       <Link href="/ops/onboarding/pharmacies" className="inline-flex min-h-[44px] items-center text-sm font-medium text-primary underline underline-offset-4">
         Back to pharmacy onboarding
       </Link>
       <PharmacyApplicationReview applicationId={applicationId} />
-    </main>
+    </div>
   )
 }

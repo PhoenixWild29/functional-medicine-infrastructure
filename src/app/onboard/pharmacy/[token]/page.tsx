@@ -36,7 +36,7 @@ export default async function PharmacyInvitePage({ params }: { params: Promise<{
     : null
 
   return (
-    <main id="main-content" className="flex min-h-screen items-start justify-center bg-background px-4 py-10 sm:items-center">
+    <div className="flex min-h-screen items-start justify-center bg-background px-4 py-10 sm:items-center">
       <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-sm sm:p-8">
         <p className="text-sm font-semibold text-muted-foreground">CompoundIQ</p>
         {notice ? (
@@ -56,6 +56,6 @@ export default async function PharmacyInvitePage({ params }: { params: Promise<{
           </section>
         ) : null}
       </div>
-    </main>
+    </div>
   )
 }
