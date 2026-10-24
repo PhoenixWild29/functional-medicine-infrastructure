@@ -19,8 +19,10 @@
 //
 // HIPAA Boundary:
 //   inbound_fax_queue stores only technical metadata (from_number, page_count,
-//   storage_path). Fax content is accessed only via Supabase Storage with
-//   RLS policies — never transmitted through this handler.
+//   storage_path, documo_fax_id). The fax itself stays in Documo: ops open
+//   it through the ops-only /api/ops/fax/[faxId]/pdf, which fetches it from
+//   Documo by documo_fax_id on demand (Issue Log 72). Fax content is never
+//   transmitted through this handler.
 //
 // Auto-matching Logic:
 //   Normalize from_number to E.164 (+1XXXXXXXXXX) and compare against

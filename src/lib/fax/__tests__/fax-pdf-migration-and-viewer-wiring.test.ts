@@ -14,11 +14,11 @@ import { mapFaxRow } from '../map-fax-row'
 
 const FAX = '55555555-5555-4555-8555-555555555555'
 
-it('mapFaxRow: the ops PDF route, no storage call', async () => {
-  const storage = { from: jest.fn() }
-  const entry = await mapFaxRow({ fax_id: FAX, documo_fax_id: 'd-1', from_number: '+15125550100', page_count: 2, storage_path: 'documo/path', status: 'UNMATCHED', created_at: 'x', updated_at: 'x' }, { storage } as never)
+it('mapFaxRow: the ops PDF route, no storage client at all', () => {
+  const entry = mapFaxRow({ fax_id: FAX, documo_fax_id: 'd-1', from_number: '+15125550100', page_count: 2, storage_path: 'documo/path', status: 'UNMATCHED', created_at: 'x', updated_at: 'x' })
   expect(entry.pdfUrl).toBe(`/api/ops/fax/${FAX}/pdf`)
-  expect(storage.from).not.toHaveBeenCalled()
+  expect(entry).not.toHaveProperty('signedUrl')
+  expect(mapFaxRow.length).toBe(1)
 })
 
 it('no code refers to a fax-pdfs bucket any more', () => {

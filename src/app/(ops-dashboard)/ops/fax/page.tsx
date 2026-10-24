@@ -9,7 +9,7 @@
 // REQ-FTQ-001: Inbound fax list view
 // REQ-FTQ-003: Auto-match display
 // REQ-FTQ-006: Tier 1/3 anomaly flagging
-// REQ-FTQ-007: Signed URL access control (15-min expiry)
+// REQ-FTQ-007: PDF access control (ops-only route, fetched from Documo)
 //
 // Uses service client for cross-clinic access + RLS bypass.
 //
@@ -55,18 +55,9 @@ export default async function FaxPage() {
     console.error('[ops/fax/page] fetch error:', error.message)
   }
 
-  // NB-01: shared row mapper handles signed URL generation (REQ-FTQ-007).
-  // Promise.allSettled, not Promise.all: one bad storage_path must not reject
-  // the whole page render. A row whose signed URL cannot be minted is dropped
-  // from the queue rather than taking the route down.
-  const settled = await Promise.allSettled(
-    (data ?? []).map(row => mapFaxRow(row, supabase))
-  )
-  const faxes = settled.flatMap(r => {
-    if (r.status === 'fulfilled') return [r.value]
-    console.error('[ops/fax/page] row mapping failed:', r.reason)
-    return []
-  })
+  // NB-01: shared row mapper. Each row links to /api/ops/fax/[faxId]/pdf,
+  // which fetches the PDF from Documo on demand (Issue Log 72).
+  const faxes = (data ?? []).map(row => mapFaxRow(row))
 
   const initialData: FaxQueueResponse = {
     faxes,

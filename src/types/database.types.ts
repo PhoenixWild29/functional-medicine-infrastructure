@@ -3345,6 +3345,7 @@ export type Database = {
           clinic_id: string | null
           patient_id: string | null
           order_id: string | null
+          fax_id: string | null
           action: string
           resource: string
           route: string
@@ -3360,6 +3361,7 @@ export type Database = {
           clinic_id?: string | null
           patient_id?: string | null
           order_id?: string | null
+          fax_id?: string | null
           action: string
           resource: string
           route: string
@@ -3375,6 +3377,7 @@ export type Database = {
           clinic_id?: string | null
           patient_id?: string | null
           order_id?: string | null
+          fax_id?: string | null
           action?: string
           resource?: string
           route?: string

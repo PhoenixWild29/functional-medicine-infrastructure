@@ -49,6 +49,8 @@ export type PhiResource =
   | 'patient_duplicate_flag'
   // Patient Intake PR 5b: what EHR sync changed or kept on a patient.
   | 'patient_ehr_changes'
+  // Issue Log 72: ops opening an inbound fax (fetched from Documo).
+  | 'inbound_fax'
 
 export interface PhiActor {
   userId:   string
@@ -82,6 +84,8 @@ export interface PhiAccessEntry {
   route:      string
   patientId?: string | null
   orderId?:   string | null
+  /** The inbound fax (inbound_fax_queue.fax_id), migration 20261024000001. */
+  faxId?:     string | null
   /** The clinic whose data it is, when not the actor's own (ops). */
   clinicId?:  string | null
   /** The request headers (IP, user agent); null when there are none. */
@@ -143,6 +147,8 @@ export async function logPhiAccess(entry: PhiAccessEntry): Promise<void> {
       route:            routePattern(entry.route),
       ip_hash:          ipHash,
       user_agent_hash:  userAgentHash,
+      // Only on fax rows, so every other caller writes exactly what it did.
+      ...(entry.faxId ? { fax_id: entry.faxId } : {}),
     }
     // Loaded here, not at module load: every route imports this module.
     const { createServiceClient } = await import('@/lib/supabase/service')
