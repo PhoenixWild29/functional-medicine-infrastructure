@@ -10,7 +10,10 @@
 // Parsed on the server from the uploaded file; the raw file is never
 // stored. Plain module (no I/O).
 
-export const MAX_IMPORT_BYTES = 5 * 1024 * 1024
+import { MAX_REQUEST_BYTES } from '@/lib/uploads/limits'
+
+/** 4 MB: the file goes through a Vercel Function (lib/uploads/limits). */
+export const MAX_IMPORT_BYTES = MAX_REQUEST_BYTES
 export const MAX_IMPORT_ROWS = 5000
 export const MAX_CELL_LENGTH = 500
 

@@ -20,6 +20,11 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import Link from 'next/link'
 import { IMPORT_FIELDS, mappingErrors, type ColumnMapping, type ImportField } from '@/lib/patients/import/mapping'
+import { MAX_REQUEST_BYTES, jsonBodyTooLarge } from '@/lib/uploads/limits'
+
+// 4 MB: Vercel refuses request bodies over about 4.5 MB (lib/uploads/limits).
+const TOO_LARGE_FILE = 'The file is larger than 4 MB. Split it into smaller files.'
+const TOO_LARGE_ROWS = 'These rows are more than 4 MB to send at once. Split the file into smaller files and import each one.'
 
 type Step = 'upload' | 'map' | 'review' | 'done'
 
@@ -88,6 +93,11 @@ export function ImportWizard() {
       setError('Choose a .csv file to upload.')
       return
     }
+    if (file.size > MAX_REQUEST_BYTES) {
+      setFileError(true)
+      setError(TOO_LARGE_FILE)
+      return
+    }
     setBusy(true)
     try {
       const form = new FormData()
@@ -118,12 +128,17 @@ export function ImportWizard() {
       setError(problems.join(' '))
       return
     }
+    const checkBody = { headers: parsed.headers, rows: parsed.rows, mapping }
+    if (jsonBodyTooLarge(checkBody)) {
+      setError(TOO_LARGE_ROWS)
+      return
+    }
     setBusy(true)
     try {
       const res = await fetch('/api/patients/import/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ headers: parsed.headers, rows: parsed.rows, mapping }),
+        body: JSON.stringify(checkBody),
       })
       const body = await readJson(res)
       if (!res.ok) {
@@ -148,10 +163,15 @@ export function ImportWizard() {
     try {
       const excluded = review.rows.filter(r => !included.has(r.index)).map(r => r.index)
       const confirmDuplicates = review.rows.filter(r => r.status === 'duplicate' && included.has(r.index)).map(r => r.index)
+      const importBody = { fileName: parsed.fileName, headers: parsed.headers, rows: parsed.rows, mapping, excluded, confirmDuplicates }
+      if (jsonBodyTooLarge(importBody)) {
+        setError(TOO_LARGE_ROWS)
+        return
+      }
       const res = await fetch('/api/patients/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName: parsed.fileName, headers: parsed.headers, rows: parsed.rows, mapping, excluded, confirmDuplicates }),
+        body: JSON.stringify(importBody),
       })
       const body = await readJson(res)
       if (res.status === 201) {
@@ -202,7 +222,7 @@ export function ImportWizard() {
             {alert}
             <div>
               <label htmlFor={id('file')} className="block text-sm font-medium text-foreground">CSV file</label>
-              <p id={id('file-hint')} className="text-xs text-muted-foreground">A .csv file up to 5 MB and 5,000 patients, with a header row.</p>
+              <p id={id('file-hint')} className="text-xs text-muted-foreground">A .csv file up to 4 MB and 5,000 patients, with a header row.</p>
               <input
                 id={id('file')}
                 type="file"

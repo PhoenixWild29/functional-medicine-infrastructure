@@ -15,6 +15,12 @@ import { US_STATES } from '@/lib/providers/states'
 import type { AgreementView, WizardState } from '@/lib/pharmacy-onboarding/application'
 import { FormAlert, PrimaryButton, RadioGroup, SecondaryButton, SelectField, TextField, fieldErrors, sendJson } from '@/components/pharmacy-onboarding/fields'
 import { LegalMarkdown } from '@/components/onboarding/legal-markdown'
+import { MAX_REQUEST_BYTES, jsonBodyTooLarge } from '@/lib/uploads/limits'
+
+// 4 MB: uploads go through a Vercel Function, which refuses bodies over
+// about 4.5 MB (lib/uploads/limits). Checked here before anything is sent.
+const DOCUMENT_TOO_LARGE = 'The file must be under 4 MB.'
+const CATALOG_TOO_LARGE = 'This catalog is more than 4 MB to send at once. Split it into smaller files and upload each one.'
 
 export interface StepProps {
   state:   WizardState
@@ -117,6 +123,10 @@ export function LicensesStep({ state, onSaved, onNext }: StepProps) {
 
   async function upload(stateCode: string, file: File | undefined) {
     if (!file) return
+    if (file.size > MAX_REQUEST_BYTES) {
+      setMessage(DOCUMENT_TOO_LARGE)
+      return
+    }
     setUploading(stateCode)
     setMessage(null)
     const form = new FormData()
@@ -165,7 +175,7 @@ export function LicensesStep({ state, onSaved, onNext }: StepProps) {
                   />
                 </label>
                 <p id={`doc-${l.state}-hint`} className="text-xs text-muted-foreground">
-                  {uploading === l.state ? 'Uploading…' : l.hasDocument ? 'Document uploaded. PDF, PNG or JPEG, up to 10 MB.' : 'PDF, PNG or JPEG, up to 10 MB.'}
+                  {uploading === l.state ? 'Uploading…' : l.hasDocument ? 'Document uploaded. PDF, PNG or JPEG, up to 4 MB.' : 'PDF, PNG or JPEG, up to 4 MB.'}
                 </p>
                 <SecondaryButton ariaLabel={`Remove the ${l.state} license`} onClick={() => void save(`/api/pharmacy/onboarding/licenses/${l.state}`, 'DELETE', undefined, onSaved)}>
                   Remove
@@ -395,11 +405,21 @@ export function CatalogStep({ state, onSaved, onNext }: StepProps) {
   function parse(file: File | undefined) {
     if (!file) return
     setMessage(null)
+    if (file.size > MAX_REQUEST_BYTES) {
+      setMessage(CATALOG_TOO_LARGE)
+      return
+    }
     Papa.parse<Record<string, string>>(file, {
       header: true,
       skipEmptyLines: true,
       complete: async parsed => {
-        const res = await sendJson('/api/pharmacy/onboarding/catalog', 'PUT', { choice: 'uploaded', rows: parsed.data })
+        const body = { choice: 'uploaded', rows: parsed.data }
+        // The rows go as JSON, which can be larger than the file itself.
+        if (jsonBodyTooLarge(body)) {
+          setMessage(CATALOG_TOO_LARGE)
+          return
+        }
+        const res = await sendJson('/api/pharmacy/onboarding/catalog', 'PUT', body)
         if (!res.ok) {
           setMessage(typeof res.data['error'] === 'string' ? res.data['error'] : 'The catalog could not be saved.')
           setResult({ rowCount: 0, warnings: Array.isArray(res.data['warnings']) ? res.data['warnings'] as string[] : [] })

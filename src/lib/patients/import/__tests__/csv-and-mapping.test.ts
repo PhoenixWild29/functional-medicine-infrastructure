@@ -40,8 +40,8 @@ describe('parseCsv', () => {
     expect(() => parseCsv('a,b\n"open,2\n')).toThrow(CsvParseError)
   })
 
-  it('limits: 5 MB and 5,000 rows', () => {
-    expect(MAX_IMPORT_BYTES).toBe(5 * 1024 * 1024)
+  it('limits: 4 MB (the Vercel Function body limit) and 5,000 rows', () => {
+    expect(MAX_IMPORT_BYTES).toBe(4 * 1024 * 1024)
     expect(MAX_IMPORT_ROWS).toBe(5000)
   })
 })
