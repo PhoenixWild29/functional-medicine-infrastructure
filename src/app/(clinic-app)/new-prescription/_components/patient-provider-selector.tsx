@@ -22,7 +22,7 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { usePrescriptionSession, type SessionPatient, type SessionProvider } from '../_context/prescription-session'
+import { usePrescriptionSession } from '../_context/prescription-session'
 import { AllergyChip, EditableAllergyChip, type SavedAllergies } from './allergy-chip'
 import { NewPatientForm, type CreatedPatient, type CreatedIntake, type FaceSheetAvailability } from './new-patient-form'
 import { IntakeChip } from '@/components/intake-chip'

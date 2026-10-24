@@ -87,22 +87,6 @@ interface SaltForm {
   abbreviation: string | null
 }
 
-interface DosageForm {
-  dosage_form_id: string
-  name: string
-  is_sterile: boolean
-  requires_injection_supplies: boolean
-  sort_order: number
-}
-
-interface Route {
-  route_id: string
-  name: string
-  abbreviation: string
-  sig_prefix: string
-  sort_order: number
-}
-
 interface Formulation {
   formulation_id: string
   name: string
@@ -157,10 +141,6 @@ const NO_TIMING_DURATION: SigTimingAndDuration = { timing: '', duration: '', cus
 
 function toCurrency(dollars: number): string {
   return '$' + dollars.toFixed(2)
-}
-
-function toCents(dollars: number): number {
-  return Math.round(dollars * 100)
 }
 
 /** Default dose unit for a dosage form — what picking a formulation pre-selects. */
@@ -271,7 +251,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
 
   // ── Cascading queries ───────────────────────────────────
 
-  const { data: categories = [] } = useQuery({
+  useQuery({
     queryKey: ['formulation-categories'],
     queryFn: () => fetchLevel<string>('categories'),
   })

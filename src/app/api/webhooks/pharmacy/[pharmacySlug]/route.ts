@@ -614,8 +614,6 @@ async function handleOrderRejected(
   pharmacyId: string,
   pharmacySlug: string
 ): Promise<string | null> {
-  const supabase = createServiceClient()
-
   const order = await resolveOrderByExternalRef(envelope.orderId, pharmacyId)
   if (!order) {
     console.error(

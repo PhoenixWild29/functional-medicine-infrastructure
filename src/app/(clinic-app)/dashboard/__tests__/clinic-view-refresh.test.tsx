@@ -20,9 +20,10 @@ jest.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
   usePathname: () => '/dashboard',
 }))
-const mockCreateBrowserClient = jest.fn((..._args: unknown[]) => ({
+const fakeBrowserClient = () => ({
   from: () => ({ select: () => ({ eq: () => ({ is: () => ({ order: () => new Promise(() => {}) }) }) }) }),
-}))
+})
+const mockCreateBrowserClient = jest.fn<ReturnType<typeof fakeBrowserClient>, unknown[]>(fakeBrowserClient)
 jest.mock('@/lib/supabase/client', () => ({
   createBrowserClient: (...args: unknown[]) => mockCreateBrowserClient(...args),
 }))

@@ -19,7 +19,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 
 const VALID_REGULATORY_STATUSES = ['ACTIVE', 'RECALLED', 'DISCONTINUED', 'SHORTAGE']
 
-async function guard(request: NextRequest) {
+async function guard() {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return { user: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
@@ -31,7 +31,7 @@ async function guard(request: NextRequest) {
 
 // ── POST: Add single item ─────────────────────────────────────
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const { user, error: authErr } = await guard(request)
+  const { user, error: authErr } = await guard()
   if (authErr) return authErr
 
   let body: Record<string, unknown>
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
 // ── PATCH: Update single item ─────────────────────────────────
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
-  const { user, error: authErr } = await guard(request)
+  const { user, error: authErr } = await guard()
   if (authErr) return authErr
 
   let body: Record<string, unknown>

@@ -105,6 +105,13 @@ export async function resolveActorNames(supabase: Supabase, ids: ReadonlyArray<s
   return out
 }
 
+/** A provider summary without npiStatus: the review carries the full registry result as `npi`. */
+function withoutNpiStatus<T extends { npiStatus: unknown }>(provider: T): Omit<T, 'npiStatus'> {
+  const copy: Partial<T> = { ...provider }
+  delete copy.npiStatus
+  return copy as Omit<T, 'npiStatus'>
+}
+
 export async function loadClinicReview(supabase: Supabase, clinicId: string, now: Date = new Date()): Promise<ClinicReview | null> {
   const state = await loadOnboardingState(supabase, clinicId, now)
   if (!state) return null
@@ -170,7 +177,8 @@ export async function loadClinicReview(supabase: Supabase, clinicId: string, now
       reviewedAt:  c?.onboarding_reviewed_at ?? null,
       reviewedBy:  c?.onboarding_reviewed_by ? names.get(c.onboarding_reviewed_by) ?? ROLE_LABELS['ops_admin']! : null,
     },
-    providers: state.providers.map(({ npiStatus: _ignored, ...p }) => {
+    providers: state.providers.map(provider => {
+      const p = withoutNpiStatus(provider)
       const n = npiRows.find(r => r.provider_id === p.providerId)
       const registryName = n ? [n.registry_first_name, n.registry_last_name].filter(Boolean).join(' ') || null : null
       return {

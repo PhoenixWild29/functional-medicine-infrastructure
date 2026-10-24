@@ -16,7 +16,7 @@
 // Polling: 10-second refetch interval via TanStack Query.
 // Bulk ops: checkbox select + bulk action bar (CAS per order — HC-09).
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useQuery }  from '@tanstack/react-query'
 import { createBrowserClient } from '@/lib/supabase/client'
 import type { PipelineOrder, FilterOption } from '@/types/pipeline'
