@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { generateCheckoutToken } from '../src/lib/auth/checkout-token'
 import { cleanupTestOrders, TEST_IDS, TEST_USERS } from './fixtures/seed'
 import { hashInviteToken, inviteExpiresAt, newInviteToken } from '../src/lib/onboarding/tokens'
+import { TEST_PATIENT_DOB, closeTestProposals, seedProposal } from './fixtures/proposals'
 
 // ============================================================
 // Compliance C10: WCAG 2.1 AA, patient-facing pages, real browser
@@ -251,5 +252,75 @@ test.describe('Accessibility: clinic onboarding (WCAG 2.1 AA)', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Clinic onboarding' })).toBeVisible({ timeout: 15_000 })
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).include('main').analyze()
     expect(results.violations.map(v => `${v.id}: ${v.nodes.map(n => n.target.join(' ')).join(', ')}`)).toEqual([])
+  })
+})
+
+// ── Patient protocol choice: the plan link (/plan/[token]) ──
+// Every state a patient can land on, on a phone: before the date of birth,
+// a wrong date, the plan itself, the confirm and decline steps, and the
+// closed pages (locked, expired, approved, not valid). Proposals are seeded
+// with the service role (fixtures/proposals.ts) and closed afterwards.
+test.describe('Accessibility: the patient plan link (WCAG 2.1 AA)', () => {
+  test.use({ viewport: { width: 390, height: 844 } })
+  const tokens: Record<'open' | 'locked' | 'expired' | 'signed', string> = { open: '', locked: '', expired: '', signed: '' }
+
+  test.beforeAll(async () => {
+    for (const state of ['open', 'locked', 'expired', 'signed'] as const) tokens[state] = (await seedProposal(state)).token
+  })
+
+  test.afterAll(async () => {
+    await closeTestProposals()
+    await cleanupTestOrders()
+  })
+
+  test('before the date of birth, and a wrong one: no violations; reflows at 320px', async ({ page }) => {
+    await page.goto(`/plan/${tokens.open}`)
+    await expect(page.getByRole('heading', { level: 1, name: 'Your provider has a plan ready' })).toBeVisible({ timeout: 15_000 })
+    expect(await axeViolations(page)).toEqual([])
+    await page.getByLabel('Date of birth').fill('1979-12-31')
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await expect(page.getByRole('alert')).toContainText("doesn't match")
+    expect(await axeViolations(page)).toEqual([])
+    await expectReflowsAt320(page)
+  })
+
+  test('the plan, the confirm step and the decline step: no violations; reflows at 320px', async ({ page }) => {
+    await page.goto(`/plan/${tokens.open}`)
+    await page.getByLabel('Date of birth').fill(TEST_PATIENT_DOB)
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Choose your plan' })).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId(/^plan-total-/)).toHaveText(/^\$\d+\.\d{2}$/)
+    expect(await axeViolations(page)).toEqual([])
+    await expectReflowsAt320(page)
+
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.getByRole('button', { name: 'Choose this plan' }).click()
+    await expect(page.getByRole('region', { name: 'Confirm your choice' })).toBeVisible()
+    expect(await axeViolations(page)).toEqual([])
+    await page.getByRole('button', { name: 'Back' }).click()
+
+    await page.getByRole('button', { name: 'None of these / I want to talk to my clinic' }).click()
+    await expect(page.getByRole('region', { name: 'Talk to your clinic' })).toBeVisible()
+    expect(await axeViolations(page)).toEqual([])
+  })
+
+  for (const [state, title] of [
+    ['locked', 'This link is locked'],
+    ['expired', 'This link has expired'],
+    ['signed', 'Your provider has approved your plan'],
+  ] as const) {
+    test(`${state}: no violations; reflows at 320px`, async ({ page }) => {
+      await page.goto(`/plan/${tokens[state]}`)
+      await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible({ timeout: 15_000 })
+      expect(await axeViolations(page)).toEqual([])
+      await expectReflowsAt320(page)
+    })
+  }
+
+  test('not a valid link: no violations; reflows at 320px', async ({ page }) => {
+    await page.goto(`/plan/${'Z'.repeat(43)}`)
+    await expect(page.getByRole('heading', { level: 1, name: 'This link is not valid' })).toBeVisible({ timeout: 15_000 })
+    expect(await axeViolations(page)).toEqual([])
+    await expectReflowsAt320(page)
   })
 })
