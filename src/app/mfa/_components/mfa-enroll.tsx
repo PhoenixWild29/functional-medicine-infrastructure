@@ -14,8 +14,8 @@
 // behind; it is removed first, so a retry never trips over it.
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
+import { navigateFully } from '@/lib/auth/full-navigation'
 import { CodeForm, MFA_ERROR_ID, MfaCard, SignOutLink } from './mfa-shared'
 
 interface Props {
@@ -26,7 +26,6 @@ interface Props {
 type Enrollment = { factorId: string; qrCode: string; secret: string }
 
 export function MfaEnroll({ destination }: Props) {
-  const router = useRouter()
   const [supabase] = useState(() => createBrowserClient())
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -69,8 +68,10 @@ export function MfaEnroll({ destination }: Props) {
       setCodeRefused(true)
       return
     }
-    router.refresh()
-    router.replace(destination)
+    // A full page load, not the client router: since Next 16.3 the router
+    // replays the AAL1 redirect it saw for this destination and never asks
+    // the server again (lib/auth/full-navigation).
+    navigateFully(destination)
   }
 
   return (

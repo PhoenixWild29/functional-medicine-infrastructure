@@ -13,6 +13,15 @@
  * correct code continues, a wrong one says so. A user with no verified
  * factor is sent to enroll.
  *
+ * Continuing after a correct code is a full page navigation
+ * (lib/auth/full-navigation), not a client-router replace. Since Next 16.3
+ * the client router reuses the redirect it saw on the way in (the
+ * destination redirected here at AAL1), so router.replace(destination)
+ * never asks the server again and stays on this page; router.refresh()
+ * does not clear it. A full navigation always reaches the middleware with
+ * the new AAL2 session. (Updated: these tests asserted router.refresh()
+ * and router.replace(destination).)
+ *
  * The login factor is Supabase Auth's own (auth.mfa_factors). It is not
  * the EPCS signing secret (providers.totp_secret_encrypted).
  */
@@ -26,6 +35,8 @@ const mockRefresh = jest.fn()
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), replace: mockReplace, refresh: mockRefresh }),
 }))
+const mockNavigateFully = jest.fn()
+jest.mock('@/lib/auth/full-navigation', () => ({ navigateFully: (path: string) => mockNavigateFully(path) }))
 
 const mfa = {
   listFactors: jest.fn(),
@@ -74,8 +85,9 @@ describe('enrollment', () => {
     await screen.findByAltText('QR code for your authenticator app')
     await typeCode('123456')
     expect(mfa.challengeAndVerify).toHaveBeenCalledWith({ factorId: 'factor-new', code: '123456' })
-    expect(mockRefresh).toHaveBeenCalled()
-    expect(mockReplace).toHaveBeenCalledWith('/new-prescription')
+    expect(mockNavigateFully).toHaveBeenCalledWith('/new-prescription')
+    // Not the client router: it would replay the AAL1 redirect back here.
+    expect(mockReplace).not.toHaveBeenCalled()
   })
 
   it('a wrong code says so and does not continue', async () => {
@@ -85,6 +97,7 @@ describe('enrollment', () => {
     await typeCode('000000')
     expect(screen.getByRole('alert')).toHaveTextContent(/did not match/)
     expect(mockReplace).not.toHaveBeenCalled()
+    expect(mockNavigateFully).not.toHaveBeenCalled()
   })
 
   it('a code that is not 6 digits is not sent', async () => {
@@ -111,8 +124,8 @@ describe('challenge', () => {
     await screen.findByLabelText('6-digit code')
     await typeCode('654321')
     expect(mfa.challengeAndVerify).toHaveBeenCalledWith({ factorId: 'factor-1', code: '654321' })
-    expect(mockRefresh).toHaveBeenCalled()
-    expect(mockReplace).toHaveBeenCalledWith('/ops')
+    expect(mockNavigateFully).toHaveBeenCalledWith('/ops')
+    expect(mockReplace).not.toHaveBeenCalled()
   })
 
   it('a wrong code says so and stays', async () => {
@@ -122,6 +135,7 @@ describe('challenge', () => {
     await typeCode('000000')
     expect(screen.getByRole('alert')).toHaveTextContent(/did not match/)
     expect(mockReplace).not.toHaveBeenCalled()
+    expect(mockNavigateFully).not.toHaveBeenCalled()
   })
 
   it('no verified factor: sent to enroll, keeping the destination', async () => {
