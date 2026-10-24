@@ -29,6 +29,7 @@ import { clientIp } from '@/lib/audit/keyed-hash'
 import { hashProposalToken } from '@/lib/proposals/token'
 import { choosePlan, declinePlan, loadPlan, quotePlan, resolvePlan, verifyPlanDob, type PlanSelection } from '@/lib/proposals/plan'
 import { PLAN_RATE_LIMITED_MESSAGE, planIpLimiter, planTokenLimiter } from '@/lib/proposals/plan-rate-limit'
+import { notifyClinicOfChoice } from '@/lib/proposals/queue'
 
 export const dynamic = 'force-dynamic'
 
@@ -128,6 +129,8 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
       const c = await choosePlan(db, proposal, a.selection, now)
       if (!c.ok) return json({ error: c.error, code: c.code }, c.status)
       console.info(`[plan] ${c.rechosen ? 'rechosen' : 'chosen'} | proposal=${proposal.proposal_id}`)
+      // PR 4: the clinic's in-app notification ("Plans ready to sign"). Idempotent per choice; never throws.
+      await notifyClinicOfChoice(db, { proposalId: proposal.proposal_id })
       const plan = await loadPlan(db, { ...proposal, status: 'chosen', chosen_option_id: a.selection.optionId })
       return json({ ok: true, rechosen: c.rechosen, plan })
     }

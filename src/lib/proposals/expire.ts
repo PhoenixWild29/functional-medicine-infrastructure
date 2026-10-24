@@ -5,8 +5,9 @@
 // GET /api/cron/proposal-expiry runs this. A proposal sent, or chosen but
 // never signed, whose link is past expires_at (7 days from sending,
 // decision 5) expires:
-//   - status expired (compare-and-set on the status it was read with),
-//     token_hash NULL (the link dies);
+//   - status expired (compare-and-set on the status it was read with).
+//     The status closes the plan; the hash is kept so /plan/<token> says
+//     "This link has expired" (PR 3) rather than "not valid";
 //   - its DRAFT lines go DRAFT -> CANCELLED (never signed), with history;
 //   - 'expired' is recorded (actor system).
 // Safe to run again: an expired proposal is never read again, and every
@@ -36,7 +37,7 @@ export async function expireProposals(db: Db, now: Date, limit: number = PROPOSA
   let failed = 0
   for (const p of (data ?? []) as Array<{ proposal_id: string; status: string }>) {
     const { data: closed, error: closeError } = await db.from('treatment_proposals')
-      .update({ status: 'expired', token_hash: null })
+      .update({ status: 'expired' })
       .eq('proposal_id', p.proposal_id)
       .eq('status', p.status)
       .select('proposal_id')

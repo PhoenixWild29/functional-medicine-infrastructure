@@ -17,8 +17,10 @@
 //   - every other DRAFT line of the proposal goes DRAFT -> CANCELLED
 //     (never signed; it stays tagged, so the clinic sees what was not
 //     chosen, decision 9);
-//   - the proposal is signed (signed_at), its link dies (token_hash
-//     NULL), and 'signed' is recorded with the count;
+//   - the proposal is signed (signed_at) and 'signed' is recorded with the
+//     count. The plan is closed by that status: the link keeps its hash so
+//     /plan/<token> says "Your provider has approved your plan" (PR 3
+//     finds the proposal by the hash) and shows nothing else;
 //   - the chosen lines of a protocol option start or advance the
 //     patient's protocol instance (decision 8: at signing, not proposal).
 // A check that fails at sign stops the whole choice: nothing is signed or
@@ -114,7 +116,7 @@ export async function signChosenProposal(
   }
 
   const { error: closeError } = await db.from('treatment_proposals')
-    .update({ status: 'signed', signed_at: now.toISOString(), token_hash: null })
+    .update({ status: 'signed', signed_at: now.toISOString() })
     .eq('proposal_id', p.proposal_id)
     .eq('status', 'chosen')
   if (closeError) console.error('[proposal-sign] proposal could not be marked signed:', closeError.message, '| proposal=', p.proposal_id)

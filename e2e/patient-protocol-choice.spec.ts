@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { createClient } from '@supabase/supabase-js'
 import { seedStaticData, cleanupTestOrders, TEST_CATALOG, TEST_USERS } from './fixtures/seed'
 import { TEST_PATIENT_DOB, closeTestProposals, latestChoice, latestTestProposal, proposalEvents, proposalLines, proposalRow } from './fixtures/proposals'
 
@@ -18,9 +19,14 @@ import { TEST_PATIENT_DOB, closeTestProposals, latestChoice, latestTestProposal,
 //      /plan/<token>: one wrong date of birth (dob_failed), then the right
 //      one; sees both options; unticks the optional item; chooses
 //      "Foundation plan" and confirms.
-//   4. The provider sees the plan as chosen on the dashboard.
-//
-// Signing the choice (PR 4) extends this spec when PR 4 lands.
+//   4. The provider sees "Test chose Foundation plan (1 of 2 items)" under
+//      "Plans ready to sign", opens Review and sign (the chosen line only,
+//      fixed) and signs it.
+//   5. The unchosen lines are CANCELLED and never signed; the proposal is
+//      signed; the payment page loads (no card is entered: Stripe test mode
+//      in E2E); and the plan link now says "Your provider has approved
+//      your plan" (texting is off in E2E, so the payment link reaches the
+//      patient from the clinic, not by text).
 //
 // No sleeps: every wait is a web-first assertion or expect.poll on the
 // database. Setup and cleanup are service-role (fixtures/proposals.ts);
@@ -85,6 +91,28 @@ async function addAndSearchAnother(page: Page, retail: string) {
 }
 
 /** C8: the GLP-1 line's clinical-difference reason on Review (never pre-selected). */
+/** Three horizontal strokes across the signature pad (a single dot is refused). */
+async function drawSignature(page: Page) {
+  const pad = page.locator('canvas[aria-label="Provider signature pad"]')
+  await pad.scrollIntoViewIfNeeded()
+  const box = (await pad.boundingBox())!
+  for (let i = 0; i < 3; i++) {
+    const y = box.y + box.height * (0.25 + 0.25 * i)
+    await page.mouse.move(box.x + box.width * 0.1, y)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width * 0.5, y + 6, { steps: 8 })
+    await page.mouse.move(box.x + box.width * 0.9, y, { steps: 8 })
+    await page.mouse.up()
+  }
+}
+
+async function orderRows(ids: string[]) {
+  const db = createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
+  const { data, error } = await db.from('orders').select('order_id, status, provider_signature_hash_snapshot').in('order_id', ids)
+  if (error) throw new Error(error.message)
+  return new Map((data ?? []).map(r => [r.order_id as string, r]))
+}
+
 async function chooseClinicalDifference(page: Page) {
   const reason = page.getByLabel(/Clinical difference \(required\)/)
   await expect(reason).toHaveValue('', { timeout: 15_000 })
@@ -102,8 +130,8 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     await cleanupTestOrders()
   })
 
-  test('two options, one optional item, copy link and QR; the patient fails the DOB once, unticks the optional item and chooses', async ({ browser }) => {
-    test.setTimeout(180_000)
+  test('two options, one optional item, copy link and QR; the patient fails the DOB once, unticks the optional item and chooses; the provider signs the choice', async ({ browser }) => {
+    test.setTimeout(240_000)
 
     // ── 1. The provider builds three lines and groups them into two options ──
     const providerContext = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] })
@@ -214,9 +242,43 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     expect(await latestChoice(proposal.proposal_id)).toEqual([glp1Line.orderId])
     expect(await proposalEvents(proposal.proposal_id)).toEqual(expect.arrayContaining(['sent', 'link_copied', 'qr_shown', 'dob_failed', 'viewed', 'chosen']))
 
-    // ── 4. The provider sees the choice ──
+    // ── 4. The provider sees the choice and signs it ──
     await page.goto(`/dashboard?tab=proposed&order=${glp1Line.orderId}`)
     await expect(page.getByText('The patient has chosen. Signing comes next.')).toBeVisible({ timeout: 15_000 })
+    await page.goto('/dashboard')
+    const queue = page.getByRole('region', { name: 'Plans ready to sign' })
+    await expect(queue.getByText('Test chose Foundation plan (1 of 2 items)')).toBeVisible({ timeout: 15_000 })
+    await queue.getByRole('link', { name: 'Review and sign: Test chose Foundation plan (1 of 2 items)' }).click()
+    await expect(page).toHaveURL(`/new-prescription/sign?proposal=${proposal.proposal_id}`, { timeout: 15_000 })
+    await expect(page.getByTestId(`select-${glp1Line.orderId}`)).toBeChecked({ timeout: 15_000 })
+    await expect(page.locator('[data-testid^="select-"]')).toHaveCount(1)
+    const send = page.getByRole('button', { name: 'Sign & Send 1 Prescription' })
+    await drawSignature(page)
+    await expect(page.getByText('Signature captured')).toBeVisible()
+    await expect(send).toBeEnabled()
+    await send.click()
+    await expect(page).toHaveURL(/\/dashboard\?sent=1/, { timeout: 30_000 })
+
+    // ── 5. Signed: only the chosen line; the rest cancelled, never signed ──
+    await expect.poll(async () => (await proposalRow(proposal.proposal_id)).status).toBe('signed')
+    expect(await proposalEvents(proposal.proposal_id)).toContain('signed')
+    const unchosen = [optionalLine.orderId, options[1]!.lines[0]!.orderId]
+    const rows = await orderRows([glp1Line.orderId, ...unchosen])
+    expect(rows.get(glp1Line.orderId)).toEqual(expect.objectContaining({ status: 'AWAITING_PAYMENT' }))
+    expect(rows.get(glp1Line.orderId)!.provider_signature_hash_snapshot).toMatch(/^[0-9a-f]{64}$/)
+    for (const id of unchosen) expect(rows.get(id)).toEqual(expect.objectContaining({ status: 'CANCELLED', provider_signature_hash_snapshot: null }))
+
+    // The payment page loads (no card is entered).
+    const link = await page.request.post(`/api/orders/${glp1Line.orderId}/checkout-link`)
+    expect(link.status()).toBe(200)
+    const { checkoutUrl } = await link.json() as { checkoutUrl: string }
+    await patient.goto(new URL(checkoutUrl).pathname)
+    await expect(patient.getByTestId('checkout-amount-due')).toBeVisible({ timeout: 20_000 })
+
+    // The plan link now shows the approved state, and nothing about the plan.
+    await patient.goto(planPath)
+    await expect(patient.getByRole('heading', { level: 1, name: 'Your provider has approved your plan' })).toBeVisible({ timeout: 15_000 })
+    await expect(patient.locator('body')).not.toContainText(TEST_CATALOG.glp1FormulationName)
 
     await phone.close()
     await providerContext.close()
