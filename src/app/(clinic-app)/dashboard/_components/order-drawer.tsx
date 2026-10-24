@@ -38,6 +38,8 @@ import type { OrderRecord } from '@/app/api/orders/[orderId]/record/route'
 import { EhrChangesSection } from '@/components/ehr-changes-section'
 import { orderDisplayNumber } from '@/lib/orders/order-number'
 import { refillRowState } from '@/lib/orders/refill'
+import { isSubmissionFailure, submissionFailureNotice } from '@/lib/orders/submission-failure'
+import type { SubmissionFailure } from '@/app/api/orders/[orderId]/failure-reason/route'
 
 interface Props {
   order: DashboardOrder | null
@@ -167,6 +169,8 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
   const [history,           setHistory]           = useState<StatusHistoryRow[]>([])
   // Payment Flow v1.1: "Payment failed, awaiting retry" (lib/payments/events).
   const [paymentFailed,     setPaymentFailed]     = useState<string | null>(null)
+  // Sending to the pharmacy failed: why, in plain words (null until read).
+  const [submissionFailure, setSubmissionFailure] = useState<string | null>(null)
   // The order's stored shipping + Rx details (GET /api/orders/[id]/record).
   const [record,            setRecord]            = useState<OrderRecord | null>(null)
   // Shipping rates + absorb setting for the Combine preview.
@@ -193,6 +197,23 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
   const [isCopyingGroupLink,   setIsCopyingGroupLink]   = useState(false)
 
   // Fetch status timeline when drawer opens (order.orderId changes)
+  // A failed submission: the line says where, why and what happens next.
+  // If the reason cannot be read, it still says what happens next.
+  useEffect(() => {
+    setSubmissionFailure(null)
+    if (!order || !isSubmissionFailure(order.status)) return
+    let cancelled = false
+    fetch(`/api/orders/${order.orderId}/failure-reason`)
+      .then(res => (res.ok ? res.json() : null))
+      .catch(() => null)
+      .then((body: { failure?: SubmissionFailure | null } | null) => {
+        if (cancelled) return
+        const f = body?.failure ?? null
+        setSubmissionFailure(submissionFailureNotice({ pharmacyName: f?.pharmacyName ?? null, plainReason: f?.plainReason ?? null }))
+      })
+    return () => { cancelled = true }
+  }, [order?.orderId, order?.status]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!order) {
       setHistory([])
@@ -575,6 +596,12 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
         </div>
 
         <div className="space-y-6 px-5 py-5">
+
+          {submissionFailure && (
+            <div role="status" data-testid="submission-failure" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm font-medium text-red-900">
+              {submissionFailure}
+            </div>
+          )}
 
           {paymentFailed && (
             <div role="status" data-testid="payment-failed-label" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900">

@@ -18,12 +18,13 @@ const CLINIC = '11111111-1111-4111-8111-111111111111'
 const ORDER  = '22222222-2222-4222-8222-222222222222'
 const PHARM  = '33333333-3333-4333-8333-333333333333'
 const SUB    = '44444444-4444-4444-8444-444444444444'
+const OTHER  = '55555555-5555-4555-8555-555555555555'
 
 let user: unknown = { id: 'u-1', app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC } }
 let db = scriptedDb(() => undefined)
 
 jest.mock('@/lib/supabase/server', () => ({
-  createServerClient: async () => ({ auth: { getUser: async () => ({ data: { user }, error: null }) }, from: (t: string) => db.client.from(t) }),
+  createServerClient: async () => ({ auth: { getUser: async () => ({ data: { user }, error: null }) }, from: (t: string) => (db.client as unknown as { from: (t: string) => unknown }).from(t) }),
 }))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => { throw new Error('service role must not be used') } }))
 jest.spyOn(console, 'error').mockImplementation(() => {})
@@ -36,9 +37,9 @@ const failedOrder = (status = 'SUBMISSION_FAILED', submission: Record<string, un
   submission_id: SUB, pharmacy_id: PHARM, status: 'SUBMISSION_FAILED', error_code: 'NETWORK_ERROR',
   error_message: 'TypeError: fetch failed\n    at node:internal/deps/undici key=sk_live_secret', created_at: '2026-10-24T10:00:00Z', completed_at: '2026-10-24T10:01:00Z',
 }) => (c: ScriptedCall) => {
-  if (c.table === 'orders') return { data: { order_id: ORDER, status, pharmacy_id: PHARM } }
+  if (c.table === 'orders') return { data: { order_id: ORDER, status, pharmacy_snapshot: { pharmacy_id: PHARM, name: 'Strive Pharmacy' } } }
   if (c.table === 'adapter_submissions') return { data: submission ? [submission] : [] }
-  if (c.table === 'pharmacies') return { data: { pharmacy_id: PHARM, name: 'Strive Pharmacy' } }
+  if (c.table === 'pharmacies') return { data: { name: c.filters['pharmacy_id'] === OTHER ? 'Empower Pharmacy' : 'Strive Pharmacy' } }
   return undefined
 }
 
@@ -78,6 +79,18 @@ it('no failed submission row (e.g. failed before sending): a generic reason with
   db = scriptedDb(failedOrder('SUBMISSION_FAILED', null))
   const body = await (await call()).json()
   expect(body.failure).toEqual({ code: null, plainReason: 'the order could not be delivered to the pharmacy', pharmacyName: 'Strive Pharmacy', at: null })
+})
+
+it("the failed attempt went to another pharmacy (a re-route): that pharmacy's name", async () => {
+  db = scriptedDb(failedOrder('SUBMISSION_FAILED', { pharmacy_id: OTHER, status: 'REJECTED', error_code: 'REJECTED', created_at: '2026-10-24T11:00:00Z', completed_at: null }))
+  const body = await (await call()).json()
+  expect(body.failure).toEqual({ code: 'REJECTED', plainReason: 'the pharmacy declined the order', pharmacyName: 'Empower Pharmacy', at: '2026-10-24T11:00:00Z' })
+})
+
+it("the order's own pharmacy: its name from the order, no extra read", async () => {
+  db = scriptedDb(failedOrder())
+  await call()
+  expect(db.to('pharmacies', 'select')).toHaveLength(0)
 })
 
 it('an order not in a failed state has no reason', async () => {
