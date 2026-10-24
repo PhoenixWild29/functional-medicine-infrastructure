@@ -1,16 +1,8 @@
-task-id: A-2026-10-23-03
+task-id: A-2026-10-24-01
 status: ready
 ---
-PR #247 (your branch `ops-review-self-signup`, head 2e7052a, which already has main merged) failed E2E on two tests in `e2e/self-serve-signup.spec.ts`. Fix both on the same branch. No migration (if one is needed, stop and report). Red test then fix. Push only.
+Branch `pharmacy-license-upload-4mb` from origin/main. No migration. Push only, no PR. Red test then fix.
 
-1. REAL BUG, would break every approval on prod too. `clinics.stripe_connect_account_id` has a UNIQUE constraint (`clinics_stripe_connect_account_id_key`). Sunrise already holds 'poc_placeholder', so approving any other clinic with demo payouts fails: server log "[ops/onboarding] review failed ... action=approve: duplicate key value violates unique constraint clinics_stripe_connect_account_id_key" and the test waits in vain for "<name> approved. It can now sign and send orders." (spec line 234).
-   Fix: the demo payout id is unique per clinic: `poc_placeholder_<clinic_id>`. Everywhere the app recognises the demo placeholder must accept the exact 'poc_placeholder' AND the `poc_placeholder_` prefix:
-   - checkout PaymentIntent creation (`src/app/api/checkout/payment-intent/route.ts` isPocPlaceholder, and the payment-group intent route if it has the same check): omit Connect routing for both forms;
-   - the Settings label helper `src/lib/stripe/demo-account.ts` (shows "Demo payout account");
-   - any other place that compares to 'poc_placeholder' (grep the repo, including webhooks and ledger).
-   Update `scripts/demo/2026-10-23-portal-clinic-payouts.sql` to set `'poc_placeholder_' || clinic_id` (still only where the account id is NULL or '').
-   Tests: approving two clinics in a row both succeed; checkout omits transfer_data for the prefixed id; the label shows Demo payout account for it; a real `acct_...` id is unchanged.
+Pharmacy onboarding license documents (`src/lib/pharmacy-onboarding/application.ts` MAX_DOCUMENT_BYTES, 10 MB) go through a Vercel Function, which rejects request bodies over about 4.5 MB. Lower the limit to 4 MB everywhere it is enforced or shown: server check, browser check, copy ("up to 4 MB"), tests. Same pattern as the face-sheet limit (src/lib/face-sheet/config.ts). Also grep for any other upload that allows more than 4 MB through a Vercel Function (patient CSV import, catalog CSV, anything else) and apply the same 4 MB limit; list each in the report.
 
-2. Rate limit in the same spec: test "a pharmacy: /login > Get started ..." (line 248) now fails with server log "[signup] rate_limited | ip_hash=none" because your new ops-review test adds more sign-ups through the public form in the same run (all CI sign-ups share one IP). Fix the TEST, not the limiter: in the ops-review test, create the self-signed-up clinic, its provider, account and unverified NPI result directly with the service role (the same rows the sign-up writes), instead of going through /get-started. Keep everything the test asserts on the ops side.
-
-3. Lint, tsc, Jest, build green. Put the full report (head SHA, files, Jest count, new SQL blob SHA) in the body of your final commit message and push.
+Lint, tsc, Jest, build green. Full report in the body of your final commit message.
