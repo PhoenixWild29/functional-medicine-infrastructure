@@ -206,12 +206,12 @@ export interface UploadedFile { name: string; type: string; size: number; bytes:
 export async function attachLicenseDocument(db: SupabaseClient, ctx: WizardCtx, rawState: string, file: UploadedFile): Promise<{ ok: true } | Fail> {
   const state = stateCode(rawState)
   if (!state) return { ok: false, status: 400, error: 'Unknown state.' }
+  if (file.size <= 0 || file.size > MAX_DOCUMENT_BYTES) return { ok: false, status: 400, error: `The file must be under ${MAX_REQUEST_LABEL}.` }
   // The type is read from the file's first bytes, never the declared type
   // or the name (security review, Oct 24); it also sets the stored type.
   const contentType = sniffDocumentType(file.bytes)
   const ext = contentType ? DOCUMENT_TYPES[contentType] : undefined
   if (!contentType || !ext) return { ok: false, status: 400, error: 'Upload the license as a PDF, PNG or JPEG.' }
-  if (file.size <= 0 || file.size > MAX_DOCUMENT_BYTES) return { ok: false, status: 400, error: `The file must be under ${MAX_REQUEST_LABEL}.` }
 
   const r = await editable(db, ctx.pharmacyId)
   if (!r.ok) return r
