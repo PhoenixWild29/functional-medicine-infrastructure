@@ -98,3 +98,26 @@ describe('ci.yml', () => {
     expect(e2e).toMatch(/group: e2e-shared-supabase-project/)
   })
 })
+
+describe('patient protocol choice (#268) is shard-safe', () => {
+  const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8')
+
+  it('the proposals fixture reads and writes only this shard\'s clinic and patient', () => {
+    const src = read('e2e/fixtures/proposals.ts')
+    expect(src).toContain("from './seed'")
+    for (const fn of ['closeTestProposals', 'latestTestProposal']) {
+      const body = src.slice(src.indexOf(`export async function ${fn}`))
+      const end = body.indexOf('\n}\n')
+      expect(body.slice(0, end)).toMatch(/\.eq\('clinic_id', TEST_IDS\.clinic\)/)
+      expect(body.slice(0, end)).toMatch(/\.eq\('patient_id', TEST_IDS\.patient\)/)
+    }
+    expect(src).not.toMatch(/'aaaaaaaa-|@compoundiq\.test/)
+  })
+
+  it('the spec signs in through TEST_USERS and writes no shared catalog or table-wide RPC', () => {
+    const spec = read('e2e/patient-protocol-choice.spec.ts')
+    expect(spec).toContain('TEST_USERS.provider.email')
+    expect(spec).not.toMatch(/'aaaaaaaa-|@compoundiq\.test|Test Clinic E2E/)
+    expect(spec).not.toMatch(/\.rpc\(|from\('(pharmacy_formulations|pharmacies|formulations|ingredients|catalog)'\)\.(insert|update|upsert|delete)/)
+  })
+})
