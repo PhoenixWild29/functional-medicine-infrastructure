@@ -26,7 +26,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
-import { RX_DETAIL_COLUMN_LIST, rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
+import { RX_DETAIL_COLUMN_LIST, dispenseCount, rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
 import { resolveLine, lineSourceKind } from '@/lib/orders/resolve-line'
 import { canEditDraft, diffDraftRows, writeDraftAudit } from '@/lib/orders/draft-edit'
 import { checkProviderOwnsDraft } from '@/lib/orders/provider-draft-guard'
@@ -277,6 +277,7 @@ async function patchHandler(request: NextRequest, context: RouteContext): Promis
     )
   }
 
+  const rxDetailColumns = rxDetailsToColumns(rxDetailsValidation.details)
   const update = {
     catalog_item_id:          sourceKind === 'catalog' ? (catalogItemId as string) : null,
     formulation_id:           sourceKind === 'formulation' ? (formulationId as string) : null,
@@ -286,9 +287,11 @@ async function patchHandler(request: NextRequest, context: RouteContext): Promis
     medication_snapshot:      line.medicationSnapshot,
     pharmacy_snapshot:        line.pharmacySnapshot,
     sig_text:                 sigTrimmed,
-    ...rxDetailsToColumns(rxDetailsValidation.details),
+    ...rxDetailColumns,
     // WO-101
     ...line.package,
+    // What the pharmacy dispenses, counted as the Dispense line states it.
+    quantity:                 dispenseCount({ ...rxDetailColumns, ...line.package }),
     ...modeColumns,
   }
 

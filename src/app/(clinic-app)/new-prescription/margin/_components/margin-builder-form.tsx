@@ -84,7 +84,9 @@ import { SaveFavoriteButton } from '../../_components/save-favorite-button'
 import { formatDoseWithMg } from '@/lib/orders/dose-display'
 import { presetDurationFromDays } from '@/lib/orders/favorite-presets'
 import { type CyclePattern } from '@/lib/orders/cycling'
-import { computeBundleShipping, type PharmacyShippingRates, platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
+import { shippingAddedBy, type PharmacyShippingRates, platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
+import { multiPharmacyWarning } from '@/lib/orders/reroute'
+import { MultiPharmacyNoticeBanner, useShippingRates } from '../../_components/multi-pharmacy-notice'
 import { userMessage } from '@/lib/errors/user-message'
 
 // ── Cent arithmetic helpers — HC-01 ──────────────────────────
@@ -524,24 +526,36 @@ function MarginBuilderFormForLine({
   // ── WO-102: shipping this line adds to the session ────────────
   // The session's other lines (not the one being edited) plus this one,
   // once per pharmacy; the difference is what this line adds.
+  const otherShippingItems = useMemo(
+    () => rxSession.prescriptions
+      .filter(rx => rx.id !== sessionLine?.id)
+      .map(rx => ({ pharmacyId: rx.pharmacyId, shippingType: rx.rxDetails?.shippingType ?? null, wholesaleCents: rx.wholesaleCents })),
+    [rxSession.prescriptions, sessionLine?.id],
+  )
   const shippingLine = useMemo(() => {
     if (!shippingRates) return null
-    const rates = new Map([[shippingRates.pharmacyId, shippingRates]])
-    const others = rxSession.prescriptions
-      .filter(rx => rx.id !== sessionLine?.id && rx.pharmacyId === pharmacyId)
-      .map(rx => ({ pharmacyId: rx.pharmacyId, shippingType: rx.rxDetails?.shippingType ?? null, wholesaleCents: rx.wholesaleCents }))
-    const self = { pharmacyId, shippingType: rxDetails.shippingType, wholesaleCents }
-    const without = computeBundleShipping(others, rates).totalCents
-    const withLine = computeBundleShipping([...others, self], rates)
-    const pharmacyShipping = withLine.byPharmacy[0]!
-    return {
-      addsCents:    withLine.totalCents - without,
-      totalCents:   withLine.totalCents,
-      coldChain:    pharmacyShipping.shippingType === 'cold_chain',
-      sharedWith:   others.length,
-      waived:       pharmacyShipping.waived,
-    }
-  }, [shippingRates, rxSession.prescriptions, sessionLine?.id, pharmacyId, rxDetails.shippingType, wholesaleCents])
+    const added = shippingAddedBy(
+      otherShippingItems,
+      { pharmacyId, shippingType: rxDetails.shippingType, wholesaleCents },
+      new Map([[shippingRates.pharmacyId, shippingRates]]),
+    )
+    return { ...added, coldChain: added.shippingType === 'cold_chain' }
+  }, [shippingRates, otherShippingItems, pharmacyId, rxDetails.shippingType, wholesaleCents])
+
+  // Requirement 15: this line at another pharmacy than the session's
+  // other lines means another shipping charge. Warned here, before it is
+  // added, in the words Review uses (the re-route itself is at Review).
+  const otherPharmacyIds = useMemo(
+    () => [...new Set(otherShippingItems.map(i => i.pharmacyId))].filter(id => id !== pharmacyId),
+    [otherShippingItems, pharmacyId],
+  )
+  const sessionRates = useShippingRates(otherPharmacyIds.length > 0 ? [pharmacyId, ...otherPharmacyIds] : [])
+  const pharmacyWarning = useMemo(() => {
+    if (otherPharmacyIds.length === 0 || !sessionRates.loaded) return null
+    const rates = new Map(sessionRates.rates)
+    if (shippingRates && !rates.has(shippingRates.pharmacyId)) rates.set(shippingRates.pharmacyId, shippingRates)
+    return multiPharmacyWarning([...otherShippingItems, { pharmacyId, shippingType: rxDetails.shippingType, wholesaleCents }], rates)
+  }, [otherPharmacyIds, sessionRates, shippingRates, otherShippingItems, pharmacyId, rxDetails.shippingType, wholesaleCents])
 
   // WO-103: dose with its computed mg equivalent, when the formulation
   // has an mg/mL concentration ("10 units (0.5 mg)").
@@ -964,6 +978,11 @@ function MarginBuilderFormForLine({
                 {'. '}
                 {absorbShipping ? 'Absorbed by the clinic.' : 'Passed to the patient at cost; not part of the margin.'}
               </p>
+            )}
+            {pharmacyWarning && (
+              <div className="mt-2">
+                <MultiPharmacyNoticeBanner notice={pharmacyWarning} />
+              </div>
             )}
             {/* WO-103: ☆ Save as favorite — name defaults to "<Drug> <dose> <freq>" */}
             <div className="mt-2">

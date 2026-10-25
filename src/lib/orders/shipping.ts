@@ -61,6 +61,48 @@ export interface BundleShipping {
   totalCents: number
 }
 
+/** What one line adds to the shipping of the lines already in a bundle. */
+export interface ShippingAdded {
+  /** The extra shipping this line costs: 0 when it ships with an existing line. */
+  addsCents:    number
+  /** The line's pharmacy's shipping once the line is in. */
+  totalCents:   number
+  shippingType: ShippingType
+  /** The bundle's other lines at the same pharmacy. */
+  sharedWith:   number
+  waived:       boolean
+  /** False when the pharmacy's rates are unknown: no fee is known, none is invented. */
+  priced:       boolean
+}
+
+/**
+ * The shipping a line adds to a bundle (a session, a draft set): its
+ * pharmacy's shipping with the line minus without it, once per pharmacy.
+ * The price step and the builder's pharmacy cards both state this, and it
+ * is computeBundleShipping, as Review prices it.
+ */
+export function shippingAddedBy(
+  others: ReadonlyArray<ShippingItem>,
+  line: ShippingItem,
+  rates: ReadonlyMap<string, PharmacyShippingRates> | ReadonlyArray<PharmacyShippingRates>,
+): ShippingAdded {
+  const samePharmacy = others.filter(o => o.pharmacyId === line.pharmacyId)
+  const without = computeBundleShipping(samePharmacy, rates).totalCents
+  const withLine = computeBundleShipping([...samePharmacy, line], rates)
+  const own = withLine.byPharmacy[0]!
+  const priced = rates instanceof Map
+    ? rates.has(line.pharmacyId)
+    : (rates as ReadonlyArray<PharmacyShippingRates>).some(r => r.pharmacyId === line.pharmacyId)
+  return {
+    addsCents:    withLine.totalCents - without,
+    totalCents:   withLine.totalCents,
+    shippingType: own.shippingType,
+    sharedWith:   samePharmacy.length,
+    waived:       own.waived,
+    priced,
+  }
+}
+
 /** Dollars (NUMERIC from the DB, possibly a string) → integer cents; null/invalid → 0. */
 export function dollarsToCents(v: number | string | null | undefined): number {
   const n = typeof v === 'string' ? Number(v) : v

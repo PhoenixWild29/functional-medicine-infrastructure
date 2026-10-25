@@ -36,7 +36,16 @@ export const SHIPPING_TYPES = [
 
 export type ShippingType = (typeof SHIPPING_TYPES)[number]['value']
 
+/**
+ * The most refills a line may authorize, everywhere it is set: the
+ * builder, Review, a protocol, and the server check. No pharmacy or state
+ * rule in the app lowers it (controlled substances, where states cap
+ * refills, cannot be prescribed at all).
+ */
 export const MAX_REFILLS = 12
+
+/** 0 … MAX_REFILLS, the choices every refills select offers. */
+export const REFILL_CHOICES: ReadonlyArray<number> = Array.from({ length: MAX_REFILLS + 1 }, (_, n) => n)
 
 export function isSyringeOption(v: unknown): v is SyringeOption {
   return SYRINGE_OPTIONS.some(o => o.value === v)
@@ -44,6 +53,16 @@ export function isSyringeOption(v: unknown): v is SyringeOption {
 
 export function isShippingType(v: unknown): v is ShippingType {
   return SHIPPING_TYPES.some(o => o.value === v)
+}
+
+/**
+ * A formulation's default shipping type: its column when set, else the
+ * seed rule (cold chain for GLP-1s). The Rx defaults loader and the
+ * builder's pharmacy cards both price shipping from this.
+ */
+export function defaultShippingTypeFor(column: unknown, ingredientNames: ReadonlyArray<string>): ShippingType {
+  if (isShippingType(column)) return column
+  return isGlp1(ingredientNames) ? 'cold_chain' : 'standard'
 }
 
 // ── Formulation-level defaults ──────────────────────────────
@@ -334,13 +353,29 @@ const UNIT_ALIASES: Array<[RegExp, string, boolean]> = [
   // Counted like capsules (#181 audit): "1 pellet", "30 supp".
   [/^pellets?$/i,          'pellet', false],
   [/^supp(s|ository|ositories)?$/i, 'suppository', false],
+  [/^lozenges?$/i,         'lozenge', false],
   [/^units?$/i,            'unit',   false],
   [/^vials?$/i,            'vial',   true],
   [/^bottles?$/i,          'bottle', true],
   [/^tubes?$/i,            'tube',   true],
   [/^pens?$/i,             'pen',    true],
   [/^kits?$/i,             'kit',    true],
+  [/^syringes?$/i,         'syringe', true],
+  [/^cartridges?$/i,       'cartridge', true],
 ]
+
+/**
+ * A dispense unit as the app names it: "Capsules" → "capsule", "ML" → "mL",
+ * "Vials" → "vial". A unit it does not know is kept as sent; blank → null.
+ */
+export function normalizeDispenseUnit(unit: string | null | undefined): string | null {
+  const t = typeof unit === 'string' ? unit.trim() : ''
+  if (!t) return null
+  for (const [re, canonical] of UNIT_ALIASES) {
+    if (re.test(t)) return canonical
+  }
+  return t
+}
 
 /**
  * Parse a pharmacy quantity label such as "5mL vial", "2.5 mL vial",
@@ -856,6 +891,90 @@ export function formatPackageCount(label: string, count: number | null | undefin
   return `${n} × ${plural}`
 }
 
+/** Dispense units a pharmacy counts one by one ("30 capsules"), not measures. */
+export const COUNTED_DISPENSE_UNITS: ReadonlySet<string> = new Set(['capsule', 'tablet', 'troche', 'pellet', 'suppository', 'lozenge'])
+
+/** What a measured amount (mL, g, mg) is handed over in. */
+export const CONTAINER_UNITS: ReadonlySet<string> = new Set(['vial', 'bottle', 'tube', 'pen', 'kit', 'syringe', 'cartridge'])
+
+/** The largest dispense quantity a line may carry (rxDetails.dispenseQuantity). */
+export const MAX_DISPENSE_QUANTITY = 10000
+
+/** What the pharmacy dispenses: a number and the unit it counts. */
+export interface DispenseQuantity {
+  quantity: number
+  /** Singular: "capsule", "vial", or "container" / "package" when the label names none. */
+  unit:     string
+}
+
+/** The container a package label names ("5 mL vial" → vial, "3 mL CARTRIDGES" → cartridge), or null. */
+function containerIn(label: string): string | null {
+  const words = label.match(/[A-Za-z]+/g) ?? []
+  for (let i = words.length - 1; i >= 0; i--) {
+    const unit = normalizeDispenseUnit(words[i])
+    if (unit && CONTAINER_UNITS.has(unit)) return unit
+  }
+  return null
+}
+
+/**
+ * The one meaning of quantity: orders.quantity, the fax's "Quantity:" and
+ * the quantity (with its unit) on every pharmacy payload.
+ *   - Counted forms (capsule, tablet, troche, pellet, suppository,
+ *     lozenge): the units dispensed, whether or not a package was chosen.
+ *     1 bottle of 30 capsules → 30 capsules; 2 bottles → 60. A package
+ *     that names no count ("1 bottle") → the units needed, rounded up.
+ *   - Measured forms (mL, g, mg): the containers dispensed, the unit being
+ *     the container. 9.6 mL from 2 × 5 mL vials → 2 vials. A dispense
+ *     stated in containers ("2 vials") → 2 vials. A measured amount with no
+ *     package → 1 container. The amount itself stays on the Dispense line.
+ * Units are matched case-insensitively, singular or plural. Rows written
+ * before this rule stored 1; this reads the count from their package and
+ * dispense columns, and a row with neither keeps its stored quantity.
+ * Never a price input: nothing multiplies a price by it.
+ */
+export function dispenseQuantity(row: {
+  package_label?:     string | null
+  package_count?:     number | null
+  dispense_quantity?: number | string | null
+  dispense_unit?:     string | null
+  quantity?:          number | null
+}): DispenseQuantity {
+  const label = typeof row.package_label === 'string' ? row.package_label.trim() : ''
+  const count = typeof row.package_count === 'number' && row.package_count >= 1 ? Math.trunc(row.package_count) : 1
+  const unit = normalizeDispenseUnit(row.dispense_unit)
+  const qty = row.dispense_quantity == null ? NaN : Number(row.dispense_quantity)
+  const hasQty = Number.isFinite(qty) && qty > 0
+  const stored = typeof row.quantity === 'number' && row.quantity >= 1 ? Math.trunc(row.quantity) : 1
+  const parsedPackage = label ? parseQuantityLabel(label) : null
+  const packageUnit = parsedPackage && !parsedPackage.isContainer ? parsedPackage.unit : null
+
+  const counted = unit && COUNTED_DISPENSE_UNITS.has(unit)
+    ? unit
+    : packageUnit && COUNTED_DISPENSE_UNITS.has(packageUnit) ? packageUnit : null
+  if (counted) {
+    if (parsedPackage && packageUnit === counted) return { quantity: Math.max(1, Math.round(parsedPackage.value * count)), unit: counted }
+    if (hasQty) return { quantity: Math.max(1, Math.ceil(qty - 1e-9)), unit: counted }
+    return { quantity: stored, unit: counted }
+  }
+  if (label) return { quantity: count, unit: containerIn(label) ?? 'package' }
+  if (unit && CONTAINER_UNITS.has(unit) && hasQty) return { quantity: Math.max(1, Math.ceil(qty - 1e-9)), unit }
+  if (hasQty) return { quantity: 1, unit: 'container' }
+  return { quantity: stored, unit: 'container' }
+}
+
+/** The number dispenseQuantity gives: orders.quantity. */
+export function dispenseCount(row: Parameters<typeof dispenseQuantity>[0]): number {
+  return dispenseQuantity(row).quantity
+}
+
+/** "30 capsules", "1 vial", "3 suppositories", "1 container": the fax's Quantity line. */
+export function formatQuantity(q: DispenseQuantity): string {
+  if (q.quantity === 1) return `1 ${q.unit}`
+  if (q.unit === 'suppository') return `${q.quantity} suppositories`
+  return `${q.quantity} ${q.unit}s`
+}
+
 /**
  * Dispense line with the packaging a pharmacy fills it from:
  * "9.6 mL (2 × 5 mL vials)", "0.4 mL (1 × 1 mL vial)". No package → the
@@ -1029,9 +1148,15 @@ export function validateRxDetailsBody(raw: unknown): RxDetailsValidation {
 
   const dispenseQuantity = optionalPositiveNumber(r['dispenseQuantity'])
   if (dispenseQuantity === false) return { ok: false, error: 'rxDetails.dispenseQuantity must be a positive number' }
+  // Bounded, so a huge value is a 400 here, not a 500 from orders.quantity INTEGER.
+  if (dispenseQuantity != null && dispenseQuantity > MAX_DISPENSE_QUANTITY) {
+    return { ok: false, error: `rxDetails.dispenseQuantity must be a positive number up to ${MAX_DISPENSE_QUANTITY}` }
+  }
 
-  const dispenseUnit = optionalText(r['dispenseUnit'], 32)
-  if (dispenseUnit === false) return { ok: false, error: 'rxDetails.dispenseUnit must be a short string' }
+  const rawDispenseUnit = optionalText(r['dispenseUnit'], 32)
+  if (rawDispenseUnit === false) return { ok: false, error: 'rxDetails.dispenseUnit must be a short string' }
+  // Stored as the app names it, so counting never depends on how it was cased.
+  const dispenseUnit = normalizeDispenseUnit(rawDispenseUnit)
 
   let refills = 0
   if (r['refills'] != null) {
@@ -1162,7 +1287,7 @@ export function formatDispense(quantity: number | null | undefined, unit: string
   const q = Number.isInteger(quantity) ? String(quantity) : String(round2(quantity))
   if (!unit) return q
   if (quantity !== 1 && unit === 'suppository') return `${q} suppositories`
-  const plural = quantity !== 1 && /^(capsule|tablet|troche|pellet|vial|bottle|tube|pen|kit|unit)$/.test(unit)
+  const plural = quantity !== 1 && /^(capsule|tablet|troche|pellet|lozenge|vial|bottle|tube|pen|kit|syringe|cartridge|unit)$/.test(unit)
   return `${q} ${unit}${plural ? 's' : ''}`
 }
 

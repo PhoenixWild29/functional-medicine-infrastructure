@@ -239,7 +239,7 @@ async function getHandler(req: NextRequest) {
           .from('formulations')
           .select(`
             formulation_id, name, concentration, concentration_value, concentration_unit,
-            excipient_base, is_combination, total_ingredients, description,
+            excipient_base, is_combination, total_ingredients, description, default_shipping_type,
             dosage_forms(name, is_sterile, requires_injection_supplies),
             routes_of_administration(name, abbreviation, sig_prefix),
             formulation_ingredients(
@@ -278,7 +278,7 @@ async function getHandler(req: NextRequest) {
           .from('formulations')
           .select(`
             formulation_id, name, concentration, concentration_value, concentration_unit,
-            excipient_base, is_combination, total_ingredients, description, salt_form_id,
+            excipient_base, is_combination, total_ingredients, description, salt_form_id, default_shipping_type,
             dosage_forms(name, is_sterile, requires_injection_supplies),
             routes_of_administration(name, abbreviation, sig_prefix),
             formulation_ingredients(

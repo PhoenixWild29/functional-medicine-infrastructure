@@ -66,6 +66,7 @@ interface LifeFilePayloadShape {
       dosageForm: string
       strength:   string
       quantity:   number
+      quantityUnit: string
       directions: string
     }
     rxDetails: Record<string, unknown>
@@ -99,6 +100,8 @@ function makePayload(overrides: Partial<OrderPayload> = {}): OrderPayload {
     medicationForm:        'Injectable',
     medicationDose:        '200mg/mL',
     quantity:              30,
+    // The unit quantity counts (pharmacy-payload-quantity.md).
+    quantityUnit:          'vial',
     sigText:               'Inject 0.5mL weekly',
     // WO-96 Rx detail fields
     daysSupply:            30,
@@ -159,6 +162,7 @@ describe('transformLifeFilePayload — registry lookup + shape', () => {
           dosageForm: 'Injectable',
           strength:   '200mg/mL',
           quantity:   30,
+          quantityUnit: 'vial',
           directions: 'Inject 0.5mL weekly',
         },
         rxDetails: {

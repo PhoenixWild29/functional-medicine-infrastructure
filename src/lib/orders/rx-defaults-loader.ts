@@ -24,8 +24,8 @@ import type { Database } from '@/types/database.types'
 import {
   STANDARD_CLINICAL_DIFFERENCE_OPTIONS,
   clinicalDifferenceOptions,
+  defaultShippingTypeFor,
   formulationRxDefaults,
-  isShippingType,
   isSyringeOption,
   type FormulationRxDefaults,
 } from './rx-details'
@@ -192,7 +192,7 @@ function resolveDefaults(row: FormulationRow, ingredientRows: IngredientRow[]): 
 
   return {
     default_syringe_option:       isSyringeOption(row.default_syringe_option) ? row.default_syringe_option : computed.default_syringe_option,
-    default_shipping_type:        isShippingType(row.default_shipping_type) ? row.default_shipping_type : computed.default_shipping_type,
+    default_shipping_type:        defaultShippingTypeFor(row.default_shipping_type, ingredientRows.map(i => i.common_name)),
     requires_clinical_difference: requires,
     clinical_difference_options:  clinicalDifferenceOptions(options, shortageAllowed),
     shortage_reason_allowed:      shortageAllowed,

@@ -42,7 +42,7 @@ import { getBrowserLaunchOptions, getBrowserContextOptions, SCREENSHOT_BUCKET } 
 import { executeFlow } from '@/lib/adapters/portal-flow-executor'
 import type { FlowStep, FlowFieldValues } from '@/lib/adapters/portal-flow-executor'
 import { allergiesForPayload } from '@/lib/patients/allergies'
-import { formatDispenseWithPackage } from '@/lib/orders/rx-details'
+import { dispenseQuantity, formatDispenseWithPackage } from '@/lib/orders/rx-details'
 import { cycleScheduleText } from '@/lib/adapters/transformers'
 import { cyclePatternFromRow } from '@/lib/orders/cycling'
 import {
@@ -349,7 +349,9 @@ export async function submitTier2Portal(
     medicationName:   String(med?.medication_name ?? ''),
     medicationForm:   String(med?.form ?? ''),
     medicationDose:   String(med?.dose ?? ''),
-    quantity:         String(order.quantity ?? ''),
+    // {quantity} with {quantity_unit}: units for counted forms, containers for measured ones.
+    quantity:         String(dispenseQuantity(order).quantity),
+    quantity_unit:    dispenseQuantity(order).unit,
     sigText:          order.sig_text ?? '',
     // WO-96 Rx detail fields — available to portal flow steps as
     // {daysSupply}, {dispenseQuantity}, {refills}, {daw}, … placeholders.
