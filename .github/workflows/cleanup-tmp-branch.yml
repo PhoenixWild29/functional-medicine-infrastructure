@@ -31,7 +31,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Delete stray experiment branch (no PR)
         run: git push origin --delete tmp-binary-safety-test || true
