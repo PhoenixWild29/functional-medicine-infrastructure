@@ -223,6 +223,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30  # full jobs take 10-15 min as of 2026-10; see the note above
     needs: [changes, test, build]
+    # The official Playwright image: Chromium, Firefox and WebKit and their
+    # OS packages are baked in, so there is no browser download or
+    # install-deps step (it took ~31 s and could hang on the apt mirror,
+    # #247/#248). The tag MUST equal the installed @playwright/test version:
+    # scripts/ci/check-playwright-image.mjs (first step after npm ci) and
+    # src/__tests__/ci-playwright-container.test.ts fail on a mismatch, so
+    # bump both together. --user 1001 is the runner's uid, as Playwright's
+    # CI docs give it: the workspace and HOME (/github/home) belong to it,
+    # and Firefox refuses to run as root with a HOME it does not own.
+    # Node still comes from setup-node (the image ships Node 24; every job
+    # here runs NODE_VERSION).
+    container:
+      image: mcr.microsoft.com/playwright:v1.58.2-noble
+      options: --user 1001
     # Serialize E2E across ALL branches/PRs: the job seeds and cleans one
     # shared E2E Supabase project, so concurrent runs corrupt each other's
     # fixtures. A running E2E is never cancelled by another run
@@ -254,36 +268,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Keyed on the Playwright version, not the whole lockfile: the
-      # browsers only change with Playwright, and any dependency bump used
-      # to miss the cache and download all browsers again.
-      - name: Playwright version
-        id: playwright-version
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-
-      # apt mirror hangs (Oct 23 2026, #247 and #248): cap each attempt and retry.
-      - name: Install Playwright OS dependencies
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        timeout-minutes: 6
-        run: |
-          for attempt in 1 2 3; do
-            if timeout 110 npx playwright install-deps; then exit 0; fi
-            echo "playwright install-deps attempt $attempt failed or timed out"
-            if [ "$attempt" -lt 3 ]; then sleep 10; fi
-          done
-          echo "playwright install-deps failed 3 times"
-          exit 1
+      # The image's browsers are built for one Playwright version: stop
+      # here, with what to change, if it is not the installed one.
+      - name: Check the Playwright image matches @playwright/test
+        run: node scripts/ci/check-playwright-image.mjs
 
       # Keep the E2E Supabase project's schema in sync with supabase/migrations/.
       # Uses the session-pooler connection string. E2E_DATABASE_URL must be a

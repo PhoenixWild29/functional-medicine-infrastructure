@@ -43,7 +43,8 @@ it('runs as the runner user (1001), as Playwright documents for GitHub Actions: 
 })
 
 it('no browser cache, browser install or install-deps step any more', () => {
-  expect(e2e).not.toMatch(/ms-playwright|playwright install|install-deps|Cache Playwright browsers/)
+  const steps = e2e.split('\n').filter(line => !/^\s*#/.test(line)).join('\n')
+  expect(steps).not.toMatch(/ms-playwright|playwright install|install-deps|Cache Playwright browsers/)
 })
 
 it('checks the image against the installed version right after npm ci', () => {
