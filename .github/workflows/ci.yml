@@ -47,10 +47,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -67,10 +67,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -87,10 +87,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -112,7 +112,7 @@ jobs:
           NEXT_TELEMETRY_DISABLED: '1'
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-report
@@ -125,10 +125,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -188,7 +188,7 @@ jobs:
     steps:
       - name: Checkout
         if: github.event_name == 'pull_request'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -226,7 +226,14 @@ jobs:
   # E2E project (runs are serialized below) for long.
   e2e:
     name: E2E Tests (Playwright)
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: this job depends on OS packages
+    # (Playwright's browser deps from apt) and the Supabase CLI's linux-x64
+    # binary, and ubuntu-latest moves to Ubuntu 26.04 from 2026-10-19.
+    # 24.04 (noble) also matches the Playwright image's -noble tag if the E2E
+    # job moves into that container. Move to ubuntu-26.04 deliberately, in
+    # its own PR with a green E2E run, once Playwright publishes a 26.04
+    # image and lists 26.04 as supported (or before GitHub retires 24.04).
+    runs-on: ubuntu-24.04
     timeout-minutes: 30  # full jobs take 10-15 min as of 2026-10; see the note above
     needs: [changes, test, build]
     # The official Playwright image: Chromium, Firefox and WebKit and their
@@ -263,10 +270,10 @@ jobs:
       || (github.event_name == 'workflow_dispatch' && inputs.e2e != 'sharded-trial')
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -305,7 +312,7 @@ jobs:
       # checks every cached entry against its inputs, so a stale entry is
       # rebuilt, never reused.
       - name: Cache Next.js build cache (E2E build)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .next/cache
           key: nextjs-e2e-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
@@ -373,7 +380,7 @@ jobs:
           # Set this secret if you prefer to run E2E against a Vercel preview URL.
 
       - name: Upload Playwright HTML report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: playwright-report
@@ -381,7 +388,7 @@ jobs:
           retention-days: 14
 
       - name: Upload JUnit XML results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-junit
@@ -409,10 +416,10 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.e2e == 'sharded-trial'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -428,7 +435,7 @@ jobs:
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
@@ -477,7 +484,7 @@ jobs:
       # checks every cached entry against its inputs, so a stale entry is
       # rebuilt, never reused.
       - name: Cache Next.js build cache (E2E build)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .next/cache
           key: nextjs-e2e-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
@@ -556,7 +563,7 @@ jobs:
           # Set this secret if you prefer to run E2E against a Vercel preview URL.
 
       - name: Upload Playwright HTML reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: playwright-report-sharded-trial
@@ -568,7 +575,7 @@ jobs:
           retention-days: 14
 
       - name: Upload JUnit XML results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-junit-sharded-trial
