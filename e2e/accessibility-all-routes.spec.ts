@@ -31,6 +31,11 @@ import { cleanupTestOrders, seedStaticData, TEST_IDS, TEST_USERS } from './fixtu
 //   - /get-started, /ops/onboarding/[clinicId] (a self sign-up in review):
 //     self-serve-signup.spec.ts
 //   - /intake/[token]: intake.spec.ts; /join/[token]: patient-signup-link
+//   - /plan/[token] (date of birth, wrong date, choose, confirm, sent,
+//     approved) and the provider proposal UI (Review with options, the
+//     plan link with Copy link and QR, the Proposed tab drawer, Plans
+//     ready to sign): patient-protocol-choice.spec.ts runs axe at each
+//     state of its flow, the only way to reach them
 //   - /settings/team dialogs (invite, add provider, deactivate):
 //     team-invites.spec.ts
 // The prescription steps after search (margin, review, sign, sign/[id])
@@ -43,6 +48,8 @@ const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
 const STRIPE_FRAMES = 'iframe[name^="__privateStripeFrame"], iframe[src*="js.stripe.com"]'
 const AUTH_DIR = join('test-results', '.auth-a11y')
 
+// When e2e/fixtures/shard.ts lands (e2e-shard-ready), wrap this email in
+// shardEmail() so each shard has its own; nothing else here is fixed.
 const MA_USER = { email: 'test-a11y-ma@compoundiq.test', password: 'TestPassword123!' }
 
 function e2eService() {
@@ -149,7 +156,8 @@ const ROLES: RoleRoutes[] = [
   },
 ]
 
-const SIGNED_OUT = ['/login', '/get-started', '/legal/privacy', '/legal/patient-terms', '/checkout/expired']
+// A plan link that matches no plan (the invalid-link state of /plan/[token]).
+const SIGNED_OUT = ['/login', '/get-started', '/legal/privacy', '/legal/patient-terms', '/checkout/expired', `/plan/${'x'.repeat(43)}`]
 
 const storage: Record<string, string> = {}
 function stateFor(role: string): string {
