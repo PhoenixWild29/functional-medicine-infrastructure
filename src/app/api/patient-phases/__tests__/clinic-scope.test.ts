@@ -36,6 +36,12 @@ jest.mock('@/lib/supabase/server', () => ({
     },
   }),
 }))
+// The signed-in provider's own row (C-2026-10-25-07: advanced_by is the caller,
+// and the body's provider_id must be theirs).
+jest.mock('@/lib/auth/current-provider', () => ({
+  ...jest.requireActual('@/lib/auth/current-provider'),
+  resolveCurrentProvider: async () => ({ provider_id: 'd1000000-0000-4000-8000-00000000000a', clinic_id: 'c', first_name: 'P', last_name: 'One', npi_number: '1', signature_hash: null }),
+}))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
 
 import { GET, POST, PATCH } from '../route'

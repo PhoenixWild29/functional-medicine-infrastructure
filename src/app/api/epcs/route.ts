@@ -65,7 +65,7 @@ const AuditBody = z.object({
 })
 
 type EpcsCaller =
-  | { ok: true; providerId: string }
+  | { ok: true; providerId: string; clinicId: string }
   | { ok: false; response: NextResponse }
 
 /** The verified, signed-in provider; or the response that refuses the request. */
@@ -82,7 +82,7 @@ async function signedInProvider(): Promise<EpcsCaller> {
   if (!me) {
     return { ok: false, response: NextResponse.json({ error: 'This login is not linked to a provider record.' }, { status: 403 }) }
   }
-  return { ok: true, providerId: me.provider_id }
+  return { ok: true, providerId: me.provider_id, clinicId: me.clinic_id }
 }
 
 /** A client-sent provider_id that is not the signed-in provider. */
@@ -299,6 +299,25 @@ export async function POST(req: NextRequest) {
     const parsed = parseInput(AuditBody, body)
     if (!parsed.ok) return parsed.response
     const a = parsed.data
+
+    // The row may name only the caller's own clinic's patient and order:
+    // one scoped read each (the FK alone only proves the row exists).
+    // Another clinic's id, or none such, is a 404 and nothing is written.
+    for (const [table, column, id] of [['patients', 'patient_id', a.patient_id], ['orders', 'order_id', a.order_id]] as const) {
+      if (!id) continue
+      const { data: row, error: scopeErr } = await supabase
+        .from(table)
+        .select(column)
+        .eq(column, id)
+        .eq('clinic_id', caller.clinicId)
+        .is('deleted_at', null)
+        .maybeSingle()
+      if (scopeErr) {
+        console.error(`[epcs] audit ${table} scope read failed | code=`, scopeErr.code ?? 'unknown')
+        return NextResponse.json({ error: 'Could not record the EPCS event. Try again.' }, { status: 500 })
+      }
+      if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
 
     const { error } = await supabase
       .from('epcs_audit_log')

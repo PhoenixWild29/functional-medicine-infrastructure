@@ -37,6 +37,7 @@ import { parseInput, UUID_RE } from '@/lib/api/input'
 import { z } from 'zod'
 // The spec's closed list (openapi WebhookRegisterRequest.event_types).
 import { WEBHOOK_EVENT_TYPES } from '@/lib/spec/webhook-event-types'
+import { safeEqual } from '@/lib/security/constant-time'
 
 const MAX_CALLBACK_URL = 2048
 const MAX_SECRET = 1024
@@ -102,7 +103,7 @@ function encryptWebhookSecret(secret: string): string {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // ── Auth: internal secret ─────────────────────────────────
   const token = request.headers.get('x-internal-token')
-  if (!token || token !== process.env.ADAPTER_INTERNAL_SECRET) {
+  if (!safeEqual(token, process.env.ADAPTER_INTERNAL_SECRET)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

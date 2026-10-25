@@ -37,6 +37,7 @@ import { submitTier4Fax } from '@/lib/adapters/tier4-fax'
 import type { IntegrationTier } from '@/lib/adapters/audit-trail'
 import { isPharmacySubmissionsDisabledError, PHARMACY_SUBMISSIONS_OFF_MESSAGE } from '@/lib/adapters/submission-switch'
 import { UUID_RE, badRequest } from '@/lib/api/input'
+import { safeEqual } from '@/lib/security/constant-time'
 
 // ============================================================
 // ROUTE HANDLER
@@ -45,7 +46,7 @@ import { UUID_RE, badRequest } from '@/lib/api/input'
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // ── Auth: internal secret ─────────────────────────────────
   const token = request.headers.get('x-internal-token')
-  if (!token || token !== process.env.ADAPTER_INTERNAL_SECRET) {
+  if (!safeEqual(token, process.env.ADAPTER_INTERNAL_SECRET)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
