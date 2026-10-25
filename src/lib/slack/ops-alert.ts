@@ -68,6 +68,7 @@ const TITLES = {
   stripe_refund_unsynced:      '⚠️ Stripe refund needs ops review',
   stripe_dispute_lost:         '🔴 Stripe dispute lost',
   status_history_write_failed: '🔴 Order status change has no audit row',
+  phi_access_log_write_failed: '🔴 A PHI access was not recorded in the audit log',
   submissions_paused:          '⏸️ Pharmacy submissions are turned off: paid orders are waiting',
   order_stuck:                 '⚠️ Order stuck: needs ops',
   queued_alert:                '⚠️ Ops alert',
@@ -110,6 +111,8 @@ const DETAIL_LABELS = {
   failed_at:         'At',
   count:             'Orders waiting',
   alert_type:        'Alert type',
+  // C-2026-10-25-17 (B15): the audit-log write that failed (an action code, never data).
+  audit_action:      'Audit action',
   severity:          'Severity',
   // Stripe reconciliation: the day, counts, and Stripe IDs with amounts (minor units).
   recon_date:        'Day (UTC)',
