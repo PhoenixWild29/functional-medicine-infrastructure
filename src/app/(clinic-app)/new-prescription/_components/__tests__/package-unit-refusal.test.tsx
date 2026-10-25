@@ -44,7 +44,7 @@ function json(body: unknown) {
 beforeAll(() => {
   global.fetch = jest.fn((input: unknown) => {
     const url = String(input)
-    if (url.startsWith('/api/favorites/recent')) return json({ data: [] })
+    if (url.startsWith('/api/favorites/frequent')) return json({ data: [] })
     if (url.startsWith('/api/favorites')) return json({ data: [FAVORITE] })
     if (url.startsWith('/api/protocols')) return json({ data: [] })
     if (url.includes('level=formulation&')) return json({ data: { formulation: FORMULATION, salt_form: SALT_FORM, ingredient: INGREDIENT } })

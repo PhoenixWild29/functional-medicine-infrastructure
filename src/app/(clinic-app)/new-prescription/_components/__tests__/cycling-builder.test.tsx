@@ -64,7 +64,7 @@ function jsonResponse(body: unknown) {
 const mockFetch = jest.fn((input: unknown, init?: { method?: string }) => {
   const url = String(input)
   const method = init?.method ?? 'GET'
-  if (url.startsWith('/api/favorites/recent')) return jsonResponse({ data: [] })
+  if (url.startsWith('/api/favorites/frequent')) return jsonResponse({ data: [] })
   if (url.startsWith('/api/favorites') && method === 'PATCH') return jsonResponse({ ok: true })
   if (url.startsWith('/api/favorites')) return jsonResponse({ data: [STANDARD_FAVORITE, CYCLING_FAVORITE] })
   if (url.startsWith('/api/protocols')) return jsonResponse({ data: [] })

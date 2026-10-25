@@ -100,7 +100,7 @@ const mockFetch = jest.fn((input: unknown, init?: { method?: string; body?: stri
   const url = String(input)
   const method = init?.method ?? 'GET'
   calls.push({ url, method, body: init?.body ? JSON.parse(init.body) : null })
-  if (url.startsWith('/api/favorites/recent')) return jsonResponse({ data: [] })
+  if (url.startsWith('/api/favorites/frequent')) return jsonResponse({ data: [] })
   if (url.startsWith('/api/favorites') && method === 'GET') return jsonResponse({ data: favorites })
   if (url.startsWith('/api/favorites') && method === 'PATCH') return jsonResponse({ data: {} })
   if (url.startsWith('/api/favorites') && method === 'DELETE') {
