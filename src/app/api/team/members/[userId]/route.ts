@@ -14,8 +14,9 @@ import { requireTeamAdmin } from '@/lib/team/access'
 import { readJson } from '@/lib/onboarding/access'
 import { UUID_RE } from '@/lib/providers/team-access'
 import { LAST_ADMIN_MESSAGE } from '@/lib/team/team'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ userId: string }> }): Promise<NextResponse> {
+async function postHandler(request: NextRequest, { params }: { params: Promise<{ userId: string }> }): Promise<NextResponse> {
   const access = await requireTeamAdmin(request)
   if (!access.ok) return access.response
   const { userId } = await params
@@ -48,3 +49,5 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   console.info(`[team] member ${status} | clinic=${access.clinicId} user=${userId} by=${access.user.id}`)
   return NextResponse.json({ status })
 }
+
+export const POST = withApiErrors('/api/team/members/[userId]', postHandler)

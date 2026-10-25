@@ -7,7 +7,7 @@
  * per-file exemption.
  *
  * Runs the real rule against the real baseline file, linting text as if
- * it were src/app/api/favorites/recent/route.ts (on the baseline: GET's
+ * it were src/app/api/favorites/recent/route.ts (on the baseline: getHandler's
  * `const { data: provider } = await supabase`). Batch 3 PR 3 fixed the
  * favorites PATCH site this test used before; when a later PR fixes this
  * one, point the test at a site that is still listed.
@@ -41,13 +41,13 @@ describe('the committed baseline', () => {
 
   it('lists the site this test relies on', () => {
     expect(entries).toEqual(expect.arrayContaining([
-      expect.objectContaining({ file: FILE, function: 'GET', line: 'const { data: provider } = await supabase' }),
+      expect.objectContaining({ file: FILE, function: 'getHandler', line: 'const { data: provider } = await supabase' }),
     ]))
   })
 
   it('skips the listed site, and fails a new one in the same file and function', async () => {
     const [result] = await lint([
-      'export async function GET(supabase: any) {',
+      'async function getHandler(supabase: any) {',
       '  const { data: provider } = await supabase',
       "    .from('providers').select('provider_id')",
       "  const { data: extra } = await supabase.from('providers').select('id')",

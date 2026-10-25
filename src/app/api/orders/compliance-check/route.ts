@@ -24,6 +24,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 export interface ComplianceCheckResult {
   id:      string   // e.g. 'pharmacy_license'
@@ -32,7 +33,7 @@ export interface ComplianceCheckResult {
   message: string | null  // human-readable failure reason
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   // Auth gate
   const supabaseAuth = await createServerClient()
   // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
@@ -243,3 +244,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   return NextResponse.json({ checks }, { status: 200 })
 }
+
+export const GET = withApiErrors('/api/orders/compliance-check', getHandler)

@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyCheckoutToken }       from '@/lib/auth/checkout-token'
 import { createStripeClient }        from '@/lib/stripe/client'
 import { createServiceClient }       from '@/lib/supabase/service'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const EMAIL_PATTERN  = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const INVALID_TLD_RE = /\.invalid$/i
@@ -31,7 +32,7 @@ function isValidReceiptEmail(email: unknown): email is string {
     && !INVALID_TLD_RE.test(email)
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   // Phase C is feature-flagged. Until ops flips PHASE_C_GROUPS_ENABLED,
   // no group token should resolve — refuse symmetrically to the create path.
   if (process.env['PHASE_C_GROUPS_ENABLED'] !== 'true') {
@@ -167,3 +168,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/checkout/payment-group-intent', postHandler)

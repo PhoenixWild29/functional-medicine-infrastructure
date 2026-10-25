@@ -30,6 +30,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { insertStatusHistory } from '@/lib/orders/status-history'
 import { createStripeClient } from '@/lib/stripe/client'
 import { resolveSlasForTransition } from '@/lib/sla/resolver'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const MAX_BATCH = 100
 const EXPIRY_INTERVAL_MS = 72 * 60 * 60 * 1000
@@ -47,7 +48,7 @@ interface ExpiredOrderRow {
  */
 const PAID_OR_PAYING = new Set(['succeeded', 'processing', 'requires_capture'])
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const denied = cronAuthFailure(request, 'payment-expiry')
   if (denied) return denied
 
@@ -261,3 +262,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     { status: 200 }
   )
 }
+
+export const GET = withApiErrors('/api/cron/payment-expiry', getHandler)

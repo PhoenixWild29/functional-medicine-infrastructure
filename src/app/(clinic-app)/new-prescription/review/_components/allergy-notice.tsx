@@ -16,6 +16,7 @@ import { patientName } from '@/lib/patients/display'
 import { useState } from 'react'
 import { hasRecordedAllergies, type PatientAllergyFields } from '@/lib/patients/allergies'
 import { saveAllergies, loadAllergies } from '../../_components/allergy-chip'
+import { userMessage } from '@/lib/errors/user-message'
 
 interface Props {
   patient: PatientAllergyFields & { patient_id: string; first_name: string; last_name: string; phone?: string | null }
@@ -100,7 +101,7 @@ export function AllergyNotice({ patient, onSaved }: Props) {
       const saved = await saveAllergies(patient.patient_id, { allergies: [], nkda: true, confirmNkda: true })
       onSaved({ allergies: saved.allergies, nkda: saved.nkda, allergies_updated_at: saved.allergiesUpdatedAt })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save')
+      setError(userMessage(err, 'Could not save'))
     } finally {
       setSaving(false)
     }

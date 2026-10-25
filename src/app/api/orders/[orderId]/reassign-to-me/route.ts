@@ -30,12 +30,13 @@ import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provi
 import { REASSIGN_AUDIT_ACTOR } from '@/lib/orders/reassignment'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
 }
 
-export async function POST(
+async function postHandler(
   request: NextRequest,
   { params }: RouteParams
 ): Promise<NextResponse> {
@@ -174,3 +175,5 @@ export async function POST(
 
   return NextResponse.json({ orderIds: movedIds, providerId: me.provider_id, reassigned: true }, { status: 200 })
 }
+
+export const POST = withApiErrors('/api/orders/[orderId]/reassign-to-me', postHandler)

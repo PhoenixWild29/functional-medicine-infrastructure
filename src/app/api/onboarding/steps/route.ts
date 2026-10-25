@@ -11,8 +11,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireOnboardingAdmin, readJson, setStep } from '@/lib/onboarding/access'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const access = await requireOnboardingAdmin({ editable: true })
   if (!access.ok) return access.response
   const { user, clinicId, supabase } = access
@@ -48,3 +49,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!saved.ok) return NextResponse.json({ error: 'Your progress could not be recorded. Try again.' }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
+
+export const POST = withApiErrors('/api/onboarding/steps', postHandler)

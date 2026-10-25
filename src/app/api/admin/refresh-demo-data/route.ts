@@ -27,6 +27,7 @@ import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refreshDemoData, POC_SEED_METADATA_MARKER, DEMO_PHARMACIES } from '@/lib/poc/refresh-demo-data'
 import { getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // ── Shared session gate ─────────────────────────────────────
 async function requireOpsAdmin(): Promise<NextResponse | null> {
@@ -41,7 +42,7 @@ async function requireOpsAdmin(): Promise<NextResponse | null> {
   return null
 }
 
-export async function POST(): Promise<NextResponse> {
+async function postHandler(): Promise<NextResponse> {
   const authError = await requireOpsAdmin()
   if (authError) return authError
 
@@ -69,7 +70,7 @@ export async function POST(): Promise<NextResponse> {
 // the RefreshDemoDataCard can show a "Last refresh: Xm ago"
 // indicator and the presenter can verify freshness at a glance
 // before stepping into the demo tour. Purely read-only.
-export async function GET(): Promise<NextResponse> {
+async function getHandler(): Promise<NextResponse> {
   const authError = await requireOpsAdmin()
   if (authError) return authError
 
@@ -100,3 +101,6 @@ export async function GET(): Promise<NextResponse> {
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/admin/refresh-demo-data', postHandler)
+export const GET = withApiErrors('/api/admin/refresh-demo-data', getHandler)

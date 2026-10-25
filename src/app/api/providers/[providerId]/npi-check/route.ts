@@ -14,8 +14,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { clinicAdminForProvider } from '@/lib/providers/team-access'
 import { runNpiCheck } from '@/lib/providers/verify-npi'
 import { DEMO_RECORD_NOTE } from '@/lib/providers/credentials'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(_request: NextRequest, { params }: { params: Promise<{ providerId: string }> }): Promise<NextResponse> {
+async function postHandler(_request: NextRequest, { params }: { params: Promise<{ providerId: string }> }): Promise<NextResponse> {
   const { providerId } = await params
   const access = await clinicAdminForProvider(providerId)
   if (!access.ok) return access.response
@@ -43,3 +44,5 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     checkedAt:    result.checkedAt,
   })
 }
+
+export const POST = withApiErrors('/api/providers/[providerId]/npi-check', postHandler)

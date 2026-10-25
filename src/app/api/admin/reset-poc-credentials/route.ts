@@ -28,12 +28,13 @@ import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { syncPocCredentials } from '@/lib/poc/sync-credentials'
 import { getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // Module-private: Next.js rejects non-handler exports from route files.
 const SESSIONS_REVOKED_MESSAGE =
   'Passwords were reset. Every active session for the four POC accounts has been revoked; all demo users (including you) must sign in again.'
 
-export async function POST(): Promise<NextResponse> {
+async function postHandler(): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) {
@@ -64,3 +65,5 @@ export async function POST(): Promise<NextResponse> {
     : report
   return NextResponse.json(body, { status })
 }
+
+export const POST = withApiErrors('/api/admin/reset-poc-credentials', postHandler)

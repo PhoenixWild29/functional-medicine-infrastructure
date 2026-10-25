@@ -18,6 +18,7 @@ import { useState, useMemo } from 'react'
 import { useQuery }          from '@tanstack/react-query'
 import type { PharmacyHealthCard, AdaptersResponse } from '@/app/api/ops/adapters/route'
 import { CB_BADGE } from './adapter-health-constants'
+import { userMessage } from '@/lib/errors/user-message'
 
 // ── Status color map ─────────────────────────────────────────
 
@@ -128,7 +129,7 @@ export function AdapterHealthMonitor({ initialData }: Props) {
       }
       void refetch()
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : `${label} failed`)
+      setActionError(userMessage(err, `${label} failed`))
     } finally {
       setLoadingKey(null)
     }

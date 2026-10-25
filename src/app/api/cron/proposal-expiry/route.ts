@@ -13,8 +13,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { expireProposals } from '@/lib/proposals/expire'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const denied = cronAuthFailure(request, 'proposal-expiry')
   if (denied) return denied
   try {
@@ -25,3 +26,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Proposal expiry failed' }, { status: 500 })
   }
 }
+
+export const GET = withApiErrors('/api/cron/proposal-expiry', getHandler)

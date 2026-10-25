@@ -85,6 +85,7 @@ import { formatDoseWithMg } from '@/lib/orders/dose-display'
 import { presetDurationFromDays } from '@/lib/orders/favorite-presets'
 import { type CyclePattern } from '@/lib/orders/cycling'
 import { computeBundleShipping, type PharmacyShippingRates, platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
+import { userMessage } from '@/lib/errors/user-message'
 
 // ── Cent arithmetic helpers — HC-01 ──────────────────────────
 // Convert a NUMERIC(10,2) server value (JS float64) to integer cents once.
@@ -776,7 +777,7 @@ function MarginBuilderFormForLine({
         const back = draftReturnTo ?? '/dashboard?draft=1'
         router.push(created ? withOrderSelected(back, created) : back)
       } catch (err) {
-        setLineError(err instanceof Error ? err.message : 'An unexpected error occurred')
+        setLineError(userMessage(err, 'An unexpected error occurred'))
         setIsSavingLine(false)
       }
       return
@@ -879,7 +880,7 @@ function MarginBuilderFormForLine({
       clearSessionOnUnmountRef.current = true
       router.push('/dashboard?draft=1')
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'An unexpected error occurred'
+      const msg = userMessage(err, 'An unexpected error occurred')
       setDraftError(msg)
       setIsSavingDraft(false)
     }

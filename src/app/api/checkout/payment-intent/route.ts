@@ -35,6 +35,7 @@ import { NEUTRAL_DESCRIPTION } from '@/lib/stripe/phi-guard'
 import { createServiceClient } from '@/lib/supabase/service'
 import { platformFeeCents, stripeSplit } from '@/lib/orders/shipping'
 import { isDemoPayoutPlaceholder } from '@/lib/stripe/demo-account'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // PR #15: syntactic email validation (was for Stripe receipt_email; C7
 // stopped sending it to Stripe).
@@ -58,7 +59,7 @@ function isValidReceiptEmail(email: unknown): email is string {
     && !INVALID_TLD_RE.test(email)
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   let body: { token: string; email?: string }
   try {
     body = await request.json()
@@ -352,3 +353,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/checkout/payment-intent', postHandler)

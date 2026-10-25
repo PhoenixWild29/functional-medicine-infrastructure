@@ -28,6 +28,7 @@ import {
   normalizeAllergies,
   type PatientAllergyFields,
 } from '@/lib/patients/allergies'
+import { userMessage } from '@/lib/errors/user-message'
 
 // ── Shared result shape ───────────────────────────────────────
 
@@ -202,7 +203,7 @@ export function AllergyEditor({ patientId, patient, onSaved, onCancel }: Allergy
       const saved = await saveAllergies(patientId, { allergies: nkda ? [] : entries, nkda })
       onSaved(saved)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save allergies')
+      setError(userMessage(err, 'Could not save allergies'))
     } finally {
       setSaving(false)
     }

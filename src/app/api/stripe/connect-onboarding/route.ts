@@ -22,8 +22,9 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { createStripeClient } from '@/lib/stripe/client'
 import { serverEnv } from '@/lib/env'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(): Promise<NextResponse> {
+async function postHandler(): Promise<NextResponse> {
   // Auth gate. getUser() verifies the JWT with the auth server;
   // getSession() only decodes the cookie, so clinic_id would be forgeable.
   const supabaseAuth = await createServerClient()
@@ -155,3 +156,5 @@ export async function POST(): Promise<NextResponse> {
 
   return NextResponse.json({ url: accountLink.url })
 }
+
+export const POST = withApiErrors('/api/stripe/connect-onboarding', postHandler)

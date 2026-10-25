@@ -18,6 +18,7 @@ import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { FREQUENCY_OPTIONS } from '@/app/(clinic-app)/new-prescription/_components/structured-sig-builder.types'
+import { userMessage } from '@/lib/errors/user-message'
 
 interface Ingredient { ingredient_id: string; common_name: string }
 interface Formulation {
@@ -139,7 +140,7 @@ export function NewProtocolForm({ createdBy, returnTo }: { createdBy: string | n
       const sep = returnTo.includes('?') ? '&' : '?'
       router.push(`${returnTo}${sep}protocolSaved=${encodeURIComponent(name.trim())}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'The protocol could not be saved.')
+      setError(userMessage(err, 'The protocol could not be saved.'))
     } finally {
       setSaving(false)
     }

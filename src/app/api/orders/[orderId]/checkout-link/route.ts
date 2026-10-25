@@ -37,6 +37,7 @@ import { generateCheckoutToken } from '@/lib/auth/checkout-token'
 import { serverEnv } from '@/lib/env'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
@@ -52,7 +53,7 @@ function isLinkIssuable(status: string): status is LinkIssuableStatus {
   return (LINK_ISSUABLE_STATUSES as readonly string[]).includes(status)
 }
 
-export async function POST(
+async function postHandler(
   request: NextRequest,
   { params }: RouteParams
 ): Promise<NextResponse> {
@@ -153,3 +154,5 @@ export async function POST(
     }
   )
 }
+
+export const POST = withApiErrors('/api/orders/[orderId]/checkout-link', postHandler)

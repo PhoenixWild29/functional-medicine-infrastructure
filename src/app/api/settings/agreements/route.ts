@@ -20,8 +20,9 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { isAgreementKey } from '@/lib/onboarding/agreements'
 import { recordAgreementAcceptance } from '@/lib/agreements/clinic-agreements'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -48,3 +49,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   return NextResponse.json({ ok: true, version: result.version }, { status: 201 })
 }
+
+export const POST = withApiErrors('/api/settings/agreements', postHandler)

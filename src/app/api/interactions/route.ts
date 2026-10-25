@@ -10,8 +10,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function GET() {
+async function getHandler() {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -35,7 +36,7 @@ export async function GET() {
   return NextResponse.json({ data })
 }
 
-export async function POST(req: NextRequest) {
+async function postHandler(req: NextRequest) {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -76,3 +77,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ data: relevant })
 }
+
+export const GET = withApiErrors('/api/interactions', getHandler)
+export const POST = withApiErrors('/api/interactions', postHandler)

@@ -62,13 +62,14 @@ import { legacyTitrationFromSig, legacyTitrationDispense } from '@/lib/orders/le
 import { splitDose } from '@/lib/orders/dose'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 export const dynamic = 'force-dynamic'
 
 /** One order may be refilled at a time per line; a session holds several. */
 const MAX_REFILL_LINES = 25
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -548,3 +549,5 @@ function refillLineName(row: SourceRow): string {
   const name = snap && typeof snap === 'object' ? (snap as Record<string, unknown>)['medication_name'] : null
   return typeof name === 'string' && name ? name : 'A prescription'
 }
+
+export const POST = withApiErrors('/api/orders/refill', postHandler)

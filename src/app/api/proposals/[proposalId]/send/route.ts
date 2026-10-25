@@ -9,10 +9,11 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { sendProposal } from '@/lib/proposals/propose'
 import { failureResponse, proposalCaller, proposalIdFrom } from '@/lib/proposals/request'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 type Context = { params: Promise<{ proposalId: string }> }
 
-export async function POST(request: NextRequest, context: Context): Promise<NextResponse> {
+async function postHandler(request: NextRequest, context: Context): Promise<NextResponse> {
   const c = await proposalCaller(request)
   if ('response' in c) return c.response
   const proposalId = await proposalIdFrom(context)
@@ -25,3 +26,5 @@ export async function POST(request: NextRequest, context: Context): Promise<Next
     { status: 200, headers: { 'Cache-Control': 'no-store' } },
   )
 }
+
+export const POST = withApiErrors('/api/proposals/[proposalId]/send', postHandler)

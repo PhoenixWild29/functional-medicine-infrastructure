@@ -12,8 +12,9 @@ import { requireTeamAdmin } from '@/lib/team/access'
 import { readJson } from '@/lib/onboarding/access'
 import { inviteAction, INVITE_COLUMNS, type InviteRow } from '@/lib/onboarding/invite-actions'
 import { UUID_RE } from '@/lib/providers/team-access'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ inviteId: string }> }): Promise<NextResponse> {
+async function postHandler(request: NextRequest, { params }: { params: Promise<{ inviteId: string }> }): Promise<NextResponse> {
   const access = await requireTeamAdmin(request)
   if (!access.ok) return access.response
   const { inviteId } = await params
@@ -33,3 +34,5 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   return inviteAction(access.supabase, invite as InviteRow, body['action'], { userId: access.user.id, role: 'clinic_admin' })
 }
+
+export const POST = withApiErrors('/api/team/invites/[inviteId]', postHandler)

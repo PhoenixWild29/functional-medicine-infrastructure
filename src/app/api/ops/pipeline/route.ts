@@ -19,8 +19,9 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { getUserRole } from '@/lib/auth/claims'
 import { parsePipelineFilters } from '@/lib/ops/pipeline-filters'
 import { fetchPipelineOrders } from '@/lib/ops/pipeline-query'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   // Auth: ops_admin required
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -46,3 +47,5 @@ export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/ops/pipeline', getHandler)

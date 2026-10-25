@@ -26,8 +26,9 @@ import { UUID_RE } from '@/lib/providers/team-access'
 import { loadClinicReview } from '@/lib/onboarding/review'
 import { DEMO_PAYOUT_NOTE, demoPayoutFields, needsDemoPayouts, onlyWithoutPayoutAccount } from '@/lib/clinics/demo-payouts'
 import { LICENSE_CHECK_REQUIRED_MESSAGE, licenseCheckNote, loadProviderSummaries, type ProviderSummary } from '@/lib/onboarding/provider-review'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ clinicId: string }> }): Promise<NextResponse> {
+async function getHandler(_request: NextRequest, { params }: { params: Promise<{ clinicId: string }> }): Promise<NextResponse> {
   const access = await requireOpsAdmin()
   if (!access.ok) return access.response
   const { clinicId } = await params
@@ -42,7 +43,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ clinicId: string }> }): Promise<NextResponse> {
+async function postHandler(request: NextRequest, { params }: { params: Promise<{ clinicId: string }> }): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request)
   if (crossSite) return crossSite
   const access = await requireOpsAdmin()
@@ -140,3 +141,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   console.info(`[ops/onboarding] clinic ${action === 'approve' ? 'approved' : 'sent back'} | clinic=${clinicId} by=${user.id}`)
   return NextResponse.json({ ok: true, onboardingStatus: patch.onboarding_status })
 }
+
+export const GET = withApiErrors('/api/ops/onboarding/clinics/[clinicId]', getHandler)
+export const POST = withApiErrors('/api/ops/onboarding/clinics/[clinicId]', postHandler)

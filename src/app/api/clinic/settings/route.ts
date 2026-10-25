@@ -28,8 +28,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function PATCH(request: NextRequest): Promise<NextResponse> {
+async function patchHandler(request: NextRequest): Promise<NextResponse> {
   // Auth gate
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -141,3 +142,5 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
 
   return NextResponse.json({ success: true })
 }
+
+export const PATCH = withApiErrors('/api/clinic/settings', patchHandler)

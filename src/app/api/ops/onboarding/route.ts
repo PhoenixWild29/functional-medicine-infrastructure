@@ -17,8 +17,9 @@ import { requireOpsAdmin, readJson, cleanEmail } from '@/lib/onboarding/access'
 import { hashInviteToken, inviteExpiresAt, invitePath, newInviteToken } from '@/lib/onboarding/tokens'
 import { recordOnboardingEvent } from '@/lib/onboarding/events'
 import { loadOpsOnboarding } from '@/lib/onboarding/ops'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function GET(): Promise<NextResponse> {
+async function getHandler(): Promise<NextResponse> {
   const access = await requireOpsAdmin()
   if (!access.ok) return access.response
   try {
@@ -29,7 +30,7 @@ export async function GET(): Promise<NextResponse> {
   }
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request)
   if (crossSite) return crossSite
   const access = await requireOpsAdmin()
@@ -89,3 +90,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     expiresAt,
   }, { status: 201 })
 }
+
+export const GET = withApiErrors('/api/ops/onboarding', getHandler)
+export const POST = withApiErrors('/api/ops/onboarding', postHandler)

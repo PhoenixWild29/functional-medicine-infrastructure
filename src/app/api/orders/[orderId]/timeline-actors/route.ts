@@ -20,12 +20,13 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { resolveTimelineActors } from '@/lib/orders/timeline-actors'
 import { getUserClinicId } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
 }
 
-export async function GET(_request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+async function getHandler(_request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
   const { orderId } = await params
 
   const supabaseAuth = await createServerClient()
@@ -73,3 +74,5 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
   )
   return NextResponse.json({ actors }, { status: 200 })
 }
+
+export const GET = withApiErrors('/api/orders/[orderId]/timeline-actors', getHandler)

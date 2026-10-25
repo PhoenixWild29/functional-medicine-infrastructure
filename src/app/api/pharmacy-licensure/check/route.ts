@@ -20,6 +20,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { checkLinesLicensure, type LicensureLine } from '@/lib/compliance/pharmacy-licensure'
 import { getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
 const CLINIC_ROLES = new Set(['clinic_admin', 'provider', 'medical_assistant'])
@@ -38,7 +39,7 @@ function parseLines(raw: unknown): LicensureLine[] | null {
   return lines
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
   // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
   const { data: { user }, error: authError } = await supabaseAuth.auth.getUser()
@@ -68,3 +69,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'The pharmacy license check could not run.' }, { status: 503, headers: NO_STORE })
   }
 }
+
+export const GET = withApiErrors('/api/pharmacy-licensure/check', getHandler)

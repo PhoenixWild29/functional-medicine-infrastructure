@@ -16,8 +16,9 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createProposal } from '@/lib/proposals/propose'
 import { failureResponse, proposalCaller } from '@/lib/proposals/request'
 import { logPhiAccess } from '@/lib/audit/phi-access'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const c = await proposalCaller(request)
   if ('response' in c) return c.response
 
@@ -41,3 +42,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     { status: 201, headers: { 'Cache-Control': 'no-store' } },
   )
 }
+
+export const POST = withApiErrors('/api/proposals', postHandler)

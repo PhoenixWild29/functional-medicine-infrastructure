@@ -36,12 +36,13 @@ import { submitTier2Portal } from '@/lib/adapters/tier2-portal'
 import { submitTier4Fax } from '@/lib/adapters/tier4-fax'
 import type { IntegrationTier } from '@/lib/adapters/audit-trail'
 import { isPharmacySubmissionsDisabledError, PHARMACY_SUBMISSIONS_OFF_MESSAGE } from '@/lib/adapters/submission-switch'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // ============================================================
 // ROUTE HANDLER
 // ============================================================
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   // ── Auth: internal secret ─────────────────────────────────
   const token = request.headers.get('x-internal-token')
   if (!token || token !== process.env.ADAPTER_INTERNAL_SECRET) {
@@ -140,3 +141,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/adapters/submit', postHandler)

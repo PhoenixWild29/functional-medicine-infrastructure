@@ -41,10 +41,11 @@ import { INTAKE_CONSENT_SOURCE, PRIVACY_NOTICE_VERSION, SMS_CONSENT_TEXT_VERSION
 import { toE164 } from '@/lib/patients/phone'
 import { flagPossibleDuplicate } from '@/lib/patients/duplicates'
 import { clinicApproval } from '@/lib/onboarding/approval-guard'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
 
-export async function POST(request: NextRequest, context: { params: Promise<{ token: string }> }): Promise<NextResponse> {
+async function postHandler(request: NextRequest, context: { params: Promise<{ token: string }> }): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request, undefined, NO_STORE)
   if (crossSite) return crossSite
   const limit = joinSubmitLimiter.check(clientIp(request.headers) ?? 'unknown')
@@ -141,3 +142,5 @@ export async function POST(request: NextRequest, context: { params: Promise<{ to
 
   return NextResponse.json({ ok: true }, { headers: NO_STORE })
 }
+
+export const POST = withApiErrors('/api/join/[token]', postHandler)

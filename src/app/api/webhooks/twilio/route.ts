@@ -43,6 +43,7 @@ import { handleInboundSms } from '@/lib/sms/inbound'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendSlackAlert } from '@/lib/slack/client'
 import { buildOpsAlert, type SafeSlackPayload } from '@/lib/slack/ops-alert'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // ============================================================
 // TYPES
@@ -54,7 +55,7 @@ type TwilioMessageStatus = 'queued' | 'sent' | 'delivered' | 'undelivered' | 'fa
 // ROUTE HANDLER
 // ============================================================
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   // Step 1: Read raw body — Twilio sends application/x-www-form-urlencoded, NOT JSON
   const rawBody = await request.text()
   const signature = request.headers.get('x-twilio-signature') ?? ''
@@ -260,3 +261,5 @@ function buildSmsFailureAlert(params: {
     notes: params.clinicNotified === false ? ['clinic_not_notified'] : [],
   })
 }
+
+export const POST = withApiErrors('/api/webhooks/twilio', postHandler)

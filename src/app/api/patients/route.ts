@@ -37,6 +37,7 @@ import { ilikeLiteral } from '@/lib/patients/duplicates'
 import { createIntakeLink } from '@/lib/intake/links'
 import { sendIntakeLinkSms } from '@/lib/intake/sms'
 import { staffDetails } from '@/lib/patients/staff-details'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const STAFF_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
 const NAME_MAX = 100
@@ -57,7 +58,7 @@ function optionalName(v: unknown): string | null | undefined {
 }
 
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const sfSite = request.headers.get('sec-fetch-site')
   if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') {
     return NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 })
@@ -207,3 +208,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     intake,
   }, { status: 201 })
 }
+
+export const POST = withApiErrors('/api/patients', postHandler)

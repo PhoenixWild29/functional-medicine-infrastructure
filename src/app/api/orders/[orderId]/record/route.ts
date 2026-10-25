@@ -25,6 +25,7 @@ import { logPhiAccess } from '@/lib/audit/phi-access'
 import { RX_DETAIL_COLUMN_LIST, rxDetailsFromRow, type RxDetails } from '@/lib/orders/rx-details'
 import { dollarsToCents } from '@/lib/orders/shipping'
 import { getUserClinicId } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
@@ -43,7 +44,7 @@ export interface OrderRecord {
   packageCount: number | null
 }
 
-export async function GET(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+async function getHandler(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
   const { orderId } = await params
 
   const supabaseAuth = await createServerClient()
@@ -111,3 +112,5 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
   })
   return NextResponse.json(record, { status: 200, headers: { 'Cache-Control': 'no-store' } })
 }
+
+export const GET = withApiErrors('/api/orders/[orderId]/record', getHandler)

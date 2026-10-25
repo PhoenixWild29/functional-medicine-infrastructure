@@ -36,6 +36,7 @@ import { parseTitrationSteps } from '@/lib/orders/titration'
 import { cycleLengthFrom, cyclePatternFrom } from '@/lib/orders/cycling'
 import { isNoRows } from '@/lib/supabase/no-rows'
 import { getUserClinicId } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
@@ -158,7 +159,7 @@ function isFormulationLive(f: unknown): boolean {
   return rec.is_active === true && rec.deleted_at === null
 }
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   return failLoud(() => getFavorites(req))
 }
 
@@ -279,7 +280,7 @@ async function getFavorites(req: NextRequest): Promise<NextResponse> {
 // are added to it (duplicates dropped) and 200 is returned with
 // merged: true; otherwise a new favorite is created (201).
 
-export async function POST(req: NextRequest) {
+async function postHandler(req: NextRequest) {
   return failLoud(() => createFavorite(req))
 }
 
@@ -388,7 +389,7 @@ async function createFavorite(req: NextRequest): Promise<NextResponse> {
 // place — clinic-scoped like DELETE, the pharmacy must actively offer the
 // formulation, and a pinned patient must belong to the clinic.
 
-export async function PATCH(req: NextRequest) {
+async function patchHandler(req: NextRequest) {
   return failLoud(() => editFavorite(req))
 }
 
@@ -478,7 +479,7 @@ async function editFavorite(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({ data })
 }
 
-export async function DELETE(req: NextRequest) {
+async function deleteHandler(req: NextRequest) {
   return failLoud(() => deleteFavorite(req))
 }
 
@@ -518,3 +519,8 @@ async function deleteFavorite(req: NextRequest): Promise<NextResponse> {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
+
+export const GET = withApiErrors('/api/favorites', getHandler)
+export const POST = withApiErrors('/api/favorites', postHandler)
+export const PATCH = withApiErrors('/api/favorites', patchHandler)
+export const DELETE = withApiErrors('/api/favorites', deleteHandler)

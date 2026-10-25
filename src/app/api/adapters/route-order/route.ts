@@ -41,6 +41,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { routeOrder } from '@/lib/adapters/routing-engine'
 import type { OrderStatus } from '@/lib/orders/state-machine'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // BLK-07: Valid currentStatus values accepted by this endpoint.
 // The routing engine handles PAID_PROCESSING (initial submission) and
@@ -63,7 +64,7 @@ const VALID_INTEGRATION_TIERS: ReadonlySet<string> = new Set([
 // ROUTE HANDLER
 // ============================================================
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   // ── Authentication ─────────────────────────────────────────
   const token = request.headers.get('x-internal-token')
   if (!token || token !== process.env['ADAPTER_INTERNAL_SECRET']) {
@@ -182,3 +183,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/adapters/route-order', postHandler)

@@ -17,6 +17,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { createPaymentGroup }  from '@/lib/payment-group/create-group'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -24,7 +25,7 @@ interface CreatePaymentGroupBody {
   orderIds: string[]
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   // ── 0. Feature flag — Codex 2026-06-09 sweep, critical finding #2 ────
   if (process.env['PHASE_C_GROUPS_ENABLED'] !== 'true') {
     return NextResponse.json(
@@ -111,3 +112,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/checkout/payment-group', postHandler)

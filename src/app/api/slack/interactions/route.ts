@@ -30,6 +30,7 @@ import { createHmac, timingSafeEqual } from 'crypto'
 import { createServiceClient } from '@/lib/supabase/service'
 import { serverEnv } from '@/lib/env'
 import type { Enums } from '@/types/database.types'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 type SlaTypeEnum = Enums<'sla_type_enum'>
 
@@ -135,7 +136,7 @@ async function handleOrderRefund(orderId: string, userId: string): Promise<void>
 // ROUTE HANDLER
 // ============================================================
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const rawBody = await request.text()
 
   // Verify Slack signature (replay protection + authenticity)
@@ -213,3 +214,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/slack/interactions', postHandler)

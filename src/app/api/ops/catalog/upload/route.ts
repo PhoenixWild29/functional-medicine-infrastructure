@@ -21,6 +21,7 @@ import type { Enums } from '@/types/database.types'
 import { getUserRole } from '@/lib/auth/claims'
 import { validateCatalogRows } from '@/lib/catalog/validate-csv-rows'
 import { MAX_CATALOG_ROWS } from '@/lib/pharmacy-onboarding/application'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 type RegulatoryStatusEnum = Enums<'regulatory_status_enum'>
 
@@ -54,7 +55,7 @@ export interface UploadResult {
   warnings:          string[]
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request)
   if (crossSite) return crossSite
   const supabaseAuth = await createServerClient()
@@ -284,3 +285,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/ops/catalog/upload', postHandler)

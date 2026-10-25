@@ -25,10 +25,11 @@ import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendSlackAlert } from '@/lib/slack/client'
 import { buildOpsAlert, type SafeSlackPayload } from '@/lib/slack/ops-alert'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const ORPHAN_THRESHOLD_MINUTES = 15
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const denied = cronAuthFailure(request, 'submission-reconciliation')
   if (denied) return denied
 
@@ -186,3 +187,5 @@ function buildOpsAlertPayload(alert: {
     details: { alert_type: alert.alert_type, severity: alert.severity },
   })
 }
+
+export const GET = withApiErrors('/api/cron/submission-reconciliation', getHandler)

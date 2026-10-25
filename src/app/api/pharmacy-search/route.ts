@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { IntegrationTierEnum } from '@/types/database.types'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // ── Tier ordering for sort (lower = ranked first) ────────────
 // API-connected tiers (1 and 3) ranked above portal/fax (2 and 4)
@@ -71,7 +72,7 @@ function buildTierBadge(tier: IntegrationTierEnum): TierBadge {
   }
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   // Auth gate
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -250,3 +251,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   return NextResponse.json({ results }, { status: 200 })
 }
+
+export const GET = withApiErrors('/api/pharmacy-search', getHandler)

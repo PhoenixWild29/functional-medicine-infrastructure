@@ -26,6 +26,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { routeReFireAlert } from '@/lib/slack/alert-router'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 /** Maximum rows processed per run */
 const MAX_BATCH_SIZE = 50
@@ -33,7 +34,7 @@ const MAX_BATCH_SIZE = 50
 /** 15-minute window in milliseconds */
 const REFIRE_WINDOW_MS = 15 * 60 * 1000
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const denied = cronAuthFailure(request, 'sla-refire')
   if (denied) return denied
 
@@ -152,3 +153,5 @@ export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/cron/sla-refire', getHandler)

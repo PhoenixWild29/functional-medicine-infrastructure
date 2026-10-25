@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { clinicAdminForProvider } from '@/lib/providers/team-access'
 import { US_STATES } from '@/lib/providers/states'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const LICENSE_NUMBER_RE = /^[A-Za-z0-9][A-Za-z0-9 ./-]{0,39}$/
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -19,7 +20,7 @@ function validDate(s: string): boolean {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s
 }
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ providerId: string }> }): Promise<NextResponse> {
+async function putHandler(request: NextRequest, { params }: { params: Promise<{ providerId: string }> }): Promise<NextResponse> {
   const { providerId } = await params
   const access = await clinicAdminForProvider(providerId)
   if (!access.ok) return access.response
@@ -58,3 +59,5 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   console.info(`[team] license saved | provider=${access.provider.provider_id} state=${state}`)
   return NextResponse.json({ state, licenseNumber, expiresOn, verifiedAt: now })
 }
+
+export const PUT = withApiErrors('/api/providers/[providerId]/licenses', putHandler)

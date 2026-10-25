@@ -35,6 +35,7 @@ import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { SCREENSHOT_BUCKET, SCREENSHOT_TTL_HOURS } from '@/lib/playwright/config'
 import { retentionEnabled } from '@/lib/retention/switch'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const LIST_PAGE = 1000
 const REMOVE_BATCH = 1000
@@ -56,7 +57,7 @@ async function listAll(bucket: Bucket, prefix: string): Promise<{ entries: Entry
   }
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const denied = cronAuthFailure(request, 'screenshot-cleanup')
   if (denied) return denied
 
@@ -127,3 +128,5 @@ export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/cron/screenshot-cleanup', getHandler)

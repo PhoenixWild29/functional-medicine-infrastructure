@@ -93,6 +93,7 @@ import { PENDING_REVIEW_CODE, refusalText } from '@/lib/onboarding/pending-revie
 import { ProposalOptions, alignPlan, defaultProposalPlan, planProblems, proposalOptionsBody, type ProposalLine, type ProposalPlan } from './proposal-options'
 import { PlanLinkPanel } from '@/components/proposals/plan-link-panel'
 import type { SentLink } from '@/lib/proposals/propose'
+import { userMessage } from '@/lib/errors/user-message'
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -806,7 +807,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
       router.push(`/dashboard?sent=${totalCount}`)
 
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'An unexpected error occurred'
+      const msg = userMessage(err, 'An unexpected error occurred')
       setSubmitError(msg)
       setSubmitProgress(null)
       setIsSubmitting(false)
@@ -923,7 +924,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
       clearSessionOnUnmountRef.current = true
       setProposalResult({ proposalId: body.proposalId ?? '', status: body.status ?? 'sent', link: body.link ?? null })
     } catch (err) {
-      setProposalErrors([err instanceof Error ? err.message : 'An unexpected error occurred'])
+      setProposalErrors([userMessage(err, 'An unexpected error occurred')])
     } finally {
       setSubmitProgress(null)
       setIsProposing(false)
@@ -958,7 +959,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
       clearSessionOnUnmountRef.current = true
       router.push(`/dashboard?draft=${totalCount}`)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'An unexpected error occurred'
+      const msg = userMessage(err, 'An unexpected error occurred')
       setDraftError(msg)
       setSubmitProgress(null)
       setIsSavingDraft(false)

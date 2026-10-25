@@ -15,8 +15,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireOnboardingAdmin, readJson, setStep } from '@/lib/onboarding/access'
 import { AGREEMENTS, agreementSha256, isAgreementKey } from '@/lib/onboarding/agreements'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const access = await requireOnboardingAdmin({ editable: true })
   if (!access.ok) return access.response
   const { user, clinicId, supabase } = access
@@ -56,3 +57,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   console.info(`[onboarding/agreements] accepted | clinic=${clinicId} agreement=${key} version=${template.version}`)
   return NextResponse.json({ ok: true, version: template.version }, { status: 201 })
 }
+
+export const POST = withApiErrors('/api/onboarding/agreements', postHandler)

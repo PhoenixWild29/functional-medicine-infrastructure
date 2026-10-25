@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { requireOpsAdmin } from '@/lib/payments/ops-auth'
 import { UUID_RE, isIsoDate } from '@/lib/payments/payables'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const MAX_IDS = 500
 // A bank or ACH reference: printable, no control characters.
@@ -25,7 +26,7 @@ const REFERENCE_RE = /^[\x20-\x7E]{1,120}$/
 
 const bad = (error: string) => NextResponse.json({ error }, { status: 400 })
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireOpsAdmin()
   if (auth.denied) return auth.denied
 
@@ -92,3 +93,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   console.info(`[ops/payables/mark] ${action}: ${updated.length} of ${payableIds.length} by ${auth.userId}`)
   return NextResponse.json({ updated: updated.length, skipped: payableIds.length - updated.length })
 }
+
+export const POST = withApiErrors('/api/ops/payables/mark', postHandler)
