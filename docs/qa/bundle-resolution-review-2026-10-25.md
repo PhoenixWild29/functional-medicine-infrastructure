@@ -125,3 +125,73 @@ Whole-tip checks on bundle-ci, which includes bundle-security:
 - **`providers/[providerId]/licenses` and `npi-check` do not uuid-check providerId before `clinicAdminForProvider`.** api-input-validation never touched these files, so it is not a merge loss. The helper checks the id: api-input-validation's review recorded "clinicAdminForProvider checks the uuid".
 - **e2e/accessibility-all-routes.spec.ts:51-53 is not shard-aware.** It hard-codes `test-a11y-ma@compoundiq.test` under a comment asking for `shardEmail()`, and AUTH_DIR (:49) has no shard suffix. With no `fullyParallel`, the file runs on one shard, so no failure was shown. A cheap follow-up.
 - **e2e-sharded-trial still runs on `ubuntu-latest`** and installs browsers itself. The dry-run report notes this as deliberate.
+
+---
+
+## bundle-features (B), reviewed later the same day (C-2026-10-25-13)
+
+`origin/bundle-features` at **f75138e7**, on bundle-security b4b2cf8b. Reviewed the same way as above, by a fresh reviewer, with my own checks. Nothing newer than f75138e7 was on the branch when this was written; B's planned E2E spec on top was not yet pushed.
+
+### Summary
+**Nothing lost.** 0 high, 0 medium; 3 low items, all from the branches themselves, not the merges.
+
+Whole tip f75138e7:
+- tsc is clean.
+- Jest: 626 suites and 6860 tests, all passing.
+- The reviewer's targeted run (orders, proposals, adapters, favorites API, orders API, new-prescription) passed 108 suites and 1560 tests in a fresh worktree.
+
+### Merges
+| Merge | Branch | Conflicts | Result |
+|---|---|---|---|
+| be017540 | state-machine-enforcement (b0bd60f8) | none | The branch's diff landed exactly |
+| f921db66 | rx-quantity-shipping (9e2b075a) | margin-builder-form, batch-sign-form, new-protocol-form | The branch's diff landed exactly; bundle-security's lines untouched |
+| 4d2c9608 | rx-allergies-required (080519a1) | allergy-notice, lib/proposals/propose.ts, sign-choice.ts | Same |
+| e6ce2e20 | favorites-frequent (76a6964e) | quick-actions-panel, wo104-favorites-model.test, favorites/recent/route.ts (modified by bundle-security, deleted by the rename) | Only the combination fixes stated in the commit body, each read |
+| 98af5fb4 | settings-notifications (c1d9e765) | none | The branch's diff landed exactly |
+| f75138e7 | (report) | none | Splits the dispense-bound test in two. Sound: 50,000 gets the route's own limit message, 5e9 gets the schema 400, nothing is inserted in either |
+
+- **How the merges were compared:** for each merge, every file the incoming branch changed was compared two ways: the branch's own diff (merge-base 2696ff24 to `^2`) against what the merge changed (`M^1` to `M`). They were identical except for e6ce2e20's stated fixes.
+- **No undoing:** no later merge touched a file outside its own branch's diff, so none undid an earlier resolution.
+- **Untouched since b4b2cf8b:** playwright.config.ts, `.github`, package.json, the lockfile, and the error and global-error pages.
+- **E2E:** no spec was deleted.
+
+### Files
+Every file on the six source heads is present on f75138e7, except `src/app/api/favorites/recent/route.ts` and its bundle-security test `favorites/recent/__tests__/staff-role-gate.test.ts`. That is the deliberate rename to `/frequent`. The test moved to `favorites/frequent/__tests__/staff-role-gate.test.ts` with only URLs and labels changed, and nothing in `src` or `e2e` references `/api/favorites/recent`.
+
+### Checks asked for
+- **Route handlers:** these merges only add lines to bundle-security's handlers (actorRole, dispenseCount, a select column, spec text). Nothing was removed or reordered.
+  - `favorites/frequent` GET:
+    - withApiErrors (:142);
+    - getUser (:45);
+    - isClinicStaffRole → 403 (:48);
+    - UUID_RE → 400 (:56);
+    - then the SQL-windowed read (:89).
+  - `orders` POST (refuseCrossSite :50, dispenseCount :379) and `orders/[orderId]` PATCH/DELETE (:175/:334, dispenseCount :294) keep the order cross-site, then auth, then parse, then write.
+- **State machine:** all 36 non-test `casTransition` call sites pass `actorRole`, matching who acts:
+  - `system`: crons, Documo, pharmacy and Stripe webhooks, the routing engine, tier4-fax, proposal expiry;
+  - `ops_admin`: 7 in the ops order action, 2 in the ops fax action;
+  - the clinic actor via `clinicActorRole` in propose.ts:428-442 and sign-choice.ts:104-108;
+  - the ops reroute keeps its `patch` (reroute_count, pharmacy_id) in one UPDATE, and payment-expiry keeps its casTransition;
+  - no direct `orders.status` update came back.
+- **Quantity and unit (rx-quantity-shipping):**
+  - `dispenseCount` (rx-details.ts:967) and `formatQuantity` are intact;
+  - tier1, tier2, tier4 and the transformers still select package_label, package_count, dispense_quantity and dispense_unit;
+  - the fax PDF prints "Quantity: N unit(s)" (prescription-pdf.ts:191), and the OpenAPI has `quantityUnit`;
+  - against 9e2b075a, these files are byte-identical except one actorRole line in tier4;
+  - D's fix for the 2026-10-25 review's HIGH (one meaning for quantity, with its unit) is c0653d42 with test 1b55c12a, and it survived.
+- **Allergies gate:**
+  - batch-sign keeps both `missing_snapshot` (:108, :312) and `allergies_required` (:122, :676, :805);
+  - propose.ts returns the single `ALLERGIES_REQUIRED` / `PLAN_ALLERGIES_REQUIRED_MESSAGE` refusal (:35, :183-184);
+  - the prompts survive: batch-review-form (:801, :941, `promptFor="plan"` :1340), batch-sign-form :279, allergy-notice `promptFor` (:42, :125).
+- **Favorites rename:**
+  - `/api/favorites/recent` and `onLoadRecent` are gone;
+  - the panel's only "Recent" is the intended fallback label;
+  - make-favorite-dialog keeps `patientDoses` (:48, :85) and the reset on a patient change (:71-78);
+  - input-validation and frequent-route tests target `/frequent`, with bundle-security's "403 for another clinic's provider" assertion carried over;
+  - the E2E uses the `favorites-frequent` and `frequent-item` test ids, which the component has.
+- **Settings Notifications card** (settings/page.tsx:259-272): it states what is sent ("CompoundIQ does not send email", with a link "See what is sent") and makes no "coming soon" promise. The no-email claim holds: the only email-like code is the invite resend, and the daily digest goes to Slack.
+
+### Considered, not confirmed (low, from the branches, not the merges)
+- `settings/notifications/page.tsx:46` (from c1d9e765) says "Notification settings are coming", a future promise on the sub-page. Sam's call whether to keep it, in line with the TODO sweep's removal of "Coming soon" from the Settings card.
+- `e2e/clinic-app.spec.ts:1566, :1598` and `fixtures/seed.ts:876` still say "Recent" in a header comment, a describe title and a helper name (as on 76a6964e). The test body checks Frequently used. Cosmetic.
+- `recentFormulations` and `RECENT_LIMIT` (lib/orders/favorite-presets.ts:361, :387) are now used only by their own unit test. Dead code (as on 76a6964e).
