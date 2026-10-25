@@ -255,3 +255,86 @@ The Favorites panel's "Recent" strip is replaced by "Frequently used" (`GET /api
 - Any clinic role can read any clinic provider's Frequently used. This matches the clinic-wide favorites model.
 - Counts are truncated past 500 orders in 90 days. This is documented and unlikely at current volume.
 - A card pinned to the session patient hides Make favorite. This is UX, not leakage.
+
+---
+
+## 5. clinical-difference-saved (security review, C-2026-10-25-14)
+
+`origin/clinical-difference-saved` at **3bd67130** (D), on main 2696ff24.
+
+### What it does
+Saved clinical difference statements (coverage gap 6):
+- A provider's typed "Other (describe)" statement can be saved for a formulation, for the practice (patient_id NULL) or for one patient, and picked next time. Nothing is pre-selected.
+- The chosen text still goes into `rxDetails.clinicalDifference`, so `orders.clinical_difference`, the Rx and the fax are unchanged.
+- New: migration 20261024000009 (PREPARED, table `saved_clinical_statements`), `GET/POST/DELETE /api/clinical-statements`, `lib/clinical-statements/saved.ts`, and a picker in the Review row (`rx-details-row.tsx`).
+
+### Findings
+No critical or high findings.
+
+**Medium: the ids are validated with strict `z.uuid()`, which refuses the seeded demo and E2E ids, so the picker does nothing on demo data**
+- **Where:**
+  - `src/lib/clinical-statements/saved.ts`: `bodySchema` (`z.uuid()` for formulation_id and patient_id) and `isUuid()` (`z.uuid().safeParse`);
+  - used by `src/app/api/clinical-statements/route.ts` GET (formulation_id, patient_id), POST (body) and DELETE (id).
+- **Scenario:** zod 4's `z.uuid()` enforces the RFC version and variant bits. The seeded ids are not RFC v4:
+  - E2E seed formulation `aaaaaaaa-0000-0000-0000-000000000032` (e2e/fixtures/seed.ts:58);
+  - demo patients `a3000000-0000-0000-0000-00000000000x` (lib/poc/refresh-demo-data.ts);
+  - also `a1…`, `a2…` and `a4…`.
+
+  For a demo patient:
+  - GET answers 400 "patient_id must be a UUID", and the row (rx-details-row.tsx:97-99) treats a non-ok answer as "no saved statements" with no message, so nothing is listed;
+  - saving for that patient answers 400 "patient_id must be a UUID", which is shown to the provider.
+
+  For the E2E formulation, GET is a 400 too, so the feature can never show a saved statement in E2E. Real rows (gen_random_uuid, v4) work.
+- **How confirmed:**
+  - with zod 4.6.7, `z.uuid().safeParse('a4000000-0000-0000-0000-000000000001').success` and `'f0000000-0000-0000-0000-00000000005e'` are both false; a v4 id is true;
+  - code path: `isUuid(patientId)` in route GET gives the 400, then rx-details-row's `res.ok ? ... : { data: [] }`.
+- **Context:** this is the same class as the 13 routes api-input-validation (26f1c9a6) fixed. There, the shared `uuid()` / `UUID_RE` in `lib/api/input` accept any 8-4-4-4-12 hex id for exactly this reason.
+- **Fix:** use `uuid()` / `UUID_RE` from `lib/api/input` once the bundles are in (or a local any-hex regex until then) for all three ids. Add a test with a seeded id (`a3000000-...`) for GET and POST.
+
+**Medium (a merge prerequisite): the route will fail bundle-security's `route-error-wrapper` test**
+- **Where:** `src/app/api/clinical-statements/route.ts` exports `export async function GET/POST/DELETE`.
+- **Scenario:** bundle-security's `src/app/api/__tests__/route-error-wrapper.test.ts` (from error-boundaries) asserts that no route.ts exports `export async function <METHOD>` and that every method is `withApiErrors('/api/...', ...)`. Merged onto the bundles as written, that test fails for this route.
+- **How confirmed:** read the test on `origin/bundle-security` (lines 31-37) and the route's exports.
+- **Fix:** when rebasing onto the bundles, rename to `getHandler/postHandler/deleteHandler` and export `withApiErrors('/api/clinical-statements', ...)`. Use `isClinicStaffRole` from `lib/auth/claims` (security-followups-3) instead of the local `STATEMENT_SAVE_ROLES` copy, and `parseJsonBody`/`badRequest` from `lib/api/input`.
+
+**Low: a concurrent duplicate save answers 500 instead of returning the existing statement**
+- **Where:** route.ts POST. The duplicate check is a read; the insert relies on `uq_saved_clinical_statements_scope`.
+- **Scenario:** two saves of the same text for the same scope at the same moment. Both read "none", then the second insert hits the unique index (23505) and returns 500 "The statement could not be saved", although it is saved.
+- **Fix:** on error code 23505, re-read and return the existing row (200).
+
+**Low: any clinic role can delete any of the clinic's saved statements**
+- **Where:** route.ts DELETE, scoped by `clinic_id` only.
+- **Scenario:** a medical assistant can soft-delete a provider's practice statement, or a patient-scoped one. This matches favorites (any clinic member may save), and it is a soft delete (`deleted_at`), so it is not a security break. It is noted only because the task asked "who can save vs use": today every clinic role can save, use and delete.
+- **Fix, if Sam wants it narrower:** limit DELETE to the creator or a clinic_admin.
+
+### Checked and fine
+- **Migration 20261024000009:**
+  - RLS enabled;
+  - clinic read policy: role in (clinic_admin, provider, medical_assistant) AND clinic_id from app_metadata;
+  - ops_admin read;
+  - no write policy;
+  - `REVOKE INSERT, UPDATE, DELETE, TRUNCATE ... FROM anon, authenticated` and `REVOKE DELETE, TRUNCATE ... FROM service_role`. These are exactly the lockdown rules of 000004 (rls-user-write-lockdown-v2) and of treatment_proposals 000002: written only through the server, soft-deleted.
+  - `SELECT apply_pharmacy_admin_scope()` is the last statement before COMMIT.
+- **Indexes:** `idx_saved_clinical_statements_lookup (clinic_id, formulation_id, created_at DESC) WHERE deleted_at IS NULL` serves the picker's read exactly. A unique live copy per clinic, formulation, scope and lower(statement).
+- **Length:** `CHECK (char_length(statement) BETWEEN 20 AND 500)`, which matches the server's bounds (`MIN_OTHER_REASON_LENGTH` = 20, max 500, trimmed).
+- **Foreign keys:** clinic, formulation and patient, ON DELETE NO ACTION. The only hard delete of either table is the Keragon sync undoing a patient it inserted moments before (lib/integrations/keragon/sync.ts:155). That patient cannot have a saved statement yet, so the FKs never block; patients and formulations are otherwise soft-deleted.
+- **Down file:** refuses while any live statement exists, then drops the table. Atomic.
+- **Order:** it only creates its own table, with no dependency on 000003 to 000008, so it applies cleanly after them.
+  - Its edit of `proposals-migration-static.test.ts` ("000002 sorts right after 000001; later migrations may follow") says the same as perf-indexes' (228c147b) and the queued branches' edits. Expect a trivial textual conflict there; keep either version.
+- **Server:**
+  - GET is auth plus role gate (any clinic role), clinic from the session, then parse;
+  - POST and DELETE are `refuseCrossSite` first, then auth and gate, then parse, then write.
+  - The body is a zod strict object (unknown keys refused, statement trimmed and bounded).
+  - The clinic is never taken from the body.
+  - A patient_id on POST is checked to be in the caller's clinic (403 otherwise); the formulation must exist (404).
+  - DELETE is scoped to the caller's clinic and to live rows.
+  - Logs carry only `error.message`, never the statement or ids.
+- **Patient scope:**
+  - GET returns the practice's statements plus only the requested patient's (`patient_id.is.null,patient_id.eq.<checked uuid>`);
+  - `visibleStatements` drops any other patient's as a second check;
+  - the Review row asks only for the session patient.
+  - RLS lets clinic staff read every patient's statements in their own clinic (the same reach they have on `patients`). The patient scoping is a display rule enforced by the API, not an access boundary between staff of one clinic.
+- **Rx and fax are unchanged:** the diff touches no adapter, transformer or fax/PDF file. The chosen text goes in `rxDetails.clinicalDifference` exactly as a typed one did.
+
+### clinic-help
+**Not reviewed: not pushed.** There is no `origin/clinic-help`; 2cd8d9b is local to D. Review it once pushed, for: no PHI, secrets or internal URLs in the help text; labels that match the code; the route behind clinic auth; no external links.
