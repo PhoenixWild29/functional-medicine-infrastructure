@@ -1,17 +1,21 @@
-task-id: A-2026-10-24-08
+task-id: A-2026-10-25-01
 status: ready
 ---
-Thanks for A-2026-10-24-07 (#261 re-merged, CI green; it merges after #264).
+Thanks for A-2026-10-24-08 (security-followups-2, ad64b44).
 
-If #261 then conflicts again (#263 React 19 changed package.json and package-lock.json), I will put that back in your queue; do not pre-empt it.
+Two small tasks, two branches.
 
-Next: three small security follow-ups from D's review (D's report is in commit acde0fc on security-review-oct24 and 089551b on security-followups-oct24).
+PART 1. Confirm the Documo fax download endpoint (your fax viewer, ops-fax-viewer-documo, uses GET https://api.documo.com/v2/accounts/{account}/faxes/{id}/download, unconfirmed).
+- Read Documo's public API documentation (docs.documo.com or their developer site) from this machine if the network allows; do not call Documo's API and do not use any key. Find the documented way to download an inbound fax's PDF (path, method, auth header name, Accept, response type) and how inbound webhook payloads identify the fax.
+- If the docs differ from what downloadFaxPdf does, fix it on ops-fax-viewer-documo (`git fetch origin && git checkout -B ops-fax-viewer-documo origin/ops-fax-viewer-documo`, merge origin/main first), update the URL/header assertions in download-fax.test.ts, lint 0 warnings, tsc, fax tests, push. If they match, push nothing to that branch.
+- If the docs cannot be reached, say so; do not guess.
+- Report (with doc URLs and quoted endpoint lines) in the commit body, or, if nothing changed, in a commit on a new branch documo-endpoint-check containing only a short note file docs/integrations/documo-fax-download.md.
 
-Branch: `git fetch origin && git checkout -b security-followups-2 origin/main` (if #264 is not on main yet, branch from origin/security-followups-oct24 instead and say so; it will merge after #264).
+PART 2. E2E job on the official Playwright container image (D's idea in the CI report d25b0ce): saves the ~31 s install-deps step and removes the apt-mirror hang risk.
+- Branch `git checkout -b ci-playwright-container origin/main`.
+- In .github/workflows/ci.yml E2E job only: `container: mcr.microsoft.com/playwright:v<exact @playwright/test version from package-lock>-noble` (or the matching tag), drop the browser cache and install-deps steps, keep everything else (schema sync via npx supabase@2.120.0, build, test, artifact upload). Check what breaks inside a container: node version (match setup-node), npm ci cache, git safe.directory, HOME, the supabase CLI binary (linux-x64), env vars, permissions on the workspace.
+- Add a guard so the image tag must equal the installed @playwright/test version (a tiny script or a step that fails with a clear message), so a Playwright bump cannot silently use the wrong browsers.
+- You cannot run the workflow locally; reason carefully and say what the first PR run must confirm.
+- Push ci-playwright-container (normal push, no PR). Report in the final commit body.
 
-1. L8: client IP for rate limits and keyed hashes (lib/audit/keyed-hash.ts:26 and wherever the IP is read): prefer x-vercel-forwarded-for, then x-real-ip, then the first x-forwarded-for hop. One helper, used everywhere. Tests for each header combination.
-2. L12: set_clinic_member_active reactivation clears every ban (banned_until NULL), including a ban set for another reason. Fix so reactivation clears only a ban this flow set. This needs a migration: write it as the next free number after 20261024000004 (D's rls lockdown) unless that number is taken on a pushed branch; check `git ls-tree` of origin/security-review-oct24, origin/proposals-pr1-data-model, origin/ops-fax-viewer-documo, origin/rls-user-write-lockdown first and report the number you used. Test on PGlite. Put the SQL in the report (Sam runs it on prod).
-3. L6 follow-up: move the routes that still carry their own inline Sec-Fetch-Site check (team, checkout-link, batch-sign, patients and the rest D listed) onto lib/security/same-origin.ts refuseCrossSite, keeping each route's wording. Tests stay green; add the same-site/cross-site cases for each moved route.
-4. `npm run lint` (0 warnings), tsc, Jest (--maxWorkers=3), build. Push security-followups-2 (normal push, no PR). Full report in the final commit body.
-
-Do not touch the production database, Vercel, Stripe or secrets.
+Do not touch the production database, Vercel, Stripe, Documo or secrets.

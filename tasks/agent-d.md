@@ -1,15 +1,16 @@
-task-id: D-2026-10-24-08
+task-id: D-2026-10-25-01
 status: ready
 ---
-Thanks for D-2026-10-24-07 (L5 lockdown, 47db60d). Its migration goes to Sam with the others.
+Thanks for D-2026-10-24-08 (zod 4, 6ad6f94). PR in turn.
 
-Next: zod 3 -> 4 (npm audit high GHSA-mrhx-c7xc-m3w5, fixed only in 4.x).
+Next: make E2E shardable (your CI report: sharding is impossible today because specs share seeded orders and accounts in one E2E project with workers: 1; the test step is ~13 of ~15 minutes and every PR waits on it).
 
-Branch: `git fetch origin && git checkout -b zod-4 origin/main`.
+Branch: `git fetch origin && git checkout -b e2e-shard-ready origin/main`.
 
-1. Check who depends on zod and how: our code, @anthropic-ai/sdk (you noted it depends on zod 3: find whether as a dependency or a peer, and whether it works alongside zod 4 or bundles its own), react-hook-form resolvers (@hookform/resolvers version support for zod 4), and anything else. If a dependency pins zod 3 internally, it can keep its own nested copy; our code moves to 4.
-2. Upgrade our zod to the latest 4.x. Apply the zod 4 migration guide: error customization (message/errorMap -> error), .email()/.url()/.uuid() string format changes (z.email() etc. and stricter UUID), .strict()/.passthrough() -> z.strictObject/looseObject where used, default/optional semantics, z.record two-argument form, ZodError .format()/.flatten() changes and issue shapes (anything that reads error.issues or error.flatten() for API responses), z.infer unchanged, .nonempty() on arrays, refinements, z.coerce, unions/discriminatedUnion. Keep every API's validation behaviour and error response shape the same; add tests where a shape could change.
-3. `npm audit --omit=dev` after: expect 0 high/critical. Lockfile minimal; keep libc markers.
-4. `npm run lint` (0 warnings), tsc, Jest (default workers and --maxWorkers=3), build. Push zod-4 (normal push, no PR). Full report in the final commit body: dependency findings, every changed schema pattern (file:line count), any response-shape change, audit before/after, local results, head SHA.
+1. Inventory: for every spec in e2e/, list the shared data it reads or writes (TEST_IDS clinic, provider, patients, pharmacies, catalog items, TEST_USERS logins, seeded orders), whether it mutates shared rows (status changes, deactivation, settings, checklist prefs, signup links, agreements), and its cleanup. Table in the report.
+2. Design per-shard isolation that works with ONE E2E Supabase project: e.g. seedStaticData(shardIndex) creating a clinic, provider, patient(s), logins and pharmacies per shard with deterministic ids derived from the shard index (TEST_IDS becomes a function of process.env.TEST_SHARD), unique emails per shard, and shard-scoped cleanup. Global reference data (catalog, ingredients) stays shared read-only. Anything that cannot be isolated (e.g. a spec that changes a global setting) goes in a serial project that runs on one shard only.
+3. Implement it so `npx playwright test --shard=1/2` and `--shard=2/2` can run at the same time against the same database without touching each other's rows. Keep workers: 1 inside a shard. Do not change ci.yml in this task (the switch to a 2-shard matrix is a follow-up after this proves out); but add a workflow_dispatch-only job `e2e-sharded-trial` in ci.yml that runs 2 shards in a matrix, outside the shared concurrency group's normal PR path, so it can be tried by hand without blocking PRs. It must still use the e2e-shared-supabase-project concurrency group so it never overlaps a PR's E2E.
+4. All existing specs must keep passing in the normal single-shard run (that is what PR CI runs).
+5. `npm run lint` (0 warnings), tsc, Jest, build; `npx playwright test --list` for each shard shows a disjoint split. Push e2e-shard-ready (normal push, no PR). Full report in the final commit body: inventory, design, changes, risks, what the trial run must confirm.
 
 Do not touch the production database, Vercel, Stripe or secrets.
