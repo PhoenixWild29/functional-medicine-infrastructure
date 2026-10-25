@@ -14,6 +14,7 @@
 import { signBatch, checkBatch } from '../batch-sign'
 import { ALLERGIES_REQUIRED_MESSAGE } from '@/lib/patients/allergies'
 import { fakeDb } from './fake-db'
+import { verifySignatureBinding, type SignedOrderRow } from '../signature-binding'
 
 // ── Collaborators ─────────────────────────────────────────────
 
@@ -524,6 +525,37 @@ describe('one payment link per patient', () => {
   })
 })
 
+// ── HIPAA B7: the signature binds what was signed ─────────────
+
+describe('signature binding', () => {
+  it('each signed order verifies against its content, and stops verifying when it changes', async () => {
+    const db = world([draft(1), draft(2, { patient_id: P2 })])
+    const res = await sign(db, [id(1), id(2)])
+    if (!res.ok) throw new Error(res.error)
+    const patient = (pid: string) => db.tables['patients']!.find(p => p['patient_id'] === pid) as { allergies: string[]; nkda: boolean }
+
+    for (const n of [1, 2]) {
+      const row = orderRow(db, n) as unknown as SignedOrderRow
+      expect(row.provider_signature_hash_snapshot).toMatch(/^v2:/)
+      expect(verifySignatureBinding(row, patient(row.patient_id))).toBe('match')
+      expect(verifySignatureBinding({ ...row, refills: 7 }, patient(row.patient_id))).toBe('mismatch')
+    }
+    // The history row keeps the signature digest (not the bound value).
+    const rows = historyMock.mock.calls[0]![1] as Array<{ metadata: Record<string, unknown> }>
+    expect(String(orderRow(db, 1)['provider_signature_hash_snapshot']).split(':')[1]).toBe(rows[0]!.metadata['signature_hash'])
+    expect(rows[0]!.metadata).toMatchObject({ signature_binding: 'v2' })
+  })
+
+  it('if a binding cannot be written, nothing is signed', async () => {
+    const db = world([draft(1), draft(2)])
+    db.failOn('orders:update', 'connection reset', p => 'provider_signature_hash_snapshot' in p)
+    const res = await sign(db, [id(1), id(2)])
+    expect(res).toMatchObject({ ok: false, status: 503 })
+    expect(signingUpdates(db)).toHaveLength(0)
+    expect(orderRow(db, 1)['status']).toBe('DRAFT')
+  })
+})
+
 // ── What signing writes ──────────────────────────────────────
 
 describe('the signature record', () => {
@@ -538,13 +570,19 @@ describe('the signature record', () => {
 
     const updates = signingUpdates(db)
     expect(updates).toHaveLength(1)
-    expect(Object.keys(updates[0]!.patch!).sort()).toEqual(['locked_at', 'provider_signature_hash_snapshot', 'status', 'updated_at'])
+    expect(Object.keys(updates[0]!.patch!).sort()).toEqual(['locked_at', 'status', 'updated_at'])
     expect(updates[0]!.matched!.map(r => r['order_id'])).toEqual([id(1), id(2)])
 
     const [a, b] = [orderRow(db, 1), orderRow(db, 2)]
     expect(a['status']).toBe('AWAITING_PAYMENT')
-    expect(a['provider_signature_hash_snapshot']).toMatch(/^[0-9a-f]{64}$/)
-    expect(b['provider_signature_hash_snapshot']).toBe(a['provider_signature_hash_snapshot'])
+    // HIPAA B7: each order's signature value binds its own content, under
+    // the same signature digest and time.
+    const BOUND = /^v2:([0-9a-f]{64}):([0-9a-f]{64})$/
+    const [, aDigest, aBinding] = String(a['provider_signature_hash_snapshot']).match(BOUND) ?? []
+    const [, bDigest, bBinding] = String(b['provider_signature_hash_snapshot']).match(BOUND) ?? []
+    expect(aDigest).toMatch(/^[0-9a-f]{64}$/)
+    expect(bDigest).toBe(aDigest)
+    expect(bBinding).not.toBe(aBinding)
     expect(b['locked_at']).toBe(a['locked_at'])
     // A titration keeps its steps; a refill keeps its source.
     expect(a['sig_mode']).toBe('titration')
