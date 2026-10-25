@@ -1697,6 +1697,8 @@ export type Database = {
           payment_group_id: string | null
           pharmacy_id: string | null
           pharmacy_snapshot: Json | null
+          proposal_option_id: string | null
+          proposal_required: boolean | null
           protocol_instance_id: string | null
           protocol_version_id: string | null
           provider_id: string
@@ -1764,6 +1766,8 @@ export type Database = {
           payment_group_id?: string | null
           pharmacy_id?: string | null
           pharmacy_snapshot?: Json | null
+          proposal_option_id?: string | null
+          proposal_required?: boolean | null
           protocol_instance_id?: string | null
           protocol_version_id?: string | null
           provider_id: string
@@ -1831,6 +1835,8 @@ export type Database = {
           payment_group_id?: string | null
           pharmacy_id?: string | null
           pharmacy_snapshot?: Json | null
+          proposal_option_id?: string | null
+          proposal_required?: boolean | null
           protocol_instance_id?: string | null
           protocol_version_id?: string | null
           provider_id?: string
@@ -1866,6 +1872,13 @@ export type Database = {
           wholesale_price_snapshot?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "orders_proposal_option_id_fkey"
+            columns: ["proposal_option_id"]
+            isOneToOne: false
+            referencedRelation: "treatment_proposal_options"
+            referencedColumns: ["option_id"]
+          },
           {
             foreignKeyName: "orders_package_id_fkey"
             columns: ["package_id"]
@@ -3383,6 +3396,55 @@ export type Database = {
         }
         Relationships: []
       }
+      proposal_choice_items: {
+        Row: {
+          choice_item_id: string
+          choice_no: number
+          created_at: string
+          option_id: string
+          order_id: string
+          proposal_id: string
+        }
+        Insert: {
+          choice_item_id?: string
+          choice_no: number
+          created_at?: string
+          option_id: string
+          order_id: string
+          proposal_id: string
+        }
+        Update: {
+          choice_item_id?: string
+          choice_no?: number
+          created_at?: string
+          option_id?: string
+          order_id?: string
+          proposal_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proposal_choice_items_option_id_fkey"
+            columns: ["option_id"]
+            isOneToOne: false
+            referencedRelation: "treatment_proposal_options"
+            referencedColumns: ["option_id"]
+          },
+          {
+            foreignKeyName: "proposal_choice_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "proposal_choice_items_proposal_id_fkey"
+            columns: ["proposal_id"]
+            isOneToOne: false
+            referencedRelation: "treatment_proposals"
+            referencedColumns: ["proposal_id"]
+          },
+        ]
+      }
       protocol_instances: {
         Row: {
           clinic_id: string
@@ -4383,6 +4445,191 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["order_id"]
+          },
+        ]
+      }
+      treatment_proposal_events: {
+        Row: {
+          actor: string
+          actor_user_id: string | null
+          created_at: string
+          event: string
+          event_id: string
+          item_count: number | null
+          option_id: string | null
+          proposal_id: string
+        }
+        Insert: {
+          actor: string
+          actor_user_id?: string | null
+          created_at?: string
+          event: string
+          event_id?: string
+          item_count?: number | null
+          option_id?: string | null
+          proposal_id: string
+        }
+        Update: {
+          actor?: string
+          actor_user_id?: string | null
+          created_at?: string
+          event?: string
+          event_id?: string
+          item_count?: number | null
+          option_id?: string | null
+          proposal_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treatment_proposal_events_option_id_fkey"
+            columns: ["option_id"]
+            isOneToOne: false
+            referencedRelation: "treatment_proposal_options"
+            referencedColumns: ["option_id"]
+          },
+          {
+            foreignKeyName: "treatment_proposal_events_proposal_id_fkey"
+            columns: ["proposal_id"]
+            isOneToOne: false
+            referencedRelation: "treatment_proposals"
+            referencedColumns: ["proposal_id"]
+          },
+        ]
+      }
+      treatment_proposal_options: {
+        Row: {
+          created_at: string
+          label: string
+          option_id: string
+          position: number
+          proposal_id: string
+          protocol_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          label: string
+          option_id?: string
+          position: number
+          proposal_id: string
+          protocol_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          label?: string
+          option_id?: string
+          position?: number
+          proposal_id?: string
+          protocol_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treatment_proposal_options_proposal_id_fkey"
+            columns: ["proposal_id"]
+            isOneToOne: false
+            referencedRelation: "treatment_proposals"
+            referencedColumns: ["proposal_id"]
+          },
+          {
+            foreignKeyName: "treatment_proposal_options_protocol_id_fkey"
+            columns: ["protocol_id"]
+            isOneToOne: false
+            referencedRelation: "protocol_templates"
+            referencedColumns: ["protocol_id"]
+          },
+        ]
+      }
+      treatment_proposals: {
+        Row: {
+          cancelled_at: string | null
+          chosen_at: string | null
+          chosen_option_id: string | null
+          clinic_id: string
+          created_at: string
+          created_by: string | null
+          declined_at: string | null
+          dob_failures: number
+          expires_at: string | null
+          first_viewed_at: string | null
+          locked_at: string | null
+          patient_id: string
+          proposal_id: string
+          provider_id: string
+          sent_at: string | null
+          signed_at: string | null
+          status: string
+          token_hash: string | null
+          updated_at: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          chosen_at?: string | null
+          chosen_option_id?: string | null
+          clinic_id: string
+          created_at?: string
+          created_by?: string | null
+          declined_at?: string | null
+          dob_failures?: number
+          expires_at?: string | null
+          first_viewed_at?: string | null
+          locked_at?: string | null
+          patient_id: string
+          proposal_id?: string
+          provider_id: string
+          sent_at?: string | null
+          signed_at?: string | null
+          status?: string
+          token_hash?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          chosen_at?: string | null
+          chosen_option_id?: string | null
+          clinic_id?: string
+          created_at?: string
+          created_by?: string | null
+          declined_at?: string | null
+          dob_failures?: number
+          expires_at?: string | null
+          first_viewed_at?: string | null
+          locked_at?: string | null
+          patient_id?: string
+          proposal_id?: string
+          provider_id?: string
+          sent_at?: string | null
+          signed_at?: string | null
+          status?: string
+          token_hash?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_treatment_proposals_chosen_option"
+            columns: ["chosen_option_id"]
+            isOneToOne: false
+            referencedRelation: "treatment_proposal_options"
+            referencedColumns: ["option_id"]
+          },
+          {
+            foreignKeyName: "treatment_proposals_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["clinic_id"]
+          },
+          {
+            foreignKeyName: "treatment_proposals_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["patient_id"]
+          },
+          {
+            foreignKeyName: "treatment_proposals_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "providers"
+            referencedColumns: ["provider_id"]
           },
         ]
       }

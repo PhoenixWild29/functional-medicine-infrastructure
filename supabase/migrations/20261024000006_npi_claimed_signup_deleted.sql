@@ -21,7 +21,7 @@
 --    unapproved self sign-up (its logins and provider rows; the clinic is
 --    soft-deleted, because its events are append-only and keep it).
 --
--- Down: supabase/migrations/down/20261024000005_down.sql.
+-- Down: supabase/migrations/down/20261024000006_down.sql.
 
 BEGIN;
 

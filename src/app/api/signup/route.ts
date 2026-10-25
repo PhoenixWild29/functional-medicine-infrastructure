@@ -27,13 +27,13 @@ import { selfServeSignup } from '@/lib/signup/self-serve'
 import { duplicateEmailGuard, signupLimiter, SIGNUP_RATE_LIMITED_MESSAGE } from '@/lib/signup/rate-limit'
 import { cleanEmail } from '@/lib/onboarding/access'
 import { auditHash, clientIp } from '@/lib/audit/keyed-hash'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (request.headers.get('sec-fetch-site') === 'cross-site') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: NO_STORE })
-  }
+  const crossSite = refuseCrossSite(request, 'Forbidden', NO_STORE)
+  if (crossSite) return crossSite
 
   const ip = clientIp(request.headers)
   const ipKey = ip ?? 'unknown'

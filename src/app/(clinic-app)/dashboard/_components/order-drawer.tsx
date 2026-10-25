@@ -40,6 +40,8 @@ import { orderDisplayNumber } from '@/lib/orders/order-number'
 import { refillRowState } from '@/lib/orders/refill'
 import { isSubmissionFailure, submissionFailureNotice } from '@/lib/orders/submission-failure'
 import type { SubmissionFailure } from '@/app/api/orders/[orderId]/failure-reason/route'
+import { ProposalPanel } from './proposal-panel'
+import { isProposedOrder } from '../_lib/tabs'
 
 interface Props {
   order: DashboardOrder | null
@@ -52,6 +54,8 @@ interface Props {
   onGroupCreated: (groupId: string, orderIds: string[]) => void
   /** WO-98 × WO-100: the signed-in viewer. Absent → WO-98 behaviour. */
   viewer?: DraftViewer | undefined
+  /** Patient protocol choice: the viewer is a provider or clinic admin. */
+  canSendProposals?: boolean
 }
 
 interface BundlableSibling {
@@ -78,6 +82,91 @@ interface GroupLinkInfo {
   checkoutUrl: string
   orderCount:  number
   totalCents:  number
+}
+
+// Phase C Stage 4 — the anchor order's bundlable siblings, every sibling
+// pre-selected (typical action is "bundle all outstanding"), and the
+// pharmacies whose shipping the preview needs. `loaded` is null when the
+// probe failed, the body was not a sibling list, or the feature is off
+// (the state then says so; no picker, nothing pre-selected). Never throws.
+interface LoadedSiblings { selected: Set<string>; pharmacyIds: string[] }
+async function readBundlableSiblings(orderId: string): Promise<{ state: BundlableState; loaded: LoadedSiblings | null }> {
+  try {
+    const res = await fetch(`/api/orders/${orderId}/bundlable-siblings`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    })
+
+    if (res.status === 503) {
+      return { state: { anchorBundlable: false, siblings: [], featureDisabled: true }, loaded: null }
+    }
+
+    if (!res.ok) {
+      notify.error('Could not check for bundlable prescriptions', `HTTP ${res.status}`)
+      return { state: { anchorBundlable: false, siblings: [] }, loaded: null }
+    }
+
+    const data = await res.json() as BundlableState
+    const selected = new Set(data.siblings.map(s => s.orderId))
+    const pharmacyIds = [...new Set([data.anchor, ...data.siblings].map(s => s?.pharmacyId).filter((id): id is string => !!id))]
+    return { state: data, loaded: { selected, pharmacyIds } }
+  } catch (err) {
+    notify.error(
+      'Could not check for bundlable prescriptions',
+      err instanceof Error ? err.message : 'Unexpected error',
+    )
+    return { state: { anchorBundlable: false, siblings: [] }, loaded: null }
+  }
+}
+
+// Shipping rates for the Combine preview (once per pharmacy across the
+// bundle). Non-fatal: null and the preview shows the prescriptions subtotal.
+async function readBundleRates(pharmacyIds: string[]): Promise<{ rates: PharmacyShippingRates[]; absorbShipping: boolean } | null> {
+  try {
+    const ratesRes = await fetch(`/api/pharmacies/shipping?ids=${encodeURIComponent(pharmacyIds.join(','))}`)
+    const ratesJson = ratesRes?.ok ? await ratesRes.json() as { rates?: PharmacyShippingRates[]; absorbShipping?: boolean } : null
+    return Array.isArray(ratesJson?.rates) ? { rates: ratesJson.rates, absorbShipping: ratesJson.absorbShipping === true } : null
+  } catch {
+    return null
+  }
+}
+
+// R10 fix — bundle-link recovery. GET the group checkout link for an order
+// that is already part of a payment group. Side-effect free on the server
+// (stateless JWT re-mint — no SMS, no Stripe, no DB writes), so it's safe
+// to call on every drawer open AND again from the copy button. A failure
+// is notified here and returns null. Never throws.
+async function readGroupLink(orderId: string): Promise<GroupLinkInfo | null> {
+  try {
+    const res = await fetch(`/api/orders/${orderId}/group-link`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    })
+
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string }
+      const detail = body.error ?? `HTTP ${res.status}`
+      if (res.status === 503) {
+        notify.error('Feature disabled', 'Multi-prescription groups are not yet enabled')
+      } else {
+        notify.error('Could not load bundle payment link', detail)
+      }
+      return null
+    }
+
+    const data = await res.json() as { checkoutUrl: string; orderCount: number; totalCents: number }
+    return {
+      checkoutUrl: data.checkoutUrl,
+      orderCount:  data.orderCount,
+      totalCents:  data.totalCents,
+    }
+  } catch (err) {
+    notify.error(
+      'Could not load bundle payment link',
+      err instanceof Error ? err.message : 'Unexpected error',
+    )
+    return null
+  }
 }
 
 // NB-3: order_status_history uses old_status/new_status (not "status") per trigger schema
@@ -161,7 +250,9 @@ function formatDateTime(iso: string): string {
 }
 
 
-export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer }: Props) {
+export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer, canSendProposals = false }: Props) {
+  // Patient protocol choice: a DRAFT in an open plan (the Proposed tab).
+  const proposed = order ? isProposedOrder(order) : false
   const router = useRouter()
   // Escape closes the drawer, and focus moves into it when it opens
   // (WCAG 2.1.2 / 2.4.3); the dashboard returns focus to the row on close.
@@ -196,8 +287,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
   const [fallbackUrl,       setFallbackUrl]       = useState<string | null>(null)
 
   // Phase C Stage 4 — Combine and Send state
-  const [isLoadingSiblings,    setIsLoadingSiblings]    = useState(false)
-  const [bundlable,            setBundlable]            = useState<BundlableState | null>(null)
+  const [bundlable,           setBundlable]            = useState<BundlableState | null>(null)
   const [selectedSiblings,     setSelectedSiblings]     = useState<Set<string>>(new Set())
   const [isCreatingGroup,      setIsCreatingGroup]      = useState(false)
   const [groupFallbackUrl,     setGroupFallbackUrl]     = useState<string | null>(null)
@@ -207,11 +297,42 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
   const [isLoadingGroupInfo,   setIsLoadingGroupInfo]   = useState(false)
   const [isCopyingGroupLink,   setIsCopyingGroupLink]   = useState(false)
 
-  // Fetch status timeline when drawer opens (order.orderId changes)
+  // The drawer's per-order state starts over when it shows another order.
+  // Reset while rendering (React's "adjusting state when a prop changes"),
+  // not in the loading effects below, so no frame shows the previous
+  // order's state and no effect sets state synchronously.
+  //   - Per order and status: the failure line and the timeline (both are
+  //     re-read when the status changes).
+  //   - Per order: the stored record, Combine and Send, and the bundle
+  //     link (an order already in a payment group shows "Loading bundle
+  //     details" until its link arrives).
+  const statusKey = order ? `${order.orderId}:${order.status}` : null
+  const [shownStatusKey, setShownStatusKey] = useState<string | null>(null)
+  if (shownStatusKey !== statusKey) {
+    setShownStatusKey(statusKey)
+    setSubmissionFailure(null)
+    if (statusKey === null) {
+      setHistory([])
+      setPaymentFailed(null)
+    } else {
+      setIsLoadingHistory(true)
+    }
+  }
+  const anchorOrderId = order?.orderId ?? null
+  const [shownAnchorId, setShownAnchorId] = useState<string | null>(null)
+  if (shownAnchorId !== anchorOrderId) {
+    setShownAnchorId(anchorOrderId)
+    setRecord(null)
+    setBundlable(null)
+    setSelectedSiblings(new Set())
+    setGroupFallbackUrl(null)
+    setGroupInfo(null)
+    setIsLoadingGroupInfo(order?.status === 'AWAITING_PAYMENT' && !!order.paymentGroupId)
+  }
+
   // A failed submission: the line says where, why and what happens next.
   // If the reason cannot be read, it still says what happens next.
   useEffect(() => {
-    setSubmissionFailure(null)
     if (!order || !isSubmissionFailure(order.status)) return
     let cancelled = false
     fetch(`/api/orders/${order.orderId}/failure-reason`)
@@ -227,14 +348,11 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
 
   const historyOrderId = order?.orderId
   const historyOrderStatus = order?.status
+  // Fetch the status timeline when the drawer opens (or the status changes);
+  // the reset above shows it loading.
   useEffect(() => {
-    if (!historyOrderId || !historyOrderStatus) {
-      setHistory([])
-      setPaymentFailed(null)
-      return
-    }
+    if (!historyOrderId || !historyOrderStatus) return
 
-    setIsLoadingHistory(true)
     // NB-3: select old_status, new_status, changed_by — there is no "status" or "note" column
     supabaseRef.current
       .from('order_status_history')
@@ -270,7 +388,6 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
   // dashboard row carries.
   const recordOrderId = order?.orderId ?? null
   useEffect(() => {
-    setRecord(null)
     if (!recordOrderId) return
     let cancelled = false
     void (async () => {
@@ -287,129 +404,64 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
     return () => { cancelled = true }
   }, [recordOrderId])
 
-  // Reset Combine and Send state whenever the drawer's anchor order changes,
-  // then proactively probe bundlable-siblings. We discover on open (not on
-  // click) so the picker only renders when the feature flag is on AND
-  // siblings actually exist (Codex 2026-06-11 sweep [LOW]).
+  // Proactively probe bundlable-siblings when the drawer opens on an
+  // AWAITING_PAYMENT order (its Combine and Send state was reset above).
+  // We discover on open (not on click) so the picker only renders when the
+  // feature flag is on AND siblings actually exist (Codex 2026-06-11 sweep
+  // [LOW]).
   //
   // R10 fix: an order that is ALREADY in a payment group can never re-bundle
   // — for those we fetch the group checkout link instead (display + recovery
   // copy), skipping the sibling probe entirely.
   //
+  // A result that arrives after the drawer moved to another order is
+  // dropped, so it never lands on the next order.
+  //
   // Deps array is intentionally [order?.orderId] only:
-  //   - The body reads `order` (the optional check) and `order.status`, but
-  //     both are derived from the same anchor row — changes to other fields
-  //     don't warrant refetching the bundlable-siblings list.
-  //   - fetchBundlableSiblings is a stable closure that only depends on the
-  //     anchor orderId via the outer `order` capture. Same orderId → same
-  //     closure semantics, so the stale-read concern doesn't apply here.
+  //   - The body reads `order` (the optional check), `order.status` and
+  //     `order.paymentGroupId`, but all come from the same anchor row —
+  //     changes to other fields don't warrant refetching the
+  //     bundlable-siblings list.
   // The disable comment sits on the deps-array line so eslint applies it to
   // the actual exhaustive-deps warning location (Codex round 2 [LOW]).
   useEffect(() => {
-    setBundlable(null)
-    setSelectedSiblings(new Set())
-    setGroupFallbackUrl(null)
-    setGroupInfo(null)
     if (!order) return
     if (order.status !== 'AWAITING_PAYMENT') return
+    let cancelled = false
     if (order.paymentGroupId) {
-      void fetchGroupLink()
+      void readGroupLink(order.orderId).then(info => {
+        if (cancelled) return
+        if (info) setGroupInfo(info)
+        setIsLoadingGroupInfo(false)
+      })
     } else {
-      void fetchBundlableSiblings()
+      void readBundlableSiblings(order.orderId).then(({ state, loaded }) => {
+        if (cancelled) return
+        setBundlable(state)
+        if (!loaded) return
+        setSelectedSiblings(loaded.selected)
+        // Shipping rates for the preview (once per pharmacy across the bundle).
+        setBundleRates(null)
+        if (state.anchorBundlable && state.siblings.length > 0 && loaded.pharmacyIds.length > 0) {
+          return readBundleRates(loaded.pharmacyIds).then(rates => {
+            if (!cancelled && rates) setBundleRates(rates)
+          })
+        }
+      })
     }
+    return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.orderId])
 
-  async function fetchBundlableSiblings() {
-    if (!order || isLoadingSiblings) return
-
-    setIsLoadingSiblings(true)
-    try {
-      const res = await fetch(`/api/orders/${order.orderId}/bundlable-siblings`, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' },
-      })
-
-      if (res.status === 503) {
-        setBundlable({ anchorBundlable: false, siblings: [], featureDisabled: true })
-        return
-      }
-
-      if (!res.ok) {
-        notify.error('Could not check for bundlable prescriptions', `HTTP ${res.status}`)
-        setBundlable({ anchorBundlable: false, siblings: [] })
-        return
-      }
-
-      const data = await res.json() as BundlableState
-      setBundlable(data)
-      // Pre-select all siblings — typical action is "bundle all outstanding".
-      setSelectedSiblings(new Set(data.siblings.map(s => s.orderId)))
-      // Shipping rates for the preview (once per pharmacy across the bundle).
-      const pharmacyIds = [...new Set([data.anchor, ...data.siblings].map(s => s?.pharmacyId).filter((id): id is string => !!id))]
-      setBundleRates(null)
-      if (data.anchorBundlable && data.siblings.length > 0 && pharmacyIds.length > 0) {
-        try {
-          const ratesRes = await fetch(`/api/pharmacies/shipping?ids=${encodeURIComponent(pharmacyIds.join(','))}`)
-          const ratesJson = ratesRes?.ok ? await ratesRes.json() as { rates?: PharmacyShippingRates[]; absorbShipping?: boolean } : null
-          if (Array.isArray(ratesJson?.rates)) setBundleRates({ rates: ratesJson.rates, absorbShipping: ratesJson.absorbShipping === true })
-        } catch {
-          /* non-fatal: the preview shows the prescriptions subtotal */
-        }
-      }
-    } catch (err) {
-      notify.error(
-        'Could not check for bundlable prescriptions',
-        err instanceof Error ? err.message : 'Unexpected error',
-      )
-      setBundlable({ anchorBundlable: false, siblings: [] })
-    } finally {
-      setIsLoadingSiblings(false)
-    }
-  }
-
-  // R10 fix — bundle-link recovery. GET the group checkout link for an order
-  // that is already part of a payment group. Side-effect free on the server
-  // (stateless JWT re-mint — no SMS, no Stripe, no DB writes), so it's safe
-  // to call on every drawer open AND again from the copy button.
+  // The copy button's re-fetch when the link did not load on open.
   async function fetchGroupLink(): Promise<GroupLinkInfo | null> {
     if (!order) return null
 
     setIsLoadingGroupInfo(true)
-    try {
-      const res = await fetch(`/api/orders/${order.orderId}/group-link`, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' },
-      })
-
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string }
-        const detail = body.error ?? `HTTP ${res.status}`
-        if (res.status === 503) {
-          notify.error('Feature disabled', 'Multi-prescription groups are not yet enabled')
-        } else {
-          notify.error('Could not load bundle payment link', detail)
-        }
-        return null
-      }
-
-      const data = await res.json() as { checkoutUrl: string; orderCount: number; totalCents: number }
-      const info: GroupLinkInfo = {
-        checkoutUrl: data.checkoutUrl,
-        orderCount:  data.orderCount,
-        totalCents:  data.totalCents,
-      }
-      setGroupInfo(info)
-      return info
-    } catch (err) {
-      notify.error(
-        'Could not load bundle payment link',
-        err instanceof Error ? err.message : 'Unexpected error',
-      )
-      return null
-    } finally {
-      setIsLoadingGroupInfo(false)
-    }
+    const info = await readGroupLink(order.orderId)
+    if (info) setGroupInfo(info)
+    setIsLoadingGroupInfo(false)
+    return info
   }
 
   async function handleCopyBundleLink() {
@@ -870,8 +922,34 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer 
             </button>
           )}
 
+          {/* Patient protocol choice: a proposed draft waits for the
+              patient; it is signed only once chosen (PR 4), never from
+              here. Editing it turns the plan link off until a new one
+              is sent. */}
+          {proposed && order.proposal && (
+            <div className="space-y-2">
+              <ProposalPanel
+                proposal={order.proposal}
+                canSend={canSendProposals && (!viewer?.isProvider || viewer.providerId === order.providerId)}
+                onChanged={() => router.refresh()}
+              />
+              {draftEditMode(viewer, order.providerId) === 'edit' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose()
+                    router.push(`/new-prescription/search?editOrder=${order.orderId}`)
+                  }}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  Edit prescription (the patient&apos;s link turns off until you send a new one)
+                </button>
+              )}
+            </div>
+          )}
+
           {/* WO-77: Review & Sign CTA for DRAFT orders */}
-          {order.status === 'DRAFT' && (
+          {order.status === 'DRAFT' && !proposed && (
             <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-4">
               <p className="text-sm font-semibold text-amber-800">Awaiting Provider Signature</p>
               <p className="mt-1 text-xs text-amber-700">

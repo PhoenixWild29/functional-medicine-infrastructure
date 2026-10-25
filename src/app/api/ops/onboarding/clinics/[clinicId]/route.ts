@@ -28,6 +28,7 @@
 // who and when on the clinic and in the onboarding audit log.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { requireOpsAdmin, readJson } from '@/lib/onboarding/access'
 import { recordOnboardingEvent } from '@/lib/onboarding/events'
 import { UUID_RE } from '@/lib/providers/team-access'
@@ -53,10 +54,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ clinicId: string }> }): Promise<NextResponse> {
-  const site = request.headers.get('sec-fetch-site')
-  if (site && site !== 'same-origin' && site !== 'none') {
-    return NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 })
-  }
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const access = await requireOpsAdmin()
   if (!access.ok) return access.response
   const { user, supabase } = access
@@ -157,8 +156,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .eq('clinic_id', clinicId)
     .eq('onboarding_status', 'submitted')
   if (demoPayouts) write = onlyWithoutPayoutAccount(write)
-  const { data: updated, error: updErr } = demoPayouts ? await write.select('clinic_id') : { ...(await write), data: null }
-  if (!updErr && demoPayouts && Array.isArray(updated) && updated.length === 0) {
+  // Count the rows changed on every path: a clinic that left 'submitted'
+  // (a second reviewer won) or gained a Connect account between the read
+  // and the write changes nothing, and nothing is recorded.
+  const { data: updated, error: updErr } = await write.select('clinic_id')
+  if (!updErr && Array.isArray(updated) && updated.length === 0) {
     if (action === 'approve') await releaseClinicNpis(supabase, clinicId)
     return NextResponse.json({ error: 'The clinic changed while you were reviewing it. Reload and try again.' }, { status: 409 })
   }

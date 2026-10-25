@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  *
- * Sign-up squatting (M3): migration 20261024000005. The SQL ran on PGlite
+ * Sign-up squatting (M3): migration 20261024000006. The SQL ran on PGlite
  * (see the commit report); this pins what it must say.
  *
  *   - providers.npi_claimed, NOT NULL DEFAULT true; providers of clinics
@@ -16,19 +16,22 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const DIR = join(process.cwd(), 'supabase', 'migrations')
-const FILE = '20261024000005_npi_claimed_signup_deleted.sql'
+const FILE = '20261024000006_npi_claimed_signup_deleted.sql'
 const read = (p: string) => (existsSync(p) ? readFileSync(p, 'utf8').replace(/\r\n/g, '\n') : '')
 const flat = (s: string) => s.replace(/--.*$/gm, '').replace(/\s+/g, ' ').toLowerCase()
 const code = flat(read(join(DIR, FILE)))
-const down = flat(read(join(DIR, 'down', '20261024000005_down.sql')))
+const down = flat(read(join(DIR, 'down', '20261024000006_down.sql')))
 
 it('exists with a down migration, one transaction, the newest version, unique', () => {
   expect(code).toMatch(/^\s*begin;/)
   expect(code).toMatch(/select apply_pharmacy_admin_scope\(\); commit;\s*$/)
   expect(down).toMatch(/^\s*begin;.*commit;\s*$/)
   const versions = readdirSync(DIR).filter(f => /^\d{14}_.*\.sql$/.test(f)).map(f => f.slice(0, 14))
-  expect(versions.filter(v => v === '20261024000005')).toHaveLength(1)
-  expect([...versions].sort().at(-1)).toBe('20261024000005')
+  expect(versions.filter(v => v === '20261024000006')).toHaveLength(1)
+  // Numbered after A's 20261024000005 (L12) and after main's 20261024000002;
+  // later migrations may follow it.
+  const sorted = [...versions].sort()
+  expect(sorted.indexOf('20261024000006')).toBeGreaterThan(sorted.indexOf('20261024000002'))
 })
 
 it('npi_claimed: not null, default true; providers of clinics not approved start unclaimed', () => {

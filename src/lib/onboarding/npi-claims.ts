@@ -5,7 +5,7 @@
 // An NPI belongs to the live provider of an APPROVED clinic: that row is
 // claimed (providers.npi_claimed), and the unique index
 // providers_npi_number_unique covers claimed rows only (migration
-// 20261024000005). A clinic ops has not approved holds no NPI: its
+// 20261024000006). A clinic ops has not approved holds no NPI: its
 // providers are unclaimed, so a stranger's sign-up with a real
 // prescriber's NPI blocks nobody, and the sign-up form says nothing about
 // which NPIs are customers. Pending rows lose to approved ones:
