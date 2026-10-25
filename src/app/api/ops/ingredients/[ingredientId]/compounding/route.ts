@@ -17,10 +17,11 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { isCompoundingStatus } from '@/lib/compliance/compounding'
 import { getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ ingredientId: string }> }): Promise<NextResponse> {
+async function putHandler(request: NextRequest, { params }: { params: Promise<{ ingredientId: string }> }): Promise<NextResponse> {
   const { ingredientId } = await params
 
   const supabaseAuth = await createServerClient()
@@ -71,3 +72,5 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   console.info(`[ops/ingredients] compounding status set | ingredient=${ingredientId} | status=${status} | by=${user.id}`)
   return NextResponse.json({ ok: true, reviewedAt })
 }
+
+export const PUT = withApiErrors('/api/ops/ingredients/[ingredientId]/compounding', putHandler)

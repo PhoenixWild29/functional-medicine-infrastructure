@@ -11,8 +11,9 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { mappingErrors } from '@/lib/patients/import/mapping'
 import { importCaller, readRowsBody } from '@/lib/patients/import/request'
 import { reviewImport } from '@/lib/patients/import/review'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const caller = await importCaller(request)
   if ('response' in caller) return caller.response
 
@@ -27,3 +28,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!review) return NextResponse.json({ error: 'Existing patients could not be checked for duplicates. Try again.' }, { status: 503 })
   return NextResponse.json(review, { headers: { 'Cache-Control': 'no-store' } })
 }
+
+export const POST = withApiErrors('/api/patients/import/validate', postHandler)

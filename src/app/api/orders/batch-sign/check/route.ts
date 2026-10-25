@@ -19,10 +19,11 @@ import { checkBatch, parseOrderIds } from '@/lib/orders/batch-sign'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { resolveSigner } from '@/lib/auth/signer'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const COULD_NOT_RUN = new Set(['orders_unavailable', 'provider_unavailable', 'compliance_unavailable'])
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -67,3 +68,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     { status: 200, headers: { 'Cache-Control': 'no-store' } },
   )
 }
+
+export const POST = withApiErrors('/api/orders/batch-sign/check', postHandler)

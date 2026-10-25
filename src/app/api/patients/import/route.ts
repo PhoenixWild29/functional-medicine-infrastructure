@@ -20,8 +20,9 @@ import { logPhiAccessMany } from '@/lib/audit/phi-access'
 import { mappingErrors } from '@/lib/patients/import/mapping'
 import { importCaller, readIndexes, readRowsBody } from '@/lib/patients/import/request'
 import { reviewImport } from '@/lib/patients/import/review'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const caller = await importCaller(request)
   if ('response' in caller) return caller.response
   // Pending review: nothing is imported until ops approves the clinic
@@ -91,3 +92,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   )
   return NextResponse.json({ batchId: result.batch_id, imported: result.patient_ids.length }, { status: 201 })
 }
+
+export const POST = withApiErrors('/api/patients/import', postHandler)

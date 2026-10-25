@@ -1,6 +1,10 @@
 'use client'
 
-import { useEffect } from 'react'
+// Error boundary for the clinic app (staff). Friendly copy only: the error itself is reported
+// (useReportError), never shown. See src/components/errors/error-screen.tsx.
+
+import { ErrorScreen } from '@/components/errors/error-screen'
+import { useReportError } from '@/components/errors/use-report-error'
 
 export default function ClinicAppError({
   error,
@@ -9,20 +13,14 @@ export default function ClinicAppError({
   error: Error & { digest?: string }
   reset: () => void
 }) {
-  useEffect(() => {
-    // Log to Sentry in production
-    console.error(error)
-  }, [error])
-
+  useReportError(error, 'clinic-app')
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-      <h2 className="text-xl font-semibold">Something went wrong</h2>
-      <button
-        onClick={reset}
-        className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground"
-      >
-        Try again
-      </button>
-    </div>
+    <ErrorScreen
+      testId="error-screen-clinic"
+      title="Something went wrong"
+      message="This page could not be shown. Try again, or go back to your dashboard."
+      actions={[{ label: 'Try again', onClick: reset }, { label: 'Back to dashboard', href: '/dashboard' }]}
+      reference={error.digest}
+    />
   )
 }

@@ -66,6 +66,7 @@ import {
 } from '@/lib/orders/favorite-presets'
 import type { TitrationStep } from '@/lib/orders/titration'
 import { EmptyState } from '@/components/coaching/empty-state'
+import { userMessage } from '@/lib/errors/user-message'
 
 // ── Types ───────────────────────────────────
 
@@ -545,7 +546,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
       }
       await queryClient.invalidateQueries({ queryKey: ['provider-favorites'] })
     } catch (err) {
-      setRecentError(err instanceof Error ? err.message : 'Save failed')
+      setRecentError(userMessage(err, 'Save failed'))
     } finally {
       setMakingFavorite(null)
     }
@@ -564,7 +565,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
       await queryClient.invalidateQueries({ queryKey: ['provider-favorites'] })
       setConfirmDeleteFav(null)
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : 'Delete failed')
+      setDeleteError(userMessage(err, 'Delete failed'))
     } finally {
       setDeletingFav(null)
     }
@@ -613,7 +614,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
       setNewProtocolName('')
       setProtocolSaved(name)
     } catch (err) {
-      setProtocolSaveError(err instanceof Error ? err.message : 'Save failed')
+      setProtocolSaveError(userMessage(err, 'Save failed'))
     } finally {
       setSavingProtocol(false)
     }
@@ -1245,7 +1246,7 @@ function FavoriteEditForm({ favorite: fav, patientState, patient, onCancel, onSa
       }
       await onSaved()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed')
+      setError(userMessage(err, 'Save failed'))
       setSaving(false)
     }
   }

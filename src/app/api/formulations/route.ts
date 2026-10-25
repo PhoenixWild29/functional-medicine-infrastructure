@@ -27,11 +27,12 @@ import { loadRxDefaults } from '@/lib/orders/rx-defaults-loader'
 import { packageOptionsFromRows } from '@/lib/orders/rx-details'
 import { isLivePharmacy, type PharmacyLiveness } from '@/lib/pharmacies/live'
 import { getUserClinicId } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 /** Upper bound on formulation ids per rx_defaults request. */
 const RX_DEFAULTS_MAX_IDS = 50
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   // Auth check
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -421,3 +422,5 @@ async function ingredientFormulationIds(
   }
   return [...ids]
 }
+
+export const GET = withApiErrors('/api/formulations', getHandler)

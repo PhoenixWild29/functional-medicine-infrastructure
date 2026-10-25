@@ -34,6 +34,7 @@ import { extractFaceSheet, type FaceSheetInput, type FaceSheetMediaType, type Fa
 import { FACE_SHEET_NOT_SET_UP, MAX_FACE_SHEET_BYTES, faceSheetStatus } from '@/lib/face-sheet/config'
 import { FACE_SHEET_RATE_LIMITED_MESSAGE, faceSheetLimiter } from '@/lib/face-sheet/rate-limit'
 import { sniffDocumentType } from '@/lib/uploads/sniff'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -87,7 +88,7 @@ async function readInput(request: NextRequest): Promise<FaceSheetInput | NextRes
   return { kind: 'file', mediaType, data: Buffer.from(bytes) }
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const sfSite = request.headers.get('sec-fetch-site')
   if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') return json({ error: 'Cross-site requests are not permitted' }, 403)
 
@@ -132,3 +133,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   return json({ fields: result.fields, filled: result.filled })
 }
+
+export const POST = withApiErrors('/api/patients/face-sheet', postHandler)

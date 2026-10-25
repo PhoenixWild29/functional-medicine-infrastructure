@@ -15,6 +15,7 @@
 // do not remove them. Never trigger this endpoint on a schedule.
 
 import { useState } from 'react'
+import { userMessage } from '@/lib/errors/user-message'
 
 interface PocUserRow {
   label:    string
@@ -73,7 +74,7 @@ export function ResetCredentialsCard({ users }: { users: PocUserRow[] }) {
       }
       setReport(data as SyncReport)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Network error')
+      setError(userMessage(err, 'Network error'))
     } finally {
       setBusy(false)
     }

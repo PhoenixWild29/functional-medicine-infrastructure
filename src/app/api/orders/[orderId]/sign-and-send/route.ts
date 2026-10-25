@@ -15,8 +15,9 @@
 // into a confusing 400. Nothing is read or written.
 
 import { NextResponse } from 'next/server'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(): Promise<NextResponse> {
+async function postHandler(): Promise<NextResponse> {
   return NextResponse.json(
     {
       error: 'Signing moved: sign through the batch sign page (POST /api/orders/batch-sign). Nothing was signed.',
@@ -25,3 +26,5 @@ export async function POST(): Promise<NextResponse> {
     { status: 410 },
   )
 }
+
+export const POST = withApiErrors('/api/orders/[orderId]/sign-and-send', postHandler)

@@ -30,6 +30,7 @@ import { hashProposalToken } from '@/lib/proposals/token'
 import { choosePlan, declinePlan, loadPlan, quotePlan, resolvePlan, verifyPlanDob, type PlanSelection } from '@/lib/proposals/plan'
 import { PLAN_RATE_LIMITED_MESSAGE, planIpLimiter, planTokenLimiter } from '@/lib/proposals/plan-rate-limit'
 import { notifyClinicOfChoice } from '@/lib/proposals/queue'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 export const dynamic = 'force-dynamic'
 
@@ -58,7 +59,7 @@ function limited(request: NextRequest, token: string | null): NextResponse | nul
   return null
 }
 
-export async function GET(request: NextRequest, { params }: Params): Promise<NextResponse> {
+async function getHandler(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const { token } = await params
   const refused = limited(request, null)
   if (refused) return refused
@@ -88,7 +89,7 @@ function parse(body: unknown): Action | null {
   return null
 }
 
-export async function POST(request: NextRequest, { params }: Params): Promise<NextResponse> {
+async function postHandler(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const { token } = await params
   const refused = limited(request, token)
   if (refused) return refused
@@ -142,3 +143,6 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
     }
   }
 }
+
+export const GET = withApiErrors('/api/plan/[token]', getHandler)
+export const POST = withApiErrors('/api/plan/[token]', postHandler)

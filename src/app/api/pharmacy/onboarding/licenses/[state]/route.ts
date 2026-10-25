@@ -3,10 +3,11 @@ import type { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { deleteLicense } from '@/lib/pharmacy-onboarding/application'
 import { crossSiteRefusal, pharmacyAdmin, respond } from '@/lib/pharmacy-onboarding/request'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 export const dynamic = 'force-dynamic'
 
-export async function DELETE(request: NextRequest, context: { params: Promise<{ state: string }> }) {
+async function deleteHandler(request: NextRequest, context: { params: Promise<{ state: string }> }) {
   const refused = crossSiteRefusal(request)
   if (refused) return refused
   const who = await pharmacyAdmin()
@@ -14,3 +15,5 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   const { state } = await context.params
   return respond(await deleteLicense(createServiceClient(), who.ctx, state))
 }
+
+export const DELETE = withApiErrors('/api/pharmacy/onboarding/licenses/[state]', deleteHandler)

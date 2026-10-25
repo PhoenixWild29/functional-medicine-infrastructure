@@ -29,6 +29,7 @@ import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provider'
 import type { Json } from '@/types/database.types'
 import { epcsRequestFields } from '@/lib/epcs/audit-request'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 type EpcsCaller =
   | { ok: true; providerId: string }
@@ -65,7 +66,7 @@ const NOT_YOURS = () => NextResponse.json(
 // demo pre-enrollment path in @/lib/poc/totp-enrollment can share exactly
 // one code path. See that module for format + key-derivation details.
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   const caller = await signedInProvider()
   if (!caller.ok) return caller.response
 
@@ -104,7 +105,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
 }
 
-export async function POST(req: NextRequest) {
+async function postHandler(req: NextRequest) {
   const caller = await signedInProvider()
   if (!caller.ok) return caller.response
 
@@ -276,3 +277,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
 }
+
+export const GET = withApiErrors('/api/epcs', getHandler)
+export const POST = withApiErrors('/api/epcs', postHandler)

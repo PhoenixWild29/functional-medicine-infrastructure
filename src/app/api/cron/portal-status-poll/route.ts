@@ -27,6 +27,7 @@ import type { FlowStep } from '@/lib/adapters/portal-flow-executor'
 import { getVaultSecret } from '@/lib/adapters/vault'
 import { casTransition } from '@/lib/orders/cas-transition'
 import type { OrderStatusEnum } from '@/types/database.types'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // ── Map pharmacy portal status text → CompoundIQ order status ──
 const PORTAL_STATUS_MAP: Record<string, string> = {
@@ -51,7 +52,7 @@ function mapPortalStatus(rawStatus: string): string | null {
   return null
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const denied = cronAuthFailure(request, 'portal-status-poll')
   if (denied) return denied
 
@@ -225,3 +226,5 @@ export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/cron/portal-status-poll', getHandler)

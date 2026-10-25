@@ -12,6 +12,7 @@ import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { Enums } from '@/types/database.types'
 import { getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 type RegulatoryStatusEnum = Enums<'regulatory_status_enum'>
 
@@ -30,7 +31,7 @@ async function guard() {
 }
 
 // ── POST: Add single item ─────────────────────────────────────
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const { user, error: authErr } = await guard()
   if (authErr) return authErr
 
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 }
 
 // ── PATCH: Update single item ─────────────────────────────────
-export async function PATCH(request: NextRequest): Promise<NextResponse> {
+async function patchHandler(request: NextRequest): Promise<NextResponse> {
   const { user, error: authErr } = await guard()
   if (authErr) return authErr
 
@@ -151,3 +152,6 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
 export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/ops/catalog/item', postHandler)
+export const PATCH = withApiErrors('/api/ops/catalog/item', patchHandler)

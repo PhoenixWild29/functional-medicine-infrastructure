@@ -18,11 +18,12 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { recentFormulations, RECENT_LIMIT, type RecentOrderRow } from '@/lib/orders/favorite-presets'
 import { getUserClinicId } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 /** Orders scanned to find 8 distinct formulations; a provider rarely repeats one 25 times in a row. */
 const SCAN_LIMIT = 200
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -90,3 +91,5 @@ export async function GET(req: NextRequest) {
     }),
   })
 }
+
+export const GET = withApiErrors('/api/favorites/recent', getHandler)

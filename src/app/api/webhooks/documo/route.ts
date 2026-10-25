@@ -32,6 +32,7 @@ import { validateDocumoWebhook } from '@/lib/documo/client'
 import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition } from '@/lib/orders/cas-transition'
 import { sendSlackAlert, buildAdapterFailureAlert } from '@/lib/slack/client'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // ============================================================
 // WEBHOOK PAYLOAD TYPES
@@ -56,7 +57,7 @@ interface DocumoFaxData {
 // ROUTE HANDLER
 // ============================================================
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   // Step 1: Read raw body — must happen before any parsing for HMAC to work
   const rawBody = await request.text()
   const signature = request.headers.get('x-documo-signature') ?? ''
@@ -367,3 +368,5 @@ async function handleFaxFailed(fax: DocumoFaxData): Promise<string | null> {
   )
   return order.order_id
 }
+
+export const POST = withApiErrors('/api/webhooks/documo', postHandler)

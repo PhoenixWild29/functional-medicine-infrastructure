@@ -41,8 +41,9 @@ import { cyclePatternFrom } from '@/lib/orders/cycling'
 import { refillAllowance, refillsUsed } from '@/lib/orders/refill'
 import type { Json } from '@/types/database.types'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   // Auth gate
   const supabaseAuth = await createServerClient()
   // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
@@ -445,3 +446,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   return NextResponse.json({ orderId: order.order_id }, { status: 201 })
 }
+
+export const POST = withApiErrors('/api/orders', postHandler)

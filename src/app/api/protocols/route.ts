@@ -24,6 +24,7 @@ import { cycleLengthFrom, cyclePatternFrom } from '@/lib/orders/cycling'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { refuseCrossSite } from '@/lib/security/same-origin'
 import { resolveCurrentProvider, isProviderRole } from '@/lib/auth/current-provider'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // A failed read is logged here and answered with a plain message: the
 // database's own text (tables, columns, constraints) never reaches the
@@ -33,7 +34,7 @@ function readFailed(what: string, clinicId: string, err: { message: string }): N
   return NextResponse.json({ error: 'Protocols could not be loaded. Try again.' }, { status: 500 })
 }
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -277,7 +278,7 @@ function optionalStr(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v.trim() : null
 }
 
-export async function POST(req: NextRequest) {
+async function postHandler(req: NextRequest) {
   const crossSite = refuseCrossSite(req)
   if (crossSite) return crossSite
   const supabaseAuth = await createServerClient()
@@ -404,3 +405,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ data: { ...protocol, item_count: items.length } }, { status: 201 })
 }
+
+export const GET = withApiErrors('/api/protocols', getHandler)
+export const POST = withApiErrors('/api/protocols', postHandler)

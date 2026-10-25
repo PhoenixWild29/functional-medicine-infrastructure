@@ -15,10 +15,11 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { loadShippingRates } from '@/lib/orders/apply-bundle-shipping'
 import { getUserClinicId } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const MAX_IDS = 25
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) {
@@ -50,3 +51,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Failed to load shipping rates' }, { status: 500 })
   }
 }
+
+export const GET = withApiErrors('/api/pharmacies/shipping', getHandler)

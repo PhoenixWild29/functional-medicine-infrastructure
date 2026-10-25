@@ -37,6 +37,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { npiChecksumValid } from '@/lib/providers/npi'
 import { runNpiCheck } from '@/lib/providers/verify-npi'
 import { appMetadataFor, getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // ── Validation constants ────────────────────────────────────────────
 
@@ -71,7 +72,7 @@ interface CreateProviderBody {
 
 // ── Route ───────────────────────────────────────────────────────────
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   // 1. Auth gate
   const supabaseAuth = await createServerClient()
   // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
@@ -267,3 +268,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/providers', postHandler)

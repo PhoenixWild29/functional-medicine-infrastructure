@@ -29,8 +29,9 @@ import { serverEnv } from '@/lib/env'
 import { flagPossibleDuplicate } from '@/lib/patients/duplicates'
 import { INTAKE_CONSENT_SOURCE, PRIVACY_NOTICE_VERSION, SMS_CONSENT_TEXT_VERSION } from '@/lib/intake/consent'
 import { validateIntakeSubmission } from '@/lib/intake/submission'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(request: NextRequest, context: { params: Promise<{ token: string }> }): Promise<NextResponse> {
+async function postHandler(request: NextRequest, context: { params: Promise<{ token: string }> }): Promise<NextResponse> {
   const { token } = await context.params
   const supabase = createServiceClient()
 
@@ -126,3 +127,5 @@ export async function POST(request: NextRequest, context: { params: Promise<{ to
 
   return NextResponse.json({ ok: true, checkoutUrl }, { headers: { 'Cache-Control': 'no-store' } })
 }
+
+export const POST = withApiErrors('/api/intake/[token]', postHandler)

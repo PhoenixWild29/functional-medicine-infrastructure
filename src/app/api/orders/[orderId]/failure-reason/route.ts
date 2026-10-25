@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { getUserClinicId } from '@/lib/auth/claims'
 import { FAILED_ADAPTER_STATUSES, isSubmissionFailure, knownFailureCode, plainFailureReason } from '@/lib/orders/submission-failure'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
@@ -32,7 +33,7 @@ export interface SubmissionFailure {
   at:           string | null
 }
 
-export async function GET(_request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+async function getHandler(_request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
   const { orderId } = await params
 
   const supabase = await createServerClient()
@@ -91,3 +92,5 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
   }
   return NextResponse.json({ failure })
 }
+
+export const GET = withApiErrors('/api/orders/[orderId]/failure-reason', getHandler)

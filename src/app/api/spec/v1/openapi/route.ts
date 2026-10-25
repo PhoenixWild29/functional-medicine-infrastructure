@@ -21,6 +21,7 @@
 // Cache-Control set to allow CDN caching (spec rarely changes).
 
 import { NextResponse } from 'next/server'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // Current published spec version (AC-SPC-003.1: major.minor scheme)
 const SPEC_VERSION = 'v1.0'
@@ -502,7 +503,7 @@ const spec = {
   },
 }
 
-export async function GET(): Promise<NextResponse> {
+async function getHandler(): Promise<NextResponse> {
   return NextResponse.json(spec, {
     status: 200,
     headers: {
@@ -518,3 +519,5 @@ export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/spec/v1/openapi', getHandler)

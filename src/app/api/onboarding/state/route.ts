@@ -11,10 +11,11 @@
 import { NextResponse } from 'next/server'
 import { requireOnboardingAdmin } from '@/lib/onboarding/access'
 import { loadOnboardingState } from '@/lib/onboarding/state'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(): Promise<NextResponse> {
+async function getHandler(): Promise<NextResponse> {
   const access = await requireOnboardingAdmin()
   if (!access.ok) return access.response
   const { clinicId, supabase } = access
@@ -26,3 +27,5 @@ export async function GET(): Promise<NextResponse> {
   }
   return NextResponse.json({ error: 'Your onboarding could not be loaded. Try again.' }, { status: 503 })
 }
+
+export const GET = withApiErrors('/api/onboarding/state', getHandler)

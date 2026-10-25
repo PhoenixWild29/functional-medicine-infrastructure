@@ -1,6 +1,12 @@
 'use client'
 
-import { useEffect } from 'react'
+// Error boundary for patient pages (opened from a link the clinic sent).
+// No reference, ids or clinical detail: the only way out is to try again
+// or contact the clinic. Friendly copy only: the error itself is reported
+// (useReportError), never shown. See src/components/errors/error-screen.tsx.
+
+import { ErrorScreen } from '@/components/errors/error-screen'
+import { useReportError } from '@/components/errors/use-report-error'
 
 export default function PatientCheckoutError({
   error,
@@ -9,22 +15,13 @@ export default function PatientCheckoutError({
   error: Error & { digest?: string }
   reset: () => void
 }) {
-  useEffect(() => {
-    console.error(error)
-  }, [error])
-
+  useReportError(error, 'patient-checkout')
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-4">
-      <h2 className="text-center text-lg font-semibold">Something went wrong</h2>
-      <p className="text-center text-sm text-muted-foreground">
-        Please refresh the page or contact your clinic.
-      </p>
-      <button
-        onClick={reset}
-        className="rounded-md bg-primary px-6 py-2 text-sm text-primary-foreground"
-      >
-        Try again
-      </button>
-    </div>
+    <ErrorScreen
+      testId="error-screen-patient"
+      title="Something went wrong"
+      message="This page could not be opened. Please try again. If it keeps happening, contact your clinic."
+      actions={[{ label: 'Try again', onClick: reset }]}
+    />
   )
 }

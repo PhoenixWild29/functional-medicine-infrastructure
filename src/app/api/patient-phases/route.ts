@@ -21,6 +21,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const STAFF_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
 
@@ -92,7 +93,7 @@ async function trackingInClinic(
   return { ok: true, patientId: row.patient_id, currentPhase: row.current_phase }
 }
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   const caller = await resolveCaller(false)
   if (!caller.ok) return caller.response
 
@@ -139,7 +140,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ data })
 }
 
-export async function POST(req: NextRequest) {
+async function postHandler(req: NextRequest) {
   const caller = await resolveCaller(true)
   if (!caller.ok) return caller.response
 
@@ -254,7 +255,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
 }
 
-export async function PATCH(req: NextRequest) {
+async function patchHandler(req: NextRequest) {
   const caller = await resolveCaller(true)
   if (!caller.ok) return caller.response
 
@@ -290,3 +291,7 @@ export async function PATCH(req: NextRequest) {
   })
   return NextResponse.json({ ok: true })
 }
+
+export const GET = withApiErrors('/api/patient-phases', getHandler)
+export const POST = withApiErrors('/api/patient-phases', postHandler)
+export const PATCH = withApiErrors('/api/patient-phases', patchHandler)

@@ -3,10 +3,11 @@ import type { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendBackApplication } from '@/lib/pharmacy-onboarding/review'
 import { bodyOf, crossSiteRefusal, opsAdmin, respond } from '@/lib/pharmacy-onboarding/request'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 export const dynamic = 'force-dynamic'
 
-export async function POST(request: NextRequest, context: { params: Promise<{ applicationId: string }> }) {
+async function postHandler(request: NextRequest, context: { params: Promise<{ applicationId: string }> }) {
   const refused = crossSiteRefusal(request)
   if (refused) return refused
   const who = await opsAdmin()
@@ -15,3 +16,5 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ap
   const body = await bodyOf(request)
   return respond(await sendBackApplication(createServiceClient(), { actor: who.actor, applicationId, note: body['note'] }))
 }
+
+export const POST = withApiErrors('/api/ops/onboarding/pharmacies/[applicationId]/send-back', postHandler)

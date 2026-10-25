@@ -33,6 +33,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createCipheriv, randomBytes, randomUUID } from 'crypto'
 import { createServiceClient } from '@/lib/supabase/service'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // ── Encrypt the HMAC signing secret (AES-256-GCM) ───────────
 // Format stored in webhook_secret_encrypted: iv:authTag:ciphertext (all hex)
@@ -73,7 +74,7 @@ function encryptWebhookSecret(secret: string): string {
 // ROUTE HANDLER
 // ============================================================
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   // ── Auth: internal secret ─────────────────────────────────
   const token = request.headers.get('x-internal-token')
   if (!token || token !== process.env.ADAPTER_INTERNAL_SECRET) {
@@ -241,3 +242,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/spec/v1/webhooks/register', postHandler)

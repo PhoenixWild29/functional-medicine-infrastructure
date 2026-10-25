@@ -44,6 +44,7 @@ import {
 import { checkSignature, signatureFromPad, SIGNATURE_REJECTION_COPY, type SignatureCheck } from '@/lib/orders/signature'
 import type { PharmacyShippingRates } from '@/lib/orders/shipping'
 import { formatDiagnosis, syringeOptionLabel, shippingTypeLabel } from '@/lib/orders/rx-details'
+import { userMessage } from '@/lib/errors/user-message'
 
 function toCurrency(cents: number): string {
   return '$' + (cents / 100).toFixed(2)
@@ -267,7 +268,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
       setSubmitError(proposal ? `${refused} The patient's choice is kept; sign again once this is fixed.` : refused)
       setSubmitting(false)
     } catch (err) {
-      setSubmitError(`${err instanceof Error ? err.message : 'Signing failed.'} Nothing was signed.`)
+      setSubmitError(`${userMessage(err, 'Signing failed.')} Nothing was signed.`)
       setSubmitting(false)
     }
   }
@@ -535,7 +536,7 @@ function DraftLineList({ patient, selected, selectionIds, problems, disabled, lo
       }
       router.refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred')
+      setError(userMessage(err, 'An unexpected error occurred'))
     } finally {
       setRemoving(null)
     }

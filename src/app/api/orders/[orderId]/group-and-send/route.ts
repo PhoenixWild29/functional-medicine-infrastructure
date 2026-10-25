@@ -28,6 +28,7 @@ import { generateGroupCheckoutToken } from '@/lib/auth/checkout-token'
 import { serverEnv }                 from '@/lib/env'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const CLINIC_APP_ROLES = ['clinic_admin', 'provider', 'medical_assistant'] as const
@@ -41,7 +42,7 @@ interface GroupAndSendBody {
   siblingOrderIds: string[]
 }
 
-export async function POST(
+async function postHandler(
   request: NextRequest,
   { params }: RouteParams,
 ): Promise<NextResponse> {
@@ -194,3 +195,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/orders/[orderId]/group-and-send', postHandler)

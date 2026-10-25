@@ -11,8 +11,9 @@ import { NextResponse } from 'next/server'
 import { requireOnboardingAdmin, setStep } from '@/lib/onboarding/access'
 import { canSubmit, fullStatuses } from '@/lib/onboarding/steps'
 import { recordOnboardingEvent } from '@/lib/onboarding/events'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(): Promise<NextResponse> {
+async function postHandler(): Promise<NextResponse> {
   const access = await requireOnboardingAdmin({ editable: true })
   if (!access.ok) return access.response
   const { user, clinicId, supabase } = access
@@ -37,3 +38,5 @@ export async function POST(): Promise<NextResponse> {
   console.info(`[onboarding/submit] submitted | clinic=${clinicId}`)
   return NextResponse.json({ ok: true, onboardingStatus: 'submitted' })
 }
+
+export const POST = withApiErrors('/api/onboarding/submit', postHandler)

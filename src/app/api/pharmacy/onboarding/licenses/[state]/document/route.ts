@@ -4,10 +4,11 @@ import type { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { attachLicenseDocument, MAX_DOCUMENT_BYTES } from '@/lib/pharmacy-onboarding/application'
 import { crossSiteRefusal, json, pharmacyAdmin, respond } from '@/lib/pharmacy-onboarding/request'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 export const dynamic = 'force-dynamic'
 
-export async function POST(request: NextRequest, context: { params: Promise<{ state: string }> }) {
+async function postHandler(request: NextRequest, context: { params: Promise<{ state: string }> }) {
   const refused = crossSiteRefusal(request)
   if (refused) return refused
   const who = await pharmacyAdmin()
@@ -27,3 +28,5 @@ export async function POST(request: NextRequest, context: { params: Promise<{ st
   const bytes = new Uint8Array(await file.arrayBuffer())
   return respond(await attachLicenseDocument(createServiceClient(), who.ctx, state, { name: file.name, type: file.type, size: bytes.byteLength, bytes }))
 }
+
+export const POST = withApiErrors('/api/pharmacy/onboarding/licenses/[state]/document', postHandler)

@@ -35,12 +35,13 @@ import { routeOrder, submitQueuedFax } from '@/lib/adapters/routing-engine'
 import { pharmacySubmissionsEnabled, PHARMACY_SUBMISSIONS_OFF_MESSAGE } from '@/lib/adapters/submission-switch'
 import type { OrderStatusEnum } from '@/types/database.types'
 import { getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 interface Params { params: Promise<{ orderId: string }> }
 
 const MAX_REROUTES = 2  // HC-06
 
-export async function POST(request: NextRequest, { params }: Params): Promise<NextResponse> {
+async function postHandler(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request)
   if (crossSite) return crossSite
   const { orderId } = await params
@@ -479,3 +480,5 @@ async function recordRefund(
     console.error(`[ops/action] ledger: refund ${refundId} not recorded | order=${orderId}:`, err instanceof Error ? err.message : err)
   }
 }
+
+export const POST = withApiErrors('/api/ops/orders/[orderId]/action', postHandler)

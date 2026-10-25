@@ -17,6 +17,7 @@
 
 import { useState, useEffect } from 'react'
 import type { PipelineOrder } from '@/types/pipeline'
+import { userMessage } from '@/lib/errors/user-message'
 
 // ── Detail types ─────────────────────────────────────────────
 
@@ -123,7 +124,7 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
       })
       .then(data => setDetail(data))
       .catch(err => {
-        setDetailError(err instanceof Error ? err.message : 'Failed to load order detail')
+        setDetailError(userMessage(err, 'Failed to load order detail'))
       })
       .finally(() => setIsLoading(false))
   }, [orderId])

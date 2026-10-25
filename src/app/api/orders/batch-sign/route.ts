@@ -21,8 +21,9 @@ import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { signBatch } from '@/lib/orders/batch-sign'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const sfSite = request.headers.get('sec-fetch-site')
   if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') {
     return NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 })
@@ -77,3 +78,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 }
 
 export function GET()    { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/orders/batch-sign', postHandler)

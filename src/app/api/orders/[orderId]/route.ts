@@ -35,6 +35,7 @@ import { cyclePatternFrom } from '@/lib/orders/cycling'
 import type { Json } from '@/types/database.types'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { revokeProposalLinkForOrder } from '@/lib/proposals/propose'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 interface RouteContext {
   params: Promise<{ orderId: string }>
@@ -146,7 +147,7 @@ async function revokeLinkIfProposed(supabase: ReturnType<typeof createServiceCli
   await revokeProposalLinkForOrder(supabase, { clinicId, orderId: draft.order_id })
 }
 
-export async function PATCH(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+async function patchHandler(request: NextRequest, context: RouteContext): Promise<NextResponse> {
   const { orderId } = await context.params
 
   let body: {
@@ -291,7 +292,7 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
   return NextResponse.json({ orderId, changed: Object.keys(diff) }, { status: 200 })
 }
 
-export async function DELETE(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+async function deleteHandler(request: NextRequest, context: RouteContext): Promise<NextResponse> {
   const { orderId } = await context.params
 
   const loaded = await loadEditableDraft(orderId)
@@ -329,3 +330,6 @@ export async function DELETE(request: NextRequest, context: RouteContext): Promi
   })
   return NextResponse.json({ orderId, removed: true }, { status: 200 })
 }
+
+export const PATCH = withApiErrors('/api/orders/[orderId]', patchHandler)
+export const DELETE = withApiErrors('/api/orders/[orderId]', deleteHandler)

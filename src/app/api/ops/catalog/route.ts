@@ -24,6 +24,7 @@ import {
 } from '@/lib/catalog/map-catalog-row'
 import type { Enums } from '@/types/database.types'
 import { getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 type RegulatoryStatusEnum = Enums<'regulatory_status_enum'>
 
@@ -83,7 +84,7 @@ export interface CatalogResponse {
   fetchedAt:   string
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) {
@@ -186,3 +187,5 @@ export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/ops/catalog', getHandler)

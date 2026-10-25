@@ -23,6 +23,7 @@ import { casTransition }       from '@/lib/orders/cas-transition'
 import { sendSlackAlert }      from '@/lib/slack/client'
 import { buildOpsAlert }       from '@/lib/slack/ops-alert'
 import { getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -31,7 +32,7 @@ const COMPOUNDING_SLA_HOURS = 72
 
 interface Params { params: Promise<{ faxId: string }> }
 
-export async function POST(request: NextRequest, { params }: Params): Promise<NextResponse> {
+async function postHandler(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request)
   if (crossSite) return crossSite
   const { faxId } = await params
@@ -330,3 +331,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/ops/fax/[faxId]/action', postHandler)

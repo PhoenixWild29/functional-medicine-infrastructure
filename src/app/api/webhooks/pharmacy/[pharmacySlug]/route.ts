@@ -37,6 +37,7 @@ import { readVaultSecret } from '@/lib/vault/read-secret'
 import { casTransition } from '@/lib/orders/cas-transition'
 import { sendSlackAlert, buildAdapterFailureAlert } from '@/lib/slack/client'
 import type { OrderStatus } from '@/lib/orders/state-machine'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // ============================================================
 // PAYLOAD TYPES
@@ -61,7 +62,7 @@ interface PharmacyEventData {
 // ROUTE HANDLER
 // ============================================================
 
-export async function POST(
+async function postHandler(
   request: NextRequest,
   { params }: { params: Promise<{ pharmacySlug: string }> }
 ): Promise<NextResponse> {
@@ -698,3 +699,5 @@ async function handleCatalogUpdated(
     `[pharmacy-webhook] catalog.updated | pharmacy=${pharmacySlug} (${pharmacyId}) | sync pending`
   )
 }
+
+export const POST = withApiErrors('/api/webhooks/pharmacy/[pharmacySlug]', postHandler)

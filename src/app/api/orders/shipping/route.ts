@@ -21,8 +21,9 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { applyBundleShipping, MAX_BUNDLE_ORDERS } from '@/lib/orders/apply-bundle-shipping'
 import { getUserClinicId } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) {
@@ -59,3 +60,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     feesByOrder: result.feesByOrder,
   }, { status: 200 })
 }
+
+export const POST = withApiErrors('/api/orders/shipping', postHandler)

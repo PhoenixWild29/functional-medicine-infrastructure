@@ -20,10 +20,11 @@ import { isPaymentEventRow, paymentFailedLabel } from '@/lib/payments/events'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserRole } from '@/lib/auth/claims'
 import { deadlinePassed } from '@/lib/sla/deadline'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 interface Params { params: Promise<{ orderId: string }> }
 
-export async function GET(request: NextRequest, { params }: Params): Promise<NextResponse> {
+async function getHandler(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const { orderId } = await params
   const supabaseAuth = await createServerClient()
   // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
@@ -169,3 +170,5 @@ export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/ops/orders/[orderId]/detail', getHandler)

@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 export interface MedicationSuggestion {
   item_id:         string
@@ -24,7 +25,7 @@ export interface MedicationSuggestion {
   dea_schedule:    number
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   // Auth gate — must be a clinic-app session
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -85,3 +86,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
   )
 }
+
+export const GET = withApiErrors('/api/pharmacy-search/medications', getHandler)

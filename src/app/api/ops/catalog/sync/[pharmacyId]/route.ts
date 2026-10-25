@@ -14,6 +14,7 @@ import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { Enums } from '@/types/database.types'
 import { getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 type RegulatoryStatusEnum = Enums<'regulatory_status_enum'>
 
@@ -21,7 +22,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 
 interface Params { params: Promise<{ pharmacyId: string }> }
 
-export async function POST(_request: NextRequest, { params }: Params): Promise<NextResponse> {
+async function postHandler(_request: NextRequest, { params }: Params): Promise<NextResponse> {
   const { pharmacyId } = await params
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -286,3 +287,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/ops/catalog/sync/[pharmacyId]', postHandler)

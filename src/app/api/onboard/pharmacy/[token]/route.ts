@@ -8,12 +8,13 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { acceptInvite, inviteForToken } from '@/lib/pharmacy-onboarding/invites'
 import { bodyOf, crossSiteRefusal, json, respond } from '@/lib/pharmacy-onboarding/request'
 import { acceptRateLimiter, clientIp } from '@/lib/pharmacy-onboarding/accept-rate-limit'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 export const dynamic = 'force-dynamic'
 
 type Context = { params: Promise<{ token: string }> }
 
-export async function GET(_request: NextRequest, context: Context) {
+async function getHandler(_request: NextRequest, context: Context) {
   const { token } = await context.params
   const invite = await inviteForToken(createServiceClient(), token)
   if (invite === 'error') return json({ error: 'The invite could not be read. Try again.' }, 503)
@@ -21,7 +22,7 @@ export async function GET(_request: NextRequest, context: Context) {
   return json(invite)
 }
 
-export async function POST(request: NextRequest, context: Context) {
+async function postHandler(request: NextRequest, context: Context) {
   const refused = crossSiteRefusal(request)
   if (refused) return refused
   // Before the body or the token is read.
@@ -36,3 +37,6 @@ export async function POST(request: NextRequest, context: Context) {
   const body = await bodyOf(request)
   return respond(await acceptInvite(createServiceClient(), { token, fullName: body['fullName'], password: body['password'] }))
 }
+
+export const GET = withApiErrors('/api/onboard/pharmacy/[token]', getHandler)
+export const POST = withApiErrors('/api/onboard/pharmacy/[token]', postHandler)
