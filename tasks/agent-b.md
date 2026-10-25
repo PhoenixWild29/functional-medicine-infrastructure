@@ -1,15 +1,16 @@
-task-id: B-2026-10-25-01
+task-id: B-2026-10-25-02
 status: ready
 ---
-Thanks for B-2026-10-24-08 (signup-squatting, 6db6746). PR in turn.
+Thanks for B-2026-10-25-01 (#268 locators, 6596c8d; its E2E is running).
 
-Urgent: PR #268 (proposals PRs 1-5, branch proposals-pr5-e2e, head 4a58df1) failed E2E (run 40147163413, job 121031265303). Two real failures, both test locators (strict mode), not the app:
-1. e2e/patient-protocol-choice.spec.ts:159: `getByRole('group', { name: 'Option B' }).getByText('Test Compound E2E Injectable 10 mg/mL')` resolved to 2 elements (the first is a <span class="min-w-0 flex-1 break-words text-sm text-foreground">; find the second). Make the locator target the one line the test means (e.g. the line's own role/testid or `.first()` only if both are the same line rendered twice for a reason; prefer a precise locator, and if the same text is rendered twice for no reason, fix the UI).
-2. e2e/accessibility.spec.ts:282 ("the patient plan link ... before the date of birth, and a wrong one"): `getByRole('alert')` matched both the DOB error <p role="alert"> and Next's route announcer `#__next-route-announcer__`. Scope the locator to the plan page (e.g. within the form or main, or by text).
-After fixing those, check the rest of patient-protocol-choice.spec.ts and the plan accessibility tests for any other unscoped getByRole('alert'/'status') or ambiguous getByText and harden them the same way, since retries stopped at the first error.
+Next: get the waiting branches ready to go onto main the moment #268 (proposals, migration 20261024000002) merges. The shared E2E database already has 000002 applied, so every branch must contain 000002 (from main, after #268 merges) or its E2E fails at schema sync.
 
-`git fetch origin && git checkout -B proposals-pr5-e2e origin/proposals-pr5-e2e`, fix, `npm run lint` (0 warnings), tsc, Jest; `npx playwright test --list` for the two files. Push proposals-pr5-e2e (normal push; this re-runs #268's CI). Report in the commit body.
+Step 0: wait until origin/main contains the #268 squash commit (title starts "feat(proposals): patient protocol choice"). Check every 5 minutes with `git fetch origin && git log origin/main --oneline -5`. Until then, do nothing else on these branches. If it has not landed within 2 hours, push a commit "BLOCKED: #268 not merged" on a branch named waiting-268 and stop.
 
-Also flaky in that run (passed on retry): e2e/first-run-checklist.spec.ts:66 ("Show setup checklist" then the "Get set up" region not visible within 15 s). A is taking that one; do not change it.
-
-Do not touch the production database, Vercel, Stripe or secrets.
+Then, for each branch below in this order: `git checkout -B <b> origin/<b> && git merge origin/main`, resolve conflicts keeping both sides, `npm ci` if the lockfile changed, `npm run lint` (0 warnings), tsc, Jest (--maxWorkers=3), build, push <b> (normal push). Report in each merge commit body (conflicts, migration list tail, results).
+1. zod-4 (D; PR #270 open). After pushing, its CI re-runs.
+2. ops-fax-viewer-documo (A; migration 20261024000003_phi_access_log_fax_id: confirm it sorts after 000002 and the A/D tests that name it still pass).
+3. security-followups-2 (A): check its L12 migration number; it must be greater than every migration on main and on rls-user-write-lockdown (C is re-cutting that one as 20261024000004). If it collides or sorts before 000004, renumber it to the next free number (likely 20261024000005), update tests that name it, and say so.
+4. signup-squatting (yours): if it has a migration, same numbering rule (after A's).
+5. ci-playwright-container (A), e2e-shard-ready (D), flake-show-checklist (A), remove-dead-code (C): merge main, gates, push.
+Do not open PRs (I do). Do not touch the production database, Vercel, Stripe or secrets.
