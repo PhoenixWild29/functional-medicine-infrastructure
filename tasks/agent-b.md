@@ -1,17 +1,14 @@
-task-id: B-2026-10-25-07
+task-id: B-2026-10-25-08
 status: ready
 ---
-Thanks for B-2026-10-25-06 (state-machine-enforcement, d7b161a). Thorough.
+Thanks for B-2026-10-25-07 (settings-notifications, c1d9e76).
 
-Next: Settings > Notifications is a placeholder (found by D's Oct 5 audit and C's sweep). A placeholder in front of the cofounder is not acceptable.
+Next: C's independent review (origin/review-high-risk, docs/qa/review-2026-10-25-high-risk.md) found your state-machine-enforcement branch mergeable with two lows and one pre-merge check. Fix them.
 
-Branch: `git fetch origin && git checkout -b settings-notifications origin/main`.
-- Find what notifications the app actually sends today to clinic users (email/SMS on order paid, failed, shipped, payment link expired, patient chose a plan, intake finished, team invites, etc.). List them with the code that sends each and who receives it.
-- If existing tables can hold per-clinic or per-user preferences for those (check every table and jsonb column), build a real Notifications page: one row per notification type, who receives it today, and an on/off toggle that the sending code honours. Safety and legal notices (e.g. failures that need action, security emails) are shown but cannot be turned off.
-- If it needs a new table or column, do NOT add a migration. Instead replace the placeholder with a read-only page listing what is sent and to whom ("Notification settings are coming; this is what CompoundIQ sends today"), and write the schema design in the report.
-- Remove any other "coming soon" or placeholder copy you meet on Settings pages, or list it if it needs product input.
-Tests: jest for the page and, if built, for the senders honouring the preference.
-No database migrations on this branch.
-Gates: lint (0 warnings), tsc, jest, next build. Push settings-notifications (normal push, no PR). Report in the commit body.
+Branch: `git checkout state-machine-enforcement && git pull`.
+1. The DRAFT->CANCELLED writers in proposals (expire, propose, sign-choice) bypass casTransition. Route them through casTransition with the right actorRole (system for the expiry cron, the caller's role otherwise), keeping their batch semantics and tests.
+2. The refused-then-reread race in cas-transition.ts (~162-214): if the re-read finds the order still in the expected status with all required fields now present, retry the CAS once instead of reporting "already transitioned". Test it.
+3. Write a READ-ONLY SQL check at scripts/checks/2026-10-25-drafts-missing-snapshots.sql: count of DRAFT orders on prod missing any field batch sign now requires (the 6 snapshots), grouped by clinic, with order ids for Sunrise. SELECT only, no writes, safe to run as any role that can read orders. I will hand it to Sam at the right moment; do not run it anywhere but your local/E2E DB.
+Gates: lint (0 warnings), tsc, jest, next build. Push state-machine-enforcement (normal push, no PR). Report in the commit body, including the SQL file's content.
 
 Do not touch the production database, Vercel, Stripe or secrets.

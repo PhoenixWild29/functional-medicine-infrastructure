@@ -1,15 +1,18 @@
-task-id: C-2026-10-25-09
+task-id: C-2026-10-25-10
 status: ready
 ---
-Thanks for C-2026-10-25-08 (patient-pages-mobile, 250613f).
+Thanks for C-2026-10-25-09 (high-risk review, 6373263). Excellent. Raising the quantity finding to HIGH was right; D is fixing it.
 
-Next: an independent code review of the four highest-risk unmerged branches, written by other agents. You have not seen them, which is the point. Review the diff against origin/main, not the authors' reports.
+Next: fix the lows you found on two branches whose authors are on other work. You own these branches until you push; keep commits small and do not rewrite their history.
 
-1. origin/rx-quantity-shipping (D): dispenseCount() and what each pharmacy adapter and the fax PDF now send as quantity. Hunt for: wrong count for any dosage form, packages vs units mix-ups, old rows mis-sent, any price or payout that now multiplies by quantity, client-supplied values trusted.
-2. origin/rx-allergies-required (A): every signing path blocked without allergies/NKDA; the retired sign-and-send route (410) not used anywhere (UI, E2E, adapters, docs); no path signs without the check.
-3. origin/state-machine-enforcement (B): casTransition actor/required-field rules; any real flow that is now refused (webhooks, crons, adapters, ops actions, refunds, proposal expiry); any call site with the wrong actorRole; race safety of the WHERE-clause check.
-4. origin/favorites-frequent (D): ranking query cost and scoping (no cross-clinic or cross-provider leakage; patient-scoped favorites visible only for that patient).
-For each finding: file:line, the concrete failing scenario (inputs/state -> wrong result), severity (critical/high/medium/low), and the fix. Check each finding by reading the code path end to end or with a quick local test before reporting it; drop anything you cannot confirm.
-Do NOT push to those branches. Write docs/qa/review-2026-10-25-high-risk.md on a new branch `review-high-risk` from origin/main, push it (normal push, no PR), findings summary in the commit body.
+1. `git checkout rx-allergies-required && git pull` (A's):
+   - Proposing or sending a plan for a patient with no allergies/NKDA: refuse once per proposal (not once per line), with wording that fits proposing ("Record allergies or mark NKDA before sending this plan"), and open the same inline allergy prompt the Review page uses.
+   - docs/API-REFERENCE.md: mark /api/orders/[id]/sign-and-send as retired (410) and point to /api/orders/batch-sign.
+   Gates, push rx-allergies-required.
+2. `git checkout favorites-frequent && git pull` (D's):
+   - In practice mode, the Make favorite dialog must not offer the session patient's patient-only doses, and must reset when the patient changes.
+   - Bound the Frequently used query in SQL by date (the window D chose) and limit, so it does not read 500 rows per open. Note the index on orders(provider_id, created_at) as a FOLLOW-UP migration in the report; do NOT add a migration on this branch (the E2E DB is mid-serial-merge).
+   Gates, push favorites-frequent.
+Gates for each: lint (0 warnings), tsc, jest, next build. Report in each commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
