@@ -1,23 +1,24 @@
-task-id: A-2026-10-25-15
+task-id: A-2026-10-25-16
 status: ready
 ---
-Thanks for A-2026-10-25-14 (BLOCKED report, f463876). Docker is with Sam; A-14 will be re-queued when Docker Desktop is running.
+Thanks for A-2026-10-25-15 (prod public smoke, a03ac01). Good run.
 
-Next: a read-only public smoke test the orchestrator runs against prod after every merge (no sign-in, no writes).
+Next: a decision brief (AI-facing; I turn it into a Word document for Sam). Several open items need Sam's decision before real patient data. Lay each out so he can decide in a minute.
 
-Branch: `git checkout bundle-ci && git pull` (it merges with the CI bundle).
-Add scripts/smoke/prod-public-smoke.mjs (Node 20+, plain Playwright from the repo's devDependency, chromium, no repo build needed). Usage: `node scripts/smoke/prod-public-smoke.mjs --base https://functional-medicine-infrastructure.vercel.app`. It must:
-- GET /api/health: 200 and the JSON shape main returns (read the route).
-- Security headers on / and /login: CSP with a nonce, HSTS max-age=63072000 includeSubDomains, X-Frame-Options DENY, Referrer-Policy as the code sets it; /login Cache-Control private, no-store.
-- Redirects: /dashboard?x=1 -> 307 /login?redirectTo=%2Fdashboard%3Fx%3D1; /checkout/garbage -> /checkout/expired.
-- Public pages render with their headings (read the code for exact text): /login, /get-started, privacy policy, patient terms.
-- Neutral invalid-link pages: /plan/<random>, /intake/<random>, /join/<random> show the neutral text and never a stack trace; X-Robots-Tag noindex / robots meta noindex on them; Referrer-Policy no-referrer where token-pages-hardening sets it.
-- A nonexistent clinic URL shows the friendly not-found page (after bundle-security; make the check tolerant: pass on either the old or the new page and print which).
-- robots.txt disallows the token paths (after token-pages-hardening; tolerant as above).
-- No console errors on each page (print them).
-- Prints one line per check: PASS/FAIL/INFO with the observed value; exits non-zero on any FAIL.
-Never submit a form, never sign in, never call a write endpoint. Rate: one request at a time, under 60 requests total.
-Run it once yourself against prod and include the output in the report (that is read-only and allowed). Add a jest test for the argument parsing and the header-check helpers only.
-Gates: lint (0 warnings), tsc, jest. Push bundle-ci (normal push, no PR). Report in the commit body.
+Branch: `git checkout bundle-docs && git pull`. Write docs/decisions/before-real-patients-2026-10-25.md.
+For each item: what exists in the code today (cite files), the options (2 or 3), the effort and risk of each, what it blocks, and a recommendation with one line of why. Read the code; do not guess.
+1. Demo vs real records: there is no way to mark a clinic, pharmacy or patient as demo or real. Options (e.g. is_demo flag on clinics with inheritance; a separate prod project for demo; delete demo data at go-live) and what each means for payouts, pharmacy submissions, texting, reports and the cleanup script.
+2. Two-step sign-in for all staff: name the switch, what turning it on does to existing users (enrolment flow on next sign-in), and the demo accounts.
+3. Data retention: rules count but delete nothing. What would turn deletion on, what it would delete, legal hold, and the risk of turning it on with demo data.
+4. Notification preferences: B's design from settings-notifications (origin/settings-notifications report): schema, effort.
+5. Texting on prod (Twilio): what turning it on needs (A2P 10DLC registration, BAA, env vars by name only), and what starts sending once it is on.
+6. Patient receipt email: syntax-only validation today; deliverability options.
+7. Pharmacy home page: what a live pharmacy would need to see.
+8. TIER_3_HYBRID: build or leave disabled.
+9. GLP-1 clinical difference pre-selection (the NP asked for it; today none is pre-selected; saved statements are on clinical-difference-saved).
+10. State machine: the rules B left unenforced, if any (origin/state-machine-enforcement docs/technical/state-machine-enforcement.md).
+11. Who can delete saved clinical statements and favorites (any clinic role today).
+12. Support contact shown in Help (D's clinic-help report).
+Keep each item to about 10 lines. Push bundle-docs (normal push, no PR). Summary in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
