@@ -25,8 +25,8 @@
 // REQ-GCX-008: Zero PHI — no patient name, medication name, or diagnosis.
 // REQ-PSR-008: REQ-OAS-008 carried forward — no PHI in Stripe metadata.
 
-import { useState, useEffect } from 'react'
-import { loadStripe } from '@stripe/stripe-js'
+import { useState, useEffect, useRef } from 'react'
+import { loadStripe, type Stripe } from '@stripe/stripe-js'
 import {
   Elements,
   PaymentElement,
@@ -35,8 +35,14 @@ import {
 } from '@stripe/react-stripe-js'
 import { clientEnv } from '@/lib/env'
 
-// Stripe.js singleton — created once per page load
-const stripePromise = loadStripe(clientEnv.stripePublishableKey)
+// The token out of the address bar before Stripe.js loads. Stripe.js is a
+// third-party script that can read window.location, and the token is the
+// patient's credential. On mount the page replaces /checkout/<token> (or
+// /checkout?token=) with /checkout, and only then loads Stripe.js (never at
+// module scope). The token stays in this component's memory for the
+// payment-intent POSTs; nothing stores it (no storage, no cookie), so a
+// refresh lands on /checkout and asks the patient to reopen the link.
+const CLEAN_CHECKOUT_PATH = '/checkout'
 
 function toCurrency(cents: number): string {
   return (cents / 100).toLocaleString('en-US', {
@@ -299,6 +305,17 @@ export function CheckoutPageContent({
   // WO-73: Track Stripe Elements readiness for 10s timeout
   const [stripeReady,    setStripeReady]    = useState(false)
   const [stripeTimeout,  setStripeTimeout]  = useState(false)
+  // Stripe.js, loaded once per page, after the URL is clean (see above).
+  const [stripePromise,  setStripePromise]  = useState<Promise<Stripe | null> | null>(null)
+  const stripeRequested = useRef(false)
+
+  useEffect(() => {
+    const { pathname, search } = window.location
+    if (pathname !== CLEAN_CHECKOUT_PATH || search) window.history.replaceState(null, '', CLEAN_CHECKOUT_PATH)
+    if (checkoutState !== 'active' || stripeRequested.current) return
+    stripeRequested.current = true
+    setStripePromise(loadStripe(clientEnv.stripePublishableKey))
+  }, [checkoutState])
 
   // Solo: lazily create-or-retrieve the PI from /api/checkout/payment-intent.
   // Group: PI already exists (clinic created it at bundle time); just fetch
@@ -520,7 +537,7 @@ export function CheckoutPageContent({
               )}
 
               {/* Stripe Elements — rendered immediately when clientSecret available. */}
-              {clientSecret && !stripeTimeout && (
+              {clientSecret && stripePromise && !stripeTimeout && (
                 <Elements
                   stripe={stripePromise}
                   options={{
