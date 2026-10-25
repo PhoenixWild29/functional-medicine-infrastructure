@@ -17,7 +17,7 @@
 // the prescription document itself — Documo is BAA-covered.
 
 import { allergiesForPayload } from '@/lib/patients/allergies'
-import { formatDispenseWithPackage } from '@/lib/orders/rx-details'
+import { formatDispenseWithPackage, formatQuantity } from '@/lib/orders/rx-details'
 import { FREQUENCY_OPTIONS } from '@/app/(clinic-app)/new-prescription/_components/structured-sig-builder.types'
 import type { TitrationStep } from '@/lib/orders/titration'
 import type { CyclePattern } from '@/lib/orders/cycling'
@@ -52,6 +52,8 @@ export interface PrescriptionPdfData {
   medicationForm: string
   medicationDose: string
   quantity: number
+  /** The unit quantity counts ("capsule", "vial"); printed as "Quantity: 2 vials". */
+  quantityUnit?: string | null
   sigText: string | null       // directions
   // WO-96 Rx detail fields — optional so callers written before WO-96
   // (and tests) keep compiling; the printed lines are skipped when unset.
@@ -186,7 +188,7 @@ function buildContentStream(d: PrescriptionPdfData): string {
   lines.push(h('MEDICATION ORDER'))
   lines.push(v(`Medication: ${d.medicationName}`))
   lines.push(v(`Form: ${d.medicationForm}    Dose: ${d.medicationDose}`))
-  lines.push(v(`Quantity: ${d.quantity}`))
+  lines.push(v(`Quantity: ${d.quantityUnit ? formatQuantity({ quantity: d.quantity, unit: d.quantityUnit }) : d.quantity}`))
   if (d.sigText) {
     lines.push(v(`Sig: ${d.sigText}`))
   }

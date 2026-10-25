@@ -65,7 +65,7 @@ const PKGS = [
 
 beforeEach(() => {
   getUserMock.mockReset()
-  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { clinic_id: CLINIC } } } })
+  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC } } } })
   formulationError = null
   // Written while the formulation was still "Topical Gel".
   orderRows = [{

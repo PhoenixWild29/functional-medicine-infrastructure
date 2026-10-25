@@ -64,17 +64,18 @@ it('sent or chosen past expiry: expired, link dead, drafts cancelled, recorded',
   const res = await expireProposals(db.client, NOW)
   expect(res).toEqual({ expired: 2, cancelledOrders: 3, failed: 0 })
   for (const pid of ['p-sent-old', 'p-chosen-old']) {
-    // PR 5: the hash is kept, so the plan link says "This link has expired"
-    // (PR 3); the expired status alone closes the plan.
+    // PR 5: the hash is kept (the link resolves to 'expired'); the expired
+    // status alone closes the plan.
     expect(status(db, pid)).toMatchObject({ status: 'expired', token_hash: 'a'.repeat(64) })
   }
   expect([1, 2, 3].map(n => orderStatus(db, n))).toEqual(['CANCELLED', 'CANCELLED', 'CANCELLED'])
   expect(db.tables['treatment_proposal_events']!.map(e => [e['proposal_id'], e['event'], e['actor']]).sort()).toEqual([
     ['p-chosen-old', 'expired', 'system'], ['p-sent-old', 'expired', 'system'],
   ])
-  expect(historyMock).toHaveBeenCalledWith(expect.anything(), expect.arrayContaining([
-    expect.objectContaining({ order_id: id(1), old_status: 'DRAFT', new_status: 'CANCELLED', changed_by: 'system' }),
-  ]), 'proposal-expiry')
+  // Each line went through casTransition (B-2026-10-25-08), which wrote its history row.
+  expect(historyMock).toHaveBeenCalledWith(expect.anything(),
+    expect.objectContaining({ order_id: id(1), old_status: 'DRAFT', new_status: 'CANCELLED', changed_by: 'system', metadata: expect.objectContaining({ reason: 'proposal_expired' }) }),
+    'casTransition')
 })
 
 it('not yet expired, signed, prepared and other orders are untouched', async () => {

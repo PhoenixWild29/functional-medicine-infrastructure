@@ -15,7 +15,7 @@ let db = scriptedDb(() => undefined)
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getUser: async () => ({ data: { user: { id: 'u1', app_metadata: { clinic_id: 'c-1' } } } }) },
+    auth: { getUser: async () => ({ data: { user: { id: 'u1', app_metadata: { app_role: 'clinic_admin', clinic_id: 'c-1' } } } }) },
   }),
 }))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
@@ -50,11 +50,11 @@ beforeEach(() => logged.mockClear())
 
 it.each([
   ['the list', '', 'protocol_templates'],
-  ['one protocol', '?id=p-1', 'protocol_templates'],
-  ['its items', '?id=p-1', 'protocol_items'],
-  ['the live prices', '?id=p-1', 'pharmacy_formulations'],
-  ['formulation liveness', '?id=p-1', 'formulations'],
-  ['pharmacy licenses', '?id=p-1&patient_state=TX', 'pharmacy_state_licenses'],
+  ['one protocol', '?id=a8000000-0000-0000-0000-000000000001', 'protocol_templates'],
+  ['its items', '?id=a8000000-0000-0000-0000-000000000001', 'protocol_items'],
+  ['the live prices', '?id=a8000000-0000-0000-0000-000000000001', 'pharmacy_formulations'],
+  ['formulation liveness', '?id=a8000000-0000-0000-0000-000000000001', 'formulations'],
+  ['pharmacy licenses', '?id=a8000000-0000-0000-0000-000000000001&patient_state=TX', 'pharmacy_state_licenses'],
 ])('a failed read of %s: 500, a plain message, the database text only in the log', async (_what, query, table) => {
   const r = await get(query, t => t === table)
   expect(r.status).toBe(500)
@@ -65,5 +65,5 @@ it.each([
 
 it('a good read still answers 200', async () => {
   expect((await get('', () => false)).status).toBe(200)
-  expect((await get('?id=p-1&patient_state=TX', () => false)).status).toBe(200)
+  expect((await get('?id=a8000000-0000-0000-0000-000000000001&patient_state=TX', () => false)).status).toBe(200)
 })

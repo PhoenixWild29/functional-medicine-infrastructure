@@ -22,7 +22,8 @@ const CLINIC_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const CLINIC_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const PATIENT_A = 'a3000000-0000-4000-8000-00000000000a'
 const PROTOCOL_A = 'c1000000-0000-4000-8000-00000000000a'
-const TRACKING_A = 't1000000-0000-4000-8000-00000000000a'
+const TRACKING_A = 'e1000000-0000-4000-8000-00000000000a'
+const PROVIDER_A = 'd1000000-0000-4000-8000-00000000000a'
 
 let user: Record<string, unknown> | null = null
 let db = scriptedDb(() => undefined)
@@ -34,6 +35,12 @@ jest.mock('@/lib/supabase/server', () => ({
       getUser: async () => userFromSession({ data: { session: user ? { user } : null } }),
     },
   }),
+}))
+// The signed-in provider's own row (C-2026-10-25-07: advanced_by is the caller,
+// and the body's provider_id must be theirs).
+jest.mock('@/lib/auth/current-provider', () => ({
+  ...jest.requireActual('@/lib/auth/current-provider'),
+  resolveCurrentProvider: async () => ({ provider_id: 'd1000000-0000-4000-8000-00000000000a', clinic_id: 'c', first_name: 'P', last_name: 'One', npi_number: '1', signature_hash: null }),
 }))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
 
@@ -63,8 +70,8 @@ const as = (role: string, clinic: string | null) => ({ id: `u-${role}`, email: `
 
 const get = () => GET(new NextRequest(`https://app.test/api/patient-phases?patient_id=${PATIENT_A}`))
 const post = (body: Record<string, unknown>) => POST(new NextRequest('https://app.test/api/patient-phases', { method: 'POST', body: JSON.stringify(body) }))
-const start = () => post({ action: 'start', patient_id: PATIENT_A, protocol_id: PROTOCOL_A, initial_phase: 'loading', provider_id: 'pr-1' })
-const advance = () => post({ action: 'advance', tracking_id: TRACKING_A, new_phase: 'maintenance', provider_id: 'pr-1' })
+const start = () => post({ action: 'start', patient_id: PATIENT_A, protocol_id: PROTOCOL_A, initial_phase: 'loading', provider_id: PROVIDER_A })
+const advance = () => post({ action: 'advance', tracking_id: TRACKING_A, new_phase: 'maintenance', provider_id: PROVIDER_A })
 const patch = () => PATCH(new NextRequest(`https://app.test/api/patient-phases?tracking_id=${TRACKING_A}`, { method: 'PATCH', body: JSON.stringify({ status: 'paused' }) }))
 
 const writes = () => db.calls.filter(c => c.op !== 'select')

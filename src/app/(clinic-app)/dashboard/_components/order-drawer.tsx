@@ -42,6 +42,7 @@ import { isSubmissionFailure, submissionFailureNotice } from '@/lib/orders/submi
 import type { SubmissionFailure } from '@/app/api/orders/[orderId]/failure-reason/route'
 import { ProposalPanel } from './proposal-panel'
 import { isProposedOrder } from '../_lib/tabs'
+import { userMessage } from '@/lib/errors/user-message'
 
 interface Props {
   order: DashboardOrder | null
@@ -113,7 +114,7 @@ async function readBundlableSiblings(orderId: string): Promise<{ state: Bundlabl
   } catch (err) {
     notify.error(
       'Could not check for bundlable prescriptions',
-      err instanceof Error ? err.message : 'Unexpected error',
+      userMessage(err, 'Unexpected error'),
     )
     return { state: { anchorBundlable: false, siblings: [] }, loaded: null }
   }
@@ -163,7 +164,7 @@ async function readGroupLink(orderId: string): Promise<GroupLinkInfo | null> {
   } catch (err) {
     notify.error(
       'Could not load bundle payment link',
-      err instanceof Error ? err.message : 'Unexpected error',
+      userMessage(err, 'Unexpected error'),
     )
     return null
   }
@@ -555,7 +556,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
     } catch (err) {
       notify.error(
         'Failed to create group payment link',
-        err instanceof Error ? err.message : 'Unexpected error',
+        userMessage(err, 'Unexpected error'),
       )
     } finally {
       setIsCreatingGroup(false)
@@ -603,7 +604,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
     } catch (err) {
       notify.error(
         'Failed to generate link',
-        err instanceof Error ? err.message : 'An unexpected error occurred'
+        userMessage(err, 'An unexpected error occurred')
       )
     } finally {
       setIsGeneratingLink(false)

@@ -1,5 +1,5 @@
 /**
- * WO-104: Favorites panel — drug → common doses, categories, Recent,
+ * WO-104: Favorites panel — drug → common doses, categories,
  * patient favorites.
  *
  * Acceptance criteria pinned here (component layer):
@@ -10,12 +10,12 @@
  *   - groups in a fixed category order, A–Z within each group
  *   - the selected patient's own favorites come first ("For Alex Demo");
  *     the request carries patient_id so other patients' are never fetched
- *   - Recent strip: the provider's last formulations; clicking one loads
- *     it, "Make favorite" creates a card, which then reads "★ Favorite"
+ *   - (the Frequently used section, which replaced the Recent strip, is
+ *     in frequently-used-panel.test.tsx)
  *   - an unlicensed card's chips are disabled
  */
 
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { PrescriptionSessionProvider } from '../../_context/prescription-session'
 import { QuickActionsPanel } from '../quick-actions-panel'
@@ -66,18 +66,6 @@ const BPC = favorite({ favorite_id: 'fav-bpc', label: 'BPC-157 daily cycling', c
 const LDN = favorite({ favorite_id: 'fav-ldn', label: 'LDN 4.5 Maintenance', category: null, formulation_id: 'f-ldn', pharmacy_licensed: false })
 const ALEX_SEMA = favorite({ favorite_id: 'fav-alex', label: 'Semaglutide — Alex', patient_id: PATIENT_ID, dose_presets: [preset('80')] })
 
-const RECENT = [
-  {
-    formulation_id: 'f-tirz', pharmacy_id: 'pharmacy-strive', medication_name: 'Tirzepatide', formulation_name: 'Tirzepatide 10mg/mL Injectable',
-    pharmacy_name: 'Strive Pharmacy', last_prescribed_at: '2026-09-12T00:00:00Z', formulation_active: true,
-    preset: preset('25'), formulations: { concentration_value: 10, concentration_unit: 'mg/mL', dosage_forms: { name: 'Injectable Solution' } },
-  },
-  {
-    formulation_id: 'formulation-sema', pharmacy_id: 'pharmacy-strive', medication_name: 'Semaglutide', formulation_name: 'Semaglutide 5mg/mL Injectable',
-    pharmacy_name: 'Strive Pharmacy', last_prescribed_at: '2026-09-10T00:00:00Z', formulation_active: true,
-    preset: preset('20'), formulations: { concentration_value: 5, concentration_unit: 'mg/mL', dosage_forms: { name: 'Injectable Solution' } },
-  },
-]
 
 let favorites: unknown[] = []
 let calls: Array<{ url: string; method: string; body: unknown }> = []
@@ -90,7 +78,7 @@ const mockFetch = jest.fn((input: unknown, init?: { method?: string; body?: stri
   const url = String(input)
   const method = init?.method ?? 'GET'
   calls.push({ url, method, body: init?.body ? JSON.parse(init.body) : null })
-  if (url.startsWith('/api/favorites/recent')) return jsonResponse({ data: RECENT })
+  if (url.startsWith('/api/favorites/frequent')) return jsonResponse({ mode: 'frequent', window_days: 90, data: [] })
   if (url.startsWith('/api/favorites') && method === 'GET') return jsonResponse({ data: favorites })
   if (url.startsWith('/api/favorites') && method === 'PATCH') return jsonResponse({ ok: true })
   if (url.startsWith('/api/favorites') && method === 'POST') {
@@ -104,17 +92,17 @@ const mockFetch = jest.fn((input: unknown, init?: { method?: string; body?: stri
 function renderPanel(props: Partial<React.ComponentProps<typeof QuickActionsPanel>> = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
   const onLoadFavorite = jest.fn()
-  const onLoadRecent = jest.fn()
+  const onLoadFrequent = jest.fn()
   render(
     <QueryClientProvider client={queryClient}>
       <PrescriptionSessionProvider>
-        <QuickActionsPanel onLoadFavorite={onLoadFavorite} onLoadRecent={onLoadRecent} {...props}>
+        <QuickActionsPanel onLoadFavorite={onLoadFavorite} onLoadFrequent={onLoadFrequent} {...props}>
           <input id="medication-search" aria-label="Search medications" />
         </QuickActionsPanel>
       </PrescriptionSessionProvider>
     </QueryClientProvider>,
   )
-  return { onLoadFavorite, onLoadRecent }
+  return { onLoadFavorite, onLoadFrequent }
 }
 
 beforeAll(() => { global.fetch = mockFetch as unknown as typeof fetch })
@@ -199,31 +187,3 @@ describe('sorting and patient favorites', () => {
   })
 })
 
-describe('Recent strip', () => {
-  it('lists the provider\'s recent formulations; a click loads it onto the dose step', async () => {
-    const { onLoadRecent } = renderPanel()
-    await openFavorites()
-    const strip = await screen.findByTestId('favorites-recent')
-    expect(calls.some(c => c.url === `/api/favorites/recent?provider_id=${PROVIDER_ID}`)).toBe(true)
-    expect(within(strip).getByTestId('recent-f-tirz')).toHaveTextContent('Tirzepatide 10mg/mL Injectable')
-    expect(within(strip).getByTestId('recent-f-tirz')).toHaveTextContent('25 units (2.5 mg) weekly · Strive Pharmacy')
-    // Semaglutide 20 units at Strive is already on the Semaglutide card.
-    expect(within(strip).getByTestId('recent-formulation-sema')).toHaveTextContent('★ Favorite')
-
-    fireEvent.click(within(strip).getByText('Tirzepatide 10mg/mL Injectable'))
-    expect(onLoadRecent).toHaveBeenCalledWith(RECENT[0])
-  })
-
-  it('"Make favorite" creates a practice card from the recent dose', async () => {
-    renderPanel()
-    await openFavorites()
-    fireEvent.click(await screen.findByRole('button', { name: 'Make Tirzepatide 10mg/mL Injectable a favorite' }))
-    await waitFor(() => expect(calls.some(c => c.method === 'POST')).toBe(true))
-    expect(calls.find(c => c.method === 'POST')!.body).toEqual({
-      provider_id: PROVIDER_ID, formulation_id: 'f-tirz', pharmacy_id: 'pharmacy-strive', patient_id: null,
-      label: 'Tirzepatide 10mg/mL Injectable', dose_presets: [preset('25')],
-    })
-    expect(await screen.findByTestId('favorite-fav-tirz')).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByTestId('recent-f-tirz')).toHaveTextContent('★ Favorite'))
-  })
-})

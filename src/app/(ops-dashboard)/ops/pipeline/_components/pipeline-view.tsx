@@ -32,6 +32,7 @@ import {
   EMPTY_PIPELINE_FILTERS, hasPipelineFilters, matchesPipelineFilters, pipelineFiltersToSearchParams,
   type PipelineFilters,
 } from '@/lib/ops/pipeline-filters'
+import { userMessage } from '@/lib/errors/user-message'
 
 // ── Status lane config ───────────────────────────────────────
 
@@ -255,7 +256,7 @@ export function PipelineView({
       }
       void refetch()
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Action failed')
+      setActionError(userMessage(err, 'Action failed'))
     }
   }, [refetch])
 

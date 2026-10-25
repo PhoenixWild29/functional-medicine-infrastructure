@@ -256,17 +256,19 @@ export default async function SettingsPage() {
             </div>
           )}
 
-          {/* Notifications — placeholder section */}
+          {/* Notifications: what CompoundIQ sends today, and to whom */}
           <div id="notifications" className="scroll-mt-6">
-            <section className="rounded-lg border border-border bg-card p-6 space-y-3">
+            <section className="rounded-lg border border-border bg-card p-6 space-y-3" data-testid="settings-notifications">
               <h2 className="text-base font-semibold text-foreground">Notifications</h2>
               <p className="text-sm text-muted-foreground">
-                Email and SMS notification preferences are not yet configurable.
-                Automatic order status emails and texts are not turned on yet.
+                The texts CompoundIQ sends your patients (payment links, reminders, plan and intake links) and what your team sees in the app. CompoundIQ does not send email.
               </p>
-              <p className="inline-flex items-center rounded-md border border-border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
-                Coming soon: configurable preferences
-              </p>
+              <Link
+                href="/settings/notifications"
+                className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
+              >
+                See what is sent
+              </Link>
             </section>
           </div>
 

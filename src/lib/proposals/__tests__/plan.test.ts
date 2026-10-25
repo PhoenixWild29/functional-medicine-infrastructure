@@ -144,6 +144,56 @@ describe('verifyPlanDob', () => {
     expect(await verifyPlanDob(d.client as never, proposal(), '15/04/1985', NOW)).toEqual({ ok: false, reason: 'wrong', remaining: 4 })
   })
 
+  // Wrong guesses sent at once all read the same dob_failures. The count is
+  // a compare-and-set on that value, so all but one used to update nothing
+  // and were never counted: a burst of guesses cost one try. Each lost race
+  // now re-reads the count and tries again, so every wrong date counts.
+  it('a wrong date that loses the race to another wrong date is still counted (re-read, then counted on the new value)', async () => {
+    let updates = 0
+    const d = db(c => {
+      if (c.table === 'treatment_proposals' && c.op === 'update') {
+        updates += 1
+        // The first compare-and-set finds dob_failures already moved on.
+        return updates === 1 ? { data: [] } : { data: [{ dob_failures: 3 }] }
+      }
+      if (c.table === 'treatment_proposals' && c.op === 'select') return { data: { dob_failures: 2, locked_at: null } }
+      return undefined
+    })
+    expect(await verifyPlanDob(d.client as never, proposal({ dob_failures: 1 }), '1985-04-16', NOW)).toEqual({ ok: false, reason: 'wrong', remaining: 2 })
+    const upd = d.to('treatment_proposals', 'update')
+    expect(upd).toHaveLength(2)
+    expect(upd[0]!.filters).toEqual(expect.objectContaining({ dob_failures: 1 }))
+    expect(upd[1]!.payload).toEqual(expect.objectContaining({ dob_failures: 3 }))
+    expect(upd[1]!.filters).toEqual(expect.objectContaining({ proposal_id: PROPOSAL, dob_failures: 2 }))
+  })
+
+  it('a lost race that reaches the 5th failure locks the link', async () => {
+    let updates = 0
+    const d = db(c => {
+      if (c.table === 'treatment_proposals' && c.op === 'update') { updates += 1; return updates === 1 ? { data: [] } : { data: [{ dob_failures: 5 }] } }
+      if (c.table === 'treatment_proposals' && c.op === 'select') return { data: { dob_failures: 4, locked_at: null } }
+      return undefined
+    })
+    expect(await verifyPlanDob(d.client as never, proposal({ dob_failures: 3 }), '1985-04-16', NOW)).toEqual({ ok: false, reason: 'locked' })
+    expect(d.to('treatment_proposals', 'update')[1]!.payload).toEqual(expect.objectContaining({ dob_failures: 5, locked_at: NOW.toISOString() }))
+  })
+
+  it('locked by another request meanwhile: locked, nothing more counted', async () => {
+    const d = db(c => {
+      if (c.table === 'treatment_proposals' && c.op === 'update') return { data: [] }
+      if (c.table === 'treatment_proposals' && c.op === 'select') return { data: { dob_failures: 5, locked_at: '2026-10-24T11:59:00Z' } }
+      return undefined
+    })
+    expect(await verifyPlanDob(d.client as never, proposal({ dob_failures: 3 }), '1985-04-16', NOW)).toEqual({ ok: false, reason: 'locked' })
+    expect(d.to('treatment_proposals', 'update')).toHaveLength(1)
+  })
+
+  it('the right date while other guesses locked the link meanwhile: locked, not the plan', async () => {
+    const d = db(c => (c.table === 'treatment_proposals' && c.op === 'select' ? { data: { dob_failures: 5, locked_at: '2026-10-24T11:59:00Z' } } : undefined))
+    expect(await verifyPlanDob(d.client as never, proposal({ dob_failures: 2 }), '1985-04-15', NOW)).toEqual({ ok: false, reason: 'locked' })
+    expect(events(d)).toEqual([])
+  })
+
   it('a database error is "unavailable" and counts nothing', async () => {
     const d = db(c => (c.table === 'patients' ? { error: { message: 'down' } } : undefined))
     expect(await verifyPlanDob(d.client as never, proposal(), '1985-04-15', NOW)).toEqual({ ok: false, reason: 'unavailable' })

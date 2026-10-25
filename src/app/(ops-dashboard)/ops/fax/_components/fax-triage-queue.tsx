@@ -18,6 +18,7 @@ import { useState, useMemo } from 'react'
 import { useQuery }          from '@tanstack/react-query'
 import type { FaxEntry, FaxQueueResponse, FaxStatus } from '@/app/api/ops/fax/route'
 import { SkeletonTableRow }  from '@/components/ui/skeleton'
+import { userMessage } from '@/lib/errors/user-message'
 
 // ── Status config ─────────────────────────────────────────────
 
@@ -121,7 +122,7 @@ export function FaxTriageQueue({ initialData }: Props) {
         setManualMatchId('')
       }
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : `${action} failed`)
+      setActionError(userMessage(err, `${action} failed`))
     } finally {
       setLoadingKey(null)
     }

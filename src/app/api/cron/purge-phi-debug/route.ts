@@ -31,10 +31,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const RETENTION_HOURS = 24
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const denied = cronAuthFailure(request, 'purge-phi-debug')
   if (denied) return denied
 
@@ -64,3 +65,5 @@ export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/cron/purge-phi-debug', getHandler)

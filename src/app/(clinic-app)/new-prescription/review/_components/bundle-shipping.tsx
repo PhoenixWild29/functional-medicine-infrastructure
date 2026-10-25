@@ -206,28 +206,5 @@ export function ShippingLines({ shipping, absorbShipping, rates, unpriced = new 
   )
 }
 
-export function MultiPharmacyNoticeBanner({
-  notice,
-  disabled,
-  onReroute,
-}: {
-  notice: MultiPharmacyNotice
-  disabled: boolean
-  onReroute: () => void
-}) {
-  return (
-    <div role="status" data-testid="multi-pharmacy-notice" className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/20">
-      <p className="text-xs text-amber-900 dark:text-amber-200" data-testid="multi-pharmacy-message">{notice.message}</p>
-      {notice.offerReroute && notice.plan && (
-        <button
-          type="button"
-          onClick={onReroute}
-          disabled={disabled}
-          className="mt-2 rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
-        >
-          Route all to {notice.plan.targetPharmacyName}
-        </button>
-      )}
-    </div>
-  )
-}
+// One warning component for Review, the price step and the sign page.
+export { MultiPharmacyNoticeBanner } from '../../_components/multi-pharmacy-notice'

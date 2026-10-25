@@ -38,17 +38,17 @@ function rowFor(table: string): Record<string, unknown> | null {
       stripe_connect_status: 'ACTIVE', stripe_connect_account_id: 'acct_test', absorb_shipping: false,
     }
     case 'formulations': return {
-      formulation_id: 'formulation-sema', name: 'Semaglutide 5mg/mL Injectable', salt_forms: { ingredients: { common_name: 'Fixture', dea_schedule: null, compounding_status: 'approved_drug_component' } }, 
+      formulation_id: 'f5000000-0000-4000-8000-000000000001', name: 'Semaglutide 5mg/mL Injectable', salt_forms: { ingredients: { common_name: 'Fixture', dea_schedule: null, compounding_status: 'approved_drug_component' } }, 
       concentration: '5mg/mL', dosage_forms: { name: 'Injectable Solution' },
     }
     case 'pharmacy_formulations': return { pharmacy_formulation_id: 'pf-1', wholesale_price: 95 }
     case 'pharmacies': return {
-      pharmacy_id: 'pharmacy-strive', name: 'Strive Pharmacy', slug: 'strive',
+      pharmacy_id: 'a4000000-0000-4000-8000-000000000001', name: 'Strive Pharmacy', slug: 'strive',
       integration_tier: 'TIER_4_FAX', shipping_fee_standard: 9, shipping_fee_cold_chain: 22,
       free_shipping_threshold: null, is_active: true, deleted_at: null,
     }
-    case 'pharmacy_formulation_packages': return { id: 'pkg-1', package_label: '1 mL vial', wholesale_price: 95 }
-    case 'pharmacy_state_licenses': return { pharmacy_id: 'pharmacy-strive', expiration_date: '2099-12-31', sterile_compounding: true }
+    case 'pharmacy_formulation_packages': return { id: 'b1000000-0000-4000-8000-000000000001', package_label: '1 mL vial', wholesale_price: 95 }
+    case 'pharmacy_state_licenses': return { pharmacy_id: 'a4000000-0000-4000-8000-000000000001', expiration_date: '2099-12-31', sterile_compounding: true }
     default: return null
   }
 }

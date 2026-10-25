@@ -321,3 +321,48 @@ describe('batch sign page — prescriber verification beside controlled substanc
     expect(sendButton()).toBeDisabled()
   })
 })
+
+// Coverage gap 9 (Gina Rooks NP): allergies or NKDA before signing. Sign
+// all and the chosen lines of a protocol sign here. Sign & Send stays
+// enabled; pressing it for a patient with neither recorded opens the prompt
+// with the allergy entry in place, sends nothing, and once saved, signing
+// continues.
+describe('batch sign page: allergies or NKDA before signing', () => {
+  function mockWithPatch() {
+    let saved: Record<string, unknown> | null = null
+    global.fetch = jest.fn(async (url: unknown, init?: RequestInit) => {
+      const u = String(url)
+      const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : null
+      calls.push({ url: u, body })
+      const res = (status: number, b: unknown) => ({ ok: status < 400, status, json: async () => b }) as unknown as Response
+      if (u.includes('/allergies') && init?.method === 'PATCH') {
+        saved = { allergies: body?.['nkda'] ? [] : body?.['allergies'], nkda: body?.['nkda'] === true, allergiesUpdatedAt: '2026-10-25T12:00:00Z' }
+        return res(200, saved)
+      }
+      if (u.includes('/allergies')) return res(200, saved ?? NOT_RECORDED)
+      if (u.includes('/api/interactions')) return res(200, { data: [] })
+      if (u.endsWith('/api/orders/batch-sign/check')) return res(200, { lines: [], problems: [] })
+      if (u.endsWith('/api/orders/batch-sign')) return res(200, { signedAt: 'now', patients: [] })
+      return res(200, {})
+    }) as unknown as typeof fetch
+  }
+
+  it('pressing Sign & Send opens the prompt with the allergy entry and sends nothing; marking NKDA saves and signs', async () => {
+    mockWithPatch()
+    renderForm([patient([line(1)])], ['o-1'])
+    await screen.findByText('Allergies: not recorded', undefined, { timeout: 5000 })
+    await signPad()
+    await waitFor(() => expect(sendButton()).toBeEnabled())
+    fireEvent.click(sendButton())
+
+    const prompt = await screen.findByTestId('allergies-required-prompt')
+    expect(prompt).toHaveTextContent('Record allergies or mark NKDA before signing')
+    expect(calls.some(c => c.url.endsWith('/api/orders/batch-sign'))).toBe(false)
+
+    fireEvent.click(within(prompt).getByLabelText('No known drug allergies (NKDA)'))
+    fireEvent.click(within(prompt).getByRole('button', { name: 'Save allergies' }))
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/dashboard?sent=1'))
+    expect(calls.filter(c => c.url.endsWith('/api/orders/batch-sign'))).toHaveLength(1)
+  })
+})

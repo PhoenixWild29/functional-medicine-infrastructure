@@ -27,7 +27,6 @@ import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition }       from '@/lib/orders/cas-transition'
-import { insertStatusHistory } from '@/lib/orders/status-history'
 import { createStripeClient }  from '@/lib/stripe/client'
 import { decideRefund, pendingRefund, issueRefund, refundMetadata, recordPendingRefund, refundedWithRefund } from '@/lib/refunds/refund'
 import { recordRefundLedger } from '@/lib/payments/ledger'
@@ -35,12 +34,36 @@ import { routeOrder, submitQueuedFax } from '@/lib/adapters/routing-engine'
 import { pharmacySubmissionsEnabled, PHARMACY_SUBMISSIONS_OFF_MESSAGE } from '@/lib/adapters/submission-switch'
 import type { OrderStatusEnum } from '@/types/database.types'
 import { getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { z } from 'zod'
+import { MAX_NAME, UUID_RE, badRequest, parseInput, uuid } from '@/lib/api/input'
+import { readObjectBody } from '@/app/api/ops/_lib/body'
 
 interface Params { params: Promise<{ orderId: string }> }
 
 const MAX_REROUTES = 2  // HC-06
 
-export async function POST(request: NextRequest, { params }: Params): Promise<NextResponse> {
+const ACTIONS = new Set(['claim', 'release', 'add_tracking', 'cancel_refund', 'retry_submission', 'force_fax', 'retry_fax', 'reroute'])
+
+// Each action's own fields: a string within its bound (an email for the
+// assignee; tracking number and carrier 200) and, for reroute, an optional
+// pharmacy id. A missing field keeps the message its case below gives.
+const MAX_EMAIL = 254
+const optionalText = (max: number) => z.string().max(max).optional().nullable()
+const ACTION_FIELDS: Record<string, z.ZodType> = {
+  claim:        z.object({ opsAssignee: optionalText(MAX_EMAIL) }),
+  add_tracking: z.object({ trackingNumber: optionalText(MAX_NAME), carrier: optionalText(MAX_NAME) }),
+  reroute:      z.object({ pharmacyId: z.union([uuid(), z.literal(''), z.null()]).optional() }),
+}
+
+function invalidActionFields(action: string, body: Record<string, unknown>): NextResponse | null {
+  const schema = ACTION_FIELDS[action]
+  if (!schema) return null
+  const r = parseInput(schema, body)
+  return r.ok ? null : r.response
+}
+
+async function postHandler(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request)
   if (crossSite) return crossSite
   const { orderId } = await params
@@ -57,18 +80,23 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
   if (!orderId) {
     return NextResponse.json({ error: 'Missing orderId' }, { status: 400 })
   }
+  // An 8-4-4-4-12 hex id: a malformed one reached Postgres (22P02) as a 500.
+  if (!UUID_RE.test(orderId)) return badRequest('Invalid request', ['orderId'])
 
-  let body: Record<string, unknown>
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
+  const parsed = await readObjectBody(request)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
 
-  const action = body['action'] as string | undefined
-  if (!action) {
+  const action = body['action']
+  if (typeof action !== 'string' || !action) {
     return NextResponse.json({ error: 'Missing action' }, { status: 400 })
   }
+  // The action and its fields are checked before the order is read.
+  if (!ACTIONS.has(action)) {
+    return NextResponse.json({ error: `Unknown action: ${action.slice(0, 64)}` }, { status: 400 })
+  }
+  const fieldsInvalid = invalidActionFields(action, body)
+  if (fieldsInvalid) return fieldsInvalid
 
   const actorEmail = user.email ?? 'ops_admin'
   const actor      = `ops:${actorEmail}`
@@ -158,6 +186,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
         expectedStatus: 'READY_TO_SHIP',
         newStatus:      'SHIPPED',
         actor,
+        actorRole: 'ops_admin',
         metadata:       { tracking_number: trackingNumber, carrier },
       })
 
@@ -213,6 +242,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
           expectedStatus: currentStatus,
           newStatus:      'CANCELLED',
           actor,
+          actorRole: 'ops_admin',
           metadata:       { reason: 'ops_cancel_no_payment' },
         })
         if (cancelled.wasAlreadyTransitioned) {
@@ -231,6 +261,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
           expectedStatus: currentStatus,
           newStatus:      'REFUND_PENDING',
           actor,
+          actorRole: 'ops_admin',
           metadata:       { reason: 'ops_cancel_refund', pi_id: target.paymentIntentId, ...refundMetadata(target) },
         })
         // BLK-04 kept: only the request that made the transition refunds.
@@ -275,6 +306,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
         expectedStatus: 'REFUND_PENDING',
         newStatus:      'REFUNDED',
         actor,
+        actorRole: 'ops_admin',
         metadata:       { refund_id: refund.refundId },
       })
       if (refundedCas.wasAlreadyTransitioned) {
@@ -314,6 +346,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
         expectedStatus: 'SUBMISSION_FAILED',
         newStatus:      'REROUTE_PENDING',
         actor,
+        actorRole: 'ops_admin',
         metadata:       { reason: 'ops_retry_submission' },
       })
       if (claimed.wasAlreadyTransitioned) {
@@ -366,6 +399,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
         expectedStatus: currentStatus,
         newStatus:      'FAX_QUEUED',
         actor,
+        actorRole: 'ops_admin',
         metadata:       { reason: action === 'force_fax' ? 'ops_force_fax' : 'ops_retry_fax' },
       })
       if (claimed.wasAlreadyTransitioned) {
@@ -407,40 +441,33 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
       const newPharmacyId = body['pharmacyId'] as string | undefined
 
       // BLK-05: Single atomic CAS UPDATE — combines status transition + reroute_count increment
-      // + optional pharmacy_id change in one DB operation to prevent TOCTOU race where
-      // reroute_count increments without the corresponding status change succeeding.
-      const { data: rerouteData, error: rerouteErr } = await supabase
-        .from('orders')
-        .update({
-          status:        'REROUTE_PENDING',
-          reroute_count: rerouteCount + 1,
-          ...(newPharmacyId ? { pharmacy_id: newPharmacyId } : {}),
-          updated_at: new Date().toISOString(),
+      // + optional pharmacy_id change in one DB operation (casTransition's patch) to prevent
+      // TOCTOU race where reroute_count increments without the corresponding status change
+      // succeeding. casTransition writes the audit record.
+      let rerouted: Awaited<ReturnType<typeof casTransition>>
+      try {
+        rerouted = await casTransition({
+          orderId,
+          expectedStatus: currentStatus,
+          newStatus:      'REROUTE_PENDING',
+          actor,
+          actorRole:      'ops_admin',
+          patch: {
+            reroute_count: rerouteCount + 1,
+            ...(newPharmacyId ? { pharmacy_id: newPharmacyId } : {}),
+          },
+          metadata: { reason: 'ops_reroute', reroute_count: rerouteCount + 1, new_pharmacy_id: newPharmacyId ?? null },
         })
-        .eq('order_id', orderId)
-        .eq('status', currentStatus)  // CAS predicate — atomic with the status change above
-        .select('order_id')
-
-      if (rerouteErr) {
-        console.error(`[ops/action] reroute update failed | order=${orderId}:`, rerouteErr.message)
+      } catch (err) {
+        console.error(`[ops/action] reroute update failed | order=${orderId}:`, err instanceof Error ? err.message : err)
         return NextResponse.json({ error: 'Reroute failed' }, { status: 500 })
       }
 
-      if ((rerouteData?.length ?? 0) === 0) {
+      if (rerouted.wasAlreadyTransitioned) {
         // CAS no-op: order already moved past currentStatus — safe idempotent return
         console.info(`[ops/action] reroute no-op (CAS) | order=${orderId}`)
         return NextResponse.json({ ok: true })
       }
-
-      // Write audit record (non-fatal — transition already committed above;
-      // a failure alerts ops)
-      await insertStatusHistory(supabase, {
-        order_id:   orderId,
-        old_status: currentStatus,
-        new_status: 'REROUTE_PENDING',
-        changed_by: actor,
-        metadata:   { reason: 'ops_reroute', reroute_count: rerouteCount + 1, new_pharmacy_id: newPharmacyId ?? null },
-      }, 'ops:reroute')
 
       console.info(`[ops/action] reroute | order=${orderId} | count=${rerouteCount + 1}`)
       return NextResponse.json({ ok: true })
@@ -479,3 +506,5 @@ async function recordRefund(
     console.error(`[ops/action] ledger: refund ${refundId} not recorded | order=${orderId}:`, err instanceof Error ? err.message : err)
   }
 }
+
+export const POST = withApiErrors('/api/ops/orders/[orderId]/action', postHandler)

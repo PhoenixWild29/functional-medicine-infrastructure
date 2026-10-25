@@ -28,7 +28,7 @@ import {
   dispenseInPackageUnit,
   type PackageOption,
 } from './rx-details'
-import { computeBundleShipping, type PharmacyShippingRates } from './shipping'
+import { computeBundleShipping, type PharmacyShippingRates, type ShippingItem } from './shipping'
 
 export interface RerouteLine {
   id:              string
@@ -231,6 +231,41 @@ export interface MultiPharmacyNotice {
 const money = (cents: number): string => '$' + (Math.abs(cents) / 100).toFixed(2)
 
 /**
+ * The words every multi-pharmacy warning opens with, wherever it is shown:
+ * "2 pharmacies → 2 shipping charges ($30.00)". The pharmacies and charges
+ * are counted from the lines with computeBundleShipping, so a waived
+ * pharmacy is not counted as a charge.
+ */
+function multiPharmacyHead(lines: ReadonlyArray<ShippingItem>, rates: ReadonlyMap<string, PharmacyShippingRates>) {
+  const pharmacyCount = new Set(lines.map(l => l.pharmacyId)).size
+  const current = computeBundleShipping(lines, rates)
+  const charges = current.byPharmacy.filter(p => p.feeCents > 0).length
+  return {
+    pharmacyCount,
+    current,
+    head: `${pharmacyCount} pharmacies → ${charges} shipping charge${charges === 1 ? '' : 's'} (${money(current.totalCents)})`,
+  }
+}
+
+/**
+ * The multi-pharmacy warning where no re-route can be offered: the price
+ * step (a line being added at another pharmacy than the session's) and the
+ * sign page (saved drafts). The same words as Review's notice opens with;
+ * null for lines at one pharmacy.
+ */
+export function multiPharmacyWarning(
+  lines: ReadonlyArray<ShippingItem>,
+  rates: ReadonlyMap<string, PharmacyShippingRates> | ReadonlyArray<PharmacyShippingRates>,
+): MultiPharmacyNotice | null {
+  const rateMap = rates instanceof Map
+    ? rates as ReadonlyMap<string, PharmacyShippingRates>
+    : new Map((rates as ReadonlyArray<PharmacyShippingRates>).map(r => [r.pharmacyId, r]))
+  const { pharmacyCount, current, head } = multiPharmacyHead(lines, rateMap)
+  if (pharmacyCount < 2) return null
+  return { pharmacyCount, currentShippingCents: current.totalCents, plan: null, offerReroute: false, message: `${head}.` }
+}
+
+/**
  * The Review notice for a session spanning more than one pharmacy, or null
  * for a single-pharmacy session. Candidates are the session's own
  * pharmacies.
@@ -243,9 +278,10 @@ export function multiPharmacyNotice(
   const pharmacyIds = [...new Set(lines.map(l => l.pharmacyId))]
   if (pharmacyIds.length < 2) return null
 
-  const current = computeBundleShipping(lines.map(l => ({ pharmacyId: l.pharmacyId, shippingType: l.shippingType, wholesaleCents: l.wholesaleCents })), rates)
-  const charges = current.byPharmacy.filter(p => p.feeCents > 0).length
-  const head = `${pharmacyIds.length} pharmacies → ${charges} shipping charge${charges === 1 ? '' : 's'} (${money(current.totalCents)})`
+  const { current, head } = multiPharmacyHead(
+    lines.map(l => ({ pharmacyId: l.pharmacyId, shippingType: l.shippingType, wholesaleCents: l.wholesaleCents })),
+    rates,
+  )
 
   const plans = pharmacyIds
     .map(id => planReroute(lines, id, offersByLine, rates))

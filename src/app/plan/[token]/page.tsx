@@ -19,33 +19,20 @@ export const dynamic = 'force-dynamic'
 export const metadata: Metadata = {
   title: 'Your treatment plan',
   robots: { index: false, follow: false },
+  referrer: 'no-referrer',
 }
 
-const CLOSED: Record<'not_found' | 'expired' | 'locked' | 'signed' | 'closed' | 'unavailable', { title: string; body: string }> = {
-  not_found: {
-    title: 'This link is not valid',
-    body: 'Please check that you opened the whole link from your clinic, or ask them to send it again.',
-  },
-  expired: {
-    title: 'This link has expired',
-    body: 'For your security, plan links work for 7 days. Please contact your clinic and ask them to send it again.',
-  },
-  locked: {
-    title: 'This link is locked',
-    body: 'Too many incorrect dates of birth were entered. Please contact your clinic.',
-  },
-  signed: {
-    title: 'Your provider has approved your plan',
-    body: 'Your clinic will send you a secure payment link. If you have questions, please contact your clinic.',
-  },
-  closed: {
-    title: 'This plan is no longer open',
-    body: 'Please contact your clinic if you have questions about your treatment.',
-  },
-  unavailable: {
-    title: 'This page could not be opened right now',
-    body: 'Please try again in a few minutes. Your link still works.',
-  },
+// An unknown, expired, locked, signed or closed link shows one neutral
+// page, word for word the same, so the page never says whether a link
+// existed or what became of it. A database error is the only other page:
+// it says nothing about the link.
+const NOT_ACTIVE = {
+  title: 'This link is no longer active',
+  body: 'Plan links stop working after 7 days, once your plan is settled, or after too many incorrect dates of birth. Please contact your clinic if you need a new link or have questions.',
+}
+const UNAVAILABLE = {
+  title: 'This page could not be opened right now',
+  body: 'Please try again in a few minutes.',
 }
 
 export default async function PlanPage({ params }: { params: Promise<{ token: string }> }) {
@@ -56,7 +43,7 @@ export default async function PlanPage({ params }: { params: Promise<{ token: st
     return <PlanFlow token={token} logoUrl={plan.logoUrl} />
   }
 
-  const copy = CLOSED[plan.state]
+  const copy = plan.state === 'unavailable' ? UNAVAILABLE : NOT_ACTIVE
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4 py-12 text-center">
       <h1 className="text-2xl font-semibold text-foreground">{copy.title}</h1>

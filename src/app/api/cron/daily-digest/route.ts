@@ -31,8 +31,9 @@ import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendSlackAlert } from '@/lib/slack/client'
 import { buildOpsAlert, type SafeSlackPayload } from '@/lib/slack/ops-alert'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const denied = cronAuthFailure(request, 'daily-digest')
   if (denied) return denied
 
@@ -319,3 +320,5 @@ function buildDailyDigestAlert(metrics: Record<string, unknown>, unavailableMetr
     },
   })
 }
+
+export const GET = withApiErrors('/api/cron/daily-digest', getHandler)

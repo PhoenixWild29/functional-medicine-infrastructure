@@ -26,12 +26,13 @@
 // frozen (by prevent_snapshot_mutation trigger) at AWAITING_PAYMENT.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { resolveProtocolLinkage, type ProtocolLinkage } from '@/lib/protocols/resolve-instance'
-import { rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
+import { dispenseCount, rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
 import { lineSourceKind, resolveLine } from '@/lib/orders/resolve-line'
 import { writeDraftAudit } from '@/lib/orders/draft-edit'
 import { checkProviderOwnsDraft } from '@/lib/orders/provider-draft-guard'
@@ -40,9 +41,14 @@ import { parseTitrationSteps, isSigMode, type SigMode } from '@/lib/orders/titra
 import { cyclePatternFrom } from '@/lib/orders/cycling'
 import { refillAllowance, refillsUsed } from '@/lib/orders/refill'
 import type { Json } from '@/types/database.types'
-import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { getUserClinicId, getUserRole, isClinicStaffRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { parseInput } from '@/lib/api/input'
+import { createOrderBodySchema } from '@/lib/orders/line-body-schema'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   // Auth gate
   const supabaseAuth = await createServerClient()
   // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
@@ -50,6 +56,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  // Clinic staff only: any other role, or none, is refused before anything is read.
+  if (!isClinicStaffRole(getUserRole(user))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const clinicId = getUserClinicId(user) ?? null
 
@@ -66,7 +74,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // formulation. The cascading prescription builder produces a
   // formulationId; the legacy pharmacy-search flow produces a
   // catalogItemId. Exactly one must be set.
-  let body: {
+  type CreateOrderBody = {
     patientId:      string
     providerId:     string
     catalogItemId?: string | null
@@ -102,11 +110,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     appendedToOrderId?: string | null
   }
 
+  let raw: unknown
   try {
-    body = await request.json()
+    raw = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
+  // Ids, text bounds and the sig mode (lib/orders/line-body-schema), before
+  // anything is read. The prescription rules below keep their own messages.
+  const shape = parseInput(createOrderBodySchema, raw)
+  if (!shape.ok) return shape.response
+  const body = shape.data as unknown as CreateOrderBody
 
   const { patientId, providerId, catalogItemId, formulationId, pharmacyId, retailCents, sigText, patientState, protocolId, rxDetails, dose, frequencyCode, quantityLabel, packageId, packageCount, appendedToOrderId } = body
 
@@ -125,7 +139,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     ? body.refillOfOrderId.trim()
     : null
 
-  if (!patientId || !providerId || !pharmacyId || !sigText || !patientState) {
+  if (!patientId || !providerId || !pharmacyId || typeof sigText !== 'string' || !sigText || !patientState) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
@@ -361,7 +375,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       clinic_id:                clinicId,
       pharmacy_id:              pharmacyId,
       status:                   'DRAFT',
-      quantity:                 1,
+      // What the pharmacy dispenses, counted as the Dispense line states it.
+      quantity:                 dispenseCount({ ...rxDetailColumns, ...line.package }),
       wholesale_price_snapshot: wholesalePrice,
       retail_price_snapshot:    retailPrice,
       medication_snapshot:      medicationSnapshot,
@@ -445,3 +460,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   return NextResponse.json({ orderId: order.order_id }, { status: 201 })
 }
+
+export const POST = withApiErrors('/api/orders', postHandler)

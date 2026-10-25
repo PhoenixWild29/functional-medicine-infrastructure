@@ -50,10 +50,10 @@ it('an unknown tier is ignored, not sent to the database (where it fails the enu
 })
 
 it('clinic, pharmacy and status filters apply', async () => {
-  await call('clinicId=c-1&pharmacyId=ph-1&statuses=FAX_FAILED,BOGUS')
+  await call('clinicId=c1000000-0000-0000-0000-000000000001&pharmacyId=a1000000-0000-0000-0000-000000000004&statuses=FAX_FAILED,BOGUS')
   const f = ordersQuery().filters
-  expect(f['clinic_id']).toBe('c-1')
-  expect(f['pharmacy_id']).toBe('ph-1')
+  expect(f['clinic_id']).toBe('c1000000-0000-0000-0000-000000000001')
+  expect(f['pharmacy_id']).toBe('a1000000-0000-0000-0000-000000000004')
   expect(f['status:in']).toEqual(['FAX_FAILED'])
 })
 
@@ -79,4 +79,10 @@ it('maps the pharmacy tier onto each order', async () => {
   })
   const body = await (await call('tier=TIER_4_FAX')).json() as { orders: Array<{ orderId: string; pharmacyTier: string }> }
   expect(body.orders).toEqual([expect.objectContaining({ orderId: 'o-1', pharmacyTier: 'TIER_4_FAX', pharmacyName: 'Fax Rx' })])
+})
+
+it('a malformed clinic or pharmacy id is 400 and reads nothing', async () => {
+  expect((await call('clinicId=c-1')).status).toBe(400)
+  expect((await call('pharmacyId=ph-1')).status).toBe(400)
+  expect(db.calls).toHaveLength(0)
 })

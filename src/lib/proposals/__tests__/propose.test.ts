@@ -291,10 +291,12 @@ describe('cancel', () => {
     expect(proposals(db)[0]).toMatchObject({ status: 'cancelled', cancelled_at: NOW.toISOString(), token_hash: null })
     expect(proposalLinkState(current(db), token, NOW)).toBe('not_found')
     expect(events(db)).toEqual(['created', 'sent', 'cancelled'])
-    expect(historyMock).toHaveBeenCalledWith(expect.anything(), [
-      expect.objectContaining({ order_id: id(1), old_status: 'DRAFT', new_status: 'CANCELLED', changed_by: USER_CHEN }),
-      expect.objectContaining({ order_id: id(2), old_status: 'DRAFT', new_status: 'CANCELLED', changed_by: USER_CHEN }),
-    ], 'proposal-cancel')
+    // Each line went through casTransition as the caller (B-2026-10-25-08).
+    for (const n of [1, 2]) {
+      expect(historyMock).toHaveBeenCalledWith(expect.anything(),
+        expect.objectContaining({ order_id: id(n), old_status: 'DRAFT', new_status: 'CANCELLED', changed_by: USER_CHEN, metadata: expect.objectContaining({ reason: 'proposal_cancelled' }) }),
+        'casTransition')
+    }
   })
 
   it('a medical assistant cannot cancel; a cancelled proposal cannot be cancelled or sent again', async () => {

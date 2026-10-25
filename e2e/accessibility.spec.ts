@@ -103,8 +103,8 @@ test.describe('Accessibility: WCAG 2.1 AA (C10)', () => {
 
   test('checkout, expired link: no violations; reflows at 320px', async ({ page }) => {
     await page.goto('/checkout/invalid-token-that-does-not-exist')
-    await expect(page.getByRole('heading', { name: /link has expired/i })).toBeVisible({ timeout: 15_000 })
-    await expect(page).toHaveTitle('Payment link expired')
+    await expect(page.getByRole('heading', { name: /link is no longer active/i })).toBeVisible({ timeout: 15_000 })
+    await expect(page).toHaveTitle('Payment link')
     expect(await axeViolations(page)).toEqual([])
     await expectReflowsAt320(page)
   })
@@ -306,9 +306,9 @@ test.describe('Accessibility: the patient plan link (WCAG 2.1 AA)', () => {
   })
 
   for (const [state, title] of [
-    ['locked', 'This link is locked'],
-    ['expired', 'This link has expired'],
-    ['signed', 'Your provider has approved your plan'],
+    ['locked', 'This link is no longer active'],
+    ['expired', 'This link is no longer active'],
+    ['signed', 'This link is no longer active'],
   ] as const) {
     test(`${state}: no violations; reflows at 320px`, async ({ page }) => {
       await page.goto(`/plan/${tokens[state]}`)
@@ -320,7 +320,7 @@ test.describe('Accessibility: the patient plan link (WCAG 2.1 AA)', () => {
 
   test('not a valid link: no violations; reflows at 320px', async ({ page }) => {
     await page.goto(`/plan/${'Z'.repeat(43)}`)
-    await expect(page.getByRole('heading', { level: 1, name: 'This link is not valid' })).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('heading', { level: 1, name: 'This link is no longer active' })).toBeVisible({ timeout: 15_000 })
     expect(await axeViolations(page)).toEqual([])
     await expectReflowsAt320(page)
   })

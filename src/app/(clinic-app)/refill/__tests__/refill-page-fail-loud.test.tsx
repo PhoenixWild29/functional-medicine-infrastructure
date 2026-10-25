@@ -73,7 +73,9 @@ describe('/refill when the orders query fails', () => {
 
     expect(screen.getByTestId('refill-load-error')).toHaveTextContent('Prescriptions could not be loaded for refill.')
     expect(screen.getByTestId('refill-load-error')).toHaveTextContent('This is an error, not an empty list')
-    expect(screen.getByTestId('refill-load-error-detail')).toHaveTextContent('42703: column orders.example does not exist')
+    expect(screen.getByTestId('refill-load-error-detail')).toHaveTextContent('Error code: 42703')
+    // The database's own message is logged, never shown.
+    expect(screen.queryByText(/column orders\.example does not exist/)).toBeNull()
     expect(screen.queryByTestId('refill-empty')).not.toBeInTheDocument()
   })
 

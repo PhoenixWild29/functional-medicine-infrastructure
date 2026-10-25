@@ -90,8 +90,8 @@ export default async function RefillPage(
   // PostgREST error into "No patient has a prescription to refill yet",
   // which a provider cannot tell from a real empty state — and nothing
   // reached the logs. Log the whole error and say so on the page.
-  // PostgREST errors carry schema-level text (codes, column names), never
-  // patient data, so the code and message are safe to show staff.
+  // The page shows only the PostgREST error code (stable, schema-level);
+  // the message stays in the log, never on screen.
   const loadError = ordersResult.error ?? providersResult.error
   if (loadError) {
     const e = loadError
@@ -116,7 +116,7 @@ export default async function RefillPage(
               persists, report the code below.
             </p>
             <p className="mt-3 font-mono text-xs" data-testid="refill-load-error-detail">
-              {e.code ?? 'no code'}: {e.message}
+              Error code: {e.code ?? 'none'}
             </p>
           </div>
         </main>

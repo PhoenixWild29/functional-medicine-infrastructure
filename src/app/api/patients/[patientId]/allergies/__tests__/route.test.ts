@@ -183,6 +183,19 @@ describe('PATCH', () => {
     expect(updateMock).not.toHaveBeenCalled()
   })
 
+  // Coverage gap 9: a signed Rx must never go out "Allergies: Not
+  // recorded". Signing needs allergies or NKDA, so a patient's record
+  // can never be put back to "not recorded" afterwards: a save must
+  // record at least one allergy or NKDA.
+  it('400 for a save that records nothing (no allergy and no NKDA): nothing is written', async () => {
+    for (const body of [{}, { allergies: [], nkda: false }, { allergies: '  , ;' }, { allergies: null, nkda: null }]) {
+      const res = await PATCH(request(body), ctx())
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toBe('Enter at least one allergy, or mark NKDA.')
+    }
+    expect(updateMock).not.toHaveBeenCalled()
+  })
+
   it('404 when the scoped update matches no row (other clinic / deleted / unknown)', async () => {
     updateChainMock.mockResolvedValue({ data: null, error: null })
     expect((await PATCH(request({ nkda: true }), ctx())).status).toBe(404)
@@ -224,5 +237,18 @@ describe('a session that does not verify', () => {
     expect((await withForgedSession(() => GET(request(), ctx()))).status).toBe(401)
     expect((await withForgedSession(() => PATCH(request({ allergies: ['sulfa'] }), ctx()))).status).toBe(401)
     expect(updateMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('auth before the id is looked at', () => {
+  it('a malformed id from a signed-out caller is 401, not 400', async () => {
+    getSessionMock.mockResolvedValue({ data: { session: null } })
+    expect((await GET(request(), ctx('not-a-uuid'))).status).toBe(401)
+    expect((await PATCH(request({ nkda: true }), ctx('not-a-uuid'))).status).toBe(401)
+  })
+
+  it('a malformed id from ops_admin is 403', async () => {
+    getSessionMock.mockResolvedValue({ data: { session: session('ops_admin', null) } })
+    expect((await GET(request(), ctx('not-a-uuid'))).status).toBe(403)
   })
 })

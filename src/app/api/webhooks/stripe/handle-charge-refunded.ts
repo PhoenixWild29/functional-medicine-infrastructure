@@ -262,6 +262,7 @@ async function settle(deps: Deps, order: PaidOrderRow, refund: Stripe.Refund, fu
     expectedStatus: 'REFUND_PENDING',
     newStatus:      'REFUNDED',
     actor:          'stripe_webhook',
+    actorRole:      'system',
     metadata:       { refund_id: refund.id, source: 'charge.refunded' },
   })
   return cas.wasAlreadyTransitioned ? 'already_refunded' : 'refunded'

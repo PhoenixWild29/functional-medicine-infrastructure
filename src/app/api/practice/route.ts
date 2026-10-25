@@ -19,8 +19,9 @@ import { periodBounds } from '@/lib/practice/metrics'
 import { loadPracticeNumbers } from '@/lib/practice/load'
 import { loadAttention } from '@/lib/practice/attention'
 import { logPhiAccess } from '@/lib/audit/phi-access'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   const supabase = createServiceClient()
@@ -51,3 +52,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   })
   return NextResponse.json({ period, numbers, attention }, { headers: { 'Cache-Control': 'no-store' } })
 }
+
+export const GET = withApiErrors('/api/practice', getHandler)

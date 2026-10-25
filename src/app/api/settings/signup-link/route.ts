@@ -19,10 +19,11 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { createSignupLink, setSignupLinkEnabled } from '@/lib/intake/signup-links'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const FAILED = 'The sign-up link could not be changed. Try again.'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const sfSite = request.headers.get('sec-fetch-site')
   if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') {
     return NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 })
@@ -67,3 +68,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
 }
+
+export const POST = withApiErrors('/api/settings/signup-link', postHandler)

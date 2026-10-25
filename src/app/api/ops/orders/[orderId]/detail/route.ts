@@ -19,11 +19,13 @@ import { isRefundEventRow } from '@/lib/refunds/events'
 import { isPaymentEventRow, paymentFailedLabel } from '@/lib/payments/events'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserRole } from '@/lib/auth/claims'
+import { UUID_RE, badRequest } from '@/lib/api/input'
 import { deadlinePassed } from '@/lib/sla/deadline'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 interface Params { params: Promise<{ orderId: string }> }
 
-export async function GET(request: NextRequest, { params }: Params): Promise<NextResponse> {
+async function getHandler(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const { orderId } = await params
   const supabaseAuth = await createServerClient()
   // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
@@ -38,6 +40,8 @@ export async function GET(request: NextRequest, { params }: Params): Promise<Nex
   if (!orderId) {
     return NextResponse.json({ error: 'Missing orderId' }, { status: 400 })
   }
+  // An 8-4-4-4-12 hex id, before any of the four queries.
+  if (!UUID_RE.test(orderId)) return badRequest('Invalid request', ['orderId'])
 
   const supabase = createServiceClient()
   const nowMs = Date.now()
@@ -169,3 +173,5 @@ export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/ops/orders/[orderId]/detail', getHandler)
