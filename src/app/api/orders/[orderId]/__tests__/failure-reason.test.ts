@@ -106,3 +106,16 @@ it('a read error is 500 without detail', async () => {
   expect(res.status).toBe(500)
   expect(JSON.stringify(await res.json())).not.toContain('secret_x')
 })
+
+// Security review follow-up (L10): only codes the drawer knows are
+// returned. A pharmacy's own code (anything not in the plain-reason table
+// or an HTTP status) comes back as null with the generic reason.
+it.each([
+  ['INTERNAL_DB_TIMEOUT_AT_STRIVE_42', null, 'the order could not be delivered to the pharmacy'],
+  ['DRUG_UNAVAILABLE', 'DRUG_UNAVAILABLE', 'the pharmacy does not have this medication available'],
+  ['503', '503', "the pharmacy's system did not respond"],
+])('error code %s is returned as %s', async (raw, code, plainReason) => {
+  db = scriptedDb(failedOrder('SUBMISSION_FAILED', { pharmacy_id: PHARM, status: 'FAILED', error_code: raw, created_at: '2026-10-24T11:00:00Z', completed_at: null }))
+  const body = await (await call()).json()
+  expect(body.failure).toEqual(expect.objectContaining({ code, plainReason }))
+})

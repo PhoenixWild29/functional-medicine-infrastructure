@@ -53,7 +53,6 @@ function LoginForm() {
     const typedEmail = emailRef.current?.value ?? ''
     const typedPassword = passwordRef.current?.value ?? ''
     // Syncing state from the DOM (an external system) is what this effect is for.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (typedEmail) setEmail(prev => prev || typedEmail)
     if (typedPassword) setPassword(prev => prev || typedPassword)
   }, [])

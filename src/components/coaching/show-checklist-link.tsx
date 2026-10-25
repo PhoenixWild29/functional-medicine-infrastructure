@@ -8,18 +8,21 @@
 // Stores the choice (POST /api/coaching/prefs) and brings the card back:
 // on the home page by telling the card to reload, elsewhere by going home.
 
-import { useEffect, useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { SHOW_CHECKLIST_EVENT } from './setup-checklist-card'
+
+// Hydration never changes back, so there is nothing to subscribe to.
+const subscribeNever = () => () => {}
 
 export function ShowChecklistLink({ home, className = '' }: { home: string; className?: string }) {
   const router = useRouter()
   const pathname = usePathname()
   const [busy, setBusy] = useState(false)
   // Server-rendered: until hydrated a click has no handler and is lost,
-  // so the button is disabled until then (a click waits for it).
-  const [hydrated, setHydrated] = useState(false)
-  useEffect(() => { setHydrated(true) }, [])
+  // so the button is disabled until then (a click waits for it). False in
+  // the server render and while hydrating, true once hydrated.
+  const hydrated = useSyncExternalStore(subscribeNever, () => true, () => false)
 
   async function show() {
     setBusy(true)

@@ -19,6 +19,8 @@ export interface ScriptedCall {
   payload: unknown
   single:  'maybe' | 'one' | null
   head:    boolean
+  /** The select() column list, for a test that checks an embed. */
+  columns?: string
 }
 
 export interface ScriptedAnswer {
@@ -46,7 +48,11 @@ export function scriptedDb(script: Script) {
       return q
     }
     const q: Record<string, unknown> = {
-      select(_cols?: string, opts?: { head?: boolean }) { if (opts?.head) call.head = true; return q },
+      select(cols?: string, opts?: { head?: boolean }) {
+        if (cols !== undefined) call.columns = cols
+        if (opts?.head) call.head = true
+        return q
+      },
       update(p: unknown) { call.op = 'update'; call.payload = p; return q },
       insert(p: unknown) { call.op = 'insert'; call.payload = p; return q },
       upsert(p: unknown) { call.op = 'upsert'; call.payload = p; return q },
