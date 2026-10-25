@@ -54,6 +54,10 @@ export const NEVER_RETENTION_TARGETS = [
   'pharmacy_payables',     // what each pharmacy is owed and was paid
   'payable_events',        // the audit log of payable changes, append-only by trigger
   'reconciliation_runs',   // the record of each Stripe reconciliation, append-only by trigger
+  'treatment_proposals',        // patient protocol choice: what the patient was offered
+  'treatment_proposal_options', // the options of a proposal
+  'proposal_choice_items',      // what the patient chose, append-only by trigger
+  'treatment_proposal_events',  // the proposal audit log, append-only by trigger
 ] as const
 
 export type RetentionAction = 'delete' | 'null_columns' | 'storage_remove'

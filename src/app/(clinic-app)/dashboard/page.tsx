@@ -40,6 +40,9 @@ import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { SetupChecklistCard } from '@/components/coaching/setup-checklist-card'
 import { ProtocolSavedNotice } from './_components/protocol-saved-notice'
 import { platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
+import { PROPOSAL_EMBED, dashboardProposal, type DashboardProposal } from '@/lib/proposals/dashboard'
+import { loadChosenProposals } from '@/lib/proposals/queue'
+import { ChosenPlansQueue } from './_components/chosen-plans-queue'
 
 export const metadata = {
   title: 'Dashboard',
@@ -88,6 +91,8 @@ export interface DashboardOrder {
   refills?:              number | null
   /** Set on a refill: the order it refilled (its source prescription). */
   refillOfOrderId?:      string | null
+  /** Patient protocol choice: the plan this draft is offered in (Proposed tab), or null. */
+  proposal?:             DashboardProposal | null
 }
 
 export default async function DashboardPage(
@@ -163,8 +168,9 @@ export default async function DashboardPage(
       .select(`
         order_id, status, created_at, updated_at, locked_at, payment_group_id, provider_id,
         retail_price_snapshot, wholesale_price_snapshot,
-        medication_snapshot, pharmacy_snapshot, refills, refill_of_order_id,
-        patients!inner(patient_id, first_name, last_name, phone, intake_status, ${POSSIBLE_DUPLICATE_COLUMNS})
+        medication_snapshot, pharmacy_snapshot, refills, refill_of_order_id, proposal_required,
+        patients!inner(patient_id, first_name, last_name, phone, intake_status, ${POSSIBLE_DUPLICATE_COLUMNS}),
+        ${PROPOSAL_EMBED}
       `)
       .eq('clinic_id', clinicId)
       .is('deleted_at', null)
@@ -210,6 +216,11 @@ export default async function DashboardPage(
       ? (await resolveCurrentProvider(supabaseAuth, { userId: user.id, clinicId }))?.provider_id ?? null
       : null,
   }
+
+  // Patient protocol choice, PR 4: plans the patient chose, waiting to be
+  // signed. The session client: the proposal tables have clinic read
+  // policies (F-3: dashboard SSR never uses the service role).
+  const chosenPlans = await loadChosenProposals(supabaseAuth, clinicId)
 
   // Patient Intake PR 2: the names behind "Possible duplicate of <name>",
   // in one separate read (never a self-embed on patients).
@@ -258,6 +269,7 @@ export default async function DashboardPage(
       lockedAt:          o.locked_at ?? null,
       refills:           o.refills ?? null,
       refillOfOrderId:   o.refill_of_order_id ?? null,
+      proposal:          dashboardProposal(o as unknown as Parameters<typeof dashboardProposal>[0]),
     }
   })
 
@@ -332,6 +344,15 @@ export default async function DashboardPage(
 
         <LicenseExpiryWarning licenses={expiring} />
 
+        {/* Patient protocol choice, PR 4: chosen plans in the signature queue. */}
+        {chosenPlans.ok ? (
+          <ChosenPlansQueue plans={chosenPlans.plans} viewerProviderId={viewer.providerId} isClinicAdmin={appRole === 'clinic_admin'} />
+        ) : (
+          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            Plans waiting to be signed could not be loaded. This is an error, not an empty list. Reload the page to try again.
+          </p>
+        )}
+
         {/* Metric cards — WO-71 */}
         <RevenueSummary
           totalOrdersMtd={kpis.totalOrdersMtd}
@@ -353,6 +374,7 @@ export default async function DashboardPage(
           initialOrderId={typeof resolvedSearchParams.order === 'string' ? resolvedSearchParams.order : null}
           providerViewMode={viewMode}
           payoutsAtLaunch={payoutsAtLaunch}
+          canSendProposals={appRole === 'provider' || appRole === 'clinic_admin'}
         />
       </main>
     </>
