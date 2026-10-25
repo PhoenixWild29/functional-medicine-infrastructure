@@ -31,7 +31,7 @@ import { randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import { canSign, parseOrderIds, problemsStatus, type BatchProblem } from '@/lib/orders/batch-sign'
-import { insertStatusHistory } from '@/lib/orders/status-history'
+import { cancelDraftLines, clinicActorRole } from './cancel-lines'
 import { serverEnv } from '@/lib/env'
 import { hashProposalToken, newProposalToken, proposalLinkExpiresAt } from './token'
 import { canTransitionProposal } from './status'
@@ -412,23 +412,32 @@ export async function cancelProposal(
 
   // Its drafts: DRAFT -> CANCELLED (never signed). They stay tagged to the
   // plan, so the clinic still sees what was offered (decision 9).
+  // Each through casTransition as the caller's role, which writes the
+  // history row.
   let cancelledOrderIds: string[] = []
   if (optionIds.length > 0) {
-    const { data, error } = await db.from('orders')
-      .update({ status: 'CANCELLED' })
-      .in('proposal_option_id', optionIds)
-      .eq('clinic_id', input.clinicId)
-      .eq('status', 'DRAFT')
-      .select('order_id')
-    if (error) {
-      console.error('[proposals] lines could not be cancelled:', error.message, '| proposal=', p.proposal_id)
+    const actorRole = clinicActorRole(input.caller.role)
+    const { data, error } = actorRole
+      ? await db.from('orders')
+        .select('order_id')
+        .in('proposal_option_id', optionIds)
+        .eq('clinic_id', input.clinicId)
+        .eq('status', 'DRAFT')
+      : { data: null, error: { message: `caller role ${input.caller.role ?? 'none'} is not a clinic role` } }
+    if (error || !actorRole) {
+      console.error('[proposals] lines could not be cancelled:', error?.message, '| proposal=', p.proposal_id)
       return fail(503, 'The plan was closed, but its prescriptions could not be cancelled. Try again from each draft.')
     }
-    cancelledOrderIds = ((data ?? []) as Array<{ order_id: string }>).map(r => r.order_id)
-    await insertStatusHistory(db, cancelledOrderIds.map(order_id => ({
-      order_id, old_status: 'DRAFT' as const, new_status: 'CANCELLED' as const, changed_by: input.caller.userId,
+    const cancelled = await cancelDraftLines(db, {
+      orderIds: ((data ?? []) as Array<{ order_id: string }>).map(r => r.order_id),
+      actor: input.caller.userId, actorRole,
       metadata: { reason: 'proposal_cancelled', proposal_id: p.proposal_id },
-    })), 'proposal-cancel')
+    })
+    cancelledOrderIds = cancelled.cancelledOrderIds
+    if (!cancelled.ok) {
+      console.error('[proposals] lines could not be cancelled:', cancelled.error, '| proposal=', p.proposal_id)
+      return fail(503, 'The plan was closed, but its prescriptions could not be cancelled. Try again from each draft.')
+    }
   }
   await recordEvent(db, p.proposal_id, 'cancelled', who.actor, input.caller.userId)
   console.info(`[proposals] cancelled | proposal=${p.proposal_id} | lines=${cancelledOrderIds.length}`)

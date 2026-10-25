@@ -113,6 +113,31 @@ history label (`ops:<email>`, `routing_engine`, ...). So callers now pass
 - Batch sign stays one UPDATE. `canSign` (the read-only half) now refuses
   a line missing a required snapshot ('missing_snapshot') before anything
   is written.
-- The proposal bulk cancels stay direct (several orders in one UPDATE,
-  with a clinic predicate). Their actors (system, provider, clinic_admin)
-  are all allowed by the corrected DRAFT to CANCELLED rule.
+- The proposal cancels stayed direct in part 2 (several orders in one
+  UPDATE, with a clinic predicate). They now go through casTransition: see
+  section 4.
+
+## 4. After C's review (B-2026-10-25-08)
+
+- The proposal cancels (expire, cancel, sign-choice) now go through
+  `casTransition` too, one line at a time (`lib/proposals/cancel-lines`):
+  - the expiry cron as `system`;
+  - a cancel as the caller's role;
+  - a sign as the signer's role.
+  casTransition writes each history row. A line that left DRAFT is a no-op,
+  and a refused line is reported without stopping the others. The lines
+  are still read for the clinic (expire by the plan's options; cancel with
+  the clinic predicate; sign from the lines it loaded for the clinic).
+  Batch sign is now the only status write outside casTransition.
+- `casTransition` takes an optional `client`, so a caller handed a client
+  (and its tests) keeps using it.
+- The refused-then-re-read race (`casTransition`):
+  - when the UPDATE is refused and the re-read finds the order still in
+    the expected status with every required field set (another writer set
+    it in between), the UPDATE runs once more;
+  - "already transitioned" is reported only when the status really moved;
+  - if it is still there, complete, and will not move, it throws
+    "kept changing ... Retry".
+- `scripts/checks/2026-10-25-drafts-missing-snapshots.sql`: a read-only
+  count of active DRAFT orders missing any snapshot batch sign requires,
+  per clinic, with the Sunrise order ids.

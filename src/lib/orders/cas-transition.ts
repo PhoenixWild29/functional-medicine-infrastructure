@@ -69,7 +69,11 @@ export interface CasTransitionParams {
   metadata?: Record<string, unknown>
   /** Other columns written in the same UPDATE as the status (never status or updated_at) */
   patch?: Omit<OrderUpdate, 'status' | 'updated_at'>
+  /** The service-role client to use (default: a new one). Lets a caller that was handed a client, and its tests, keep using it. */
+  client?: ServiceClient
 }
+
+type ServiceClient = ReturnType<typeof createServiceClient>
 
 type OrderUpdate = Database['public']['Tables']['orders']['Update']
 
@@ -104,7 +108,7 @@ export interface CasTransitionResult {
 export async function casTransition(
   params: CasTransitionParams
 ): Promise<CasTransitionResult> {
-  const { orderId, expectedStatus, newStatus, actor, actorRole, metadata, patch } = params
+  const { orderId, expectedStatus, newStatus, actor, actorRole, metadata, patch, client } = params
 
   // Guard: validate the transition is legal before hitting the DB
   if (!canTransition(expectedStatus, newStatus)) {
@@ -137,44 +141,58 @@ export async function casTransition(
   }
   const checkedInDb = required.filter(f => !(f in patchFields))
 
-  const supabase = createServiceClient()
+  const supabase = client ?? createServiceClient()
 
   // ---- CAS UPDATE ----
   // match only if the order is still in expectedStatus (and has what the
   // new status requires)
-  let update = supabase
-    .from('orders')
-    .update({ ...patchFields, status: newStatus, updated_at: new Date().toISOString() } as OrderUpdate)
-    .eq('order_id', orderId)
-    .eq('status', expectedStatus)   // ← CAS predicate
-  for (const field of checkedInDb) update = update.not(field, 'is', null)
-  const { data, error } = await update.select('order_id, status')
-
-  if (error) {
-    throw new Error(
-      `CAS DB error for order ${orderId} (${expectedStatus} → ${newStatus}): ${error.message}`
-    )
+  const applyUpdate = async (): Promise<boolean> => {
+    let update = supabase
+      .from('orders')
+      .update({ ...patchFields, status: newStatus, updated_at: new Date().toISOString() } as OrderUpdate)
+      .eq('order_id', orderId)
+      .eq('status', expectedStatus)   // ← CAS predicate
+    for (const field of checkedInDb) update = update.not(field, 'is', null)
+    const { data, error } = await update.select('order_id, status')
+    if (error) {
+      throw new Error(
+        `CAS DB error for order ${orderId} (${expectedStatus} → ${newStatus}): ${error.message}`
+      )
+    }
+    return (data?.length ?? 0) > 0
   }
 
-  const transitioned = (data?.length ?? 0) > 0
+  let transitioned = await applyUpdate()
 
   if (!transitioned && checkedInDb.length > 0) {
-    // Not applied: either the order moved on (a no-op, as always), or it is
-    // still in expectedStatus with a required field missing (refused).
-    const missing = await missingRequiredFields(supabase, orderId, expectedStatus, checkedInDb)
-    if (missing.length > 0) {
-      console.error(`[CAS] ${orderId} | ${expectedStatus} → ${newStatus} | actor=${actor} | REFUSED: missing ${missing.join(', ')}`)
-      throw new CasTransitionRefused(
-        'missing_required_fields',
-        `CAS: order ${orderId} cannot enter ${newStatus} without ${missing.join(', ')}`,
-        missing,
-      )
+    // Not applied: the order moved on (a no-op, as always), or it is still
+    // in expectedStatus with a required field missing (refused), or a
+    // writer set the missing field between the UPDATE and this read. Only
+    // a status that left expectedStatus is reported as "already
+    // transitioned"; in the last case the UPDATE runs once more.
+    let reread = await readRequiredFields(supabase, orderId, expectedStatus, checkedInDb)
+    if (reread.stillExpected && reread.missing.length === 0) {
+      transitioned = await applyUpdate()
+      if (!transitioned) reread = await readRequiredFields(supabase, orderId, expectedStatus, checkedInDb)
+    }
+    if (!transitioned && reread.stillExpected) {
+      if (reread.missing.length > 0) {
+        console.error(`[CAS] ${orderId} | ${expectedStatus} → ${newStatus} | actor=${actor} | REFUSED: missing ${reread.missing.join(', ')}`)
+        throw new CasTransitionRefused(
+          'missing_required_fields',
+          `CAS: order ${orderId} cannot enter ${newStatus} without ${reread.missing.join(', ')}`,
+          reread.missing,
+        )
+      }
+      // Still in expectedStatus with everything set, and the retry did
+      // not apply: never report this as done. The caller retries.
+      throw new Error(`CAS: order ${orderId} kept changing while moving ${expectedStatus} → ${newStatus}; nothing was applied. Retry.`)
     }
   }
 
   if (transitioned) {
     // Live transition — write audit record
-    await writeStatusHistory({
+    await writeStatusHistory(supabase, {
       orderId,
       oldStatus: expectedStatus,
       newStatus,
@@ -195,13 +213,13 @@ export async function casTransition(
   }
 }
 
-/** The required fields an order still in `status` lacks ([] if it left `status`). */
-async function missingRequiredFields(
-  supabase: ReturnType<typeof createServiceClient>,
+/** Whether the order is still in `status`, and the required fields it then lacks. */
+async function readRequiredFields(
+  supabase: ServiceClient,
   orderId: string,
   status: OrderStatus,
   fields: ReadonlyArray<RequiredOrderField>,
-): Promise<RequiredOrderField[]> {
+): Promise<{ stillExpected: boolean; missing: RequiredOrderField[] }> {
   const { data, error } = await supabase
     .from('orders')
     .select(['status', ...fields].join(', '))
@@ -211,8 +229,8 @@ async function missingRequiredFields(
     throw new Error(`CAS DB error re-reading order ${orderId}: ${error.message}`)
   }
   const row = data as Record<string, unknown> | null
-  if (!row || row['status'] !== status) return []
-  return fields.filter(f => row[f] == null)
+  if (!row || row['status'] !== status) return { stillExpected: false, missing: [] }
+  return { stillExpected: true, missing: fields.filter(f => row[f] == null) }
 }
 
 // ============================================================
@@ -229,8 +247,7 @@ interface WriteStatusHistoryParams {
   metadata?: Record<string, unknown>
 }
 
-async function writeStatusHistory(params: WriteStatusHistoryParams): Promise<void> {
-  const supabase = createServiceClient()
+async function writeStatusHistory(supabase: ServiceClient, params: WriteStatusHistoryParams): Promise<void> {
   const { orderId, oldStatus, newStatus, actor, metadata } = params
 
   // Non-fatal (the transition is already committed), but a failure alerts ops.

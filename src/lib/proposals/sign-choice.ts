@@ -30,7 +30,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import { signBatch, type BatchProblem, type SignedPatient } from '@/lib/orders/batch-sign'
-import { insertStatusHistory } from '@/lib/orders/status-history'
+import { cancelDraftLines, clinicActorRole } from './cancel-lines'
 import { resolveProtocolLinkage } from '@/lib/protocols/resolve-instance'
 import { choiceFrom, readProposalRows } from './chosen'
 
@@ -96,22 +96,21 @@ export async function signChosenProposal(
   const unchosen = rows.lines.filter(l => !chosen.has(l.order_id) && l.status === 'DRAFT').map(l => l.order_id)
   let cancelledOrderIds: string[] = []
   if (unchosen.length > 0) {
-    const { data, error: cancelError } = await db.from('orders')
-      .update({ status: 'CANCELLED' })
-      .in('order_id', unchosen)
-      .eq('clinic_id', input.clinicId)
-      .eq('status', 'DRAFT')
-      .select('order_id')
-    if (cancelError) {
+    // The lines were read for this clinic above (rows.lines). Each goes
+    // through casTransition as the signer's role, which writes the history.
+    const actorRole = clinicActorRole(input.appRole)
+    const cancelled = actorRole
+      ? await cancelDraftLines(db, {
+        orderIds: unchosen,
+        actor: input.userId, actorRole,
+        metadata: { reason: 'proposal_not_chosen', proposal_id: p.proposal_id },
+      })
+      : { ok: false as const, cancelledOrderIds: [], error: `signer role ${input.appRole ?? 'none'} is not a clinic role` }
+    cancelledOrderIds = cancelled.cancelledOrderIds
+    if (!cancelled.ok) {
       // Signed already; the unchosen drafts stay drafts in the plan. Logged
       // for ops: they are never signable from Drafts (they are tagged).
-      console.error('[proposal-sign] unchosen lines could not be cancelled:', cancelError.message, '| proposal=', p.proposal_id)
-    } else {
-      cancelledOrderIds = ((data ?? []) as Array<{ order_id: string }>).map(r => r.order_id)
-      await insertStatusHistory(db, cancelledOrderIds.map(order_id => ({
-        order_id, old_status: 'DRAFT' as const, new_status: 'CANCELLED' as const, changed_by: input.userId,
-        metadata: { reason: 'proposal_not_chosen', proposal_id: p.proposal_id },
-      })), 'proposal-sign')
+      console.error('[proposal-sign] unchosen lines could not be cancelled:', cancelled.error, '| proposal=', p.proposal_id)
     }
   }
 

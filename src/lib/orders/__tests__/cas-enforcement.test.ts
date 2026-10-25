@@ -45,11 +45,15 @@ function orderUpdate(patch: Row) {
   return chain
 }
 
+/** Runs on each re-read, before the row is read: another writer acting in between. */
+let onReread: (() => void) | null = null
+
 function orderSelect(cols: string) {
   const filters: Array<(r: Row) => boolean> = []
   const chain = {
     eq: (col: string, v: unknown) => { filters.push(r => r[col] === v); return chain },
     maybeSingle: async () => {
+      onReread?.()
       const r = orders.find(o => filters.every(f => f(o)))
       if (!r) return { data: null, error: null }
       return { data: Object.fromEntries(cols.split(',').map(c => c.trim()).map(c => [c, r[c] ?? null])), error: null }
@@ -70,7 +74,7 @@ jest.spyOn(console, 'info').mockImplementation(() => {})
 jest.spyOn(console, 'error').mockImplementation(() => {})
 
 const order = (fields: Row) => { orders = [{ order_id: ORDER_ID, ...fields }] }
-beforeEach(() => { orders = []; history.length = 0 })
+beforeEach(() => { orders = []; history.length = 0; onReread = null })
 
 const refusal = async (p: Promise<unknown>) => {
   try { await p } catch (e) { return e }
@@ -223,4 +227,58 @@ it('a patch may not set the status itself', async () => {
     orderId: ORDER_ID, expectedStatus: 'SUBMISSION_FAILED', newStatus: 'REROUTE_PENDING', actor: 'ops:x', actorRole: 'ops_admin',
     patch: { status: 'SHIPPED' } as never,
   })).rejects.toThrow('patch may not set status')
+})
+
+// ── The refused-then-re-read race (C's review, B-2026-10-25-08) ──
+describe('a required field set between the refused UPDATE and the re-read', () => {
+  it('the CAS runs once more and the order moves; it is never reported as already transitioned', async () => {
+    order({ status: 'AWAITING_PAYMENT', stripe_payment_intent_id: null })
+    // The first UPDATE is refused (no PI); before the re-read another writer stamps it.
+    onReread = () => { orders[0]!['stripe_payment_intent_id'] = 'pi_late'; onReread = null }
+    const r = await casTransition({ orderId: ORDER_ID, expectedStatus: 'AWAITING_PAYMENT', newStatus: 'PAID_PROCESSING', actor: 'stripe_webhook', actorRole: 'system' })
+    expect(r).toEqual({ success: true, wasAlreadyTransitioned: false, orderId: ORDER_ID })
+    expect(orders[0]!['status']).toBe('PAID_PROCESSING')
+    expect(history).toEqual([expect.objectContaining({ old_status: 'AWAITING_PAYMENT', new_status: 'PAID_PROCESSING' })])
+  })
+
+  it('if it is still in the expected status, complete, and the retry still does not apply: an error, never "done"', async () => {
+    order({ status: 'AWAITING_PAYMENT', stripe_payment_intent_id: null })
+    // Each re-read sees the field set, and each UPDATE sees it cleared again.
+    let reads = 0
+    onReread = () => { reads++; orders[0]!['stripe_payment_intent_id'] = 'pi_flip' }
+    const realFrom = client.from
+    client.from = (table: string) => {
+      const t = realFrom(table) as { update?: (p: Row) => unknown }
+      if (table === 'orders' && t.update) {
+        const update = t.update
+        return { ...t, update: (patch: Row) => { orders[0]!['stripe_payment_intent_id'] = null; return update(patch) } } as never
+      }
+      return t as never
+    }
+    try {
+      await expect(casTransition({ orderId: ORDER_ID, expectedStatus: 'AWAITING_PAYMENT', newStatus: 'PAID_PROCESSING', actor: 'x', actorRole: 'system' }))
+        .rejects.toThrow('kept changing')
+    } finally {
+      client.from = realFrom
+    }
+    expect(reads).toBe(2)
+    expect(orders[0]!['status']).toBe('AWAITING_PAYMENT')
+    expect(history).toHaveLength(0)
+  })
+
+  it('an order that really moved on is still the no-op, without a retry', async () => {
+    order({ status: 'AWAITING_PAYMENT', stripe_payment_intent_id: null })
+    onReread = () => { orders[0]!['status'] = 'PAYMENT_EXPIRED' }
+    const r = await casTransition({ orderId: ORDER_ID, expectedStatus: 'AWAITING_PAYMENT', newStatus: 'PAID_PROCESSING', actor: 'x', actorRole: 'system' })
+    expect(r.wasAlreadyTransitioned).toBe(true)
+    expect(history).toHaveLength(0)
+  })
+})
+
+it('uses the client it is given, when given one', async () => {
+  const calls: string[] = []
+  const given = { from: (table: string) => { calls.push(table); return client.from(table) } }
+  order({ status: 'FAX_DELIVERED' })
+  await casTransition({ orderId: ORDER_ID, expectedStatus: 'FAX_DELIVERED', newStatus: 'PHARMACY_ACKNOWLEDGED', actor: 'ops:x', actorRole: 'ops_admin', client: given as never })
+  expect(calls).toEqual(['orders', 'order_status_history'])
 })

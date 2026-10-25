@@ -93,6 +93,11 @@ status write and why each rule is or is not enforced.
     cannot race. An order still in the expected status with a field missing
     throws `CasTransitionRefused('missing_required_fields')`. Nothing is
     written.
+  - If the UPDATE is refused and another writer sets the field before the
+    re-read, `casTransition` runs the UPDATE once more. It reports "already
+    transitioned" only when the order really left the expected status; an
+    order that is still there and complete but will not move throws a
+    "kept changing" error for the caller to retry.
 - **Not enforced** (`UNENFORCED_REQUIRED_FIELDS_ON_ENTER`): SHIPPED's
   `tracking_number` and `carrier`. A pharmacy `order.shipped` webhook
   without tracking still ships the order; enforcing this waits for Sam's
@@ -100,12 +105,16 @@ status write and why each rule is or is not enforced.
 - SUBMISSION_PENDING requires nothing on entry: the routing engine claims
   the order before it creates the adapter submission (exactly-once).
 
-Status writes outside `casTransition`, each with its own status predicate
-and history rows:
-- batch sign (DRAFT → AWAITING_PAYMENT, the whole batch in one UPDATE);
-- the patient protocol choice bulk cancels of a plan's DRAFT lines
-  (`lib/proposals` expire, cancel, sign-choice).
-The payment-expiry cron and the ops reroute now go through `casTransition`.
+The one status write outside `casTransition`, with its own status
+predicate and history rows: batch sign (DRAFT → AWAITING_PAYMENT, the
+whole batch in one UPDATE).
+
+These go through `casTransition`:
+- the payment-expiry cron;
+- the ops reroute;
+- a plan's DRAFT lines cancelled by the proposal expiry cron (system), a
+  cancel (the caller's role) or a sign (the signer's role), one line at a
+  time (`lib/proposals/cancel-lines`).
 The reroute uses its `patch` option, so the reroute count and pharmacy are
 written in the same UPDATE as the status.
 
