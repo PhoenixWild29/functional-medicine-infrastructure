@@ -176,9 +176,12 @@ export default async function CatalogPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <ProductCatalogSummary counts={productCatalogCounts} />
-      <CatalogManager initialData={initialData} />
-    </div>
+    <>
+      <h1 className="sr-only">Catalog</h1>
+      <div className="space-y-4">
+        <ProductCatalogSummary counts={productCatalogCounts} />
+        <CatalogManager initialData={initialData} />
+      </div>
+    </>
   )
 }

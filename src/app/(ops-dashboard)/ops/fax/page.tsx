@@ -75,6 +75,9 @@ export default async function FaxPage() {
   }
 
   return (
-    <FaxTriageQueue initialData={initialData} />
+    <>
+      <h1 className="sr-only">Fax Queue</h1>
+      <FaxTriageQueue initialData={initialData} />
+    </>
   )
 }

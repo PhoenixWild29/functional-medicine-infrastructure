@@ -6,6 +6,9 @@
 //
 // REQ-OPV-001: 23-state pipeline with per-state order counts.
 // REQ-OPV-002: Multi-dimension filtering (clinic, pharmacy, status, date, tier).
+//   Clinic, pharmacy, tier and date are applied by the API; status (and the
+//   lane group) here, so the sidebar keeps counting every status. Filters
+//   are mirrored to the URL. Rules: src/lib/ops/pipeline-filters.ts.
 // REQ-OPV-003: SLA urgency sort (initial sort from server; preserved in display).
 // REQ-OPV-004: Click row → OrderDetailDrawer slide-out.
 // REQ-OPV-005: Context-aware quick actions per order.
@@ -17,7 +20,7 @@
 // Bulk ops: checkbox select + bulk action bar (CAS per order — HC-09).
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useQuery }  from '@tanstack/react-query'
+import { useQuery, keepPreviousData }  from '@tanstack/react-query'
 import { createBrowserClient } from '@/lib/supabase/client'
 import type { PipelineOrder, FilterOption } from '@/types/pipeline'
 import type { OrderStatusEnum, IntegrationTierEnum } from '@/types/database.types'
@@ -25,6 +28,10 @@ import { OrderDetailDrawer } from './order-detail-drawer'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getStatusConfig } from '@/lib/orders/status-config'
 import { SkeletonTableRow } from '@/components/ui/skeleton'
+import {
+  EMPTY_PIPELINE_FILTERS, hasPipelineFilters, matchesPipelineFilters, pipelineFiltersToSearchParams,
+  type PipelineFilters,
+} from '@/lib/ops/pipeline-filters'
 
 // ── Status lane config ───────────────────────────────────────
 
@@ -78,24 +85,16 @@ const TIER_LABELS: Record<IntegrationTierEnum, string> = {
 }
 
 
-// ── Filters type ─────────────────────────────────────────────
+// ── Filters ──────────────────────────────────────────────────
 
-interface Filters {
-  clinicId:   string
-  pharmacyId: string
-  tier:       string
-  statuses:   OrderStatusEnum[]
-  dateFrom:   string
-  dateTo:     string
-}
+const EMPTY_FILTERS = EMPTY_PIPELINE_FILTERS
 
-const EMPTY_FILTERS: Filters = {
-  clinicId:   '',
-  pharmacyId: '',
-  tier:       '',
-  statuses:   [],
-  dateFrom:   '',
-  dateTo:     '',
+/** The query-string keys the filters own; any other (?order=) is kept. */
+const FILTER_KEYS = ['clinicId', 'pharmacyId', 'tier', 'statuses', 'dateFrom', 'dateTo']
+
+/** The filters the API applies: all but status. */
+function serverFiltersOf(filters: PipelineFilters): PipelineFilters {
+  return { ...filters, statuses: [] }
 }
 
 // ── Props ─────────────────────────────────────────────────────
@@ -106,12 +105,16 @@ interface Props {
   pharmacyOptions: FilterOption[]
   /** ?order=<id> (a Slack alert's "Open in ops" link): open that order's drawer. */
   initialOrderId?: string | null
+  /** Filters read from the URL; initialOrders were loaded with them. */
+  initialFilters?: PipelineFilters
 }
 
 // ── Component ─────────────────────────────────────────────────
 
-export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions, initialOrderId = null }: Props) {
-  const [filters,         setFilters]        = useState<Filters>(EMPTY_FILTERS)
+export function PipelineView({
+  initialOrders, clinicOptions, pharmacyOptions, initialOrderId = null, initialFilters = EMPTY_FILTERS,
+}: Props) {
+  const [filters,         setFilters]        = useState<PipelineFilters>(initialFilters)
   const [selectedGroup,   setSelectedGroup]  = useState<string | null>(null)
   const [selectedOrder,   setSelectedOrder]  = useState<PipelineOrder | null>(
     () => (initialOrderId ? initialOrders.find(o => o.orderId === initialOrderId) ?? null : null),
@@ -121,30 +124,49 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions, in
   const [actionError,     setActionError]    = useState<string | null>(null)
 
   // ── 10-second polling — REQ-OPV-001 ────────────────────────
-  const { data: ordersData, isError, isFetching, refetch } = useQuery({
-    queryKey:        ['ops-pipeline', filters],
+  // initialData belongs to the filters the page loaded with. Given to every
+  // key, it counted as fresh for staleTime, so a new filter showed the
+  // first page's rows and did not fetch for 10 seconds. A new filter shows
+  // the previous rows (narrowed below) until its own fetch lands.
+  const serverQuery        = pipelineFiltersToSearchParams(serverFiltersOf(filters)).toString()
+  const initialServerQuery = pipelineFiltersToSearchParams(serverFiltersOf(initialFilters)).toString()
+  const { data: ordersData, isError, isFetching, refetch, dataUpdatedAt, errorUpdatedAt } = useQuery({
+    queryKey:        ['ops-pipeline', serverQuery],
     queryFn:         async () => {
-      const params = new URLSearchParams()
-      if (filters.clinicId)   params.set('clinicId',   filters.clinicId)
-      if (filters.pharmacyId) params.set('pharmacyId', filters.pharmacyId)
-      if (filters.tier)       params.set('tier',       filters.tier)
-      if (filters.dateFrom)   params.set('dateFrom',   filters.dateFrom)
-      if (filters.dateTo)     params.set('dateTo',     filters.dateTo)
-      if (filters.statuses.length) params.set('statuses', filters.statuses.join(','))
-
-      const res = await fetch(`/api/ops/pipeline?${params.toString()}`)
+      const res = await fetch(`/api/ops/pipeline?${serverQuery}`)
       if (!res.ok) throw new Error(`Pipeline fetch failed: ${res.status}`)
       const json = await res.json() as { orders: PipelineOrder[] }
       return json.orders
     },
-    initialData:     initialOrders,
+    initialData:     serverQuery === initialServerQuery ? initialOrders : undefined,
+    placeholderData: keepPreviousData,
     refetchInterval: 10_000,
     staleTime:       10_000,
   })
 
-  const orders = ordersData ?? initialOrders
+  const fetchedOrders = ordersData ?? initialOrders
 
-  // ── Per-status counts ────────────────────────────────────────
+  // The rows every filter but status admits. Equal to the fetched rows
+  // once they are this filter's; also right for the previous rows shown
+  // while it loads.
+  const orders = useMemo(
+    () => fetchedOrders.filter(o => matchesPipelineFilters(o, serverFiltersOf(filters))),
+    [fetchedOrders, filters],
+  )
+
+  // ── Mirror the filters to the URL (reload / share keeps them) ──
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    for (const key of FILTER_KEYS) params.delete(key)
+    for (const [key, value] of pipelineFiltersToSearchParams(filters)) params.set(key, value)
+    const query = params.toString()
+    const url   = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`
+    if (url !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+      window.history.replaceState(window.history.state, '', url)
+    }
+  }, [filters])
+
+  // ── Per-status counts: of the rows the other filters admit ───
   const countByStatus = useMemo(() => {
     const map = new Map<OrderStatusEnum, number>()
     for (const o of orders) {
@@ -160,44 +182,50 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions, in
     return group ? new Set(group.statuses) : null
   }, [selectedGroup])
 
-  // ── Apply all filters ────────────────────────────────────────
+  // ── Apply status + lane group ────────────────────────────────
   const filteredOrders = useMemo(() => {
     return orders.filter(o => {
       if (activeGroupStatuses && !activeGroupStatuses.has(o.status)) return false
-      if (filters.clinicId   && o.clinicId   !== filters.clinicId)   return false
-      if (filters.pharmacyId && o.pharmacyId !== filters.pharmacyId) return false
-      if (filters.tier && o.pharmacyTier !== filters.tier)           return false
       if (filters.statuses.length && !filters.statuses.includes(o.status)) return false
-      if (filters.dateFrom && o.createdAt < filters.dateFrom) return false
-      if (filters.dateTo   && o.createdAt > filters.dateTo + 'T23:59:59Z') return false
       return true
     })
-  }, [orders, activeGroupStatuses, filters])
+  }, [orders, activeGroupStatuses, filters.statuses])
 
-  const hasActiveFilters =
-    !!filters.clinicId || !!filters.pharmacyId || !!filters.tier ||
-    filters.statuses.length > 0 || !!filters.dateFrom || !!filters.dateTo ||
-    selectedGroup !== null
+  const hasActiveFilters = hasPipelineFilters(filters) || selectedGroup !== null
+
+  // ── Chips for the dropdown / date filters — AC-002.3 ─────────
+  const filterChips: Array<{ label: string; clear: () => void }> = []
+  if (filters.clinicId) {
+    const name = clinicOptions.find(c => c.id === filters.clinicId)?.name ?? 'Clinic'
+    filterChips.push({ label: name, clear: () => setFilters(f => ({ ...f, clinicId: '' })) })
+  }
+  if (filters.pharmacyId) {
+    const name = pharmacyOptions.find(p => p.id === filters.pharmacyId)?.name ?? 'Pharmacy'
+    filterChips.push({ label: name, clear: () => setFilters(f => ({ ...f, pharmacyId: '' })) })
+  }
+  if (filters.tier) {
+    filterChips.push({ label: TIER_LABELS[filters.tier], clear: () => setFilters(f => ({ ...f, tier: '' })) })
+  }
+  if (filters.dateFrom) {
+    filterChips.push({ label: `From ${filters.dateFrom}`, clear: () => setFilters(f => ({ ...f, dateFrom: '' })) })
+  }
+  if (filters.dateTo) {
+    filterChips.push({ label: `To ${filters.dateTo}`, clear: () => setFilters(f => ({ ...f, dateTo: '' })) })
+  }
 
   // ── Last updated timestamp ───────────────────────────────────
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<number>(Date.now())
-  const [secondsAgo,    setSecondsAgo]    = useState(0)
+  // When the last fetch finished (with data or with an error), from the
+  // query itself; never earlier than this view opened.
+  const [mountedAt] = useState(() => Date.now())
+  const lastUpdatedAt = Math.max(mountedAt, dataUpdatedAt, errorUpdatedAt)
 
-  // Track last successful fetch time
+  // Live "Xs ago" counter: the clock ticks each second.
+  const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    if (!isFetching) {
-      setLastUpdatedAt(Date.now())
-      setSecondsAgo(0)
-    }
-  }, [isFetching])
-
-  // Live "Xs ago" counter
-  useEffect(() => {
-    const id = setInterval(() => {
-      setSecondsAgo(Math.round((Date.now() - lastUpdatedAt) / 1000))
-    }, 1000)
+    const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
-  }, [lastUpdatedAt])
+  }, [])
+  const secondsAgo = Math.max(0, Math.round((now - lastUpdatedAt) / 1000))
 
   // ── Current user for claim ───────────────────────────────────
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null)
@@ -443,7 +471,7 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions, in
 
           <select
             value={filters.tier}
-            onChange={e => setFilters(f => ({ ...f, tier: e.target.value }))}
+            onChange={e => setFilters(f => ({ ...f, tier: e.target.value as PipelineFilters['tier'] }))}
             className="rounded-md border border-input bg-background text-foreground px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Filter by integration tier"
           >
@@ -494,8 +522,19 @@ export function PipelineView({ initialOrders, clinicOptions, pharmacyOptions, in
         </div>
 
         {/* ── Active filter chips — REQ-OPV-002 AC-002.3 ── */}
-        {(filters.statuses.length > 0 || selectedGroup) && (
+        {(filters.statuses.length > 0 || selectedGroup || filterChips.length > 0) && (
           <div className="flex flex-wrap gap-1">
+            {filterChips.map(chip => (
+              <span key={chip.label} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                {chip.label}
+                <button
+                  type="button"
+                  onClick={chip.clear}
+                  className="hover:text-destructive focus-visible:outline-none"
+                  aria-label={`Remove ${chip.label} filter`}
+                >×</button>
+              </span>
+            ))}
             {selectedGroup && (
               <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
                 {selectedGroup}
@@ -688,6 +727,7 @@ function OrderRow({
   return (
     <tr
       data-order-id={order.orderId}
+      data-pharmacy-tier={order.pharmacyTier ?? ''}
       className={[
         'border-b border-border last:border-0 hover:bg-muted/30 transition-colors',
         isSelected ? 'bg-primary/5' : '',

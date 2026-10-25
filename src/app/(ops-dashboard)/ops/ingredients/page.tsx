@@ -61,11 +61,11 @@ export default async function IngredientsPage() {
   if (ingRes.error) {
     console.error('[ops/ingredients] read failed:', ingRes.error.message)
     return (
-      <main className="mx-auto max-w-7xl px-4 py-8">
+      <div className="mx-auto max-w-7xl px-4 py-8">
         <div role="alert" data-testid="ingredients-error" className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
           The ingredients could not be loaded. Refresh to try again.
         </div>
-      </main>
+      </div>
     )
   }
   if (histRes.error) console.error('[ops/ingredients] history read failed:', histRes.error.message)
@@ -75,7 +75,7 @@ export default async function IngredientsPage() {
   const blocked = ingredients.filter(i => !COMPOUNDABLE_STATUSES.has(i.compounding_status))
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 space-y-6">
+    <div className="mx-auto max-w-7xl px-4 py-8 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Ingredients: compounding status</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -147,6 +147,6 @@ export default async function IngredientsPage() {
           </ul>
         )}
       </section>
-    </main>
+    </div>
   )
 }

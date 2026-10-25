@@ -83,7 +83,10 @@ export default async function ReviewPage() {
             quick-load (e.g. items skipped by the state-licensure guard). */}
         <ProtocolLoadNotices />
 
-        <BatchReviewForm isProvider={isProvider} />
+        <BatchReviewForm
+          isProvider={isProvider}
+          proposalRole={appRole === 'medical_assistant' ? 'prepare' : appRole === 'provider' || appRole === 'clinic_admin' ? 'send' : null}
+        />
       </main>
     </>
   )

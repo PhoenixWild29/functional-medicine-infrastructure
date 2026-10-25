@@ -10,11 +10,11 @@
 
 import type { OrderStatusEnum } from '@/types/database.types'
 
-export type TabId = 'all' | 'drafts' | 'awaiting_payment' | 'submitting' | 'processing' | 'shipped' | 'errors'
+export type TabId = 'all' | 'drafts' | 'proposed' | 'awaiting_payment' | 'submitting' | 'processing' | 'shipped' | 'errors'
 
 /** WO-106: a ?tab= value the KPI cards can link to; anything else is 'all'. */
 export function isTabId(v: unknown): v is TabId {
-  return v === 'all' || v === 'drafts' || v === 'awaiting_payment' || v === 'submitting'
+  return v === 'all' || v === 'drafts' || v === 'proposed' || v === 'awaiting_payment' || v === 'submitting'
     || v === 'processing' || v === 'shipped' || v === 'errors'
 }
 
@@ -29,11 +29,18 @@ export interface TabDef {
   id:       TabId
   label:    string
   statuses: ReadonlyArray<OrderStatusEnum> | null  // null = all statuses
+  /**
+   * Patient protocol choice: true = only proposed drafts, false = no
+   * proposed drafts, absent = either. A proposed draft is under Proposed,
+   * never Drafts, so it is never signed from the Drafts list.
+   */
+  proposed?: boolean
 }
 
 export const TABS: ReadonlyArray<TabDef> = [
   { id: 'all',              label: 'All',             statuses: null },
-  { id: 'drafts',           label: 'Drafts',          statuses: ['DRAFT'] },
+  { id: 'drafts',           label: 'Drafts',          statuses: ['DRAFT'], proposed: false },
+  { id: 'proposed',         label: 'Proposed',        statuses: ['DRAFT'], proposed: true },
   { id: 'awaiting_payment', label: 'Pending Payment', statuses: ['AWAITING_PAYMENT', 'PAYMENT_EXPIRED'] },
   { id: 'submitting',       label: 'Submitting',      statuses: ['SUBMISSION_PENDING', 'FAX_QUEUED', 'FAX_DELIVERED'] },
   { id: 'processing',       label: 'Processing',      statuses: [
@@ -62,7 +69,15 @@ export function monthToDateStart(now: number = Date.now()): string {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString()
 }
 
-interface ViewOrder { status: OrderStatusEnum; createdAt: string }
+interface ViewOrder { status: OrderStatusEnum; createdAt: string; proposal?: { status: string } | null }
+
+// A plan still open: prepared, sent to the patient, or chosen (PR 1's statuses).
+const OPEN_PLAN = new Set(['draft', 'sent', 'chosen'])
+
+/** Patient protocol choice: a DRAFT in a plan that is still open ("Awaiting patient choice"). */
+export function isProposedOrder(o: { status: string; proposal?: { status: string } | null }): boolean {
+  return o.status === 'DRAFT' && !!o.proposal && OPEN_PLAN.has(o.proposal.status)
+}
 
 /** The orders in a period (every order when the period is null). */
 export function ordersInPeriod<T extends ViewOrder>(orders: ReadonlyArray<T>, period: Period, now: number = Date.now()): T[] {
@@ -75,7 +90,9 @@ export function ordersInPeriod<T extends ViewOrder>(orders: ReadonlyArray<T>, pe
 export function ordersForView<T extends ViewOrder>(orders: ReadonlyArray<T>, tab: TabId, period: Period, now: number = Date.now()): T[] {
   const def = TABS.find(t => t.id === tab) ?? TABS[0]!
   const inPeriod = ordersInPeriod(orders, period, now)
-  return def.statuses === null ? inPeriod : inPeriod.filter(o => def.statuses!.includes(o.status))
+  return inPeriod.filter(o =>
+    (def.statuses === null || def.statuses.includes(o.status)) &&
+    (def.proposed === undefined || isProposedOrder(o) === def.proposed))
 }
 
 // Not revenue: never charged, or the charge was returned (HC-01).
