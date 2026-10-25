@@ -1,38 +1,20 @@
-task-id: D-2026-10-25-05
+task-id: D-2026-10-25-06
 status: ready
 ---
-Thanks for D-2026-10-25-04 (prod click-through checklist, 0ed4ea7).
+Thanks for D-2026-10-25-05 (coverage audit, df950e5). Good catches. Now fix three of them.
 
-Next: a requirements coverage audit against the code on main, so nothing the practitioners asked for is missed before the cofounder review (AI-facing; Markdown is right).
+Branch: `git fetch origin && git checkout -b rx-quantity-shipping origin/main`.
 
-Branch: `git fetch origin && git checkout -b docs-requirements-coverage origin/main`.
-Write docs/qa/practitioner-requirements-coverage.md. For EACH requirement below, find the code on main that implements it (file paths and the component/route/function), say how a user reaches it in the UI (exact page and button/field labels), and give a verdict: DONE, PARTIAL (say exactly what is missing), or MISSING. Read the code; do not trust older docs, WO status notes or commit messages. If a jest or E2E test covers it, name the test file. If one is missing, say so.
+1. Requirement 3 (priority, wrong data reaches the pharmacy): POST /api/orders always stores quantity 1, so the fax PDF prints "Quantity: 1" above "Dispense: 9.6 mL (2 x 5 mL vials)" and LifeFile, Vios, MediVera and Tier 2 {quantity} all send 1.
+   - Store the real dispense count from the Rx builder (number of vials/units actually dispensed, matching the Dispense line).
+   - Make the fax PDF and every adapter payload send that number. Check each adapter's field meaning (count of containers vs volume) from its existing code/spec and map correctly; say what each one now sends.
+   - Check anything else that reads orders.quantity (pricing, payouts, ops views, reports) still computes correctly; prices must not multiply twice.
+   - Existing rows: do not migrate or backfill. Code must handle old rows where quantity is 1.
+2. Refills: the search step caps refills at 5 but Review allows 12. Make them one shared constant, and use the value Review already allows unless a pharmacy or state rule in the code says otherwise (say which).
+3. Requirement 15: show the shipping cost on the search-step pharmacy cards (same source as Review), and show the multi-pharmacy double-shipping warning on the price page and on the sign page for saved drafts, not only at Review. Same wording everywhere, one component.
 
-Requirements (from the practising NP's Sep 11 feedback; follow her wording, a half-built feature that still leaves her doing the arithmetic or a manual step is PARTIAL):
-1. mg shown next to injectable doses in favorites, e.g. "10 units (0.5 mg)".
-2. Duration (days supply: 30, 90 days etc) on the Rx.
-3. Quantity/count to dispense.
-4. Vial size selection, priced by size, auto-selected by calculation; multiple vials of one size when no single vial covers the Rx.
-5. Refills authorized.
-6. Clinical difference statements for GLP-1s (auto-expands, pre-selected).
-7. Syringes on the Rx, or indicate none.
-8. Shipping type, temperature sensitive or not.
-9. Allergies / NKDA on the Rx.
-10. Diagnosis.
-11. Special instructions (e.g. remove a filler or dye).
-12. Edit an Rx at review and send; Back button works; a pending Rx queue.
-13. Edit a saved draft and add other Rx to that order.
-14. Sign all at once (sign every Rx in an order in one action).
-15. Shipping costs shown with med pricing and at review, plus a warning about double shipping when the order spans pharmacies.
-16. Favorites open the Rx builder DOSE STEP with dropdowns populated (NOT a free-text box / margin page).
-17. Favorites: common doses grouped under the drug, not one favorite per unit dose.
-18. Favorites sorted alphabetically and/or by category.
-19. Favorites: a frequently used section, convertible to a favorite.
-20. Favorites scoped to a specific patient as well as the practice.
-21. Patient protocol choice: provider proposes options, patient chooses on /plan/<token> after DOB check, provider signs only the chosen lines (merged #268).
-Also read the repo docs for the Oct 5 meeting decisions if present (search docs/ for "Oct 5", "2026-10-05", "Anila") and add any requirement you find there with the same treatment; list the doc you took it from.
-
-Finish with a short table: requirement number, verdict, one-line gap. Keep the whole doc factual and short.
-Push docs-requirements-coverage (normal push, no PR). Report in the commit body: counts of DONE/PARTIAL/MISSING and the gaps, one line each.
+Tests: jest for the quantity mapping in the fax PDF builder and each adapter, the refills constant, and the shipping components. Extend an existing E2E only if it needs no new seed tables.
+No database migrations on this branch (the shared E2E DB is mid-serial-merge). If orders.quantity cannot hold this without a schema change, stop and report the design.
+Gates: lint (0 warnings), tsc, jest, next build. Push rx-quantity-shipping (normal push, no PR). Report in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
