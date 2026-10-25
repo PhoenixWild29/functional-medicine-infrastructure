@@ -38,9 +38,11 @@ import { createIntakeLink } from '@/lib/intake/links'
 import { sendIntakeLinkSms } from '@/lib/intake/sms'
 import { staffDetails } from '@/lib/patients/staff-details'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { US_STATES } from '@/lib/geo/us-states'
 
 const STAFF_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
 const NAME_MAX = 100
+const STATE_CODES = new Set(US_STATES.map(s => s.code))
 
 /** The columns the Select Patient list and the session need. */
 const PATIENT_COLUMNS = 'patient_id, first_name, last_name, date_of_birth, phone, phone_e164, state, sms_opt_in, allergies, nkda, allergies_updated_at, intake_status'
@@ -94,7 +96,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   let state: string | null = null
   if (body['state'] !== undefined && body['state'] !== null && body['state'] !== '') {
     const s = typeof body['state'] === 'string' ? body['state'].trim().toUpperCase() : ''
-    if (!/^[A-Z]{2}$/.test(s)) return bad('state', 'Choose a state.')
+    // The states + New patient offers (lib/geo/us-states): a closed set.
+    if (!STATE_CODES.has(s)) return bad('state', 'Choose a state.')
     state = s
   }
   const confirmNew = body['confirmNew'] === true

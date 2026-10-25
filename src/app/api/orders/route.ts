@@ -42,6 +42,8 @@ import { refillAllowance, refillsUsed } from '@/lib/orders/refill'
 import type { Json } from '@/types/database.types'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { parseInput } from '@/lib/api/input'
+import { createOrderBodySchema } from '@/lib/orders/line-body-schema'
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   // Auth gate
@@ -67,7 +69,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   // formulation. The cascading prescription builder produces a
   // formulationId; the legacy pharmacy-search flow produces a
   // catalogItemId. Exactly one must be set.
-  let body: {
+  type CreateOrderBody = {
     patientId:      string
     providerId:     string
     catalogItemId?: string | null
@@ -103,11 +105,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     appendedToOrderId?: string | null
   }
 
+  let raw: unknown
   try {
-    body = await request.json()
+    raw = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
+  // Ids, text bounds and the sig mode (lib/orders/line-body-schema), before
+  // anything is read. The prescription rules below keep their own messages.
+  const shape = parseInput(createOrderBodySchema, raw)
+  if (!shape.ok) return shape.response
+  const body = shape.data as unknown as CreateOrderBody
 
   const { patientId, providerId, catalogItemId, formulationId, pharmacyId, retailCents, sigText, patientState, protocolId, rxDetails, dose, frequencyCode, quantityLabel, packageId, packageCount, appendedToOrderId } = body
 
@@ -126,7 +134,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     ? body.refillOfOrderId.trim()
     : null
 
-  if (!patientId || !providerId || !pharmacyId || !sigText || !patientState) {
+  if (!patientId || !providerId || !pharmacyId || typeof sigText !== 'string' || !sigText || !patientState) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 

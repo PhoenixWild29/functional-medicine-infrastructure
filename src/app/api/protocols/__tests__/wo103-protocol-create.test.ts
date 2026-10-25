@@ -123,7 +123,7 @@ describe('POST /api/protocols — WO-103 "+ New" from session', () => {
   it('refuses a created_by outside the clinic (clinic admin)', async () => {
     getUserMock.mockResolvedValue({ data: { user: { id: 'auth-uid', app_metadata: { clinic_id: CLINIC_ID, app_role: 'clinic_admin' } } } })
     fixtures['providers:maybeSingle'] = () => ({ data: null, error: null })
-    const res = await POST(makeRequest({ name: 'x', created_by: 'someone-else', items: [LINE] }))
+    const res = await POST(makeRequest({ name: 'x', created_by: 'a2000000-0000-0000-0000-000000000098', items: [LINE] }))
     expect(res.status).toBe(403)
     expect(inserts).toEqual([])
   })

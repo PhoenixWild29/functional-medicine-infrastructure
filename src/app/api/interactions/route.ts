@@ -11,6 +11,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { z } from 'zod'
+import { parseJsonBody, uuid } from '@/lib/api/input'
+
+/** Most ingredients one interaction check takes (a session has a handful). */
+const MAX_INGREDIENT_IDS = 100
+
+/**
+ * The ids go into a PostgREST or() filter string, so each must be a uuid:
+ * anything else could add filter terms, or reach Postgres as 22P02.
+ */
+const CheckBody = z.object({
+  ingredient_ids: z.array(uuid()).max(MAX_INGREDIENT_IDS).optional(),
+})
 
 async function getHandler() {
   const supabaseAuth = await createServerClient()
@@ -41,8 +54,9 @@ async function postHandler(req: NextRequest) {
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const body = await req.json()
-  const { ingredient_ids } = body as { ingredient_ids: string[] }
+  const parsed = await parseJsonBody(req, CheckBody)
+  if (!parsed.ok) return parsed.response
+  const { ingredient_ids } = parsed.data
 
   if (!ingredient_ids || ingredient_ids.length < 2) {
     return NextResponse.json({ data: [] })

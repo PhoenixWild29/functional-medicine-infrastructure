@@ -20,6 +20,8 @@ import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { resolveSigner } from '@/lib/auth/signer'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { z } from 'zod'
+import { parseJsonBody } from '@/lib/api/input'
 
 const COULD_NOT_RUN = new Set(['orders_unavailable', 'provider_unavailable', 'compliance_unavailable'])
 
@@ -40,13 +42,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const who = await resolveSigner(supabase, { userId: user.id, clinicId, role: getUserRole(user) ?? null })
   if (!who.ok) return NextResponse.json({ error: who.message }, { status: who.status })
 
-  let body: { orderIds?: unknown }
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
-  }
-  const parsed = parseOrderIds(body.orderIds)
+  // A body that is not an object is a 400 (it used to throw on
+  // body.orderIds, a 500). The ids: parseOrderIds, with its own messages.
+  const body = await parseJsonBody(request, z.object({ orderIds: z.unknown().optional() }))
+  if (!body.ok) return body.response
+  const parsed = parseOrderIds(body.data.orderIds)
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })
 
   const check = await checkBatch(supabase, { clinicId, userId: user.id, orderIds: parsed.ids, atSigning: false })

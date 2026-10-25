@@ -19,6 +19,11 @@ async function postHandler(request: NextRequest, { params }: { params: Promise<{
 
   const body = await readJson(request)
   if (!body) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  // The action is checked before the invite is read (inviteAction checks it
+  // again, with the same message).
+  if (body['action'] !== 'revoke' && body['action'] !== 'resend') {
+    return NextResponse.json({ error: 'action must be revoke or resend' }, { status: 400 })
+  }
 
   const { data: invite, error } = await access.supabase
     .from('onboarding_invites')

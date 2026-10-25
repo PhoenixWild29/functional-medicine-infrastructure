@@ -31,6 +31,10 @@ import { REASSIGN_AUDIT_ACTOR } from '@/lib/orders/reassignment'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { z } from 'zod'
+import { parseParams, uuid } from '@/lib/api/input'
+
+const paramsSchema = z.object({ orderId: uuid() })
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
@@ -38,10 +42,8 @@ interface RouteParams {
 
 async function postHandler(
   request: NextRequest,
-  { params }: RouteParams
+  context: RouteParams
 ): Promise<NextResponse> {
-  const { orderId } = await params
-
   const supabaseAuth = await createServerClient()
   // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -61,6 +63,12 @@ async function postHandler(
   if (!isProviderRole(getUserRole(user))) {
     return NextResponse.json({ error: 'Only a provider can take over a draft.' }, { status: 403 })
   }
+
+  // The order id is an id before it is read (a bad one is a 400, not a
+  // Postgres 22P02 500).
+  const parsed = await parseParams(context, paramsSchema)
+  if (!parsed.ok) return parsed.response
+  const { orderId } = parsed.data
 
   const supabase = createServiceClient()
 

@@ -22,21 +22,13 @@
 
 import { NextResponse } from 'next/server'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+// Webhook event types (AC-SPC-001.4): one list, shared with webhook
+// registration, which accepts only these.
+import { WEBHOOK_EVENT_TYPES } from '@/lib/spec/webhook-event-types'
 
 // Current published spec version (AC-SPC-003.1: major.minor scheme)
 const SPEC_VERSION = 'v1.0'
 const SPEC_PUBLISHED_DATE = '2026-03-18'
-
-// ── Webhook event types (AC-SPC-001.4) ──────────────────────
-const WEBHOOK_EVENT_TYPES = [
-  'order.acknowledged',
-  'order.compounding',
-  'order.ready',
-  'order.shipped',
-  'order.delivered',
-  'order.rejected',
-  'order.cancelled',
-] as const
 
 const spec = {
   openapi: '3.1.0',

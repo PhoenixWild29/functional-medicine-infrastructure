@@ -18,8 +18,8 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { isCompoundingStatus } from '@/lib/compliance/compounding'
 import { getUserRole } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+import { UUID_RE } from '@/lib/api/input'
+import { readObjectBody } from '@/app/api/ops/_lib/body'
 
 async function putHandler(request: NextRequest, { params }: { params: Promise<{ ingredientId: string }> }): Promise<NextResponse> {
   const { ingredientId } = await params
@@ -32,12 +32,9 @@ async function putHandler(request: NextRequest, { params }: { params: Promise<{ 
   }
   if (!UUID_RE.test(ingredientId)) return NextResponse.json({ error: 'Invalid ingredient id' }, { status: 400 })
 
-  let body: Record<string, unknown>
-  try {
-    body = await request.json() as Record<string, unknown>
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
+  const parsed = await readObjectBody(request)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
 
   const { status, commercialEquivalent, onFdaShortage } = body
   const source = typeof body['source'] === 'string' ? body['source'].trim() : ''

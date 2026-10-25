@@ -26,7 +26,7 @@ jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.clien
 
 jest.spyOn(console, 'error').mockImplementation(() => {})
 
-const BODY = { name: 'Weight loss', created_by: 'pr-1', items: [{ formulation_id: 'f-1' }] }
+const BODY = { name: 'Weight loss', created_by: 'a2000000-0000-0000-0000-000000000001', items: [{ formulation_id: 'a7000000-0000-0000-0000-000000000001' }] }
 
 async function create(more: Script) {
   db = scriptedDb(c => more(c) ?? (

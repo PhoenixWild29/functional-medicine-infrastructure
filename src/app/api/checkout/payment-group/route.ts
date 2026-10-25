@@ -18,8 +18,9 @@ import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { createPaymentGroup }  from '@/lib/payment-group/create-group'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+// Any 8-4-4-4-12 hex id. The v4-only pattern used here before refused the
+// seeded demo order ids, which are not RFC v4.
+import { UUID_RE } from '@/lib/api/input'
 
 interface CreatePaymentGroupBody {
   orderIds: string[]
@@ -66,7 +67,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  if (!Array.isArray(body.orderIds)) {
+  // A JSON body of null used to throw here (a 500).
+  if (!body || typeof body !== 'object' || !Array.isArray(body.orderIds)) {
     return NextResponse.json({ error: 'orderIds must be an array' }, { status: 400 })
   }
   if (body.orderIds.length < 2) {
@@ -76,7 +78,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'A payment group cannot contain more than 25 orders' }, { status: 400 })
   }
   for (const id of body.orderIds) {
-    if (!UUID_RE.test(id)) {
+    if (typeof id !== 'string' || !UUID_RE.test(id)) {
       return NextResponse.json({ error: `Invalid orderId: ${id}` }, { status: 400 })
     }
   }

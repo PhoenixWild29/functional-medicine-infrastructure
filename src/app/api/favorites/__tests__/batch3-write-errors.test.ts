@@ -27,16 +27,16 @@ jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.clien
 
 jest.spyOn(console, 'error').mockImplementation(() => {})
 
-const PROVIDERS = { data: [{ provider_id: 'pr-1' }] }
+const PROVIDERS = { data: [{ provider_id: 'a2000000-0000-0000-0000-000000000001' }] }
 
 /** Healthy answers unless `more` answers first. */
 const healthy = (more: Script): Script => c => {
   const m = more(c)
   if (m) return m
   if (c.table === 'providers') return PROVIDERS
-  if (c.table === 'patients') return { data: { patient_id: 'pt-1' } }
+  if (c.table === 'patients') return { data: { patient_id: 'a3000000-0000-0000-0000-000000000001' } }
   if (c.table === 'provider_favorites' && c.op === 'select' && c.single) {
-    return { data: { provider_id: 'pr-1', formulation_id: 'f-1', use_count: 0 } }
+    return { data: { provider_id: 'a2000000-0000-0000-0000-000000000001', formulation_id: 'a7000000-0000-0000-0000-000000000001', use_count: 0 } }
   }
   if (c.table === 'provider_favorites' && c.op === 'select') return { data: [] }
   if (c.table === 'provider_favorites') return { data: { favorite_id: 'fav-1' } }
@@ -52,7 +52,7 @@ async function call(handler: (r: NextRequest) => Promise<Response>, script: Scri
   return { status: res.status, body: await res.json() as Record<string, unknown> }
 }
 
-const NEW_FAVORITE = { provider_id: 'pr-1', formulation_id: 'f-1', label: 'Sema weekly', dose_presets: [{ dose: '20', unit: 'units', frequency: 'QD', timing: '', duration: '', label: null }] }
+const NEW_FAVORITE = { provider_id: 'a2000000-0000-0000-0000-000000000001', formulation_id: 'a7000000-0000-0000-0000-000000000001', label: 'Sema weekly', dose_presets: [{ dose: '20', unit: 'units', frequency: 'QD', timing: '', duration: '', label: null }] }
 const URL_ = 'https://app.test/api/favorites'
 
 function expectSafe500(r: { status: number; body: Record<string, unknown> }) {
@@ -68,7 +68,7 @@ describe('POST', () => {
   })
 
   it('a failed patient check answers 500, not 403 "Patient not in clinic"', async () => {
-    const r = await call(POST, c => (c.table === 'patients' ? DB_DOWN : undefined), URL_, { ...NEW_FAVORITE, patient_id: 'pt-1' })
+    const r = await call(POST, c => (c.table === 'patients' ? DB_DOWN : undefined), URL_, { ...NEW_FAVORITE, patient_id: 'a3000000-0000-0000-0000-000000000001' })
     expectSafe500(r)
     expect(db.to('provider_favorites', 'insert')).toHaveLength(0)
   })
@@ -93,26 +93,26 @@ describe('POST', () => {
 
 describe('PATCH', () => {
   it('a failed read of the favorite answers 500, not 404', async () => {
-    const r = await call(PATCH, c => (c.table === 'provider_favorites' && c.op === 'select' ? DB_DOWN : undefined), `${URL_}?id=fav-1`)
+    const r = await call(PATCH, c => (c.table === 'provider_favorites' && c.op === 'select' ? DB_DOWN : undefined), `${URL_}?id=a5000000-0000-0000-0000-000000000001`)
     expectSafe500(r)
     expect(db.to('provider_favorites', 'update')).toHaveLength(0)
   })
 
   it('a failed pharmacy-offering read answers 500, not 400 "does not offer"', async () => {
-    const r = await call(PATCH, c => (c.table === 'pharmacy_formulations' ? DB_DOWN : undefined), `${URL_}?id=fav-1`, { pharmacy_id: 'ph-1' })
+    const r = await call(PATCH, c => (c.table === 'pharmacy_formulations' ? DB_DOWN : undefined), `${URL_}?id=a5000000-0000-0000-0000-000000000001`, { pharmacy_id: 'a4000000-0000-0000-0000-000000000001' })
     expectSafe500(r)
     expect(db.to('provider_favorites', 'update')).toHaveLength(0)
   })
 
   it('a failed provider-list read answers 500, not 403', async () => {
-    const r = await call(PATCH, c => (c.table === 'providers' ? DB_DOWN : undefined), `${URL_}?id=fav-1`)
+    const r = await call(PATCH, c => (c.table === 'providers' ? DB_DOWN : undefined), `${URL_}?id=a5000000-0000-0000-0000-000000000001`)
     expectSafe500(r)
   })
 })
 
 describe('DELETE', () => {
   it('a failed read of the favorite answers 500, not 404', async () => {
-    const r = await call(DELETE, c => (c.table === 'provider_favorites' && c.op === 'select' ? DB_DOWN : undefined), `${URL_}?id=fav-1`)
+    const r = await call(DELETE, c => (c.table === 'provider_favorites' && c.op === 'select' ? DB_DOWN : undefined), `${URL_}?id=a5000000-0000-0000-0000-000000000001`)
     expectSafe500(r)
     expect(db.to('provider_favorites', 'delete')).toHaveLength(0)
   })

@@ -41,12 +41,12 @@ function rowFor(table: string): Record<string, unknown> | null {
     case 'formulations': return formulationRow
     case 'pharmacy_formulations': return { pharmacy_formulation_id: 'pf-1', wholesale_price: 95 }
     case 'pharmacies': return {
-      pharmacy_id: 'pharmacy-strive', name: 'Strive Pharmacy', slug: 'strive',
+      pharmacy_id: 'a4000000-0000-4000-8000-000000000001', name: 'Strive Pharmacy', slug: 'strive',
       integration_tier: 'TIER_4_FAX', shipping_fee_standard: 9, shipping_fee_cold_chain: 22,
       free_shipping_threshold: null, is_active: true, deleted_at: null,
     }
-    case 'pharmacy_formulation_packages': return { id: 'pkg-bpc-5', package_label: '5 mg vial', package_qty: 5, package_unit: 'mg', wholesale_price: 62, is_default: true, active: true }
-    case 'pharmacy_state_licenses': return { pharmacy_id: 'pharmacy-strive', expiration_date: '2099-12-31', sterile_compounding: true }
+    case 'pharmacy_formulation_packages': return { id: 'b1000000-0000-4000-8000-000000000003', package_label: '5 mg vial', package_qty: 5, package_unit: 'mg', wholesale_price: 62, is_default: true, active: true }
+    case 'pharmacy_state_licenses': return { pharmacy_id: 'a4000000-0000-4000-8000-000000000001', expiration_date: '2099-12-31', sterile_compounding: true }
     default: return null
   }
 }
@@ -80,16 +80,16 @@ jest.mock('@/lib/supabase/service', () => ({
 const post = (body: Record<string, unknown>) => POST({ json: async () => body } as never)
 
 const bpcBody = (count: number) => draftBody({
-  formulationId: 'formulation-bpc', sigMode: 'standard', titrationSteps: [],
+  formulationId: 'f5000000-0000-4000-8000-000000000003', sigMode: 'standard', titrationSteps: [],
   sigText: 'Inject 1mg (1.00mL) subcutaneous once daily for 30 days', dose: '1 mg', frequencyCode: 'QD',
-  quantityLabel: '5 mg vial', packageId: 'pkg-bpc-5', packageCount: count, retailCents: 60000,
+  quantityLabel: '5 mg vial', packageId: 'b1000000-0000-4000-8000-000000000003', packageCount: count, retailCents: 60000,
   rxDetails: { ...(draftBody()['rxDetails'] as object), daysSupply: 30, dispenseQuantity: 30, dispenseUnit: 'mL' },
 })
 
 beforeEach(() => {
   insertedRow = null
   formulationRow = {
-    formulation_id: 'formulation-bpc', salt_forms: { ingredients: { common_name: 'Fixture', dea_schedule: null, compounding_status: 'approved_drug_component' } }, name: 'BPC-157 Injectable 5mg', concentration: '1mg/mL',
+    formulation_id: 'f5000000-0000-4000-8000-000000000003', salt_forms: { ingredients: { common_name: 'Fixture', dea_schedule: null, compounding_status: 'approved_drug_component' } }, name: 'BPC-157 Injectable 5mg', concentration: '1mg/mL',
     concentration_value: 1, concentration_unit: 'mg/mL', dosage_forms: { name: 'Injectable Solution' },
   }
 })
@@ -118,7 +118,7 @@ describe('POST /api/orders sizes the package against the dispense', () => {
 // its dispense. The server sizes it the same way the price step does.
 describe('POST /api/orders with no package chosen', () => {
   const noPackage = (dispense: number) => draftBody({
-    formulationId: 'formulation-bpc', sigMode: 'standard', titrationSteps: [],
+    formulationId: 'f5000000-0000-4000-8000-000000000003', sigMode: 'standard', titrationSteps: [],
     sigText: 'Inject 1mg (1.00mL) subcutaneous once daily for 30 days', dose: '1 mg', frequencyCode: 'QD',
     quantityLabel: null, packageId: null, packageCount: null, retailCents: 9580,
     rxDetails: { ...(draftBody()['rxDetails'] as object), daysSupply: 30, dispenseQuantity: dispense, dispenseUnit: 'mL' },

@@ -19,6 +19,7 @@ import { isRefundEventRow } from '@/lib/refunds/events'
 import { isPaymentEventRow, paymentFailedLabel } from '@/lib/payments/events'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserRole } from '@/lib/auth/claims'
+import { UUID_RE, badRequest } from '@/lib/api/input'
 import { deadlinePassed } from '@/lib/sla/deadline'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 
@@ -39,6 +40,8 @@ async function getHandler(request: NextRequest, { params }: Params): Promise<Nex
   if (!orderId) {
     return NextResponse.json({ error: 'Missing orderId' }, { status: 400 })
   }
+  // An 8-4-4-4-12 hex id, before any of the four queries.
+  if (!UUID_RE.test(orderId)) return badRequest('Invalid request', ['orderId'])
 
   const supabase = createServiceClient()
   const nowMs = Date.now()

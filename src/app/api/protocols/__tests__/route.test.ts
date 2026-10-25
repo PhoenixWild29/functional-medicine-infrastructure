@@ -67,6 +67,7 @@ function chain(result: ChainResult): QueryChain {
 // ── Helpers ──────────────────────────────────────────────────
 
 const CLINIC = 'clinic-A'
+const PROTO = 'a8000000-0000-0000-0000-000000000001'
 
 const SESSION_IN_CLINIC = {
   data: { user: { app_metadata: { clinic_id: CLINIC } } },
@@ -89,7 +90,7 @@ describe('GET /api/protocols?id — live pricing enrichment', () => {
   it('returns 401 without a session', async () => {
     getUserMock.mockResolvedValue({ data: { user: null } })
 
-    const res = await GET(makeRequest('proto-1'))
+    const res = await GET(makeRequest(PROTO))
     expect(res.status).toBe(401)
   })
 
@@ -98,7 +99,7 @@ describe('GET /api/protocols?id — live pricing enrichment', () => {
       data: { user: { user_metadata: {} } },
     })
 
-    const res = await GET(makeRequest('proto-1'))
+    const res = await GET(makeRequest(PROTO))
     expect(res.status).toBe(403)
   })
 
@@ -113,7 +114,7 @@ describe('GET /api/protocols?id — live pricing enrichment', () => {
     fromMock.mockImplementation((table: string) => {
       switch (table) {
         case 'protocol_templates':
-          return chain({ data: { protocol_id: 'proto-1', name: 'Test Protocol' }, error: null })
+          return chain({ data: { protocol_id: PROTO, name: 'Test Protocol' }, error: null })
         case 'protocol_items':
           return chain({ data: items, error: null })
         case 'pharmacy_formulations':
@@ -132,7 +133,7 @@ describe('GET /api/protocols?id — live pricing enrichment', () => {
       }
     })
 
-    const res = await GET(makeRequest('proto-1'))
+    const res = await GET(makeRequest(PROTO))
     expect(res.status).toBe(200)
 
     const json = await res.json()
@@ -158,7 +159,7 @@ describe('GET /api/protocols?id — live pricing enrichment', () => {
     fromMock.mockImplementation((table: string) => {
       switch (table) {
         case 'protocol_templates':
-          return chain({ data: { protocol_id: 'proto-1', name: 'Stale Protocol' }, error: null })
+          return chain({ data: { protocol_id: PROTO, name: 'Stale Protocol' }, error: null })
         case 'protocol_items':
           return chain({
             data: [{ item_id: 'i1', formulation_id: 'form-dead', pharmacy_id: 'ph-1', sort_order: 1 }],
@@ -175,7 +176,7 @@ describe('GET /api/protocols?id — live pricing enrichment', () => {
       }
     })
 
-    const res = await GET(makeRequest('proto-1'))
+    const res = await GET(makeRequest(PROTO))
     expect(res.status).toBe(200)
 
     const json = await res.json()
@@ -198,7 +199,7 @@ describe('GET /api/protocols?id — live pricing enrichment', () => {
     ]
     fromMock.mockImplementation((table: string) => {
       switch (table) {
-        case 'protocol_templates': return chain({ data: { protocol_id: 'proto-1', name: 'P' }, error: null })
+        case 'protocol_templates': return chain({ data: { protocol_id: PROTO, name: 'P' }, error: null })
         case 'protocol_items':     return chain({ data: items, error: null })
         case 'pharmacy_formulations': return chain({ data: [], error: null })
         case 'formulations':       return chain({ data: [], error: null })
@@ -207,7 +208,7 @@ describe('GET /api/protocols?id — live pricing enrichment', () => {
       }
     })
 
-    const json = await (await GET(makeRequest('proto-1'))).json()
+    const json = await (await GET(makeRequest(PROTO))).json()
     const [sema, bpc, nad, cat2] = json.data.items
     expect(sema.compounding_block).toBeNull()
     expect(sema.compounding_warning).toBeNull()

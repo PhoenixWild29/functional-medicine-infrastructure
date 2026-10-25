@@ -19,6 +19,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const caller = await importCaller(request)
   if ('response' in caller) return caller.response
 
+  // Refuse an oversize upload before reading it (allowing for the form framing).
+  const declared = Number(request.headers.get('content-length') ?? '0')
+  if (declared > MAX_IMPORT_BYTES + 64 * 1024) return bad('The file is larger than 4 MB. Split it into smaller files.', 413)
+
   let form: FormData
   try {
     form = await request.formData()

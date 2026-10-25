@@ -226,3 +226,16 @@ describe('a session that does not verify', () => {
     expect(updateMock).not.toHaveBeenCalled()
   })
 })
+
+describe('auth before the id is looked at', () => {
+  it('a malformed id from a signed-out caller is 401, not 400', async () => {
+    getSessionMock.mockResolvedValue({ data: { session: null } })
+    expect((await GET(request(), ctx('not-a-uuid'))).status).toBe(401)
+    expect((await PATCH(request({ nkda: true }), ctx('not-a-uuid'))).status).toBe(401)
+  })
+
+  it('a malformed id from ops_admin is 403', async () => {
+    getSessionMock.mockResolvedValue({ data: { session: session('ops_admin', null) } })
+    expect((await GET(request(), ctx('not-a-uuid'))).status).toBe(403)
+  })
+})

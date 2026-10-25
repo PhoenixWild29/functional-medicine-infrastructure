@@ -63,11 +63,20 @@ import { splitDose } from '@/lib/orders/dose'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { z } from 'zod'
+import { badRequest, parseJsonBody, UUID_RE } from '@/lib/api/input'
 
 export const dynamic = 'force-dynamic'
 
 /** One order may be refilled at a time per line; a session holds several. */
 const MAX_REFILL_LINES = 25
+
+/**
+ * The raw list, bounded before it is filtered and de-duplicated. Entries
+ * are checked below so the existing messages stay ("orderIds required",
+ * "At most 25").
+ */
+const bodySchema = z.object({ orderIds: z.unknown().refine(v => !Array.isArray(v) || v.length <= 500, 'too many').optional() })
 
 async function postHandler(request: NextRequest) {
   const supabaseAuth = await createServerClient()
@@ -81,12 +90,9 @@ async function postHandler(request: NextRequest) {
   const pendingReview = await refuseUnlessApproved(createServiceClient(), clinicId)
   if (pendingReview) return pendingReview
 
-  let body: { orderIds?: unknown }
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
-  }
+  const parsed = await parseJsonBody(request, bodySchema)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.data
 
   const orderIds = Array.isArray(body.orderIds)
     ? [...new Set(body.orderIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0))]
@@ -97,6 +103,9 @@ async function postHandler(request: NextRequest) {
   if (orderIds.length > MAX_REFILL_LINES) {
     return NextResponse.json({ error: `At most ${MAX_REFILL_LINES} orders can be refilled at once` }, { status: 400 })
   }
+  // Every id an id before it is read (a bad one reaching Postgres is a
+  // 22P02, a 500).
+  if (!orderIds.every(id => UUID_RE.test(id))) return badRequest('Invalid request', ['orderIds'])
 
   const supabase = createServiceClient()
 

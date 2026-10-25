@@ -57,6 +57,9 @@ interface DocumoFaxData {
 // ROUTE HANDLER
 // ============================================================
 
+/** An HMAC-SHA256 signature in hex: whole bytes, hex digits only. */
+const HEX_SIGNATURE_RE = /^(?:[0-9a-f]{2})+$/i
+
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   // Step 1: Read raw body — must happen before any parsing for HMAC to work
   const rawBody = await request.text()
@@ -64,7 +67,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   // Step 2: Authenticate — verify X-Documo-Signature header
   // validateDocumoWebhook: signature first, rawBody second (HMAC-SHA256)
-  const isValid = await validateDocumoWebhook(signature, rawBody)
+  // The signature must be hex before it is decoded: a missing one made the
+  // verifier throw (a 500) instead of refusing it.
+  const isValid = HEX_SIGNATURE_RE.test(signature) && await validateDocumoWebhook(signature, rawBody)
   if (!isValid) {
     const ip = request.headers.get('x-forwarded-for') ?? 'unknown'
     console.error(`[documo-webhook] signature verification failed | ip=${ip}`)

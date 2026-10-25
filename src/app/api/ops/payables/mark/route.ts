@@ -19,6 +19,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { requireOpsAdmin } from '@/lib/payments/ops-auth'
 import { UUID_RE, isIsoDate } from '@/lib/payments/payables'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { readObjectBody } from '@/app/api/ops/_lib/body'
 
 const MAX_IDS = 500
 // A bank or ACH reference: printable, no control characters.
@@ -30,12 +31,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireOpsAdmin()
   if (auth.denied) return auth.denied
 
-  let body: Record<string, unknown>
-  try {
-    body = await request.json()
-  } catch {
-    return bad('Invalid JSON')
-  }
+  const parsed = await readObjectBody(request)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
 
   const ids = body['payableIds']
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > MAX_IDS || !ids.every(id => typeof id === 'string' && UUID_RE.test(id))) {

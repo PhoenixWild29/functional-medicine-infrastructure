@@ -17,9 +17,10 @@ import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getUserRole } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { UUID_RE } from '@/lib/api/input'
+import { readObjectBody } from '@/app/api/ops/_lib/body'
 
-// BLK-02: UUID v4 pattern for pharmacyId validation
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const ACTIONS = new Set(['disable_adapter', 'enable_adapter', 'force_tier4', 'close_circuit'])
 
 interface Params { params: Promise<{ pharmacyId: string }> }
 
@@ -34,21 +35,24 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  // BLK-02: Validate pharmacyId is a UUID before touching the DB
+  // BLK-02: Validate pharmacyId before touching the DB. Any 8-4-4-4-12 hex
+  // id (lib/api/input): the seeded demo ids are not RFC v4.
   if (!pharmacyId || !UUID_RE.test(pharmacyId)) {
     return NextResponse.json({ error: 'Invalid pharmacyId' }, { status: 400 })
   }
 
-  let body: Record<string, unknown>
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
+  const parsed = await readObjectBody(request)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
 
-  const action = body['action'] as string | undefined
-  if (!action) {
+  const action = body['action']
+  if (typeof action !== 'string' || !action) {
     return NextResponse.json({ error: 'Missing action' }, { status: 400 })
+  }
+  // BLK-01: an unknown action is refused before the pharmacy is read; the
+  // user-supplied string is not echoed.
+  if (!ACTIONS.has(action)) {
+    return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
   }
 
   // NB-07: distinguish no-email sessions in audit logs

@@ -22,6 +22,7 @@ import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { applyBundleShipping, MAX_BUNDLE_ORDERS } from '@/lib/orders/apply-bundle-shipping'
 import { getUserClinicId } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { UUID_RE } from '@/lib/api/input'
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
@@ -38,15 +39,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const pendingReview = await refuseUnlessApproved(createServiceClient(), clinicId)
   if (pendingReview) return pendingReview
 
-  let body: { orderIds?: unknown }
+  let body: { orderIds?: unknown } | null
   try {
     body = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
-  const orderIds = body.orderIds
+  // Every id an id before anything is read (a bad one reaching Postgres is
+  // a 22P02, a 500). A body that is not an object has no orderIds.
+  const orderIds = body && typeof body === 'object' ? body.orderIds : undefined
   if (!Array.isArray(orderIds) || orderIds.length === 0 || orderIds.length > MAX_BUNDLE_ORDERS
-    || !orderIds.every(id => typeof id === 'string' && id.length > 0)) {
+    || !orderIds.every(id => typeof id === 'string' && UUID_RE.test(id))) {
     return NextResponse.json({ error: `orderIds must be 1–${MAX_BUNDLE_ORDERS} order ids` }, { status: 400 })
   }
 

@@ -30,6 +30,40 @@ import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provi
 import type { Json } from '@/types/database.types'
 import { epcsRequestFields } from '@/lib/epcs/audit-request'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { z } from 'zod'
+import { badRequest, boundedText, parseInput, uuid } from '@/lib/api/input'
+
+/** epcs_audit_log.event_type: the table's CHECK constraint (migration 20260409000001). */
+const EPCS_EVENT_TYPES = [
+  'PRESCRIPTION_CREATED', 'PRESCRIPTION_ALTERED', 'PRE_SIGN_REVIEW',
+  'TOTP_CHALLENGE_SENT', 'TOTP_VERIFIED', 'TOTP_FAILED',
+  'SIGNATURE_CAPTURED', 'ORDER_SIGNED', 'ORDER_TRANSMITTED', 'ORDER_VOIDED',
+] as const
+
+/** A TOTP code is 6 digits; anything this long is not one. */
+const MAX_TOTP_CODE = 32
+/** A medication name can list several ingredients: generous. */
+const MAX_MEDICATION_NAME = 1000
+/** Upper bound on an audit row's details JSON. */
+const MAX_DETAILS_JSON = 10_000
+
+/** An optional id: absent, null or '' (stored as null), else a uuid. */
+const optionalId = z.union([z.literal(''), z.null(), uuid()]).optional()
+
+/**
+ * action=audit, after the event_type presence check. ids are uuids (a bad
+ * one was a 22P02 500), dea_schedule an integer 0-5, text bounded, details
+ * a small JSON object. provider_id is not here: it is only compared with
+ * the signed-in provider, never stored.
+ */
+const AuditBody = z.object({
+  event_type:      z.enum(EPCS_EVENT_TYPES),
+  patient_id:      optionalId,
+  order_id:        optionalId,
+  dea_schedule:    z.number().int().min(0).max(5).optional(),
+  medication_name: z.union([z.null(), boundedText(MAX_MEDICATION_NAME)]).optional(),
+  details:         z.union([z.null(), z.record(z.string(), z.unknown()).refine(d => JSON.stringify(d).length <= MAX_DETAILS_JSON)]).optional(),
+})
 
 type EpcsCaller =
   | { ok: true; providerId: string }
@@ -111,12 +145,18 @@ async function postHandler(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const action = searchParams.get('action')
-  let body: Record<string, unknown>
+  let raw: unknown
   try {
-    body = await req.json() as Record<string, unknown>
+    raw = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
+  // A JSON body that is not an object (null, an array) used to throw on
+  // the provider_id read below: a 500.
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return badRequest('Invalid request', ['(body)'])
+  }
+  const body = raw as Record<string, unknown>
   if (namesAnotherProvider(body['provider_id'], caller.providerId)) return NOT_YOURS()
   // Always the signed-in provider, whatever the client sent.
   const provider_id = caller.providerId
@@ -192,6 +232,9 @@ async function postHandler(req: NextRequest) {
     if (typeof code !== 'string' || !code) {
       return NextResponse.json({ error: 'Missing code' }, { status: 400 })
     }
+    if (code.length > MAX_TOTP_CODE) {
+      return badRequest('Invalid request', ['code'])
+    }
 
     // Get stored secret
     const { data: provider, error: providerError } = await supabase
@@ -251,22 +294,24 @@ async function postHandler(req: NextRequest) {
 
   // ── Audit: Log EPCS event ─────────────────────────────
   if (action === 'audit') {
-    const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
-    const eventType = str(body['event_type'])
-    if (!eventType) return NextResponse.json({ error: 'Missing event_type' }, { status: 400 })
-    const details = body['details']
+    if (typeof body['event_type'] !== 'string' || !body['event_type']) {
+      return NextResponse.json({ error: 'Missing event_type' }, { status: 400 })
+    }
+    const parsed = parseInput(AuditBody, body)
+    if (!parsed.ok) return parsed.response
+    const a = parsed.data
 
     const { error } = await supabase
       .from('epcs_audit_log')
       .insert({
         // The signed-in provider, never the client's provider_id.
         provider_id,
-        patient_id: str(body['patient_id']),
-        order_id: str(body['order_id']),
-        event_type: eventType,
-        dea_schedule: typeof body['dea_schedule'] === 'number' ? body['dea_schedule'] : 0,
-        medication_name: str(body['medication_name']) ?? '',
-        details: (details && typeof details === 'object' ? details : {}) as Json,
+        patient_id: a.patient_id || null,
+        order_id: a.order_id || null,
+        event_type: a.event_type,
+        dea_schedule: a.dea_schedule ?? 0,
+        medication_name: a.medication_name ?? '',
+        details: (a.details ?? {}) as Json,
         // C10: keyed hashes of the IP and user agent, never the raw values.
         ...(await epcsRequestFields(req.headers ?? null)),
       })

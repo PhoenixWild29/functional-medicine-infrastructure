@@ -5,6 +5,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { markAdapterConfigured } from '@/lib/pharmacy-onboarding/review'
 import { bodyOf, crossSiteRefusal, opsAdmin, respond } from '@/lib/pharmacy-onboarding/request'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { UUID_RE, badRequest } from '@/lib/api/input'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,6 +15,9 @@ async function postHandler(request: NextRequest, context: { params: Promise<{ ap
   const who = await opsAdmin()
   if (!who.ok) return who.response
   const { applicationId } = await context.params
+  // An 8-4-4-4-12 hex id, before the library reads anything (a malformed
+  // one reached Postgres as an invalid uuid).
+  if (!UUID_RE.test(applicationId)) return badRequest('Invalid request', ['applicationId'])
   const body = await bodyOf(request)
   return respond(await markAdapterConfigured(createServiceClient(), { actor: who.actor, applicationId, configured: body['configured'] as boolean }))
 }

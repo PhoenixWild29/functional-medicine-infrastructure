@@ -57,9 +57,9 @@ function makeGetRequest(): NextRequest {
   return new NextRequest(new URL('http://localhost/api/favorites'))
 }
 
-const FAV_ID         = 'fav-uuid-123'
-const PROVIDER_IN    = 'provider-in-clinic'
-const PROVIDER_OUT   = 'provider-other-clinic'
+const FAV_ID         = 'a5000000-0000-0000-0000-000000000123'
+const PROVIDER_IN    = 'a2000000-0000-0000-0000-000000000001'
+const PROVIDER_OUT   = 'a2000000-0000-0000-0000-000000000009'
 const CALLER_CLINIC  = 'clinic-A'
 
 const SESSION_IN_CLINIC = {

@@ -42,6 +42,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { routeOrder } from '@/lib/adapters/routing-engine'
 import type { OrderStatus } from '@/lib/orders/state-machine'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { UUID_RE, MAX_NOTE, badRequest } from '@/lib/api/input'
+
+/** Generous ceiling on the routing attempt counter. */
+const MAX_ATTEMPT_NUMBER = 100
 
 // BLK-07: Valid currentStatus values accepted by this endpoint.
 // The routing engine handles PAID_PROCESSING (initial submission) and
@@ -79,6 +83,12 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
+  // A JSON body that is not an object (null, an array, a number) used to
+  // throw on the destructure below: a 500.
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return badRequest('Invalid request', ['(body)'])
+  }
+
   const {
     orderId,
     pharmacyId,
@@ -100,6 +110,13 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (typeof pharmacyId !== 'string' || !pharmacyId) {
     return NextResponse.json({ error: 'pharmacyId is required' }, { status: 400 })
   }
+  // Ids reach Postgres: a value that is not a uuid is error 22P02 (a 500).
+  if (!UUID_RE.test(orderId)) {
+    return badRequest('Invalid request', ['orderId'])
+  }
+  if (!UUID_RE.test(pharmacyId)) {
+    return badRequest('Invalid request', ['pharmacyId'])
+  }
   if (typeof currentStatus !== 'string' || !currentStatus) {
     return NextResponse.json({ error: 'currentStatus is required' }, { status: 400 })
   }
@@ -112,7 +129,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
   // NB-11: validate attemptNumber is a positive integer when provided
   if (attemptNumber !== undefined) {
-    if (typeof attemptNumber !== 'number' || !Number.isInteger(attemptNumber) || attemptNumber < 1) {
+    if (typeof attemptNumber !== 'number' || !Number.isInteger(attemptNumber) || attemptNumber < 1 || attemptNumber > MAX_ATTEMPT_NUMBER) {
       return NextResponse.json(
         { error: 'attemptNumber must be a positive integer' },
         { status: 400 }
@@ -122,12 +139,15 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   // REQ-ARE-005: validate and log ops override if present
   if (forceOverride !== undefined) {
-    const override = forceOverride as { tier?: unknown; reason?: unknown }
+    const override = (forceOverride && typeof forceOverride === 'object' ? forceOverride : {}) as { tier?: unknown; reason?: unknown }
     if (typeof override.tier !== 'string' || typeof override.reason !== 'string') {
       return NextResponse.json(
         { error: 'forceOverride must have tier (string) and reason (string)' },
         { status: 400 }
       )
+    }
+    if (override.reason.length > MAX_NOTE) {
+      return badRequest('Invalid request', ['forceOverride.reason'])
     }
     // NB-09: validate tier value against known IntegrationTier union
     if (!VALID_INTEGRATION_TIERS.has(override.tier)) {

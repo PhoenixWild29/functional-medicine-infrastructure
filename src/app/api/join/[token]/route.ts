@@ -80,7 +80,8 @@ async function postHandler(request: NextRequest, context: { params: Promise<{ to
   if (approval.state === 'unavailable') return NextResponse.json({ error: 'Please try again in a moment.' }, { status: 503, headers: NO_STORE })
   if (approval.state === 'pending') return NextResponse.json({ error: JOIN_INACTIVE_MESSAGE }, { status: 410, headers: NO_STORE })
 
-  const contact = (body as { contact?: { mobile?: unknown } }).contact
+  // A JSON body of null used to throw here (a 500); it has no mobile.
+  const contact = (body as { contact?: { mobile?: unknown } } | null)?.contact
   const mobile = typeof contact?.mobile === 'string' ? toE164(contact.mobile) : null
   if (!mobile) {
     return NextResponse.json({ field: 'contact.mobile', error: 'Enter your mobile number, including the area code.' }, { status: 400, headers: NO_STORE })
