@@ -325,7 +325,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
           <button
             type="button"
             onClick={() => void refetch()}
-            className="underline hover:no-underline focus-visible:outline-none"
+            className="underline hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Retry
           </button>
@@ -419,7 +419,24 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
       </div>
 
       {/* ── Status filter tabs — REQ-GDB-001 ── */}
-      <div className="flex gap-1 flex-wrap border-b border-border pb-px" role="tablist" aria-label="Order status filters">
+      {/* ARIA tabs: one tab stop (the selected tab); Left / Right / Home /
+          End move between tabs and select them. */}
+      <div
+        className="flex gap-1 flex-wrap border-b border-border pb-px"
+        role="tablist"
+        aria-label="Order status filters"
+        onKeyDown={e => {
+          const keys = ['ArrowRight', 'ArrowLeft', 'Home', 'End']
+          if (!keys.includes(e.key)) return
+          e.preventDefault()
+          const at = TABS.findIndex(t => t.id === activeTab)
+          const next = e.key === 'Home' ? 0
+            : e.key === 'End' ? TABS.length - 1
+            : (at + (e.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length
+          selectTab(TABS[next]!.id)
+          e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
+        }}
+      >
         {TABS.map(tab => {
           const count = tabCount(tab)
           // Pending Payment: the open count is the card's number; expired
@@ -432,6 +449,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
               type="button"
               role="tab"
               aria-selected={isActive}
+              tabIndex={isActive ? 0 : -1}
               onClick={() => selectTab(tab.id)}
               className={`
                 flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-t-md border-b-2 transition-colors

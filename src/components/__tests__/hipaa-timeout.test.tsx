@@ -13,7 +13,7 @@
  * IDLE_TIMEOUT_MINUTES; see idle-logoff.test.tsx.
  */
 
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, fireEvent } from '@testing-library/react'
 import { HipaaTimeout } from '../hipaa-timeout'
 
 // ── Mocks ──────────────────────────────────────────────────────────────
@@ -151,5 +151,19 @@ describe('HipaaTimeout', () => {
 
     // Dialog still visible.
     expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('keyboard: the warning takes focus on "Stay Logged In"; Escape means stay, and the warning closes', () => {
+    render(<HipaaTimeout />)
+    act(() => {
+      jest.advanceTimersByTime(WARNING_MS)
+    })
+    const stay = screen.getByRole('button', { name: 'Stay Logged In' })
+    expect(stay).toHaveFocus()
+    act(() => {
+      fireEvent.keyDown(stay, { key: 'Escape' })
+    })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(signOutMock).not.toHaveBeenCalled()
   })
 })

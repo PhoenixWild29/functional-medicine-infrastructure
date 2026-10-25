@@ -48,7 +48,7 @@
 // the session are never added twice.
 
 import { patientName } from '@/lib/patients/display'
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import {
@@ -337,6 +337,10 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadFrequent, children, on
   const providerId = session.provider?.provider_id ?? null
   // Requirement 19: the entry whose Make favorite dialog is open.
   const [favoriteDialogItem, setFavoriteDialogItem] = useState<FrequentItem | null>(null)
+  // Each Frequently used entry's main button, by item key: after Make
+  // favorite saves, its "Make favorite" button becomes "★ Favorite", so
+  // focus returns to the entry instead (B-2026-10-25-11).
+  const frequentButtons = useRef(new Map<string, HTMLButtonElement>())
 
   const { data: frequent } = useQuery({
     queryKey: ['provider-frequent', providerId],
@@ -752,6 +756,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadFrequent, children, on
                       className="flex items-stretch rounded-md border border-border bg-background"
                     >
                       <button
+                        ref={el => { if (el) frequentButtons.current.set(frequentItemKey(item), el); else frequentButtons.current.delete(frequentItemKey(item)) }}
                         type="button"
                         onClick={() => handleFrequentClick(item)}
                         disabled={!item.formulation_active}
@@ -790,6 +795,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadFrequent, children, on
               providerId={providerId}
               onClose={() => setFavoriteDialogItem(null)}
               onSaved={() => queryClient.invalidateQueries({ queryKey: ['provider-favorites'] })}
+              focusAfterSave={() => frequentButtons.current.get(frequentItemKey(favoriteDialogItem))}
             />
           )}
 

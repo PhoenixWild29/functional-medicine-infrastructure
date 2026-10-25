@@ -260,7 +260,7 @@ export function PharmacySearchForm({ defaultState }: Props) {
             <button
               type="button"
               onClick={handleDismissRestore}
-              className="rounded px-2 py-1 text-xs text-blue-600 hover:text-blue-800 focus-visible:outline-none"
+              className="rounded px-2 py-1 text-xs text-blue-600 hover:text-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Dismiss restore banner"
             >
               ✕

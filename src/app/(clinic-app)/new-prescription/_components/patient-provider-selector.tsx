@@ -270,7 +270,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
                 setSelectedPatientId('')
                 setSelectedProviderId('')
               }}
-              className="rounded-md px-3 py-1.5 text-xs font-medium text-blue-600 underline hover:text-blue-800 focus-visible:outline-none"
+              className="rounded-md px-3 py-1.5 text-xs font-medium text-blue-600 underline hover:text-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Start Over
             </button>
@@ -471,7 +471,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
         <button
           type="button"
           onClick={() => router.push('/dashboard')}
-          className="text-sm text-muted-foreground underline hover:text-foreground focus-visible:outline-none"
+          className="text-sm text-muted-foreground underline hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           Cancel
         </button>

@@ -144,7 +144,7 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
       {open && (
         <div id={`rx-details-panel-${lineId}`} className="space-y-3 border-t border-border/60 px-3 pb-3 pt-2">
           {missing.length > 0 && (
-            <p className="text-[11px] font-medium text-amber-800" role="alert">
+            <p className="text-[11px] font-medium text-amber-800" role="status">
               {missingDiagnosis && 'A diagnosis is required for a controlled substance. '}
               {missingClinical && 'A clinical difference statement is required for this medication. '}
               Confirm below to enable sending.

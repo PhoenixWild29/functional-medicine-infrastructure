@@ -269,7 +269,7 @@ export function AllergyEditor({ patientId, patient, onSaved, onCancel }: Allergy
           type="button"
           onClick={onCancel}
           disabled={saving}
-          className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground underline hover:text-foreground focus-visible:outline-none"
+          className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground underline hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           Cancel
         </button>

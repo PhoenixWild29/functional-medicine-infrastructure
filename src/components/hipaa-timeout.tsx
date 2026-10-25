@@ -18,6 +18,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createBrowserClient } from '@/lib/supabase/client'
 import { redirectToLogin } from '@/lib/auth/redirect-to-login'
+import { useDialogFocus } from '@/components/a11y/use-dialog-focus'
 
 export const DEFAULT_IDLE_TIMEOUT_MINUTES = 15
 const WARNING_LEAD_MS = 2 * 60 * 1000  // warn two minutes before sign-out
@@ -120,6 +121,13 @@ export function HipaaTimeout({ timeoutMinutes = DEFAULT_IDLE_TIMEOUT_MINUTES }: 
     resetTimers()
   }
 
+  // The warning is a modal dialog: focus goes to "Stay Logged In", Tab
+  // stays inside it, and Escape means stay (the safe choice); focus goes
+  // back to where it was when the warning closes.
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const stayRef = useRef<HTMLButtonElement>(null)
+  useDialogFocus(dialogRef, { active: showWarning, onEscape: handleStayActive, initialFocus: stayRef })
+
   // Always render a hidden sentinel so E2E can verify the component is
   // mounted and its timers are active, without relying on a fake clock.
   // Real timer semantics are covered by the unit test at
@@ -130,6 +138,7 @@ export function HipaaTimeout({ timeoutMinutes = DEFAULT_IDLE_TIMEOUT_MINUTES }: 
 
   return (
     <div
+      ref={dialogRef}
       data-testid="hipaa-timeout-root"
       role="dialog"
       aria-modal="true"
@@ -148,6 +157,7 @@ export function HipaaTimeout({ timeoutMinutes = DEFAULT_IDLE_TIMEOUT_MINUTES }: 
         </p>
         <div className="flex gap-3">
           <button
+            ref={stayRef}
             type="button"
             onClick={handleStayActive}
             className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

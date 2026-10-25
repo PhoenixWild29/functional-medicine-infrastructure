@@ -326,6 +326,9 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
   const router = useRouter()
   const session = usePrescriptionSession()
   const sigCanvasRef = useRef<SignatureCanvas>(null)
+  // Removing a line removes the button that had focus: focus goes to
+  // "+ Add Another Prescription" instead of being lost to the page.
+  const addAnotherRef = useRef<HTMLButtonElement>(null)
 
   // WO-99: the stroke rule (at least 3 strokes spanning at least 40% of
   // the pad), read off the pad after each stroke. The server checks the
@@ -1208,7 +1211,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => session.removePrescription(rx.id)}
+                    onClick={() => { session.removePrescription(rx.id); requestAnimationFrame(() => addAnotherRef.current?.focus()) }}
                     disabled={isBusy}
                     aria-label={`Remove ${rx.medicationName}`}
                     className="text-[10px] text-red-500 underline hover:text-red-700 disabled:opacity-50"
@@ -1233,6 +1236,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
           Back
         </button>
         <button
+          ref={addAnotherRef}
           type="button"
           onClick={() => router.push('/new-prescription/search')}
           disabled={isBusy}
