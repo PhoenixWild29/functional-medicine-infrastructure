@@ -279,7 +279,8 @@ test.describe('Accessibility: the patient plan link (WCAG 2.1 AA)', () => {
     expect(await axeViolations(page)).toEqual([])
     await page.getByLabel('Date of birth').fill('1979-12-31')
     await page.getByRole('button', { name: 'Continue' }).click()
-    await expect(page.getByRole('alert')).toContainText("doesn't match")
+    // Scoped to the page's main: Next's route announcer is also role=alert.
+    await expect(page.getByRole('main').getByRole('alert')).toContainText("doesn't match")
     expect(await axeViolations(page)).toEqual([])
     await expectReflowsAt320(page)
   })

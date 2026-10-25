@@ -156,7 +156,8 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     // The third line (plain compound at Tier1) moves to Option B.
     await optionA.getByLabel(`Option for ${TEST_CATALOG.formulationName}`).nth(1).selectOption({ label: 'Option B: Weight focus' })
     const optionB = page.getByRole('group', { name: 'Option B' })
-    await expect(optionB.getByText(TEST_CATALOG.formulationName)).toBeVisible()
+    // exact: the line's name, not the select's hidden label "Option for <name>".
+    await expect(optionB.getByText(TEST_CATALOG.formulationName, { exact: true })).toBeVisible()
     // The plain compound left in Option A becomes optional ("nice to have").
     await optionA.getByLabel(`Required: ${TEST_CATALOG.formulationName}`).uncheck()
     await expect(optionA.getByLabel(`Required: ${TEST_CATALOG.glp1FormulationName}`)).toBeChecked()
@@ -200,7 +201,8 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     // One wrong date of birth: counted, and the tries left are shown.
     await patient.getByLabel('Date of birth').fill('1979-12-31')
     await patient.getByRole('button', { name: 'Continue' }).click()
-    await expect(patient.getByRole('alert')).toHaveText("That date of birth doesn't match. 4 tries left.")
+    // Scoped to the page's main: Next's route announcer is also role=alert.
+    await expect(patient.getByRole('main').getByRole('alert')).toHaveText("That date of birth doesn't match. 4 tries left.")
     await expect.poll(async () => (await proposalRow(proposal.proposal_id)).dob_failures).toBe(1)
     await expect.poll(() => proposalEvents(proposal.proposal_id)).toContain('dob_failed')
 
@@ -217,7 +219,7 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     const required = foundation.getByRole('checkbox', { name: new RegExp(TEST_CATALOG.glp1FormulationName) })
     await expect(required).toBeChecked()
     await expect(required).toBeDisabled()
-    await expect(foundation.getByText('Included: your provider marked this as essential')).toBeVisible()
+    await expect(foundation.getByText('Included: your provider marked this as essential', { exact: true })).toHaveCount(1)
     const optional = foundation.getByRole('checkbox', { name: new RegExp(TEST_CATALOG.formulationName) })
     await expect(optional).toBeChecked()
     const total = foundation.getByTestId(`plan-total-${options[0]!.optionId}`)
@@ -225,13 +227,13 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     const before = await total.textContent()
     await optional.uncheck()
     await expect(total).not.toHaveText(before!)
-    await expect(foundation.getByText('Estimate: final price confirmed when your provider approves.')).toBeVisible()
+    await expect(foundation.getByText('Estimate: final price confirmed when your provider approves.', { exact: true })).toBeVisible()
 
     // Choose, confirm.
     await foundation.getByRole('button', { name: 'Choose this plan' }).click()
     const confirm = patient.getByRole('region', { name: 'Confirm your choice' })
-    await expect(confirm.getByText('Foundation plan')).toBeVisible()
-    await expect(confirm.getByText(TEST_CATALOG.glp1FormulationName)).toBeVisible()
+    await expect(confirm.getByText('Foundation plan', { exact: true })).toBeVisible()
+    await expect(confirm.getByText(TEST_CATALOG.glp1FormulationName, { exact: true })).toBeVisible()
     await expect(confirm.getByText(TEST_CATALOG.formulationName)).toHaveCount(0)
     await confirm.getByRole('button', { name: 'Confirm' }).click()
     await expect(patient.getByRole('heading', { level: 1, name: 'Sent to your provider for final approval' })).toBeVisible({ timeout: 15_000 })
@@ -244,10 +246,10 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
 
     // ── 4. The provider sees the choice and signs it ──
     await page.goto(`/dashboard?tab=proposed&order=${glp1Line.orderId}`)
-    await expect(page.getByText('The patient has chosen. Signing comes next.')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('region', { name: 'Patient choice' }).getByText('The patient has chosen. Signing comes next.', { exact: true })).toBeVisible({ timeout: 15_000 })
     await page.goto('/dashboard')
     const queue = page.getByRole('region', { name: 'Plans ready to sign' })
-    await expect(queue.getByText('Test chose Foundation plan (1 of 2 items)')).toBeVisible({ timeout: 15_000 })
+    await expect(queue.getByText('Test chose Foundation plan (1 of 2 items)', { exact: true })).toBeVisible({ timeout: 15_000 })
     await queue.getByRole('link', { name: 'Review and sign: Test chose Foundation plan (1 of 2 items)' }).click()
     await expect(page).toHaveURL(`/new-prescription/sign?proposal=${proposal.proposal_id}`, { timeout: 15_000 })
     await expect(page.getByTestId(`select-${glp1Line.orderId}`)).toBeChecked({ timeout: 15_000 })
