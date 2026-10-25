@@ -113,7 +113,7 @@ const spec = {
           'orderId', 'providerFirstName', 'providerLastName', 'providerNpi',
           'providerLicenseState', 'patientFirstName', 'patientLastName',
           'patientDateOfBirth', 'medicationName', 'medicationForm',
-          'medicationDose', 'quantity', 'clinicName',
+          'medicationDose', 'quantity', 'quantityUnit', 'clinicName',
         ],
         properties: {
           orderId:              { type: 'string', format: 'uuid', description: 'CompoundIQ order UUID' },
@@ -134,7 +134,21 @@ const spec = {
           medicationName:       { type: 'string' },
           medicationForm:       { type: 'string' },
           medicationDose:       { type: 'string' },
-          quantity:             { type: 'number' },
+          quantity:             {
+            type: 'number',
+            description:
+              'What to dispense, counted in quantityUnit. Counted forms (capsule, tablet, troche, pellet, suppository, lozenge): ' +
+              'the units dispensed, whether or not a package was chosen (2 bottles of 30 capsules = 60). Measured forms (mL, g, mg): ' +
+              'the containers dispensed (2 x 5 mL vials = 2, quantityUnit vial); the measured amount is dispenseQuantity + dispenseUnit. ' +
+              'Never a price input.',
+          },
+          quantityUnit:         {
+            type: 'string',
+            description:
+              'The unit quantity counts, singular: capsule, tablet, troche, pellet, suppository or lozenge for a counted form; ' +
+              'vial, bottle, tube, pen, kit, syringe or cartridge for a measured form; "package" when the package label names no ' +
+              'container, "container" when a measured line has no package.',
+          },
           sigText:              { type: 'string', nullable: true },
           clinicName:           { type: 'string' },
         },

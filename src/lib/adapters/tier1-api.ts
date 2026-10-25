@@ -34,7 +34,7 @@ import { shippingAddressFor, type OrderShippingAddressColumns } from '@/lib/adap
 import { getVaultSecret, buildAuthHeaders } from '@/lib/adapters/vault'
 import { getTransformer, rxDetailPayloadFields, patientAllergyPayloadFields, type OrderPayload } from '@/lib/adapters/transformers'
 import { getParser } from '@/lib/adapters/parsers'
-import { dispenseCount } from '@/lib/orders/rx-details'
+import { dispenseQuantity } from '@/lib/orders/rx-details'
 import {
   createSubmissionRecord,
   markSubmitted,
@@ -321,7 +321,9 @@ export async function submitTier1Api(
     medicationName:     String(med?.medication_name ?? 'Compounded Medication'),
     medicationForm:     String(med?.form ?? ''),
     medicationDose:     String(med?.dose ?? ''),
-    quantity:           dispenseCount(order),
+    // One meaning, with its unit: units for counted forms, containers for measured ones.
+    quantity:           dispenseQuantity(order).quantity,
+    quantityUnit:       dispenseQuantity(order).unit,
     sigText:            order.sig_text ?? null,
     // WO-96 Rx detail fields
     ...rxDetailPayloadFields(order),

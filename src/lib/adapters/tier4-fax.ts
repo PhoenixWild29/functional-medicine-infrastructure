@@ -44,7 +44,7 @@ import { assertPharmacySubmissionsEnabled } from '@/lib/adapters/submission-swit
 import { assertOrderNotControlled } from '@/lib/orders/controlled-substance'
 import { parseTitrationSteps } from '@/lib/orders/titration'
 import { cyclePatternFromRow } from '@/lib/orders/cycling'
-import { dispenseCount } from '@/lib/orders/rx-details'
+import { dispenseQuantity } from '@/lib/orders/rx-details'
 
 // ============================================================
 // TYPES
@@ -246,7 +246,8 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
       medicationName:     String(med?.medication_name ?? 'Compounded Medication'),
       medicationForm:     String(med?.form ?? ''),
       medicationDose:     String(med?.dose ?? ''),
-      quantity:           dispenseCount(order),
+      quantity:           dispenseQuantity(order).quantity,
+      quantityUnit:       dispenseQuantity(order).unit,
       sigText:            order.sig_text ?? null,
       // WO-105: the schedule, printed as a table under the sig
       titrationSteps:      parseTitrationSteps(order.titration_steps),
