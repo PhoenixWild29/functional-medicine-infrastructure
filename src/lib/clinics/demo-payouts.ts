@@ -11,7 +11,10 @@
 // ACTIVE. A real Connect account id is never overwritten: the write is made
 // conditional on there being none (NULL or empty).
 //
-// DEMO_PAYOUTS_ON_APPROVAL: on unless it is exactly "false".
+// DEMO_PAYOUTS_ON_APPROVAL: on unless it is exactly "false", and always
+// off with a live Stripe key (sk_live_ / rk_live_): checkout charges a
+// placeholder clinic's patients with no Connect routing, so with live keys
+// the money would stay on the platform (security review, Oct 24).
 //
 // Payout state lives here, with the other clinic payout checks
 // (portal-clinic), so the onboarding code itself never handles Stripe
@@ -29,6 +32,7 @@ export const DEMO_PAYOUT_ACCOUNT_PREFIX = 'poc_placeholder'
 export const DEMO_PAYOUT_NOTE = 'Demo payout account set on approval.'
 
 export function demoPayoutsOnApproval(): boolean {
+  if (/^(sk|rk)_live_/.test(process.env['STRIPE_SECRET_KEY'] ?? '')) return false
   return process.env['DEMO_PAYOUTS_ON_APPROVAL'] !== 'false'
 }
 
