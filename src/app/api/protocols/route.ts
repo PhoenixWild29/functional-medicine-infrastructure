@@ -377,7 +377,8 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (protoErr || !protocol) {
-    return NextResponse.json({ error: protoErr?.message ?? 'Failed to create protocol' }, { status: 500 })
+    if (protoErr) console.error(`[protocols] create failed | clinic=${clinicId}: ${protoErr.message}`)
+    return NextResponse.json({ error: 'Failed to create protocol' }, { status: 500 })
   }
 
   const { error: itemsErr } = await supabase
