@@ -20,6 +20,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { PrescriptionSessionProvider } from '../../_context/prescription-session'
 import { QuickActionsPanel } from '../quick-actions-panel'
+import { MakeFavoriteDialog } from '../make-favorite-dialog'
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), refresh: jest.fn() }),
@@ -242,10 +243,20 @@ describe('Make favorite dialog', () => {
     expect(within(dialog).getByRole('button', { name: 'Save favorite' })).toBeDisabled()
   })
 
-  it('no patient in the session: no patient choice, saved for the practice', async () => {
-    const dialog = await openDialog(null)
-    expect(within(dialog).queryByRole('radio', { name: /^Only for/ })).not.toBeInTheDocument()
+  it('no patient in context: no patient choice, saved for the practice', async () => {
+    // The search step always has a patient; the dialog still handles none.
+    render(
+      <MakeFavoriteDialog
+        target={TIRZ_25 as unknown as React.ComponentProps<typeof MakeFavoriteDialog>['target']}
+        otherDoses={[]} patient={null} providerId={PROVIDER_ID} onClose={jest.fn()} onSaved={jest.fn()}
+      />,
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Make Tirzepatide 10mg/mL Injectable a favorite' })
+    expect(within(dialog).queryByRole('radio')).not.toBeInTheDocument()
     expect(within(dialog).getByText('Saved for the practice.')).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save favorite' }))
+    await waitFor(() => expect(calls.some(c => c.method === 'POST')).toBe(true))
+    expect(calls.find(c => c.method === 'POST')!.body).toEqual(expect.objectContaining({ patient_id: null }))
   })
 
   it('Cancel or Escape closes it without saving', async () => {

@@ -1,14 +1,21 @@
 // ============================================================
-// WO-104: Recent formulations — GET /api/favorites/recent?provider_id=xxx
+// Frequently used — GET /api/favorites/frequent?provider_id=xxx
 // ============================================================
 //
-// The Favorites panel's Recent strip: the last 8 distinct formulations
-// this provider prescribed (newest first), each with the pharmacy and
-// the structured dose of its most recent order — the builder inputs kept
-// on medication_snapshot (prescribed_dose, frequency_code). The sig text
-// is never read. Cancelled and soft-deleted orders are skipped; drafts
-// count, because in this clinic's flow a draft is a prescription the
-// provider has written and will sign.
+// Requirement 19 (Gina Rooks, 2026-09-11): the Favorites panel's
+// "Frequently used" section, which replaced WO-104's Recent strip
+// (/api/favorites/recent). The provider's most-ordered formulation + dose
+// combinations over the last FREQUENT_WINDOW_DAYS (90) days, ranked by
+// how many orders carried them, ties by the most recent; with none in the
+// window, the newest combinations instead (mode "recent"), same shape.
+// Computed from the order lines (lib/orders/favorite-presets.ts
+// frequentlyUsed); no table of its own.
+//
+// The dose is the structured builder input kept on medication_snapshot
+// (prescribed_dose, frequency_code); the sig text is never read.
+// Cancelled and soft-deleted orders are skipped; drafts count, because in
+// this clinic's flow a draft is a prescription the provider has written
+// and will sign.
 //
 // Auth: verified user via getUser(); clinic_id from that user. The
 // provider must belong to the caller's clinic.
@@ -16,11 +23,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { recentFormulations, RECENT_LIMIT, type RecentOrderRow } from '@/lib/orders/favorite-presets'
+import { frequentlyUsed, type RecentOrderRow } from '@/lib/orders/favorite-presets'
 import { getUserClinicId } from '@/lib/auth/claims'
 
-/** Orders scanned to find 8 distinct formulations; a provider rarely repeats one 25 times in a row. */
-const SCAN_LIMIT = 200
+/**
+ * The newest orders read. The counts cover these: a provider writing more
+ * than 500 orders in 90 days is counted over their newest 500.
+ */
+const SCAN_LIMIT = 500
 
 export async function GET(req: NextRequest) {
   const supabaseAuth = await createServerClient()
@@ -52,19 +62,25 @@ export async function GET(req: NextRequest) {
     .neq('status', 'CANCELLED')
     .order('created_at', { ascending: false })
     .limit(SCAN_LIMIT)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    console.error('[favorites/frequent] orders could not be read:', error.message)
+    return NextResponse.json({ error: 'Frequently used could not be loaded.' }, { status: 500 })
+  }
 
   const rows = (orders ?? []) as Array<RecentOrderRow & { pharmacy_snapshot: unknown }>
-  const recent = recentFormulations(rows, RECENT_LIMIT)
-  if (recent.length === 0) return NextResponse.json({ data: [] })
+  const result = frequentlyUsed(rows)
+  if (result.items.length === 0) return NextResponse.json({ mode: result.mode, window_days: result.window_days, data: [] })
 
-  // Concentration + dosage form for the computed mg on the chip, and
-  // liveness so a retired formulation cannot be loaded.
+  // Concentration + dosage form for the computed mg, and liveness so a
+  // retired formulation cannot be loaded.
   const { data: formulations, error: fErr } = await supabase
     .from('formulations')
     .select('formulation_id, name, concentration_value, concentration_unit, is_active, deleted_at, dosage_forms ( name )')
-    .in('formulation_id', recent.map(r => r.formulation_id))
-  if (fErr) return NextResponse.json({ error: fErr.message }, { status: 500 })
+    .in('formulation_id', [...new Set(result.items.map(r => r.formulation_id))])
+  if (fErr) {
+    console.error('[favorites/frequent] formulations could not be read:', fErr.message)
+    return NextResponse.json({ error: 'Frequently used could not be loaded.' }, { status: 500 })
+  }
   const byId = new Map((formulations ?? []).map(f => [f.formulation_id, f]))
 
   const pharmacyNames = new Map<string, string>()
@@ -76,7 +92,9 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    data: recent.map(r => {
+    mode:        result.mode,
+    window_days: result.window_days,
+    data: result.items.map(r => {
       const f = byId.get(r.formulation_id)
       return {
         ...r,
