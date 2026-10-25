@@ -182,8 +182,10 @@ export const VALID_TRANSITIONS: Record<OrderStatus, ReadonlySet<OrderStatus>> = 
 // ============================================================
 // Which actor types are authorised to initiate each transition.
 // 'system' = automated: webhook handlers, cron jobs, adapter runners.
+// Enforced by casTransition (actorRole); see
+// docs/technical/state-machine-enforcement.md for every code path.
 
-type ActorType = 'clinic_admin' | 'provider' | 'medical_assistant' | 'ops_admin' | 'system'
+export type ActorType = 'clinic_admin' | 'provider' | 'medical_assistant' | 'ops_admin' | 'system'
 
 interface TransitionRule {
   to: OrderStatus
@@ -200,7 +202,10 @@ const OPS_OR_SYSTEM: ReadonlySet<ActorType> = new Set(['ops_admin', 'system'])
 export const TRANSITION_RULES: Partial<Record<OrderStatus, ReadonlyArray<TransitionRule>>> = {
   DRAFT: [
     { to: 'AWAITING_PAYMENT', actors: CLINIC_ROLES, trigger: 'Provider signs Rx — snapshots frozen, payment link issued' },
-    { to: 'CANCELLED',        actors: CLINIC_ROLES, trigger: 'Clinic cancels before payment link sent' },
+    // Who really cancels a draft: the clinic, ops (cancel_refund accepts any
+    // non-terminal status) and the proposal expiry cron (an unchosen plan's
+    // lines). A medical assistant cannot cancel a plan.
+    { to: 'CANCELLED',        actors: new Set(['clinic_admin', 'provider', 'ops_admin', 'system']), trigger: 'Clinic, ops or plan expiry cancels a draft' },
   ],
   AWAITING_PAYMENT: [
     { to: 'PAID_PROCESSING',  actors: SYSTEM,       trigger: 'payment_intent.succeeded Stripe webhook' },
@@ -281,7 +286,9 @@ export const TRANSITION_RULES: Partial<Record<OrderStatus, ReadonlyArray<Transit
     { to: 'CANCELLED',       actors: ALL_OPS, trigger: 'Ops cancels' },
   ],
   REFUND_PENDING: [
-    { to: 'REFUNDED',  actors: SYSTEM,  trigger: 'Stripe refund processed via payment_intent.refunded webhook' },
+    // System: the refund-retry cron and the charge.refunded webhook. Ops: the
+    // cancel that refunds at once and records REFUNDED when Stripe says so.
+    { to: 'REFUNDED',  actors: OPS_OR_SYSTEM, trigger: 'Stripe refund succeeded (ops cancel, refund-retry cron or charge.refunded webhook)' },
     { to: 'CANCELLED', actors: ALL_OPS, trigger: 'Payment never fully captured — no refund needed' },
   ],
 }
@@ -334,10 +341,13 @@ export function canActorTransition(
 // ============================================================
 // STATE-SPECIFIC REQUIRED FIELDS
 // ============================================================
-// Fields that must be non-null before entering each state.
-// Used for validation before executing a transition.
+// Fields that must be non-null before entering each state. Enforced:
+//   - casTransition refuses the transition (in its UPDATE's predicate, so
+//     it cannot race) when one is missing;
+//   - batch sign (DRAFT -> AWAITING_PAYMENT, one UPDATE for the batch)
+//     refuses before writing anything (canSign, 'missing_snapshot').
 
-type RequiredOrderField =
+export type RequiredOrderField =
   | 'wholesale_price_snapshot'
   | 'retail_price_snapshot'
   | 'medication_snapshot'
@@ -368,13 +378,19 @@ export const REQUIRED_FIELDS_ON_ENTER: Partial<Record<OrderStatus, ReadonlyArray
     'stripe_payment_intent_id',
   ],
 
-  // Adapter submission must be linked
-  SUBMISSION_PENDING: [
-    'submission_tier',
-    'adapter_submission_id',
-  ],
+  // SUBMISSION_PENDING requires nothing on entry: the routing engine
+  // claims the order (-> SUBMISSION_PENDING) BEFORE it creates the
+  // adapter submission, so the order is submitted exactly once. The old
+  // rule (submission_tier, adapter_submission_id) matched no real flow.
+}
 
-  // Tracking is required when marking shipped
+/**
+ * Declared but NOT enforced, because enforcing would break a real flow
+ * today (listed for Sam in docs/technical/state-machine-enforcement.md):
+ *   SHIPPED: a pharmacy's order.shipped webhook without tracking still
+ *   ships the order (with a warning). Enforce once that decision is made.
+ */
+export const UNENFORCED_REQUIRED_FIELDS_ON_ENTER: Partial<Record<OrderStatus, ReadonlyArray<RequiredOrderField>>> = {
   SHIPPED: [
     'tracking_number',
     'carrier',

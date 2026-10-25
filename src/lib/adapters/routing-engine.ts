@@ -371,6 +371,7 @@ async function failSubmission(params: {
       expectedStatus: 'SUBMISSION_PENDING',
       newStatus:      'SUBMISSION_FAILED',
       actor:          'routing_engine',
+      actorRole:      'system',
       metadata:       {
         tier,
         reason,
@@ -423,6 +424,7 @@ async function markFaxQueued(params: {
       expectedStatus: 'SUBMISSION_PENDING',
       newStatus:      'FAX_QUEUED',
       actor:          'routing_engine',
+      actorRole:      'system',
       metadata,
     })
     if (!cas.wasAlreadyTransitioned) {
@@ -478,6 +480,7 @@ export async function routeOrder(params: RouteOrderParams): Promise<RouteOrderRe
     expectedStatus: currentStatus,
     newStatus:      'SUBMISSION_PENDING',
     actor:          'routing_engine',
+    actorRole:      'system',
     metadata:       { pharmacy_id: pharmacyId, attempt: attemptNumber },
   })
   if (claim.wasAlreadyTransitioned) {
@@ -676,6 +679,7 @@ async function submitClaimedOrder(params: {
         expectedStatus: 'SUBMISSION_PENDING',
         newStatus:      'PHARMACY_ACKNOWLEDGED',
         actor:          'routing_engine',
+        actorRole:      'system',
         metadata:       { tier, submission_id: primarySubmissionId },
       })
       if (!cas.wasAlreadyTransitioned) {
@@ -712,6 +716,7 @@ async function submitClaimedOrder(params: {
         expectedStatus: 'SUBMISSION_PENDING',
         newStatus:      'REROUTE_PENDING',
         actor:          'routing_engine',
+        actorRole:      'system',
         metadata:       { tier, submission_id: primarySubmissionId, reason: 'pharmacy_rejected' },
       })
       if (!cas.wasAlreadyTransitioned) await resolveSlasForTransition(orderId, 'REROUTE_PENDING')
@@ -853,6 +858,7 @@ export async function submitQueuedFax(params: {
       expectedStatus: 'FAX_QUEUED',
       newStatus:      'FAX_FAILED',
       actor:          'routing_engine',
+      actorRole:      'system',
       metadata:       { reason: 'pharmacy_not_licensed', error: licensure.message },
     }).catch(casErr =>
       console.error('[routing-engine] CAS FAX_FAILED (not licensed) error:', casErr)
@@ -885,6 +891,7 @@ export async function submitQueuedFax(params: {
       expectedStatus: 'FAX_QUEUED',
       newStatus:      'FAX_FAILED',
       actor:          'routing_engine',
+      actorRole:      'system',
       metadata:       { reason: 'ops_fax_send_failed', error: msg },
     }).catch(casErr =>
       console.error('[routing-engine] CAS FAX_FAILED (ops fax) error:', casErr)

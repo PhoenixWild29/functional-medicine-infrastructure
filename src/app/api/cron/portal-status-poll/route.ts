@@ -182,6 +182,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
           expectedStatus: currentOrder.status,
           newStatus:      mappedStatus as OrderStatusEnum,
           actor:          'portal_status_poll',
+          actorRole:      'system',
           metadata:       { poll_source: 'status_check_flow' },
         })
 

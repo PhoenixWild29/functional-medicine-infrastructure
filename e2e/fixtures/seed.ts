@@ -888,6 +888,8 @@ export async function insertRecentOrder(input: {
     quantity:                 1,
     wholesale_price_snapshot: 100.00,
     retail_price_snapshot:    200.00,
+    provider_npi_snapshot:    '1234567890',
+    shipping_state_snapshot:  'TX',
     medication_snapshot:      {
       formulation_id:  input.formulationId,
       medication_name: input.medicationName,

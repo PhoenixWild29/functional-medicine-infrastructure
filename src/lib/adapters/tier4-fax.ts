@@ -362,6 +362,7 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
         expectedStatus: 'PAID_PROCESSING',
         newStatus:      'FAX_QUEUED',
         actor:          'tier4_fax_adapter',
+        actorRole:      'system',
         metadata:       { documo_fax_id: faxId },
       })
 

@@ -77,6 +77,7 @@ import { createPaymentGroup, cancelPaymentGroup } from '@/lib/payment-group/crea
 import { generateCheckoutToken, generateGroupCheckoutToken } from '@/lib/auth/checkout-token'
 import { insertStatusHistory, type StatusHistoryRow } from './status-history'
 import { createSlasForTransition } from '@/lib/sla/creator'
+import { getRequiredFieldsOnEnter } from './state-machine'
 import { sendPaymentLinkSms } from '@/lib/sms/triggers'
 import { serverEnv } from '@/lib/env'
 import { resolveSigner } from '@/lib/auth/signer'
@@ -102,6 +103,8 @@ export type BatchProblemCode =
   | 'not_found' | 'not_draft' | 'not_signer'
   | 'license' | 'pharmacy' | 'npi' | 'stripe' | 'controlled_substance' | 'controlled_unknown'
   | 'rx_details' | 'reprice' | 'below_cost'
+  // the line lacks a snapshot AWAITING_PAYMENT requires (state-machine.ts)
+  | 'missing_snapshot'
   // Compliance C8: an ingredient that may not be compounded, or is not verified
   | 'not_compoundable' | 'compounding_status_unknown'
   // clinic onboarding: ops has not approved (activated) the clinic
@@ -180,6 +183,8 @@ interface OrderRow {
   wholesale_price_snapshot: number | null
   shipping_state_snapshot:  string | null
   medication_snapshot:      Json | null
+  provider_npi_snapshot:    string | null
+  pharmacy_snapshot:        Json | null
   package_id:               string | null
   package_count:            number | null
   [key: string]: unknown
@@ -187,6 +192,7 @@ interface OrderRow {
 
 const ORDER_SELECT = `order_id, status, patient_id, provider_id, catalog_item_id, formulation_id, pharmacy_id,
   retail_price_snapshot, wholesale_price_snapshot, shipping_state_snapshot, medication_snapshot,
+  provider_npi_snapshot, pharmacy_snapshot,
   package_id, package_count, ${RX_DETAIL_COLUMN_LIST},
   patients ( intake_status )`
 
@@ -290,6 +296,18 @@ export async function canSign(
   const ordered = orderIds.map(id => byId.get(id)).filter((r): r is OrderRow => !!r)
   for (const r of ordered) {
     if (r.status !== 'DRAFT') add(r, 'not_draft', `${medicationNameOf(r)} is no longer a draft (${r.status}). It may already have been signed.`)
+  }
+  // DRAFT -> AWAITING_PAYMENT requires every snapshot (state-machine.ts
+  // REQUIRED_FIELDS_ON_ENTER). The sign writes locked_at itself; the rest
+  // must already be on the draft. Refused here, before anything is
+  // written, because the sign is one UPDATE for the whole batch.
+  const snapshotsRequired = getRequiredFieldsOnEnter('AWAITING_PAYMENT').filter(f => f !== 'locked_at')
+  for (const r of ordered) {
+    if (r.status !== 'DRAFT') continue
+    const missing = snapshotsRequired.filter(f => r[f] == null)
+    if (missing.length > 0) {
+      add(r, 'missing_snapshot', `${medicationNameOf(r)} is missing part of its prescription record (${missing.join(', ')}), so it cannot be signed. Remove it and prescribe it again.`)
+    }
   }
 
   // ── Who is signing ──

@@ -72,9 +72,10 @@ it('sent or chosen past expiry: expired, link dead, drafts cancelled, recorded',
   expect(db.tables['treatment_proposal_events']!.map(e => [e['proposal_id'], e['event'], e['actor']]).sort()).toEqual([
     ['p-chosen-old', 'expired', 'system'], ['p-sent-old', 'expired', 'system'],
   ])
-  expect(historyMock).toHaveBeenCalledWith(expect.anything(), expect.arrayContaining([
-    expect.objectContaining({ order_id: id(1), old_status: 'DRAFT', new_status: 'CANCELLED', changed_by: 'system' }),
-  ]), 'proposal-expiry')
+  // Each line went through casTransition (B-2026-10-25-08), which wrote its history row.
+  expect(historyMock).toHaveBeenCalledWith(expect.anything(),
+    expect.objectContaining({ order_id: id(1), old_status: 'DRAFT', new_status: 'CANCELLED', changed_by: 'system', metadata: expect.objectContaining({ reason: 'proposal_expired' }) }),
+    'casTransition')
 })
 
 it('not yet expired, signed, prepared and other orders are untouched', async () => {

@@ -60,17 +60,63 @@ The trigger uses `IS DISTINCT FROM` (not `!=`) to correctly handle `NULL` compar
 
 ## When Snapshots Are Populated
 
-Snapshot fields are set by application code at the `DRAFT → AWAITING_PAYMENT` transition:
+Snapshot fields are written when the draft is created, and frozen when it is signed:
 
 ```
-provider signs Rx
-  → application reads current catalog item, pharmacy, provider NPI
-  → writes all 6 snapshot fields + sets locked_at = now()
-  → CAS transition: DRAFT → AWAITING_PAYMENT
-  → trigger fires on next UPDATE — now enforces immutability
+POST /api/orders creates the DRAFT
+  → writes all 6 snapshot fields (prices, medication, shipping state, provider NPI, pharmacy)
+provider signs (lib/orders/batch-sign.ts, one UPDATE for the batch)
+  → canSign refuses any line missing a snapshot ('missing_snapshot'), before anything is written
+  → DRAFT → AWAITING_PAYMENT, with locked_at = now() in the same UPDATE
+  → the trigger enforces immutability on every later UPDATE
 ```
 
-See `src/lib/orders/cas-transition.ts` — `REQUIRED_FIELDS_ON_ENTER['AWAITING_PAYMENT']` lists the fields that must be non-null before this transition is allowed.
+## What the state machine enforces
+
+`src/lib/orders/state-machine.ts` declares the rules. Everything below is
+checked in code; `docs/technical/state-machine-enforcement.md` lists every
+status write and why each rule is or is not enforced.
+
+- **Legal transitions** (`VALID_TRANSITIONS`): enforced by `casTransition`.
+  An illegal pair throws `CasTransitionRefused('illegal_transition')`.
+- **Actors** (`TRANSITION_RULES`): enforced by `casTransition`. Every
+  caller passes `actorRole` (clinic_admin, provider, medical_assistant,
+  ops_admin or system); a role the rule does not list throws
+  `CasTransitionRefused('actor_not_allowed')`. `actor` stays the label
+  written to `order_status_history`.
+- **Required fields on entry** (`REQUIRED_FIELDS_ON_ENTER`):
+  - AWAITING_PAYMENT: the 6 snapshots and `locked_at`. Enforced by
+    `casTransition` and, for batch sign, by `canSign` (the sign writes
+    `locked_at` itself).
+  - PAID_PROCESSING: `stripe_payment_intent_id`. Enforced by `casTransition`.
+  - `casTransition` checks them in the UPDATE's WHERE clause, so the check
+    cannot race. An order still in the expected status with a field missing
+    throws `CasTransitionRefused('missing_required_fields')`. Nothing is
+    written.
+  - If the UPDATE is refused and another writer sets the field before the
+    re-read, `casTransition` runs the UPDATE once more. It reports "already
+    transitioned" only when the order really left the expected status; an
+    order that is still there and complete but will not move throws a
+    "kept changing" error for the caller to retry.
+- **Not enforced** (`UNENFORCED_REQUIRED_FIELDS_ON_ENTER`): SHIPPED's
+  `tracking_number` and `carrier`. A pharmacy `order.shipped` webhook
+  without tracking still ships the order; enforcing this waits for Sam's
+  decision.
+- SUBMISSION_PENDING requires nothing on entry: the routing engine claims
+  the order before it creates the adapter submission (exactly-once).
+
+The one status write outside `casTransition`, with its own status
+predicate and history rows: batch sign (DRAFT → AWAITING_PAYMENT, the
+whole batch in one UPDATE).
+
+These go through `casTransition`:
+- the payment-expiry cron;
+- the ops reroute;
+- a plan's DRAFT lines cancelled by the proposal expiry cron (system), a
+  cancel (the caller's role) or a sign (the signer's role), one line at a
+  time (`lib/proposals/cancel-lines`).
+The reroute uses its `patch` option, so the reroute count and pharmacy are
+written in the same UPDATE as the status.
 
 ## No Unlock Mechanism
 

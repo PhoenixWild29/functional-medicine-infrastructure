@@ -141,10 +141,12 @@ describe('signing the choice', () => {
       expect(row(db, n)['provider_signature_hash_snapshot']).toBeUndefined()
       expect(row(db, n)['locked_at']).toBeUndefined()
     }
-    expect(historyMock).toHaveBeenCalledWith(expect.anything(), [
-      expect.objectContaining({ order_id: id(2), old_status: 'DRAFT', new_status: 'CANCELLED', changed_by: USER_CHEN }),
-      expect.objectContaining({ order_id: id(4), old_status: 'DRAFT', new_status: 'CANCELLED', changed_by: USER_CHEN }),
-    ], 'proposal-sign')
+    // Each unchosen line went through casTransition as the signer (B-2026-10-25-08).
+    for (const n of [2, 4]) {
+      expect(historyMock).toHaveBeenCalledWith(expect.anything(),
+        expect.objectContaining({ order_id: id(n), old_status: 'DRAFT', new_status: 'CANCELLED', changed_by: USER_CHEN, metadata: expect.objectContaining({ reason: 'proposal_not_chosen' }) }),
+        'casTransition')
+    }
   })
 
   it('the proposal is signed, its link dies, and signed is recorded with the count', async () => {
