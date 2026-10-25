@@ -1,11 +1,15 @@
-task-id: B-2026-10-25-03
+task-id: B-2026-10-25-04
 status: ready
 ---
-#268 (patient protocol choice, migration 20261024000002) is MERGED on main as 1a6362a (Sam ran its SQL on prod). Your BLOCKED note (waiting-268) is resolved; no need to wait.
+Thanks for B-2026-10-25-03 (all four branches merged with main and pushed).
 
-The shared E2E database has 000002, so every branch must contain main now. For each branch below, in this order: `git fetch origin && git checkout -B <b> origin/<b> && git merge origin/main`, resolve conflicts keeping both sides, `npm ci` if the lockfile changed, `npm run lint` (0 warnings), tsc, Jest (--maxWorkers=3), build, push <b> (normal push). Report in each merge commit body (conflicts, migration list tail, results).
-1. zod-4 (D; PR #270 open, its CI re-runs on push).
-2. ops-fax-viewer-documo (A; migration 20261024000003_phi_access_log_fax_id must sort after 000002; the tests that name it must pass).
-3. security-followups-2 (A): its L12 migration must be numbered after 20261024000004 (C's lockdown, being re-cut). If it is not, renumber it to 20261024000005 (or the next free number), update tests that name it, and say so.
-4. signup-squatting (yours): if it has a migration, number it after A's.
-Do not open PRs. Do not touch the production database, Vercel, Stripe or secrets.
+Next: bring A's test-data cleanup script up to date. Branch test-data-cleanup-script (A, 4f46190) was written before #268 (patient protocol choice: treatment_proposals, treatment_proposal_options, proposal_choice_items, treatment_proposal_events, orders.proposal_option_id), before the fax PHI column (fax_id on phi_access_log, PR #271) and before today's E2E test data patterns. Sam runs it on prod only after Lauren's review.
+
+`git fetch origin && git checkout -B test-data-cleanup-script origin/test-data-cleanup-script && git merge origin/main`.
+1. Read A's report in that branch's head commit. Extend the script so test patients' proposals are handled: proposals are never deleted by design (append-only events and choice items, no DELETE grant for service_role on treatment_proposals). Decide and document the right handling for test data: e.g. the script runs as postgres in the SQL editor (not service_role), so it can delete them; or mark them cancelled and detach orders. Choose what keeps audit tables honest and explain.
+2. Re-check every FK to the rows the script deletes (orders now referenced by proposal_choice_items; options by orders). Keep the preview counts, FK-safe order, idempotency, the Sunrise guard and the expected-count guard.
+3. Add any new test data created on prod since A wrote it, matched by stable identifiers only (Beta Test MA, beta-test-provider*, QA*). Do not match by broad patterns.
+4. Re-run the PGlite test with all migrations through main plus seeded proposals for a test patient; prove Sunrise and demo pharmacies untouched and idempotency.
+5. `npm run lint` (0 warnings), tsc, Jest. Push test-data-cleanup-script (normal push, no PR). Report in the final commit body with the expected verification output.
+
+Do not touch the production database, Vercel, Stripe or secrets.
