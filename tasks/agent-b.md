@@ -1,14 +1,20 @@
-task-id: B-2026-10-25-08
+task-id: B-2026-10-25-09
 status: ready
 ---
-Thanks for B-2026-10-25-07 (settings-notifications, c1d9e76).
+Thanks for B-2026-10-25-08 (state-machine lows + drafts SQL, b0bd60f).
 
-Next: C's independent review (origin/review-high-risk, docs/qa/review-2026-10-25-high-risk.md) found your state-machine-enforcement branch mergeable with two lows and one pre-merge check. Fix them.
+Next: build bundle-features, the last bundle PR. Read A's dry-run report first (origin/dry-run-report, docs/qa/merge-dry-run-2026-10-25.md): it records how each conflict resolves.
 
-Branch: `git checkout state-machine-enforcement && git pull`.
-1. The DRAFT->CANCELLED writers in proposals (expire, propose, sign-choice) bypass casTransition. Route them through casTransition with the right actorRole (system for the expiry cron, the caller's role otherwise), keeping their batch semantics and tests.
-2. The refused-then-reread race in cas-transition.ts (~162-214): if the re-read finds the order still in the expected status with all required fields now present, retry the CAS once instead of reporting "already transitioned". Test it.
-3. Write a READ-ONLY SQL check at scripts/checks/2026-10-25-drafts-missing-snapshots.sql: count of DRAFT orders on prod missing any field batch sign now requires (the 6 snapshots), grouped by clinic, with order ids for Sunrise. SELECT only, no writes, safe to run as any role that can read orders. I will hand it to Sam at the right moment; do not run it anywhere but your local/E2E DB.
-Gates: lint (0 warnings), tsc, jest, next build. Push state-machine-enforcement (normal push, no PR). Report in the commit body, including the SQL file's content.
+`git fetch origin && git checkout -b bundle-features origin/bundle-security` (the feature branches conflict with the three bulk route-handler branches, which are in bundle-security; basing on it avoids redoing those resolutions. bundle-features merges after bundle-security).
+Merge with `git merge --no-ff`, in this order:
+1. origin/state-machine-enforcement (b0bd60f)
+2. origin/rx-quantity-shipping (9e2b075)
+3. origin/rx-allergies-required (080519a)
+4. origin/favorites-frequent (76a6964)
+5. origin/settings-notifications (c1d9e76)
+Use the latest origin heads; if a head differs from the SHA above, use it and say so.
+Fix the combination problems from A's report that apply here: favorites recent->frequent rename vs the tests added by api-input-validation and security-followups-3 (the tests must target the new route, sign in with a proper app_role and use uuid ids), the withApiErrors label on the renamed route, unused imports (e.g. computeBundleShipping), duplicate same-module imports.
+Do NOT merge any of the five migration branches.
+Gates: npm ci, lint (0 warnings), tsc, jest, next build, all green. Push bundle-features (normal push, no PR). Report in the last commit body: heads merged, conflicts and resolutions, combination fixes, gate results.
 
 Do not touch the production database, Vercel, Stripe or secrets.

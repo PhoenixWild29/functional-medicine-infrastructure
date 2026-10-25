@@ -1,18 +1,15 @@
-task-id: C-2026-10-25-10
+task-id: C-2026-10-25-11
 status: ready
 ---
-Thanks for C-2026-10-25-09 (high-risk review, 6373263). Excellent. Raising the quantity finding to HIGH was right; D is fixing it.
+Thanks for C-2026-10-25-10 (allergies and favorites lows, 080519a and 76a6964).
 
-Next: fix the lows you found on two branches whose authors are on other work. You own these branches until you push; keep commits small and do not rewrite their history.
+Next: one index migration for hot queries, prepared now, merged after the five queued migrations.
 
-1. `git checkout rx-allergies-required && git pull` (A's):
-   - Proposing or sending a plan for a patient with no allergies/NKDA: refuse once per proposal (not once per line), with wording that fits proposing ("Record allergies or mark NKDA before sending this plan"), and open the same inline allergy prompt the Review page uses.
-   - docs/API-REFERENCE.md: mark /api/orders/[id]/sign-and-send as retired (410) and point to /api/orders/batch-sign.
-   Gates, push rx-allergies-required.
-2. `git checkout favorites-frequent && git pull` (D's):
-   - In practice mode, the Make favorite dialog must not offer the session patient's patient-only doses, and must reset when the patient changes.
-   - Bound the Frequently used query in SQL by date (the window D chose) and limit, so it does not read 500 rows per open. Note the index on orders(provider_id, created_at) as a FOLLOW-UP migration in the report; do NOT add a migration on this branch (the E2E DB is mid-serial-merge).
-   Gates, push favorites-frequent.
-Gates for each: lint (0 warnings), tsc, jest, next build. Report in each commit body.
+Branch: `git fetch origin && git checkout -b perf-indexes origin/main`.
+- Inventory the hottest read paths (dashboard order lists and counts, order drawer, ops pipeline with its filters, Frequently used favorites, proposals by token/clinic, phi_access_log views, rate limit lookups, crons scanning orders by status/time). For each, the query shape (table, WHERE, ORDER BY) and the existing indexes that serve it (read every migration). List the ones with no supporting index.
+- Include orders(provider_id, created_at DESC) for Frequently used (from your review), and any others that are clearly needed. No speculative indexes; each one must name the query it serves.
+- Write supabase/migrations/20261024000008_perf_indexes.sql and its down file, matching the repo's migration conventions (check the last few migrations and their down files on the five queued branches: ops-fax-viewer-documo 000003, rls-user-write-lockdown-v2 000004, security-followups-2, signup-squatting, rate-limit-db for the numbers 000005-000007; confirm 000008 is the next free number across all branches and say so). Use CREATE INDEX IF NOT EXISTS. Say whether CONCURRENTLY is possible given how this repo applies migrations (transaction or not), and what that means for lock time on prod (table sizes are small: demo data).
+- If a jest migration-order test pins the newest migration, update it.
+Gates: lint (0 warnings), tsc, jest. Do NOT run it against any shared database. Push perf-indexes (normal push, no PR). Report in the commit body with the full SQL.
 
 Do not touch the production database, Vercel, Stripe or secrets.
