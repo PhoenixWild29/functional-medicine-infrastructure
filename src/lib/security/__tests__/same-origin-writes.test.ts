@@ -86,6 +86,12 @@ const ROUTES: Array<[string, () => Promise<Handler>, Record<string, string>, str
   ['POST /api/providers/[providerId]/npi-check', async () => (await import('@/app/api/providers/[providerId]/npi-check/route')).POST as unknown as Handler, { providerId: ID }, CROSS_SITE],
   ['POST /api/settings/agreements', async () => (await import('@/app/api/settings/agreements/route')).POST as unknown as Handler, {}, CROSS_SITE],
   ['POST /api/stripe/connect-onboarding', async () => (await import('@/app/api/stripe/connect-onboarding/route')).POST as unknown as Handler, {}, CROSS_SITE],
+  // C-2026-10-25-07: the two routes kept by hand, and Keragon (which refused cross-site only, not same-site).
+  ['POST /api/epcs', async () => (await import('@/app/api/epcs/route')).POST as unknown as Handler, {}, CROSS_SITE],
+  ['POST /api/patient-phases', async () => (await import('@/app/api/patient-phases/route')).POST as unknown as Handler, {}, CROSS_SITE],
+  ['PATCH /api/patient-phases', async () => (await import('@/app/api/patient-phases/route')).PATCH as unknown as Handler, {}, CROSS_SITE],
+  ['DELETE /api/integrations/keragon/connection', async () => (await import('@/app/api/integrations/keragon/connection/route')).DELETE as unknown as Handler, {}, 'Forbidden'],
+  ['POST /api/integrations/keragon/connection/secret', async () => (await import('@/app/api/integrations/keragon/connection/secret/route')).POST as unknown as Handler, {}, 'Forbidden'],
 ]
 
 describe.each(ROUTES)('%s', (_name, load, params, wording) => {
