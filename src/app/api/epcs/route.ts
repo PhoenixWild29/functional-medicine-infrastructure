@@ -31,6 +31,7 @@ import type { Json } from '@/types/database.types'
 import { epcsRequestFields } from '@/lib/epcs/audit-request'
 import { z } from 'zod'
 import { badRequest, boundedText, parseInput, uuid } from '@/lib/api/input'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 
 /** epcs_audit_log.event_type: the table's CHECK constraint (migration 20260409000001). */
 const EPCS_EVENT_TYPES = [
@@ -139,6 +140,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const crossSite = refuseCrossSite(req)
+  if (crossSite) return crossSite
   const caller = await signedInProvider()
   if (!caller.ok) return caller.response
 

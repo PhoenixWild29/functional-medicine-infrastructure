@@ -15,6 +15,8 @@ const sessionRead = jest.fn(() => { throw new Error('the session was read before
 jest.mock('@/lib/supabase/server', () => ({ createServerClient: () => sessionRead() }))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => { throw new Error('the service client was made before the same-origin check') } }))
 jest.spyOn(console, 'error').mockImplementation(() => {})
+// The EPCS route imports otplib (ESM only); it is never reached here.
+jest.mock('otplib', () => ({ TOTP: class {}, generateSecret: () => 'S', generateURI: () => 'otpauth://totp/x', verifySync: () => ({ valid: false }) }))
 
 const ID = '11111111-1111-4111-8111-111111111111'
 const TOKEN = 'A'.repeat(43)

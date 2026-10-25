@@ -28,6 +28,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { resolveCurrentProvider } from '@/lib/auth/current-provider'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { z } from 'zod'
 import { MAX_NAME, MAX_NOTE, boundedText, parseInput, parseJsonBody, uuid } from '@/lib/api/input'
 
@@ -194,6 +195,8 @@ async function recordedAs(
 }
 
 export async function POST(req: NextRequest) {
+  const crossSite = refuseCrossSite(req)
+  if (crossSite) return crossSite
   const caller = await resolveCaller(true)
   if (!caller.ok) return caller.response
 
@@ -322,6 +325,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const crossSite = refuseCrossSite(req)
+  if (crossSite) return crossSite
   const caller = await resolveCaller(true)
   if (!caller.ok) return caller.response
 
