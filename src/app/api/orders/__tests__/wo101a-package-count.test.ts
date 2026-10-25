@@ -285,10 +285,20 @@ describe('POST /api/orders: quantity means one thing', () => {
     expect(orderInsert()).toEqual(expect.objectContaining({ quantity: 30, dispense_unit: 'capsule' }))
   })
 
-  it('a dispense of 5,000,000,000 capsules is refused with 400 before any insert', async () => {
-    const res = await POST(makeRequest(formulationBody({ rxDetails: { daysSupply: 30, dispenseQuantity: 5e9, dispenseUnit: 'capsule' } })))
+  it('a dispense over 10,000 is refused with 400 and the route\'s own message, before any insert', async () => {
+    const res = await POST(makeRequest(formulationBody({ rxDetails: { daysSupply: 30, dispenseQuantity: 50_000, dispenseUnit: 'capsule' } })))
     expect(res.status).toBe(400)
     await expect(res.json()).resolves.toEqual({ error: 'rxDetails.dispenseQuantity must be a positive number up to 10000' })
+    expect(insertedRows.find(r => r.table === 'orders')).toBeUndefined()
+  })
+
+  it('a dispense of 5,000,000,000 capsules is refused with 400 by the input schema bound, before any insert', async () => {
+    // api-input-validation's lineBodySchema caps dispenseQuantity at
+    // MAX_DISPENSE_QUANTITY (1,000,000, the column's bound) before the
+    // route's own rule runs, so this answer is the generic one.
+    const res = await POST(makeRequest(formulationBody({ rxDetails: { daysSupply: 30, dispenseQuantity: 5e9, dispenseUnit: 'capsule' } })))
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'Invalid request', fields: ['rxDetails'] })
     expect(insertedRows.find(r => r.table === 'orders')).toBeUndefined()
   })
 })
