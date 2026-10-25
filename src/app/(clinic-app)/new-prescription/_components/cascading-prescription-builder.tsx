@@ -30,6 +30,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { usePrescriptionSession } from '../_context/prescription-session'
+import { useShippingRates } from './multi-pharmacy-notice'
+import { shippingAddedBy } from '@/lib/orders/shipping'
 import { StructuredSigBuilder } from './structured-sig-builder'
 import {
   computeTitrationDispense,
@@ -56,12 +58,14 @@ import {
 import {
   computeDispense,
   defaultQuantityLabel,
+  defaultShippingTypeFor,
   dispenseUnitFor,
   suggestPackage,
   suggestPackageForDispense,
   packageUnitMismatchMessage,
   formatPackageCount,
   pharmacySizeLabels,
+  REFILL_CHOICES,
   type PackageOption,
 } from '@/lib/orders/rx-details'
 
@@ -97,6 +101,8 @@ interface Formulation {
   is_combination: boolean
   total_ingredients: number
   description: string | null
+  /** WO-96: standard | cold_chain; null → the seed rule (cold chain for GLP-1s). */
+  default_shipping_type?: string | null
   dosage_forms: { name: string; is_sterile: boolean; requires_injection_supplies: boolean } | null
   routes_of_administration: { name: string; abbreviation: string; sig_prefix: string } | null
   formulation_ingredients: Array<{
@@ -287,6 +293,24 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     }),
     enabled: !!selectedFormulation,
   })
+
+  // ── Requirement 15: the shipping each pharmacy card adds ──
+  // Priced as Review prices it: the pharmacy's stored rates, once per
+  // pharmacy across this session's other lines, at the formulation's
+  // default shipping type (the type Review starts the line with).
+  const cardRates = useShippingRates(pharmacyOptions.map(po => po.pharmacies?.pharmacy_id ?? ''))
+  const cardShippingType = selectedFormulation
+    ? defaultShippingTypeFor(
+        selectedFormulation.default_shipping_type,
+        selectedFormulation.formulation_ingredients.map(fi => fi.ingredients?.common_name ?? '').filter(Boolean),
+      )
+    : 'standard'
+  const sessionShippingItems = useMemo(
+    () => session.prescriptions
+      .filter(rx => rx.id !== sessionLine?.id)
+      .map(rx => ({ pharmacyId: rx.pharmacyId, shippingType: rx.rxDetails?.shippingType ?? null, wholesaleCents: rx.wholesaleCents })),
+    [session.prescriptions, sessionLine?.id],
+  )
 
   // ── WO-104: the clinic's common doses for the selected formulation ──
   const { favorites } = useClinicFavorites()
@@ -897,6 +921,15 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
               const suggestion = packageSuggestionFor(po)
               // WO-101a: the suggested package × how many of it.
               const shownPrice = suggestion ? Math.round(suggestion.package.wholesalePrice * 100) * suggestion.count / 100 : po.wholesale_price
+              const cardPharmacyId = po.pharmacies?.pharmacy_id ?? ''
+              // No rates read for this pharmacy: no fee is shown, none is invented.
+              const cardShipping = cardPharmacyId && cardRates.rates.has(cardPharmacyId)
+                ? shippingAddedBy(
+                    sessionShippingItems,
+                    { pharmacyId: cardPharmacyId, shippingType: cardShippingType, wholesaleCents: Math.round(shownPrice * 100) },
+                    cardRates.rates,
+                  )
+                : null
               return (
               <button
                 key={po.pharmacy_formulation_id}
@@ -930,6 +963,15 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
                     {suggestion?.reason === 'unconvertible' && (
                       <p className="text-[10px] font-medium text-red-700" data-testid="pharmacy-package-unsized">
                         Package can&apos;t be sized
+                      </p>
+                    )}
+                    {cardShipping && (
+                      <p className="text-[10px] text-muted-foreground" data-testid="pharmacy-shipping">
+                        {cardShipping.waived
+                          ? 'Free shipping'
+                          : cardShipping.addsCents === 0 && cardShipping.sharedWith > 0
+                            ? `Ships with the other ${po.pharmacies?.name ?? ''} prescription${cardShipping.sharedWith > 1 ? 's' : ''}`
+                            : `+ ${toCurrency(cardShipping.addsCents / 100)} shipping (${cardShipping.shippingType === 'cold_chain' ? 'cold chain' : 'standard'})`}
                       </p>
                     )}
                   </div>
@@ -992,7 +1034,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
                 onChange={e => setRefills(e.target.value)}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                {[0, 1, 2, 3, 4, 5].map(n => (
+                {REFILL_CHOICES.map(n => (
                   <option key={n} value={String(n)}>{n} refill{n !== 1 ? 's' : ''}</option>
                 ))}
               </select>

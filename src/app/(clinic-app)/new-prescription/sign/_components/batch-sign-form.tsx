@@ -44,6 +44,8 @@ import {
 import { checkSignature, signatureFromPad, SIGNATURE_REJECTION_COPY, type SignatureCheck } from '@/lib/orders/signature'
 import type { PharmacyShippingRates } from '@/lib/orders/shipping'
 import { formatDiagnosis, syringeOptionLabel, shippingTypeLabel } from '@/lib/orders/rx-details'
+import { multiPharmacyWarning } from '@/lib/orders/reroute'
+import { MultiPharmacyNoticeBanner } from '../../_components/multi-pharmacy-notice'
 
 function toCurrency(cents: number): string {
   return '$' + (cents / 100).toFixed(2)
@@ -347,6 +349,9 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
         const chosen = p.lines.filter(l => selected.has(l.orderId))
         const unchosen = p.lines.filter(l => !selected.has(l.orderId))
         const { shipping, totals } = patientBatchTotals(chosen, rates, absorbShipping)
+        // Requirement 15: saved drafts at more than one pharmacy ship, and
+        // charge shipping, once per pharmacy. Same warning as Review.
+        const pharmacyWarning = multiPharmacyWarning(chosen, rates)
         return (
           <section key={p.patientId} className="space-y-3 rounded-lg border border-border p-4" data-testid={`batch-patient-${p.patientId}`}>
             <div className="flex items-start justify-between gap-4">
@@ -419,6 +424,8 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
                 </button>
               </div>
             )}
+
+            {pharmacyWarning && <MultiPharmacyNoticeBanner notice={pharmacyWarning} />}
 
             {chosen.length > 0 && (
               <div className="rounded-md bg-muted/30 p-3 text-sm" data-testid={`batch-totals-${p.patientId}`}>

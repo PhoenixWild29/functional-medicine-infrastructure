@@ -18,6 +18,7 @@ import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { FREQUENCY_OPTIONS } from '@/app/(clinic-app)/new-prescription/_components/structured-sig-builder.types'
+import { MAX_REFILLS } from '@/lib/orders/rx-details'
 
 interface Ingredient { ingredient_id: string; common_name: string }
 interface Formulation {
@@ -331,7 +332,7 @@ function ItemEditor({ index, item, onChange, onRemove }: {
         </div>
         <div>
           <label htmlFor={id('refills')} className={LABEL}>Refills{which}</label>
-          <input id={id('refills')} type="number" min={0} max={12} value={item.refills} onChange={e => onChange({ refills: e.target.value })} className={FIELD} />
+          <input id={id('refills')} type="number" min={0} max={MAX_REFILLS} value={item.refills} onChange={e => onChange({ refills: e.target.value })} className={FIELD} />
         </div>
       </div>
 

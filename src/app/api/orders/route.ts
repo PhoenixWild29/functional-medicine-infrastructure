@@ -31,7 +31,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { resolveProtocolLinkage, type ProtocolLinkage } from '@/lib/protocols/resolve-instance'
-import { rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
+import { dispenseCount, rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
 import { lineSourceKind, resolveLine } from '@/lib/orders/resolve-line'
 import { writeDraftAudit } from '@/lib/orders/draft-edit'
 import { checkProviderOwnsDraft } from '@/lib/orders/provider-draft-guard'
@@ -361,7 +361,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       clinic_id:                clinicId,
       pharmacy_id:              pharmacyId,
       status:                   'DRAFT',
-      quantity:                 1,
+      // What the pharmacy dispenses, counted as the Dispense line states it.
+      quantity:                 dispenseCount({ ...rxDetailColumns, ...line.package }),
       wholesale_price_snapshot: wholesalePrice,
       retail_price_snapshot:    retailPrice,
       medication_snapshot:      medicationSnapshot,

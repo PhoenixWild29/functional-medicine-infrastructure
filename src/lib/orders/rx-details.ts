@@ -36,7 +36,16 @@ export const SHIPPING_TYPES = [
 
 export type ShippingType = (typeof SHIPPING_TYPES)[number]['value']
 
+/**
+ * The most refills a line may authorize, everywhere it is set: the
+ * builder, Review, a protocol, and the server check. No pharmacy or state
+ * rule in the app lowers it (controlled substances, where states cap
+ * refills, cannot be prescribed at all).
+ */
 export const MAX_REFILLS = 12
+
+/** 0 … MAX_REFILLS, the choices every refills select offers. */
+export const REFILL_CHOICES: ReadonlyArray<number> = Array.from({ length: MAX_REFILLS + 1 }, (_, n) => n)
 
 export function isSyringeOption(v: unknown): v is SyringeOption {
   return SYRINGE_OPTIONS.some(o => o.value === v)
@@ -44,6 +53,16 @@ export function isSyringeOption(v: unknown): v is SyringeOption {
 
 export function isShippingType(v: unknown): v is ShippingType {
   return SHIPPING_TYPES.some(o => o.value === v)
+}
+
+/**
+ * A formulation's default shipping type: its column when set, else the
+ * seed rule (cold chain for GLP-1s). The Rx defaults loader and the
+ * builder's pharmacy cards both price shipping from this.
+ */
+export function defaultShippingTypeFor(column: unknown, ingredientNames: ReadonlyArray<string>): ShippingType {
+  if (isShippingType(column)) return column
+  return isGlp1(ingredientNames) ? 'cold_chain' : 'standard'
 }
 
 // ── Formulation-level defaults ──────────────────────────────
@@ -854,6 +873,41 @@ export function formatPackageCount(label: string, count: number | null | undefin
   if (n === 1) return label
   const plural = /\b(vial|bottle|tube|pen|kit|syringe|jar|pump|cartridge)$/i.test(label.trim()) ? `${label.trim()}s` : label.trim()
   return `${n} × ${plural}`
+}
+
+/** Dispense units a pharmacy counts one by one ("30 capsules"), not measures. */
+export const COUNTED_DISPENSE_UNITS: ReadonlySet<string> = new Set(['capsule', 'tablet', 'troche', 'pellet', 'suppository'])
+
+/**
+ * How many the pharmacy dispenses, counted the way the Dispense line
+ * states it. This is orders.quantity, the fax's "Quantity:" and the
+ * quantity field of every pharmacy payload, so it always agrees with
+ * "Dispense: ...":
+ *   - filled from a package: the number of packages ("9.6 mL (2 × 5 mL vials)" → 2);
+ *   - no package, a counted unit: the units, rounded up ("30 capsules" → 30);
+ *   - no package, a measured amount: 1, one fill of it ("9.6 mL" → 1).
+ * Rows written before this rule stored 1 whatever they dispensed; reading
+ * them through this function gives the count from their package and
+ * dispense columns, and a row with neither keeps its stored quantity.
+ */
+export function dispenseCount(row: {
+  package_label?:     string | null
+  package_count?:     number | null
+  dispense_quantity?: number | string | null
+  dispense_unit?:     string | null
+  quantity?:          number | null
+}): number {
+  const label = typeof row.package_label === 'string' ? row.package_label.trim() : ''
+  if (label) {
+    return typeof row.package_count === 'number' && row.package_count >= 1 ? Math.trunc(row.package_count) : 1
+  }
+  const qty = row.dispense_quantity == null ? NaN : Number(row.dispense_quantity)
+  if (Number.isFinite(qty) && qty > 0) {
+    return row.dispense_unit != null && COUNTED_DISPENSE_UNITS.has(row.dispense_unit)
+      ? Math.max(1, Math.ceil(qty - 1e-9))
+      : 1
+  }
+  return typeof row.quantity === 'number' && row.quantity >= 1 ? Math.trunc(row.quantity) : 1
 }
 
 /**
