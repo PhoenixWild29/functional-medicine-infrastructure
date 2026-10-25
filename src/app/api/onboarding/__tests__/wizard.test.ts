@@ -231,7 +231,7 @@ describe('completing a step', () => {
 describe('submit', () => {
   it('needs practice, providers, BAA and terms complete', async () => {
     db = scriptedDb(clinicWith('in_progress', c => (c.table === 'clinic_onboarding_steps' && c.op === 'select' ? { data: [{ step: 'practice', status: 'complete' }] } : undefined)))
-    const res = await submit()
+    const res = await submit(new Request('https://app.test/api/onboarding/submit', { method: 'POST' }) as never)
     expect(res.status).toBe(409)
     expect(await res.json()).toEqual(expect.objectContaining({ missing: ['providers', 'baa', 'terms'] }))
     expect(db.to('clinics', 'update')).toEqual([])
@@ -244,7 +244,7 @@ describe('submit', () => {
     db = scriptedDb(clinicWith('in_progress', c => (c.table === 'clinic_onboarding_steps' && c.op === 'select'
       ? { data: ['practice', 'providers', 'baa', 'terms'].map(step => ({ step, status: 'complete' })) }
       : undefined)))
-    const res = await submit()
+    const res = await submit(new Request('https://app.test/api/onboarding/submit', { method: 'POST' }) as never)
     expect(res.status).toBe(200)
     expect(db.to('clinics', 'update')[0]!.payload).toEqual(expect.objectContaining({ onboarding_status: 'submitted' }))
   })
@@ -253,7 +253,7 @@ describe('submit', () => {
     db = scriptedDb(clinicWith('changes_requested', c => (c.table === 'clinic_onboarding_steps' && c.op === 'select'
       ? { data: ['practice', 'providers', 'baa', 'terms'].map(step => ({ step, status: 'complete' })) }
       : undefined)))
-    const res = await submit()
+    const res = await submit(new Request('https://app.test/api/onboarding/submit', { method: 'POST' }) as never)
     expect(res.status).toBe(200)
     const [upd] = db.to('clinics', 'update')
     expect(upd!.payload).toEqual(expect.objectContaining({ onboarding_status: 'submitted' }))
