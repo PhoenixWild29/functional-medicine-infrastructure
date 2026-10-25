@@ -192,6 +192,15 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
     return applySecurityHeaders(response)
   }
 
+  // Patient protocol choice PR 3: the patient's plan link. No session: the
+  // token is checked in the page and the route against its stored hash;
+  // the plan names medications after the date of birth check, so like the
+  // intake link it returns before the Supabase refresh and is no-store.
+  // '/plan/' with its trailing slash: '/plans' is not this.
+  if (pathname.startsWith('/plan/') || pathname.startsWith('/api/plan/')) {
+    return applySecurityHeaders(response)
+  }
+
   // Patient Intake PR 3: a clinic's public sign-up link (and its QR code).
   // No session, the same as the intake link: the token is checked in the
   // page and the route against its stored hash. '/join/' with its trailing

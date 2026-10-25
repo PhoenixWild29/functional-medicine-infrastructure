@@ -33,6 +33,7 @@ import type { OrderStatusEnum } from '@/types/database.types'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { SkeletonKanbanCard } from '@/components/ui/skeleton'
 import { orderDisplayNumber } from '@/lib/orders/order-number'
+import { isProposedOrder } from '../_lib/tabs'
 
 // ── Lane definitions ─────────────────────────────────────────
 
@@ -42,6 +43,8 @@ interface KanbanLane {
   statuses:      Set<OrderStatusEnum>
   // Statuses that can be "dragged into" this lane — empty = invalid drop target
   acceptStatuses: Set<OrderStatusEnum>
+  /** Patient protocol choice: true = proposed drafts only, false = none (see _lib/tabs). */
+  proposed?:     boolean
 }
 
 const LANES: KanbanLane[] = [
@@ -50,6 +53,14 @@ const LANES: KanbanLane[] = [
     label:          'Drafts',
     statuses:       new Set<OrderStatusEnum>(['DRAFT']),
     acceptStatuses: new Set(),
+    proposed:       false,
+  },
+  {
+    id:             'proposed',
+    label:          'Proposed',
+    statuses:       new Set<OrderStatusEnum>(['DRAFT']),
+    acceptStatuses: new Set(),
+    proposed:       true,
   },
   {
     id:             'awaiting_payment',
@@ -270,7 +281,7 @@ export function OrdersKanban({ orders, onCardClick, isLoading = false }: Props) 
     <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         {LANES.map(lane => {
-          const laneOrders = orders.filter(o => lane.statuses.has(o.status))
+          const laneOrders = orders.filter(o => lane.statuses.has(o.status) && (lane.proposed === undefined || isProposedOrder(o) === lane.proposed))
           const invalid    = activeId ? isInvalidDrop(lane.id) : false
 
           return (
