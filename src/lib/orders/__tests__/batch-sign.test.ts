@@ -56,7 +56,7 @@ function draft(n: number, over: Record<string, unknown> = {}) {
     order_id: id(n), status: 'DRAFT', clinic_id: CLINIC, is_active: true, deleted_at: null,
     patient_id: P1, provider_id: CHEN, catalog_item_id: null, formulation_id: 'f-plain',
     pharmacy_id: 'ph-strive', retail_price_snapshot: 200, wholesale_price_snapshot: 100,
-    shipping_state_snapshot: 'TX',
+    shipping_state_snapshot: 'TX', provider_npi_snapshot: '1234567893', pharmacy_snapshot: { name: 'Strive' },
     medication_snapshot: { medication_name: `Plain compound ${n}`, dea_schedule: 0 },
     package_id: null, package_count: 1, refills: 0, substitution_allowed: true,
     syringe_option: 'none', shipping_type: 'standard', clinical_difference: null,

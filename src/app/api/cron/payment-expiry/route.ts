@@ -27,7 +27,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
-import { insertStatusHistory } from '@/lib/orders/status-history'
+import { casTransition } from '@/lib/orders/cas-transition'
 import { createStripeClient } from '@/lib/stripe/client'
 import { resolveSlasForTransition } from '@/lib/sla/resolver'
 
@@ -201,20 +201,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         continue
       }
 
-      // Step 2: REQ-PRX-004 CAS — only transition if still AWAITING_PAYMENT
-      const now = new Date().toISOString()
-      const { data: casData, error: casError } = await supabase
-        .from('orders')
-        .update({ status: 'PAYMENT_EXPIRED', updated_at: now })
-        .eq('order_id', orderId)
-        .eq('status', 'AWAITING_PAYMENT')  // ← CAS predicate
-        .select('order_id')
+      // Step 2: REQ-PRX-004 CAS — only transition if still AWAITING_PAYMENT.
+      // REQ-PRX-007 (audit trail) is the history row casTransition writes.
+      const cas = await casTransition({
+        orderId,
+        expectedStatus: 'AWAITING_PAYMENT',
+        newStatus:      'PAYMENT_EXPIRED',
+        actor:          'cron:payment-expiry',
+        actorRole:      'system',
+        metadata:       { reason: 'payment_not_received_72h', pi_id: piId ?? null },
+      })
 
-      if (casError) {
-        throw new Error(`CAS update failed: ${casError.message}`)
-      }
-
-      if (!casData || casData.length === 0) {
+      if (cas.wasAlreadyTransitioned) {
         // Already transitioned by the payment webhook — safe no-op
         noOpCount++
         continue
@@ -228,16 +226,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       await resolveSlasForTransition(orderId, 'PAYMENT_EXPIRED').catch(err => {
         console.error(`[payment-expiry] SLA resolve failed (non-fatal) | order=${orderId}:`, err instanceof Error ? err.message : err)
       })
-
-      // Step 5: REQ-PRX-007 — audit trail
-      // Non-fatal; a failure alerts ops.
-      await insertStatusHistory(supabase, {
-        order_id:   orderId,
-        old_status: 'AWAITING_PAYMENT',
-        new_status: 'PAYMENT_EXPIRED',
-        changed_by: 'cron:payment-expiry',
-        metadata:   { reason: 'payment_not_received_72h', pi_id: piId ?? null },
-      }, 'cron:payment-expiry')
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

@@ -321,6 +321,7 @@ async function handleSoloPaymentSucceeded(
     expectedStatus: 'AWAITING_PAYMENT',
     newStatus: 'PAID_PROCESSING',
     actor: 'stripe_webhook',
+    actorRole: 'system',
     metadata: { stripe_payment_intent_id: paymentIntent.id },
   })
 

@@ -54,7 +54,7 @@ An illegal from/to pair already throws in casTransition (canTransition).
 |---|---|---|---|
 | `src/lib/orders/batch-sign.ts` signBatch | DRAFT to AWAITING_PAYMENT | the signing provider (sign page, sign-and-send, protocol choice sign) | One UPDATE over every line of the batch, with locked_at and the signature hash. A partial sign is treated as critical, so it cannot become per-order CAS calls. The required snapshots hold: every DRAFT is created by POST /api/orders with all six set (patient state and provider NPI are required there). |
 | `src/app/api/cron/payment-expiry/route.ts` | AWAITING_PAYMENT to PAYMENT_EXPIRED | cron (system) | Its own CAS predicate and its own history row. Same shape as casTransition. |
-| `src/app/api/ops/orders/[orderId]/action/route.ts` reroute | SUBMISSION_PENDING, SUBMISSION_FAILED, FAX_FAILED, PHARMACY_REJECTED to REROUTE_PENDING | ops | One UPDATE: the status, reroute_count + 1 and the new pharmacy, on purpose (BLK-05), plus its own history row. |
+| `src/app/api/ops/orders/[orderId]/action/route.ts` reroute | SUBMISSION_FAILED, FAX_FAILED, PHARMACY_REJECTED (its REROUTABLE list) to REROUTE_PENDING | ops | One UPDATE: the status, reroute_count + 1 and the new pharmacy, on purpose (BLK-05), plus its own history row. |
 | `src/lib/proposals/expire.ts` | DRAFT to CANCELLED (bulk, a plan's lines) | cron `proposal-expiry` (system) | `.eq('status','DRAFT')`, with history rows. |
 | `src/lib/proposals/propose.ts` cancelProposal | DRAFT to CANCELLED (bulk) | the provider or a clinic admin cancelling a plan (a medical assistant is refused) | Same. |
 | `src/lib/proposals/sign-choice.ts` | DRAFT to CANCELLED (bulk, the unchosen lines) | the provider signing the patient's choice | Same. |
@@ -94,3 +94,25 @@ past PHARMACY_PROCESSING from the poll. This is listed for Sam.
 The actor check needs the actor's role, and casTransition's `actor` is a
 history label (`ops:<email>`, `routing_engine`, ...). So callers now pass
 `actorRole` explicitly, and the label stays as it is.
+
+## 3. What was done (part 2)
+
+- `casTransition` enforces actors (`actorRole`, now required on every
+  call) and `REQUIRED_FIELDS_ON_ENTER`, inside its UPDATE's WHERE clause.
+  A refusal throws `CasTransitionRefused` with a code, and writes nothing.
+- The rules corrected to the real flows:
+  - DRAFT to CANCELLED: clinic_admin, provider, ops_admin, system;
+  - REFUND_PENDING to REFUNDED: ops_admin or system;
+  - SUBMISSION_PENDING: nothing required on entry.
+- SHIPPED's tracking moved to `UNENFORCED_REQUIRED_FIELDS_ON_ENTER`, for
+  Sam.
+- Routed through `casTransition`:
+  - the payment-expiry cron;
+  - the ops reroute, with the new `patch` option, so the status,
+    reroute_count and pharmacy stay one UPDATE.
+- Batch sign stays one UPDATE. `canSign` (the read-only half) now refuses
+  a line missing a required snapshot ('missing_snapshot') before anything
+  is written.
+- The proposal bulk cancels stay direct (several orders in one UPDATE,
+  with a clinic predicate). Their actors (system, provider, clinic_admin)
+  are all allowed by the corrected DRAFT to CANCELLED rule.

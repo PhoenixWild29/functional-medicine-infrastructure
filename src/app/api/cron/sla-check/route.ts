@@ -200,6 +200,7 @@ async function attemptCascadeToFax(
       expectedStatus: 'SUBMISSION_PENDING',
       newStatus:      'FAX_QUEUED',
       actor:          'sla_check_cascade',
+      actorRole:      'system',
       metadata:       { cascade_reason: 'adapter_submission_ack_breach', sla_type: slaType },
     })
   } catch (casErr) {

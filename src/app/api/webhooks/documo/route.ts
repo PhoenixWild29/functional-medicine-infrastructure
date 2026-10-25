@@ -226,6 +226,7 @@ async function handleFaxDelivered(fax: DocumoFaxData): Promise<string | null> {
     expectedStatus: 'FAX_QUEUED',
     newStatus: 'FAX_DELIVERED',
     actor: 'documo_webhook',
+    actorRole: 'system',
     metadata: { documo_fax_id: fax.id },
   })
 
@@ -328,6 +329,7 @@ async function handleFaxFailed(fax: DocumoFaxData): Promise<string | null> {
     expectedStatus: 'FAX_QUEUED',
     newStatus: 'FAX_FAILED',
     actor: 'documo_webhook',
+    actorRole: 'system',
     metadata: { documo_fax_id: fax.id, failure_attempt: failureCount },
   })
 

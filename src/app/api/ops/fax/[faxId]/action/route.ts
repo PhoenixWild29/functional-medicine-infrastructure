@@ -116,6 +116,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
           expectedStatus: 'FAX_DELIVERED',
           newStatus:      'PHARMACY_ACKNOWLEDGED',
           actor:          actorEmail,
+          actorRole:      'ops_admin',
           metadata:       { source: 'ops_triage', faxId },
         })
       } catch (err) {
@@ -198,6 +199,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
           expectedStatus: 'FAX_DELIVERED',
           newStatus:      'PHARMACY_REJECTED',
           actor:          actorEmail,
+          actorRole:      'ops_admin',
           metadata:       { source: 'ops_triage', faxId },
         })
       } catch (err) {

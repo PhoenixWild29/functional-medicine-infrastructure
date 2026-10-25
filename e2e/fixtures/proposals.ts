@@ -54,6 +54,9 @@ export async function seedProposal(state: SeededPlanState = 'open'): Promise<{ t
     patient_id: TEST_IDS.patient, provider_id: TEST_IDS.provider, clinic_id: TEST_IDS.clinic,
     catalog_item_id: TEST_IDS.catalogItem, pharmacy_id: TEST_IDS.pharmacyTier1, status: 'DRAFT', quantity: 1,
     wholesale_price_snapshot: retail / 2, retail_price_snapshot: retail,
+    // Every snapshot a real draft carries (POST /api/orders), so the line can be signed.
+    provider_npi_snapshot: '1234567890', shipping_state_snapshot: 'TX',
+    pharmacy_snapshot: { pharmacy_id: TEST_IDS.pharmacyTier1, name: 'Test Pharmacy Tier1', integration_tier: 'TIER_1_API', fax_number: null },
     sig_text: 'Inject 10 units under the skin once daily',
     medication_snapshot: { medication_name: name, form: 'Injectable', dose: '10 mg/mL' },
     proposal_option_id: option.option_id, proposal_required: required,
