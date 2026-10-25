@@ -73,9 +73,16 @@ interface Props {
   signer:         { providerId: string; name: string; npi: string }
   rates:          PharmacyShippingRates[]
   absorbShipping: boolean
+  /**
+   * Patient protocol choice, PR 4: signing the lines a patient chose. They
+   * are fixed (no unticking, editing, removing or adding), and Sign & Send
+   * goes to POST /api/proposals/[id]/sign, which signs them through batch
+   * sign and cancels the rest of the plan.
+   */
+  proposal?:      { proposalId: string; summary: string }
 }
 
-export function BatchSignForm({ patients, preselected, signer, rates, absorbShipping }: Props) {
+export function BatchSignForm({ patients, preselected, signer, rates, absorbShipping, proposal }: Props) {
   const router = useRouter()
   const sigCanvasRef = useRef<SignatureCanvas>(null)
 
@@ -237,11 +244,18 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
     setSubmitError(null)
     setServerProblems([])
     try {
-      const res = await fetch('/api/orders/batch-sign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderIds: selectedIds, signature: sig.signature }),
-      })
+      const res = proposal
+        ? await fetch(`/api/proposals/${proposal.proposalId}/sign`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // The server signs exactly what the patient chose.
+          body: JSON.stringify({ signature: sig.signature }),
+        })
+        : await fetch('/api/orders/batch-sign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderIds: selectedIds, signature: sig.signature }),
+        })
       const body = await res.json().catch(() => ({})) as { error?: string; code?: string; problems?: Problem[] }
       if (res.ok) {
         router.push(`/dashboard?sent=${selectedIds.length}`)
@@ -249,7 +263,8 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
       }
       setServerProblems(body.problems ?? [])
       const message = body.error ?? 'Signing failed.'
-      setSubmitError(/nothing was signed/i.test(message) ? message : `${message} Nothing was signed.`)
+      const refused = /nothing was signed/i.test(message) ? message : `${message} Nothing was signed.`
+      setSubmitError(proposal ? `${refused} The patient's choice is kept; sign again once this is fixed.` : refused)
       setSubmitting(false)
     } catch (err) {
       setSubmitError(`${err instanceof Error ? err.message : 'Signing failed.'} Nothing was signed.`)
@@ -279,6 +294,15 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
 
   return (
     <div className="space-y-6">
+      {proposal && (
+        <section aria-label="The patient's choice" className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-950">
+          <p className="font-semibold">{proposal.summary}</p>
+          <p className="mt-1 text-xs">
+            These are the prescriptions the patient chose. Signing sends them one payment link; the items they did not choose are cancelled, never signed.
+          </p>
+        </section>
+      )}
+
       {controlledSelected.length > 0 && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3" data-testid="batch-controlled-banner">
           <p className="text-sm font-semibold text-red-800">{CONTROLLED_LABEL}</p>
@@ -352,7 +376,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
               )}
             </div>
 
-            {p.others.map(o => (
+            {!proposal && p.others.map(o => (
               <SignAsMePanel
                 key={o.providerId}
                 orderId={o.anchorOrderId}
@@ -375,11 +399,12 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
                 selectionIds={selectedIds}
                 problems={lineProblems}
                 disabled={submitting}
+                locked={!!proposal}
                 onToggle={toggle}
               />
             )}
 
-            {unchosen.length > 0 && chosen.length > 0 && (
+            {!proposal && unchosen.length > 0 && chosen.length > 0 && (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid={`unselected-siblings-${p.patientId}`}>
                 <span>
                   {unchosen.length} more draft{unchosen.length !== 1 ? 's' : ''} for {nameOf(p)} {unchosen.length !== 1 ? 'are' : 'is'} not selected.
@@ -483,13 +508,15 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
 
 // ── One patient's draft lines ─────────────────────────────────
 
-function DraftLineList({ patient, selected, selectionIds, problems, disabled, onToggle }: {
+function DraftLineList({ patient, selected, selectionIds, problems, disabled, locked = false, onToggle }: {
   patient:  BatchPatientView
   selected: Set<string>
   /** The page's whole selection, carried through the builder and back. */
   selectionIds: string[]
   problems: Map<string, Problem[]>
   disabled: boolean
+  /** A patient's choice: the lines are fixed (no untick, edit, remove or add). */
+  locked?:  boolean
   onToggle: (orderId: string) => void
 }) {
   const router = useRouter()
@@ -517,14 +544,14 @@ function DraftLineList({ patient, selected, selectionIds, problems, disabled, on
   return (
     <div className="rounded-lg border border-border bg-card p-4 shadow-sm" data-testid="draft-lines">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Draft lines ({patient.lines.length})</p>
-        <button
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{locked ? 'Chosen' : 'Draft'} lines ({patient.lines.length})</p>
+        {!locked && <button
           type="button"
           onClick={() => router.push(builderHref({ kind: 'draft-add', orderId: anchor, returnOrders: selectionIds }))}
           className="text-xs font-medium text-primary underline hover:text-primary/80"
         >
           + Add prescription
-        </button>
+        </button>}
       </div>
       <ul className="mt-2 divide-y divide-border">
         {patient.lines.map(line => (
@@ -533,7 +560,8 @@ function DraftLineList({ patient, selected, selectionIds, problems, disabled, on
             line={line}
             checked={selected.has(line.orderId)}
             problems={problems.get(line.orderId) ?? []}
-            disabled={disabled || removing !== null}
+            disabled={disabled || locked || removing !== null}
+            locked={locked}
             removing={removing === line.orderId}
             onToggle={() => onToggle(line.orderId)}
             onEdit={() => router.push(builderHref({ kind: 'draft', orderId: line.orderId, returnOrders: selectionIds.includes(line.orderId) ? selectionIds : [...selectionIds, line.orderId] }))}
@@ -546,8 +574,8 @@ function DraftLineList({ patient, selected, selectionIds, problems, disabled, on
   )
 }
 
-function DraftLineItem({ line, checked, problems, disabled, removing, onToggle, onEdit, onRemove }: {
-  line: BatchDraftLine; checked: boolean; problems: Problem[]; disabled: boolean; removing: boolean
+function DraftLineItem({ line, checked, problems, disabled, locked = false, removing, onToggle, onEdit, onRemove }: {
+  line: BatchDraftLine; checked: boolean; problems: Problem[]; disabled: boolean; locked?: boolean; removing: boolean
   onToggle: () => void; onEdit: () => void; onRemove: () => void
 }) {
   const d = line.rxDetails
@@ -590,14 +618,14 @@ function DraftLineItem({ line, checked, problems, disabled, removing, onToggle, 
         </label>
         <div className="shrink-0 text-right">
           <p className="text-sm font-bold text-foreground">{toCurrency(line.retailCents)}</p>
-          <div className="mt-1 flex justify-end gap-3">
+          {!locked && <div className="mt-1 flex justify-end gap-3">
             <button type="button" onClick={onEdit} disabled={disabled} className="text-[10px] font-medium text-primary underline hover:text-primary/80 disabled:opacity-50">
               Edit
             </button>
             <button type="button" onClick={onRemove} disabled={disabled} className="text-[10px] text-red-500 underline hover:text-red-700 disabled:opacity-50">
               {removing ? 'Removing...' : 'Remove'}
             </button>
-          </div>
+          </div>}
         </div>
       </div>
       {/* WO-96: Rx details, collapsed. */}

@@ -420,6 +420,28 @@ describe('middleware — /intake (patient self-intake, no session)', () => {
   })
 })
 
+// ── Patient protocol choice PR 3: the patient's plan link ────
+// No session: /plan/<token> and /api/plan/<token> reach the page and route
+// (the token is checked there, against its hash), never /login, and never
+// touch the Supabase session. The plan names medications after the date
+// of birth check, so it is no-store.
+describe('middleware — /plan (patient plan link, no session)', () => {
+  it.each(['/plan/' + 'A'.repeat(43), '/api/plan/' + 'A'.repeat(43)])('%s passes through without auth, no-store', async path => {
+    getUserMock.mockResolvedValue(NO_SESSION)
+    const res = await middleware(makeReq(path))
+    expect(res.headers.get('location')).toBeNull()
+    expectSecurityHeaders(res)
+    expect(res.headers.get('Cache-Control')).toMatch(/no-store/)
+    expect(getUserMock).not.toHaveBeenCalled()
+  })
+
+  it('a look-alike path is not public: /plans still needs a session', async () => {
+    getUserMock.mockResolvedValue(NO_SESSION)
+    const res = await middleware(makeReq('/plans'))
+    expect(res.headers.get('location')).toMatch(/\/login/)
+  })
+})
+
 // ── Patient Intake PR 3: the clinic's public sign-up link ────
 // A new patient has no session: /join/<token> and /api/join/<token> reach
 // the page and route (the token is checked there, against its hash),
