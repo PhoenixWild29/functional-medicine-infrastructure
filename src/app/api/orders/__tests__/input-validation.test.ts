@@ -241,7 +241,7 @@ describe('GET /api/orders/compliance-check', () => {
   })
 
   it('a caller with no clinic is refused before the query is read', async () => {
-    user = { id: 'u-ops', app_metadata: { app_role: 'ops_admin' } }
+    user = { id: 'u-1', app_metadata: { app_role: 'provider' } }
     const res = await get({ ...q, patientId: 'p-1' })
     expect(res.status).toBe(400)
     expect(await res.json()).toEqual({ error: 'Session missing clinic_id' })

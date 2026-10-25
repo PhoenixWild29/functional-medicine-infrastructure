@@ -96,7 +96,7 @@ const call = async () => {
 
 beforeEach(() => {
   getUserMock.mockReset()
-  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { clinic_id: CLINIC } } } })
+  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC } } } })
   orderRows = [cyclingRow()]
   pharmacyFormulationRows = [packagesRow(PKGS)]
 })

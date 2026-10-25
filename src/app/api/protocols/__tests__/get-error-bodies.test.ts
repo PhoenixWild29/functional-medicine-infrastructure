@@ -15,7 +15,7 @@ let db = scriptedDb(() => undefined)
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getUser: async () => ({ data: { user: { id: 'u1', app_metadata: { clinic_id: 'c-1' } } } }) },
+    auth: { getUser: async () => ({ data: { user: { id: 'u1', app_metadata: { app_role: 'clinic_admin', clinic_id: 'c-1' } } } }) },
   }),
 }))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
