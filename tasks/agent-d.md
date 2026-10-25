@@ -1,20 +1,20 @@
-task-id: D-2026-10-25-16
+task-id: D-2026-10-25-17
 status: ready
 ---
-Thanks for D-2026-10-25-15 (clinical-difference-saved fixes, d21721a).
+Thanks for D-2026-10-25-16 (password-flows, 69e60cf).
 
-Next: close gaps B10 and B11 from C's HIPAA evidence map (origin/review-high-risk, docs/compliance/technical-safeguards-evidence-2026-10-25.md). Read them first.
+Next: gaps B16 and B13 from C's HIPAA evidence map (origin/review-high-risk, docs/compliance/technical-safeguards-evidence-2026-10-25.md). Read them first.
 
-Branch: `git fetch origin && git checkout -b password-flows origin/bundle-features`.
-1. B11: password reset and change.
-   - "Forgot password?" on /login: email the Supabase reset link (Supabase Auth resetPasswordForEmail with a redirect to a new /reset-password page). Same response whether or not the email exists. Rate limited with the existing limiter.
-   - /reset-password: set a new password (policy: at least 12 characters, not in a small common-password list, not equal to the email); then sign out other sessions if Supabase allows; then to /login with a notice.
-   - Settings > Account: Change password (current + new), same policy.
-2. B10: POST /api/providers sets an admin-chosen password with no forced change. Instead: create the user with no usable admin-known password and hand over the existing one-time invite/set-password link (the Team invite flow already copies a link; reuse it). If the code path must keep a temporary password, flag the user (app_metadata must_change_password=true) and force /reset-password on first sign-in before any other page.
-3. Do not change MFA rules (separate decision).
-No email provider change: use Supabase Auth's own email. If Supabase email is not configured for prod, say so in the report; do not touch Supabase settings.
-Tests: jest for the API routes and policy; E2E for change-password on a seeded test user only if it needs no new seed tables (unique locators; no getByRole('alert')).
-No database migrations.
-Gates: lint (0 warnings), tsc, jest, next build. Push password-flows (normal push, no PR). Report in the commit body.
+Branch: `git fetch origin && git checkout -b audit-review-breakglass origin/bundle-features`.
+1. B16: audit-log review.
+   - Ops page /ops/access-review (ops_admin only): phi_access_log filtered by date range, clinic, actor, actor role, resource type and action; flags for review: access outside 6am-10pm clinic local time (use UTC if no clinic timezone exists, say so), one actor viewing more than N distinct patients in an hour (N=30, a constant), access by deactivated users, access to a patient with no order or proposal in that clinic. Export CSV (ops only, the export itself is logged).
+   - "Mark reviewed" per period: if an existing table can record review sign-off, use it; otherwise do NOT migrate, show the page without sign-off and report the design.
+   - docs/compliance/audit-log-review-procedure.md: who reviews, how often (weekly), what to look at, what to do on a finding, retention of evidence.
+2. B13: emergency access (break-glass).
+   - docs/compliance/emergency-access-procedure.md: who may invoke it, how (a named ops_admin account with MFA, sealed credentials held by Sam), what is logged, post-event review within 24 hours.
+   - Code: if an ops "break-glass" read path is needed beyond ops_admin's existing access, do NOT build new privilege; instead require a reason text on any ops view of a patient record outside the normal ops screens and log it with the access. If ops already sees everything it needs, just add the reason prompt where ops opens patient-level detail, and log reason.
+No database migrations (report designs instead).
+Tests: jest for the filters and flags, the role gate, the CSV export logging, and the reason prompt.
+Gates: lint (0 warnings), tsc, jest, next build. Push audit-review-breakglass (normal push, no PR). Report in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
