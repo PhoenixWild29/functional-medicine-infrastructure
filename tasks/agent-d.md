@@ -1,17 +1,27 @@
-task-id: D-2026-10-25-13
+task-id: D-2026-10-25-14
 status: ready
 ---
-Thanks for D-2026-10-25-12 (checklist v2, 674e1e2).
+Thanks for D-2026-10-25-13 (clinical-difference-saved, 3bd6713, migration 000009 prepared). Noted; it merges after perf-indexes.
 
-Next: close the rest of coverage gap 6. The NP asked for clinical difference statements "like Strive's list". Today the GLP-1 statement is required and auto-expanded, but patient-specific statements must be typed each time and cannot be saved. Sam has not decided pre-selection, so do NOT pre-select anything.
+Next: in-app Help for clinic staff, so a pilot clinic can answer its own "how do I" questions.
 
-Branch: `git fetch origin && git checkout -b clinical-difference-saved origin/bundle-features` if it is pushed, else origin/main (say which).
-- Let a provider save a statement they typed as a reusable statement, scoped to the practice (default) or to one patient, for that formulation (or ingredient group, if that is how statements are keyed today; read the code).
-- At the clinical difference step, show saved statements for that formulation (patient-scoped ones first when a patient is in context) as one-click choices next to the standard list. Choosing one fills the field; the provider can still edit. Nothing is chosen automatically.
-- The chosen statement prints on the Rx/fax exactly as today.
-- Storage: if an existing table or jsonb column fits cleanly (e.g. favorites or a clinic settings jsonb), use it with no migration and say why it fits. If it needs a new table, write migration 20261024000009_saved_clinical_statements.sql with its down file, RLS scoped to the clinic (follow the patterns in 000002 treatment_proposals: policies, grants, apply_pharmacy_admin_scope if the convention requires it), and confirm 000009 is the next free number across all origin branches. A migration branch is PREPARED only; it merges after perf-indexes.
-- Server: zod-validated, role-gated (providers and clinic admins save; MAs can use but not save, unless the code's existing rules for favorites say otherwise; follow favorites), clinic-scoped, length-bounded.
-Tests: jest for save, scoping (no cross-clinic, patient-only visible only for that patient), the picker, and the printed Rx. No E2E changes that need new seed tables unless the migration exists.
-Gates: lint (0 warnings), tsc, jest, next build. Push clinical-difference-saved (normal push, no PR). Report in the commit body (include the migration SQL if any).
+First check whether any help page, help links or tooltips exist today (search for "help", "Help", "/help", "support"); build on them.
+Branch: `git fetch origin && git checkout -b clinic-help origin/bundle-features` (so it describes the finished features; it merges after bundle-features).
+- Add /help in the clinic app (all clinic roles), linked from the sidebar/user menu, with short task pages written for clinic staff, plain language, exact button labels from the code:
+  1. Add a patient (mobile link, sign-up QR, spreadsheet upload, face sheet when available).
+  2. Write and sign a prescription (every field the pharmacy needs, allergies/NKDA, Sign all).
+  3. Favorites and Frequently used.
+  4. Saved clinical difference statements (only if clinical-difference-saved has merged into your base; otherwise leave it out and say so).
+  5. Send a treatment plan for the patient to choose, and sign the chosen lines.
+  6. Payment links: what the patient sees, expiry, resending.
+  7. Order status and what each status means; what to do when an order shows a failure reason.
+  8. Team: add a provider, invite an MA or admin, turn access off.
+  9. Settings: practice details, Notifications (what is sent), access log, agreements.
+  10. Who to contact for help (use the support contact already in the code or env; if none exists, say "Contact CompoundIQ" with no address and list it in the report as a decision for Sam).
+- Content lives in code (MDX or TSX, matching the repo's conventions). No external links, no screenshots needed. Accessible headings, works at phone width.
+- A small "Help" link on the Rx builder and the plan page header pointing to the relevant section.
+Tests: jest that every help page renders and every label it names exists in the component it describes (a simple string check against the source is fine); axe in an existing E2E if cheap.
+No database migrations.
+Gates: lint (0 warnings), tsc, jest, next build. Push clinic-help (normal push, no PR). Report in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
