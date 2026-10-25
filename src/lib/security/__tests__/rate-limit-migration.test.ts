@@ -3,8 +3,8 @@
  *
  * Migration 20261024000007: the shared rate-limit count (security review
  * L7). Its behaviour (atomic increments under concurrency, window rollover,
- * pruning, grants) is checked on PGlite against every migration
- * (scripts/security/pglite-check/rate-limit.mjs). This pins the text.
+ * pruning, grants) was checked on PGlite with every migration applied
+ * (see the rate-limit-db commit report). This pins the text.
  */
 
 import { existsSync, readFileSync } from 'node:fs'

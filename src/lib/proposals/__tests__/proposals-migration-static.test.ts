@@ -48,9 +48,13 @@ it(`is version ${VERSION}, unique, and has a down file`, () => {
   expect(v.filter((x, i) => v.indexOf(x) !== i)).toEqual([])
 })
 
-it('sorts after every migration already on main and after the fax PHI column (20261024000001)', () => {
+it('sorts after every migration already on main when it landed, including the fax PHI column (20261024000001)', () => {
+  // Later migrations (20261024000007 rate_limit_hits, ...) sort after it;
+  // what matters is that nothing that existed before it sorts after it.
   const versions = fs.readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).map(f => f.split('_')[0]!).sort()
-  expect(versions[versions.length - 1]).toBe(VERSION)
+  const before = versions.slice(0, versions.indexOf(VERSION))
+  expect(before).toContain('20261024000001')
+  expect(before.every(v => v < VERSION)).toBe(true)
   expect(VERSION > '20261024000001').toBe(true)
 })
 

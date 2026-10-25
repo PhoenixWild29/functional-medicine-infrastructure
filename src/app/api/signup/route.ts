@@ -26,7 +26,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (crossSite) return crossSite
 
   const ip = clientIp(request.headers)
-  const limit = signupLimiter.check(ip ?? 'unknown')
+  const limit = await signupLimiter.check(ip ?? 'unknown')
   if (!limit.allowed) {
     console.warn(`[signup] rate_limited | ip_hash=${(await auditHash(ip)) ?? 'none'}`)
     return NextResponse.json(

@@ -106,7 +106,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const pendingReview = await refuseUnlessApproved(createServiceClient(), clinicId)
   if (pendingReview) return pendingReview
 
-  const limit = faceSheetLimiter.check(user.id)
+  const limit = await faceSheetLimiter.check(user.id)
   if (!limit.allowed) {
     return json({ error: FACE_SHEET_RATE_LIMITED_MESSAGE }, 429, { 'Retry-After': String(limit.retryAfterSeconds) })
   }
