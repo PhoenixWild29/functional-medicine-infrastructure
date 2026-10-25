@@ -1,19 +1,22 @@
-task-id: B-2026-10-25-11
+task-id: B-2026-10-25-12
 status: ready
 ---
-Thanks for B-2026-10-25-10 (practitioner E2E, 31bb77e).
+Thanks for B-2026-10-25-11 (keyboard and screen-reader pass, 8af5877).
 
-Next: keyboard-only and screen-reader use of the clinic's core flows. axe catches markup; it does not catch a flow you cannot finish without a mouse.
+Next: two gaps from C's HIPAA evidence map (origin/review-high-risk, docs/compliance/technical-safeguards-evidence-2026-10-25.md, B12 and B9). Read those sections first.
 
-Branch: `git checkout bundle-features && git pull` (you own it; add commits on top).
-Walk these with keyboard only (Tab, Shift+Tab, Enter, Space, Esc, arrows) locally:
-1. Rx builder: search, choose pharmacy, dose step dropdowns, price page, Review (edit a line in place, clinical difference, allergies/NKDA inline prompt), Sign all.
-2. Favorites and Frequently used, Make favorite dialog (Practice / This patient).
-3. Propose a plan, Copy link / Show QR dialog.
-4. Order drawer open/close, tabs, failure reason.
-5. Settings: Team invite dialog, Notifications page.
-Check: every control reachable and operable; visible focus ring; dialogs trap focus, close on Esc and return focus to the opener; no focus lost to <body> after async updates; error and status messages announced (aria-live) without using role=alert on things that are not alerts; labels on every input; buttons with icon-only content have accessible names.
-Fix what fails, keeping the visual style. Add a Playwright spec e2e/keyboard-core-flows.spec.ts that drives the Rx builder to Review and the Make favorite dialog with keyboard only (press, not click) and asserts focus return after closing dialogs. Unique locators; no getByRole('alert').
-Gates: lint (0 warnings), tsc, jest, next build. Push bundle-features (normal push, no PR). Report in the commit body: each check, pass/fixed.
+Branch: `git fetch origin && git checkout -b auth-monitoring origin/bundle-features`.
+1. B12: failed-login monitoring and alerting.
+   - Record each failed sign-in and MFA challenge failure (email hashed with the existing hash secret approach, IP, user agent, time, reason). Use an existing table if one fits (audit/security event, rate-limit hits); if none fits, do NOT migrate, report the design.
+   - Alert (Slack/Sentry, no PHI, no raw email) on: 5+ failures for one account in 15 minutes; 20+ failures from one IP in 15 minutes; any failed sign-in on an ops_admin or pharmacy_admin account.
+   - Lock-out: use Supabase's own protections where they exist; add a short app-level delay after repeated failures through the existing rate limiter. No permanent lock-out (support burden).
+   - Ops page or section listing recent failed-login alerts, if cheap; otherwise the alerts suffice.
+2. B9: shared POC account passwords appear in source and docs.
+   - Find every place a password, or anything that looks like one, appears in tracked files (src, scripts, docs, README, e2e, seed files, .env.example). Do NOT print any value in your report or commit body; refer to file:line only.
+   - Replace with env var names (e.g. POC_OPS_PASSWORD) read at seed/test time, with a clear error if missing. Docs say "set in your local env" without values.
+   - Do not rotate or change any real password and do not touch Vercel or Supabase settings: list in the report which accounts Sam must rotate because their passwords were in git history.
+Tests: jest for the failure recording, thresholds and alert payload (no PHI, no raw email), and that seed/test helpers read from env.
+No database migrations.
+Gates: lint (0 warnings), tsc, jest, next build. Push auth-monitoring (normal push, no PR). Report in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
