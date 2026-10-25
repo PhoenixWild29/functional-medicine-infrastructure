@@ -338,3 +338,58 @@ No critical or high findings.
 
 ### clinic-help
 **Not reviewed: not pushed.** There is no `origin/clinic-help`; 2cd8d9b is local to D. Review it once pushed, for: no PHI, secrets or internal URLs in the help text; labels that match the code; the route behind clinic auth; no external links.
+
+---
+
+## 6. clinic-help (review, C-2026-10-25-15)
+
+`origin/clinic-help` at **96f74e33** (D).
+
+### Base and scope
+- **Merge base:** bundle-features **f75138e7**. The branch contains f75138e7. bundle-features has moved on to 31bb77e5 since, so the branch is one rebase behind but based on the required commit.
+- **Commits on top:** f2bb95a7 (red test), 2cd8d9b1 (feature), 2067e19f (contrast fix) and 96f74e33 (report).
+- **Files touched (10). New help files and their tests:**
+  - `src/lib/help/topics.ts` (+ `__tests__/topics.test.ts`)
+  - `src/app/(clinic-app)/help/page.tsx`
+  - `src/app/(clinic-app)/help/[slug]/page.tsx` (+ `help/__tests__/help-pages.test.tsx`)
+  - `src/components/help-link.tsx`
+- **Files touched outside help:**
+  - `src/components/sidebar-nav.tsx`: a "Help" nav link (+15 lines).
+  - `new-prescription/search/page.tsx`: a `HelpLink` beside the builder's h1 (wrapped in a flex row).
+  - `new-prescription/review/_components/batch-review-form.tsx`: a `HelpLink` beside "Let the patient choose".
+  - `new-prescription/sign/_components/batch-sign-form.tsx`: a `HelpLink` beside the plan summary.
+
+  All four are a link plus its wrapper row, with no behaviour change.
+
+### Findings
+None.
+
+### Checked and fine
+- **No PHI, secrets, internal URLs or external links.**
+  - `topics.ts` is static copy. The only links are `next/link` to `/help` and `/help/<slug>`.
+  - There is no email address, phone number, domain, env var, id or example patient.
+  - The contact topic says "Contact CompoundIQ through your CompoundIQ account contact" (no address is configured, and none is invented).
+- **Labels match the code.** Every quoted button or label in a topic is listed in its `labels` with the file that renders it. `help-pages.test.tsx` asserts that each label's text occurs in that file, that every page renders, and that every page is axe clean. In a detached worktree at 96f74e33, `src/lib/help`, `(clinic-app)/help` and `src/components/__tests__` pass 10 suites and 143 tests, and ESLint is clean on the touched files.
+- **The behaviour the text describes is on its base.** Each claim the label test cannot see was checked in the code:
+  - the plan link works 7 days (`PROPOSAL_LINK_TTL_DAYS = 7`);
+  - invites work 7 days, once;
+  - refills run 0 to 12 (`REFILL_CHOICES`);
+  - Review offers to route everything to one pharmacy when cheaper (batch-review-form WO-102 block);
+  - the selected patient's favorites come first (quick-actions-panel :644);
+  - Frequently used covers 90 days;
+  - the plan link can be sent again from the Proposed tab ("Send a new link", proposal-panel :111) or cancelled ("Cancel the plan");
+  - the access log filters by patient (`select name="patient"`) and date;
+  - the Notifications page shows the texting status (`texting-status`);
+  - payment links last 72 hours.
+- **No unbuilt feature is promised.**
+  - It does not mention saving clinical difference statements; clinical-difference-saved is not in its base. It describes only choosing a listed reason or typing "Other (describe)".
+  - The face-sheet upload is described as "When it is switched on for your clinic", which matches the feature flag.
+  - The help never says "coming soon".
+- **Route behind clinic auth, for the right roles.** `/help` is in the `(clinic-app)` route group, so it gets the clinic layout's verified-user check.
+  - The middleware does not list it as public (`publicRoutes` and `publicExactRoutes`), so it needs a session.
+  - Its role gate admits clinic_admin, provider and medical_assistant (and ops_admin, as for every clinic page); pharmacy_admin and patients are redirected to /unauthorized.
+  - The pages read no data (static content only).
+- **Phone width.** I read the classes; this was not measured in a browser.
+  - Both pages are one column, `mx-auto max-w-3xl px-4`, with no fixed widths, tables or `whitespace-nowrap`; the text wraps.
+  - The header rows that gained a `HelpLink` are `flex items-baseline justify-between gap-3`, with the short "Help" link beside the heading.
+  - The link list items are full-width blocks with `py-3` padding.
