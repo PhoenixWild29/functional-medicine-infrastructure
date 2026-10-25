@@ -8,7 +8,7 @@
 import { render, screen } from '@testing-library/react'
 
 const renderCheckoutMock = jest.fn(async (token: string) => <main><h1>Pay</h1><p data-testid="rendered-token">{token}</p></main>)
-jest.mock('../[token]/_lib/render-checkout', () => ({ renderCheckout: (t: string) => renderCheckoutMock(t) }))
+jest.mock('../[token]/_components/render-checkout', () => ({ renderCheckout: (t: string) => renderCheckoutMock(t) }))
 
 import CheckoutReopenPage from '../page'
 

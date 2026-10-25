@@ -61,3 +61,10 @@ it('the neutral page: no clinic, and it does not say whether the link was valid,
   expect(text).toMatch(/If you have already paid, there is nothing more to do/)
   expect(text).not.toMatch(/has expired|not valid|already been paid|Sunrise/)
 })
+
+it('a database error is an error, not the expired page (a valid link is never called expired because of a blip)', async () => {
+  jest.spyOn(console, 'error').mockImplementation(() => {})
+  script = c => (c.table === 'orders' ? { error: { message: 'down' } } : c.table === 'clinics' ? { data: CLINIC } : undefined)
+  await expect(open()).rejects.toThrow('Checkout could not be loaded')
+  expect(redirectMock).not.toHaveBeenCalled()
+})
