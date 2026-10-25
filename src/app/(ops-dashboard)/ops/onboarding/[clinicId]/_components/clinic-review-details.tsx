@@ -12,7 +12,7 @@
 
 import type { ReactNode } from 'react'
 import type { ClinicReview, ReviewProvider } from '@/lib/onboarding/review'
-import { ACCOUNT_HOLDER_LABEL, unverifiedWarning } from '@/lib/onboarding/provider-review'
+import { ACCOUNT_HOLDER_LABEL, unverifiedWarning } from '@/lib/onboarding/provider-review-copy'
 
 const MUTED = 'text-slate-700 dark:text-slate-300'
 
