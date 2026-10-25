@@ -1,15 +1,15 @@
-task-id: A-2026-10-25-05
+task-id: A-2026-10-25-06
 status: ready
 ---
-Thanks for A-2026-10-25-04 (branches updated, docs-oct25 9358cca).
+Thanks for A-2026-10-25-05 (rate-limit-db, 3c4791c). PR in turn.
 
-Next: D's finding L7. Rate limits are in memory per Vercel instance (lib/security/rate-limit.ts), so concurrent instances multiply them. There is no Redis; use Postgres (Supabase) instead.
+Next: CI hygiene. Every CI run warns: "Node.js 20 is deprecated... actions/cache@v4, actions/checkout@v4, actions/setup-node@v4, actions/upload-artifact@v4 are being forced to run on Node.js 24" and "ubuntu-latest will migrate to Ubuntu 26 beginning October 19, 2026".
 
-Branch: `git fetch origin && git checkout -b rate-limit-db origin/main`.
-1. Design a small fixed-window (or sliding-log) limiter stored in Postgres: e.g. table rate_limit_hits(bucket text, key_hash text, window_start timestamptz, count int, primary key(bucket,key_hash,window_start)) with an atomic upsert-increment RPC (SECURITY DEFINER, fixed search_path pg_catalog, public, EXECUTE service_role only) returning the new count; keys are keyed hashes (never raw IP or email); old rows pruned by the existing retention/cron path or the RPC itself. RLS on, no policies for anon/authenticated.
-2. Keep the current createRateLimiter API; add a DB-backed implementation used for the public and expensive routes: /api/signup, /api/join/[token], /api/onboarding/invite/accept, /api/patients/face-sheet, the ops fax PDF view (if on main by then), /api/plan/[token] (proposals). Fail open with a logged warning if the DB call errors (do not lock users out because the limiter is down), and keep the in-memory limiter as the first, cheap layer.
-3. Migration: number it after the highest migration on main AND on these pushed branches: rls-user-write-lockdown-v2 (000004), security-followups-2 (L12), signup-squatting (if any). Check with git ls-tree and report the number you used. Test on PGlite (atomic increments under concurrency, window rollover, pruning, grants).
-4. Red tests first for the limiter and each route's 429 path.
-5. `npm run lint` (0 warnings), tsc, Jest (--maxWorkers=3), build. Push rate-limit-db (normal push, no PR). Full report in the final commit body with the migration SQL in full.
+Branch: `git fetch origin && git checkout -b ci-actions-node24 origin/main`.
+1. Bump every action in .github/workflows/*.yml to the current major that runs on Node 24 (checkout, setup-node, cache, upload-artifact, download-artifact, any others), reading each action's release notes for breaking changes (e.g. upload-artifact v4->v5 behaviour, cache key changes) and adjusting inputs.
+2. Pin the runner image explicitly where a job depends on OS packages (the E2E job: Playwright OS deps, supabase CLI binary) so the Ubuntu 26 migration cannot silently change it: e.g. ubuntu-24.04 now, with a comment on when to move. If your ci-playwright-container branch (container image) merges first, keep that consistent.
+3. Keep deploy.yml / rollback.yml behaviour identical (supabase/setup-cli pin etc.).
+4. You cannot run Actions locally: validate YAML (actionlint via npx if available) and say what the first PR run must confirm.
+5. Push ci-actions-node24 (normal push, no PR). Report in the commit body.
 
-Do not touch the production database, Vercel, Stripe or secrets.
+Do not touch the production database, Vercel, Stripe, repository settings or secrets.
