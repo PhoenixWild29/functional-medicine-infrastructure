@@ -13,22 +13,23 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and PR co
 
 | Layer | Technology |
 |-------|-----------|
-| Framework | Next.js 16 (App Router, TypeScript) |
+| Framework | Next.js 16.4 (App Router, TypeScript strict), React 19 |
 | Database | Supabase (PostgreSQL 15, RLS, Auth, Vault, Storage) |
 | Payments | Stripe Connect Express destination charges. The application fee is pharmacy wholesale plus shipping only; the clinic receives the rest. No percentage platform fee: CompoundIQ's flat monthly fee is billed separately under a signed order form. |
 | SMS | Twilio Programmable Messaging |
-| Fax | Documo mFax API v2 |
+| Fax | Documo mFax API |
+| AI (optional) | Anthropic API for the face-sheet fill (hidden without a key) |
 | Monitoring | Sentry (PHI-scrubbed) |
 | Alerting | Slack + PagerDuty |
 | Hosting | Vercel |
-| CI | GitHub Actions (lint, test, build) |
+| CI | GitHub Actions: lint (0 warnings allowed), type-check, Jest and build on every PR and push to main; Playwright E2E on PRs that change code, nightly, and by hand |
 | CD | Vercel native GitHub integration (deploy.yml disabled) |
 
 ## Prerequisites
 
-- **Node.js** 18+
-- **npm** (or pnpm)
-- **Supabase CLI** — `npm install -g supabase`
+- **Node.js** 20 (what CI uses)
+- **npm** (`npm ci` installs exactly the lockfile; CI does the same)
+- **Supabase CLI**: run through `npx supabase@2.120.0`, which is the pinned version (`npm run db:migrate` uses it). 2.121.0 shipped no linux-x64 binary.
 - **Vercel CLI** (optional for local preview) — `npm install -g vercel`
 - **Stripe CLI** (for local webhook forwarding) — [Install guide](https://stripe.com/docs/stripe-cli)
 
@@ -72,17 +73,18 @@ The app runs at [http://localhost:3000](http://localhost:3000).
 |---------|-------------|
 | `npm run dev` | Start Next.js dev server |
 | `npm run build` | Production build |
-| `npm run lint` | ESLint (max-warnings 0) |
+| `npm run lint` | ESLint, `--max-warnings=0`: any warning fails, locally and in CI |
 | `npm run type-check` | TypeScript strict check |
 | `npm run test` | Jest unit tests |
 | `npm run test:coverage` | Jest with 80% coverage threshold |
 | `npm run test:e2e` | Playwright E2E tests |
 | `npm run format:check` | Prettier format check |
 | `npm run format:write` | Prettier auto-format |
-| `npm run db:migrate` | Apply Supabase migrations |
+| `npm run db:migrate` | Apply migrations to the **linked** Supabase project (`npx supabase@2.120.0 db push`). Never production: Sam applies production migrations (see DEPLOYMENT.md) |
 | `npm run db:types` | Regenerate database.types.ts |
 | `npm run seed:poc` | Seed POC demo data (clinic, users, pharmacies, catalog) |
 | `npm run seed:catalog` | Seed the V3 hierarchical catalog (166 products) |
+| `npm run seed:pharmacy-invite` | Create a demo pharmacy invite (pharmacy onboarding) |
 
 ## Environment Variables
 
@@ -149,6 +151,20 @@ Copy `.env.example` and fill in the values. All variables marked **required** mu
 | `CRON_SECRET` | ✅ | Bearer token for cron job authentication |
 | `CHECKOUT_TOKEN_EXPIRY` | ✅ | Checkout token expiry in seconds (default: `259200` = 72h) |
 | `STRIPE_CONNECT_TEST_ACCOUNT_ID` | POC only | Stripe Connect Express account ID for the POC test clinic |
+| `PHARMACY_SUBMISSIONS_ENABLED` | — | Kill switch for every pharmacy submission (API, portal, fax). Off unless exactly `true`; only the owner turns it on in production |
+| `DEMO_PAYOUTS_ON_APPROVAL` | — | Ops approval gives a clinic without Stripe Connect a demo payout placeholder, so ordering opens. On unless exactly `false` (see CLAUDE.md) |
+| `PHASE_C_GROUPS_ENABLED` | — | Multi-prescription payment groups; `true` in production |
+| `REQUIRE_MFA` / `MFA_ENFORCED_EMAILS` | — | Multi-factor sign-in for staff roles: on only when exactly `true`, or for the listed accounts |
+| `IDLE_TIMEOUT_MINUTES` | — | HIPAA automatic logoff (default 15) |
+| `PHI_ACCESS_LOG_HASH_SECRET` | ✅ in production | Key for the HMAC of email, IP and user agent in `phi_access_log` and `epcs_audit_log`. Without it those hashes are left empty |
+
+### AI (optional)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ANTHROPIC_API_KEY` | — | The face-sheet fill on New patient. Without it the feature is not shown at all |
+| `ANTHROPIC_MODEL` | — | Model for the face-sheet read (default in `src/lib/face-sheet/extract.ts`) |
+| `FACE_SHEET_AI_ENABLED` | — | `false` turns the face-sheet fill off even with a key |
 
 ## Project Structure
 
@@ -158,6 +174,10 @@ src/
     (clinic-app)/       Clinic staff UI (auth-gated: clinic roles)
     (ops-dashboard)/    Ops team UI (auth-gated: ops_admin role)
     (patient-checkout)/ Patient checkout (token-gated, no login)
+    pharmacy/           Pharmacy onboarding portal (pharmacy_admin)
+    get-started/        Self sign-up (clinic, solo provider, pharmacy)
+    onboard/            Accept a clinic or pharmacy invite
+    join/ intake/       Patient sign-up link (and QR code), patient intake link (token-gated)
     api/                Webhook handlers, cron jobs, API routes
     login/              Email + password login (public)
     unauthorized/       Access denied page with sign-out (public)
@@ -165,7 +185,15 @@ src/
     page.tsx            Root redirect — session → role → destination
   lib/
     adapters/           Pharmacy tier 1/2/3/4 adapter implementations
-    auth/               Checkout token (JWT)
+    auth/               Claims (app_metadata only), MFA, landing routes, checkout token (JWT)
+    onboarding/         Clinic onboarding, the approval guard
+    signup/             Self sign-up
+    team/               Settings > Team (invites, deactivate)
+    security/           Same-origin writes, rate limits
+    uploads/            The 4 MB limit, file-type sniffing
+    face-sheet/         Face-sheet fill (Anthropic)
+    audit/              PHI access log, keyed hashes
+    coaching/           Setup checklist, first-prescription tips
     orders/             Order state machine, casTransition
     sla/                SLA calculator, creator, resolver
     slack/              Slack alert client and router
@@ -225,4 +253,6 @@ This application handles Protected Health Information (PHI). Key principles:
 - **Sentry PHI scrubbing is mandatory.** The `phiBeforeSend` hook runs on every event.
 - **Vault for credentials.** All pharmacy API keys and portal passwords are stored in Supabase Vault — never in environment variables or plaintext SQL.
 - **RLS enforces tenant isolation.** Each clinic can only access its own data.
-- **Soft deletes only.** No hard DELETE is permitted on patient, order, or provider data.
+- **Soft deletes only.** No hard DELETE is permitted on patient, order, or provider data. A signed order cannot be deleted at all (a trigger refuses it).
+- **Append-only audit.** `phi_access_log`, `epcs_audit_log`, the onboarding and agreement event tables, `ledger_entries` and `payable_events` refuse UPDATE and DELETE by trigger.
+- **Production SQL is Sam's.** No developer, agent or CI job connects to the production database (see DEPLOYMENT.md).

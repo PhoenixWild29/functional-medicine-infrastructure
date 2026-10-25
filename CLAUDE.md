@@ -33,6 +33,64 @@ The template includes the verify-before-report guardrail that dropped R7's 28% f
 
 Do NOT re-derive the prompt structure from scratch each round. The compounding payoff of the template is multi-hour savings per cycle in audit + triage work avoided. Filed under WO-95.
 
+## Stack and lint (as of Oct 25, 2026)
+
+- Next.js 16.4.3 (App Router), React 19.3.1, TypeScript strict. Node 20 in CI (`NODE_VERSION` in `.github/workflows/ci.yml`).
+- `npm run lint` is `eslint . --max-warnings=0`: **any** warning fails CI. eslint-config-next 16.4.3 brings eslint-plugin-react-hooks 7.1 (React Compiler rules: `set-state-in-effect`, `purity`, `refs`, `immutability`, `preserve-manual-memoization`, `globals`).
+- Fix a finding in code, not in `eslint.config.mjs`. The usual fixes:
+  - adjust state while rendering, comparing to the previous value, instead of setting it in an effect;
+  - a pure async reader whose result is applied in `.then(...)`;
+  - a latest-ref updated in an effect;
+  - `useSyncExternalStore` for "hydrated";
+  - a query's `dataUpdatedAt` instead of `Date.now()` during render.
+- A scoped `// eslint-disable-next-line <rule> -- <reason>` only where the fix would change behaviour. For example, restoring `sessionStorage` or `localStorage` after hydration, which a server render cannot do.
+- `src/middleware.ts` is the request gate today: auth, roles, MFA, the checkout token, public routes and security headers. Next 16 renames it to `proxy.ts`. That rename is pending in #266. Until it merges, middleware.ts is current.
+
+## Code rules that every change keeps
+
+- Identity is `getUser()`, never `getSession()`. Role, clinic and pharmacy come from `app_metadata`, through `src/lib/auth/claims.ts` only. Never use `user_metadata` for them, because the user can write it.
+- No PHI in logs, Slack or Sentry: ids and outcomes only. The `phi/no-phi-in-logs` lint rule enforces it.
+- No em dashes in UI copy.
+- Writes that a browser sends refuse cross-site requests through `src/lib/security/same-origin.ts`:
+  - `refuseCrossSite` refuses Sec-Fetch-Site `same-site` and `cross-site`;
+  - `same-origin`, `none` or no header passes.
+  Each route keeps its own 403 wording. A few routes still carry an inline copy of the check; moving them onto the helper is on `security-followups-2`.
+- A clinic that is not approved can look around, but nothing that orders, signs, charges or reaches a patient runs. Every such route calls `refuseUnlessApproved` (`src/lib/onboarding/approval-guard.ts`), which returns 403 `CLINIC_PENDING_REVIEW`.
+- Uploads and file-carrying bodies are limited to 4 MB (`src/lib/uploads/limits.ts`; Vercel refuses bodies over about 4.5 MB). A file's type is read from its first bytes (`src/lib/uploads/sniff.ts`), never from the declared type.
+- Stripe is live in production. Tests use mocks only; never enter a card or a password.
+- Red tests first, in their own commit, then the fix.
+
+## Production SQL and migrations
+
+- Sam runs every SQL statement against production. Agents and CI never touch the production database.
+- A migration is applied on prod **before** the PR that needs it merges. Its SQL goes in the PR or commit report.
+- E2E shares one Supabase project, and every E2E run applies all of `supabase/migrations/` to it (`supabase db push` in the job). So a PR with a migration must merge before any other PR runs E2E: the other PR's run would otherwise run against a schema its own branch does not have. Merge migration PRs first, then rebase the others onto main.
+- Numbering: the next free `YYYYMMDD0000NN` across main **and** every pushed branch. Check with `git ls-tree origin/<branch> supabase/migrations/` before you pick one. Every migration has a down file in `supabase/migrations/down/`.
+- Never identify prod by `current_database()` (it says `postgres` everywhere) or by the migration ledger. Sam confirms the project by name in the Supabase header.
+- Test a migration against all migrations on PGlite. Examples: `scripts/security/pglite-check/` (on `security-followups-2`) and `scripts/cleanup/pglite-check/` (on `test-data-cleanup-script`).
+- Production test data (QA Test Clinic, QA Test Pharmacy, the Sunrise test patients, the Beta practices and logins) is removed by `scripts/cleanup/2026-10-24-test-data-cleanup.sql`. It is on the `test-data-cleanup-script` branch. Sam runs it once, after Lauren's review: dry run first (end with ROLLBACK), then with COMMIT.
+
+## CI and E2E
+
+- Lint, type-check, Jest and Build run on every push and PR to main.
+- E2E (Playwright) runs:
+  - for pull requests from this repository that change more than docs (top-level `*.md`, `docs/`, `reviews/`);
+  - nightly on main at 07:30 UTC;
+  - by hand (workflow_dispatch).
+  It does not run on pushes to main.
+- All E2E runs share one Supabase project. They are serialized (`concurrency: e2e-shared-supabase-project`, never cancelled). The job applies every migration to that project before testing; see the migration-order rule above.
+- The Supabase CLI is pinned (`npx supabase@2.120.0`). 2.121.0 shipped no linux-x64 binary.
+
+## The agent queue (orchestrator-tasks)
+
+Work for the coding agents (A, B, C, D, ...) comes from `tasks/agent-<x>.md` on the `orchestrator-tasks` branch. Each file has a `task-id` and a `status`. An agent:
+
+- fetches that branch and does a task whose status is `ready` and whose id is not in its done file. The agent never edits, pushes to or merges `orchestrator-tasks`;
+- works on the branch the task names, cut from `origin/main` unless the task says otherwise;
+- pushes that branch with a normal push. It never opens, updates or merges a PR; Sam does;
+- puts the full report in the body of its final commit: what changed, why, tests, local results, head SHA, and any SQL Sam must run;
+- never touches the production database, Vercel, Stripe, Documo or secrets, and never asks for approval mid-task. If a step needs any of those, or a decision from Sam, the agent pushes a commit whose message starts `BLOCKED:` and says exactly what is needed, records the task as done, and stops.
+
 ## Multi-factor sign-in (compliance C3)
 
 - `REQUIRE_MFA` (read through `src/lib/env`) turns multi-factor sign-in on for provider, medical_assistant, clinic_admin and ops_admin. It is OFF unless exactly `true`, so demo accounts and E2E sign in with a password until the owner turns it on. `MFA_ENFORCED_EMAILS` enforces it for named accounts only (E2E uses `test-mfa-admin@compoundiq.test`).
@@ -46,6 +104,11 @@ Do NOT re-derive the prompt structure from scratch each round. The compounding p
 ## Environment variables
 
 - `PHARMACY_SUBMISSIONS_ENABLED`: kill switch for every pharmacy submission (API, portal, fax); OFF unless exactly `true`, and only the owner turns it on in production (see `src/lib/adapters/submission-switch.ts`).
+- `DEMO_PAYOUTS_ON_APPROVAL` (`src/lib/clinics/demo-payouts.ts`): when ops approves a clinic with no Stripe Connect account, it gets a demo payout placeholder, `poc_placeholder_<clinic_id>` with status ACTIVE.
+  - On unless exactly `false`.
+  - A real Connect account id is never overwritten.
+  - Pending (H1 in the Oct 24 security review): turning this off whenever a live Stripe key is set. It waits for Sam's decision and is on `demo-payouts-live-key-guard`.
+- `ANTHROPIC_API_KEY` and `FACE_SHEET_AI_ENABLED` (`src/lib/face-sheet/config.ts`): the face-sheet fill on New patient renders only when the flag is not `false` **and** a key is set. Without a key the entry point is not shown at all, and the route answers 503.
 
 ## Best practices for developing on Vercel
 
