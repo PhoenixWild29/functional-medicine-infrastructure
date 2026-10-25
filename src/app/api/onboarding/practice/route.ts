@@ -11,11 +11,14 @@
 // pays shipping changes only when the request sends it; Settings does not.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { requireOnboardingAdmin, readJson, setStep } from '@/lib/onboarding/access'
 import { validatePracticeDetails } from '@/lib/onboarding/practice'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 
 async function putHandler(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const access = await requireOnboardingAdmin({ editable: true, allowApproved: true })
   if (!access.ok) return access.response
   const { user, clinicId, supabase } = access

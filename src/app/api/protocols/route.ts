@@ -21,7 +21,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
 import { cycleLengthFrom, cyclePatternFrom } from '@/lib/orders/cycling'
-import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { getUserClinicId, getUserRole, isClinicStaffRole } from '@/lib/auth/claims'
 import { refuseCrossSite } from '@/lib/security/same-origin'
 import { resolveCurrentProvider, isProviderRole } from '@/lib/auth/current-provider'
 import { withApiErrors } from '@/lib/api/with-api-errors'
@@ -45,6 +45,8 @@ async function getHandler(req: NextRequest) {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Clinic staff only: any other role, or none, is refused before anything is read.
+  if (!isClinicStaffRole(getUserRole(user))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const supabase = createServiceClient()
   const clinicId = getUserClinicId(user)
@@ -315,6 +317,8 @@ async function postHandler(req: NextRequest) {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Clinic staff only: any other role, or none, is refused before anything is read.
+  if (!isClinicStaffRole(getUserRole(user))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const clinicId = getUserClinicId(user)
   if (!clinicId) return NextResponse.json({ error: 'No clinic context' }, { status: 403 })

@@ -22,7 +22,8 @@
 // than session-gated, so it works even when every POC account
 // is locked out — same refresh runs via the cron path.
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refreshDemoData, POC_SEED_METADATA_MARKER, DEMO_PHARMACIES } from '@/lib/poc/refresh-demo-data'
@@ -42,7 +43,9 @@ async function requireOpsAdmin(): Promise<NextResponse | null> {
   return null
 }
 
-async function postHandler(): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const authError = await requireOpsAdmin()
   if (authError) return authError
 

@@ -136,3 +136,26 @@ describe('POST /api/adapters/submit', () => {
     expect((await res.json()).error).toMatch(/^tier must be one of/)
   })
 })
+
+describe('C-2026-10-25-07: Hybrid backstop and the constant-time token check', () => {
+  it('submit for a TIER_3_HYBRID pharmacy stays a 501 (no adapter is built)', async () => {
+    const res = await submitPOST(req(json({ orderId: ORDER, pharmacyId: PHARMACY, tier: 'TIER_3_HYBRID' })))
+    expect(res.status).toBe(501)
+    expect(tier1Mock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['a token of another length', 'internal'],
+    ['a token of the same length, one character off', 'internal-test-secreT'],
+  ])('%s: 401 on both routes, nothing dispatched', async (_n, token) => {
+    expect((await submitPOST(req(json({ orderId: ORDER, pharmacyId: PHARMACY, tier: 'TIER_1_API' }), token))).status).toBe(401)
+    expect((await routeOrderPOST(req(json({ orderId: ORDER, pharmacyId: PHARMACY }), token))).status).toBe(401)
+    expect(tier1Mock).not.toHaveBeenCalled()
+    expect(routeOrderMock).not.toHaveBeenCalled()
+  })
+
+  it('no secret configured: 401 even for an empty-looking token', async () => {
+    delete process.env['ADAPTER_INTERNAL_SECRET']
+    expect((await submitPOST(req(json({ orderId: ORDER, pharmacyId: PHARMACY, tier: 'TIER_1_API' }), 'x'))).status).toBe(401)
+  })
+})

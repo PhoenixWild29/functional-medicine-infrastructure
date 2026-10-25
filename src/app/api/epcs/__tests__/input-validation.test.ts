@@ -63,6 +63,8 @@ describe('POST /api/epcs: input', () => {
   })
 
   it('a valid audit row is written', async () => {
+    // The patient is the caller's clinic's (C-2026-10-25-07: audit ids are scoped).
+    db = scriptedDb(c => (c.table === 'patients' && c.op === 'select' ? { data: { patient_id: PATIENT } } : undefined))
     const res = await audit({ event_type: 'PRE_SIGN_REVIEW', dea_schedule: 2, medication_name: 'Testosterone Cypionate', patient_id: PATIENT, details: { lines: 1 } })
     expect(res.status).toBe(200)
     expect(db.to('epcs_audit_log', 'insert')).toHaveLength(1)

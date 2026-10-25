@@ -43,6 +43,19 @@ export function getUserRole(user: ClaimsUser | null | undefined): string | undef
   return claim(user, 'app_role')
 }
 
+/**
+ * The clinic-app staff roles: the (clinic-app) layout and the middleware
+ * let in exactly these three. A clinic API used by those pages refuses any
+ * other role, and a session with a clinic_id but no role, before it reads
+ * anything (security follow-ups 3).
+ */
+export const CLINIC_STAFF_ROLES: ReadonlySet<string> = new Set(['clinic_admin', 'provider', 'medical_assistant'])
+
+/** True when the role is one of the clinic-app staff roles. */
+export function isClinicStaffRole(role: unknown): boolean {
+  return typeof role === 'string' && CLINIC_STAFF_ROLES.has(role)
+}
+
 /** The user's clinic id, or undefined (ops users have none). */
 export function getUserClinicId(user: ClaimsUser | null | undefined): string | undefined {
   return claim(user, 'clinic_id')

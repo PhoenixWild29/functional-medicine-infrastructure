@@ -43,6 +43,7 @@ import { routeOrder } from '@/lib/adapters/routing-engine'
 import type { OrderStatus } from '@/lib/orders/state-machine'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 import { UUID_RE, MAX_NOTE, badRequest } from '@/lib/api/input'
+import { safeEqual } from '@/lib/security/constant-time'
 
 /** Generous ceiling on the routing attempt counter. */
 const MAX_ATTEMPT_NUMBER = 100
@@ -71,7 +72,7 @@ const VALID_INTEGRATION_TIERS: ReadonlySet<string> = new Set([
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   // ── Authentication ─────────────────────────────────────────
   const token = request.headers.get('x-internal-token')
-  if (!token || token !== process.env['ADAPTER_INTERNAL_SECRET']) {
+  if (!safeEqual(token, process.env['ADAPTER_INTERNAL_SECRET'])) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

@@ -22,6 +22,7 @@
 import { checkLicensure, readLicenses, todayIso } from '@/lib/compliance/pharmacy-licensure'
 import { isLivePharmacy, type PharmacyLiveness } from '@/lib/pharmacies/live'
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
 import type { Json } from '@/types/database.types'
@@ -35,7 +36,7 @@ import {
 import { parseTitrationSteps } from '@/lib/orders/titration'
 import { cycleLengthFrom, cyclePatternFrom } from '@/lib/orders/cycling'
 import { isNoRows } from '@/lib/supabase/no-rows'
-import { getUserClinicId } from '@/lib/auth/claims'
+import { getUserClinicId, getUserRole, isClinicStaffRole } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 import { UUID_RE, badRequest } from '@/lib/api/input'
 import { MAX_REFILLS } from '@/lib/orders/rx-details'
@@ -86,6 +87,8 @@ async function callerClinic(): Promise<{ clinicId: string } | { response: NextRe
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  // Clinic staff only: any other role, or none, is refused before anything is read.
+  if (!isClinicStaffRole(getUserRole(user))) return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) return { response: NextResponse.json({ error: 'No clinic context' }, { status: 403 }) }
   return { clinicId }
@@ -290,6 +293,8 @@ async function getFavorites(req: NextRequest): Promise<NextResponse> {
 // merged: true; otherwise a new favorite is created (201).
 
 async function postHandler(req: NextRequest) {
+  const crossSite = refuseCrossSite(req)
+  if (crossSite) return crossSite
   return failLoud(() => createFavorite(req))
 }
 
@@ -408,6 +413,8 @@ async function createFavorite(req: NextRequest): Promise<NextResponse> {
 // formulation, and a pinned patient must belong to the clinic.
 
 async function patchHandler(req: NextRequest) {
+  const crossSite = refuseCrossSite(req)
+  if (crossSite) return crossSite
   return failLoud(() => editFavorite(req))
 }
 
@@ -501,6 +508,8 @@ async function editFavorite(req: NextRequest): Promise<NextResponse> {
 }
 
 async function deleteHandler(req: NextRequest) {
+  const crossSite = refuseCrossSite(req)
+  if (crossSite) return crossSite
   return failLoud(() => deleteFavorite(req))
 }
 

@@ -12,6 +12,7 @@
 // POST /api/orders/[orderId]/group-and-send (Stage 4) can reuse them.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
@@ -27,6 +28,8 @@ interface CreatePaymentGroupBody {
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   // ── 0. Feature flag — Codex 2026-06-09 sweep, critical finding #2 ────
   if (process.env['PHASE_C_GROUPS_ENABLED'] !== 'true') {
     return NextResponse.json(

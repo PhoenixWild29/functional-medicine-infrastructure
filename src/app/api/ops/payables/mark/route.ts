@@ -15,6 +15,7 @@
 // Auth: ops_admin only (getUser(), app_metadata). Service-role writes.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServiceClient } from '@/lib/supabase/service'
 import { requireOpsAdmin } from '@/lib/payments/ops-auth'
 import { UUID_RE, isIsoDate } from '@/lib/payments/payables'
@@ -28,6 +29,8 @@ const REFERENCE_RE = /^[\x20-\x7E]{1,120}$/
 const bad = (error: string) => NextResponse.json({ error }, { status: 400 })
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const auth = await requireOpsAdmin()
   if (auth.denied) return auth.denied
 

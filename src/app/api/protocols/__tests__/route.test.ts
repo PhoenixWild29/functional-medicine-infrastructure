@@ -70,7 +70,7 @@ const CLINIC = 'clinic-A'
 const PROTO = 'a8000000-0000-0000-0000-000000000001'
 
 const SESSION_IN_CLINIC = {
-  data: { user: { app_metadata: { clinic_id: CLINIC } } },
+  data: { user: { app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC } } },
 }
 
 function makeRequest(id?: string): NextRequest {

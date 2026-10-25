@@ -13,6 +13,7 @@
 // Auth: ops_admin only.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getUserRole } from '@/lib/auth/claims'
@@ -25,6 +26,8 @@ const ACTIONS = new Set(['disable_adapter', 'enable_adapter', 'force_tier4', 'cl
 interface Params { params: Promise<{ pharmacyId: string }> }
 
 async function postHandler(request: NextRequest, { params }: Params): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const { pharmacyId } = await params
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()

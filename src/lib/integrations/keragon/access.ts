@@ -12,6 +12,7 @@ import type { User } from '@supabase/supabase-js'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 
 export type ClinicAdminAccess =
   | { ok: true; user: User; clinicId: string; db: ReturnType<typeof createServiceClient> }
@@ -30,5 +31,7 @@ export async function requireClinicAdmin(): Promise<ClinicAdminAccess> {
 
 /** A write from another site is refused (the browser says so). */
 export function crossSite(request: { headers: { get(name: string): string | null } }): NextResponse | null {
-  return request.headers.get('sec-fetch-site') === 'cross-site' ? NextResponse.json({ error: 'Forbidden' }, { status: 403 }) : null
+  // The shared same-origin rule (lib/security/same-origin): same-site is
+  // refused too, not only cross-site.
+  return refuseCrossSite(request, 'Forbidden')
 }

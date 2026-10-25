@@ -28,6 +28,8 @@ import { createServerClient } from '@/lib/supabase/server'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { resolveCurrentProvider } from '@/lib/auth/current-provider'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { z } from 'zod'
 import { MAX_NAME, MAX_NOTE, boundedText, parseInput, parseJsonBody, uuid } from '@/lib/api/input'
 
@@ -172,7 +174,30 @@ async function getHandler(req: NextRequest) {
   return NextResponse.json({ data })
 }
 
+/**
+ * Who advanced the phase: the signed-in provider (their own provider row
+ * in this clinic), never an id from the body. A body provider_id naming
+ * anyone else is refused, not ignored: it is a client bug or a forgery,
+ * and the record of who changed a treatment phase must not be put down to
+ * another provider. A provider login with no linked provider row cannot
+ * act as a provider (fail closed, lib/auth/current-provider).
+ */
+async function recordedAs(
+  supabase: Supabase, caller: { user: User; clinicId: string }, named: unknown,
+): Promise<{ ok: true; providerId: string } | { ok: false; response: NextResponse }> {
+  const me = await resolveCurrentProvider(supabase, { userId: caller.user.id, clinicId: caller.clinicId })
+  if (!me) {
+    return { ok: false, response: NextResponse.json({ error: 'This login is not linked to a provider record.' }, { status: 403 }) }
+  }
+  if (named !== undefined && named !== null && named !== '' && named !== me.provider_id) {
+    return { ok: false, response: NextResponse.json({ error: 'You can only record a phase change as yourself.' }, { status: 403 }) }
+  }
+  return { ok: true, providerId: me.provider_id }
+}
+
 async function postHandler(req: NextRequest) {
+  const crossSite = refuseCrossSite(req)
+  if (crossSite) return crossSite
   const caller = await resolveCaller(true)
   if (!caller.ok) return caller.response
 
@@ -181,6 +206,7 @@ async function postHandler(req: NextRequest) {
   const body = parsedBody.data
   const supabase = createServiceClient()
 
+
   // Start patient on protocol or advance phase
   if (body['action'] === 'start') {
     if (!body['patient_id'] || !body['protocol_id'] || !body['initial_phase']) {
@@ -188,7 +214,10 @@ async function postHandler(req: NextRequest) {
     }
     const start = parseInput(StartBody, body)
     if (!start.ok) return start.response
-    const { patient_id, protocol_id, initial_phase, provider_id } = start.data
+    const { patient_id, protocol_id, initial_phase } = start.data
+    const as = await recordedAs(supabase, caller, start.data.provider_id)
+    if (!as.ok) return as.response
+    const advancedBy = as.providerId
 
     // The patient and the protocol must both be this clinic's.
     const inClinic = await patientInClinic(supabase, patient_id, caller.clinicId)
@@ -212,7 +241,7 @@ async function postHandler(req: NextRequest) {
         patient_id,
         protocol_id,
         current_phase: initial_phase,
-        advanced_by: provider_id ?? null,
+        advanced_by: advancedBy,
         status: 'active',
       }, { onConflict: 'patient_id,protocol_id' })
       .select()
@@ -233,7 +262,10 @@ async function postHandler(req: NextRequest) {
     }
     const advance = parseInput(AdvanceBody, body)
     if (!advance.ok) return advance.response
-    const { tracking_id, new_phase, provider_id, reason, lab_results } = advance.data
+    const { tracking_id, new_phase, reason, lab_results } = advance.data
+    const as = await recordedAs(supabase, caller, advance.data.provider_id)
+    if (!as.ok) return as.response
+    const advancedBy = as.providerId
 
     // Get current phase for history (only a tracking row of this clinic's patient).
     const current = await trackingInClinic(supabase, tracking_id, caller.clinicId)
@@ -245,7 +277,7 @@ async function postHandler(req: NextRequest) {
       .update({
         current_phase: new_phase,
         phase_started_at: new Date().toISOString(),
-        advanced_by: provider_id ?? null,
+        advanced_by: advancedBy,
         advancement_note: reason ?? null,
         updated_at: new Date().toISOString(),
       })
@@ -262,7 +294,7 @@ async function postHandler(req: NextRequest) {
       tracking_id,
       from_phase: current.currentPhase,
       to_phase: new_phase,
-      advanced_by: provider_id ?? null,
+      advanced_by: advancedBy,
       reason: reason ?? null,
       lab_results: (lab_results ?? null) as Json | null,
     })
@@ -294,6 +326,8 @@ async function postHandler(req: NextRequest) {
 }
 
 async function patchHandler(req: NextRequest) {
+  const crossSite = refuseCrossSite(req)
+  if (crossSite) return crossSite
   const caller = await resolveCaller(true)
   if (!caller.ok) return caller.response
 

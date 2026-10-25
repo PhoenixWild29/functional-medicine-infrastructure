@@ -32,6 +32,7 @@
 // must belong to that clinic.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { isLivePharmacy, type PharmacyLiveness } from '@/lib/pharmacies/live'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -61,7 +62,7 @@ import { buildStandardSig } from '@/lib/orders/dose-display'
 import { legacyTitrationFromSig, legacyTitrationDispense } from '@/lib/orders/legacy-titration'
 import { splitDose } from '@/lib/orders/dose'
 import { logPhiAccess } from '@/lib/audit/phi-access'
-import { getUserClinicId } from '@/lib/auth/claims'
+import { getUserClinicId, getUserRole, isClinicStaffRole } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 import { z } from 'zod'
 import { badRequest, parseJsonBody, UUID_RE } from '@/lib/api/input'
@@ -79,9 +80,13 @@ const MAX_REFILL_LINES = 25
 const bodySchema = z.object({ orderIds: z.unknown().refine(v => !Array.isArray(v) || v.length <= 500, 'too many').optional() })
 
 async function postHandler(request: NextRequest) {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Clinic staff only: any other role, or none, is refused before anything is read.
+  if (!isClinicStaffRole(getUserRole(user))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })

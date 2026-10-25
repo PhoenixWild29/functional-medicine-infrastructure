@@ -10,6 +10,7 @@
 // Auth: ops_admin only.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { Constants, type Enums } from '@/types/database.types'
@@ -23,6 +24,8 @@ type SlaTypeEnum = Enums<'sla_type_enum'>
 const SLA_TYPES = new Set<string>(Constants.public.Enums.sla_type_enum)
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) {

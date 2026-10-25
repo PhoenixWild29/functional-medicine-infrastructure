@@ -25,6 +25,7 @@
 // absorption and logo.) Reading settings is unaffected.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
@@ -35,6 +36,8 @@ import { badRequest } from '@/lib/api/input'
 const MAX_LOGO_URL = 2048
 
 async function patchHandler(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   // Auth gate
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()

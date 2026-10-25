@@ -32,6 +32,7 @@
 //   - signature_on_file (provider uploads on first EPCS sign)
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { npiChecksumValid } from '@/lib/providers/npi'
@@ -80,6 +81,8 @@ interface CreateProviderBody {
 // ── Route ───────────────────────────────────────────────────────────
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   // 1. Auth gate
   const supabaseAuth = await createServerClient()
   // getUser() verifies the token with Supabase; a cookie session alone is not trusted.

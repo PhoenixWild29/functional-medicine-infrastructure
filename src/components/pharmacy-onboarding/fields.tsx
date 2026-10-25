@@ -111,7 +111,8 @@ export function RadioGroup(props: {
   legend: string
   value: string | null
   onChange: (value: string) => void
-  options: ReadonlyArray<{ value: string; label: string; description?: string }>
+  /** A disabled option is shown, with its description, but cannot be picked. */
+  options: ReadonlyArray<{ value: string; label: string; description?: string; disabled?: boolean }>
   error?: string | null | undefined
   hint?: ReactNode | undefined
 }) {
@@ -121,14 +122,15 @@ export function RadioGroup(props: {
       <legend className="text-sm font-medium text-foreground">{legend}</legend>
       <div className="mt-2 grid gap-2 sm:grid-cols-2">
         {options.map(o => (
-          <label key={o.value} htmlFor={`${id}-${o.value}`} className={`flex min-h-[44px] cursor-pointer items-start gap-3 rounded-md border p-3 ${value === o.value ? 'border-primary bg-primary/5' : 'border-input'}`}>
+          <label key={o.value} htmlFor={`${id}-${o.value}`} className={`flex min-h-[44px] items-start gap-3 rounded-md border p-3 ${o.disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'} ${value === o.value ? 'border-primary bg-primary/5' : 'border-input'}`}>
             <input
               id={`${id}-${o.value}`}
               type="radio"
               name={id}
               value={o.value}
               checked={value === o.value}
-              onChange={() => onChange(o.value)}
+              disabled={o.disabled}
+              onChange={() => { if (!o.disabled) onChange(o.value) }}
               className="mt-1 h-4 w-4"
             />
             <span>

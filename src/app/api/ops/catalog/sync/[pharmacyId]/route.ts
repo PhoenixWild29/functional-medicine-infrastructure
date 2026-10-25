@@ -10,6 +10,7 @@
 // Auth: ops_admin only.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { Enums } from '@/types/database.types'
@@ -22,7 +23,9 @@ type RegulatoryStatusEnum = Enums<'regulatory_status_enum'>
 
 interface Params { params: Promise<{ pharmacyId: string }> }
 
-async function postHandler(_request: NextRequest, { params }: Params): Promise<NextResponse> {
+async function postHandler(request: NextRequest, { params }: Params): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const { pharmacyId } = await params
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
