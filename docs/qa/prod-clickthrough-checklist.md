@@ -2,6 +2,14 @@
 
 For the orchestrator (or any careful tester) to verify production in a browser in about 60 to 90 minutes. Generated from the code on `main` at 2696ff2 (2026-10-25). Each line names the file that renders the text, so a mismatch can be traced. Paths are relative to `src/`.
 
+**Updated 2026-10-25 for after the merge queue lands.** Read from these origin branches:
+- bundle-security: error-boundaries, api-input-validation, security-followups-3, token-pages-hardening, checkout-token-out-of-url.
+- bundle-ci: including patient-pages-mobile and perf-bundles.
+- The bundle-features branches, not yet pushed as a bundle: state-machine-enforcement, rx-quantity-shipping, rx-allergies-required, favorites-frequent, settings-notifications.
+- The five migration branches: ops-fax-viewer-documo, rls-user-write-lockdown-v2, security-followups-2, signup-squatting, rate-limit-db.
+
+Items new or changed for them are marked **(new)** or **(changed)**. Before testing, check the migrations ran: 20261024000003 to 20261024000007, in order.
+
 ## How to read this
 
 Each item is one line:
@@ -29,6 +37,9 @@ Text in quotes is the exact visible copy. `{x}` is a value that varies.
 5. **Garbage tokens are safe.** `/plan/abc`, `/intake/abc`, `/join/abc`, `/checkout/abc`, `/onboard/clinic/abc`, `/onboard/join/abc`, `/onboard/pharmacy/abc` each validate before any write. Use them for the "invalid link" states.
 6. **/ops/demo-tools shows passwords in plain text.** Redact any screenshot of it.
 7. Keep a list of every row you create (test patient, test provider, test invite, test protocol). Section 9 says how to leave things.
+8. **(new) The sign page's allergy prompt sends.** On /new-prescription/sign, "Save allergies" inside "Record allergies or mark NKDA before signing" signs and sends at once. NEVER save there unless every selected draft is the test patient's and you mean to sign. (On Review, the same prompt only reopens the confirm step.)
+9. **(new) Never refresh checkout.** After the page loads, the address bar reads plain `/checkout`; a refresh shows "Please reopen your payment link". Reopen the copied link instead.
+10. **(new) Rate limits are shared and persistent.** Two sign-ups from one network with an email that already exists block sign-ups from it for an hour ("Too many sign-up attempts from here. Wait a few minutes, then try again."). Plan, join, face-sheet and invite pages are also limited ("Too many requests. Wait a few minutes, then try again."). Do not hammer them.
 
 ## Accounts
 
@@ -77,14 +88,14 @@ Known gaps in the demo data:
 | Section | Minutes |
 |---|---|
 | 1. Signed out | 5 |
-| 2. Clinic admin | 25 |
-| 3. Provider | 10 |
-| 4. Medical assistant | 8 |
-| 5. Ops admin | 20 |
-| 6. Pharmacy admin (if the account exists) | 7 |
-| 7. Patient token pages | 10 |
-| 8. Patient protocol choice, end to end | 10 |
-| Total | about 95; drop 6 and 8.6 to fit 80 |
+| 2. Clinic admin (incl. the new Rx, favorites and Notifications items) | 28 |
+| 3. Provider | 8 |
+| 4. Medical assistant | 5 |
+| 5. Ops admin | 18 |
+| 6. Pharmacy admin (if the account exists) | 4 |
+| 7. Patient token pages (incl. 390 px check) | 12 |
+| 8. Patient protocol choice, end to end (incl. lockout) | 9 |
+| Total | about 89; skip 6 and 8.6 if short of time |
 
 ---
 
@@ -107,6 +118,7 @@ Known gaps in the demo data:
 - [SAFE] /legal/privacy -> "Privacy Policy", "Version 1.0. Effective October 12, 2026."; /legal/patient-terms -> "Patient Terms of Use", same version line; must not: ask for sign-in.
 - [SAFE] /unauthorized signed out -> "Access Denied", "You don't have permission to access this page.", "Sign out"; must not: redirect to /login.
 - [SAFE] /mfa/enroll signed out -> redirects to /login?redirectTo=...
+- [SAFE] **(new)** /no-such-page signed out -> "Page not found", "We could not find that page. If your clinic sent you a link, please ask them to send it again.", "Go to sign in" (`app/not-found.tsx`); must not: a bare "404".
 
 ---
 
@@ -114,6 +126,7 @@ Known gaps in the demo data:
 
 ### 2.1 Landing, sidebar, banners
 - [SAFE] Sign in -> lands on /practice. Sidebar "Dashboard", "New Prescription", "Practice", "Settings"; footer role "Admin", "Sign out", "Collapse" (`components/sidebar-nav.tsx`).
+- [SAFE] **(new)** /settings/no-such-page -> "Page not found", "We could not find that page. It may have been moved, or the link may be incomplete.", "Back to dashboard".
 - [SAFE] Sunrise is approved -> must not: see "We're verifying your licenses..." or "Submitted. We're reviewing your clinic; ordering opens once you're approved." (`components/pending-review-banner.tsx`). (The banner itself is checked on a not-yet-approved clinic only; see 5.9.)
 
 ### 2.2 /practice (`app/(clinic-app)/practice/`)
@@ -149,8 +162,31 @@ Known gaps in the demo data:
   - **Face sheet hidden without a key.** If prod has no ANTHROPIC_API_KEY (or FACE_SHEET_AI_ENABLED=false): must not see "Drop a face sheet", "Choose a face sheet file" or "Paste text instead" (`new-patient-form.tsx`, `lib/face-sheet/config.ts`). If they are shown, the key is set: then check the 4 MB limit by choosing a 5 MB PDF -> "That file is over 4 MB. Choose a smaller file, or paste the text instead." (client-side, nothing sent). Do not upload a real face sheet.
   - [NEVER with a real number] "Add patient" texts the intake link. Close the form here, or follow 7.1 to make the one test patient.
 - [SAFE] Pick Noah Kim and a provider -> "Continue to Pharmacy Search" -> "Configure Prescription", "Search medication name...", "Favorites (N)", "Protocols (N)".
+- [SAFE] **(new)** "Favorites (N)" -> "Frequently used (last 90 days)", or "Recent" when nothing was ordered in 90 days.
+  - Entries read "{dose with mg} · {pharmacy} · used N times" (`quick-actions-panel.tsx`). An entry already saved reads "★ Favorite".
+  - Clicking an entry opens the dose step with the dropdowns filled in.
+- [SAFE] **(new)** "Make favorite" on an entry -> dialog "Make {drug} a favorite" (`make-favorite-dialog.tsx`).
+  - "Save it for": "The practice" (default) or "Only for {patient}".
+  - "Doses on this favorite": the used dose ticked, the drug's other doses unticked, and "Add dose".
+  - "Save favorite" is disabled with nothing ticked.
+  - Press "Cancel", or Escape. [WRITES DATA] "Save favorite" adds a favorite to the demo clinic; delete it afterwards with the card's delete.
+- [SAFE] **(new)** Pharmacy cards (Semaglutide 5 mg/mL, 80 units, Once weekly, For 90 days):
+  - each card shows its suggested vials ("2 × 5 mL vials") and the shipping it adds: "+ $X shipping (cold chain)", "Ships with the other {pharmacy} prescription" or "Free shipping";
+  - a pharmacy with no rates on file shows no shipping line;
+  - "Refills" offers "0 refills" to "12 refills".
 - [SAFE] Pick any medication and pharmacy -> "Continue to Set Retail Price" -> "Set Retail Price", "Wholesale Cost (locked)", "1.5×", "2×", "2.5×", "3×". A price below cost -> "Retail price must be at least the wholesale cost ($X)."
+- [SAFE] **(new)** With a line at another pharmacy already in the session, the price page shows "2 pharmacies → 2 shipping charges ($X)." under the shipping line, with no "Route all to" button (that stays on Review).
 - [SAFE] "Review & Send (1)" -> "Review & Send", "Review all prescriptions, sign once, and send the payment link."
+- [SAFE] **(new)** Card "Rx details" -> "Dispense: 9.6 mL (2 × 5 mL vials)", "Days supply", "Refills" (0 to 12).
+  - The screen shows the amount and the vials. The pharmacy now also receives "Quantity: 2 vials" (a capsule line: "Quantity: 30 capsules").
+  - That Quantity line is printed only on the fax PDF. On prod it cannot be seen without submitting and paying an order (NEVER), so it is not checked here; the PDF tests cover it.
+  - In the order drawer, "Rx Document" still reads "PDF preview available after pharmacy submission" for new orders.
+- [SAFE] **(new)** Allergies required (`review/_components/allergy-notice.tsx`). Only for a patient whose chip reads "not recorded"; never clear a real patient's allergies to get there, which the app no longer allows anyway.
+  - Amber notice: "Allergies not recorded for {name}" and "Record allergies or mark NKDA before signing. Confirm NKDA here, or record the allergies. You can still save as a draft.", with "Confirm NKDA" and "Record allergies".
+  - Pressing the Sign & Send button opens the prompt "Record allergies or mark NKDA before signing": "{name}: the pharmacy receives allergies or NKDA on every prescription. Nothing has been signed, and your prescriptions are kept. Save, and signing continues."
+  - The prompt holds "No known drug allergies (NKDA)", "Save allergies" and "Cancel". Press "Cancel".
+- [SAFE] **(new)** The same patient in plan mode: "Send to patient for choice" is refused with "Record allergies or mark NKDA before sending this plan", and the same prompt opens. Press "Cancel".
+- [WRITES DATA] **(new)** "Save allergies" or "Confirm NKDA" writes the patient's allergy status. Test patient only.
 - [SAFE] "Let the patient choose" box with the checkbox "Send the patient a plan to choose from, instead of signing now". Tick it -> signature pad hides, "Option A" fieldset, "★ Required", "Add an option", button "Send to patient for choice". **Do not press it here** (section 8 does this on a safe patient). Untick it.
 - [SAFE] An admin with no linked verified provider sees "Only the assigned provider can sign and send." and "Save as Draft: Provider Signs Later".
 - [NEVER] "Confirm & Send" (charges, texts, sends to the pharmacy).
@@ -174,7 +210,14 @@ Known gaps in the demo data:
 - [SAFE] **Practice details**: "Practice details", "Your practice as it appears on prescriptions and payouts. We keep the last 4 digits of the tax ID only.", fields "Legal name", "DBA (optional)", "Address line 1", "City", "State", "ZIP code", "Phone", "Practice NPI (Type 2, optional)", "Tax ID (last 4 digits)" with "Only the last 4 digits. Never enter the whole number."
 - [WRITES DATA] "Save practice details" with the values unchanged -> "Practice details saved." Do not change the values; they are the practice's prescription identity.
 - [SAFE] Sign-in Security: "Two-step sign-in is on." or "Two-step sign-in is off." Do not enroll.
-- [SAFE] Notifications: "Email and SMS notification preferences are not yet configurable."
+- [SAFE] **(changed)** Notifications card: "The texts CompoundIQ sends your patients (payment links, reminders, plan and intake links) and what your team sees in the app. CompoundIQ does not send email." -> "See what is sent".
+- [SAFE] **(new)** /settings/notifications (`settings/notifications/page.tsx`, `lib/notifications/catalog.ts`):
+  - "Notifications" and "Back to Settings".
+  - A banner: "Texting is on: the texts below are sent." or "Texting is not set up yet, so no texts are sent today. Share payment, plan and intake links with your patients by copying them or showing their QR code." On prod expect the second.
+  - "Texts to your patients": Payment link, Payment reminders, Payment confirmation, Treatment plan link, Intake link.
+  - "For your clinic team": Plans ready to sign, Team invitations, A text that could not be delivered.
+  - Columns "Notification", "When", "Who receives it", then "Not sent today".
+  - Read-only: there are no switches.
 
 ### 2.9 /settings/team (invites, deactivate)
 - [SAFE] "Manage the team" -> "Team", "Add providers, invite medical assistants and clinic admins, and turn off access for anyone who leaves..."; "Team members" with Name, Email, Role, Status; your row shows "You". "Pending invites" or "No invites are waiting." "Provider credentials" with NPI status.
@@ -212,6 +255,9 @@ Known gaps in the demo data:
 - [SAFE] 3.4 Drafts tab: own drafts show "Sign all (N)" / "Sign selected (N)". Opening the sign page is SAFE; [NEVER] "Sign & Send N Prescription(s)".
 - [SAFE] 3.5 /new-prescription -> step 1 "Patient" (no provider list), "Prescribing as {first} {last}. Select the patient to begin."
 - [SAFE] 3.6 /new-prescription/sign with nothing selected -> "Review & Sign Prescriptions" with "No prescriptions selected" and "Back to dashboard".
+- [SAFE] **(new)** 3.6a The sign page with selected drafts at two pharmacies (if any exist) -> "2 pharmacies → 2 shipping charges ($X)." under the patient, with no re-route.
+- [NEVER] **(new)** "Save allergies" in the sign page's allergy prompt (rule 8).
+- [SAFE] **(new)** 3.6b A draft missing part of its record (old data only) is refused at signing: "{medication} is missing part of its prescription record (...), so it cannot be signed. Remove it and prescribe it again." Do not try to create one.
 - [SAFE] 3.7 /settings -> no "Patients", "Access log" or "Integrations"; "Only the clinic admin can change these settings." and "Only the clinic admin can change these."; Team link "View my credentials"; "Only the clinic admin can set up the payout account."
 - [SAFE] 3.8 /settings/patients/signup-link -> "Only the clinic admin or a medical assistant can see the patient sign-up link." /settings/integrations -> "Only the clinic admin can manage integrations." /settings/access-log -> "Only the clinic admin can view the access log."
 - [SAFE] 3.9 /settings/team -> "Your clinic's team. Your clinic admin manages who is on it."; must not: any "Deactivate" or actions column.
@@ -237,6 +283,7 @@ Known gaps in the demo data:
 - [SAFE] Sign in -> /ops/pipeline. Header "CompoundIQ Ops", "Sign out". Tabs "Pipeline", "SLA", "Adapters", "Fax Queue", "Catalog", "Licensure", "Ingredients", "Clinic onboarding", "Pharmacy onboarding", "EHR sync", "Payables", and "Demo Tools" only if NEXT_PUBLIC_SHOW_DEMO_TOOLS is on (`ops/_components/ops-nav.tsx`).
 - [SAFE] Onboarding tabs show a number badge only when self sign-ups are waiting; must not: a "0" badge.
 - [SAFE] /dashboard typed in -> /unauthorized.
+- [SAFE] **(new)** /ops/no-such-page -> "Page not found" with "Back to ops dashboard".
 
 ### 5.2 Pipeline filters (tier, chips, URL)
 - [SAFE] Stuck refunds panel -> "No stuck refunds." (or a count with instructions).
@@ -268,7 +315,12 @@ Known gaps in the demo data:
 - [NEVER] "Disable Adapter", "Force Tier 4" (change live routing; Force Tier 4 has no undo). "Close Circuit": skip.
 
 ### 5.5 Fax queue, catalog, licensure, ingredients, EHR
-- [SAFE] /ops/fax -> "Inbound Fax Triage", status buttons "All", "Received", "Matched", "Unmatched", "Processed", "Archived"; click a row -> "Fax Details"; "Open PDF (15-min link)" opens.
+- [SAFE] /ops/fax -> "Inbound Fax Triage", status buttons "All", "Received", "Matched", "Unmatched", "Processed", "Archived".
+- [WRITES DATA, audit row only] **(changed)** A row's "View" -> "Fax Details" -> "Open fax" (`fax-pdf-viewer.tsx`).
+  - The PDF opens inside the page, fetched from Documo. This is a read; nothing is sent.
+  - Each view writes one access-log row.
+  - Seeded demo faxes have no real Documo copy: expect "This fax is no longer available."
+  - Other messages: "Only ops admins can open faxes.", "Too many faxes opened in a short time. Wait a few minutes and try again."
 - [NEVER] "Reject Order" (rejects the order and posts a real Slack alert). [WRITES DATA, seeded faxes only, optional] "Acknowledge Order", "Archive", "Manual match" (a bad id -> "Must be a valid UUID").
 - [SAFE] /ops/catalog -> "Product Catalog", "Hierarchical catalog powering the prescription builder, read-only here", tabs "Catalog", "Versions", "Normalized", "API Sync".
 - [NEVER] Any CSV upload (uploads on drop, no confirm), "Add Item", "Rollback", "Trigger Sync".
@@ -292,6 +344,8 @@ Known gaps in the demo data:
 - [SAFE] **License check.** On a submitted clinic whose provider NPI is unverified: "{name}’s NPI was not found in the national registry. Check their license with the state board before approving." and the checkbox "I checked this provider’s license with the state board"; must not: "Approve {name}" enabled before it is ticked. **Do not tick and approve** a real clinic.
 - [SAFE] "Review details for {name}" -> "Review: {name}", sections "Practice", "Providers", "Staff", "Agreements", "History"; Sunrise's history may show "Note: Demo payout account set on approval."
 - [NEVER] "Approve {name}" on any real clinic (activates ordering; may set a demo payout account).
+- [SAFE] **(new)** A sign-up whose NPI is already used at an approved clinic shows "{name}’s NPI is already registered to a provider at an approved clinic. Approve is refused until this is resolved with the provider.", and "Approve {name}" is disabled. A shared NPI also shows "NPI also claimed by N other pending sign-up(s)."
+- [NEVER] **(new)** On an unapproved self sign-up's review page: "Delete this sign-up" -> "Yes, delete {clinic}". It is irreversible: logins, providers and licenses are removed. If opened, press "Keep it".
 - [WRITES DATA, test clinic only] "Send {name} back" with an empty note -> "Write what the clinic needs to change."; skip the real send.
 - [WRITES DATA, optional] "Invite a clinic" with a test email -> "Invite link for {email} (shown once; it works once and expires in 7 days)", "Copy link". Then "Revoke invite for {clinic}" on that test invite. Never press send in "Email this invite".
 
@@ -306,6 +360,8 @@ Known gaps in the demo data:
 
 - [SAFE] Sign in -> /pharmacy/onboarding (after /mfa/challenge). Header "CompoundIQ · Pharmacy", nav "Onboarding", "Agreements". "Set up your pharmacy", "Your progress is saved as you go. CompoundIQ reviews your licenses and details before your pharmacy is shown to prescribers."
 - [SAFE] Steps "Pharmacy details", "Facility type", "State licenses", "How you receive orders", "Shipping", "BAA", "Terms of service", "Catalog", "Review and submit". Click through each step without saving.
+- [SAFE] **(new)** "How you receive orders" shows "Hybrid" disabled with "Not available yet".
+- [SAFE] **(new)** /pharmacy/no-such-page -> "Page not found" with "Back to pharmacy portal".
 - [SAFE] **4 MB limit.** State licenses step -> "Upload the {ST} license document", hint "PDF, PNG or JPEG, up to 4 MB." -> choose a 5 MB dummy file -> "The file must be under 4 MB." (client-side, nothing uploaded). Only possible if a license row exists; do not add one just for this.
 - [SAFE] Catalog step -> "Download the CSV template".
 - [NEVER] "Accept and continue" on BAA / Terms (binding), "Submit for review", real credentials on "How you receive orders".
@@ -322,17 +378,18 @@ The only safe way to get intake, plan and checkout tokens without texting a real
 2. Open that intake link in a private window (7.2) and complete it with **texts unticked**, so `sms_opt_in` is false.
 
 ### 7.2 /intake/[token] (`app/intake/[token]/`)
-- [SAFE] /intake/abc -> "This link is not valid", "Please check that you opened the whole link from your clinic, or ask them to send it again."
+- [SAFE] **(changed)** /intake/abc -> "This link is no longer active", "Links stop working after 72 hours or once your details are sent. If you need a new link or need to change something, please contact your clinic." The same page shows for expired, used and unknown links.
 - [SAFE] Real link -> "Complete your details", "{Clinic} asked you to complete your details. It takes about 3 minutes.", "Step 1 of 5", "Before you start", "Privacy notice", "I have read the privacy notice."; Continue without ticking -> "Please confirm you have read the privacy notice."; must not: any patient data before you enter it.
 - [SAFE] Leave **"I agree to receive text messages ..."** unticked. Steps "Your details" ("Scan my license" / "Type my details"), "Shipping address" (ZIP "123" -> "Enter a 5-digit ZIP code."), "Allergies and medications" ("No known drug allergies"), "Check and submit" with "Texts: No".
 - [WRITES DATA] "Submit" -> "Thank you", "Your details were sent to {clinic}.", "Your clinic will send you a link to pay once your prescription is ready."
-- [SAFE] Reopen the same link -> "This link has already been used".
+- [SAFE] **(changed)** Reopen the same link -> "This link is no longer active".
 
 ### 7.3 /checkout (Stripe is LIVE)
-- [SAFE] /checkout/abc -> redirects to /checkout/expired: "This payment link has expired", "Payment links expire after 72 hours for security. Please contact your clinic to request a new one."
+- [SAFE] **(changed)** /checkout/abc -> redirects to /checkout/expired: "This payment link is no longer active", "Payment links stop working after 72 hours or once they have been used. If you have already paid, there is nothing more to do. Otherwise, please contact your clinic for a new link." The tab title reads "Payment link".
+- [SAFE] **(new)** /checkout opened directly -> "Please reopen your payment link", "For your security, please reopen the payment link from your text message."
 - [SAFE] /checkout/success with no params -> "Payment Unsuccessful", "Your payment could not be completed. Please contact your clinic to try again."
-- [SAFE] Old link on a cancelled or expired order -> "Order No Longer Active".
-- Active checkout page: **no Sunrise order is in AWAITING_PAYMENT**, and making one needs a provider to sign (charges nothing, but creates a live payment and texts opted-in patients). Recommended: **skip the active page on prod**. If Sam wants it, sign one cheap order for the QA Clickthrough patient (opt-in false, so no text), then "Copy Payment Link" in the drawer ("Payment link copied · valid for 72 hours"), open it once, and check "Amount due", "HSA / FSA", the Stripe Payment Element, "Pay $X.XX", "256-bit TLS Encryption", "Powered by Stripe"; must not: patient name, medication or diagnosis on the page.
+- [SAFE] **(changed)** An old link on a paid, cancelled or expired order -> the same neutral expired page; the clinic name is no longer shown.
+- Active checkout page: **no Sunrise order is in AWAITING_PAYMENT**, and making one needs a provider to sign (charges nothing, but creates a live payment and texts opted-in patients). Recommended: **skip the active page on prod**. If Sam wants it, sign one cheap order for the QA Clickthrough patient (opt-in false, so no text), then "Copy Payment Link" in the drawer ("Payment link copied · valid for 72 hours"), open it once, and check "Amount due", "HSA / FSA", the Stripe Payment Element, "Pay $X.XX", "256-bit TLS Encryption", "Powered by Stripe"; must not: patient name, medication or diagnosis on the page. **(new)** After it loads the address bar reads plain `/checkout`, with no token. Do not refresh (rule 9).
 - [NEVER] Type in the card fields, press "Pay".
 
 ### 7.4 /join/[token] (sign-up link)
@@ -348,11 +405,25 @@ The only safe way to get intake, plan and checkout tokens without texting a real
 
 ---
 
-## 8. Patient protocol choice, end to end (10 min)
+### 7.6 (new) Phone width, 390 px
+- [SAFE] In a private window, set the browser to 390 × 844 (dev tools device mode). Open:
+  - /plan/<a test link>;
+  - /intake/abc and /join/<the Sunrise link>;
+  - /checkout/expired;
+  - an active checkout only if 7.3 was done (no refresh, no card).
+- Expect:
+  - no sideways scrolling;
+  - long drug names wrap, while prices stay on one line;
+  - "HSA / FSA" stays on one line;
+  - checkboxes and links are easy to tap (44 px);
+  - error pages are phone-sized "Something went wrong" with "Try again".
+- Nothing is submitted.
+
+## 8. Patient protocol choice, end to end (9 min)
 
 Uses the QA Clickthrough patient (opt-in false, fictional number), so nothing is texted. Signing in 8.6 is optional and needs Sam's go-ahead.
 
-- [SAFE] 8.1 /plan/abc -> "This link is not valid", "Please check that you opened the whole link from your clinic, or ask them to send it again."
+- [SAFE] **(changed)** 8.1 /plan/abc -> "This link is no longer active", "Plan links stop working after 7 days, once your plan is settled, or after too many incorrect dates of birth. Please contact your clinic if you need a new link or have questions." The same page shows for expired, locked, signed and closed links.
 - [WRITES DATA] 8.2 **Provider proposes.** As Dr. Chen, New Prescription -> QA Clickthrough -> add two medications -> Review -> tick "Send the patient a plan to choose from, instead of signing now". Name "Option A" and add "Option B" ("Add an option"); mark one line "★ Required". Press "Send to patient for choice" -> "The plan was sent for the patient to choose. Nothing is signed or charged until you sign what they choose." Region "Share the plan link", "Share this link with the patient. It works until {date}.", texting line "The patient has not agreed to texts, ..." (or "Texting is not set up, ..."); must not: "The link was also texted to the patient."
 - [WRITES DATA] 8.3 **Copy link / QR.** "Copy link" -> "Link copied."; "Show QR code" -> QR appears; "Hide QR code". (Each logs one event row.) "Go to the dashboard" -> /dashboard?tab=proposed.
 - [SAFE] 8.4 **Proposed tab** lists the plan. Open it -> "Patient choice", "Awaiting patient choice", lines "{option}, required" / "optional (the patient can untick it)". [NEVER on a real plan] "Cancel the plan"; here open it and press "Keep the plan".
@@ -364,8 +435,13 @@ Uses the QA Clickthrough patient (opt-in false, fictional number), so nothing is
   - [SAFE] "Choose this plan" -> "Confirm your choice", "Estimated total", "Confirm", "Back".
   - [WRITES DATA] "Confirm" -> "Sent to your provider for final approval", "Your clinic will send you a secure payment link, usually the same day.", "Change my choice". Reload -> "You chose {label}. You can change your choice until your provider approves it."
 - [SAFE] 8.6 **Provider signs.** As Dr. Chen, the dashboard shows "Plans ready to sign" with "QA chose {Option} (n of m items)" and "Review and sign" -> /new-prescription/sign?proposal=... -> region "The patient's choice", "These are the prescriptions the patient chose. Signing sends them one payment link; the items they did not choose are cancelled, never signed.", "Chosen lines (N)"; must not: checkboxes, "Edit", "Remove" or "+ Add prescription".
-  - [NEVER without Sam's go-ahead] "Sign & Send N Prescription(s)". It creates a live Stripe payment and sends the order toward the pharmacy (no text, as opt-in is false). After it, /plan/<token> shows "Your provider has approved your plan".
-- 8.7 **Leave it clean.** If you did not sign: as Dr. Chen, open the plan in the Proposed tab -> "Cancel the plan" -> "Yes, cancel the plan" (this is the test plan, so allowed). /plan/<token> then shows "This plan is no longer open".
+  - [NEVER without Sam's go-ahead] "Sign & Send N Prescription(s)". It creates a live Stripe payment and sends the order toward the pharmacy (no text, as opt-in is false). After it, /plan/<token> shows the neutral "This link is no longer active" **(changed)**.
+- 8.7 **Leave it clean.** If you did not sign: as Dr. Chen, open the plan in the Proposed tab -> "Cancel the plan" -> "Yes, cancel the plan" (this is the test plan, so allowed). /plan/<token> then shows "This link is no longer active" **(changed)**.
+- **(new)** 8.8 The DOB lockout, on a throwaway plan only:
+  - [WRITES DATA] Send a second plan to the test patient (never use a real patient's link for this).
+  - Enter a wrong DOB five times -> "This link is locked" and "Too many incorrect dates of birth were entered. Please contact your clinic."
+  - Reload -> "This link is no longer active".
+  - Then cancel that plan ("Cancel the plan" -> "Yes, cancel the plan").
 
 ---
 
@@ -388,4 +464,8 @@ Record, for Sam:
 6. No Sunrise demo order is AWAITING_PAYMENT, so the active checkout page cannot be checked without signing a new order.
 7. The intake link is texted on patient create even when the patient has not opted in (by design: opt-in is collected in intake), so "Add patient" is never safe with a real number.
 8. /checkout/success?payment_intent=<unknown> says "Payment Received", which is misleading for an unknown id.
-9. The fax viewer is not merged to main yet, so it is not in this checklist.
+9. **(changed)** Three of the migration branches need their migration on prod, or the feature fails:
+   - the fax viewer needs 20261024000003 for its access-log row (without it the PDF still shows, but no audit row is written);
+   - signup-squatting needs 20261024000006, or provider inserts and Approve fail;
+   - rate-limit-db needs 20261024000007.
+10. **(new)** Quantity and its unit ("Quantity: 2 vials", "Quantity: 30 capsules") are on the pharmacy outputs and the fax PDF only, never on a clinic screen. On prod they can only be checked by submitting an order, which this checklist never does.
