@@ -1,17 +1,15 @@
-task-id: C-2026-10-25-16
+task-id: C-2026-10-25-17
 status: ready
 ---
-Thanks for C-2026-10-25-15 (clinic-help review, 8f242aa).
+Thanks for C-2026-10-25-16 (HIPAA evidence map, a004e06). Excellent. A, D and you are now closing the code gaps.
 
-Next: a HIPAA Security Rule technical safeguards evidence map (AI-facing; the orchestrator turns it into a Word document for Sam). Compliance comes first in this project, and we need to show what the code actually does.
+Yours: B14 and B15 (PHI access logging).
 
-Branch: `git checkout review-high-risk && git pull`. Write docs/compliance/technical-safeguards-evidence-2026-10-25.md.
-For each standard and implementation specification in 45 CFR 164.312 (access control: unique user identification, emergency access procedure, automatic logoff, encryption and decryption; audit controls; integrity and the mechanism to authenticate ePHI; person or entity authentication; transmission security: integrity controls, encryption), and the related 164.308(a)(5)(ii)(C) log-in monitoring and (D) password management:
-- What the code does today on main, and what the queued branches add (name the branch; say "on main" or "queued"). Cite files and functions, tables, policies, migrations, env switches, headers. Read the code; do not trust docs.
-- What depends on vendors (Supabase, Vercel, Stripe, Twilio, Documo, Sentry, Keragon, Anthropic) and therefore on a signed BAA and their configuration (encryption at rest, backups, log retention). State plainly: no BAAs are signed yet; prod holds demo data only.
-- Gaps, each with: risk, the concrete fix, whether it is code (and roughly how big) or a policy/vendor action, and whether it blocks real patient data.
-Include: MFA status (available, required only for pharmacy admins, one switch to require for all: name the switch), session timeout (15 min idle), access log coverage (which reads/writes of PHI are logged and which are not; check every PHI read path), RLS per table with PHI, service-role use (where the server bypasses RLS and how it scopes), backups/restore (what the repo shows), data retention (counts only, deletes nothing), breach detection/alerting (Sentry/Slack scrubbing), and encryption in transit (HSTS, TLS) and at rest (vendor).
-No legal conclusions; state facts and gaps. Keep it factual and organised by citation.
-Push review-high-risk (normal push, no PR). Summary in the commit body: gaps that block real patient data, one line each.
+Branch: `git fetch origin && git checkout -b phi-access-log-coverage origin/bundle-features`.
+1. B14: log every PHI read and write path you listed as unlogged: the dashboard poll and other browser-driven reads (log server-side at the API they call), list views (log the list view with the patient ids returned, bounded, or a hashed set if the existing schema expects one; follow logPhiAccess's contract), favorites when patient-scoped, the search edit page, the import parse, ops fax views (the fax PR adds fax_id; use it once merged, else log resource only and note it), ops actions, proposal send, token-link and patient actors (the patient on /plan, /intake, /checkout as a distinct actor type), and disclosures to pharmacies (each transmission), OpenAI and Anthropic (each face sheet or AI call that carries PHI).
+2. B15: logPhiAccess never fails closed and nobody is alerted. Decide per path: for disclosures and writes, fail closed (do not disclose if the log write fails); for reads, keep serving but raise an alert (Sentry/Slack with no PHI) on any log failure. Add a startup/health check that PHI_ACCESS_LOG_HASH_SECRET is set (fail the health check without printing it).
+If a new action/actor value needs a schema change (enum or CHECK), do NOT migrate; use existing values where they fit and report the design for what does not.
+Tests: jest for each new logging call (one per path), fail-closed on disclosure, alert on read failure, and the secret check.
+Gates: lint (0 warnings), tsc, jest, next build. Push phi-access-log-coverage (normal push, no PR). Report in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
