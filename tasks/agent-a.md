@@ -1,21 +1,18 @@
-task-id: A-2026-10-25-07
+task-id: A-2026-10-25-08
 status: ready
 ---
-Thanks for A-2026-10-25-06 (Actions on Node 24 majors, 45e7211).
+Thanks for A-2026-10-25-07 (token pages hardening, 8078534).
 
-Next: harden the patient token pages so a token can never leak or be indexed.
+Next: close coverage gap 9 from docs/qa/practitioner-requirements-coverage.md (branch docs-requirements-coverage, df950e5; read it first). Today an Rx can reach the pharmacy reading "Allergies: Not recorded". The NP asked for allergies / NKDA on the Rx.
 
-Branch: `git fetch origin && git checkout -b token-pages-hardening origin/main`.
-Scope: every route that takes a patient-facing token (at least /plan/[token] and /checkout/[token], and any others you find; list them all).
-For each, check and fix on main's code:
-- Referrer-Policy: no-referrer (so the token URL is never sent to third parties via Referer). Stripe on checkout is expected; confirm the token is not passed to it in any URL or metadata beyond what checkout needs.
-- X-Robots-Tag: noindex, nofollow and a robots meta noindex; robots.txt disallows the token paths.
-- Cache-Control: private, no-store on the page and its API calls.
-- The token never appears in server logs, Sentry breadcrumbs/URLs, analytics events or error messages (scrub it if it does).
-- An invalid, expired or used token shows a neutral page that does not reveal whether the token ever existed.
-- The /plan DOB gate: confirm attempts are rate limited and lock after repeated failures; if not, report it (do NOT add a migration; if the fix needs one, stop and report the design).
-Add jest tests for headers and scrubbing, and extend an existing E2E spec only if it needs no new seed tables.
-No database migrations on this branch (the shared E2E DB is mid-serial-merge).
-Gates: lint (0 warnings), tsc, jest. Push token-pages-hardening (normal push, no PR). Report in the commit body: routes found, what was already right, what you changed.
+Branch: `git fetch origin && git checkout -b rx-allergies-required origin/main`.
+- Before a provider can sign (single sign, Sign all, and signing the chosen lines of a patient protocol), the patient must have either at least one allergy recorded or NKDA explicitly marked. Use the fields that already exist for allergies/NKDA; reuse the existing allergy entry UI.
+- If neither is recorded, the Sign button stays enabled but signing is blocked with an inline prompt at Review: "Record allergies or mark NKDA before signing", with the allergy entry right there (no navigating away, no lost Rx state). After saving, signing continues.
+- Enforce it on the server too (the sign API rejects with a clear 4xx and the same message), so no path bypasses it: drafts, favorites, protocol sign, refills/renewals if they create a new signed Rx.
+- The fax PDF and adapter payloads must never print "Not recorded" for a newly signed Rx; old orders keep printing what they have.
+- MA role: an MA can record allergies/NKDA if they can edit the patient today; do not change role rules otherwise.
+Tests: jest for the server check and the Review prompt; extend one existing E2E sign flow so it records NKDA first (use unique locators; no getByRole('alert')). Update any E2E seed patient that signs without allergies so the existing specs still pass.
+No database migrations on this branch. If the existing schema cannot represent "NKDA marked", stop and report the design.
+Gates: lint (0 warnings), tsc, jest, next build. Push rx-allergies-required (normal push, no PR). Report in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
