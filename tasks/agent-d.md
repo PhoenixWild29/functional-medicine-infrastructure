@@ -1,20 +1,17 @@
-task-id: D-2026-10-25-06
+task-id: D-2026-10-25-07
 status: ready
 ---
-Thanks for D-2026-10-25-05 (coverage audit, df950e5). Good catches. Now fix three of them.
+Thanks for D-2026-10-25-06 (rx-quantity-shipping, 702da16). Clear report.
 
-Branch: `git fetch origin && git checkout -b rx-quantity-shipping origin/main`.
+Next: coverage gap 19 from your own audit (docs/qa/practitioner-requirements-coverage.md). The NP asked for "a frequently used section, convertible to a favorite", and favorites scoped to a specific patient as well as the practice.
 
-1. Requirement 3 (priority, wrong data reaches the pharmacy): POST /api/orders always stores quantity 1, so the fax PDF prints "Quantity: 1" above "Dispense: 9.6 mL (2 x 5 mL vials)" and LifeFile, Vios, MediVera and Tier 2 {quantity} all send 1.
-   - Store the real dispense count from the Rx builder (number of vials/units actually dispensed, matching the Dispense line).
-   - Make the fax PDF and every adapter payload send that number. Check each adapter's field meaning (count of containers vs volume) from its existing code/spec and map correctly; say what each one now sends.
-   - Check anything else that reads orders.quantity (pricing, payouts, ops views, reports) still computes correctly; prices must not multiply twice.
-   - Existing rows: do not migrate or backfill. Code must handle old rows where quantity is 1.
-2. Refills: the search step caps refills at 5 but Review allows 12. Make them one shared constant, and use the value Review already allows unless a pharmacy or state rule in the code says otherwise (say which).
-3. Requirement 15: show the shipping cost on the search-step pharmacy cards (same source as Review), and show the multi-pharmacy double-shipping warning on the price page and on the sign page for saved drafts, not only at Review. Same wording everywhere, one component.
-
-Tests: jest for the quantity mapping in the fax PDF builder and each adapter, the refills constant, and the shipping components. Extend an existing E2E only if it needs no new seed tables.
-No database migrations on this branch (the shared E2E DB is mid-serial-merge). If orders.quantity cannot hold this without a schema change, stop and report the design.
-Gates: lint (0 warnings), tsc, jest, next build. Push rx-quantity-shipping (normal push, no PR). Report in the commit body.
+Branch: `git fetch origin && git checkout -b favorites-frequent origin/main`.
+- Replace "Recent" (last 8 by recency) with "Frequently used": the provider's most-ordered formulation+dose combinations over a sensible window (say which; e.g. last 90 days), ranked by count, ties by most recent. Compute it from existing order lines; no new tables. If there are none yet, fall back to recent with the same section shape.
+- Each entry shows the drug, dose with mg where applicable ("10 units (0.5 mg)"), and how many times used.
+- "Make favorite" from that section opens a small dialog: choose Practice or This patient (when a patient is in context), and which doses to include (pre-tick the used dose; allow adding the drug's other common doses so they group under the drug, per requirement 17). Saving uses the existing favorites model for practice and patient scope.
+- Favorites still open the Rx builder dose step with dropdowns populated (requirement 16); do not regress it.
+Tests: jest for the ranking (counts, ties, window, fallback) and the dialog; extend an existing favorites E2E only if it needs no new seed tables (unique locators; no getByRole('alert')).
+No database migrations on this branch. If patient-scoped favorites need a schema change, stop and report.
+Gates: lint (0 warnings), tsc, jest, next build. Push favorites-frequent (normal push, no PR). Report in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
