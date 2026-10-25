@@ -117,6 +117,72 @@ test.describe('Ops Dashboard — Pipeline & Triage Flow', () => {
     expect(status).toBe('REROUTE_PENDING')
   })
 
+  // REQ-OPV-002: the tier filter. Before, the API read ?tier= and dropped
+  // it; now the query filters on the pharmacy's tier, the URL carries it,
+  // and only that tier's orders show.
+  test('ops admin can filter the pipeline by integration tier', async ({ page }) => {
+    const supabase = createClient(
+      process.env['E2E_SUPABASE_URL']!,
+      process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!
+    )
+    const insertOrder = async (pharmacyId: string) => {
+      const { data, error } = await supabase
+        .from('orders')
+        .insert({
+          patient_id:       TEST_IDS.patient,
+          provider_id:      TEST_IDS.provider,
+          catalog_item_id:  TEST_IDS.catalogItem,
+          clinic_id:        TEST_IDS.clinic,
+          pharmacy_id:      pharmacyId,
+          status:           'SUBMISSION_FAILED',
+          quantity:         1,
+          wholesale_price_snapshot: 100.00,
+          retail_price_snapshot:    200.00,
+          sig_text:         'Test sig for E2E tier filter test',
+          locked_at:        new Date().toISOString(),
+        })
+        .select('order_id')
+        .single()
+      if (error || !data) throw new Error(`Failed to create test order for tier filter E2E: ${error?.message}`)
+      return data.order_id as string
+    }
+    const apiOrder = await insertOrder(TEST_IDS.pharmacyTier1)
+    const faxOrder = await insertOrder(TEST_IDS.pharmacyTier4)
+
+    await page.goto('/login')
+    await page.getByLabel('Email').fill(TEST_USERS.opsAdmin.email)
+    await page.getByLabel('Password').fill(TEST_USERS.opsAdmin.password)
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await expect(page).toHaveURL(/\/ops\/pipeline/, { timeout: 15_000 })
+
+    const apiRow = page.locator(`[data-order-id="${apiOrder}"]`)
+    const faxRow = page.locator(`[data-order-id="${faxOrder}"]`)
+    await expect(apiRow).toBeVisible({ timeout: 10_000 })
+    await expect(faxRow).toBeVisible()
+
+    await page.getByLabel('Filter by integration tier').selectOption('TIER_4_FAX')
+    await expect(faxRow).toBeVisible({ timeout: 10_000 })
+    await expect(apiRow).toHaveCount(0)
+    await expect(page).toHaveURL(/[?&]tier=TIER_4_FAX/)
+
+    // Only the chosen tier shows: every row is a T4 Fax pharmacy's.
+    const tiersShown = () => page.locator('tr[data-order-id]').evaluateAll(
+      rows => [...new Set(rows.map(r => r.getAttribute('data-pharmacy-tier')))],
+    )
+    await expect.poll(tiersShown, { timeout: 10_000 }).toEqual(['TIER_4_FAX'])
+
+    // The filter survives a reload (it is in the URL).
+    await page.reload()
+    await expect(page.getByLabel('Filter by integration tier')).toHaveValue('TIER_4_FAX')
+    await expect(faxRow).toBeVisible({ timeout: 10_000 })
+    await expect(apiRow).toHaveCount(0)
+
+    await page.getByRole('button', { name: 'Clear all filters' }).click()
+    await expect(apiRow).toBeVisible({ timeout: 10_000 })
+    await expect(faxRow).toBeVisible()
+    await expect(page).not.toHaveURL(/tier=/)
+  })
+
   test('ops admin can view SLA heatmap', async ({ page }) => {
     await page.goto('/login')
     await page.getByLabel('Email').fill(TEST_USERS.opsAdmin.email)

@@ -29,7 +29,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiAccessMany } from '@/lib/audit/phi-access'
 import { toE164, withPhoneE164 } from '@/lib/patients/phone'
 import { mobileLast4, patientName } from '@/lib/patients/display'
 import { checkMobileLineType } from '@/lib/twilio/line-type'
@@ -136,6 +136,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         !!firstName && !!lastName &&
         (r.first_name ?? '').trim().toLowerCase() === firstName.toLowerCase() &&
         (r.last_name ?? '').trim().toLowerCase() === lastName.toLowerCase()
+      // Each patient shown (name, date of birth, mobile last 4) is a PHI view.
+      await logPhiAccessMany({ user, action: 'view', resource: 'patient', route: '/api/patients', clinicId, headers: request.headers }, rows.map(r => r.patient_id))
       return NextResponse.json({
         code: 'POSSIBLE_DUPLICATE',
         error: 'A patient in this clinic may be the same person.',

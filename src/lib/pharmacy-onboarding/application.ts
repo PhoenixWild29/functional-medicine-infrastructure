@@ -21,6 +21,7 @@ import { recordOnboardingEvent } from './events'
 import { MAX_REQUEST_BYTES, MAX_REQUEST_LABEL } from '@/lib/uploads/limits'
 import type { Fail } from './invites'
 import { ONBOARDING_STEPS, SHOWN_STEPS, withStep, withoutStep, type SavedStepKey } from './steps'
+import { sniffDocumentType } from '@/lib/uploads/sniff'
 import {
   validateAcceptance, validateDetails, validateFacility, validateLicense, validateOrdering, validateShipping,
   type OrderingMethod,
@@ -205,9 +206,12 @@ export interface UploadedFile { name: string; type: string; size: number; bytes:
 export async function attachLicenseDocument(db: SupabaseClient, ctx: WizardCtx, rawState: string, file: UploadedFile): Promise<{ ok: true } | Fail> {
   const state = stateCode(rawState)
   if (!state) return { ok: false, status: 400, error: 'Unknown state.' }
-  const ext = DOCUMENT_TYPES[file.type]
-  if (!ext) return { ok: false, status: 400, error: 'Upload the license as a PDF, PNG or JPEG.' }
   if (file.size <= 0 || file.size > MAX_DOCUMENT_BYTES) return { ok: false, status: 400, error: `The file must be under ${MAX_REQUEST_LABEL}.` }
+  // The type is read from the file's first bytes, never the declared type
+  // or the name (security review, Oct 24); it also sets the stored type.
+  const contentType = sniffDocumentType(file.bytes)
+  const ext = contentType ? DOCUMENT_TYPES[contentType] : undefined
+  if (!contentType || !ext) return { ok: false, status: 400, error: 'Upload the license as a PDF, PNG or JPEG.' }
 
   const r = await editable(db, ctx.pharmacyId)
   if (!r.ok) return r
@@ -218,7 +222,7 @@ export async function attachLicenseDocument(db: SupabaseClient, ctx: WizardCtx, 
 
   const path = `${ctx.pharmacyId}/${state}/${randomUUID()}.${ext}`
   const bucket = db.storage.from(LICENSE_DOCUMENT_BUCKET)
-  const { error: uploadError } = await bucket.upload(path, file.bytes, { contentType: file.type, upsert: false })
+  const { error: uploadError } = await bucket.upload(path, file.bytes, { contentType, upsert: false })
   if (uploadError) {
     console.error('[pharmacy-onboarding] license document upload failed:', uploadError.message)
     return UNAVAILABLE('The document could not be uploaded.')

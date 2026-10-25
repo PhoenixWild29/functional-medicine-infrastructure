@@ -60,7 +60,11 @@ const DETAILS = {
   city: 'Austin', state: 'TX', zip: '78701', phone: '512-555-0100', ncpdpId: '1234567', npi: '1234567893', deaNumber: '',
 }
 const LICENSE = { state: 'TX', licenseNumber: 'TX-PH-1', expiresOn: '2027-06-30', sterileCompounding: true }
-const pdf = (size = 2048) => ({ name: 'license.pdf', type: 'application/pdf', size, bytes: new Uint8Array(size) })
+// A real PDF header, so the document passes the magic-byte check.
+const withHeader = (size: number, header: number[]) => { const b = new Uint8Array(size); b.set(header.slice(0, size)); return b }
+const PDF_HEADER = [0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37]
+const PNG_HEADER = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+const pdf = (size = 2048) => ({ name: 'license.pdf', type: 'application/pdf', size, bytes: withHeader(size, PDF_HEADER) })
 
 describe('details, facility, shipping', () => {
   it('details update only this pharmacy, and mark the step', async () => {
@@ -279,5 +283,33 @@ describe('load and submit', () => {
     expect(app(done)).toEqual(expect.objectContaining({ status: 'submitted', submitted_at: NOW.toISOString() }))
     expect(done.rows('pharmacy_onboarding_events')).toEqual([expect.objectContaining({ action: 'application_submitted', pharmacy_id: PH, application_id: APP, actor_role: 'pharmacy_admin' })])
     expect(await submitApplication(done.client, ctx, NOW)).toMatchObject({ ok: false, status: 409 })
+  })
+})
+
+// Security review follow-up (L9): the document's type comes from its first
+// bytes, never the browser's declared type or the file name.
+describe('license documents: the type is read from the file itself', () => {
+  it('declared a PDF but not one (e.g. an executable renamed): refused with the same message', async () => {
+    const db = world()
+    await saveLicense(db.client, ctx, LICENSE, NOW)
+    const fake = { name: 'license.pdf', type: 'application/pdf', size: 64, bytes: withHeader(64, [0x4d, 0x5a, 0x90, 0x00]) }
+    expect(await attachLicenseDocument(db.client, ctx, 'TX', fake)).toEqual({ ok: false, status: 400, error: 'Upload the license as a PDF, PNG or JPEG.' })
+    expect([...db.objects.keys()]).toEqual([])
+  })
+
+  it('a PNG declared as a PDF: stored as what it is (.png)', async () => {
+    const db = world()
+    await saveLicense(db.client, ctx, LICENSE, NOW)
+    const png = { name: 'license.pdf', type: 'application/pdf', size: 64, bytes: withHeader(64, PNG_HEADER) }
+    expect(await attachLicenseDocument(db.client, ctx, 'TX', png)).toMatchObject({ ok: true })
+    const lic = db.rows('pharmacy_state_licenses').find(l => l['pharmacy_id'] === PH)!
+    expect(String(lic['document_path'])).toMatch(/\.png$/)
+  })
+
+  it('a real JPEG with an empty declared type: accepted', async () => {
+    const db = world()
+    await saveLicense(db.client, ctx, LICENSE, NOW)
+    const jpg = { name: 'scan', type: '', size: 64, bytes: withHeader(64, [0xff, 0xd8, 0xff, 0xe0]) }
+    expect(await attachLicenseDocument(db.client, ctx, 'TX', jpg)).toMatchObject({ ok: true })
   })
 })

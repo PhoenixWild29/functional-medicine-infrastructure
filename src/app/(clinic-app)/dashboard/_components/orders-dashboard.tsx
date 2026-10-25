@@ -161,7 +161,13 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
   const urlTab = searchParams?.get('tab') ?? null
   const tabFromUrl: TabId = urlTab !== null ? (isTabId(urlTab) ? urlTab : 'all') : (initialTab ?? 'all')
   const [activeTab,       setActiveTab]       = useState<TabId>(tabFromUrl)
-  useEffect(() => { setActiveTab(tabFromUrl) }, [tabFromUrl])
+  // Follow a new ?tab= while rendering (not in an effect), so the tab and
+  // the URL never disagree for a frame.
+  const [followedTab,     setFollowedTab]     = useState<TabId>(tabFromUrl)
+  if (followedTab !== tabFromUrl) {
+    setFollowedTab(tabFromUrl)
+    setActiveTab(tabFromUrl)
+  }
   // ?period=mtd: a month-to-date KPI card opened this list, so the rows
   // (and the tab counts) are the ones that card counted.
   const urlPeriod = searchParams?.get('period') ?? null

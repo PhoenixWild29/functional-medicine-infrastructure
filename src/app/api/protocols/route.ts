@@ -21,7 +21,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
 import { cycleLengthFrom, cyclePatternFrom } from '@/lib/orders/cycling'
-import { getUserClinicId } from '@/lib/auth/claims'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { refuseCrossSite } from '@/lib/security/same-origin'
+import { resolveCurrentProvider, isProviderRole } from '@/lib/auth/current-provider'
+
+// A failed read is logged here and answered with a plain message: the
+// database's own text (tables, columns, constraints) never reaches the
+// browser (security review, Oct 24).
+function readFailed(what: string, clinicId: string, err: { message: string }): NextResponse {
+  console.error(`[protocols] ${what} read failed | clinic=${clinicId}: ${err.message}`)
+  return NextResponse.json({ error: 'Protocols could not be loaded. Try again.' }, { status: 500 })
+}
 
 export async function GET(req: NextRequest) {
   const supabaseAuth = await createServerClient()
@@ -49,7 +59,7 @@ export async function GET(req: NextRequest) {
       .eq('clinic_id', clinicId)
       .single()
 
-    if (protoErr) return NextResponse.json({ error: protoErr.message }, { status: 500 })
+    if (protoErr) return readFailed('protocol', clinicId, protoErr)
     if (!protocol) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     const { data: items, error: itemsErr } = await supabase
@@ -91,7 +101,7 @@ export async function GET(req: NextRequest) {
       .eq('protocol_id', protocolId)
       .order('sort_order')
 
-    if (itemsErr) return NextResponse.json({ error: itemsErr.message }, { status: 500 })
+    if (itemsErr) return readFailed('items', clinicId, itemsErr)
 
     const protocolItems = items ?? []
 
@@ -132,8 +142,8 @@ export async function GET(req: NextRequest) {
           .is('deleted_at', null),
       ])
 
-      if (priceResult.error) return NextResponse.json({ error: priceResult.error.message }, { status: 500 })
-      if (formResult.error) return NextResponse.json({ error: formResult.error.message }, { status: 500 })
+      if (priceResult.error) return readFailed('prices', clinicId, priceResult.error)
+      if (formResult.error) return readFailed('formulations', clinicId, formResult.error)
 
       for (const row of priceResult.data ?? []) {
         // No price for a pharmacy that is no longer live: the item reads
@@ -157,7 +167,7 @@ export async function GET(req: NextRequest) {
       // (resolveLine) and again at signing, which know the product's form.
       const { data: licenses, error: licErr } = await readLicenses(supabase, pharmacyIds, patientState)
 
-      if (licErr) return NextResponse.json({ error: licErr.message }, { status: 500 })
+      if (licErr) return readFailed('licenses', clinicId, licErr)
       const today = todayIso()
       for (const id of pharmacyIds) {
         if (checkLicensure({ licenses, pharmacyId: id, pharmacyName: 'pharmacy', state: patientState, sterile: false, facilityType: null, today }).ok) {
@@ -231,7 +241,7 @@ export async function GET(req: NextRequest) {
     .eq('is_active', true)
     .order('use_count', { ascending: false })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return readFailed('list', clinicId, error)
   return NextResponse.json({ data })
 }
 
@@ -268,6 +278,8 @@ function optionalStr(v: unknown): string | null {
 }
 
 export async function POST(req: NextRequest) {
+  const crossSite = refuseCrossSite(req)
+  if (crossSite) return crossSite
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -323,8 +335,22 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceClient()
 
-  const createdBy = optionalStr(body['created_by'])
-  if (createdBy) {
+  // Who the protocol is attributed to (security review, Oct 24). A provider
+  // is always themself, whatever the body says. A medical assistant is
+  // never a provider: created_by from them is not trusted (it would tick
+  // that provider's "used a protocol" checklist step), so the protocol is
+  // saved with no creator. A clinic admin may name any provider of the
+  // clinic, checked below as before.
+  const role = getUserRole(user)
+  let createdBy: string | null
+  if (isProviderRole(role)) {
+    createdBy = (await resolveCurrentProvider(supabase, { userId: user.id, clinicId }))?.provider_id ?? null
+  } else if (role === 'medical_assistant') {
+    createdBy = null
+  } else {
+    createdBy = optionalStr(body['created_by'])
+  }
+  if (createdBy && !isProviderRole(role)) {
     const { data: provider, error: providerErr } = await supabase
       .from('providers')
       .select('provider_id')
@@ -351,7 +377,8 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (protoErr || !protocol) {
-    return NextResponse.json({ error: protoErr?.message ?? 'Failed to create protocol' }, { status: 500 })
+    if (protoErr) console.error(`[protocols] create failed | clinic=${clinicId}: ${protoErr.message}`)
+    return NextResponse.json({ error: 'Failed to create protocol' }, { status: 500 })
   }
 
   const { error: itemsErr } = await supabase

@@ -7,8 +7,9 @@
  *   - The values read prefill the new-patient form; fields that came from
  *     the face sheet say so. Nothing is saved until staff click Add patient,
  *     which saves through POST /api/patients as usual.
- *   - Without an API key: "Face sheet fill is not set up", manual entry
- *     stays. With FACE_SHEET_AI_ENABLED=false the entry point is not shown.
+ *   - Shown only when the server says it is available (the flag is not
+ *     "false" and ANTHROPIC_API_KEY is set; lib/face-sheet/config). Otherwise
+ *     it is not rendered at all: no "not set up" notice, the form as before.
  *   - jest-axe on every state.
  */
 
@@ -40,8 +41,8 @@ const reply = (status: number, body: unknown) => Promise.resolve({ ok: status < 
 const callsTo = (url: string) => fetchMock.mock.calls.filter(c => c[0] === url)
 
 const onCreated = jest.fn()
-function renderForm(faceSheet: 'ready' | 'not_configured' | 'off' = 'ready') {
-  return render(<main><NewPatientForm faceSheet={faceSheet} onCreated={onCreated} onUseExisting={jest.fn()} onCancel={jest.fn()} /></main>)
+function renderForm(faceSheetAvailable = true) {
+  return render(<main><NewPatientForm faceSheetAvailable={faceSheetAvailable} onCreated={onCreated} onUseExisting={jest.fn()} onCancel={jest.fn()} /></main>)
 }
 const pdf = (size = 2048) => new File([new Uint8Array(size)], 'face-sheet.pdf', { type: 'application/pdf' })
 
@@ -69,24 +70,18 @@ describe('the entry point', () => {
     expect(await violations()).toEqual([])
   })
 
-  it('no API key: "Face sheet fill is not set up", and manual entry stays', async () => {
-    renderForm('not_configured')
-    expect(screen.getByText('Face sheet fill is not set up.')).toBeInTheDocument()
-    expect(screen.queryByLabelText(/Choose a face sheet/)).toBeNull()
+  it('not available (no API key, or the flag off): not rendered at all, no "not set up" notice; the form is as before', async () => {
+    renderForm(false)
+    expect(screen.queryByText(/face sheet/i)).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Drop a face sheet' })).toBeNull()
     expect(screen.getByLabelText('Mobile number')).toBeInTheDocument()
     expect(await violations()).toEqual([])
   })
 
-  it('flag off: no entry point at all; the form is as before', () => {
-    renderForm('off')
-    expect(screen.queryByText(/face sheet/i)).toBeNull()
-    expect(screen.getByLabelText('Mobile number')).toBeInTheDocument()
-  })
-
-  it('Select Patient passes the status through to + New patient', () => {
+  it('Select Patient passes availability through to + New patient', () => {
     render(
       <PrescriptionSessionProvider>
-        <PatientProviderSelector patients={[]} providers={[]} faceSheet="ready" />
+        <PatientProviderSelector patients={[]} providers={[]} faceSheetAvailable />
       </PrescriptionSessionProvider>,
     )
     fireEvent.click(screen.getByRole('button', { name: '+ New patient' }))

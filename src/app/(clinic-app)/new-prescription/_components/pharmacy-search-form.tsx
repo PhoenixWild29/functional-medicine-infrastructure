@@ -97,6 +97,7 @@ export function PharmacySearchForm({ defaultState }: Props) {
     const saved = loadSavedState()
     // Only offer restore if there's a meaningful selection (not just an empty draft)
     if (saved?.selectedItem) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the saved Step 1 from sessionStorage after mount; the server render has no sessionStorage, so reading it while rendering would mismatch hydration
       setPendingRestore(saved)
       setShowRestoreBanner(true)
     }
@@ -173,11 +174,10 @@ export function PharmacySearchForm({ defaultState }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [searchData]
   )
-  useEffect(() => {
-    if (!formFilter && allResultForms.length > 0) {
-      setAvailableFormsSnapshot(allResultForms)
-    }
-  }, [allResultForms, formFilter])
+  // Taken while rendering (not in an effect); once taken, it is the same list.
+  if (!formFilter && allResultForms.length > 0 && availableFormsSnapshot !== allResultForms) {
+    setAvailableFormsSnapshot(allResultForms)
+  }
 
   const availableForms = availableFormsSnapshot
 

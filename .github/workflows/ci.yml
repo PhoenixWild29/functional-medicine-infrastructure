@@ -5,6 +5,12 @@
 # All 4 jobs must pass before merge is allowed.
 #
 # Jobs: lint → typecheck → test → build (parallel where possible)
+#
+# E2E (one shared E2E Supabase project, so one run at a time) runs for
+# pull requests, nightly on main and by hand, not on pushes to main: a
+# merge's push run used to take the shared slot in the same minute as the
+# next PR's run, so that PR waited a whole E2E run (11 to 15 min) for a
+# check of code its own PR run had already passed.
 # ============================================================
 
 name: CI
@@ -14,7 +20,12 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
-  workflow_dispatch:  # enables manual-only runs (used by E2E job while tests are stale)
+  workflow_dispatch:  # manual runs (E2E included), e.g. on main after a risky merge
+  schedule:
+    # Nightly E2E on main, 07:30 UTC (after the 06:00 UTC recon cron): the
+    # safety net for anything that merged without a PR E2E on the final
+    # merge result. Lint, tsc, Jest and Build run too.
+    - cron: '30 7 * * *'
 
 concurrency:
   group: ci-${{ github.ref_name }}-${{ github.event_name }}
@@ -158,6 +169,36 @@ jobs:
       # NB-2: removed build output cache — no restore step consumes it,
       # so saving it provides no benefit and wastes cache quota.
 
+  # ── Job 5a: What changed (decides whether E2E is needed) ──────
+  # A pull request that changes only documentation (top-level *.md, docs/,
+  # reviews/) cannot change what E2E tests, so it does not take the shared
+  # E2E slot. Any other file runs E2E, including src/content/legal/*.md
+  # (rendered by the legal pages), as does any non-PR event.
+  changes:
+    name: Changed files
+    runs-on: ubuntu-latest
+    outputs:
+      e2e: ${{ steps.diff.outputs.e2e }}
+    steps:
+      - name: Checkout
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Does this change need E2E?
+        id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "e2e=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          files=$(git diff --name-only "$BASE_SHA" HEAD)
+          echo "$files"
+          code=$(echo "$files" | grep -vE '(^[^/]+\.md$|^docs/|^reviews/)' | grep -v '^$' || true)
+          if [ -n "$code" ]; then echo "e2e=true" >> "$GITHUB_OUTPUT"; else echo "Documentation only: E2E skipped."; echo "e2e=false" >> "$GITHUB_OUTPUT"; fi
+
   # ── Job 5: E2E Tests (Playwright) ────────────────────────────
   # Runs after unit tests AND build pass. Skipped on fork PRs (secrets
   # unavailable). The 8-step Stripe happy path test inside the suite
@@ -181,15 +222,25 @@ jobs:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
     timeout-minutes: 30  # full jobs take 10-15 min as of 2026-10; see the note above
-    needs: [test, build]
+    needs: [changes, test, build]
     # Serialize E2E across ALL branches/PRs: the job seeds and cleans one
     # shared E2E Supabase project, so concurrent runs corrupt each other's
-    # fixtures. Queue, never cancel (cancel-in-progress: false).
+    # fixtures. A running E2E is never cancelled by another run
+    # (cancel-in-progress: false). GitHub keeps at most ONE pending job per
+    # group: a third E2E queued while one runs and one waits replaces the
+    # waiting one, which is why pushes to main no longer queue here.
     concurrency:
       group: e2e-shared-supabase-project
       cancel-in-progress: false
-    # Skip on fork PRs (secrets unavailable on fork-originated workflow runs).
-    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # Pull requests from this repository (fork PRs have no secrets) that
+    # change more than documentation; the nightly run; manual runs. Not
+    # pushes to main.
+    if: >-
+      (github.event_name == 'pull_request'
+        && github.event.pull_request.head.repo.full_name == github.repository
+        && needs.changes.outputs.e2e == 'true')
+      || github.event_name == 'schedule'
+      || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -203,12 +254,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Keyed on the Playwright version, not the whole lockfile: the
+      # browsers only change with Playwright, and any dependency bump used
+      # to miss the cache and download all browsers again.
+      - name: Playwright version
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ hashFiles('package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
@@ -248,6 +306,19 @@ jobs:
       # references into client bundles at build, so these must be the E2E
       # values — same values the runtime step below uses, so builds stay
       # environment-consistent.
+      # Turbopack's build cache (Next 16.3+, on by default) lives in
+      # .next/cache. Restored from the newest E2E build on any key; Next
+      # checks every cached entry against its inputs, so a stale entry is
+      # rebuilt, never reused.
+      - name: Cache Next.js build cache (E2E build)
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: nextjs-e2e-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            nextjs-e2e-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+            nextjs-e2e-${{ runner.os }}-
+
       - name: Build Next.js app (for Playwright webServer)
         run: npm run build
         env:

@@ -17,8 +17,8 @@
 // that came from the sheet says so in its label. Nothing is saved until
 // staff click Add patient, which saves through POST /api/patients as
 // before (same duplicate check, still pending, still the intake link).
-// faceSheet comes from the server: 'off' hides the entry point,
-// 'not_configured' says it is not set up and leaves manual entry.
+// faceSheetAvailable comes from the server (lib/face-sheet/config): when
+// false (no API key, or the flag off) the entry point is not rendered.
 //
 // WCAG 2.1 AA: labelled fields, errors announced and tied to the field
 // (aria-invalid + aria-describedby), focus moved to what changed.
@@ -55,14 +55,13 @@ interface Candidate {
   matchedOn: Array<'mobile' | 'name'>
 }
 
-export type FaceSheetAvailability = 'ready' | 'not_configured' | 'off'
 
 interface Props {
   onCreated: (patient: CreatedPatient, intake: CreatedIntake | null) => void
   onUseExisting: (patientId: string) => void
   onCancel: () => void
-  /** From the server (lib/face-sheet/config): 'off' when the flag is off. */
-  faceSheet?: FaceSheetAvailability
+  /** From the server (lib/face-sheet/config): true only with the flag on and a key set. */
+  faceSheetAvailable?: boolean
 }
 
 type Field =
@@ -97,7 +96,7 @@ function displayMobile(e164: string): string {
   return m ? `(${m[1]}) ${m[2]}-${m[3]}` : e164
 }
 
-export function NewPatientForm({ onCreated, onUseExisting, onCancel, faceSheet = 'off' }: Props) {
+export function NewPatientForm({ onCreated, onUseExisting, onCancel, faceSheetAvailable = false }: Props) {
   const uid = useId()
   const ids = {
     heading: `${uid}-heading`,
@@ -284,13 +283,7 @@ export function NewPatientForm({ onCreated, onUseExisting, onCancel, faceSheet =
         The patient gets a link to fill in the rest on their phone. You can prescribe now; nothing is signed or charged until they finish.
       </p>
 
-      {faceSheet === 'not_configured' && (
-        <p className="mt-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
-          <span>Face sheet fill is not set up.</span> Enter the details below.
-        </p>
-      )}
-
-      {faceSheet === 'ready' && (
+      {faceSheetAvailable && (
         <fieldset
           onDragOver={e => e.preventDefault()}
           onDrop={onDrop}

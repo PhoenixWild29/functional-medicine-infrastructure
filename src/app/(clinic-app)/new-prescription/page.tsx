@@ -28,7 +28,7 @@ import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provi
 import { WizardProgress } from '@/components/wizard-progress'
 import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { PatientProviderSelector } from './_components/patient-provider-selector'
-import { faceSheetStatus } from '@/lib/face-sheet/config'
+import { faceSheetAvailable } from '@/lib/face-sheet/config'
 import { getWizardSteps } from './_lib/wizard-steps'
 import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
@@ -140,7 +140,7 @@ export default async function NewPrescriptionPage(
           patients={patients}
           providers={providers}
           nextPanel={panel}
-          faceSheet={faceSheetStatus()}
+          faceSheetAvailable={faceSheetAvailable()}
           selfProvider={selfProvider ? {
             provider_id:    selfProvider.provider_id,
             first_name:     selfProvider.first_name,
