@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
 import { TEST_USERS } from './fixtures/seed'
 import { npiChecksumValid } from '../src/lib/providers/npi'
+import { shardPrefix } from './fixtures/shard'
 
 // ============================================================
 // Self sign-up: /login > Get started > lands in the app, pending review
@@ -25,7 +26,8 @@ import { npiChecksumValid } from '../src/lib/providers/npi'
 // and the new count.
 
 const RUN = randomUUID().slice(0, 8)
-const EMAIL_PREFIX = 'e2e-signup-'
+// Per shard (fixtures/shard): cleanup sweeps this prefix, so each shard sweeps only its own.
+const EMAIL_PREFIX = shardPrefix('e2e-signup-')
 const email = (kind: string) => `${EMAIL_PREFIX}${kind}-${RUN}@compoundiq.test`
 const PASSWORD = 'e2e sign-up passphrase 42'
 const BANNER = "We're verifying your licenses. You can look around; ordering opens once you're approved."
