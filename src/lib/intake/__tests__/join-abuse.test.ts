@@ -17,18 +17,18 @@ import {
 
 beforeEach(() => joinSubmitLimiter.reset())
 
-it('allows 20 submissions an hour per IP, then refuses with the seconds left', () => {
+it('allows 20 submissions an hour per IP, then refuses with the seconds left', async () => {
   expect(JOIN_SUBMIT_LIMIT).toBe(20)
   expect(JOIN_SUBMIT_WINDOW_MS).toBe(60 * 60 * 1000)
-  for (let i = 0; i < 20; i++) expect(joinSubmitLimiter.check('203.0.113.7').allowed).toBe(true)
-  const refused = joinSubmitLimiter.check('203.0.113.7')
+  for (let i = 0; i < 20; i++) expect((await joinSubmitLimiter.check('203.0.113.7')).allowed).toBe(true)
+  const refused = await joinSubmitLimiter.check('203.0.113.7')
   expect(refused.allowed).toBe(false)
   expect(refused.retryAfterSeconds).toBeGreaterThan(0)
 })
 
-it('one IP over the limit does not block another', () => {
-  for (let i = 0; i < 21; i++) joinSubmitLimiter.check('203.0.113.7')
-  expect(joinSubmitLimiter.check('198.51.100.4').allowed).toBe(true)
+it('one IP over the limit does not block another', async () => {
+  for (let i = 0; i < 21; i++) await joinSubmitLimiter.check('203.0.113.7')
+  expect((await joinSubmitLimiter.check('198.51.100.4')).allowed).toBe(true)
 })
 
 describe('the honeypot', () => {
