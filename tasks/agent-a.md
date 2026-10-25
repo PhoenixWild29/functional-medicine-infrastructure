@@ -1,18 +1,40 @@
-task-id: A-2026-10-25-09
+task-id: A-2026-10-25-10
 status: ready
 ---
-Thanks for A-2026-10-25-08 (rx-allergies-required, 92540ab).
+Thanks for A-2026-10-25-09 (checkout-token-out-of-url, e040c71).
 
-Next: the residual you flagged in A-07. Stripe.js runs on /checkout/<jwt> and can read window.location, so the patient's payment token is visible to a third-party script.
+Next: a merge dry run, so the PR queue merges without surprises. About 20 branches are waiting; several touch the same files (Rx review/sign, order drawer, route handlers).
 
-Branch: `git fetch origin && git checkout -b checkout-token-out-of-url origin/token-pages-hardening` (builds on A-07; keep it mergeable after it).
-- Get the token out of the address bar before Stripe.js loads. Preferred design: the server page for /checkout/[token] validates the token, then the client immediately does history.replaceState to /checkout (no token) and keeps the token only in memory for the POSTs to /api/checkout/payment-intent and payment-group-intent. Stripe.js is loaded only after replaceState (loadStripe called after mount, not at module scope).
-- Refresh after replaceState: the patient lands on /checkout with no token. Show a neutral page: "For your security, please reopen the payment link from your text message." Do NOT store the token in localStorage, sessionStorage or a non-HttpOnly cookie. If you think a short-lived HttpOnly, SameSite=Strict, path=/checkout cookie set by the server is the better way to survive refresh, say so in the report with the trade-off; do not build it in this task.
-- /checkout?token= form: same treatment.
-- Confirm Sentry, analytics and any error boundary never capture the original URL (scrub or capture after replaceState).
-- Payment success and expired flows unchanged.
-Tests: jest for the client flow (replaceState called before loadStripe; token never written to storage). Extend the existing checkout E2E to assert the URL has no token once the payment form is visible. Never enter a card on prod; E2E uses the test environment only.
-No database migrations.
-Gates: lint (0 warnings), tsc, jest, next build. Push checkout-token-out-of-url (normal push, no PR). Report in the commit body.
+Work in a throwaway local branch: `git fetch origin && git checkout -b integration-dry-run origin/main`. Do NOT push this branch and do NOT open a PR.
+Merge these origin branches in this order (the planned PR order), one by one with `git merge --no-ff`:
+1. ops-fax-viewer-documo
+2. rls-user-write-lockdown-v2
+3. security-followups-2
+4. signup-squatting
+5. rate-limit-db
+6. flake-show-checklist
+7. ci-playwright-container
+8. remove-dead-code
+9. docs-oct25
+10. e2e-axe-all-routes
+11. e2e-shard-ready
+12. perf-bundles
+13. test-data-cleanup-script
+14. docs-prod-clickthrough
+15. ci-actions-node24
+16. todo-sweep
+17. token-pages-hardening
+18. checkout-token-out-of-url
+19. error-boundaries
+20. api-input-validation
+21. security-followups-3
+22. rx-quantity-shipping
+23. rx-allergies-required
+24. favorites-frequent
+25. docs-requirements-coverage
+For each: clean or conflicted. On a conflict: resolve it correctly in the dry run, then record the files and the resolution. Then fix it at the source: on the LATER branch, `git merge origin/main` is not enough (main does not have the earlier one yet), so instead tell me exactly which branch should merge which earlier branch, or whether a reorder avoids it. Do not push changes to other agents' branches.
+Also check migration numbering across all branches: list every new file in supabase/migrations with its branch; flag duplicates or out-of-order numbers.
+After all merges: run lint (0 warnings), tsc, jest and next build on the result and report failures caused by the combination (not present on any single branch).
+Report in a commit on a new branch `dry-run-report` (from origin/main) at docs/qa/merge-dry-run-2026-10-25.md, push it (normal push, no PR), and put the summary in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
