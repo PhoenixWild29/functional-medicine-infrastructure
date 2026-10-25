@@ -214,6 +214,13 @@ describe('flag and key', () => {
     expect(extractMock).not.toHaveBeenCalled()
   })
 
+  it('a blank ANTHROPIC_API_KEY counts as none: 503, nothing read', async () => {
+    process.env['ANTHROPIC_API_KEY'] = '   '
+    const res = await POST(fileReq(PDF_BYTES))
+    expect(res.status).toBe(503)
+    expect(extractMock).not.toHaveBeenCalled()
+  })
+
   it('no ANTHROPIC_API_KEY: 503 "Face sheet fill is not set up", nothing read', async () => {
     delete process.env['ANTHROPIC_API_KEY']
     const res = await POST(fileReq(PDF_BYTES))

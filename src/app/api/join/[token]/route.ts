@@ -28,6 +28,7 @@
 // (created_at, signup_link_id) and the link's use count record it.
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServiceClient } from '@/lib/supabase/service'
 import { clientIp } from '@/lib/audit/keyed-hash'
 import { SIGNUP_DAILY_CAP, resolveSignupLink } from '@/lib/intake/signup-links'
@@ -44,6 +45,8 @@ import { clinicApproval } from '@/lib/onboarding/approval-guard'
 const NO_STORE = { 'Cache-Control': 'no-store' }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ token: string }> }): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request, undefined, NO_STORE)
+  if (crossSite) return crossSite
   const limit = joinSubmitLimiter.check(clientIp(request.headers) ?? 'unknown')
   if (!limit.allowed) {
     return NextResponse.json(

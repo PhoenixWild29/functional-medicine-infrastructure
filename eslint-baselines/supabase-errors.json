@@ -1,7 +1,7 @@
 {
   "rule": "supabase/no-unchecked-supabase-error",
   "note": "Existing unchecked Supabase errors, skipped by the rule until fixed. This file only shrinks. See scripts/generate-supabase-error-baseline.mjs.",
-  "total": 54,
+  "total": 48,
   "entries": [
     {
       "file": "scripts/seed-formulations-phase2.ts",
@@ -106,12 +106,6 @@
       "count": 1
     },
     {
-      "file": "src/app/(ops-dashboard)/ops/pipeline/page.tsx",
-      "function": "PipelinePage",
-      "line": "const [ordersResult, slasResult, clinicsResult, pharmaciesResult] = await Promise.all([",
-      "count": 4
-    },
-    {
       "file": "src/app/api/favorites/recent/route.ts",
       "function": "GET",
       "line": "const { data: provider } = await supabase",
@@ -142,12 +136,6 @@
       "count": 4
     },
     {
-      "file": "src/app/api/ops/pipeline/route.ts",
-      "function": "GET",
-      "line": "const [ordersResult, slasResult] = await Promise.all([",
-      "count": 1
-    },
-    {
       "file": "src/app/api/orders/[orderId]/record/route.ts",
       "function": "GET",
       "line": "const [orderResult, clinicResult] = await Promise.all([",
@@ -158,12 +146,6 @@
       "function": "GET",
       "line": "await Promise.all([",
       "count": 5
-    },
-    {
-      "file": "src/app/api/orders/compliance-check/route.ts",
-      "function": "GET",
-      "line": "const { data: license } = await supabase",
-      "count": 1
     },
     {
       "file": "src/app/api/pharmacies/shipping/route.ts",

@@ -96,7 +96,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
   const [ackError,    setAckError]    = useState<string | null>(null)
 
   // ── 60-second polling — REQ-SHE-002 ─────────────────────────
-  const { data, isFetching, isError, refetch } = useQuery<SlaResponse>({
+  const { data, dataUpdatedAt, isFetching, isError, refetch } = useQuery<SlaResponse>({
     queryKey:        ['ops-sla'],
     queryFn:         async () => {
       const res = await fetch('/api/ops/sla')
@@ -112,9 +112,10 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
   const slas    = data?.slas    ?? initialSlas
   const handoff = data?.handoff ?? initialHandoff
 
-  // BLK-04: now refreshes each time polled data arrives, preventing stale color classification
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- data is the trigger, not an input: a new poll result takes a new "now"
-  const now = useMemo(() => Date.now(), [data])
+  // BLK-04: now refreshes each time polled data arrives, preventing stale color classification.
+  // The time the query last received data (the initial data counts), not a
+  // clock read during render.
+  const now = dataUpdatedAt
 
   // ── Apply view filter — REQ-SHE-005 ────────────────────────
   const filteredSlas = useMemo(() => {

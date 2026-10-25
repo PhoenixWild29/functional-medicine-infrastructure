@@ -29,6 +29,22 @@ const APP_STATUS: Record<string, string> = { in_progress: 'In progress', submitt
 const SELF_SIGNUP_LABEL = 'ml-2 inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground'
 const date = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString() : '—')
 
+// Both lists, or null when either cannot be loaded.
+async function readLists(): Promise<{ invites: Invite[]; applications: Application[] } | null> {
+  try {
+    const [i, a] = await Promise.all([
+      fetch('/api/ops/onboarding/pharmacy-invites', { cache: 'no-store' }),
+      fetch('/api/ops/onboarding/pharmacies', { cache: 'no-store' }),
+    ])
+    const iData = await i.json() as { invites?: Invite[] }
+    const aData = await a.json() as { applications?: Application[] }
+    if (!i.ok || !a.ok) return null
+    return { invites: iData.invites ?? [], applications: aData.applications ?? [] }
+  } catch {
+    return null
+  }
+}
+
 export function PharmacyOnboardingSection() {
   const [invites, setInvites] = useState<Invite[]>([])
   const [applications, setApplications] = useState<Application[]>([])
@@ -44,23 +60,16 @@ export function PharmacyOnboardingSection() {
   const [link, setLink] = useState<{ pharmacyName: string; url: string } | null>(null)
   const [copied, setCopied] = useState(false)
 
-  const load = useCallback(async () => {
-    try {
-      const [i, a] = await Promise.all([
-        fetch('/api/ops/onboarding/pharmacy-invites', { cache: 'no-store' }),
-        fetch('/api/ops/onboarding/pharmacies', { cache: 'no-store' }),
-      ])
-      const iData = await i.json() as { invites?: Invite[] }
-      const aData = await a.json() as { applications?: Application[] }
-      if (!i.ok || !a.ok) throw new Error('load')
-      setInvites(iData.invites ?? [])
-      setApplications(aData.applications ?? [])
-      setLoadError(null)
-      setLoaded(true)
-    } catch {
+  const load = useCallback(() => readLists().then(lists => {
+    if (!lists) {
       setLoadError('Invites and applications could not be loaded. Refresh to try again.')
+      return
     }
-  }, [])
+    setInvites(lists.invites)
+    setApplications(lists.applications)
+    setLoadError(null)
+    setLoaded(true)
+  }), [])
 
   useEffect(() => { void load() }, [load])
 

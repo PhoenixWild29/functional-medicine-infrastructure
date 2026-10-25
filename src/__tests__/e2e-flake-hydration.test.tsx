@@ -18,7 +18,10 @@
  */
 
 import { act } from 'react'
-import { renderToString } from 'react-dom/server'
+// The Node server renderer, as Next uses on the server. Under jsdom the bare
+// 'react-dom/server' resolves to React 19's browser build, which needs
+// MessageChannel (not in jsdom).
+import { renderToString } from 'react-dom/server.node'
 import { hydrateRoot } from 'react-dom/client'
 import { render, screen, fireEvent } from '@testing-library/react'
 
