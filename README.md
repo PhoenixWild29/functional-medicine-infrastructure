@@ -178,6 +178,7 @@ src/
     get-started/        Self sign-up (clinic, solo provider, pharmacy)
     onboard/            Accept a clinic or pharmacy invite
     join/ intake/       Patient sign-up link (and QR code), patient intake link (token-gated)
+    plan/               Patient chooses a treatment plan from a proposal (token-gated, date of birth first)
     api/                Webhook handlers, cron jobs, API routes
     login/              Email + password login (public)
     unauthorized/       Access denied page with sign-out (public)
@@ -194,6 +195,7 @@ src/
     face-sheet/         Face-sheet fill (Anthropic)
     audit/              PHI access log, keyed hashes
     coaching/           Setup checklist, first-prescription tips
+    proposals/          Patient protocol choice (propose, plan link, choose, sign the choice, expiry)
     orders/             Order state machine, casTransition
     sla/                SLA calculator, creator, resolver
     slack/              Slack alert client and router

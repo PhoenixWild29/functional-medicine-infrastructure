@@ -78,10 +78,11 @@ No login required. Patients are never issued a Supabase session.
 | `/onboard/*`, `/api/onboard/*`, `/api/onboarding/invite/*` | Accepting a clinic or pharmacy invite |
 | `/legal/*` | BAA and terms text |
 | `/api/integrations/keragon/patients` | Keragon EHR patient webhook (HMAC signature with the clinic's shared secret) |
+| `/plan/*`, `/api/plan/*` | The patient's treatment-plan choice link (token checked against its hash; date of birth before any PHI; rate limited) |
 
-## Database Schema (73 tables, 10 enums)
+## Database Schema (77 tables, 10 enums)
 
-Counted from `supabase/migrations/` through 20261024000001. Full ERD: [docs/technical/erd.md](docs/technical/erd.md). The ERD predates the October tables below.
+Counted from `supabase/migrations/` through 20261024000002. Full ERD: [docs/technical/erd.md](docs/technical/erd.md). The ERD predates the October tables below.
 
 **V1.0 (12 tables):** clinics, providers, patients, pharmacies, pharmacy_state_licenses, catalog, catalog_history, orders, order_status_history, webhook_events, order_sla_deadlines, inbound_fax_queue
 
@@ -106,6 +107,7 @@ Counted from `supabase/migrations/` through 20261024000001. Full ERD: [docs/tech
 - Payments: `ledger_entries`, `pharmacy_payables`, `payable_events` and `reconciliation_runs` (append-only).
 - Compliance: `phi_access_log`, `epcs_audit_log`, `retention_runs` and `legal_holds`.
 - Providers: `provider_state_licenses` and `provider_npi_verifications`.
+- Patient protocol choice (#268): `treatment_proposals`, `treatment_proposal_options`, `proposal_choice_items` and `treatment_proposal_events` (the last two append-only), plus `orders.proposal_option_id` and `orders.proposal_required`.
 
 **Phase C multi-Rx payment groups are LIVE:** multiple prescriptions can be bundled into a single patient checkout via `payment_groups`, with `dispute_orders` tracking per-order dispute state.
 
@@ -205,7 +207,18 @@ Since Oct 24 (migration 20261024000001, security review C1), a user JWT cannot w
 - **CSV import** (`/api/patients/import/*`) and **Keragon EHR sync** (`docs/integrations/keragon.md`).
 - **Possible duplicates.** A new patient who matches an existing one gets 409 `POSSIBLE_DUPLICATE`. Each existing patient shown is logged in `phi_access_log`.
 - **+ New Protocol** creates a protocol template directly, with no patient. The creator is the calling provider; a clinic admin may name a provider of the clinic.
-- Choosing a protocol for a patient is pending in #268.
+- **Patient protocol choice** (#268, live; migration 20261024000002, applied on production; design: `docs/design/patient-protocol-choice.md`; code: `src/lib/proposals/`):
+  - **Proposing.** The provider builds DRAFT lines as usual and, instead of signing, chooses "Send to patient for choice". The lines are grouped as options (Option A, B, ...) in a `treatment_proposals` row, with `treatment_proposal_options`; the lines are tagged by `orders.proposal_option_id` and `orders.proposal_required`.
+  - **Checks first.** Every signing check except the signature runs first, so a line that could not be signed is never offered. A controlled substance can never be proposed.
+  - **Who sends.** The provider, or a clinic admin on their behalf. A medical assistant may prepare a proposal but not send it (403 `MA_CANNOT_SEND`).
+  - **The link.** The patient gets `/plan/<token>`: a 32-byte token stored only as SHA-256. It lasts 7 days, is replaced on re-send, and stops working once signed. It locks after 5 wrong date-of-birth tries. The link is copied, shown as a QR code, or texted when SMS is set up and the patient opted in; each delivery is recorded. Before the date-of-birth check the page shows no PHI.
+  - **Choosing and signing.** The patient chooses an option; the choice is recorded in `proposal_choice_items` (append-only), and every step is a `treatment_proposal_events` row (append-only).
+    - The provider then signs only the chosen lines, through the existing batch sign. Every check runs again, and the payment link or payment group goes out as for any signed order. A clinic admin may sign as their own linked, NPI-verified provider; a medical assistant cannot.
+    - A failed check stops the whole choice, and nothing is signed.
+    - After signing, the lines not chosen go DRAFT → CANCELLED and stay tagged, so the clinic sees what was not chosen. Cancelling a proposal cancels all its lines.
+    - Signed protocol options start or advance the patient's protocol instance.
+  - **Expiry.** A Vercel cron (`/api/cron/proposal-expiry`) expires a sent or chosen proposal 7 days after sending and cancels its draft lines. The link then says it has expired.
+  - **Where it shows.** On the clinic dashboard a proposed line is a "Proposed" order: a DRAFT tagged to the proposal. There is no new order status.
 - **Submission failure reason.** An order in SUBMISSION_FAILED, FAX_FAILED or PHARMACY_REJECTED shows one plain line in the clinic order drawer: where it was going, why, and what happens next. The reason maps the latest failed adapter submission's error code (`src/lib/orders/submission-failure.ts`). Only known codes or an HTTP status are returned; the adapter's message is never shown.
 - **Uploads** are limited to 4 MB (`src/lib/uploads/limits.ts`). Vercel refuses bodies over about 4.5 MB, so the limit is checked in the browser and on the server, and named in the copy. File types are read from the bytes (`src/lib/uploads/sniff.ts`).
 

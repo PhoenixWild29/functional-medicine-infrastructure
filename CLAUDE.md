@@ -63,6 +63,10 @@ Do NOT re-derive the prompt structure from scratch each round. The compounding p
 ## Production SQL and migrations
 
 - Sam runs every SQL statement against production. Agents and CI never touch the production database.
+- As of Oct 25, 2026, the newest migrations on main and on production are 20261024000001 (clinics RLS lockdown, #267) and 20261024000002 (patient protocol choice, #268). These are numbered but still on branches:
+  - 20261024000003: fax `phi_access_log.fax_id`, on `ops-fax-viewer-documo`;
+  - 20261024000004: RLS user-write lockdown, on `rls-user-write-lockdown`;
+  - 20261024000005: reactivation ban, on `security-followups-2`.
 - A migration is applied on prod **before** the PR that needs it merges. Its SQL goes in the PR or commit report.
 - E2E shares one Supabase project, and every E2E run applies all of `supabase/migrations/` to it (`supabase db push` in the job). So a PR with a migration must merge before any other PR runs E2E: the other PR's run would otherwise run against a schema its own branch does not have. Merge migration PRs first, then rebase the others onto main.
 - Numbering: the next free `YYYYMMDD0000NN` across main **and** every pushed branch. Check with `git ls-tree origin/<branch> supabase/migrations/` before you pick one. Every migration has a down file in `supabase/migrations/down/`.
