@@ -39,9 +39,9 @@ it('open: renders the flow with the clinic name', async () => {
 })
 
 it.each([
-  ['expired', /This link has expired/],
-  ['used', /already been used/],
-  ['invalid', /This link is not valid/],
+  ['expired', /This link is no longer active/],
+  ['used', /This link is no longer active/],
+  ['invalid', /This link is no longer active/],
   ['unavailable', /could not be opened right now/],
 ])('%s: says so, with one h1 and no axe violations', async (state, text) => {
   resolveMock.mockResolvedValue({ state })
@@ -49,4 +49,15 @@ it.each([
   expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
   expect(screen.getByRole('main')).toHaveTextContent(text)
   expect((await axe(document.body)).violations).toEqual([])
+})
+
+it('expired, used and unknown links: the same page word for word (it never says whether the link existed)', async () => {
+  const pages = new Set<string>()
+  for (const state of ['expired', 'used', 'invalid']) {
+    resolveMock.mockResolvedValue({ state })
+    const { container, unmount } = render(await IntakePage({ params: Promise.resolve({ token: TOKEN }) }))
+    pages.add(container.innerHTML)
+    unmount()
+  }
+  expect(pages.size).toBe(1)
 })
