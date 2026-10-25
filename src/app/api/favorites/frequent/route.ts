@@ -23,14 +23,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { frequentlyUsed, type RecentOrderRow } from '@/lib/orders/favorite-presets'
+import { FREQUENT_WINDOW_DAYS, frequentlyUsed, type RecentOrderRow } from '@/lib/orders/favorite-presets'
 import { getUserClinicId } from '@/lib/auth/claims'
 
 /**
- * The newest orders read. The counts cover these: a provider writing more
- * than 500 orders in 90 days is counted over their newest 500.
+ * The most orders read from the window. The counts cover these: a
+ * provider writing more than 500 orders in 90 days is counted over their
+ * newest 500.
  */
 const SCAN_LIMIT = 500
+/**
+ * With nothing in the window, the newest orders read for Recent. 8 entries
+ * (FREQUENT_LIMIT) are drawn from these.
+ */
+const RECENT_FALLBACK_LIMIT = 50
 
 export async function GET(req: NextRequest) {
   const supabaseAuth = await createServerClient()
@@ -56,23 +62,36 @@ export async function GET(req: NextRequest) {
   }
   if (!provider) return NextResponse.json({ error: 'Provider not in clinic' }, { status: 403 })
 
-  const { data: orders, error } = await supabase
-    .from('orders')
-    .select('formulation_id, pharmacy_id, created_at, medication_snapshot, pharmacy_snapshot')
-    .eq('clinic_id', clinicId)
-    .eq('provider_id', providerId)
-    .not('formulation_id', 'is', null)
-    .is('deleted_at', null)
-    .neq('status', 'CANCELLED')
-    .order('created_at', { ascending: false })
-    .limit(SCAN_LIMIT)
+  // The window is applied in SQL, so an open reads only the provider's
+  // orders from the last FREQUENT_WINDOW_DAYS days (at most SCAN_LIMIT),
+  // not their newest 500 of all time. Only an empty window reads further
+  // back, and then only RECENT_FALLBACK_LIMIT rows, for Recent.
+  // Follow-up (separate migration): an index on orders (provider_id,
+  // created_at DESC) WHERE deleted_at IS NULL serves both reads.
+  const now = new Date()
+  const since = new Date(now.getTime() - FREQUENT_WINDOW_DAYS * 86_400_000).toISOString()
+  const readOrders = (windowed: boolean) => {
+    let q = supabase
+      .from('orders')
+      .select('formulation_id, pharmacy_id, created_at, medication_snapshot, pharmacy_snapshot')
+      .eq('clinic_id', clinicId)
+      .eq('provider_id', providerId)
+      .not('formulation_id', 'is', null)
+      .is('deleted_at', null)
+      .neq('status', 'CANCELLED')
+    if (windowed) q = q.gte('created_at', since)
+    return q.order('created_at', { ascending: false }).limit(windowed ? SCAN_LIMIT : RECENT_FALLBACK_LIMIT)
+  }
+
+  let { data: orders, error } = await readOrders(true)
+  if (!error && (orders ?? []).length === 0) ({ data: orders, error } = await readOrders(false))
   if (error) {
     console.error('[favorites/frequent] orders could not be read:', error.message)
     return NextResponse.json({ error: 'Frequently used could not be loaded.' }, { status: 500 })
   }
 
   const rows = (orders ?? []) as Array<RecentOrderRow & { pharmacy_snapshot: unknown }>
-  const result = frequentlyUsed(rows)
+  const result = frequentlyUsed(rows, now)
   if (result.items.length === 0) return NextResponse.json({ mode: result.mode, window_days: result.window_days, data: [] })
 
   // Concentration + dosage form for the computed mg, and liveness so a

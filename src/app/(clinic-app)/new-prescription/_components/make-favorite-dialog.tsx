@@ -37,8 +37,14 @@ export interface MakeFavoriteTarget {
 
 interface Props {
   target:      MakeFavoriteTarget
-  /** The drug's other doses, offered unticked. */
+  /** The drug's other doses (the practice's, never a patient's), offered unticked. */
   otherDoses:  ReadonlyArray<DosePreset>
+  /**
+   * The drug's doses pinned only to the session patient. Offered only when
+   * the favorite is for that patient: a patient-only dose never goes onto
+   * the practice card.
+   */
+  patientDoses?: ReadonlyArray<DosePreset>
   /** The session patient, when there is one. */
   patient:     { patientId: string; name: string } | null
   providerId:  string
@@ -47,7 +53,7 @@ interface Props {
   onSaved:     () => Promise<void> | void
 }
 
-export function MakeFavoriteDialog({ target, otherDoses, patient, providerId, onClose, onSaved }: Props) {
+export function MakeFavoriteDialog({ target, otherDoses, patientDoses = [], patient, providerId, onClose, onSaved }: Props) {
   const titleId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
   const [doses, setDoses] = useState<DosePreset[]>(() => mergePresets([target.preset], otherDoses))
@@ -57,6 +63,25 @@ export function MakeFavoriteDialog({ target, otherDoses, patient, providerId, on
   const [newDoseError, setNewDoseError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // A different session patient: start over (scope, doses, ticks), so
+  // nothing chosen for one patient carries to the next. Compared during
+  // render (React's "adjust state when a prop changes"), no extra pass.
+  const patientId = patient?.patientId ?? null
+  const [forPatientId, setForPatientId] = useState(patientId)
+  if (forPatientId !== patientId) {
+    setForPatientId(patientId)
+    setDoses(mergePresets([target.preset], otherDoses))
+    setTicked(new Set([presetKey(target.preset)]))
+    setScope('practice')
+    setNewDose({ dose: '', unit: target.preset.unit, frequency: target.preset.frequency })
+    setNewDoseError(null)
+    setError(null)
+  }
+
+  // What is offered: the practice's doses (and any added here); the
+  // patient's pinned doses only when it is saved for that patient.
+  const offered = scope === 'patient' && patient ? mergePresets(doses, patientDoses) : doses
 
   useEffect(() => { dialogRef.current?.focus() }, [])
 
@@ -88,7 +113,7 @@ export function MakeFavoriteDialog({ target, otherDoses, patient, providerId, on
   }
 
   async function save() {
-    const chosen = doses.filter(p => ticked.has(presetKey(p)))
+    const chosen = offered.filter(p => ticked.has(presetKey(p)))
     if (chosen.length === 0 || saving) return
     setSaving(true)
     setError(null)
@@ -118,7 +143,7 @@ export function MakeFavoriteDialog({ target, otherDoses, patient, providerId, on
     }
   }
 
-  const tickedCount = doses.filter(p => ticked.has(presetKey(p))).length
+  const tickedCount = offered.filter(p => ticked.has(presetKey(p))).length
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -153,7 +178,7 @@ export function MakeFavoriteDialog({ target, otherDoses, patient, providerId, on
 
         <fieldset className="space-y-1">
           <legend className="text-xs font-medium text-muted-foreground">Doses on this favorite</legend>
-          {doses.map(p => (
+          {offered.map(p => (
             <label key={presetKey(p)} className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={ticked.has(presetKey(p))} onChange={() => toggle(p)} />
               {doseText(p)}

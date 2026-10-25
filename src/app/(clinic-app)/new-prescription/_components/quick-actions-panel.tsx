@@ -548,15 +548,25 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadFrequent, children, on
 
   // ── Requirement 19: Frequently used → favorite ─────────
   // The drug's other doses the dialog offers: its other frequently used
-  // doses at this pharmacy, and the clinic's favorites for the formulation.
+  // doses at this pharmacy, and the clinic's practice favorites for the
+  // formulation. Favorites pinned only to the session patient are offered
+  // separately (patientDosesFor), and only when saving for that patient.
   function otherDosesFor(item: FrequentItem): DosePreset[] {
     const fromFrequent = frequentItems
       .filter(i => i.formulation_id === item.formulation_id && (i.pharmacy_id ?? null) === (item.pharmacy_id ?? null) && i.preset)
       .map(i => i.preset!)
     const fromFavorites = favorites
-      .filter(f => f.formulation_id === item.formulation_id)
+      .filter(f => f.formulation_id === item.formulation_id && f.patient_id === null)
       .flatMap(f => f.dose_presets)
     return [...fromFrequent, ...fromFavorites].filter(p => !item.preset || presetKey(p) !== presetKey(item.preset))
+  }
+  function patientDosesFor(item: FrequentItem): DosePreset[] {
+    const patientId = session.patient?.patient_id ?? null
+    if (!patientId) return []
+    return favorites
+      .filter(f => f.formulation_id === item.formulation_id && f.patient_id === patientId)
+      .flatMap(f => f.dose_presets)
+      .filter(p => !item.preset || presetKey(p) !== presetKey(item.preset))
   }
 
   // ── Handle favorite delete (two-step confirm) ─────────
@@ -774,6 +784,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadFrequent, children, on
             <MakeFavoriteDialog
               target={{ ...favoriteDialogItem, preset: favoriteDialogItem.preset }}
               otherDoses={otherDosesFor(favoriteDialogItem)}
+              patientDoses={patientDosesFor(favoriteDialogItem)}
               patient={session.patient ? { patientId: session.patient.patient_id, name: patientName(session.patient) } : null}
               providerId={providerId}
               onClose={() => setFavoriteDialogItem(null)}
