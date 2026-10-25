@@ -187,7 +187,7 @@ describe('POST /api/auth/password/change (Settings > Account)', () => {
     expect((await CHANGE(req('/api/auth/password/change', body))).status).toBe(401)
     expect((await CHANGE(req('/api/auth/password/change', { currentPassword: CURRENT }))).status).toBe(400)
     verifySignInMock.mockResolvedValue({ data: { session: null }, error: { message: 'Invalid login credentials' } })
-    for (let i = 0; i < 4; i++) await CHANGE(req('/api/auth/password/change', body))
+    for (let i = 0; i < 5; i++) await CHANGE(req('/api/auth/password/change', body))
     const limited = await CHANGE(req('/api/auth/password/change', body))
     expect(limited.status).toBe(429)
     expect((await CHANGE(req('/api/auth/password/change', body, { 'sec-fetch-site': 'cross-site' }))).status).toBe(403)

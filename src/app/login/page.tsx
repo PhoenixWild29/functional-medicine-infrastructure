@@ -18,6 +18,11 @@ import { getUserRole, ACCOUNT_DEACTIVATED_MESSAGE } from '@/lib/auth/claims'
 import Link from 'next/link'
 import { LegalFooter } from '@/components/legal/legal-footer'
 
+// B11: notices after a password flow, shown as a status (not an error).
+const LOGIN_NOTICES: Record<string, string> = {
+  password_reset: 'Your password was changed. Sign in with your new password.',
+}
+
 const AUTH_CALLBACK_ERROR_MESSAGES: Record<string, string> = {
   auth_callback_failed: 'Email verification failed. Please try signing in again.',
   // Team invites: the middleware signed out a deactivated team member.
@@ -35,6 +40,9 @@ function LoginForm() {
   const initialError = errorParam
     ? (AUTH_CALLBACK_ERROR_MESSAGES[errorParam] ?? 'Something went wrong. Please try again.')
     : null
+
+  const noticeParam = searchParams.get('notice')
+  const notice = noticeParam ? LOGIN_NOTICES[noticeParam] ?? null : null
 
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
@@ -100,6 +108,12 @@ function LoginForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
 
+      {notice && !error && (
+        <p data-testid="login-notice" role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          {notice}
+        </p>
+      )}
+
       {/* Error — inline below the heading, not a banner */}
       {error && (
         <div
@@ -135,9 +149,15 @@ function LoginForm() {
 
       {/* Password */}
       <div className="space-y-1.5">
-        <label htmlFor="password" className="block text-sm font-medium text-foreground">
-          Password
-        </label>
+        <div className="flex items-baseline justify-between gap-3">
+          <label htmlFor="password" className="block text-sm font-medium text-foreground">
+            Password
+          </label>
+          {/* B11: a reset link by email (Supabase Auth) */}
+          <Link href="/forgot-password" className="text-xs font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            Forgot password?
+          </Link>
+        </div>
         <input
           ref={passwordRef}
           id="password"
