@@ -11,8 +11,12 @@
 // patient cannot be texted, this says so in plain words.
 
 import { useState } from 'react'
-import { QrCode } from '@/app/(clinic-app)/settings/patients/signup-link/_components/qr-code'
+import dynamic from 'next/dynamic'
 import type { TextingOutcome } from '@/lib/proposals/sms'
+
+// The QR code (and the qrcode package) loads when it is first shown, not
+// with the dashboard or the review page.
+const QrCode = dynamic(() => import('@/app/(clinic-app)/settings/patients/signup-link/_components/qr-code').then(m => m.QrCode))
 
 const TEXTING_COPY: Record<TextingOutcome, string> = {
   sent:         'The link was also texted to the patient.',
