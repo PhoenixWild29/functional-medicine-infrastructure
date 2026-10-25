@@ -1,16 +1,15 @@
-task-id: B-2026-10-24-08
+task-id: B-2026-10-25-01
 status: ready
 ---
-Thanks for B-2026-10-24-07 (proposals PR 4, 5c579c1). C is merging it into PR 5.
+Thanks for B-2026-10-24-08 (signup-squatting, 6db6746). PR in turn.
 
-Next: D's M2/M3 from the security review (commit acde0fc on security-review-oct24), the parts that need no email sending (there is no email provider; do NOT switch logins to unconfirmed-until-email-click).
+Urgent: PR #268 (proposals PRs 1-5, branch proposals-pr5-e2e, head 4a58df1) failed E2E (run 40147163413, job 121031265303). Two real failures, both test locators (strict mode), not the app:
+1. e2e/patient-protocol-choice.spec.ts:159: `getByRole('group', { name: 'Option B' }).getByText('Test Compound E2E Injectable 10 mg/mL')` resolved to 2 elements (the first is a <span class="min-w-0 flex-1 break-words text-sm text-foreground">; find the second). Make the locator target the one line the test means (e.g. the line's own role/testid or `.first()` only if both are the same line rendered twice for a reason; prefer a precise locator, and if the same text is rendered twice for no reason, fix the UI).
+2. e2e/accessibility.spec.ts:282 ("the patient plan link ... before the date of birth, and a wrong one"): `getByRole('alert')` matched both the DOB error <p role="alert"> and Next's route announcer `#__next-route-announcer__`. Scope the locator to the plan page (e.g. within the form or main, or by text).
+After fixing those, check the rest of patient-protocol-choice.spec.ts and the plan accessibility tests for any other unscoped getByRole('alert'/'status') or ambiguous getByText and harden them the same way, since retries stopped at the first error.
 
-Branch: `git fetch origin && git checkout -b signup-squatting origin/main`.
+`git fetch origin && git checkout -B proposals-pr5-e2e origin/proposals-pr5-e2e`, fix, `npm run lint` (0 warnings), tsc, Jest; `npx playwright test --list` for the two files. Push proposals-pr5-e2e (normal push; this re-runs #268's CI). Report in the commit body.
 
-1. M3, NPI squatting: today self-serve.ts:121-123 refuses an NPI already on any live provider with 409 NPI_TAKEN before anything is created, so a stranger can claim a real prescriber's NPI and block it, and probe which NPIs are customers. Change: uniqueness is enforced among APPROVED clinics' providers. A pending (unapproved) self-serve provider row does not block another sign-up with the same NPI; at ops approval, if the NPI is already on an approved clinic's live provider, Approve is refused with a clear ops-only message, and the ops review page flags "NPI also claimed by <n> other pending sign-up(s)". The public sign-up answer for an NPI that is taken by an approved clinic is the same generic response as any other validation failure the form can show for NPI (no customer-probing difference). Check every DB unique constraint/index on providers.npi_number; if one blocks this, propose the migration (number after the highest 20261024 one on any pushed branch; report it) and test on PGlite.
-2. M2, email enumeration: the duplicate-email 409 at /api/signup lets anyone probe which emails have accounts. Make the response for "email already has an account" indistinguishable to the client from a successful submit where possible WITHOUT sending email: e.g. a neutral 202 "If this email can be used, your account is ready to sign in; otherwise sign in or reset your password" for both paths, while still creating nothing on the duplicate path. If that cannot be done without breaking the sign-up flow (the new user is signed in right after), explain and keep the 409 but rate-limit it harder and log it; say which you chose and why.
-3. Ops: a way for ops to delete an unapproved self-serve sign-up (clinic, login, provider rows) from the ops review page, with confirmation and an onboarding event. Service role, ops_admin only, same-origin.
-4. Red tests first; E2E: extend e2e/self-serve-signup.spec.ts for the NPI case and the ops delete.
-5. `npm run lint` (0 warnings), tsc, Jest (--maxWorkers=3), build. Push signup-squatting (normal push, no PR). Full report in the final commit body.
+Also flaky in that run (passed on retry): e2e/first-run-checklist.spec.ts:66 ("Show setup checklist" then the "Get set up" region not visible within 15 s). A is taking that one; do not change it.
 
 Do not touch the production database, Vercel, Stripe or secrets.
