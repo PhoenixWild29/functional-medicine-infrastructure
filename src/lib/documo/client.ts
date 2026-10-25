@@ -87,17 +87,21 @@ export type DownloadFaxPdfResult =
 
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46] // %PDF
 
-// The PDF of an inbound fax, by its Documo id. Inbound faxes live only in
-// Documo (the webhook stores the id, never the file), so ops viewing one
-// fetches it here on demand. Never throws; a failure is logged with the
-// HTTP status only (never the key, the account or Documo's response body).
+// Documo's documented Download Fax endpoint (https://docs.documo.com, Fax >
+// Download Fax): v1, by the fax's message id, the API key as Basic auth.
+const DOCUMO_V1_FAX_URL = 'https://api.documo.com/v1/fax'
+
+// The PDF of an inbound fax, by its Documo message id. Inbound faxes live
+// only in Documo (the webhook stores the id, never the file), so ops
+// viewing one fetches it here on demand. Never throws; a failure is logged
+// with the HTTP status only (never the key or Documo's response body).
 export async function downloadFaxPdf(documoFaxId: string): Promise<DownloadFaxPdfResult> {
   try {
     const response = await fetch(
-      `${DOCUMO_BASE_URL}/accounts/${serverEnv.documoAccountId()}/faxes/${encodeURIComponent(documoFaxId)}/download`,
+      `${DOCUMO_V1_FAX_URL}/${encodeURIComponent(documoFaxId)}/download?format=pdf`,
       {
         method: 'GET',
-        headers: { 'X-API-Key': serverEnv.documoApiKey(), Accept: 'application/pdf' },
+        headers: { Authorization: `Basic ${serverEnv.documoApiKey()}`, Accept: 'application/pdf' },
         signal: AbortSignal.timeout(20000),
         cache: 'no-store',
       }
