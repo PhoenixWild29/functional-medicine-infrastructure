@@ -95,9 +95,12 @@ describe('plan: checkboxes, long drug names and prices', () => {
 
   it('each item checkbox sits in a 44x44 tap area', async () => {
     const container = await showPlan()
-    const box = container.querySelector('input[type=checkbox]')!
-    expect(cls(box.closest('label'))).toMatch(/\bh-11\b/)
-    expect(cls(box.closest('label'))).toMatch(/\bw-11\b/)
+    const box = container.querySelector('input[type=checkbox]') as HTMLInputElement
+    // One label (axe: no empty second label), 44px tall, with the box in a 44x44 area.
+    expect(box.labels).toHaveLength(1)
+    expect(cls(box.closest('label'))).toMatch(TAP_44)
+    expect(cls(box.parentElement)).toMatch(/\bh-11\b/)
+    expect(cls(box.parentElement)).toMatch(/\bw-11\b/)
     // The item's accessible name is still its drug name and price.
     expect(screen.getByRole('checkbox', { name: /Semaglutide/ })).toBe(box)
   })

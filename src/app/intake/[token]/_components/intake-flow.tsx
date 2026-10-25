@@ -249,7 +249,8 @@ export function IntakeFlow({ token, clinicName, variant = 'link' }: { token: str
               </p>
             </div>
             <div>
-              <div className="flex items-start gap-3">
+              {/* The whole row is the tap target (44px), not the 20px box. */}
+              <label htmlFor={id('privacy')} className="flex min-h-[44px] cursor-pointer items-start gap-3 py-1">
                 <input
                   id={id('privacy')}
                   type="checkbox"
@@ -259,8 +260,8 @@ export function IntakeFlow({ token, clinicName, variant = 'link' }: { token: str
                   aria-describedby={desc('privacyNotice')}
                   className="mt-1 h-5 w-5 shrink-0 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 />
-                <label htmlFor={id('privacy')} className="text-base text-foreground">I have read the privacy notice.</label>
-              </div>
+                <span className="text-base text-foreground">I have read the privacy notice.</span>
+              </label>
               {fieldError('privacyNotice')}
             </div>
             {signup && (
@@ -279,7 +280,7 @@ export function IntakeFlow({ token, clinicName, variant = 'link' }: { token: str
                 <input id={id('website')} name="website" type="text" tabIndex={-1} autoComplete="off" value={a.website} onChange={e => set('website', e.target.value)} />
               </div>
             )}
-            <div className="flex items-start gap-3">
+            <label htmlFor={id('sms')} className="flex min-h-[44px] cursor-pointer items-start gap-3 py-1">
               <input
                 id={id('sms')}
                 type="checkbox"
@@ -287,8 +288,8 @@ export function IntakeFlow({ token, clinicName, variant = 'link' }: { token: str
                 onChange={e => set('sms', e.target.checked)}
                 className="mt-1 h-5 w-5 shrink-0 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               />
-              <label htmlFor={id('sms')} className="text-base text-foreground">{SMS_CONSENT_TEXT}</label>
-            </div>
+              <span className="text-base text-foreground">{SMS_CONSENT_TEXT}</span>
+            </label>
             <p className="text-sm text-muted-foreground">Texts are optional. If you leave this unticked, your clinic will reach you another way.</p>
             <div className="rounded-lg border border-border p-3 text-sm text-foreground">
               <h3 className="font-semibold">About scanning your license</h3>
@@ -445,7 +446,8 @@ export function IntakeFlow({ token, clinicName, variant = 'link' }: { token: str
 
         {step === 'review' && (
           <div className="space-y-4">
-            <dl className="space-y-3 rounded-lg border border-border p-3 text-base">
+            {/* break-words: a long name, street or city wraps inside the card on a phone. */}
+            <dl className="space-y-3 break-words rounded-lg border border-border p-3 text-base">
               <div><dt className="text-sm text-muted-foreground">Name</dt><dd className="text-foreground">{a.firstName} {a.lastName}</dd></div>
               {signup && <div><dt className="text-sm text-muted-foreground">Mobile number</dt><dd className="text-foreground">{a.mobile.trim()}</dd></div>}
               <div><dt className="text-sm text-muted-foreground">Date of birth</dt><dd className="text-foreground">{a.dateOfBirth}</dd></div>

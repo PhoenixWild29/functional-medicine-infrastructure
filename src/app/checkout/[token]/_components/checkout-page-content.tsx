@@ -153,7 +153,7 @@ function PaymentForm({ token, smsConsent, intentEndpoint, retailCents, onError, 
           disabled={isSubmitting}
           aria-invalid={emailRejected || undefined}
           aria-describedby={[smsConsent ? 'checkout-email-help' : null, emailRejected ? PAY_ERROR_ID : null].filter(Boolean).join(' ') || undefined}
-          className="mt-1 block w-full rounded-lg border border-slate-500 bg-background px-3 py-2 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
+          className="mt-1 block w-full min-h-[44px] rounded-lg border border-slate-500 bg-background px-3 py-2 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
         />
         {smsConsent && (
           <p id="checkout-email-help" className="mt-1 text-xs text-muted-foreground">
@@ -394,7 +394,7 @@ export function CheckoutPageContent({
               Amount due
             </p>
             <div className="mt-2 flex items-start justify-between gap-4">
-              <div>
+              <div className="min-w-0 break-words">
                 {/* REQ-GCX-008: Generic description — no medication name or diagnosis.
                     Phase C Stage 5: for group bundles, swap label + show item count
                     (count is a number, not PHI). */}
@@ -463,7 +463,7 @@ export function CheckoutPageContent({
 
               {/* HSA/FSA eligibility — shown at top of payment area so patients see it before entering card */}
               <div className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-                <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+                <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
                   HSA / FSA
                 </span>
                 <span className="text-xs text-emerald-800">
@@ -554,7 +554,7 @@ export function CheckoutPageContent({
 
           {/* WO-73: Trust badges — 🔒 256-bit TLS + ⚡ Stripe only. NO HIPAA badge (legal risk). */}
           <div className="space-y-1.5 text-center">
-            <div className="flex items-center justify-center gap-5 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
               <span className="flex items-center gap-1.5">
                 <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
                   <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
