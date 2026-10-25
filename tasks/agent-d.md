@@ -1,21 +1,17 @@
-task-id: D-2026-10-25-12
+task-id: D-2026-10-25-13
 status: ready
 ---
-Thanks for D-2026-10-25-11 (what's new source, 6ab63f2).
+Thanks for D-2026-10-25-12 (checklist v2, 674e1e2).
 
-Next: update the prod click-through checklist so it matches the code after every queued branch merges. I will use it to verify prod in the browser right after the merges.
+Next: close the rest of coverage gap 6. The NP asked for clinical difference statements "like Strive's list". Today the GLP-1 statement is required and auto-expanded, but patient-specific statements must be typed each time and cannot be saved. Sam has not decided pre-selection, so do NOT pre-select anything.
 
-Branch: `git checkout docs-run-sheet-v3 && git pull`, then `git merge origin/docs-prod-clickthrough` if your checklist is not already on it. Edit docs/qa/prod-clickthrough-checklist.md (rename nothing).
-Read the code on these origin branches (not main): bundle-security, bundle-ci, bundle-features (B is building it from state-machine-enforcement, rx-quantity-shipping, rx-allergies-required, favorites-frequent, settings-notifications; if not pushed yet, read those five branches), and the five migration branches (ops-fax-viewer-documo, rls-user-write-lockdown-v2, security-followups-2, signup-squatting, rate-limit-db).
-Add or change items for:
-- Rx: allergies/NKDA prompt at Review ("Record allergies or mark NKDA before signing") and on sending a plan; quantity and unit on Review and in the order drawer; fax PDF "Quantity: 30 capsules" / "Quantity: 2 vials" (view the PDF only, do not send a fax); shipping on search cards; multi-pharmacy notice on price, review and sign pages; refills range.
-- Favorites: Frequently used section and the Make favorite dialog (Practice / This patient).
-- Settings > Notifications page content.
-- Friendly error and not-found pages: a safe way to see each (e.g. a nonexistent URL per area), with exact text.
-- Patient token pages: no token in the address bar on checkout after load (DO NOT enter a card), /plan DOB lockout text (do not lock a real link: use a throwaway demo link and say so), neutral invalid-link pages, phone width check at 390 px.
-- Ops: fax viewer (view only), Hybrid tier shown disabled "Not available yet", pipeline filters.
-- Anything else these branches change that a tester can see.
-Keep SAFE / WRITES DATA / NEVER marks on every item. Keep the total under 90 minutes.
-Push docs-run-sheet-v3 (normal push, no PR). Report in the commit body: items added/changed count.
+Branch: `git fetch origin && git checkout -b clinical-difference-saved origin/bundle-features` if it is pushed, else origin/main (say which).
+- Let a provider save a statement they typed as a reusable statement, scoped to the practice (default) or to one patient, for that formulation (or ingredient group, if that is how statements are keyed today; read the code).
+- At the clinical difference step, show saved statements for that formulation (patient-scoped ones first when a patient is in context) as one-click choices next to the standard list. Choosing one fills the field; the provider can still edit. Nothing is chosen automatically.
+- The chosen statement prints on the Rx/fax exactly as today.
+- Storage: if an existing table or jsonb column fits cleanly (e.g. favorites or a clinic settings jsonb), use it with no migration and say why it fits. If it needs a new table, write migration 20261024000009_saved_clinical_statements.sql with its down file, RLS scoped to the clinic (follow the patterns in 000002 treatment_proposals: policies, grants, apply_pharmacy_admin_scope if the convention requires it), and confirm 000009 is the next free number across all origin branches. A migration branch is PREPARED only; it merges after perf-indexes.
+- Server: zod-validated, role-gated (providers and clinic admins save; MAs can use but not save, unless the code's existing rules for favorites say otherwise; follow favorites), clinic-scoped, length-bounded.
+Tests: jest for save, scoping (no cross-clinic, patient-only visible only for that patient), the picker, and the printed Rx. No E2E changes that need new seed tables unless the migration exists.
+Gates: lint (0 warnings), tsc, jest, next build. Push clinical-difference-saved (normal push, no PR). Report in the commit body (include the migration SQL if any).
 
 Do not touch the production database, Vercel, Stripe or secrets.
