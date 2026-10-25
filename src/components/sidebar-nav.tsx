@@ -24,6 +24,7 @@ import {
   X,
   LogOut,
   BarChart3,
+  HelpCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createBrowserClient } from '@/lib/supabase/client'
@@ -214,6 +215,20 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
               <ShowChecklistLink home="/dashboard" />
             </div>
           )}
+          {/* In-app Help for clinic staff (/help) */}
+          <Link
+            href="/help"
+            className={cn(
+              'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+              collapsed && 'justify-center px-2',
+              (pathname === '/help' || pathname.startsWith('/help/')) && 'bg-primary/10 text-primary',
+            )}
+            title={collapsed ? 'Help' : undefined}
+            aria-label={collapsed ? 'Help' : undefined}
+          >
+            <HelpCircle className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+            {!collapsed && <span>Help</span>}
+          </Link>
           <button
             type="button"
             onClick={() => void handleSignOut()}

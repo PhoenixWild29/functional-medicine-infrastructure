@@ -95,6 +95,7 @@ import { ProposalOptions, alignPlan, defaultProposalPlan, planProblems, proposal
 import { PlanLinkPanel } from '@/components/proposals/plan-link-panel'
 import type { SentLink } from '@/lib/proposals/propose'
 import { userMessage } from '@/lib/errors/user-message'
+import { HelpLink } from '@/components/help-link'
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -1316,7 +1317,10 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
           instead of signing now (docs/design/patient-protocol-choice.md). */}
       {proposalRole && (
         <section aria-labelledby="patient-choice-heading" className="space-y-4 rounded-lg border border-border bg-card p-4">
-          <h2 id="patient-choice-heading" className="text-base font-semibold text-foreground">Let the patient choose</h2>
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 id="patient-choice-heading" className="text-base font-semibold text-foreground">Let the patient choose</h2>
+            <HelpLink topic="treatment-plans" />
+          </div>
           <label htmlFor="patient-choice-toggle" className="flex min-h-[44px] items-center gap-2 text-sm text-foreground">
             <input
               id="patient-choice-toggle"

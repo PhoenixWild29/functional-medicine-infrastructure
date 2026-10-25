@@ -48,6 +48,7 @@ import { formatDiagnosis, syringeOptionLabel, shippingTypeLabel } from '@/lib/or
 import { userMessage } from '@/lib/errors/user-message'
 import { multiPharmacyWarning } from '@/lib/orders/reroute'
 import { MultiPharmacyNoticeBanner } from '../../_components/multi-pharmacy-notice'
+import { HelpLink } from '@/components/help-link'
 
 function toCurrency(cents: number): string {
   return '$' + (cents / 100).toFixed(2)
@@ -318,7 +319,10 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
     <div className="space-y-6">
       {proposal && (
         <section aria-label="The patient's choice" className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-950">
-          <p className="font-semibold">{proposal.summary}</p>
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="font-semibold">{proposal.summary}</p>
+            <HelpLink topic="treatment-plans" />
+          </div>
           <p className="mt-1 text-xs">
             These are the prescriptions the patient chose. Signing sends them one payment link; the items they did not choose are cancelled, never signed.
           </p>
