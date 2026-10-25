@@ -37,10 +37,14 @@ import { generateCheckoutToken } from '@/lib/auth/checkout-token'
 import { serverEnv } from '@/lib/env'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { z } from 'zod'
+import { parseParams, uuid } from '@/lib/api/input'
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
 }
+
+const paramsSchema = z.object({ orderId: uuid() })
 
 const CLINIC_APP_ROLES = ['clinic_admin', 'provider', 'medical_assistant'] as const
 
@@ -54,10 +58,8 @@ function isLinkIssuable(status: string): status is LinkIssuableStatus {
 
 export async function POST(
   request: NextRequest,
-  { params }: RouteParams
+  context: RouteParams
 ): Promise<NextResponse> {
-  const { orderId } = await params
-
   // CSRF: reject cross-site POSTs. Same-origin requests from our own app
   // send Sec-Fetch-Site: same-origin. Direct navigations / absent headers
   // (e.g., curl) are fine because they lack a third-party cross-site cookie.
@@ -95,6 +97,12 @@ export async function POST(
   // the clinic (lib/onboarding/approval-guard).
   const pendingReview = await refuseUnlessApproved(createServiceClient(), clinicId)
   if (pendingReview) return pendingReview
+
+  // The order id is an id before it is read (a bad one is a 400, not a
+  // Postgres 22P02 500).
+  const parsed = await parseParams(context, paramsSchema)
+  if (!parsed.ok) return parsed.response
+  const { orderId } = parsed.data
 
   const supabase = createServiceClient()
 

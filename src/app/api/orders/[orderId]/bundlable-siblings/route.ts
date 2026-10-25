@@ -31,8 +31,8 @@ import { createServerClient }        from '@/lib/supabase/server'
 import { createServiceClient }       from '@/lib/supabase/service'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { UUID_RE } from '@/lib/api/input'
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const CLINIC_APP_ROLES = ['clinic_admin', 'provider', 'medical_assistant'] as const
 
 interface RouteParams {
@@ -52,11 +52,6 @@ export async function GET(
     )
   }
 
-  const { orderId } = await params
-  if (!UUID_RE.test(orderId)) {
-    return NextResponse.json({ error: 'Invalid order id' }, { status: 400 })
-  }
-
   const supabaseAuth = await createServerClient()
   // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -73,6 +68,13 @@ export async function GET(
   const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
+  }
+
+  // Any 8-4-4-4-12 id (seeded demo ids are not v4), checked after who is
+  // calling and before the order is read.
+  const { orderId } = await params
+  if (!UUID_RE.test(orderId)) {
+    return NextResponse.json({ error: 'Invalid order id' }, { status: 400 })
   }
 
   const supabase = createServiceClient()

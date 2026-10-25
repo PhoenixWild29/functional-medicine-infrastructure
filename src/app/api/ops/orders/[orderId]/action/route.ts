@@ -35,10 +35,33 @@ import { routeOrder, submitQueuedFax } from '@/lib/adapters/routing-engine'
 import { pharmacySubmissionsEnabled, PHARMACY_SUBMISSIONS_OFF_MESSAGE } from '@/lib/adapters/submission-switch'
 import type { OrderStatusEnum } from '@/types/database.types'
 import { getUserRole } from '@/lib/auth/claims'
+import { z } from 'zod'
+import { MAX_NAME, UUID_RE, badRequest, parseInput, uuid } from '@/lib/api/input'
+import { readObjectBody } from '@/app/api/ops/_lib/body'
 
 interface Params { params: Promise<{ orderId: string }> }
 
 const MAX_REROUTES = 2  // HC-06
+
+const ACTIONS = new Set(['claim', 'release', 'add_tracking', 'cancel_refund', 'retry_submission', 'force_fax', 'retry_fax', 'reroute'])
+
+// Each action's own fields: a string within its bound (an email for the
+// assignee; tracking number and carrier 200) and, for reroute, an optional
+// pharmacy id. A missing field keeps the message its case below gives.
+const MAX_EMAIL = 254
+const optionalText = (max: number) => z.string().max(max).optional().nullable()
+const ACTION_FIELDS: Record<string, z.ZodType> = {
+  claim:        z.object({ opsAssignee: optionalText(MAX_EMAIL) }),
+  add_tracking: z.object({ trackingNumber: optionalText(MAX_NAME), carrier: optionalText(MAX_NAME) }),
+  reroute:      z.object({ pharmacyId: z.union([uuid(), z.literal(''), z.null()]).optional() }),
+}
+
+function invalidActionFields(action: string, body: Record<string, unknown>): NextResponse | null {
+  const schema = ACTION_FIELDS[action]
+  if (!schema) return null
+  const r = parseInput(schema, body)
+  return r.ok ? null : r.response
+}
 
 export async function POST(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request)
@@ -57,18 +80,23 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
   if (!orderId) {
     return NextResponse.json({ error: 'Missing orderId' }, { status: 400 })
   }
+  // An 8-4-4-4-12 hex id: a malformed one reached Postgres (22P02) as a 500.
+  if (!UUID_RE.test(orderId)) return badRequest('Invalid request', ['orderId'])
 
-  let body: Record<string, unknown>
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
+  const parsed = await readObjectBody(request)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
 
-  const action = body['action'] as string | undefined
-  if (!action) {
+  const action = body['action']
+  if (typeof action !== 'string' || !action) {
     return NextResponse.json({ error: 'Missing action' }, { status: 400 })
   }
+  // The action and its fields are checked before the order is read.
+  if (!ACTIONS.has(action)) {
+    return NextResponse.json({ error: `Unknown action: ${action.slice(0, 64)}` }, { status: 400 })
+  }
+  const fieldsInvalid = invalidActionFields(action, body)
+  if (fieldsInvalid) return fieldsInvalid
 
   const actorEmail = user.email ?? 'ops_admin'
   const actor      = `ops:${actorEmail}`

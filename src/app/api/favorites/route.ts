@@ -36,6 +36,15 @@ import { parseTitrationSteps } from '@/lib/orders/titration'
 import { cycleLengthFrom, cyclePatternFrom } from '@/lib/orders/cycling'
 import { isNoRows } from '@/lib/supabase/no-rows'
 import { getUserClinicId } from '@/lib/auth/claims'
+import { UUID_RE, badRequest } from '@/lib/api/input'
+import { MAX_REFILLS } from '@/lib/orders/rx-details'
+
+/** A uuid, or the field name that is not one (ids reach Postgres: 22P02 is a 500). */
+function badIds(fields: Record<string, unknown>): string[] {
+  return Object.entries(fields)
+    .filter(([, v]) => typeof v === 'string' && !UUID_RE.test(v))
+    .map(([k]) => k)
+}
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
@@ -304,6 +313,15 @@ async function createFavorite(req: NextRequest): Promise<NextResponse> {
   const formulationId = body['formulation_id']
   const pharmacyId = typeof body['pharmacy_id'] === 'string' && body['pharmacy_id'] ? body['pharmacy_id'] : null
   const patientId = typeof body['patient_id'] === 'string' && body['patient_id'] ? body['patient_id'] : null
+  const notIds = badIds({ provider_id: providerId, formulation_id: formulationId, pharmacy_id: pharmacyId, patient_id: patientId })
+  if (notIds.length > 0) return badRequest('Invalid request', notIds)
+  // Refills: an integer 0..MAX_REFILLS (the builder's range); a value past
+  // the column's range was a 500. Anything that is not an integer still
+  // falls back to 0, as before.
+  const rawRefills = body['default_refills']
+  if (typeof rawRefills === 'number' && Number.isInteger(rawRefills) && rawRefills > MAX_REFILLS) {
+    return badRequest('Invalid request', ['default_refills'])
+  }
 
   // Verify provider belongs to this clinic
   const validIds = await getClinicProviderIds(clinicId)
@@ -400,12 +418,15 @@ async function editFavorite(req: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(req.url)
   const favoriteId = searchParams.get('id')
   if (!favoriteId) return NextResponse.json({ error: 'Missing id param' }, { status: 400 })
+  if (!UUID_RE.test(favoriteId)) return badRequest('Invalid request', ['id'])
 
   // The body is optional (the panel's use-count bump sends none).
   let body: unknown = null
   try { body = await req.json() } catch { body = null }
   const validation = validateFavoriteEdit(body)
   if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 })
+  const notIds = badIds({ pharmacy_id: validation.patch['pharmacy_id'], patient_id: validation.patch['patient_id'] })
+  if (notIds.length > 0) return badRequest('Invalid request', notIds)
   const isEdit = FAVORITE_EDITABLE_FIELDS.some(k => k in validation.patch)
 
   const supabase = createServiceClient()
@@ -490,6 +511,7 @@ async function deleteFavorite(req: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(req.url)
   const favoriteId = searchParams.get('id')
   if (!favoriteId) return NextResponse.json({ error: 'Missing id param' }, { status: 400 })
+  if (!UUID_RE.test(favoriteId)) return badRequest('Invalid request', ['id'])
 
   const supabase = createServiceClient()
 

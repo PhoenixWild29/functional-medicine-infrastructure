@@ -14,10 +14,10 @@ import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { Enums } from '@/types/database.types'
 import { getUserRole } from '@/lib/auth/claims'
+// Any 8-4-4-4-12 hex id: the seeded demo ids are not RFC v4.
+import { UUID_RE } from '@/lib/api/input'
 
 type RegulatoryStatusEnum = Enums<'regulatory_status_enum'>
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 interface Params { params: Promise<{ pharmacyId: string }> }
 

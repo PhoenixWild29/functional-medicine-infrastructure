@@ -92,13 +92,14 @@ function toResponse(row: PatientAllergyRow) {
 // ── GET ─────────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+  // Who is calling first, then the id (a bad id never reaches Postgres).
+  const auth = await resolveCaller()
+  if (!auth.ok) return auth.response
+
   const { patientId } = await params
   if (!UUID_RE.test(patientId)) {
     return NextResponse.json({ error: 'Invalid patientId' }, { status: 400 })
   }
-
-  const auth = await resolveCaller()
-  if (!auth.ok) return auth.response
 
   const supabase = createServiceClient()
   const { data, error } = await supabase
@@ -126,13 +127,14 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
 // ── PATCH ───────────────────────────────────────────────────────────
 
 export async function PATCH(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+  // Who is calling first, then the id (a bad id never reaches Postgres).
+  const auth = await resolveCaller()
+  if (!auth.ok) return auth.response
+
   const { patientId } = await params
   if (!UUID_RE.test(patientId)) {
     return NextResponse.json({ error: 'Invalid patientId' }, { status: 400 })
   }
-
-  const auth = await resolveCaller()
-  if (!auth.ok) return auth.response
 
   let body: unknown
   try {

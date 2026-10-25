@@ -24,6 +24,18 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId } from '@/lib/auth/claims'
+import { z } from 'zod'
+import { parseQuery, uuid } from '@/lib/api/input'
+
+// Every id an id before it is read (a bad one reaching Postgres is a
+// 22P02); retailCents, when sent, a whole number of cents.
+const querySchema = z.object({
+  patientId:   uuid(),
+  providerId:  uuid(),
+  pharmacyId:  uuid(),
+  itemId:      uuid(),
+  retailCents: z.string().regex(/^\d{0,12}$/).optional(),
+})
 
 export interface ComplianceCheckResult {
   id:      string   // e.g. 'pharmacy_license'
@@ -41,26 +53,27 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { searchParams } = request.nextUrl
-  const patientId   = (searchParams.get('patientId')   ?? '').trim()
-  const providerId  = (searchParams.get('providerId')  ?? '').trim()
-  const pharmacyId  = (searchParams.get('pharmacyId')  ?? '').trim()
-  const itemId      = (searchParams.get('itemId')      ?? '').trim()
-  // BLK-06: retailCents passed so check 4 (retail >= wholesale) can be evaluated
-  const retailCents = parseInt(searchParams.get('retailCents') ?? '', 10)
-
-  if (!patientId || !providerId || !pharmacyId || !itemId) {
-    return NextResponse.json(
-      { error: 'patientId, providerId, pharmacyId, itemId required' },
-      { status: 400 }
-    )
-  }
-
   const clinicId = getUserClinicId(user) ?? null
 
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }
+
+  const { searchParams } = request.nextUrl
+  const present = (k: string) => (searchParams.get(k) ?? '').trim()
+  if (!present('patientId') || !present('providerId') || !present('pharmacyId') || !present('itemId')) {
+    return NextResponse.json(
+      { error: 'patientId, providerId, pharmacyId, itemId required' },
+      { status: 400 }
+    )
+  }
+  const trimmed = new URLSearchParams()
+  for (const [k, v] of searchParams) trimmed.append(k, v.trim())
+  const query = parseQuery(trimmed, querySchema)
+  if (!query.ok) return query.response
+  const { patientId, providerId, pharmacyId, itemId } = query.data
+  // BLK-06: retailCents passed so check 4 (retail >= wholesale) can be evaluated
+  const retailCents = parseInt(query.data.retailCents ?? '', 10)
 
   const supabase = createServiceClient()
 

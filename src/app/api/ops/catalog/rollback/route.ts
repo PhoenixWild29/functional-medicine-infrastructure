@@ -18,8 +18,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getUserRole } from '@/lib/auth/claims'
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+// Any 8-4-4-4-12 hex id: the seeded demo ids are not RFC v4.
+import { UUID_RE } from '@/lib/api/input'
+import { readObjectBody } from '@/app/api/ops/_lib/body'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
@@ -31,20 +32,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  let body: Record<string, unknown>
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
+  const parsed = await readObjectBody(request)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
 
-  const pharmacyId      = body['pharmacyId']      as string | undefined
-  const targetHistoryId = body['targetHistoryId'] as string | undefined
+  const pharmacyId      = body['pharmacyId']
+  const targetHistoryId = body['targetHistoryId']
 
-  if (!pharmacyId || !UUID_RE.test(pharmacyId)) {
+  if (typeof pharmacyId !== 'string' || !UUID_RE.test(pharmacyId)) {
     return NextResponse.json({ error: 'Invalid or missing pharmacyId' }, { status: 400 })
   }
-  if (!targetHistoryId || !UUID_RE.test(targetHistoryId)) {
+  if (typeof targetHistoryId !== 'string' || !UUID_RE.test(targetHistoryId)) {
     return NextResponse.json({ error: 'Invalid or missing targetHistoryId' }, { status: 400 })
   }
 

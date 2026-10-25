@@ -24,6 +24,8 @@ import {
 } from '@/lib/catalog/map-catalog-row'
 import type { Enums } from '@/types/database.types'
 import { getUserRole } from '@/lib/auth/claims'
+import { MAX_SEARCH, UUID_RE, badRequest } from '@/lib/api/input'
+import { VALID_REGULATORY_STATUSES } from '@/lib/catalog/validate-csv-rows'
 
 type RegulatoryStatusEnum = Enums<'regulatory_status_enum'>
 
@@ -98,10 +100,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const statusFilter     = searchParams.get('status')
   const searchQuery      = searchParams.get('search')
 
-  // Validate UUID if provided
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  // Validate UUID if provided: any 8-4-4-4-12 hex id (the seeded demo ids
+  // are not RFC v4).
   if (pharmacyIdFilter && !UUID_RE.test(pharmacyIdFilter)) {
     return NextResponse.json({ error: 'Invalid pharmacyId' }, { status: 400 })
+  }
+  // The status is a regulatory status (any case): an unknown one reached
+  // Postgres as an invalid enum value. The search is bounded.
+  if (statusFilter && !(VALID_REGULATORY_STATUSES as readonly string[]).includes(statusFilter.toUpperCase())) {
+    return badRequest('Invalid request', ['status'])
+  }
+  if (searchQuery && searchQuery.length > MAX_SEARCH) {
+    return badRequest('Invalid request', ['search'])
   }
 
   const supabase = createServiceClient()

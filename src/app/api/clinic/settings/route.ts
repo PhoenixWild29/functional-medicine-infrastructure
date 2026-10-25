@@ -28,6 +28,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { badRequest } from '@/lib/api/input'
+
+/** Longest logo URL stored (a Supabase Storage public URL is ~150). */
+const MAX_LOGO_URL = 2048
 
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
   // Auth gate
@@ -59,6 +63,12 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     body = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
+
+  // A JSON body that is not an object (null, an array, a string) used to
+  // throw on the field reads below: a 500.
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return badRequest('Invalid request', ['(body)'])
   }
 
   const updates: Record<string, unknown> = {}
@@ -104,6 +114,9 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     if (url !== null) {
       if (typeof url !== 'string' || url.trim() === '') {
         return NextResponse.json({ error: 'logo_url must be a non-empty string or null' }, { status: 400 })
+      }
+      if (url.length > MAX_LOGO_URL) {
+        return badRequest('Invalid request', ['logo_url'])
       }
       // Must be a valid https URL (Supabase Storage URLs are always https)
       try {

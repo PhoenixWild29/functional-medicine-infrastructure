@@ -13,7 +13,10 @@
 // REQ-SCS-008: Stale data indicator (catalog updated_at > 7 days).
 // REQ-SCS-011: DEA schedule >= 2 → flag, restrict to Tier 4 only.
 //
-// Auth: Requires active Clinic App session.
+// Auth: a verified clinic user (getUser(); provider, medical assistant or
+// clinic admin from app_metadata): the results carry wholesale prices.
+// Input, before any read: state a US license state (lib/providers/states),
+// itemId an id (a bad id reaching Postgres was a 500), form at most 200.
 // Response: { results: PharmacySearchResult[] }
 
 import { checkLicensure, isSterileProduct, normalizeFacilityType, readLicenses, todayIso } from '@/lib/compliance/pharmacy-licensure'
@@ -21,6 +24,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { IntegrationTierEnum } from '@/types/database.types'
+import { getUserRole } from '@/lib/auth/claims'
+import { US_STATES } from '@/lib/providers/states'
+import { MAX_NAME, parseInput, uuid } from '@/lib/api/input'
+import { z } from 'zod'
+
+const CLINIC_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
+const SearchInput = z.object({ itemId: uuid(), form: z.string().max(MAX_NAME) })
 
 // ── Tier ordering for sort (lower = ranked first) ────────────
 // API-connected tiers (1 and 3) ranked above portal/fax (2 and 4)
@@ -78,6 +88,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  if (!CLINIC_ROLES.has(getUserRole(user) ?? '')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const { searchParams } = request.nextUrl
   const patientState = (searchParams.get('state') ?? '').trim().toUpperCase()
@@ -85,7 +98,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const formFilter   = (searchParams.get('form') ?? '').trim()
 
   // REQ-SCS-002: state is required
-  if (!patientState || patientState.length !== 2) {
+  if (!US_STATES.has(patientState)) {
     return NextResponse.json(
       { error: 'state parameter required (2-letter US state code)' },
       { status: 400 }
@@ -98,6 +111,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       { status: 400 }
     )
   }
+
+  const checked = parseInput(SearchInput, { itemId, form: formFilter })
+  if (!checked.ok) return checked.response
 
   const supabase = createServiceClient()
 

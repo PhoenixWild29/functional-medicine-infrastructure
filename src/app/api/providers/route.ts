@@ -37,12 +37,19 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { npiChecksumValid } from '@/lib/providers/npi'
 import { runNpiCheck } from '@/lib/providers/verify-npi'
 import { appMetadataFor, getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { MAX_NAME, UUID_RE } from '@/lib/api/input'
 
 // ── Validation constants ────────────────────────────────────────────
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+// Any 8-4-4-4-12 hex id (lib/api/input): the seeded demo clinic ids are
+// not RFC v4, so the v4-only pattern used before refused them.
 const NPI_RE  = /^\d{10}$/
 const MIN_PASSWORD_LENGTH = 12
+// Supabase Auth refuses a password over 72 characters (bcrypt); refused
+// here, before the clinic and NPI checks, instead of as a 500 from createUser.
+const MAX_PASSWORD_LENGTH = 72
+// RFC 5321: an address is at most 254 characters.
+const MAX_EMAIL_LENGTH = 254
 
 // Mirrors the CHECK constraint in supabase/migrations/20260317000002_create_v1_tables.sql:31
 const US_STATES = new Set<string>([
@@ -94,32 +101,52 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
+  // JSON null, an array or a scalar is not a body (null was a thrown 500).
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
 
   const errs: string[] = []
 
   if (!body.email || typeof body.email !== 'string' || !body.email.includes('@')) {
     errs.push('email must be a valid email address')
+  } else if (body.email.trim().length > MAX_EMAIL_LENGTH) {
+    errs.push(`email must be at most ${MAX_EMAIL_LENGTH} characters`)
   }
   if (!body.password || typeof body.password !== 'string' || body.password.length < MIN_PASSWORD_LENGTH) {
     errs.push(`password must be at least ${MIN_PASSWORD_LENGTH} characters`)
+  } else if (body.password.length > MAX_PASSWORD_LENGTH) {
+    errs.push(`password must be at most ${MAX_PASSWORD_LENGTH} characters`)
   }
   if (!body.firstName || typeof body.firstName !== 'string' || !body.firstName.trim()) {
     errs.push('firstName is required')
+  } else if (body.firstName.trim().length > MAX_NAME) {
+    errs.push(`firstName must be at most ${MAX_NAME} characters`)
   }
   if (!body.lastName || typeof body.lastName !== 'string' || !body.lastName.trim()) {
     errs.push('lastName is required')
+  } else if (body.lastName.trim().length > MAX_NAME) {
+    errs.push(`lastName must be at most ${MAX_NAME} characters`)
   }
-  if (!body.npiNumber || !NPI_RE.test(body.npiNumber)) {
+  if (!body.npiNumber || typeof body.npiNumber !== 'string' || !NPI_RE.test(body.npiNumber)) {
     errs.push('npiNumber must be exactly 10 digits')
   } else if (!npiChecksumValid(body.npiNumber)) {
     // Compliance C4: the NPI check digit (Luhn with the 80840 prefix).
     errs.push('npiNumber is not a valid NPI (the check digit does not match)')
   }
-  if (!body.licenseState || !US_STATES.has(body.licenseState)) {
+  if (!body.licenseState || typeof body.licenseState !== 'string' || !US_STATES.has(body.licenseState)) {
     errs.push('licenseState must be a valid 2-letter US state/territory code')
   }
   if (!body.licenseNumber || typeof body.licenseNumber !== 'string' || !body.licenseNumber.trim()) {
     errs.push('licenseNumber is required')
+  } else if (body.licenseNumber.trim().length > MAX_NAME) {
+    errs.push(`licenseNumber must be at most ${MAX_NAME} characters`)
+  }
+  // Optional; a non-string was a thrown 500 at .trim().
+  if (body.deaNumber != null && typeof body.deaNumber !== 'string') {
+    errs.push('deaNumber must be text')
+  } else if (typeof body.deaNumber === 'string' && body.deaNumber.trim().length > MAX_NAME) {
+    errs.push(`deaNumber must be at most ${MAX_NAME} characters`)
   }
 
   if (errs.length > 0) {
@@ -141,7 +168,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     targetClinicId = callerClinicId
   } else {
     // ops_admin path
-    if (!body.clinicId || !UUID_RE.test(body.clinicId)) {
+    if (!body.clinicId || typeof body.clinicId !== 'string' || !UUID_RE.test(body.clinicId)) {
       return NextResponse.json({ error: 'ops_admin must specify a valid clinicId in the request body' }, { status: 400 })
     }
     targetClinicId = body.clinicId

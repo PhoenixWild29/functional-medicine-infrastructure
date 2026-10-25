@@ -27,9 +27,37 @@ import { loadRxDefaults } from '@/lib/orders/rx-defaults-loader'
 import { packageOptionsFromRows } from '@/lib/orders/rx-details'
 import { isLivePharmacy, type PharmacyLiveness } from '@/lib/pharmacies/live'
 import { getUserClinicId } from '@/lib/auth/claims'
+import { z } from 'zod'
+import { MAX_NAME, MAX_SEARCH, UUID_RE, boundedText, parseQuery } from '@/lib/api/input'
 
 /** Upper bound on formulation ids per rx_defaults request. */
 const RX_DEFAULTS_MAX_IDS = 50
+
+/** An id parameter: absent or empty (treated as absent, as before), else a uuid. */
+const idParam = z.string().refine(v => v === '' || UUID_RE.test(v), 'must be an id').optional()
+
+/**
+ * The query, checked before anything is read. Every id reaches Postgres
+ * (a bad one was a 22P02 500, "Internal server error"); text is bounded.
+ * `level` stays a plain string so an unknown one keeps its own message
+ * below. `ids` (rx_defaults) is a comma list: each entry must be a uuid;
+ * its count is checked by the level, as before.
+ */
+const FormulationsQuery = z.object({
+  level:          boundedText(MAX_NAME).optional(),
+  q:              boundedText(MAX_SEARCH).optional(),
+  category:       boundedText(MAX_NAME).optional(),
+  state:          boundedText(MAX_NAME).optional(),
+  ingredient_id:  idParam,
+  salt_form_id:   idParam,
+  dosage_form_id: idParam,
+  route_id:       idParam,
+  formulation_id: idParam,
+  ids: z.string()
+    .max((36 + 1) * RX_DEFAULTS_MAX_IDS * 2)
+    .refine(v => v.split(',').map(x => x.trim()).filter(Boolean).every(x => UUID_RE.test(x)), 'must be ids')
+    .optional(),
+})
 
 export async function GET(req: NextRequest) {
   // Auth check
@@ -39,8 +67,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const supabase = createServiceClient()
   const { searchParams } = new URL(req.url)
+  const checked = parseQuery(searchParams, FormulationsQuery)
+  if (!checked.ok) return checked.response
+
+  const supabase = createServiceClient()
   const level = searchParams.get('level') ?? 'ingredients'
 
   try {

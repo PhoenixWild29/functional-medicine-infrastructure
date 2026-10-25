@@ -12,10 +12,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import type { Enums } from '@/types/database.types'
+import { Constants, type Enums } from '@/types/database.types'
 import { getUserRole } from '@/lib/auth/claims'
+import { UUID_RE, badRequest } from '@/lib/api/input'
+import { readObjectBody } from '@/app/api/ops/_lib/body'
 
 type SlaTypeEnum = Enums<'sla_type_enum'>
+
+const SLA_TYPES = new Set<string>(Constants.public.Enums.sla_type_enum)
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
@@ -27,19 +31,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  let body: Record<string, unknown>
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
+  const parsed = await readObjectBody(request)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
 
-  const orderId = body['orderId'] as string | undefined
-  const slaType = body['slaType'] as string | undefined
+  const rawOrderId = body['orderId']
+  const rawSlaType = body['slaType']
+  const orderId = typeof rawOrderId === 'string' ? rawOrderId.trim() : ''
+  const slaType = typeof rawSlaType === 'string' ? rawSlaType.trim() : ''
 
-  if (!orderId?.trim() || !slaType?.trim()) {
+  if (!orderId || !slaType) {
     return NextResponse.json({ error: 'orderId and slaType required' }, { status: 400 })
   }
+  // An 8-4-4-4-12 hex id and one of sla_type_enum: either malformed reached
+  // Postgres (invalid uuid / enum value) as a 500.
+  const bad = [!UUID_RE.test(orderId) && 'orderId', !SLA_TYPES.has(slaType) && 'slaType'].filter((f): f is string => !!f)
+  if (bad.length > 0) return badRequest('Invalid request', bad)
 
   // NB-11: email ?? user.id (UUID always present) so acknowledged_by is always traceable
   const actorEmail = user.email ?? user.id

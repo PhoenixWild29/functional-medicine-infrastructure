@@ -33,6 +33,32 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createCipheriv, randomBytes, randomUUID } from 'crypto'
 import { createServiceClient } from '@/lib/supabase/service'
+import { parseInput, UUID_RE } from '@/lib/api/input'
+import { z } from 'zod'
+// The spec's closed list (openapi WebhookRegisterRequest.event_types).
+import { WEBHOOK_EVENT_TYPES } from '@/lib/spec/webhook-event-types'
+
+const MAX_CALLBACK_URL = 2048
+const MAX_SECRET = 1024
+const MAX_EVENT_TYPES = 50
+
+// Checked after the messages below have had their say (a missing field
+// keeps its own message): the pharmacy id is an id (a bad one reaching
+// Postgres is error 22P02), event types are the closed list, and the URL
+// and secret are bounded. event_types that is absent or not a list still
+// means every event, as before.
+const RegisterBody = z.looseObject({
+  pharmacy_id:  z.string().regex(UUID_RE, 'must be an id'),
+  callback_url: z.string().max(MAX_CALLBACK_URL),
+  secret:       z.string().max(MAX_SECRET),
+  event_types:  z.unknown().superRefine((v, ctx) => {
+    if (!Array.isArray(v)) return
+    if (v.length > MAX_EVENT_TYPES) ctx.addIssue({ code: 'custom', message: `at most ${MAX_EVENT_TYPES} event types` })
+    v.forEach((t, i) => {
+      if (!(WEBHOOK_EVENT_TYPES as readonly unknown[]).includes(t)) ctx.addIssue({ code: 'custom', message: 'unknown event type', path: [i] })
+    })
+  }).optional(),
+})
 
 // ── Encrypt the HMAC signing secret (AES-256-GCM) ───────────
 // Format stored in webhook_secret_encrypted: iv:authTag:ciphertext (all hex)
@@ -92,6 +118,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
+  // JSON null, an array or a scalar is not a body (null was a thrown 500).
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
 
   const { pharmacy_id, callback_url, event_types, secret } = body
 
@@ -110,6 +140,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { status: 400 }
     )
   }
+
+  const checked = parseInput(RegisterBody, body)
+  if (!checked.ok) return checked.response
 
   // AC-SPC-004.3: Reject non-HTTPS callback URLs
   let parsedUrl: URL

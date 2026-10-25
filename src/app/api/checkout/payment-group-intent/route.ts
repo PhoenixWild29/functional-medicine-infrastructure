@@ -20,7 +20,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyCheckoutToken }       from '@/lib/auth/checkout-token'
 import { createStripeClient }        from '@/lib/stripe/client'
+import { badRequest }                from '@/lib/api/input'
 import { createServiceClient }       from '@/lib/supabase/service'
+
+/** Upper bound on a checkout token's length (a JWT of a few ids). */
+const MAX_CHECKOUT_TOKEN = 2048
 
 const EMAIL_PATTERN  = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const INVALID_TLD_RE = /\.invalid$/i
@@ -48,9 +52,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { token, email } = body
+  // A JSON body of null used to throw on this destructure (a 500); an
+  // array or another non-object has no token.
+  const { token, email } = (body && typeof body === 'object' && !Array.isArray(body) ? body : {}) as Partial<typeof body>
   if (typeof token !== 'string' || !token) {
     return NextResponse.json({ error: 'Missing token' }, { status: 400 })
+  }
+  // The token is the credential: an oversize one is refused before it is
+  // decoded or verified. Real checkout JWTs are a few hundred characters.
+  if (token.length > MAX_CHECKOUT_TOKEN) {
+    return badRequest('Invalid request', ['token'])
   }
 
   // C7: validated (the checkout page's contract is unchanged) but never

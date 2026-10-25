@@ -20,14 +20,16 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { resolveTimelineActors } from '@/lib/orders/timeline-actors'
 import { getUserClinicId } from '@/lib/auth/claims'
+import { z } from 'zod'
+import { parseParams, uuid } from '@/lib/api/input'
+
+const paramsSchema = z.object({ orderId: uuid() })
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
 }
 
-export async function GET(_request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
-  const { orderId } = await params
-
+export async function GET(_request: NextRequest, context: RouteParams): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) {
@@ -37,9 +39,11 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }
-  if (!orderId) {
-    return NextResponse.json({ error: 'orderId required' }, { status: 400 })
-  }
+  // The order id is an id before it is read (a bad one is a 400, not a
+  // Postgres 22P02 500).
+  const parsed = await parseParams(context, paramsSchema)
+  if (!parsed.ok) return parsed.response
+  const { orderId } = parsed.data
 
   const supabase = createServiceClient()
 
