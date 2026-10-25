@@ -5,7 +5,8 @@ An audit of what main implements against the practising NP's feedback, done befo
 ## Sources
 
 - **Primary:** `docs/practitioner-feedback/2026-09-11-gina-rooks-email.md` (Gina Rooks NP) and `docs/practitioner-feedback/2026-09-11-product-run-thru-transcript.md`.
-- **Oct 5 meeting:** no document on main covers it. Searches of `docs/` for "Oct 5", "October 5", "2026-10-05" and "10-05" found nothing. The only hits for "Anila" are in the Sep 11 transcript and in `docs/phase21-practitioner-feedback-workorders.md`, which also cites Sep 11. **No requirements were added from Oct 5.** If notes from that meeting exist, they need to be committed before they can be audited.
+- **Oct 5 run-through:** `docs/meetings/2026-10-05-run-through.md`, notes rebuilt from what Sam relayed (no transcript). Audited in the section "Oct 5 run-through" below: asks 2, 3, 4, 5, 6, 7 and 9, and decisions 1, 3 and 6. Ask 1 and ask 10 were answered in the meeting; ask 8 and decisions 2, 4, 5 and 7 are process or policy, not code.
+- **Unmerged branches:** an item done only on an origin branch is PARTIAL (not on main), with the branch named. These branches were checked with `git diff --stat origin/main...origin/<branch>`. Already squash-merged, nothing extra: ehr-sync-keragon, intake-self-service, intake-face-sheet, invite-accept-rate-limit, compliance-consent-intake-foundations, compliance-wcag-checkout-intake. With real unmerged work: signup-squatting, security-followups-2, rate-limit-db, rls-user-write-lockdown-v2, ops-fax-viewer-documo, and (after this audit) rx-quantity-shipping and favorites-frequent.
 
 ## Verdict rule
 
@@ -212,15 +213,135 @@ When more than one vial is dispensed, the Rx contradicts itself. This is the gap
 
 ---
 
+## Oct 5 run-through (Lauren Perkins, cofounder, and Anila)
+
+Source: `docs/meetings/2026-10-05-run-through.md`. Same rule as above: code on main only.
+
+### Ask 2. Is the admin dashboard set up? Follow-up: full admin click-through
+- **Code:**
+  - `app/(clinic-app)/practice/page.tsx` and `_components/practice-dashboard.tsx` ("Practice Dashboard": period buttons, "Needs attention", breakdown tabs).
+  - `app/(clinic-app)/settings/page.tsx` ("Clinic Settings"): sections Payouts / Stripe Connect, Clinic Profile, Sign-in Security, Team, Patients, Access log, Integrations, Notifications and Agreements.
+  - Subpages `/settings/team`, `/settings/patients/import`, `/settings/patients/signup-link`, `/settings/access-log`, `/settings/integrations`, `/settings/agreements`.
+- **UI:** sidebar "Practice" and "Settings". Settings links: "Manage the team", "Import patients", "Patient sign-up link", "Open the access log", "Open EHR sync". Admin-only toggle "Show the practice dashboard to providers".
+- **Tests:** `app/(clinic-app)/practice/__tests__/practice-dashboard.test.tsx`, `practice-custom-period.test.tsx`, and the `settings/__tests__/` files (nav order and active state, team link, read-only for non-admins, settings form). E2E covers it in pieces: `clinic-app.spec.ts` (/practice and /settings), `rbac.spec.ts`, `team-invites.spec.ts`, `patient-import.spec.ts`, `patient-signup-link.spec.ts`, `mfa.spec.ts`.
+- **Verdict: PARTIAL.**
+  - The admin pages are all there.
+  - There is no single admin click-through on main, neither an E2E walk nor a checklist. The prod click-through checklist (`docs/qa/prod-clickthrough-checklist.md`, clinic admin section) is only on the unmerged branch **docs-prod-clickthrough**.
+  - Notifications is a placeholder: "Email and SMS notification preferences are not yet configurable." and "Coming soon: configurable preferences".
+
+### Ask 3 and decision 3. The clinic admin lands on the Practice dashboard
+- **Code:** `lib/auth/landing-route.ts` (`defaultLandingRoute`: clinic_admin → `/practice`, provider and MA → `/dashboard`; `postLoginDestination` lets a safe `redirectTo` win). Called from `app/login/page.tsx`, `app/mfa/challenge/page.tsx`, `app/mfa/enroll/page.tsx` and `app/page.tsx` (the "/" redirect).
+- **UI:** sign in as a clinic admin → "Practice Dashboard".
+- **Tests:** `lib/auth/__tests__/landing-route.test.ts`; E2E `auth.spec.ts` (lands on `/practice`), `rbac.spec.ts`, `clinic-app.spec.ts`.
+- **Verdict: DONE.**
+
+### Ask 4. How do we add patients? Follow-up: patient intake portal, zero typing for staff
+- **Code:**
+  - "+ New patient" in `np/_components/patient-provider-selector.tsx` and `new-patient-form.tsx`. POST `/api/patients` sets intake_status 'pending', creates the intake link and texts it (`IntakeLinkPanel` shows "Copy link").
+  - Patient side: `/intake/[token]` ("Complete your details", `app/intake/[token]/_components/intake-flow.tsx`, POST `/api/intake/[token]`).
+  - Sign-up link: `/join/[token]` ("Sign up as a new patient", POST `/api/join/[token]`), managed at `/settings/patients/signup-link` ("Create a sign-up link", "Copy link", "Print", QR code).
+  - CSV import: `/settings/patients/import` ("Import patients": "Choose a file", "Match the columns", "Review before importing"). Required columns are first name, last name and date of birth (`lib/patients/import/mapping.ts`, which knows Cerbo, Healthie, OptiMantra and IntakeQ header names).
+  - Face-sheet fill on the new-patient form ("Drop a face sheet", "Choose a face sheet file", "Paste text instead"; POST `/api/patients/face-sheet`). Shown only when `faceSheetAvailable()` (`lib/face-sheet/config.ts`): ANTHROPIC_API_KEY set and FACE_SHEET_AI_ENABLED not "false".
+  - Keragon sync (ask 7) adds patients with no typing.
+- **UI typing left for staff:** on "+ New patient", only "Mobile number" is required; "First name (optional)", "Last name (optional)" and "State (optional)" follow. The patient types the rest at `/intake`. The sign-up link and Keragon need no staff typing; the CSV import needs a column mapping, not per-patient typing.
+- **Tests:** `np/_components/__tests__/new-patient.test.tsx`, `face-sheet-fill.test.tsx`, `app/intake/[token]/__tests__/*`, `app/join/[token]/__tests__/page.test.tsx`, `lib/intake/__tests__/*`, `app/api/patients/__tests__/create-patient.test.ts`, `settings/patients/import/__tests__/*`, `settings/patients/signup-link/__tests__/signup-link.test.tsx`; E2E `intake.spec.ts`, `patient-signup-link.spec.ts`, `patient-import.spec.ts`, `face-sheet-fill.spec.ts`.
+- **Verdict: PARTIAL.**
+  - The intake portal, the sign-up link, the import and the face sheet are all on main.
+  - "Zero typing" is not met on the staff path: the mobile number is typed unless a face sheet is read, and the face sheet only appears when the AI key is configured (the prod setting is not visible from code).
+  - The shared rate limit for `/api/join` and the face sheet is on the unmerged branch **rate-limit-db** (hardening, not part of the ask).
+
+### Ask 5. How do we add providers? Follow-up: Team page with invites and prescriber verification
+- **Code:**
+  - `app/(clinic-app)/settings/team/page.tsx` ("Team") with `_components/team-panel.tsx` and `credentials-editor.tsx`; POST `/api/team/providers` and `/api/team/invites`, approved clinics only.
+  - NPI registry check in `lib/providers/npi.ts` and `verify-npi.ts` (POST `/api/providers/[providerId]/npi-check`).
+  - Signing refuses an unverified NPI or a missing or expired license (`lib/orders/batch-sign.ts`).
+  - Ops approval needs "I checked this provider's license with the state board" for an unverified NPI (`lib/onboarding/provider-review.ts`; the server returns 422 without it).
+- **UI (/settings/team):**
+  - "Team members" (Name, Email, Role, Status; "Deactivate" / "Reactivate").
+  - "Add a provider" (First name, Last name, Email, NPI, "State licenses", "Add another license"; "Add provider").
+  - "Invite a medical assistant or clinic admin" (Name, Email, Role; "Create invite").
+  - "Invite link ready" with "Copy link"; "Pending invites" with "Resend" / "Revoke".
+  - Per provider: "Save license", "Re-run NPI check".
+- **Tests:** `settings/team/__tests__/team-panel.test.tsx`, `settings/__tests__/team.test.tsx`, `lib/providers/__tests__/npi.test.ts` and the other provider tests, `app/api/ops/onboarding/__tests__/approve-unverified.test.ts`, `lib/onboarding/__tests__/provider-review.test.ts`; E2E `team-invites.spec.ts`, `self-serve-signup.spec.ts` (Approve disabled until the license check is ticked).
+- **Verdict: DONE.** Hardening is unmerged: NPI squatting at approval and duplicate-email probing on **signup-squatting**; the reactivation ban (L12) on **security-followups-2**.
+
+### Ask 6. How are new clinics and pharmacies added? Follow-up: clinic and pharmacy onboarding portals
+- **Code and UI, clinics:**
+  - Ops "Clinic onboarding" (`/ops/onboarding`: "Invite a clinic", "Clinics in onboarding", "Approved clinics", "Clinic invites"; review at `/ops/onboarding/[clinicId]`).
+  - Invite accept at `/onboard/clinic/[token]`.
+  - The clinic wizard `/onboarding` (practice, providers, staff, BAA, terms, payouts, review; `lib/onboarding/steps.ts`).
+  - Self-serve `/get-started` (from /login, "New to CompoundIQ? Get started"; "I'm a provider (solo practice)", "I run a clinic or practice").
+- **Code and UI, pharmacies:**
+  - Ops "Pharmacy onboarding" (`/ops/onboarding/pharmacies`: "Invite a pharmacy", "Invites", "Applications"; review at `/ops/onboarding/pharmacies/[applicationId]`).
+  - Invite accept at `/onboard/pharmacy/[token]`.
+  - The wizard `/pharmacy/onboarding` (details, facility, licenses, ordering, shipping, BAA, terms, catalog; `lib/pharmacy-onboarding/steps.ts`).
+  - Self-serve "I run a compounding pharmacy" on `/get-started`.
+- **Tests:** `app/get-started/__tests__/get-started-form.test.tsx`, `app/api/signup/__tests__/route.test.ts`, `lib/signup/__tests__/self-serve.test.ts`, `app/api/onboarding/__tests__/*`, `ops/onboarding/__tests__/*`, `app/api/__tests__/pharmacy-onboarding-routes.test.ts`, `app/pharmacy/__tests__/pharmacy-onboarding-ui.test.tsx`, `lib/pharmacy-onboarding/__tests__/*`; E2E `self-serve-signup.spec.ts`, `clinic-onboarding-status.spec.ts`, `pharmacy-onboarding-a11y.spec.ts`.
+- **Verdict: DONE.** The clinic payouts step is not live; approval sets a demo payout account. Ops deleting an unapproved self sign-up is on the unmerged branch **signup-squatting**.
+
+### Ask 7. Do we connect to a clinic's existing EHR? Import plus live sync via Keragon, then a direct connector (likely Cerbo)
+- **Code (Keragon):**
+  - `lib/integrations/keragon/*` (access, connection, contract, mapping, signature, sync, webhook).
+  - Webhook POST `/api/integrations/keragon/patients`: HMAC-signed, one patient per event, upsert by external id, possible duplicates flagged and never merged, a patient's own intake answers never overwritten.
+  - `/api/integrations/keragon/connection` and `/connection/secret`.
+- **UI:**
+  - Clinic admin `/settings/integrations` ("EHR sync": "Connection", "Generate secret", "Rotate secret" then "Rotate now", "Disconnect" then "Disconnect now", "Sync log").
+  - Ops "EHR sync" (`/ops/integrations`).
+- **Tests:** `settings/integrations/__tests__/ehr-sync-panel.test.tsx`, `app/api/integrations/keragon/__tests__/patients-route.test.ts`, `lib/integrations/keragon/__tests__/*`; E2E `ehr-sync-keragon.spec.ts`.
+- **Verdict, Keragon import plus live sync: PARTIAL.**
+  - Live inbound patient sync is done.
+  - "Import" means one patient per event: there is no bulk pull of an existing EHR's patients through Keragon (the bulk path is the CSV import).
+  - Nothing flows back to the EHR.
+  - The branch ehr-sync-keragon is already on main. The cross-site check change for the Keragon routes (L6) is on the unmerged branch **security-followups-2**.
+- **Verdict, direct Cerbo connector: MISSING.** Cerbo appears in code only as CSV header names (`lib/patients/import/mapping.ts`). Which EHR the pilots use is still unanswered in the meeting notes.
+
+### Ask 9. Sending orders to pharmacies, with an on/off switch
+- **Code:**
+  - `lib/adapters/submission-switch.ts` with `lib/env.ts`: on only when PHARMACY_SUBMISSIONS_ENABLED is exactly "true"; unset means off.
+  - Checked by the Stripe webhook, the routing engine, the submit-paid-orders, sla-check and fax-retry crons, the ops order action (423) and `/api/adapters/submit`.
+  - Asserted again inside the Tier 1, Tier 2 and Tier 4 senders and the Documo client.
+- **UI:** none shows the switch. A refused ops action shows "Pharmacy submissions are turned off. Nothing was sent and the order was not changed." in the order drawer.
+- **Tests:** `lib/adapters/__tests__/submission-kill-switch.test.ts`. No E2E.
+- **Verdict: DONE.**
+  - The prod value is a Vercel environment variable and cannot be read from code.
+  - Gap: ops cannot see whether the switch is on until an action is refused.
+
+### Decision 1. Patient intake (each part)
+- **(a) Prescribe now, hold the order until intake is finished: DONE.**
+  - Review sets `intakePending` (`np/review/_components/batch-review-form.tsx`) and offers "Save as Draft: Sign When the Patient Finishes".
+  - The server refuses to sign: `lib/orders/batch-sign.ts`, intake_pending, "the patient has not finished their details yet. Nothing was signed". `signBatch` is the only signing path; proposal signing goes through it too.
+  - The server refuses payment: `app/api/checkout/payment-intent/route.ts` and `payment-group-intent/route.ts`.
+  - Tests: `lib/orders/__tests__/batch-sign.test.ts` (intake_pending), the two checkout route tests, `intake-pending-session.test.tsx`. No test asserts the "Save as Draft: Sign When the Patient Finishes" button, and no E2E walks the hold.
+- **(b) License scan optional: DONE.** `/intake/[token]` "Your details" offers "Scan my license" or "Type my details" (`license-scanner.tsx`, `lib/intake/aamva.ts`); New Hampshire is typed only. Tests: `intake-flow.test.tsx`, `lib/intake/__tests__/aamva.test.ts`.
+- **(c) Sex collected: DONE.**
+  - The intake "Sex" radio offers Female, Male and "Prefer not to say", and is required to submit (`lib/intake/submission.ts`).
+  - Stored in `patients.sex` (migration `20261006000001_patient_consent_intake_foundations.sql`).
+  - Staff form: "Sex (optional)".
+  - Tests: `lib/intake/__tests__/*`, `intake-flow.test.tsx`.
+- **(d) Current medications free text: DONE.** "Current medications (optional)", a textarea at intake and on the staff form; `patients.current_medications` TEXT (migration `20261015000001_patient_self_intake.sql`). Tests: `intake-flow.test.tsx`, `lib/intake/__tests__/*`.
+- (e) Keragon for EHR sync during the pilots: see ask 7.
+
+### Decision 6. All pharmacies, clinics and patients on prod are demo; pharmacy submissions on
+- **Code:**
+  - Demo markers: `lib/stripe/demo-account.ts` ("Demo payout account" for `poc_placeholder*` and `acct_poc_*`).
+  - `lib/clinics/demo-payouts.ts` (DEMO_PAYOUTS_ON_APPROVAL).
+  - `demo_seed` provider credential rows, which disable "Re-run NPI check".
+  - `lib/poc/*` seed rows under POC_MODE, and `/ops/demo-tools`.
+  - The submissions switch defaults to off.
+- **Tests:** `settings/__tests__/stripe-demo-account-label.test.tsx`, `app/api/ops/onboarding/__tests__/approve-demo-payouts.test.ts`, `lib/poc/__tests__/*`, `lib/adapters/__tests__/submission-kill-switch.test.ts`; E2E `clinic-onboarding-status.spec.ts`.
+- **Verdict: PARTIAL.**
+  - There is no demo or real flag on clinics, pharmacies or patients, so the code treats a real pharmacy and a demo one the same. Only payout ids, `demo_seed` rows and POC seed markers tell them apart.
+  - Whether prod holds only demo data, and whether PHARMACY_SUBMISSIONS_ENABLED is "true" there, cannot be seen from code; it needs a check of the prod data and environment.
+
 ## Summary
 
 | # | Requirement | Verdict | Gap |
 |---|---|---|---|
 | 1 | mg next to favorite doses | DONE | mg only when the formulation has an mg/mL concentration |
 | 2 | Days supply on the Rx | DONE | |
-| 3 | Quantity to dispense | PARTIAL | PDF and every adapter also send `Quantity: 1`, contradicting the Dispense line |
+| 3 | Quantity to dispense | PARTIAL | PDF and every adapter also send `Quantity: 1`, contradicting the Dispense line (fixed on unmerged branch rx-quantity-shipping) |
 | 4 | Vial size by price, auto, multiples | DONE | needs a duration and priced packages; shares the `Quantity: 1` defect |
-| 5 | Refills | DONE | search step caps at 5, Review at 12 |
+| 5 | Refills | DONE | search step caps at 5, Review at 12 (one 0 to 12 range on unmerged branch rx-quantity-shipping) |
 | 6 | GLP-1 clinical difference | PARTIAL | auto-expands but nothing pre-selected; Strive-style statements not offered or savable |
 | 7 | Syringes or none | DONE | no count or size (not asked) |
 | 8 | Shipping type (cold chain) | DONE | non-GLP-1 refrigerated products default to Standard |
@@ -230,12 +351,33 @@ When more than one vial is dispensed, the Rx contradicts itself. This is the gap
 | 12 | Edit at Review, Back, pending queue | DONE | queue is per browser tab |
 | 13 | Edit a draft, add Rx to it | DONE | |
 | 14 | Sign all at once | DONE | 25 per batch, own drafts only |
-| 15 | Shipping with pricing, double-shipping warning | PARTIAL | no shipping on the pharmacy cards; warning only at Review, not for saved drafts |
+| 15 | Shipping with pricing, double-shipping warning | PARTIAL | no shipping on the pharmacy cards; warning only at Review, not for saved drafts (both on unmerged branch rx-quantity-shipping) |
 | 16 | Favorite opens the dose step | DONE | |
 | 17 | Doses grouped under the drug | DONE | one card per pharmacy and concentration |
 | 18 | Sorted A to Z and by category | DONE | |
-| 19 | Frequently used, convertible | PARTIAL | it is "Recent" (last 8), not frequency |
+| 19 | Frequently used, convertible | PARTIAL | it is "Recent" (last 8), not frequency (Frequently used, 90 days, on unmerged branch favorites-frequent) |
 | 20 | Patient-scoped favorites | DONE | |
 | 21 | Patient protocol choice | DONE | |
 
-**Totals:** 16 DONE, 5 PARTIAL, 0 MISSING. No Oct 5 requirements were found on main.
+Sep 11 (Gina Rooks): 16 DONE, 5 PARTIAL, 0 MISSING.
+
+| # | Oct 5 item | Verdict | Gap |
+|---|---|---|---|
+| A2 | Admin dashboard, full admin click-through | PARTIAL | no admin click-through on main (checklist only on docs-prod-clickthrough); Notifications is a placeholder |
+| A3 | Clinic admin lands on Practice | DONE | |
+| A4 | Add patients, zero staff typing | PARTIAL | staff still type the mobile number unless a face sheet is read; the face sheet needs the AI key |
+| A5 | Add providers, invites, prescriber verification | DONE | squatting and reactivation hardening on signup-squatting and security-followups-2 |
+| A6 | Clinic and pharmacy onboarding portals | DONE | clinic payouts step not live (demo payout on approval) |
+| A7a | EHR import plus live sync via Keragon | PARTIAL | inbound per-patient events only; no bulk pull, nothing back to the EHR |
+| A7b | Direct EHR connector (Cerbo) | MISSING | not built; pilot EHR still unanswered |
+| A9 | Pharmacy submissions with an on/off switch | DONE | switch state not shown to ops; prod value not visible from code |
+| D1a | Prescribe now, hold until intake finished | DONE | no button test, no E2E of the hold |
+| D1b | License scan optional | DONE | |
+| D1c | Sex collected | DONE | |
+| D1d | Current meds free text | DONE | |
+| D3 | Clinic admin lands on Practice | DONE | same as A3 |
+| D6 | Prod all demo, submissions on | PARTIAL | no demo/real flag in the data model; prod data and env not visible from code |
+
+Oct 5: 9 DONE, 4 PARTIAL, 1 MISSING.
+
+**Totals:** 25 DONE, 9 PARTIAL, 1 MISSING (35 items).
