@@ -1,46 +1,18 @@
-task-id: D-2026-10-25-08
+task-id: D-2026-10-25-09
 status: ready
 ---
-Thanks for D-2026-10-25-07 (favorites-frequent, f2c1220).
+Thanks for D-2026-10-25-08 (Oct 5 audit, 21de866).
 
-Next: the Oct 5 meeting coverage audit you could not do because the notes were not in the repo. Here they are.
+Next: the source content for the cofounder review run sheet (v3.0). I will turn it into a Word document; you write the AI-facing source.
 
-Branch: `git checkout docs-requirements-coverage && git pull` (your audit branch, df950e5), then `git merge origin/main` if needed.
-1. Add docs/meetings/2026-10-05-run-through.md with exactly the content between the markers below.
-2. Add a section "Oct 5 run-through (Lauren Perkins, cofounder, and Anila)" to docs/qa/practitioner-requirements-coverage.md, same treatment as before (code on main, how to reach it with exact labels, tests, verdict DONE/PARTIAL/MISSING, gap) for: asks 2, 3, 4, 5, 6, 7, 9 and decisions 1, 3, 6. For decision 1 check each part separately (prescribe now and hold the order until intake is finished; license scan optional; sex collected; current meds free text). Where an item is only done on an unmerged branch, say which branch (check origin branches: e.g. ops-fax-viewer-documo, security-followups-2, signup-squatting, rate-limit-db, rls-user-write-lockdown-v2) and mark it PARTIAL (not on main).
-3. Update the summary table and counts.
-Push docs-requirements-coverage (normal push, no PR). Report in the commit body: counts and gaps, one line each.
-
---- BEGIN docs/meetings/2026-10-05-run-through.md ---
-# Run-through with Lauren Perkins and Anila, 2026-10-05
-
-Rebuilt from what Sam relayed during the meeting (no transcript). Prod version bcd935e at the start. Sam drove as Dr. Chen; the clinic admin account was also used.
-
-## Questions and asks
-1. What does "API" in the Method column mean? Answer: how the order reaches the pharmacy (API = straight into the pharmacy system with automatic status updates, Tier 1; Fax = faxed signed Rx, Tier 4; Portal and Hybrid in between).
-2. Is the admin dashboard set up? Follow-up: full admin click-through.
-3. The clinic admin should land on the Practice dashboard by default. Agreed.
-4. How do we add patients? Follow-up: patient intake portal (zero typing for staff).
-5. How do we add providers? Follow-up: Team page with invites (providers, MAs, admins) and prescriber verification.
-6. How are new clinics and pharmacies added? Follow-up: clinic onboarding portal; pharmacy onboarding portal.
-7. Do we connect to a clinic's existing EHR/EMR? Yes, after native intake: import plus live sync via Keragon, then a direct connector for the pilots' EHR (likely Cerbo).
-8. HIPAA and compliance. Follow-up: BAAs, policies, compliance engineering items.
-9. Turn on sending orders to pharmacies. Built with an on/off switch; switch on in prod (all pharmacies are demo).
-10. Competitor research. Done outside the repo.
-
-## Decisions (Sam, Oct 5 to 6)
-1. Patient intake: prescribe now and hold the order until the patient finishes intake; license scan optional; collect sex; current meds free text; Keragon for EHR sync during pilots.
-2. EHR integration: yes, after native intake.
-3. Clinic admin lands on Practice.
-4. Documents versioned; prompts only in chat.
-5. Orchestrator plans, reviews, merges and verifies; agents build in parallel.
-6. All pharmacies, clinics and patients on prod are demo; pharmacy submissions on.
-7. Everything built stays compliant; compliance engineering goes first in the queue.
-
-## Not yet answered
-- Which EHR do the pilot clinics use (decides the first direct connector)?
-- Weekly dosing for 90 days: 12 or 13 doses?
-- Revenue model and markup (healthcare counsel).
---- END ---
+Branch: `git fetch origin && git checkout -b docs-run-sheet-v3 origin/docs-prod-clickthrough` (reuse your checklist).
+Write docs/qa/run-sheet-v3-source.md: a click-by-click demo script for a 45 to 60 minute walk-through with the cofounder on prod, assuming every branch in the merge queue has merged (your coverage doc lists them; include rx-quantity-shipping, rx-allergies-required, favorites-frequent, error-boundaries, token-pages-hardening, checkout-token-out-of-url, settings-notifications if it lands).
+Structure:
+1. Before the call: accounts to sign in (Sunrise clinic admin admin@sunrise-clinic.com, provider Dr. Chen, ops admin), browser tabs to open, demo orders to have ready (DEMO-1001..1015, DEMO-1011 failed).
+2. The story, in order: clinic admin lands on Practice; team and invites; adding patients (intake link, sign-up link/QR, CSV import); provider writes an Rx with every field the NP asked for (days supply, quantity with the real vial count, vial auto-select, refills, clinical difference, syringes, shipping type, allergies/NKDA required, diagnosis, special instructions), favorites and Frequently used, edit at review, Sign all; patient protocol choice end to end (propose, Copy link/QR, /plan DOB, choose, provider signs chosen lines); checkout page (show it, NEVER enter a card); order drawer status, failure reason on DEMO-1011; ops pipeline filters, approval with license check, fax viewer; pharmacy onboarding.
+3. For each step: exact clicks, exact visible text to point at, one line on why it matters to a clinic, and the NEVER items (card entry, Reset Credentials on /ops/demo-tools, Re-run NPI check on demo providers, anything sending real SMS/fax/email, Approve on a real clinic).
+4. Expected questions and short honest answers: EHR (Keragon live inbound sync; no direct Cerbo connector yet; which EHR do pilots use?), HIPAA/BAAs (none signed yet; demo data only), how pharmacies receive orders (API/Portal/Hybrid/Fax tiers; Hybrid not available yet), payments (Stripe live; demo payouts), what is not built yet (from your coverage gaps).
+Keep it plain and short. Read the code for labels; do not guess.
+Push docs-run-sheet-v3 (normal push, no PR). Report in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
