@@ -17,6 +17,11 @@
 //
 // Phase 21 rule 1: this is a row on the existing Review card, not a
 // step. Rule 5: copy says "provider", never "doctor".
+//
+// Coverage gap 6: the clinic's saved clinical difference statements for
+// the line's formulation are listed as one-click choices (this patient's
+// first) next to the standard list, and a typed statement can be saved
+// for the practice or the patient. Nothing is chosen automatically.
 
 import { useEffect, useId, useRef, useState } from 'react'
 import {
@@ -36,6 +41,7 @@ import {
   type SyringeOption,
 } from '@/lib/orders/rx-details'
 import { dosingDaysIn, type CyclePattern } from '@/lib/orders/cycling'
+import { SAVED_STATEMENT_MAX, SAVED_STATEMENT_MIN } from '@/lib/clinical-statements/saved'
 
 interface Props {
   /** Stable per-line id — used for input ids and test hooks. */
@@ -50,6 +56,122 @@ interface Props {
   packageCount?: number | null
   /** Cycling dose math: the line's on/off pattern — its dosing days are shown with the days supply. */
   cycle?: CyclePattern | null
+  /** Gap 6: the line's formulation; its saved clinical difference statements are offered. None (a catalog line) → none. */
+  formulationId?: string | null
+  /** Gap 6: the session patient, for statements saved for this patient only. */
+  patient?: { patientId: string; name: string } | null
+}
+
+interface SavedStatement {
+  statement_id: string
+  statement:    string
+  scope:        'patient' | 'practice'
+}
+
+/**
+ * Gap 6: the saved statements for this formulation as one-click choices,
+ * and an offer to save the statement typed in the field. Choosing one
+ * only fills the field (onPick); nothing is chosen on load.
+ */
+function SavedClinicalStatements({ lineId, formulationId, patient, current, standardOptions, disabled, onPick }: {
+  lineId:          string
+  formulationId:   string
+  patient:         { patientId: string; name: string } | null
+  current:         string | null
+  standardOptions: ReadonlyArray<string>
+  disabled:        boolean
+  onPick:          (statement: string) => void
+}) {
+  const [saved, setSaved] = useState<SavedStatement[]>([])
+  const [loaded, setLoaded] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const patientId = patient?.patientId ?? null
+
+  useEffect(() => {
+    let cancelled = false
+    const qs = new URLSearchParams({ formulation_id: formulationId })
+    if (patientId) qs.set('patient_id', patientId)
+    void (async () => {
+      try {
+        const res = await fetch(`/api/clinical-statements?${qs.toString()}`)
+        const json = res.ok ? await res.json() as { data?: SavedStatement[] } : { data: [] }
+        if (!cancelled) setSaved(json.data ?? [])
+      } catch {
+        if (!cancelled) setSaved([])
+      } finally {
+        if (!cancelled) setLoaded(true)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [formulationId, patientId])
+
+  const typed = (current ?? '').trim()
+  const offerSave = loaded
+    && typed.length >= SAVED_STATEMENT_MIN && typed.length <= SAVED_STATEMENT_MAX
+    && !standardOptions.includes(typed)
+    && !saved.some(s => s.statement.trim().toLowerCase() === typed.toLowerCase())
+
+  async function save(forPatient: boolean) {
+    if (saving) return
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/clinical-statements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formulation_id: formulationId, statement: typed, patient_id: forPatient ? patientId : null }),
+      })
+      const json = await res.json().catch(() => ({})) as { data?: SavedStatement; error?: string }
+      if (!res.ok || !json.data) throw new Error(json.error ?? 'The statement could not be saved.')
+      const row = json.data
+      setSaved(prev => prev.some(s => s.statement_id === row.statement_id) ? prev : [...prev, row])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The statement could not be saved.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (saved.length === 0 && !offerSave && !error) return null
+  return (
+    <div className="mt-1 space-y-1">
+      {saved.length > 0 && (
+        <div data-testid={`saved-clinical-statements-${lineId}`}>
+          <p className="text-[11px] text-muted-foreground">Saved statements</p>
+          <div className="mt-0.5 flex flex-wrap gap-1">
+            {saved.map(s => (
+              <button
+                key={s.statement_id}
+                type="button"
+                aria-label={`Use: ${s.statement}`}
+                disabled={disabled}
+                onClick={() => onPick(s.statement)}
+                className="rounded-md border border-border bg-background px-2 py-0.5 text-left text-[11px] hover:bg-muted/50 disabled:opacity-50"
+              >
+                {s.statement}
+                {s.scope === 'patient' && patient && <span className="ml-1 text-muted-foreground">For {patient.name}</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {offerSave && (
+        <div data-testid={`save-clinical-statement-${lineId}`} className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+          <span>Save this statement for next time:</span>
+          <button type="button" disabled={disabled || saving} onClick={() => { void save(false) }} className="rounded-md border border-border px-2 py-0.5 font-medium text-foreground hover:bg-muted/50 disabled:opacity-50">
+            Save for the practice
+          </button>
+          {patient && (
+            <button type="button" disabled={disabled || saving} onClick={() => { void save(true) }} className="rounded-md border border-border px-2 py-0.5 font-medium text-foreground hover:bg-muted/50 disabled:opacity-50">
+              Save for {patient.name} only
+            </button>
+          )}
+        </div>
+      )}
+      {error && <p className="text-[11px] text-red-700" data-testid={`save-clinical-statement-error-${lineId}`}>{error}</p>}
+    </div>
+  )
 }
 
 const OTHER = '__other__'
@@ -68,7 +190,7 @@ function summaryLine(d: RxDetails, rules: RxRules, packageLabel: string | null |
   return parts.join(' · ')
 }
 
-export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChange, packageLabel = null, packageCount = null, cycle = null }: Props) {
+export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChange, packageLabel = null, packageCount = null, cycle = null, formulationId = null, patient = null }: Props) {
   // Auto-expand only when a rule requires confirmation.
   const [open, setOpen] = useState<boolean>(() => rxDetailsNeedConfirmation(rules))
   const diagnosisRef = useRef<HTMLInputElement>(null)
@@ -267,6 +389,22 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
                 aria-invalid={missingClinical ? 'true' : undefined}
                 onChange={e => onChange({ clinicalDifference: e.target.value || null })}
                 className={`mt-0.5 w-full rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${missingClinical ? 'border-amber-500' : 'border-input'}`}
+              />
+            )}
+            {formulationId && (
+              <SavedClinicalStatements
+                lineId={lineId}
+                formulationId={formulationId}
+                patient={patient}
+                current={details.clinicalDifference}
+                standardOptions={options}
+                disabled={disabled}
+                onPick={statement => {
+                  // A saved statement is not one of the standard reasons: it
+                  // goes in "Other (describe)", where it stays editable.
+                  if (options.length > 0 && !options.includes(statement)) setClinicalOther(true)
+                  onChange({ clinicalDifference: statement })
+                }}
               />
             )}
             {clinicalProblem && (

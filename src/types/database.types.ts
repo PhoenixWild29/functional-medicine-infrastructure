@@ -4185,6 +4185,39 @@ export type Database = {
           },
         ]
       }
+      saved_clinical_statements: {
+        Row: {
+          clinic_id: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          formulation_id: string
+          patient_id: string | null
+          statement: string
+          statement_id: string
+        }
+        Insert: {
+          clinic_id: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          formulation_id: string
+          patient_id?: string | null
+          statement: string
+          statement_id?: string
+        }
+        Update: {
+          clinic_id?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          formulation_id?: string
+          patient_id?: string | null
+          statement?: string
+          statement_id?: string
+        }
+        Relationships: []
+      }
       sig_templates: {
         Row: {
           created_at: string

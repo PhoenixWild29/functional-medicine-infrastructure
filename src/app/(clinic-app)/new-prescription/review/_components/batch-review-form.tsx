@@ -1148,6 +1148,8 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
                 packageLabel={rx.packageLabel ?? null}
                 packageCount={rx.packageCount ?? null}
                 cycle={rx.sigMode === 'cycling' ? rx.cycle ?? null : null}
+                formulationId={rx.formulationId ?? null}
+                patient={session.patient ? { patientId: session.patient.patient_id, name: patientName(session.patient) } : null}
               />
               <div className="mt-2 flex items-center justify-between gap-2">
                 {/* WO-103: ☆ Save as favorite — V3.0 formulation lines only */}
