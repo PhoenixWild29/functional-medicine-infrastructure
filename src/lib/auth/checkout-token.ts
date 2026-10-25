@@ -89,7 +89,9 @@ export async function verifyCheckoutToken(
     }
     return valid ? payload : null
   } catch (err) {
-    console.warn('[checkout-token] verifyCheckoutToken failed: malformed token', err)
+    // The error's name only: JSON.parse quotes the text it could not read,
+    // which is decoded from the token (the patient's credential).
+    console.warn('[checkout-token] verifyCheckoutToken failed: malformed token', err instanceof Error ? err.name : typeof err)
     return null
   }
 }

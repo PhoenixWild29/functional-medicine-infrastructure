@@ -197,7 +197,7 @@ export function IntakeFlow({ token, clinicName, variant = 'link' }: { token: str
         signup && (res.status === 410 || res.status === 404 || res.status === 429)
           ? (body.error ?? 'This link is no longer active. Contact your clinic.')
           : res.status === 410 || res.status === 404
-          ? 'This link has expired or was already used. Please ask your clinic to send you a new one.'
+          ? 'This link is no longer active. Please ask your clinic to send you a new one.'
           : res.status === 400
           ? (body.error ?? 'Please check your answers.')
           : 'Your details could not be saved. Please try again.',

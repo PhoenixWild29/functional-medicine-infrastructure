@@ -277,9 +277,9 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     await patient.goto(new URL(checkoutUrl).pathname)
     await expect(patient.getByTestId('checkout-amount-due')).toBeVisible({ timeout: 20_000 })
 
-    // The plan link now shows the approved state, and nothing about the plan.
+    // The plan link is now no longer active (the neutral page), and shows nothing about the plan.
     await patient.goto(planPath)
-    await expect(patient.getByRole('heading', { level: 1, name: 'Your provider has approved your plan' })).toBeVisible({ timeout: 15_000 })
+    await expect(patient.getByRole('heading', { level: 1, name: 'This link is no longer active' })).toBeVisible({ timeout: 15_000 })
     await expect(patient.locator('body')).not.toContainText(TEST_CATALOG.glp1FormulationName)
 
     await phone.close()

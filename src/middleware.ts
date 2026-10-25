@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { verifyCheckoutToken } from '@/lib/auth/checkout-token'
 import { MFA_API_CODES, MFA_PAGES, hasVerifiedTotp, isMfaExemptPath, isMfaRole, mfaEnforcedForUser, mfaGate } from '@/lib/auth/mfa'
 import { buildCsp, newNonce, permissionsPolicy } from '@/lib/security/headers'
+import { TOKEN_HEADERS, isTokenPath } from '@/lib/security/token-paths'
 import { getUserRole, isDeactivated, ACCOUNT_DEACTIVATED_MESSAGE } from '@/lib/auth/claims'
 import { mayOpenSignPage } from '@/lib/auth/signer'
 
@@ -75,6 +76,13 @@ export async function middleware(request: NextRequest) {
   const res = await handleRequest(request)
   res.headers.set('Content-Security-Policy', csp)
   res.headers.set('Permissions-Policy', permissionsPolicy(pathname))
+  // Token pages (the credential is in the URL): no-referrer, noindex and
+  // no-store on every response, whichever branch built it (the page, its
+  // API, the invalid-token redirect). See src/lib/security/token-paths.ts.
+  if (isTokenPath(pathname)) {
+    for (const { key, value } of TOKEN_HEADERS) res.headers.set(key, value)
+    applySecurityHeaders(res)
+  }
   return res
 }
 

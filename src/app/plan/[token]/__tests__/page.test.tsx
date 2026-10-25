@@ -28,11 +28,11 @@ it('open: the flow, with the logo only', async () => {
 })
 
 it.each([
-  ['not_found', 'This link is not valid'],
-  ['expired', 'This link has expired'],
-  ['locked', 'This link is locked'],
-  ['signed', 'Your provider has approved your plan'],
-  ['closed', 'This plan is no longer open'],
+  ['not_found', 'This link is no longer active'],
+  ['expired', 'This link is no longer active'],
+  ['locked', 'This link is no longer active'],
+  ['signed', 'This link is no longer active'],
+  ['closed', 'This link is no longer active'],
   ['unavailable', 'This page could not be opened right now'],
 ])('%s: "%s", no medication; axe clean', async (state, title) => {
   resolvePlan.mockResolvedValue({ state })
@@ -40,6 +40,17 @@ it.each([
   expect(screen.getByRole('heading', { level: 1, name: title })).toBeInTheDocument()
   expect(container.textContent).not.toMatch(/mg|Injectable|Capsule/)
   expect((await axe(container)).violations.map(v => v.id)).toEqual([])
+})
+
+it('an unknown, expired, locked, signed or closed link: the same page word for word (it never says whether the link existed)', async () => {
+  const texts: string[] = []
+  for (const state of ['not_found', 'expired', 'locked', 'signed', 'closed']) {
+    resolvePlan.mockResolvedValue({ state })
+    const { container, unmount } = await renderPage()
+    texts.push(container.innerHTML)
+    unmount()
+  }
+  expect(new Set(texts).size).toBe(1)
 })
 
 it('metadata: a generic title, not indexed, no clinic name', () => {

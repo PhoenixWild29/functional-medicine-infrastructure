@@ -31,15 +31,18 @@ import { INTAKE_CONSENT_SOURCE, PRIVACY_NOTICE_VERSION, SMS_CONSENT_TEXT_VERSION
 import { validateIntakeSubmission } from '@/lib/intake/submission'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 
+const NOT_ACTIVE = 'This link is no longer active. Please ask your clinic to send you a new one.'
+
 async function postHandler(request: NextRequest, context: { params: Promise<{ token: string }> }): Promise<NextResponse> {
   const { token } = await context.params
   const supabase = createServiceClient()
 
   const link = await resolveIntakeLink(supabase, token)
+  // Expired, used, unknown, or claimed by another submit in between: one
+  // answer, word for word, so a request never learns whether a link existed.
   if (link.state !== 'open') {
-    if (link.state === 'invalid') return NextResponse.json({ error: 'This link is not valid.' }, { status: 404 })
     if (link.state === 'unavailable') return NextResponse.json({ error: 'Please try again in a moment.' }, { status: 503 })
-    return NextResponse.json({ error: 'This link has expired or was already used.' }, { status: 410 })
+    return NextResponse.json({ error: NOT_ACTIVE }, { status: 410 })
   }
 
   let body: unknown
@@ -53,7 +56,7 @@ async function postHandler(request: NextRequest, context: { params: Promise<{ to
 
   const { linkId, clinicId, patientId } = link.link
   if (!(await claimIntakeLink(supabase, linkId))) {
-    return NextResponse.json({ error: 'This link has expired or was already used.' }, { status: 410 })
+    return NextResponse.json({ error: NOT_ACTIVE }, { status: 410 })
   }
 
   const now = new Date().toISOString()

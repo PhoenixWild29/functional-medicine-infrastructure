@@ -275,7 +275,7 @@ After a successful payment:
 ### Expired Link Page (`/checkout/expired`)
 To test: navigate to `/checkout/expired` directly
 - Amber clock icon (informational tone, not alarming red)
-- "This payment link has expired" heading
+- "This payment link is no longer active" heading (one neutral page for an invalid, expired, paid or cancelled link)
 - Calm instructional copy directing patient to contact their clinic
 
 ---
