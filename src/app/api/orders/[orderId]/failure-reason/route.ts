@@ -18,7 +18,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
-import { getUserClinicId } from '@/lib/auth/claims'
+import { getUserClinicId, getUserRole, isClinicStaffRole } from '@/lib/auth/claims'
 import { z } from 'zod'
 import { parseParams, uuid } from '@/lib/api/input'
 import { FAILED_ADAPTER_STATUSES, isSubmissionFailure, knownFailureCode, plainFailureReason } from '@/lib/orders/submission-failure'
@@ -40,6 +40,8 @@ export async function GET(_request: NextRequest, context: RouteParams): Promise<
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Clinic staff only: any other role, or none, is refused before anything is read.
+  if (!isClinicStaffRole(getUserRole(user))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   // The order id is an id before it is read (a bad one is a 400, not a

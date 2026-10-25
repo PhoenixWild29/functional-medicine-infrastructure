@@ -8,6 +8,7 @@
 // Auth: ops_admin only.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { z } from 'zod'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -54,6 +55,8 @@ async function guard() {
 
 // ── POST: Add single item ─────────────────────────────────────
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const { user, error: authErr } = await guard()
   if (authErr) return authErr
 
@@ -123,6 +126,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
 // ── PATCH: Update single item ─────────────────────────────────
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const { user, error: authErr } = await guard()
   if (authErr) return authErr
 

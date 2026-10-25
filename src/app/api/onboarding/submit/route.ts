@@ -7,12 +7,15 @@
 // until ops approves or sends it back) and logs it. The clinic stays
 // inactive until ops approves.
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { requireOnboardingAdmin, setStep } from '@/lib/onboarding/access'
 import { canSubmit, fullStatuses } from '@/lib/onboarding/steps'
 import { recordOnboardingEvent } from '@/lib/onboarding/events'
 
-export async function POST(): Promise<NextResponse> {
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const access = await requireOnboardingAdmin({ editable: true })
   if (!access.ok) return access.response
   const { user, clinicId, supabase } = access

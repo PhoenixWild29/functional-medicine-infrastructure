@@ -15,6 +15,7 @@
 // Auth: ops_admin only.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getUserRole } from '@/lib/auth/claims'
@@ -23,6 +24,8 @@ import { UUID_RE } from '@/lib/api/input'
 import { readObjectBody } from '@/app/api/ops/_lib/body'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) {

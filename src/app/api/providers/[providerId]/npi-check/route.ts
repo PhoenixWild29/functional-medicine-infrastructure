@@ -11,11 +11,14 @@
 // could no longer sign. 409, nothing called or written.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { clinicAdminForProvider } from '@/lib/providers/team-access'
 import { runNpiCheck } from '@/lib/providers/verify-npi'
 import { DEMO_RECORD_NOTE } from '@/lib/providers/credentials'
 
-export async function POST(_request: NextRequest, { params }: { params: Promise<{ providerId: string }> }): Promise<NextResponse> {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ providerId: string }> }): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const { providerId } = await params
   const access = await clinicAdminForProvider(providerId)
   if (!access.ok) return access.response

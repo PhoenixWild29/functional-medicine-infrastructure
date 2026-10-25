@@ -13,10 +13,13 @@
 // the step.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { requireOnboardingAdmin, readJson, setStep } from '@/lib/onboarding/access'
 import { AGREEMENTS, agreementSha256, isAgreementKey } from '@/lib/onboarding/agreements'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const access = await requireOnboardingAdmin({ editable: true })
   if (!access.ok) return access.response
   const { user, clinicId, supabase } = access

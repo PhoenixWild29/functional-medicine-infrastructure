@@ -16,14 +16,17 @@
 //
 // Response: { url: string }  — redirect the browser to this URL.
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createStripeClient } from '@/lib/stripe/client'
 import { serverEnv } from '@/lib/env'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
-export async function POST(): Promise<NextResponse> {
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   // Auth gate. getUser() verifies the JWT with the auth server;
   // getSession() only decodes the cookie, so clinic_id would be forgeable.
   const supabaseAuth = await createServerClient()

@@ -7,6 +7,7 @@
 // admin is recorded as who verified it, and when.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { clinicAdminForProvider } from '@/lib/providers/team-access'
 import { US_STATES } from '@/lib/providers/states'
 
@@ -20,6 +21,8 @@ function validDate(s: string): boolean {
 }
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ providerId: string }> }): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const { providerId } = await params
   const access = await clinicAdminForProvider(providerId)
   if (!access.ok) return access.response

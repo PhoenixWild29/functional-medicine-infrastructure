@@ -13,6 +13,7 @@
 // getUser() (never getSession()).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { isCompoundingStatus } from '@/lib/compliance/compounding'
@@ -21,6 +22,8 @@ import { UUID_RE } from '@/lib/api/input'
 import { readObjectBody } from '@/app/api/ops/_lib/body'
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ ingredientId: string }> }): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const { ingredientId } = await params
 
   const supabaseAuth = await createServerClient()

@@ -7,11 +7,14 @@
 // Another clinic's invite is 404.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { requireOnboardingAdmin, readJson } from '@/lib/onboarding/access'
 import { inviteAction, INVITE_COLUMNS, type InviteRow } from '@/lib/onboarding/invite-actions'
 import { UUID_RE } from '@/lib/providers/team-access'
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ inviteId: string }> }): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const access = await requireOnboardingAdmin()
   if (!access.ok) return access.response
   const { inviteId } = await params

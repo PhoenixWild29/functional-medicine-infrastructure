@@ -21,6 +21,7 @@
 // REQ-OAS-010: DELETE is a soft delete (is_active = false, deleted_at).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
@@ -33,7 +34,7 @@ import { reallocateDraftSiblingShipping } from '@/lib/orders/apply-bundle-shippi
 import { parseTitrationSteps, isSigMode } from '@/lib/orders/titration'
 import { cyclePatternFrom } from '@/lib/orders/cycling'
 import type { Json } from '@/types/database.types'
-import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { getUserClinicId, getUserRole, isClinicStaffRole } from '@/lib/auth/claims'
 import { revokeProposalLinkForOrder } from '@/lib/proposals/propose'
 import { z } from 'zod'
 import { parseParams, parseInput, uuid } from '@/lib/api/input'
@@ -78,6 +79,10 @@ async function authenticate(context: RouteContext): Promise<
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) {
     return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  }
+  // Clinic staff only: any other role, or none, is refused before anything is read.
+  if (!isClinicStaffRole(getUserRole(user))) {
+    return { ok: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
   const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) {
@@ -166,6 +171,8 @@ async function revokeLinkIfProposed(supabase: ReturnType<typeof createServiceCli
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   // Who is calling first; then the body; then the draft.
   const auth = await authenticate(context)
   if (!auth.ok) return auth.response
@@ -320,6 +327,8 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const auth = await authenticate(context)
   if (!auth.ok) return auth.response
   const { orderId } = auth.caller

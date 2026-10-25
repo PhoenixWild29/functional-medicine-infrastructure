@@ -6,11 +6,14 @@
 // returns a new link (new token; the old link stops working).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { requireOpsAdmin, readJson } from '@/lib/onboarding/access'
 import { inviteAction, INVITE_COLUMNS, type InviteRow } from '@/lib/onboarding/invite-actions'
 import { UUID_RE } from '@/lib/providers/team-access'
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ inviteId: string }> }): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const access = await requireOpsAdmin()
   if (!access.ok) return access.response
   const { inviteId } = await params

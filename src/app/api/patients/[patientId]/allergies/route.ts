@@ -28,6 +28,7 @@
 // Every successful PATCH stamps allergies_updated_at and updated_at.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
@@ -127,6 +128,8 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
 // ── PATCH ───────────────────────────────────────────────────────────
 
 export async function PATCH(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   // Who is calling first, then the id (a bad id never reaches Postgres).
   const auth = await resolveCaller()
   if (!auth.ok) return auth.response
