@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  *
- * Security follow-ups 3: GET /api/favorites/recent is used by the clinic app only
+ * Security follow-ups 3: GET /api/favorites/frequent is used by the clinic app only
  * (the Quick Actions panel). Any other role (pharmacy_admin, ops_admin, patient) and a
  * session with a clinic_id but no role get 403 before anything is read;
  * the clinic staff roles still pass the gate.
@@ -18,10 +18,10 @@ jest.spyOn(console, 'warn').mockImplementation(() => {})
 
 import { GET } from '../route'
 
-describe('GET /api/favorites/recent: clinic staff only', () => {
+describe('GET /api/favorites/frequent: clinic staff only', () => {
   it.each(REFUSED)('%s: 403 Forbidden, nothing read', async (_label, appMetadata) => {
     setCaller(appMetadata)
-    const res = await GET(new NextRequest('https://app.test/api/favorites/recent', { method: 'GET' }))
+    const res = await GET(new NextRequest('https://app.test/api/favorites/frequent', { method: 'GET' }))
     expect(res.status).toBe(403)
     expect(await res.json()).toEqual({ error: 'Forbidden' })
     expect(gate.reads).toEqual([])
@@ -29,7 +29,7 @@ describe('GET /api/favorites/recent: clinic staff only', () => {
 
   it.each(ALLOWED)('%s passes the gate (stops at the bad input, 400)', async role => {
     setCaller({ app_role: role, clinic_id: CLINIC })
-    const res = await GET(new NextRequest('https://app.test/api/favorites/recent', { method: 'GET' }))
+    const res = await GET(new NextRequest('https://app.test/api/favorites/frequent', { method: 'GET' }))
     expect(res.status).toBe(400)
   })
 })

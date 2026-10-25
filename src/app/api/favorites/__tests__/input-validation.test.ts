@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  *
- * /api/favorites and /api/favorites/recent input validation. The caller's
+ * /api/favorites and /api/favorites/frequent input validation. The caller's
  * clinic is checked first (getUser, clinic from app_metadata); then the
  * input. Ids must be uuid-shaped: a bad one used to reach Postgres (22P02)
  * and come back a 500 ("could not be loaded"), or a 403 that hid the real
@@ -26,7 +26,7 @@ jest.mock('@/lib/supabase/server', () => ({
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
 
 import { POST, PATCH, DELETE } from '../route'
-import { GET as GET_RECENT } from '../recent/route'
+import { GET as GET_FREQUENT } from '../frequent/route'
 
 const URL_ = 'https://app.test/api/favorites'
 const preset = { dose: '20', unit: 'units', frequency: 'QW', timing: '', duration: '', label: null }
@@ -100,21 +100,21 @@ describe('PATCH and DELETE /api/favorites?id=: input', () => {
   })
 })
 
-describe('GET /api/favorites/recent: input', () => {
+describe('GET /api/favorites/frequent: input', () => {
   it('a provider_id that is not a uuid: 400, nothing read', async () => {
-    const res = await GET_RECENT(send('GET', `${URL_}/recent?provider_id=nope`))
+    const res = await GET_FREQUENT(send('GET', `${URL_}/frequent?provider_id=nope`))
     expect(res.status).toBe(400)
     expect(db.calls).toEqual([])
   })
 
   it('a missing provider_id keeps its message', async () => {
-    const res = await GET_RECENT(send('GET', `${URL_}/recent`))
+    const res = await GET_FREQUENT(send('GET', `${URL_}/frequent`))
     expect(res.status).toBe(400)
     expect((await res.json()).error).toBe('Missing provider_id')
   })
 
   it('a provider in another clinic is still 403', async () => {
-    const res = await GET_RECENT(send('GET', `${URL_}/recent?provider_id=b2000000-0000-0000-0000-000000000009`))
+    const res = await GET_FREQUENT(send('GET', `${URL_}/frequent?provider_id=b2000000-0000-0000-0000-000000000009`))
     expect(res.status).toBe(403)
     expect(db.to('orders')).toEqual([])
   })

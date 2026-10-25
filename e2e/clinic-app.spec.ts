@@ -1576,7 +1576,7 @@ test.describe('Clinic App — WO-103 search bar, favorites/protocols panels, sav
 //     "Inject 20 units (0.20mL / 1.00mg) subcutaneous once weekly…" and
 //     the dose "20 units (1.0 mg)"
 //   - Custom chip → dose step, formulation pre-selected, dropdowns live
-//   - Recent strip shows last prescribed formulations; Make favorite
+//   - Frequently used (was Recent) shows the most-ordered doses; Make favorite
 //     creates a card
 //   - groups sorted in a fixed category order, A–Z within a group; a
 //     favorite pinned to the selected patient surfaces first
@@ -1681,7 +1681,7 @@ test.describe('Clinic App — WO-104 favorites: doses as chips, dose step, Recen
     await expect(page.getByRole('button', { name: /Continue.*Set Retail Price/i })).toBeEnabled({ timeout: 10_000 })
   })
 
-  test('Recent shows the last prescribed formulations; Make favorite creates a card', async ({ page }) => {
+  test('Frequently used shows the most-ordered doses with their count; Make favorite opens a dialog and creates a card', async ({ page }) => {
     await insertRecentOrder({
       formulationId: TEST_IDS.formulation, medicationName: TEST_CATALOG.formulationName,
       prescribedDose: '10 mg', frequencyCode: 'QD',
@@ -1689,10 +1689,15 @@ test.describe('Clinic App — WO-104 favorites: doses as chips, dose step, Recen
     await startSearchAsProvider(page)
     await page.getByRole('button', { name: /^Favorites \(\d+\)$/ }).click()
 
-    const item = page.getByTestId('favorites-recent').getByTestId(`recent-${TEST_IDS.formulation}`)
-    await expect(item).toContainText(TEST_CATALOG.formulationName, { timeout: 10_000 })
-    await expect(item).toContainText('10 mg daily · Test Pharmacy Tier1')
+    const item = page.getByTestId('favorites-frequent').getByTestId('frequent-item').filter({ hasText: TEST_CATALOG.formulationName })
+    await expect(item).toHaveCount(1, { timeout: 10_000 })
+    await expect(item).toContainText('10 mg daily · Test Pharmacy Tier1 · used once')
     await item.getByRole('button', { name: `Make ${TEST_CATALOG.formulationName} a favorite` }).click()
+    const dialog = page.getByRole('dialog', { name: `Make ${TEST_CATALOG.formulationName} a favorite` })
+    await expect(dialog.getByRole('radio', { name: 'The practice' })).toBeChecked()
+    await expect(dialog.getByRole('checkbox', { name: '10 mg daily' })).toBeChecked()
+    await dialog.getByRole('button', { name: 'Save favorite' }).click()
+    await expect(dialog).toHaveCount(0, { timeout: 10_000 })
     await expect(item).toContainText('★ Favorite', { timeout: 10_000 })
 
     const card = page.getByTestId('favorites-panel').locator('[data-testid^="favorite-"]:not([data-testid^="favorite-group-"])').filter({ hasText: TEST_CATALOG.formulationName })
@@ -1712,7 +1717,7 @@ test.describe('Clinic App — WO-104 favorites: doses as chips, dose step, Recen
       dose_presets: [{ dose: '10', unit: 'mg', frequency: 'QD', timing: '', duration: '', label: null }],
     })
 
-    // Clicking the Recent item opens its last dose on the dose step.
+    // Clicking the entry opens that dose on the dose step.
     await item.getByText(TEST_CATALOG.formulationName).click()
     await expect(page.getByLabel('Dose amount')).toHaveValue('10', { timeout: 10_000 })
     await expect(page.getByLabel('Dose unit')).toHaveValue('mg')

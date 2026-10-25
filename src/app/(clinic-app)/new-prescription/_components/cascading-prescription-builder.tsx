@@ -39,7 +39,7 @@ import {
   type SigMode,
 } from '@/lib/orders/titration'
 import { legacyTitrationFromSig, legacyTitrationDispense } from '@/lib/orders/legacy-titration'
-import { QuickActionsPanel, useClinicFavorites, type Favorite, type RecentItem, type QuickActionsPanelName } from './quick-actions-panel'
+import { QuickActionsPanel, useClinicFavorites, type Favorite, type FrequentItem, type QuickActionsPanelName } from './quick-actions-panel'
 import { SaveFavoriteButton } from './save-favorite-button'
 import { CONTROLLED_LABEL, isControlledSchedule } from '@/lib/orders/controlled-substance'
 import { COMPOUNDABLE_STATUSES, NOT_COMPOUNDABLE_LABEL, PENDING_EVALUATION_WARNING, compoundingBlock, compoundingWarning, ingredientFromRow, isPendingEvaluation } from '@/lib/compliance/compounding'
@@ -662,7 +662,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     void loadOntoDoseStep(builderLoadFromFavorite(fav, preset))
   }
 
-  function handleLoadRecent(item: RecentItem) {
+  function handleLoadFrequent(item: FrequentItem) {
     void loadOntoDoseStep(builderLoadFromFavorite(
       { formulation_id: item.formulation_id, pharmacy_id: item.pharmacy_id, default_refills: 0 },
       item.preset,
@@ -733,7 +733,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       <QuickActionsPanel
         initialPanel={initialPanel}
         onLoadFavorite={handleLoadFavorite}
-        onLoadRecent={handleLoadRecent}
+        onLoadFrequent={handleLoadFrequent}
         onNewFavorite={() => searchInputRef.current?.focus()}
       >
         <input
