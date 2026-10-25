@@ -40,6 +40,18 @@ const REASONS: Record<string, string> = {
   portal_automation_error: "the pharmacy's ordering portal had an error",
 }
 
+/**
+ * The code itself, only when the drawer knows it: a key of the plain-reason
+ * table or an HTTP status. Anything else (a pharmacy's own code) is null,
+ * so the clinic never sees an unknown code (security review, Oct 24).
+ */
+export function knownFailureCode(code: string | null | undefined): string | null {
+  if (!code) return null
+  const c = code.trim()
+  if (REASONS[c.toLowerCase()] || /^\d{3}$/.test(c)) return code
+  return null
+}
+
 /** A plain reason for an adapter error code; never the code itself. */
 export function plainFailureReason(code: string | null | undefined): string {
   if (!code) return GENERIC

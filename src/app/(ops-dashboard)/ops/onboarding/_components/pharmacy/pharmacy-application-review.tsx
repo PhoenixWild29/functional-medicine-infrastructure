@@ -37,6 +37,17 @@ const STATUS: Record<string, string> = { in_progress: 'In progress', submitted: 
 const LICENSE: Record<string, string> = { pending: 'Pending', verified: 'Verified', rejected: 'Rejected' }
 const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : Array.isArray(v) ? v.join(', ') || '—' : String(v))
 
+// The application, or null when it cannot be loaded.
+async function readReview(applicationId: string): Promise<Review | null> {
+  try {
+    const res = await fetch(`/api/ops/onboarding/pharmacies/${applicationId}`, { cache: 'no-store' })
+    const data = await res.json() as { review?: Review; error?: string }
+    return res.ok && data.review ? data.review : null
+  } catch {
+    return null
+  }
+}
+
 export function PharmacyApplicationReview({ applicationId }: { applicationId: string }) {
   const [review, setReview] = useState<Review | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -45,16 +56,10 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
   const [busy, setBusy] = useState(false)
   const [catalogResult, setCatalogResult] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/ops/onboarding/pharmacies/${applicationId}`, { cache: 'no-store' })
-      const data = await res.json() as { review?: Review; error?: string }
-      if (!res.ok || !data.review) throw new Error(data.error ?? 'load')
-      setReview(data.review)
-    } catch {
-      setMessage('The application could not be loaded. Refresh to try again.')
-    }
-  }, [applicationId])
+  const load = useCallback(() => readReview(applicationId).then(next => {
+    if (next) setReview(next)
+    else setMessage('The application could not be loaded. Refresh to try again.')
+  }), [applicationId])
 
   useEffect(() => { void load() }, [load])
 

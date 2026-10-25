@@ -130,7 +130,7 @@ export function PipelineView({
   // the previous rows (narrowed below) until its own fetch lands.
   const serverQuery        = pipelineFiltersToSearchParams(serverFiltersOf(filters)).toString()
   const initialServerQuery = pipelineFiltersToSearchParams(serverFiltersOf(initialFilters)).toString()
-  const { data: ordersData, isError, isFetching, refetch } = useQuery({
+  const { data: ordersData, isError, isFetching, refetch, dataUpdatedAt, errorUpdatedAt } = useQuery({
     queryKey:        ['ops-pipeline', serverQuery],
     queryFn:         async () => {
       const res = await fetch(`/api/ops/pipeline?${serverQuery}`)
@@ -214,24 +214,18 @@ export function PipelineView({
   }
 
   // ── Last updated timestamp ───────────────────────────────────
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<number>(Date.now())
-  const [secondsAgo,    setSecondsAgo]    = useState(0)
+  // When the last fetch finished (with data or with an error), from the
+  // query itself; never earlier than this view opened.
+  const [mountedAt] = useState(() => Date.now())
+  const lastUpdatedAt = Math.max(mountedAt, dataUpdatedAt, errorUpdatedAt)
 
-  // Track last successful fetch time
+  // Live "Xs ago" counter: the clock ticks each second.
+  const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    if (!isFetching) {
-      setLastUpdatedAt(Date.now())
-      setSecondsAgo(0)
-    }
-  }, [isFetching])
-
-  // Live "Xs ago" counter
-  useEffect(() => {
-    const id = setInterval(() => {
-      setSecondsAgo(Math.round((Date.now() - lastUpdatedAt) / 1000))
-    }, 1000)
+    const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
-  }, [lastUpdatedAt])
+  }, [])
+  const secondsAgo = Math.max(0, Math.round((now - lastUpdatedAt) / 1000))
 
   // ── Current user for claim ───────────────────────────────────
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null)

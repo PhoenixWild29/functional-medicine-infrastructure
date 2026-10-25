@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { getUserPharmacyId, getUserRole } from '@/lib/auth/claims'
+import { isCrossSiteWrite } from '@/lib/security/same-origin'
 import type { OnboardingActor } from './events'
 import type { WizardCtx } from './application'
 
@@ -25,9 +26,9 @@ export function respond(result: { ok: boolean; status?: number; error?: string }
   return json(rest, status ?? 500)
 }
 
-/** A write from another site (CSRF): refused. Same-origin and non-browser requests pass. */
+/** A write from another site (CSRF, lib/security/same-origin): refused. Same-origin and non-browser requests pass. */
 export function crossSiteRefusal(request: { headers: { get(name: string): string | null } }): NextResponse | null {
-  return request.headers.get('sec-fetch-site') === 'cross-site' ? json({ error: 'Forbidden' }, 403) : null
+  return isCrossSiteWrite(request.headers) ? json({ error: 'Forbidden' }, 403) : null
 }
 
 async function verifiedUser() {

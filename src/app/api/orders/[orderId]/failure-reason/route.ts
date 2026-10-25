@@ -19,7 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { getUserClinicId } from '@/lib/auth/claims'
-import { FAILED_ADAPTER_STATUSES, isSubmissionFailure, plainFailureReason } from '@/lib/orders/submission-failure'
+import { FAILED_ADAPTER_STATUSES, isSubmissionFailure, knownFailureCode, plainFailureReason } from '@/lib/orders/submission-failure'
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
@@ -82,10 +82,10 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
     pharmacyName = (pharmacy as { name?: string | null } | null)?.name ?? null
   }
 
-  const code = sub?.error_code ?? null
+  const rawCode = sub?.error_code ?? null
   const failure: SubmissionFailure = {
-    code,
-    plainReason:  plainFailureReason(code),
+    code:         knownFailureCode(rawCode),
+    plainReason:  plainFailureReason(rawCode),
     pharmacyName,
     at:           sub ? (sub.completed_at ?? sub.created_at) : null,
   }

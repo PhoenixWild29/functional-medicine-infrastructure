@@ -22,21 +22,24 @@ interface Checklist { notice: string | null; steps: Step[] }
 
 export const SHOW_CHECKLIST_EVENT = 'coaching:show-checklist'
 
+// The checklist to show, or null (hidden, done, or it cannot be read).
+async function readChecklist(): Promise<Checklist | null> {
+  try {
+    const res = await fetch('/api/coaching/checklist', { cache: 'no-store' })
+    if (!res.ok) return null
+    const body = await res.json() as { show?: boolean; notice?: string | null; steps?: Step[] }
+    return body.show && Array.isArray(body.steps) ? { notice: body.notice ?? null, steps: body.steps } : null
+  } catch {
+    return null
+  }
+}
+
 export function SetupChecklistCard() {
   const router = useRouter()
   const [checklist, setChecklist] = useState<Checklist | null>(null)
   const [hiding, setHiding] = useState(false)
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch('/api/coaching/checklist', { cache: 'no-store' })
-      if (!res.ok) { setChecklist(null); return }
-      const body = await res.json() as { show?: boolean; notice?: string | null; steps?: Step[] }
-      setChecklist(body.show && Array.isArray(body.steps) ? { notice: body.notice ?? null, steps: body.steps } : null)
-    } catch {
-      setChecklist(null)
-    }
-  }, [])
+  const load = useCallback(() => readChecklist().then(setChecklist), [])
 
   useEffect(() => {
     void load()
