@@ -35,23 +35,8 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import * as Sentry from '@sentry/nextjs'
 import SignatureCanvas from 'react-signature-canvas'
 
-// ── F5 diagnostic (PR #7c, self-reverts) ─────────────────────
-// See draft-sign-form.tsx for the full rationale. This instrumented
-// control canvas produces breadcrumbs we can compare side-by-side
-// with the draft-sign canvas during the next cowork walkthrough.
-// REMOVE THIS INSTRUMENTATION once F5 is root-caused.
-function logSignatureEvent(component: 'draft-sign-form' | 'batch-review-form', event: 'onBegin' | 'onEnd') {
-  console.log(`[F5-diag] ${component} ${event} fired`)
-  Sentry.addBreadcrumb({
-    category: 'signature',
-    message:  `${component} ${event} fired`,
-    level:    'info',
-    data:     { component, event, ts: Date.now() },
-  })
-}
 import { usePrescriptionSession, type SessionPrescription } from '../../_context/prescription-session'
 import { isIntakePending, patientName } from '@/lib/patients/display'
 import { CONTROLLED_LABEL, isControlledSchedule } from '@/lib/orders/controlled-substance'
@@ -1339,10 +1324,8 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
 
           <div className="mt-3 rounded-lg border border-border bg-white">
             {/*
-             * Fire "captured" on BOTH pointerdown (onBegin) and pointerup
-             * (onEnd). Kept consistent with draft-sign-form (F5 fix) so
-             * both signature surfaces behave identically. See draft-
-             * sign-form.tsx for the full F5 root-cause TODO.
+             * F5 fix: the pad is read when the pen lifts (onEnd), and Sign
+             * & Send re-checks it, so lost strokes are caught.
              */}
             <SignatureCanvas
               ref={sigCanvasRef}
@@ -1350,11 +1333,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
                 className: 'w-full h-32 rounded-lg',
                 'aria-label': 'Provider signature pad',
               }}
-              onBegin={() => {
-                logSignatureEvent('batch-review-form', 'onBegin')
-              }}
               onEnd={() => {
-                logSignatureEvent('batch-review-form', 'onEnd')
                 readSignaturePad()
               }}
             />
