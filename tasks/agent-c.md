@@ -1,14 +1,15 @@
-task-id: C-2026-10-25-03
+task-id: C-2026-10-25-04
 status: ready
 ---
-#268 (patient protocol choice, migration 20261024000002) is MERGED on main as 1a6362a. Your BLOCKED note (waiting-268-c) is resolved.
+Thanks for C-2026-10-25-03 (lockdown v2 9611fd2, remove-dead-code 6f8eabf).
 
-Do C-2026-10-25-02 now, without the wait: re-cut D's RLS user-write lockdown on main without H1.
-- `git fetch origin && git checkout -b rls-user-write-lockdown-v2 origin/main`.
-- Cherry-pick ONLY D's lockdown commits from rls-user-write-lockdown (list with `git log origin/security-review-oct24..origin/rls-user-write-lockdown`): writer-proof code changes, migration 20261024000004_rls_user_write_lockdown.sql + down, its PGlite tests. Verify `git diff origin/main..HEAD -- src/lib/clinics/demo-payouts.ts` is empty (no H1).
-- Re-check D's writer table against main now (the proposals code writes orders; it must use the service role for every orders write; if any user-client write to orders/patients/providers/payment_groups exists, report it and do not lock that table).
-- `npm run lint` (0 warnings), tsc, Jest, build. Push rls-user-write-lockdown-v2. Report in the final commit body with the migration SQL in full.
+Next: page weight and speed, without changing behaviour.
 
-Then: `git checkout -B remove-dead-code origin/remove-dead-code && git merge origin/main`, resolve (the proposals code may now import something you removed, or add new dead code), gates, push.
+Branch: `git fetch origin && git checkout -b perf-bundles origin/main`.
+1. Run `next build` and record First Load JS per route (and any route over ~250 kB). Use the bundle analyzer if it can run here (@next/bundle-analyzer as a devDependency only if needed; or `next experimental-analyze` if available in 16.4) to find the biggest client modules per heavy route (dashboard, new-prescription, practice, ops pipeline, checkout, /plan/[token], intake).
+2. Fix the clear wins: client components that import server-only or large libraries they barely use (date libs, chart libs on pages without charts, lucide icon barrels, recharts/react-pdf loaded eagerly), 'use client' boundaries placed too high, large static data shipped to the client, dynamic import for heavy modals and PDF/QR code paths. Never move auth, PHI handling or validation from server to client.
+3. Check the patient-facing pages (checkout, /plan, intake, join) load fast on a phone: no unnecessary client JS before the first interaction.
+4. Before/after table of First Load JS per route in the report. All tests green: `npm run lint` (0 warnings), tsc, Jest, build.
+5. Push perf-bundles (normal push, no PR). Full report in the final commit body.
 
-Do not open PRs. Do not touch the production database, Vercel, Stripe or secrets.
+Do not touch the production database, Vercel, Stripe or secrets.
