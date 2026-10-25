@@ -207,11 +207,15 @@ export async function seedStaticData(): Promise<void> {
   // single provider that auto-selects.
   await retireSecondProvider()
 
-  // Patients — one per WO-97 allergy chip state. The upsert re-asserts the
+  // Patients — the WO-97 allergy chip states. The upsert re-asserts the
   // allergy columns on every run, so a test that edits them (the banner
   // editor / the Review "Confirm NKDA" beat) starts from a known state.
   // The wizard helpers search "Test" and click "Patient, Test"; the two
   // extra last names deliberately do not match that regex.
+  // Coverage gap 9: signing needs allergies or NKDA, and most specs sign
+  // for "Patient, Test", so it is seeded with NKDA. The WO-97 block in
+  // clinic-app.spec.ts sets it to "not recorded" for its own tests and
+  // back to NKDA afterwards.
   await supabase.from('patients').upsert(([
     {
       patient_id:   TEST_IDS.patient,
@@ -224,10 +228,10 @@ export async function seedStaticData(): Promise<void> {
       state:        'TX',
       sms_opt_in:   true,
       is_active:    true,
-      // not recorded
-      allergies:            null,
-      nkda:                 false,
-      allergies_updated_at: null,
+      // NKDA (see above)
+      allergies:            [],
+      nkda:                 true,
+      allergies_updated_at: new Date().toISOString(),
     },
     {
       patient_id:   TEST_IDS.patientNkda,

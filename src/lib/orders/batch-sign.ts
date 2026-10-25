@@ -72,6 +72,7 @@ import { resolveLine } from './resolve-line'
 import { applyBundleShipping } from './apply-bundle-shipping'
 import { pharmacyInactiveMessage } from '@/lib/pharmacies/live'
 import { findInteractions, type InteractionRow } from '@/lib/interactions/match'
+import { ALLERGIES_REQUIRED_CODE, ALLERGIES_REQUIRED_MESSAGE, hasRecordedAllergies, type PatientAllergyFields } from '@/lib/patients/allergies'
 import { checkSignature, SIGNATURE_REJECTION_COPY, type SignaturePayload } from './signature'
 import { createPaymentGroup, cancelPaymentGroup } from '@/lib/payment-group/create-group'
 import { generateCheckoutToken, generateGroupCheckoutToken } from '@/lib/auth/checkout-token'
@@ -114,6 +115,8 @@ export type BatchProblemCode =
   | 'allergy_unavailable' | 'interactions_unavailable'
   // Patient Intake PR 2: the patient has not finished their details.
   | 'intake_pending'
+  // Coverage gap 9: neither allergies nor NKDA recorded for the patient.
+  | 'allergies_required'
 
 export interface BatchProblem {
   /** The line it is about; null when it is about the batch as a whole. */
@@ -644,6 +647,17 @@ export async function canSign(
     for (const l of lines) {
       problems.push({ orderId: l.orderId, medicationName: l.medicationName, code: 'allergy_unavailable', message: `${l.medicationName}: the patient's allergy status could not be checked. Nothing was signed. Try again.` })
     }
+  } else {
+    // Coverage gap 9 (Gina Rooks NP): allergies or NKDA on every Rx. A
+    // patient with neither recorded (or no row) is not signed for, so the
+    // fax and every payload carry a real status, never "Not recorded".
+    const rows = (allergyRes.data ?? []) as Array<{ patient_id: string } & PatientAllergyFields>
+    const recorded = new Set(rows.filter(r => hasRecordedAllergies(r)).map(r => r.patient_id))
+    for (const l of lines) {
+      if (!recorded.has(l.patientId)) {
+        problems.push({ orderId: l.orderId, medicationName: l.medicationName, code: 'allergies_required', message: ALLERGIES_REQUIRED_MESSAGE })
+      }
+    }
   }
   if (interactionRes.error) {
     console.error('[batch-sign] drug interaction check could not run:', interactionRes.error.message)
@@ -767,6 +781,11 @@ export async function signBatch(
       for (const p of check.problems.filter(p => UNAVAILABLE.has(p.code))) {
         console.error(`[batch-sign] check could not run (${p.code}) | order=${p.orderId ?? 'batch'}`)
       }
+    }
+    // Coverage gap 9: when the only thing missing is the allergy status,
+    // one message and a code the client opens its allergy prompt on.
+    if (check.problems.every(p => p.code === 'allergies_required')) {
+      return { ok: false, status, code: ALLERGIES_REQUIRED_CODE, error: ALLERGIES_REQUIRED_MESSAGE, problems: check.problems }
     }
     return {
       ok: false,

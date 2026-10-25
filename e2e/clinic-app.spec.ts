@@ -782,12 +782,12 @@ test.describe('Clinic App — WO-96 Rx detail fields', () => {
 // ============================================================
 // WO-97 — Patient allergies / NKDA
 // ============================================================
-// Allergies live on the patient. The seed carries one patient per chip
-// state (see e2e/fixtures/seed.ts): "Patient, Test" not recorded,
-// "Nkda, Test" NKDA, "Allergic, Test" sulfa + penicillin. The tests that
-// write allergies do so on "Patient, Test" and reset the row afterwards
-// so the WO-96 block (and any other branch's run on the shared E2E
-// project) still meets the seeded "not recorded" state.
+// Allergies live on the patient. The seed carries "Nkda, Test" (NKDA) and
+// "Allergic, Test" (sulfa + penicillin); "Patient, Test" is seeded with
+// NKDA too, since signing needs allergies or NKDA (coverage gap 9). This
+// block puts "Patient, Test" in the "not recorded" state before each test
+// (beforeEach) and back to NKDA after it, so every other block still
+// signs for it.
 
 test.describe('Clinic App — WO-97 patient allergies / NKDA', () => {
   const supabase = () => createClient(
@@ -815,8 +815,15 @@ test.describe('Clinic App — WO-97 patient allergies / NKDA', () => {
     await seedStaticData()
   })
 
-  test.afterEach(async () => {
+  // "Patient, Test" is seeded with NKDA (signing needs allergies or NKDA,
+  // coverage gap 9); this block is about the "not recorded" state, so it
+  // starts every test there and puts the seeded NKDA back afterwards.
+  test.beforeEach(async () => {
     await resetTestPatientAllergies()
+  })
+
+  test.afterEach(async () => {
+    await restoreTestPatientNkda()
     await cleanupTestOrders()
   })
 
@@ -955,6 +962,17 @@ async function fillBuilder(page: Page, choice: BuilderChoice) {
 
 function e2eSupabase() {
   return createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
+}
+
+/**
+ * Coverage gap 9: signing needs allergies or NKDA, so "Patient, Test" is
+ * seeded with NKDA (e2e/fixtures/seed.ts). A test that starts from "not
+ * recorded" puts this back afterwards.
+ */
+async function restoreTestPatientNkda() {
+  await e2eSupabase().from('patients')
+    .update({ allergies: [], nkda: true, allergies_updated_at: new Date().toISOString() })
+    .eq('patient_id', TEST_IDS.patient)
 }
 
 test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft', () => {
@@ -2893,6 +2911,7 @@ test.describe('Clinic App — WO-99 batch sign', () => {
 
   test.afterEach(async () => {
     await cleanupTestOrders()
+    await restoreTestPatientNkda()
   })
 
   test.afterAll(async () => {
@@ -2901,6 +2920,9 @@ test.describe('Clinic App — WO-99 batch sign', () => {
 
   test('two drafts → Sign all → one pad, one click → both Awaiting Payment, one payment group, shipping once', async ({ page }) => {
     const supabase = e2eSupabase()
+    // Coverage gap 9: start with nothing recorded, to record NKDA at signing.
+    // afterEach puts the seeded NKDA back.
+    await supabase.from('patients').update({ allergies: null, nkda: false, allergies_updated_at: null }).eq('patient_id', TEST_IDS.patient)
     // A refill needs a filled source with an authorized refill left.
     const { data: source, error: sourceError } = await supabase
       .from('orders')
@@ -2948,12 +2970,23 @@ test.describe('Clinic App — WO-99 batch sign', () => {
     await expect(send).toBeDisabled()
     await page.getByRole('button', { name: 'Clear Signature' }).click()
 
-    // Three strokes across the pad are. One click signs both.
+    // Three strokes across the pad are. One click signs both, once the
+    // patient's allergy status is recorded (coverage gap 9): the patient
+    // has neither allergies nor NKDA, so Sign & Send (still enabled) opens
+    // the prompt with the allergy entry in place; marking NKDA there saves
+    // to the patient and signing continues, with nothing re-entered.
     await drawSignature(page)
     await expect(page.getByText('Signature captured')).toBeVisible()
     await expect(send).toBeEnabled()
     await send.click()
+    const allergyPrompt = page.getByTestId('allergies-required-prompt')
+    await expect(allergyPrompt).toContainText('Record allergies or mark NKDA before signing', { timeout: 15_000 })
+    await expect(page).toHaveURL(/\/new-prescription\/sign\?orders=/)
+    await allergyPrompt.getByLabel('No known drug allergies (NKDA)').check()
+    await allergyPrompt.getByRole('button', { name: 'Save allergies' }).click()
     await expect(page).toHaveURL(/\/dashboard\?sent=2/, { timeout: 30_000 })
+    const { data: patientRow } = await supabase.from('patients').select('allergies, nkda').eq('patient_id', TEST_IDS.patient).single()
+    expect(patientRow).toEqual({ allergies: [], nkda: true })
 
     const { data: signed } = await supabase
       .from('orders')

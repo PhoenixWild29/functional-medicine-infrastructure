@@ -24,6 +24,7 @@
 // All or nothing: the server validates every line before it signs any.
 
 import { patientName } from '@/lib/patients/display'
+import { ALLERGIES_REQUIRED_CODE, hasRecordedAllergies } from '@/lib/patients/allergies'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import SignatureCanvas from 'react-signature-canvas'
@@ -195,6 +196,15 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [serverProblems, setServerProblems] = useState<Problem[]>([])
+  // Coverage gap 9: Sign & Send pressed while a selected patient has
+  // neither allergies nor NKDA recorded (or the server said so). Their
+  // section shows the prompt with the entry; once every selected patient
+  // is recorded, signing continues.
+  const [allergyPrompt, setAllergyPrompt] = useState(false)
+  const notRecorded = (patientId: string, state: Record<string, AllergyState> = allergy) => {
+    const s = state[patientId]
+    return s?.state === 'loaded' && !hasRecordedAllergies(s)
+  }
 
   const lineProblems = new Map<string, Problem[]>()
   const batchProblems: Problem[] = []
@@ -261,6 +271,13 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
         router.push(`/dashboard?sent=${selectedIds.length}`)
         return
       }
+      // Coverage gap 9: no allergies or NKDA on the server's copy. Nothing
+      // was signed; the prompt opens for the patient(s).
+      if (body.code === ALLERGIES_REQUIRED_CODE) {
+        setAllergyPrompt(true)
+        setSubmitting(false)
+        return
+      }
       setServerProblems(body.problems ?? [])
       const message = body.error ?? 'Signing failed.'
       const refused = /nothing was signed/i.test(message) ? message : `${message} Nothing was signed.`
@@ -274,6 +291,8 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
 
   function handleSignAndSend() {
     if (!canSend) return
+    // Coverage gap 9: allergies or NKDA first, asked for in place.
+    if (activePatients.some(p => notRecorded(p.patientId))) { setAllergyPrompt(true); return }
     void send()
   }
 
@@ -361,12 +380,22 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
             <div className="space-y-3" data-testid="draft-safety-checks">
               <AllergyNotice
                 patient={allergyPatient}
-                onSaved={patch => setAllergy(prev => ({
-                  ...prev,
-                  [p.patientId]: patch.allergiesLoadFailed === true
-                    ? { state: 'failed' }
-                    : { state: 'loaded', allergies: patch.allergies, nkda: patch.nkda, updatedAt: patch.allergies_updated_at },
-                }))}
+                prompting={allergyPrompt && chosen.length > 0 && (notRecorded(p.patientId) || !activePatients.some(a => notRecorded(a.patientId)))}
+                onCancelPrompt={() => setAllergyPrompt(false)}
+                onSaved={patch => {
+                  const next: Record<string, AllergyState> = {
+                    ...allergy,
+                    [p.patientId]: patch.allergiesLoadFailed === true
+                      ? { state: 'failed' }
+                      : { state: 'loaded', allergies: patch.allergies, nkda: patch.nkda, updatedAt: patch.allergies_updated_at },
+                  }
+                  setAllergy(next)
+                  // Every selected patient now recorded: signing continues.
+                  if (allergyPrompt && !activePatients.some(a => notRecorded(a.patientId, next))) {
+                    setAllergyPrompt(false)
+                    void send()
+                  }
+                }}
               />
               {chosen.length > 0 && (
                 <DrugInteractionAlerts

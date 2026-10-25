@@ -20,10 +20,11 @@
 // Body (PATCH):
 //   { allergies?: string[] | string, nkda?: boolean }
 //   NKDA together with a non-empty list is a 400 (mirrors the CHECK
-//   constraint chk_patients_nkda_excludes_allergies). An empty body
-//   writes allergies = [] / nkda = false, which the UI reads as "not
-//   recorded" — status is derived from the two value columns, never
-//   from the timestamp.
+//   constraint chk_patients_nkda_excludes_allergies). A body that
+//   records nothing (no allergy and no NKDA) is a 400: signing requires
+//   allergies or NKDA (coverage gap 9), so a patient is never put back
+//   to "not recorded". Status is derived from the two value columns,
+//   never from the timestamp.
 //
 // Every successful PATCH stamps allergies_updated_at and updated_at.
 
