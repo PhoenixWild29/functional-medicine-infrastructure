@@ -183,6 +183,19 @@ describe('PATCH', () => {
     expect(updateMock).not.toHaveBeenCalled()
   })
 
+  // Coverage gap 9: a signed Rx must never go out "Allergies: Not
+  // recorded". Signing needs allergies or NKDA, so a patient's record
+  // can never be put back to "not recorded" afterwards: a save must
+  // record at least one allergy or NKDA.
+  it('400 for a save that records nothing (no allergy and no NKDA): nothing is written', async () => {
+    for (const body of [{}, { allergies: [], nkda: false }, { allergies: '  , ;' }, { allergies: null, nkda: null }]) {
+      const res = await PATCH(request(body), ctx())
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toBe('Enter at least one allergy, or mark NKDA.')
+    }
+    expect(updateMock).not.toHaveBeenCalled()
+  })
+
   it('404 when the scoped update matches no row (other clinic / deleted / unknown)', async () => {
     updateChainMock.mockResolvedValue({ data: null, error: null })
     expect((await PATCH(request({ nkda: true }), ctx())).status).toBe(404)

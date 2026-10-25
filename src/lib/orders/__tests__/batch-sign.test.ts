@@ -12,6 +12,7 @@
  */
 
 import { signBatch, checkBatch } from '../batch-sign'
+import { ALLERGIES_REQUIRED_MESSAGE } from '@/lib/patients/allergies'
 import { fakeDb } from './fake-db'
 
 // ── Collaborators ─────────────────────────────────────────────
@@ -332,6 +333,39 @@ describe('a check that could not run blocks the whole batch (503), never reads a
     if (res.ok) throw new Error('unreachable')
     expect(res.problems![0]).toMatchObject({ orderId: id(1), code: 'allergy_unavailable' })
     expect(signingUpdates(db)).toHaveLength(0)
+  })
+
+  // Coverage gap 9 (Gina Rooks NP): every Rx reaches the pharmacy with
+  // allergies or NKDA, never "Not recorded". Signing is refused, with one
+  // message, until the patient has at least one allergy or NKDA marked.
+  // Every signing path goes through here: Review's Sign & Send, Sign all,
+  // the chosen lines of a protocol (signChosenProposal), and refills
+  // (drafts first, then this).
+  it('a patient with neither allergies nor NKDA recorded: 422 ALLERGIES_REQUIRED, the same message, nothing signed', async () => {
+    const db = world([draft(1), draft(2)])
+    Object.assign(db.tables['patients']![0]!, { allergies: [], nkda: false })
+    const res = await sign(db, [id(1), id(2)])
+    expect(res).toMatchObject({ ok: false, status: 422, code: 'ALLERGIES_REQUIRED', error: ALLERGIES_REQUIRED_MESSAGE })
+    if (res.ok) throw new Error('unreachable')
+    expect(res.problems!.length).toBeGreaterThan(0)
+    expect(res.problems!.every(p => p.code === 'allergies_required' && p.message === ALLERGIES_REQUIRED_MESSAGE)).toBe(true)
+    expect(signingUpdates(db)).toHaveLength(0)
+  })
+
+  it('null allergies and null nkda count as not recorded too', async () => {
+    const db = world([draft(1)])
+    Object.assign(db.tables['patients']![0]!, { allergies: null, nkda: null })
+    expect(await sign(db, [id(1)])).toMatchObject({ ok: false, status: 422, code: 'ALLERGIES_REQUIRED' })
+    expect(signingUpdates(db)).toHaveLength(0)
+  })
+
+  it('NKDA marked, or one allergy listed: signs', async () => {
+    const nkda = world([draft(1)])
+    Object.assign(nkda.tables['patients']![0]!, { allergies: [], nkda: true })
+    expect(await sign(nkda, [id(1)])).toMatchObject({ ok: true })
+    const listed = world([draft(1)])
+    Object.assign(listed.tables['patients']![0]!, { allergies: ['penicillin'], nkda: false })
+    expect(await sign(listed, [id(1)])).toMatchObject({ ok: true })
   })
 
   it('the drug interaction check could not run', async () => {
