@@ -1,20 +1,20 @@
-task-id: B-2026-10-25-09
+task-id: B-2026-10-25-10
 status: ready
 ---
-Thanks for B-2026-10-25-08 (state-machine lows + drafts SQL, b0bd60f).
+Thanks for B-2026-10-25-09 (bundle-features, f75138e).
 
-Next: build bundle-features, the last bundle PR. Read A's dry-run report first (origin/dry-run-report, docs/qa/merge-dry-run-2026-10-25.md): it records how each conflict resolves.
+Next: prove the practitioner's list in CI. Add one E2E spec on bundle-features that walks the NP's requirements end to end, so the bundle's PR run checks them.
 
-`git fetch origin && git checkout -b bundle-features origin/bundle-security` (the feature branches conflict with the three bulk route-handler branches, which are in bundle-security; basing on it avoids redoing those resolutions. bundle-features merges after bundle-security).
-Merge with `git merge --no-ff`, in this order:
-1. origin/state-machine-enforcement (b0bd60f)
-2. origin/rx-quantity-shipping (9e2b075)
-3. origin/rx-allergies-required (080519a)
-4. origin/favorites-frequent (76a6964)
-5. origin/settings-notifications (c1d9e76)
-Use the latest origin heads; if a head differs from the SHA above, use it and say so.
-Fix the combination problems from A's report that apply here: favorites recent->frequent rename vs the tests added by api-input-validation and security-followups-3 (the tests must target the new route, sign in with a proper app_role and use uuid ids), the withApiErrors label on the renamed route, unused imports (e.g. computeBundleShipping), duplicate same-module imports.
-Do NOT merge any of the five migration branches.
-Gates: npm ci, lint (0 warnings), tsc, jest, next build, all green. Push bundle-features (normal push, no PR). Report in the last commit body: heads merged, conflicts and resolutions, combination fixes, gate results.
+`git checkout bundle-features && git pull` (you own it; C is reviewing f75138e in parallel, so add commits on top, do not rewrite).
+Add e2e/practitioner-requirements.spec.ts (and register it in playwright.config testMatch). Using existing seed tables only:
+- Provider builds an Rx for a GLP-1 injectable: days supply, vial auto-selection with more than one vial, refills, clinical difference (required, choose one), syringes, cold-chain shipping, diagnosis, special instructions. Assert Review shows quantity and unit (e.g. "2 vials").
+- Patient with no allergies: signing is blocked with "Record allergies or mark NKDA before signing"; mark NKDA inline; signing proceeds.
+- The Rx PDF route (or the fax PDF builder via the app's own preview, if one exists) shows "Quantity: 2 vials". If there is no UI path to the PDF in E2E, assert it through an existing test API used by other specs, or skip with a clear comment and rely on jest.
+- Favorites: Frequently used shows the dose just ordered after an order exists; Make favorite for This patient; the favorite opens the dose step with dropdowns filled.
+- Two pharmacies in one order: the double-shipping notice appears on the price page.
+- Sign all signs every draft for the patient.
+Use unique locators (no getByRole('alert'): Next's route announcer matches it). Never enter a card. Keep it under ~3 minutes.
+Run it locally against your local/E2E setup if you can; if you cannot run it locally, say so and make it as robust as you can (it will run in the PR).
+Gates: lint (0 warnings), tsc, jest, next build. Push bundle-features (normal push, no PR). Report in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
