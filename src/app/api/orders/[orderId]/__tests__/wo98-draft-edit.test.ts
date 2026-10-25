@@ -454,3 +454,20 @@ describe('a session that does not verify', () => {
     expect((await withForgedSession(() => DELETE(makeRequest(), ctx))).status).toBe(401)
   })
 })
+
+// Requirement 3 (coverage audit, D-2026-10-25-05): an edited draft's
+// quantity follows its new dispense, as POST stores it.
+describe('PATCH /api/orders/[orderId]: orders.quantity is the dispense count', () => {
+  it('a 5 mL dispense with no package → quantity 1', async () => {
+    const res = await PATCH(makeRequest(patchBody()), ctx)
+    expect(res.status).toBe(200)
+    expect(updatedRows.find(u => u.table === 'orders')!.row).toEqual(expect.objectContaining({ quantity: 1 }))
+  })
+
+  it('edited to 30 capsules → quantity 30', async () => {
+    const body = patchBody()
+    const res = await PATCH(makeRequest({ ...body, rxDetails: { ...body.rxDetails, dispenseQuantity: 30, dispenseUnit: 'capsule' } }), ctx)
+    expect(res.status).toBe(200)
+    expect(updatedRows.find(u => u.table === 'orders')!.row).toEqual(expect.objectContaining({ quantity: 30, dispense_quantity: 30 }))
+  })
+})

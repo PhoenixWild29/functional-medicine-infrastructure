@@ -745,7 +745,7 @@ test.describe('Clinic App — WO-96 Rx detail fields', () => {
     )
     const { data: order } = await supabase
       .from('orders')
-      .select('days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, special_instructions')
+      .select('quantity, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, special_instructions')
       .eq('clinic_id', TEST_IDS.clinic)
       .eq('formulation_id', TEST_IDS.formulation)
       .eq('is_active', true)
@@ -753,6 +753,8 @@ test.describe('Clinic App — WO-96 Rx detail fields', () => {
       .limit(1)
       .maybeSingle()
     expect(order).toEqual({
+      // Requirement 3: 30 mL with no package is one fill.
+      quantity:             1,
       days_supply:          30,
       dispense_quantity:    30,
       dispense_unit:        'mL',
@@ -1869,7 +1871,7 @@ test.describe('Clinic App — WO-101: vial size is suggested from the Rx and pri
     const supabase = createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
     const { data } = await supabase
       .from('orders')
-      .select('package_id, package_label, package_count, wholesale_price_snapshot, retail_price_snapshot, medication_snapshot, days_supply, dispense_quantity')
+      .select('package_id, package_label, package_count, quantity, wholesale_price_snapshot, retail_price_snapshot, medication_snapshot, days_supply, dispense_quantity')
       .eq('clinic_id', TEST_IDS.clinic)
       .eq('pharmacy_id', TEST_IDS.pharmacyTier2)
       .eq('formulation_id', TEST_IDS.glp1Formulation)
@@ -1984,6 +1986,8 @@ test.describe('Clinic App — WO-101: vial size is suggested from the Rx and pri
       package_id:               packageId(TEST_IDS.glp1PackagedPharmacyFormulation, '5 mL vial'),
       package_label:            '5 mL vial',
       package_count:            2,
+      // Requirement 3: the quantity the pharmacy gets is the 2 vials.
+      quantity:                 2,
       wholesale_price_snapshot: 570,
       retail_price_snapshot:    retail,
       days_supply:              90,

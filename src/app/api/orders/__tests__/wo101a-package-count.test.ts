@@ -219,3 +219,40 @@ describe('POST /api/orders — WO-101a package count', () => {
     expect(orderInsert()).toEqual(expect.objectContaining({ wholesale_price_snapshot: 95, package_id: null, package_count: 1 }))
   })
 })
+
+// Requirement 3 (coverage audit, D-2026-10-25-05): orders.quantity was
+// always 1. It is now the dispense count the Dispense line states.
+describe('POST /api/orders: orders.quantity is the dispense count', () => {
+  it('2 × 5 mL vials → quantity 2', async () => {
+    fiveMlVial()
+    const res = await POST(makeRequest(formulationBody({
+      retailCents:  79800,
+      packageId:    PKG_5_ML,
+      packageCount: 2,
+      rxDetails:    { daysSupply: 90, dispenseQuantity: 9.6, dispenseUnit: 'mL' },
+    })))
+    expect(res.status).toBe(201)
+    expect(orderInsert()).toEqual(expect.objectContaining({ quantity: 2, package_count: 2 }))
+  })
+
+  it('30 capsules with no package → quantity 30', async () => {
+    const res = await POST(makeRequest(formulationBody({ rxDetails: { daysSupply: 30, dispenseQuantity: 30, dispenseUnit: 'capsule' } })))
+    expect(res.status).toBe(201)
+    expect(orderInsert()).toEqual(expect.objectContaining({ quantity: 30, dispense_quantity: 30, dispense_unit: 'capsule' }))
+  })
+
+  it('9.6 mL with no package → quantity 1, one fill; prices are not multiplied by it', async () => {
+    const res = await POST(makeRequest(formulationBody({ rxDetails: { daysSupply: 90, dispenseQuantity: 9.6, dispenseUnit: 'mL' } })))
+    expect(res.status).toBe(201)
+    expect(orderInsert()).toEqual(expect.objectContaining({ quantity: 1, wholesale_price_snapshot: 95, retail_price_snapshot: 190 }))
+  })
+
+  it('2 × 5 mL vials are priced once as two vials ($570), never × quantity again', async () => {
+    fiveMlVial()
+    await POST(makeRequest(formulationBody({
+      retailCents: 79800, packageId: PKG_5_ML, packageCount: 2,
+      rxDetails: { daysSupply: 90, dispenseQuantity: 9.6, dispenseUnit: 'mL' },
+    })))
+    expect(orderInsert()).toEqual(expect.objectContaining({ quantity: 2, wholesale_price_snapshot: 570, retail_price_snapshot: 798 }))
+  })
+})
