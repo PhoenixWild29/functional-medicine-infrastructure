@@ -221,7 +221,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
             className={cn(
               'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
               collapsed && 'justify-center px-2',
-              (pathname === '/help' || pathname.startsWith('/help/')) && 'bg-primary/10 text-primary',
+              (pathname === '/help' || pathname.startsWith('/help/')) && 'bg-primary/10 text-foreground',
             )}
             title={collapsed ? 'Help' : undefined}
             aria-label={collapsed ? 'Help' : undefined}
