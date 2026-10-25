@@ -61,3 +61,14 @@ it('a failed items insert with a successful cleanup says nothing was saved', asy
   expect(String(r.body['error'])).toMatch(/Nothing was saved/)
   expect(String(r.body['error'])).not.toMatch(/connection reset/)
 })
+
+// Security review, Oct 24: a failed template insert answered with the raw
+// database message (constraint and column names) instead of a safe one.
+it('a failed template insert answers 500 with a safe message, never the database text', async () => {
+  const r = await create(c => (c.table === 'protocol_templates' && c.op === 'insert'
+    ? { data: null, error: { message: 'insert or update on table "protocol_templates" violates foreign key constraint "protocol_templates_created_by_fkey"' } }
+    : undefined))
+  expect(r.status).toBe(500)
+  expect(String(r.body['error'])).not.toMatch(/violates|constraint|protocol_templates/)
+  expect(r.body['error']).toBe('Failed to create protocol')
+})
