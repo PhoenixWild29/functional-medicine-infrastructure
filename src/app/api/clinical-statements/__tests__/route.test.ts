@@ -44,6 +44,7 @@ function chain(table: string) {
 jest.mock('@/lib/supabase/service', () => ({
   createServiceClient: jest.fn().mockReturnValue({ from: (t: string) => chain(t) }),
 }))
+jest.mock('@sentry/nextjs', () => ({ captureException: jest.fn() }))
 
 function signedInAs(role: string, clinicId: string | null = CLINIC) {
   getUserMock.mockResolvedValue({ data: { user: { id: 'user-1', app_metadata: { app_role: role, clinic_id: clinicId } } } })
@@ -92,6 +93,14 @@ describe('GET', () => {
     await get(`?formulation_id=${FORM}`)
     expect(ops('saved_clinical_statements', 'is')).toEqual(expect.arrayContaining([['patient_id', null]]))
     expect(ops('saved_clinical_statements', 'or')).toEqual([])
+  })
+
+  it('accepts the seeded demo and E2E ids (not RFC v4): C\'s review', async () => {
+    const DEMO_PATIENT = 'a3000000-0000-0000-0000-000000000004'
+    const E2E_FORMULATION = 'aaaaaaaa-0000-0000-0000-000000000032'
+    const res = await get(`?formulation_id=${E2E_FORMULATION}&patient_id=${DEMO_PATIENT}`)
+    expect(res.status).toBe(200)
+    expect(ops('saved_clinical_statements', 'or')).toEqual([[`patient_id.is.null,patient_id.eq.${DEMO_PATIENT}`]])
   })
 
   it('400 for a missing or malformed id; 401 signed out; 403 for ops, pharmacy or no clinic', async () => {
@@ -151,6 +160,39 @@ describe('POST', () => {
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ data: expect.objectContaining({ statement_id: 's-old' }) })
     expect(ops('saved_clinical_statements', 'insert')).toEqual([])
+  })
+
+  it('saves for a seeded demo patient and E2E formulation (not RFC v4): C\'s review', async () => {
+    const DEMO_PATIENT = 'a3000000-0000-0000-0000-000000000004'
+    const E2E_FORMULATION = 'aaaaaaaa-0000-0000-0000-000000000032'
+    const res = await post({ formulation_id: E2E_FORMULATION, statement: STMT, patient_id: DEMO_PATIENT })
+    expect(res.status).toBe(201)
+    expect(ops('saved_clinical_statements', 'insert')[0]![0]).toEqual(expect.objectContaining({ formulation_id: E2E_FORMULATION, patient_id: DEMO_PATIENT }))
+  })
+
+  it('a concurrent duplicate (unique index, 23505) returns the row the other save wrote, not a 500', async () => {
+    let reads = 0
+    fixtures['saved_clinical_statements:await'] = () => {
+      reads += 1
+      // First read (before the insert): none yet. Second read (after 23505): the winner's row.
+      return reads === 1
+        ? { data: [], error: null }
+        : { data: [{ statement_id: 's-winner', statement: STMT, patient_id: null, created_at: '2026-10-25T00:00:01Z' }], error: null }
+    }
+    fixtures['saved_clinical_statements:single'] = () => ({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } })
+    const res = await post({ formulation_id: FORM, statement: STMT })
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ data: expect.objectContaining({ statement_id: 's-winner', scope: 'practice' }) })
+  })
+
+  it('invalid JSON is a 400; an unexpected throw is the wrapper\'s 500, not a raw error', async () => {
+    const bad = await POST(new NextRequest(new URL('http://localhost/api/clinical-statements'), { method: 'POST', body: '{', headers: { 'content-type': 'application/json' } }))
+    expect(bad.status).toBe(400)
+    await expect(bad.json()).resolves.toEqual({ error: 'Invalid JSON body' })
+    fixtures['formulations:maybeSingle'] = () => { throw new Error('boom') }
+    const boom = await post({ formulation_id: FORM, statement: STMT })
+    expect(boom.status).toBe(500)
+    await expect(boom.json()).resolves.toEqual({ error: 'Something went wrong. Please try again.', code: 'INTERNAL_ERROR' })
   })
 
   it('400 for a short statement or a bad body; MAs may save (as favorites); ops may not; cross-site refused', async () => {
