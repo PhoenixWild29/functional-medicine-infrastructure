@@ -1,17 +1,21 @@
-task-id: B-2026-10-25-05
+task-id: B-2026-10-25-06
 status: ready
 ---
-Thanks for B-2026-10-25-04 (cleanup script covers proposals, 52f8f70). Nobody runs it until after the review; noted.
+Thanks for B-2026-10-25-05 (error-boundaries, c0bbcc7).
 
-Next: make sure no user ever sees a raw error, stack trace or blank page.
+Next: an investigation, then a small fix. C found that src/lib/.../state-machine.ts REQUIRED_FIELDS_ON_ENTER and the actor table are not enforced, though docs/technical/snapshot-immutability.md says they are.
 
-Branch: `git fetch origin && git checkout -b error-boundaries origin/main`.
-- List every route group and segment under src/app. For each, check there is an error.tsx (or a parent one that covers it) and a not-found that fits that audience: clinic app, ops, pharmacy, patient token pages, auth pages. Add global-error.tsx if missing.
-- Copy: plain, calm, with a way out (Back to dashboard / Try again / Contact your clinic for patient pages). Patient pages must not show internal ids, order numbers of other patients or anything clinical in an error.
-- No error message from the server or Supabase is rendered verbatim to the user; log it (Sentry if wired) and show the friendly text.
-- Check API route handlers return JSON errors with a stable shape and the right status, never an HTML 500 page, for thrown errors.
-- Tests: jest for each boundary component; one E2E that hits a nonexistent clinic route and a bad patient token and asserts the friendly pages (use locators that are unique; avoid getByRole('alert'), which also matches Next's route announcer).
-No database migrations on this branch.
-Gates: lint (0 warnings), tsc, jest. Push error-boundaries (normal push, no PR). Report in the commit body: the route table and what you added.
+Branch: `git fetch origin && git checkout -b state-machine-enforcement origin/main`.
+Part 1 (report first, in the commit body of a docs commit at docs/technical/state-machine-enforcement.md):
+- For every order status transition in the code (cas-transition and any direct status writes), list: from, to, who triggers it (route/cron/webhook/adapter), and whether the required fields and allowed actor in state-machine.ts actually hold today. Use real code paths, not the doc.
+- Find any write that changes orders.status without going through cas-transition. List them.
+- Verdict per rule: would enforcing it break a real flow today (yes/no, which)?
+Part 2 (build, same branch):
+- Enforce in cas-transition every REQUIRED_FIELDS and actor rule that breaks no real flow. For rules that would break a flow, either correct the rule to match the intended flow (if the code is clearly right) or leave it unenforced and list it for Sam with one line each.
+- Route the direct status writes through cas-transition where safe.
+- Update docs/technical/snapshot-immutability.md so it says exactly what is enforced.
+Tests: jest for each enforced rule (missing field rejected, wrong actor rejected, valid transition passes). Full jest and the E2E specs that move orders through statuses must stay green; run the relevant E2E specs locally if you can.
+No database migrations. If enforcement needs a DB trigger, stop and report the design.
+Gates: lint (0 warnings), tsc, jest, next build. Push state-machine-enforcement (normal push, no PR). Report in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
