@@ -13,10 +13,17 @@
  *   Tier 2 portal                                {quantity}
  *   Tier 4 fax                                   "Quantity: N" on the Rx PDF
  *
- * Every field sits beside the payload's own volume fields (dispense
- * quantity + unit, package label + count), so it is the count of what is
- * handed over: packages when the line has one, units when the dispense is
- * counted (capsules), otherwise 1 fill.
+ * C's review: quantity must mean one thing and travel with its unit.
+ * Counted forms (capsules, tablets...) send the total units, package or
+ * not; measured forms send the containers (2 × 5 mL vials → 2 vials). The
+ * unit goes next to it wherever the target has a field:
+ *
+ *   canonical / Tier 3   quantityUnit
+ *   Vios                 medication.quantity_unit
+ *   LifeFile             prescription.drug.quantityUnit
+ *   MediVera             RxInfo.QtyUnit
+ *   Tier 2 portal        {quantity_unit}
+ *   Tier 4 fax           "Quantity: 2 vials"
  *
  * The rows below are stored with quantity 1, as every row written before
  * this fix was: the count comes from their package and dispense columns.
@@ -90,6 +97,8 @@ afterEach(() => jest.restoreAllMocks())
 const TWO_VIALS   = { dispense_quantity: 9.6, dispense_unit: 'mL', package_label: '5 mL vial', package_count: 2 }
 const CAPSULES_30 = { dispense_quantity: 30, dispense_unit: 'capsule', package_label: null, package_count: 1 }
 const ML_NO_PKG   = { dispense_quantity: 9.6, dispense_unit: 'mL', package_label: null, package_count: 1 }
+// The review's case: 2 bottles of 30 capsules, chosen as a package.
+const TWO_BOTTLES = { dispense_quantity: 60, dispense_unit: 'capsule', package_label: '30 capsules', package_count: 2 }
 
 const ORDER = {
   order_id: 'o-1', order_number: 'CMP-1', status: 'PAID_PROCESSING',
@@ -130,46 +139,70 @@ async function tier1Body(order: Record<string, unknown>, transformer: string | n
 }
 
 describe.each([
-  ['2 × 5 mL vials', TWO_VIALS, 2],
-  ['30 capsules, no package', CAPSULES_30, 30],
-  ['9.6 mL, no package', ML_NO_PKG, 1],
-])('%s', (_name, columns, expected) => {
-  it(`Tier 1 canonical / Tier 3 pass-through: quantity ${expected}`, async () => {
-    expect((await tier1Body(columns, null))['quantity']).toBe(expected)
+  ['2 × 5 mL vials', TWO_VIALS, 2, 'vial'],
+  ['30 capsules, no package', CAPSULES_30, 30, 'capsule'],
+  ['2 bottles of 30 capsules', TWO_BOTTLES, 60, 'capsule'],
+  ['9.6 mL, no package', ML_NO_PKG, 1, 'container'],
+])('%s', (_name, columns, expected, unit) => {
+  it(`Tier 1 canonical / Tier 3 pass-through: quantity ${expected}, quantityUnit ${unit}`, async () => {
+    const body = await tier1Body(columns, null)
+    expect(body['quantity']).toBe(expected)
+    expect(body['quantityUnit']).toBe(unit)
   })
 
-  it(`Tier 1 Vios: medication.quantity ${expected}`, async () => {
+  it(`Tier 1 Vios: medication.quantity ${expected} + quantity_unit`, async () => {
     const body = await tier1Body(columns, 'transformViosPayload') as { medication: Record<string, unknown> }
-    expect(body.medication['quantity']).toBe(expected)
+    expect(body.medication).toEqual(expect.objectContaining({ quantity: expected, quantity_unit: unit }))
   })
 
-  it(`Tier 1 LifeFile: prescription.drug.quantity ${expected}`, async () => {
+  it(`Tier 1 LifeFile: prescription.drug.quantity ${expected} + quantityUnit`, async () => {
     const body = await tier1Body(columns, 'transformLifeFilePayload') as { prescription: { drug: Record<string, unknown> } }
-    expect(body.prescription.drug['quantity']).toBe(expected)
+    expect(body.prescription.drug).toEqual(expect.objectContaining({ quantity: expected, quantityUnit: unit }))
   })
 
-  it(`Tier 1 MediVera: RxInfo.Qty ${expected}`, async () => {
+  it(`Tier 1 MediVera: RxInfo.Qty ${expected} + QtyUnit`, async () => {
     const body = await tier1Body(columns, 'transformMediVeraPayload') as { RxInfo: Record<string, unknown> }
-    expect(body.RxInfo['Qty']).toBe(expected)
+    expect(body.RxInfo).toEqual(expect.objectContaining({ Qty: expected, QtyUnit: unit }))
   })
 
-  it(`Tier 2 portal: {quantity} "${expected}"`, async () => {
+  it(`Tier 2 portal: {quantity} "${expected}" and {quantity_unit} "${unit}"`, async () => {
     db = scriptedDb(world(columns, 'TIER_2_PORTAL'))
     await submitTier2Portal('o-1', 'ph-1').catch(() => undefined)
-    expect(flowValues[0]).toEqual(expect.objectContaining({ quantity: String(expected) }))
+    expect(flowValues[0]).toEqual(expect.objectContaining({ quantity: String(expected), quantity_unit: unit }))
   })
 
-  it(`Tier 4 fax: the Rx PDF gets quantity ${expected}`, async () => {
+  it(`Tier 4 fax: the Rx PDF gets quantity ${expected} ${unit}`, async () => {
     db = scriptedDb(world(columns, 'TIER_4_FAX'))
     await submitTier4Fax('o-1').catch(() => undefined)
-    expect(pdfMock).toHaveBeenCalledWith(expect.objectContaining({ quantity: expected }))
+    expect(pdfMock).toHaveBeenCalledWith(expect.objectContaining({ quantity: expected, quantityUnit: unit }))
   })
 })
 
 describe('Rx PDF text', () => {
   const { buildPrescriptionPdfBytes } = jest.requireActual('../prescription-pdf') as typeof import('../prescription-pdf')
-  it('prints "Quantity: 2" with "Dispense: 9.6 mL (2 x 5 mL vials)"', () => {
+  const pdf = (over: Record<string, unknown>) => new TextDecoder().decode(buildPrescriptionPdfBytes({
+    providerFirstName: 'Sarah', providerLastName: 'Chen', providerNpi: '1234567890', providerDea: null, providerLicenseState: 'TX',
+    patientFirstName: 'Alex', patientLastName: 'Demo', patientDateOfBirth: '1985-06-15',
+    patientAddressLine1: '500 New St', patientAddressLine2: null, patientCity: 'Dallas', patientState: 'TX', patientZip: '75201',
+    medicationName: 'Naltrexone 4.5 mg capsules', medicationForm: 'Capsule', medicationDose: '4.5 mg',
+    quantity: 30, sigText: 'Take 1 capsule daily',
+    orderNumber: 'CMP-1002', orderDate: '2026-09-15T00:00:00Z', clinicName: 'Sunrise Functional Medicine', pharmacyName: 'Strive Pharmacy',
+    ...over,
+  } as Parameters<typeof buildPrescriptionPdfBytes>[0]))
+
+  it('prints "Quantity: 30 capsules"', () => {
+    expect(pdf({ quantityUnit: 'capsule', dispenseQuantity: 30, dispenseUnit: 'capsule' })).toContain('Quantity: 30 capsules')
+  })
+
+  it('a row with no unit (an older payload) prints the number alone', () => {
+    const text = pdf({ quantity: 1 })
+    expect(text).toContain('Quantity: 1')
+    expect(text).not.toContain('Quantity: 1 ')
+  })
+
+  it('prints "Quantity: 2 vials" with "Dispense: 9.6 mL (2 x 5 mL vials)"', () => {
     const text = new TextDecoder().decode(buildPrescriptionPdfBytes({
+      quantityUnit: 'vial',
       providerFirstName: 'Sarah', providerLastName: 'Chen', providerNpi: '1234567890', providerDea: null, providerLicenseState: 'TX',
       patientFirstName: 'Alex', patientLastName: 'Demo', patientDateOfBirth: '1985-06-15',
       patientAddressLine1: '500 New St', patientAddressLine2: null, patientCity: 'Dallas', patientState: 'TX', patientZip: '75201',
@@ -178,7 +211,7 @@ describe('Rx PDF text', () => {
       daysSupply: 90, dispenseQuantity: 9.6, dispenseUnit: 'mL', packageLabel: '5 mL vial', packageCount: 2,
       orderNumber: 'CMP-1001', orderDate: '2026-09-15T00:00:00Z', clinicName: 'Sunrise Functional Medicine', pharmacyName: 'Strive Pharmacy',
     }))
-    expect(text).toContain('Quantity: 2')
+    expect(text).toContain('Quantity: 2 vials')
     expect(text).not.toContain('Quantity: 1')
     expect(text).toContain('Dispense: 9.6 mL \\(2 x 5 mL vials\\)')
   })
