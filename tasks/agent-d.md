@@ -1,27 +1,16 @@
-task-id: D-2026-10-25-14
+task-id: D-2026-10-25-15
 status: ready
 ---
-Thanks for D-2026-10-25-13 (clinical-difference-saved, 3bd6713, migration 000009 prepared). Noted; it merges after perf-indexes.
+Thanks for D-2026-10-25-14 (clinic-help, 96f74e3).
 
-Next: in-app Help for clinic staff, so a pilot clinic can answer its own "how do I" questions.
+Next: fix C's review of clinical-difference-saved (origin/review-high-risk, docs/qa/review-2026-10-25-high-risk.md section 5).
 
-First check whether any help page, help links or tooltips exist today (search for "help", "Help", "/help", "support"); build on them.
-Branch: `git fetch origin && git checkout -b clinic-help origin/bundle-features` (so it describes the finished features; it merges after bundle-features).
-- Add /help in the clinic app (all clinic roles), linked from the sidebar/user menu, with short task pages written for clinic staff, plain language, exact button labels from the code:
-  1. Add a patient (mobile link, sign-up QR, spreadsheet upload, face sheet when available).
-  2. Write and sign a prescription (every field the pharmacy needs, allergies/NKDA, Sign all).
-  3. Favorites and Frequently used.
-  4. Saved clinical difference statements (only if clinical-difference-saved has merged into your base; otherwise leave it out and say so).
-  5. Send a treatment plan for the patient to choose, and sign the chosen lines.
-  6. Payment links: what the patient sees, expiry, resending.
-  7. Order status and what each status means; what to do when an order shows a failure reason.
-  8. Team: add a provider, invite an MA or admin, turn access off.
-  9. Settings: practice details, Notifications (what is sent), access log, agreements.
-  10. Who to contact for help (use the support contact already in the code or env; if none exists, say "Contact CompoundIQ" with no address and list it in the report as a decision for Sam).
-- Content lives in code (MDX or TSX, matching the repo's conventions). No external links, no screenshots needed. Accessible headings, works at phone width.
-- A small "Help" link on the Rx builder and the plan page header pointing to the relevant section.
-Tests: jest that every help page renders and every label it names exists in the component it describes (a simple string check against the source is fine); axe in an existing E2E if cheap.
-No database migrations.
-Gates: lint (0 warnings), tsc, jest, next build. Push clinic-help (normal push, no PR). Report in the commit body.
+`git checkout clinical-difference-saved && git pull && git merge origin/bundle-features` (it must sit on bundle-features so it can use lib/api/input and withApiErrors; resolve the migration-order test conflict as the other migration branches did).
+1. MEDIUM: replace strict z.uuid() with the repo's any-hex uuid helper from lib/api/input so seeded demo/E2E ids (a3000000-..., aaaaaaaa-0000-...) work. Test with those ids.
+2. MEDIUM: wrap GET/POST/DELETE with withApiErrors, use isClinicStaffRole (or the gate bundle-security uses for clinic routes) and lib/api/input parsing, keeping cross-site, then auth/gate, then parse, then write. The route-error-wrapper and same-origin tests must pass.
+3. LOW: a concurrent duplicate save returns the existing row (handle unique violation 23505 by re-reading), not 500.
+4. LOW (no change): any clinic role can soft-delete the clinic's statements, matching favorites. Leave it; Sam can narrow later.
+Then: `git checkout clinic-help && git merge origin/clinical-difference-saved` only if the help page's saved-statements section needs it; otherwise leave clinic-help as is and say so.
+Gates: lint (0 warnings), tsc, jest, next build. Push clinical-difference-saved (normal push, no PR). Report in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.

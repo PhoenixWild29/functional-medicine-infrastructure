@@ -1,15 +1,23 @@
-task-id: A-2026-10-25-14
+task-id: A-2026-10-25-15
 status: ready
 ---
-Thanks for A-2026-10-25-13 (bundle-ci lockfile and override, f08ed09).
+Thanks for A-2026-10-25-14 (BLOCKED report, f463876). Docker is with Sam; A-14 will be re-queued when Docker Desktop is running.
 
-Next: run the FULL E2E suite on the integrated result locally, before the serial PR runs, so failures show up now and not one PR at a time.
+Next: a read-only public smoke test the orchestrator runs against prod after every merge (no sign-in, no writes).
 
-1. Check whether this PC can run a local Supabase: Docker Desktop (or another Docker engine) running, and the Supabase CLI version CI pins (ci.yml). If not, stop and report exactly what is missing; do NOT install Docker or change system settings.
-2. If it can: in a throwaway local branch `integration-e2e` (do NOT push it), start from origin/main and merge, in order: ops-fax-viewer-documo, rls-user-write-lockdown-v2, security-followups-2, signup-squatting, rate-limit-db, bundle-security, bundle-ci, bundle-features (latest origin heads), perf-indexes, clinical-difference-saved. Apply the fax PDF route combination fix (withApiErrors + refuseCrossSite) and any others your runbook lists.
-3. `supabase start` locally, apply all migrations, seed the way CI seeds the E2E project (read ci.yml and the e2e setup; use local keys only, never the shared E2E project's or prod secrets), then run the whole Playwright suite the way CI does (same projects, workers, SERIAL handling).
-4. Report: pass/fail per spec; for each failure, the cause (app bug, test bug, seed/env difference from CI) and which branch it belongs to, with the fix. Fix test/app bugs on the branch they belong to ONLY if that branch is yours (rate-limit-db, bundle-security, bundle-ci, bundle-docs); otherwise report and I will route it.
-5. `supabase stop` when done.
-Push nothing but fixes on your own branches. Put the report in a commit on bundle-docs at docs/qa/local-e2e-2026-10-25.md and push bundle-docs.
+Branch: `git checkout bundle-ci && git pull` (it merges with the CI bundle).
+Add scripts/smoke/prod-public-smoke.mjs (Node 20+, plain Playwright from the repo's devDependency, chromium, no repo build needed). Usage: `node scripts/smoke/prod-public-smoke.mjs --base https://functional-medicine-infrastructure.vercel.app`. It must:
+- GET /api/health: 200 and the JSON shape main returns (read the route).
+- Security headers on / and /login: CSP with a nonce, HSTS max-age=63072000 includeSubDomains, X-Frame-Options DENY, Referrer-Policy as the code sets it; /login Cache-Control private, no-store.
+- Redirects: /dashboard?x=1 -> 307 /login?redirectTo=%2Fdashboard%3Fx%3D1; /checkout/garbage -> /checkout/expired.
+- Public pages render with their headings (read the code for exact text): /login, /get-started, privacy policy, patient terms.
+- Neutral invalid-link pages: /plan/<random>, /intake/<random>, /join/<random> show the neutral text and never a stack trace; X-Robots-Tag noindex / robots meta noindex on them; Referrer-Policy no-referrer where token-pages-hardening sets it.
+- A nonexistent clinic URL shows the friendly not-found page (after bundle-security; make the check tolerant: pass on either the old or the new page and print which).
+- robots.txt disallows the token paths (after token-pages-hardening; tolerant as above).
+- No console errors on each page (print them).
+- Prints one line per check: PASS/FAIL/INFO with the observed value; exits non-zero on any FAIL.
+Never submit a form, never sign in, never call a write endpoint. Rate: one request at a time, under 60 requests total.
+Run it once yourself against prod and include the output in the report (that is read-only and allowed). Add a jest test for the argument parsing and the header-check helpers only.
+Gates: lint (0 warnings), tsc, jest. Push bundle-ci (normal push, no PR). Report in the commit body.
 
-Do not touch the production database, Vercel, Stripe or secrets, and do not use the shared E2E Supabase project.
+Do not touch the production database, Vercel, Stripe or secrets.
