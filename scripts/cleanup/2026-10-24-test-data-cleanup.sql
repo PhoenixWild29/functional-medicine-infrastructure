@@ -5,6 +5,10 @@
 -- RUN BY SAM ONLY, on prod, AFTER Lauren has reviewed the test data.
 -- Run as postgres (Supabase SQL editor or psql). One transaction.
 --
+-- BEFORE ANYTHING: run 2026-10-25-test-data-candidates.sql (read only). It
+-- lists rows that look like test data and whether this script matches
+-- them; add the exact name or email of any confirmed test row it misses.
+--
 -- DRY RUN FIRST: change the last line of this file from COMMIT to
 -- ROLLBACK and run it. Nothing is kept, and the results show:
 --   1. the preview (rows that would be removed, per table, plus the rows
@@ -34,6 +38,10 @@
 --                   beta-test-provider2@sunrise-clinic.com
 --                   beta-test-ma@sunrise-clinic.com  (login + its Sunrise
 --                     invite only; Sunrise itself stays)
+--   Proposals     every treatment proposal (patient protocol choice, #268)
+--                 of a matched clinic, patient or provider, with its options,
+--                 choice items and events. Its option orders are DRAFTs of
+--                 the same matched patient, so they are matched orders.
 --   E2E logins    emails at the reserved test domains the E2E suite uses:
 --                 @compoundiq.test, @example.test,
 --                 @patient-import.e2e.test, and e2e-*@example.com. A login
@@ -50,6 +58,11 @@
 --     MA may belong to Sunrise);
 --   - an order to be removed is neither at a matched clinic nor for a
 --     matched patient, or an order that stays is a refill of one that goes;
+--   - a matched proposal is for a patient that stays, an order that stays
+--     belongs to a matched proposal's option, or an order or choice item
+--     that goes belongs to a proposal that stays;
+--   - a protocol phase of a patient that stays uses a removed protocol or
+--     was advanced by a removed provider (its history would be lost);
 --   - an EPCS audit row or an active legal hold points at a matched row
 --     (those are never deleted here);
 --   - a match count is larger than its expected maximum (cleanup_expect).
@@ -70,6 +83,10 @@
 --     pharmacy is cleared.
 --   - patient_field_changes on Sunrise demo patients made by the QA
 --     Keragon sync: kept; their sync_event_id becomes NULL (FK SET NULL).
+--   - Rows that stay and name a removed row through an ON DELETE SET NULL
+--     key lose only that link, and the report counts them: protocol items
+--     naming the QA Test Pharmacy, protocol versions published by a removed
+--     provider, and proposal options taken from a removed protocol.
 --
 -- NOT DONE BY THIS SCRIPT (Supabase blocks deleting storage.objects in
 -- SQL): files in Storage. The preview lists them (bucket + path) as
@@ -78,12 +95,27 @@
 --
 -- Append-only tables (agreement_acceptances, clinic_onboarding_events,
 -- pharmacy_agreement_acceptances, pharmacy_onboarding_events,
--- ledger_entries, payable_events) and the signed-order guard on orders
+-- ledger_entries, payable_events, proposal_choice_items,
+-- treatment_proposal_events) and the signed-order guard on orders
 -- refuse deletes by trigger. Inside this transaction each guard is
 -- disabled only around the matched deletes and re-enabled before COMMIT
 -- (ALTER TABLE takes an exclusive lock until the end of the transaction,
 -- so no other session writes to those tables meanwhile; a ROLLBACK undoes
 -- the disable too).
+--
+-- Proposals of test data are DELETED, not cancelled. The app never deletes
+-- a proposal (service_role has no DELETE on treatment_proposals, and choice
+-- items and events are append-only), so that a real patient's choice and
+-- its history cannot be rewritten. Test proposals are different: each one
+-- has NOT NULL foreign keys to its patient, clinic and provider, so it
+-- cannot outlive the test patient, and cancelling it would keep the test
+-- patient's data. They are removed whole, as postgres (the table owner,
+-- not subject to the service_role grants), exactly like the removed
+-- clinics' other append-only rows: only rows of matched proposals, each
+-- guard disabled by name for the deletes. Nothing that stays loses
+-- history: the refusals above stop the run if any row that stays points at
+-- a matched proposal, and phi_access_log keeps its rows about the
+-- proposals' create and sign steps (it has no foreign keys).
 
 BEGIN;
 
@@ -99,6 +131,7 @@ INSERT INTO cleanup_expect VALUES
   ('logins', 40),
   ('e2e logins', 60),
   ('ehr connections', 4),
+  ('proposals', 20),
   ('vault secrets', 8);
 
 -- ── 1. Match ─────────────────────────────────────────────────────
@@ -119,6 +152,8 @@ CREATE TEMP TABLE m_vault    (secret_id uuid PRIMARY KEY, why text) ON COMMIT DR
 CREATE TEMP TABLE m_dispute  (dispute_id text PRIMARY KEY) ON COMMIT DROP;
 CREATE TEMP TABLE m_catalog  (item_id uuid PRIMARY KEY) ON COMMIT DROP;
 CREATE TEMP TABLE m_ext_email (email text PRIMARY KEY) ON COMMIT DROP;
+CREATE TEMP TABLE m_proposal (proposal_id uuid PRIMARY KEY) ON COMMIT DROP;
+CREATE TEMP TABLE m_option   (option_id uuid PRIMARY KEY) ON COMMIT DROP;
 
 -- The three exact Beta logins.
 INSERT INTO m_ext_email VALUES
@@ -147,6 +182,15 @@ WHERE clinic_id = 'a1000000-0000-0000-0000-000000000001'
 ON CONFLICT DO NOTHING;
 
 INSERT INTO m_provider SELECT provider_id FROM providers WHERE clinic_id IN (SELECT clinic_id FROM m_clinic);
+
+-- Proposals (patient protocol choice): of a matched clinic, patient or provider, and their options.
+INSERT INTO m_proposal
+SELECT proposal_id FROM treatment_proposals
+WHERE clinic_id IN (SELECT clinic_id FROM m_clinic)
+   OR patient_id IN (SELECT patient_id FROM m_patient)
+   OR provider_id IN (SELECT provider_id FROM m_provider);
+INSERT INTO m_option
+SELECT option_id FROM treatment_proposal_options WHERE proposal_id IN (SELECT proposal_id FROM m_proposal);
 
 -- Orders: at a matched clinic, for a matched patient, or to the matched pharmacy.
 INSERT INTO m_order
@@ -292,6 +336,33 @@ BEGIN
     AND (refill_of_order_id IN (SELECT order_id FROM m_order) OR payment_group_id IN (SELECT group_id FROM m_group));
   IF bad IS NOT NULL THEN RAISE EXCEPTION 'refused: an order that stays depends on one that goes (%)', bad; END IF;
 
+  SELECT string_agg(proposal_id::text, ', ') INTO bad FROM treatment_proposals
+  WHERE proposal_id IN (SELECT proposal_id FROM m_proposal)
+    AND patient_id NOT IN (SELECT patient_id FROM m_patient);
+  IF bad IS NOT NULL THEN RAISE EXCEPTION 'refused: a matched proposal is for a patient that stays (%)', bad; END IF;
+
+  SELECT string_agg(order_id::text, ', ') INTO bad FROM orders
+  WHERE order_id NOT IN (SELECT order_id FROM m_order)
+    AND proposal_option_id IN (SELECT option_id FROM m_option);
+  IF bad IS NOT NULL THEN RAISE EXCEPTION 'refused: an order that stays belongs to a matched proposal (%)', bad; END IF;
+
+  SELECT string_agg(order_id::text, ', ') INTO bad FROM orders
+  WHERE order_id IN (SELECT order_id FROM m_order)
+    AND proposal_option_id IS NOT NULL
+    AND proposal_option_id NOT IN (SELECT option_id FROM m_option);
+  IF bad IS NOT NULL THEN RAISE EXCEPTION 'refused: an order that goes belongs to a proposal that stays (%)', bad; END IF;
+
+  SELECT string_agg(DISTINCT proposal_id::text, ', ') INTO bad FROM proposal_choice_items
+  WHERE proposal_id NOT IN (SELECT proposal_id FROM m_proposal)
+    AND (order_id IN (SELECT order_id FROM m_order) OR option_id IN (SELECT option_id FROM m_option));
+  IF bad IS NOT NULL THEN RAISE EXCEPTION 'refused: a proposal that stays chose an order or option that goes (%)', bad; END IF;
+
+  SELECT count(*) INTO n FROM patient_protocol_phases ph
+  WHERE ph.patient_id NOT IN (SELECT patient_id FROM m_patient)
+    AND (ph.protocol_id IN (SELECT protocol_id FROM protocol_templates WHERE clinic_id IN (SELECT clinic_id FROM m_clinic)) OR ph.advanced_by IN (SELECT provider_id FROM m_provider)
+      OR EXISTS (SELECT 1 FROM phase_advancement_history h WHERE h.tracking_id = ph.tracking_id AND h.advanced_by IN (SELECT provider_id FROM m_provider)));
+  IF n > 0 THEN RAISE EXCEPTION 'refused: % protocol phase(s) of patients that stay use a removed protocol or provider', n; END IF;
+
   SELECT count(*) INTO n FROM epcs_audit_log
   WHERE patient_id IN (SELECT patient_id FROM m_patient) OR provider_id IN (SELECT provider_id FROM m_provider) OR order_id IN (SELECT order_id FROM m_order);
   IF n > 0 THEN RAISE EXCEPTION 'refused: % EPCS audit row(s) point at matched rows; EPCS audit is never deleted here', n; END IF;
@@ -317,6 +388,7 @@ BEGIN
     UNION ALL SELECT 'logins', count(*) FROM m_user WHERE why <> 'E2E test domain'
     UNION ALL SELECT 'e2e logins', count(*) FROM m_user WHERE why = 'E2E test domain'
     UNION ALL SELECT 'ehr connections', count(*) FROM m_connection
+    UNION ALL SELECT 'proposals', count(*) FROM m_proposal
     UNION ALL SELECT 'vault secrets', count(*) FROM m_vault
   LOOP
     SELECT max_rows INTO lim FROM cleanup_expect WHERE item = bad;
@@ -384,7 +456,14 @@ INSERT INTO cleanup_report (ord, item, preview, expected_after, note) VALUES
   (54, 'catalog (+ history, normalized)',  (SELECT count(*) FROM catalog WHERE item_id IN (SELECT item_id FROM m_catalog)) + (SELECT count(*) FROM normalized_catalog WHERE pharmacy_id IN (SELECT pharmacy_id FROM m_pharmacy)), 0, NULL),
   (55, 'catalog_upload_history',           (SELECT count(*) FROM catalog_upload_history WHERE pharmacy_id IN (SELECT pharmacy_id FROM m_pharmacy)), 0, NULL),
   (56, 'circuit_breaker_state',            (SELECT count(*) FROM circuit_breaker_state WHERE pharmacy_id IN (SELECT pharmacy_id FROM m_pharmacy)), 0, 'cascade from pharmacies'),
+  (62, 'treatment_proposals',              (SELECT count(*) FROM treatment_proposals WHERE proposal_id IN (SELECT proposal_id FROM m_proposal)), 0, (SELECT string_agg(status || ' ' || n, ', ') FROM (SELECT status, count(*) n FROM treatment_proposals WHERE proposal_id IN (SELECT proposal_id FROM m_proposal) GROUP BY status ORDER BY status) s)),
+  (63, 'treatment_proposal_options',       (SELECT count(*) FROM treatment_proposal_options WHERE option_id IN (SELECT option_id FROM m_option)), 0, 'their orders are matched orders (DRAFT lines of the same patient)'),
+  (64, 'proposal_choice_items',            (SELECT count(*) FROM proposal_choice_items WHERE proposal_id IN (SELECT proposal_id FROM m_proposal)), 0, 'append-only: guard disabled for these rows'),
+  (65, 'treatment_proposal_events',        (SELECT count(*) FROM treatment_proposal_events WHERE proposal_id IN (SELECT proposal_id FROM m_proposal)), 0, 'append-only: guard disabled for these rows'),
   -- Unlinked, not deleted.
+  (66, 'protocol_items naming the test pharmacy, of protocols that stay (pharmacy cleared)', (SELECT count(*) FROM protocol_items WHERE pharmacy_id IN (SELECT pharmacy_id FROM m_pharmacy) AND protocol_id NOT IN (SELECT protocol_id FROM protocol_templates WHERE clinic_id IN (SELECT clinic_id FROM m_clinic))), 0, 'item kept; pharmacy set to NULL by its FK'),
+  (67, 'protocol_template_versions published by a removed provider, of protocols that stay (publisher cleared)', (SELECT count(*) FROM protocol_template_versions WHERE published_by IN (SELECT provider_id FROM m_provider) AND protocol_id NOT IN (SELECT protocol_id FROM protocol_templates WHERE clinic_id IN (SELECT clinic_id FROM m_clinic))), 0, 'version kept; published_by set to NULL by its FK'),
+  (68, 'treatment_proposal_options from a removed protocol, of proposals that stay (protocol cleared)', (SELECT count(*) FROM treatment_proposal_options WHERE protocol_id IN (SELECT protocol_id FROM protocol_templates WHERE clinic_id IN (SELECT clinic_id FROM m_clinic)) AND proposal_id NOT IN (SELECT proposal_id FROM m_proposal)), 0, 'option kept; protocol_id set to NULL by its FK'),
   (60, 'inbound_fax_queue (match cleared)',(SELECT count(*) FROM inbound_fax_queue WHERE matched_order_id IN (SELECT order_id FROM m_order) OR matched_pharmacy_id IN (SELECT pharmacy_id FROM m_pharmacy)), 0, 'fax kept; matched order / pharmacy set to NULL'),
   (61, 'patients flagged as duplicate of a test patient (flag cleared)', (SELECT count(*) FROM patients WHERE possible_duplicate_of IN (SELECT patient_id FROM m_patient) AND patient_id NOT IN (SELECT patient_id FROM m_patient)), 0, 'patient kept; possible-duplicate flag cleared'),
   -- Kept on purpose (expected_after = preview: unchanged).
@@ -393,7 +472,8 @@ INSERT INTO cleanup_report (ord, item, preview, expected_after, note) VALUES
   (72, 'KEPT Sunrise clinics row', (SELECT count(*) FROM clinics WHERE clinic_id = 'a1000000-0000-0000-0000-000000000001'), NULL, 'Sunrise stays'),
   (73, 'KEPT demo clinics and pharmacies', (SELECT count(*) FROM clinics WHERE clinic_id::text LIKE 'a1000000-0000-0000-0000-%') + (SELECT count(*) FROM pharmacies WHERE pharmacy_id::text LIKE 'a4000000-0000-0000-0000-%'), NULL, 'demo data stays'),
   (74, 'KEPT Sunrise patients (not test)', (SELECT count(*) FROM patients WHERE clinic_id = 'a1000000-0000-0000-0000-000000000001' AND patient_id NOT IN (SELECT patient_id FROM m_patient)), NULL, 'demo patients stay'),
-  (75, 'KEPT Sunrise orders (not test)', (SELECT count(*) FROM orders WHERE clinic_id = 'a1000000-0000-0000-0000-000000000001' AND order_id NOT IN (SELECT order_id FROM m_order)), NULL, 'demo orders stay');
+  (75, 'KEPT Sunrise orders (not test)', (SELECT count(*) FROM orders WHERE clinic_id = 'a1000000-0000-0000-0000-000000000001' AND order_id NOT IN (SELECT order_id FROM m_order)), NULL, 'demo orders stay'),
+  (76, 'KEPT proposals (not test), with their choice items and events', (SELECT count(*) FROM treatment_proposals WHERE proposal_id NOT IN (SELECT proposal_id FROM m_proposal)) + (SELECT count(*) FROM proposal_choice_items WHERE proposal_id NOT IN (SELECT proposal_id FROM m_proposal)) + (SELECT count(*) FROM treatment_proposal_events WHERE proposal_id NOT IN (SELECT proposal_id FROM m_proposal)), NULL, 'real proposals and their append-only history stay');
 
 -- Kept rows: the count after must equal the preview.
 UPDATE cleanup_report SET expected_after = preview WHERE expected_after IS NULL;
@@ -417,6 +497,12 @@ ALTER TABLE agreement_acceptances DISABLE TRIGGER trg_agreement_acceptances_appe
 ALTER TABLE clinic_onboarding_events DISABLE TRIGGER trg_clinic_onboarding_events_append_only;
 ALTER TABLE pharmacy_agreement_acceptances DISABLE TRIGGER pharmacy_agreement_acceptances_no_update_delete;
 ALTER TABLE pharmacy_onboarding_events DISABLE TRIGGER pharmacy_onboarding_events_no_update_delete;
+ALTER TABLE proposal_choice_items DISABLE TRIGGER proposal_choice_items_no_update_delete;
+ALTER TABLE treatment_proposal_events DISABLE TRIGGER treatment_proposal_events_no_update_delete;
+
+-- Proposal rows that point at orders and options (append-only; matched proposals only).
+DELETE FROM proposal_choice_items WHERE proposal_id IN (SELECT proposal_id FROM m_proposal);
+DELETE FROM treatment_proposal_events WHERE proposal_id IN (SELECT proposal_id FROM m_proposal);
 
 -- Order-level rows.
 DELETE FROM sla_notifications_log WHERE order_id IN (SELECT order_id FROM m_order);
@@ -445,6 +531,12 @@ WITH gone_submissions AS (
 )
 DELETE FROM orders WHERE order_id IN (SELECT order_id FROM m_order);
 DELETE FROM payment_groups WHERE group_id IN (SELECT group_id FROM m_group);
+-- Proposals and their options point at each other (chosen_option_id): one
+-- statement, after the orders that referenced the options.
+WITH gone_options AS (
+  DELETE FROM treatment_proposal_options WHERE option_id IN (SELECT option_id FROM m_option) RETURNING 1
+)
+DELETE FROM treatment_proposals WHERE proposal_id IN (SELECT proposal_id FROM m_proposal);
 
 -- Patients.
 UPDATE patients
@@ -508,6 +600,8 @@ ALTER TABLE agreement_acceptances ENABLE TRIGGER trg_agreement_acceptances_appen
 ALTER TABLE clinic_onboarding_events ENABLE TRIGGER trg_clinic_onboarding_events_append_only;
 ALTER TABLE pharmacy_agreement_acceptances ENABLE TRIGGER pharmacy_agreement_acceptances_no_update_delete;
 ALTER TABLE pharmacy_onboarding_events ENABLE TRIGGER pharmacy_onboarding_events_no_update_delete;
+ALTER TABLE proposal_choice_items ENABLE TRIGGER proposal_choice_items_no_update_delete;
+ALTER TABLE treatment_proposal_events ENABLE TRIGGER treatment_proposal_events_no_update_delete;
 
 -- ── 5. Verify (result 2, and the last result): every "after" equals "expected_after" ──
 UPDATE cleanup_report r SET after = v.n
@@ -570,12 +664,20 @@ FROM (VALUES
   (56, (SELECT count(*) FROM circuit_breaker_state WHERE pharmacy_id IN (SELECT pharmacy_id FROM m_pharmacy))),
   (60, (SELECT count(*) FROM inbound_fax_queue WHERE matched_order_id IN (SELECT order_id FROM m_order) OR matched_pharmacy_id IN (SELECT pharmacy_id FROM m_pharmacy))),
   (61, (SELECT count(*) FROM patients WHERE possible_duplicate_of IN (SELECT patient_id FROM m_patient))),
+  (66, (SELECT count(*) FROM protocol_items WHERE pharmacy_id IN (SELECT pharmacy_id FROM m_pharmacy))),
+  (67, (SELECT count(*) FROM protocol_template_versions WHERE published_by IN (SELECT provider_id FROM m_provider))),
+  (68, (SELECT count(*) FROM treatment_proposal_options o WHERE o.protocol_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM protocol_templates t WHERE t.protocol_id = o.protocol_id))),
+  (62, (SELECT count(*) FROM treatment_proposals WHERE proposal_id IN (SELECT proposal_id FROM m_proposal) OR patient_id IN (SELECT patient_id FROM m_patient) OR clinic_id IN (SELECT clinic_id FROM m_clinic))),
+  (63, (SELECT count(*) FROM treatment_proposal_options WHERE option_id IN (SELECT option_id FROM m_option) OR proposal_id IN (SELECT proposal_id FROM m_proposal))),
+  (64, (SELECT count(*) FROM proposal_choice_items WHERE proposal_id IN (SELECT proposal_id FROM m_proposal) OR order_id IN (SELECT order_id FROM m_order))),
+  (65, (SELECT count(*) FROM treatment_proposal_events WHERE proposal_id IN (SELECT proposal_id FROM m_proposal))),
   (70, (SELECT count(*) FROM phi_access_log WHERE patient_id IN (SELECT patient_id FROM m_patient) OR order_id IN (SELECT order_id FROM m_order) OR clinic_id IN (SELECT clinic_id FROM m_clinic) OR actor_user_id IN (SELECT user_id FROM m_user))),
   (71, (SELECT count(*) FROM clinic_onboarding_events WHERE clinic_id NOT IN (SELECT clinic_id FROM m_clinic) AND (subject_user_id IN (SELECT user_id FROM m_user) OR actor_user_id IN (SELECT user_id FROM m_user)))),
   (72, (SELECT count(*) FROM clinics WHERE clinic_id = 'a1000000-0000-0000-0000-000000000001')),
   (73, (SELECT count(*) FROM clinics WHERE clinic_id::text LIKE 'a1000000-0000-0000-0000-%') + (SELECT count(*) FROM pharmacies WHERE pharmacy_id::text LIKE 'a4000000-0000-0000-0000-%')),
   (74, (SELECT count(*) FROM patients WHERE clinic_id = 'a1000000-0000-0000-0000-000000000001' AND patient_id NOT IN (SELECT patient_id FROM m_patient))),
-  (75, (SELECT count(*) FROM orders WHERE clinic_id = 'a1000000-0000-0000-0000-000000000001' AND order_id NOT IN (SELECT order_id FROM m_order)))
+  (75, (SELECT count(*) FROM orders WHERE clinic_id = 'a1000000-0000-0000-0000-000000000001' AND order_id NOT IN (SELECT order_id FROM m_order))),
+  (76, (SELECT count(*) FROM treatment_proposals WHERE proposal_id NOT IN (SELECT proposal_id FROM m_proposal)) + (SELECT count(*) FROM proposal_choice_items WHERE proposal_id NOT IN (SELECT proposal_id FROM m_proposal)) + (SELECT count(*) FROM treatment_proposal_events WHERE proposal_id NOT IN (SELECT proposal_id FROM m_proposal)))
 ) AS v(ord, n)
 WHERE r.ord = v.ord;
 -- Storage rows are not deleted here: still present (1) until removed via the Storage API.

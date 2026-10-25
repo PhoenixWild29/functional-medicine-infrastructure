@@ -34,6 +34,12 @@ const fingerprint = async () => {
     UNION ALL SELECT 'sunrise agreements', md5(string_agg(a::text, '|' ORDER BY a::text)) FROM agreement_acceptances a WHERE clinic_id::text LIKE 'a1000000-%'
     UNION ALL SELECT 'sunrise/demo onboarding events', md5(string_agg(e::text, '|' ORDER BY e::text)) FROM clinic_onboarding_events e WHERE clinic_id::text LIKE 'a1000000-%'
     UNION ALL SELECT 'sunrise demo invites', md5(string_agg(i::text, '|' ORDER BY i::text)) FROM onboarding_invites i WHERE clinic_id::text LIKE 'a1000000-%' AND email = 'ma@sunrise-clinic.com'
+    UNION ALL SELECT 'demo proposal, options, choice items, events', md5(
+      coalesce((SELECT string_agg(p::text, '|' ORDER BY p::text) FROM treatment_proposals p WHERE proposal_id::text LIKE 'd1000000-%'), '') ||
+      coalesce((SELECT string_agg(o::text, '|' ORDER BY o::text) FROM treatment_proposal_options o WHERE proposal_id::text LIKE 'd1000000-%'), '') ||
+      coalesce((SELECT string_agg(i::text, '|' ORDER BY i::text) FROM proposal_choice_items i WHERE proposal_id::text LIKE 'd1000000-%'), '') ||
+      coalesce((SELECT string_agg(e.event || e.actor || e.created_at::text, '|' ORDER BY e.event) FROM treatment_proposal_events e WHERE proposal_id::text LIKE 'd1000000-%'), ''))
+    UNION ALL SELECT 'sunrise protocol and patient phase', md5((SELECT string_agg(t::text, '|') FROM protocol_templates t WHERE protocol_id::text LIKE 'a1000000-%') || (SELECT string_agg(ph::text, '|') FROM patient_protocol_phases ph WHERE tracking_id::text LIKE 'a1000000-%'))
     UNION ALL SELECT 'phi_access_log', md5(string_agg(l::text, '|' ORDER BY l::text)) FROM phi_access_log l
     UNION ALL SELECT 'demo vault secret', md5(string_agg(s::text, '|' ORDER BY s::text)) FROM vault.secrets s WHERE id::text LIKE 'a0000000-%'
     UNION ALL SELECT 'storage', md5(string_agg(o.bucket_id || o.name, '|' ORDER BY o.bucket_id, o.name)) FROM storage.objects o
@@ -74,6 +80,7 @@ console.log(`fingerprints: ${changed} changed`)
 
 // Triggers re-enabled.
 const { rows: trg } = await db.query(`SELECT c.relname, t.tgname, t.tgenabled FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
-  WHERE t.tgname IN ('orders_no_delete_signed','ledger_entries_no_update_delete','payable_events_no_update_delete','trg_agreement_acceptances_append_only','trg_clinic_onboarding_events_append_only','pharmacy_agreement_acceptances_no_update_delete','pharmacy_onboarding_events_no_update_delete')`)
+  WHERE t.tgname IN ('orders_no_delete_signed','ledger_entries_no_update_delete','payable_events_no_update_delete','trg_agreement_acceptances_append_only','trg_clinic_onboarding_events_append_only','pharmacy_agreement_acceptances_no_update_delete','pharmacy_onboarding_events_no_update_delete','proposal_choice_items_no_update_delete','treatment_proposal_events_no_update_delete')`)
 for (const r of trg) console.log(`trigger ${r.relname}.${r.tgname}: ${r.tgenabled === 'O' ? 'enabled' : 'DISABLED'}`)
+console.log(`guard triggers: ${trg.filter(r => r.tgenabled === 'O').length} of ${trg.length} enabled (expected 9 of 9)`)
 await db.close()

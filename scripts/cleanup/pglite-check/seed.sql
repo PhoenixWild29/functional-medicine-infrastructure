@@ -205,3 +205,60 @@ INSERT INTO clinic_onboarding_events (clinic_id, event, actor_user_id, actor_rol
 INSERT INTO auth.users (id, email, raw_app_meta_data) VALUES
   ('90000000-0000-4000-8000-000000000001', 'test-ops-admin@compoundiq.test', '{"app_role":"ops_admin"}'),
   ('90000000-0000-4000-8000-000000000002', 'e2e-1729@example.com', '{}');
+
+-- ── Patient protocol choice (#268): proposals ───────────────────
+-- Test proposal 1: Sunrise test patient Intake Test, chosen. Two options,
+-- each with a DRAFT order; the patient kept option A's line.
+INSERT INTO treatment_proposals (proposal_id, clinic_id, patient_id, provider_id, created_by, status, token_hash, expires_at, sent_at, created_at) VALUES
+  ('f0000000-0000-4000-8000-00000000aaf1', 'a1000000-0000-0000-0000-000000000001', 'f0000000-0000-4000-8000-0000000001f1', 'a2000000-0000-0000-0000-000000000001', 'a0000000-0000-4000-8000-0000000000a2', 'sent', repeat('8', 64), now() + interval '7 days', now(), now());
+INSERT INTO treatment_proposal_options (option_id, proposal_id, label, position) VALUES
+  ('f0000000-0000-4000-8000-00000000abf1', 'f0000000-0000-4000-8000-00000000aaf1', 'Foundation plan', 0),
+  ('f0000000-0000-4000-8000-00000000abf2', 'f0000000-0000-4000-8000-00000000aaf1', 'Weight focus', 1);
+INSERT INTO orders (order_id, patient_id, provider_id, clinic_id, pharmacy_id, formulation_id, status, quantity, proposal_option_id, proposal_required) VALUES
+  ('f0000000-0000-4000-8000-0000000004f2', 'f0000000-0000-4000-8000-0000000001f1', 'a2000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'a4000000-0000-0000-0000-000000000001', 'd0000000-0000-4000-8000-000000000003', 'DRAFT', 1, 'f0000000-0000-4000-8000-00000000abf1', true),
+  ('f0000000-0000-4000-8000-0000000004f3', 'f0000000-0000-4000-8000-0000000001f1', 'a2000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'a4000000-0000-0000-0000-000000000001', 'd0000000-0000-4000-8000-000000000003', 'DRAFT', 1, 'f0000000-0000-4000-8000-00000000abf2', false);
+INSERT INTO proposal_choice_items (proposal_id, option_id, order_id, choice_no) VALUES
+  ('f0000000-0000-4000-8000-00000000aaf1', 'f0000000-0000-4000-8000-00000000abf1', 'f0000000-0000-4000-8000-0000000004f2', 1);
+UPDATE treatment_proposals SET status = 'chosen', chosen_option_id = 'f0000000-0000-4000-8000-00000000abf1', chosen_at = now()
+WHERE proposal_id = 'f0000000-0000-4000-8000-00000000aaf1';
+INSERT INTO treatment_proposal_events (proposal_id, event, actor, actor_user_id, option_id, item_count) VALUES
+  ('f0000000-0000-4000-8000-00000000aaf1', 'created', 'provider', 'a0000000-0000-4000-8000-0000000000a2', NULL, NULL),
+  ('f0000000-0000-4000-8000-00000000aaf1', 'sent', 'provider', 'a0000000-0000-4000-8000-0000000000a2', NULL, NULL),
+  ('f0000000-0000-4000-8000-00000000aaf1', 'chosen', 'patient', NULL, 'f0000000-0000-4000-8000-00000000abf1', 1);
+INSERT INTO phi_access_log (actor_user_id, actor_role, action, resource, route, patient_id, clinic_id) VALUES
+  ('a0000000-0000-4000-8000-0000000000a2', 'provider', 'create', 'order', '/api/proposals', 'f0000000-0000-4000-8000-0000000001f1', 'a1000000-0000-0000-0000-000000000001');
+
+-- Test proposal 2: QA Test Clinic, patient Sam QA, signed; its option came
+-- from the QA clinic's protocol template.
+INSERT INTO treatment_proposals (proposal_id, clinic_id, patient_id, provider_id, status, token_hash, expires_at, sent_at) VALUES
+  ('c0000000-0000-4000-8000-00000000aac1', 'c0000000-0000-4000-8000-0000000000c1', 'c0000000-0000-4000-8000-0000000003a2', 'c0000000-0000-4000-8000-0000000002a1', 'sent', repeat('9', 64), now() + interval '7 days', now());
+INSERT INTO treatment_proposal_options (option_id, proposal_id, label, position, protocol_id) VALUES
+  ('c0000000-0000-4000-8000-00000000abc1', 'c0000000-0000-4000-8000-00000000aac1', 'QA option', 0, 'c0000000-0000-4000-8000-0000000007a1');
+UPDATE orders SET proposal_option_id = 'c0000000-0000-4000-8000-00000000abc1', proposal_required = false WHERE order_id = 'c0000000-0000-4000-8000-0000000004a2';
+INSERT INTO proposal_choice_items (proposal_id, option_id, order_id, choice_no) VALUES
+  ('c0000000-0000-4000-8000-00000000aac1', 'c0000000-0000-4000-8000-00000000abc1', 'c0000000-0000-4000-8000-0000000004a2', 1);
+UPDATE treatment_proposals SET status = 'signed', chosen_option_id = 'c0000000-0000-4000-8000-00000000abc1', chosen_at = now(), signed_at = now()
+WHERE proposal_id = 'c0000000-0000-4000-8000-00000000aac1';
+INSERT INTO treatment_proposal_events (proposal_id, event, actor, actor_user_id, option_id, item_count) VALUES
+  ('c0000000-0000-4000-8000-00000000aac1', 'chosen', 'patient', NULL, 'c0000000-0000-4000-8000-00000000abc1', 1),
+  ('c0000000-0000-4000-8000-00000000aac1', 'signed', 'provider', 'c0000000-0000-4000-8000-0000000001a2', 'c0000000-0000-4000-8000-00000000abc1', 1);
+
+-- Demo proposal (must survive): demo patient Alex, sent, one option with a DRAFT line.
+INSERT INTO treatment_proposals (proposal_id, clinic_id, patient_id, provider_id, status, token_hash, expires_at, sent_at, created_at, updated_at) VALUES
+  ('d1000000-0000-4000-8000-0000000000d1', 'a1000000-0000-0000-0000-000000000001', 'a3000000-0000-0000-0000-000000000001', 'a2000000-0000-0000-0000-000000000001', 'sent', repeat('a', 64), '2026-11-01T00:00:00Z', '2026-10-25T00:00:00Z', '2026-10-25T00:00:00Z', '2026-10-25T00:00:00Z');
+INSERT INTO treatment_proposal_options (option_id, proposal_id, label, position, created_at) VALUES
+  ('d1000000-0000-4000-8000-0000000000d2', 'd1000000-0000-4000-8000-0000000000d1', 'Demo plan', 0, '2026-10-25T00:00:00Z');
+INSERT INTO orders (order_id, patient_id, provider_id, clinic_id, pharmacy_id, formulation_id, status, quantity, proposal_option_id, proposal_required) VALUES
+  ('d1000000-0000-4000-8000-000000000002', 'a3000000-0000-0000-0000-000000000001', 'a2000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'a4000000-0000-0000-0000-000000000001', 'd0000000-0000-4000-8000-000000000003', 'DRAFT', 1, 'd1000000-0000-4000-8000-0000000000d2', false);
+INSERT INTO treatment_proposal_events (proposal_id, event, actor, actor_user_id, created_at) VALUES
+  ('d1000000-0000-4000-8000-0000000000d1', 'created', 'provider', 'a0000000-0000-4000-8000-0000000000a2', '2026-10-25T00:00:00Z'),
+  ('d1000000-0000-4000-8000-0000000000d1', 'sent', 'provider', 'a0000000-0000-4000-8000-0000000000a2', '2026-10-25T00:00:00Z');
+
+-- A Sunrise protocol whose item names the QA Test Pharmacy (stays; only
+-- the pharmacy link is cleared by its ON DELETE SET NULL key), and a phase
+-- of demo patient Alex on it (stays untouched).
+INSERT INTO protocol_templates (protocol_id, clinic_id, name) VALUES ('a1000000-0000-4000-8000-0000000007d1', 'a1000000-0000-0000-0000-000000000001', 'Sunrise demo protocol');
+INSERT INTO protocol_items (item_id, protocol_id, formulation_id, pharmacy_id) VALUES
+  ('a1000000-0000-4000-8000-0000000007d2', 'a1000000-0000-4000-8000-0000000007d1', 'd0000000-0000-4000-8000-000000000003', 'e0000000-0000-4000-8000-0000000000e1');
+INSERT INTO patient_protocol_phases (tracking_id, patient_id, protocol_id, current_phase, advanced_by, phase_started_at, created_at, updated_at) VALUES
+  ('a1000000-0000-4000-8000-0000000007d3', 'a3000000-0000-0000-0000-000000000001', 'a1000000-0000-4000-8000-0000000007d1', 'loading', 'a2000000-0000-0000-0000-000000000001', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z');
