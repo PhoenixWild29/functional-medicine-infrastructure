@@ -44,12 +44,16 @@ export async function GET(req: NextRequest) {
 
   const supabase = createServiceClient()
 
-  const { data: provider } = await supabase
+  const { data: provider, error: providerError } = await supabase
     .from('providers')
     .select('provider_id')
     .eq('provider_id', providerId)
     .eq('clinic_id', clinicId)
     .maybeSingle()
+  if (providerError) {
+    console.error('[favorites/frequent] provider could not be read:', providerError.message)
+    return NextResponse.json({ error: 'Frequently used could not be loaded.' }, { status: 500 })
+  }
   if (!provider) return NextResponse.json({ error: 'Provider not in clinic' }, { status: 403 })
 
   const { data: orders, error } = await supabase

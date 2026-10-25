@@ -15,7 +15,7 @@
  *   - an unlicensed card's chips are disabled
  */
 
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { PrescriptionSessionProvider } from '../../_context/prescription-session'
 import { QuickActionsPanel } from '../quick-actions-panel'
