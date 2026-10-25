@@ -278,3 +278,55 @@ describe('Make favorite dialog', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 })
+
+// C-2026-10-25-10 (review of favorites-frequent): a dose pinned only to
+// the session patient is offered only when the favorite is for that
+// patient, never for the practice card; and the dialog starts over when
+// the session patient changes.
+describe('Make favorite dialog: patient-only doses and a patient change', () => {
+  const TIRZ_PINNED = favorite({
+    favorite_id: 'fav-tirz-pinned', label: 'Tirzepatide (Alex)', formulation_id: 'f-tirz', patient_id: PATIENT_ID,
+    dose_presets: [preset('30')],
+  })
+  const PINNED = '30 units (3.0 mg) weekly'
+
+  it('practice: the patient-only dose is not offered; for this patient it is', async () => {
+    favorites = [SEMA_CARD, TIRZ_QUICK_CARD, TIRZ_PINNED]
+    renderPanel()
+    await openFavorites()
+    await screen.findByTestId('favorites-frequent')
+    fireEvent.click(within(entries()[0]!).getByRole('button', { name: 'Make Tirzepatide 10mg/mL Injectable a favorite' }))
+    const dialog = screen.getByRole('dialog', { name: 'Make Tirzepatide 10mg/mL Injectable a favorite' })
+    expect(within(dialog).getByRole('radio', { name: 'The practice' })).toBeChecked()
+    expect(within(dialog).queryByRole('checkbox', { name: PINNED })).not.toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Only for Alex Demo' }))
+    expect(within(dialog).getByRole('checkbox', { name: PINNED })).not.toBeChecked()
+    // Ticked for the patient, then back to the practice: it is not saved there.
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: PINNED }))
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'The practice' }))
+    expect(within(dialog).queryByRole('checkbox', { name: PINNED })).not.toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save favorite' }))
+    await waitFor(() => expect(calls.some(c => c.method === 'POST')).toBe(true))
+    expect(calls.find(c => c.method === 'POST')!.body).toEqual(expect.objectContaining({ patient_id: null, dose_presets: [preset('25')] }))
+  })
+
+  it('a patient change starts the dialog over: scope, doses and ticks', () => {
+    const target = TIRZ_25 as unknown as React.ComponentProps<typeof MakeFavoriteDialog>['target']
+    const props = { target, otherDoses: [], providerId: PROVIDER_ID, onClose: jest.fn(), onSaved: jest.fn() }
+    const { rerender } = render(
+      <MakeFavoriteDialog {...props} patient={{ patientId: PATIENT_ID, name: 'Alex Demo' }} patientDoses={[preset('30')]} />,
+    )
+    const dialog = () => screen.getByRole('dialog', { name: 'Make Tirzepatide 10mg/mL Injectable a favorite' })
+    fireEvent.click(within(dialog()).getByRole('radio', { name: 'Only for Alex Demo' }))
+    fireEvent.click(within(dialog()).getByRole('checkbox', { name: PINNED }))
+    fireEvent.change(within(dialog()).getByLabelText('New dose amount'), { target: { value: '7.5' } })
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Add dose' }))
+
+    rerender(<MakeFavoriteDialog {...props} patient={{ patientId: '33333333-3333-4333-8333-333333333333', name: 'Bo Other' }} patientDoses={[]} />)
+    expect(within(dialog()).getByRole('radio', { name: 'The practice' })).toBeChecked()
+    expect(within(dialog()).queryByRole('checkbox', { name: PINNED })).not.toBeInTheDocument()
+    expect(within(dialog()).queryByRole('checkbox', { name: '7.5 units (0.75 mg) weekly' })).not.toBeInTheDocument()
+    expect(within(dialog()).getAllByRole('checkbox').filter(c => (c as HTMLInputElement).checked).map(c => (c as HTMLInputElement).labels?.[0]?.textContent))
+      .toEqual(['25 units (2.5 mg) weekly'])
+  })
+})
