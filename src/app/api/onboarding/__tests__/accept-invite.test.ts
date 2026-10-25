@@ -171,3 +171,16 @@ describe('refused invites create no account', () => {
     expect(release).toBeDefined()
   })
 })
+
+// Security review, Oct 24: the auth service's own password message went to
+// the browser as errors.password; now a fixed sentence, like self sign-up.
+describe('the auth service refuses the password', () => {
+  it('answers 400 with a fixed message, never the auth service text', async () => {
+    createUser.mockResolvedValue({ data: { user: null }, error: { message: 'Password should contain at least one character of each: abcdefghijklmnopqrstuvwxyz, ABCDEFGHIJKLMNOPQRSTUVWXYZ (internal rule 7)' } })
+    const res = await POST(req(GOOD))
+    expect(res.status).toBe(400)
+    const body = await res.json() as { errors?: { password?: string } }
+    expect(body.errors?.password).toBe('That password is not strong enough. Try a longer one.')
+    expect(JSON.stringify(body)).not.toMatch(/internal rule|abcdefghijklmnopqrstuvwxyz/)
+  })
+})
