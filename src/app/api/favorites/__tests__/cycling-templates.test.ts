@@ -57,7 +57,8 @@ const json = (body: unknown) => ({ json: async () => body, url: 'http://localhos
 
 describe('a cycling favorite', () => {
   const body = {
-    provider_id: PROVIDER, formulation_id: 'formulation-sema', pharmacy_id: 'pharmacy-strive',
+    // Ids are uuid-shaped: /api/favorites refuses any other id (400).
+    provider_id: PROVIDER, formulation_id: 'a7000000-0000-0000-0000-000000000001', pharmacy_id: 'a4000000-0000-0000-0000-000000000001',
     label: 'Semaglutide daily cycling',
     dose_presets: [{ dose: '20', unit: 'units', frequency: 'QD', timing: '', duration: '', label: null }],
     sig_mode: 'cycling', cycle_on_days: 5, cycle_off_days: 2, cycle_duration_days: 42,
@@ -93,7 +94,7 @@ describe('a cycling favorite', () => {
 
 describe('a cycling protocol item', () => {
   const item = {
-    formulation_id: 'formulation-sema', pharmacy_id: 'pharmacy-strive', dose_amount: '20', dose_unit: 'units',
+    formulation_id: 'f0000000-0000-0000-0000-00000000005e', pharmacy_id: 'a4000000-0000-0000-0000-000000000001', dose_amount: '20', dose_unit: 'units',
     frequency_code: 'QD', sig_text: 'Inject 20 units subcutaneous once daily, 5 days on / 2 days off, for 6 weeks then reassess',
     default_quantity: '2.5 mL vial', default_refills: 0,
   }
@@ -115,8 +116,8 @@ describe('a cycling protocol item', () => {
   })
 
   it('is read back with its pattern and length', async () => {
-    db.tables['protocol_templates']!.push({ protocol_id: 'proto-1', clinic_id: CLINIC, name: 'P', is_active: true })
-    await getProtocols({ url: 'http://localhost/api/protocols?id=proto-1' } as never)
+    db.tables['protocol_templates']!.push({ protocol_id: 'b0000000-0000-0000-0000-000000000001', clinic_id: CLINIC, name: 'P', is_active: true })
+    await getProtocols({ url: 'http://localhost/api/protocols?id=b0000000-0000-0000-0000-000000000001' } as never)
     const read = selects.find(s => s.table === 'protocol_items')!
     expect(read.columns).toMatch(/cycle_on_days/)
     expect(read.columns).toMatch(/cycle_duration_days/)

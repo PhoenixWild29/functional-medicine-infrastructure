@@ -245,3 +245,41 @@ describe('import', () => {
     expect((await IMPORT(json('/api/patients/import', body({ rows: [[...GOOD.slice(0, 6), 'x'.repeat(501)]] })))).status).toBe(400)
   })
 })
+
+describe('the request body limit (4 MB, lib/uploads/limits)', () => {
+  // 9,000 rows of 500-character cells: each cell is within bounds, the
+  // whole body is not. Read no further than the limit; nothing is checked
+  // against the clinic's patients and nothing is written.
+  const bigRows = () => Array.from({ length: 1000 }, () => Array.from({ length: 9 }, () => 'x'.repeat(500)))
+
+  it('validate: over 4 MB is a 413, before any read', async () => {
+    const res = await VALIDATE(json('/api/patients/import/validate', { headers: HEADERS, rows: bigRows(), mapping: MAPPING }))
+    expect(res.status).toBe(413)
+    expect((await res.json()).error).toMatch(/4 MB/)
+    expect(db.calls).toHaveLength(0)
+  })
+
+  it('import: over 4 MB is a 413, before any read or write', async () => {
+    const res = await IMPORT(json('/api/patients/import', { fileName: 'p.csv', headers: HEADERS, rows: bigRows(), mapping: MAPPING, excluded: [], confirmDuplicates: [] }))
+    expect(res.status).toBe(413)
+    expect(db.calls).toHaveLength(0)
+  })
+
+  it('validate and import: a body that is not JSON keeps its 400 "Invalid request"', async () => {
+    const notJson = (url: string) => new Request(`https://app.test${url}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{not json' }) as unknown as import('next/server').NextRequest
+    for (const res of [await VALIDATE(notJson('/api/patients/import/validate')), await IMPORT(notJson('/api/patients/import'))]) {
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'Invalid request' })
+    }
+    expect(db.calls).toHaveLength(0)
+  })
+
+  it('parse: a declared body well over 4 MB is a 413 before the form is read', async () => {
+    const formData = jest.fn()
+    const req = { headers: new Headers({ 'content-length': String(6 * 1024 * 1024) }), formData } as unknown as import('next/server').NextRequest
+    const res = await PARSE(req)
+    expect(res.status).toBe(413)
+    expect((await res.json()).error).toBe('The file is larger than 4 MB. Split it into smaller files.')
+    expect(formData).not.toHaveBeenCalled()
+  })
+})

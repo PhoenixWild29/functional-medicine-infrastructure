@@ -38,12 +38,12 @@ const PROVIDER = {
 }
 
 const VIALS: PackageOption[] = [
-  { id: 'pkg-1', label: '1 mL vial', qty: 1, unit: 'mL', wholesalePrice: 95,  isDefault: true },
+  { id: 'b1000000-0000-4000-8000-000000000001', label: '1 mL vial', qty: 1, unit: 'mL', wholesalePrice: 95,  isDefault: true },
   { id: 'pkg-5', label: '5 mL vial', qty: 5, unit: 'mL', wholesalePrice: 285, isDefault: false },
 ]
 
 const RX_DEFAULTS = {
-  formulationId: 'formulation-sema',
+  formulationId: 'f5000000-0000-4000-8000-000000000001',
   defaults: {
     default_syringe_option: 'sc_kit' as const,
     default_shipping_type: 'cold_chain' as const,
@@ -61,9 +61,9 @@ function renderMargin(overrides: Partial<React.ComponentProps<typeof MarginBuild
   return render(
     <PrescriptionSessionProvider>
       <MarginBuilderForm
-        pharmacyId="pharmacy-strive"
+        pharmacyId="a4000000-0000-4000-8000-000000000001"
         itemId={null}
-        formulationId="formulation-sema"
+        formulationId="f5000000-0000-4000-8000-000000000001"
         pharmacyName="Strive Pharmacy"
         medicationName="Semaglutide 5mg/mL Injectable"
         form="Injectable Solution"
@@ -118,8 +118,8 @@ describe('Save as Draft on the price step', () => {
     expect(sentBody).toEqual(expect.objectContaining({
       patientId:     PATIENT_ID,
       providerId:    PROVIDER_ID,
-      formulationId: 'formulation-sema',
-      pharmacyId:    'pharmacy-strive',
+      formulationId: 'f5000000-0000-4000-8000-000000000001',
+      pharmacyId:    'a4000000-0000-4000-8000-000000000001',
       patientState:  'TX',
       sigText:       TITRATION_SIG,
       dose:          '10 units',

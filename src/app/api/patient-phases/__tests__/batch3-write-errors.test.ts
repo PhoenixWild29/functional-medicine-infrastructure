@@ -15,6 +15,10 @@ import { scriptedDb, DB_DOWN, type Script } from '@/__tests__/helpers/scripted-d
 import { POST } from '../route'
 import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
+const PT_1 = 'a3000000-0000-4000-8000-000000000001'
+const PR_1 = 'c1000000-0000-4000-8000-000000000001'
+const T_1 = 'e1000000-0000-4000-8000-000000000001'
+
 let db = scriptedDb(() => undefined)
 
 jest.mock('@/lib/supabase/server', () => ({
@@ -32,10 +36,10 @@ jest.spyOn(console, 'error').mockImplementation(() => {})
 
 async function advance(more: Script) {
   db = scriptedDb(c => more(c)
-    ?? (c.table === 'patient_protocol_phases' && c.op === 'select' ? { data: { current_phase: 'loading', patient_id: 'pt-1' } }
-      : c.table === 'patients' ? { data: { patient_id: 'pt-1' } }
+    ?? (c.table === 'patient_protocol_phases' && c.op === 'select' ? { data: { current_phase: 'loading', patient_id: PT_1 } }
+      : c.table === 'patients' ? { data: { patient_id: PT_1 } }
       : undefined))
-  const res = await POST({ json: async () => ({ action: 'advance', tracking_id: 't-1', new_phase: 'maintenance', provider_id: 'pr-1' }) } as unknown as NextRequest)
+  const res = await POST({ json: async () => ({ action: 'advance', tracking_id: T_1, new_phase: 'maintenance', provider_id: PR_1 }) } as unknown as NextRequest)
   return { status: res.status, body: await res.json() as Record<string, unknown> }
 }
 
@@ -72,9 +76,9 @@ describe('PHI access log', () => {
   beforeEach(() => phiLog.mockClear())
 
   it('an advance logs exactly one row: update, patient_phases, the patient', async () => {
-    const r = await advance(c => (c.table === 'patient_protocol_phases' && c.op === 'select' ? { data: { current_phase: 'loading', patient_id: 'pt-1' } } : undefined))
+    const r = await advance(c => (c.table === 'patient_protocol_phases' && c.op === 'select' ? { data: { current_phase: 'loading', patient_id: PT_1 } } : undefined))
     expect(r.status).toBe(200)
-    expectOnePhiRow({ action: 'update', resource: 'patient_phases', route: '/api/patient-phases', patientId: 'pt-1' })
+    expectOnePhiRow({ action: 'update', resource: 'patient_phases', route: '/api/patient-phases', patientId: PT_1 })
   })
 
   it('a failed advance logs nothing', async () => {
