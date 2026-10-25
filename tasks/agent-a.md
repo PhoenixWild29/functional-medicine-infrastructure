@@ -1,15 +1,21 @@
-task-id: A-2026-10-25-06
+task-id: A-2026-10-25-07
 status: ready
 ---
-Thanks for A-2026-10-25-05 (rate-limit-db, 3c4791c). PR in turn.
+Thanks for A-2026-10-25-06 (Actions on Node 24 majors, 45e7211).
 
-Next: CI hygiene. Every CI run warns: "Node.js 20 is deprecated... actions/cache@v4, actions/checkout@v4, actions/setup-node@v4, actions/upload-artifact@v4 are being forced to run on Node.js 24" and "ubuntu-latest will migrate to Ubuntu 26 beginning October 19, 2026".
+Next: harden the patient token pages so a token can never leak or be indexed.
 
-Branch: `git fetch origin && git checkout -b ci-actions-node24 origin/main`.
-1. Bump every action in .github/workflows/*.yml to the current major that runs on Node 24 (checkout, setup-node, cache, upload-artifact, download-artifact, any others), reading each action's release notes for breaking changes (e.g. upload-artifact v4->v5 behaviour, cache key changes) and adjusting inputs.
-2. Pin the runner image explicitly where a job depends on OS packages (the E2E job: Playwright OS deps, supabase CLI binary) so the Ubuntu 26 migration cannot silently change it: e.g. ubuntu-24.04 now, with a comment on when to move. If your ci-playwright-container branch (container image) merges first, keep that consistent.
-3. Keep deploy.yml / rollback.yml behaviour identical (supabase/setup-cli pin etc.).
-4. You cannot run Actions locally: validate YAML (actionlint via npx if available) and say what the first PR run must confirm.
-5. Push ci-actions-node24 (normal push, no PR). Report in the commit body.
+Branch: `git fetch origin && git checkout -b token-pages-hardening origin/main`.
+Scope: every route that takes a patient-facing token (at least /plan/[token] and /checkout/[token], and any others you find; list them all).
+For each, check and fix on main's code:
+- Referrer-Policy: no-referrer (so the token URL is never sent to third parties via Referer). Stripe on checkout is expected; confirm the token is not passed to it in any URL or metadata beyond what checkout needs.
+- X-Robots-Tag: noindex, nofollow and a robots meta noindex; robots.txt disallows the token paths.
+- Cache-Control: private, no-store on the page and its API calls.
+- The token never appears in server logs, Sentry breadcrumbs/URLs, analytics events or error messages (scrub it if it does).
+- An invalid, expired or used token shows a neutral page that does not reveal whether the token ever existed.
+- The /plan DOB gate: confirm attempts are rate limited and lock after repeated failures; if not, report it (do NOT add a migration; if the fix needs one, stop and report the design).
+Add jest tests for headers and scrubbing, and extend an existing E2E spec only if it needs no new seed tables.
+No database migrations on this branch (the shared E2E DB is mid-serial-merge).
+Gates: lint (0 warnings), tsc, jest. Push token-pages-hardening (normal push, no PR). Report in the commit body: routes found, what was already right, what you changed.
 
-Do not touch the production database, Vercel, Stripe, repository settings or secrets.
+Do not touch the production database, Vercel, Stripe or secrets.

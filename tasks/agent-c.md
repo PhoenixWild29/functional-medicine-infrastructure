@@ -1,14 +1,17 @@
-task-id: C-2026-10-25-05
+task-id: C-2026-10-25-06
 status: ready
 ---
-Thanks for C-2026-10-25-04 (perf-bundles, c235536). PR in turn.
+Thanks for C-2026-10-25-05 (TODO/FIXME sweep, bbd934d). Please also list your (c) needs-a-decision items at the top of this task's report, one line each, so I can take them to Sam.
 
-Next: a TODO / FIXME / HACK / XXX / "not implemented" sweep across src, scripts and supabase/migrations (comments and code paths that throw or return placeholders).
+Next: input validation on every server entry point.
 
-Branch: `git fetch origin && git checkout -b todo-sweep origin/main`.
-1. List every hit with file:line and what it refers to.
-2. Classify each: (a) stale (already done; remove the comment), (b) small and safe to finish now (finish it with a red test first), (c) needs a decision or a larger piece of work (leave the code, write it into the report as an issue with a one-line recommendation), (d) placeholder that could mislead a user or ops on prod (e.g. a button that does nothing, text promising something not built): fix the copy or hide the control, with a test.
-3. Do not touch anything gated on Sam's decisions (H1 demo payouts, MFA requirement, server-side Sentry, email confirmation) beyond listing it.
-4. `npm run lint` (0 warnings), tsc, Jest, build. Push todo-sweep (normal push, no PR). Full report in the final commit body with the classified table.
+Branch: `git fetch origin && git checkout -b api-input-validation origin/main`.
+- Inventory every route handler (src/app/**/route.ts) and every server action ('use server').
+- For each: is the body/query/params parsed with a zod (v4) schema before use? Are ids checked as uuids, strings length-bounded, numbers bounded, enums closed? Does bad input return 400 (or the action's error result) instead of throwing a 500? Is the caller's role and clinic checked before any read or write?
+- Webhooks (Stripe, fax, others): signature verified before parsing; leave them as is if already right, just record it.
+- Add the missing schemas and checks. Reuse existing schema modules where they exist; do not duplicate.
+- Tests: jest cases for each fixed entry point (bad uuid, oversize string, wrong role, other clinic's id).
+No database migrations on this branch.
+Gates: lint (0 warnings), tsc, jest. Push api-input-validation (normal push, no PR). Report in the commit body: a table of entry point, validated before/after, auth check before/after.
 
 Do not touch the production database, Vercel, Stripe or secrets.
