@@ -41,7 +41,7 @@ import {
   type SyringeOption,
 } from '@/lib/orders/rx-details'
 import { dosingDaysIn, type CyclePattern } from '@/lib/orders/cycling'
-import { SAVED_STATEMENT_MAX, SAVED_STATEMENT_MIN } from '@/lib/clinical-statements/saved'
+import { SAVED_STATEMENT_MAX, SAVED_STATEMENT_MIN } from '@/lib/clinical-statements/limits'
 
 interface Props {
   /** Stable per-line id — used for input ids and test hooks. */

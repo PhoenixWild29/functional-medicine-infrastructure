@@ -15,22 +15,22 @@
 // validation and ordering, shared by the route and the tests.
 
 import { z } from 'zod'
-import { MIN_OTHER_REASON_LENGTH } from '@/lib/orders/rx-details'
+import { UUID_RE } from '@/lib/api/input'
+import { SAVED_STATEMENT_MAX, SAVED_STATEMENT_MIN } from './limits'
 
-/** The same minimum as a typed "Other (describe)" reason. */
-export const SAVED_STATEMENT_MIN = MIN_OTHER_REASON_LENGTH
-/** The same maximum rxDetails.clinicalDifference accepts. */
-export const SAVED_STATEMENT_MAX = 500
-
-/** Who may save one: every clinic role, as favorites (any clinic member saves a favorite). */
-export const STATEMENT_SAVE_ROLES: ReadonlySet<string> = new Set(['clinic_admin', 'provider', 'medical_assistant'])
+export { SAVED_STATEMENT_MAX, SAVED_STATEMENT_MIN }
 
 const LENGTH_ERROR = `statement must be ${SAVED_STATEMENT_MIN} to ${SAVED_STATEMENT_MAX} characters`
 
+// Any 8-4-4-4-12 hex id (lib/api/input UUID_RE), not zod's RFC z.uuid():
+// the seeded demo and E2E ids (a3000000-0000-0000-..., aaaaaaaa-0000-...)
+// are not RFC v4, and must work (C's review, 2026-10-25).
+const anyUuid = (error: string) => z.string({ error }).regex(UUID_RE, { error })
+
 const bodySchema = z.strictObject({
-  formulation_id: z.uuid({ error: 'formulation_id must be a UUID' }),
+  formulation_id: anyUuid('formulation_id must be a UUID'),
   statement:      z.string({ error: LENGTH_ERROR }).trim().min(SAVED_STATEMENT_MIN, { error: LENGTH_ERROR }).max(SAVED_STATEMENT_MAX, { error: LENGTH_ERROR }),
-  patient_id:     z.uuid({ error: 'patient_id must be a UUID' }).nullish(),
+  patient_id:     anyUuid('patient_id must be a UUID').nullish(),
 })
 
 export interface SavedStatementBody {
@@ -52,9 +52,9 @@ export function parseSavedStatementBody(raw: unknown): { ok: true; value: SavedS
   return { ok: true, value: { formulation_id: r.data.formulation_id, statement: r.data.statement, patient_id: r.data.patient_id ?? null } }
 }
 
-/** True for a well-formed UUID (query parameters). */
-export function isUuid(v: string | null | undefined): v is string {
-  return typeof v === 'string' && z.uuid().safeParse(v).success
+/** True for any 8-4-4-4-12 hex id, seeded or random. */
+export function isAnyUuid(v: string | null | undefined): v is string {
+  return typeof v === 'string' && UUID_RE.test(v)
 }
 
 export interface SavedStatementRow {
