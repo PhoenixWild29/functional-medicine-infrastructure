@@ -7,8 +7,7 @@
  * server refuses with ALLERGIES_REQUIRED.
  */
 
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { configureAxe } from 'jest-axe'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { PrescriptionSessionProvider } from '../../../_context/prescription-session'
 import { BatchReviewForm } from '../batch-review-form'
 import { defaultRxDetails } from '@/lib/orders/rx-details'
@@ -83,7 +82,7 @@ function renderReview(props: Parameters<typeof BatchReviewForm>[0]) {
 
 const RECORDED = { ...PATIENT }
 const NOT_RECORDED = { ...PATIENT, allergies: [], nkda: false, allergies_updated_at: null }
-function withPatient(p: typeof PATIENT) {
+function withPatient(p: Record<string, unknown>) {
   sessionStorage.setItem('compoundiq-rx-session', JSON.stringify({ patient: p, provider: PROVIDER, prescriptions: LINES, notices: [] }))
 }
 async function sendPlan() {

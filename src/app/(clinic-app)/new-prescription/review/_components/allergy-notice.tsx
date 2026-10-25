@@ -21,7 +21,7 @@
 
 import { patientName } from '@/lib/patients/display'
 import { useState } from 'react'
-import { ALLERGIES_REQUIRED_MESSAGE, hasRecordedAllergies, type PatientAllergyFields } from '@/lib/patients/allergies'
+import { ALLERGIES_REQUIRED_MESSAGE, PLAN_ALLERGIES_REQUIRED_MESSAGE, hasRecordedAllergies, type PatientAllergyFields } from '@/lib/patients/allergies'
 import { AllergyEditor, saveAllergies, loadAllergies } from '../../_components/allergy-chip'
 
 interface Props {
@@ -37,9 +37,11 @@ interface Props {
   prompting?: boolean
   /** Close the prompt without saving (the Rx stays as it was). */
   onCancelPrompt?: () => void
+  /** What the prompt is for: signing (the default) or sending a plan. */
+  promptFor?: 'signing' | 'plan'
 }
 
-export function AllergyNotice({ patient, onSaved, prompting = false, onCancelPrompt }: Props) {
+export function AllergyNotice({ patient, onSaved, prompting = false, onCancelPrompt, promptFor = 'signing' }: Props) {
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
@@ -118,10 +120,13 @@ export function AllergyNotice({ patient, onSaved, prompting = false, onCancelPro
         data-testid="allergies-required-prompt"
         className="rounded-lg border-2 border-amber-400 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/20"
       >
-        <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">{ALLERGIES_REQUIRED_MESSAGE}</p>
+        <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+          {promptFor === 'plan' ? PLAN_ALLERGIES_REQUIRED_MESSAGE : ALLERGIES_REQUIRED_MESSAGE}
+        </p>
         <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">
-          {patientName(patient)}: the pharmacy receives allergies or NKDA on every prescription. Nothing has been
-          signed, and your prescriptions are kept. Save, and signing continues.
+          {promptFor === 'plan'
+            ? `${patientName(patient)}: the pharmacy receives allergies or NKDA on every prescription. The plan has not been sent, and your prescriptions are kept. Save, and the plan is sent.`
+            : `${patientName(patient)}: the pharmacy receives allergies or NKDA on every prescription. Nothing has been signed, and your prescriptions are kept. Save, and signing continues.`}
         </p>
         <AllergyEditor
           patientId={patient.patient_id}

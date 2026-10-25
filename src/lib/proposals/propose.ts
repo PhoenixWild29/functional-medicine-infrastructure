@@ -31,6 +31,7 @@ import { randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import { canSign, parseOrderIds, problemsStatus, type BatchProblem } from '@/lib/orders/batch-sign'
+import { ALLERGIES_REQUIRED_CODE, PLAN_ALLERGIES_REQUIRED_MESSAGE } from '@/lib/patients/allergies'
 import { insertStatusHistory } from '@/lib/orders/status-history'
 import { serverEnv } from '@/lib/env'
 import { hashProposalToken, newProposalToken, proposalLinkExpiresAt } from './token'
@@ -172,8 +173,16 @@ async function recordEvent(db: Db, proposalId: string, event: ProposalEvent, act
 
 // ── The checks: every signing check but the signature ───────
 
-/** canSign's problems, as sign answers them. */
+/**
+ * canSign's problems, as sign answers them. When the only thing missing
+ * is the patient's allergy status (coverage gap 9), one refusal for the
+ * whole plan, in proposing words, with the code Review opens its allergy
+ * prompt on: not the same sentence once per line.
+ */
 function refusal(problems: BatchProblem[]): ProposalFailure {
+  if (problems.length > 0 && problems.every(p => p.code === 'allergies_required')) {
+    return { ok: false, status: problemsStatus(problems), code: ALLERGIES_REQUIRED_CODE, error: PLAN_ALLERGIES_REQUIRED_MESSAGE }
+  }
   return {
     ok: false,
     status: problemsStatus(problems),

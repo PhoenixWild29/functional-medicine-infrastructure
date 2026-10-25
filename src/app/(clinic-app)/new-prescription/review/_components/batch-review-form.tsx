@@ -342,6 +342,8 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
   // allergies nor NKDA recorded (or the server said so). The prompt shows
   // the allergy entry in place; saving continues to the confirm step.
   const [allergyPrompt, setAllergyPrompt] = useState(false)
+  // The same prompt, for sending a plan (coverage gap 9 at propose time).
+  const [planAllergyPrompt, setPlanAllergyPrompt] = useState(false)
 
   // Non-provider "Save as Draft" flow (batched WO-77 pattern)
   const [isSavingDraft, setIsSavingDraft] = useState(false)
@@ -904,11 +906,18 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
   // made), then POST /api/proposals tags them to their options and, for
   // a provider or clinic admin, makes the plan link. The server runs
   // every signing check first and answers with sign's own words.
-  async function handleSendForChoice() {
-    if (!patient || !provider || !plan) return
+  async function handleSendForChoice(current: typeof patient = patient) {
+    if (!current || !provider || !plan) return
+    const patient = current
     const problems = planProblems(plan)
     if (problems.length > 0) {
       setProposalErrors(problems)
+      return
+    }
+    // Coverage gap 9: allergies or NKDA first, as for Sign & Send.
+    if (!hasRecordedAllergies(patient)) {
+      setProposalErrors([])
+      setPlanAllergyPrompt(true)
       return
     }
     setIsProposing(true)
@@ -926,7 +935,12 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
           options:    proposalOptionsBody(plan, proposalLines, lineId => createdOrderIdsRef.current.get(lineId) ?? ''),
         }),
       })
-      const body = await res.json().catch(() => ({})) as { error?: string; problems?: Array<{ message?: string }>; proposalId?: string; status?: 'draft' | 'sent'; link?: SentLink | null }
+      const body = await res.json().catch(() => ({})) as { error?: string; code?: string; problems?: Array<{ message?: string }>; proposalId?: string; status?: 'draft' | 'sent'; link?: SentLink | null }
+      // The server found no allergies or NKDA: the prompt, once, not a list.
+      if (!res.ok && body.code === ALLERGIES_REQUIRED_CODE) {
+        setPlanAllergyPrompt(true)
+        return
+      }
       if (!res.ok) {
         const lines = (body.problems ?? []).map(pr => pr.message).filter((m): m is string => typeof m === 'string')
         setProposalErrors(lines.length > 0 ? lines : [body.error ?? 'The plan could not be sent. Try again.'])
@@ -1318,6 +1332,22 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
           {choiceMode && plan && (
             <>
               <ProposalOptions lines={proposalLines} plan={plan} onChange={setProposalPlan} disabled={isProposing} />
+              {planAllergyPrompt && (
+                <AllergyNotice
+                  patient={patient}
+                  prompting
+                  promptFor="plan"
+                  onSaved={patch => {
+                    session.updatePatient(patch)
+                    if (hasRecordedAllergies(patch)) {
+                      setPlanAllergyPrompt(false)
+                      // Sending continues with the recorded status.
+                      void handleSendForChoice({ ...patient, ...patch })
+                    }
+                  }}
+                  onCancelPrompt={() => setPlanAllergyPrompt(false)}
+                />
+              )}
               {proposalErrors.length > 0 && (
                 <div role="alert" data-testid="proposal-errors" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                   <ul className="list-disc space-y-1 pl-5">{proposalErrors.map(e => <li key={e}>{e}</li>)}</ul>

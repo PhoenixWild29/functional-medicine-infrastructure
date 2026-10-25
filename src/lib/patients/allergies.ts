@@ -57,6 +57,8 @@ export const MAX_ALLERGY_ENTRY_LENGTH = 120
 
 export const ALLERGIES_REQUIRED_MESSAGE = 'Record allergies or mark NKDA before signing'
 export const ALLERGIES_REQUIRED_CODE    = 'ALLERGIES_REQUIRED'
+/** The same rule when a plan is proposed or sent (nothing is signed then). */
+export const PLAN_ALLERGIES_REQUIRED_MESSAGE = 'Record allergies or mark NKDA before sending this plan'
 const NOTHING_RECORDED_ERROR = 'Enter at least one allergy, or mark NKDA.'
 
 // ── Normalisation ─────────────────────────────────────────────

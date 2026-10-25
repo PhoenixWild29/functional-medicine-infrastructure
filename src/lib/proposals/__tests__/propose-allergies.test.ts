@@ -35,7 +35,7 @@ function notRecorded(db: World) {
   p['allergies'] = []
   p['nkda'] = false
 }
-const propose = (db: World, input: unknown, caller = CALLERS.chen) =>
+const propose = (db: World, input: unknown, caller: { userId: string; role: string } = CALLERS.chen) =>
   createProposal(db.client, { clinicId: CLINIC, caller, input, now: NOW })
 
 describe('a patient with nothing recorded', () => {
