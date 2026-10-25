@@ -31,6 +31,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import { signBatch, type BatchProblem, type SignedPatient } from '@/lib/orders/batch-sign'
 import { cancelDraftLines, clinicActorRole } from './cancel-lines'
+import { ALLERGIES_REQUIRED_CODE } from '@/lib/patients/allergies'
 import { resolveProtocolLinkage } from '@/lib/protocols/resolve-instance'
 import { choiceFrom, readProposalRows } from './chosen'
 
@@ -85,7 +86,9 @@ export async function signChosenProposal(
     return {
       ok: false,
       status: signed.status,
-      error: /nothing was signed/i.test(signed.error) ? signed.error : `${signed.error} Nothing was signed.`,
+      // Coverage gap 9: the allergy refusal keeps its one sentence (the
+      // sign page opens its allergy prompt on the code).
+      error: /nothing was signed/i.test(signed.error) || signed.code === ALLERGIES_REQUIRED_CODE ? signed.error : `${signed.error} Nothing was signed.`,
       ...(signed.code ? { code: signed.code } : {}),
       ...(signed.problems ? { problems: signed.problems } : {}),
     }

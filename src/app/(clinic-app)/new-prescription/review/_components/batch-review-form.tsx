@@ -54,6 +54,7 @@ function logSignatureEvent(component: 'draft-sign-form' | 'batch-review-form', e
 }
 import { usePrescriptionSession, type SessionPrescription } from '../../_context/prescription-session'
 import { isIntakePending, patientName } from '@/lib/patients/display'
+import { ALLERGIES_REQUIRED_CODE, hasRecordedAllergies } from '@/lib/patients/allergies'
 import { CONTROLLED_LABEL, isControlledSchedule } from '@/lib/orders/controlled-substance'
 import { NOT_COMPOUNDABLE_LABEL } from '@/lib/compliance/compounding'
 import { DrugInteractionAlerts } from '../../_components/drug-interaction-alerts'
@@ -338,6 +339,12 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitProgress, setSubmitProgress] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  // Coverage gap 9: Sign & Send pressed for a patient with neither
+  // allergies nor NKDA recorded (or the server said so). The prompt shows
+  // the allergy entry in place; saving continues to the confirm step.
+  const [allergyPrompt, setAllergyPrompt] = useState(false)
+  // The same prompt, for sending a plan (coverage gap 9 at propose time).
+  const [planAllergyPrompt, setPlanAllergyPrompt] = useState(false)
 
   // Non-provider "Save as Draft" flow (batched WO-77 pattern)
   const [isSavingDraft, setIsSavingDraft] = useState(false)
@@ -789,6 +796,14 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
       if (!sendRes.ok) {
         const err = await sendRes.json().catch(() => ({})) as { error?: string; code?: string }
         if (err.code === PENDING_REVIEW_CODE) throw new Error(refusalText(err, ''))
+        // Coverage gap 9: the server found no allergies or NKDA. Nothing
+        // was signed; the drafts are reused on the next attempt.
+        if (err.code === ALLERGIES_REQUIRED_CODE) {
+          setSubmitProgress(null)
+          setIsSubmitting(false)
+          setAllergyPrompt(true)
+          return
+        }
         const message = err.error ?? 'Unknown error'
         throw new Error(/nothing was signed/i.test(message) ? message : `${message} Nothing was signed.`)
       }
@@ -892,11 +907,18 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
   // made), then POST /api/proposals tags them to their options and, for
   // a provider or clinic admin, makes the plan link. The server runs
   // every signing check first and answers with sign's own words.
-  async function handleSendForChoice() {
-    if (!patient || !provider || !plan) return
+  async function handleSendForChoice(current: typeof patient = patient) {
+    if (!current || !provider || !plan) return
+    const patient = current
     const problems = planProblems(plan)
     if (problems.length > 0) {
       setProposalErrors(problems)
+      return
+    }
+    // Coverage gap 9: allergies or NKDA first, as for Sign & Send.
+    if (!hasRecordedAllergies(patient)) {
+      setProposalErrors([])
+      setPlanAllergyPrompt(true)
       return
     }
     setIsProposing(true)
@@ -914,7 +936,12 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
           options:    proposalOptionsBody(plan, proposalLines, lineId => createdOrderIdsRef.current.get(lineId) ?? ''),
         }),
       })
-      const body = await res.json().catch(() => ({})) as { error?: string; problems?: Array<{ message?: string }>; proposalId?: string; status?: 'draft' | 'sent'; link?: SentLink | null }
+      const body = await res.json().catch(() => ({})) as { error?: string; code?: string; problems?: Array<{ message?: string }>; proposalId?: string; status?: 'draft' | 'sent'; link?: SentLink | null }
+      // The server found no allergies or NKDA: the prompt, once, not a list.
+      if (!res.ok && body.code === ALLERGIES_REQUIRED_CODE) {
+        setPlanAllergyPrompt(true)
+        return
+      }
       if (!res.ok) {
         const lines = (body.problems ?? []).map(pr => pr.message).filter((m): m is string => typeof m === 'string')
         setProposalErrors(lines.length > 0 ? lines : [body.error ?? 'The plan could not be sent. Try again.'])
@@ -975,9 +1002,11 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
         onCheckUnavailable={setInteractionsUnavailable}
       />
 
-      {/* WO-97: allergies not recorded → amber notice with an inline
-          "Confirm NKDA". Never blocks Sign & Send or Save as Draft. */}
-      <AllergyNotice patient={patient} onSaved={session.updatePatient} />
+      {/* WO-97: allergies not recorded → amber notice with "Confirm NKDA"
+          and "Record allergies". Coverage gap 9: signing needs one of
+          them; the prompt by Sign & Send takes over on a sign attempt.
+          Save as Draft never gates on it. */}
+      {!allergyPrompt && <AllergyNotice patient={patient} onSaved={session.updatePatient} />}
 
       {prescriberProblems.length > 0 && (
         <div
@@ -1304,6 +1333,22 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
           {choiceMode && plan && (
             <>
               <ProposalOptions lines={proposalLines} plan={plan} onChange={setProposalPlan} disabled={isProposing} />
+              {planAllergyPrompt && (
+                <AllergyNotice
+                  patient={patient}
+                  prompting
+                  promptFor="plan"
+                  onSaved={patch => {
+                    session.updatePatient(patch)
+                    if (hasRecordedAllergies(patch)) {
+                      setPlanAllergyPrompt(false)
+                      // Sending continues with the recorded status.
+                      void handleSendForChoice({ ...patient, ...patch })
+                    }
+                  }}
+                  onCancelPrompt={() => setPlanAllergyPrompt(false)}
+                />
+              )}
               {proposalErrors.length > 0 && (
                 <div role="alert" data-testid="proposal-errors" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                   <ul className="list-disc space-y-1 pl-5">{proposalErrors.map(e => <li key={e}>{e}</li>)}</ul>
@@ -1391,6 +1436,23 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
         </div>
       )}
 
+      {/* Coverage gap 9: the allergy prompt, in place of the confirm step.
+          Saving NKDA or a list continues to Confirm & Send. */}
+      {isProvider && allergyPrompt && (
+        <AllergyNotice
+          patient={patient}
+          prompting
+          onSaved={patch => {
+            session.updatePatient(patch)
+            if (hasRecordedAllergies(patch)) {
+              setAllergyPrompt(false)
+              setConfirmOpen(true)
+            }
+          }}
+          onCancelPrompt={() => setAllergyPrompt(false)}
+        />
+      )}
+
       {/* Confirm dialog — providers only */}
       {isProvider && confirmOpen && (
         <div className="rounded-lg border-2 border-primary bg-primary/5 p-4">
@@ -1426,11 +1488,16 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
       )}
 
       {/* Sign & Send button — providers only */}
-      {isProvider && !confirmOpen && (
+      {isProvider && !confirmOpen && !allergyPrompt && (
         <>
           <button
             type="button"
-            onClick={() => setConfirmOpen(true)}
+            onClick={() => {
+              // Coverage gap 9: allergies or NKDA first (the button stays
+              // enabled; the prompt says what is needed, in place).
+              if (!hasRecordedAllergies(patient)) { setAllergyPrompt(true); return }
+              setConfirmOpen(true)
+            }}
             disabled={!canSubmit}
             className={`w-full rounded-lg px-6 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               canSubmit
