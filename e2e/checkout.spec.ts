@@ -227,7 +227,7 @@ test.describe('Patient Checkout Flow', () => {
   test('expired or invalid checkout token shows error page', async ({ page }) => {
     await page.goto('/checkout/invalid-token-that-does-not-exist')
     await expect(
-      page.getByText(/link has expired/i).or(page.getByText(/not found/i))
+      page.getByText(/link is no longer active/i).or(page.getByText(/not found/i))
     ).toBeVisible()
   })
 })

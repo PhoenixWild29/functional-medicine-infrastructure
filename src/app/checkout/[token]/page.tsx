@@ -91,6 +91,9 @@ async function renderSoloCheckout({
   const shippingCents = clinic.absorb_shipping === true ? 0 : Math.round((order.shipping_fee ?? 0) * 100)
 
   const checkoutState: ActiveState = mapOrderStatusToState(order.status)
+  // A paid or cancelled link gets the same neutral page as an invalid or
+  // expired one: nothing that names the clinic or says the link was used.
+  if (checkoutState !== 'active') redirect('/checkout/expired')
 
   // WO-105: the schedule in plain language for the patient. Derived from
   // the stored steps, so it says the same thing as the pharmacy's copy.
@@ -170,14 +173,9 @@ async function renderGroupCheckout({
   // WO-102: total_cents already includes shipping the patient pays.
   const groupShippingCents = clinic.absorb_shipping === true ? 0 : Math.round((group.shipping_total ?? 0) * 100)
 
-  let checkoutState: ActiveState
-  if (group.status === 'AWAITING_PAYMENT') {
-    checkoutState = 'active'
-  } else if (group.status === 'PAID') {
-    checkoutState = 'paid'
-  } else {
-    checkoutState = 'cancelled_expired'
-  }
+  // A paid or cancelled group link: the neutral page (see the solo flavor).
+  if (group.status !== 'AWAITING_PAYMENT') redirect('/checkout/expired')
+  const checkoutState: ActiveState = 'active'
 
   return (
     <CheckoutPageContent

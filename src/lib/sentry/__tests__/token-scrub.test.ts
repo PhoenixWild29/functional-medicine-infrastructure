@@ -10,8 +10,8 @@
  * the same scrubbing (beforeSendTransaction), not only errors.
  */
 
-import type { Breadcrumb, ErrorEvent, TransactionEvent } from '@sentry/nextjs'
-import { phiBeforeBreadcrumb, phiBeforeSend, phiBeforeSendTransaction } from '../phi-scrubber'
+import type { Breadcrumb, ErrorEvent } from '@sentry/nextjs'
+import { phiBeforeBreadcrumb, phiBeforeSend, phiBeforeSendTransaction, type TransactionEvent } from '../phi-scrubber'
 
 const JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJvcmRlcklkIjoibyJ9.c2lnbmF0dXJl'
 const T43 = 'Zx9_aB3-kLmNoPqRsTuVwXyZ0123456789abcdefGHI'
@@ -48,7 +48,7 @@ describe('URLs in an error event', () => {
       transaction: `/checkout/${JWT}`,
       request: { url: `/plan/${T43}`, headers: { referer: `https://app.example/intake/${T43}`, 'user-agent': 'x' } },
       exception: { values: [{ type: 'Error', value: `GET /join/${T43} 500` }] },
-    } as ErrorEvent)!
+    } as unknown as ErrorEvent)!
     clean(out)
     expect(out.transaction).toBe('/checkout/[token]')
     expect((out.request!.headers as Record<string, string>)['referer']).toBe('https://app.example/intake/[token]')

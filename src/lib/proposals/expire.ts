@@ -6,8 +6,9 @@
 // never signed, whose link is past expires_at (7 days from sending,
 // decision 5) expires:
 //   - status expired (compare-and-set on the status it was read with).
-//     The status closes the plan; the hash is kept so /plan/<token> says
-//     "This link has expired" (PR 3) rather than "not valid";
+//     The status closes the plan; the hash is kept (the link resolves to
+//     'expired'). /plan/<token> shows one neutral "no longer active" page
+//     for every closed state;
 //   - its DRAFT lines go DRAFT -> CANCELLED (never signed), with history;
 //   - 'expired' is recorded (actor system).
 // Safe to run again: an expired proposal is never read again, and every
