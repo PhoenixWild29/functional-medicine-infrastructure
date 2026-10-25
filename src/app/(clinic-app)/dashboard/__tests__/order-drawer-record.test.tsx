@@ -168,3 +168,15 @@ describe('OrderDrawer — Combine preview includes shipping once per pharmacy', 
     expect(within(preview).getByTestId('bundle-total')).toHaveTextContent('$457.00')
   })
 })
+
+describe('OrderDrawer — no promise of an unbuilt PDF preview (TODO sweep)', () => {
+  // The drawer showed an "Rx Document" box saying "PDF preview available
+  // after pharmacy submission", but no PDF preview is built anywhere:
+  // after submission the box stayed the same. It is removed.
+  it('shows no Rx Document / PDF preview placeholder', async () => {
+    renderDrawer()
+    await screen.findByTestId('drawer-rx-details')
+    expect(screen.queryByText(/PDF preview/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('Rx Document')).not.toBeInTheDocument()
+  })
+})

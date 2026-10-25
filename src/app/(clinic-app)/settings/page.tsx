@@ -256,16 +256,13 @@ export default async function SettingsPage() {
             </div>
           )}
 
-          {/* Notifications — placeholder section */}
+          {/* Notifications: says what is true today (nothing is configurable yet) */}
           <div id="notifications" className="scroll-mt-6">
             <section className="rounded-lg border border-border bg-card p-6 space-y-3">
               <h2 className="text-base font-semibold text-foreground">Notifications</h2>
               <p className="text-sm text-muted-foreground">
                 Email and SMS notification preferences are not yet configurable.
                 Automatic order status emails and texts are not turned on yet.
-              </p>
-              <p className="inline-flex items-center rounded-md border border-border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
-                Coming soon: configurable preferences
               </p>
             </section>
           </div>

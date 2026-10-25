@@ -13,9 +13,7 @@
 //   - Full status timeline (from order_status_history)
 //   - Tracking info (status-based summary)
 //
-// Rx PDF preview and adapter submission log are displayed
-// as placeholders — full implementation follows pharmacy
-// adapter work orders (out of scope for WO-31).
+// No Rx PDF preview: none is built, so the drawer does not promise one.
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -1094,14 +1092,6 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
               </dl>
             </section>
           )}
-
-          {/* Rx PDF preview placeholder */}
-          <section className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Rx Document</p>
-            <div className="rounded-md border border-dashed border-border bg-muted/20 p-4 text-center text-sm text-muted-foreground">
-              PDF preview available after pharmacy submission
-            </div>
-          </section>
 
           {/* Status timeline — REQ-GDB-002 */}
           <section className="space-y-3">
