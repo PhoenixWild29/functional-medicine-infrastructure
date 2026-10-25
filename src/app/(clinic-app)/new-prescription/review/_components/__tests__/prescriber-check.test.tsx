@@ -151,3 +151,22 @@ it('a controlled line and a prescriber problem: both shown, Send blocked', async
   expect(screen.getByTestId('send-blocked-reason')).toHaveTextContent(NO_NY)
   expect(screen.getByRole('button', { name: /Sign & Send/ })).toBeDisabled()
 })
+
+// Pinned before the reset moved out of an effect (eslint-plugin-react-hooks
+// 7.1: set-state-in-effect); behaviour unchanged.
+it('no longer a provider: the problems clear; a provider again: asked again', async () => {
+  prescriberCheck = async () => ({ ok: true, json: async () => ({ applies: true, problems: [{ code: 'prescriber_license_missing', state: 'NY', message: NO_NY }] }) })
+  seedSession(PATIENT)
+  const { rerender } = renderReview(true)
+  await screen.findByTestId('prescriber-check-problems')
+  const tree = (isProvider: boolean) => (
+    <PrescriptionSessionProvider>
+      <BatchReviewForm isProvider={isProvider} />
+    </PrescriptionSessionProvider>
+  )
+  rerender(tree(false))
+  expect(screen.queryByTestId('prescriber-check-problems')).not.toBeInTheDocument()
+  rerender(tree(true))
+  await screen.findByTestId('prescriber-check-problems')
+  expect(prescriberCalls()).toHaveLength(2)
+})

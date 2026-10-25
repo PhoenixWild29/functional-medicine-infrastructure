@@ -120,8 +120,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .eq('clinic_id', clinicId)
     .eq('onboarding_status', 'submitted')
   if (demoPayouts) write = onlyWithoutPayoutAccount(write)
-  const { data: updated, error: updErr } = demoPayouts ? await write.select('clinic_id') : { ...(await write), data: null }
-  if (!updErr && demoPayouts && Array.isArray(updated) && updated.length === 0) {
+  // Count the rows changed on every path: a clinic that left 'submitted'
+  // (a second reviewer won) or gained a Connect account between the read
+  // and the write changes nothing, and nothing is recorded.
+  const { data: updated, error: updErr } = await write.select('clinic_id')
+  if (!updErr && Array.isArray(updated) && updated.length === 0) {
     return NextResponse.json({ error: 'The clinic changed while you were reviewing it. Reload and try again.' }, { status: 409 })
   }
   if (demoPayouts) approvalNote = [approvalNote, DEMO_PAYOUT_NOTE].filter(Boolean).join(' ')

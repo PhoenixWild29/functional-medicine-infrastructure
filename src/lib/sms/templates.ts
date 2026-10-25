@@ -115,6 +115,16 @@ export function renderIntakeLinkSms(vars: { intakeUrl: string }): string {
   return renderTemplate(INTAKE_LINK_SMS, { intakeUrl: vars.intakeUrl })
 }
 
+// Patient protocol choice, PR 2: the plan link (Compliance C1, as the
+// payment text). First name, the provider's last name, the link and how
+// to stop: no medication, no clinic name, not "prescription". Sent only
+// when texting is set up and the patient opted in (lib/proposals/sms).
+export const PROPOSAL_LINK_SMS = 'Hi {{patientFirstName}}, Dr. {{providerLastName}} has a treatment plan ready for you to review: {{planUrl}} Reply STOP to opt out.'
+
+export function renderProposalLinkSms(vars: { patientFirstName: string; providerLastName: string; planUrl: string }): string {
+  return renderTemplate(PROPOSAL_LINK_SMS, { patientFirstName: vars.patientFirstName, providerLastName: vars.providerLastName, planUrl: vars.planUrl })
+}
+
 /**
  * REQ-SPN-003: Payment confirmation SMS, sent once per paid order or
  * bundle by the Stripe webhook (sendPaymentConfirmationSms).
