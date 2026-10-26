@@ -1,18 +1,10 @@
-task-id: B-2026-10-26-06
+task-id: B-2026-10-26-07
 status: ready
 ---
-Thanks for B-2026-10-26-05 (bundle-hipaa review: no merge defect, 3eeb710).
+Thanks for B-2026-10-26-06 (e2e-hipaa, 9dccacf). D will merge it into bundle-hipaa.
 
-Next: E2E coverage for the HIPAA features, so bundle-hipaa's PR run checks them. D owns bundle-hipaa; put your work on a new branch `e2e-hipaa` from origin/bundle-hipaa, and D will merge it in.
-Add e2e/hipaa-safeguards.spec.ts (register in playwright.config testMatch), using existing seed data only:
-1. Forgot password: the page shows the same message for a seeded email and an unknown email (do not assert email delivery).
-2. Change password: already covered by password-change.spec.ts? If so, skip; otherwise sign in as a seeded test user, change, sign out, sign in with the new password, and restore.
-3. A non-recovery session posting to /api/auth/password gets 403.
-4. Failed sign-ins: 5 wrong passwords for a seeded test user, then /ops/security as ops shows the alert (no raw email on the page).
-5. Ops access review: /ops/access-review loads for ops, filters by date, shows rows; a clinic user gets refused.
-6. Emergency reason: opening patient-level detail from ops prompts for a reason; Cancel does not open it.
-7. Help: /help loads for a clinic user and its sections are reachable by keyboard.
-Unique locators (no getByRole('alert')). Never enter a card. Keep it under ~3 minutes. If any step needs a seed the E2E project does not have, skip it with a clear comment.
-Gates: lint (0 warnings), tsc, jest. Push e2e-hipaa (normal push, no PR). Report in the commit body.
+Next, two parts.
+1. `git checkout docs-run-sheet-v3 && git pull`. Update docs/qa/run-sheet-v3-source.md (the cofounder demo script) so it matches the code after every queued branch merges: add a short "Security and privacy" stop (5 minutes max) showing /help, the password reset page (view only), Settings > Account, /ops/access-review and /ops/security (ops), the emergency reason prompt (Cancel only), and saved clinical difference statements in the Rx flow (WRITES DATA on a demo patient). Update the expected-questions section: HIPAA status (what is now protected; what is still outstanding: BAAs, two-step sign-in for everyone, the separate real-patient project decision, Twilio registration), using plain words and no branch names. Keep the NEVER items. Push docs-run-sheet-v3.
+2. Then verify C's fixes for your phi-access-log-coverage review (L1-L10) once C pushes them (origin/phi-access-log-coverage newer than 896cc3f). Same method as C's password-flows verification: each finding fixed with a test that fails before; L1 re-run (a failed log write means the write does not happen, on batch-sign and proposal sign at least); nothing new opened. If C has not pushed when you finish part 1, wait-check every few minutes rather than starting anything else. Append a "fix verification" section to docs/qa/review-2026-10-26-hipaa-fixes.md on review-hipaa-fixes, push, summary in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
