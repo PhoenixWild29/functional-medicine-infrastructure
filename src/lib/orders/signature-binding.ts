@@ -35,13 +35,6 @@ export const SIGNATURE_BINDING_VERSION = 'v2'
 const DOMAIN = 'compoundiq/rx-signature-binding/v2'
 const HEX64 = /^[0-9a-f]{64}$/
 
-/** The order columns the binding covers, plus what the guard needs to read. */
-export const SIGNED_ORDER_COLUMNS =
-  'order_id, status, locked_at, provider_signature_hash_snapshot, patient_id, provider_npi_snapshot, pharmacy_snapshot, ' +
-  'medication_snapshot, sig_mode, sig_text, titration_steps, cycle_on_days, cycle_off_days, quantity, dispense_quantity, ' +
-  'dispense_unit, days_supply, refills, package_id, package_label, package_count, syringe_option, substitution_allowed, ' +
-  'shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions'
-
 export interface SignedOrderRow {
   order_id:                         string
   status?:                          string | null
@@ -73,43 +66,59 @@ export interface SignedOrderRow {
   special_instructions?:            string | null
 }
 
-type Field = readonly [name: string, value: (o: SignedOrderRow, patient: PatientAllergyFields | null) => unknown]
+type Field = readonly [
+  name:   string,
+  /** The orders column it reads, or null (allergies live on the patient). */
+  column: keyof SignedOrderRow | null,
+  value:  (o: SignedOrderRow, patient: PatientAllergyFields | null) => unknown,
+]
 
 /**
  * v2, in this order. The medication snapshot carries the medication,
  * strength, form and compounding record; the pharmacy snapshot is the
  * pharmacy the provider signed for (frozen, so a reroute, which changes
  * pharmacy_id only, does not change it).
+ *
+ * The order columns named here are also the clinical columns the database
+ * freezes once an order is signed (lib/orders/signed-order-freeze, HIPAA
+ * B5): a test holds the freeze migration to this list.
  */
 const CANONICAL_FIELDS: readonly Field[] = [
-  ['patient_id',           o => o.patient_id],
-  ['provider_npi',         o => o.provider_npi_snapshot],
-  ['pharmacy',             o => o.pharmacy_snapshot],
-  ['medication',           o => o.medication_snapshot],
-  ['sig_mode',             o => o.sig_mode],
-  ['sig_text',             o => o.sig_text],
-  ['titration_steps',      o => o.titration_steps],
-  ['cycle_on_days',        o => o.cycle_on_days],
-  ['cycle_off_days',       o => o.cycle_off_days],
-  ['quantity',             o => o.quantity],
-  ['dispense_quantity',    o => o.dispense_quantity],
-  ['dispense_unit',        o => o.dispense_unit],
-  ['days_supply',          o => o.days_supply],
-  ['refills',              o => o.refills],
-  ['package_id',           o => o.package_id],
-  ['package_label',        o => o.package_label],
-  ['package_count',        o => o.package_count],
-  ['syringe_option',       o => o.syringe_option],
-  ['substitution_allowed', o => o.substitution_allowed],
-  ['shipping_type',        o => o.shipping_type],
-  ['clinical_difference',  o => o.clinical_difference],
-  ['diagnosis_code',       o => o.diagnosis_code],
-  ['diagnosis_text',       o => o.diagnosis_text],
-  ['special_instructions', o => o.special_instructions],
+  ['patient_id',           'patient_id',            o => o.patient_id],
+  ['provider_npi',         'provider_npi_snapshot', o => o.provider_npi_snapshot],
+  ['pharmacy',             'pharmacy_snapshot',     o => o.pharmacy_snapshot],
+  ['medication',           'medication_snapshot',   o => o.medication_snapshot],
+  ['sig_mode',             'sig_mode',              o => o.sig_mode],
+  ['sig_text',             'sig_text',              o => o.sig_text],
+  ['titration_steps',      'titration_steps',       o => o.titration_steps],
+  ['cycle_on_days',        'cycle_on_days',         o => o.cycle_on_days],
+  ['cycle_off_days',       'cycle_off_days',        o => o.cycle_off_days],
+  ['quantity',             'quantity',              o => o.quantity],
+  ['dispense_quantity',    'dispense_quantity',     o => o.dispense_quantity],
+  ['dispense_unit',        'dispense_unit',         o => o.dispense_unit],
+  ['days_supply',          'days_supply',           o => o.days_supply],
+  ['refills',              'refills',               o => o.refills],
+  ['package_id',           'package_id',            o => o.package_id],
+  ['package_label',        'package_label',         o => o.package_label],
+  ['package_count',        'package_count',         o => o.package_count],
+  ['syringe_option',       'syringe_option',        o => o.syringe_option],
+  ['substitution_allowed', 'substitution_allowed',  o => o.substitution_allowed],
+  ['shipping_type',        'shipping_type',         o => o.shipping_type],
+  ['clinical_difference',  'clinical_difference',   o => o.clinical_difference],
+  ['diagnosis_code',       'diagnosis_code',        o => o.diagnosis_code],
+  ['diagnosis_text',       'diagnosis_text',        o => o.diagnosis_text],
+  ['special_instructions', 'special_instructions',  o => o.special_instructions],
   // Allergies live on the patient (Phase 21 rule 4), so the status the
   // provider saw is bound: NKDA, or the recorded list.
-  ['allergies',            (_o, p) => allergyStatus(p)],
+  ['allergies',            null,                    (_o, p) => allergyStatus(p)],
 ]
+
+/** The orders columns the binding covers: the signed clinical content. */
+export const SIGNED_CONTENT_COLUMNS: readonly string[] = CANONICAL_FIELDS.flatMap(([, column]) => (column ? [column] : []))
+
+/** What the binding reads, plus what the guard needs. */
+export const SIGNED_ORDER_COLUMNS =
+  ['order_id', 'status', 'locked_at', 'provider_signature_hash_snapshot', ...SIGNED_CONTENT_COLUMNS].join(', ')
 
 /** The names, in order (for tests and the report). */
 export const CANONICAL_FIELD_NAMES: readonly string[] = CANONICAL_FIELDS.map(([name]) => name)
@@ -128,7 +137,7 @@ function canonicalValue(v: unknown): unknown {
 
 /** The canonical serialisation of what was signed on one order. */
 export function canonicalSignedContent(order: SignedOrderRow, patient: PatientAllergyFields | null): string {
-  return JSON.stringify(CANONICAL_FIELDS.map(([name, value]) => [name, canonicalValue(value(order, patient))]))
+  return JSON.stringify(CANONICAL_FIELDS.map(([name, , value]) => [name, canonicalValue(value(order, patient))]))
 }
 
 const sha256 = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex')

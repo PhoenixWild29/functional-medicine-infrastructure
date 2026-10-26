@@ -38,6 +38,7 @@ import { withApiErrors } from '@/lib/api/with-api-errors'
 import { z } from 'zod'
 import { MAX_NAME, UUID_RE, badRequest, parseInput, uuid } from '@/lib/api/input'
 import { readObjectBody } from '@/app/api/ops/_lib/body'
+import { REROUTE_FROM_STATUSES } from '@/lib/orders/signed-order-freeze'
 
 interface Params { params: Promise<{ orderId: string }> }
 
@@ -422,8 +423,9 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
 
     // ── AC-OPV-004.5: Reroute — REQ-OPV-008, HC-06 ──────────────
     case 'reroute': {
-      const REROUTABLE: OrderStatusEnum[] = ['SUBMISSION_FAILED', 'FAX_FAILED', 'PHARMACY_REJECTED']
-      if (!REROUTABLE.includes(currentStatus)) {
+      // The statuses the signed-order freeze allows a pharmacy change from
+      // (HIPAA B5, migration 20261024000010).
+      if (!REROUTE_FROM_STATUSES.includes(currentStatus)) {
         return NextResponse.json(
           { error: `reroute not supported from status ${currentStatus}` },
           { status: 422 }
