@@ -68,6 +68,7 @@ test.describe('HIPAA safeguards', () => {
 
   test('3. an ordinary signed-in session cannot set a password through the reset endpoint (403)', async ({ page }) => {
     await signIn(page, TEST_USERS.clinicAdmin.email, TEST_USERS.clinicAdmin.password, /\/(practice|dashboard)/)
+    // e2e-literal-password-ok: a random new password the endpoint must refuse (403), set on no account.
     const res = await page.request.post('/api/auth/password', { data: { password: `violet harbor ${randomUUID()}` } })
     expect(res.status()).toBe(403)
     expect((await res.json() as { error?: string }).error).toMatch(/sets a new password from a reset link/)
@@ -87,6 +88,7 @@ test.describe('HIPAA safeguards', () => {
     // An address with no account: nobody is throttled by these failures.
     const email = `hipaa-e2e-${randomUUID()}@compoundiq.test`
     for (let i = 0; i < 5; i++) {
+      // e2e-literal-password-ok: a wrong password, sent on purpose to an address with no account.
       const res = await page.request.post('/api/sign-in', { data: { email, password: 'not the password 123' } })
       expect(res.status()).toBe(401)
     }
