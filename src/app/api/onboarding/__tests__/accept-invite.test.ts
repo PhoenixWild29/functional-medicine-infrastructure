@@ -163,6 +163,17 @@ describe('refused invites create no account', () => {
     expect(createUser).not.toHaveBeenCalled()
   })
 
+  // Review P4: the shared policy (lib/auth/password-policy), not length only.
+  it('the shared policy: a common password, or the invited address itself, is 400 and nothing is claimed or created', async () => {
+    for (const password of ['password1234', 'lauren@sunrise.test', 'LAUREN@sunrise.test', 'aaaaaaaaaaaaaa']) {
+      const res = await POST(req({ ...GOOD, password }))
+      expect(res.status).toBe(400)
+      expect(((await res.json()) as { errors?: { password?: string } }).errors?.password).toEqual(expect.any(String))
+    }
+    expect(createUser).not.toHaveBeenCalled()
+    expect(db.to('onboarding_invites', 'update')).toEqual([])
+  })
+
   it('an email that already has an account is 409 and frees the invite', async () => {
     createUser.mockResolvedValue({ data: { user: null }, error: { message: 'A user with this email address has already been registered' } })
     const res = await POST(req(GOOD))

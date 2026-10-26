@@ -2,14 +2,16 @@
 // Provider Admin Route — POST /api/providers
 // ============================================================
 //
-// Creates a provider record AND links it to a Supabase Auth identity
-// atomically. This is the production-grade replacement for the
-// seed-script convention (linkProviderToAuthUser from scripts/seed-poc.ts)
-// used during POC. Required for any real clinic onboarding because:
+// Creates a provider record and a one-time provider invite (the Team
+// invite flow, lib/onboarding/invite-actions). The provider opens the
+// invite link, sets their own password, and the login is created and
+// linked to this record then (providers.user_id, needed to sign: F-2).
 //
-//   - Real providers cannot be added by re-running the seed script
-//   - F-2 (sign-and-send signer enforcement) requires providers.user_id
-//     to be set or the provider cannot sign prescriptions
+// B10 (technical-safeguards-evidence-2026-10-25.md): this route used to
+// create the login with a password the admin chose, and nothing forced a
+// change. Now no login is created here and a password in the body is
+// refused: nobody but the provider ever knows their password. The link is
+// returned once, for the admin to copy; no email is sent.
 //
 // Auth model:
 //   - clinic_admin: can create providers in THEIR OWN clinic only.
@@ -19,16 +21,13 @@
 //     required (no clinic_id claim on ops_admin sessions).
 //   - All other roles (provider, medical_assistant): 403.
 //
-// Atomicity:
-//   Two-step (auth.admin.createUser then providers.insert). If the
-//   providers insert fails, the just-created auth user is rolled back
-//   to avoid orphan auth identities. A rollback failure is logged as
-//   CRITICAL — it's a rare double-fault that needs human cleanup, not
-//   a request to retry.
+// Order: providers.insert, then the invite. If the invite cannot be made,
+// the provider is still saved (201) and the admin resends the invite from
+// Settings > Team > Pending invites, as the Team route does.
 //
 // Out of scope (deliberate):
 //   - TOTP enrollment (provider self-enrolls on first login)
-//   - Invite-flow email delivery (POC: caller supplies initial password)
+//   - Email delivery of the invite (the admin copies the link)
 //   - signature_on_file (provider uploads on first EPCS sign)
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -37,7 +36,8 @@ import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { npiChecksumValid } from '@/lib/providers/npi'
 import { runNpiCheck } from '@/lib/providers/verify-npi'
-import { appMetadataFor, getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { createInvite } from '@/lib/onboarding/invite-actions'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 import { MAX_NAME, UUID_RE } from '@/lib/api/input'
 
@@ -46,10 +46,8 @@ import { MAX_NAME, UUID_RE } from '@/lib/api/input'
 // Any 8-4-4-4-12 hex id (lib/api/input): the seeded demo clinic ids are
 // not RFC v4, so the v4-only pattern used before refused them.
 const NPI_RE  = /^\d{10}$/
-const MIN_PASSWORD_LENGTH = 12
-// Supabase Auth refuses a password over 72 characters (bcrypt); refused
-// here, before the clinic and NPI checks, instead of as a 500 from createUser.
-const MAX_PASSWORD_LENGTH = 72
+// B10: the provider sets their own password from the invite link.
+const PASSWORD_REFUSED = 'password is not accepted: the provider sets their own password from the invite link'
 // RFC 5321: an address is at most 254 characters.
 const MAX_EMAIL_LENGTH = 254
 
@@ -67,7 +65,6 @@ const US_STATES = new Set<string>([
 
 interface CreateProviderBody {
   email:         string
-  password:      string
   firstName:     string
   lastName:      string
   npiNumber:     string
@@ -117,11 +114,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   } else if (body.email.trim().length > MAX_EMAIL_LENGTH) {
     errs.push(`email must be at most ${MAX_EMAIL_LENGTH} characters`)
   }
-  if (!body.password || typeof body.password !== 'string' || body.password.length < MIN_PASSWORD_LENGTH) {
-    errs.push(`password must be at least ${MIN_PASSWORD_LENGTH} characters`)
-  } else if (body.password.length > MAX_PASSWORD_LENGTH) {
-    errs.push(`password must be at most ${MAX_PASSWORD_LENGTH} characters`)
-  }
+  if ('password' in body) errs.push(PASSWORD_REFUSED)
   if (!body.firstName || typeof body.firstName !== 'string' || !body.firstName.trim()) {
     errs.push('firstName is required')
   } else if (body.firstName.trim().length > MAX_NAME) {
@@ -220,35 +213,15 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: `NPI ${body.npiNumber} is already registered to another provider` }, { status: 409 })
   }
 
-  // 5. Create auth user
   const normalizedEmail = body.email.trim().toLowerCase()
-  const { data: createdUser, error: createUserErr } = await supabase.auth.admin.createUser({
-    email:         normalizedEmail,
-    password:      body.password,
-    email_confirm: true,
-    // Role and clinic are authorization facts: app_metadata, written with
-    // the service role. Never user_metadata (the user can rewrite that).
-    app_metadata:  appMetadataFor({ role: 'provider', clinicId: targetClinicId }),
-  })
 
-  if (createUserErr || !createdUser?.user) {
-    const msg = createUserErr?.message ?? 'unknown'
-    // Supabase returns variants of "already" for email-already-exists.
-    if (/already/i.test(msg)) {
-      return NextResponse.json({ error: 'Email is already registered with another account' }, { status: 409 })
-    }
-    console.error(`[providers POST] auth.admin.createUser failed:`, msg)
-    return NextResponse.json({ error: 'Failed to create auth user' }, { status: 500 })
-  }
-
-  const authUserId = createdUser.user.id
-
-  // 6. Insert providers row (linked via user_id, set by F-1)
+  // 5. Insert the providers row. No login yet: user_id is set when the
+  //    provider accepts the invite and sets their own password.
   const { data: provider, error: providerErr } = await supabase
     .from('providers')
     .insert({
       clinic_id:         targetClinicId,
-      user_id:           authUserId,
+      user_id:           null,
       first_name:        body.firstName.trim(),
       last_name:         body.lastName.trim(),
       npi_number:        body.npiNumber,
@@ -262,17 +235,21 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     .single()
 
   if (providerErr || !provider) {
-    // Rollback the auth user so we don't leave an orphan identity.
-    console.error(`[providers POST] providers.insert failed (rolling back auth user ${authUserId}):`, providerErr?.message)
-    const { error: rollbackErr } = await supabase.auth.admin.deleteUser(authUserId)
-    if (rollbackErr) {
-      console.error(`[providers POST] CRITICAL: rollback of auth user ${authUserId} failed:`, rollbackErr.message,
-        '— orphan auth identity left in the system, needs manual cleanup')
-    }
+    console.error(`[providers POST] providers.insert failed:`, providerErr?.message)
     return NextResponse.json({ error: 'Failed to create provider record' }, { status: 500 })
   }
 
-  console.info(`[providers POST] created provider=${provider.provider_id} user_id=${authUserId} clinic=${targetClinicId} caller=${user.id}`)
+  // 6. The provider invite: the one-time link the admin copies.
+  const invite = await createInvite(supabase, {
+    kind:       'provider',
+    clinicId:   targetClinicId,
+    email:      normalizedEmail,
+    providerId: provider.provider_id,
+    createdBy:  user.id,
+    actorRole:  callerRole,
+  })
+
+  console.info(`[providers POST] created provider=${provider.provider_id} clinic=${targetClinicId} caller=${user.id} invite=${invite.ok ? invite.inviteId : 'failed'}`)
 
   // Compliance C4: check the NPI against the NPPES registry and store the
   // result. Never blocks the save: an unreachable registry is 'unverified'
@@ -290,6 +267,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     licenseState:  provider.license_state,
     licenseNumber: provider.license_number,
     deaNumber:     provider.dea_number,
+    inviteLink:      invite.ok ? invite.link : null,
+    inviteExpiresAt: invite.ok ? invite.expiresAt : null,
+    ...(invite.ok ? {} : { error: 'The provider was added, but their invite could not be created. Resend it from Settings, Team, Pending invites.' }),
   }, { status: 201 })
 }
 
