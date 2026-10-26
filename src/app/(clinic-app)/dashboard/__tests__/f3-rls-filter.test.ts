@@ -45,6 +45,12 @@ import { logPhiAccessMany } from '@/lib/audit/phi-access'
 
 const fromSpy = jest.fn()
 const getUserMock = jest.fn()
+// The chosen-plan queue (review L4): no plans unless a test says so.
+const chosenMock = jest.fn<Promise<{ ok: boolean; plans: unknown[] }>, unknown[]>(async () => ({ ok: true, plans: [] }))
+jest.mock('@/lib/proposals/queue', () => ({
+  ...jest.requireActual('@/lib/proposals/queue'),
+  loadChosenProposals: (...a: unknown[]) => chosenMock(...a),
+}))
 
 jest.mock('next/navigation', () => ({
   redirect: () => { throw new Error('REDIRECT') },
@@ -238,4 +244,26 @@ describe('PHI access log', () => {
     expect(phiEntries()).toHaveLength(0)
     expect(logPhiAccessMany).not.toHaveBeenCalled()
   })
+
+  // C-2026-10-26-04 (review L4): the chosen-plan queue names patients too
+  // (first name and plan). It is clinic-wide by design (any staff member
+  // sees whose plan waits; only its provider or an admin can sign), so a
+  // provider sees other providers' patients there: they are in the logged set.
+  it('review L4: the chosen-plan queue patients are in the logged set', async () => {
+    const P3 = 'a3000000-0000-0000-0000-000000000003'
+    chosenMock.mockResolvedValueOnce({ ok: true, plans: [{ proposalId: 'pr-1', providerId: 'pv-2', patientId: P3, patientFirstName: 'Jordan', optionLabel: 'Foundation', chosenOrderIds: [], chosenCount: 0, optionCount: 1, chosenAt: 't', choiceNo: 1 }] })
+    arrange({ id: 'auth-uid-provider', app_metadata: { clinic_id: 'a1000000-0000-0000-0000-000000000001', app_role: 'provider' } })
+    const mod = await import('../page')
+    await mod.default()
+    const [, ids] = jest.mocked(logPhiAccessMany).mock.calls[0]!
+    expect([...ids].sort()).toEqual([P1, P2, P3])
+  })
+
+  it('review L5: logged with a 15-minute dedupe', async () => {
+    arrange({ id: 'auth-uid-clinic-admin', app_metadata: { clinic_id: 'a1000000-0000-0000-0000-000000000001', app_role: 'clinic_admin' } })
+    const mod = await import('../page')
+    await mod.default()
+    expect(jest.mocked(logPhiAccessMany).mock.calls[0]?.[2]).toEqual({ dedupeMinutes: 15 })
+  })
+
 })

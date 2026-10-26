@@ -12,8 +12,15 @@
 // so a fax is identified by its order only. A read: the caller serves the
 // queue whatever this returns (a failed write is already alerted).
 // The rows are as selected, with orders(..., patient_id, clinic_id).
+//
+// C-2026-10-26-04 (review L5): one array insert for the whole queue, not
+// one insert per order, and deduplicated per actor and order over 15
+// minutes (the queue polls every 30 s): a re-poll that shows the same
+// faxes writes nothing new.
 
-import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
+import { logPhiAccessBatch, type PhiAccessTarget, type PhiUser } from '@/lib/audit/phi-access'
+
+export const FAX_VIEW_DEDUPE_MINUTES = 15
 
 export async function logFaxQueueView(
   entry: { user: PhiUser | null | undefined; route: string; headers: Headers | null },
@@ -28,9 +35,12 @@ export async function logFaxQueueView(
     const order = r['orders'] as { patient_id?: string | null; clinic_id?: string | null } | null
     byOrder.set(orderId, { patientId: order?.patient_id ?? null, clinicId: order?.clinic_id ?? null })
   }
-  const base = { user: entry.user, action: 'view' as const, resource: 'inbound_fax' as const, route: entry.route, headers: entry.headers }
-  const writes = [...byOrder].map(([orderId, o]) =>
-    logPhiAccess({ ...base, orderId, patientId: o.patientId, clinicId: o.clinicId }))
-  if (unmatched) writes.push(logPhiAccess(base))
-  return (await Promise.all(writes)).every(Boolean)
+  const targets: PhiAccessTarget[] = [...byOrder].map(([orderId, o]) => ({ orderId, patientId: o.patientId, clinicId: o.clinicId }))
+  if (unmatched) targets.push({})
+  if (targets.length === 0) return true
+  return logPhiAccessBatch(
+    { user: entry.user, action: 'view', resource: 'inbound_fax', route: entry.route, headers: entry.headers },
+    targets,
+    { dedupeMinutes: FAX_VIEW_DEDUPE_MINUTES },
+  )
 }

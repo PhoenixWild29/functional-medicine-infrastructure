@@ -16,10 +16,17 @@ const guardMock = jest.fn()
 jest.mock('@/lib/onboarding/approval-guard', () => ({ refuseUnlessApproved: (...a: unknown[]) => guardMock(...a) }))
 const signMock = jest.fn()
 jest.mock('@/lib/proposals/sign-choice', () => ({ signChosenProposal: (...a: unknown[]) => signMock(...a) }))
-jest.mock('@/lib/audit/phi-access', () => ({ logPhiAccess: jest.fn(async () => true) }))
+jest.mock('@/lib/audit/phi-access', () => ({
+  logPhiAccess: jest.fn(async () => true),
+  logPhiAccessBatch: jest.fn(async () => true),
+  logPhiWriteNotCompleted: jest.fn(async () => true),
+}))
 
 import { POST } from '../[proposalId]/sign/route'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiAccessBatch, logPhiWriteNotCompleted } from '@/lib/audit/phi-access'
+
+const batchLog = jest.mocked(logPhiAccessBatch)
+const notCompleted = jest.mocked(logPhiWriteNotCompleted)
 
 const CLINIC = 'c0000000-0000-4000-8000-000000000001'
 const PROPOSAL = 'b0000000-0000-4000-8000-000000000001'
@@ -42,20 +49,59 @@ it('signs as the caller: user id and app_metadata role passed on', async () => {
   expect(signMock).toHaveBeenCalledWith({ service: true }, expect.objectContaining({ clinicId: CLINIC, userId: 'u-chen', appRole: 'provider', proposalId: PROPOSAL, signature: SIGNATURE }))
 })
 
-it('logs one sign / prescription row per signed order, each with its patient (B14)', async () => {
+// L1: the sign rows are written BEFORE signing, through sign-choice's
+// beforeWrite (batch sign calls it after its checks).
+type Target = { orderId: string; patientId: string }
+const REFUSED = 'This change could not be recorded. Nothing was changed. Try again.'
+function signsWith(targets: Target[], then: () => unknown, order: string[] = []) {
+  signMock.mockImplementation(async (_db: unknown, input: { beforeWrite?: (t: Target[]) => Promise<boolean> }) => {
+    if (input.beforeWrite && !(await input.beforeWrite(targets))) return { ok: false, status: 503, error: REFUSED }
+    order.push('sign')
+    return then()
+  })
+}
+
+it('writes one sign / prescription row per chosen order, with its patient, BEFORE signing (B14)', async () => {
   jest.mocked(logPhiAccess).mockClear()
-  signMock.mockResolvedValue({ ok: true, signedOrderIds: ['o1', 'o3'], cancelledOrderIds: ['o2'], patients: [{ patientId: 'p1', orderIds: ['o1', 'o3'], paymentGroupId: null, checkoutUrl: 'u' }] })
+  const order: string[] = []
+  batchLog.mockClear().mockImplementation(async () => { order.push('log'); return true })
+  notCompleted.mockClear()
+  signsWith([{ orderId: 'o1', patientId: 'p1' }, { orderId: 'o3', patientId: 'p1' }],
+    () => ({ ok: true, signedOrderIds: ['o1', 'o3'], cancelledOrderIds: ['o2'], patients: [{ patientId: 'p1', orderIds: ['o1', 'o3'], paymentGroupId: null, checkoutUrl: 'u' }] }), order)
   expect((await POST(req({ signature: SIGNATURE }), ctx())).status).toBe(200)
-  const rows = jest.mocked(logPhiAccess).mock.calls.map(c => c[0]).map(e => ({ action: e.action, resource: e.resource, route: e.route, patientId: e.patientId, orderId: e.orderId, clinicId: e.clinicId }))
-  expect(rows).toEqual([
-    { action: 'sign', resource: 'prescription', route: '/api/proposals/[proposalId]/sign', patientId: 'p1', orderId: 'o1', clinicId: CLINIC },
-    { action: 'sign', resource: 'prescription', route: '/api/proposals/[proposalId]/sign', patientId: 'p1', orderId: 'o3', clinicId: CLINIC },
-  ])
+  expect(order).toEqual(['log', 'sign'])
+  expect(batchLog).toHaveBeenCalledTimes(1)
+  expect(batchLog).toHaveBeenCalledWith(
+    expect.objectContaining({ action: 'sign', resource: 'prescription', route: '/api/proposals/[proposalId]/sign', clinicId: CLINIC, user: expect.objectContaining({ id: 'u-chen' }) }),
+    [{ patientId: 'p1', orderId: 'o1' }, { patientId: 'p1', orderId: 'o3' }],
+  )
+  expect(jest.mocked(logPhiAccess)).not.toHaveBeenCalled()
+  expect(notCompleted).not.toHaveBeenCalled()
 })
 
-it('a log that fails after signing still answers 200 (the signature stands; the helper alerts)', async () => {
-  jest.mocked(logPhiAccess).mockClear().mockResolvedValueOnce(false)
-  expect((await POST(req({ signature: SIGNATURE }), ctx())).status).toBe(200)
+it('the sign rows cannot be written: 503, the standard message, nothing signed', async () => {
+  batchLog.mockClear().mockResolvedValueOnce(false)
+  notCompleted.mockClear()
+  const then = jest.fn()
+  signsWith([{ orderId: 'o1', patientId: 'p1' }], then)
+  const res = await POST(req({ signature: SIGNATURE }), ctx())
+  expect(res.status).toBe(503)
+  expect(await res.json()).toEqual({ error: REFUSED })
+  expect(then).not.toHaveBeenCalled()
+  expect(notCompleted).not.toHaveBeenCalled()
+})
+
+it('signing that fails after the rows were written: a not-completed row per order not signed', async () => {
+  batchLog.mockClear().mockResolvedValue(true)
+  notCompleted.mockClear()
+  signsWith([{ orderId: 'o1', patientId: 'p1' }, { orderId: 'o3', patientId: 'p1' }],
+    () => ({ ok: false, status: 500, error: 'Only 1 of 2 prescriptions were signed', unsignedOrderIds: ['o3'] }))
+  const res = await POST(req({ signature: SIGNATURE }), ctx())
+  expect(res.status).toBe(500)
+  expect(await res.json()).not.toHaveProperty('unsignedOrderIds')
+  expect(notCompleted.mock.calls.map(c => ({ action: c[0].action, resource: c[0].resource, orderId: c[0].orderId, patientId: c[0].patientId, clinicId: c[0].clinicId }))).toEqual([
+    { action: 'sign', resource: 'prescription', orderId: 'o3', patientId: 'p1', clinicId: CLINIC },
+  ])
 })
 
 it('a refusal comes back as batch sign gave it, with its problems', async () => {

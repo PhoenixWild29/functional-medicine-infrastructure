@@ -76,6 +76,8 @@ describe('/new-prescription (patient picker)', () => {
     const [entry, ids] = jest.mocked(logPhiAccessMany).mock.calls[0]!
     expect(entry).toEqual(expect.objectContaining({ user: MA_USER, action: 'view', resource: 'patient_list', route: '/new-prescription' }))
     expect(ids).toEqual([PATIENT])
+    // C-2026-10-26-04 (review L5): list views dedupe over 15 minutes.
+    expect(jest.mocked(logPhiAccessMany).mock.calls[0]?.[2]).toEqual({ dedupeMinutes: 15 })
     expect(phiEntries()).toHaveLength(0)
   })
 

@@ -313,9 +313,16 @@ export default async function DashboardPage(
   const listedPatientIds = new Set<string>()
   for (const o of orders) if (o.patientId) listedPatientIds.add(o.patientId)
   for (const id of duplicateNames.keys()) listedPatientIds.add(id)
+  // Review L4: the chosen-plan queue names patients too (first name and
+  // plan). It is clinic-wide by design (RLS treatment_proposals_clinic_read:
+  // any staff member sees whose plan waits; only its provider or an admin
+  // can sign), so a provider sees other providers' patients there.
+  if (chosenPlans.ok) for (const plan of chosenPlans.plans) if (plan.patientId) listedPatientIds.add(plan.patientId)
+  // Review L5: once per actor and patient per 15 minutes (the poll too).
   await logPhiAccessMany(
     { user, action: 'view', resource: 'order_list', route: '/dashboard', headers: await currentRequestHeaders() },
     [...listedPatientIds],
+    { dedupeMinutes: 15 },
   )
 
   // Compliance C4: licenses that expire within 30 days (the admin: every

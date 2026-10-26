@@ -65,7 +65,20 @@ export default async function FaxPage() {
 
   // B14: the signed URLs below open the fax PDFs. One view row per matched
   // order (+ one for unmatched faxes). A read: rendered whatever the log says.
-  await logFaxQueueView({ user: await getRequestUser(), route: '/ops/fax', headers: await currentRequestHeaders() }, data ?? [])
+  // Review L6: with no resolvable user (a transient auth error) no URL is
+  // minted: the log call reports no_actor, and the page asks for a reload.
+  const user = await getRequestUser()
+  await logFaxQueueView({ user, route: '/ops/fax', headers: await currentRequestHeaders() }, data ?? [])
+  if (!user) {
+    return (
+      <>
+        <h1 className="sr-only">Fax Queue</h1>
+        <p role="alert" className="mx-auto max-w-7xl px-4 py-8 text-sm text-foreground">
+          The fax queue could not be shown. Reload the page to try again.
+        </p>
+      </>
+    )
+  }
 
   // NB-01: shared row mapper handles signed URL generation (REQ-FTQ-007).
   // Promise.allSettled, not Promise.all: one bad storage_path must not reject

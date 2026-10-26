@@ -19,7 +19,7 @@
 
 import { NextRequest } from 'next/server'
 import { scriptedDb, type ScriptedCall } from '@/__tests__/helpers/scripted-db'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiAccessBatch } from '@/lib/audit/phi-access'
 
 const FAX_1   = 'f4000000-0000-0000-0000-000000000001'
 const FAX_2   = 'f4000000-0000-0000-0000-000000000002'
@@ -48,6 +48,7 @@ import { GET } from '../route'
 import { POST } from '../[faxId]/action/route'
 
 const logMock = jest.mocked(logPhiAccess)
+const batchMock = jest.mocked(logPhiAccessBatch)
 const OPS = { id: 'u-ops', email: 'ops@x.example', app_metadata: { app_role: 'ops_admin' } }
 
 function withStorage(d: ReturnType<typeof scriptedDb>) {
@@ -66,6 +67,7 @@ const faxRow = (faxId: string, orderId: string | null, order: Record<string, unk
 beforeEach(() => {
   user = OPS
   logMock.mockClear()
+  batchMock.mockClear()
   casTransitionMock.mockReset().mockResolvedValue({ success: true, wasAlreadyTransitioned: false })
 })
 
@@ -84,15 +86,17 @@ describe('GET /api/ops/fax: the list', () => {
     ])
     const res = await list()
     expect(res.status).toBe(200)
-    expect(logMock).toHaveBeenCalledTimes(3)
-    expect(logMock).toHaveBeenCalledWith(expect.objectContaining({
-      user: OPS, action: 'view', resource: 'inbound_fax', route: '/api/ops/fax', orderId: ORDER, patientId: PATIENT, clinicId: CLINIC,
-    }))
-    expect(logMock).toHaveBeenCalledWith(expect.objectContaining({ action: 'view', resource: 'inbound_fax', orderId: ORDER_2, patientId: PATIENT_2, clinicId: CLINIC }))
-    const unmatched = logMock.mock.calls.map(c => c[0]).find(e => !e.orderId)
-    expect(unmatched).toEqual(expect.objectContaining({ action: 'view', resource: 'inbound_fax', route: '/api/ops/fax' }))
-    expect(unmatched?.patientId ?? null).toBeNull()
-    expect(unmatched?.clinicId ?? null).toBeNull()
+    // Review L5: ONE batch call (one insert) for the queue, deduplicated over 15 minutes.
+    expect(batchMock).toHaveBeenCalledTimes(1)
+    const [entry, targets, options] = batchMock.mock.calls[0]!
+    expect(entry).toEqual(expect.objectContaining({ user: OPS, action: 'view', resource: 'inbound_fax', route: '/api/ops/fax' }))
+    expect(targets).toEqual([
+      { orderId: ORDER, patientId: PATIENT, clinicId: CLINIC },
+      { orderId: ORDER_2, patientId: PATIENT_2, clinicId: CLINIC },
+      {},
+    ])
+    expect(options).toEqual({ dedupeMinutes: 15 })
+    expect(logMock).not.toHaveBeenCalled()
   })
 
   it('reads the order\'s patient and clinic with the queue', async () => {
@@ -105,12 +109,12 @@ describe('GET /api/ops/fax: the list', () => {
   it('an empty queue writes no row', async () => {
     queue([])
     await list()
-    expect(logMock).not.toHaveBeenCalled()
+    expect(batchMock).not.toHaveBeenCalled()
   })
 
   it('a read: the list is still served when the log write fails', async () => {
     queue([faxRow(FAX_1, ORDER, { order_number: 'O-1', status: 'FAX_DELIVERED', patient_id: PATIENT, clinic_id: CLINIC })])
-    logMock.mockResolvedValueOnce(false)
+    batchMock.mockResolvedValueOnce(false)
     const res = await list()
     expect(res.status).toBe(200)
     expect((await res.json() as { faxes: unknown[] }).faxes).toHaveLength(1)

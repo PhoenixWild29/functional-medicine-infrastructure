@@ -29,6 +29,14 @@ import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const PROVIDER_VIEW_HEADER = 'x-provider-view-mode'
 const ROUTE = '/api/dashboard/orders'
+/**
+ * Review L5: the poll reads at most this many orders, most recently
+ * updated first (it ran unbounded every 30 s). The page's first render
+ * stays unbounded because its KPIs are computed from it.
+ */
+const POLL_ORDER_LIMIT = 1000
+/** List views are logged once per actor and patient per 15 minutes (review L5). */
+const LIST_LOG_DEDUPE_MINUTES = 15
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   // getUser(), never getSession(): middleware owns token rotation.
@@ -58,6 +66,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     .eq('clinic_id', clinicId)
     .is('deleted_at', null)
     .order('updated_at', { ascending: false })
+    .limit(POLL_ORDER_LIMIT)
   if (error) {
     // BLK-07: the code for ops, never a row value.
     console.error(`[dashboard-orders] poll read failed | code=${(error as { code?: string }).code ?? 'unknown'}`)
@@ -76,7 +85,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     if (p?.patient_id) patientIds.add(p.patient_id)
   }
   for (const id of duplicateNames.keys()) patientIds.add(id)
-  await logPhiAccessMany({ user, action: 'view', resource: 'order_list', route: ROUTE, headers: request.headers }, [...patientIds])
+  await logPhiAccessMany({ user, action: 'view', resource: 'order_list', route: ROUTE, headers: request.headers }, [...patientIds], { dedupeMinutes: LIST_LOG_DEDUPE_MINUTES })
 
   return NextResponse.json(
     { rows, duplicateNames: Object.fromEntries(duplicateNames) },

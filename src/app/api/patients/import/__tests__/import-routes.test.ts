@@ -41,7 +41,7 @@ jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.clien
 import { POST as PARSE } from '../parse/route'
 import { POST as VALIDATE } from '../validate/route'
 import { POST as IMPORT } from '../route'
-import { logPhiAccess, logPhiAccessMany } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiAccessMany, logPhiWriteNotCompleted } from '@/lib/audit/phi-access'
 
 const HEADERS = ['First Name', 'Last Name', 'DOB', 'Mobile', 'Email', 'State', 'Zip']
 const GOOD = ['Jane', 'Smith', '04/15/1985', '(512) 555-0123', 'jane@example.test', 'TX', '78701']
@@ -68,6 +68,8 @@ beforeEach(() => {
   script = () => ({ data: [] })
   signedIn('medical_assistant')
   ;(logPhiAccessMany as jest.Mock).mockClear()
+  ;(logPhiAccess as jest.Mock).mockClear()
+  ;(logPhiWriteNotCompleted as jest.Mock).mockClear()
   jest.spyOn(console, 'error').mockImplementation(() => {})
   jest.spyOn(console, 'info').mockImplementation(() => {})
 })
@@ -196,11 +198,29 @@ describe('PHI access log: the import preview', () => {
     )
   })
 
-  it('a log that fails still serves the preview', async () => {
+  it('parse: a log that fails still serves the preview', async () => {
     one.mockResolvedValueOnce(false)
     expect((await PARSE(upload(csv([GOOD])))).status).toBe(200)
+  })
+
+  // L3: validate echoes every row and the existing patients' names, so it
+  // is answered only once its rows are written.
+  it('validate: the preview row cannot be written: 503, no rows echoed', async () => {
     one.mockResolvedValueOnce(false)
-    expect((await VALIDATE(json('/api/patients/import/validate', { headers: HEADERS, rows: [GOOD], mapping: MAPPING }))).status).toBe(200)
+    const res = await VALIDATE(json('/api/patients/import/validate', { headers: HEADERS, rows: [GOOD], mapping: MAPPING }))
+    expect(res.status).toBe(503)
+    const text = JSON.stringify(await res.json())
+    expect(text).not.toMatch(/Jane|Smith|rows/)
+  })
+
+  it('validate: the rows for the existing patients shown cannot be written: 503, no rows echoed', async () => {
+    script = c => (c.table === 'patients'
+      ? { data: [{ patient_id: 'e1', first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', phone_e164: '+15125550999' }] }
+      : undefined)
+    jest.mocked(logPhiAccessMany).mockResolvedValueOnce(false)
+    const res = await VALIDATE(json('/api/patients/import/validate', { headers: HEADERS, rows: [GOOD], mapping: MAPPING }))
+    expect(res.status).toBe(503)
+    expect(JSON.stringify(await res.json())).not.toMatch(/Jane|Smith|e1/)
   })
 
   it('validate failing (the duplicate check) logs nothing', async () => {
@@ -244,6 +264,68 @@ describe('import', () => {
     script = rpcOk(['p1', 'p2'])
     await IMPORT(json('/api/patients/import', body()))
     expect(logPhiAccessMany).toHaveBeenCalledWith(expect.objectContaining({ action: 'create', resource: 'patient', route: '/api/patients/import', clinicId: CLINIC_ID }), ['p1', 'p2'])
+  })
+
+  // L1: the batch function makes the ids, so a create / patient row for the
+  // clinic (no patient yet) is written BEFORE it; the per-patient rows follow.
+  it('a create / patient row for the clinic is written BEFORE the batch function', async () => {
+    script = rpcOk(['p1', 'p2'])
+    let rpcsAtLog = -1
+    jest.mocked(logPhiAccess).mockImplementationOnce(async () => { rpcsAtLog = db.calls.filter(c => c.op === 'rpc').length; return true })
+    expect((await IMPORT(json('/api/patients/import', body()))).status).toBe(201)
+    expect(rpcsAtLog).toBe(0)
+    expect(logPhiAccess).toHaveBeenCalledTimes(1)
+    const entry = jest.mocked(logPhiAccess).mock.calls[0]![0]
+    expect(entry).toEqual(expect.objectContaining({ user: expect.objectContaining({ id: 'user-1' }), action: 'create', resource: 'patient', route: '/api/patients/import', clinicId: CLINIC_ID }))
+    expect(entry.patientId ?? null).toBeNull()
+    expect(logPhiWriteNotCompleted).not.toHaveBeenCalled()
+  })
+
+  it('that row cannot be written: 503, the batch function never runs', async () => {
+    script = rpcOk(['p1', 'p2'])
+    jest.mocked(logPhiAccess).mockResolvedValueOnce(false)
+    const res = await IMPORT(json('/api/patients/import', body()))
+    expect(res.status).toBe(503)
+    expect((await res.json()).error).toBe('This change could not be recorded. Nothing was changed. Try again.')
+    expect(db.calls.filter(c => c.op === 'rpc')).toHaveLength(0)
+    expect(logPhiAccessMany).not.toHaveBeenCalled()
+  })
+
+  it('the batch function fails after logging: a not_completed row for the same entry', async () => {
+    script = c => (c.op === 'rpc' ? { error: { message: 'boom' } } : c.table === 'patients' ? { data: [] } : undefined)
+    expect((await IMPORT(json('/api/patients/import', body()))).status).toBe(500)
+    expect(logPhiWriteNotCompleted).toHaveBeenCalledTimes(1)
+    expect(logPhiWriteNotCompleted).toHaveBeenCalledWith(jest.mocked(logPhiAccess).mock.calls[0]![0])
+  })
+
+  // L3: the 422 echoes every row and the existing patients' names: logged
+  // like validate's preview before it is answered.
+  it('the 422 is logged first: the preview row, and the existing patients it shows', async () => {
+    script = c => (c.table === 'patients'
+      ? { data: [{ patient_id: 'e1', first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', phone_e164: null }] }
+      : undefined)
+    const res = await IMPORT(json('/api/patients/import', body({ rows: [GOOD, BAD] })))
+    expect(res.status).toBe(422)
+    expect(logPhiAccess).toHaveBeenCalledTimes(1)
+    const entry = jest.mocked(logPhiAccess).mock.calls[0]![0]
+    expect(entry).toEqual(expect.objectContaining({ action: 'view', resource: 'patient_import_preview', route: '/api/patients/import', clinicId: CLINIC_ID }))
+    expect(entry.patientId ?? null).toBeNull()
+    expect(logPhiAccessMany).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'view', resource: 'patient_import_preview', route: '/api/patients/import', clinicId: CLINIC_ID }),
+      ['e1'],
+    )
+  })
+
+  it.each([['the preview row', 'one'], ['the existing patients\' rows', 'many']])('the 422: %s cannot be written: 503, no rows echoed', async (_l, which) => {
+    script = c => (c.table === 'patients'
+      ? { data: [{ patient_id: 'e1', first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', phone_e164: null }] }
+      : undefined)
+    if (which === 'one') jest.mocked(logPhiAccess).mockResolvedValueOnce(false)
+    else jest.mocked(logPhiAccessMany).mockResolvedValueOnce(false)
+    const res = await IMPORT(json('/api/patients/import', body({ rows: [GOOD, BAD] })))
+    expect(res.status).toBe(503)
+    expect(JSON.stringify(await res.json())).not.toMatch(/Jane|Smith|Nobody|e1/)
+    expect(db.calls.filter(c => c.op === 'rpc')).toHaveLength(0)
   })
 
   it('a row that needs fixing and is not excluded: 422 with the results; nothing written', async () => {

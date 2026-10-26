@@ -87,7 +87,9 @@ describe('POST /api/favorites — WO-104 cards with dose presets', () => {
     }))
     expect(res.status).toBe(201)
     expect(inserts).toHaveLength(1)
+    // L1: the id is generated before the insert (so a pinned card can be logged first).
     expect(inserts[0]!.row).toEqual({
+      favorite_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
       provider_id: PROVIDER, formulation_id: FORMULATION, pharmacy_id: PHARMACY, patient_id: null,
       label: 'Semaglutide', category: 'Weight Management',
       dose_presets: [preset('10')], sig_mode: 'standard', titration_steps: [], default_refills: 2,

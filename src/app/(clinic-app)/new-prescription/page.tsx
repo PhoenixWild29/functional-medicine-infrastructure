@@ -122,6 +122,8 @@ export default async function NewPrescriptionPage(
   await logPhiAccessMany(
     { user, action: 'view', resource: 'patient_list', route: '/new-prescription', headers: await currentRequestHeaders() },
     [...listedPatientIds],
+    // Review L5: once per actor and patient per 15 minutes.
+    { dedupeMinutes: 15 },
   )
 
   return (

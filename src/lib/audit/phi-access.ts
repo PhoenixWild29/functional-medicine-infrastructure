@@ -81,6 +81,10 @@ export type PhiResource =
   | 'pharmacy_disclosure'
   | 'ai_face_sheet'
   | 'ai_portal_screenshot'
+  // C-2026-10-26-04 (L2): an SMS sent through Twilio (phone, first name, link).
+  | 'sms_disclosure'
+  // L1: the follow-up row for a logged write that did not complete.
+  | `not_completed_${string}`
   // B13: why ops opened a patient's order (logged beside the view).
   | OpsAccessReasonResource
 
@@ -144,7 +148,10 @@ export interface PhiAccessEntry {
 
 const RESOURCE_RE = /^[a-z_]{1,40}$/
 const ROLE_RE = /^[a-z_]{1,40}$/
-const UUID_SEGMENT_RE = /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=\/|$)/gi
+/** A route segment kept as is: a [param], or a lowercase word (letters, digits, - and _). */
+const PARAM_SEGMENT_RE = /^\[[A-Za-z]+\]$/
+const WORD_SEGMENT_RE = /^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$/
+const MAX_WORD_SEGMENT = 32
 
 let warnedNoSecret = false
 
@@ -161,10 +168,17 @@ async function keyedHash(value: string | null | undefined): Promise<string | nul
   return auditHash(value)
 }
 
-/** The route as a pattern: no query string, no ids. */
+/**
+ * The route as a pattern: no query string, no ids. Any segment that is not
+ * a [param] or a short lowercase word becomes [id] (review L9: a UUID, but
+ * also a base64url bearer token, which would otherwise pass the column
+ * CHECK and be stored verbatim).
+ */
 function routePattern(route: string): string {
   const path = route.split('?')[0] ?? ''
-  return path.replace(UUID_SEGMENT_RE, '/[id]').slice(0, 200)
+  return path.split('/').map(seg => (
+    seg === '' || PARAM_SEGMENT_RE.test(seg) || (seg.length <= MAX_WORD_SEGMENT && WORD_SEGMENT_RE.test(seg)) ? seg : '[id]'
+  )).join('/').slice(0, 200)
 }
 
 const ALERT_THROTTLE_MS = 60_000
@@ -210,7 +224,12 @@ function entryActor(entry: Pick<PhiAccessEntry, 'user' | 'actor'>): PhiActor | n
 export async function logPhiAccess(entry: PhiAccessEntry): Promise<boolean> {
   try {
     const actor = entryActor(entry)
-    if (!actor) return false
+    if (!actor) {
+      // L6: no user and no actor is a failed write, never a silent skip.
+      console.error(`[phi-access] no actor for the entry | route=${routePattern(entry.route)}`)
+      await reportLogFailure(routePattern(entry.route), String(entry.action), 'no_actor')
+      return false
+    }
     if (!(PHI_ACTIONS as readonly string[]).includes(entry.action) || !RESOURCE_RE.test(entry.resource)) {
       console.error(`[phi-access] refused an entry with an unknown action or resource | route=${routePattern(entry.route)}`)
       await reportLogFailure(routePattern(entry.route), String(entry.action), 'invalid_entry')
@@ -265,25 +284,81 @@ export async function logPhiDisclosure(entry: Omit<PhiAccessEntry, 'action'>): P
 
 const MANY_CHUNK = 500
 
+/** One row's own ids in a batch (each target is one row). */
+export interface PhiAccessTarget {
+  patientId?: string | null
+  orderId?:   string | null
+  /** The clinic whose data it is, when it differs per row (ops). */
+  clinicId?:  string | null
+}
+
+export interface PhiBatchOptions {
+  /**
+   * List views polled every 30 s (C-2026-10-26-04, L5): skip the targets
+   * this actor already has a row for, with the same action and resource,
+   * inside the last N minutes. Read back from phi_access_log itself (its
+   * actor/time index), so it holds across instances; no migration. A read
+   * that fails writes every target (never fewer rows than accesses). Two
+   * polls racing in the same instant can still both write: duplicates,
+   * never a gap. Only for reads: a write always logs.
+   */
+  dedupeMinutes?: number
+}
+
+const DEDUPE_READ_LIMIT = 5000
+
+const targetKey = (t: PhiAccessTarget) => `${t.patientId ?? ''}|${t.orderId ?? ''}`
+
 /**
- * One phi_access_log row per patient, for a write that touches many
- * patients at once (the patient CSV import): the same actor, action,
- * resource and route on each, written in chunks of 500. Like
- * logPhiAccess, it resolves in every case and logs no row value.
+ * Many phi_access_log rows with the same actor, action, resource and route,
+ * each target with its own patient, order and clinic: ONE insert per 500
+ * rows, not one per row (the ops fax queue, batch-sign). Resolves in every
+ * case, to true when every row was written; logs no row value.
  */
-export async function logPhiAccessMany(
+export async function logPhiAccessBatch(
   entry: Omit<PhiAccessEntry, 'patientId' | 'orderId'>,
-  patientIds: ReadonlyArray<string>,
+  targets: ReadonlyArray<PhiAccessTarget>,
+  options: PhiBatchOptions = {},
 ): Promise<boolean> {
   try {
-    if (patientIds.length === 0) return true
+    if (targets.length === 0) return true
     const actor = entryActor(entry)
-    if (!actor) return false
+    if (!actor) {
+      console.error(`[phi-access] no actor for ${targets.length} entries | route=${routePattern(entry.route)}`)
+      await reportLogFailure(routePattern(entry.route), String(entry.action), 'no_actor')
+      return false
+    }
     if (!(PHI_ACTIONS as readonly string[]).includes(entry.action) || !RESOURCE_RE.test(entry.resource)) {
       console.error(`[phi-access] refused entries with an unknown action or resource | route=${routePattern(entry.route)}`)
       await reportLogFailure(routePattern(entry.route), String(entry.action), 'invalid_entry')
       return false
     }
+    const { createServiceClient } = await import('@/lib/supabase/service')
+    const db = createServiceClient()
+
+    // The same target twice in one call is one access.
+    const unique = new Map<string, PhiAccessTarget>()
+    for (const t of targets) if (!unique.has(targetKey(t))) unique.set(targetKey(t), t)
+    let pending = [...unique.values()]
+
+    if (options.dedupeMinutes && options.dedupeMinutes > 0) {
+      const since = new Date(Date.now() - options.dedupeMinutes * 60_000).toISOString()
+      const { data, error } = await db.from('phi_access_log')
+        .select('patient_id, order_id')
+        .eq('actor_user_id', actor.userId)
+        .eq('action', entry.action)
+        .eq('resource', entry.resource)
+        .gte('occurred_at', since)
+        .limit(DEDUPE_READ_LIMIT)
+      if (error) {
+        console.warn(`[phi-access] dedupe read failed; writing every row | code=${(error as { code?: string }).code ?? 'unknown'} | route=${routePattern(entry.route)}`)
+      } else {
+        const seen = new Set((data ?? []).map(r => targetKey({ patientId: (r as { patient_id: string | null }).patient_id, orderId: (r as { order_id: string | null }).order_id })))
+        pending = pending.filter(t => !seen.has(targetKey(t)))
+      }
+      if (pending.length === 0) return true
+    }
+
     const [actorEmailHash, ipHash, userAgentHash] = await Promise.all([
       keyedHash(actor.email?.trim().toLowerCase()),
       keyedHash(clientIp(entry.headers)),
@@ -295,19 +370,21 @@ export async function logPhiAccessMany(
       actor_user_id:    actor.userId,
       actor_role:       ROLE_RE.test(actor.role) ? actor.role : 'unknown',
       actor_email_hash: actorEmailHash,
-      clinic_id:        entry.clinicId ?? actor.clinicId ?? null,
-      order_id:         null,
       action:           entry.action,
       resource:         entry.resource,
       route:            routePattern(entry.route),
       ip_hash:          ipHash,
       user_agent_hash:  userAgentHash,
     }
-    const { createServiceClient } = await import('@/lib/supabase/service')
-    const db = createServiceClient()
+    const fallbackClinic = entry.clinicId ?? actor.clinicId ?? null
     let allWritten = true
-    for (let i = 0; i < patientIds.length; i += MANY_CHUNK) {
-      const rows = patientIds.slice(i, i + MANY_CHUNK).map(patientId => ({ ...base, patient_id: patientId }))
+    for (let i = 0; i < pending.length; i += MANY_CHUNK) {
+      const rows = pending.slice(i, i + MANY_CHUNK).map(t => ({
+        ...base,
+        clinic_id:  t.clinicId ?? fallbackClinic,
+        patient_id: t.patientId ?? null,
+        order_id:   t.orderId ?? null,
+      }))
       const { error } = await db.from('phi_access_log').insert(rows)
       if (error) {
         const code = (error as { code?: string }).code ?? 'unknown'
@@ -323,6 +400,30 @@ export async function logPhiAccessMany(
     await reportLogFailure(routePattern(entry.route), String(entry.action), name)
     return false
   }
+}
+
+/**
+ * One phi_access_log row per patient (a list view, the patient CSV
+ * import): logPhiAccessBatch with one target per patient. With
+ * dedupeMinutes (list views), a patient this actor already viewed in the
+ * window is not written again.
+ */
+export async function logPhiAccessMany(
+  entry: Omit<PhiAccessEntry, 'patientId' | 'orderId'>,
+  patientIds: ReadonlyArray<string>,
+  options: PhiBatchOptions = {},
+): Promise<boolean> {
+  return logPhiAccessBatch(entry, patientIds.map(patientId => ({ patientId })), options)
+}
+
+/**
+ * L1: a write is logged BEFORE it runs (writes must not commit unrecorded).
+ * When it then does not complete, this follow-up row says so: the same
+ * actor, action, ids and route, resource not_completed_<resource>
+ * (existing columns, no migration). Never throws.
+ */
+export async function logPhiWriteNotCompleted(entry: PhiAccessEntry): Promise<boolean> {
+  return logPhiAccess({ ...entry, resource: `not_completed_${entry.resource}` as PhiResource })
 }
 
 /**

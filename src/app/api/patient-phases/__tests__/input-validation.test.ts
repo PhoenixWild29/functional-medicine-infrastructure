@@ -31,7 +31,8 @@ jest.mock('@/lib/auth/current-provider', () => ({
   resolveCurrentProvider: async () => ({ provider_id: 'd1000000-0000-4000-8000-00000000000a', clinic_id: 'c', first_name: 'P', last_name: 'One', npi_number: '1', signature_hash: null }),
 }))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
-jest.mock('@/lib/audit/phi-access', () => ({ logPhiAccess: jest.fn(async () => {}) }))
+// L1: the write is refused unless its log row is written, so the stub says it was.
+jest.mock('@/lib/audit/phi-access', () => ({ logPhiAccess: jest.fn(async () => true), logPhiWriteNotCompleted: jest.fn(async () => true) }))
 
 import { GET, POST, PATCH } from '../route'
 

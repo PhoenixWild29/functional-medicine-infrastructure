@@ -14,7 +14,7 @@ jest.mock('@/lib/onboarding/approval-guard', () => ({ refuseUnlessApproved: asyn
 jest.mock('@/lib/orders/provider-draft-guard', () => ({ checkProviderOwnsDraft: async () => ({ ok: true }) }))
 jest.mock('@/lib/orders/draft-edit', () => ({ canEditDraft: async () => true, diffDraftRows: () => ({ sig_text: ['a', 'b'] }), writeDraftAudit: async () => undefined }))
 jest.mock('@/lib/orders/apply-bundle-shipping', () => ({ reallocateDraftSiblingShipping: async () => undefined }))
-jest.mock('@/lib/audit/phi-access', () => ({ logPhiAccess: async () => undefined }))
+jest.mock('@/lib/audit/phi-access', () => ({ logPhiAccess: async () => true, logPhiWriteNotCompleted: async () => true }))
 jest.mock('@/lib/orders/resolve-line', () => ({
   lineSourceKind: () => 'formulation',
   resolveLine: async () => ({ ok: true, wholesaleCents: 9500, medicationSnapshot: {}, pharmacySnapshot: {}, package: {} }),

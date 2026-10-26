@@ -21,4 +21,6 @@ jest.mock('@/lib/audit/phi-access', () => ({
   logPhiAccess: jest.fn(async () => true),
   logPhiAccessMany: jest.fn(async () => true),
   logPhiDisclosure: jest.fn(async () => true),
+  logPhiAccessBatch: jest.fn(async () => true),
+  logPhiWriteNotCompleted: jest.fn(async () => true),
 }))

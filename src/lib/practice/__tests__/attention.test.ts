@@ -145,6 +145,8 @@ describe('loadAttention', () => {
       ] })
       const res = await loadAttention(world().client, { clinicId: CLINIC, viewerIsProvider: false, nowMs: NOW })
       expect(res.errors).toEqual([expect.objectContaining({ error: "Semaglutide: today's price could not be read." })])
+      // Review L7: the error names the patient, so it carries the id the log needs.
+      expect(res.errors[0]!.patientId).toEqual(expect.any(String))
     })
 
     it('refunds and late payments that could not be read are named', async () => {
