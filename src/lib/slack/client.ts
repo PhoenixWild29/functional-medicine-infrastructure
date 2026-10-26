@@ -225,6 +225,18 @@ export function buildStatusHistoryWriteFailedAlert(params: {
   })
 }
 
+/**
+ * B15: a PHI access was not recorded in phi_access_log. Only the error
+ * code, the route pattern (ids masked) and the action: no patient, order
+ * or user id, no row value.
+ */
+export function buildPhiAccessLogFailedAlert(params: { route: string; action: string; code: string }): SafeSlackPayload {
+  return buildOpsAlert({
+    type: 'phi_access_log_write_failed',
+    details: { code: params.code, source: params.route, audit_action: params.action },
+  })
+}
+
 /** The only values the Slack "Code" field of an adapter-failure alert may carry. */
 export const ADAPTER_ERROR_CODES = [
   'order_rejected',

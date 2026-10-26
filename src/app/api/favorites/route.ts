@@ -40,6 +40,17 @@ import { getUserClinicId, getUserRole, isClinicStaffRole } from '@/lib/auth/clai
 import { withApiErrors } from '@/lib/api/with-api-errors'
 import { UUID_RE, badRequest } from '@/lib/api/input'
 import { MAX_REFILLS } from '@/lib/orders/rx-details'
+import { logPhiAccess, logPhiAccessMany, type PhiUser } from '@/lib/audit/phi-access'
+
+const ROUTE = '/api/favorites'
+
+/**
+ * B15: a write to a favorite pinned to a patient whose access row could
+ * not be written is refused before anything changes (the helper alerts).
+ */
+function notRecorded(): NextResponse {
+  return NextResponse.json({ error: 'This change could not be recorded. Nothing was changed. Try again.' }, { status: 503 })
+}
 
 /** A uuid, or the field name that is not one (ids reach Postgres: 22P02 is a 500). */
 function badIds(fields: Record<string, unknown>): string[] {
@@ -82,8 +93,8 @@ async function getClinicProviderIds(clinicId: string): Promise<string[]> {
   return data?.map(p => p.provider_id) ?? []
 }
 
-/** The verified caller's clinic, or the error response to return. */
-async function callerClinic(): Promise<{ clinicId: string } | { response: NextResponse }> {
+/** The verified caller and their clinic, or the error response to return. */
+async function callerClinic(): Promise<{ clinicId: string; user: PhiUser } | { response: NextResponse }> {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
@@ -91,7 +102,7 @@ async function callerClinic(): Promise<{ clinicId: string } | { response: NextRe
   if (!isClinicStaffRole(getUserRole(user))) return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) return { response: NextResponse.json({ error: 'No clinic context' }, { status: 403 }) }
-  return { clinicId }
+  return { clinicId, user }
 }
 
 /** A patient may only be pinned when they belong to the caller's clinic. */
@@ -178,7 +189,7 @@ async function getHandler(req: NextRequest) {
 async function getFavorites(req: NextRequest): Promise<NextResponse> {
   const caller = await callerClinic()
   if ('response' in caller) return caller.response
-  const { clinicId } = caller
+  const { clinicId, user } = caller
 
   const supabase = createServiceClient()
   const providerIds = await getClinicProviderIds(clinicId)
@@ -282,6 +293,12 @@ async function getFavorites(req: NextRequest): Promise<NextResponse> {
       : null,
   }))
 
+  // Compliance C2 (B14): favorites pinned to this patient are theirs. A
+  // read: served even when the row could not be written (the helper alerts).
+  if (patientId !== null && favorites.some(f => f.patient_id === patientId)) {
+    await logPhiAccess({ user, action: 'view', resource: 'favorite', route: ROUTE, patientId, headers: req.headers })
+  }
+
   return NextResponse.json({ data: favorites })
 }
 
@@ -301,7 +318,7 @@ async function postHandler(req: NextRequest) {
 async function createFavorite(req: NextRequest): Promise<NextResponse> {
   const caller = await callerClinic()
   if ('response' in caller) return caller.response
-  const { clinicId } = caller
+  const { clinicId, user } = caller
 
   const body = await req.json().catch(() => null) as Record<string, unknown> | null
   if (!body || typeof body !== 'object') return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
@@ -353,6 +370,11 @@ async function createFavorite(req: NextRequest): Promise<NextResponse> {
     (c.pharmacy_id ?? null) === pharmacyId && ((c as { patient_id?: string | null }).patient_id ?? null) === patientId)
 
   if (existing) {
+    // Compliance C2 (B14): the card exists, so a pinned one is logged
+    // BEFORE the write and the write is refused when it cannot be.
+    if (patientId && !(await logPhiAccess({ user, action: 'update', resource: 'favorite', route: ROUTE, patientId, headers: req.headers }))) {
+      return notRecorded()
+    }
     const merged = mergePresets(presetsFromJson((existing as { dose_presets?: unknown }).dose_presets), presets.presets)
     const { data, error } = await supabase
       .from('provider_favorites')
@@ -402,6 +424,12 @@ async function createFavorite(req: NextRequest): Promise<NextResponse> {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Compliance C2 (B14): a new card pinned to a patient. Its id exists only
+  // now, so it is logged after the insert; a row that could not be written
+  // is alerted by the helper and the saved card stands.
+  if (patientId) {
+    await logPhiAccess({ user, action: 'create', resource: 'favorite', route: ROUTE, patientId, headers: req.headers })
+  }
   return NextResponse.json({ data, merged: false }, { status: 201 })
 }
 
@@ -421,7 +449,7 @@ async function patchHandler(req: NextRequest) {
 async function editFavorite(req: NextRequest): Promise<NextResponse> {
   const caller = await callerClinic()
   if ('response' in caller) return caller.response
-  const { clinicId } = caller
+  const { clinicId, user } = caller
 
   const { searchParams } = new URL(req.url)
   const favoriteId = searchParams.get('id')
@@ -444,7 +472,7 @@ async function editFavorite(req: NextRequest): Promise<NextResponse> {
   // clinic member may edit any of the clinic's favorites.
   const { data: current, error: currentError } = await supabase
     .from('provider_favorites')
-    .select('provider_id, formulation_id, use_count')
+    .select('provider_id, formulation_id, use_count, patient_id')
     .eq('favorite_id', favoriteId)
     .single()
   if (currentError && !isNoRows(currentError)) readFailed('favorite', currentError)
@@ -456,7 +484,19 @@ async function editFavorite(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  // Compliance C2 (B14): a favorite pinned to a patient (or being pinned to
+  // one) is that patient's data. Logged BEFORE the write (the use-count
+  // bump, or the edit after its own checks), for the patient it is pinned
+  // to and the one it is being pinned to; the write is refused when the
+  // rows cannot be written.
+  const pinnedNow = (current as { patient_id?: string | null }).patient_id ?? null
+  const newPin = validation.patch['patient_id']
+  const touched = [...new Set([pinnedNow, typeof newPin === 'string' ? newPin : null].filter((id): id is string => !!id))]
+
   if (!isEdit) {
+    if (touched.length > 0 && !(await logPhiAccessMany({ user, action: 'update', resource: 'favorite', route: ROUTE, headers: req.headers }, touched))) {
+      return notRecorded()
+    }
     // WO-85 behaviour: record a load.
     const newCount = (current.use_count ?? 0) + 1
     const { error } = await supabase
@@ -491,6 +531,10 @@ async function editFavorite(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Patient not in clinic' }, { status: 403 })
   }
 
+  if (touched.length > 0 && !(await logPhiAccessMany({ user, action: 'update', resource: 'favorite', route: ROUTE, headers: req.headers }, touched))) {
+    return notRecorded()
+  }
+
   const { dose_presets: presetsPatch, ...rest } = validation.patch
   const { data, error } = await supabase
     .from('provider_favorites')
@@ -516,7 +560,7 @@ async function deleteHandler(req: NextRequest) {
 async function deleteFavorite(req: NextRequest): Promise<NextResponse> {
   const caller = await callerClinic()
   if ('response' in caller) return caller.response
-  const { clinicId } = caller
+  const { clinicId, user } = caller
 
   const { searchParams } = new URL(req.url)
   const favoriteId = searchParams.get('id')
@@ -530,7 +574,7 @@ async function deleteFavorite(req: NextRequest): Promise<NextResponse> {
   // favorite by guessing its UUID. POST has the same scoping.
   const { data: fav, error: favError } = await supabase
     .from('provider_favorites')
-    .select('provider_id')
+    .select('provider_id, patient_id')
     .eq('favorite_id', favoriteId)
     .single()
   if (favError && !isNoRows(favError)) readFailed('favorite', favError)
@@ -540,6 +584,14 @@ async function deleteFavorite(req: NextRequest): Promise<NextResponse> {
   const validProviderIds = await getClinicProviderIds(clinicId)
   if (!validProviderIds.includes(fav.provider_id)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  // Compliance C2 (B14): removing a favorite pinned to a patient changes
+  // their data ('update': there is no delete action). Logged BEFORE the
+  // delete; refused when the row cannot be written.
+  const pinned = (fav as { patient_id?: string | null }).patient_id ?? null
+  if (pinned && !(await logPhiAccess({ user, action: 'update', resource: 'favorite', route: ROUTE, patientId: pinned, headers: req.headers }))) {
+    return notRecorded()
   }
 
   const { error } = await supabase

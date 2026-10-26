@@ -20,6 +20,7 @@ import { join } from 'node:path'
 import { NextRequest } from 'next/server'
 import { onboardingFake } from '@/__tests__/helpers/onboarding-fake'
 import { signRequest } from '@/lib/integrations/keragon/signature'
+import { logPhiAccess, systemActor } from '@/lib/audit/phi-access'
 
 let db = onboardingFake()
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
@@ -311,5 +312,52 @@ describe('the clinic admin routes', () => {
     asUser('clinic_admin')
     expect((await secret.POST(req('POST', { 'sec-fetch-site': 'cross-site' }))).status).toBe(403)
     expect(db.vault.get('vault-1')!.secret).toBe(SECRET)
+  })
+})
+
+// PHI access log (B14/B15): a patient created or updated from the EHR is
+// one 'create' / 'update' row, resource 'ehr_sync', by the system actor for
+// the clinic, with the patient id. Logged after the write (a new patient's
+// id exists only then); a failed log is already alerted by the helper and
+// does not undo the sync. No write (refused, skipped, error): no row.
+describe('PHI access log', () => {
+  const logMock = () => jest.mocked(logPhiAccess)
+  beforeEach(() => logMock().mockClear())
+
+  it('a new patient: create / ehr_sync, system actor for the clinic, the new patient id', async () => {
+    world()
+    const res = await signed(fixture('patient-upsert-full.json'))
+    const body = await res.json() as { patient_id: string }
+    expect(logMock()).toHaveBeenCalledTimes(1)
+    expect(logMock()).toHaveBeenCalledWith(expect.objectContaining({
+      actor: systemActor(CLINIC), action: 'create', resource: 'ehr_sync', route: '/api/integrations/keragon/patients',
+      patientId: body.patient_id, clinicId: CLINIC,
+    }))
+  })
+
+  it('an existing patient linked and updated: update / ehr_sync with that patient', async () => {
+    world({ patients: [{ patient_id: 'p-same', clinic_id: CLINIC, is_active: true, deleted_at: null, first_name: 'Jordan', last_name: 'Sample', date_of_birth: '1985-04-12', phone: '+15125550147', phone_e164: '+15125550147', city: 'Dallas', intake_completed_at: null }] })
+    const res = await signed(fixture('patient-upsert-full.json'))
+    expect(res.status).toBe(200)
+    expect(logMock()).toHaveBeenCalledWith(expect.objectContaining({
+      actor: systemActor(CLINIC), action: 'update', resource: 'ehr_sync', patientId: 'p-same', clinicId: CLINIC,
+    }))
+  })
+
+  it('the log fails: the sync stands (alerted by the helper), still 200', async () => {
+    world()
+    logMock().mockResolvedValueOnce(false)
+    expect((await signed(fixture('patient-upsert-full.json'))).status).toBe(200)
+    expect(db.rows('patients')).toHaveLength(1)
+  })
+
+  it('nothing written (bad signature, clinic not approved, write failed): no row', async () => {
+    world()
+    await signed(fixture('patient-upsert-full.json'), { secret: 'not-the-secret' })
+    db.failOn('patients:insert')
+    await signed(fixture('patient-upsert-full.json'))
+    world({ clinic: { onboarding_status: 'submitted', is_active: false } })
+    await signed(fixture('patient-upsert-full.json'))
+    expect(logMock()).not.toHaveBeenCalled()
   })
 })

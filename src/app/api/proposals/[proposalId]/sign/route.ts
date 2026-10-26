@@ -39,10 +39,15 @@ async function postHandler(request: NextRequest, context: Context): Promise<Next
       { status: res.status },
     )
   }
-  await logPhiAccess({
+  // Compliance C2 (B14): one row per signed order, with its patient (from
+  // batch sign's answer). Logged after signing, as before: the signature
+  // is already recorded and cannot be undone, so a row that could not be
+  // written is alerted by the helper and the signing still answers 200.
+  const patientOf = new Map(res.patients.flatMap(p => p.orderIds.map(id => [id, p.patientId] as const)))
+  await Promise.all(res.signedOrderIds.map(orderId => logPhiAccess({
     user: c.user, action: 'sign', resource: 'prescription', route: '/api/proposals/[proposalId]/sign',
-    orderId: res.signedOrderIds.length === 1 ? res.signedOrderIds[0]! : null, clinicId: c.clinicId, headers: request.headers,
-  })
+    orderId, patientId: patientOf.get(orderId) ?? null, clinicId: c.clinicId, headers: request.headers,
+  })))
   return NextResponse.json({ signedOrderIds: res.signedOrderIds, cancelledOrderIds: res.cancelledOrderIds }, { status: 200 })
 }
 

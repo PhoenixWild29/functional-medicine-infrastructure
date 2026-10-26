@@ -10,14 +10,23 @@
 // fast and avoids DB connection noise during deploys.
 
 import { NextResponse } from 'next/server'
+import { phiAuditSecretConfigured } from '@/lib/audit/phi-access'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+// C-2026-10-25-17 (B15): in production the check fails (503) when
+// PHI_ACCESS_LOG_HASH_SECRET is not set: the PHI access log would store no
+// email, IP or user agent hashes. Only "set" or "missing" is reported,
+// never the value. Preview and local runs report it without failing.
 export function GET() {
+  const secret = phiAuditSecretConfigured() ? 'set' : 'missing'
+  const production = process.env['VERCEL_ENV'] === 'production'
+  const ok = !(production && secret === 'missing')
   return NextResponse.json({
-    ok:        true,
+    ok,
     timestamp: new Date().toISOString(),
     version:   process.env['VERCEL_GIT_COMMIT_SHA']?.slice(0, 7) ?? 'local',
-  })
+    checks:    { phi_audit_hash_secret: secret },
+  }, { status: ok ? 200 : 503 })
 }

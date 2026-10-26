@@ -5,7 +5,8 @@
  */
 
 import { GET } from '../route'
-import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
+import { phiLog, phiEntries } from '@/__tests__/helpers/phi-log'
+import { logPhiAccessMany } from '@/lib/audit/phi-access'
 import type { NextRequest } from 'next/server'
 
 const getUserMock = jest.fn()
@@ -57,18 +58,41 @@ describe('GET /api/practice', () => {
   })
 })
 
-// Compliance C2: the practice dashboard (patients in the attention queue) is logged once.
+// Compliance C2 (B14): the practice dashboard is logged once per patient its
+// needs-attention queue names.
 describe('PHI access log', () => {
-  beforeEach(() => phiLog.mockClear())
+  const many = jest.mocked(logPhiAccessMany)
+  beforeEach(() => { phiLog.mockClear(); many.mockClear() })
 
-  it('a read logs exactly one row: view, practice_dashboard, the clinic', async () => {
+  const item = (orderId: string, patientId: string | null) => ({ kind: 'stale_draft', orderId, patientId, title: 't', detail: 'd', href: 'h', hrefLabel: 'l', since: null })
+
+  it('a read logs view / practice_dashboard for each distinct patient in the queue', async () => {
+    attentionMock.mockResolvedValue({ items: [item('o1', 'p1'), item('o2', 'p1'), item('o3', 'p2'), item('o4', null)], errors: [] })
     expect((await GET(req())).status).toBe(200)
-    expectOnePhiRow({ action: 'view', resource: 'practice_dashboard', route: '/api/practice', clinicId: 'clinic-1' })
+    expect(many).toHaveBeenCalledTimes(1)
+    const [entry, ids] = many.mock.calls[0]!
+    expect(entry).toEqual(expect.objectContaining({ action: 'view', resource: 'practice_dashboard', route: '/api/practice', clinicId: 'clinic-1' }))
+    expect(entry.user).toBeTruthy()
+    expect([...ids].sort()).toEqual(['p1', 'p2'])
+    expect(phiEntries()).toHaveLength(0)
+  })
+
+  it('a queue that could not be loaded names no patient', async () => {
+    attentionMock.mockRejectedValue(new Error('boom'))
+    expect((await GET(req())).status).toBe(200)
+    expect(many.mock.calls.flatMap(c => [...c[1]])).toEqual([])
+  })
+
+  it('a log that fails still serves the dashboard', async () => {
+    attentionMock.mockResolvedValue({ items: [item('o1', 'p1')], errors: [] })
+    many.mockResolvedValueOnce(false)
+    expect((await GET(req())).status).toBe(200)
   })
 
   it('a refused read logs nothing', async () => {
     accessMock.mockResolvedValue({ ok: false, status: 403, error: 'not shared' })
     expect((await GET(req())).status).toBe(403)
     expect(phiEntries()).toHaveLength(0)
+    expect(many).not.toHaveBeenCalled()
   })
 })

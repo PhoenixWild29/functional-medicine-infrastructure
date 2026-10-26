@@ -23,9 +23,10 @@
 //      duplicate for staff, never merged. The patient gets the same answer
 //      either way: nothing says whether they were already a patient.
 //
-// No text is sent. Logs carry ids only. The PHI access log needs a signed-in
-// user, so a patient's own sign-up is not written there; the patient row
-// (created_at, signup_link_id) and the link's use count record it.
+// No text is sent. Logs carry ids only. PHI access log (C-2026-10-25-17,
+// B14/B15): one create / signup row with the new patient as the actor,
+// written AFTER the create (the id exists only then); a failed row is
+// alerted by the helper and the sign-up still succeeds.
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { refuseCrossSite } from '@/lib/security/same-origin'
@@ -42,6 +43,7 @@ import { toE164 } from '@/lib/patients/phone'
 import { flagPossibleDuplicate } from '@/lib/patients/duplicates'
 import { clinicApproval } from '@/lib/onboarding/approval-guard'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { logPhiAccess, patientActor } from '@/lib/audit/phi-access'
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
 
@@ -131,12 +133,17 @@ async function postHandler(request: NextRequest, context: { params: Promise<{ to
     return NextResponse.json({ error: 'Your details could not be saved. Please try again.' }, { status: 500, headers: NO_STORE })
   }
   console.info(`[join] signed up | patient=${result.patient_id} | link=${link.linkId}`)
+  const newClinicId = result.clinic_id ?? link.clinicId
+  await logPhiAccess({
+    actor: patientActor(result.patient_id, newClinicId), action: 'create', resource: 'signup', route: '/api/join/[token]',
+    patientId: result.patient_id, clinicId: newClinicId, headers: request.headers,
+  })
 
   // A possible duplicate is flagged for staff, never merged, and never
   // shown to the patient. It cannot fail this sign-up: the patient exists.
   await flagPossibleDuplicate(supabase, {
     patientId: result.patient_id,
-    clinicId: result.clinic_id ?? link.clinicId,
+    clinicId: newClinicId,
     phoneE164: mobile,
     firstName: s.firstName, lastName: s.lastName, dateOfBirth: s.dateOfBirth,
   })
