@@ -85,4 +85,6 @@ const RESOURCE_LABEL: Record<string, string> = {
 
 export const roleLabel     = (v: string): string => ROLE_LABEL[v] ?? v
 export const actionLabel   = (v: string): string => ACTION_LABEL[v] ?? v
-export const resourceLabel = (v: string): string => RESOURCE_LABEL[v] ?? v
+export const resourceLabel = (v: string): string => v.startsWith('not_completed_')
+  ? `Not completed: ${resourceLabel(v.slice('not_completed_'.length))}`
+  : RESOURCE_LABEL[v] ?? v
