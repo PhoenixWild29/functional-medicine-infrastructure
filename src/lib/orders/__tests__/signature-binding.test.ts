@@ -18,17 +18,18 @@
 
 import {
   CANONICAL_FIELD_NAMES,
-  LEGACY_SIGNING_CUTOFF,
   SIGNATURE_BINDING_VERSION,
   boundSignatureValue,
   canonicalSignedContent,
   legacySignatureProven,
+  legacySigningCutoff,
   parseSignatureValue,
   patientSnapshotFor,
   prescriberSnapshotFor,
   rerouteBinding,
   rerouteProven,
   rxBindingKeyConfigured,
+  bindingKeyRequired,
   signatureBinding,
   verifySignatureBinding,
   type SignedOrderRow,
@@ -38,11 +39,15 @@ const DIGEST = 'a'.repeat(64)
 const SIGNED_AT = '2026-10-25T14:03:07.123Z'
 const env = process.env as Record<string, string | undefined>
 
+const LEGACY_CUTOFF = '2026-11-01T00:00:00.000Z'
 beforeEach(() => {
   env['RX_BINDING_SECRET'] = 'test-binding-secret-0123456789abcdef'
+  env['RX_LEGACY_CUTOFF'] = LEGACY_CUTOFF
+  delete env['RX_BINDING_SECRET_PREVIOUS']
   delete env['VERCEL_ENV']
+  delete env['VERCEL']
 })
-afterAll(() => { delete env['RX_BINDING_SECRET'] })
+afterAll(() => { delete env['RX_BINDING_SECRET']; delete env['RX_BINDING_SECRET_PREVIOUS'] })
 
 const PATIENT = { first_name: 'Alex', last_name: 'Demo', date_of_birth: '1985-06-15', allergies: ['Sulfa'], nkda: false }
 const PRESCRIBER = { provider_id: 'pr-1', first_name: 'Sarah', last_name: 'Chen', npi_number: '1234567893', dea_number: 'BC1234563', license_state: 'TX' }
@@ -141,14 +146,29 @@ describe('the binding is keyed (T1)', () => {
     expect(verifySignatureBinding(forged)).toBe('mismatch')
   })
 
-  it('fails closed in production without the key; elsewhere a development key is used', () => {
+  it("D's finding 2: the development key only under NODE_ENV test or development, and never on a Vercel deployment", () => {
     delete env['RX_BINDING_SECRET']
     expect(rxBindingKeyConfigured()).toBe(false)
+    // jest: NODE_ENV=test, not on Vercel.
+    expect(bindingKeyRequired()).toBe(false)
     expect(() => signatureBinding(DIGEST, SIGNED_AT, content)).not.toThrow()
-    env['VERCEL_ENV'] = 'production'
-    expect(() => signatureBinding(DIGEST, SIGNED_AT, content)).toThrow(expect.objectContaining({ name: 'BindingKeyMissingError' }))
-    expect(() => rerouteBinding('o-1', 'v3:x', 'ph-2', 1)).toThrow(expect.objectContaining({ name: 'BindingKeyMissingError' }))
+    const missing = expect.objectContaining({ name: 'BindingKeyMissingError' })
+    for (const vercel of [{ VERCEL_ENV: 'production' }, { VERCEL_ENV: 'preview' }, { VERCEL: '1' }]) {
+      Object.assign(env, vercel)
+      expect(bindingKeyRequired()).toBe(true)
+      expect(() => signatureBinding(DIGEST, SIGNED_AT, content)).toThrow(missing)
+      expect(() => rerouteBinding('o-1', 'v3:x', 'ph-2', 1)).toThrow(missing)
+      delete env['VERCEL_ENV']; delete env['VERCEL']
+    }
+    // Any other NODE_ENV (next start, a non-Vercel host): required too.
+    const was = env['NODE_ENV']
+    env['NODE_ENV'] = 'production'
+    try {
+      expect(bindingKeyRequired()).toBe(true)
+      expect(() => signatureBinding(DIGEST, SIGNED_AT, content)).toThrow(missing)
+    } finally { env['NODE_ENV'] = was }
     env['RX_BINDING_SECRET'] = 'set-again-0123456789abcdef0123456789'
+    env['VERCEL_ENV'] = 'preview'
     expect(rxBindingKeyConfigured()).toBe(true)
     expect(() => signatureBinding(DIGEST, SIGNED_AT, content)).not.toThrow()
   })
@@ -210,28 +230,86 @@ describe('the stored value', () => {
 })
 
 describe('legacy only by the rule (T1)', () => {
-  const before = new Date(Date.parse(LEGACY_SIGNING_CUTOFF) - 86_400_000).toISOString()
-  const after  = new Date(Date.parse(LEGACY_SIGNING_CUTOFF) + 1_000).toISOString()
+  const before = new Date(Date.parse(LEGACY_CUTOFF) - 86_400_000).toISOString()
+  const after  = new Date(Date.parse(LEGACY_CUTOFF) + 1_000).toISOString()
+  const legacy = (signedAt = before, hash = DIGEST) => ({ provider_signature_hash_snapshot: hash, locked_at: signedAt })
   const batchRow = (over: Record<string, unknown> = {}, at = before) => ({
     old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', created_at: at,
     metadata: { actor: 'provider_batch_sign', signed_at: at, signature_hash: DIGEST, ...over },
   })
+  const signAndSendRow = (over: Record<string, unknown> = {}, at = before) => ({
+    old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', created_at: at,
+    metadata: { actor: 'provider_sign_and_send', signed_at: at, ...over },
+  })
 
   it('a bare digest with the matching batch-sign history row from before the cutoff is legacy', () => {
-    expect(legacySignatureProven(DIGEST, [batchRow()])).toBe(true)
+    expect(legacySignatureProven(legacy(), [batchRow()])).toBe(true)
   })
 
-  it('the older sign-and-send path (no hash in its row) counts before the cutoff', () => {
-    expect(legacySignatureProven(DIGEST, [{ old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', created_at: before, metadata: { actor: 'provider_sign_and_send', signed_at: before } }])).toBe(true)
+  it("D's finding 7: the older sign-and-send row is tied to this signing by its signed_at (it never recorded a digest), and by its digest when it has one", () => {
+    expect(legacySignatureProven(legacy(), [signAndSendRow()])).toBe(true)
+    // Another signing time: not this order's signature.
+    expect(legacySignatureProven(legacy(), [signAndSendRow({ signed_at: after })])).toBe(false)
+    expect(legacySignatureProven(legacy(), [signAndSendRow({ signed_at: undefined })])).toBe(false)
+    // A row that does carry a digest must carry this one.
+    expect(legacySignatureProven(legacy(), [signAndSendRow({ signature_hash: DIGEST })])).toBe(true)
+    expect(legacySignatureProven(legacy('', '0'.repeat(64)), [signAndSendRow({ signature_hash: DIGEST })])).toBe(false)
+    expect(legacySignatureProven(legacy(before, '0'.repeat(64)), [signAndSendRow({ signature_hash: DIGEST })])).toBe(false)
   })
 
-  it('is refused for any other 64-hex: no row, another hash, after the cutoff, a binding marker, or another actor', () => {
-    expect(legacySignatureProven('0'.repeat(64), [])).toBe(false)
-    expect(legacySignatureProven('0'.repeat(64), [batchRow()])).toBe(false)
-    expect(legacySignatureProven(DIGEST, [batchRow({}, after)])).toBe(false)
-    expect(legacySignatureProven(DIGEST, [batchRow({ signature_binding: 'v3' })])).toBe(false)
-    expect(legacySignatureProven(DIGEST, [batchRow({ actor: 'clinic_user' })])).toBe(false)
-    expect(legacySignatureProven(DIGEST, [{ ...batchRow(), new_status: 'PAID_PROCESSING' }])).toBe(false)
+  it('is refused for any other 64-hex: no row, another hash, another signing time, after the cutoff, a binding marker, or another actor', () => {
+    expect(legacySignatureProven(legacy(before, '0'.repeat(64)), [])).toBe(false)
+    expect(legacySignatureProven(legacy(before, '0'.repeat(64)), [batchRow()])).toBe(false)
+    expect(legacySignatureProven(legacy(), [batchRow({ signed_at: after })])).toBe(false)
+    expect(legacySignatureProven(legacy(after), [batchRow({}, after)])).toBe(false)
+    expect(legacySignatureProven(legacy(), [batchRow({ signature_binding: 'v3' })])).toBe(false)
+    expect(legacySignatureProven(legacy(), [batchRow({ actor: 'clinic_user' })])).toBe(false)
+    expect(legacySignatureProven(legacy(), [{ ...batchRow(), new_status: 'PAID_PROCESSING' }])).toBe(false)
+  })
+
+  it("D's finding 4: the cutoff comes from RX_LEGACY_CUTOFF; unset or not a date means no legacy at all", () => {
+    expect(legacySigningCutoff()).toBe(Date.parse(LEGACY_CUTOFF))
+    delete env['RX_LEGACY_CUTOFF']
+    expect(legacySigningCutoff()).toBeNull()
+    expect(legacySignatureProven(legacy(), [batchRow()])).toBe(false)
+    env['RX_LEGACY_CUTOFF'] = 'not a date'
+    expect(legacySigningCutoff()).toBeNull()
+    expect(legacySignatureProven(legacy(), [batchRow()])).toBe(false)
+    env['RX_LEGACY_CUTOFF'] = '2020-01-01T00:00:00Z'
+    expect(legacySignatureProven(legacy(), [batchRow()])).toBe(false)
+  })
+})
+
+describe("D's finding 3: key rotation", () => {
+  const OLD = 'old-binding-secret-0123456789abcdef0'
+  const NEW = 'new-binding-secret-0123456789abcdef0'
+
+  it('an order signed under the previous key still verifies; new bindings use the current key only', () => {
+    env['RX_BINDING_SECRET'] = OLD
+    const signedUnderOld = signed()
+    const oldBinding = signedUnderOld.provider_signature_hash_snapshot!.split(':')[2]
+    env['RX_BINDING_SECRET'] = NEW
+    expect(verifySignatureBinding(signedUnderOld)).toBe('mismatch')
+    env['RX_BINDING_SECRET_PREVIOUS'] = OLD
+    expect(verifySignatureBinding(signedUnderOld)).toBe('match')
+    // Altered content under the previous key is still a mismatch.
+    expect(verifySignatureBinding({ ...signedUnderOld, refills: 9 })).toBe('mismatch')
+    // A new binding is made with the current key, never the previous one.
+    expect(signatureBinding(DIGEST, SIGNED_AT, canonicalSignedContent(order()))).not.toBe(oldBinding)
+    expect(verifySignatureBinding(signed())).toBe('match')
+  })
+
+  it('a reroute proof made under the previous key is accepted too; never under a third key', () => {
+    env['RX_BINDING_SECRET'] = OLD
+    const s = { ...signed(), pharmacy_id: 'ph-2', reroute_count: 1 }
+    const row = { old_status: 'FAX_FAILED', new_status: 'REROUTE_PENDING', created_at: '2026-10-26T10:00:00Z',
+      metadata: { reason: 'ops_reroute', reroute_count: 1, new_pharmacy_id: 'ph-2', reroute_binding: rerouteBinding('o-1', s.provider_signature_hash_snapshot!, 'ph-2', 1) } }
+    env['RX_BINDING_SECRET'] = NEW
+    expect(rerouteProven(s, [row])).toBe(false)
+    env['RX_BINDING_SECRET_PREVIOUS'] = OLD
+    expect(rerouteProven(s, [row])).toBe(true)
+    env['RX_BINDING_SECRET_PREVIOUS'] = 'some-third-key-0123456789abcdef01234'
+    expect(rerouteProven(s, [row])).toBe(false)
   })
 })
 

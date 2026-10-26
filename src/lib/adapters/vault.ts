@@ -18,6 +18,7 @@
 // For api_key: the vault secret is the key string directly.
 // For basic: the vault secret is "username:password".
 
+import { isSecurePharmacyUrl, TransmissionRefusedError } from '@/lib/adapters/transmission-guard'
 import { createServiceClient } from '@/lib/supabase/service'
 import { readVaultSecret } from '@/lib/vault/read-secret'
 
@@ -105,7 +106,13 @@ async function fetchOAuth2Token(creds: OAuthCredential): Promise<string> {
     scope:         'order:write',
   })
 
-  // The client secret is in the body: never follow a redirect (B's review T4).
+  // The client secret is in the body: https only (D's verification,
+  // finding 6), checked before anything is sent, and never a redirect
+  // (B's review T4).
+  if (!isSecurePharmacyUrl(creds.token_url)) {
+    console.error('[vault] OAuth token_url is not https; the client secret was not sent | code=insecure_pharmacy_url')
+    throw new TransmissionRefusedError('insecure_pharmacy_url', 'The pharmacy OAuth token URL is not https, so the client secret was not sent')
+  }
   const response = await fetch(creds.token_url, {
     redirect: 'error',
     method:  'POST',

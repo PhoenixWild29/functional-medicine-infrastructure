@@ -51,7 +51,9 @@ const REASONS: Record<string, string> = {
 
 /**
  * Refusals a retry or re-route cannot fix: the prescription must be signed
- * again (B's review T6). The clinic is told to cancel and prescribe again.
+ * again (B's review T6). A clinic cannot cancel a paid order, so it is told
+ * that CompoundIQ ops cancel and refund it (ops cancel_refund), and that it
+ * then prescribes again (D's verification, finding 5).
  */
 const NEEDS_NEW_PRESCRIPTION: ReadonlySet<string> = new Set([
   'allergies_changed', 'signature_mismatch', 'unsigned_order', 'pharmacy_mismatch',
@@ -90,7 +92,7 @@ export function submissionFailureNotice({ pharmacyName, plainReason, code }: { p
   const why = `${where}${plainReason ? `: ${plainReason}` : ''}.`
   if (code && NEEDS_NEW_PRESCRIPTION.has(code)) {
     const after = code === 'allergies_changed' ? ', so the prescriber signs it with the current allergies' : ''
-    return `${why} Cancel this prescription and prescribe it again${after}. CompoundIQ ops has been alerted.`
+    return `${why} CompoundIQ ops will cancel and refund it; then prescribe it again${after}.`
   }
   return `${why} CompoundIQ ops has been alerted and will re-route or retry.`
 }

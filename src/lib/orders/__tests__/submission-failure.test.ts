@@ -59,16 +59,18 @@ describe('submissionFailureNotice', () => {
 })
 
 describe('B review T6: a refusal that needs a new prescription says so', () => {
-  it.each(['allergies_changed', 'signature_mismatch', 'unsigned_order', 'pharmacy_mismatch'])('%s: cancel and prescribe again, not "will retry"', code => {
+  it.each(['allergies_changed', 'signature_mismatch', 'unsigned_order', 'pharmacy_mismatch'])('%s: CompoundIQ cancels and refunds, the clinic prescribes again', code => {
     const notice = submissionFailureNotice({ pharmacyName: 'Strive Pharmacy', plainReason: plainFailureReason(code), code })
-    expect(notice).toContain('Cancel this prescription and prescribe it again')
+    // D's finding 5: a clinic cannot cancel a paid order; ops cancel_refund does.
+    expect(notice).toContain('CompoundIQ ops will cancel and refund it')
+    expect(notice).not.toMatch(/^.*\bCancel this prescription/)
     expect(notice).not.toContain('will re-route or retry')
     expect(notice).not.toMatch(/—/)
   })
 
   it('the allergy case reads in full', () => {
     expect(submissionFailureNotice({ pharmacyName: 'Strive Pharmacy', plainReason: plainFailureReason('allergies_changed'), code: 'allergies_changed' }))
-      .toBe("Sending to Strive Pharmacy failed: the patient's allergies changed after the prescription was signed. Cancel this prescription and prescribe it again, so the prescriber signs it with the current allergies. CompoundIQ ops has been alerted.")
+      .toBe("Sending to Strive Pharmacy failed: the patient's allergies changed after the prescription was signed. CompoundIQ ops will cancel and refund it; then prescribe it again, so the prescriber signs it with the current allergies.")
   })
 
   it('other codes keep the retry wording', () => {

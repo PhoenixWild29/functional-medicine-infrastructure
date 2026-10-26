@@ -57,7 +57,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testMatch: ['**/clinic-app.spec.ts', '**/ops-dashboard.spec.ts', '**/auth.spec.ts', '**/rbac.spec.ts', '**/feature-flags.spec.ts', '**/checkout.spec.ts', '**/accessibility.spec.ts', '**/accessibility-auth.spec.ts', '**/pharmacy-onboarding-a11y.spec.ts', '**/mfa.spec.ts', '**/legal-pages-a11y.spec.ts', '**/intake.spec.ts', '**/patient-import.spec.ts', '**/ehr-sync-keragon.spec.ts', '**/patient-signup-link.spec.ts', '**/self-serve-signup.spec.ts', '**/team-invites.spec.ts', '**/first-run-checklist.spec.ts', '**/face-sheet-fill.spec.ts', '**/nav-after-redirect.spec.ts', '**/order-failure-reason.spec.ts', '**/upload-size-limit.spec.ts', '**/clinic-onboarding-status.spec.ts', '**/patient-protocol-choice.spec.ts', '**/error-pages.spec.ts', '**/practitioner-requirements.spec.ts'],
+      testMatch: ['**/clinic-app.spec.ts', '**/ops-dashboard.spec.ts', '**/auth.spec.ts', '**/rbac.spec.ts', '**/feature-flags.spec.ts', '**/checkout.spec.ts', '**/accessibility.spec.ts', '**/accessibility-auth.spec.ts', '**/pharmacy-onboarding-a11y.spec.ts', '**/mfa.spec.ts', '**/legal-pages-a11y.spec.ts', '**/intake.spec.ts', '**/patient-import.spec.ts', '**/ehr-sync-keragon.spec.ts', '**/patient-signup-link.spec.ts', '**/self-serve-signup.spec.ts', '**/team-invites.spec.ts', '**/first-run-checklist.spec.ts', '**/face-sheet-fill.spec.ts', '**/nav-after-redirect.spec.ts', '**/order-failure-reason.spec.ts', '**/upload-size-limit.spec.ts', '**/clinic-onboarding-status.spec.ts', '**/patient-protocol-choice.spec.ts', '**/error-pages.spec.ts', '**/practitioner-requirements.spec.ts', '**/portal-https-redirect.spec.ts'],
     },
     {
       name: 'firefox',

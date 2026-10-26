@@ -187,7 +187,7 @@ describe('routeOrder', () => {
 
   it('an order signed before binding (its signing history row before the cutoff) is sent as before', async () => {
     orderOver = { provider_signature_hash_snapshot: DIGEST, patient_snapshot: null, prescriber_snapshot: null }
-    history = [{ old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', created_at: '2026-10-01T00:00:00Z', metadata: { actor: 'provider_batch_sign', signature_hash: DIGEST } }]
+    history = [{ old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', created_at: '2026-10-01T00:00:00Z', metadata: { actor: 'provider_batch_sign', signed_at: SIGNED_AT, signature_hash: DIGEST } }]
     const r = await route()
     expect(r.outcome).toBe('accepted')
   })
