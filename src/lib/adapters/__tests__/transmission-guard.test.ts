@@ -346,15 +346,16 @@ describe('the adapters refuse before sending anything', () => {
 })
 
 describe('T5: the Tier 2 browser is https-only', () => {
-  it('Tier 2 routes the browser context https-only before any flow runs', async () => {
+  it('Tier 2 routes the browser context https-only before the page is opened', async () => {
+    env['PLAYWRIGHT_HEADLESS'] = 'true'
     const route = jest.fn(async () => undefined)
     const page = { url: () => 'https://portal.pharm.test/x', goto: jest.fn(async () => null), close: jest.fn(async () => undefined), screenshot: jest.fn(async () => Buffer.from('')) }
     const context = { route, newPage: jest.fn(async () => page), close: jest.fn(async () => undefined) }
     launchMock.mockResolvedValue({ newContext: jest.fn(async () => context), close: jest.fn(async () => undefined) })
     await submitTier2Portal('o-1', 'ph-1').catch(() => undefined)
     expect(route).toHaveBeenCalledWith('**/*', expect.any(Function))
-    expect(executeFlowMock).toHaveBeenCalled()
-    expect(route.mock.invocationCallOrder[0]!).toBeLessThan(executeFlowMock.mock.invocationCallOrder[0]!)
+    // Installed before the page exists, so even the first navigation is covered.
+    expect(route.mock.invocationCallOrder[0]!).toBeLessThan(context.newPage.mock.invocationCallOrder[0]!)
   })
 })
 

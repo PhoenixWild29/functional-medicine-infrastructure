@@ -29,7 +29,7 @@
 
 import { assertPharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { assertOrderNotControlled } from '@/lib/orders/controlled-substance'
-import { assertOrderTransmittable, assertSecurePharmacyUrl } from '@/lib/adapters/transmission-guard'
+import { loadTransmittableOrder, assertSecurePharmacyUrl } from '@/lib/adapters/transmission-guard'
 import { createServiceClient } from '@/lib/supabase/service'
 import { shippingAddressFor, type OrderShippingAddressColumns } from '@/lib/adapters/shipping-address'
 import { getVaultSecret, buildAuthHeaders } from '@/lib/adapters/vault'
@@ -145,8 +145,10 @@ export async function submitTier1Api(
   assertPharmacySubmissionsEnabled('Tier 1 API submission')
   // Compliance C6: never a controlled substance (defence in depth beside routeOrder).
   await assertOrderNotControlled(createServiceClient(), orderId)
-  // HIPAA B6 / B7: signed, in a status that may be sent, unchanged since signing.
-  await assertOrderTransmittable(createServiceClient(), orderId)
+  // HIPAA B6 / B7: signed, in a status that may be sent, unchanged since
+  // signing, to this pharmacy. The one read of the order: the payload is
+  // built from this verified row and the signing snapshots (B's review T2, T3).
+  const sendable = await loadTransmittableOrder(createServiceClient(), orderId, { pharmacyId })
 
   const supabase = createServiceClient()
 
@@ -214,68 +216,40 @@ export async function submitTier1Api(
   // ── 4. Rate limit check ───────────────────────────────────
   await checkRateLimits(pharmacyId, tier, config.rate_limit_rpm, config.rate_limit_concurrent)
 
-  // ── 5. Load order data for payload transformation ─────────
-  const { data: order, error: orderError } = await (supabase
-    .from('orders')
-    .select('order_id, order_number, provider_id, patient_id, clinic_id, medication_snapshot, shipping_address_line1_snapshot, shipping_address_line2_snapshot, shipping_city_snapshot, shipping_zip_snapshot, shipping_state_snapshot, shipping_address_snapshot_at, provider_npi_snapshot, quantity, sig_text, sig_mode, cycle_on_days, cycle_off_days, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions, package_label, package_count, titration_steps')
-    .eq('order_id', orderId)
-    .single() as unknown as Promise<{
-      data: {
-        order_id: string
-        order_number: string
-        provider_id: string | null
-        patient_id: string
-        clinic_id: string
-        medication_snapshot: Record<string, unknown> | null
-        provider_npi_snapshot: string | null
-        quantity: number | null
-        sig_text: string | null
-        // WO-96
-        days_supply: number | null
-        dispense_quantity: number | null
-        dispense_unit: string | null
-        refills: number | null
-        substitution_allowed: boolean | null
-        syringe_option: string | null
-        shipping_type: string | null
-        clinical_difference: string | null
-        diagnosis_code: string | null
-        diagnosis_text: string | null
-        special_instructions: string | null
-        // WO-101a
-        titration_steps: unknown
-        sig_mode: string | null
-        cycle_on_days: number | null
-        cycle_off_days: number | null
-        package_label: string | null
-        package_count: number | null
-      } & OrderShippingAddressColumns | null
-      error: Error | null
-    }>)
-
-  if (orderError || !order) {
-    throw new Error(
-      `[tier1-api] order ${orderId} not found: ${orderError?.message ?? 'no data'}`
-    )
-  }
-
-  const { data: provider, error: providerError } = await supabase
-    .from('providers')
-    .select('first_name, last_name, npi_number, dea_number, license_state')
-    .eq('provider_id', order.provider_id!)
-    .maybeSingle()
-  if (providerError) {
-    throw new Error(`[tier1-api] provider ${order.provider_id} could not be read: ${providerError.message}`)
-  }
-
-  const { data: patient, error: patientError } = await supabase
-    .from('patients')
-    .select('first_name, last_name, date_of_birth, address_line1, address_line2, city, state, zip, allergies, nkda')
-    .eq('patient_id', order.patient_id)
-    .maybeSingle()
-  if (patientError) {
-    throw new Error(`[tier1-api] patient ${order.patient_id} could not be read: ${patientError.message}`)
-  }
+  // ── 5. The order, patient and prescriber: the verified row and snapshots ──
+  type OrderRow = {
+    order_id: string
+    order_number: string
+    provider_id: string | null
+    patient_id: string
+    clinic_id: string
+    medication_snapshot: Record<string, unknown> | null
+    provider_npi_snapshot: string | null
+    quantity: number | null
+    sig_text: string | null
+    // WO-96
+    days_supply: number | null
+    dispense_quantity: number | null
+    dispense_unit: string | null
+    refills: number | null
+    substitution_allowed: boolean | null
+    syringe_option: string | null
+    shipping_type: string | null
+    clinical_difference: string | null
+    diagnosis_code: string | null
+    diagnosis_text: string | null
+    special_instructions: string | null
+    // WO-101a
+    titration_steps: unknown
+    sig_mode: string | null
+    cycle_on_days: number | null
+    cycle_off_days: number | null
+    package_label: string | null
+    package_count: number | null
+  } & OrderShippingAddressColumns
+  const order = sendable.order as unknown as OrderRow
+  const provider = sendable.prescriber
+  const patient = sendable.patient
 
   // A failed read would put the "CompoundIQ Clinic" fallback on the Rx.
   const { data: clinic, error: clinicError } = await supabase
@@ -285,10 +259,6 @@ export async function submitTier1Api(
     .maybeSingle()
   if (clinicError) {
     throw new Error(`[tier1-api] clinic ${order.clinic_id} could not be read: ${clinicError.message}`)
-  }
-
-  if (!provider || !patient) {
-    throw new Error(`[tier1-api] provider or patient not found for order ${orderId}`)
   }
 
   // ── 6. Build canonical OrderPayload ──────────────────────
@@ -377,7 +347,10 @@ export async function submitTier1Api(
 
     try {
       // Execute HTTP POST to pharmacy API
+      // B's review T4: never follow a redirect: one to http would resend
+      // the PHI body in cleartext.
       const response = await fetch(submitUrl, {
+        redirect: 'error',
         method:  'POST',
         headers: {
           'Content-Type': 'application/json',

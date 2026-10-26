@@ -267,8 +267,8 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     const unchosen = [optionalLine.orderId, options[1]!.lines[0]!.orderId]
     const rows = await orderRows([glp1Line.orderId, ...unchosen])
     expect(rows.get(glp1Line.orderId)).toEqual(expect.objectContaining({ status: 'AWAITING_PAYMENT' }))
-    // HIPAA B7: v2:<signature digest>:<binding>.
-    expect(rows.get(glp1Line.orderId)!.provider_signature_hash_snapshot).toMatch(/^v2:[0-9a-f]{64}:[0-9a-f]{64}$/)
+    // HIPAA B7: v3:<signature digest>:<keyed binding>.
+    expect(rows.get(glp1Line.orderId)!.provider_signature_hash_snapshot).toMatch(/^v3:[0-9a-f]{64}:[0-9a-f]{64}$/)
     for (const id of unchosen) expect(rows.get(id)).toEqual(expect.objectContaining({ status: 'CANCELLED', provider_signature_hash_snapshot: null }))
 
     // The payment page loads (no card is entered).

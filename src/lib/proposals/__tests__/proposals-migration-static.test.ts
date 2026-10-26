@@ -48,10 +48,11 @@ it(`is version ${VERSION}, unique, and has a down file`, () => {
   expect(v.filter((x, i) => v.indexOf(x) !== i)).toEqual([])
 })
 
-it('sorts after every migration already on main and after the fax PHI column (20261024000001)', () => {
+it('sorts right after 20261024000001 (RLS hardening); later migrations (000003 ... 000011) may follow it', () => {
   const versions = fs.readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).map(f => f.split('_')[0]!).sort()
-  expect(versions[versions.length - 1]).toBe(VERSION)
-  expect(VERSION > '20261024000001').toBe(true)
+  const before = versions.filter(v => v < VERSION)
+  expect(before[before.length - 1]).toBe('20261024000001')
+  expect(versions.filter(v => v === VERSION)).toHaveLength(1)
 })
 
 it.each(TABLES)('%s: created, RLS on, reads for its clinic and ops_admin via app_metadata, no write policy', t => {

@@ -22,7 +22,7 @@ const PATIENT = { first_name: 'Alex', last_name: 'Demo', date_of_birth: '1980-01
 let history: unknown[] = []
 
 const CONTENT = {
-  order_id: 'o-1', patient_id: 'pt-1', provider_npi_snapshot: '1234567890',
+  order_id: 'o-1', patient_id: 'pt-1', provider_npi_snapshot: '1234567890', shipping_state_snapshot: 'TX',
   patient_snapshot: patientSnapshotFor(PATIENT),
   prescriber_snapshot: prescriberSnapshotFor({ provider_id: 'pr-1', first_name: 'Sarah', last_name: 'Chen', npi_number: '1234567890', dea_number: null, license_state: 'TX' }),
   pharmacy_snapshot: { pharmacy_id: 'ph-1', name: 'Strive' },
@@ -91,10 +91,12 @@ jest.mock('@/lib/supabase/service', () => ({
           return chain(() => ({ data: PATIENT, error: null }))
         case 'order_status_history':
           return chain(() => ({ data: history, error: null }))
+        case 'providers':
+          return chain(() => ({ data: { first_name: 'Sarah', last_name: 'Chen', npi_number: '1234567890', dea_number: null, license_state: 'TX' }, error: null }))
         case 'formulations':
           return chain(() => ({ data: { formulation_id: 'f-1', dosage_forms: { name: 'Capsule', is_sterile: false }, salt_forms: { ingredients: { common_name: 'Fixture', dea_schedule: null, compounding_status: 'approved_drug_component' } } }, error: null }))
         case 'pharmacy_state_licenses':
-          return chain(() => ({ data: [{ pharmacy_id: 'ph-1', state_code: 'TX', license_number: 'TX-1', expiration_date: '2099-12-31', is_active: true, deleted_at: null, license_type: 'nonresident_pharmacy', sterile_compounding: true }], error: null }))
+          return chain(() => ({ data: ['ph-1', 'ph-2'].map(pharmacy_id => ({ pharmacy_id, state_code: 'TX', license_number: 'TX-1', expiration_date: '2099-12-31', is_active: true, deleted_at: null, license_type: 'nonresident_pharmacy', sterile_compounding: true })), error: null }))
         default:
           return chain(() => ({ data: null, error: null }))
       }

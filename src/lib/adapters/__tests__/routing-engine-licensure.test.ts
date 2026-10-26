@@ -61,6 +61,13 @@ jest.mock('@/lib/supabase/service', () => ({
       switch (table) {
         case 'pharmacies':
           return chain(() => ({ data: { integration_tier: 'TIER_1_API', name: 'Strive', slug: 'strive', facility_type: facilityType }, error: null }))
+        // HIPAA B7 (B's review T1): the legacy signature is proven by its signing row.
+        case 'order_status_history':
+          return chain(() => ({ data: [{ old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', created_at: '2026-10-06T15:00:00Z', metadata: { actor: 'provider_batch_sign', signature_hash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' } }], error: null }))
+        case 'patients':
+          return chain(() => ({ data: { first_name: 'Alex', last_name: 'Demo', date_of_birth: '1985-06-15', allergies: [], nkda: true }, error: null }))
+        case 'providers':
+          return chain(() => ({ data: { first_name: 'Sarah', last_name: 'Chen', npi_number: '1234567890', dea_number: null, license_state: 'TX' }, error: null }))
         case 'orders':
           return chain(() => ({ data: {
             order_id: 'o-1', status: orderStatus, shipping_state_snapshot: 'TX',

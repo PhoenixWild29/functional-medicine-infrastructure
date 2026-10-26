@@ -27,6 +27,7 @@
 // not the value.
 
 import type { Page } from 'playwright'
+import { assertPageSecure } from '@/lib/adapters/transmission-guard'
 
 // ============================================================
 // TYPES
@@ -131,6 +132,9 @@ export async function executeFlow(
         case 'fill': {
           if (!step.selector) throw new Error(`step ${i} (fill): selector is required`)
           if (!step.value)    throw new Error(`step ${i} (fill): value is required`)
+          // B's review T5: never type PHI or credentials into a page that is
+          // not https, whatever redirect or link got the browser there.
+          assertPageSecure(page)
           const filledValue = substituteValue(step.value, creds, fieldValues)
           await page.fill(step.selector, filledValue, { timeout })
           // HC-14 / HIPAA: log selector only, never the substituted value
@@ -162,6 +166,7 @@ export async function executeFlow(
         case 'select': {
           if (!step.selector) throw new Error(`step ${i} (select): selector is required`)
           if (!step.value)    throw new Error(`step ${i} (select): value is required`)
+          assertPageSecure(page)
           const selectedValue = substituteValue(step.value, creds, fieldValues)
           // NB-07: use proper SelectOptionOptions import rather than a cast
           await page.selectOption(step.selector, selectedValue, { timeout })

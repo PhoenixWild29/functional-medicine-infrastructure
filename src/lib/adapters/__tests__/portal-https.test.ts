@@ -87,7 +87,7 @@ describe('the flow executor types nothing on an http page', () => {
 
 describe('the portal status poll (T7)', () => {
   const env = process.env as Record<string, string | undefined>
-  beforeAll(() => { env['CRON_SECRET'] = 'cron-secret' })
+  beforeAll(() => { env['CRON_SECRET'] = 'cron-secret'; env['PLAYWRIGHT_HEADLESS'] = 'true' })
   beforeEach(() => { vaultMock.mockReset(); launchMock.mockReset() })
 
   const world = (flow: unknown): Script => (c: ScriptedCall) => {
@@ -98,14 +98,14 @@ describe('the portal status poll (T7)', () => {
   const run = async (flow: unknown) => {
     db = scriptedDb(world(flow))
     const res = await portalStatusPoll({ headers: { get: () => 'Bearer cron-secret' } } as unknown as NextRequest)
-    return await res.json() as { results: Array<{ outcome: string; reason?: string }> }
+    return await res.json() as { skipped: number; errors: number }
   }
 
   it('an http URL in the status flow: credentials are not read and no browser starts', async () => {
     const body = await run([{ action: 'navigate', url: 'http://portal.pharm.test/login' }, { action: 'fill', selector: '#u', value: '{username}' }])
     expect(vaultMock).not.toHaveBeenCalled()
     expect(launchMock).not.toHaveBeenCalled()
-    expect(body.results[0]).toMatchObject({ outcome: 'skipped', reason: 'insecure_portal_url' })
+    expect(body).toMatchObject({ skipped: 1, errors: 0 })
   })
 
   it('an https flow: the browser context is routed https-only before the flow runs', async () => {

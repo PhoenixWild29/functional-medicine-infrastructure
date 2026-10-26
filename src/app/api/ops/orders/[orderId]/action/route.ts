@@ -38,6 +38,7 @@ import { withApiErrors } from '@/lib/api/with-api-errors'
 import { z } from 'zod'
 import { MAX_NAME, UUID_RE, badRequest, parseInput, uuid } from '@/lib/api/input'
 import { readObjectBody } from '@/app/api/ops/_lib/body'
+import { isBindingKeyMissingError, rerouteBinding } from '@/lib/orders/signature-binding'
 
 interface Params { params: Promise<{ orderId: string }> }
 
@@ -105,7 +106,7 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
   // ── Fetch order for CAS predicates ──────────────────────────
   const { data: order, error: fetchError } = await supabase
     .from('orders')
-    .select('order_id, status, stripe_payment_intent_id, payment_group_id, retail_price_snapshot, reroute_count, pharmacy_id, ops_assignee')
+    .select('order_id, status, stripe_payment_intent_id, payment_group_id, retail_price_snapshot, reroute_count, pharmacy_id, ops_assignee, provider_signature_hash_snapshot')
     .eq('order_id', orderId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -438,7 +439,25 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
         )
       }
 
-      const newPharmacyId = body['pharmacyId'] as string | undefined
+      const requested = body['pharmacyId'] as string | null | undefined
+      const newPharmacyId = requested && requested !== order.pharmacy_id ? requested : undefined
+
+      // B's review T2: a signed order goes only to the pharmacy it was signed
+      // for. A pharmacy change re-binds it here: a proof keyed by
+      // RX_BINDING_SECRET over the order, its signature, the new pharmacy and
+      // the reroute count, recorded in this transition's history row (append
+      // only, service-written). The send guard accepts the new pharmacy only
+      // with it. No key in production: refused before anything changes.
+      let rerouteProof: string | undefined
+      if (newPharmacyId && order.provider_signature_hash_snapshot) {
+        try {
+          rerouteProof = rerouteBinding(orderId, order.provider_signature_hash_snapshot, newPharmacyId, rerouteCount + 1)
+        } catch (err) {
+          if (!isBindingKeyMissingError(err)) throw err
+          console.error(`[ops/action] CRITICAL: reroute refused, RX_BINDING_SECRET is not set | order=${orderId}`)
+          return NextResponse.json({ error: 'Reroute is unavailable: the prescription signing key is not configured on the server.' }, { status: 503 })
+        }
+      }
 
       // BLK-05: Single atomic CAS UPDATE — combines status transition + reroute_count increment
       // + optional pharmacy_id change in one DB operation (casTransition's patch) to prevent
@@ -456,7 +475,10 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
             reroute_count: rerouteCount + 1,
             ...(newPharmacyId ? { pharmacy_id: newPharmacyId } : {}),
           },
-          metadata: { reason: 'ops_reroute', reroute_count: rerouteCount + 1, new_pharmacy_id: newPharmacyId ?? null },
+          metadata: {
+            reason: 'ops_reroute', reroute_count: rerouteCount + 1, new_pharmacy_id: newPharmacyId ?? null,
+            ...(rerouteProof ? { reroute_binding: rerouteProof } : {}),
+          },
         })
       } catch (err) {
         console.error(`[ops/action] reroute update failed | order=${orderId}:`, err instanceof Error ? err.message : err)
