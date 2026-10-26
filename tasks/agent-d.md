@@ -1,16 +1,15 @@
-task-id: D-2026-10-26-10
+task-id: D-2026-10-26-11
 status: ready
 ---
-Thanks for D-2026-10-26-09 (bundle-hipaa dcd6b60, all green; items 4 and 1 done).
+Finish D-2026-10-26-10 (runbook and what's-new refresh) first if not done.
 
-Next: bring the two operational docs up to the final plan, so merge day has one correct source.
-1. `git checkout bundle-docs && git pull`, docs/ops/prod-sql-runbook-2026-10-25.md:
-   - Merge order (final): fax 000003, lockdown v2 000004, security-followups-2 000005, signup-squatting 000006, rate-limit-db 000007, bundle-security, bundle-ci, bundle-features, bundle-hipaa, bundle-docs, perf-indexes 000008, clinical-difference-saved 000009, signed-order-freeze 000010 + 000011. Not in the plan: rls-aal2 000012 (decision-gated), tailwind4 (prepared, Sam to agree), middleware-to-proxy #266 (hold), demo-payouts-live-key-guard H1 (Sam).
-   - Add 000011 (order_signing_snapshots) in A's format if missing, from origin/signed-order-freeze's latest head (note the SHA); add 000012 as an appendix marked DECISION-GATED with its switch statement.
-   - Env vars table (names only), with where (Production / Preview / demo deployment), before which PR, and what happens if missing: PHI_ACCESS_LOG_HASH_SECRET, RX_BINDING_SECRET, RX_LEGACY_CUTOFF, RX_BINDING_SECRET_PREVIOUS (rotation only), POC_* (demo deployment), REQUIRE_MFA (decision).
-   - The combination fixes from C's dry run 2 that remain, per PR, marking which are already pre-resolved (items 1, 3, 4 per your reports).
-   - The Supabase dashboard settings from docs/ops/session-timeout.md (rls-aal2 branch) as a post-merge checklist item for Sam.
-2. `git checkout docs-run-sheet-v3 && git pull`: in docs/qa/whats-new-since-oct5-source.md, add the payment-link sign-in gap fix and the faster, more reliable test runs (one line each, plain words), and note the two-step sign-in database change is ready pending Sam's decision.
-Docs only. Push both (normal push, no PR). Report in the commit bodies; I will re-merge docs-run-sheet-v3 into bundle-docs at merge time.
+Sam has accepted the orchestrator's recommendations in docs/decisions/before-real-patients-2026-10-25.md (origin/bundle-docs). Build the code ones now, on a new branch `decisions-oct26` from origin/bundle-hipaa (it merges into bundle-hipaa; you own both). One commit per item, red tests first:
+1. Item 8: drop "Hybrid" (TIER_3_HYBRID) from the prescriber pharmacy-search labels and filters so it is never offered (it stays disabled in ops setup).
+2. Item 9: fix the stale comment above STANDARD_CLINICAL_DIFFERENCE_OPTIONS ("First entry is the pre-selected default"); nothing is pre-selected.
+3. Item 10: fix the portal status poll (cron/portal-status-poll): map portal text to real statuses through legal casTransition steps (no PHARMACY_READY), and leave SHIPPED tracking unenforced but show "Tracking pending" to ops when a shipped order has none.
+4. Item 11: saved clinical statements and favorites can be deleted only by their creator (or the owning provider, for favorites) or a clinic admin; favorites become soft-deleted. If soft delete for favorites needs a column, do NOT migrate: report the design and implement only the permission check.
+5. Item 12: NEXT_PUBLIC_SUPPORT_EMAIL env var shown in Help (and anywhere "Contact CompoundIQ" appears); when unset, keep the current generic text. Update the Help test.
+6. Invite design (B's P2 from password-flows): a provider or staff user created from an invite link that an admin could have opened is forced to set a new password on first sign-in: set app_metadata.must_change_password on accept, and the middleware sends that user to /reset-password before any other page or API (API answers 403 MUST_CHANGE_PASSWORD). Clear the flag on a successful change.
+Gates: npm ci, lint (0 warnings), tsc, jest, next build. Push decisions-oct26, then merge it into bundle-hipaa, gate, push. Report in the commit bodies, with the env var name for Sam.
 
 Do not touch the production database, Vercel, Stripe or secrets.
