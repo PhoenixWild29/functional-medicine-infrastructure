@@ -1,15 +1,15 @@
-task-id: A-2026-10-26-03
+task-id: A-2026-10-26-04
 status: ready
 ---
-Thanks for A-2026-10-26-02 (T1-T7, e2d293e; freeze merge 495441f). D verified it independently (origin/verify-transmission, docs/qa/verify-2026-10-26-transmission.md). Finish the freeze column update if not done, then fix D's findings on order-transmission-integrity, and re-merge into signed-order-freeze:
-1. T5/T7 confirmed gap: Playwright context.route does not see redirect hops; Chromium followed a 302/307 and resent a PHI POST to a blocked origin. Use route.fetch({ maxRedirects: 0 }) with a Location https check (or equivalent), and add D's Chromium redirect probe as a real test.
-2. The public development key is used silently whenever VERCEL_ENV is not production. Only allow the dev key when NODE_ENV is test or development AND not on any Vercel deployment; any Vercel deployment (preview included) without RX_BINDING_SECRET fails closed.
-3. Key rotation strands signed-unsent orders. Support RX_BINDING_SECRET_PREVIOUS (optional) for verification only; new bindings always use the current key. Document rotation steps in docs/ops.
-4. LEGACY_SIGNING_CUTOFF hard-coded: read from env (RX_LEGACY_CUTOFF, ISO date) with a safe default of "no legacy" if unset in production, and document that Sam sets it to the deploy time of this code.
-5. T6 copy: tell the clinic CompoundIQ will cancel and refund (ops cancel_refund), not that they should cancel.
-6. vault token_url: https check.
-7. provider_sign_and_send legacy digest not compared: compare it where the row has one; leave as is only where it truly has none and say why.
-Also confirm the migration numbering: D reports 20261024000011 is new on this branch. List every migration on order-transmission-integrity and signed-order-freeze with numbers; they must sort after 000010 and ship together in the signed-order-freeze PR (bundle-hipaa will NOT include order-transmission-integrity because it carries a migration).
-Tests for each. Gates: lint (0 warnings), tsc, jest, next build. Push both branches. Report in the commit bodies, with the full SQL of every migration on signed-order-freeze, and the env vars (names only) Sam must set: RX_BINDING_SECRET, RX_LEGACY_CUTOFF, optional RX_BINDING_SECRET_PREVIOUS.
+Thanks for A-2026-10-26-03 (f4b7487 and the freeze merge 9e6fb0d). Clear SQL and env var list.
+
+Next: prepare HIPAA gap B3 (C's evidence map, origin/review-high-risk docs/compliance/technical-safeguards-evidence-2026-10-25.md): MFA is not enforced in RLS, so a password-only session can read PHI through PostgREST. This is DECISION-GATED (Sam has not yet decided REQUIRE_MFA for all staff), so prepare it ready to ship, do not merge it anywhere.
+
+Branch: `git fetch origin && git checkout -b rls-aal2 origin/signed-order-freeze` (it must sort after 000011).
+- Migration 20261024000012_rls_require_aal2.sql + down: for every table with PHI (list them from the RLS inventory), add a RESTRICTIVE policy for authenticated that requires (auth.jwt() ->> 'aal') = 'aal2' for staff roles that are required to have MFA. Make the requirement follow the same rule as the app: pharmacy_admin always; other staff roles only when a database-side switch is on. Since env vars are not visible to Postgres, use a single-row settings table or a function returning a constant (say which, and how Sam flips it with one SQL statement). Patients (token pages) go through the service role and are unaffected; say so.
+- App: when a staff user's session is aal1 and the switch is on, the app already redirects to MFA; confirm no page or API still reads PHI with the user-scoped client before that redirect.
+- Tests: static migration test; a PGlite test where an aal1 JWT reads 0 rows and an aal2 JWT reads rows, per role, with the switch on and off.
+- Also write docs/ops/session-timeout.md for B8: the hosted Supabase settings (names only) for session time-box and inactivity timeout, recommended values, and what users see.
+PREPARED only. Gates: lint (0 warnings), tsc, jest, next build. Push rls-aal2 (normal push, no PR). Report in the commit body with the full SQL.
 
 Do not touch the production database, Vercel, Stripe or secrets.
