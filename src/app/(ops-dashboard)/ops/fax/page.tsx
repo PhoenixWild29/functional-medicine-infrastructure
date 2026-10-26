@@ -22,10 +22,18 @@
 // persist cookies, and a redirect() raised from inside the loading.tsx
 // Suspense boundary can never be delivered — the boundary is left unresolved
 // and the route hangs on the spinner forever. That was this route's prod bug.
+//
+// The PHI access log's actor (B14) comes from getRequestUser(): a cached
+// getUser() outside the page body, never getSession() (no token rotation),
+// never a redirect. No user only means no actor row (the
+// layout has already refused anyone who is not ops_admin).
 
 import { createServiceClient } from '@/lib/supabase/service'
+import { getRequestUser }      from '@/lib/auth/request-user'
+import { currentRequestHeaders } from '@/lib/audit/phi-access'
 import { FaxTriageQueue }      from './_components/fax-triage-queue'
 import { mapFaxRow }           from '@/lib/fax/map-fax-row'
+import { logFaxQueueView }     from '@/lib/fax/log-fax-view'
 import type { FaxQueueResponse } from '@/app/api/ops/fax/route'
 
 export const dynamic = 'force-dynamic'
@@ -45,7 +53,7 @@ export default async function FaxPage() {
       status, notes, processed_by, created_at, updated_at,
       matched_pharmacy_id, matched_order_id,
       pharmacies(name, integration_tier),
-      orders(order_number, status)
+      orders(order_number, status, patient_id, clinic_id)
     `, { count: 'exact' })
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
@@ -54,6 +62,10 @@ export default async function FaxPage() {
   if (error) {
     console.error('[ops/fax/page] fetch error:', error.message)
   }
+
+  // B14: the signed URLs below open the fax PDFs. One view row per matched
+  // order (+ one for unmatched faxes). A read: rendered whatever the log says.
+  await logFaxQueueView({ user: await getRequestUser(), route: '/ops/fax', headers: await currentRequestHeaders() }, data ?? [])
 
   // NB-01: shared row mapper handles signed URL generation (REQ-FTQ-007).
   // Promise.allSettled, not Promise.all: one bad storage_path must not reject
@@ -81,3 +93,5 @@ export default async function FaxPage() {
     </>
   )
 }
+
+/** The signed-in ops user for the log row: getUser() only, never a redirect, never a throw. */

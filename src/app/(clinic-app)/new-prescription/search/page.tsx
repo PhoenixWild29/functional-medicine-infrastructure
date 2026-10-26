@@ -29,6 +29,7 @@ import { editTargetFromParams } from '../_lib/edit-target'
 import { getWizardSteps }    from '../_lib/wizard-steps'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { HelpLink } from '@/components/help-link'
+import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
 
 export const metadata = {
   title: 'New Prescription: Find a Pharmacy',
@@ -66,6 +67,16 @@ export default async function PharmacySearchPage({ searchParams }: PageProps) {
       draft = await loadDraftContext(createServiceClient(), clinicId, editTarget.orderId)
     }
     if (!draft) editTarget = null
+  }
+
+  // Compliance C2 (B14): reopening a draft loads its patient (name, DOB,
+  // phone, allergies) onto the page. A read: the page is served even when
+  // the row could not be written (the helper alerts).
+  if (draft && user) {
+    await logPhiAccess({
+      user, action: 'view', resource: 'draft_edit', route: '/new-prescription/search',
+      orderId: draft.orderId, patientId: draft.patient.patient_id, headers: await currentRequestHeaders(),
+    })
   }
 
   const isEditing = editTarget?.kind === 'session' || editTarget?.kind === 'draft'

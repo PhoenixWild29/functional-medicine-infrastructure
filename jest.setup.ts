@@ -18,6 +18,7 @@ if (typeof globalThis.TextEncoder === 'undefined') {
 // test the helper itself.
 jest.mock('@/lib/audit/phi-access', () => ({
   ...jest.requireActual('@/lib/audit/phi-access'),
-  logPhiAccess: jest.fn(async () => undefined),
-  logPhiAccessMany: jest.fn(async () => undefined),
+  logPhiAccess: jest.fn(async () => true),
+  logPhiAccessMany: jest.fn(async () => true),
+  logPhiDisclosure: jest.fn(async () => true),
 }))

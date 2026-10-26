@@ -154,14 +154,26 @@ describe('PHI access log', () => {
     expectOnePhiRow({ action: 'sign', resource: 'prescription', route: '/api/orders/batch-sign', patientId: 'p', orderId: ID })
   })
 
-  it('a batch for two patients still logs one row, naming neither', async () => {
+  it('a batch for two patients logs one row per signed order, each with its patient (B14)', async () => {
     user('provider')
     signBatchMock.mockResolvedValue({ ok: true, signedAt: 't', patients: [
-      { patientId: 'p1', orderIds: ['o1'], paymentGroupId: null, checkoutUrl: 'u' },
+      { patientId: 'p1', orderIds: ['o1', 'o3'], paymentGroupId: null, checkoutUrl: 'u' },
       { patientId: 'p2', orderIds: ['o2'], paymentGroupId: null, checkoutUrl: 'u' },
     ] })
-    expect((await signPOST(req({ orderIds: ['o1', 'o2'], signature: { s: 1 } }))).status).toBe(200)
-    expectOnePhiRow({ action: 'sign', patientId: null, orderId: null })
+    expect((await signPOST(req({ orderIds: ['o1', 'o2', 'o3'], signature: { s: 1 } }))).status).toBe(200)
+    const rows = phiEntries().map(e => ({ action: e.action, resource: e.resource, route: e.route, patientId: e.patientId, orderId: e.orderId }))
+    expect(rows).toEqual([
+      { action: 'sign', resource: 'prescription', route: '/api/orders/batch-sign', patientId: 'p1', orderId: 'o1' },
+      { action: 'sign', resource: 'prescription', route: '/api/orders/batch-sign', patientId: 'p1', orderId: 'o3' },
+      { action: 'sign', resource: 'prescription', route: '/api/orders/batch-sign', patientId: 'p2', orderId: 'o2' },
+    ])
+  })
+
+  it('a log that fails after signing still answers 200 (the signature stands; the helper alerts)', async () => {
+    user('provider')
+    signBatchMock.mockResolvedValue({ ok: true, signedAt: 't', patients: [{ patientId: 'p', orderIds: [ID], paymentGroupId: null, checkoutUrl: 'u' }] })
+    phiLog.mockResolvedValueOnce(false)
+    expect((await signPOST(req({ orderIds: [ID], signature: { s: 1 } }))).status).toBe(200)
   })
 
   it('a refused signature logs nothing', async () => {

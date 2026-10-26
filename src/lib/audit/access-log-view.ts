@@ -7,6 +7,8 @@
 // action, the resource and the time. Pure helpers, so the page stays a
 // thin Server Component and these are tested on their own.
 
+import { OPS_ACCESS_REASON_RESOURCE_LABELS } from './ops-access-reason'
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -81,6 +83,8 @@ const RESOURCE_LABEL: Record<string, string> = {
   payment_link:       'Payment link',
   payment_group:      'Combined payment link',
   access_log:         'Access log',
+  // B13: the reason ops gave for opening an order, logged beside the view.
+  ...OPS_ACCESS_REASON_RESOURCE_LABELS,
 }
 
 export const roleLabel     = (v: string): string => ROLE_LABEL[v] ?? v

@@ -10,6 +10,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { CsvParseError, MAX_IMPORT_BYTES, MAX_IMPORT_ROWS, parseCsv } from '@/lib/patients/import/csv'
 import { suggestMapping } from '@/lib/patients/import/mapping'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 import { importCaller } from '@/lib/patients/import/request'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 
@@ -47,6 +48,13 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
   const headers = headerRow.map(h => h.trim())
   console.info(`[patient-import] parsed | rows=${rows.length} | columns=${headers.length}`)
+  // Compliance C2 (B14): the file's patients are echoed back. They are not
+  // patients yet, so the row names none. A read: served even when the row
+  // could not be written (the helper alerts).
+  await logPhiAccess({
+    user: caller.user, clinicId: caller.clinicId, action: 'view', resource: 'patient_import_preview',
+    route: '/api/patients/import/parse', headers: request.headers,
+  })
   return NextResponse.json(
     { fileName: file.name.slice(0, 255), headers, rows, suggestedMapping: suggestMapping(headers) },
     { headers: { 'Cache-Control': 'no-store' } },

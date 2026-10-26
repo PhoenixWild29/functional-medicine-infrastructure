@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { mapFaxRow }           from '@/lib/fax/map-fax-row'
+import { logFaxQueueView }     from '@/lib/fax/log-fax-view'
 import type { Enums } from '@/types/database.types'
 import { getUserRole } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
@@ -87,7 +88,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       status, notes, processed_by, created_at, updated_at,
       matched_pharmacy_id, matched_order_id,
       pharmacies(name, integration_tier),
-      orders(order_number, status)
+      orders(order_number, status, patient_id, clinic_id)
     `, { count: 'exact' })
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
@@ -103,6 +104,10 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     console.error('[ops/fax] fetch error:', error.message)
     return NextResponse.json({ error: 'Failed to fetch fax queue' }, { status: 500 })
   }
+
+  // B14: the signed URLs below open the fax PDFs. One view row per matched
+  // order (+ one for unmatched faxes). A read: served whatever the log says.
+  await logFaxQueueView({ user, route: '/api/ops/fax', headers: request.headers }, data ?? [])
 
   // NB-01: shared row mapper (also used by page.tsx)
   const faxes: FaxEntry[] = await Promise.all(

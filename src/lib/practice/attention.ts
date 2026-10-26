@@ -36,6 +36,8 @@ export type AttentionKind =
 export interface AttentionItem {
   kind:      AttentionKind
   orderId:   string
+  /** The patient the item names (for the PHI access log); null when it names none (refunds). */
+  patientId: string | null
   title:     string
   detail:    string
   href:      string
@@ -75,6 +77,7 @@ export function editDraftHref(orderId: string): string {
 
 interface QueueOrderRow {
   order_id:            string
+  patient_id?:         string | null
   status:              string
   created_at:          string
   locked_at:           string | null
@@ -100,7 +103,7 @@ export async function loadAttention(
   // ── Orders in states that need someone ──
   const { data: rows, error: ordersError } = await supabase
     .from('orders')
-    .select('order_id, status, created_at, locked_at, medication_snapshot, patients ( first_name, last_name )')
+    .select('order_id, patient_id, status, created_at, locked_at, medication_snapshot, patients ( first_name, last_name )')
     .eq('clinic_id', opts.clinicId)
     .in('status', ['AWAITING_PAYMENT', 'DRAFT', ...Object.keys(FAILED_SUBMISSION)] as OrderStatusEnum[])
     .eq('is_active', true)
@@ -122,7 +125,7 @@ export async function loadAttention(
         console.warn(`[practice] AWAITING_PAYMENT order has no locked_at, skipped from the unpaid check | order=${o.order_id}`)
       } else if (nowMs - Date.parse(since) > AWAITING_PAYMENT_HOURS * HOUR) {
         items.push({
-          kind: 'awaiting_payment', orderId: o.order_id, since,
+          kind: 'awaiting_payment', orderId: o.order_id, patientId: o.patient_id ?? null, since,
           title: `Unpaid for over ${AWAITING_PAYMENT_HOURS} hours`,
           detail: who(o),
           href: orderHref(o.order_id), hrefLabel: 'Open the order to resend or regenerate the payment link',
@@ -130,14 +133,14 @@ export async function loadAttention(
       }
     } else if (FAILED_SUBMISSION[o.status]) {
       items.push({
-        kind: 'submission_failed', orderId: o.order_id, since: o.created_at,
+        kind: 'submission_failed', orderId: o.order_id, patientId: o.patient_id ?? null, since: o.created_at,
         title: FAILED_SUBMISSION[o.status]!,
         detail: who(o),
         href: orderHref(o.order_id), hrefLabel: 'Open the order',
       })
     } else if (o.status === 'DRAFT' && nowMs - Date.parse(o.created_at) > STALE_DRAFT_HOURS * HOUR) {
       items.push({
-        kind: 'stale_draft', orderId: o.order_id, since: o.created_at,
+        kind: 'stale_draft', orderId: o.order_id, patientId: o.patient_id ?? null, since: o.created_at,
         title: `Draft waiting over ${STALE_DRAFT_HOURS} hours`,
         detail: who(o),
         href: opts.viewerIsProvider ? batchSignHref([o.order_id]) : orderHref(o.order_id),
@@ -170,7 +173,7 @@ export async function loadAttention(
         if (p.code === 'not_found' || p.code === 'not_draft') continue
         const reprice = p.code === 'reprice'
         items.push({
-          kind: reprice ? 'reprice' : 'blocked_draft', orderId: d.order_id, since: d.created_at,
+          kind: reprice ? 'reprice' : 'blocked_draft', orderId: d.order_id, patientId: d.patient_id ?? null, since: d.created_at,
           title: reprice ? "Pharmacy price changed since the draft was saved" : 'Draft cannot be signed as it stands',
           detail: `${who(d)}: ${p.message}`,
           href: editDraftHref(d.order_id), hrefLabel: reprice ? 'Edit the line to confirm the price' : 'Edit the line',
@@ -193,7 +196,7 @@ export async function loadAttention(
     const orderIds = [...new Set((faxes ?? []).map(f => f.matched_order_id as string))]
     const { data: ours, error: oursError } = await supabase
       .from('orders')
-      .select('order_id, status, created_at, locked_at, medication_snapshot, patients ( first_name, last_name )')
+      .select('order_id, patient_id, status, created_at, locked_at, medication_snapshot, patients ( first_name, last_name )')
       .in('order_id', orderIds)
       .eq('clinic_id', opts.clinicId)
     if (oursError) {
@@ -204,7 +207,7 @@ export async function loadAttention(
         const o = byId.get(f.matched_order_id as string)
         if (!o) continue
         items.push({
-          kind: 'fax_review', orderId: o.order_id, since: f.created_at,
+          kind: 'fax_review', orderId: o.order_id, patientId: o.patient_id ?? null, since: f.created_at,
           title: `Pharmacy fax awaiting review (${String(f.status).toLowerCase()})`,
           detail: who(o),
           href: orderHref(o.order_id), hrefLabel: 'Open the order',
@@ -223,7 +226,7 @@ export async function loadAttention(
   } else {
     for (const r of stuck.rows) {
       items.push({
-        kind: 'stuck_refund', orderId: r.orderId, since: r.pendingSince,
+        kind: 'stuck_refund', orderId: r.orderId, patientId: null, since: r.pendingSince,
         title: 'Refund stuck. Platform support is resolving it',
         detail: `$${(r.retailCents / 100).toFixed(2)} refund pending ${r.pendingSince ? `since ${r.pendingSince.slice(0, 10)}` : '(start unknown)'}`,
         href: orderHref(r.orderId), hrefLabel: 'Open the order',
@@ -235,7 +238,7 @@ export async function loadAttention(
   } else {
     for (const l of late.rows) {
       items.push({
-        kind: 'late_payment', orderId: l.orderId, since: l.at,
+        kind: 'late_payment', orderId: l.orderId, patientId: null, since: l.at,
         title: l.refundOk ? 'Late payment on an expired bundle, refunded' : 'Late payment on an expired bundle: refund FAILED, still owed',
         detail: l.refundOk ? `Refund ${l.refundId ?? ''}`.trim() : (l.error ?? 'Refund failed'),
         href: orderHref(l.orderId), hrefLabel: 'Open the order',

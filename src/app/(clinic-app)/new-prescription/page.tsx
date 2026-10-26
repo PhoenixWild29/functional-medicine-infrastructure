@@ -30,7 +30,7 @@ import { SessionGuardNotice } from '@/components/session-guard-notice'
 import { PatientProviderSelector } from './_components/patient-provider-selector'
 import { faceSheetAvailable } from '@/lib/face-sheet/config'
 import { getWizardSteps } from './_lib/wizard-steps'
-import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
+import { logPhiAccessMany, currentRequestHeaders } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { FirstPrescriptionTips } from '@/components/coaching/first-prescription-tips'
 import { coachingPrefs } from '@/lib/coaching/prefs'
@@ -114,11 +114,15 @@ export default async function NewPrescriptionPage(
   const providers = providersResult.data ?? []
   const WIZARD_STEPS = getWizardSteps({ providerIsSelf })
 
-  // Compliance C2: the patient picker lists this clinic's patients (name,
-  // DOB, phone, allergies). One row for the page.
-  await logPhiAccess({
-    user, action: 'view', resource: 'patient_list', route: '/new-prescription', headers: await currentRequestHeaders(),
-  })
+  // Compliance C2 (B14): the patient picker lists this clinic's patients
+  // (name, DOB, phone, allergies). One row per patient listed, and per
+  // patient named by a "Possible duplicate of <name>" flag.
+  const listedPatientIds = new Set<string>(patientRows.map(p => p.patient_id))
+  for (const id of duplicateNames.keys()) listedPatientIds.add(id)
+  await logPhiAccessMany(
+    { user, action: 'view', resource: 'patient_list', route: '/new-prescription', headers: await currentRequestHeaders() },
+    [...listedPatientIds],
+  )
 
   return (
     <>

@@ -21,6 +21,11 @@
 //      event after approval takes over that row. Clinic unreadable: 503.
 //   6. Applied (lib sync); the log row gets the outcome, the patient id
 //      and codes; the connection its last event / success / error.
+//   7. PHI access log (B14): a patient created or updated is one 'create'
+//      or 'update' / 'ehr_sync' row by the system actor for the clinic,
+//      with the patient id. After the write (a new patient's id exists
+//      only then); a failed log is alerted by the helper and does not undo
+//      the sync. Nothing written (skipped, error): no row.
 // Nothing here logs PHI: ids, codes and field names only.
 
 import type { SupabaseClient as UntypedClient } from '@supabase/supabase-js'
@@ -32,6 +37,7 @@ import { connectionSecret, noteConnectionError } from './connection'
 import { parsePatientEvent } from './contract'
 import { applyPatientEvent, type SyncOutcome } from './sync'
 import { clinicApproval } from '@/lib/onboarding/approval-guard'
+import { logPhiAccess, systemActor } from '@/lib/audit/phi-access'
 
 export interface WebhookResult { status: number; body: Record<string, unknown> }
 
@@ -132,6 +138,16 @@ export async function handleKeragonWebhook(
   } catch (err) {
     console.error(`[ehr-sync] processing threw | connection=${connectionId} | event=${event.eventId}:`, err instanceof Error ? err.name : 'error')
     outcome = { status: 'error', patientId: null, detail: {}, errorCode: 'processing_failed' }
+  }
+
+  if ((outcome.status === 'applied' || outcome.status === 'flagged') && outcome.patientId) {
+    await logPhiAccess({
+      actor: systemActor(conn.clinicId),
+      action: outcome.detail['action'] === 'created' ? 'create' : 'update',
+      resource: 'ehr_sync', route: '/api/integrations/keragon/patients',
+      patientId: outcome.patientId, clinicId: conn.clinicId,
+      headers: input.headers instanceof Headers ? input.headers : null,
+    })
   }
 
   const { error: logError } = await db.from('ehr_sync_events').update({

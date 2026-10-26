@@ -31,7 +31,7 @@ import { isTabId, dashboardKpis } from './_lib/tabs'
 import { paymentLinkCounts } from '@/lib/orders/payment-link'
 import { ProviderViewToggle } from './_components/provider-view-toggle'
 import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.types'
-import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
+import { logPhiAccessMany, currentRequestHeaders } from '@/lib/audit/phi-access'
 import { loadExpiringLicenses } from '@/lib/providers/expiring'
 import { LicenseExpiryWarning } from './_components/license-expiry-warning'
 import { loadAgreementNotice } from '@/lib/agreements/clinic-agreements'
@@ -306,11 +306,17 @@ export default async function DashboardPage(
     }
   }
 
-  // Compliance C2: the order list names this clinic's patients. One row
-  // for the page; the list itself is not itemised (see the PR notes).
-  await logPhiAccess({
-    user, action: 'view', resource: 'order_list', route: '/dashboard', headers: await currentRequestHeaders(),
-  })
+  // Compliance C2 (B14): the order list names this clinic's patients. One
+  // row per patient rendered: the orders' patients, and the patients named
+  // by a "Possible duplicate of <name>" flag. The 30-second poll logs the
+  // same way (GET /api/dashboard/orders).
+  const listedPatientIds = new Set<string>()
+  for (const o of orders) if (o.patientId) listedPatientIds.add(o.patientId)
+  for (const id of duplicateNames.keys()) listedPatientIds.add(id)
+  await logPhiAccessMany(
+    { user, action: 'view', resource: 'order_list', route: '/dashboard', headers: await currentRequestHeaders() },
+    [...listedPatientIds],
+  )
 
   // Compliance C4: licenses that expire within 30 days (the admin: every
   // provider's; a provider: their own). Never blocks the page.

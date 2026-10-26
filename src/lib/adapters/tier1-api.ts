@@ -26,6 +26,15 @@
 // Order state CAS transitions are NOT performed here — that is the
 // routing engine's (WO-23) responsibility. This adapter only manages
 // the adapter_submissions audit trail and returns the outcome.
+//
+// PHI disclosure (C-2026-10-25-17, B14/B15): each attempt's POST sends PHI
+// to the pharmacy, so one pharmacy_disclosure row (logPhiDisclosure, the
+// system as the actor) is written right before it. Fail-closed: when the
+// row cannot be written, that attempt sends nothing and fails as a
+// transient error (DISCLOSURE_NOT_RECORDED), retried with the same backoff
+// as a network error; three in a row is 'exhausted', which the routing
+// engine handles as any exhausted primary tier (the fax cascade, which
+// records its own disclosure, else SUBMISSION_FAILED for an ops retry).
 
 import { assertPharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { assertOrderNotControlled } from '@/lib/orders/controlled-substance'
@@ -35,6 +44,7 @@ import { getVaultSecret, buildAuthHeaders } from '@/lib/adapters/vault'
 import { getTransformer, rxDetailPayloadFields, patientAllergyPayloadFields, type OrderPayload } from '@/lib/adapters/transformers'
 import { getParser } from '@/lib/adapters/parsers'
 import { dispenseQuantity } from '@/lib/orders/rx-details'
+import { logPhiDisclosure, systemActor } from '@/lib/audit/phi-access'
 import {
   createSubmissionRecord,
   markSubmitted,
@@ -59,6 +69,15 @@ export interface Tier1SubmitResult {
   attemptsMade: number
   errorCode: string | null
   errorMessage: string | null
+}
+
+/** An attempt whose disclosure row could not be written: nothing was sent. */
+class DisclosureNotRecordedError extends Error {
+  readonly code = 'DISCLOSURE_NOT_RECORDED'
+  constructor() {
+    super('The disclosure to the pharmacy could not be recorded; not sent')
+    this.name = 'DisclosureNotRecordedError'
+  }
 }
 
 // Retry backoff delays: attempt 1→2 = 5s, attempt 2→3 = 15s, max = 45s at 3
@@ -370,6 +389,17 @@ export async function submitTier1Api(
     let statusCode = 0
 
     try {
+      // Fail-closed: PHI leaves only once its disclosure is recorded.
+      const disclosed = await logPhiDisclosure({
+        actor:     systemActor(order.clinic_id),
+        resource:  'pharmacy_disclosure',
+        route:     tier === 'TIER_3_SPEC' ? '/adapters/tier3-spec' : '/adapters/tier1-api',
+        orderId,
+        patientId: order.patient_id,
+        clinicId:  order.clinic_id,
+      })
+      if (!disclosed) throw new DisclosureNotRecordedError()
+
       // Execute HTTP POST to pharmacy API
       const response = await fetch(submitUrl, {
         method:  'POST',
@@ -393,23 +423,25 @@ export async function submitTier1Api(
       }
 
     } catch (fetchErr) {
-      // Network error or timeout — treat as transient
+      // Network error or timeout — treat as transient. So is a disclosure
+      // that could not be recorded (nothing was sent).
       const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr)
-      lastErrorCode    = 'NETWORK_ERROR'
+      const code = fetchErr instanceof DisclosureNotRecordedError ? fetchErr.code : 'NETWORK_ERROR'
+      lastErrorCode    = code
       lastErrorMessage = msg
 
-      await markFailed(submissionId, 'NETWORK_ERROR', msg)
+      await markFailed(submissionId, code, msg)
 
       if (attempt < MAX_ATTEMPTS) {
         console.warn(
-          `[tier1-api] attempt ${attempt}/${MAX_ATTEMPTS} network error | order=${orderId} | ${msg}`
+          `[tier1-api] attempt ${attempt}/${MAX_ATTEMPTS} ${code === 'NETWORK_ERROR' ? 'network error' : 'disclosure not recorded'} | order=${orderId} | ${msg}`
         )
         await sleep(RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)]!)
         continue
       }
 
-      // All retries exhausted — network errors
-      await markSubmissionFailed(submissionId, 'NETWORK_ERROR', msg, {
+      // All retries exhausted — network errors (or unrecorded disclosures)
+      await markSubmissionFailed(submissionId, code, msg, {
         attempts: attempt,
       })
 
@@ -418,7 +450,7 @@ export async function submitTier1Api(
         submissionId,
         externalOrderId: null,
         attemptsMade:    attempt,
-        errorCode:       'NETWORK_ERROR',
+        errorCode:       code,
         errorMessage:    msg,
       }
     }
