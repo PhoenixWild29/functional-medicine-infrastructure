@@ -28,16 +28,18 @@ import { withApiErrors } from '@/lib/api/with-api-errors'
 import { getUserRole } from '@/lib/auth/claims'
 import { US_STATES } from '@/lib/providers/states'
 import { MAX_NAME, parseInput, uuid } from '@/lib/api/input'
+import { isOfferedTier } from '@/lib/pharmacies/offered-tier'
 import { z } from 'zod'
 
 const CLINIC_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
 const SearchInput = z.object({ itemId: uuid(), form: z.string().max(MAX_NAME) })
 
 // ── Tier ordering for sort (lower = ranked first) ────────────
-// API-connected tiers (1 and 3) ranked above portal/fax (2 and 4)
-const TIER_ORDER: Record<IntegrationTierEnum, number> = {
+// API-connected tiers (1 and 3) ranked above portal/fax (2 and 4).
+// Decision 8: TIER_3_HYBRID is never offered (lib/pharmacies/offered-tier).
+type OfferedTier = Exclude<IntegrationTierEnum, 'TIER_3_HYBRID'>
+const TIER_ORDER: Record<OfferedTier, number> = {
   TIER_1_API:     1,
-  TIER_3_HYBRID:  2,
   TIER_3_SPEC:    2,
   TIER_2_PORTAL:  3,
   TIER_4_FAX:     4,
@@ -60,7 +62,7 @@ export interface PharmacySearchResult {
   pharmacy_name:           string
   pharmacy_status:         'ACTIVE' | 'SUSPENDED' | 'BANNED'
   // REQ-SCS-005: BANNED excluded before this point; SUSPENDED included with badge
-  integration_tier:        IntegrationTierEnum
+  integration_tier:        OfferedTier
   average_turnaround_days: number | null
   supports_real_time_status: boolean
   tier_badge:              TierBadge
@@ -72,11 +74,10 @@ export interface TierBadge {
   speed:            string
 }
 
-function buildTierBadge(tier: IntegrationTierEnum): TierBadge {
+function buildTierBadge(tier: OfferedTier): TierBadge {
   switch (tier) {
     case 'TIER_1_API':    return { label: 'API Connected',     color: 'green', speed: 'Instant'  }
     case 'TIER_2_PORTAL': return { label: 'Portal',            color: 'blue',  speed: '~5 min'   }
-    case 'TIER_3_HYBRID': return { label: 'Standardized API',  color: 'teal',  speed: 'Instant'  }
     case 'TIER_3_SPEC':   return { label: 'Spec API',          color: 'teal',  speed: 'Instant'  }
     case 'TIER_4_FAX':    return { label: 'Fax',               color: 'gray',  speed: '~30 min'  }
   }
@@ -235,6 +236,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
     // REQ-SCS-005: BANNED pharmacies never shown; soft-deleted pharmacies excluded
     if (pharmacy.pharmacy_status === 'BANNED' || !pharmacy.is_active || pharmacy.deleted_at) continue
+    // Decision 8: a tier with no adapter (Hybrid) is never offered.
+    if (!isOfferedTier(pharmacy.integration_tier)) continue
+    const tier = pharmacy.integration_tier as OfferedTier
 
     const catalogUpdatedAt = row.updated_at
     const isStale = new Date(catalogUpdatedAt) < staleThreshold
@@ -251,10 +255,10 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       pharmacy_id:              pharmacy.pharmacy_id,
       pharmacy_name:            pharmacy.name,
       pharmacy_status:          pharmacy.pharmacy_status ?? 'ACTIVE',
-      integration_tier:         pharmacy.integration_tier,
+      integration_tier:         tier,
       average_turnaround_days:  pharmacy.average_turnaround_days,
       supports_real_time_status: pharmacy.supports_real_time_status,
-      tier_badge:               buildTierBadge(pharmacy.integration_tier),
+      tier_badge:               buildTierBadge(tier),
     })
   }
 
