@@ -34,9 +34,9 @@ it('loads the default range and shows the rows with their flags', async () => {
   await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(3))
   expect(urlOf(0)).toMatch(/^\/api\/ops\/access-review\?from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/)
   // The row's flag, and the count in the summary.
-  expect(screen.getByText('Outside 6am to 10pm (UTC)', { selector: 'li' })).toBeInTheDocument()
-  expect(screen.getByText('Outside 6am to 10pm (UTC):')).toBeInTheDocument()
-  expect(screen.getByText(/Times are UTC/)).toBeInTheDocument()
+  expect(screen.getByText('Outside 6am to 10pm (clinic time)', { selector: 'li' })).toBeInTheDocument()
+  expect(screen.getByText('Outside 6am to 10pm (clinic time):')).toBeInTheDocument()
+  expect(screen.getByText(/in the clinic's time zone/)).toBeInTheDocument()
 })
 
 it('"Flagged rows only" narrows the table', async () => {
@@ -64,4 +64,11 @@ it('is axe clean', async () => {
   await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(3))
   const axe = configureAxe({ runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'] } })
   expect((await axe(container)).violations.map(v => v.id)).toEqual([])
+})
+
+// C's review D3: a cut-off review says the CSV is cut off too.
+it('a truncated review says the CSV is cut off the same way', async () => {
+  fetchMock.mockImplementationOnce(async () => ({ ok: true, status: 200, json: async () => ({ ...BODY, truncated: true }) }))
+  view()
+  expect(await screen.findByText(/The CSV export is cut off the same way/)).toBeInTheDocument()
 })

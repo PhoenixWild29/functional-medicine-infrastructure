@@ -7,7 +7,7 @@
  */
 
 import { NextRequest } from 'next/server'
-import { scriptedDb } from '@/__tests__/helpers/scripted-db'
+import { scriptedDb, type ScriptedAnswer, type ScriptedCall } from '@/__tests__/helpers/scripted-db'
 import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
 
 const CLINIC = '11111111-1111-4111-8111-111111111111'
@@ -16,6 +16,8 @@ const GONE = '33333333-3333-4333-8333-333333333333'
 let session: unknown = null
 let db = scriptedDb(() => undefined)
 let users: Record<string, { id: string; app_metadata: Record<string, unknown> } | null> = {}
+// D2: an Auth error other than "not found" (404).
+let lookupError: { message: string; status: number } | null = null
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: async () => ({ auth: { getSession: async () => ({ data: { session } }), getUser: async () => userFromSession({ data: { session } }) } }),
@@ -23,7 +25,9 @@ jest.mock('@/lib/supabase/server', () => ({
 jest.mock('@/lib/supabase/service', () => ({
   createServiceClient: () => ({
     ...(db.client as Record<string, unknown>),
-    auth: { admin: { getUserById: async (id: string) => ({ data: { user: users[id] ?? null }, error: users[id] ? null : { message: 'User not found' } }) } },
+    auth: { admin: { getUserById: async (id: string) => (lookupError
+      ? { data: { user: null }, error: lookupError }
+      : { data: { user: users[id] ?? null }, error: users[id] ? null : { message: 'User not found', status: 404 } }) } },
   }),
 }))
 
@@ -36,6 +40,13 @@ const LOG_ROWS = [
   { id: 'c', occurred_at: '2026-10-21T10:00:00.000Z', actor_user_id: GONE, actor_role: 'medical_assistant', clinic_id: CLINIC, patient_id: 'p-1', order_id: null, action: 'view', resource: 'patient', route: '/api/patients/[id]' },
 ]
 
+function defaultScript(c: ScriptedCall): ScriptedAnswer {
+  if (c.table === 'phi_access_log') return { data: LOG_ROWS }
+  // p-1 has an order in the clinic; p-2 has nothing there.
+  if (c.table === 'orders') return { data: [{ clinic_id: CLINIC, patient_id: 'p-1' }] }
+  return { data: [] }
+}
+
 const call = (qs = '') => GET(new NextRequest(`http://localhost/api/ops/access-review${qs}`))
 
 beforeEach(() => {
@@ -45,13 +56,8 @@ beforeEach(() => {
     [ACTOR]: { id: ACTOR, app_metadata: { app_role: 'provider', clinic_id: CLINIC } },
     [GONE]: { id: GONE, app_metadata: { app_role: 'medical_assistant', clinic_id: CLINIC, deactivated_at: '2026-10-01T00:00:00Z' } },
   }
-  db = scriptedDb(c => {
-    if (c.table === 'phi_access_log') return { data: LOG_ROWS }
-    // p-1 has an order in the clinic; p-2 has nothing there.
-    if (c.table === 'orders') return { data: [{ clinic_id: CLINIC, patient_id: 'p-1' }] }
-    if (c.table === 'treatment_proposals') return { data: [] }
-    return { data: [] }
-  })
+  lookupError = null
+  db = scriptedDb(defaultScript)
 })
 
 describe('the role gate', () => {
@@ -90,13 +96,13 @@ describe('filters', () => {
 
 describe('flags', () => {
   it('flags outside hours, a deactivated actor and a patient with no order or proposal in the clinic', async () => {
-    const body = await (await call()).json() as { rows: { id: string; flags: string[] }[]; flagCounts: Record<string, number>; timezone: string; bulkThreshold: number }
+    const body = await (await call()).json() as { rows: { id: string; flags: string[] }[]; flagCounts: Record<string, number>; timeZoneBasis: string; bulkThreshold: number }
     const byId = Object.fromEntries(body.rows.map(r => [r.id, r.flags]))
     expect(byId['a']).toEqual([])
     expect(byId['b']).toEqual(['outside_hours', 'no_relationship'])
     expect(byId['c']).toEqual(['deactivated_actor'])
     expect(body.flagCounts).toEqual({ outside_hours: 1, bulk_patients: 0, deactivated_actor: 1, no_relationship: 1 })
-    expect(body.timezone).toBe('UTC')
+    expect(body.timeZoneBasis).toBe('clinic_state')
     expect(body.bulkThreshold).toBe(30)
   })
 
@@ -127,5 +133,89 @@ describe('the review is itself logged', () => {
     const text = await res.text()
     expect(text.trimEnd().split('\n')).toHaveLength(1 + LOG_ROWS.length)
     expectOnePhiRow({ action: 'export', resource: 'access_log', route: '/api/ops/access-review' })
+  })
+})
+
+// ── C's review, 7b (D1 to D4) ───────────────────────────────
+
+describe('D1: hours in the clinic time zone', () => {
+  it('reads each clinic state, and judges hours in that zone', async () => {
+    db = scriptedDb(c => (c.table === 'clinics' ? { data: [{ clinic_id: CLINIC, state: 'CA' }] } : defaultScript(c)))
+    const body = await (await call()).json() as { rows: { id: string; flags: string[]; time_zone: string }[] }
+    // 23:10Z is 4:10pm in Los Angeles.
+    expect(body.rows.find(r => r.id === 'b')).toEqual(expect.objectContaining({ flags: ['no_relationship'], time_zone: 'America/Los_Angeles' }))
+    expect(db.calls.find(c => c.table === 'clinics')!.filters['clinic_id:in']).toEqual([CLINIC])
+  })
+})
+
+describe('D2: newest first; patient and system actors; lookup errors', () => {
+  it('asks for the newest rows first, so a cut-off review keeps the latest', async () => {
+    const orderSpy = jest.fn()
+    const base = db.client.from as (t: string) => Record<string, (...a: unknown[]) => unknown>
+    db.client.from = ((t: string) => {
+      const b = base(t)
+      if (t === 'phi_access_log') {
+        const order = b['order']!
+        b['order'] = (...a: unknown[]) => { orderSpy(...a); return order(...a) }
+      }
+      return b
+    }) as never
+    await call()
+    expect(orderSpy).toHaveBeenCalledWith('occurred_at', { ascending: false })
+  })
+
+  it('does not look up, or flag, patient and system actors', async () => {
+    const lookups: string[] = []
+    const rows = [
+      { ...LOG_ROWS[0]!, id: 'pt', actor_role: 'patient', actor_user_id: '44444444-4444-4444-8444-444444444444' },
+      { ...LOG_ROWS[0]!, id: 'sys', actor_role: 'system', actor_user_id: '00000000-0000-0000-0000-000000000000' },
+    ]
+    db = scriptedDb(c => (c.table === 'phi_access_log' ? { data: rows } : c.table === 'orders' ? { data: [{ clinic_id: CLINIC, patient_id: 'p-1' }] } : { data: [] }))
+    const real = users
+    users = new Proxy(real, { get: (t, k: string) => { lookups.push(k); return t[k] } })
+    const body = await (await call()).json() as { rows: { id: string; flags: string[] }[] }
+    expect(body.rows.every(r => r.flags.length === 0)).toBe(true)
+    expect(lookups).toEqual([])
+  })
+
+  it('a lookup error is unknown, not deactivated, and is counted', async () => {
+    lookupError = { message: 'upstream timeout', status: 500 }
+    const body = await (await call()).json() as { rows: { id: string; flags: string[] }[]; actorLookupFailures: number }
+    expect(body.rows.find(r => r.id === 'a')!.flags).toEqual([])
+    expect(body.rows.find(r => r.id === 'c')!.flags).toEqual([])
+    expect(body.actorLookupFailures).toBe(2)
+  })
+})
+
+describe('D3: a cut-off CSV says so', () => {
+  it('marks the file and the header when more rows exist than the limit', async () => {
+    const many = Array.from({ length: 5001 }, (_, i) => ({ ...LOG_ROWS[0]!, id: `m${i}` }))
+    db = scriptedDb(c => (c.table === 'phi_access_log' ? { data: many } : c.table === 'orders' ? { data: [{ clinic_id: CLINIC, patient_id: 'p-1' }] } : { data: [] }))
+    const res = await call('?format=csv')
+    expect(res.headers.get('x-truncated')).toBe('true')
+    const lines = (await res.text()).trimEnd().split('\n')
+    expect(lines).toHaveLength(1 + 5000 + 1)
+    expect(lines[lines.length - 1]).toMatch(/^# TRUNCATED/)
+  })
+
+  it('a complete CSV has no marker', async () => {
+    const res = await call('?format=csv')
+    expect(res.headers.get('x-truncated')).toBeNull()
+    expect(await res.text()).not.toContain('TRUNCATED')
+  })
+})
+
+describe('D4: the export fails closed when its log row is not written', () => {
+  it('503 and no file', async () => {
+    phiLog.mockResolvedValueOnce(false)
+    const res = await call('?format=csv')
+    expect(res.status).toBe(503)
+    expect(res.headers.get('content-type')).toMatch(/json/)
+    expect(await res.text()).not.toContain('occurred_at')
+  })
+
+  it('a view whose log row fails is still shown (the write failure is alerted)', async () => {
+    phiLog.mockResolvedValueOnce(false)
+    expect((await call()).status).toBe(200)
   })
 })
