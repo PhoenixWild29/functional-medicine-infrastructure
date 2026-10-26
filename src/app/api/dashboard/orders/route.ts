@@ -26,15 +26,15 @@ import { PROPOSAL_EMBED } from '@/lib/proposals/dashboard'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { logPhiAccessMany } from '@/lib/audit/phi-access'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { DASHBOARD_ORDER_LIMIT, parseBefore, type OrderWindow } from '@/lib/dashboard/order-window'
 
 const PROVIDER_VIEW_HEADER = 'x-provider-view-mode'
 const ROUTE = '/api/dashboard/orders'
-/**
- * Review L5: the poll reads at most this many orders, most recently
- * updated first (it ran unbounded every 30 s). The page's first render
- * stays unbounded because its KPIs are computed from it.
- */
-const POLL_ORDER_LIMIT = 1000
+// Review L5 and B-2026-10-26-08: the poll reads one window of orders, the
+// same one the page's first render shows (lib/dashboard/order-window): the
+// newest DASHBOARD_ORDER_LIMIT by last update, or those before ?before=. It
+// reads one row past the limit to know whether the list was cut, and says
+// so in `window`.
 /** List views are logged once per actor and patient per 15 minutes (review L5). */
 const LIST_LOG_DEDUPE_MINUTES = 15
 
@@ -52,9 +52,11 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     ? await createServerClient({ extraHeaders: { [PROVIDER_VIEW_HEADER]: 'clinic' } })
     : supabaseAuth
 
+  const before = parseBefore(new URL(request.url).searchParams.get('before'))
+
   // BLK-01: explicit clinic_id filter as defence-in-depth (RLS also enforces it).
   // Same columns as the dashboard page's server render.
-  const { data, error } = await supabase
+  const base = supabase
     .from('orders')
     .select(`
       order_id, status, created_at, updated_at, locked_at, payment_group_id, provider_id,
@@ -65,15 +67,22 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     `)
     .eq('clinic_id', clinicId)
     .is('deleted_at', null)
+  const { data, error } = await (before ? base.lt('updated_at', before) : base)
     .order('updated_at', { ascending: false })
-    .limit(POLL_ORDER_LIMIT)
+    .limit(DASHBOARD_ORDER_LIMIT + 1)
   if (error) {
     // BLK-07: the code for ops, never a row value.
     console.error(`[dashboard-orders] poll read failed | code=${(error as { code?: string }).code ?? 'unknown'}`)
     return NextResponse.json({ error: 'Orders could not be loaded.' }, { status: 500, headers: { 'Cache-Control': 'no-store' } })
   }
 
-  const rows = (data ?? []) as unknown as Array<Record<string, unknown>>
+  const read = (data ?? []) as unknown as Array<Record<string, unknown>>
+  const truncated = read.length > DASHBOARD_ORDER_LIMIT
+  const rows = read.slice(0, DASHBOARD_ORDER_LIMIT)
+  const window: OrderWindow = {
+    limit: DASHBOARD_ORDER_LIMIT, truncated, before,
+    olderBefore: truncated ? (rows[rows.length - 1]!['updated_at'] as string) : null,
+  }
   // Patient Intake PR 2: the names behind duplicate flags, one separate read.
   const duplicateNames = await loadDuplicateNames(supabase, clinicId, openDuplicateIds(rows.map(o => embeddedPatient(o['patients']))))
 
@@ -88,7 +97,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   await logPhiAccessMany({ user, action: 'view', resource: 'order_list', route: ROUTE, headers: request.headers }, [...patientIds], { dedupeMinutes: LIST_LOG_DEDUPE_MINUTES })
 
   return NextResponse.json(
-    { rows, duplicateNames: Object.fromEntries(duplicateNames) },
+    { rows, duplicateNames: Object.fromEntries(duplicateNames), window },
     { headers: { 'Cache-Control': 'no-store' } },
   )
 }

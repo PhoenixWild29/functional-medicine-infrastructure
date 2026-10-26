@@ -35,6 +35,7 @@ import type { DraftViewer } from '@/lib/orders/draft-edit-access'
 import { OrderDrawer }  from './order-drawer'
 import { batchSignHref, MAX_BATCH_ORDERS } from '@/lib/orders/batch-sign-view'
 import { platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
+import { olderOrdersHref, type OrderWindow } from '@/lib/dashboard/order-window'
 
 // ── Status tabs: TABS, in ../_lib/tabs (shared with the KPI cards) ──
 
@@ -56,6 +57,12 @@ interface Props {
    * and tab counts follow the toggle with the stat cards.
    */
   providerViewMode?: 'mine' | 'clinic'
+  /**
+   * B-2026-10-26-08: the window of orders the page showed (the newest
+   * DASHBOARD_ORDER_LIMIT, or those before ?before=). The poll asks for the
+   * same window, and the list says when it is cut.
+   */
+  orderWindow?: OrderWindow
   /**
    * A clinic onboarded through the portal (isPortalOnboardedClinic): its
    * payouts are set up at launch, so it is not sent to Stripe onboarding.
@@ -92,11 +99,20 @@ const LAUNCH_COPY = 'Ordering opens at launch, once payouts are set up. Compound
 interface DashboardOrdersResponse {
   rows:           Array<Record<string, unknown>>
   duplicateNames: Record<string, NameablePatient>
+  /** The order window (lib/dashboard/order-window): the same one the page showed. */
+  window?:        OrderWindow
 }
 
-/** The poll's URL: a provider's clinic view asks for it, as the page did. */
-function dashboardOrdersUrl(providerViewMode: 'mine' | 'clinic'): string {
-  return providerViewMode === 'clinic' ? '/api/dashboard/orders?view=clinic' : '/api/dashboard/orders'
+/**
+ * The poll's URL: a provider's clinic view asks for it, as the page did,
+ * and an older-orders window keeps its cursor (B-2026-10-26-08).
+ */
+function dashboardOrdersUrl(providerViewMode: 'mine' | 'clinic', before: string | null = null): string {
+  const q = new URLSearchParams()
+  if (providerViewMode === 'clinic') q.set('view', 'clinic')
+  if (before) q.set('before', before)
+  const qs = q.toString()
+  return qs ? `/api/dashboard/orders?${qs}` : '/api/dashboard/orders'
 }
 
 function buildDashboardOrder(o: Record<string, unknown>, duplicateNames?: ReadonlyMap<string, NameablePatient>): DashboardOrder {
@@ -146,10 +162,14 @@ function buildDashboardOrder(o: Record<string, unknown>, duplicateNames?: Readon
 
 // ── Component ───────────────────────────────────────────────
 
-export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, viewer, initialTab, initialOrderId, providerViewMode = 'mine', payoutsAtLaunch = false, canSendProposals = false }: Props) {
+export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, viewer, initialTab, initialOrderId, providerViewMode = 'mine', payoutsAtLaunch = false, canSendProposals = false, orderWindow }: Props) {
   const router = useRouter()
   const queryClient = useQueryClient()
-  const ordersKey = useMemo(() => ['dashboard-orders', clinicId, providerViewMode] as const, [clinicId, providerViewMode])
+  const windowBefore = orderWindow?.before ?? null
+  const ordersKey = useMemo(() => ['dashboard-orders', clinicId, providerViewMode, windowBefore] as const, [clinicId, providerViewMode, windowBefore])
+  // The window as the latest read reported it (the page's, then each poll's).
+  const [liveWindow, setLiveWindow] = useState<OrderWindow | undefined>(orderWindow)
+  useEffect(() => { setLiveWindow(orderWindow) }, [orderWindow])
 
   const [viewMode,        setViewMode]        = useState<'table' | 'kanban'>('table')
   // WO-106: the KPI cards link here (?tab=…), so the tab is addressable.
@@ -205,13 +225,14 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
       // used; without it the poll read "My patients" rows under the clinic
       // view's cards. The clinic comes from the session on the server
       // (RLS + an explicit clinic_id filter, BLK-01).
-      const res = await fetch(dashboardOrdersUrl(providerViewMode), { headers: { Accept: 'application/json' }, cache: 'no-store' })
+      const res = await fetch(dashboardOrdersUrl(providerViewMode, windowBefore), { headers: { Accept: 'application/json' }, cache: 'no-store' })
       if (!res.ok) {
         // BLK-07: log for ops visibility
         console.error('[dashboard] orders poll failed: status', res.status, '| clinic=', clinicId)
         throw new Error(`Orders could not be loaded (${res.status})`)
       }
       const body = await res.json() as DashboardOrdersResponse
+      if (body.window) setLiveWindow(body.window)
       const duplicateNames = new Map(Object.entries(body.duplicateNames ?? {}))
       return (body.rows ?? []).map(o => buildDashboardOrder(o, duplicateNames))
     },
@@ -567,6 +588,31 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
             onCardClick={handleRowClick}
           />
         )
+      )}
+
+      {/* ── The order window (B-2026-10-26-08): say when the list is cut ── */}
+      {liveWindow && (liveWindow.truncated || liveWindow.before) && (
+        <p data-testid="orders-window-note" className="text-xs text-muted-foreground">
+          {liveWindow.before
+            ? `Showing ${(liveWindow.truncated ? liveWindow.limit : orders.length).toLocaleString('en-US')} orders last updated before ${new Date(liveWindow.before).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}.`
+            : `Showing the most recent ${liveWindow.limit.toLocaleString('en-US')} orders.`}
+          {liveWindow.truncated && liveWindow.olderBefore && (
+            <>
+              {' '}
+              <a href={olderOrdersHref(searchParams, liveWindow.olderBefore)} className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Show older orders
+              </a>
+            </>
+          )}
+          {liveWindow.before && (
+            <>
+              {' '}
+              <a href={olderOrdersHref(searchParams, null)} className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Back to the most recent orders
+              </a>
+            </>
+          )}
+        </p>
       )}
 
       {/* ── Order count footer ── */}
