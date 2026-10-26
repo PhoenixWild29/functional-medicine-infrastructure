@@ -145,7 +145,7 @@ export function SaveFavoriteButton({
             if (e.key === 'Escape') setOpen(false)
           }}
           autoFocus
-          className="w-56 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="w-56 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         />
         {patient && (
           <fieldset className="flex items-center gap-2 px-1 text-xs text-muted-foreground">

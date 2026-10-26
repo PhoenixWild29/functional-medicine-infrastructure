@@ -729,7 +729,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
               setSelectedPharmacy(null)
             }
           }}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         />
         {!selectedIngredient && searchQuery.length >= 2 && ingredients.length > 0 && (
           <div className="mt-1 max-h-48 overflow-y-auto rounded-md border border-border">
@@ -805,7 +805,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
 
       {/* Level 2: Salt Form (if multiple) */}
       {selectedIngredient && saltForms.length > 1 && (
-        <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+        <div className="rounded-lg border border-border bg-card p-4 shadow-xs">
           <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Salt / Ester Form
           </label>
@@ -830,7 +830,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
 
       {/* Level 3: Formulation (concentration + dosage form) */}
       {selectedSaltForm && formulations.length > 0 && (
-        <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+        <div className="rounded-lg border border-border bg-card p-4 shadow-xs">
           <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Formulation
           </label>
@@ -888,7 +888,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
 
       {/* Level 5: Pharmacy Selection */}
       {selectedFormulation && pharmacyOptions.length > 0 && (
-        <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+        <div className="rounded-lg border border-border bg-card p-4 shadow-xs">
           <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Pharmacy & Pricing
           </label>
@@ -953,7 +953,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
 
       {/* Quantity + Refills */}
       {selectedPharmacy && (
-        <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+        <div className="rounded-lg border border-border bg-card p-4 shadow-xs">
           <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {selectedSuggestion ? 'Refills' : 'Quantity & Refills'}
           </label>
@@ -970,7 +970,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
                   setQuantity(e.target.value)
                   setQuantityPicked(true)
                 }}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {quantityOptions.map(q => (
                   <option key={q} value={q}>{q}</option>
@@ -990,7 +990,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
                 aria-label="Refills"
                 value={refills}
                 onChange={e => setRefills(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {[0, 1, 2, 3, 4, 5].map(n => (
                   <option key={n} value={String(n)}>{n} refill{n !== 1 ? 's' : ''}</option>
@@ -1031,7 +1031,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
             type="button"
             onClick={navigateToMargin}
             disabled={!canAdd}
-            className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-xs hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Continue to Set Retail Price
           </button>

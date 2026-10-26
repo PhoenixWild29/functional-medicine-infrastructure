@@ -22,7 +22,7 @@ export function PharmacyNav() {
               <Link
                 href={l.href}
                 aria-current={current ? 'page' : undefined}
-                className={`inline-flex min-h-[44px] items-center text-sm underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${current ? 'font-semibold text-foreground underline' : 'text-foreground'}`}
+                className={`inline-flex min-h-[44px] items-center text-sm underline-offset-4 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${current ? 'font-semibold text-foreground underline' : 'text-foreground'}`}
               >
                 {l.label}
               </Link>

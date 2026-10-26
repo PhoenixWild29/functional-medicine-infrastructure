@@ -66,25 +66,25 @@ export function IntakeLinkPanel({ link, idPrefix = 'intake-link' }: { link: Inta
           readOnly
           value={link.url}
           onFocus={e => e.currentTarget.select()}
-          className="min-w-0 flex-1 rounded-md border border-slate-500 bg-background px-2 py-1.5 font-mono text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="min-w-0 flex-1 rounded-md border border-slate-500 bg-background px-2 py-1.5 font-mono text-xs text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         />
         <div className="flex gap-2">
           <button
             type="button"
             onClick={copy}
-            className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             Copy link
           </button>
           <a
             href={mailto}
-            className="rounded-md border border-slate-500 px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="rounded-md border border-slate-500 px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             Email this link
           </a>
         </div>
       </div>
-      <p role="status" className="mt-1 min-h-[1rem] text-xs text-foreground">
+      <p role="status" className="mt-1 min-h-4 text-xs text-foreground">
         {copied === 'copied' ? 'Link copied.' : copied === 'failed' ? 'Could not copy. Select the link and copy it.' : ''}
       </p>
       {until && <p className="text-xs text-muted-foreground">Works once, until {until}.</p>}

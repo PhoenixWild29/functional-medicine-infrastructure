@@ -30,13 +30,13 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
     <span
       role="status"
       className={cn(
-        'inline-flex items-center gap-1.5 text-sm transition-colors duration-[var(--duration-normal)]',
+        'inline-flex items-center gap-1.5 text-sm transition-colors duration-(--duration-normal)',
         className,
       )}
       style={{ color: config.textColor }}
     >
       <span
-        className="h-2 w-2 flex-shrink-0 rounded-full"
+        className="h-2 w-2 shrink-0 rounded-full"
         style={{ backgroundColor: config.color }}
         aria-hidden="true"
       />

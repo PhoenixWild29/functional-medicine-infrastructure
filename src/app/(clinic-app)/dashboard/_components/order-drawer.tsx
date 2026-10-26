@@ -628,9 +628,11 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop. m-0 on both layers: they render inside a space-y-*
+          list, whose sibling margin moved them 16px (Tailwind 3: down,
+          leaving a strip above the drawer; v4: the backdrop 16px short). */}
       <div
-        className="fixed inset-0 z-40 bg-black/40"
+        className="fixed inset-0 z-40 m-0 bg-black/40"
         aria-hidden
         onClick={onClose}
       />
@@ -640,7 +642,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
         role="dialog"
         aria-modal="true"
         aria-label={`Order details: ${orderDisplayNumber(order.orderId)}`}
-        className="fixed inset-y-0 right-0 z-50 w-full md:max-w-md overflow-y-auto bg-card border-l border-border shadow-2xl"
+        className="fixed inset-y-0 right-0 z-50 m-0 w-full md:max-w-md overflow-y-auto bg-card border-l border-border shadow-2xl"
       >
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-5 py-4">
@@ -653,7 +655,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
             type="button"
             onClick={onClose}
             aria-label="Close drawer"
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             ✕
           </button>
@@ -692,7 +694,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
                 type="button"
                 onClick={handleCopyBundleLink}
                 disabled={isCopyingGroupLink || isLoadingGroupInfo}
-                className="mt-3 w-full rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                className="mt-3 w-full rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-xs hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-600"
               >
                 {isCopyingGroupLink ? 'Copying…' : 'Copy Bundle Payment Link'}
               </button>
@@ -716,7 +718,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
                 type="button"
                 onClick={handleCopyPaymentLink}
                 disabled={isGeneratingLink}
-                className="mt-3 w-full rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                className="mt-3 w-full rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-xs hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-600"
               >
                 {isGeneratingLink
                   ? 'Generating...'
@@ -814,14 +816,14 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
                     type="button"
                     onClick={handleCombineAndSend}
                     disabled={isCreatingGroup || selectedSiblings.size === 0}
-                    className="mt-3 w-full rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                    className="mt-3 w-full rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-xs hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-600"
                   >
                     {isCreatingGroup ? 'Creating bundle…' : 'Combine and Copy Payment Link'}
                   </button>
                   <button
                     type="button"
                     onClick={() => { setBundlable(null); setSelectedSiblings(new Set()) }}
-                    className="mt-2 w-full rounded-md border border-emerald-300 bg-white px-4 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                    className="mt-2 w-full rounded-md border border-emerald-300 bg-white px-4 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-600"
                   >
                     Cancel
                   </button>
@@ -856,7 +858,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
                 value={groupFallbackUrl}
                 onFocus={(e) => e.currentTarget.select()}
                 rows={3}
-                className="mt-2 w-full rounded-md border border-border bg-background p-2 text-xs font-mono text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                className="mt-2 w-full rounded-md border border-border bg-background p-2 text-xs font-mono text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-600"
               />
             </div>
           )}
@@ -887,7 +889,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
                 value={fallbackUrl}
                 onFocus={(e) => e.currentTarget.select()}
                 rows={3}
-                className="mt-2 w-full rounded-md border border-border bg-background p-2 text-xs font-mono text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                className="mt-2 w-full rounded-md border border-border bg-background p-2 text-xs font-mono text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-600"
               />
             </div>
           )}
@@ -915,7 +917,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
                 onClose()
                 router.push(`/refill?order=${encodeURIComponent(order.orderId)}`)
               }}
-              className="w-full rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-full rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-xs hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               Refill this prescription
             </button>
@@ -939,7 +941,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
                     onClose()
                     router.push(`/new-prescription/search?editOrder=${order.orderId}`)
                   }}
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Edit prescription (the patient&apos;s link turns off until you send a new one)
                 </button>
@@ -960,7 +962,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
                   onClose()
                   router.push(`/new-prescription/sign/${order.orderId}`)
                 }}
-                className="mt-3 w-full rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
+                className="mt-3 w-full rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-xs hover:bg-amber-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-600"
               >
                 Review & Sign This Prescription
               </button>
@@ -981,7 +983,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
                     onClose()
                     router.push(`/new-prescription/sign/${order.orderId}`)
                   }}
-                  className="mt-2 w-full rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
+                  className="mt-2 w-full rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-600"
                 >
                   Sign as me to edit
                 </button>
@@ -993,7 +995,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
                     onClose()
                     router.push(`/new-prescription/search?editOrder=${order.orderId}`)
                   }}
-                  className="flex-1 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
+                  className="flex-1 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-600"
                 >
                   Edit prescription
                 </button>
@@ -1003,7 +1005,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
                     onClose()
                     router.push(`/new-prescription/search?addToOrder=${order.orderId}`)
                   }}
-                  className="flex-1 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
+                  className="flex-1 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-600"
                 >
                   + Add prescription
                 </button>
@@ -1113,7 +1115,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
               <ol className="relative border-l border-border space-y-4 pl-4">
                 {history.map((row, idx) => (
                   <li key={idx} className="relative">
-                    <span className="absolute -left-[1.125rem] top-1 h-3 w-3 rounded-full border-2 border-border bg-background" />
+                    <span className="absolute -left-4.5 top-1 h-3 w-3 rounded-full border-2 border-border bg-background" />
                     {/* NB-3: show transition label using new_status (the status transitioned TO) */}
                     {row.metadata?.event && DRAFT_EVENT_LABEL[row.metadata.event] ? (
                       <>

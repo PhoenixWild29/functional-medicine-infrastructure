@@ -107,7 +107,7 @@ export function OnboardingWizard(props: { state: OnboardingState; initialStep?: 
                   type="button"
                   onClick={() => go(s)}
                   aria-current={s === step ? 'step' : undefined}
-                  className={`flex w-full min-h-[44px] items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${s === step ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-muted'}`}
+                  className={`flex w-full min-h-[44px] items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${s === step ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-muted'}`}
                 >
                   <span><span className="sr-only">Step {i + 1}: </span>{STEP_LABELS[s]}</span>
                   <span className={`text-xs ${s === step ? 'text-primary-foreground' : state.steps[s] === 'complete' ? 'text-emerald-800' : 'text-slate-600'}`}>
@@ -120,7 +120,7 @@ export function OnboardingWizard(props: { state: OnboardingState; initialStep?: 
         </nav>
 
         <section aria-labelledby="step-heading" className="rounded-lg border border-border bg-card p-4 sm:p-6">
-          <h2 id="step-heading" ref={headingRef} tabIndex={-1} className="text-lg font-semibold text-foreground focus-visible:outline-none">
+          <h2 id="step-heading" ref={headingRef} tabIndex={-1} className="text-lg font-semibold text-foreground focus-visible:outline-hidden">
             {STEP_LABELS[step]}
           </h2>
           <div className="mt-4">
@@ -463,7 +463,7 @@ function AgreementStep({ agreement, state, readOnly, onAccepted }: { agreement: 
         tabIndex={0}
         role="region"
         aria-label={`${a.title} text`}
-        className="max-h-80 space-y-3 overflow-y-auto rounded-lg border border-slate-500 bg-background p-4 text-sm leading-relaxed text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="max-h-80 space-y-3 overflow-y-auto rounded-lg border border-slate-500 bg-background p-4 text-sm leading-relaxed text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
       >
         <LegalMarkdown text={a.text} headingLevel={4} />
       </div>
@@ -545,7 +545,7 @@ function ReviewStep({ state, readOnly, onGo, onSubmitted }: { state: OnboardingS
             <dt className="text-sm font-medium text-foreground">{STEP_LABELS[s]}</dt>
             <dd className="flex items-center gap-3 text-sm">
               <span className={state.steps[s] === 'complete' ? 'text-emerald-800' : 'text-slate-700'}>{statusText(s, state.steps[s])}</span>
-              <button type="button" className="text-sm font-medium text-primary underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onGo(s)}>
+              <button type="button" className="text-sm font-medium text-primary underline underline-offset-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onGo(s)}>
                 Open {STEP_LABELS[s]}
               </button>
             </dd>

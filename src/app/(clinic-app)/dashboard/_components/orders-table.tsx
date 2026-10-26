@@ -136,8 +136,8 @@ export function OrdersTable({ orders, allOrders = orders, isLoading, isError = f
             const isErr  = ERROR_STATUSES.has(order.status)
             const refill = refillRowState(order, allOrders)
             const rowCls = order.isOverdue48h
-              ? 'bg-amber-50 hover:bg-amber-100 cursor-pointer border-b border-border transition-colors duration-[var(--duration-fast)]'
-              : 'hover:bg-muted/40 cursor-pointer border-b border-border transition-colors duration-[var(--duration-fast)]'
+              ? 'bg-amber-50 hover:bg-amber-100 cursor-pointer border-b border-border transition-colors duration-(--duration-fast)'
+              : 'hover:bg-muted/40 cursor-pointer border-b border-border transition-colors duration-(--duration-fast)'
 
             return (
               <tr
@@ -221,7 +221,7 @@ export function OrdersTable({ orders, allOrders = orders, isLoading, isError = f
                       data-testid={`row-refill-${order.orderId}`}
                       onClick={e => e.stopPropagation()}
                       aria-label={`Refill ${order.medicationName} for ${order.patientName}`}
-                      className="rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       Refill
                     </Link>

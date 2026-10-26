@@ -150,7 +150,7 @@ export function GetStartedForm() {
                 checked={kind === c.kind}
                 onChange={() => { setKind(c.kind); setErrors({}); setFormError(null) }}
                 aria-describedby={`choice-${c.kind}-next`}
-                className="mt-1 h-5 w-5 shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="mt-1 h-5 w-5 shrink-0 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 disabled={busy}
               />
               <div className="min-w-0">
@@ -210,7 +210,7 @@ export function GetStartedForm() {
           <TextField id="gs-confirm" label="Confirm password" type="password" autoComplete="new-password" value={confirm} onChange={e => setConfirm(e.target.value)} error={errors['confirm']} disabled={busy} required />
 
           {/* Honeypot: people never see or reach it. */}
-          <div aria-hidden="true" className="absolute -left-[10000px] top-auto h-px w-px overflow-hidden">
+          <div aria-hidden="true" className="absolute left-[-10000px] top-auto h-px w-px overflow-hidden">
             <label htmlFor="gs-website">Website</label>
             <input id="gs-website" name="website" type="text" tabIndex={-1} autoComplete="off" value={website} onChange={e => setWebsite(e.target.value)} />
           </div>
@@ -226,7 +226,7 @@ export function GetStartedForm() {
 
       <p className="text-sm text-slate-700 dark:text-slate-300">
         Already have an account?{' '}
-        <a href="/login" className="font-medium text-primary underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Sign in</a>
+        <a href="/login" className="font-medium text-primary underline underline-offset-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">Sign in</a>
       </p>
     </section>
   )

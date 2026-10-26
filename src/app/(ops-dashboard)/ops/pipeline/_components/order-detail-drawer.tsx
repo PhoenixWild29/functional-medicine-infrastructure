@@ -145,7 +145,7 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-40 bg-black/30"
+        className="fixed inset-0 z-40 m-0 bg-black/30"
         onClick={onClose}
         aria-hidden
       />
@@ -155,7 +155,7 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
         role="dialog"
         aria-modal="true"
         aria-label={`Order detail: ${order.orderNumber ?? order.orderId}`}
-        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col bg-card shadow-2xl border-l border-border"
+        className="fixed inset-y-0 right-0 z-50 m-0 flex w-full max-w-lg flex-col bg-card shadow-2xl border-l border-border"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
@@ -168,7 +168,7 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Close detail"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
@@ -187,7 +187,7 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
               aria-selected={activeTab === tab}
               onClick={() => setActiveTab(tab)}
               className={`
-                mr-4 border-b-2 py-2.5 text-sm transition-colors focus-visible:outline-none
+                mr-4 border-b-2 py-2.5 text-sm transition-colors focus-visible:outline-hidden
                 ${activeTab === tab
                   ? 'border-primary text-primary font-medium'
                   : 'border-transparent text-muted-foreground hover:text-foreground'}
@@ -321,7 +321,7 @@ function DetailTab({
                   type="button"
                   disabled={loading}
                   onClick={() => onAction('release')}
-                  className="ml-2 text-xs text-muted-foreground underline hover:text-foreground focus-visible:outline-none"
+                  className="ml-2 text-xs text-muted-foreground underline hover:text-foreground focus-visible:outline-hidden"
                 >
                   Release
                 </button>
@@ -335,7 +335,7 @@ function DetailTab({
                   type="button"
                   disabled={loading}
                   onClick={() => onAction('claim', { opsAssignee: currentUserEmail })}
-                  className="ml-2 text-xs text-primary underline hover:no-underline focus-visible:outline-none"
+                  className="ml-2 text-xs text-primary underline hover:no-underline focus-visible:outline-hidden"
                 >
                   Claim
                 </button>

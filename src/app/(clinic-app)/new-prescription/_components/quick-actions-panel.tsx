@@ -638,7 +638,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
   }
 
   const buttonClass = (name: QuickActionsPanelName) =>
-    `whitespace-nowrap rounded-md border px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+    `whitespace-nowrap rounded-md border px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
       activePanel === name
         ? 'border-primary bg-primary/10 text-primary'
         : 'border-border bg-background text-foreground hover:bg-muted/50'
@@ -647,7 +647,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
   return (
     <div className="space-y-3">
       {/* Search first, Favorites / Protocols buttons beside it */}
-      <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+      <div className="rounded-lg border border-border bg-card p-4 shadow-xs">
         <label htmlFor="medication-search" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Medication
         </label>
@@ -682,7 +682,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
           id="favorites-panel"
           aria-label="Favorites"
           data-testid="favorites-panel"
-          className="rounded-lg border border-border bg-card p-3 shadow-sm space-y-2"
+          className="rounded-lg border border-border bg-card p-3 shadow-xs space-y-2"
         >
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-3">
@@ -813,7 +813,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
           id="protocols-panel"
           aria-label="Protocols"
           data-testid="protocols-panel"
-          className="rounded-lg border border-border bg-card p-3 shadow-sm space-y-2"
+          className="rounded-lg border border-border bg-card p-3 shadow-xs space-y-2"
         >
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -855,7 +855,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
                       onChange={e => setNewProtocolName(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void handleSaveProtocol() } }}
                       autoFocus
-                      className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                     />
                     <button
                       type="button"
@@ -999,7 +999,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
                     type="button"
                     disabled={!session.patient || !session.provider || loadingProtocol}
                     onClick={() => loadProtocolToSession(protocolDetail)}
-                    className="mt-2 w-full rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="mt-2 w-full rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-xs hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {loadingProtocol
                       ? 'Loading...'
@@ -1083,7 +1083,7 @@ function FavoriteCard({
                 type="button"
                 onClick={onConfirmDelete}
                 disabled={isDeleting}
-                className="rounded bg-red-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                className="rounded bg-red-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-red-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
               >
                 {isDeleting ? 'Deleting…' : 'Confirm'}
               </button>
@@ -1091,7 +1091,7 @@ function FavoriteCard({
                 type="button"
                 onClick={onCancelDelete}
                 disabled={isDeleting}
-                className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -1102,7 +1102,7 @@ function FavoriteCard({
                 type="button"
                 aria-label={`Edit favorite ${fav.label}`}
                 onClick={onEdit}
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M12 20h9" />
@@ -1113,7 +1113,7 @@ function FavoriteCard({
                 type="button"
                 aria-label={`Delete favorite ${fav.label}`}
                 onClick={onAskDelete}
-                className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M3 6h18" />
@@ -1268,7 +1268,7 @@ function FavoriteEditForm({ favorite: fav, patientState, patient, onCancel, onSa
           type="text"
           value={label}
           onChange={e => setLabel(e.target.value)}
-          className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
 
@@ -1287,7 +1287,7 @@ function FavoriteEditForm({ favorite: fav, patientState, patient, onCancel, onSa
                   placeholder="Amount"
                   value={preset.dose}
                   onChange={e => updatePreset(i, { dose: e.target.value })}
-                  className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </div>
               <div>
@@ -1296,19 +1296,19 @@ function FavoriteEditForm({ favorite: fav, patientState, patient, onCancel, onSa
                   id={`fav-unit-${fav.favorite_id}-${n}`}
                   value={preset.unit}
                   onChange={e => updatePreset(i, { unit: e.target.value })}
-                  className="rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <option value="">Unit</option>
                   {DOSE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
-              <div className="min-w-[9rem] flex-1">
+              <div className="min-w-36 flex-1">
                 <label htmlFor={`fav-freq-${fav.favorite_id}-${n}`} className="sr-only">Favorite frequency {n}</label>
                 <select
                   id={`fav-freq-${fav.favorite_id}-${n}`}
                   value={preset.frequency}
                   onChange={e => updatePreset(i, { frequency: e.target.value })}
-                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <option value="">Select frequency</option>
                   {FREQUENCY_OPTIONS.map(f => <option key={f.code} value={f.code}>{f.display}</option>)}
@@ -1347,7 +1347,7 @@ function FavoriteEditForm({ favorite: fav, patientState, patient, onCancel, onSa
           id={`fav-pharmacy-${fav.favorite_id}`}
           value={pharmacyId}
           onChange={e => setPharmacyId(e.target.value)}
-          className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           <option value="">No pinned pharmacy</option>
           {pharmacyChoices.map(p => <option key={p.pharmacy_id} value={p.pharmacy_id}>{p.name}</option>)}

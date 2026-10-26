@@ -192,7 +192,7 @@ export function RefillPicker({ patients, provider, preselectOrderId = null, pres
         </p>
       )}
       {/* ── Patients with prior orders ─────────────────────── */}
-      <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+      <div className="rounded-lg border border-border bg-card p-4 shadow-xs">
         <label htmlFor="refill-patient" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Patient
         </label>
@@ -201,7 +201,7 @@ export function RefillPicker({ patients, provider, preselectOrderId = null, pres
           data-testid="refill-patient-select"
           value={patientId ?? ''}
           onChange={e => { setPatientId(e.target.value || null); setSelected(new Set()); setError(null) }}
-          className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           <option value="">Select a patient…</option>
           {patients.map(p => (
@@ -214,7 +214,7 @@ export function RefillPicker({ patients, provider, preselectOrderId = null, pres
 
       {/* ── That patient's prescriptions ───────────────────── */}
       {active && (
-        <div className="rounded-lg border border-border bg-card p-4 shadow-sm" data-testid="refill-order-list">
+        <div className="rounded-lg border border-border bg-card p-4 shadow-xs" data-testid="refill-order-list">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Prescriptions to refill
           </p>
@@ -282,7 +282,7 @@ export function RefillPicker({ patients, provider, preselectOrderId = null, pres
                 type="button"
                 onClick={() => { void startRefill() }}
                 disabled={isLoading}
-                className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-transparent dark:text-red-200"
+                className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring dark:bg-transparent dark:text-red-200"
               >
                 {isLoading ? 'Retrying…' : 'Retry'}
               </button>
@@ -294,7 +294,7 @@ export function RefillPicker({ patients, provider, preselectOrderId = null, pres
             data-testid="refill-start"
             disabled={selected.size === 0 || isLoading}
             onClick={() => void startRefill()}
-            className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             {isLoading
               ? 'Preparing…'

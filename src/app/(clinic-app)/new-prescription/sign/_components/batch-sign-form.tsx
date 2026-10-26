@@ -321,7 +321,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
           <button
             type="button"
             onClick={() => setCheckAttempt(a => a + 1)}
-            className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Retry
           </button>
@@ -445,7 +445,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
           drafts, awaiting Sign as me): no pad, no Sign & Send. */}
       {allLines.length > 0 && (<>
       {/* One signature pad for the whole batch. */}
-      <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+      <div className="rounded-lg border border-border bg-card p-4 shadow-xs">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Provider Signature: {signer.name}</p>
         <p className="mt-1 text-xs text-muted-foreground">
           NPI: {signer.npi}, signing {selectedLines.length} prescription{selectedLines.length !== 1 ? 's' : ''}
@@ -491,7 +491,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
           type="button"
           onClick={handleSignAndSend}
           disabled={!canSend}
-          className={`flex-1 rounded-lg px-6 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+          className={`flex-1 rounded-lg px-6 py-2 text-sm font-semibold transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
             canSend ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'cursor-not-allowed bg-muted text-muted-foreground'
           }`}
         >
@@ -543,7 +543,7 @@ function DraftLineList({ patient, selected, selectionIds, problems, disabled, lo
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4 shadow-sm" data-testid="draft-lines">
+    <div className="rounded-lg border border-border bg-card p-4 shadow-xs" data-testid="draft-lines">
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{locked ? 'Chosen' : 'Draft'} lines ({patient.lines.length})</p>
         {!locked && <button

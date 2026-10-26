@@ -81,7 +81,7 @@ export function SignAsMePanel({ orderId, assignedProviderName, myProviderName, l
           type="button"
           onClick={handleSignAsMe}
           disabled={isSubmitting}
-          className="min-h-[44px] rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
+          className="min-h-[44px] rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-xs hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-600"
         >
           {isSubmitting ? 'Reassigning…' : 'Sign as me'}
         </button>
@@ -89,7 +89,7 @@ export function SignAsMePanel({ orderId, assignedProviderName, myProviderName, l
           type="button"
           onClick={() => router.push('/dashboard')}
           disabled={isSubmitting}
-          className="text-sm text-muted-foreground underline hover:text-foreground focus-visible:outline-none"
+          className="text-sm text-muted-foreground underline hover:text-foreground focus-visible:outline-hidden"
         >
           Back to dashboard
         </button>

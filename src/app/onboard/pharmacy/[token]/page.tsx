@@ -37,14 +37,14 @@ export default async function PharmacyInvitePage({ params }: { params: Promise<{
 
   return (
     <div className="flex min-h-screen items-start justify-center bg-background px-4 py-10 sm:items-center">
-      <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-sm sm:p-8">
+      <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-xs sm:p-8">
         <p className="text-sm font-semibold text-muted-foreground">CompoundIQ</p>
         {notice ? (
           <section aria-labelledby="notice-title" className="mt-4 space-y-3">
             <h1 id="notice-title" className="text-xl font-semibold text-foreground">{notice.title}</h1>
             <p className="text-sm text-muted-foreground">{notice.body}</p>
             {invite !== 'error' && invite?.state === 'accepted' && (
-              <a href="/login?redirectTo=%2Fpharmacy%2Fonboarding" className="inline-flex min-h-[44px] items-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+              <a href="/login?redirectTo=%2Fpharmacy%2Fonboarding" className="inline-flex min-h-[44px] items-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                 Sign in
               </a>
             )}

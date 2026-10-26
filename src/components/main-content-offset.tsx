@@ -33,7 +33,7 @@ export function MainContentOffset({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <div className={`md:pl-14 transition-[padding] duration-[var(--duration-normal)] ${collapsed ? 'xl:pl-14' : 'xl:pl-60'}`}>
+    <div className={`md:pl-14 transition-[padding] duration-(--duration-normal) ${collapsed ? 'xl:pl-14' : 'xl:pl-60'}`}>
       {children}
     </div>
   )

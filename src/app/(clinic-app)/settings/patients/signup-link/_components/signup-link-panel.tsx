@@ -26,8 +26,8 @@ export interface SignupLinkView {
 }
 
 const QR_LABEL = 'QR code for the patient sign-up link'
-const primaryButton = 'rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
-const secondaryButton = 'rounded-md border border-slate-500 px-4 py-2 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
+const primaryButton = 'rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
+const secondaryButton = 'rounded-md border border-slate-500 px-4 py-2 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
 
 // Print only the sheet, whatever layout surrounds this page.
 const PRINT_CSS = `@media print {
@@ -124,7 +124,7 @@ export function SignupLinkPanel({ clinicName, initial, canManage }: { clinicName
                   readOnly
                   value={link.url}
                   onFocus={e => e.currentTarget.select()}
-                  className="mt-1 block w-full rounded-md border border-slate-500 bg-background px-3 py-2 font-mono text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="mt-1 block w-full rounded-md border border-slate-500 bg-background px-3 py-2 font-mono text-xs text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </div>
               <p className="text-sm text-foreground">

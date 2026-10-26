@@ -151,7 +151,7 @@ export function ProposalOptions({ lines, plan, onChange, disabled = false }: {
                 maxLength={PROPOSAL_OPTION_LABEL_MAX}
                 disabled={disabled}
                 onChange={e => setLabel(option.key, e.target.value)}
-                className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
             {inOption.length === 0 ? (
@@ -163,7 +163,7 @@ export function ProposalOptions({ lines, plan, onChange, disabled = false }: {
                   const starId = `proposal-required-${line.id}`
                   return (
                     <li key={line.id} className="flex flex-wrap items-center gap-3 rounded-md bg-muted/30 px-3 py-2">
-                      <span className="min-w-0 flex-1 break-words text-sm text-foreground">{line.medicationName}</span>
+                      <span className="min-w-0 flex-1 wrap-break-word text-sm text-foreground">{line.medicationName}</span>
                       <label htmlFor={starId} className="flex min-h-[44px] items-center gap-1.5 text-sm text-foreground">
                         <input
                           id={starId}
@@ -181,7 +181,7 @@ export function ProposalOptions({ lines, plan, onChange, disabled = false }: {
                         value={option.key}
                         disabled={disabled}
                         onChange={e => moveLine(line.id, e.target.value)}
-                        className="min-h-[44px] rounded-md border border-input bg-background px-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="min-h-[44px] rounded-md border border-input bg-background px-2 text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         {plan.options.map((o, j) => (
                           <option key={o.key} value={o.key}>{optionName(j)}{o.label.trim() ? `: ${o.label.trim()}` : ''}</option>
@@ -197,7 +197,7 @@ export function ProposalOptions({ lines, plan, onChange, disabled = false }: {
                 type="button"
                 disabled={disabled}
                 onClick={() => removeOption(option.key)}
-                className="inline-flex min-h-[44px] items-center rounded-md border border-input px-3 text-sm text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="inline-flex min-h-[44px] items-center rounded-md border border-input px-3 text-sm text-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Remove {name}
               </button>
@@ -209,7 +209,7 @@ export function ProposalOptions({ lines, plan, onChange, disabled = false }: {
         type="button"
         disabled={disabled}
         onClick={addOption}
-        className="inline-flex min-h-[44px] items-center rounded-md border border-input px-3 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="inline-flex min-h-[44px] items-center rounded-md border border-input px-3 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
       >
         Add an option
       </button>

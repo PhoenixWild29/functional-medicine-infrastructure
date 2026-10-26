@@ -70,7 +70,7 @@ describe('intake: long answers wrap on the review step', () => {
     fireEvent.click(await screen.findByLabelText('No known drug allergies'))
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await screen.findByText('Check and submit')
-    expect(cls(container.querySelector('dl'))).toMatch(/\bbreak-words\b/)
+    expect(cls(container.querySelector('dl'))).toMatch(/\bwrap-break-word\b/)
   })
 })
 
@@ -110,7 +110,7 @@ describe('plan: checkboxes, long drug names and prices', () => {
     const name = screen.getByText('Semaglutide/Cyanocobalamin-Injectable-Suspension')
     const price = screen.getByText('$12345.67')
     expect(cls(name)).toMatch(/\bmin-w-0\b/)
-    expect(cls(name)).toMatch(/\bbreak-words\b/)
+    expect(cls(name)).toMatch(/\bwrap-break-word\b/)
     expect(cls(price)).toMatch(/\bshrink-0\b/)
     expect(cls(price)).toMatch(/\bwhitespace-nowrap\b/)
   })
@@ -120,7 +120,7 @@ describe('plan: checkboxes, long drug names and prices', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Choose this plan' }))
     const row = (await screen.findByText('Confirm your choice')).closest('section')!.querySelector('li')!
     const [name, price] = [...row.querySelectorAll('span')]
-    expect(cls(name!)).toMatch(/\bbreak-words\b/)
+    expect(cls(name!)).toMatch(/\bwrap-break-word\b/)
     expect(cls(price!)).toMatch(/\bwhitespace-nowrap\b/)
   })
 })

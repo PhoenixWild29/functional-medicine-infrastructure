@@ -24,7 +24,7 @@ export function NavSignOutButton() {
     <button
       onClick={handleSignOut}
       disabled={loading}
-      className="text-sm text-muted-foreground hover:text-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-ring rounded disabled:opacity-50"
+      className="text-sm text-muted-foreground hover:text-foreground transition-colors focus:outline-hidden focus:ring-2 focus:ring-ring rounded disabled:opacity-50"
     >
       {loading ? 'Signing out…' : 'Sign out'}
     </button>

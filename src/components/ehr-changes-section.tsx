@@ -62,7 +62,7 @@ export function EhrChangesSection({ patientId, className = '' }: { patientId: st
           : 'Values your EHR changed on this patient.'}
       </p>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[32rem] text-left text-xs">
+        <table className="w-full min-w-lg text-left text-xs">
           <thead className="text-muted-foreground">
             <tr>
               <th scope="col" className="py-1 pr-3 font-medium">Field</th>
@@ -76,8 +76,8 @@ export function EhrChangesSection({ patientId, className = '' }: { patientId: st
             {changes.map(c => (
               <tr key={c.changeId} className="border-t border-border align-top">
                 <th scope="row" className="py-1.5 pr-3 font-medium text-foreground">{FIELD_LABEL[c.field] ?? c.field}</th>
-                <td className="break-words py-1.5 pr-3 text-foreground">{fieldValueText(c.field, c.ourValue)}</td>
-                <td className="break-words py-1.5 pr-3 text-foreground">{fieldValueText(c.field, c.ehrValue)}</td>
+                <td className="wrap-break-word py-1.5 pr-3 text-foreground">{fieldValueText(c.field, c.ourValue)}</td>
+                <td className="wrap-break-word py-1.5 pr-3 text-foreground">{fieldValueText(c.field, c.ehrValue)}</td>
                 <td className="py-1.5 pr-3 text-foreground">{c.applied ? 'Applied' : 'Kept (patient entered)'}</td>
                 <td className="py-1.5 text-foreground"><time dateTime={c.changedAt}>{new Date(c.changedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</time></td>
               </tr>

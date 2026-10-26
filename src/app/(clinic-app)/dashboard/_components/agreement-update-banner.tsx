@@ -53,7 +53,7 @@ export function AgreementUpdateBanner({ notice }: { notice: AgreementNotice | nu
       <button
         type="button"
         onClick={dismiss}
-        className="rounded-md border border-sky-700 px-3 py-1.5 text-sm font-medium text-sky-900 hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-sky-400 dark:text-sky-200 dark:hover:bg-sky-900/40"
+        className="rounded-md border border-sky-700 px-3 py-1.5 text-sm font-medium text-sky-900 hover:bg-sky-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring dark:border-sky-400 dark:text-sky-200 dark:hover:bg-sky-900/40"
       >
         Dismiss
       </button>

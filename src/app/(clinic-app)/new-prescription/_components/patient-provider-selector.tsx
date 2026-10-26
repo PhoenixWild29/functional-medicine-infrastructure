@@ -252,14 +252,14 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
             <button
               type="button"
               onClick={() => router.push('/new-prescription/search')}
-              className="min-h-[44px] rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+              className="min-h-[44px] rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-blue-600"
             >
               Continue Adding Prescriptions
             </button>
             <button
               type="button"
               onClick={() => router.push('/new-prescription/review')}
-              className="min-h-[44px] rounded-md border border-blue-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+              className="min-h-[44px] rounded-md border border-blue-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-blue-600"
             >
               Review & Send ({session.prescriptionCount})
             </button>
@@ -270,7 +270,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
                 setSelectedPatientId('')
                 setSelectedProviderId('')
               }}
-              className="rounded-md px-3 py-1.5 text-xs font-medium text-blue-600 underline hover:text-blue-800 focus-visible:outline-none"
+              className="rounded-md px-3 py-1.5 text-xs font-medium text-blue-600 underline hover:text-blue-800 focus-visible:outline-hidden"
             >
               Start Over
             </button>
@@ -279,7 +279,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
       )}
 
       {/* Patient selection */}
-      <div className="rounded-lg border border-border bg-card p-5 shadow-sm">
+      <div className="rounded-lg border border-border bg-card p-5 shadow-xs">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Select Patient
@@ -289,7 +289,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
             type="button"
             aria-expanded={showNewPatient}
             onClick={() => { setShowNewPatient(v => !v); setNewIntake(null) }}
-            className="rounded-md border border-slate-500 px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="rounded-md border border-slate-500 px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             + New patient
           </button>
@@ -316,7 +316,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
             placeholder="Search by name, DOB, or phone..."
             value={patientSearch}
             onChange={e => setPatientSearch(e.target.value)}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Search patients"
           />
         </div>
@@ -340,7 +340,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
                 key={patient.patient_id}
                 type="button"
                 onClick={() => setSelectedPatientId(patient.patient_id)}
-                className={`w-full text-left px-4 py-3 border-b border-border last:border-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                className={`w-full text-left px-4 py-3 border-b border-border last:border-0 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
                   selectedPatientId === patient.patient_id
                     ? 'bg-primary/10 border-l-4 border-l-primary'
                     : 'hover:bg-muted/50'
@@ -411,7 +411,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
       {/* Provider selection — MA / clinic admin only. A provider is the
           prescribing provider (WO-100) and never sees this list. */}
       {!selfProvider && (
-      <div className="rounded-lg border border-border bg-card p-5 shadow-sm">
+      <div className="rounded-lg border border-border bg-card p-5 shadow-xs">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Select Provider
         </h2>
@@ -427,7 +427,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
                 key={provider.provider_id}
                 type="button"
                 onClick={() => setSelectedProviderId(provider.provider_id)}
-                className={`w-full text-left rounded-md border px-4 py-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                className={`w-full text-left rounded-md border px-4 py-3 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
                   selectedProviderId === provider.provider_id
                     ? 'border-primary bg-primary/10'
                     : 'border-border hover:bg-muted/50'
@@ -471,7 +471,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
         <button
           type="button"
           onClick={() => router.push('/dashboard')}
-          className="text-sm text-muted-foreground underline hover:text-foreground focus-visible:outline-none"
+          className="text-sm text-muted-foreground underline hover:text-foreground focus-visible:outline-hidden"
         >
           Cancel
         </button>
@@ -479,7 +479,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
           type="button"
           onClick={handleContinue}
           disabled={!canProceed}
-          className={`rounded-lg px-6 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+          className={`rounded-lg px-6 py-3 text-sm font-semibold transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
             canProceed
               ? 'bg-primary text-primary-foreground hover:bg-primary/90'
               : 'bg-muted text-muted-foreground cursor-not-allowed'

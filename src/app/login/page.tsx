@@ -158,7 +158,7 @@ function LoginForm() {
       <button
         type="submit"
         disabled={loading || !email || !password}
-        className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-[var(--duration-fast)]"
+        className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-xs hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-(--duration-fast)"
         style={{ minHeight: '48px' }}
       >
         {loading ? (
@@ -200,7 +200,7 @@ export default function LoginPage() {
       >
         {/* Logo mark */}
         <div className="flex flex-col items-center gap-6 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-sm">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-xs">
             <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden>
               <rect x="4" y="4" width="10" height="10" rx="2" fill="white" fillOpacity="0.9" />
               <rect x="18" y="4" width="10" height="10" rx="2" fill="white" fillOpacity="0.6" />
@@ -224,7 +224,7 @@ export default function LoginPage() {
               'HIPAA-compliant platform',
             ].map(f => (
               <li key={f} className="flex items-center gap-2">
-                <svg className="h-4 w-4 flex-shrink-0 text-blue-400" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                <svg className="h-4 w-4 shrink-0 text-blue-400" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
                   <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
                 </svg>
                 {f}
@@ -257,7 +257,7 @@ export default function LoginPage() {
 
           {/* Self sign-up: no invite needed. */}
           <p className="mt-6 text-center text-sm">
-            <Link href="/get-started" className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <Link href="/get-started" className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
               New to CompoundIQ? Get started
             </Link>
           </p>

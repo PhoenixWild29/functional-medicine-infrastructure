@@ -106,11 +106,11 @@ function validate(step: Step, a: Answers, signup: boolean): Errors {
 }
 
 const input = (invalid: boolean) =>
-  `mt-1 block w-full min-h-[44px] rounded-lg border bg-background px-3 py-2 text-base text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${invalid ? 'border-red-700' : 'border-slate-500'}`
+  `mt-1 block w-full min-h-[44px] rounded-lg border bg-background px-3 py-2 text-base text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${invalid ? 'border-red-700' : 'border-slate-500'}`
 const primaryButton =
-  'min-h-[48px] w-full rounded-lg bg-primary px-4 py-3 text-base font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
+  'min-h-[48px] w-full rounded-lg bg-primary px-4 py-3 text-base font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
 const secondaryButton =
-  'min-h-[44px] w-full rounded-lg border border-slate-500 px-4 py-2 text-base font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
+  'min-h-[44px] w-full rounded-lg border border-slate-500 px-4 py-2 text-base font-medium text-foreground hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
 
 export function IntakeFlow({ token, clinicName, variant = 'link' }: { token: string; clinicName: string; variant?: 'link' | 'signup' }) {
   const signup = variant === 'signup'
@@ -232,7 +232,7 @@ export function IntakeFlow({ token, clinicName, variant = 'link' }: { token: str
       {stepNumber >= 0 && <p className="mt-3 text-sm text-muted-foreground">Step {stepNumber + 1} of {NUMBERED.length}</p>}
 
       <section aria-labelledby={id('step')} className="mt-2 space-y-4">
-        <h2 id={id('step')} ref={headingRef} tabIndex={-1} className="text-xl font-semibold text-foreground focus-visible:outline-none">
+        <h2 id={id('step')} ref={headingRef} tabIndex={-1} className="text-xl font-semibold text-foreground focus-visible:outline-hidden">
           {STEP_TITLES[step]}
         </h2>
 
@@ -258,7 +258,7 @@ export function IntakeFlow({ token, clinicName, variant = 'link' }: { token: str
                   onChange={e => set('privacyNotice', e.target.checked)}
                   aria-invalid={err('privacyNotice') ? true : undefined}
                   aria-describedby={desc('privacyNotice')}
-                  className="mt-1 h-5 w-5 shrink-0 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="mt-1 h-5 w-5 shrink-0 accent-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 />
                 <span className="text-base text-foreground">I have read the privacy notice.</span>
               </label>
@@ -275,7 +275,7 @@ export function IntakeFlow({ token, clinicName, variant = 'link' }: { token: str
             {signup && (
               // Honeypot: off screen, hidden from assistive tech, out of the
               // tab order. Only a bot fills it in.
-              <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
+              <div aria-hidden="true" className="absolute left-[-9999px] h-px w-px overflow-hidden">
                 <label htmlFor={id('website')}>Website</label>
                 <input id={id('website')} name="website" type="text" tabIndex={-1} autoComplete="off" value={a.website} onChange={e => set('website', e.target.value)} />
               </div>
@@ -286,7 +286,7 @@ export function IntakeFlow({ token, clinicName, variant = 'link' }: { token: str
                 type="checkbox"
                 checked={a.sms}
                 onChange={e => set('sms', e.target.checked)}
-                className="mt-1 h-5 w-5 shrink-0 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="mt-1 h-5 w-5 shrink-0 accent-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               />
               <span className="text-base text-foreground">{SMS_CONSENT_TEXT}</span>
             </label>
@@ -352,7 +352,7 @@ export function IntakeFlow({ token, clinicName, variant = 'link' }: { token: str
                     {([['female', 'Female'], ['male', 'Male'], ['unknown', 'Prefer not to say']] as const).map(([value, label]) => (
                       <label key={value} className="flex min-h-[44px] items-center gap-2 rounded-lg border border-slate-500 px-3 text-base text-foreground">
                         <input type="radio" name={id('sex')} value={value} checked={a.sex === value} onChange={() => set('sex', value)}
-                          className="h-5 w-5 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+                          className="h-5 w-5 accent-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring" />
                         {label}
                       </label>
                     ))}
@@ -418,7 +418,7 @@ export function IntakeFlow({ token, clinicName, variant = 'link' }: { token: str
                 {([['nkda', 'No known drug allergies'], ['allergies', 'I have allergies']] as const).map(([value, label]) => (
                   <label key={value} className="flex min-h-[44px] items-center gap-2 rounded-lg border border-slate-500 px-3 text-base text-foreground">
                     <input type="radio" name={id('allergyChoice')} value={value} checked={a.allergyChoice === value} onChange={() => set('allergyChoice', value)}
-                      className="h-5 w-5 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+                      className="h-5 w-5 accent-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring" />
                     {label}
                   </label>
                 ))}
@@ -446,8 +446,8 @@ export function IntakeFlow({ token, clinicName, variant = 'link' }: { token: str
 
         {step === 'review' && (
           <div className="space-y-4">
-            {/* break-words: a long name, street or city wraps inside the card on a phone. */}
-            <dl className="space-y-3 break-words rounded-lg border border-border p-3 text-base">
+            {/* wrap-break-word: a long name, street or city wraps inside the card on a phone. */}
+            <dl className="space-y-3 wrap-break-word rounded-lg border border-border p-3 text-base">
               <div><dt className="text-sm text-muted-foreground">Name</dt><dd className="text-foreground">{a.firstName} {a.lastName}</dd></div>
               {signup && <div><dt className="text-sm text-muted-foreground">Mobile number</dt><dd className="text-foreground">{a.mobile.trim()}</dd></div>}
               <div><dt className="text-sm text-muted-foreground">Date of birth</dt><dd className="text-foreground">{a.dateOfBirth}</dd></div>

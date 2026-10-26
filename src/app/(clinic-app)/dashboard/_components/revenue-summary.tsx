@@ -139,7 +139,7 @@ export function RevenueSummary({
           href={card.href}
           data-testid={`kpi-card-${card.id}`}
           aria-label={`${card.label}: ${card.value}. Show these orders.`}
-          className="block rounded-xl border border-border bg-card p-5 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="block rounded-xl border border-border bg-card p-5 text-left shadow-xs transition-colors hover:border-primary/40 hover:bg-accent/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           title={card.value === '—' ? card.emptyTip : undefined}
         >
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">

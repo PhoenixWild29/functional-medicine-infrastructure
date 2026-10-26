@@ -267,14 +267,14 @@ export function NewPatientForm({ onCreated, onUseExisting, onCancel, faceSheetAv
   const describe = (f: Field, base?: string) =>
     [base, errorFor(f) ? (f === 'phone' ? ids.phoneError : ids.fieldError) : null].filter(Boolean).join(' ') || undefined
   const inputClass = (f: Field) =>
-    `mt-1 w-full rounded-md border bg-background px-3 py-2 text-base text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${errorFor(f) ? 'border-red-700' : 'border-slate-500'}`
+    `mt-1 w-full rounded-md border bg-background px-3 py-2 text-base text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${errorFor(f) ? 'border-red-700' : 'border-slate-500'}`
   /** "From face sheet" inside the label, so it is read out with the field. */
   const tag = (key: string) => fromSheet.has(key)
     ? <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-900">From face sheet</span>
     : null
   const labelClass = 'block text-sm font-medium text-foreground'
-  const buttonSecondary = 'rounded-md border border-slate-500 bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
-  const textareaClass = 'mt-1 w-full rounded-md border border-slate-500 bg-background px-3 py-2 text-base text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+  const buttonSecondary = 'rounded-md border border-slate-500 bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
+  const textareaClass = 'mt-1 w-full rounded-md border border-slate-500 bg-background px-3 py-2 text-base text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring'
 
   return (
     <section aria-labelledby={ids.heading} className="mt-3 rounded-md border border-border bg-background p-4">
@@ -420,7 +420,7 @@ export function NewPatientForm({ onCreated, onUseExisting, onCancel, faceSheetAv
                 aria-invalid={errorFor('allergies') ? true : undefined} aria-describedby={describe('allergies', ids.allergiesHint)} className={inputClass('allergies')} />
               <div className="mt-2 flex items-center gap-2">
                 <input id={ids.nkda} type="checkbox" checked={nkda} onChange={e => { setNkda(e.target.checked); if (e.target.checked) setAllergies('') }}
-                  className="h-5 w-5 rounded border-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+                  className="h-5 w-5 rounded border-slate-500 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring" />
                 <label htmlFor={ids.nkda} className="text-sm text-foreground">No known drug allergies{tag('nkda')}</label>
               </div>
             </div>
@@ -440,14 +440,14 @@ export function NewPatientForm({ onCreated, onUseExisting, onCancel, faceSheetAv
           <button
             type="submit"
             disabled={busy || reading}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {busy ? 'Adding…' : 'Add patient'}
           </button>
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-md border border-slate-500 px-4 py-2 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="rounded-md border border-slate-500 px-4 py-2 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             Cancel
           </button>
@@ -457,7 +457,7 @@ export function NewPatientForm({ onCreated, onUseExisting, onCancel, faceSheetAv
 
       {candidates && (
         <section aria-labelledby={ids.dupHeading} className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3">
-          <h4 id={ids.dupHeading} ref={dupRef} tabIndex={-1} className="text-sm font-semibold text-amber-950 focus-visible:outline-none">
+          <h4 id={ids.dupHeading} ref={dupRef} tabIndex={-1} className="text-sm font-semibold text-amber-950 focus-visible:outline-hidden">
             Is this the same patient?
           </h4>
           <p className="mt-1 text-xs text-amber-950">A patient in this clinic may be the same person. Patients are never merged: pick one, or add a new patient.</p>
@@ -473,7 +473,7 @@ export function NewPatientForm({ onCreated, onUseExisting, onCancel, faceSheetAv
                 <button
                   type="button"
                   onClick={() => onUseExisting(c.patientId)}
-                  className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                   Use {c.name}
                 </button>
@@ -484,7 +484,7 @@ export function NewPatientForm({ onCreated, onUseExisting, onCancel, faceSheetAv
             type="button"
             disabled={busy}
             onClick={() => void submit(true)}
-            className="mt-3 rounded-md border border-slate-500 bg-background px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-60"
+            className="mt-3 rounded-md border border-slate-500 bg-background px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-60"
           >
             No, add a new patient
           </button>

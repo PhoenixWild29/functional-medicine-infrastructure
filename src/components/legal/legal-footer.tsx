@@ -20,7 +20,7 @@ export function LegalFooter({ className = '' }: { className?: string }) {
               <Link
                 href={l.href}
                 prefetch={false}
-                className="inline-flex min-h-[44px] items-center text-slate-700 underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-slate-300"
+                className="inline-flex min-h-[44px] items-center text-slate-700 underline underline-offset-2 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring dark:text-slate-300"
               >
                 {l.label}
               </Link>

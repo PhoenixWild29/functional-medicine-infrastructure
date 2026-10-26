@@ -12,7 +12,7 @@
 
 import type { ReactNode } from 'react'
 
-const control = 'mt-1 block w-full min-h-[44px] rounded-md border bg-background px-3 py-2 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60'
+const control = 'mt-1 block w-full min-h-[44px] rounded-md border bg-background px-3 py-2 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60'
 
 function describedBy(id: string, hint?: ReactNode | undefined, error?: string | null | undefined): string | undefined {
   const ids = [hint ? `${id}-hint` : null, error ? `${id}-error` : null].filter(Boolean)
@@ -164,7 +164,7 @@ export function PrimaryButton(props: { children: ReactNode; type?: 'submit' | 'b
       disabled={disabled || busy}
       aria-busy={busy || undefined}
       aria-describedby={props['aria-describedby']}
-      className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover dark:bg-primary-hover dark:hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover dark:bg-primary-hover dark:hover:bg-blue-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {children}
     </button>
@@ -179,7 +179,7 @@ export function SecondaryButton(props: { children: ReactNode; onClick?: (() => v
       onClick={onClick}
       disabled={disabled}
       aria-label={ariaLabel}
-      className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {children}
     </button>
