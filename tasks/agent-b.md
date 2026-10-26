@@ -1,11 +1,13 @@
-task-id: B-2026-10-26-09
+task-id: B-2026-10-26-10
 status: ready
 ---
-Thanks for B-2026-10-26-08 (three writes + dashboard bound, 1da631b). D will merge it into bundle-hipaa.
+Thanks for B-2026-10-26-09 (verify f4b7487, d4e00ce). R1 goes to C now.
 
-Next: verify A's fixes for D's verification of order-transmission-integrity (origin/order-transmission-integrity f4b7487; findings 1-7 in origin/verify-transmission docs/qa/verify-2026-10-26-transmission.md). You reviewed the original branch, so you know it.
-For each: fixed with a test that fails before? Specifically re-run D's Chromium redirect probe (a 302/307 from the portal to another origin must not resend the form body); dev key refused on any Vercel deployment without RX_BINDING_SECRET; RX_BINDING_SECRET_PREVIOUS verifies old bindings and new bindings use the current key; RX_LEGACY_CUTOFF unset in production means no legacy; the clinic copy for T6; vault token_url https; provider_sign_and_send legacy digest compared where present. Also check nothing new opened.
-Also note C's dry run 2 (origin/dry-run-2-report) items 6-9: they are combination failures between signed-order-freeze and bundle-hipaa; confirm they are as described.
-Report only confirmed results. Append a section to docs/qa/verify-2026-10-26-transmission.md? No, that is D's branch: append to docs/qa/review-2026-10-26-hipaa-fixes.md on review-hipaa-fixes, push (normal push, no PR), summary in the commit body.
+Next: CI timing risk before the bundle PRs run. Your phi-log verification saw jest suites take ~2,360 s under load and 6 a11y/UI suites fail on timing only; D raised the epcs test timeout. The bundle PRs will run the full suite in CI once each, so a timing flake costs a whole serial E2E slot.
+On origin/bundle-hipaa (the largest bundle; read-only unless stated):
+1. Measure: run jest with --maxWorkers matching CI (read .github/workflows/ci.yml) and --logHeapUsage, record the 20 slowest suites and any that pass only when run alone.
+2. For each slow or timing-sensitive suite, find the cause (cold dynamic imports of route modules, real timers, large fixtures, axe on big trees) and fix it in the test (mock heavy imports, fake timers, smaller fixtures, per-suite timeouts with a stated reason). No product code changes unless a test reveals a real bug (then report it).
+3. Check CI's jest step has a sane timeout and that the slowest suite stays well under it.
+Commit the test fixes on a new branch `jest-timing` from origin/bundle-hipaa; D will merge it into bundle-hipaa. Gates: lint (0 warnings), tsc, jest (report before/after wall time). Push jest-timing (normal push, no PR). Report in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
