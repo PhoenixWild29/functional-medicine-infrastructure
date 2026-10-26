@@ -583,3 +583,64 @@ Pushed while item 1 was in review, so it is reviewed here, not in a follow-up.
 ### Merge notes
 - Both branches and phi-access-log-coverage edit `src/lib/audit/phi-access.ts`, and D also edits the ops page guard test. Expect small conflicts.
 - D2 and D4 are only fully true once phi-access-log-coverage is in. Fix them in whichever branch merges second.
+
+## 8. Fix verification (C-2026-10-26-03)
+
+This section checks the fixes for B's review of `password-flows`. The findings are P1 to P5 in `docs/qa/review-2026-10-26-hipaa-fixes.md` on `origin/review-hipaa-fixes`.
+
+`origin/order-transmission-integrity` is **not covered here**. It was still at 2b9b69a5 (no T1 to T7 fixes pushed) when this check finished, so it needs a follow-up once A pushes.
+
+### Method
+- **Branch and commit:** `origin/password-flows` at **1d0ed5e1**, the only commit after the review (on 69e60cfb).
+- **Would B's tests have caught the bugs?** I ran B's new and changed tests twice in a temporary worktree:
+  - on 1d0ed5e1 as committed;
+  - with every non-test file put back to 69e60cfb. The new `recovery-session.ts` was kept, so the route suites could load; the old routes do not import it.
+- **My own probes:** I also wrote probes in B's route harness, run against 1d0ed5e1, for the scenarios the orchestrator named.
+- **Clean-up:** the probes and the worktree were deleted afterwards. Nothing was pushed to `password-flows`.
+
+**Result on 1d0ed5e1:** B's 6 changed suites pass, 96 tests.
+
+**Result on the pre-fix code:**
+- The route and page suites: 12 of 33 fail. These cover P1, P3 and P5, and the reset page.
+- The P4 tests in `accept-invite`, `invites` and `self-serve`: 5 fail.
+- The new `recovery-session` unit test fails to load, because there is no module before the fix.
+
+So every fix has a test that fails on the old code.
+
+### Results
+
+| # | Fixed? | Test that fails before | My check on 1d0ed5e1 |
+|---|---|---|---|
+| P1 | **Yes** | password-routes "403 for an ordinary signed-in session (amr password): no password is set, nothing is signed out", plus the 15-minute, plain-string-amr and other-user cases; reset page "an ordinary signed-in session: no form, sent to Settings" | Ordinary session (amr `password`): 403, `updateUser` and `signOut` never called. A fresh recovery session: 200. |
+| P2 | **Not addressed** in 1d0ed5e1 (no change to `api/providers` or the invite flow) | none | not re-run |
+| P3 | **Yes** | "timing (review P3): a known address ... and an unknown one ... answer at the same time"; "a rate-limited answer is held to the same floor" | Supabase mocked at 400 ms and at 0 ms: answered in 1516 ms and 1508 ms (within 50 ms of each other), with the same status and body. |
+| P4 | **Yes** | accept-invite, pharmacy invites and self-serve "a common password ... / the address itself ... is 400 and nothing is created" | `newPasswordProblem` is now the check in all three (`invite/accept/route.ts:66` and `:92`, `pharmacy-onboarding/invites.ts:261` and `:274`, `signup/self-serve.ts:93`). These are the only places a user sets a password (`git grep` of `createLogin`, `createUser` and `updateUser({`). POC sync takes its passwords from env. |
+| P5 | **Yes** (for one IP) | "limiter order (review P5): the IP is checked first ..."; "one network cannot lock an address out ..." | One attacker IP spends its 5, then sends 3 for the victim (all 429). The victim from another IP gets 200, and Supabase is called once. |
+
+### Checks that the fixes opened nothing new
+
+**Recovery detection cannot be spoofed by a normal session.**
+- `POST /api/auth/password` reads `amr` from `supabase.auth.getClaims()`.
+- I read auth-js 2.100.0 `GoTrueClient.getClaims` to see how the token is checked:
+  - With an asymmetric key, it verifies the JWT signature against the project's JWKS by `kid`.
+  - With a symmetric or missing algorithm, or with no `kid`, it calls `getUser(token)`, so the auth server validates the token. The claims are used only if that succeeds.
+  - Either way, `amr` comes from a token Supabase signed. The client cannot set it.
+- Probes, all 403 with nothing set:
+  - `recovery` placed in `user_metadata` or `app_metadata` (both client- or admin-settable) while the top-level `amr` says `password`;
+  - `amr` as an object rather than an array, a string timestamp, and `"Recovery"` in a different case;
+  - `getClaims` returning an error.
+- The route also requires `claims.sub === user.id`, and refuses a recovery older than 15 minutes or more than 60 seconds in the future.
+
+**The new rate limit on the set-password route:** 5 per 15 minutes per user, then 429 before Supabase is asked (B's test).
+
+**Residual (Low, confirmed): P5 across several IPs.** The per-address cap across IPs is 10 an hour, and one IP can spend at most 3 of it. So four attacker IPs (3 each) do refuse the victim for the rest of the hour. My probe "four attacker IPs ... the victim is refused" passes.
+- This meets the task's bar ("one attacker IP cannot block another address's reset").
+- Fix if wanted: make the cross-IP cap silent (answer 200 and do not send), as the review suggested. Supabase already sends at most one email per address per 60 seconds.
+
+**Residual (Low, by design): P3 when Supabase is slow.** The floor is 1500 ms. A Supabase call slower than that still shows in the time, and the route logs it without the address. Hosted Supabase latency was not measured.
+
+### For Sam (not confirmed here: a Supabase setting)
+
+P1 is closed in the app. However, the anon key is public, so a hijacked session can also call Supabase Auth's own `PUT /auth/v1/user` with `{ "password": ... }` and never reach this route. Whether Supabase then asks for the current password, or for a recent sign-in, depends on the project's Auth settings: "Secure password change" and, where available, requiring the current password on update.
+
+Check that these are on in the Supabase dashboard. This could not be checked from the code.
