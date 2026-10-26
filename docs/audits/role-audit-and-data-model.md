@@ -25,10 +25,10 @@ Five distinct identities exist. Four are auth-backed; one is JWT-token-only.
 ### Canonical POC accounts ([canonical-users.ts:35-60](src/lib/poc/canonical-users.ts#L35-L60))
 
 ```
-ops_admin           ops@compoundiq-poc.com         POCAdmin2026!
-clinic_admin        admin@sunrise-clinic.com       POCClinic2026!
-provider            dr.chen@sunrise-clinic.com     POCProvider2026!
-medical_assistant   ma@sunrise-clinic.com          POCMA2026!
+ops_admin           ops@compoundiq-poc.com         POC_OPS_PASSWORD (set in your local env)
+clinic_admin        admin@sunrise-clinic.com       POC_CLINIC_ADMIN_PASSWORD (set in your local env)
+provider            dr.chen@sunrise-clinic.com     POC_PROVIDER_PASSWORD (set in your local env)
+medical_assistant   ma@sunrise-clinic.com          POC_MA_PASSWORD (set in your local env)
 ```
 
 Canonical clinic for all clinic-staff accounts: `a1000000-0000-0000-0000-000000000001` ("Sunrise Functional Medicine"). Canonical provider record (Dr. Sarah Chen): `a2000000-0000-0000-0000-000000000001` per [scripts/seed-poc.ts:69](scripts/seed-poc.ts#L69).

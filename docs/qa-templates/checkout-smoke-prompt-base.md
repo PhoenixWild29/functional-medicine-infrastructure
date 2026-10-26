@@ -145,7 +145,7 @@ What to do:
 a. Click the "Email address" input field.
 b. Type exactly:    admin@sunrise-clinic.com
 c. Click the "Password" input field.
-d. Type exactly:    POCClinic2026!
+d. Type exactly:    the password in `POC_CLINIC_ADMIN_PASSWORD` (set in your local env)
 e. Click the "Sign in" button.
 
 What you should see next:

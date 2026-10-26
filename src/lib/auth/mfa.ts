@@ -84,7 +84,10 @@ export function mfaGate(args: {
   return args.enforced ? 'enroll' : 'ok'
 }
 
-/** The enroll and challenge pages: reachable at AAL1, or no one could pass. */
+/**
+ * The enroll and challenge pages, and the challenge's verify API
+ * (/api/mfa/verify, security B12): reachable at AAL1, or no one could pass.
+ */
 export function isMfaExemptPath(pathname: string): boolean {
-  return pathname === '/mfa' || pathname.startsWith('/mfa/')
+  return pathname === '/mfa' || pathname.startsWith('/mfa/') || pathname.startsWith('/api/mfa/')
 }

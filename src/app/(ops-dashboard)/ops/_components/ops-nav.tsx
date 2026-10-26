@@ -33,6 +33,7 @@ const NAV_TABS = [
   { href: '/ops/onboarding/pharmacies', label: 'Pharmacy onboarding' },
   { href: '/ops/integrations', label: 'EHR sync' },
   { href: '/ops/payables', label: 'Payables' },
+  { href: '/ops/security', label: 'Security' },
   ...(SHOW_DEMO_TOOLS ? [{ href: '/ops/demo-tools', label: 'Demo Tools' } as const] : []),
 ] as const
 

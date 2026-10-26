@@ -11,10 +11,9 @@
 
 import { useEffect, useRef, useState, FormEvent, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { createBrowserClient } from '@/lib/supabase/client'
 import { postLoginDestination } from '@/lib/auth/landing-route'
 import { navigateFully } from '@/lib/auth/full-navigation'
-import { getUserRole, ACCOUNT_DEACTIVATED_MESSAGE } from '@/lib/auth/claims'
+import { ACCOUNT_DEACTIVATED_MESSAGE } from '@/lib/auth/claims'
 import Link from 'next/link'
 import { LegalFooter } from '@/components/legal/legal-footer'
 
@@ -63,19 +62,36 @@ function LoginForm() {
     setError(null)
     setCredentialsRefused(false)
 
-    const supabase = createBrowserClient()
-    const { data, error: authError } = await supabase.auth.signInWithPassword({
-      email:    email.trim().toLowerCase(),
-      password,
-    })
+    // Security B12: the server signs in (POST /api/sign-in), so it records
+    // and alerts on each failure and throttles repeated ones. It writes the
+    // session cookies on its response.
+    let res: Response
+    let body: { appRole?: string | null; code?: string; error?: string } | null
+    try {
+      res = await fetch('/api/sign-in', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ email: email.trim().toLowerCase(), password }),
+      })
+      body = await res.json().catch(() => null) as typeof body
+    } catch {
+      setError('Sign-in could not be reached. Check your connection and try again.')
+      setLoading(false)
+      return
+    }
 
     // Team invites: a deactivated team member's sign-in is banned.
-    if ((authError as { code?: string } | null)?.code === 'user_banned') {
+    if (res.status === 403 && body?.code === 'user_banned') {
       setError(ACCOUNT_DEACTIVATED_MESSAGE)
       setLoading(false)
       return
     }
-    if (authError || !data.session || !data.user) {
+    if (res.status === 429) {
+      setError(body?.error ?? 'Too many attempts. Wait a few minutes and try again.')
+      setLoading(false)
+      return
+    }
+    if (!res.ok) {
       setError('Invalid email or password. Please try again.')
       setCredentialsRefused(true)
       setLoading(false)
@@ -92,9 +108,9 @@ function LoginForm() {
     // (the clinic admin lands on Practice). NB-1 (cowork): absolute and
     // protocol-relative targets (//evil.com) are ignored; see landing-route.ts.
     // The role comes from the user the auth server just returned for this
-    // sign-in, not from a decoded session cookie.
-    const appRole = getUserRole(data.user)
-    navigateFully(postLoginDestination(appRole, redirectTo))
+    // sign-in (the route reads it from that user), not from a decoded
+    // session cookie.
+    navigateFully(postLoginDestination(body?.appRole ?? undefined, redirectTo))
   }
 
   return (

@@ -21,6 +21,12 @@ export interface RateLimitResult {
 
 export interface RateLimiter {
   check(key: string): RateLimitResult
+  /**
+   * Whether the key is over the limit now, without counting an attempt.
+   * For a limiter that counts only failures (sign-in): peek before the
+   * attempt, check() after one fails.
+   */
+  peek(key: string): RateLimitResult
   reset(): void
   /** Keys currently tracked (for tests and diagnostics). */
   size(): number
@@ -51,6 +57,12 @@ export function createRateLimiter(opts: { limit: number; windowMs: number; now?:
       }
       w.count += 1
       return { allowed: true, retryAfterSeconds: 0 }
+    },
+    peek(key) {
+      const t = now()
+      const w = windows.get(key)
+      if (!w || t - w.start >= windowMs || w.count < limit) return { allowed: true, retryAfterSeconds: 0 }
+      return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil((w.start + windowMs - t) / 1000)) }
     },
     reset() { windows.clear() },
     size() { return windows.size },

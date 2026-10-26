@@ -4,9 +4,11 @@
 // Reset Credentials Card — client component
 // ============================================================
 //
-// Renders the canonical POC credential table and a button that
+// Renders the canonical POC account table and a button that
 // POSTs to /api/admin/reset-poc-credentials. The endpoint forces
-// every POC account back to the password shown in the table.
+// every POC account back to the password in the env var shown in the
+// table. The values are never shown (security B9): only the variable
+// names and whether each is set on this deployment.
 //
 // SESSION WARNING (2026-09-11): a password reset through the Supabase
 // admin API revokes every active session for that user. Pressing this
@@ -18,9 +20,10 @@ import { useState } from 'react'
 import { userMessage } from '@/lib/errors/user-message'
 
 interface PocUserRow {
-  label:    string
-  email:    string
-  password: string
+  label:       string
+  email:       string
+  passwordEnv: string
+  passwordSet: boolean
 }
 
 interface SyncResultRow {
@@ -86,7 +89,7 @@ export function ResetCredentialsCard({ users }: { users: PocUserRow[] }) {
         <div>
           <h2 className="text-base font-medium">Reset Demo Credentials</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Forces all four POC accounts back to the canonical passwords below. Use this
+            Forces all four POC accounts back to the passwords set in the env vars below. Use this
             only if a password has actually drifted, or after a Supabase project rotation.
           </p>
         </div>
@@ -115,7 +118,7 @@ export function ResetCredentialsCard({ users }: { users: PocUserRow[] }) {
             <tr>
               <th className="px-3 py-2 text-left font-medium">Role</th>
               <th className="px-3 py-2 text-left font-medium">Email</th>
-              <th className="px-3 py-2 text-left font-medium">Password</th>
+              <th className="px-3 py-2 text-left font-medium">Password env var</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -123,7 +126,12 @@ export function ResetCredentialsCard({ users }: { users: PocUserRow[] }) {
               <tr key={u.email}>
                 <td className="px-3 py-2">{u.label}</td>
                 <td className="px-3 py-2 font-mono text-xs">{u.email}</td>
-                <td className="px-3 py-2 font-mono text-xs">{u.password}</td>
+                <td className="px-3 py-2 font-mono text-xs">
+                  {u.passwordEnv}{' '}
+                  <span className={u.passwordSet ? 'font-sans text-muted-foreground' : 'font-sans text-destructive'}>
+                    {u.passwordSet ? '(set)' : '(not set)'}
+                  </span>
+                </td>
               </tr>
             ))}
           </tbody>

@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import { seedStaticData, cleanupTestOrders, TEST_IDS, TEST_USERS } from './fixtures/seed'
+import { e2ePassword } from './fixtures/test-password'
 
 // ============================================================
 // RBAC Boundary E2E — WO-65
@@ -14,7 +15,7 @@ import { seedStaticData, cleanupTestOrders, TEST_IDS, TEST_USERS } from './fixtu
 const CLINIC_B_ID   = 'bbbbbbbb-0000-0000-0000-000000000001'
 const CLINIC_B_USER = {
   email:    'test-clinic-b@compoundiq.test',
-  password: 'TestPassword123!',
+  get password() { return e2ePassword() },
   role:     'clinic_admin',
   clinicId: CLINIC_B_ID,
 }
@@ -39,7 +40,7 @@ async function seedClinicB(): Promise<void> {
   const existing = await supabase.auth.admin.listUsers()
   const found = existing.data?.users.find(u => u.email === CLINIC_B_USER.email)
   if (found) {
-    await supabase.auth.admin.updateUserById(found.id, { app_metadata: appMetadata })
+    await supabase.auth.admin.updateUserById(found.id, { password: CLINIC_B_USER.password, app_metadata: appMetadata })
   } else {
     await supabase.auth.admin.createUser({
       email:          CLINIC_B_USER.email,
