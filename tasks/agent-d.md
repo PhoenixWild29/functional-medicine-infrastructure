@@ -1,19 +1,13 @@
-task-id: D-2026-10-26-02
+task-id: D-2026-10-26-03
 status: ready
 ---
-Thanks for D-2026-10-26-01 (access review fixes, 7ef4590).
+Thanks for D-2026-10-26-02 (bundle-hipaa, 1ea42cc). Clear report, and the epcs test timeout fix is welcome.
+When C pushes phi-access-log-coverage fixes and A pushes order-transmission-integrity T1-T7 fixes, merge both into bundle-hipaa (C's first), and B's e2e-hipaa branch when pushed; gate; push. Until then:
 
-Next: build bundle-hipaa, the bundle PR for the HIPAA fixes and Help. It merges after bundle-features.
-
-`git fetch origin && git checkout -b bundle-hipaa origin/bundle-features`.
-Merge with `git merge --no-ff`, latest origin heads, in this order:
-1. origin/clinic-help
-2. origin/password-flows (B's fixes on top of yours)
-3. origin/auth-monitoring (C's fixes on top of B's)
-4. origin/audit-review-breakglass (already contains phi-access-log-coverage; confirm origin/phi-access-log-coverage has nothing newer than what you merged; if it does, merge it too)
-5. origin/order-transmission-integrity ONLY after A pushes its T1-T7 fixes (A is on them now). If they are not pushed when items 1-4 are done and gated, push bundle-hipaa without it, say so, and merge it in a follow-up commit when A pushes.
-Do NOT merge any migration branch (clinical-difference-saved 000009, signed-order-freeze 000010, perf-indexes 000008, or the five queued ones).
-phi-access.ts and the auth routes are edited by several branches: keep every side's change; resolve once; list each resolution.
-Gates: npm ci, lint (0 warnings), tsc, jest, next build, all green. Push bundle-hipaa (normal push, no PR). Report in the last commit body: heads merged, conflicts and resolutions, gate results, and every new env var the bundle needs in production (names only: e.g. PHI_ACCESS_LOG_HASH_SECRET, RX_BINDING_SECRET, POC_* for demo only), with what happens if each is missing.
+Next: extend A's prod SQL runbook (origin/bundle-docs, docs/ops/prod-sql-runbook-2026-10-25.md) for the rest of the queue.
+`git checkout bundle-docs && git pull`.
+1. Add 20261024000009 (origin/clinical-difference-saved) and 20261024000010 (origin/signed-order-freeze; A may update its column list after T1-T7, so use the latest head and note the SHA) in A's format: verbatim apply block, read-only verification SELECT with _expect_ columns (run it on PGlite with all migrations applied, as A did), safe-before-merge yes/no with the reason checked against the code that will be on main at that point, down block.
+2. Update the merge checklist to the current plan: fax 000003, lockdown v2 000004, security-followups-2 000005, signup-squatting 000006, rate-limit-db 000007, bundle-security, bundle-ci, bundle-features, bundle-hipaa, bundle-docs, perf-indexes 000008, clinical-difference-saved 000009, signed-order-freeze 000010. For each: what must merge first, combination fixes at that point, prod SQL before it, and env vars that must exist in Vercel production before it deploys (names only; e.g. PHI_ACCESS_LOG_HASH_SECRET before bundle-hipaa, RX_BINDING_SECRET if A adds it, POC_* on the demo deployment), with what happens if missing.
+Docs only. Push bundle-docs (normal push, no PR). Report in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
