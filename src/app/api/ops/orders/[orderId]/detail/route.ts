@@ -22,6 +22,7 @@ import { getUserRole } from '@/lib/auth/claims'
 import { UUID_RE, badRequest } from '@/lib/api/input'
 import { deadlinePassed } from '@/lib/sla/deadline'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { OPS_ACCESS_REASON_HEADER, opsAccessReasonResource, parseOpsAccessReason } from '@/lib/audit/ops-access-reason'
 
 interface Params { params: Promise<{ orderId: string }> }
 
@@ -42,6 +43,9 @@ async function getHandler(request: NextRequest, { params }: Params): Promise<Nex
   }
   // An 8-4-4-4-12 hex id, before any of the four queries.
   if (!UUID_RE.test(orderId)) return badRequest('Invalid request', ['orderId'])
+  // B13: ops says why before a patient's order is read (the drawer asks).
+  const reason = parseOpsAccessReason(request.headers?.get(OPS_ACCESS_REASON_HEADER) ?? null)
+  if (!reason) return badRequest('Choose why you are opening this order', ['reason'])
 
   const supabase = createServiceClient()
   const nowMs = Date.now()
@@ -93,12 +97,15 @@ async function getHandler(request: NextRequest, { params }: Params): Promise<Nex
 
   // Compliance C2: ops viewed a patient's order (the medication, the
   // state). The row belongs to the order's clinic, so its admin sees it.
-  await logPhiAccess({
-    user: user, action: 'view', resource: 'order', route: '/api/ops/orders/[orderId]/detail',
+  // B13: a second row, against the same order, records the reason given.
+  const accessed = {
+    user: user, action: 'view', route: '/api/ops/orders/[orderId]/detail',
     orderId, clinicId: typeof o['clinic_id'] === 'string' ? o['clinic_id'] : null,
     patientId: typeof o['patient_id'] === 'string' ? o['patient_id'] : null,
     headers: request.headers ?? null,
-  })
+  } as const
+  await logPhiAccess({ ...accessed, resource: 'order' })
+  await logPhiAccess({ ...accessed, resource: opsAccessReasonResource(reason) })
 
   // Calculate latency from created_at → completed_at for submissions
   const submissions = (submissionsResult.data ?? []).map(s => ({

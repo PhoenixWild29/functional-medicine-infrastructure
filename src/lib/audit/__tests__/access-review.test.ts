@@ -13,8 +13,10 @@ import {
   flagAccessRows,
   isOutsideReviewHours,
   parseAccessReviewFilters,
+  REVIEW_ACTIONS,
   type AccessReviewRow,
 } from '../access-review'
+import { PHI_ACTIONS } from '../phi-access'
 
 const CLINIC = '11111111-1111-4111-8111-111111111111'
 const ACTOR = '22222222-2222-4222-8222-222222222222'
@@ -146,4 +148,8 @@ describe('accessReviewCsv', () => {
     expect(lines[1]).toContain(`"'=HYPERLINK(""x"")"`)
     expect(lines[1]!.endsWith(',outside_hours')).toBe(true)
   })
+})
+
+it('the review action list is phi_access_log\'s (PHI_ACTIONS)', () => {
+  expect([...REVIEW_ACTIONS]).toEqual([...PHI_ACTIONS])
 })

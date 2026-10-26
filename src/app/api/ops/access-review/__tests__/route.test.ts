@@ -22,7 +22,7 @@ jest.mock('@/lib/supabase/server', () => ({
 }))
 jest.mock('@/lib/supabase/service', () => ({
   createServiceClient: () => ({
-    ...db.client,
+    ...(db.client as Record<string, unknown>),
     auth: { admin: { getUserById: async (id: string) => ({ data: { user: users[id] ?? null }, error: users[id] ? null : { message: 'User not found' } }) } },
   }),
 }))

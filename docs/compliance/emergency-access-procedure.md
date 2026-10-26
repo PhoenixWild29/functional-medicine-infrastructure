@@ -1,0 +1,116 @@
+# Emergency access (break-glass) procedure
+
+HIPAA 164.312(a)(2)(i) and (ii) (unique user identification; emergency access procedure). This closes gap B13 in `technical-safeguards-evidence-2026-10-25.md`.
+
+## When it applies
+
+Use emergency access only when patient data is needed urgently and the normal path is not available. Two examples:
+
+- A patient-safety question about an order (wrong drug, dose or patient). The clinic cannot be reached, and the order is not visible in the ops screens.
+- An outage or a lockout that stops every ops_admin from signing in, while orders are in flight.
+
+Do not use it for routine support, billing or curiosity. Those use the normal ops screens and their reasons.
+
+## Who may invoke it
+
+- **Any ops_admin**, for an urgent patient-safety reason on an order. They use their own named account (see "Normal ops access" below). Their own MFA-protected login is the break-glass path for order data. No shared account is used.
+- **The Security Officer (Sam), or a person they authorise at that time**, for the break-glass account below. This is used only when no ops_admin can sign in.
+
+## How
+
+### Normal ops access, with a reason (built)
+
+ops_admin already sees every order across clinics, through the ops pipeline. No new privilege was added for emergencies.
+
+What changed: ops must now give a reason before an order opens.
+
+1. In **Ops > Pipeline**, opening an order first asks "Why are you opening this order?". The reasons are:
+   - a clinic asked for help;
+   - stuck or failed order;
+   - payment;
+   - pharmacy;
+   - compliance review;
+   - **Emergency access (break-glass): urgent patient safety**.
+2. Nothing is loaded until a reason is chosen. Each order asks again.
+3. Choosing the emergency reason shows a notice that it is reviewed within 24 hours.
+4. The person who used it tells the Security Officer the same day.
+
+### The break-glass account (when no ops_admin can sign in)
+
+- **Account:** one named ops_admin login, `breakglass@<company domain>`, used for nothing else. Sam to create it; see "To confirm" below.
+  - It has MFA (TOTP). The middleware requires a second step for ops_admin.
+  - Its password is long and random, and is not known to any day-to-day user.
+- **Sealed credentials:** Sam holds the password and the TOTP recovery codes, sealed. The seal is a numbered tamper-evident envelope or a password-manager vault entry that logs each open. Sam records the seal number.
+- **To use it:**
+  1. Ask Sam, or the person Sam has authorised, to unseal it.
+  2. Sign in. Open only the orders needed, choosing the emergency reason each time. Then sign out.
+- **After use:**
+  - Sam rotates the password and the TOTP secret the same day.
+  - Sam reseals with a new seal number.
+  - Sam records the old and new numbers.
+
+The Supabase dashboard and the service-role key are not break-glass paths for reading PHI. They are for infrastructure recovery only, for example restoring a locked-out ops login. Their own logs are kept by Supabase.
+
+## What is logged
+
+Every time ops opens an order (`GET /api/ops/orders/[orderId]/detail`), two rows are written to `phi_access_log`:
+
+| Row | Resource | Recorded with it |
+|---|---|---|
+| The view | `order` | actor user id and role, time (UTC), clinic, patient, order, route, hashed IP and user agent |
+| The reason | `ops_reason_<code>`, e.g. `ops_reason_emergency` | the same actor, time, clinic, patient and order |
+
+- **Where the rows show:** the order's clinic admin sees both in Settings > Access log. The reason row reads "Reason given by CompoundIQ operations: ...". Ops sees them in Ops > Access review.
+- **Missing or unknown reason:** a request without a reason, or with a reason not on the list, is refused (400). Nothing is read, and nothing is logged.
+- **Codes only:** the reason is a code, not free text. `phi_access_log` has no reason column, and this change adds no migration. A free-text note needs the design below.
+
+## Post-event review (within 24 hours)
+
+The Security Officer (or the named reviewer, if the Security Officer used it) completes this within 24 hours of each emergency access.
+
+1. **Find the rows.** In Ops > Access review, set:
+   - Resource = `ops_reason_emergency`;
+   - the day of the access.
+
+   Then clear the resource filter, and filter by that actor for the same window. This shows everything they opened.
+2. **Confirm each record opened was needed** for the emergency. Any record that was not needed is a finding: follow "What to do on a finding" in `audit-log-review-procedure.md`.
+3. **If the break-glass account was used:**
+   - confirm the password and TOTP were rotated and resealed;
+   - record both seal numbers.
+4. **Record the review in the review log:**
+   - date and time;
+   - who used it, and why;
+   - the orders opened;
+   - the outcome;
+   - the reviewer.
+5. **Tell the affected clinics' admins.** Do this when their patients' records were opened, unless they asked for the access.
+
+Keep the record for 6 years, with the weekly review evidence.
+
+## Design: free-text reason (needs a migration, not built)
+
+```sql
+ALTER TABLE phi_access_log
+  ADD COLUMN reason text NULL CHECK (char_length(reason) <= 300);
+-- Append-only is unchanged (the trigger refuses UPDATE and DELETE).
+-- logPhiAccess gains an optional `reason`. The ops detail route stores the
+-- code and a short note in ONE row ("emergency: <note>"), replacing the
+-- second ops_reason_<code> row.
+-- The clinic access log shows the note to that clinic's admin. The UI
+-- tells ops not to enter patient details in it.
+```
+
+## Related
+
+- `audit-log-review-procedure.md` (B16)
+- `technical-safeguards-evidence-2026-10-25.md` (B13, B14)
+- Code:
+  - `src/lib/audit/ops-access-reason.ts`;
+  - `src/app/api/ops/orders/[orderId]/detail/route.ts`;
+  - `src/app/(ops-dashboard)/ops/pipeline/_components/order-detail-drawer.tsx`.
+
+## To confirm (Sam)
+
+- That Sam is the Security Officer. Name the backup reviewer.
+- The break-glass account's email and the seal method (envelope or vault). Create the account and enrol its TOTP. This is a production action, not done here.
+- Where review evidence is stored. This document assumes `Compliance/Access reviews/` in the company document store.

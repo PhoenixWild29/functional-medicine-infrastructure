@@ -22,6 +22,7 @@
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 
 import { AUDIT_HASH_SECRET_ENV, auditHash, clientIp } from './keyed-hash'
+import type { OpsAccessReasonResource } from './ops-access-reason'
 
 export const PHI_ACCESS_HASH_ENV = AUDIT_HASH_SECRET_ENV
 
@@ -49,6 +50,8 @@ export type PhiResource =
   | 'patient_duplicate_flag'
   // Patient Intake PR 5b: what EHR sync changed or kept on a patient.
   | 'patient_ehr_changes'
+  // B13: why ops opened a patient's order (logged beside the view).
+  | OpsAccessReasonResource
 
 export interface PhiActor {
   userId:   string
