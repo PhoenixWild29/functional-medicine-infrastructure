@@ -21,7 +21,7 @@ jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.clien
 
 import { GET } from '../route'
 
-const call = async () => (await GET({ headers: new Headers() } as never, { params: Promise.resolve({ orderId: ORDER }) })).json()
+const call = async () => (await GET({ headers: new Headers({ 'x-ops-access-reason': 'support_request' }) } as never, { params: Promise.resolve({ orderId: ORDER }) })).json()
 
 beforeEach(() => {
   jest.useFakeTimers({ now: new Date('2026-10-12T15:00:00.000Z'), doNotFake: ['nextTick', 'setImmediate'] })

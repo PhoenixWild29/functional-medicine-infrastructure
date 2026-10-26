@@ -20,7 +20,7 @@ jest.mock('@/lib/audit/phi-access', () => ({ logPhiAccess: jest.fn(async () => u
 import { GET } from '../route'
 
 const as = (role: string) => ({ id: `u-${role}`, app_metadata: { app_role: role } })
-const call = (orderId: string) => GET({ headers: new Headers() } as never, { params: Promise.resolve({ orderId }) })
+const call = (orderId: string) => GET({ headers: new Headers({ 'x-ops-access-reason': 'support_request' }) } as never, { params: Promise.resolve({ orderId }) })
 
 beforeEach(() => {
   user = as('ops_admin')
