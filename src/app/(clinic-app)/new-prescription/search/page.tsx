@@ -28,6 +28,7 @@ import { CascadingPrescriptionBuilder } from '../_components/cascading-prescript
 import { editTargetFromParams } from '../_lib/edit-target'
 import { getWizardSteps }    from '../_lib/wizard-steps'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { HelpLink } from '@/components/help-link'
 
 export const metadata = {
   title: 'New Prescription: Find a Pharmacy',
@@ -81,7 +82,10 @@ export default async function PharmacySearchPage({ searchParams }: PageProps) {
 
         <div className="mb-6">
           <WizardProgress steps={WIZARD_STEPS} currentStep={2} />
-          <h1 className="mt-4 text-2xl font-bold text-foreground">{heading}</h1>
+          <div className="mt-4 flex items-baseline justify-between gap-3">
+            <h1 className="text-2xl font-bold text-foreground">{heading}</h1>
+            <HelpLink topic="write-and-sign" />
+          </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {isEditing
               ? 'The current values are pre-selected. Change what you need, then continue to save the line in place.'
