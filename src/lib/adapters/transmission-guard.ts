@@ -308,46 +308,96 @@ export function assertSecureFlowUrls(flows: readonly unknown[], ctx: { orderId: 
   }
 }
 
+/** At most this many redirect hops are followed for one portal request. */
+export const MAX_PORTAL_REDIRECTS = 5
+
+const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308])
+/** Request headers that describe a body: dropped when a redirect turns the request into a GET. */
+const BODY_HEADERS = ['content-type', 'content-length', 'content-encoding', 'content-language', 'content-location']
+/** Credentials a browser does not carry to another origin on a redirect. */
+const ORIGIN_BOUND_HEADERS = ['cookie', 'authorization']
+
+const sameOrigin = (a: string, b: string) => {
+  try { return new URL(a).origin === new URL(b).origin } catch { return false }
+}
+
 /**
  * T5 / T7: no request of this browser context, and no redirect hop, goes
  * to a URL that is not https (isAllowed; tests pass their own rule).
  *
- * A context route sees only the first URL of a redirect chain (D's
- * verification: Chromium followed a 302 / 307 past the route and re-sent a
- * POST body). So each allowed request is fetched here with maxRedirects: 0.
- * A redirect whose Location is not allowed is aborted; an allowed one is
- * handed back to the browser, whose next hop is a new request and comes
- * through this route again.
+ * A context route sees only the first URL of a redirect chain, and a 3xx
+ * handed back to Chromium is followed past the route (D's verification;
+ * B's review R1: 302 -> 301 -> http reached the blocked origin, and
+ * 307 -> 307 -> http re-sent a form body). So the chain is followed HERE,
+ * hop by hop, with route.fetch({ maxRedirects: 0 }):
+ *   - every Location is checked with the same rule before it is fetched;
+ *   - 307 / 308 keep the method and the body; 303, and 301 / 302 after a
+ *     POST, continue as GET with no body (as browsers do);
+ *   - a hop to another origin carries no Cookie or Authorization header
+ *     (the context's cookie store supplies that origin's own cookies);
+ *   - at most MAX_PORTAL_REDIRECTS hops.
+ * Only the final, non-redirect answer is given to the browser. A refused
+ * hop aborts the request; the reason is logged as a code, never a URL.
+ * page.url() therefore stays the first URL of the chain, which was checked.
  */
 export async function enforceHttpsOnly(
   context: Pick<BrowserContext, 'route'>,
   isAllowed: (url: string) => boolean = isSecurePharmacyUrl,
 ): Promise<void> {
   await context.route('**/*', async route => {
-    const url = route.request().url()
-    if (!isAllowed(url)) {
+    const request = route.request()
+    const first = request.url()
+    if (!isAllowed(first)) {
       await route.abort('blockedbyclient')
       return
     }
-    let response: APIResponse
-    try {
-      response = await route.fetch({ maxRedirects: 0 })
-    } catch {
-      await route.abort('failed')
-      return
+    const refuse = async (code: string) => {
+      console.error(`[transmission-guard] portal request refused | code=${code}`)
+      await route.abort('blockedbyclient')
     }
-    const status = response.status()
-    if (status >= 300 && status < 400) {
+
+    let url = first
+    // The request's method, body and headers, read when a redirect is followed.
+    let method = ''
+    let postData: Buffer | undefined
+    let headers: Record<string, string> = {}
+    for (let hop = 0; ; hop++) {
+      let response: APIResponse
+      try {
+        response = hop === 0
+          ? await route.fetch({ maxRedirects: 0 })
+          : await route.fetch({ url, method, headers, maxRedirects: 0, ...(postData !== undefined ? { postData } : {}) })
+      } catch {
+        await route.abort('failed')
+        return
+      }
+      const status = response.status()
+      if (!REDIRECT_STATUSES.has(status)) {
+        await route.fulfill({ response })
+        return
+      }
+      if (hop >= MAX_PORTAL_REDIRECTS) return refuse('too_many_redirects')
+
       const location = response.headers()['location']
       let next: string | null = null
       try { next = location ? new URL(location, url).toString() : null } catch { next = null }
-      if (!next || !isAllowed(next)) {
-        console.error('[transmission-guard] portal redirect to a URL that is not https refused | code=insecure_pharmacy_url')
-        await route.abort('blockedbyclient')
-        return
+      if (!next || !isAllowed(next)) return refuse('insecure_pharmacy_url')
+
+      if (hop === 0) {
+        method = request.method()
+        postData = request.postDataBuffer() ?? undefined
+        headers = { ...request.headers() }
       }
+      if (status === 303 ? method !== 'HEAD' : (status === 301 || status === 302) && method === 'POST') {
+        method = 'GET'
+        postData = undefined
+        headers = Object.fromEntries(Object.entries(headers).filter(([k]) => !BODY_HEADERS.includes(k.toLowerCase())))
+      }
+      if (!sameOrigin(url, next)) {
+        headers = Object.fromEntries(Object.entries(headers).filter(([k]) => !ORIGIN_BOUND_HEADERS.includes(k.toLowerCase())))
+      }
+      url = next
     }
-    await route.fulfill({ response })
   })
 }
 
