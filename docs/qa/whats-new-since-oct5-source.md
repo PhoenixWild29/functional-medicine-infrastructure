@@ -170,6 +170,7 @@ A security review against the HIPAA technical rules found gaps. Most are now fix
     - any failure on a CompoundIQ or pharmacy admin account.
   - After repeated failures, sign-in pauses for a few minutes. Nobody is locked out for good.
   - CompoundIQ staff see the alerts on a Security page.
+- **Combined payment links need two-step sign-in.** Combining prescriptions into one payment link could be done without finishing two-step sign-in where it is required; now it follows the same two-step rule as every other staff action.
 - **Demo passwords are out of the code and the documents.** Each demo account's password is now set privately on the server. The four demo accounts will get new passwords after the cofounder demo, because the old ones were visible in the project's history.
 
 **Patient data**
@@ -204,6 +205,7 @@ A security review against the HIPAA technical rules found gaps. Most are now fix
   - Prescriptions, favorites and the order details can be done with the keyboard alone.
   - Pop-up windows keep the keyboard inside them, close with Escape and return you to where you were.
   - Messages are read out by screen readers.
+- **Faster, more reliable automated tests.** The checks that run before each release finish sooner and no longer fail at random on a busy computer.
 
 ## What is still outstanding
 **Before any real patient data**
@@ -218,7 +220,7 @@ A security review against the HIPAA technical rules found gaps. Most are now fix
   - backups with point-in-time restore, and a tested restore.
 
 **Security work still open**
-- **Two-step sign-in is checked by the app, but not yet by the database itself.**
+- **Two-step sign-in is checked by the app, but not yet by the database itself.** The database check is built and ready. It waits only on Sam's decision to require two-step sign-in for everyone, and is switched on together with that switch.
 - **Prescription signature check.** It needs two more fixes before it can be relied on:
   - the check can still be imitated by someone who can edit an order directly;
   - some details the pharmacy receives are not yet covered: the patient's name and date of birth, the prescriber's details, and which pharmacy the order goes to.
