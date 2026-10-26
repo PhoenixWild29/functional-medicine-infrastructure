@@ -88,3 +88,29 @@ export function mfaGate(args: {
 export function isMfaExemptPath(pathname: string): boolean {
   return pathname === '/mfa' || pathname.startsWith('/mfa/')
 }
+
+/**
+ * The middleware's MFA gate, for an API route the middleware does not gate
+ * (one under a public prefix, e.g. /api/checkout/payment-group, a staff
+ * route among the patient checkout routes). null when the request may go
+ * on; otherwise the 401 body and code the middleware would answer. The
+ * aal claim is read with getClaims() (it verifies the JWT), and only when
+ * it can matter, as in the middleware.
+ */
+export async function mfaApiRefusal(
+  supabase: { auth: { getClaims: () => Promise<{ data: { claims?: unknown } | null }> } },
+  user: { email?: string | null; factors?: ReadonlyArray<FactorLike> | null },
+  appRole: string | null | undefined,
+): Promise<{ error: string; code: string } | null> {
+  if (!isMfaRole(appRole)) return null
+  const enforced = mfaEnforcedForUser(appRole, user.email)
+  const verifiedFactor = hasVerifiedTotp(user)
+  if (!enforced && !verifiedFactor) return null
+  const { data } = await supabase.auth.getClaims()
+  const aal = (data?.claims as { aal?: string } | undefined)?.aal
+  const gate = mfaGate({ appRole, aal, verifiedFactor, enforced })
+  if (gate === 'ok') return null
+  return gate === 'challenge'
+    ? { error: 'Two-step verification is required for this session.', code: MFA_API_CODES.challenge }
+    : { error: 'Two-step sign-in must be set up for this account.', code: MFA_API_CODES.enroll }
+}

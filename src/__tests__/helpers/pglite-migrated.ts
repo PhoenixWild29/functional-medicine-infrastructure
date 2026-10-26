@@ -1,5 +1,5 @@
 // ============================================================
-// A Postgres with every repo migration applied, in memory (PGlite)
+// Run SQL on a Postgres with every repo migration applied (PGlite)
 // ============================================================
 //
 // For tests that must run real RLS: the policies, functions and grants are
@@ -7,52 +7,43 @@
 // of a minimal Supabase stand-in (src/__tests__/fixtures/pglite-
 // bootstrap.sql: roles, auth.jwt(), storage, vault, default grants).
 //
-// asUser runs a query as the `authenticated` role with the given JWT
-// claims, the way PostgREST does (SET LOCAL ROLE + request.jwt.claims), in
-// a transaction that is rolled back. Applying the migrations takes a while,
-// so build one database per test file (beforeAll).
+// PGlite runs in a child Node process (./pglite-runner.mjs): it loads its
+// WebAssembly with dynamic import(), which jest's CommonJS runtime
+// refuses. runPlan sends the steps and returns each step's rows or error;
+// see the runner for the step shapes. Applying the migrations takes a
+// while, so send one plan per test file.
 //
 // Test-only: nothing here touches a real database.
 
-import { PGlite } from '@electric-sql/pglite'
-import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm'
-import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto'
-import { readFileSync, readdirSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 
-const ROOT = process.cwd()
-
-export async function migratedDb(): Promise<PGlite> {
-  const db = new PGlite({ extensions: { pg_trgm, pgcrypto } })
-  await db.exec('CREATE EXTENSION IF NOT EXISTS pgcrypto;')
-  await db.exec(readFileSync(join(ROOT, 'src', '__tests__', 'fixtures', 'pglite-bootstrap.sql'), 'utf8'))
-  const dir = join(ROOT, 'supabase', 'migrations')
-  for (const file of readdirSync(dir).filter(f => f.endsWith('.sql')).sort()) {
-    // The vault extension is stubbed by the bootstrap (PGlite has none).
-    const sql = readFileSync(join(dir, file), 'utf8').replace(/CREATE EXTENSION IF NOT EXISTS supabase_vault[^;]*;/gi, '-- (vault stubbed)')
-    try {
-      await db.exec(sql)
-    } catch (err) {
-      throw new Error(`migration ${file} failed on PGlite: ${err instanceof Error ? err.message : String(err)}`)
-    }
-  }
-  return db
+export interface PlanStep {
+  id:       string
+  sql:      string
+  /** As the owner, committed (seed, settings). */
+  persist?: boolean
+  /** Run as `authenticated` with these JWT claims (rolled back). */
+  claims?:  Record<string, unknown>
+  /** Run as this role instead (rolled back). */
+  role?:    'service_role' | 'anon'
+  /** Owner SQL in the same transaction, before the role switch. */
+  pre?:     string
 }
 
-/** Run sql as `authenticated` with these JWT claims, then roll back. */
-export async function asUser<T = Record<string, unknown>>(
-  db: PGlite,
-  claims: Record<string, unknown>,
-  sql: string,
-): Promise<T[]> {
-  await db.exec('BEGIN')
-  try {
-    await db.query(`SELECT set_config('request.jwt.claims', $1, true)`, [JSON.stringify(claims)])
-    await db.query(`SELECT set_config('request.jwt.claim.sub', $1, true)`, [String(claims['sub'] ?? '')])
-    await db.exec('SET LOCAL ROLE authenticated')
-    const { rows } = await db.query<T>(sql)
-    return rows
-  } finally {
-    await db.exec('ROLLBACK')
-  }
+export interface StepResult { id: string; rows?: Array<Record<string, unknown>>; error?: string }
+
+export function runPlan(steps: PlanStep[]): Map<string, StepResult> {
+  const out = spawnSync(process.execPath, [join(__dirname, 'pglite-runner.mjs')], {
+    cwd: process.cwd(),
+    input: JSON.stringify({ steps }),
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: 15 * 60 * 1000,
+  })
+  if (out.status !== 0) throw new Error(`pglite runner failed (${out.status}): ${out.stderr}`)
+  const line = out.stdout.trim().split('\n').pop() ?? ''
+  const parsed = JSON.parse(line) as { results?: StepResult[]; migrationError?: string }
+  if (parsed.migrationError) throw new Error(`a migration failed on PGlite: ${parsed.migrationError}`)
+  return new Map((parsed.results ?? []).map(r => [r.id, r]))
 }

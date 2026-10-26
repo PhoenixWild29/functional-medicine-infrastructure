@@ -33,8 +33,10 @@ beforeEach(() => {
   getClaimsMock.mockReset()
   serviceMock.mockReset()
   delete env['REQUIRE_MFA']
+  // The route is behind the payment-groups flag; on, as in production.
+  env['PHASE_C_GROUPS_ENABLED'] = 'true'
 })
-afterAll(() => { delete env['REQUIRE_MFA'] })
+afterAll(() => { delete env['REQUIRE_MFA']; delete env['PHASE_C_GROUPS_ENABLED'] })
 
 it('MFA enforced, aal1, no factor: 401 enroll, before the service role is touched', async () => {
   env['REQUIRE_MFA'] = 'true'

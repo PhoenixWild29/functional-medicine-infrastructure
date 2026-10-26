@@ -38,10 +38,12 @@ it('exists with a down migration, runs in one transaction, and sorts after 20261
   expect(versions).toContain('20261024000011_order_signing_snapshots.sql')
 })
 
-it('covers exactly the PHI tables of the shared list, each of which exists on orders types', () => {
+it('covers exactly the PHI tables of the shared list, each created by an earlier migration', () => {
   expect(arrayIn(sql, 'phi_tables').sort()).toEqual([...STAFF_MFA_PHI_TABLES].sort())
-  const types = read(join(process.cwd(), 'src', 'types', 'database.types.ts'))
-  for (const t of STAFF_MFA_PHI_TABLES) expect(types).toContain(`      ${t}: {`)
+  const earlier = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql') && f < FILE).map(f => read(join(MIGRATIONS, f))).join('\n')
+  for (const t of STAFF_MFA_PHI_TABLES) {
+    expect([t, new RegExp(`CREATE TABLE (IF NOT EXISTS )?(public\\.)?${t}\\b`, 'i').test(earlier)]).toEqual([t, true])
+  }
   expect(STAFF_MFA_PHI_TABLES).toEqual(expect.arrayContaining(['patients', 'orders', 'order_status_history', 'adapter_submissions', 'phi_access_log', 'treatment_proposals']))
 })
 
