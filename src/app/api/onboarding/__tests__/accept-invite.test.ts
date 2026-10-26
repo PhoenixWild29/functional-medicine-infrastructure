@@ -79,7 +79,8 @@ describe('accepting a clinic admin invite', () => {
     const attrs = createUser.mock.calls[0]![0] as Record<string, unknown>
     expect(attrs).toEqual(expect.objectContaining({
       email: 'lauren@sunrise.test', password: 'Correct-Horse-9', email_confirm: true,
-      app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC },
+      // B's review P2: an invite link an admin could have opened forces a new password.
+      app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC, must_change_password: true },
     }))
     const userMeta = (attrs['user_metadata'] ?? {}) as Record<string, unknown>
     expect(userMeta['app_role']).toBeUndefined()
