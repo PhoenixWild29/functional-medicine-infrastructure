@@ -5,12 +5,13 @@
 // ============================================================
 //
 // REQ-FTQ-001: Fax list view (filterable by status)
-// REQ-FTQ-002: OCR text preview via PDF download link
+// REQ-FTQ-002: the fax PDF, viewed inline (FaxPdfViewer)
 // REQ-FTQ-003: Auto-match display (matched pharmacy + order)
 // REQ-FTQ-004: Disposition workflow (acknowledge, reject, manual_match, archive)
 // REQ-FTQ-005: State flow enforcement (client reflects RECEIVED → MATCHED/UNMATCHED → PROCESSED → ARCHIVED)
 // REQ-FTQ-006: Tier 1/3 anomaly flag display
-// REQ-FTQ-007: 15-minute signed PDF URLs (generated server-side)
+// REQ-FTQ-007: PDFs fetched from Documo on demand by the ops-only
+//              /api/ops/fax/[faxId]/pdf (Issue Log 72), never a public URL
 //
 // 30-second polling via TanStack Query.
 
@@ -18,6 +19,7 @@ import { useState, useMemo } from 'react'
 import { useQuery }          from '@tanstack/react-query'
 import type { FaxEntry, FaxQueueResponse, FaxStatus } from '@/app/api/ops/fax/route'
 import { SkeletonTableRow }  from '@/components/ui/skeleton'
+import { FaxPdfViewer }      from './fax-pdf-viewer'
 
 // ── Status config ─────────────────────────────────────────────
 
@@ -264,18 +266,14 @@ export function FaxTriageQueue({ initialData }: Props) {
                       </td>
                       <td className="px-3 py-2 text-muted-foreground">{formatRelative(fax.createdAt)}</td>
                       <td className="px-3 py-2">
-                        {fax.signedUrl && (
-                          <a
-                            href={fax.signedUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={e => e.stopPropagation()}
-                            className="text-primary underline focus-visible:outline-none"
-                            aria-label={`Download PDF for fax ${fax.faxId}`}
-                          >
-                            PDF
-                          </a>
-                        )}
+                        <button
+                          type="button"
+                          onClick={e => { e.stopPropagation(); setSelectedFax(fax) }}
+                          className="text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={`View fax ${fax.faxId}`}
+                        >
+                          View
+                        </button>
                       </td>
                     </tr>
                   )
@@ -350,16 +348,7 @@ export function FaxTriageQueue({ initialData }: Props) {
           </dl>
 
           {/* PDF access — REQ-FTQ-002, REQ-FTQ-007 */}
-          {selectedFaxLive.signedUrl && (
-            <a
-              href={selectedFaxLive.signedUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex w-full items-center justify-center gap-1.5 rounded border border-border bg-background px-3 py-1.5 text-xs text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              Open PDF (15-min link)
-            </a>
-          )}
+          <FaxPdfViewer key={selectedFaxLive.faxId} faxId={selectedFaxLive.faxId} pdfUrl={selectedFaxLive.pdfUrl} />
 
           {/* Disposition actions — REQ-FTQ-004 */}
           {/* NB-06: show Archive for PROCESSED too (PROCESSED → ARCHIVED is valid) */}

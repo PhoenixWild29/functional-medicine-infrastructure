@@ -50,7 +50,9 @@ it(`is version ${VERSION}, unique, and has a down file`, () => {
 
 it('sorts after every migration already on main and after the fax PHI column (20261024000001)', () => {
   const versions = fs.readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).map(f => f.split('_')[0]!).sort()
-  expect(versions[versions.length - 1]).toBe(VERSION)
+  // Later migrations may follow it; none may sort between it and the one it
+  // was written after.
+  expect(versions[versions.indexOf(VERSION) - 1]).toBe('20261024000001')
   expect(VERSION > '20261024000001').toBe(true)
 })
 
