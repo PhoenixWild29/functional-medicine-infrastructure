@@ -6,10 +6,11 @@
  *
  * A staff JWT at aal1 reads no PHI through PostgREST when MFA is required
  * for it; at aal2 it reads as before. pharmacy_admin is always required;
- * the other staff roles only when the database switch
- * (security_settings.require_staff_mfa) is on. A JWT with no staff role is
- * left to the other policies, and the service role (patients' token pages,
- * crons, webhooks) is not affected.
+ * every other authenticated JWT only when the database switch
+ * (security_settings.require_staff_mfa) is on, including one with no
+ * app_role or an unknown one (patients never hold a Supabase session). The
+ * service role (patients' token pages, crons, webhooks) is not affected.
+ * The policy's function call is an InitPlan: once per statement, not per row.
  */
 
 import { readFileSync } from 'node:fs'
@@ -44,6 +45,8 @@ const SEED = `
     ('a3000000-0000-4000-8000-000000000001', '${CLINIC}', 'Alex', 'Demo', '1985-06-15', '+15125550100', '+15125550100');
   INSERT INTO orders (order_id, patient_id, provider_id, clinic_id, pharmacy_id, formulation_id, status, quantity) VALUES
     ('d1000000-0000-4000-8000-000000000001', 'a3000000-0000-4000-8000-000000000001', 'a2000000-0000-4000-8000-000000000001', '${CLINIC}', '${PHARMACY}', 'd0000000-0000-4000-8000-000000000003', 'DRAFT', 1);
+  INSERT INTO order_sla_deadlines (order_id, sla_type, deadline_at, resolution_notes) VALUES
+    ('d1000000-0000-4000-8000-000000000001', 'FAX_DELIVERY', now() + interval '1 day', 'Called the patient about the dose');
   SELECT 1;
 `
 
@@ -52,6 +55,13 @@ const claims = (role: StaffRole | null, aal: 'aal1' | 'aal2' | null) => ({
   role: 'authenticated',
   ...(aal ? { aal } : {}),
   app_metadata: role === null ? {} : role === 'ops_admin' ? { app_role: role } : role === 'pharmacy_admin' ? { app_role: role, pharmacy_id: PHARMACY } : { app_role: role, clinic_id: CLINIC },
+})
+/** A JWT with this clinic's clinic_id and the given app_metadata otherwise (no role, or one the app does not know). */
+const unrecognised = (app_role: string | undefined, aal: 'aal1' | 'aal2') => ({
+  sub: 'a0000000-0000-4000-8000-0000000000ee',
+  role: 'authenticated',
+  aal,
+  app_metadata: app_role ? { app_role, clinic_id: CLINIC } : { clinic_id: CLINIC },
 })
 const countSql = (table: string) => `SELECT count(*)::int AS n FROM public.${table}`
 const SATISFIED = 'SELECT public.staff_mfa_satisfied() AS ok'
@@ -69,6 +79,11 @@ const phase = (name: 'off' | 'on') => {
     steps.push({ id: `${name}:pharmacy_admin:${aal}:satisfied`, claims: claims('pharmacy_admin', aal), sql: SATISFIED })
   }
   steps.push({ id: `${name}:pharmacy_admin:aal1:orders`, claims: claims('pharmacy_admin', 'aal1'), sql: countSql('orders') })
+  for (const aal of ['aal1', 'aal2'] as const) {
+    steps.push({ id: `${name}:no-role:${aal}:patients`, claims: unrecognised(undefined, aal), sql: countSql('patients') })
+    steps.push({ id: `${name}:unknown-role:${aal}:patients`, claims: unrecognised('clinic_staff', aal), sql: countSql('patients') })
+    steps.push({ id: `${name}:ops_admin:${aal}:order_sla_deadlines`, claims: claims('ops_admin', aal), sql: countSql('order_sla_deadlines') })
+  }
 }
 phase('off')
 phase('on')
@@ -78,6 +93,9 @@ steps.push(
   { id: 'on:update-aal1', claims: claims('clinic_admin', 'aal1'), sql: `UPDATE public.patients SET last_name = 'Changed' RETURNING patient_id` },
   { id: 'on:update-aal2', claims: claims('clinic_admin', 'aal2'), sql: `UPDATE public.patients SET last_name = 'Changed' RETURNING patient_id` },
   { id: 'on:non-staff', claims: claims(null, 'aal1'), sql: SATISFIED },
+  { id: 'on:non-staff:aal2', claims: claims(null, 'aal2'), sql: SATISFIED },
+  { id: 'on:explain', claims: claims('clinic_admin', 'aal1'), sql: 'EXPLAIN (VERBOSE, COSTS OFF) SELECT order_id FROM public.orders' },
+  { id: 'on:explain-update', claims: claims('clinic_admin', 'aal2'), sql: `EXPLAIN (VERBOSE, COSTS OFF) UPDATE public.patients SET last_name = 'Changed'` },
   { id: 'on:service-role', role: 'service_role', sql: countSql('orders') },
   { id: 'settings:select', claims: claims('ops_admin', 'aal2'), sql: 'SELECT * FROM public.security_settings' },
   { id: 'settings:update', claims: claims('ops_admin', 'aal2'), sql: 'UPDATE public.security_settings SET require_staff_mfa = false RETURNING id' },
@@ -88,7 +106,7 @@ steps.push(
 )
 
 let results: Map<string, StepResult>
-beforeAll(() => { results = runPlan(steps) })
+beforeAll(async () => { results = await runPlan(steps) })
 
 const rows = (id: string) => {
   const r = results.get(id)
@@ -114,6 +132,18 @@ describe('the switch is off (the default, as REQUIRE_MFA is today)', () => {
   it('patients: a clinic role reads at aal1 and at aal2', () => {
     expect(n('off:clinic_admin:aal1:patients')).toBe(1)
     expect(n('off:clinic_admin:aal2:patients')).toBe(1)
+  })
+
+  it('a JWT with a clinic_id and no or an unknown role is as today (its other policies decide)', () => {
+    for (const k of ['no-role', 'unknown-role']) {
+      expect(n(`off:${k}:aal1:patients`)).toBe(1)
+      expect(n(`off:${k}:aal2:patients`)).toBe(1)
+    }
+  })
+
+  it('order_sla_deadlines: ops_admin reads at aal1 and at aal2', () => {
+    expect(n('off:ops_admin:aal1:order_sla_deadlines')).toBe(1)
+    expect(n('off:ops_admin:aal2:order_sla_deadlines')).toBe(1)
   })
 
   it('pharmacy_admin is always required: not satisfied at aal1, satisfied at aal2', () => {
@@ -156,8 +186,21 @@ describe('the switch is on (MFA required for every staff role)', () => {
     expect(ok('on:pharmacy_admin:aal2:satisfied')).toBe(true)
   })
 
-  it('a JWT with no staff role is left to the other policies', () => {
-    expect(ok('on:non-staff')).toBe(true)
+  it('a JWT with no staff role needs aal2 too: no exemption for an unrecognised role (F1)', () => {
+    expect(ok('on:non-staff')).toBe(false)
+    expect(ok('on:non-staff:aal2')).toBe(true)
+  })
+
+  it('a clinic_id with no role or an unknown role reads no patients at aal1, and its rows at aal2 (F1)', () => {
+    for (const k of ['no-role', 'unknown-role']) {
+      expect([k, n(`on:${k}:aal1:patients`)]).toEqual([k, 0])
+      expect([k, n(`on:${k}:aal2:patients`)]).toEqual([k, 1])
+    }
+  })
+
+  it('order_sla_deadlines (free-text resolution_notes) is covered: 0 at aal1, the row at aal2 (F3)', () => {
+    expect(n('on:ops_admin:aal1:order_sla_deadlines')).toBe(0)
+    expect(n('on:ops_admin:aal2:order_sla_deadlines')).toBe(1)
   })
 
   it('the service role (token pages, crons, webhooks) is not affected', () => {
@@ -184,6 +227,15 @@ describe('the policy', () => {
       expect(r.permissive).toBe('RESTRICTIVE')
       expect(r.roles).toContain('authenticated')
       expect(r.cmd).toBe('ALL')
+    }
+  })
+
+  it('runs staff_mfa_satisfied() once per statement (an InitPlan), not in the per-row filter (F2)', () => {
+    for (const id of ['on:explain', 'on:explain-update']) {
+      const plan = rows(id).map(r => String(Object.values(r)[0]))
+      expect([id, plan.some(l => /InitPlan/.test(l))]).toEqual([id, true])
+      // The call appears only as the InitPlan's output, never in a row Filter.
+      expect([id, plan.filter(l => /Filter:/.test(l) && /staff_mfa_satisfied\(\)/.test(l))]).toEqual([id, []])
     }
   })
 

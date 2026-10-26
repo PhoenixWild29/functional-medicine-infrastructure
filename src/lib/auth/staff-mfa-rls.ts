@@ -9,12 +9,16 @@
 // staff_mfa_aal2, on every table below: for `authenticated`, any command
 // passes only if public.staff_mfa_satisfied() is true:
 //
-//   - not a staff role (MFA_ROLES): true (the other policies decide);
 //   - the JWT's aal is aal2: true;
 //   - pharmacy_admin (ALWAYS_MFA_ROLES): false at aal1, always;
-//   - other staff roles: false at aal1 only when the database switch
-//     security_settings.require_staff_mfa is on (a missing row counts as
-//     on: fail closed).
+//   - any other JWT, with or without a staff role: false at aal1 only when
+//     the database switch security_settings.require_staff_mfa is on (a
+//     missing row counts as on: fail closed). Patients never hold a
+//     Supabase session, so a JWT with no recognised role gets no
+//     exemption: a clinic_id alone does not read PHI at aal1.
+//
+// The policy wraps the call as (SELECT public.staff_mfa_satisfied()), so it
+// runs once per statement (an InitPlan), not once per row.
 //
 // Postgres cannot see REQUIRE_MFA, so the switch is a one-row table that
 // no API role can read or write. Flip it together with REQUIRE_MFA (the app
@@ -35,7 +39,8 @@
  * catalog and reference data, pharmacies and their configs, clinics,
  * providers and licenses (staff data), onboarding, and the money and
  * operations tables that carry only an order id (ledger, payables,
- * disputes, transfer failures, SLA deadlines, legal holds).
+ * disputes, transfer failures, legal holds). order_sla_deadlines is listed:
+ * its resolution_notes is free text that can name a patient or a drug.
  */
 export const STAFF_MFA_PHI_TABLES: readonly string[] = [
   'patients',
@@ -66,6 +71,7 @@ export const STAFF_MFA_PHI_TABLES: readonly string[] = [
   'treatment_proposal_events',
   'proposal_choice_items',
   'saved_clinical_statements',
+  'order_sla_deadlines',
 ]
 
 /** How Sam flips the switch: one statement, run as the database owner (SQL editor). */

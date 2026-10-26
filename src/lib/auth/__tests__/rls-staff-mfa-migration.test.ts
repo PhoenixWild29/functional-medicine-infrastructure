@@ -3,9 +3,9 @@
  *
  * HIPAA B3, statically: 20261024000012_rls_require_aal2.sql puts a
  * RESTRICTIVE aal2 policy on exactly the PHI tables in
- * lib/auth/staff-mfa-rls (STAFF_MFA_PHI_TABLES), with the same rule as the
- * app (lib/auth/mfa): pharmacy_admin always, the other staff roles when the
- * database switch is on. The behaviour is tested on Postgres in
+ * lib/auth/staff-mfa-rls (STAFF_MFA_PHI_TABLES), with the app's rule made
+ * stricter (lib/auth/mfa): pharmacy_admin always, every other authenticated
+ * JWT (staff role or not) when the database switch is on. The behaviour is tested on Postgres in
  * src/__tests__/rls-staff-mfa-pglite.test.ts.
  */
 
@@ -49,13 +49,24 @@ it('covers exactly the PHI tables of the shared list, each created by an earlier
 
 it('the policy is RESTRICTIVE, for authenticated, for all commands, on staff_mfa_satisfied()', () => {
   const c = code(sql)
-  expect(c).toMatch(/CREATE POLICY staff_mfa_aal2 ON public\.%I AS RESTRICTIVE FOR ALL TO authenticated USING \(public\.staff_mfa_satisfied\(\)\) WITH CHECK \(public\.staff_mfa_satisfied\(\)\)/)
+  // Wrapped in a SELECT: an InitPlan, once per statement (B's review, F2).
+  expect(c).toMatch(/CREATE POLICY staff_mfa_aal2 ON public\.%I AS RESTRICTIVE FOR ALL TO authenticated USING \(\(SELECT public\.staff_mfa_satisfied\(\)\)\) WITH CHECK \(\(SELECT public\.staff_mfa_satisfied\(\)\)\)/)
 })
 
-it('the rule matches the app: the staff roles, pharmacy_admin always, aal2 passes, the switch for the rest', () => {
+it("order_sla_deadlines is a PHI table (free-text resolution_notes; B's review, F3)", () => {
+  expect(STAFF_MFA_PHI_TABLES).toContain('order_sla_deadlines')
+})
+
+it('the rule: aal2 passes, pharmacy_admin always, the switch for every other JWT (no exemption for a non-staff role)', () => {
   const c = code(sql)
-  expect(arrayIn(sql, 'staff_roles').sort()).toEqual([...MFA_ROLES].sort())
   expect(arrayIn(sql, 'always_roles').sort()).toEqual([...ALWAYS_MFA_ROLES].sort())
+  expect(ALWAYS_MFA_ROLES.every(r => (MFA_ROLES as readonly string[]).includes(r))).toBe(true)
+  // B's review, F1: no early exit for a JWT whose role is missing or unknown.
+  expect(c).not.toMatch(/staff_roles/)
+  expect(c).not.toMatch(/app_role IS NULL/)
+  const body = /AS \$\$([\s\S]*?)\$\$/.exec(c)?.[1] ?? ''
+  expect(body.match(/RETURN true;/g)).toHaveLength(1)
+  expect(body.indexOf("(auth.jwt() ->> 'aal') = 'aal2'")).toBeLessThan(body.indexOf('RETURN true;'))
   expect(c).toContain("(auth.jwt() ->> 'aal') = 'aal2'")
   expect(c).toContain("auth.jwt() -> 'app_metadata' ->> 'app_role'")
   // A missing settings row requires MFA (fail closed).

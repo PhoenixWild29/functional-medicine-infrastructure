@@ -13,9 +13,14 @@
 // see the runner for the step shapes. Applying the migrations takes a
 // while, so send one plan per test file.
 //
+// The child runs asynchronously (spawn, not spawnSync): a synchronous child
+// blocks the jest worker's event loop, so jest's timeout could not fire and
+// a hung runner would hold the worker (and CI) until its own kill timer.
+// The kill timer stays as a backstop.
+//
 // Test-only: nothing here touches a real database.
 
-import { spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 
 export interface PlanStep {
@@ -33,17 +38,32 @@ export interface PlanStep {
 
 export interface StepResult { id: string; rows?: Array<Record<string, unknown>>; error?: string }
 
-export function runPlan(steps: PlanStep[]): Map<string, StepResult> {
-  const out = spawnSync(process.execPath, [join(__dirname, 'pglite-runner.mjs')], {
-    cwd: process.cwd(),
-    input: JSON.stringify({ steps }),
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-    timeout: 15 * 60 * 1000,
+const RUNNER_TIMEOUT_MS = 15 * 60 * 1000
+
+export function runPlan(steps: PlanStep[]): Promise<Map<string, StepResult>> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [join(__dirname, 'pglite-runner.mjs')], { cwd: process.cwd(), stdio: ['pipe', 'pipe', 'pipe'] })
+    const out: Buffer[] = []
+    const err: Buffer[] = []
+    const timer = setTimeout(() => child.kill(), RUNNER_TIMEOUT_MS)
+    child.stdout.on('data', (b: Buffer) => out.push(b))
+    child.stderr.on('data', (b: Buffer) => err.push(b))
+    child.on('error', e => { clearTimeout(timer); reject(e) })
+    child.on('close', (code, signal) => {
+      clearTimeout(timer)
+      if (code !== 0) {
+        reject(new Error(`pglite runner failed (${code ?? signal}): ${Buffer.concat(err).toString('utf8')}`))
+        return
+      }
+      try {
+        const line = Buffer.concat(out).toString('utf8').trim().split('\n').pop() ?? ''
+        const parsed = JSON.parse(line) as { results?: StepResult[]; migrationError?: string }
+        if (parsed.migrationError) throw new Error(`a migration failed on PGlite: ${parsed.migrationError}`)
+        resolve(new Map((parsed.results ?? []).map(r => [r.id, r])))
+      } catch (e) {
+        reject(e)
+      }
+    })
+    child.stdin.end(JSON.stringify({ steps }))
   })
-  if (out.status !== 0) throw new Error(`pglite runner failed (${out.status}): ${out.stderr}`)
-  const line = out.stdout.trim().split('\n').pop() ?? ''
-  const parsed = JSON.parse(line) as { results?: StepResult[]; migrationError?: string }
-  if (parsed.migrationError) throw new Error(`a migration failed on PGlite: ${parsed.migrationError}`)
-  return new Map((parsed.results ?? []).map(r => [r.id, r]))
 }

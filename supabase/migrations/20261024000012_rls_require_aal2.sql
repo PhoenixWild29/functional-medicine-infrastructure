@@ -10,12 +10,20 @@
 -- holds the two lists equal). RESTRICTIVE policies are ANDed with the
 -- permissive ones, so nothing anyone may do today is widened.
 --
--- The rule is the app's (src/lib/auth/mfa.ts):
---   - a JWT with no staff role: not affected (its other policies decide);
+-- The rule (the app's, src/lib/auth/mfa.ts, made stricter at the database):
 --   - aal2 (the JWT's aal claim): passes;
 --   - pharmacy_admin (ALWAYS_MFA_ROLES): always needs aal2;
---   - provider, medical_assistant, clinic_admin, ops_admin: need aal2 only
---     when the database switch is on.
+--   - every other `authenticated` JWT needs aal2 only when the database
+--     switch is on. That includes a JWT with no app_role or one the list
+--     does not know: patients never hold a Supabase session (every account
+--     is a staff account made with the service role, lib/auth/create-
+--     login), so an aal1 JWT with no recognised role is a mis-provisioned
+--     account, a role renamed in one place only, or a public sign-up, and
+--     must not read PHI on a clinic_id alone (B's review, F1).
+--
+-- The policy calls the function as (SELECT public.staff_mfa_satisfied()),
+-- so Postgres plans it as an InitPlan and runs it once per statement, not
+-- once per row (it takes no row input; B's review, F2).
 --
 -- The switch. Postgres cannot see REQUIRE_MFA, so it is a one-row table,
 -- public.security_settings (require_staff_mfa, default false: as the app
@@ -53,7 +61,7 @@ CREATE TABLE IF NOT EXISTS public.security_settings (
 INSERT INTO public.security_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
 COMMENT ON TABLE public.security_settings IS
-  'HIPAA B3: one row. require_staff_mfa: every staff role needs an aal2 (MFA) session to touch PHI through PostgREST; pharmacy_admin always does. Flip together with REQUIRE_MFA. No API role can read or write it.';
+  'HIPAA B3: one row. require_staff_mfa: every authenticated session needs aal2 (MFA) to touch PHI through PostgREST; pharmacy_admin always does. Flip together with REQUIRE_MFA. No API role can read or write it.';
 
 ALTER TABLE public.security_settings ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.security_settings FROM PUBLIC, anon, authenticated;
@@ -64,13 +72,9 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = public, pg_catalog
 AS $$
 DECLARE
-  staff_roles  CONSTANT text[] := ARRAY['provider', 'medical_assistant', 'clinic_admin', 'ops_admin', 'pharmacy_admin'];
   always_roles CONSTANT text[] := ARRAY['pharmacy_admin'];
   app_role text := auth.jwt() -> 'app_metadata' ->> 'app_role';
 BEGIN
-  IF app_role IS NULL OR NOT (app_role = ANY (staff_roles)) THEN
-    RETURN true;
-  END IF;
   IF (auth.jwt() ->> 'aal') = 'aal2' THEN
     RETURN true;
   END IF;
@@ -97,7 +101,7 @@ DECLARE
     'provider_favorites', 'protocol_instances', 'patient_protocol_phases', 'phase_advancement_history',
     'patient_external_ids', 'patient_field_changes', 'patient_import_batches', 'patient_intake_links',
     'ehr_sync_events', 'treatment_proposals', 'treatment_proposal_options', 'treatment_proposal_events',
-    'proposal_choice_items', 'saved_clinical_statements'
+    'proposal_choice_items', 'saved_clinical_statements', 'order_sla_deadlines'
   ];
   t text;
 BEGIN
@@ -106,7 +110,7 @@ BEGIN
       CONTINUE;
     END IF;
     EXECUTE format('DROP POLICY IF EXISTS staff_mfa_aal2 ON public.%I', t);
-    EXECUTE format('CREATE POLICY staff_mfa_aal2 ON public.%I AS RESTRICTIVE FOR ALL TO authenticated USING (public.staff_mfa_satisfied()) WITH CHECK (public.staff_mfa_satisfied())', t);
+    EXECUTE format('CREATE POLICY staff_mfa_aal2 ON public.%I AS RESTRICTIVE FOR ALL TO authenticated USING ((SELECT public.staff_mfa_satisfied())) WITH CHECK ((SELECT public.staff_mfa_satisfied()))', t);
   END LOOP;
 END;
 $$;
