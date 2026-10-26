@@ -116,7 +116,7 @@ describe('accepting a provider or staff invite', () => {
     db = scriptedDb(script(invite({ kind: 'provider', provider_id: PROVIDER, email: 'dr.chen@sunrise.test' })))
     const res = await POST(req(GOOD))
     expect(res.status).toBe(201)
-    expect((createUser.mock.calls[0]![0] as Record<string, unknown>)['app_metadata']).toEqual({ app_role: 'provider', clinic_id: CLINIC })
+    expect((createUser.mock.calls[0]![0] as Record<string, unknown>)['app_metadata']).toEqual({ app_role: 'provider', clinic_id: CLINIC, must_change_password: true })
     const [link] = db.to('providers', 'update')
     expect(link!.payload).toEqual({ user_id: 'new-user' })
     expect(link!.filters).toEqual(expect.objectContaining({ provider_id: PROVIDER, clinic_id: CLINIC, 'user_id:is': null }))
@@ -125,7 +125,7 @@ describe('accepting a provider or staff invite', () => {
   it('a medical assistant gets the medical_assistant role', async () => {
     db = scriptedDb(script(invite({ kind: 'medical_assistant', email: 'ma@sunrise.test' })))
     expect((await POST(req(GOOD))).status).toBe(201)
-    expect((createUser.mock.calls[0]![0] as Record<string, unknown>)['app_metadata']).toEqual({ app_role: 'medical_assistant', clinic_id: CLINIC })
+    expect((createUser.mock.calls[0]![0] as Record<string, unknown>)['app_metadata']).toEqual({ app_role: 'medical_assistant', clinic_id: CLINIC, must_change_password: true })
   })
 })
 

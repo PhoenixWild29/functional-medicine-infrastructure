@@ -6,6 +6,7 @@ import { MFA_API_CODES, MFA_PAGES, hasVerifiedTotp, isMfaExemptPath, isMfaRole, 
 import { buildCsp, newNonce, permissionsPolicy } from '@/lib/security/headers'
 import { TOKEN_HEADERS, isTokenPath } from '@/lib/security/token-paths'
 import { getUserRole, isDeactivated, ACCOUNT_DEACTIVATED_MESSAGE } from '@/lib/auth/claims'
+import { MUST_CHANGE_PASSWORD_CODE, MUST_CHANGE_PASSWORD_MESSAGE, mustChangeAllowedPath, mustChangePassword } from '@/lib/auth/must-change-password'
 import { mayOpenSignPage } from '@/lib/auth/signer'
 
 // PR R7-Bucket-1: Apply HIPAA-grade no-store cache headers to every response
@@ -394,6 +395,19 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('error', 'deactivated')
     return applySecurityHeaders(redirectWithSessionCookies(loginUrl))
+  }
+
+  // B's review P2: a login created from an invite sets its own password,
+  // from an emailed reset link, before anything else. Pages go to
+  // /reset-password; APIs answer 403 MUST_CHANGE_PASSWORD. The reset
+  // paths stay open (lib/auth/must-change-password).
+  if (mustChangePassword(user) && !mustChangeAllowedPath(pathname)) {
+    if (pathname.startsWith('/api/')) {
+      const refused = NextResponse.json({ error: MUST_CHANGE_PASSWORD_MESSAGE, code: MUST_CHANGE_PASSWORD_CODE }, { status: 403 })
+      response.cookies.getAll().forEach(cookie => refused.cookies.set(cookie))
+      return applySecurityHeaders(refused)
+    }
+    return applySecurityHeaders(redirectWithSessionCookies(new URL('/reset-password', request.url)))
   }
 
   const appRole = getUserRole(user)

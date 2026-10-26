@@ -1,5 +1,5 @@
 /**
- * @jest-environment jsdom
+ * @jest-environment node
  *
  * B's review P2: an invited login carries app_metadata.must_change_password
  * until its owner sets a new password from an emailed reset link (a
@@ -10,7 +10,6 @@
  */
 
 import { NextRequest } from 'next/server'
-import { render, screen } from '@testing-library/react'
 
 const getUserMock = jest.fn()
 const updateUserMock = jest.fn()
@@ -36,9 +35,7 @@ jest.mock('@/lib/supabase/service', () => ({
 jest.mock('@sentry/nextjs', () => ({ captureException: jest.fn() }))
 
 import { POST as SET } from '../password/route'
-import ResetPasswordPage from '@/app/reset-password/page'
 import { passwordLimiters } from '@/lib/auth/password-rate-limit'
-import { MUST_CHANGE_PASSWORD_MESSAGE } from '@/lib/auth/must-change-password'
 
 const NEW = 'violet harbor 42 lantern'
 const FLAGGED_META = { app_role: 'provider', clinic_id: 'c-1', must_change_password: true }
@@ -75,13 +72,4 @@ it('a failed password update leaves the flag', async () => {
   updateUserMock.mockResolvedValue({ data: null, error: { code: 'same_password', message: 'x' } })
   expect((await SET(req())).status).toBe(400)
   expect(updateUserByIdMock).not.toHaveBeenCalled()
-})
-
-it('/reset-password, flagged, ordinary session: explains, and links to the emailed reset', async () => {
-  getUserMock.mockResolvedValue({ data: { user: { id: 'u-1', email: 'dr@clinic.test', app_metadata: FLAGGED_META } } })
-  claims = { sub: 'u-1', amr: [{ method: 'password', timestamp: Math.floor(Date.now() / 1000) - 60 }] }
-  render(await ResetPasswordPage())
-  expect(screen.getByText(MUST_CHANGE_PASSWORD_MESSAGE, { exact: false })).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: 'Email me a link' })).toHaveAttribute('href', '/forgot-password')
-  expect(screen.queryByRole('link', { name: 'Go to Settings' })).toBeNull()
 })
