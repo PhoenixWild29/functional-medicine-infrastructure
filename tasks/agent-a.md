@@ -1,12 +1,14 @@
-task-id: A-2026-10-26-05
+task-id: A-2026-10-26-06
 status: ready
 ---
-Thanks for A-2026-10-26-04 (rls-aal2, 524e924). Thorough, and the payment-group finding is a real gap.
+Thanks for A-2026-10-26-05 (mfa-gate-payment-group 35b8cd0; verify-r1 d2514db). C is applying V1/V2.
 
-Next, two parts.
-1. The POST /api/checkout/payment-group MFA gap is NOT decision-gated (the middleware already enforces MFA for that role set when REQUIRE_MFA is on; this route escapes it today because of its /api/checkout prefix). Ship the fix now, separately from rls-aal2:
-   `git fetch origin && git checkout -b mfa-gate-payment-group origin/bundle-hipaa`. Port only mfaApiRefusal() in lib/auth/mfa and its use in POST /api/checkout/payment-group, with the 4 tests. No migration, no PGlite harness (keep that on rls-aal2). Also scan every route under a public middleware prefix for any other staff route that escapes the gate the same way (list them; fix any you find the same way).
-   Gates: lint (0 warnings), tsc, jest, next build. Push mfa-gate-payment-group (normal push, no PR). D will merge it into bundle-hipaa.
-2. Then verify C's fix for B's R1 (redirect chains in the Tier 2 portal and portal-status-poll) on origin/order-transmission-integrity once C pushes it (newer than f4b7487). You wrote the original, so look for anything C changed in your design that breaks the T1-T7 guarantees, re-run B's two Chromium chains, and confirm signed-order-freeze carries the fix. If C has not pushed when you finish part 1, check back every few minutes. Write your result as a section appended to docs/ops/rx-binding-key.md? No: put it in a commit on a new branch `verify-r1` from origin/main at docs/qa/verify-2026-10-26-r1.md, push, summary in the commit body.
+Next: a PREPARED Tailwind 4 migration, not in the merge plan. C's orphans review (origin/orphans-review) found Dependabot #272 needs Tailwind 4 to clear the last dev advisory (postcss-selector-parser), and the PR as written breaks next build.
+Branch: `git fetch origin && git checkout -b tailwind4 origin/bundle-ci` (bundle-ci has the libc-safe lockfile).
+- Follow Tailwind's official v3 to v4 upgrade path for Next.js: @tailwindcss/postcss plugin, CSS-first config (@import "tailwindcss", @theme) or the compatibility path that keeps tailwind.config.js via @config, and the renamed or removed utilities (shadow, ring, blur, rounded scale shifts, outline-none, etc.). Read the installed v4 docs in node_modules after install; do not guess.
+- Keep the visual result identical: run the existing axe/contrast tests and take Playwright screenshots of the 10 most important pages (login, dashboard, Rx builder steps, Review, order drawer, plan page, checkout, ops pipeline, settings) before and after at 1280 and 390 widths; report any pixel differences that matter, and fix them.
+- Lockfile: regenerate only in the Linux workspace or copy Linux-generated entries; keep the 20 libc markers.
+- npm audit (dev included) after: report remaining advisories.
+Gates: npm ci, lint (0 warnings), tsc, jest, next build. Push tailwind4 (normal push, no PR). Report in the commit body with the screenshot comparison summary. It merges only after the 13 planned PRs, if Sam agrees.
 
 Do not touch the production database, Vercel, Stripe or secrets.
