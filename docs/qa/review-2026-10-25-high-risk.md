@@ -393,3 +393,193 @@ None.
   - Both pages are one column, `mx-auto max-w-3xl px-4`, with no fixed widths, tables or `whitespace-nowrap`; the text wraps.
   - The header rows that gained a `HelpLink` are `flex items-baseline justify-between gap-3`, with the short "Help" link beside the heading.
   - The link list items are full-width blocks with `py-3` padding.
+
+## 7. auth-monitoring and audit-review-breakglass (review, C-2026-10-26-01)
+
+Independent review of two HIPAA fix branches, read from the diff against `origin/bundle-features`, not from the authors' reports. Each behavioural finding was confirmed with a throwaway Jest probe run against the branch in a temporary worktree (deleted afterwards, nothing pushed). The probe names are given per finding.
+
+### Health check question (from the task)
+
+Yes. On `phi-access-log-coverage` (896cc3fb), `GET /api/health` fails when `PHI_ACCESS_LOG_HASH_SECRET` is unset or blank, **but only when `VERCEL_ENV` is `production`**.
+
+In that case prod returns HTTP **503** with `Cache-Control` unset and this JSON body:
+
+```
+{ "ok": false, "timestamp": "<ISO time>", "version": "<first 7 of VERCEL_GIT_COMMIT_SHA>", "checks": { "phi_audit_hash_secret": "missing" } }
+```
+
+The secret's value is never in the body. Preview, local and CI return 200 with `checks.phi_audit_hash_secret` reported as `set` or `missing`.
+
+The deploy workflow's verify job curls `/api/health` and treats a non-200 as a failed deploy: it notifies Slack and does not roll back. So the orchestrator must confirm the variable is set in Vercel production before that code deploys.
+
+### 7a. origin/auth-monitoring at b182d07b (B)
+
+**Base and scope.** The branch contains bundle-features (`merge-base --is-ancestor` true). 57 files, +1540/-135.
+- The core is new `src/lib/auth/sign-in-monitor.ts`.
+- New routes: `POST /api/sign-in` and `POST /api/mfa/verify`. The login page and the MFA challenge now post to these instead of calling Supabase in the browser.
+- New page: `/ops/security`.
+- POC and E2E passwords moved to env vars (`src/lib/poc/canonical-users.ts`, `e2e/fixtures/test-password.ts`), with docs updated.
+
+#### Findings
+
+**A1. Anyone can keep a real user out by failing sign-ins for their email (Medium).**
+- **Where:** `src/app/api/sign-in/route.ts:42-43` and `src/lib/auth/sign-in-monitor.ts:90`. The account throttle key is `password:<email>` alone, with no IP, and it is checked before the password is tried.
+- **Scenario:**
+  1. From any IP, with no account, an attacker sends 5 wrong passwords for `dr.chen@<clinic>` every 5 minutes.
+  2. The provider then signs in from their own IP with the correct password.
+  3. They get 429 "Too many attempts" on every instance the attacker has warmed, and this repeats for as long as the script runs.
+- **Mitigating:** the throttle is in memory per instance, so it is not a permanent lock-out, but it is a trivial, indefinite denial of service against a named user.
+- **Probe:** "F1: failures from an attacker IP throttle the real user on another IP" passes.
+- **Fix:**
+  1. Key the account throttle on account plus IP (`password:<email>|<ip>`). Keep the IP-wide throttle.
+  2. Keep account-wide detection in the alert rules (the DB count), which already covers a distributed attack on one account without refusing the real user.
+
+**A2. A burst of parallel failures can skip the alert threshold, so no alert is sent (Medium).**
+- **Where:** `src/lib/auth/sign-in-monitor.ts:115-117`. A rule fires only when the count *equals* the threshold (`accountCount === 5`, `ipCount === 20`), and the count is read after this request's own insert.
+- **Scenario:**
+  1. A credential-stuffing tool sends attempts 5 and 6 in parallel.
+  2. Both rows are inserted before either count runs, so both requests read 6.
+  3. Neither request sees 5, so no account alert is ever sent for that burst.
+  4. The same applies to the IP rule at 20.
+  5. For an ops_admin or pharmacy_admin account, the privileged rule stops at 4 (`accountCount < 5`), so a skipped 5 leaves that account with no alert at all after its fourth failure.
+- **Probes:** "F2: a count that passes the threshold without equalling it fires no rule" and "F2: two concurrent failures that both count 6 send no alert" pass.
+- **Fix:** fire when `count >= threshold` and no `auth_failure_alert` row for that rule and key exists in the window. Check before inserting, or rely on a unique key per (rule, key, window bucket). The privileged rule can then be `privileged && !accountAlertAlreadySent`.
+
+**A3. Without `PHI_ACCESS_LOG_HASH_SECRET`, the account rule can never fire (Low; tied to the health check above).**
+- **Where:** `src/lib/auth/sign-in-monitor.ts:225`. `auditHash` returns null with no secret, so the account count is never read.
+- **Effect:** only the IP rule and the privileged rule remain, and the rows store `email_hash: null`.
+- **Probe:** "F5: without the hash secret the account count is never read" passes.
+- **Fix:** none needed beyond the production health check on phi-access-log-coverage (it fails the deploy when the secret is missing). Optionally log once at startup when the secret is absent.
+
+**A4. Sign-ins made directly against Supabase Auth are not seen (Medium, design gap).**
+- **Why:** the monitor only sees sign-ins made through the app's routes. The anon key is public (`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `src/lib/supabase/client.ts:19`), so anyone can POST to Supabase's `/auth/v1/token?grant_type=password` directly.
+- **Scenario:** an attacker scripting against Supabase rather than `/api/sign-in` triggers no row, no alert and no app throttle. Only Supabase's own per-IP rate limits apply.
+- **Fix (pick one):**
+  - a Supabase Auth hook for password verification attempts (plan dependent);
+  - a scheduled job that reads Supabase's auth audit log for failed password grants and feeds the same rules;
+  - at minimum, a line in the B12 evidence saying the app-level monitor covers the app's own sign-in path only.
+
+**A5. The deactivated-account answer tells whoever sends it that the email is a deactivated account (Low, pre-existing, not introduced here).**
+- **Where:** `src/app/api/sign-in/route.ts:60-61` returns 403 `user_banned`.
+- **What it reveals:** whether that leaks without the right password depends on whether Supabase checks the ban before or after the password. I did not confirm that against Supabase, so this is a note, not a confirmed finding.
+- **History:** this behaviour existed in the browser before this branch.
+- **Fix if wanted:** return the same 401 for `user_banned` and show the deactivated message only after a successful password check (for example via a second call).
+
+#### POC and test passwords (B9)
+
+- **Tree:** in the tracked tree on b182d07b, none of the old POC or E2E values appears, and neither do their base64 forms. I searched all tracked files for each of the old values, then for any `password ... = "<8+ chars>"` pattern in code, docs, e2e, scripts, JSON, YAML and env files.
+- **Remaining hits are not credentials:**
+  - unit-test inputs passed to mocks (for example `src/app/api/onboarding/__tests__/accept-invite.test.ts:41`, `src/lib/signup/__tests__/self-serve.test.ts:50`, `src/app/api/sign-in/__tests__/route.test.ts:49`), which reach no real account;
+  - env var names in docs (`docs/archive/source/POC-DEMO-DETAILED.md:155` now names `POC_*_PASSWORD`);
+  - variables in E2E specs (`e2e/rbac.spec.ts:43`, `e2e/accessibility.spec.ts:193` and others read `e2ePassword()`).
+- **History:** the old values are still in git history (for example 9442b018 and earlier). Removing them from the tree does not unexpose them. **Sam: rotate the four POC account passwords, and the E2E account password, on every Supabase project where they were used (prod POC accounts included).** The ops "Reset Demo Credentials" button now sets them from the new env vars.
+- **Helpers fail clearly when the env var is missing:**
+  - `e2ePassword()` (`e2e/fixtures/test-password.ts`) throws, naming `E2E_TEST_PASSWORD` and `E2E_SUPABASE_SERVICE_ROLE_KEY`.
+  - `scripts/seed-poc.ts` stops before writing, naming every missing `POC_*_PASSWORD`.
+  - `scripts/fix-rls.ts` throws, naming `POC_OPS_PASSWORD`.
+  - `syncPocCredentials` skips that account with an error naming the variable, never a value.
+  - The demo-tools page shows the env var name and whether it is set, never the password.
+
+#### Checked and fine
+- **No raw email or password is recorded.** The `auth_failure` row stores `email_hash` (HMAC with the audit secret), the step, a reason code, the raw IP and the user agent (capped at 300). The password is never stored or logged.
+- **Hashing.** The email is trimmed and lower-cased before the HMAC, so case variants count as one account.
+- **Slack payloads are free of PHI and raw email.**
+  - They go through `buildOpsAlert`, carrying the step, the code, the counts, the window, the role, `acct:<12 hex>` and `ip:<12 hex>`.
+  - The note tells ops to open Ops, Security for the IP.
+  - Message strings carry no email.
+- **No account enumeration through the failure path** (A5 aside):
+  - one 401 message for an unknown email and a wrong password;
+  - the same recording work on both;
+  - the 429 is keyed the same way for any email;
+  - the privileged lookup reads a cached list for every email alike.
+- **MFA.** `POST /api/mfa/verify` needs the AAL1 session from the password step. Its throttle is per user id, so it can only be triggered by someone who already has that user's password. It is MFA-exempt in the middleware by prefix `/api/mfa/`.
+- **Thresholds and windows match the comment and the page copy:**
+  - alerts: 5 per account and 20 per IP in 15 minutes;
+  - throttle: 5 per account and 20 per IP in 5 minutes;
+  - one alert per rule as designed (apart from A2).
+- **Client IP.** `clientIp` takes the first `x-forwarded-for` entry. On Vercel that header is set by the platform. On another host it could be spoofed to dodge the IP rule; note this if hosting changes.
+- **`/ops/security`** is ops_admin only through the middleware and the ops layout, and is read-only.
+
+### 7b. origin/audit-review-breakglass at 9ac38805 (D)
+
+Pushed while item 1 was in review, so it is reviewed here, not in a follow-up.
+
+**Base and scope.** The branch contains bundle-features. 23 files, +1562/-25.
+- New: `src/lib/audit/access-review.ts` (filters, flags, CSV) and `GET /api/ops/access-review`, plus `/ops/access-review`.
+- New: `src/lib/audit/ops-access-reason.ts`. The ops detail route now requires a reason code.
+- New procedure docs: `docs/compliance/audit-log-review-procedure.md` and `docs/compliance/emergency-access-procedure.md`.
+
+#### Findings
+
+**D1. The outside-hours flag is read in UTC, which inverts it for US clinics (Medium).**
+- **Where:** `src/lib/audit/access-review.ts:30` and `:144`. The window is 06:00 to 22:00 UTC.
+- **Scenario:**
+  - A Pacific clinic opening a chart at 3:30pm local (22:30 UTC) is flagged, and at 11:30pm local (06:30 UTC) it is not.
+  - An Eastern clinic at 6:30pm local is flagged.
+- **Effect:** the flag fires on normal afternoon work and misses real night access. The UI and the procedure do state "UTC", so it is disclosed, not hidden.
+- **Probe:** "D-tz" passes.
+- **Fix:** read the hours in the clinic's time zone. Derive it from the clinic's state (a small state-to-zone map, no migration), or add a `REVIEW_TIMEZONE` env such as America/New_York as an interim, and label the column with the zone used.
+
+**D2. After phi-access-log-coverage merges, the review is swamped and loses its newest rows (High once both merge; merge interaction).**
+- **Why:** phi-access-log-coverage logs list views as one row per patient (`logPhiAccessMany`), including the dashboard's 30-second poll.
+- **Bulk flag:** `bulkViewIds` (`access-review.ts:154`) counts every `view` row with a patient. One dashboard render listing 31 patients flags every row as `bulk_patients`. Probe "D-bulk" passes.
+- **Truncation:** the route reads `occurred_at` ascending with a limit of 5,000 (`route.ts:110`).
+  - One clinic with 50 patients polled for an 8-hour day writes about 48,000 rows.
+  - The weekly review will always be truncated, and it drops the **newest** rows.
+- **Deactivated flag:** after the merge, patient and system rows carry `actor_user_id` = a patient id or the nil UUID. `deactivatedActors` (`route.ts:77`) marks any id `getUserById` cannot find as deactivated, so every patient and system row is flagged "Deactivated user".
+- **Fix:**
+  1. Exclude list resources (`order_list`, `patient_list`, `practice_dashboard`, `inbound_fax` lists) from `bulk_patients`, or count distinct patients per resource that opens a single record.
+  2. Read newest first (or page by cursor) so a truncated review keeps the latest rows.
+  3. Skip the deactivated check for `actor_role` in (`patient`, `system`).
+  4. Treat a lookup *error* as unknown, not deactivated: today a transient Auth error also flags the row (`route.ts:77`, `error ||`).
+
+**D3. A truncated CSV export does not say so (Low).**
+- **Where:** `access-review.ts:214` and `route.ts:130`. The CSV path uses the same 5,000-row cap but carries no truncation marker. The on-screen note ("export a shorter range") implies the export is complete.
+- **Probe:** "D-csv" passes.
+- **Fix:** refuse a CSV when `truncated` (400 "Narrow the range"), or add an `X-Truncated: true` header and a final comment row.
+
+**D4. The export's log row is not fail-closed (Medium once phi-access-log-coverage merges).**
+- **Where:** `route.ts:125` awaits `logPhiAccess` and ignores the result. On bundle-features `logPhiAccess` returns void, so the author could not do otherwise.
+- **After the merge:** it returns a boolean, and an export is a disclosure-type action.
+- **Fix:** for `format=csv`, `if (!(await logPhiAccess(...))) return 503` before sending the file; keep the view path alert-only.
+- **Same treatment for the reason row** (`detail/route.ts:108`). For an emergency open, the reason row is the accountability record. Consider logging the reason row before reading the order, and refusing on false.
+
+**D5. Emergency access depends on self-reporting (Low, procedure versus code).**
+- **Docs:** the emergency procedure (`emergency-access-procedure.md:35`, `:67-80`) says each emergency access is reviewed within 24 hours.
+- **Code:** nothing alerts anyone when `ops_reason_emergency` is logged. The UI only tells the user to "tell the security officer". The 24-hour review therefore depends on the user reporting it, or on someone running the weekly review in time.
+- **Fix:** send a PHI-free Slack alert through `buildOpsAlert` when the reason is `emergency` (actor role, time, `ops_reason_emergency`; no ids). Or make the procedure a daily filter on that resource.
+
+**D6. The reason gate covers the order drawer only (Low, scope note).**
+- **What is enforced:** the reason cannot be skipped through a direct API call to the order detail route. `detail/route.ts:48` refuses with 400 before any query when the header is missing or not a listed code (checked against the code list, not trusted from the client).
+- **What is not:** other ops views still show order-linked PHI with no reason, notably the inbound fax PDFs (`/ops/fax`, `/api/ops/fax`).
+- **Docs:** the emergency doc's "Every time ops opens an order" (`:56`) is accurate for the drawer, but readers may take it as all ops PHI access.
+- **Fix:** state the scope in the doc, or require the reason on the fax viewer too.
+
+#### Checked and fine
+- **ops_admin only.**
+  - The route checks `getUser()` and `getUserRole(user) === 'ops_admin'` (role from `app_metadata`) before reading.
+  - The page sits under the ops layout and middleware.
+  - The service role is used only after that check, because the log's RLS limits clinic admins to their clinic.
+- **Filters.**
+  - Dates must be valid `YYYY-MM-DD`.
+  - The range is at most 92 days, and `from > to` is refused.
+  - `clinicId` and `actorUserId` must be UUIDs, and role and resource match the CHECK pattern.
+  - `action` must be one of the six.
+  - A malformed filter is a 400 naming it, never ignored.
+  - `to` is inclusive (an exclusive next-day bound).
+- **Bulk window.** It is a correct sliding 60-minute window of distinct patients per actor, with the threshold "more than 30".
+- **CSV contents.** The CSV holds the same 10 columns ops already sees on screen (ids, role, action, resource, route pattern, flags). There are no names, no DOB and no hashes.
+- **CSV safety.**
+  - Cells starting with `= + - @ tab CR` get a leading apostrophe.
+  - Quotes are doubled.
+  - It is sent `no-store` as an attachment.
+- **CSV logging.** The export logs an `export`/`access_log` row, and a view logs `view`/`access_log`, against the filtered clinic.
+- **Reason codes.**
+  - The six codes fit the resource CHECK with no migration.
+  - The second row carries the same order, patient and clinic, so the clinic admin sees "Reason given by CompoundIQ operations: ..." in their access log.
+  - The drawer fetches nothing until a reason is chosen, and asks again per order.
+- **Docs match the code** on the reason list, the 400 on a missing or unknown reason, the two rows, codes only, and the free-text design marked "not built".
+
+### Merge notes
+- Both branches and phi-access-log-coverage edit `src/lib/audit/phi-access.ts`, and D also edits the ops page guard test. Expect small conflicts.
+- D2 and D4 are only fully true once phi-access-log-coverage is in. Fix them in whichever branch merges second.
