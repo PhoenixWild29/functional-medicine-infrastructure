@@ -980,3 +980,153 @@ C lists these as remaining; they are not regressions:
 - L1 re-run: on batch sign and proposal sign, a failed log write means nothing is written (proven against the real `signBatch`).
 - Nothing new was opened, except the low poll-truncation side effect above.
 - Before B14 and B15 count as closed, the three after-the-write logs above (intake link, duplicate flag, proposal create) should get the same log-first fix.
+
+---
+
+## order-transmission-integrity: verification of A's fixes for D's findings 1-7, 2026-10-26
+
+Task B-2026-10-26-09. I checked A's fixes for D's verification (`origin/verify-transmission`, `docs/qa/verify-2026-10-26-transmission.md`) on `origin/order-transmission-integrity` at **f4b7487a**. The red tests are at **36cf5a31**. I also checked C's dry run 2, items 6 to 9 (`origin/dry-run-2-report`).
+
+Only confirmed results are reported. Each was confirmed in one of these ways:
+- A's tests, run before and after the fix;
+- my own throwaway probes against the real code, run and then deleted;
+- real Chromium (Playwright 1.58, chromium-1208);
+- reading the code, marked where it is the only evidence.
+
+Nothing was pushed to A's, C's or D's branches.
+
+### Summary
+
+| D's finding | Fixed? | Red before the fix | Note |
+|---|---|---|---|
+| 1. T5/T7 redirect hops | **Partly.** A redirect straight to http is refused. **A redirect to http after an allowed hop still goes through, form body included.** | Yes (`portal-redirect-hops`) | **R1, high**, below |
+| 2. The development key outside production | **Fixed** | Yes (health, signature-binding, batch-sign) | |
+| 3. Key rotation | **Fixed** | Yes | |
+| 4. The legacy cutoff | **Fixed** | Yes | |
+| 5. The T6 clinic copy | **Fixed** | Yes (`submission-failure`) | |
+| 6. The OAuth `token_url` | **Fixed** | Yes (`vault-token-https`) | |
+| 7. The legacy digest for `provider_sign_and_send` | **Fixed**, by tying the row to the signing time | Yes | |
+
+**A's tests, red then green:** A's 13 jest test files were run at 36cf5a31 and at f4b7487a.
+- At 36cf5a31, 7 files fail: 27 tests.
+- The 6 that pass are fixture updates: each adds `signed_at` to a legacy history row in a test.
+- At f4b7487a: 333 of 333 tests pass.
+- The Chromium part of `portal-redirect-hops` ran; it was not skipped.
+
+### R1. High: a redirect to http after an allowed hop is followed, and resends a form
+
+- **Where:** `src/lib/adapters/transmission-guard.ts:322-351`, `enforceHttpsOnly`.
+  - The handler fetches each allowed request itself (`route.fetch({ maxRedirects: 0 })`) and refuses a 3xx whose Location is not allowed.
+  - When the redirect's target is allowed, it hands the 3xx back to the browser (`route.fulfill({ response })`). It assumes the browser's next hop "is a new request and comes through the route again".
+  - **In Chromium it does not.** After a fulfilled redirect, Chromium follows the rest of the chain without calling the route.
+- **Confirmed** in real Chromium, with A's real `enforceHttpsOnly`: server A allowed, server B blocked, B recording every request.
+  - **Which requests the route sees:** for `A/chain` → 302 → `A/chain2` → 301 → `B/chain-end`, the handler ran only for `A/chain`. A received `/chain` and `/chain2`, and **B received `GET /chain-end`**. Reproduced 3 of 3.
+  - **A form POST:** a form POST to `A/submit` → 307 → `A/submit2` → 307 → `B/steal`. **B received `POST /steal` with the body `phi=Jane+Doe+1980-01-01`.**
+- **Production scenario:**
+  1. An https portal answers a submit with a 307 to another https page on its own site.
+  2. That page answers with a 307 to an http URL.
+  3. The patient and prescription fields Tier 2 typed are resent in cleartext.
+
+  The same applies to the status poll's typed portal credentials. `assertPageSecure` only stops the next fill.
+- **What A's handler does stop** (each case confirmed alone, 3 of 3):
+  - a direct 302 to B;
+  - a direct 307 form POST to B;
+  - a 303 after a POST;
+  - a page `fetch` straight to B.
+
+  An allowed same-origin redirect still works.
+- **Why A's test passes:** its Chromium case has one allowed same-origin redirect that ends there, and direct redirects to the blocked origin. It never has a redirect after an allowed hop.
+- **Fix:** do not hand an allowed 3xx back to the browser. Follow the chain inside the handler:
+  1. `route.fetch({ url: next, maxRedirects: 0 })`, hop by hop, checking every Location with the same rule. Keep the method and body for 307 and 308; use GET for 301, 302 and 303 after a POST.
+  2. Cap the number of hops.
+  3. Fulfill only the final, non-3xx response.
+
+  `page.url()` then stays the first URL, which was checked. Then add the two-hop chain and the two-hop 307 POST to the Chromium test.
+
+### 2. The development key: fixed
+
+- **Where:** `bindingKeyRequired()` (`signature-binding.ts:98-101`) requires `RX_BINDING_SECRET` in these cases:
+  - `VERCEL` or `VERCEL_ENV` is set: production, preview, `vercel dev`;
+  - any `NODE_ENV` other than `test` or `development`, including **unset**, so a bare node script also requires it.
+- **My probe:**
+  - The key is required on Vercel production, Vercel preview, vercel dev, `VERCEL` alone, `next start` off Vercel, `NODE_ENV` unset and `NODE_ENV=staging`.
+  - It is not required for local `next dev` or jest.
+  - On a Vercel preview with no key, signing throws `BindingKeyMissing`, and a value made with the development key never verifies as `match`.
+  - With a real key set, a development-key value is a `mismatch`: the development key is never in the verification list.
+- **Health check:** `/api/health` now fails on the same rule (`bindingKeyRequired() && missing`), and batch sign refuses before reading or writing.
+
+### 3. Rotation: fixed
+
+My probe:
+- An order signed under the old key is a `mismatch` under the new key alone, and a `match` with `RX_BINDING_SECRET_PREVIOUS` set to the old key.
+- Altered content under the previous key is still a `mismatch`.
+- A new binding uses the current key: it differs from the old one and verifies without `PREVIOUS`.
+- A reroute proof made under the old key passes with `PREVIOUS`, and not under a third key.
+- The runbook `docs/ops/rx-binding-key.md` gives the steps.
+
+### 4. The legacy cutoff: fixed
+
+- `legacySigningCutoff()` reads `RX_LEGACY_CUTOFF`. My probe:
+  - Unset, empty or not a time (`'tomorrow'`): even a perfect batch-sign row is not accepted as legacy.
+  - Set to a later time: the same row is accepted.
+
+### 5. The T6 clinic copy: fixed
+
+- `submissionFailureNotice` (`submission-failure.ts`). For `allergies_changed`, `signature_mismatch`, `unsigned_order` and `pharmacy_mismatch`, my probe got "CompoundIQ ops will cancel and refund it; then prescribe it again".
+- None of them says "Cancel this prescription", and none has an em dash.
+
+### 6. The OAuth token_url: fixed
+
+- `vault.ts:112-117` checks `creds.token_url` with `isSecurePharmacyUrl` before the client secret is posted. Otherwise it throws `insecure_pharmacy_url`.
+- The fetch has `redirect: 'error'`.
+- A's `vault-token-https.test.ts` was red at 36cf5a31 and passes now.
+
+### 7. The provider_sign_and_send legacy digest: fixed
+
+- `legacySignatureProven` (`signature-binding.ts:372-395`) now requires:
+  - `metadata.signed_at` at the same instant as the order's `locked_at` (`sameInstant`, so the format does not matter);
+  - a digest equal to the column wherever the row records one;
+  - for batch-sign rows, a digest at all.
+- **My probe:**
+  - A `provider_sign_and_send` row with `signed_at` the same instant as `locked_at` (written `+00:00`) is accepted.
+  - The same row with another `signed_at`, or none, is refused.
+  - A row carrying a different digest is refused.
+  - 64 zeros with a sign-and-send row from another signing is refused (that was D's case 3).
+  - A batch-sign row with no digest, another digest, or a time after the cutoff is refused.
+- **The tie holds for real old orders:** on `main`, batch-sign writes `locked_at: signedAt` (`batch-sign.ts:897`) and the history metadata `signed_at: signedAt` (`:939`) from the same value.
+
+### Nothing new opened, apart from R1
+
+A's changes to the health check, `env.ts` and batch-sign only widen where the key is required: from `VERCEL_ENV=production` to any Vercel deployment or any server outside local test and development. That is stricter, not looser.
+
+Not a finding (not demonstrable in a probe):
+- The Tier 2 context does not set `serviceWorkers: 'block'`, and a context route does not see requests a service worker handles.
+- On an https portal, Chromium's mixed-content rule blocks a service worker's fetch to http anyway.
+- Setting `serviceWorkers: 'block'` in `getBrowserContextOptions` would be a cheap belt-and-braces step.
+
+### C's dry run 2, items 6 to 9: as described
+
+Checked on C's local dry-run commits:
+- **fef437cc:** the merge of `signed-order-freeze`, before the test fixes;
+- **939aec59:** the test fixes.
+
+On the four test files C changed, **13 tests fail at fef437cc** and all **113 pass at 939aec59**.
+
+- **Item 6: the health check, two secrets.** Two tests fail at fef437cc, one from each side:
+  - signed-order-freeze's "fails (503) in production when it is missing ...";
+  - bundle-hipaa's "production with the secret: 200, and the value is never in the body".
+
+  Each sets only its own secret, against the merged route that checks both. As described.
+- **Item 7: the Tier 2 order read moved.** Confirmed by reading the code:
+  - bundle-hipaa's tier2 adds `clinic_id` to its own order select;
+  - signed-order-freeze replaces that read with `loadTransmittableOrder`, whose `SEND_ORDER_COLUMNS` include `clinic_id`;
+  - freeze's local `OrderRow` type has no `clinic_id`;
+  - C's merge adds `clinic_id: string` to it (`tier2-portal.ts:265`), and the disclosure call uses it (`:382`, `:387`).
+
+  As described.
+- **Item 8: the disclosure tests.** 10 of `phi-disclosure.test.ts` fail at fef437cc (Tier 1 ×4, Tier 2 ×3, Tier 4 ×3), with `TransmissionRefusedError: Order o-1 has not been signed, so it was not sent`. The guard refuses the file's unsigned orders. As described.
+- **Item 9: batch-sign's partial sign.** "a partial sign names the orders that were not signed" fails at fef437cc: the expected status was 500 and the received status is **503**. The freeze's per-order binding write catches the order that left DRAFT before anything is signed. As described.
+
+### Verdict
+
+Findings 2 to 7 are fixed, each with a test that fails before its fix. Finding 1 (T5/T7) is **not fully closed**: R1 is a confirmed, high-severity gap, because a redirect to http that comes after an allowed hop is followed, form body included. Fix R1 as above before Tier 2 portal sending is relied on. C's items 6 to 9 are as C described.
