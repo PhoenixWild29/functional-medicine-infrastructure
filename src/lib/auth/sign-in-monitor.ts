@@ -15,23 +15,37 @@
 //      service-role only (RLS on, no policies) and retention deletes its
 //      sent rows after a year.
 //   2. Counted against the alert rules over the last 15 minutes:
-//        - 5 failures for one account;
-//        - 20 failures from one IP;
-//        - any failure on an ops_admin or pharmacy_admin account (until
-//          the account rule fires for it, which then covers it).
-//      A rule fires once, when the count reaches its threshold, so an
-//      attack sends one alert per rule, not one per attempt.
-//   3. Alerted in Slack through buildOpsAlert: the step, reason code,
+//        - 5 or more failures for one account (from any IP);
+//        - 20 or more failures from one IP;
+//        - any failure on an ops_admin or pharmacy_admin account.
+//      At or above the threshold, so a burst of parallel failures that
+//      jumps past it still alerts (C-2026-10-26-02, A2).
+//   3. Sent once per rule, key and window. Before sending, the alert
+//      claims its 'auth_failure_alert' row with an alert_id derived from
+//      the rule, the account's (or IP's) keyed hash and the 15-minute
+//      window it falls in (alertClaimId). The primary key makes the claim
+//      atomic across requests and instances: a second claim is a 23505
+//      and sends nothing. No migration. A sustained attack alerts once
+//      per rule per 15-minute window.
+//   4. Alerted in Slack through buildOpsAlert: the step, reason code,
 //      count, window, role and keyed-hash prefixes only (never the email
-//      or the IP). Each alert is also written as an 'auth_failure_alert'
-//      row (with the IP, for the Ops Security page); one Slack could not
-//      take stays unsent, and the reconciliation cron's flush retries it.
+//      or the IP). The claimed row (with the IP, for the Ops Security
+//      page) is marked sent once Slack takes it; one Slack could not take
+//      stays unsent, and the reconciliation cron's flush retries it.
 //
-// Throttling: after 5 failures for one account, or 20 from one IP, within
-// 5 minutes, further attempts are refused (429) for the rest of that
-// 5-minute window. In memory per instance (lib/security/rate-limit), so a
-// short delay, never a lock-out: nothing is stored, and it ends by itself.
-// Supabase Auth's own per-IP limits stay in front of it.
+// Throttling: after 5 failures for one account FROM ONE IP, or 20 from one
+// IP, within 5 minutes, further attempts from that IP are refused (429)
+// for the rest of that 5-minute window. Keyed on email + IP, never on the
+// account alone, so failures sent from elsewhere cannot hold up the real
+// user (C-2026-10-26-02, A1); account-wide detection is the alert rule
+// above, which never refuses anyone. In memory per instance
+// (lib/security/rate-limit), so a short delay, never a lock-out: nothing
+// is stored, and it ends by itself. Supabase Auth's own per-IP limits stay
+// in front of it.
+//
+// Coverage: only sign-ins through this app's routes are seen. A script
+// calling Supabase Auth directly with the public anon key is limited by
+// Supabase alone (docs/technical/direct-auth-sign-in-coverage.md).
 //
 // Nothing here may break a sign-in: every database and Slack error is
 // logged (codes only) and swallowed.
@@ -46,6 +60,7 @@ export const AUTH_FAILURE = 'auth_failure'
 export const AUTH_FAILURE_ALERT = 'auth_failure_alert'
 
 export const ALERT_WINDOW_MINUTES = 15
+const ALERT_WINDOW_MS = ALERT_WINDOW_MINUTES * 60_000
 export const ACCOUNT_ALERT_AT = 5
 export const IP_ALERT_AT = 20
 /** Roles whose every failed sign-in is alerted. */
@@ -97,6 +112,16 @@ export function createSignInThrottle(now?: () => number) {
 /** One per server instance, shared by the sign-in and MFA routes. */
 export const signInThrottle = createSignInThrottle()
 
+/**
+ * The password step's per-account throttle key: the email AND the client
+ * IP, so another IP's failures never refuse the real user (A1). The MFA
+ * step keys on the user id alone: it needs that user's password first,
+ * and a per-IP key there would let a code be guessed from many IPs.
+ */
+export function passwordThrottleKey(email: string, ip: string | null): string {
+  return `password:${email}|${ip ?? 'unknown'}`
+}
+
 /** The message for a throttled attempt (no em dash: UI copy). */
 export function throttledMessage(retryAfterSeconds: number): string {
   const minutes = Math.max(1, Math.ceil(retryAfterSeconds / 60))
@@ -110,12 +135,27 @@ export function reasonCode(code: unknown): string {
   return typeof code === 'string' && /^[a-z0-9_]{1,40}$/.test(code) ? code : 'unknown'
 }
 
+/** The rules that apply to this failure; each is then sent at most once per window (alertClaimId). */
 export function alertRules(args: { accountCount: number; ipCount: number; privileged: boolean }): AlertRule[] {
   const rules: AlertRule[] = []
-  if (args.accountCount === ACCOUNT_ALERT_AT) rules.push('account')
-  if (args.ipCount === IP_ALERT_AT) rules.push('ip')
-  if (args.privileged && args.accountCount < ACCOUNT_ALERT_AT) rules.push('privileged')
+  if (args.accountCount >= ACCOUNT_ALERT_AT) rules.push('account')
+  if (args.ipCount >= IP_ALERT_AT) rules.push('ip')
+  if (args.privileged) rules.push('privileged')
   return rules
+}
+
+/**
+ * The alert_id that claims one alert for this rule, key and 15-minute
+ * window: a UUID-shaped SHA-256 of the three, so every request that would
+ * send the same alert computes the same id. The key is a keyed hash
+ * already (or the raw value when no audit secret is set, never stored).
+ */
+export async function alertClaimId(rule: AlertRule, key: string, nowMs: number): Promise<string> {
+  const bucket = Math.floor(nowMs / ALERT_WINDOW_MS)
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${AUTH_FAILURE_ALERT}|${rule}|${key}|${bucket}`))
+  const h = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('')
+  const variant = ((parseInt(h[16]!, 16) & 0x3) | 0x8).toString(16)
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-${variant}${h.slice(17, 20)}-${h.slice(20, 32)}`
 }
 
 const ALERT_TYPE = {
@@ -229,25 +269,38 @@ export async function recordSignInFailure(svc: SupabaseClient, failure: SignInFa
     const privileged = role !== null && PRIVILEGED_ROLES.includes(role)
     const rules = alertRules({ accountCount, ipCount, privileged })
 
+    const sent: AlertRule[] = []
     for (const rule of rules) {
       const count = rule === 'ip' ? ipCount : accountCount
-      let sentAt: string | null = null
-      try {
-        await send(buildAuthAlert(rule, { step: failure.step, reason, count, role, emailHash, ipHash }))
-        sentAt = new Date().toISOString()
-      } catch (err) {
-        console.error(`[sign-in-monitor] Slack alert (${rule}) failed; left queued:`, err instanceof Error ? err.name : 'unknown')
-      }
-      const { error } = await svc.from('ops_alert_queue').insert({
+      const key = rule === 'ip' ? (ipHash ?? failure.ip) : (emailHash ?? email)
+      if (!key) continue
+      // Claim this rule's alert for the window first: a 23505 means another
+      // request (or instance) already sent it.
+      const alertId = await alertClaimId(rule, key, now.getTime())
+      const { error: claimError } = await svc.from('ops_alert_queue').insert({
+        alert_id:   alertId,
         alert_type: AUTH_FAILURE_ALERT,
         message:    `Failed sign-in alert: ${rule} rule (${count} in ${ALERT_WINDOW_MINUTES} minutes).`,
         metadata:   { rule, step: failure.step, reason, count, role, email_hash: emailHash, ip: failure.ip, ip_hash: ipHash },
         severity:   privileged ? 'critical' : 'warning',
-        sent_at:    sentAt,
+        sent_at:    null,
       })
-      if (error) console.error('[sign-in-monitor] failed to record an alert:', error.code ?? 'unknown')
+      if (claimError?.code === '23505') continue
+      // Any other error: the claim is unknown, so send anyway (a repeat
+      // alert is better than a missed one).
+      if (claimError) console.error('[sign-in-monitor] failed to record an alert:', claimError.code ?? 'unknown')
+      try {
+        await send(buildAuthAlert(rule, { step: failure.step, reason, count, role, emailHash, ipHash }))
+        if (!claimError) {
+          const { error } = await svc.from('ops_alert_queue').update({ sent_at: new Date().toISOString() }).eq('alert_id', alertId)
+          if (error) console.error('[sign-in-monitor] failed to mark an alert sent:', error.code ?? 'unknown')
+        }
+      } catch (err) {
+        console.error(`[sign-in-monitor] Slack alert (${rule}) failed; left queued:`, err instanceof Error ? err.name : 'unknown')
+      }
+      sent.push(rule)
     }
-    return { alerts: rules }
+    return { alerts: sent }
   } catch (err) {
     console.error('[sign-in-monitor] failed:', err instanceof Error ? err.name : 'unknown')
     return { alerts: [] }

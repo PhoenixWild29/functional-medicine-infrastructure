@@ -21,7 +21,7 @@ import { readJson } from '@/lib/onboarding/access'
 import { clientIp } from '@/lib/audit/keyed-hash'
 import { refuseCrossSite } from '@/lib/security/same-origin'
 import { getUserRole } from '@/lib/auth/claims'
-import { reasonCode, recordSignInFailure, signInThrottle, throttledMessage } from '@/lib/auth/sign-in-monitor'
+import { passwordThrottleKey, reasonCode, recordSignInFailure, signInThrottle, throttledMessage } from '@/lib/auth/sign-in-monitor'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
@@ -39,7 +39,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   const ip = clientIp(request.headers)
-  const keys = { account: `password:${email}`, ip }
+  // Per email AND IP (A1): failures from elsewhere never refuse the real user.
+  const keys = { account: passwordThrottleKey(email, ip), ip }
   const throttle = signInThrottle.peek(keys)
   if (!throttle.allowed) {
     return NextResponse.json(
