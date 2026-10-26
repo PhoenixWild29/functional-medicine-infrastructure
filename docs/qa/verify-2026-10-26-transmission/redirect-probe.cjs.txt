@@ -1,0 +1,49 @@
+// Does a BrowserContext route handler see the target of a server redirect?
+// Two local servers: "good" (allowed) answers /start with 302 and /post with
+// 307 (method and body kept) to "bad" (blocked by the route). The route
+// aborts anything on the bad port, as enforceHttpsOnly aborts non-https.
+// If bad receives a request, the route did not stop the redirect hop.
+// Usage: node redirect-probe.cjs <path to repo with playwright installed>
+const http = require('node:http')
+const { chromium } = require(require.resolve('playwright', { paths: [process.argv[2]] }))
+
+const hits = []
+const bad = http.createServer((req, res) => {
+  let body = ''
+  req.on('data', c => { body += c })
+  req.on('end', () => { hits.push(`${req.method} ${req.url} body=${JSON.stringify(body)}`); res.end('<html>bad</html>') })
+})
+const good = http.createServer((req, res) => {
+  if (req.url === '/start') { res.writeHead(302, { Location: `http://127.0.0.1:${bad.address().port}/landed` }); return res.end() }
+  if (req.url === '/form') {
+    res.setHeader('content-type', 'text/html')
+    return res.end('<form method="post" action="/post"><input name="phi" value="Jane Doe 1980-01-01"><button id="go">go</button></form>')
+  }
+  if (req.url === '/post') { res.writeHead(307, { Location: `http://127.0.0.1:${bad.address().port}/posted` }); return res.end() }
+  res.end('ok')
+})
+
+;(async () => {
+  await new Promise(r => bad.listen(0, '127.0.0.1', r))
+  await new Promise(r => good.listen(0, '127.0.0.1', r))
+  const badPort = bad.address().port
+  const browser = await chromium.launch()
+  const context = await browser.newContext()
+  const seen = []
+  await context.route('**/*', async route => {
+    const url = route.request().url()
+    seen.push(url)
+    if (new URL(url).port === String(badPort)) await route.abort('blockedbyclient')
+    else await route.continue()
+  })
+  const page = await context.newPage()
+  const base = `http://127.0.0.1:${good.address().port}`
+  let gotoResult = 'ok'
+  try { await page.goto(`${base}/start`) } catch (e) { gotoResult = 'threw: ' + e.message.split('\n')[0] }
+  const afterGoto = page.url()
+  await page.goto(`${base}/form`)
+  await Promise.all([page.waitForLoadState('load').catch(() => {}), page.click('#go')])
+  await page.waitForTimeout(1000)
+  console.log(JSON.stringify({ gotoResult, afterGoto, afterSubmit: page.url(), routeSaw: seen, badServerReceived: hits }, null, 1))
+  await browser.close(); bad.close(); good.close()
+})().catch(e => { console.error(e); process.exit(1) })
