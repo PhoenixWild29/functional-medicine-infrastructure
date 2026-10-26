@@ -1,16 +1,13 @@
-task-id: B-2026-10-26-03
+task-id: B-2026-10-26-04
 status: ready
 ---
-Thanks for B-2026-10-26-02 (password-flows fixes, 1d0ed5e). C will verify them.
+Thanks for B-2026-10-26-03 (phi-log review, aee1e70). C is fixing L1-L10.
 
-Next: independent review of origin/phi-access-log-coverage (C, 896cc3f; D has merged it into audit-review-breakglass, so also glance at that merge). Review the diff against origin/bundle-features, not C's report.
-Hunt for:
-- PHI paths still unlogged: list every server route, server component and server action that reads or writes patients, orders with patient data, proposals, intake, face sheets, imports, faxes, or sends PHI to a third party (pharmacy adapters, fax, OpenAI, Anthropic, Twilio, Keragon). For each: logged or not, with file:line.
-- Fail-closed correctness: disclosures and writes do not proceed when the log write fails; reads still serve but alert; no path where a thrown log error leaks a 500 with details.
-- Log content: no PHI in the log row beyond the allowed ids/hashes; patient actors on token pages identified without storing the token; list views bounded.
-- Performance: list views do not issue one insert per row per poll in a way that floods the table (the dashboard polls every 30 s); suggest batching if so.
-- The health check: production-only 503 when PHI_ACCESS_LOG_HASH_SECRET is missing, value never printed.
-For each finding: file:line, concrete failing scenario, severity, fix. Confirm before reporting.
-Do NOT push to C's or D's branches. Append to docs/qa/review-2026-10-26-hipaa-fixes.md on review-hipaa-fixes, push (normal push, no PR), summary in the commit body.
+Next: bring the cofounder-facing sources up to date with the HIPAA and security work, so the Word documents are accurate.
+`git checkout docs-run-sheet-v3 && git pull` (D's docs branch; D is on bundle-hipaa, so you own this branch until you push).
+1. docs/qa/whats-new-since-oct5-source.md: add a plain-language section "Security and privacy hardening (finishing)" covering: password reset and change; no admin-chosen passwords; failed sign-in alerts; demo passwords out of the code (accounts to rotate after the demo); every view of patient data logged, with an ops access review page and an emergency-access procedure; orders refused unless signed and unchanged since signing; clinical fields locked after signing; pharmacy addresses must be secure; saved clinical difference statements; in-app Help; keyboard and screen-reader fixes. Update "What is still outstanding" with the decisions in docs/decisions/before-real-patients-2026-10-25.md (origin/bundle-docs) and C's B1-B17 gaps that remain (origin/review-high-risk docs/compliance/technical-safeguards-evidence-2026-10-25.md), in plain words. No branch names or PR numbers.
+2. docs/qa/practitioner-requirements-coverage.md: requirement 6 (clinical difference) now has saved statements on clinical-difference-saved; mark the branch. Add a short "HIPAA technical safeguards" table: each of C's B1-B17, status (fixed on <branch>, open, decision for Sam).
+3. docs/qa/prod-clickthrough-checklist.md: add items for /help, password reset (view the page only; do not send a reset to a real address), Settings > Account change password (on a demo account only, and note the POC password env vars), /ops/access-review, /ops/security, the emergency reason prompt (cancel it; do not submit), saved clinical statements (WRITES DATA). Keep SAFE / WRITES DATA / NEVER marks.
+Push docs-run-sheet-v3 (normal push, no PR). Report in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
