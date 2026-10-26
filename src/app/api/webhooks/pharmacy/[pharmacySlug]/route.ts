@@ -32,6 +32,7 @@
 // All other outcomes return 200 (including processing errors).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { clientIp } from '@/lib/security/client-ip'
 import { createServiceClient } from '@/lib/supabase/service'
 import { readVaultSecret } from '@/lib/vault/read-secret'
 import { casTransition } from '@/lib/orders/cas-transition'
@@ -134,7 +135,7 @@ export async function POST(
   )
 
   if (!isValid) {
-    const ip = request.headers.get('x-forwarded-for') ?? 'unknown'
+    const ip = clientIp(request.headers) ?? 'unknown'
     console.error(
       `[pharmacy-webhook] signature verification failed | pharmacy=${pharmacySlug} | ip=${ip}`
     )

@@ -8,6 +8,7 @@
 // 5,000 rows, 100 columns, 500 characters a cell.
 
 import { NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import type { User } from '@supabase/supabase-js'
 import { createServerClient } from '@/lib/supabase/server'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
@@ -19,10 +20,9 @@ export { IMPORT_ROLES }
 const MAX_COLUMNS = 100
 
 export async function importCaller(request: Request): Promise<{ user: User; clinicId: string } | { response: NextResponse }> {
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') {
-    return { response: NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 }) }
-  }
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return { response: crossSite }
+
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }

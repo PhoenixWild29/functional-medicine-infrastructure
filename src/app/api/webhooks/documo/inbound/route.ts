@@ -19,8 +19,10 @@
 //
 // HIPAA Boundary:
 //   inbound_fax_queue stores only technical metadata (from_number, page_count,
-//   storage_path). Fax content is accessed only via Supabase Storage with
-//   RLS policies — never transmitted through this handler.
+//   storage_path, documo_fax_id). The fax itself stays in Documo: ops open
+//   it through the ops-only /api/ops/fax/[faxId]/pdf, which fetches it from
+//   Documo by documo_fax_id on demand (Issue Log 72). Fax content is never
+//   transmitted through this handler.
 //
 // Auto-matching Logic:
 //   Normalize from_number to E.164 (+1XXXXXXXXXX) and compare against
@@ -31,6 +33,7 @@
 // All other outcomes return 200.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { clientIp } from '@/lib/security/client-ip'
 import { validateDocumoWebhook } from '@/lib/documo/client'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendSlackAlert } from '@/lib/slack/client'
@@ -67,7 +70,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Step 2: Authenticate — verify X-Documo-Signature header
   const isValid = await validateDocumoWebhook(signature, rawBody)
   if (!isValid) {
-    const ip = request.headers.get('x-forwarded-for') ?? 'unknown'
+    const ip = clientIp(request.headers) ?? 'unknown'
     console.error(`[documo-inbound] signature verification failed | ip=${ip}`)
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
   }
