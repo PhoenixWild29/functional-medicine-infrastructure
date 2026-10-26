@@ -67,7 +67,7 @@ const SERVER_ERROR = 'Favorites could not be loaded or saved. Nothing was change
  * A database call failed: a generic 500. The detail stays server side as
  * the error code only: a Postgres message can quote the row (PHI).
  */
-function serverError(what: string, error: { code?: string | undefined } | null | undefined): NextResponse {
+function serverError(what: string, error: { code?: string | undefined; message?: string } | null | undefined): NextResponse {
   console.error(`[favorites] ${what} failed | code=${error?.code ?? 'unknown'}`)
   return NextResponse.json({ error: SERVER_ERROR }, { status: 500 })
 }

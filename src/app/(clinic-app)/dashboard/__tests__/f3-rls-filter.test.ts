@@ -46,7 +46,7 @@ import { logPhiAccessMany } from '@/lib/audit/phi-access'
 const fromSpy = jest.fn()
 const getUserMock = jest.fn()
 // The chosen-plan queue (review L4): no plans unless a test says so.
-const chosenMock = jest.fn(async (..._a: unknown[]) => ({ ok: true, plans: [] as unknown[] }))
+const chosenMock = jest.fn<Promise<{ ok: boolean; plans: unknown[] }>, unknown[]>(async () => ({ ok: true, plans: [] }))
 jest.mock('@/lib/proposals/queue', () => ({
   ...jest.requireActual('@/lib/proposals/queue'),
   loadChosenProposals: (...a: unknown[]) => chosenMock(...a),
