@@ -1,15 +1,13 @@
-task-id: C-2026-10-25-17
+task-id: C-2026-10-26-01
 status: ready
 ---
-Thanks for C-2026-10-25-16 (HIPAA evidence map, a004e06). Excellent. A, D and you are now closing the code gaps.
+Thanks for C-2026-10-25-17 (phi-access-log-coverage, 896cc3f).
+One question to answer at the top of this task's report: after your change, does /api/health fail when PHI_ACCESS_LOG_HASH_SECRET is unset? If yes, say exactly what prod returns in that case, because prod's env is not something the agents can see; the orchestrator must confirm the variable is set before that code deploys.
 
-Yours: B14 and B15 (PHI access logging).
-
-Branch: `git fetch origin && git checkout -b phi-access-log-coverage origin/bundle-features`.
-1. B14: log every PHI read and write path you listed as unlogged: the dashboard poll and other browser-driven reads (log server-side at the API they call), list views (log the list view with the patient ids returned, bounded, or a hashed set if the existing schema expects one; follow logPhiAccess's contract), favorites when patient-scoped, the search edit page, the import parse, ops fax views (the fax PR adds fax_id; use it once merged, else log resource only and note it), ops actions, proposal send, token-link and patient actors (the patient on /plan, /intake, /checkout as a distinct actor type), and disclosures to pharmacies (each transmission), OpenAI and Anthropic (each face sheet or AI call that carries PHI).
-2. B15: logPhiAccess never fails closed and nobody is alerted. Decide per path: for disclosures and writes, fail closed (do not disclose if the log write fails); for reads, keep serving but raise an alert (Sentry/Slack with no PHI) on any log failure. Add a startup/health check that PHI_ACCESS_LOG_HASH_SECRET is set (fail the health check without printing it).
-If a new action/actor value needs a schema change (enum or CHECK), do NOT migrate; use existing values where they fit and report the design for what does not.
-Tests: jest for each new logging call (one per path), fail-closed on disclosure, alert on read failure, and the secret check.
-Gates: lint (0 warnings), tsc, jest, next build. Push phi-access-log-coverage (normal push, no PR). Report in the commit body.
+Next: independent review of two HIPAA fix branches you have not seen. Review the diff against origin/bundle-features, not the authors' reports.
+1. origin/auth-monitoring (B, b182d07): failed sign-in recording (no raw email, no password, hash approach correct), thresholds and windows correct, alert payloads free of PHI/raw email, no way to use the failure path to enumerate accounts, app-level delay cannot lock out a real user permanently or be used to lock out someone else trivially (by IP vs account), POC passwords fully gone from tracked files (grep for anything password-like, including base64 and test fixtures; refer to file:line only, print no values), seed/test helpers fail clearly when the env var is missing.
+2. origin/audit-review-breakglass (D) once pushed (local 9820826 so far; if not pushed by the time you finish item 1, review it in a follow-up and say so): ops_admin-only, filters and flags correct (timezone handling stated), CSV export logged and free of anything beyond what ops can already see, reason prompt cannot be skipped via direct API calls, procedure docs consistent with the code.
+For each finding: file:line, concrete failing scenario, severity, fix. Confirm before reporting.
+Do NOT push to those branches. Append to docs/qa/review-2026-10-25-high-risk.md on review-high-risk (new section), push (normal push, no PR), summary in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
