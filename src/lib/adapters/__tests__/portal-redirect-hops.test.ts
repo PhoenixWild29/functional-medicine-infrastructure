@@ -32,6 +32,8 @@ jest.spyOn(console, 'error').mockImplementation(() => {})
 type Handler = (route: unknown) => Promise<void>
 
 type Answer = { status: number; location?: string }
+/** What the handler passes to route.fetch for a hop. */
+type FetchOptions = { url?: string; method?: string; postData?: Buffer; headers?: Record<string, string>; maxRedirects?: number }
 
 /** A route whose fetch answers each hop in turn (the last answer repeats). */
 function scriptedRoute(url: string, response?: Answer | Answer[], request: { method?: string; body?: string; headers?: Record<string, string> } = {}) {
@@ -46,7 +48,7 @@ function scriptedRoute(url: string, response?: Answer | Answer[], request: { met
     }),
     abort:   jest.fn(async () => undefined),
     continue: jest.fn(async () => undefined),
-    fetch:   jest.fn(async () => {
+    fetch:   jest.fn<Promise<{ status: () => number; headers: () => Record<string, string> }>, [FetchOptions?]>(async () => {
       const a = answers[Math.min(i++, answers.length - 1)]!
       return { status: () => a.status, headers: () => (a.location ? { location: a.location } : {}) }
     }),
@@ -89,8 +91,9 @@ describe('the route handler (scripted)', () => {
 
   it('a relative Location is resolved against the request; a redirect with no Location is aborted', async () => {
     const h = await handlerFor()
-    const ok = scriptedRoute('https://portal.pharm.test/submit', { status: 302, location: '/done' })
+    const ok = scriptedRoute('https://portal.pharm.test/submit', [{ status: 302, location: '/done' }, { status: 200 }])
     await h(ok)
+    expect(ok.fetch.mock.calls[1]![0]).toEqual(expect.objectContaining({ url: 'https://portal.pharm.test/done' }))
     expect(ok.fulfill).toHaveBeenCalled()
     const none = scriptedRoute('https://portal.pharm.test/submit', { status: 302 })
     await h(none)
@@ -126,7 +129,7 @@ describe('the route handler (scripted)', () => {
       const r = scriptedRoute('https://portal.pharm.test/submit', [{ status, location: '/submit2' }, { status: 200 }], { method: 'POST', body: 'phi=x', headers: { 'content-type': 'application/x-www-form-urlencoded' } })
       await h(r)
       expect(r.fetch.mock.calls[1]![0]).toEqual(expect.objectContaining({ url: 'https://portal.pharm.test/submit2', method: 'POST' }))
-      expect(String((r.fetch.mock.calls[1]![0] as { postData?: Buffer }).postData)).toBe('phi=x')
+      expect(String(r.fetch.mock.calls[1]![0]!.postData)).toBe('phi=x')
     }
   })
 
@@ -135,11 +138,11 @@ describe('the route handler (scripted)', () => {
       const h = await handlerFor()
       const r = scriptedRoute('https://portal.pharm.test/submit', [{ status, location: '/done' }, { status: 200 }], { method: 'POST', body: 'phi=x', headers: { 'content-type': 'application/x-www-form-urlencoded', 'content-length': '5' } })
       await h(r)
-      const next = r.fetch.mock.calls[1]![0] as { method: string; postData?: unknown; headers: Record<string, string> }
+      const next = r.fetch.mock.calls[1]![0]!
       expect(next.method).toBe('GET')
       expect(next.postData).toBeUndefined()
-      expect(next.headers['content-type']).toBeUndefined()
-      expect(next.headers['content-length']).toBeUndefined()
+      expect(next.headers!['content-type']).toBeUndefined()
+      expect(next.headers!['content-length']).toBeUndefined()
     }
   })
 
@@ -147,10 +150,10 @@ describe('the route handler (scripted)', () => {
     const h = await handlerFor()
     const r = scriptedRoute('https://portal.pharm.test/a', [{ status: 302, location: 'https://sso.pharm-idp.test/b' }, { status: 200 }], { headers: { cookie: 'sid=1', authorization: 'Basic x', accept: 'text/html' } })
     await h(r)
-    const next = r.fetch.mock.calls[1]![0] as { headers: Record<string, string> }
-    expect(next.headers['cookie']).toBeUndefined()
-    expect(next.headers['authorization']).toBeUndefined()
-    expect(next.headers['accept']).toBe('text/html')
+    const next = r.fetch.mock.calls[1]![0]!
+    expect(next.headers!['cookie']).toBeUndefined()
+    expect(next.headers!['authorization']).toBeUndefined()
+    expect(next.headers!['accept']).toBe('text/html')
   })
 
   it('R1: more than the hop cap is refused', async () => {
