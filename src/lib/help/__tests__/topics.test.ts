@@ -63,7 +63,7 @@ describe('help content', () => {
     }
   })
 
-  it('the contact page says "Contact CompoundIQ" with no address (none is configured)', () => {
+  it('the contact page says "Contact CompoundIQ" with no address while NEXT_PUBLIC_SUPPORT_EMAIL is unset (contact.test.ts covers it set)', () => {
     expect(HELP_CONTACT).toBe('Contact CompoundIQ')
     const contact = JSON.stringify(helpTopic('contact'))
     expect(contact).toContain('Contact CompoundIQ')
