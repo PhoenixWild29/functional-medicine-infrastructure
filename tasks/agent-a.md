@@ -1,16 +1,17 @@
-task-id: A-2026-10-25-17
+task-id: A-2026-10-26-01
 status: ready
 ---
-Thanks for A-2026-10-25-16 (decision brief, 729af68).
+Thanks for A-2026-10-25-17 (order-transmission-integrity, 2b9b69a).
 
-Next: close three code gaps from C's HIPAA evidence map (origin/review-high-risk, docs/compliance/technical-safeguards-evidence-2026-10-25.md, gaps B6, B7, B17). Read those sections first.
+Next: gap B5 from C's HIPAA evidence map (origin/review-high-risk, docs/compliance/technical-safeguards-evidence-2026-10-25.md): the signed-order freeze misses sig_text, quantity, refills, dispense and the other clinical columns. Read that section and the existing freeze (trigger or code) first.
 
-Branch: `git fetch origin && git checkout -b order-transmission-integrity origin/bundle-features`.
-1. B6: nothing refuses to transmit an unsigned order. At every send path (Tier 1 API adapters, Tier 2 portal, Tier 3, Tier 4 fax, retries, re-routes, ops resubmit), refuse unless the order has locked_at, a provider signature and status allowing submission. Refusal is logged (no PHI) and surfaces as a failure reason for ops; never sends.
-2. B7: the signature hash does not bind the prescription contents. Compute the hash over a canonical serialisation of the signed clinical content (medication, strength, dose/sig, quantity and unit, days supply, refills, dispense, syringes, shipping type, clinical difference, diagnosis, special instructions, allergies status, patient id, provider NPI, pharmacy) plus the signature, at signing; store it in the existing signature hash column. At send, recompute and refuse on mismatch (tamper evidence). Old orders without the new hash: send as today but log that they predate binding. If the signature image is discarded today, say whether keeping it needs storage/schema; do NOT add a migration (report the design if needed).
-3. B17: Tier 1 and Tier 2 pharmacy URLs must be https at send time (and at pharmacy setup save). Refuse http, except localhost in tests.
-Tests: jest for each refusal path, the canonical hash (field order stable, any change detected), and https enforcement. Existing E2E must stay green.
-No database migrations.
-Gates: lint (0 warnings), tsc, jest, next build. Push order-transmission-integrity (normal push, no PR). Report in the commit body.
+Branch: `git fetch origin && git checkout -b signed-order-freeze origin/clinical-difference-saved` (it carries 000009; this migration is 000010 and merges after it). Then `git merge origin/order-transmission-integrity` so the freeze and the content hash agree on the same clinical column list (one shared list in code; the migration's column list must match it, and a jest test must assert they match).
+- Migration supabase/migrations/20261024000010_signed_order_freeze.sql and its down file: extend the freeze so that once an order is signed (locked_at set), every clinical column the signature hash covers cannot change (raise with a clear message), except through the transitions that legitimately change them (list them from the code; e.g. none, or ops reroute changes pharmacy only before transmission? read the code and say). Status, tracking, payment and timestamps stay updatable.
+- Confirm 000010 is the next free number across all origin branches.
+- Follow the repo's migration conventions (BEGIN/COMMIT, comments, down file, apply_pharmacy_admin_scope if required).
+- Check every code path that updates a signed order still works (ops reroute, refunds, status webhooks, retention nulling of payloads, Rx PDF regeneration). Run the full jest; list any path the trigger would now refuse.
+PREPARED only: do NOT run it against any shared database. It merges after perf-indexes and clinical-difference-saved.
+Tests: jest static test for the migration (columns match the shared list) and unit tests for any code changes.
+Gates: lint (0 warnings), tsc, jest, next build. Push signed-order-freeze (normal push, no PR). Report in the commit body with the full SQL.
 
 Do not touch the production database, Vercel, Stripe or secrets.
