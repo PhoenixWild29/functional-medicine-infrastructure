@@ -11,8 +11,9 @@
 // rxDetails.clinicalDifference as before.
 //
 // Order in every handler: cross-site refusal (writes), then auth and the
-// clinic staff gate (isClinicStaffRole, as favorites: any clinic role may
-// read, save and remove), then input parsing (lib/api/input; ids are any
+// clinic staff gate (isClinicStaffRole: any clinic role may read and save;
+// only the statement's creator or a clinic admin may remove one, decision
+// 11), then input parsing (lib/api/input; ids are any
 // 8-4-4-4-12 hex so seeded demo and E2E ids work), then the read or write.
 // The clinic always comes from the session. Wrapped in withApiErrors, so
 // an unexpected throw is a 500 with no detail. Table:
@@ -43,15 +44,16 @@ const deleteQuery = z.object({ id: uuid() })
 type ServiceClient = ReturnType<typeof createServiceClient>
 
 /** The verified caller's clinic, or the error response. */
-async function caller(): Promise<{ clinicId: string; userId: string } | { response: NextResponse }> {
+async function caller(): Promise<{ clinicId: string; userId: string; role: string } | { response: NextResponse }> {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   const clinicId = getUserClinicId(user) ?? null
-  if (!isClinicStaffRole(getUserRole(user)) || !clinicId) {
+  const role = getUserRole(user) ?? ''
+  if (!isClinicStaffRole(role) || !clinicId) {
     return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
-  return { clinicId, userId: user.id }
+  return { clinicId, userId: user.id, role }
 }
 
 function withScope(row: SavedStatementRow) {
@@ -174,21 +176,37 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
   const q = parseQuery(new URL(request.url).searchParams, deleteQuery)
   if (!q.ok) return q.response
 
-  // Any clinic role may remove one of the clinic's statements, as favorites
-  // (a soft delete). Narrowing to the creator or a clinic admin is Sam's call.
+  // Decision 11 (docs/decisions/before-real-patients-2026-10-25.md): only
+  // the person who saved it (created_by) or a clinic admin removes a
+  // statement (a soft delete). The creator check is in the update itself.
   const supabase = createServiceClient()
-  const { data, error } = await supabase
+  let update = supabase
     .from('saved_clinical_statements')
     .update({ deleted_at: new Date().toISOString() })
     .eq('statement_id', q.data.id)
     .eq('clinic_id', who.clinicId)
     .is('deleted_at', null)
-    .select('statement_id')
+  if (who.role !== 'clinic_admin') update = update.eq('created_by', who.userId)
+  const { data, error } = await update.select('statement_id')
   if (error) {
     console.error('[clinical-statements] delete failed:', error.message)
     return NextResponse.json({ error: SAVE_FAILED }, { status: 500 })
   }
-  if (!data || data.length === 0) return NextResponse.json({ error: 'Statement not found' }, { status: 404 })
+  if (!data || data.length === 0) {
+    // Nothing removed: someone else's statement (403), or none (404).
+    if (who.role !== 'clinic_admin') {
+      const { data: exists, error: existsError } = await supabase
+        .from('saved_clinical_statements')
+        .select('statement_id')
+        .eq('statement_id', q.data.id)
+        .eq('clinic_id', who.clinicId)
+        .is('deleted_at', null)
+        .maybeSingle()
+      if (existsError) console.error('[clinical-statements] delete check failed:', existsError.message)
+      if (exists) return NextResponse.json({ error: 'Only the person who saved this statement, or a clinic admin, can remove it.' }, { status: 403 })
+    }
+    return NextResponse.json({ error: 'Statement not found' }, { status: 404 })
+  }
   return NextResponse.json({ ok: true }, { status: 200 })
 }
 
