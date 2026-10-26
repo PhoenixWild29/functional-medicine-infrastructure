@@ -11,10 +11,13 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import { TEST_IDS } from './fixtures/seed'
+import { e2ePassword } from './fixtures/test-password'
 
 const EMAIL = `test-password-change-${process.env['TEST_SHARD'] ?? '1'}@compoundiq.test`
-const OLD = 'TestPassword123!-old'
-const NEW = 'violet harbor 42 lantern'
+// No password literal in the repo (security B9): both come from the E2E
+// password (fixtures/test-password), and differ from each other.
+const OLD = e2ePassword()
+const NEW = `${e2ePassword()}-changed`
 
 function service() {
   return createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)

@@ -141,6 +141,7 @@ describe('static guard: no password literal in the seed and fixture sources', ()
     'e2e/fixtures/seed.ts', 'e2e/global-setup.ts', 'e2e/rbac.spec.ts', 'e2e/accessibility.spec.ts',
     'e2e/upload-size-limit.spec.ts', 'e2e/pharmacy-onboarding-a11y.spec.ts', 'e2e/clinic-onboarding-status.spec.ts',
     'e2e/nav-after-redirect.spec.ts', 'e2e/self-serve-signup.spec.ts', 'e2e/team-invites.spec.ts',
+    'e2e/password-change.spec.ts',
   ]
 
   it.each(FILES)('%s', (file) => {
