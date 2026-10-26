@@ -43,6 +43,7 @@ jest.mock('@/lib/patients/duplicates', () => ({ flagPossibleDuplicate: (...a: un
 import { POST } from '../route'
 import { joinSubmitLimiter } from '@/lib/intake/join-abuse'
 import { PRIVACY_NOTICE_VERSION, SMS_CONSENT_TEXT_VERSION } from '@/lib/intake/consent'
+import { logPhiAccess, patientActor } from '@/lib/audit/phi-access'
 
 const VALID = {
   consent: { privacyNotice: true, sms: false },
@@ -244,5 +245,42 @@ describe('a valid sign-up', () => {
     const src = readFileSync(join(__dirname, '..', 'route.ts'), 'utf8')
     expect(src).not.toMatch(/@\/lib\/(sms|intake\/sms)/)
     expect(src).not.toMatch(/twilio/i)
+  })
+})
+
+// C-2026-10-25-17 (B14/B15): the sign-up creates the patient, so the row
+// is written AFTER the create, with the new patient as the actor (the id
+// exists only then). A failure there is already alerted by the helper; the
+// patient exists, so the sign-up still succeeds.
+describe('PHI access log', () => {
+  const phi = jest.mocked(logPhiAccess)
+  beforeEach(() => phi.mockClear())
+
+  it('one create / signup row for the new patient, after the create', async () => {
+    const res = await POST(req(VALID), ctx())
+    expect(res.status).toBe(200)
+    expect(rpcs()).toHaveLength(1)
+    expect(phi).toHaveBeenCalledTimes(1)
+    expect(phi).toHaveBeenCalledWith(expect.objectContaining({
+      actor: patientActor(PATIENT_ID, CLINIC_ID), action: 'create', resource: 'signup', route: '/api/join/[token]',
+      patientId: PATIENT_ID, clinicId: CLINIC_ID,
+    }))
+    expect(JSON.stringify({ ...phi.mock.calls[0]![0], headers: null })).not.toMatch(/Jane|Smith|1985|5550142|Main St/)
+  })
+
+  it('the row cannot be written: the sign-up still succeeds (the helper alerts)', async () => {
+    phi.mockResolvedValueOnce(false)
+    const res = await POST(req(VALID), ctx())
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true })
+  })
+
+  it('nothing created (cap reached, link off, honeypot): no row', async () => {
+    script = c => (c.op === 'rpc' ? { data: { status: 'cap' } } : approvedClinic(c))
+    await POST(req(VALID), ctx())
+    script = c => (c.op === 'rpc' ? { data: { status: 'inactive' } } : approvedClinic(c))
+    await POST(req(VALID), ctx())
+    await POST(req({ ...VALID, website: 'http://spam.test' }), ctx())
+    expect(phi).not.toHaveBeenCalled()
   })
 })

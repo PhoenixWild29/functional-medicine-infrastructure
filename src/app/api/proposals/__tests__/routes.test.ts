@@ -16,7 +16,15 @@ let user: { id: string; app_metadata: Record<string, unknown>; user_metadata?: R
 const getUserMock = jest.fn(async () => ({ data: { user } }))
 const getSessionMock = jest.fn()
 jest.mock('@/lib/supabase/server', () => ({ createServerClient: async () => ({ auth: { getUser: getUserMock, getSession: getSessionMock } }) }))
-jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => ({ service: true }) }))
+// The client also answers the plan read the routes make for the PHI access
+// log (B14): the plan's patient and clinic. (Updated: it was { service: true }.)
+const planRead = () => {
+  const q: Record<string, unknown> = {}
+  for (const k of ['select', 'eq']) q[k] = () => q
+  q['maybeSingle'] = async () => ({ data: { patient_id: 'a4000000-0000-0000-0000-000000000001', clinic_id: 'c0000000-0000-4000-8000-000000000001' }, error: null })
+  return q
+}
+jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => ({ service: true, from: planRead }) }))
 const guardMock = jest.fn()
 jest.mock('@/lib/onboarding/approval-guard', () => ({ refuseUnlessApproved: (...a: unknown[]) => guardMock(...a) }))
 const lib = {
@@ -31,7 +39,9 @@ jest.mock('@/lib/proposals/propose', () => ({
   cancelProposal:     (...a: unknown[]) => lib.cancelProposal(...a),
   recordLinkDelivery: (...a: unknown[]) => lib.recordLinkDelivery(...a),
 }))
-jest.mock('@/lib/audit/phi-access', () => ({ logPhiAccess: jest.fn(async () => undefined) }))
+// The send, cancel and events routes are fail-closed on the log row (B15):
+// it resolves true here. (Updated: it resolved undefined.)
+jest.mock('@/lib/audit/phi-access', () => ({ logPhiAccess: jest.fn(async () => true) }))
 
 import { POST as create } from '../route'
 import { POST as send } from '../[proposalId]/send/route'
@@ -93,7 +103,7 @@ describe.each(ROUTES)('%s', (_name, call, fn, body) => {
   it('a clinic not yet approved: the guard answers', async () => {
     guardMock.mockResolvedValue(NextResponse.json({ error: 'pending' }, { status: 403 }))
     expect((await call(req(body))).status).toBe(403)
-    expect(guardMock).toHaveBeenCalledWith({ service: true }, CLINIC)
+    expect(guardMock).toHaveBeenCalledWith(expect.objectContaining({ service: true }), CLINIC)
     expect(lib[fn]).not.toHaveBeenCalled()
   })
 
@@ -103,7 +113,7 @@ describe.each(ROUTES)('%s', (_name, call, fn, body) => {
     const res = await call(req(body))
     expect(res.status).toBe(403)
     expect(await res.json()).toEqual({ code: 'MA_CANNOT_SEND', error: 'no' })
-    expect(lib[fn]).toHaveBeenCalledWith({ service: true }, expect.objectContaining({ clinicId: CLINIC, caller: { userId: 'u-ma', role: 'medical_assistant' } }))
+    expect(lib[fn]).toHaveBeenCalledWith(expect.objectContaining({ service: true }), expect.objectContaining({ clinicId: CLINIC, caller: { userId: 'u-ma', role: 'medical_assistant' } }))
     expect(getSessionMock).not.toHaveBeenCalled()
   })
 })
@@ -132,5 +142,5 @@ it('events: only copied or qr', async () => {
   expect((await delivery(req({ delivery: 'sms' }), ctx)).status).toBe(400)
   expect(lib.recordLinkDelivery).not.toHaveBeenCalled()
   await delivery(req({ delivery: 'qr' }), ctx)
-  expect(lib.recordLinkDelivery).toHaveBeenCalledWith({ service: true }, expect.objectContaining({ proposalId: PROPOSAL, delivery: 'qr' }))
+  expect(lib.recordLinkDelivery).toHaveBeenCalledWith(expect.objectContaining({ service: true }), expect.objectContaining({ proposalId: PROPOSAL, delivery: 'qr' }))
 })

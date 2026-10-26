@@ -41,7 +41,7 @@ jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.clien
 import { POST as PARSE } from '../parse/route'
 import { POST as VALIDATE } from '../validate/route'
 import { POST as IMPORT } from '../route'
-import { logPhiAccessMany } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiAccessMany } from '@/lib/audit/phi-access'
 
 const HEADERS = ['First Name', 'Last Name', 'DOB', 'Mobile', 'Email', 'State', 'Zip']
 const GOOD = ['Jane', 'Smith', '04/15/1985', '(512) 555-0123', 'jane@example.test', 'TX', '78701']
@@ -154,6 +154,59 @@ describe('validate', () => {
   it('the duplicate lookup failing is a 503, never "no duplicates"', async () => {
     script = c => (c.table === 'patients' ? DB_DOWN : undefined)
     expect((await VALIDATE(json('/api/patients/import/validate', { headers: HEADERS, rows: [GOOD], mapping: MAPPING }))).status).toBe(503)
+  })
+})
+
+// Compliance C2 (B14): the preview echoes the file's patients back. They
+// are not patients yet, so the row names none; an existing patient shown
+// as a possible duplicate is logged by id.
+describe('PHI access log: the import preview', () => {
+  const one = jest.mocked(logPhiAccess)
+  beforeEach(() => one.mockClear())
+
+  it('parse logs view / patient_import_preview with no patient', async () => {
+    expect((await PARSE(upload(csv([GOOD, GOOD2])))).status).toBe(200)
+    expect(one).toHaveBeenCalledTimes(1)
+    const entry = one.mock.calls[0]![0]
+    expect(entry).toEqual(expect.objectContaining({ action: 'view', resource: 'patient_import_preview', route: '/api/patients/import/parse', clinicId: CLINIC_ID }))
+    expect(entry.user).toEqual(expect.objectContaining({ id: 'user-1' }))
+    expect(entry.patientId ?? null).toBeNull()
+    expect(entry.orderId ?? null).toBeNull()
+  })
+
+  it('a refused or unreadable upload logs nothing', async () => {
+    expect((await PARSE(upload('a,b\n1,2', 'patients.xlsx'))).status).toBe(400)
+    signedIn('provider')
+    expect((await PARSE(upload(csv([GOOD])))).status).toBe(403)
+    expect(one).not.toHaveBeenCalled()
+  })
+
+  it('validate logs view / patient_import_preview with no patient, and the existing patients shown as duplicates by id', async () => {
+    script = c => (c.table === 'patients'
+      ? { data: [{ patient_id: 'e1', first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', phone_e164: '+15125550999' }] }
+      : undefined)
+    expect((await VALIDATE(json('/api/patients/import/validate', { headers: HEADERS, rows: [GOOD, GOOD2], mapping: MAPPING }))).status).toBe(200)
+    expect(one).toHaveBeenCalledTimes(1)
+    const entry = one.mock.calls[0]![0]
+    expect(entry).toEqual(expect.objectContaining({ action: 'view', resource: 'patient_import_preview', route: '/api/patients/import/validate', clinicId: CLINIC_ID }))
+    expect(entry.patientId ?? null).toBeNull()
+    expect(logPhiAccessMany).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'view', resource: 'patient_import_preview', route: '/api/patients/import/validate', clinicId: CLINIC_ID }),
+      ['e1'],
+    )
+  })
+
+  it('a log that fails still serves the preview', async () => {
+    one.mockResolvedValueOnce(false)
+    expect((await PARSE(upload(csv([GOOD])))).status).toBe(200)
+    one.mockResolvedValueOnce(false)
+    expect((await VALIDATE(json('/api/patients/import/validate', { headers: HEADERS, rows: [GOOD], mapping: MAPPING }))).status).toBe(200)
+  })
+
+  it('validate failing (the duplicate check) logs nothing', async () => {
+    script = c => (c.table === 'patients' ? DB_DOWN : undefined)
+    expect((await VALIDATE(json('/api/patients/import/validate', { headers: HEADERS, rows: [GOOD], mapping: MAPPING }))).status).toBe(503)
+    expect(one).not.toHaveBeenCalled()
   })
 })
 

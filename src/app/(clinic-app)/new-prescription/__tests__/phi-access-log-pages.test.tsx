@@ -15,6 +15,7 @@
 
 import { scriptedDb, type Script } from '@/__tests__/helpers/scripted-db'
 import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
+import { logPhiAccessMany } from '@/lib/audit/phi-access'
 
 const CLINIC = 'a1000000-0000-0000-0000-000000000001'
 const PATIENT = 'a3000000-0000-0000-0000-000000000001'
@@ -59,6 +60,7 @@ const MA_USER = { id: 'user-2', email: 'ma@clinic.example', app_metadata: { clin
 
 beforeEach(() => {
   phiLog.mockClear()
+  jest.mocked(logPhiAccessMany).mockClear()
   db = scriptedDb(rows)
   jest.spyOn(console, 'error').mockImplementation(() => {})
   jest.spyOn(console, 'warn').mockImplementation(() => {})
@@ -66,17 +68,45 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks())
 
 describe('/new-prescription (patient picker)', () => {
-  it('logs exactly one row: view, patient_list', async () => {
+  it('logs view / patient_list once per patient listed', async () => {
     user = MA_USER
     const { default: Page } = await import('../page')
     await Page()
-    expectOnePhiRow({ action: 'view', resource: 'patient_list', route: '/new-prescription' })
+    expect(logPhiAccessMany).toHaveBeenCalledTimes(1)
+    const [entry, ids] = jest.mocked(logPhiAccessMany).mock.calls[0]!
+    expect(entry).toEqual(expect.objectContaining({ user: MA_USER, action: 'view', resource: 'patient_list', route: '/new-prescription' }))
+    expect(ids).toEqual([PATIENT])
+    expect(phiEntries()).toHaveLength(0)
   })
 
   it('no user, no row', async () => {
     user = null
     const { default: Page } = await import('../page')
     await Page()
+    expect(phiEntries()).toHaveLength(0)
+    expect(logPhiAccessMany).not.toHaveBeenCalled()
+  })
+})
+
+describe('/new-prescription/search (a draft reopened)', () => {
+  it('?editOrder= logs exactly one row: view, draft_edit, the order and its patient', async () => {
+    user = PROVIDER_USER
+    const { default: Page } = await import('../search/page')
+    await Page({ searchParams: Promise.resolve({ editOrder: ORDER }) })
+    expectOnePhiRow({ action: 'view', resource: 'draft_edit', route: '/new-prescription/search', orderId: ORDER, patientId: PATIENT })
+  })
+
+  it('?addToOrder= loads the same draft context and logs the same row', async () => {
+    user = PROVIDER_USER
+    const { default: Page } = await import('../search/page')
+    await Page({ searchParams: Promise.resolve({ addToOrder: ORDER }) })
+    expectOnePhiRow({ action: 'view', resource: 'draft_edit', route: '/new-prescription/search', orderId: ORDER, patientId: PATIENT })
+  })
+
+  it('a new prescription (no draft) logs nothing', async () => {
+    user = PROVIDER_USER
+    const { default: Page } = await import('../search/page')
+    await Page({ searchParams: Promise.resolve({}) })
     expect(phiEntries()).toHaveLength(0)
   })
 })
