@@ -5,19 +5,22 @@
  * data. /api/favorites logs resource 'favorite' with the patient:
  *
  *   GET    ?patient_id=  view, when a favorite pinned to them is returned
- *   POST   a new pinned card: create, after the insert (the id exists only
- *          then); a failed log is alerted by the helper, the save stands
+ *   POST   a new pinned card: create, BEFORE the insert (L1: the favorite's
+ *          id is generated first and passed to the insert)
  *   POST   a dose merged into a pinned card: update, BEFORE the write
  *   PATCH  a pinned favorite (or one being pinned): update, BEFORE the write
  *   DELETE a pinned favorite: update, BEFORE the delete
  *
  * A write that logs first refuses with 503 and writes nothing when the log
- * could not be written. A clinic-wide favorite (no patient) logs nothing.
+ * could not be written. A write that fails after logging gets a
+ * not_completed_favorite row. A clinic-wide favorite (no patient) logs
+ * nothing. A 500 never carries the database's message (code only, server
+ * side).
  */
 
 import { NextRequest } from 'next/server'
 import { GET, POST, PATCH, DELETE } from '../route'
-import { logPhiAccess, logPhiAccessMany } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiAccessMany, logPhiWriteNotCompleted } from '@/lib/audit/phi-access'
 
 const CLINIC_ID   = 'clinic-A'
 const PROVIDER    = 'a2000000-0000-0000-0000-000000000001'
@@ -67,6 +70,11 @@ const send = (method: string, qs: string, body?: unknown) => new NextRequest(url
 
 const one = jest.mocked(logPhiAccess)
 const many = jest.mocked(logPhiAccessMany)
+const notCompleted = jest.mocked(logPhiWriteNotCompleted)
+const DB_ERROR = () => ({ data: null, error: { message: 'value "Jane Smith" violates check', code: '23514' } })
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+const silenced = () => jest.spyOn(console, 'error').mockImplementation(() => {})
+const logged = (spy: jest.SpyInstance) => spy.mock.calls.flat().map(String).join(' ')
 const REFUSED = 'This change could not be recorded. Nothing was changed. Try again.'
 
 beforeEach(() => {
@@ -74,6 +82,7 @@ beforeEach(() => {
   Object.keys(fixtures).forEach(k => delete fixtures[k])
   one.mockClear()
   many.mockClear()
+  notCompleted.mockClear()
   getUserMock.mockResolvedValue({ data: { user: USER } })
   fixtures['providers:await'] = () => ({ data: [{ provider_id: PROVIDER }], error: null })
   fixtures['provider_favorites:await'] = () => ({ data: [], error: null })
@@ -114,19 +123,47 @@ describe('POST', () => {
     label: 'Semaglutide', dose_presets: [preset('10')], ...(patient_id ? { patient_id } : {}),
   })
 
-  it('a new pinned card logs create / favorite with the patient, after the insert', async () => {
-    one.mockImplementationOnce(async () => {
-      expect(writes.filter(w => w.op === 'insert')).toHaveLength(1)
-      return true
-    })
+  it('a new pinned card logs create / favorite with the patient BEFORE the insert, which uses a pre-generated id', async () => {
+    let writesAtLog = -1
+    one.mockImplementationOnce(async () => { writesAtLog = writes.length; return true })
     const res = await POST(send('POST', '', body(PATIENT)))
     expect(res.status).toBe(201)
+    expect(writesAtLog).toBe(0)
     expect(entries()).toEqual([expect.objectContaining({ user: USER, action: 'create', resource: 'favorite', route: '/api/favorites', patientId: PATIENT })])
+    const inserted = writes.filter(w => w.op === 'insert')
+    expect(inserted).toHaveLength(1)
+    expect(String((inserted[0]!.row as Record<string, unknown>)['favorite_id'])).toMatch(UUID_V4)
+    expect(notCompleted).not.toHaveBeenCalled()
   })
 
-  it('a new pinned card whose log fails is still saved (the helper alerts)', async () => {
+  it('a new pinned card whose log fails is refused 503 and nothing is written', async () => {
     one.mockResolvedValueOnce(false)
-    expect((await POST(send('POST', '', body(PATIENT)))).status).toBe(201)
+    const res = await POST(send('POST', '', body(PATIENT)))
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: REFUSED })
+    expect(writes).toEqual([])
+  })
+
+  it('a new pinned card whose insert fails after logging: not_completed, a generic 500 without the database message', async () => {
+    fixtures['provider_favorites:single'] = DB_ERROR
+    const err = silenced()
+    const res = await POST(send('POST', '', body(PATIENT)))
+    expect(res.status).toBe(500)
+    expect(JSON.stringify(await res.json())).not.toMatch(/Jane|violates/)
+    expect(notCompleted).toHaveBeenCalledWith(entries()[0])
+    expect(logged(err)).not.toMatch(/Jane|violates/)
+    err.mockRestore()
+  })
+
+  it('a merge whose update fails after logging: not_completed, a generic 500', async () => {
+    fixtures['provider_favorites:await'] = () => ({ data: [{ favorite_id: FAV_ID, pharmacy_id: PHARMACY, patient_id: PATIENT, dose_presets: [preset('40')] }], error: null })
+    fixtures['provider_favorites:single'] = DB_ERROR
+    const err = silenced()
+    const res = await POST(send('POST', '', body(PATIENT)))
+    expect(res.status).toBe(500)
+    expect(JSON.stringify(await res.json())).not.toMatch(/Jane|violates/)
+    expect(notCompleted).toHaveBeenCalledWith(entries()[0])
+    err.mockRestore()
   })
 
   it('a clinic-wide card logs nothing', async () => {
@@ -198,6 +235,29 @@ describe('PATCH', () => {
     expect(writes).toEqual([])
   })
 
+  it('an edit whose write fails after logging: not_completed for each patient, a generic 500', async () => {
+    const err = silenced()
+    let n = 0
+    fixtures['provider_favorites:single'] = () => (n++ === 0 ? current(PATIENT)() : DB_ERROR())
+    const res = await PATCH(send('PATCH', `?id=${FAV_ID}`, { patient_id: PATIENT_2 }))
+    expect(res.status).toBe(500)
+    expect(JSON.stringify(await res.json())).not.toMatch(/Jane|violates/)
+    expect(notCompleted.mock.calls.map(c => c[0].patientId)).toEqual([PATIENT, PATIENT_2])
+    expect(notCompleted).toHaveBeenCalledWith(expect.objectContaining({ user: USER, action: 'update', resource: 'favorite' }))
+    err.mockRestore()
+  })
+
+  it('a use-count bump whose write fails after logging: not_completed, a generic 500', async () => {
+    fixtures['provider_favorites:single'] = current(PATIENT)
+    fixtures['provider_favorites:await'] = DB_ERROR
+    const err = silenced()
+    const res = await PATCH(send('PATCH', `?id=${FAV_ID}`))
+    expect(res.status).toBe(500)
+    expect(JSON.stringify(await res.json())).not.toMatch(/Jane|violates/)
+    expect(notCompleted).toHaveBeenCalledWith(expect.objectContaining({ action: 'update', resource: 'favorite', patientId: PATIENT }))
+    err.mockRestore()
+  })
+
   it('a clinic-wide favorite logs nothing', async () => {
     fixtures['provider_favorites:single'] = current(null)
     expect((await PATCH(send('PATCH', `?id=${FAV_ID}`, { label: 'New label' }))).status).toBe(200)
@@ -227,9 +287,53 @@ describe('DELETE', () => {
     expect(writes).toEqual([])
   })
 
+  it('a delete that fails after logging: not_completed, a generic 500', async () => {
+    fixtures['provider_favorites:single'] = () => ({ data: { provider_id: PROVIDER, patient_id: PATIENT }, error: null })
+    fixtures['provider_favorites:await'] = DB_ERROR
+    const err = silenced()
+    const res = await DELETE(send('DELETE', `?id=${FAV_ID}`))
+    expect(res.status).toBe(500)
+    expect(JSON.stringify(await res.json())).not.toMatch(/Jane|violates/)
+    expect(notCompleted).toHaveBeenCalledWith(entries()[0])
+    err.mockRestore()
+  })
+
   it('a clinic-wide favorite logs nothing', async () => {
     fixtures['provider_favorites:single'] = () => ({ data: { provider_id: PROVIDER, patient_id: null }, error: null })
     expect((await DELETE(send('DELETE', `?id=${FAV_ID}`))).status).toBe(200)
     expect(one).not.toHaveBeenCalled()
+  })
+})
+
+describe('a 500 never carries the database message', () => {
+  it('GET: the list read', async () => {
+    const err = silenced()
+    fixtures['provider_favorites:await'] = DB_ERROR
+    const res = await GET(send('GET', ''))
+    expect(res.status).toBe(500)
+    expect(JSON.stringify(await res.json())).not.toMatch(/Jane|violates/)
+    expect(logged(err)).not.toMatch(/Jane|violates/)
+    expect(logged(err)).toMatch(/23514/)
+    err.mockRestore()
+  })
+
+  it('POST: the card lookup', async () => {
+    const err = silenced()
+    fixtures['provider_favorites:await'] = DB_ERROR
+    const res = await POST(send('POST', '', { provider_id: PROVIDER, formulation_id: FORMULATION, pharmacy_id: PHARMACY, label: 'X', dose_presets: [preset('10')] }))
+    expect(res.status).toBe(500)
+    expect(JSON.stringify(await res.json())).not.toMatch(/Jane|violates/)
+    expect(logged(err)).not.toMatch(/Jane|violates/)
+    err.mockRestore()
+  })
+
+  it('a failed read logs the code, not the message', async () => {
+    const err = silenced()
+    fixtures['provider_favorites:single'] = DB_ERROR
+    const res = await DELETE(send('DELETE', `?id=${FAV_ID}`))
+    expect(res.status).toBe(500)
+    expect(logged(err)).not.toMatch(/Jane|violates/)
+    expect(logged(err)).toMatch(/23514/)
+    err.mockRestore()
   })
 })

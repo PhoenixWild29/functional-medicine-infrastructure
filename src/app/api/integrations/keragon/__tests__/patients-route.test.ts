@@ -20,7 +20,7 @@ import { join } from 'node:path'
 import { NextRequest } from 'next/server'
 import { onboardingFake } from '@/__tests__/helpers/onboarding-fake'
 import { signRequest } from '@/lib/integrations/keragon/signature'
-import { logPhiAccess, systemActor } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted, systemActor } from '@/lib/audit/phi-access'
 
 let db = onboardingFake()
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
@@ -315,47 +315,86 @@ describe('the clinic admin routes', () => {
   })
 })
 
-// PHI access log (B14/B15): a patient created or updated from the EHR is
-// one 'create' / 'update' row, resource 'ehr_sync', by the system actor for
-// the clinic, with the patient id. Logged after the write (a new patient's
-// id exists only then); a failed log is already alerted by the helper and
-// does not undo the sync. No write (refused, skipped, error): no row.
+// PHI access log (B14/B15; L1, writes are logged first): a patient created
+// or updated from the EHR is one 'create' / 'update' row, resource
+// 'ehr_sync', by the system actor for the clinic, with the patient id,
+// written BEFORE the write (a new patient's id is generated first). A row
+// that cannot be written refuses the sync with the retryable 503, so
+// Keragon redelivers. A write that fails after logging gets a
+// not_completed_ehr_sync row. No write (refused, skipped): no row.
 describe('PHI access log', () => {
   const logMock = () => jest.mocked(logPhiAccess)
-  beforeEach(() => logMock().mockClear())
+  const notCompleted = () => jest.mocked(logPhiWriteNotCompleted)
+  beforeEach(() => { logMock().mockClear(); notCompleted().mockClear() })
 
-  it('a new patient: create / ehr_sync, system actor for the clinic, the new patient id', async () => {
+  it('a new patient: create / ehr_sync BEFORE the insert, with the id the insert then uses', async () => {
     world()
+    let patientsAtLog = -1
+    logMock().mockImplementationOnce(async () => { patientsAtLog = db.rows('patients').length; return true })
     const res = await signed(fixture('patient-upsert-full.json'))
     const body = await res.json() as { patient_id: string }
+    expect(res.status).toBe(200)
+    expect(patientsAtLog).toBe(0)
     expect(logMock()).toHaveBeenCalledTimes(1)
     expect(logMock()).toHaveBeenCalledWith(expect.objectContaining({
       actor: systemActor(CLINIC), action: 'create', resource: 'ehr_sync', route: '/api/integrations/keragon/patients',
       patientId: body.patient_id, clinicId: CLINIC,
     }))
+    expect(db.rows('patients')[0]!['patient_id']).toBe(body.patient_id)
+    expect(notCompleted()).not.toHaveBeenCalled()
   })
 
-  it('an existing patient linked and updated: update / ehr_sync with that patient', async () => {
+  it('an existing patient linked and updated: update / ehr_sync with that patient, before the link and the update', async () => {
     world({ patients: [{ patient_id: 'p-same', clinic_id: CLINIC, is_active: true, deleted_at: null, first_name: 'Jordan', last_name: 'Sample', date_of_birth: '1985-04-12', phone: '+15125550147', phone_e164: '+15125550147', city: 'Dallas', intake_completed_at: null }] })
+    let linksAtLog = -1
+    let cityAtLog: unknown
+    logMock().mockImplementationOnce(async () => { linksAtLog = db.rows('patient_external_ids').length; cityAtLog = db.rows('patients')[0]!['city']; return true })
     const res = await signed(fixture('patient-upsert-full.json'))
     expect(res.status).toBe(200)
+    expect(linksAtLog).toBe(0)
+    expect(cityAtLog).toBe('Dallas')
+    expect(logMock()).toHaveBeenCalledTimes(1)
     expect(logMock()).toHaveBeenCalledWith(expect.objectContaining({
       actor: systemActor(CLINIC), action: 'update', resource: 'ehr_sync', patientId: 'p-same', clinicId: CLINIC,
     }))
   })
 
-  it('the log fails: the sync stands (alerted by the helper), still 200', async () => {
+  it('the log fails: 503 so Keragon retries, NO patient written, the event left retryable; the retry is applied', async () => {
     world()
+    const body = fixture('patient-upsert-full.json')
     logMock().mockResolvedValueOnce(false)
-    expect((await signed(fixture('patient-upsert-full.json'))).status).toBe(200)
+    const res = await signed(body)
+    expect(res.status).toBe(503)
+    expect((await res.json()).error).toBe('Temporarily unavailable. Retry.')
+    expect(db.rows('patients')).toHaveLength(0)
+    expect(db.rows('patient_external_ids')).toHaveLength(0)
+    expect(db.rows('ehr_sync_events')).toEqual([expect.objectContaining({ status: 'error', error_code: 'audit_log_failed' })])
+    expect(notCompleted()).not.toHaveBeenCalled()
+    expect((await signed(body)).status).toBe(200)
     expect(db.rows('patients')).toHaveLength(1)
   })
 
-  it('nothing written (bad signature, clinic not approved, write failed): no row', async () => {
+  it('the log fails for an existing patient: 503, nothing linked or changed', async () => {
+    world({ patients: [{ patient_id: 'p-same', clinic_id: CLINIC, is_active: true, deleted_at: null, first_name: 'Jordan', last_name: 'Sample', date_of_birth: '1985-04-12', phone: '+15125550147', phone_e164: '+15125550147', city: 'Dallas', intake_completed_at: null }] })
+    logMock().mockResolvedValueOnce(false)
+    expect((await signed(fixture('patient-upsert-full.json'))).status).toBe(503)
+    expect(db.rows('patient_external_ids')).toHaveLength(0)
+    expect(db.rows('patients')[0]!['city']).toBe('Dallas')
+    expect(db.rows('patient_field_changes')).toHaveLength(0)
+  })
+
+  it('the write fails after logging: a not_completed row for the same entry', async () => {
+    world()
+    db.failOn('patients:insert')
+    expect((await signed(fixture('patient-upsert-full.json'))).status).toBe(503)
+    expect(logMock()).toHaveBeenCalledTimes(1)
+    expect(notCompleted()).toHaveBeenCalledTimes(1)
+    expect(notCompleted()).toHaveBeenCalledWith(logMock().mock.calls[0]![0])
+  })
+
+  it('nothing tried (bad signature, clinic not approved): no row', async () => {
     world()
     await signed(fixture('patient-upsert-full.json'), { secret: 'not-the-secret' })
-    db.failOn('patients:insert')
-    await signed(fixture('patient-upsert-full.json'))
     world({ clinic: { onboarding_status: 'submitted', is_active: false } })
     await signed(fixture('patient-upsert-full.json'))
     expect(logMock()).not.toHaveBeenCalled()

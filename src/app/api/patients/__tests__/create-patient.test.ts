@@ -47,7 +47,7 @@ const sendSmsMock = jest.fn()
 jest.mock('@/lib/intake/sms', () => ({ sendIntakeLinkSms: (...a: unknown[]) => sendSmsMock(...a) }))
 
 import { POST } from '../route'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted } from '@/lib/audit/phi-access'
 
 function req(body: unknown) {
   return new Request('https://app.test/api/patients', {
@@ -77,6 +77,9 @@ beforeEach(() => {
   createLinkMock.mockReset().mockResolvedValue({ ok: true, token: 'T'.repeat(43), url: 'https://app.test/intake/' + 'T'.repeat(43), expiresAt: '2026-10-12T00:00:00.000Z', linkId: 'link-1' })
   sendSmsMock.mockReset().mockResolvedValue('not_configured')
   ;(logPhiAccess as jest.Mock).mockClear()
+  jest.mocked(logPhiWriteNotCompleted).mockClear()
+  // L1: the route generates the new patient's id before the insert.
+  jest.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID as ReturnType<typeof crypto.randomUUID>)
   jest.spyOn(console, 'error').mockImplementation(() => {})
   jest.spyOn(console, 'info').mockImplementation(() => {})
 })
@@ -218,6 +221,34 @@ describe('creating the patient', () => {
   it('logs PHI access for the new patient', async () => {
     await POST(req({ phone: '5125550123' }))
     expect(logPhiAccess).toHaveBeenCalledWith(expect.objectContaining({ action: 'create', resource: 'patient', patientId: NEW_ID }))
+  })
+
+  // L1: writes are logged first.
+  it('the create is logged BEFORE the insert, with the pre-generated id the insert uses', async () => {
+    let insertsAtLog = -1
+    jest.mocked(logPhiAccess).mockImplementationOnce(async () => { insertsAtLog = db.to('patients', 'insert').length; return true })
+    expect((await POST(req({ phone: '5125550123' }))).status).toBe(201)
+    expect(insertsAtLog).toBe(0)
+    expect(logPhiAccess).toHaveBeenCalledWith(expect.objectContaining({ user: expect.objectContaining({ id: 'user-1' }), action: 'create', resource: 'patient', route: '/api/patients', patientId: NEW_ID, clinicId: CLINIC_ID }))
+    expect((db.to('patients', 'insert')[0]!.payload as Record<string, unknown>)['patient_id']).toBe(NEW_ID)
+    expect(logPhiWriteNotCompleted).not.toHaveBeenCalled()
+  })
+
+  it('the log row cannot be written: 503, no patient, no link, no text', async () => {
+    jest.mocked(logPhiAccess).mockResolvedValueOnce(false)
+    const res = await POST(req({ phone: '5125550123' }))
+    expect(res.status).toBe(503)
+    expect((await res.json()).error).toBe('This change could not be recorded. Nothing was changed. Try again.')
+    expect(db.to('patients', 'insert')).toHaveLength(0)
+    expect(createLinkMock).not.toHaveBeenCalled()
+    expect(sendSmsMock).not.toHaveBeenCalled()
+  })
+
+  it('the insert fails after logging: a not_completed row for the same entry', async () => {
+    script = c => (c.table === 'patients' && c.op === 'insert' ? { error: { message: 'boom' } } : c.table === 'patients' ? { data: [] } : undefined)
+    expect((await POST(req({ phone: '5125550123' }))).status).toBe(500)
+    expect(logPhiWriteNotCompleted).toHaveBeenCalledTimes(1)
+    expect(logPhiWriteNotCompleted).toHaveBeenCalledWith(jest.mocked(logPhiAccess).mock.calls[0]![0])
   })
 
   it('a database failure is a 500 with a generic message, and no link', async () => {
