@@ -143,3 +143,18 @@ describe('L1: a logged write that did not complete gets a follow-up row', () => 
     expect(resourceLabel('not_completed_patient_allergies')).toMatch(/^Not completed: /)
   })
 })
+
+describe('L9: a route segment that is not a word or a [param] is masked', () => {
+  it('a bearer-token-like segment is stored as [id], never verbatim', async () => {
+    await logPhiAccess({ user: USER, action: 'view', resource: 'plan', route: '/plan/AbC-def_123TOKENxyz' })
+    await logPhiAccess({ user: USER, action: 'view', resource: 'checkout', route: '/checkout/eyJhbGciOiJIUzI1NiJ9/pay' })
+    expect(insertedRows().map(r => r['route'])).toEqual(['/plan/[id]', '/checkout/[id]/pay'])
+  })
+
+  it('route patterns and plain words are kept', async () => {
+    for (const route of ['/api/orders/[orderId]/record', '/adapters/tier2-portal', '/sms/payment_link', '/api/integrations/keragon/patients']) {
+      await logPhiAccess({ user: USER, action: 'view', resource: 'order', route })
+    }
+    expect(insertedRows().map(r => r['route'])).toEqual(['/api/orders/[orderId]/record', '/adapters/tier2-portal', '/sms/payment_link', '/api/integrations/keragon/patients'])
+  })
+})

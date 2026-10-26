@@ -44,3 +44,21 @@ it('preview or local without the secret: still 200, the check reported', async (
   expect(status).toBe(200)
   expect(body).toMatchObject({ checks: { phi_audit_hash_secret: 'missing' } })
 })
+
+// C-2026-10-26-04 (review L10): a production run off Vercel (NODE_ENV
+// production, no VERCEL_ENV) is production too.
+it('NODE_ENV production without VERCEL_ENV and without the secret: 503', async () => {
+  delete process.env['VERCEL_ENV']
+  ;(process.env as Record<string, string>)['NODE_ENV'] = 'production'
+  delete process.env[KEY]
+  const { status, body } = await call()
+  expect(status).toBe(503)
+  expect(body).toMatchObject({ ok: false, checks: { phi_audit_hash_secret: 'missing' } })
+})
+
+it('a Vercel preview build (NODE_ENV production, VERCEL_ENV preview) is not failed', async () => {
+  process.env['VERCEL_ENV'] = 'preview'
+  ;(process.env as Record<string, string>)['NODE_ENV'] = 'production'
+  delete process.env[KEY]
+  expect((await call()).status).toBe(200)
+})

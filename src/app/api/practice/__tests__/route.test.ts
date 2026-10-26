@@ -96,3 +96,21 @@ describe('PHI access log', () => {
     expect(many).not.toHaveBeenCalled()
   })
 })
+
+// C-2026-10-26-04: review L7 (a draft check error names its patient) and L5.
+describe('review L7 and L5', () => {
+  const many = jest.mocked(logPhiAccessMany)
+  beforeEach(() => many.mockClear())
+
+  it('L7: the patients named in errors[] are in the logged set', async () => {
+    attentionMock.mockResolvedValue({ items: [], errors: [{ check: 'Draft check for Alex Demo', error: 'x', patientId: 'p9' }, { check: 'Refunds', error: 'y' }] })
+    await GET(req())
+    expect([...many.mock.calls[0]![1]]).toEqual(['p9'])
+  })
+
+  it('L5: logged with a 15-minute dedupe', async () => {
+    attentionMock.mockResolvedValue({ items: [], errors: [] })
+    await GET(req())
+    expect(many.mock.calls[0]?.[2]).toEqual({ dedupeMinutes: 15 })
+  })
+})

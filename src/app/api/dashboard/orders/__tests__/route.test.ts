@@ -131,3 +131,20 @@ describe('GET /api/dashboard/orders', () => {
     expect(logPhiAccessMany).not.toHaveBeenCalled()
   })
 })
+
+// C-2026-10-26-04 (review L5): the 30-second poll is bounded and its log
+// rows are deduplicated per actor and patient over 15 minutes.
+describe('review L5: bounded poll, deduplicated log', () => {
+  it('reads at most 1000 orders', async () => {
+    user = ADMIN
+    await GET(req())
+    expect(db.to('orders', 'select')[0]?.limit).toBe(1000)
+  })
+
+  it('logs the patients with a 15-minute dedupe', async () => {
+    user = ADMIN
+    jest.mocked(logPhiAccessMany).mockClear()
+    await GET(req())
+    expect(jest.mocked(logPhiAccessMany).mock.calls[0]?.[2]).toEqual({ dedupeMinutes: 15 })
+  })
+})
