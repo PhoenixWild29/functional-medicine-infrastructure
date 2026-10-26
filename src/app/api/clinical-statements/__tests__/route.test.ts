@@ -220,4 +220,33 @@ describe('DELETE', () => {
     expect((await del(`?id=${ID}`)).status).toBe(404)
     expect((await del('?id=nope')).status).toBe(400)
   })
+
+  // Decision 11, option B (docs/decisions/before-real-patients-2026-10-25.md):
+  // only the statement's creator, or a clinic admin.
+  const ID = 'a9000000-0000-4000-8000-000000000001'
+
+  it('a provider or MA removes only a statement they created (created_by in the update)', async () => {
+    for (const role of ['provider', 'medical_assistant']) {
+      calls = []
+      signedInAs(role)
+      fixtures['saved_clinical_statements:await'] = () => ({ data: [{ statement_id: ID }], error: null })
+      expect((await del(`?id=${ID}`)).status).toBe(200)
+      expect(ops('saved_clinical_statements', 'eq')).toEqual(expect.arrayContaining([['created_by', 'user-1']]))
+    }
+  })
+
+  it("someone else's statement: 403 with a plain reason, nothing removed", async () => {
+    fixtures['saved_clinical_statements:await'] = () => ({ data: [], error: null })
+    fixtures['saved_clinical_statements:maybeSingle'] = () => ({ data: { statement_id: ID }, error: null })
+    const res = await del(`?id=${ID}`)
+    expect(res.status).toBe(403)
+    expect(((await res.json()) as { error: string }).error).toBe('Only the person who saved this statement, or a clinic admin, can remove it.')
+  })
+
+  it("a clinic admin removes any of the clinic's statements (no created_by filter)", async () => {
+    signedInAs('clinic_admin')
+    fixtures['saved_clinical_statements:await'] = () => ({ data: [{ statement_id: ID }], error: null })
+    expect((await del(`?id=${ID}`)).status).toBe(200)
+    expect(ops('saved_clinical_statements', 'eq').some(a => a[0] === 'created_by')).toBe(false)
+  })
 })
