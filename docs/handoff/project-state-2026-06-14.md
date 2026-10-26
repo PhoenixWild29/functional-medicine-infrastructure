@@ -215,10 +215,10 @@ The headline feature for this iteration: a clinic can bundle N AWAITING_PAYMENT 
 
 | Role | Email | Password |
 |------|-------|----------|
-| Clinic Admin | `admin@sunrise-clinic.com` | `POCClinic2026!` |
-| Provider | `dr.chen@sunrise-clinic.com` | `POCProvider2026!` |
-| Medical Assistant | `ma@sunrise-clinic.com` | `POCMA2026!` |
-| Ops Admin | `ops@compoundiq-poc.com` | `POCAdmin2026!` |
+| Clinic Admin | `admin@sunrise-clinic.com` | `POC_CLINIC_ADMIN_PASSWORD` (set in your local env) |
+| Provider | `dr.chen@sunrise-clinic.com` | `POC_PROVIDER_PASSWORD` (set in your local env) |
+| Medical Assistant | `ma@sunrise-clinic.com` | `POC_MA_PASSWORD` (set in your local env) |
+| Ops Admin | `ops@compoundiq-poc.com` | `POC_OPS_PASSWORD` (set in your local env) |
 
 Canonical source: `docs/archive/source/POC-DEMO-QUICKSTART.md`. Memory may be stale; verify from that doc if a login fails.
 

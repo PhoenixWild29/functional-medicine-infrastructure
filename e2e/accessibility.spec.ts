@@ -5,6 +5,7 @@ import { generateCheckoutToken } from '../src/lib/auth/checkout-token'
 import { cleanupTestOrders, TEST_IDS, TEST_USERS } from './fixtures/seed'
 import { hashInviteToken, inviteExpiresAt, newInviteToken } from '../src/lib/onboarding/tokens'
 import { TEST_PATIENT_DOB, closeTestProposals, seedProposal } from './fixtures/proposals'
+import { e2ePassword } from './fixtures/test-password'
 
 // ============================================================
 // Compliance C10: WCAG 2.1 AA, patient-facing pages, real browser
@@ -157,7 +158,7 @@ test.describe('Accessibility: WCAG 2.1 AA (C10)', () => {
 // setup is not live, so no Stripe is involved.
 
 const ONB_CLINIC = 'aaaaaaaa-0000-0000-0000-0000000000a1'
-const ONB_ADMIN = { email: 'test-onboarding-admin@compoundiq.test', password: 'TestPassword123!' }
+const ONB_ADMIN = { email: 'test-onboarding-admin@compoundiq.test', get password() { return e2ePassword() } }
 const ONB_INVITEE = 'test-onboarding-invitee@compoundiq.test'
 const WIZARD_STEPS = ['Practice details', 'Providers', 'Staff', 'BAA', 'Terms of service', 'Payouts', 'Review and submit']
 

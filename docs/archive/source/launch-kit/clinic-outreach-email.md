@@ -34,7 +34,7 @@ You can also poke around yourself — demo login below:
 
 - **URL:** https://functional-medicine-infrastructure.vercel.app
 - **Email:** admin@sunrise-clinic.com
-- **Password:** POCClinic2026!
+- **Password:** the password in `POC_CLINIC_ADMIN_PASSWORD` (set in your local env)
 
 Talk soon,
 [YOUR NAME]

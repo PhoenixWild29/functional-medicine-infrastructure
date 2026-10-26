@@ -255,10 +255,13 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
   //
   // Self sign-up: /get-started and POST /api/signup, for visitors with no
   // account. Exact paths only (no prefix), so nothing else is opened.
+  //
+  // Sign-in: POST /api/sign-in, from /login (security B12: the server signs
+  // in so it sees each failure). Exact path, no session yet.
   const publicRoutes = ['/login', '/auth/callback', '/api/webhooks', '/api/cron', '/api/health', '/api/checkout', '/onboard/', '/api/onboard/', '/api/onboarding/invite/', '/legal/', '/api/integrations/keragon/patients']
   // B11: the reset request is for people who cannot sign in. Exact paths
   // only; /reset-password itself needs the recovery session from the link.
-  const publicExactRoutes = ['/get-started', '/api/signup', '/forgot-password', '/api/auth/password-reset']
+  const publicExactRoutes = ['/get-started', '/api/signup', '/forgot-password', '/api/auth/password-reset', '/api/sign-in']
   if (publicRoutes.some(route => pathname.startsWith(route)) || publicExactRoutes.includes(pathname)) {
     return response
   }

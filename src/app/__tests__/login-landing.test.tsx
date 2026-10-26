@@ -7,6 +7,7 @@
  */
 
 import { render, screen, fireEvent, act } from '@testing-library/react'
+import { signInFetch } from '@/__tests__/helpers/sign-in-fetch'
 
 const pushMock    = jest.fn()
 const refreshMock = jest.fn()
@@ -30,6 +31,9 @@ jest.mock('@/lib/auth/full-navigation', () => ({
 jest.mock('@/lib/supabase/client', () => ({
   createBrowserClient: () => ({ auth: { signInWithPassword: signInMock } }),
 }))
+// Security B12: the page posts to /api/sign-in, answered here from
+// signInMock with the route's status mapping.
+beforeEach(() => { global.fetch = signInFetch({ signInWithPassword: signInMock }) as unknown as typeof fetch })
 
 import LoginPage from '../login/page'
 

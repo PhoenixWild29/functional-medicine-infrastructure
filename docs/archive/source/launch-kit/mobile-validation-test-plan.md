@@ -38,7 +38,7 @@ If you don't own one of the devices:
 
 Before you start testing:
 
-1. Open the live app on your desktop and log in as `admin@sunrise-clinic.com` / `POCClinic2026!`
+1. Open the live app on your desktop and log in as `admin@sunrise-clinic.com` / the password in `POC_CLINIC_ADMIN_PASSWORD` (set in your local env)
 2. Create a test prescription end-to-end:
    - Select Alex Demo + Sarah Chen → Continue
    - Pick any Favorite OR walk the Cascading Builder with Semaglutide → Strive Pharmacy
@@ -141,7 +141,7 @@ Key differences to watch for:
 
 ### PART C — Clinic App (iPad Safari) — PRIORITY 2
 
-Open the live app on an iPad in Safari. Log in as `admin@sunrise-clinic.com` / `POCClinic2026!`.
+Open the live app on an iPad in Safari. Log in as `admin@sunrise-clinic.com` / the password in `POC_CLINIC_ADMIN_PASSWORD` (set in your local env).
 
 **C1 — Layout:**
 
@@ -192,7 +192,7 @@ Log a P2 bug for anything broken here. Does NOT block launch.
 
 ### PART E — Ops Dashboard (iPhone Safari) — PRIORITY 2
 
-Open the live app on iPhone in Safari. Log in as `ops@compoundiq-poc.com` / `POCAdmin2026!`.
+Open the live app on iPhone in Safari. Log in as `ops@compoundiq-poc.com` / the password in `POC_OPS_PASSWORD` (set in your local env).
 
 - [ ] Login lands on /ops/pipeline without crash
 - [ ] At least one order row is visible even if the table is horizontally scrollable

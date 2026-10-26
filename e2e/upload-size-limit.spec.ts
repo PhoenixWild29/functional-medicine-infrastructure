@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { TEST_USERS } from './fixtures/seed'
 import { totpCode } from './fixtures/totp'
 import { MAX_REQUEST_BYTES } from '../src/lib/uploads/limits'
+import { e2ePassword } from './fixtures/test-password'
 
 // ============================================================
 // #250: the 4 MB limit on uploads through a Vercel Function
@@ -28,7 +29,7 @@ import { MAX_REQUEST_BYTES } from '../src/lib/uploads/limits'
 
 const PH_ID = 'aaaaaaaa-0000-0000-0000-0000000000c1'
 const PH_APP_ID = 'aaaaaaaa-0000-0000-0000-0000000000c2'
-const PH_ADMIN = { email: 'test-pharmacy-upload-limit@compoundiq.test', password: 'TestPassword123!' }
+const PH_ADMIN = { email: 'test-pharmacy-upload-limit@compoundiq.test', get password() { return e2ePassword() } }
 const JUST_OVER = MAX_REQUEST_BYTES + 1024
 // LICENSE_DOCUMENT_BUCKET in lib/pharmacy-onboarding/application (a server
 // module, not imported here).

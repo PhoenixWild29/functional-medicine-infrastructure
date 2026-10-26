@@ -20,7 +20,7 @@
 // route handler).
 
 import { notFound } from 'next/navigation'
-import { POC_CANONICAL_USERS } from '@/lib/poc/canonical-users'
+import { POC_CANONICAL_USERS, POC_PASSWORD_ENV } from '@/lib/poc/canonical-users'
 import { ResetCredentialsCard }   from './_components/reset-credentials-card'
 import { RefreshDemoDataCard }    from './_components/refresh-demo-data-card'
 
@@ -38,10 +38,13 @@ export default function DemoToolsPage() {
     notFound()
   }
 
+  // The password itself is never shown or sent to the browser: only the
+  // env var it is read from, and whether that is set (security B9).
   const users = POC_CANONICAL_USERS.map(u => ({
-    label:    u.label,
-    email:    u.email,
-    password: u.password,
+    label:       u.label,
+    email:       u.email,
+    passwordEnv: POC_PASSWORD_ENV[u.label],
+    passwordSet: Boolean(process.env[POC_PASSWORD_ENV[u.label]]),
   }))
 
   return (

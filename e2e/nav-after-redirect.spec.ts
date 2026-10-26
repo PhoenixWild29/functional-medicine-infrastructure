@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import { TEST_IDS, TEST_USERS } from './fixtures/seed'
+import { e2ePassword } from './fixtures/test-password'
 
 // ============================================================
 // Navigation after the session changes, when the destination was redirected
@@ -23,7 +24,7 @@ import { TEST_IDS, TEST_USERS } from './fixtures/seed'
 // creates in beforeAll and afterAll.
 
 const EMAIL_PREFIX = 'nav-e2e-'
-const PASSWORD = 'nav e2e passphrase 42'
+const PASSWORD = e2ePassword()
 
 function e2eService() {
   return createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)

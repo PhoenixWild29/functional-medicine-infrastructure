@@ -17,6 +17,7 @@ import { encryptSecret } from '../../src/lib/epcs/crypto'
 import { DEMO_TOTP_SECRET } from '../../src/lib/poc/totp-enrollment'
 import { packageRowsFor } from '../../src/lib/catalog/packages'
 import { withPhoneE164 } from '../../src/lib/patients/phone'
+import { e2ePassword } from './test-password'
 
 // E2E tests MUST run against an isolated Supabase project — never production.
 // If these env vars are missing, fail loudly rather than silently falling back
@@ -139,22 +140,24 @@ export const TEST_PATIENTS = {
 }
 
 // ── Test users (Supabase Auth) ────────────────────────────────
+// The password is read when used, from the env (fixtures/test-password;
+// security B9): never written here.
 export const TEST_USERS = {
   clinicAdmin: {
     email:    'test-clinic-admin@compoundiq.test',
-    password: 'TestPassword123!',
+    get password() { return e2ePassword() },
     role:     'clinic_admin',
     clinicId: TEST_IDS.clinic,
   },
   provider: {
     email:    'test-provider@compoundiq.test',
-    password: 'TestPassword123!',
+    get password() { return e2ePassword() },
     role:     'provider',
     clinicId: TEST_IDS.clinic,
   },
   opsAdmin: {
     email:    'test-ops-admin@compoundiq.test',
-    password: 'TestPassword123!',
+    get password() { return e2ePassword() },
     role:     'ops_admin',
     clinicId: null,
   },
@@ -163,7 +166,7 @@ export const TEST_USERS = {
   // signing in with a password only, as REQUIRE_MFA is off in E2E.
   mfaClinicAdmin: {
     email:    'test-mfa-admin@compoundiq.test',
-    password: 'TestPassword123!',
+    get password() { return e2ePassword() },
     role:     'clinic_admin',
     clinicId: TEST_IDS.clinic,
   },

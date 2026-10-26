@@ -79,6 +79,11 @@ beforeEach(() => {
   updateUserByIdMock.mockReset().mockResolvedValue({ data: {}, error: null })
   createUserMock.mockReset().mockResolvedValue({ data: {}, error: null })
   process.env['POC_MODE'] = 'true'
+  // The passwords come from env (security B9); these are test values.
+  process.env['POC_OPS_PASSWORD'] = 'test-ops-value'
+  process.env['POC_CLINIC_ADMIN_PASSWORD'] = 'test-clinic-value'
+  process.env['POC_PROVIDER_PASSWORD'] = 'test-provider-value'
+  process.env['POC_MA_PASSWORD'] = 'test-ma-value'
 })
 
 afterAll(() => {
