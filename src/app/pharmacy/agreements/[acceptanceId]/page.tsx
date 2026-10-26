@@ -15,6 +15,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { getUserPharmacyId } from '@/lib/auth/claims'
 import { acceptedAgreementText } from '@/lib/pharmacy-onboarding/agreements-history'
 import { LegalMarkdown } from '@/components/onboarding/legal-markdown'
+import { contactCompoundIQ } from '@/lib/support/contact'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Accepted agreement | CompoundIQ' }
@@ -42,7 +43,7 @@ export default async function AcceptedAgreementPage({ params }: { params: Promis
               <LegalMarkdown text={r.acceptance.text} headingLevel={3} />
             </section>
           ) : (
-            <p role="status" className="mt-6 text-sm text-foreground">The text of this version is not on file here. Contact CompoundIQ for a copy.</p>
+            <p role="status" className="mt-6 text-sm text-foreground">The text of this version is not on file here. {contactCompoundIQ()} for a copy.</p>
           )}
         </>
       ) : (

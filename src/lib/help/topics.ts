@@ -11,6 +11,8 @@
 // No screenshots, no external links. Saved clinical difference statements
 // are not described: that feature is not in this branch's base yet.
 
+import { contactCompoundIQ, supportEmail } from '@/lib/support/contact'
+
 export interface HelpLabel {
   /** The exact text, as it appears on screen (and so in the source). */
   text: string
@@ -36,8 +38,14 @@ const NP = 'app/(clinic-app)/new-prescription'
 const DASH = 'app/(clinic-app)/dashboard'
 const SETTINGS = 'app/(clinic-app)/settings'
 
-/** Who to contact. No support address is configured in the app yet. */
-export const HELP_CONTACT = 'Contact CompoundIQ'
+/**
+ * Who to contact (decision 12): with NEXT_PUBLIC_SUPPORT_EMAIL set, the
+ * address; unset, the generic line (lib/support/contact).
+ */
+export const HELP_CONTACT = contactCompoundIQ()
+const HELP_CONTACT_LINE = supportEmail()
+  ? `${HELP_CONTACT}.`
+  : `${HELP_CONTACT} through your CompoundIQ account contact.`
 
 export const HELP_TOPICS: HelpTopic[] = [
   {
@@ -383,7 +391,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       {
         heading: 'Getting help',
         steps: [
-          `${HELP_CONTACT} through your CompoundIQ account contact. For a problem with one order, include the order number shown on the dashboard.`,
+          `${HELP_CONTACT_LINE} For a problem with one order, include the order number shown on the dashboard.`,
           'Questions about a patient\'s medication or treatment go to the pharmacy or the prescribing provider, not CompoundIQ.',
         ],
       },

@@ -99,7 +99,10 @@ test.describe('Navigation after a redirect', () => {
     await page.getByLabel('Confirm password').fill(PASSWORD)
     await page.getByRole('button', { name: 'Create account' }).click()
 
-    // Lands in the app (a medical assistant's home is /dashboard), not /login.
-    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 20_000 })
+    // Lands signed in, not on /login. B's review P2: a login created from an
+    // invite first sets its own password from an emailed link, so the app
+    // sends it to /reset-password before its home page.
+    await expect(page).toHaveURL(/\/reset-password$/, { timeout: 20_000 })
+    await expect(page.getByRole('link', { name: 'Email me a link' })).toBeVisible()
   })
 })

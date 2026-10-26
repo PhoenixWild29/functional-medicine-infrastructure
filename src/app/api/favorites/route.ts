@@ -619,6 +619,22 @@ async function deleteFavorite(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  // Decision 11 (docs/decisions/before-real-patients-2026-10-25.md): only
+  // the provider who owns the favorite, or a clinic admin. There is no
+  // created_by column, so the owner is the favorite's provider.
+  if (getUserRole(user) !== 'clinic_admin') {
+    const { data: own, error: ownError } = await supabase
+      .from('providers')
+      .select('provider_id')
+      .eq('user_id', user.id)
+      .eq('clinic_id', clinicId)
+      .maybeSingle()
+    if (ownError) readFailed('caller provider', ownError)
+    if (own?.provider_id !== fav.provider_id) {
+      return NextResponse.json({ error: 'Only the provider who owns this favorite, or a clinic admin, can delete it.' }, { status: 403 })
+    }
+  }
+
   // Compliance C2 (B14): removing a favorite pinned to a patient changes
   // their data ('update': there is no delete action). Logged BEFORE the
   // delete; refused when the row cannot be written.

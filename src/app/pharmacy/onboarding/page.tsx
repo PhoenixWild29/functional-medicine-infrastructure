@@ -7,6 +7,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { getUserPharmacyId } from '@/lib/auth/claims'
 import { loadOnboarding } from '@/lib/pharmacy-onboarding/application'
 import { OnboardingWizard } from './_components/onboarding-wizard'
+import { contactCompoundIQ } from '@/lib/support/contact'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,7 +29,7 @@ export default async function PharmacyOnboardingPage() {
           <OnboardingWizard initial={result.state} />
         ) : (
           <div role="alert" className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-red-700 dark:text-red-300">
-            {result && !result.ok ? result.error : 'Your pharmacy could not be found.'} Reload to try again, or contact CompoundIQ.
+            {result && !result.ok ? result.error : 'Your pharmacy could not be found.'} Reload to try again, or {contactCompoundIQ({ lower: true })}.
           </div>
         )}
       </div>

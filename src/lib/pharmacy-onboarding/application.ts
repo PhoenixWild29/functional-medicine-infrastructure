@@ -22,6 +22,7 @@ import { MAX_REQUEST_BYTES, MAX_REQUEST_LABEL } from '@/lib/uploads/limits'
 import type { Fail } from './invites'
 import { ONBOARDING_STEPS, SHOWN_STEPS, withStep, withoutStep, type SavedStepKey } from './steps'
 import { sniffDocumentType } from '@/lib/uploads/sniff'
+import { contactCompoundIQ } from '@/lib/support/contact'
 import {
   validateAcceptance, validateDetails, validateFacility, validateLicense, validateOrdering, validateShipping,
   type OrderingMethod,
@@ -65,7 +66,7 @@ async function editable(db: SupabaseClient, pharmacyId: string): Promise<{ ok: t
   const r = await readApplication(db, pharmacyId)
   if (!r.ok) return r
   if (!EDITABLE.has(r.app.status)) {
-    return { ok: false, status: 409, error: r.app.status === 'approved' ? 'Your pharmacy is approved. Contact CompoundIQ to change these details.' : 'Your application was submitted and is with CompoundIQ for review. It can be changed again if it is sent back.' }
+    return { ok: false, status: 409, error: r.app.status === 'approved' ? `Your pharmacy is approved. ${contactCompoundIQ()} to change these details.` : 'Your application was submitted and is with CompoundIQ for review. It can be changed again if it is sent back.' }
   }
   return r
 }

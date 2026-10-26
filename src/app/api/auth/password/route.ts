@@ -15,6 +15,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
+import { mustChangePassword } from '@/lib/auth/must-change-password'
 import { refuseCrossSite } from '@/lib/security/same-origin'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 import { badRequest, parseJsonBody } from '@/lib/api/input'
@@ -62,6 +64,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     const answer = updatePasswordErrorMessage(error as { code?: string })
     if (answer.status === 500) console.error('[auth/password] update failed:', (error as { code?: string }).code ?? 'error')
     return NextResponse.json({ error: answer.error }, { status: answer.status })
+  }
+
+  // B's review P2: the emailed link proved the address, so an invited
+  // login's forced change is done. Cleared with the service role (a user
+  // cannot write app_metadata), keeping the rest. A failure is logged and
+  // leaves the flag: the next sign-in asks again, nothing is lost.
+  if (mustChangePassword(user)) {
+    const { error: clearError } = await createServiceClient().auth.admin.updateUserById(user.id, {
+      app_metadata: { ...(user.app_metadata ?? {}), must_change_password: false },
+    })
+    if (clearError) console.error(`[auth/password] must_change_password not cleared | user=${user.id}:`, (clearError as { code?: string }).code ?? 'error')
   }
 
   const { error: signOutError } = await supabase.auth.signOut({ scope: 'global' })
