@@ -880,3 +880,103 @@ When they land, each merge needs the same checks:
 - the test and E2E inventory.
 
 For the transmission merge, also check these, since both branches change them: `tier1-api.ts`, `tier2-portal.ts`, `tier4-fax.ts` and `routing-engine.ts`. A's guard and C's disclosure logging must both be present in each adapter, with the order: guard, then the disclosure log, then the send.
+
+---
+
+## phi-access-log-coverage: fix verification (L1 to L10), 2026-10-26
+
+Task B-2026-10-26-07, part 2. This verifies C's fixes for findings L1 to L10 (the section "phi-access-log-coverage (C, 896cc3f)" above), on `origin/phi-access-log-coverage` at **07a12024**. It covers seven commits after 896cc3f, made as three red-then-green pairs plus C's report:
+
+| Red tests | Fix |
+|---|---|
+| 7f1ad585 (L5, L6, the L1 follow-up row) | 697571e7 |
+| cb354def (L2, L4, L5, L6, L7, L9, L10) | cdbef7fe |
+| 3e9c8148 (L1, L3, L8) | 574d4e12 |
+
+I read the code, not C's report. Nothing was pushed to C's branch.
+
+### Method
+
+**Red then green.**
+- The three red commits change only test files. I checked this with `git diff --name-only <red>^ <red>`.
+- Each red commit's test files were run at that commit, so against the code before its fix, with `jest --runTestsByPath`. A first run that passed the paths as patterns silently skipped every path containing `[...]`, so it was redone with literal paths.
+- At 7f1ad585, the 1 suite fails: 9 of 11 tests.
+- At cb354def, all 10 suites fail: 19 of 87 tests.
+- At 3e9c8148, 19 of 23 suites fail (89 of 525 tests). The 4 that pass are existing tests C only adjusted for the new log calls:
+  - `orders/[orderId]/__tests__/proposal-edit-revoke.test.ts`;
+  - `patient-phases/__tests__/{input-validation,advanced-by,generic-errors}.test.ts`.
+
+  They are not new red tests.
+- At 07a12024, all 33 suites (34 file entries, one shared between two commits) pass: **612 of 612 tests**.
+
+**Re-reading the code.** I re-read the code for each finding at 07a12024.
+
+**L1 re-run on both signing paths:**
+- **Batch sign:** the library-level test runs the real `signBatch` against a database fake. `src/lib/orders/__tests__/batch-sign.test.ts:1048`:
+  - `beforeWrite` runs once, after every check, with 0 writes and 0 shipping calls so far;
+  - when it returns false: 503, 0 writes, and no shipping or payment-group call.
+- **No earlier write:** I scanned `signBatch` from its start (`batch-sign.ts:780`) to the `beforeWrite` call (`:854`). It has no insert, update, upsert, delete, rpc or `casTransition`.
+- **Proposal sign:** `signChosenProposal` passes `beforeWrite` through to `signBatch`, and its only writes come after `signBatch` returns (`sign-choice.ts:113-149`).
+  - Its test wraps the real `signBatch` with `jest.fn(actual.signBatch)`, so the refusal path is genuine.
+  - A refused log gives 503: nothing signed or cancelled, and the plan stays chosen (`sign-choice.test.ts`, "a refused log").
+- **Both routes:** a refused log gives 503 "This change could not be recorded. Nothing was changed. Try again."
+  - If signing then fails, each logged order gets a `not_completed` row; for a partial sign, only the unsigned orders do.
+
+**Nothing new opened:**
+- I searched every `logPhiAccess*` call whose result is not checked, then classified each by action (below).
+- Lint, tsc and the full jest suite ran at 07a12024 (results under Gates).
+
+### Per finding
+
+| # | Verdict | Evidence at 07a12024 |
+|---|---|---|
+| L1 | **Fixed** for every site in the finding; 3 more writes with the same pattern remain (see "Not fully closed") | Batch sign and proposal sign log before any write, as above. Order create, PATCH and DELETE; patient create; import; allergies; patient phases; checkout link, group link, group-and-send, reassign; join; Keragon; favorites: each logs before its write (`if (!(await logPhiAccess(…))) return phiWriteRefused()`), with a `not_completed` row when the write then fails. Creates generate their id first (`crypto.randomUUID()`). Red: 3e9c8148 |
+| L2 | **Fixed** | `sms/sender.ts:347`: `logPhiDisclosure` (resource `sms_disclosure`) before `dispatchWithRetry`, the only `messages.create` (`:181`); false returns `disclosure_not_recorded`, not sent. The same before the send at `proposals/sms.ts:81` → `:87` and `intake/sms.ts:87` → `:94`. No other Twilio send exists (`notifications/catalog.ts` only names the senders). Red: cb354def |
+| L3 | **Fixed** | `patients/import/route.ts:70-74`: before the 422, the preview row plus one row per existing duplicate shown; 503 if they cannot be written. Red: 3e9c8148 |
+| L4 | **Fixed** | `dashboard/page.tsx:320`: the chosen plans' patient ids join `listedPatientIds`. Red: cb354def |
+| L5 | **Fixed** | `logPhiAccessBatch`: one insert per 500 rows. An optional dedupe reads back from `phi_access_log` (same actor, action and resource, the last N minutes, at most 5000 rows), so it holds across instances. A failed read writes every row: duplicates, never a gap. The dashboard poll (`api/dashboard/orders/route.ts:69,88`) is bounded and deduped for 15 minutes, as are the page render (`:325`) and `/api/practice`. The fax queue (`log-fax-view.ts:41-44`) is now one batch insert, deduped. Red: 7f1ad585, cb354def |
+| L6 | **Fixed** | `phi-access.ts:227` and `:325`: no actor calls `reportLogFailure(route, action, 'no_actor')` before returning false. Red: 7f1ad585, cb354def |
+| L7 | **Fixed** | `practice/attention.ts`: `AttentionError.patientId` is set for "Draft check for …". `/api/practice` logs `items` plus `errors`, deduped. Red: cb354def |
+| L8 | **Fixed**, with a documented exception | `sms/inbound.ts`: STOP and START are logged before the update in one batch. A refused log does **not** refuse the opt-out: a STOP must always be honoured (TCPA), and the failure is alerted. That is the right call. Patients the pre-read missed are logged after, best effort; a failed update gets `not_completed`. Red: 3e9c8148 |
+| L9 | **Fixed** | `routePattern` keeps only `[param]` segments and lowercase words of up to 32 characters; any other segment becomes `[id]`. A base64url token (43 characters, mixed case) is masked. Residual (low): a lowercase alphanumeric token of 32 characters or fewer would still pass as a word; no current token has that shape. Red: cb354def |
+| L10 | **Fixed** | `api/health/route.ts:27-28`: production means `VERCEL_ENV === 'production'` when `VERCEL_ENV` is set, else `NODE_ENV === 'production'`, so a non-Vercel production run is checked and a Vercel preview is not. Red: cb354def |
+| Seen in passing | **Fixed** | The favorites 500 bodies no longer carry the raw Supabase `error.message` (574d4e12) |
+
+### Not fully closed (medium; L1's rule, at sites outside L1's list)
+
+Three writes still log after the write and ignore the result. They predate this branch, were not named in L1, and are not in C's "Remaining" list:
+
+- **`src/app/api/patients/[patientId]/intake-link/route.ts:83`:** a new intake link is created (`:73`) and texted, and only then is the `update`/`patient` row written. Its SMS disclosure is fail-closed (L2), but the token rotation is not.
+- **`src/app/api/patients/[patientId]/duplicate-flag/route.ts:67`:** the dismissal is saved (`.update`, `:56`), then logged.
+- **`src/app/api/proposals/route.ts:62`:** `createProposal` (`:58`) writes the plan and its draft orders, then logs the `create`.
+
+Fix: the same pattern as the rest: `if (!(await logPhiAccess(entry))) return phiWriteRefused()` before the write, and `logPhiWriteNotCompleted` if it then fails. For the proposal, generate the id first or log per patient.
+
+Everything else with an unchecked log call is a read (`view`), which may serve and alert by design, or a deliberate "best effort" second row after a first row was already written before the write: join `:157`, group-and-send `:193`, import `:123`.
+
+### New side effect (low, not security)
+
+`/api/dashboard/orders` now returns at most `POLL_ORDER_LIMIT = 1000` orders (newest `updated_at` first). The page's first render is not limited. A clinic with more than 1,000 non-deleted orders would see its oldest orders drop out after the first 30-second refresh, with nothing saying the list was cut. Fix: page by tab or date, or show "showing the newest 1,000".
+
+### C's own "Remaining" list
+
+C lists these as remaining; they are not regressions:
+- join and import pre-rows have no patient id (needs a migration);
+- the favorite id is not in the log;
+- the `/api/patients` 409 duplicate-check view is unchecked;
+- favorites/frequent logs `error.message` to the console;
+- sign-choice's "Nothing was signed." on a partial-sign 500;
+- the reassign-to-me partial move.
+
+### Gates at 07a12024
+
+- npm run lint (eslint . --max-warnings=0): 0 errors, 0 warnings
+- npx tsc --noEmit: clean
+- npx jest --maxWorkers=3: full run 633 of 638 suites. That run was on a heavily loaded machine: two suites took about 2,360 s each. The 6 suites that failed in it (5 a11y and UI suites, plus order-drawer-order-switch, none touched by this branch) were rerun on their own and all pass: 6 of 6 suites, 58 of 58 tests. So they were timing failures, not regressions
+
+### Verdict
+
+- L1 to L10 are fixed, each with a test that fails before its fix and passes after.
+- L1 re-run: on batch sign and proposal sign, a failed log write means nothing is written (proven against the real `signBatch`).
+- Nothing new was opened, except the low poll-truncation side effect above.
+- Before B14 and B15 count as closed, the three after-the-write logs above (intake link, duplicate flag, proposal create) should get the same log-first fix.
