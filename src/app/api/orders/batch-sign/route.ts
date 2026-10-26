@@ -12,14 +12,15 @@
 // 400 bad body / signature rejected
 // 403 not a provider / a line belongs to another provider
 // 404 / 409 / 422 a line cannot be sent (problems[])
-// 503 a check could not run — nothing signed (problems[])
+// 503 a check could not run — nothing signed (problems[]); or the sign
+//     rows could not be written (L1) — nothing signed
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { signBatch } from '@/lib/orders/batch-sign'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccessBatch, logPhiWriteNotCompleted, type PhiAccessEntry, type PhiAccessTarget } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 import { z } from 'zod'
@@ -75,29 +76,40 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const body = parsed.data
   if (signatureTooLarge(body.signature)) return badRequest('Signature is too large', ['signature'])
 
+  // Compliance C2 (B14) and L1 (B15): one sign row per order, with its
+  // patient, written in one insert BEFORE anything is signed (signBatch
+  // calls beforeWrite once every check has passed). If the rows cannot be
+  // written, nothing is signed (503). If signing then fails, the orders
+  // not signed get a not-completed row.
+  const entry: Omit<PhiAccessEntry, 'patientId' | 'orderId'> = {
+    user, action: 'sign', resource: 'prescription', route: '/api/orders/batch-sign', headers: request.headers,
+  }
+  let logged: PhiAccessTarget[] = []
   const result = await signBatch(createServiceClient(), {
     clinicId,
     userId:    user.id,
     appRole,
     orderIds:  body.orderIds,
     signature: body.signature,
+    beforeWrite: async targets => {
+      const rows = targets.map(t => ({ patientId: t.patientId, orderId: t.orderId }))
+      if (!(await logPhiAccessBatch(entry, rows))) return false
+      logged = rows
+      return true
+    },
   })
 
   if (!result.ok) {
+    if (logged.length > 0) {
+      const unsigned = result.unsignedOrderIds ? new Set(result.unsignedOrderIds) : null
+      await Promise.all(logged.filter(t => !unsigned || unsigned.has(t.orderId ?? ''))
+        .map(t => logPhiWriteNotCompleted({ ...entry, patientId: t.patientId ?? null, orderId: t.orderId ?? null })))
+    }
     return NextResponse.json(
       { error: result.error, code: result.code, problems: result.problems },
       { status: result.status, headers: { 'Cache-Control': 'no-store' } },
     )
   }
-  // Compliance C2 (B14): one row per signed order, with its patient, so a
-  // batch for several patients names each of them. Logged after signing,
-  // as before: the signature is already recorded and cannot be undone, so
-  // a row that could not be written is alerted by the helper (Slack and
-  // Sentry) and the signing still answers 200.
-  await Promise.all(result.patients.flatMap(p => p.orderIds.map(orderId => logPhiAccess({
-    user, action: 'sign', resource: 'prescription', route: '/api/orders/batch-sign',
-    patientId: p.patientId, orderId, headers: request.headers,
-  }))))
   return NextResponse.json(
     { signedAt: result.signedAt, patients: result.patients },
     { status: 200, headers: { 'Cache-Control': 'no-store' } },

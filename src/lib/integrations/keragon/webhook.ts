@@ -21,11 +21,14 @@
 //      event after approval takes over that row. Clinic unreadable: 503.
 //   6. Applied (lib sync); the log row gets the outcome, the patient id
 //      and codes; the connection its last event / success / error.
-//   7. PHI access log (B14): a patient created or updated is one 'create'
-//      or 'update' / 'ehr_sync' row by the system actor for the clinic,
-//      with the patient id. After the write (a new patient's id exists
-//      only then); a failed log is alerted by the helper and does not undo
-//      the sync. Nothing written (skipped, error): no row.
+//   7. PHI access log (B14/B15; L1, writes are logged first): a patient
+//      created or updated is one 'create' or 'update' / 'ehr_sync' row by
+//      the system actor for the clinic, with the patient id, written
+//      BEFORE the write (sync's beforeWrite; a new patient's id is
+//      generated first). A row that cannot be written refuses the sync:
+//      the event fails with audit_log_failed, retryable, so this answers
+//      the 503 and Keragon redelivers. A write that fails after logging
+//      gets a not_completed_ehr_sync row. Nothing written (skipped): no row.
 // Nothing here logs PHI: ids, codes and field names only.
 
 import type { SupabaseClient as UntypedClient } from '@supabase/supabase-js'
@@ -35,15 +38,15 @@ type SupabaseClient = UntypedClient<Database>
 import { CONNECTION_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, verifySignature } from './signature'
 import { connectionSecret, noteConnectionError } from './connection'
 import { parsePatientEvent } from './contract'
-import { applyPatientEvent, type SyncOutcome } from './sync'
+import { AUDIT_LOG_FAILED, applyPatientEvent, type PatientWrite, type SyncOutcome } from './sync'
 import { clinicApproval } from '@/lib/onboarding/approval-guard'
-import { logPhiAccess, systemActor } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted, systemActor, type PhiAccessEntry } from '@/lib/audit/phi-access'
 
 export interface WebhookResult { status: number; body: Record<string, unknown> }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 /** Failures a later delivery of the same event may get past. */
-const RETRYABLE = new Set(['read_failed', 'write_failed', 'link_conflict', 'processing_failed', 'clinic_not_approved'])
+const RETRYABLE = new Set(['read_failed', 'write_failed', 'link_conflict', 'processing_failed', 'clinic_not_approved', AUDIT_LOG_FAILED])
 export const CLINIC_NOT_APPROVED_MESSAGE = 'This clinic has not been approved by CompoundIQ yet, so no patients are synced. Nothing was saved.'
 const UNAUTHORIZED: WebhookResult = { status: 401, body: { error: 'Unauthorized' } }
 
@@ -132,23 +135,31 @@ export async function handleKeragonWebhook(
     syncEventId = (claimed as { sync_event_id: string }).sync_event_id
   }
 
+  // L1: the PHI access row is written before the patient write; false
+  // refuses it (audit_log_failed, retryable).
+  let logged = null as PhiAccessEntry | null
+  const beforeWrite = async (w: PatientWrite): Promise<boolean> => {
+    const entry: PhiAccessEntry = {
+      actor: systemActor(conn.clinicId), action: w.action,
+      resource: 'ehr_sync', route: '/api/integrations/keragon/patients',
+      patientId: w.patientId, clinicId: conn.clinicId,
+      headers: input.headers instanceof Headers ? input.headers : null,
+    }
+    if (!(await logPhiAccess(entry))) return false
+    logged = entry
+    return true
+  }
+
   let outcome: SyncOutcome
   try {
-    outcome = await applyPatientEvent(db, { clinicId: conn.clinicId, syncEventId, now }, event.patient)
+    outcome = await applyPatientEvent(db, { clinicId: conn.clinicId, syncEventId, now, beforeWrite }, event.patient)
   } catch (err) {
     console.error(`[ehr-sync] processing threw | connection=${connectionId} | event=${event.eventId}:`, err instanceof Error ? err.name : 'error')
     outcome = { status: 'error', patientId: null, detail: {}, errorCode: 'processing_failed' }
   }
 
-  if ((outcome.status === 'applied' || outcome.status === 'flagged') && outcome.patientId) {
-    await logPhiAccess({
-      actor: systemActor(conn.clinicId),
-      action: outcome.detail['action'] === 'created' ? 'create' : 'update',
-      resource: 'ehr_sync', route: '/api/integrations/keragon/patients',
-      patientId: outcome.patientId, clinicId: conn.clinicId,
-      headers: input.headers instanceof Headers ? input.headers : null,
-    })
-  }
+  // Logged, then the write failed: say so.
+  if (logged && outcome.status === 'error') await logPhiWriteNotCompleted(logged)
 
   const { error: logError } = await db.from('ehr_sync_events').update({
     status: outcome.status, patient_id: outcome.patientId, detail: outcome.detail as Json, error_code: outcome.errorCode ?? null, processed_at: new Date().toISOString(),

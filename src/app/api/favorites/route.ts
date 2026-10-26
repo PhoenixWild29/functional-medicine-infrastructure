@@ -40,7 +40,7 @@ import { getUserClinicId, getUserRole, isClinicStaffRole } from '@/lib/auth/clai
 import { withApiErrors } from '@/lib/api/with-api-errors'
 import { UUID_RE, badRequest } from '@/lib/api/input'
 import { MAX_REFILLS } from '@/lib/orders/rx-details'
-import { logPhiAccess, logPhiAccessMany, type PhiUser } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiAccessMany, logPhiWriteNotCompleted, type PhiAccessEntry, type PhiUser } from '@/lib/audit/phi-access'
 
 const ROUTE = '/api/favorites'
 
@@ -61,6 +61,22 @@ function badIds(fields: Record<string, unknown>): string[] {
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
+const SERVER_ERROR = 'Favorites could not be loaded or saved. Nothing was changed. Try again.'
+
+/**
+ * A database call failed: a generic 500. The detail stays server side as
+ * the error code only: a Postgres message can quote the row (PHI).
+ */
+function serverError(what: string, error: { code?: string | undefined } | null | undefined): NextResponse {
+  console.error(`[favorites] ${what} failed | code=${error?.code ?? 'unknown'}`)
+  return NextResponse.json({ error: SERVER_ERROR }, { status: 500 })
+}
+
+/** L1: a logged write that then failed gets a not_completed row per patient. */
+async function notCompletedFor(entry: Omit<PhiAccessEntry, 'patientId'>, patientIds: ReadonlyArray<string>): Promise<void> {
+  for (const patientId of patientIds) await logPhiWriteNotCompleted({ ...entry, patientId })
+}
+
 /**
  * A lookup the route depends on failed. Thrown by the helpers below and
  * turned into a 500 by `failLoud`, so a failed read is never mistaken
@@ -68,8 +84,9 @@ type ServiceClient = ReturnType<typeof createServiceClient>
  */
 class FavoritesReadError extends Error {}
 
-function readFailed(what: string, error: { message: string }): never {
-  console.error(`[favorites] ${what} could not be read:`, error.message)
+function readFailed(what: string, error: { code?: string | undefined }): never {
+  // The code only: a Postgres message can quote the row.
+  console.error(`[favorites] ${what} could not be read | code=${error.code ?? 'unknown'}`)
   throw new FavoritesReadError(what)
 }
 
@@ -79,7 +96,7 @@ async function failLoud(handler: () => Promise<NextResponse>): Promise<NextRespo
     return await handler()
   } catch (err) {
     if (!(err instanceof FavoritesReadError)) throw err
-    return NextResponse.json({ error: 'Favorites could not be loaded or saved. Nothing was changed. Try again.' }, { status: 500 })
+    return NextResponse.json({ error: SERVER_ERROR }, { status: 500 })
   }
 }
 
@@ -236,7 +253,7 @@ async function getFavorites(req: NextRequest): Promise<NextResponse> {
     .in('provider_id', providerIds)
     .order('use_count', { ascending: false })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError('favorites read', error)
 
   // WO-104: clinic-wide favorites, plus the selected patient's own. A
   // favorite pinned to another patient is not this session's business.
@@ -262,7 +279,7 @@ async function getFavorites(req: NextRequest): Promise<NextResponse> {
     // (resolveLine) and again at signing, which know the product's form.
     const { data: licenses, error: licErr } = await readLicenses(supabase, pinnedPharmacyIds, patientState)
 
-    if (licErr) return NextResponse.json({ error: licErr.message }, { status: 500 })
+    if (licErr) return serverError('licenses read', licErr)
     const today = todayIso()
     for (const id of pinnedPharmacyIds) {
       if (checkLicensure({ licenses, pharmacyId: id, pharmacyName: 'pharmacy', state: patientState, sterile: false, facilityType: null, today }).ok) {
@@ -364,7 +381,7 @@ async function createFavorite(req: NextRequest): Promise<NextResponse> {
     .select('favorite_id, pharmacy_id, patient_id, dose_presets')
     .in('provider_id', validIds)
     .eq('formulation_id', formulationId)
-  if (findErr) return NextResponse.json({ error: findErr.message }, { status: 500 })
+  if (findErr) return serverError('favorite lookup', findErr)
 
   const existing = (candidates ?? []).find(c =>
     (c.pharmacy_id ?? null) === pharmacyId && ((c as { patient_id?: string | null }).patient_id ?? null) === patientId)
@@ -372,7 +389,8 @@ async function createFavorite(req: NextRequest): Promise<NextResponse> {
   if (existing) {
     // Compliance C2 (B14): the card exists, so a pinned one is logged
     // BEFORE the write and the write is refused when it cannot be.
-    if (patientId && !(await logPhiAccess({ user, action: 'update', resource: 'favorite', route: ROUTE, patientId, headers: req.headers }))) {
+    const mergeEntry: PhiAccessEntry = { user, action: 'update', resource: 'favorite', route: ROUTE, patientId, headers: req.headers }
+    if (patientId && !(await logPhiAccess(mergeEntry))) {
       return notRecorded()
     }
     const merged = mergePresets(presetsFromJson((existing as { dose_presets?: unknown }).dose_presets), presets.presets)
@@ -382,7 +400,10 @@ async function createFavorite(req: NextRequest): Promise<NextResponse> {
       .eq('favorite_id', existing.favorite_id)
       .select()
       .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      if (patientId) await logPhiWriteNotCompleted(mergeEntry)
+      return serverError('favorite merge', error)
+    }
     return NextResponse.json({ data, merged: true })
   }
 
@@ -403,9 +424,17 @@ async function createFavorite(req: NextRequest): Promise<NextResponse> {
     ? body['default_refills']
     : 0
 
+  // Compliance C2 (B14), L1: a new card pinned to a patient is logged
+  // BEFORE the insert; its id is generated here and passed to the insert.
+  // Refused (nothing written) when the row cannot be written.
+  const favoriteId = crypto.randomUUID()
+  const createEntry: PhiAccessEntry = { user, action: 'create', resource: 'favorite', route: ROUTE, patientId, headers: req.headers }
+  if (patientId && !(await logPhiAccess(createEntry))) return notRecorded()
+
   const { data, error } = await supabase
     .from('provider_favorites')
     .insert({
+      favorite_id:     favoriteId,
       provider_id:     providerId,
       formulation_id:  formulationId,
       pharmacy_id:     pharmacyId,
@@ -423,12 +452,9 @@ async function createFavorite(req: NextRequest): Promise<NextResponse> {
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  // Compliance C2 (B14): a new card pinned to a patient. Its id exists only
-  // now, so it is logged after the insert; a row that could not be written
-  // is alerted by the helper and the saved card stands.
-  if (patientId) {
-    await logPhiAccess({ user, action: 'create', resource: 'favorite', route: ROUTE, patientId, headers: req.headers })
+  if (error) {
+    if (patientId) await logPhiWriteNotCompleted(createEntry)
+    return serverError('favorite insert', error)
   }
   return NextResponse.json({ data, merged: false }, { status: 201 })
 }
@@ -492,9 +518,10 @@ async function editFavorite(req: NextRequest): Promise<NextResponse> {
   const pinnedNow = (current as { patient_id?: string | null }).patient_id ?? null
   const newPin = validation.patch['patient_id']
   const touched = [...new Set([pinnedNow, typeof newPin === 'string' ? newPin : null].filter((id): id is string => !!id))]
+  const editEntry = { user, action: 'update', resource: 'favorite', route: ROUTE, headers: req.headers } as const
 
   if (!isEdit) {
-    if (touched.length > 0 && !(await logPhiAccessMany({ user, action: 'update', resource: 'favorite', route: ROUTE, headers: req.headers }, touched))) {
+    if (touched.length > 0 && !(await logPhiAccessMany(editEntry, touched))) {
       return notRecorded()
     }
     // WO-85 behaviour: record a load.
@@ -503,7 +530,10 @@ async function editFavorite(req: NextRequest): Promise<NextResponse> {
       .from('provider_favorites')
       .update({ use_count: newCount, last_used_at: new Date().toISOString() })
       .eq('favorite_id', favoriteId)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      await notCompletedFor(editEntry, touched)
+      return serverError('favorite use count', error)
+    }
     return NextResponse.json({ ok: true })
   }
 
@@ -531,7 +561,7 @@ async function editFavorite(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Patient not in clinic' }, { status: 403 })
   }
 
-  if (touched.length > 0 && !(await logPhiAccessMany({ user, action: 'update', resource: 'favorite', route: ROUTE, headers: req.headers }, touched))) {
+  if (touched.length > 0 && !(await logPhiAccessMany(editEntry, touched))) {
     return notRecorded()
   }
 
@@ -547,7 +577,10 @@ async function editFavorite(req: NextRequest): Promise<NextResponse> {
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    await notCompletedFor(editEntry, touched)
+    return serverError('favorite edit', error)
+  }
   return NextResponse.json({ data })
 }
 
@@ -590,7 +623,8 @@ async function deleteFavorite(req: NextRequest): Promise<NextResponse> {
   // their data ('update': there is no delete action). Logged BEFORE the
   // delete; refused when the row cannot be written.
   const pinned = (fav as { patient_id?: string | null }).patient_id ?? null
-  if (pinned && !(await logPhiAccess({ user, action: 'update', resource: 'favorite', route: ROUTE, patientId: pinned, headers: req.headers }))) {
+  const deleteEntry: PhiAccessEntry = { user, action: 'update', resource: 'favorite', route: ROUTE, patientId: pinned, headers: req.headers }
+  if (pinned && !(await logPhiAccess(deleteEntry))) {
     return notRecorded()
   }
 
@@ -599,7 +633,10 @@ async function deleteFavorite(req: NextRequest): Promise<NextResponse> {
     .delete()
     .eq('favorite_id', favoriteId)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    if (pinned) await logPhiWriteNotCompleted(deleteEntry)
+    return serverError('favorite delete', error)
+  }
   return NextResponse.json({ ok: true })
 }
 
