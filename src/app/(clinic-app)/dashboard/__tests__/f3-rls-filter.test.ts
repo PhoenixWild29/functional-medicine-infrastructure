@@ -82,6 +82,13 @@ beforeEach(() => {
   serviceClientShouldNeverBeCalled.mockClear()
 })
 
+// The tests import the dashboard page (await import); the first import
+// compiles it and its import tree: 3.9 s alone under --coverage, 4.9 s in a
+// loaded full run, against jest's 5 s per-test default (B-2026-10-26-10).
+// Import it once here, with room for a cold compile; the tests then get it
+// from the module registry (nothing here resets modules).
+beforeAll(async () => { await import('../page') }, 120_000)
+
 describe('F-3 SSR client wiring', () => {
   it('dashboard page uses session-scoped client, not service-role', async () => {
     // Arrange: a clinic_admin user, supabase.from() returns a chain
