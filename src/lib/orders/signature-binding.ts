@@ -28,9 +28,15 @@
 //   signed one (pharmacy_snapshot) unless the ops reroute recorded a keyed
 //   proof for the new one (rerouteBinding / rerouteProven).
 //
-// No key in production (VERCEL_ENV=production): binding throws
-// BindingKeyMissingError, so nothing is signed, rerouted or sent. Elsewhere
-// a fixed development key is used, so local runs, CI and E2E work.
+// The key (D's verification, 2026-10-26):
+// - RX_BINDING_SECRET signs every new binding and reroute proof.
+// - RX_BINDING_SECRET_PREVIOUS (optional) only verifies, so orders signed
+//   before a rotation still send (docs/ops/rx-binding-key.md).
+// - Without RX_BINDING_SECRET, binding throws BindingKeyMissingError on any
+//   Vercel deployment (production, preview) and under any NODE_ENV other
+//   than test or development: nothing is signed, rerouted or sent. Only a
+//   local test or development run uses the fixed development key (it is in
+//   this file, so it proves nothing).
 //
 // The canonical serialisation is a JSON array of [name, value] pairs in a
 // fixed order (CANONICAL_FIELDS), objects with their keys sorted at every
@@ -54,13 +60,18 @@ const HEX64 = /^[0-9a-f]{64}$/
 const DEVELOPMENT_KEY = 'compoundiq-development-rx-binding-key-not-for-production'
 
 /**
- * Orders signed by the code before this change carry a bare digest. Such
- * an order is accepted as legacy only if its signing history row is older
- * than this instant. Set it to the deploy time when this ships; an order
- * the old code signed after it is refused (fail closed: cancel and
- * prescribe again).
+ * Orders signed by the code before binding carry a bare digest. Such an
+ * order is accepted as legacy only if its signing history row is older than
+ * RX_LEGACY_CUTOFF (an ISO time; Sam sets it to the deploy time of this
+ * code). Unset or not a time: no order is legacy (fail closed: ops cancel
+ * and refund, the clinic prescribes again).
  */
-export const LEGACY_SIGNING_CUTOFF = '2026-11-01T00:00:00.000Z'
+export function legacySigningCutoff(): number | null {
+  const raw = serverEnv.rxLegacyCutoff()
+  if (!raw) return null
+  const at = Date.parse(raw)
+  return Number.isFinite(at) ? at : null
+}
 const LEGACY_SIGNING_ACTORS = ['provider_batch_sign', 'provider_sign_and_send']
 
 export class BindingKeyMissingError extends Error {
@@ -79,15 +90,31 @@ export function rxBindingKeyConfigured(): boolean {
   return serverEnv.rxBindingSecret() !== null
 }
 
-/** The key, or BindingKeyMissingError in production when it is not set. */
+/**
+ * Whether RX_BINDING_SECRET must be set: on any Vercel deployment, and
+ * under any NODE_ENV but test and development. Only then may the
+ * development key stand in.
+ */
+export function bindingKeyRequired(): boolean {
+  const nodeEnv = process.env['NODE_ENV']
+  return serverEnv.isVercelDeployment() || (nodeEnv !== 'test' && nodeEnv !== 'development')
+}
+
+/** The signing key, or BindingKeyMissingError where it must be set and is not. */
 function bindingKey(): string {
   const key = serverEnv.rxBindingSecret()
   if (key) return key
-  if (serverEnv.isProductionDeployment()) throw new BindingKeyMissingError()
+  if (bindingKeyRequired()) throw new BindingKeyMissingError()
   return DEVELOPMENT_KEY
 }
 
-const hmac = (message: string) => createHmac('sha256', bindingKey()).update(message, 'utf8').digest('hex')
+/** The keys a binding may verify under: the signing key, then the previous one. */
+function verificationKeys(): string[] {
+  const previous = serverEnv.rxBindingSecretPrevious()
+  return [bindingKey(), ...(previous ? [previous] : [])]
+}
+
+const hmac = (message: string, key: string = bindingKey()) => createHmac('sha256', key).update(message, 'utf8').digest('hex')
 
 // ── The snapshots taken at signing (T2) ─────────────────────────
 
@@ -260,9 +287,12 @@ function canonicalTime(t: string): string {
   return d.toISOString()
 }
 
-/** The keyed binding: the signature, the time and the content, together. */
+const bindingMessage = (signatureDigest: string, signedAt: string, content: string) =>
+  `${DOMAIN}\n${signatureDigest}\n${canonicalTime(signedAt)}\n${content}`
+
+/** The keyed binding (current key): the signature, the time and the content, together. */
 export function signatureBinding(signatureDigest: string, signedAt: string, content: string): string {
-  return hmac(`${DOMAIN}\n${signatureDigest}\n${canonicalTime(signedAt)}\n${content}`)
+  return hmac(bindingMessage(signatureDigest, signedAt, content))
 }
 
 /** The value stored in orders.provider_signature_hash_snapshot at signing. */
@@ -297,14 +327,14 @@ export function verifySignatureBinding(order: SignedOrderRow): 'match' | 'mismat
   if (parsed.kind === 'none') return 'unsigned'
   if (parsed.kind === 'legacy') return 'legacy'
   if (parsed.kind === 'malformed') return 'mismatch'
-  let expected: string
+  let message: string
   try {
-    expected = signatureBinding(parsed.signatureDigest, order.locked_at, canonicalSignedContent(order))
-  } catch (err) {
-    if (isBindingKeyMissingError(err)) throw err
+    message = bindingMessage(parsed.signatureDigest, order.locked_at, canonicalSignedContent(order))
+  } catch {
     return 'mismatch'
   }
-  return expected === parsed.binding ? 'match' : 'mismatch'
+  // The current key, then the previous one (a rotation): verification only.
+  return verificationKeys().some(key => hmac(message, key) === parsed.binding) ? 'match' : 'mismatch'
 }
 
 // ── Proofs from the status history (service-written, append-only) ──
@@ -319,30 +349,53 @@ export interface StatusHistoryRow {
 const meta = (r: StatusHistoryRow): Record<string, unknown> =>
   r.metadata && typeof r.metadata === 'object' && !Array.isArray(r.metadata) ? r.metadata as Record<string, unknown> : {}
 
+const sameInstant = (a: unknown, b: unknown): boolean => {
+  const x = Date.parse(String(a ?? '')), y = Date.parse(String(b ?? ''))
+  return Number.isFinite(x) && x === y
+}
+
 /**
- * T1: a bare digest is legacy only if the service signed the order before
- * the cutoff: a DRAFT to AWAITING_PAYMENT history row by a signing actor,
- * with no binding marker (the bound signing path always writes one), and,
- * for batch-sign rows, the same digest. order_status_history takes inserts
- * from the service role only, so a clinic user cannot write such a row.
+ * T1: a bare digest is legacy only if the service signed THIS order, with
+ * THIS signature, before RX_LEGACY_CUTOFF: a DRAFT to AWAITING_PAYMENT
+ * history row by a signing actor, with no binding marker (the bound path
+ * always writes one), whose signed_at is the order's locked_at, and whose
+ * digest, where the row has one, is the column's.
+ *
+ * The digest: batch-sign rows always record it, so it is always compared.
+ * The older sign-and-send route (before WO-99, 2026-09-22) never wrote it
+ * into its row (metadata { actor, signed_at } only), so for those rows the
+ * tie is signed_at = locked_at, which that route wrote in the same signing.
+ *
+ * order_status_history takes inserts from the service role only, so a
+ * clinic user cannot write such a row.
  */
-export function legacySignatureProven(columnValue: string, rows: readonly StatusHistoryRow[]): boolean {
+export function legacySignatureProven(
+  order: { provider_signature_hash_snapshot?: string | null; locked_at?: string | null },
+  rows: readonly StatusHistoryRow[],
+): boolean {
+  const columnValue = order.provider_signature_hash_snapshot ?? ''
   if (!HEX64.test(columnValue)) return false
-  const cutoff = Date.parse(LEGACY_SIGNING_CUTOFF)
+  const cutoff = legacySigningCutoff()
+  if (cutoff === null) return false
   return rows.some(r => {
     const m = meta(r)
     if (r.old_status !== 'DRAFT' || r.new_status !== 'AWAITING_PAYMENT') return false
     if (typeof m['actor'] !== 'string' || !LEGACY_SIGNING_ACTORS.includes(m['actor'])) return false
     if (m['signature_binding'] !== undefined) return false
-    if (m['actor'] === 'provider_batch_sign' && m['signature_hash'] !== columnValue) return false
+    if (!sameInstant(m['signed_at'], order.locked_at)) return false
+    if (m['signature_hash'] !== undefined && m['signature_hash'] !== columnValue) return false
+    if (m['actor'] === 'provider_batch_sign' && m['signature_hash'] === undefined) return false
     const at = Date.parse(r.created_at ?? '')
     return Number.isFinite(at) && at < cutoff
   })
 }
 
-/** T2: the ops reroute's keyed proof that the order may go to newPharmacyId. */
+const rerouteMessage = (orderId: string, signatureValue: string, newPharmacyId: string, rerouteCount: number) =>
+  `${REROUTE_DOMAIN}\n${orderId}\n${signatureValue}\n${newPharmacyId}\n${rerouteCount}`
+
+/** T2: the ops reroute's keyed proof (current key) that the order may go to newPharmacyId. */
 export function rerouteBinding(orderId: string, signatureValue: string, newPharmacyId: string, rerouteCount: number): string {
-  return hmac(`${REROUTE_DOMAIN}\n${orderId}\n${signatureValue}\n${newPharmacyId}\n${rerouteCount}`)
+  return hmac(rerouteMessage(orderId, signatureValue, newPharmacyId, rerouteCount))
 }
 
 /**
@@ -359,7 +412,8 @@ export function rerouteProven(order: SignedOrderRow, rows: readonly StatusHistor
   if (!latest) return false
   const m = meta(latest)
   if (m['new_pharmacy_id'] !== order.pharmacy_id || typeof m['reroute_binding'] !== 'string' || typeof m['reroute_count'] !== 'number') return false
-  return m['reroute_binding'] === rerouteBinding(order.order_id, order.provider_signature_hash_snapshot, order.pharmacy_id, m['reroute_count'])
+  const message = rerouteMessage(order.order_id, order.provider_signature_hash_snapshot, order.pharmacy_id, m['reroute_count'])
+  return verificationKeys().some(key => hmac(message, key) === m['reroute_binding'])
 }
 
 // ── Reads ───────────────────────────────────────────────────────

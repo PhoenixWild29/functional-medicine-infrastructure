@@ -53,12 +53,20 @@ describe('enforceHttpsOnly', () => {
     await enforceHttpsOnly({ route } as never)
     expect(route).toHaveBeenCalledWith('**/*', expect.any(Function))
     const handler = route.mock.calls[0]![1] as (r: unknown) => Promise<void>
-    const r = (url: string) => ({ request: () => ({ url: () => url }), abort: jest.fn(async () => undefined), continue: jest.fn(async () => undefined) })
+    const r = (url: string) => ({
+      request: () => ({ url: () => url }),
+      abort: jest.fn(async () => undefined),
+      // An allowed request is fetched here (no redirects followed) and fulfilled:
+      // see portal-redirect-hops.test.ts for the redirect cases.
+      fetch: jest.fn(async () => ({ status: () => 200, headers: () => ({}) })),
+      fulfill: jest.fn(async () => undefined),
+    })
     const http = r('http://portal.pharm.test/submit'), https = r('https://portal.pharm.test/submit'), ws = r('ws://portal.pharm.test')
     await handler(http); await handler(https); await handler(ws)
     expect(http.abort).toHaveBeenCalled()
-    expect(http.continue).not.toHaveBeenCalled()
-    expect(https.continue).toHaveBeenCalled()
+    expect(http.fetch).not.toHaveBeenCalled()
+    expect(https.fetch).toHaveBeenCalledWith(expect.objectContaining({ maxRedirects: 0 }))
+    expect(https.fulfill).toHaveBeenCalled()
     expect(ws.abort).toHaveBeenCalled()
   })
 })

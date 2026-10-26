@@ -92,7 +92,7 @@ import { prescriberProblems, todayUtc, type PrescriberProblemCode } from '@/lib/
 import type { NpiStatus } from '@/lib/providers/npi'
 import {
   SIGNATURE_BINDING_VERSION, boundSignatureValue, canonicalSignedContent, patientSnapshotFor, prescriberSnapshotFor,
-  readSignedContent, rxBindingKeyConfigured, type PatientSnapshot, type PrescriberSnapshot,
+  bindingKeyRequired, readSignedContent, rxBindingKeyConfigured, type PatientSnapshot, type PrescriberSnapshot,
 } from './signature-binding'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -818,9 +818,10 @@ export async function signBatch(
     signature: unknown
   },
 ): Promise<SignBatchResult> {
-  // HIPAA B7 (B's review T1): without the binding key nothing can be signed
-  // in production. Refused before anything is read or written.
-  if (!rxBindingKeyConfigured() && serverEnv.isProductionDeployment()) {
+  // HIPAA B7 (B's review T1, D's verification): without the binding key
+  // nothing is signed on any Vercel deployment or outside a local test or
+  // development run. Refused before anything is read or written.
+  if (!rxBindingKeyConfigured() && bindingKeyRequired()) {
     console.error('[batch-sign] CRITICAL: RX_BINDING_SECRET is not set; nothing can be signed')
     return {
       ok: false, status: 503, code: 'BINDING_KEY_MISSING',

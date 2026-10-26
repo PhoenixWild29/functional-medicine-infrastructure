@@ -78,13 +78,18 @@ export const serverEnv = {
   mfaEnforcedEmails: (): string[] =>
     (process.env['MFA_ENFORCED_EMAILS'] ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean),
 
-  // HIPAA B7 (B's review T1): the key of the prescription signature binding
-  // (lib/orders/signature-binding). null when unset; never logged.
+  // HIPAA B7 (B's review T1, D's verification): the key of the prescription
+  // signature binding (lib/orders/signature-binding). null when unset;
+  // never logged. RX_BINDING_SECRET_PREVIOUS (optional) is the key before a
+  // rotation: it verifies, it never signs. docs/ops/rx-binding-key.md.
   rxBindingSecret: (): string | null => process.env['RX_BINDING_SECRET'] || null,
+  rxBindingSecretPrevious: (): string | null => process.env['RX_BINDING_SECRET_PREVIOUS'] || null,
+  // ISO time before which an order signed by the pre-binding code is
+  // accepted as legacy. Unset: no order is (set it to this code's deploy time).
+  rxLegacyCutoff: (): string | null => process.env['RX_LEGACY_CUTOFF']?.trim() || null,
 
-  // The production deployment (Vercel). Secrets that must be set fail
-  // closed only here; preview, local and CI runs report them instead.
-  isProductionDeployment: (): boolean => process.env['VERCEL_ENV'] === 'production',
+  // Any Vercel deployment: production, preview or vercel dev.
+  isVercelDeployment: (): boolean => Boolean(process.env['VERCEL'] || process.env['VERCEL_ENV']),
 
   // HIPAA automatic logoff: minutes of inactivity before sign-out.
   // Default 15; anything that is not a positive whole number is 15.

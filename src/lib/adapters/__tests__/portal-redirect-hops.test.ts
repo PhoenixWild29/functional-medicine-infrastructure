@@ -154,13 +154,15 @@ describeChromium('in Chromium: no redirect hop reaches a blocked origin', () => 
       await page.goto(`${base}/start`).catch(() => undefined)
       expect(page.url()).not.toContain(`:${badPort}`)
 
+      // A fresh page: the aborted hop leaves the first on Chromium's error page.
+      const form = await context.newPage()
       // An allowed redirect (to the same origin) is still followed.
-      await page.goto(`${base}/hop`)
-      expect(page.url()).toBe(`${base}/form`)
+      await form.goto(`${base}/hop`)
+      expect(form.url()).toBe(`${base}/form`)
 
-      await Promise.all([page.waitForLoadState('load').catch(() => undefined), page.click('#go')])
-      await page.waitForTimeout(1_000)
-      expect(page.url()).not.toContain(`:${badPort}`)
+      await Promise.all([form.waitForLoadState('load').catch(() => undefined), form.click('#go')])
+      await form.waitForTimeout(1_000)
+      expect(form.url()).not.toContain(`:${badPort}`)
 
       expect(hits).toEqual([])
     } finally {

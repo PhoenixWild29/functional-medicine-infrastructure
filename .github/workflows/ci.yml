@@ -372,6 +372,11 @@ jobs:
           # account is poc_placeholder, so the group PaymentIntent carries no
           # transfer, and no test ever confirms it — nothing is charged.
           PHASE_C_GROUPS_ENABLED: 'true'
+          # HIPAA B7: the app runs under `next start` (NODE_ENV=production),
+          # where the prescription binding key is required. An E2E-only value,
+          # not a secret: the E2E project holds test data only, and production
+          # and preview have their own RX_BINDING_SECRET (docs/ops/rx-binding-key.md).
+          RX_BINDING_SECRET: 'e2e-only-rx-binding-key-not-a-secret-0123456789'
           # ── Misc ─────────────────────────────────────────────────
           NEXT_TELEMETRY_DISABLED: '1'
           # PLAYWRIGHT_BASE_URL intentionally omitted — playwright.config.ts

@@ -33,6 +33,7 @@
 // the code into SUBMISSION_FAILED / FAX_FAILED metadata and an alert. Logs
 // carry order ids and codes only, never content, URLs or the key.
 
+import type { APIResponse, BrowserContext } from 'playwright'
 import { allergyStatus } from '@/lib/patients/allergies'
 import {
   SIGNED_ORDER_COLUMNS,
@@ -198,7 +199,7 @@ export async function loadTransmittableOrder(
     return history
   }
 
-  if (verdict === 'legacy' && !legacySignatureProven(order.provider_signature_hash_snapshot!, await readHistory())) {
+  if (verdict === 'legacy' && !legacySignatureProven(order, await readHistory())) {
     refuse(orderId, 'signature_mismatch', `Order ${orderId} carries a signature value no signing record proves, so it was not sent`)
   }
   if (pharmacyChanged) {
@@ -307,15 +308,46 @@ export function assertSecureFlowUrls(flows: readonly unknown[], ctx: { orderId: 
   }
 }
 
-interface RoutableContext {
-  route: (url: string, handler: (route: { request: () => { url: () => string }; abort: (code?: string) => Promise<void>; continue: () => Promise<void> }) => Promise<void>) => Promise<void>
-}
-
-/** T5 / T7: abort every request of this browser context that is not https, redirects included. */
-export async function enforceHttpsOnly(context: RoutableContext): Promise<void> {
+/**
+ * T5 / T7: no request of this browser context, and no redirect hop, goes
+ * to a URL that is not https (isAllowed; tests pass their own rule).
+ *
+ * A context route sees only the first URL of a redirect chain (D's
+ * verification: Chromium followed a 302 / 307 past the route and re-sent a
+ * POST body). So each allowed request is fetched here with maxRedirects: 0.
+ * A redirect whose Location is not allowed is aborted; an allowed one is
+ * handed back to the browser, whose next hop is a new request and comes
+ * through this route again.
+ */
+export async function enforceHttpsOnly(
+  context: Pick<BrowserContext, 'route'>,
+  isAllowed: (url: string) => boolean = isSecurePharmacyUrl,
+): Promise<void> {
   await context.route('**/*', async route => {
-    if (isSecurePharmacyUrl(route.request().url())) await route.continue()
-    else await route.abort('blockedbyclient')
+    const url = route.request().url()
+    if (!isAllowed(url)) {
+      await route.abort('blockedbyclient')
+      return
+    }
+    let response: APIResponse
+    try {
+      response = await route.fetch({ maxRedirects: 0 })
+    } catch {
+      await route.abort('failed')
+      return
+    }
+    const status = response.status()
+    if (status >= 300 && status < 400) {
+      const location = response.headers()['location']
+      let next: string | null = null
+      try { next = location ? new URL(location, url).toString() : null } catch { next = null }
+      if (!next || !isAllowed(next)) {
+        console.error('[transmission-guard] portal redirect to a URL that is not https refused | code=insecure_pharmacy_url')
+        await route.abort('blockedbyclient')
+        return
+      }
+    }
+    await route.fulfill({ response })
   })
 }
 

@@ -10,19 +10,19 @@
 // fast and avoids DB connection noise during deploys.
 
 import { NextResponse } from 'next/server'
-import { rxBindingKeyConfigured } from '@/lib/orders/signature-binding'
-import { serverEnv } from '@/lib/env'
+import { bindingKeyRequired, rxBindingKeyConfigured } from '@/lib/orders/signature-binding'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// B's review T1: in production the check fails (503) when RX_BINDING_SECRET
-// is not set: nothing can be signed, rerouted or sent. Only "set" or
-// "missing" is reported, never the value. Preview and local runs report it
-// without failing.
+// B's review T1, D's verification: on any Vercel deployment (production or
+// preview), or any server not in local test or development mode, the check
+// fails (503) when RX_BINDING_SECRET is not set: nothing can be signed,
+// rerouted or sent. Only "set" or "missing" is reported, never the value.
+// Local test and development runs report it without failing.
 export function GET() {
   const rxBinding = rxBindingKeyConfigured() ? 'set' : 'missing'
-  const ok = !(serverEnv.isProductionDeployment() && rxBinding === 'missing')
+  const ok = !(bindingKeyRequired() && rxBinding === 'missing')
   return NextResponse.json({
     ok,
     timestamp: new Date().toISOString(),
