@@ -46,7 +46,8 @@ export interface AttentionItem {
   since:     string | null
 }
 
-export interface AttentionError { check: string; error: string }
+/** patientId: set when the check names a patient (review L7: so the log covers it). */
+export interface AttentionError { check: string; error: string; patientId?: string | null }
 
 export interface AttentionResult {
   items:  AttentionItem[]
@@ -167,7 +168,7 @@ export async function loadAttention(
     for (const d of chunk) {
       for (const p of byOrder.get(d.order_id) ?? []) {
         if (p.code.endsWith('_unavailable')) {
-          errors.push({ check: `Draft check for ${who(d)}`, error: p.message })
+          errors.push({ check: `Draft check for ${who(d)}`, error: p.message, patientId: d.patient_id ?? null })
           continue
         }
         if (p.code === 'not_found' || p.code === 'not_draft') continue

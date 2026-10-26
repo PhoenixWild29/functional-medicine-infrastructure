@@ -145,7 +145,10 @@ export interface PhiAccessEntry {
 
 const RESOURCE_RE = /^[a-z_]{1,40}$/
 const ROLE_RE = /^[a-z_]{1,40}$/
-const UUID_SEGMENT_RE = /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=\/|$)/gi
+/** A route segment kept as is: a [param], or a lowercase word (letters, digits, - and _). */
+const PARAM_SEGMENT_RE = /^\[[A-Za-z]+\]$/
+const WORD_SEGMENT_RE = /^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$/
+const MAX_WORD_SEGMENT = 32
 
 let warnedNoSecret = false
 
@@ -162,10 +165,17 @@ async function keyedHash(value: string | null | undefined): Promise<string | nul
   return auditHash(value)
 }
 
-/** The route as a pattern: no query string, no ids. */
+/**
+ * The route as a pattern: no query string, no ids. Any segment that is not
+ * a [param] or a short lowercase word becomes [id] (review L9: a UUID, but
+ * also a base64url bearer token, which would otherwise pass the column
+ * CHECK and be stored verbatim).
+ */
 function routePattern(route: string): string {
   const path = route.split('?')[0] ?? ''
-  return path.replace(UUID_SEGMENT_RE, '/[id]').slice(0, 200)
+  return path.split('/').map(seg => (
+    seg === '' || PARAM_SEGMENT_RE.test(seg) || (seg.length <= MAX_WORD_SEGMENT && WORD_SEGMENT_RE.test(seg)) ? seg : '[id]'
+  )).join('/').slice(0, 200)
 }
 
 const ALERT_THROTTLE_MS = 60_000

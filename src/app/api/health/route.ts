@@ -21,7 +21,11 @@ export const dynamic = 'force-dynamic'
 // never the value. Preview and local runs report it without failing.
 export function GET() {
   const secret = phiAuditSecretConfigured() ? 'set' : 'missing'
-  const production = process.env['VERCEL_ENV'] === 'production'
+  // Review L10: production on Vercel, or a production run off Vercel
+  // (NODE_ENV production with no VERCEL_ENV). A Vercel preview build also
+  // has NODE_ENV production, so VERCEL_ENV decides there.
+  const vercelEnv = process.env['VERCEL_ENV']
+  const production = vercelEnv ? vercelEnv === 'production' : process.env['NODE_ENV'] === 'production'
   const ok = !(production && secret === 'missing')
   return NextResponse.json({
     ok,

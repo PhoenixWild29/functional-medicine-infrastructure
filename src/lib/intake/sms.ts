@@ -16,6 +16,7 @@ import { createTwilioClient } from '@/lib/twilio/client'
 import { isTwilioConfigured } from '@/lib/twilio/config'
 import { SMS_CONSENT_SOURCE } from '@/lib/sms/inbound'
 import { intakeSmsText } from './sms-text'
+import { logPhiDisclosure, systemActor } from '@/lib/audit/phi-access'
 
 type Db = { from: (table: string) => unknown }
 type Q = {
@@ -65,7 +66,7 @@ export async function sendIntakeLinkSms(db: Db, input: IntakeSmsInput): Promise<
 
   // A patient who replied STOP is never texted. Unreadable: do not send.
   const { data, error } = await (db.from('patients') as Q)
-    .select('sms_opt_in, sms_consent_source')
+    .select('sms_opt_in, sms_consent_source, clinic_id')
     .eq('patient_id', input.patientId)
     .maybeSingle()
   if (error || !data) {
@@ -73,11 +74,20 @@ export async function sendIntakeLinkSms(db: Db, input: IntakeSmsInput): Promise<
     await recordOnLink(db, input.linkId, 'failed')
     return 'failed'
   }
-  const consent = data as { sms_opt_in: boolean | null; sms_consent_source: string | null }
+  const consent = data as { sms_opt_in: boolean | null; sms_consent_source: string | null; clinic_id?: string | null }
   if (consent.sms_consent_source === SMS_CONSENT_SOURCE.keywordStop && consent.sms_opt_in !== true) {
     await logSms(db, input, 'suppressed', null, 'opted_out')
     await recordOnLink(db, input.linkId, 'suppressed')
     return 'suppressed'
+  }
+
+  // Review L2: the text discloses the phone and a link to Twilio.
+  // Fail-closed: no row, no text.
+  const clinicId = consent.clinic_id ?? null
+  if (!(await logPhiDisclosure({ actor: systemActor(clinicId), resource: 'sms_disclosure', route: `/sms/${TEMPLATE}`, patientId: input.patientId, clinicId }))) {
+    console.error('[intake-sms] disclosure not recorded; not sent | link=', input.linkId)
+    await recordOnLink(db, input.linkId, 'failed')
+    return 'failed'
   }
 
   try {
