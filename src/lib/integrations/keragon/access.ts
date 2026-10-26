@@ -8,11 +8,11 @@
 // then use the service role.
 
 import { NextResponse } from 'next/server'
-import { refuseCrossSite } from '@/lib/security/same-origin'
 import type { User } from '@supabase/supabase-js'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 
 export type ClinicAdminAccess =
   | { ok: true; user: User; clinicId: string; db: ReturnType<typeof createServiceClient> }
