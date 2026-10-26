@@ -1,12 +1,16 @@
-task-id: B-2026-10-26-01
+task-id: B-2026-10-26-02
 status: ready
 ---
-Thanks for B-2026-10-25-12 (auth-monitoring, b182d07). The rotation list is noted for Sam; rotation waits until after the cofounder demo, since Demo Tools needs the POC_* vars set first.
+Thanks for B-2026-10-26-01 (review-hipaa-fixes, dd149b5). Strong review. You fix password-flows (D is on other work; you own the branch until you push; do not rewrite its history).
 
-Next: independent review of two HIPAA fix branches you have not seen. Review the diff against origin/bundle-features, not the authors' reports.
-1. origin/password-flows (D, 69e60cf): reset and change flows. Hunt for: account enumeration (any difference in response, timing or status between existing and unknown emails), reset link handling (token in URL leaking via Referer or logs; redirect target fixed to our origin, no open redirect), policy enforced server-side (not only in the browser), current password checked on change, other sessions signed out, must_change_password forced before any other page and not bypassable through API routes, rate limiting on forgot/reset/change, no password or token in logs/Sentry, the providers route no longer sets a known password.
-2. origin/order-transmission-integrity (A, 2b9b69a): every send path refuses unsigned/unlocked orders (list every caller of each adapter and confirm none bypasses the check, including retries, re-routes, ops resubmit and crons); the canonical content hash is deterministic (field order, number formatting, null vs empty, unicode normalisation) and covers every clinical field the pharmacy receives; old orders handled as stated; https enforcement cannot be bypassed by uppercase scheme, whitespace, or a redirect from https to http at send time.
-For each finding: file:line, the concrete failing scenario, severity, and the fix. Confirm by reading the path end to end or a throwaway test before reporting; drop anything you cannot confirm.
-Do NOT push to those branches. Write docs/qa/review-2026-10-26-hipaa-fixes.md on a new branch `review-hipaa-fixes` from origin/main, push (normal push, no PR), summary in the commit body.
+`git checkout password-flows && git pull`.
+1. P1 High: POST /api/auth/password must only set a new password for a RECOVERY session (amr includes recovery, issued within the last 15 minutes; read how Supabase exposes amr in this SDK version and test it), otherwise 403. Add a per-user rate limit. The signed-in change flow stays the separate route that checks the current password.
+2. P3 Medium: forgot-password timing. Respond after a fixed minimum time (e.g. 600 ms) regardless of outcome, or do the Supabase call in after()/waitUntil so the response does not wait for it; pick the one that works on Vercel with this Next version and say why. Test that both paths take the same time within tolerance (mock timers).
+3. P4 Low: use newPasswordProblem (the shared policy) in invite accept, sign-up and pharmacy invite.
+4. P5 Low: check the per-IP limit before the per-address limit, and make the per-address limit not lock an address out for an hour from one attacker IP (e.g. count per address+IP, with a looser per-address cap).
+5. P2 Medium (provider invite link handed to the admin): do NOT change the invite design in this task. Write the options in your report for Sam's decision (email delivery via Supabase invite if email is configured; forced change on first sign-in via app_metadata.must_change_password; leave as is with the admin trusted) with the effort of each.
+Also: in your report, list the hosted Supabase settings that would let a browser updateUser bypass the server policy, and the Supabase dashboard setting names Sam should check (password strength, redirect allow-list), names only.
+Tests: jest for each fix (recovery-only, timing, policy reuse, limiter order).
+Gates: lint (0 warnings), tsc, jest, next build. Push password-flows (normal push, no PR). Report in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
