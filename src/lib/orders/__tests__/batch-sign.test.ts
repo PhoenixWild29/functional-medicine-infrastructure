@@ -116,8 +116,8 @@ function world(orders: Array<Record<string, unknown>>, clinicOver: Record<string
       ] },
     ],
     patients: [
-      { patient_id: P1, allergies: ['sulfa'], nkda: false },
-      { patient_id: P2, allergies: [], nkda: true },
+      { patient_id: P1, first_name: 'Alex', last_name: 'Demo', date_of_birth: '1985-06-15', allergies: ['sulfa'], nkda: false },
+      { patient_id: P2, first_name: 'Test', last_name: 'Patient', date_of_birth: '1980-01-01', allergies: [], nkda: true },
     ],
     drug_interactions: [
       { interaction_id: 'i1', severity: 'warning', description: 'Monitor', ingredient_a: { common_name: 'Semaglutide' }, ingredient_b: { common_name: 'Testosterone' } },
@@ -532,18 +532,40 @@ describe('signature binding', () => {
     const db = world([draft(1), draft(2, { patient_id: P2 })])
     const res = await sign(db, [id(1), id(2)])
     if (!res.ok) throw new Error(res.error)
-    const patient = (pid: string) => db.tables['patients']!.find(p => p['patient_id'] === pid) as { allergies: string[]; nkda: boolean }
-
     for (const n of [1, 2]) {
       const row = orderRow(db, n) as unknown as SignedOrderRow
-      expect(row.provider_signature_hash_snapshot).toMatch(/^v2:/)
-      expect(verifySignatureBinding(row, patient(row.patient_id))).toBe('match')
-      expect(verifySignatureBinding({ ...row, refills: 7 }, patient(row.patient_id))).toBe('mismatch')
+      expect(row.provider_signature_hash_snapshot).toMatch(/^v3:/)
+      expect(verifySignatureBinding(row)).toBe('match')
+      expect(verifySignatureBinding({ ...row, refills: 7 })).toBe('mismatch')
     }
+    // HIPAA T2: what the pharmacy receives is snapshotted at signing and bound.
+    expect(orderRow(db, 1)['patient_snapshot']).toEqual({
+      first_name: 'Alex', last_name: 'Demo', date_of_birth: '1985-06-15', allergy_status: { kind: 'recorded', allergies: ['sulfa'] },
+    })
+    expect(orderRow(db, 2)['patient_snapshot']).toMatchObject({ first_name: 'Test', allergy_status: { kind: 'nkda' } })
+    expect(orderRow(db, 1)['prescriber_snapshot']).toEqual({
+      provider_id: CHEN, first_name: 'Sarah', last_name: 'Chen', npi_number: '1234567890', dea_number: null, license_state: null,
+    })
     // The history row keeps the signature digest (not the bound value).
     const rows = historyMock.mock.calls[0]![1] as Array<{ metadata: Record<string, unknown> }>
     expect(String(orderRow(db, 1)['provider_signature_hash_snapshot']).split(':')[1]).toBe(rows[0]!.metadata['signature_hash'])
-    expect(rows[0]!.metadata).toMatchObject({ signature_binding: 'v2' })
+    expect(rows[0]!.metadata).toMatchObject({ signature_binding: 'v3' })
+  })
+
+  it('HIPAA T1: with no binding key in production, nothing is signed and nothing is written', async () => {
+    const env = process.env as Record<string, string | undefined>
+    const saved = env['RX_BINDING_SECRET']
+    delete env['RX_BINDING_SECRET']
+    env['VERCEL_ENV'] = 'production'
+    try {
+      const db = world([draft(1), draft(2)])
+      const res = await sign(db, [id(1), id(2)])
+      expect(res).toMatchObject({ ok: false, status: 503, code: 'BINDING_KEY_MISSING' })
+      expect(db.writes).toHaveLength(0)
+    } finally {
+      delete env['VERCEL_ENV']
+      if (saved !== undefined) env['RX_BINDING_SECRET'] = saved
+    }
   })
 
   it('if a binding cannot be written, nothing is signed', async () => {
@@ -577,7 +599,7 @@ describe('the signature record', () => {
     expect(a['status']).toBe('AWAITING_PAYMENT')
     // HIPAA B7: each order's signature value binds its own content, under
     // the same signature digest and time.
-    const BOUND = /^v2:([0-9a-f]{64}):([0-9a-f]{64})$/
+    const BOUND = /^v3:([0-9a-f]{64}):([0-9a-f]{64})$/
     const [, aDigest, aBinding] = String(a['provider_signature_hash_snapshot']).match(BOUND) ?? []
     const [, bDigest, bBinding] = String(b['provider_signature_hash_snapshot']).match(BOUND) ?? []
     expect(aDigest).toMatch(/^[0-9a-f]{64}$/)

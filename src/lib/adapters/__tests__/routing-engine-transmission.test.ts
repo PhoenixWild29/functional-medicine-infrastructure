@@ -14,14 +14,17 @@
 
 import { routeOrder, submitQueuedFax } from '../routing-engine'
 import { TransmissionRefusedError } from '../transmission-guard'
-import { boundSignatureValue, canonicalSignedContent } from '@/lib/orders/signature-binding'
+import { boundSignatureValue, canonicalSignedContent, patientSnapshotFor, prescriberSnapshotFor, rerouteBinding } from '@/lib/orders/signature-binding'
 
 const SIGNED_AT = '2026-10-25T14:03:07.123Z'
 const DIGEST = 'd'.repeat(64)
-const PATIENT = { allergies: [] as string[], nkda: true }
+const PATIENT = { first_name: 'Alex', last_name: 'Demo', date_of_birth: '1980-01-01', allergies: [] as string[], nkda: true }
+let history: unknown[] = []
 
 const CONTENT = {
   order_id: 'o-1', patient_id: 'pt-1', provider_npi_snapshot: '1234567890',
+  patient_snapshot: patientSnapshotFor(PATIENT),
+  prescriber_snapshot: prescriberSnapshotFor({ provider_id: 'pr-1', first_name: 'Sarah', last_name: 'Chen', npi_number: '1234567890', dea_number: null, license_state: 'TX' }),
   pharmacy_snapshot: { pharmacy_id: 'ph-1', name: 'Strive' },
   medication_snapshot: { medication_name: 'Fixture 10 mg', dea_schedule: 0 },
   sig_mode: 'standard', sig_text: 'Take one daily', titration_steps: [], quantity: 30, dispense_quantity: 30,
@@ -71,7 +74,7 @@ function chain(result: () => unknown): Record<string, unknown> {
   return c
 }
 
-const signedValue = () => boundSignatureValue(DIGEST, SIGNED_AT, canonicalSignedContent(CONTENT, PATIENT))
+const signedValue = () => boundSignatureValue(DIGEST, SIGNED_AT, canonicalSignedContent(CONTENT))
 
 jest.mock('@/lib/supabase/service', () => ({
   createServiceClient: () => ({
@@ -86,6 +89,8 @@ jest.mock('@/lib/supabase/service', () => ({
           }, error: null }))
         case 'patients':
           return chain(() => ({ data: PATIENT, error: null }))
+        case 'order_status_history':
+          return chain(() => ({ data: history, error: null }))
         case 'formulations':
           return chain(() => ({ data: { formulation_id: 'f-1', dosage_forms: { name: 'Capsule', is_sterile: false }, salt_forms: { ingredients: { common_name: 'Fixture', dea_schedule: null, compounding_status: 'approved_drug_component' } } }, error: null }))
         case 'pharmacy_state_licenses':
@@ -97,12 +102,13 @@ jest.mock('@/lib/supabase/service', () => ({
   }),
 }))
 
-beforeAll(() => { process.env['PHARMACY_SUBMISSIONS_ENABLED'] = 'true' })
-afterAll(() => { delete process.env['PHARMACY_SUBMISSIONS_ENABLED'] })
+beforeAll(() => { process.env['PHARMACY_SUBMISSIONS_ENABLED'] = 'true'; process.env['RX_BINDING_SECRET'] = 'test-binding-secret-0123456789abcdef' })
+afterAll(() => { delete process.env['PHARMACY_SUBMISSIONS_ENABLED']; delete process.env['RX_BINDING_SECRET'] })
 
 beforeEach(() => {
   orderStatus = 'PAID_PROCESSING'
   orderOver = {}
+  history = []
   tier = 'TIER_1_API'
   casCalls.length = 0
   errorSpy.mockClear()
@@ -153,14 +159,33 @@ describe('routeOrder', () => {
     expect(failedWith('SUBMISSION_FAILED')).toMatchObject({ reason: 'signature_mismatch' })
   })
 
-  it('a reroute that changed only pharmacy_id still matches (the signed pharmacy is the frozen snapshot)', async () => {
+  it('T2: a pharmacy change without the ops reroute proof is not sent: reason pharmacy_mismatch', async () => {
     orderOver = { pharmacy_id: 'ph-2' }
-    const r = await route()
+    const r = await routeOrder({ orderId: 'o-1', pharmacyId: 'ph-2', currentStatus: 'PAID_PROCESSING' })
+    expect(r.outcome).toBe('submission_failed')
+    nothingSent()
+    expect(failedWith('SUBMISSION_FAILED')).toMatchObject({ reason: 'pharmacy_mismatch' })
+  })
+
+  it('T2: the ops reroute re-binds: with its keyed proof the new pharmacy is sent to', async () => {
+    orderOver = { pharmacy_id: 'ph-2', reroute_count: 1 }
+    history = [{ old_status: 'FAX_FAILED', new_status: 'REROUTE_PENDING', created_at: '2026-10-26T10:00:00Z',
+      metadata: { reason: 'ops_reroute', new_pharmacy_id: 'ph-2', reroute_count: 1, reroute_binding: rerouteBinding('o-1', signedValue(), 'ph-2', 1) } }]
+    const r = await routeOrder({ orderId: 'o-1', pharmacyId: 'ph-2', currentStatus: 'PAID_PROCESSING' })
     expect(r.outcome).toBe('accepted')
   })
 
-  it('an order signed before binding is sent as before', async () => {
+  it('T1: a bare 64-hex value with no signing history is not sent', async () => {
     orderOver = { provider_signature_hash_snapshot: DIGEST }
+    const r = await route()
+    expect(r.outcome).toBe('submission_failed')
+    nothingSent()
+    expect(failedWith('SUBMISSION_FAILED')).toMatchObject({ reason: 'signature_mismatch' })
+  })
+
+  it('an order signed before binding (its signing history row before the cutoff) is sent as before', async () => {
+    orderOver = { provider_signature_hash_snapshot: DIGEST, patient_snapshot: null, prescriber_snapshot: null }
+    history = [{ old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', created_at: '2026-10-01T00:00:00Z', metadata: { actor: 'provider_batch_sign', signature_hash: DIGEST } }]
     const r = await route()
     expect(r.outcome).toBe('accepted')
   })
