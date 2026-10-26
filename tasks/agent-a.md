@@ -1,21 +1,15 @@
-task-id: A-2026-10-26-02
+task-id: A-2026-10-26-03
 status: ready
 ---
-Thanks for A-2026-10-26-01 (signed-order-freeze 000010, 798508a).
-
-Next: fix B's independent review of order-transmission-integrity (origin/review-hipaa-fixes, docs/qa/review-2026-10-26-hipaa-fixes.md, findings T1-T7). Read it first.
-
-`git checkout order-transmission-integrity && git pull`.
-1. T1 High: replace the unkeyed SHA-256 with an HMAC-SHA256 keyed by a server secret (new env var name, e.g. RX_BINDING_SECRET; read via the repo's env helper; never logged). "Legacy" (unbound) is allowed ONLY for orders signed before this deploys: decide by a fixed cutoff the code can prove (e.g. a matching batch-sign status-history row older than the binding version marker, or an explicit allowlist computed at deploy), never by "any 64-hex value". Document in the report that B4 (migration 000004) must be applied for the clinic write path to be closed, and that until then the guard + HMAC still refuse forged orders.
-   If RX_BINDING_SECRET is missing in production, signing and sending must fail closed with a clear ops-facing error (and the health check should report it like the PHI secret does, name only). List the env var for Sam.
-2. T2 High: bind what the pharmacy receives: destination pharmacy (compare orders.pharmacy_id with pharmacy_snapshot at send; a pharmacy change is allowed only through the ops reroute, which re-binds with an audited history row), patient name and DOB, prescriber name, DEA and license as sent. Prefer snapshots taken at signing; send from the snapshot, not live rows.
-3. T3 Medium: one read of the order for both the guard and the payload.
-4. T4 Medium: Tier 1 fetch with redirect: 'error' (or manual with an https re-check).
-5. T5 Medium: Tier 2 browser: abort any non-https request via context.route, and check page.url() before typing anything.
-6. T6 Low: an allergy edit after signing strands paid orders. Do not unfreeze; surface a clear ops failure reason and a documented path (cancel and re-prescribe). Say what the clinic sees.
-7. T7 Low: portal-status-poll: https check before typing credentials.
-Then `git checkout signed-order-freeze && git merge origin/order-transmission-integrity` and update the freeze's column list (shared with the binding list) so the migration 000010 covers the newly bound snapshot columns; keep the static test asserting the two lists match. Push both branches.
-Tests: jest for each fix (forged hash refused, legacy only by the rule, missing secret fails closed, pharmacy mismatch refused, reroute re-binds, redirect refused, Tier 2 abort).
-Gates: lint (0 warnings), tsc, jest, next build. Report in the commit bodies, including the full updated 000010 SQL.
+Thanks for A-2026-10-26-02 (T1-T7, e2d293e; freeze merge 495441f). D verified it independently (origin/verify-transmission, docs/qa/verify-2026-10-26-transmission.md). Finish the freeze column update if not done, then fix D's findings on order-transmission-integrity, and re-merge into signed-order-freeze:
+1. T5/T7 confirmed gap: Playwright context.route does not see redirect hops; Chromium followed a 302/307 and resent a PHI POST to a blocked origin. Use route.fetch({ maxRedirects: 0 }) with a Location https check (or equivalent), and add D's Chromium redirect probe as a real test.
+2. The public development key is used silently whenever VERCEL_ENV is not production. Only allow the dev key when NODE_ENV is test or development AND not on any Vercel deployment; any Vercel deployment (preview included) without RX_BINDING_SECRET fails closed.
+3. Key rotation strands signed-unsent orders. Support RX_BINDING_SECRET_PREVIOUS (optional) for verification only; new bindings always use the current key. Document rotation steps in docs/ops.
+4. LEGACY_SIGNING_CUTOFF hard-coded: read from env (RX_LEGACY_CUTOFF, ISO date) with a safe default of "no legacy" if unset in production, and document that Sam sets it to the deploy time of this code.
+5. T6 copy: tell the clinic CompoundIQ will cancel and refund (ops cancel_refund), not that they should cancel.
+6. vault token_url: https check.
+7. provider_sign_and_send legacy digest not compared: compare it where the row has one; leave as is only where it truly has none and say why.
+Also confirm the migration numbering: D reports 20261024000011 is new on this branch. List every migration on order-transmission-integrity and signed-order-freeze with numbers; they must sort after 000010 and ship together in the signed-order-freeze PR (bundle-hipaa will NOT include order-transmission-integrity because it carries a migration).
+Tests for each. Gates: lint (0 warnings), tsc, jest, next build. Push both branches. Report in the commit bodies, with the full SQL of every migration on signed-order-freeze, and the env vars (names only) Sam must set: RX_BINDING_SECRET, RX_LEGACY_CUTOFF, optional RX_BINDING_SECRET_PREVIOUS.
 
 Do not touch the production database, Vercel, Stripe or secrets.
