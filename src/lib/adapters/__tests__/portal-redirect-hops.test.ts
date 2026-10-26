@@ -140,7 +140,10 @@ describe('the route handler (scripted)', () => {
       await h(r)
       const next = r.fetch.mock.calls[1]![0]!
       expect(next.method).toBe('GET')
-      expect(next.postData).toBeUndefined()
+      // A's V1: an omitted postData makes route.fetch re-send the original
+      // body, so the GET hop passes an empty one explicitly.
+      expect(Buffer.isBuffer(next.postData)).toBe(true)
+      expect(next.postData!.length).toBe(0)
       expect(next.headers!['content-type']).toBeUndefined()
       expect(next.headers!['content-length']).toBeUndefined()
     }
@@ -189,6 +192,8 @@ const describeChromium = chromiumInstalled ? describe : describe.skip
 describeChromium('in Chromium: no redirect hop reaches a blocked origin', () => {
   jest.setTimeout(60_000)
   const hits: string[] = []
+  /** What the allowed origin received on the V1 chain (method, path, body). */
+  const goodHits: string[] = []
   let good: http.Server
   let bad: http.Server
   const port = (s: http.Server) => (s.address() as AddressInfo).port
@@ -217,6 +222,25 @@ describeChromium('in Chromium: no redirect hop reaches a blocked origin', () => 
       }
       if (req.url === '/submit') { res.writeHead(307, { Location: '/submit2' }); return res.end() }
       if (req.url === '/submit2') { res.writeHead(307, { Location: `${badUrl}/steal` }); return res.end() }
+      // A's V1: POST -> 307 -> 303 -> a GET on the same origin, which must carry no body.
+      if (req.url === '/form3') {
+        res.setHeader('content-type', 'text/html')
+        return res.end('<form method="post" action="/post-ok"><input name="phi" value="Jane Doe 1980-01-01"><button id="go3">go</button></form>')
+      }
+      if (req.url === '/post-ok' || req.url === '/post-ok2') {
+        let body = ''
+        req.on('data', c => { body += c })
+        return req.on('end', () => {
+          goodHits.push(`${req.method} ${req.url} body=${body}`)
+          if (req.url === '/post-ok') { res.writeHead(307, { Location: '/post-ok2' }); return res.end() }
+          res.writeHead(303, { Location: '/done' }); return res.end()
+        })
+      }
+      if (req.url === '/done') {
+        let body = ''
+        req.on('data', c => { body += c })
+        return req.on('end', () => { goodHits.push(`${req.method} ${req.url} body=${body}`); res.end('<p id="done">done</p>') })
+      }
       // A login that sets its session on the redirect: the cookie must reach the next hop.
       if (req.url === '/login') { res.writeHead(302, { Location: '/home', 'Set-Cookie': 'sid=abc; Path=/' }); return res.end() }
       if (req.url === '/home') {
@@ -290,6 +314,27 @@ describeChromium('in Chromium: no redirect hop reaches a blocked origin', () => 
       await Promise.all([page.waitForLoadState('load').catch(() => undefined), page.click('#go2')])
       await page.waitForTimeout(1_000)
       expect(hits).toEqual([])
+    } finally {
+      await browser.close()
+    }
+  })
+
+  it("A's V1: POST -> 307 -> 303 -> GET: the 307 hop keeps the body, the GET carries none", async () => {
+    const browser = await chromium.launch()
+    try {
+      const context = await browser.newContext()
+      const badPort = String(port(bad))
+      await enforceHttpsOnly(context, url => new URL(url).port !== badPort)
+      const page = await context.newPage()
+      goodHits.length = 0
+      await page.goto(`http://127.0.0.1:${port(good)}/form3`)
+      await Promise.all([page.waitForLoadState('load').catch(() => undefined), page.click('#go3')])
+      await page.locator('#done').waitFor()
+      expect(goodHits).toEqual([
+        'POST /post-ok body=phi=Jane+Doe+1980-01-01',
+        'POST /post-ok2 body=phi=Jane+Doe+1980-01-01',
+        'GET /done body=',
+      ])
     } finally {
       await browser.close()
     }
