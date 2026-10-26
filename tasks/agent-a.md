@@ -1,15 +1,12 @@
-task-id: A-2026-10-26-04
+task-id: A-2026-10-26-05
 status: ready
 ---
-Thanks for A-2026-10-26-03 (f4b7487 and the freeze merge 9e6fb0d). Clear SQL and env var list.
+Thanks for A-2026-10-26-04 (rls-aal2, 524e924). Thorough, and the payment-group finding is a real gap.
 
-Next: prepare HIPAA gap B3 (C's evidence map, origin/review-high-risk docs/compliance/technical-safeguards-evidence-2026-10-25.md): MFA is not enforced in RLS, so a password-only session can read PHI through PostgREST. This is DECISION-GATED (Sam has not yet decided REQUIRE_MFA for all staff), so prepare it ready to ship, do not merge it anywhere.
-
-Branch: `git fetch origin && git checkout -b rls-aal2 origin/signed-order-freeze` (it must sort after 000011).
-- Migration 20261024000012_rls_require_aal2.sql + down: for every table with PHI (list them from the RLS inventory), add a RESTRICTIVE policy for authenticated that requires (auth.jwt() ->> 'aal') = 'aal2' for staff roles that are required to have MFA. Make the requirement follow the same rule as the app: pharmacy_admin always; other staff roles only when a database-side switch is on. Since env vars are not visible to Postgres, use a single-row settings table or a function returning a constant (say which, and how Sam flips it with one SQL statement). Patients (token pages) go through the service role and are unaffected; say so.
-- App: when a staff user's session is aal1 and the switch is on, the app already redirects to MFA; confirm no page or API still reads PHI with the user-scoped client before that redirect.
-- Tests: static migration test; a PGlite test where an aal1 JWT reads 0 rows and an aal2 JWT reads rows, per role, with the switch on and off.
-- Also write docs/ops/session-timeout.md for B8: the hosted Supabase settings (names only) for session time-box and inactivity timeout, recommended values, and what users see.
-PREPARED only. Gates: lint (0 warnings), tsc, jest, next build. Push rls-aal2 (normal push, no PR). Report in the commit body with the full SQL.
+Next, two parts.
+1. The POST /api/checkout/payment-group MFA gap is NOT decision-gated (the middleware already enforces MFA for that role set when REQUIRE_MFA is on; this route escapes it today because of its /api/checkout prefix). Ship the fix now, separately from rls-aal2:
+   `git fetch origin && git checkout -b mfa-gate-payment-group origin/bundle-hipaa`. Port only mfaApiRefusal() in lib/auth/mfa and its use in POST /api/checkout/payment-group, with the 4 tests. No migration, no PGlite harness (keep that on rls-aal2). Also scan every route under a public middleware prefix for any other staff route that escapes the gate the same way (list them; fix any you find the same way).
+   Gates: lint (0 warnings), tsc, jest, next build. Push mfa-gate-payment-group (normal push, no PR). D will merge it into bundle-hipaa.
+2. Then verify C's fix for B's R1 (redirect chains in the Tier 2 portal and portal-status-poll) on origin/order-transmission-integrity once C pushes it (newer than f4b7487). You wrote the original, so look for anything C changed in your design that breaks the T1-T7 guarantees, re-run B's two Chromium chains, and confirm signed-order-freeze carries the fix. If C has not pushed when you finish part 1, check back every few minutes. Write your result as a section appended to docs/ops/rx-binding-key.md? No: put it in a commit on a new branch `verify-r1` from origin/main at docs/qa/verify-2026-10-26-r1.md, push, summary in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
