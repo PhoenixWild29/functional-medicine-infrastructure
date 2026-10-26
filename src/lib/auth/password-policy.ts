@@ -3,8 +3,9 @@
 // ============================================================
 //
 // Used wherever a person sets their own password: the reset page
-// (/reset-password), Settings > Account "Change password", and the
-// existing invite and sign-up checks (passwordProblem, lib/auth/create-login).
+// (/reset-password), Settings > Account "Change password", clinic and
+// provider invite accept, pharmacy invite accept and self sign-up (review
+// P4). passwordProblem (lib/auth/create-login) is only its first step.
 //
 //   - 12 to 72 bytes (passwordProblem: bcrypt's limit and the app minimum);
 //   - not on a short list of the most common passwords of that length,

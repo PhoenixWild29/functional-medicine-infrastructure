@@ -34,7 +34,8 @@ import { hashInviteToken, inviteStatus, plausibleToken, type InviteKind } from '
 import { recordOnboardingEvent } from '@/lib/onboarding/events'
 import { auditHash, clientIp } from '@/lib/audit/keyed-hash'
 import { inviteAcceptLimiter, INVITE_ACCEPT_RATE_LIMITED_MESSAGE } from '@/lib/onboarding/accept-rate-limit'
-import { createLogin, passwordProblem, removeLogin } from '@/lib/auth/create-login'
+import { createLogin, removeLogin } from '@/lib/auth/create-login'
+import { newPasswordProblem } from '@/lib/auth/password-policy'
 import { isApprovedClinic } from '@/lib/onboarding/approval-guard'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 
@@ -60,7 +61,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (!plausibleToken(token)) return NextResponse.json({ error: 'This invite link is not valid.' }, { status: 404 })
   const errors: Record<string, string> = {}
   if (!fullName) errors['fullName'] = 'Enter your full name.'
-  const weak = passwordProblem(password)
+  // The shared policy (lib/auth/password-policy, review P4); the comparison
+  // with the address runs once the invite is read, below.
+  const weak = newPasswordProblem(password, null)
   if (weak) errors['password'] = weak
   if (Object.keys(errors).length > 0) return NextResponse.json({ error: 'Check the highlighted fields.', errors }, { status: 400 })
 
@@ -85,6 +88,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         : 'This invite has expired. Ask for a new one.'
     return NextResponse.json({ error: message, status }, { status: 410 })
   }
+
+  const sameAsEmail = newPasswordProblem(password, invite.email)
+  if (sameAsEmail) return NextResponse.json({ error: 'Check the highlighted fields.', errors: { password: sameAsEmail } }, { status: 400 })
 
   const kind = invite.kind as InviteKind
   const now = new Date().toISOString()
