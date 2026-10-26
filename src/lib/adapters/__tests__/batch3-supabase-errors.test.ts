@@ -82,6 +82,9 @@ function healthy(override: Script): Script {
       case 'providers': return { data: PROVIDER }
       case 'patients':  return { data: PATIENT }
       case 'clinics':   return { data: { name: 'Sunrise Functional Medicine' } }
+      // HIPAA B7 (B's review T1): the legacy signature is proven by its signing row.
+      case 'order_status_history':
+        return { data: [{ old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', created_at: '2026-10-06T15:00:00Z', metadata: { actor: 'provider_batch_sign', signature_hash: ORDER.provider_signature_hash_snapshot } }] }
       // Compliance C6: submission checks the catalog; Semaglutide is not controlled.
       case 'formulations': return { data: { formulation_id: 'f-sema', salt_forms: { ingredients: { common_name: 'Semaglutide', dea_schedule: null, compounding_status: 'approved_drug_component' } }, formulation_ingredients: [] } }
       case 'pharmacies':

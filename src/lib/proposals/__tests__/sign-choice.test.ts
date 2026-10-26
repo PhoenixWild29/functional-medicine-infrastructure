@@ -41,7 +41,7 @@ jest.mock('@/lib/sms/triggers', () => ({ sendPaymentLinkSms: (...a: unknown[]) =
 jest.mock('@/lib/sla/creator', () => ({ createSlasForTransition: jest.fn(async () => undefined) }))
 const historyMock = jest.fn()
 jest.mock('@/lib/orders/status-history', () => ({ insertStatusHistory: (...a: unknown[]) => historyMock(...a) }))
-jest.mock('@/lib/env', () => ({ serverEnv: { appBaseUrl: () => 'https://app.test/' } }))
+jest.mock('@/lib/env', () => ({ serverEnv: { ...jest.requireActual('@/lib/env').serverEnv, appBaseUrl: () => 'https://app.test/' } }))
 const linkageMock = jest.fn()
 jest.mock('@/lib/protocols/resolve-instance', () => ({ resolveProtocolLinkage: (...a: unknown[]) => linkageMock(...a) }))
 // The real batch sign, watched: signing goes through it and nothing else.

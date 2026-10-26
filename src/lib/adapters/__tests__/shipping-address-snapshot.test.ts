@@ -41,7 +41,7 @@ jest.mock('../prescription-pdf', () => ({
 jest.mock('playwright', () => ({
   chromium: {
     launch: async () => ({
-      newContext: async () => ({ newPage: async () => ({ screenshot: async () => Buffer.from(''), goto: async () => undefined }) }),
+      newContext: async () => ({ route: async () => undefined, newPage: async () => ({ screenshot: async () => Buffer.from(''), goto: async () => undefined }) }),
       close: async () => undefined,
     }),
   },
@@ -110,6 +110,8 @@ function world(order: Record<string, unknown>, tier: string): Script {
       case 'orders':    return { data: { ...ORDER, ...order } }
       case 'providers': return { data: { first_name: 'Sarah', last_name: 'Chen', npi_number: '1234567890', dea_number: null, license_state: 'TX' } }
       case 'patients':  return { data: PATIENT }
+      // HIPAA B7 (B's review T1): the legacy signature is proven by its signing row.
+      case 'order_status_history': return { data: [{ old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', created_at: '2026-10-06T15:00:00Z', metadata: { actor: 'provider_batch_sign', signature_hash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' } }] }
       case 'clinics':   return { data: { name: 'Sunrise Functional Medicine' } }
       // Compliance C6: each adapter checks the catalog; Semaglutide is not controlled.
       case 'formulations': return { data: { formulation_id: 'f-sema', salt_forms: { ingredients: { dea_schedule: null } }, formulation_ingredients: [] } }

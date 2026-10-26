@@ -342,7 +342,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
       .then((body: { failure?: SubmissionFailure | null } | null) => {
         if (cancelled) return
         const f = body?.failure ?? null
-        setSubmissionFailure(submissionFailureNotice({ pharmacyName: f?.pharmacyName ?? null, plainReason: f?.plainReason ?? null }))
+        setSubmissionFailure(submissionFailureNotice({ pharmacyName: f?.pharmacyName ?? null, plainReason: f?.plainReason ?? null, code: f?.code ?? null }))
       })
     return () => { cancelled = true }
   }, [order?.orderId, order?.status]) // eslint-disable-line react-hooks/exhaustive-deps

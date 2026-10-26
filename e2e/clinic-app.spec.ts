@@ -3010,8 +3010,8 @@ test.describe('Clinic App — WO-99 batch sign', () => {
     expect(t.payment_group_id).not.toBeNull()
     expect(r.payment_group_id).toBe(t.payment_group_id)
     // One signature record per order, same signature and time; each bound
-    // to its own order's content (HIPAA B7: v2:<signature digest>:<binding>).
-    const BOUND = /^v2:([0-9a-f]{64}):([0-9a-f]{64})$/
+    // to its own order's content (HIPAA B7: v3:<signature digest>:<keyed binding>).
+    const BOUND = /^v3:([0-9a-f]{64}):([0-9a-f]{64})$/
     expect(t.provider_signature_hash_snapshot).toMatch(BOUND)
     expect(r.provider_signature_hash_snapshot).toMatch(BOUND)
     expect(r.provider_signature_hash_snapshot!.split(':')[1]).toBe(t.provider_signature_hash_snapshot!.split(':')[1])

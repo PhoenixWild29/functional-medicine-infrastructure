@@ -1694,9 +1694,11 @@ export type Database = {
           package_id: string | null
           package_label: string | null
           patient_id: string
+          patient_snapshot: Json | null
           payment_group_id: string | null
           pharmacy_id: string | null
           pharmacy_snapshot: Json | null
+          prescriber_snapshot: Json | null
           proposal_option_id: string | null
           proposal_required: boolean | null
           protocol_instance_id: string | null
@@ -1763,9 +1765,11 @@ export type Database = {
           package_id?: string | null
           package_label?: string | null
           patient_id: string
+          patient_snapshot?: Json | null
           payment_group_id?: string | null
           pharmacy_id?: string | null
           pharmacy_snapshot?: Json | null
+          prescriber_snapshot?: Json | null
           proposal_option_id?: string | null
           proposal_required?: boolean | null
           protocol_instance_id?: string | null
@@ -1832,9 +1836,11 @@ export type Database = {
           package_id?: string | null
           package_label?: string | null
           patient_id?: string
+          patient_snapshot?: Json | null
           payment_group_id?: string | null
           pharmacy_id?: string | null
           pharmacy_snapshot?: Json | null
+          prescriber_snapshot?: Json | null
           proposal_option_id?: string | null
           proposal_required?: boolean | null
           protocol_instance_id?: string | null

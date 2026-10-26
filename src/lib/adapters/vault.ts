@@ -105,7 +105,9 @@ async function fetchOAuth2Token(creds: OAuthCredential): Promise<string> {
     scope:         'order:write',
   })
 
+  // The client secret is in the body: never follow a redirect (B's review T4).
   const response = await fetch(creds.token_url, {
+    redirect: 'error',
     method:  'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body:    body.toString(),

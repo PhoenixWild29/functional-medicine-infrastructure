@@ -84,8 +84,12 @@ describe('Tier 2 portal and Tier 4 fax read the package columns', () => {
   // the select and mapped into what they hand on.
   const read = (f: string) => readFileSync(join(process.cwd(), 'src', 'lib', 'adapters', f), 'utf8')
 
-  it.each(['tier1-api.ts', 'tier2-portal.ts', 'tier4-fax.ts'])('%s selects package_label and package_count', (file) => {
-    expect(read(file)).toMatch(/special_instructions, package_label, package_count, titration_steps'\)/)
+  it.each(['tier1-api.ts', 'tier2-portal.ts', 'tier4-fax.ts'])('%s reads package_label and package_count (the verified read)', (file) => {
+    // B's review T3: the adapters build from the one verified read
+    // (lib/adapters/transmission-guard SEND_ORDER_COLUMNS), not their own select.
+    const { SEND_ORDER_COLUMNS } = jest.requireActual('../transmission-guard') as { SEND_ORDER_COLUMNS: string }
+    for (const c of ['package_label', 'package_count']) expect(SEND_ORDER_COLUMNS.split(', ')).toContain(c)
+    expect(read(file)).toContain('loadTransmittableOrder(')
   })
 
   it('Tier 2 maps {packageLabel}, {packageCount} and {dispenseText}', () => {

@@ -242,6 +242,10 @@ export const ADAPTER_ERROR_CODES = [
   'order_not_submittable',
   'signature_mismatch',
   'insecure_pharmacy_url',
+  // B's review T1, T2, T6
+  'pharmacy_mismatch',
+  'allergies_changed',
+  'binding_key_missing',
 ] as const
 export type AdapterErrorCode = typeof ADAPTER_ERROR_CODES[number]
 const ADAPTER_ERROR_CODE_SET: ReadonlySet<string> = new Set(ADAPTER_ERROR_CODES)

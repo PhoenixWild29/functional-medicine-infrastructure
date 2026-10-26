@@ -78,6 +78,14 @@ export const serverEnv = {
   mfaEnforcedEmails: (): string[] =>
     (process.env['MFA_ENFORCED_EMAILS'] ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean),
 
+  // HIPAA B7 (B's review T1): the key of the prescription signature binding
+  // (lib/orders/signature-binding). null when unset; never logged.
+  rxBindingSecret: (): string | null => process.env['RX_BINDING_SECRET'] || null,
+
+  // The production deployment (Vercel). Secrets that must be set fail
+  // closed only here; preview, local and CI runs report them instead.
+  isProductionDeployment: (): boolean => process.env['VERCEL_ENV'] === 'production',
+
   // HIPAA automatic logoff: minutes of inactivity before sign-out.
   // Default 15; anything that is not a positive whole number is 15.
   idleTimeoutMinutes: (): number => {

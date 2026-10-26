@@ -64,9 +64,12 @@ describe('the pattern reaches the payload', () => {
   })
 
   it('the tier adapters select the columns, and Tier 2 offers {cycleSchedule}', () => {
+    // B's review T3: the adapters build from the one verified read
+    // (lib/adapters/transmission-guard SEND_ORDER_COLUMNS), not their own select.
+    const { SEND_ORDER_COLUMNS } = jest.requireActual('../transmission-guard') as { SEND_ORDER_COLUMNS: string }
+    for (const c of ['sig_text', 'sig_mode', 'cycle_on_days', 'cycle_off_days']) expect(SEND_ORDER_COLUMNS.split(', ')).toContain(c)
     for (const f of ['tier1-api.ts', 'tier2-portal.ts', 'tier4-fax.ts']) {
-      const src = readFileSync(join(process.cwd(), 'src/lib/adapters', f), 'utf-8')
-      expect(src).toMatch(/sig_text, sig_mode, cycle_on_days, cycle_off_days, /)
+      expect(readFileSync(join(process.cwd(), 'src/lib/adapters', f), 'utf-8')).toContain('loadTransmittableOrder(')
     }
     const tier2 = readFileSync(join(process.cwd(), 'src/lib/adapters/tier2-portal.ts'), 'utf-8')
     expect(tier2).toMatch(/cycleSchedule:\s+cycleScheduleText\(/)

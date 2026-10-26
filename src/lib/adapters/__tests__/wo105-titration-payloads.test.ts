@@ -73,9 +73,12 @@ describe('titration steps reach the pharmacy payload', () => {
   })
 
   it('the tier adapters select the column', () => {
+    // B's review T3: the adapters build from the one verified read
+    // (lib/adapters/transmission-guard SEND_ORDER_COLUMNS), not their own select.
+    const { SEND_ORDER_COLUMNS } = jest.requireActual('../transmission-guard') as { SEND_ORDER_COLUMNS: string }
+    expect(SEND_ORDER_COLUMNS.split(', ')).toContain('titration_steps')
     for (const f of ['tier1-api.ts', 'tier2-portal.ts', 'tier4-fax.ts']) {
-      const src = readFileSync(join(process.cwd(), 'src/lib/adapters', f), 'utf-8')
-      expect(src).toMatch(/package_label, package_count, titration_steps'\)/)
+      expect(readFileSync(join(process.cwd(), 'src/lib/adapters', f), 'utf-8')).toContain('loadTransmittableOrder(')
     }
   })
 })

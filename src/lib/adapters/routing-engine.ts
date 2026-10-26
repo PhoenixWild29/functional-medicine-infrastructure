@@ -559,7 +559,7 @@ async function submitClaimedOrder(params: {
   // cascades to fax: SUBMISSION_FAILED with the code as the reason. A read
   // that fails throws: routeOrder lands it as a routing error.
   try {
-    await assertOrderTransmittable(createServiceClient(), orderId)
+    await assertOrderTransmittable(createServiceClient(), orderId, { pharmacyId })
   } catch (err) {
     if (!isTransmissionRefusedError(err)) throw err
     await failSubmission({ orderId, pharmacySlug, tier, reason: err.code })
@@ -902,7 +902,7 @@ export async function submitQueuedFax(params: {
   // HIPAA B6 / B7: the same rule as routeOrder. A read that fails throws to
   // the caller; nothing is sent blind.
   try {
-    await assertOrderTransmittable(supabase, orderId)
+    await assertOrderTransmittable(supabase, orderId, { pharmacyId })
   } catch (err) {
     if (!isTransmissionRefusedError(err)) throw err
     await refuseQueuedFax({ orderId, pharmacySlug: faxPharmacy?.slug ?? pharmacyId, code: err.code, actor: 'routing_engine' })

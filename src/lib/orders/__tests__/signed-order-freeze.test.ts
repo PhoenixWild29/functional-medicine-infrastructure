@@ -53,11 +53,13 @@ function distinctColumns(body: string): string[] {
 describe('the shared list', () => {
   it('the clinical columns are exactly the ones the signature binding covers', () => {
     expect([...SIGNED_CONTENT_COLUMNS]).toEqual([
-      'patient_id', 'provider_npi_snapshot', 'pharmacy_snapshot', 'medication_snapshot', 'sig_mode', 'sig_text',
-      'titration_steps', 'cycle_on_days', 'cycle_off_days', 'quantity', 'dispense_quantity', 'dispense_unit',
-      'days_supply', 'refills', 'package_id', 'package_label', 'package_count', 'syringe_option',
-      'substitution_allowed', 'shipping_type', 'clinical_difference', 'diagnosis_code', 'diagnosis_text',
-      'special_instructions',
+      'patient_id', 'patient_snapshot', 'prescriber_snapshot', 'provider_npi_snapshot', 'pharmacy_snapshot',
+      'medication_snapshot', 'sig_mode', 'sig_text', 'titration_steps', 'cycle_on_days', 'cycle_off_days', 'quantity',
+      'dispense_quantity', 'dispense_unit', 'days_supply', 'refills', 'package_id', 'package_label', 'package_count',
+      'syringe_option', 'substitution_allowed', 'shipping_type',
+      'shipping_address_line1_snapshot', 'shipping_address_line2_snapshot', 'shipping_city_snapshot',
+      'shipping_state_snapshot', 'shipping_zip_snapshot',
+      'clinical_difference', 'diagnosis_code', 'diagnosis_text', 'special_instructions',
     ])
     for (const c of SIGNED_CONTENT_COLUMNS) expect(SIGNED_ORDER_COLUMNS.split(', ')).toContain(c)
     for (const c of SIGNED_CONTENT_COLUMNS) expect(FROZEN_ORDER_COLUMNS).toContain(c)
@@ -74,6 +76,10 @@ describe('the shared list', () => {
     const previous = distinctColumns(functionBody(read(join(MIGRATIONS, '20261012000001_compounding_status.sql'))))
     expect(previous).toHaveLength(16)
     for (const c of previous) expect(FROZEN_ORDER_COLUMNS).toContain(c)
+  })
+
+  it("covers B's review T2: the signing snapshots of patient and prescriber", () => {
+    for (const c of ['patient_snapshot', 'prescriber_snapshot']) expect(FROZEN_ORDER_COLUMNS).toContain(c)
   })
 
   it('adds what the evidence map named (B5)', () => {
@@ -95,8 +101,9 @@ describe('the migration', () => {
     expect(code(sql)).toMatch(/COMMIT;$/)
     expect(code(down)).toMatch(/^BEGIN;/)
     expect(code(down)).toMatch(/COMMIT;$/)
+    // Only order-transmission-integrity's 000011 (the snapshot columns this freeze names) follows it.
     const later = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql') && f > '20261024000010_signed_order_freeze.sql')
-    expect(later).toEqual([])
+    expect(later).toEqual(['20261024000011_order_signing_snapshots.sql'])
   })
 
   it('freezes exactly the shared list', () => {

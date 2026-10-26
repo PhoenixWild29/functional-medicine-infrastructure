@@ -96,6 +96,13 @@ jest.mock('@/lib/supabase/service', () => ({
       if (table === 'pharmacies') {
         return { select: () => chain(() => ({ data: pharmacyRow, error: null })) }
       }
+      // HIPAA B7 (B's review T1): the legacy signature is proven by its signing row.
+      if (table === 'order_status_history') {
+        return { select: () => chain(() => ({ data: [{ old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', created_at: '2026-10-06T15:00:00Z', metadata: { actor: 'provider_batch_sign', signature_hash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' } }], error: null })) }
+      }
+      if (table === 'providers') {
+        return { select: () => chain(() => ({ data: { first_name: 'Sarah', last_name: 'Chen', npi_number: '1234567890', dea_number: null, license_state: 'TX' }, error: null })) }
+      }
       if (table === 'orders') {
         return { select: () => chain(() => ({ data: { order_id: 'o-1', status: orderStatus, pharmacy_id: 'pharm-1', shipping_state_snapshot: 'TX', formulation_id: null, catalog_item_id: null, locked_at: '2026-10-06T15:00:00Z', provider_signature_hash_snapshot: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', ...orderLine }, error: null })) }
       }

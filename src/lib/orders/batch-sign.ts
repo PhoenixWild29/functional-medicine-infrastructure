@@ -90,7 +90,10 @@ export { MAX_BATCH_ORDERS } from './batch-sign-view'
 import { MAX_BATCH_ORDERS } from './batch-sign-view'
 import { prescriberProblems, todayUtc, type PrescriberProblemCode } from '@/lib/providers/credentials'
 import type { NpiStatus } from '@/lib/providers/npi'
-import { SIGNATURE_BINDING_VERSION, boundSignatureValue, canonicalSignedContent, readSignedContent } from './signature-binding'
+import {
+  SIGNATURE_BINDING_VERSION, boundSignatureValue, canonicalSignedContent, patientSnapshotFor, prescriberSnapshotFor,
+  readSignedContent, rxBindingKeyConfigured, type PatientSnapshot, type PrescriberSnapshot,
+} from './signature-binding'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -719,6 +722,44 @@ function groupsEnabled(): boolean {
   return process.env['PHASE_C_GROUPS_ENABLED'] === 'true'
 }
 
+/**
+ * B's review T2: the prescriber (name, NPI, DEA, license state) and each
+ * patient (name, date of birth, allergy status) as signed. A failed read
+ * signs nothing.
+ */
+async function readSigningSnapshots(
+  supabase: Supabase,
+  providerId: string,
+  patientIds: string[],
+): Promise<
+  | { ok: true; prescriber: PrescriberSnapshot; patients: Map<string, PatientSnapshot> }
+  | { ok: false; result: SignBatchResult }
+> {
+  const unavailable = { ok: false as const, result: { ok: false as const, status: 503, error: 'The prescriber or patient record could not be read. Nothing was signed; try again.' } }
+  const { data: provider, error: providerError } = await supabase
+    .from('providers')
+    .select('provider_id, first_name, last_name, npi_number, dea_number, license_state')
+    .eq('provider_id', providerId)
+    .maybeSingle()
+  if (providerError || !provider) {
+    console.error(`[batch-sign] prescriber could not be read for the signing snapshot: ${providerError?.message ?? 'not found'}`)
+    return unavailable
+  }
+  const { data: patients, error: patientsError } = await supabase
+    .from('patients')
+    .select('patient_id, first_name, last_name, date_of_birth, allergies, nkda')
+    .in('patient_id', patientIds)
+  if (patientsError || !patients) {
+    console.error(`[batch-sign] patients could not be read for the signing snapshot: ${patientsError?.message ?? 'no data'}`)
+    return unavailable
+  }
+  return {
+    ok: true,
+    prescriber: prescriberSnapshotFor(provider as Parameters<typeof prescriberSnapshotFor>[0]),
+    patients: new Map((patients as Array<{ patient_id: string } & Parameters<typeof patientSnapshotFor>[0]>).map(p => [p.patient_id, patientSnapshotFor(p)])),
+  }
+}
+
 interface PatientAddressRow {
   patient_id:    string
   address_line1: string | null
@@ -777,6 +818,16 @@ export async function signBatch(
     signature: unknown
   },
 ): Promise<SignBatchResult> {
+  // HIPAA B7 (B's review T1): without the binding key nothing can be signed
+  // in production. Refused before anything is read or written.
+  if (!rxBindingKeyConfigured() && serverEnv.isProductionDeployment()) {
+    console.error('[batch-sign] CRITICAL: RX_BINDING_SECRET is not set; nothing can be signed')
+    return {
+      ok: false, status: 503, code: 'BINDING_KEY_MISSING',
+      error: 'Prescriptions cannot be signed right now: the prescription signing key is not configured on the server. CompoundIQ ops has to set it. Nothing was signed.',
+    }
+  }
+
   // Who may sign: a provider, or a clinic_admin who is also a provider
   // with a verified NPI (a solo practice). The sign page asks the same
   // helper. checkBatch then requires every line to be the signer's own.
@@ -825,6 +876,12 @@ export async function signBatch(
   // just before the signing statement.
   const addresses = await readShippingAddresses(supabase, lines)
   if (!addresses.ok) return addresses.result
+
+  // B's review T2: the patient and prescriber the pharmacy is told about,
+  // as signed. Read before anything is written; snapshotted onto the drafts
+  // in step 4 and bound with the rest of the content.
+  const people = await readSigningSnapshots(supabase, signer.provider_id, [...new Set(lines.map(l => l.patientId))])
+  if (!people.ok) return people.result
 
   // ── One payment link per patient ──
   const byPatient = new Map<string, BatchLine[]>()
@@ -920,6 +977,8 @@ export async function signBatch(
         shipping_city_snapshot:          a?.city ?? null,
         shipping_zip_snapshot:           a?.zip ?? null,
         shipping_address_snapshot_at:    signedAt,
+        patient_snapshot:                (people.patients.get(patientId) ?? null) as unknown as Json,
+        prescriber_snapshot:             people.prescriber as unknown as Json,
       })
       .in('order_id', ls.map(l => l.orderId))
       .eq('status', 'DRAFT')
@@ -945,7 +1004,7 @@ export async function signBatch(
   for (const orderId of orderIds) {
     const row = content.orders.get(orderId)
     const bound = row
-      ? boundSignatureValue(signatureHash, signedAt, canonicalSignedContent(row, content.patients.get(row.patient_id) ?? null))
+      ? boundSignatureValue(signatureHash, signedAt, canonicalSignedContent(row))
       : null
     const { data: boundRows, error: bindError } = bound
       ? await supabase

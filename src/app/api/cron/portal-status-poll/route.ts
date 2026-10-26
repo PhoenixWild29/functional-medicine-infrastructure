@@ -25,6 +25,7 @@ import { getBrowserLaunchOptions, getBrowserContextOptions } from '@/lib/playwri
 import { executeFlow } from '@/lib/adapters/portal-flow-executor'
 import type { FlowStep } from '@/lib/adapters/portal-flow-executor'
 import { getVaultSecret } from '@/lib/adapters/vault'
+import { assertSecureFlowUrls, enforceHttpsOnly, isTransmissionRefusedError } from '@/lib/adapters/transmission-guard'
 import { casTransition } from '@/lib/orders/cas-transition'
 import type { OrderStatusEnum } from '@/types/database.types'
 import { withApiErrors } from '@/lib/api/with-api-errors'
@@ -118,6 +119,16 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         continue
       }
 
+      // B's review T7: the status flow's pages must be https before the
+      // portal credentials are read or typed.
+      try {
+        assertSecureFlowUrls([config.status_check_flow], { orderId, pharmacyId })
+      } catch (err) {
+        if (!isTransmissionRefusedError(err)) throw err
+        results.push({ orderId, outcome: 'skipped', reason: 'insecure_portal_url' })
+        continue
+      }
+
       // Decrypt credentials
       const [username, password] = await Promise.all([
         getVaultSecret(config.username_vault_id),
@@ -129,6 +140,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
       try {
         const context = await browser.newContext(getBrowserContextOptions())
+        // T7 / T5: every request https, redirects included; nothing typed on an http page.
+        await enforceHttpsOnly(context)
         const page    = await context.newPage()
 
         const flowSteps  = config.status_check_flow as unknown as FlowStep[]

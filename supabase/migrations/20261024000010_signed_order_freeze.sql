@@ -10,10 +10,13 @@
 --
 --   - the clinical columns the signature binding covers
 --     (SIGNED_CONTENT_COLUMNS, src/lib/orders/signature-binding.ts):
---     patient, provider NPI, pharmacy snapshot, medication snapshot, sig
---     and titration / cycling, quantity, dispense, days supply, refills,
---     package, syringes, substitution, shipping type, clinical
---     difference, diagnosis and special instructions;
+--     patient, the patient and prescriber as signed (patient_snapshot,
+--     prescriber_snapshot: name, date of birth, allergy status; name,
+--     NPI, DEA, license state), provider NPI, pharmacy snapshot,
+--     medication snapshot, sig and titration / cycling, quantity,
+--     dispense, days supply, refills, package, syringes, substitution,
+--     shipping type, the ship-to address, clinical difference, diagnosis
+--     and special instructions;
 --   - the signature record: provider_signature_hash_snapshot, locked_at;
 --   - prices and where it ships: the price snapshots, shipping_fee and
 --     the shipping address snapshot;
@@ -38,10 +41,14 @@
 --
 -- The message names the column (a column name, never a value: no PHI).
 -- Columns are compared through to_jsonb so one array is the whole list.
+-- patient_snapshot and prescriber_snapshot are added by 20261024000011,
+-- which applies after this one: until then to_jsonb has no such key on
+-- either row (NULL = NULL), so naming them here is safe in either order.
 -- Only the function is replaced; the trigger (20260317000004) stays.
 --
 -- PREPARED: merges after 20261024000008 (perf-indexes) and
--- 20261024000009 (clinical-difference-saved).
+-- 20261024000009 (clinical-difference-saved); 20261024000011
+-- (order-transmission-integrity) adds the two snapshot columns.
 
 BEGIN;
 
@@ -49,18 +56,20 @@ CREATE OR REPLACE FUNCTION prevent_snapshot_mutation()
 RETURNS TRIGGER AS $$
 DECLARE
   frozen CONSTANT text[] := ARRAY[
-    -- the signed clinical content (SIGNED_CONTENT_COLUMNS)
-    'patient_id', 'provider_npi_snapshot', 'pharmacy_snapshot', 'medication_snapshot',
+    -- the signed clinical content (SIGNED_CONTENT_COLUMNS), with the ship-to address
+    'patient_id', 'patient_snapshot', 'prescriber_snapshot', 'provider_npi_snapshot',
+    'pharmacy_snapshot', 'medication_snapshot',
     'sig_mode', 'sig_text', 'titration_steps', 'cycle_on_days', 'cycle_off_days',
     'quantity', 'dispense_quantity', 'dispense_unit', 'days_supply', 'refills',
     'package_id', 'package_label', 'package_count', 'syringe_option', 'substitution_allowed',
-    'shipping_type', 'clinical_difference', 'diagnosis_code', 'diagnosis_text', 'special_instructions',
+    'shipping_type',
+    'shipping_address_line1_snapshot', 'shipping_address_line2_snapshot', 'shipping_city_snapshot',
+    'shipping_state_snapshot', 'shipping_zip_snapshot',
+    'clinical_difference', 'diagnosis_code', 'diagnosis_text', 'special_instructions',
     -- the signature record
     'provider_signature_hash_snapshot', 'locked_at',
-    -- prices and where it ships
-    'wholesale_price_snapshot', 'retail_price_snapshot', 'shipping_fee', 'shipping_state_snapshot',
-    'shipping_address_line1_snapshot', 'shipping_address_line2_snapshot', 'shipping_city_snapshot',
-    'shipping_zip_snapshot', 'shipping_address_snapshot_at',
+    -- prices, and when the address was taken
+    'wholesale_price_snapshot', 'retail_price_snapshot', 'shipping_fee', 'shipping_address_snapshot_at',
     -- who prescribed what
     'provider_id', 'formulation_id', 'catalog_item_id'
   ];

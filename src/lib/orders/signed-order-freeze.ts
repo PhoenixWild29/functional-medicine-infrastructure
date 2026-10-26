@@ -11,7 +11,9 @@
 //
 // The clinical columns are exactly the ones the signature binding covers
 // (SIGNED_CONTENT_COLUMNS, lib/orders/signature-binding), so the freeze and
-// the content hash cannot drift apart.
+// the content hash cannot drift apart. Since B's review (T2) that includes
+// the signing snapshots of the patient and prescriber (patient_snapshot,
+// prescriber_snapshot, migration 20261024000011) and the ship-to address.
 //
 // What stays updatable after signing: status (through casTransition),
 // tracking_number and carrier, the payment and transfer ids,
@@ -42,13 +44,13 @@ const COMMERCIAL_SNAPSHOT_COLUMNS = [
 /** Who prescribed what: the identity the snapshots were taken from. */
 const IDENTITY_COLUMNS = ['provider_id', 'formulation_id', 'catalog_item_id'] as const
 
-/** Frozen outright once locked_at is set. */
-export const FROZEN_ORDER_COLUMNS: readonly string[] = [
+/** Frozen outright once locked_at is set (each column once). */
+export const FROZEN_ORDER_COLUMNS: readonly string[] = [...new Set([
   ...SIGNED_CONTENT_COLUMNS,
   ...SIGNATURE_RECORD_COLUMNS,
   ...COMMERCIAL_SNAPSHOT_COLUMNS,
   ...IDENTITY_COLUMNS,
-]
+])]
 
 /**
  * Frozen too, except in the one transition that legitimately changes it:

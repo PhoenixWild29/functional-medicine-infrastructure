@@ -48,7 +48,7 @@ it(`is version ${VERSION}, unique, and has a down file`, () => {
   expect(v.filter((x, i) => v.indexOf(x) !== i)).toEqual([])
 })
 
-it('sorts right after 20261024000001 (RLS hardening); later migrations (000003 ... 000009) may follow it', () => {
+it('sorts right after 20261024000001 (RLS hardening); later migrations (000003 ... 000011) may follow it', () => {
   const versions = fs.readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).map(f => f.split('_')[0]!).sort()
   const before = versions.filter(v => v < VERSION)
   expect(before[before.length - 1]).toBe('20261024000001')
