@@ -434,3 +434,359 @@ Paths that send nothing to a pharmacy:
 5. T4 and T5, redirects to http.
 6. T3, one row for both the check and the payload, together with B5.
 7. P3, P2, then the lows.
+
+---
+
+## phi-access-log-coverage (C, 896cc3f), reviewed 2026-10-26
+
+Task B-2026-10-26-03. This reviews the code of
+`origin/phi-access-log-coverage` diffed against `origin/bundle-features`
+(merge-base 31bb77e5), not C's report. It also covers D's merge of the
+branch into `origin/audit-review-breakglass` (merge 95023bd0; that branch's
+head is now 7ef4590f).
+
+Each finding was confirmed by reading the path end to end (file:line is on
+896cc3f), or with a throwaway jest test in a detached worktree, since
+deleted. No branch was modified, and no database was touched.
+
+What counts as "logged" (`src/lib/audit/phi-access.ts`):
+- `logPhiAccess`;
+- `logPhiAccessMany`, one row per patient, inserted in chunks of 500;
+- `logPhiDisclosure`, action `export`; the caller must not send when it
+  returns false;
+- the wrappers `logFaxQueueView` (`src/lib/fax/log-fax-view.ts`) and
+  `refuseUnlessProposalWriteLogged` (`src/lib/proposals/request.ts`).
+
+None of them throws. Each returns a boolean.
+
+### Summary
+
+| # | Finding | Severity |
+|---|---|---|
+| L1 | Several writes commit first and then log, ignoring a failed log write (signing, join, Keragon, favorites, plus older routes) | High (against the "writes must not proceed" rule) |
+| L2 | Twilio SMS sends (phone, first name, provider name, link) are not logged as disclosures | Medium |
+| L3 | The patient import's 422 answer echoes every row and existing patients' names with no log row | Medium |
+| L4 | The dashboard's chosen-plan queue names patients who are not in the logged set (for a provider, other providers' patients) | Medium |
+| L5 | The 30-second dashboard poll writes one row per patient per poll, over an unbounded query; the ops fax log sends up to 200 separate inserts per poll | Medium (volume and latency) |
+| L6 | A log call with no resolvable actor returns false with no alert at all | Medium |
+| L7 | Patient names in the practice attention `errors[]` are not logged | Low |
+| L8 | Inbound Twilio STOP/START updates `patients.sms_opt_in` with no log row | Low |
+| L9 | `routePattern` masks only UUID segments; a base64url token would be stored verbatim | Low (latent) |
+| L10 | The health check treats only `VERCEL_ENV=production` as production | Low |
+
+Verdict:
+- **What holds:**
+  - Disclosures are correctly fail-closed: pharmacy Tiers 1, 2 and 4, the
+    OpenAI screenshot and the Anthropic face sheet.
+  - The log content is clean.
+  - The health check is right.
+  - The merge dropped nothing.
+- **Fix before calling B14 and B15 closed:**
+  - L1, since the rule says writes must not proceed when the log fails;
+  - the coverage gaps L2 to L4;
+  - L6, which breaks the "never silent" promise;
+  - L5, before real clinic volume.
+
+### L1. High: writes that commit before the log, and ignore its failure
+
+Already fail-closed (log first, 503 on failure):
+- proposals send, cancel and events (`src/lib/proposals/request.ts:84-106`);
+- plan choose and decline (`src/app/api/plan/[token]/route.ts:149,159`);
+- intake submit (`src/app/api/intake/[token]/route.ts:62-67`);
+- favorites updates (`src/app/api/favorites/route.ts:375,497,534,593`);
+- ops fax actions (`api/ops/fax/[faxId]/action/route.ts:51`);
+- ops order actions (`api/ops/orders/[orderId]/action/route.ts:132`).
+
+Writes that commit first, then call `logPhiAccess` and discard its result.
+
+New in this diff:
+- `src/app/api/orders/batch-sign/route.ts:96-99` (signing);
+- `src/app/api/proposals/[proposalId]/sign/route.ts:47`;
+- `src/app/api/join/[token]/route.ts:137`;
+- `src/lib/integrations/keragon/webhook.ts:144`;
+- `src/app/api/favorites/route.ts:431`.
+
+Already present before this diff:
+- `api/orders/route.ts:456` (create);
+- `api/orders/[orderId]/route.ts:326,369` (PATCH, DELETE);
+- `api/patients/route.ts:184` (create; the intake SMS then still goes out);
+- `api/patients/import/route.ts:92`;
+- `api/patients/[patientId]/allergies/route.ts:216`;
+- `api/patient-phases/route.ts:255,318,363`;
+- checkout-link `:152`, group-and-send `:179`, group-link `:169` and
+  reassign-to-me `:182`.
+
+- **Scenario:** the `phi_access_log` insert fails (a database error, or a
+  CHECK failure). The prescription is signed, the patient is created or the
+  allergies are changed, and the response is 200 or 201. There is only an
+  alert, and no audit row exists for the change.
+- **About signing:** batch-sign's comment says this is deliberate, because
+  a signature cannot be undone. That is exactly why the row should be
+  written first.
+- **Confirmed:** by reading each site. The boolean is discarded after the
+  write.
+- **Fix:**
+  - Write the row before the write, and answer 503 on failure, as
+    proposals do.
+  - Where the id exists only after the write (a new patient, favorite or
+    join), insert the log row in the same transaction or RPC.
+  - For signing, write one `sign` row per order before the batch is signed.
+
+### L2. Medium: Twilio SMS disclosures are not logged
+
+- **Where:**
+  - `src/lib/proposals/sms.ts:78`;
+  - `src/lib/intake/sms.ts:84`;
+  - `src/lib/sms/sender.ts:180`, through `triggers.ts`: the payment link,
+    payment confirmation, the 24 h and 48 h reminders, and shipping.
+- **Triggered by:** `POST /api/proposals`, batch-sign
+  (`batch-sign.ts:1002`), the Stripe webhook `:461`, cron sla-check `:280`,
+  patient create and the intake link.
+- **What leaves:** the patient's phone, first name and provider last name,
+  plus a link.
+- **What is recorded:** only an `sms_log` row; no `phi_access_log` row. The
+  Documo fax path, also a BAA vendor, is logged and fail-closed.
+- **Confirmed:** by reading the three senders. No `logPhi*` call precedes
+  `messages.create`.
+- **Fix:** before each send, call `logPhiDisclosure({ actor:
+  systemActor(clinicId), resource: 'sms_disclosure', patientId, orderId })`,
+  and skip the send when it returns false. This needs a new resource code.
+  Raise the severity if policy treats every outbound vendor send as a
+  disclosure.
+
+### L3. Medium: the import's 422 answer is unlogged
+
+- **Where:** `src/app/api/patients/import/route.ts:51-53`.
+- **Scenario:** staff post an import in which any included row has an error.
+  - The response spreads `...review`: every file row's parsed patient data,
+    plus existing patients' names through duplicates of kind `existing`
+    (`lib/patients/import/duplicates.ts:52`).
+  - No row is written. The same payload from `/validate` is logged
+    (`validate/route.ts:42-44`).
+- **Confirmed:** by reading the route.
+- **Fix:** before the 422, log as `validate` does: the preview entry, plus
+  `logPhiAccessMany` over the existing-duplicate ids. Or answer row indexes
+  and errors only.
+
+### L4. Medium: the dashboard's chosen-plan queue is outside the logged set
+
+- **Where:**
+  - `src/app/(clinic-app)/dashboard/page.tsx:223` loads `chosenPlans`
+    (`lib/proposals/queue.ts:77`: patient first name and plan label);
+  - `:355` renders it;
+  - the logged set at `:313-315` holds only the orders' patients and the
+    duplicate-flag names.
+- **Scenario:** a provider on the default (own) view.
+  - Orders RLS limits the orders to the provider's own
+    (`20260611000004:68-74`).
+  - `treatment_proposals_clinic_read` is clinic-wide (`20261024000002:79`).
+  - So the dashboard shows "Jordan chose Foundation plan…" for other
+    providers' patients, and no row names them.
+- **Confirmed:** by reading the page and the migrations. RLS was not run.
+- **Fix:** add the chosen plans' patient ids to `listedPatientIds`.
+
+### L5. Medium: log volume from the 30-second polls
+
+- **Dashboard poll:**
+  - `src/app/(clinic-app)/dashboard/_components/orders-dashboard.tsx:219`
+    refetches every 30 s (paused in a background tab), calling
+    `GET /api/dashboard/orders`.
+  - That route (`route.ts:47-79`) reads every non-deleted order of the
+    clinic with no `.limit()`, then logs every distinct patient on every
+    poll.
+  - The inserts are batched (500 rows each), but the chunks are awaited in
+    sequence, so a clinic with more than 500 patients adds round trips to
+    each poll.
+  - At 10 open dashboards with 50 patients each, that is 1,000 rows a
+    minute: about 600k rows in a 10-hour day, or 1.44M if left open.
+- **Ops fax queue:**
+  - `ops/fax/_components/fax-triage-queue.tsx:83` also polls every 30 s.
+  - `src/lib/fax/log-fax-view.ts:32-35` issues one `logPhiAccess` per
+    matched order: up to 200 separate parallel inserts, not one array
+    insert.
+  - That is about 576k rows a day per open ops tab.
+- **Confirmed:** by reading the code end to end.
+- **Fix:**
+  - Deduplicate: log once per actor, patient and resource per window (for
+    example 15 minutes). Use a server-side check, or a unique index on
+    actor, patient, resource and time bucket with `ON CONFLICT DO NOTHING`.
+    Or skip the row on a poll whose patient set has not changed.
+  - Bound the dashboard query.
+  - Make `log-fax-view` one array insert.
+
+### L6. Medium: a missing actor is silent
+
+- **Where:** `src/lib/audit/phi-access.ts:210` and `:278`. `if (!actor)
+  return false` runs before `reportLogFailure`, so there is no console
+  line, no Slack and no Sentry.
+- **Scenario:**
+  - `src/app/(ops-dashboard)/ops/fax/page.tsx:68` passes
+    `await getRequestUser()`. That is a second `getUser()` call after the
+    ops layout's, and it turns any error into null
+    (`src/lib/auth/request-user.ts:17-23`).
+  - On a transient auth error, the page still renders the queue with its
+    15-minute signed fax PDF URLs, with no row and no alert.
+  - Disclosures are unaffected: `logPhiDisclosure` also returns false, so
+    they stay closed.
+- **Confirmed:** a throwaway test. `logPhiAccess({ user: null, ... })` gave
+  false, with 0 inserts, 0 Slack and 0 Sentry.
+- **Fix:** call `reportLogFailure(route, action, 'no_actor')` before
+  returning false.
+
+### L7. Low: names in the practice attention errors
+
+- **Where:**
+  - `src/lib/practice/attention.ts:170` pushes `Draft check for <medication,
+    patient full name>` into `errors`.
+  - `/api/practice` returns that list (`route.ts:58`).
+  - Only the patients in `items` are logged (`route.ts:51-53`).
+- **Fix:** add those drafts' patient ids to the logged set, or leave the
+  name out of the error text.
+
+### L8. Low: inbound STOP/START is unlogged
+
+- **Where:** `src/lib/sms/inbound.ts:84` updates `patients.sms_opt_in`
+  (matched by phone) as a system write, with no log row.
+- **Fix:** write one `logPhiAccess(systemActor, 'update', 'patient')` row
+  per patient updated.
+
+### L9. Low (latent): routePattern masks UUIDs only
+
+- **Where:** `routePattern` / `UUID_SEGMENT_RE` in `phi-access.ts`. It
+  strips the query string and replaces UUID segments only.
+- **Effect:** a base64url bearer token fits the route CHECK's characters,
+  so it would be stored verbatim and the insert would succeed.
+- **Confirmed:** a throwaway test stored `/plan/AbC-def_123TOKENxyz`.
+- **Exposure today:** none. Every call site passes a literal pattern (for
+  example `'/api/plan/[token]'`), and nothing builds the route from
+  `request.url`.
+- **Fix:** take route patterns from a typed allow-list, or refuse any
+  segment that is not a literal or `[param]`.
+
+### L10. Low: the health check's notion of production
+
+- **Where:** `src/app/api/health/route.ts` answers 503 only when
+  `VERCEL_ENV === 'production'`.
+- **Effect:** a non-Vercel production run (`NODE_ENV=production` only)
+  answers 200 with the secret missing.
+- **Fix:** acceptable while production is always on Vercel. Otherwise, also
+  fail on `NODE_ENV === 'production' && !VERCEL_ENV`.
+
+### PHI path inventory (logged = a log call on every branch that returns or sends PHI)
+
+| Path | PHI | Logged |
+|---|---|---|
+| Tier 1/3 pharmacy POST (`tier1-api.ts` ~389) | disclose | yes: `logPhiDisclosure` before every attempt, fail-closed |
+| Tier 2 portal fill (`tier2-portal.ts` ~459) | disclose | yes: before submit, fail-closed |
+| Tier 2 screenshot to OpenAI (~475) | disclose | yes: fail-closed (score 0, manual review) |
+| Tier 4 Documo fax (`tier4-fax.ts` ~338) | disclose | yes: fail-closed before `sendFax` |
+| Adapter callers (routing engine, `/api/adapters/submit`, fax-retry, sla-check, submit-paid-orders) | via adapters | yes, in the adapter |
+| Face sheet to Anthropic (`/api/patients/face-sheet:122`) | disclose | yes: fail-closed, then a view row |
+| Keragon inbound (`keragon/webhook.ts:143`) | write | yes, after the write (L1); no outbound Keragon exists |
+| Twilio SMS (proposals, intake, payment, reminders, shipping) | disclose | **no** (L2) |
+| Inbound STOP/START (`sms/inbound.ts:84`) | write | **no** (L8) |
+| `/dashboard` page (`page.tsx:316`) | list | partial: chosen plans missing (L4) |
+| `/api/dashboard/orders` poll (`:80`) | list | yes (volume, L5) |
+| `/api/practice` and `lib/practice/attention.ts` | list | partial: `errors[]` names (L7) |
+| `/new-prescription`, `/new-prescription/search` | list, draft | yes |
+| `checkout/[token]` (`render-checkout.tsx:129,204`) | order, group | yes (patient actor) |
+| `/api/plan/[token]` | view, choose, decline | yes: writes fail-closed |
+| `/api/intake/[token]` (`:62`) | write | yes: fail-closed before the claim |
+| `/api/join/[token]` (`:137`) | create | yes, after the create (L1) |
+| `/api/patients` POST (`:144,184`) | duplicates, create | yes; create logs after (L1) |
+| `/api/patients/import/parse` (`:54`), `/validate` (`:42-44`) | file rows, duplicate names | yes |
+| `/api/patients/import` POST | rows, names | success logged (`:92`, after); **the 422 is not logged** (L3) |
+| Allergies, EHR changes, duplicate flag, intake link, patient phases, favorites | single record | yes (some after the write, L1) |
+| Orders: PATCH/DELETE, record, timeline, bundlable siblings, checkout link, group link, group-and-send, reassign, batch-sign, compliance check, refill, create | order, patient | yes (the writes log after, L1) |
+| Proposals: create, sign, send, cancel, events | write | yes: send, cancel and events fail-closed; sign logs after (L1) |
+| `/ops/fax` page (`:68`), `/api/ops/fax` (`:110`) | queue, signed PDF URLs | yes (L5 volume, L6 no actor) |
+| `/api/ops/fax/[faxId]/action` | write | yes: fail-closed |
+| `/api/ops/orders/[id]/action` (`:132`), detail (`:96`) | write, read | yes: action fail-closed |
+| Stripe, portal status poll, Slack, checkout success, plan quote, timeline actors, failure reason, favorites frequent, ops pipeline and SLA, Documo inbound webhook | ids, amounts or no PHI | n/a |
+
+Not re-audited branch by branch (a log call is present):
+- the margin, sign and refill pages;
+- bundlable-siblings, checkout-link, group-link, group-and-send,
+  reassign-to-me, compliance-check, refill, intake-link and duplicate-flag;
+- the settings access log.
+
+### Checks that passed
+
+**Fail-closed disclosures:**
+- **Tier 1:** a false result throws `DisclosureNotRecordedError`, which
+  retries and then ends `exhausted`. The routing engine does not count it
+  against the circuit breaker (`routing-engine.ts:653,664`).
+- **Tier 2:** the screenshot is sent only when the disclosure is logged.
+- **Tier 4:** the send is refused before `sendFax`.
+- **Face sheet:** 503 before `extractFaceSheet`.
+- `sendFax` has one caller, and so does OpenAI; both are covered.
+- The practice CSV holds aggregates only.
+
+**No leaked 500:**
+- The log helpers never throw, so no route answers 500 because of the log.
+- Log-failure answers are fixed sentences.
+- Reads still serve when the log fails, and alert through the console (code
+  only), Slack and Sentry, throttled to once a minute per route and action.
+  L6 is the exception.
+
+**Log content:**
+- The row holds ids, role, action, resource, a route pattern and HMAC
+  hashes only.
+- On failure, only the error code, route and action are reported. A test
+  confirmed that the Postgres "Failing row contains ..." text is not
+  forwarded.
+- Resource codes fit `^[a-z_]{1,40}$`, including D's `ops_reason_*`.
+- **Patient actors on token pages:** `actor_role` is `patient` and
+  `actor_user_id` is the patient id (a uuid, so NOT NULL holds). The system
+  actor is the nil uuid.
+- Neither the token nor its hash is stored, and token routes use literal
+  patterns.
+- Each insert is bounded at 500 rows. The number of rows per call is not
+  (L5).
+
+**Health check (throwaway tests):**
+- Production with the secret missing: 503. Whitespace only: 503.
+- The secret set: 200. Preview with it missing: 200.
+- The body says only `set` or `missing`. No value or length appears in the
+  body or the logs.
+
+**D's merge (95023bd0, parents 9ac38805 and 896cc3fb):**
+- Only two files needed resolution:
+  - `order-drawer.tsx`: this branch's removal of the browser Supabase
+    client was kept.
+  - `phi-access.ts`: the resource union, plus `OpsAccessReasonResource`.
+- Nothing was dropped. Every non-test file in this branch's diff has the
+  same number of `logPhi*`, `logFaxQueueView`, `refuseUnless...` and
+  `disclosed` calls at 896cc3f and at the breakglass head.
+- **D's new code:**
+  - The access-review CSV export is logged (`export`, `access_log`) and
+    fails closed. The CSV holds ids and codes only.
+  - Opening an ops order with a reason writes a view row plus an
+    `ops_reason_<code>` row. Only `emergency` fails closed, by design.
+
+### Seen in passing (outside the log scope)
+
+`src/app/api/favorites/route.ts` returns raw Supabase `error.message` in its
+500 bodies (lines 239, 265, 367, 385, 426, 506, 550 and 602). One of these
+is new in this diff; the rest predate it. This leaks database error text,
+and these should be fixed messages.
+
+### Not verifiable here
+
+- Real inserts against the deployed schema: the CHECK constraints for the
+  new resource codes, and RLS. L4 rests on reading the migrations.
+- Slack delivery, and insert latency under load.
+- Whether Twilio is covered by a BAA, and whether policy counts sends to
+  BAA vendors as logged disclosures. This sets L2's severity.
+- Whether production runs only on Vercel (L10).
+- Whether a Keragon `error` outcome can follow a partial patient write.
+  `lib/integrations/keragon/sync.ts` was not read.
+
+### Recommended order of fixes
+
+1. L1: log first, or log in the same transaction, for writes (signing
+   first).
+2. L6: alert on a missing actor.
+3. L3, L4 and L2: the coverage gaps.
+4. L5: deduplicate and bound the polls before real clinic volume.
+5. The lows.
