@@ -21,3 +21,8 @@ jest.mock('@/lib/audit/phi-access', () => ({
   logPhiAccess: jest.fn(async () => undefined),
   logPhiAccessMany: jest.fn(async () => undefined),
 }))
+
+// HIPAA B7 (D's verification): legacy signatures are accepted only before
+// RX_LEGACY_CUTOFF. Unset means none are; tests that are about legacy
+// orders run with this fixed cutoff, and the "unset" case deletes it.
+process.env['RX_LEGACY_CUTOFF'] ??= '2026-11-01T00:00:00.000Z'

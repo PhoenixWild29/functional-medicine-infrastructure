@@ -19,7 +19,6 @@
 
 import { scriptedDb, type Script, type ScriptedCall } from '@/__tests__/helpers/scripted-db'
 import {
-  LEGACY_SIGNING_CUTOFF,
   boundSignatureValue,
   canonicalSignedContent,
   patientSnapshotFor,
@@ -153,7 +152,7 @@ const refusedWith = async (code: string, opts?: { pharmacyId?: string }) => {
   expect(isTransmissionRefusedError(err)).toBe(true)
   expect((err as { code: string }).code).toBe(code)
 }
-const beforeCutoff = new Date(Date.parse(LEGACY_SIGNING_CUTOFF) - 86_400_000).toISOString()
+const beforeCutoff = '2026-10-01T00:00:00.000Z'
 
 // ── The guard ────────────────────────────────────────────────
 
@@ -201,17 +200,24 @@ describe('assertOrderTransmittable', () => {
   })
 
   it('T1: legacy only with the service-written signing row from before the cutoff, and logged as such', async () => {
-    order = { ...BASE_ORDER, patient_snapshot: null, prescriber_snapshot: null, provider_signature_hash_snapshot: DIGEST }
-    history = [{ old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', created_at: beforeCutoff, metadata: { actor: 'provider_batch_sign', signature_hash: DIGEST } }]
+    order = { ...BASE_ORDER, locked_at: beforeCutoff, patient_snapshot: null, prescriber_snapshot: null, provider_signature_hash_snapshot: DIGEST }
+    history = [{ old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', created_at: beforeCutoff, metadata: { actor: 'provider_batch_sign', signed_at: beforeCutoff, signature_hash: DIGEST } }]
     await expect(assertOrderTransmittable(db.client, 'o-1')).resolves.toBe('legacy')
     expect(logged()).toMatch(/order=o-1 was signed before signature binding/)
-    history = [{ old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', created_at: beforeCutoff, metadata: { actor: 'provider_batch_sign', signature_hash: 'd'.repeat(64) } }]
+    history = [{ old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', created_at: beforeCutoff, metadata: { actor: 'provider_batch_sign', signed_at: beforeCutoff, signature_hash: 'd'.repeat(64) } }]
     await refusedWith('signature_mismatch')
+    // RX_LEGACY_CUTOFF unset: no legacy at all.
+    history = [{ old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', created_at: beforeCutoff, metadata: { actor: 'provider_batch_sign', signed_at: beforeCutoff, signature_hash: DIGEST } }]
+    const cutoff = env['RX_LEGACY_CUTOFF']
+    delete env['RX_LEGACY_CUTOFF']
+    try { await refusedWith('signature_mismatch') } finally { env['RX_LEGACY_CUTOFF'] = cutoff }
   })
 
-  it('T1: with no binding key in production nothing is sent', async () => {
+  it('T1: with no binding key on any Vercel deployment (production or preview) nothing is sent', async () => {
     delete env['RX_BINDING_SECRET']
     env['VERCEL_ENV'] = 'production'
+    await refusedWith('binding_key_missing')
+    env['VERCEL_ENV'] = 'preview'
     await refusedWith('binding_key_missing')
   })
 

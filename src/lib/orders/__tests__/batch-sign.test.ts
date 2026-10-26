@@ -552,11 +552,11 @@ describe('signature binding', () => {
     expect(rows[0]!.metadata).toMatchObject({ signature_binding: 'v3' })
   })
 
-  it('HIPAA T1: with no binding key in production, nothing is signed and nothing is written', async () => {
+  it('HIPAA T1: with no binding key on a Vercel deployment (here preview), nothing is signed and nothing is written', async () => {
     const env = process.env as Record<string, string | undefined>
     const saved = env['RX_BINDING_SECRET']
     delete env['RX_BINDING_SECRET']
-    env['VERCEL_ENV'] = 'production'
+    env['VERCEL_ENV'] = 'preview'
     try {
       const db = world([draft(1), draft(2)])
       const res = await sign(db, [id(1), id(2)])
