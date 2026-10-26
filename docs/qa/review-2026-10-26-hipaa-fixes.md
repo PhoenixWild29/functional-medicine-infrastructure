@@ -790,3 +790,93 @@ and these should be fixed messages.
 3. L3, L4 and L2: the coverage gaps.
 4. L5: deduplicate and bound the polls before real clinic volume.
 5. The lows.
+
+---
+
+## bundle-hipaa merge resolutions (D), reviewed 2026-10-26
+
+Task B-2026-10-26-05. This reviews the merges in `origin/bundle-hipaa` on top of `origin/bundle-features` (8af58776), from the commits themselves rather than D's report.
+
+- **Head reviewed:** 1ea42cc7 (D's report plus an EPCS test timeout). It was unchanged at the end of the review.
+- **Merges, first parent:**
+  - e41cfa3d: clinic-help 96f74e33.
+  - a4cc8820: password-flows 1d0ed5e1.
+  - d91d63ca: auth-monitoring 438d960e.
+  - b6f93df4: audit-review-breakglass 7ef4590f.
+- **Also checked:** the earlier merge inside audit-review-breakglass, 95023bd0, which brings in phi-access-log-coverage 896cc3fb.
+
+### Method
+
+1. **Merge-tree comparison.** For each merge, I recomputed the clean three-way merge of its two parents (`git merge-tree --write-tree`) and diffed it against D's actual merge tree. Any file that differs is a hand resolution, or an edit made inside the merge.
+2. **Shared files.** For every non-test file a source branch changed, the head was compared with that branch's version. Where they differ (the file was also changed by another side), I checked three things:
+   - reverse-applied the branch's own patch to the head, to see whether its hunks are present;
+   - checked that every line the branch added is present at the head;
+   - checked that no line the branch removed reappears.
+3. **Tests.** Every test file each source branch added or changed was compared with the head. Every `e2e/*.spec.ts` at the head was checked against the playwright projects.
+4. **Semantics.** The auth routes, the sign-in monitor and `phi-access.ts` at the head were read for each side's rules and for the handler order.
+
+### Result: no defect in the merges
+
+**Hand resolutions.** Only the conflicted files differ from the clean auto-merge, so nothing else was edited inside a merge:
+- **a4cc8820, `playwright.config.ts`:** the chromium `testMatch` keeps both `keyboard-core-flows.spec.ts` (bundle-features) and `password-change.spec.ts` (password-flows).
+- **d91d63ca, `src/middleware.ts`:** `publicExactRoutes` keeps all three sides' routes: `/get-started`, `/api/signup`, `/forgot-password`, `/api/auth/password-reset` and `/api/sign-in`, with both comments. Two checks:
+  - Every other line password-flows and auth-monitoring added is present at the head. The only lines not found verbatim are the two old one-sided route lists, which the head replaces with this superset.
+  - No removed line reappears.
+- **b6f93df4, `ops-nav.tsx`:** both tabs kept, "Security" (auth-monitoring) and "Access review" (breakglass). All of both sides' added lines are present.
+- **b6f93df4, `new-prescription/search/page.tsx`:** both import sets are kept and used: clinic-help's `HelpLink`, and the phi-log's `logPhiAccess` and `currentRequestHeaders`. All added lines are present, and no removed line reappears.
+- **95023bd0 (inside breakglass):**
+  - `order-drawer.tsx`: the phi-log branch's removal of the browser Supabase client was kept.
+  - `phi-access.ts`: the B14 resources plus `OpsAccessReasonResource`.
+
+  This merge was already checked in the phi-log review above. No removed line reappears.
+
+**Auto-merged shared files.** Each side's patch reverse-applies cleanly at the head, so all their hunks are present:
+- `login/page.tsx`: password-flows' "Forgot password?" link and auth-monitoring's server sign-in.
+- `batch-review-form.tsx`: clinic-help, plus bundle-features' keyboard fix.
+- `lib/slack/ops-alert.ts`: auth-monitoring's alert types plus breakglass's.
+
+**Everything else.** All other source files are byte-identical at the head to their source branch. That covers:
+- all password routes and `recovery-session.ts`;
+- `password-rate-limit.ts`;
+- `sign-in-monitor.ts`, `api/sign-in` and `api/mfa/verify`;
+- `phi-access.ts` and every PHI-log call site;
+- the access-review and ops-reason code.
+
+So each side's rules carry over unchanged:
+- **password-flows:** recovery-only `/api/auth/password` (`isRecentRecovery`, a per-user limit), and the reset limiter order (IP, then address and IP, then address).
+- **auth-monitoring 438d960e:** the email-and-IP throttle key (`passwordThrottleKey`) and the `>=` alert rules.
+- **breakglass:** the D1 to D6 fixes, including emergency and export failing closed.
+- **phi-log:** its fail-closed disclosures and writes, as they stood at 896cc3f. Findings L1 to L10 above still apply; they are not merge defects.
+
+**Tests.** All 78 test files added or changed by the four source branches are present and byte-identical at the head (clinic-help 2, password-flows 11, auth-monitoring 22, audit-review-breakglass 43, the last including phi-access-log-coverage's).
+
+**E2E.** Every `e2e/*.spec.ts` at the head is in a playwright project, and none of the source branches' specs is missing.
+
+**Handler order.** The auth routes at the head keep cross-site, then the auth or gate, then parse, then the limits, then the Supabase call:
+- **change:** cross-site, `getUser`, parse, limit, current-password check, update, sign out the others.
+- **password:** cross-site, `getUser`, recovery claims, limit, parse, policy, update, global sign-out.
+- **password-reset:** cross-site, parse, then the IP, address-and-IP and address limits, then send.
+- **sign-in:** cross-site, parse, throttle, sign in.
+- **mfa/verify:** cross-site, `getUser`, parse, throttle, verify.
+
+**D's report** (1ea42cc7) states exactly these resolutions and no deliberate removals, which matches the above.
+
+### Cross-side notes (not merge defects; low)
+
+- **The reset paths are not MFA-exempt.** A user with an authenticator who opens a reset link lands at AAL1, so `/reset-password` sends them through `/mfa/challenge` first. Afterwards the session's `amr` carries both `totp` and `recovery`, and `isRecentRecovery` still accepts it, provided the code is entered within 15 minutes of opening the link. This is the right behaviour, a second factor before a password reset, but it is worth a line in Help.
+- **Failed current-password checks are not monitored.** `/api/auth/password/change` checks the current password with its own `signInWithPassword` client. Those failures are limited (5 per 15 minutes per user) but are not recorded or alerted by the sign-in monitor. Fix if wanted: call `recordSignInFailure` with step `password` and reason `current_password` on a failed check.
+- **Shared server IP.** Both the server sign-in and that check now reach Supabase Auth from the server's IP, which adds to Supabase's per-IP sign-in limit (see the auth-monitoring report).
+
+### Follow-up: newer commits
+
+None landed before the end of this review:
+- `origin/bundle-hipaa` is still 1ea42cc7.
+- `phi-access-log-coverage` is still 896cc3f, so C's L1 to L10 fixes are not pushed yet.
+- `order-transmission-integrity` (2b9b69a) is not yet merged into the bundle.
+
+When they land, each merge needs the same checks:
+- the merge-tree comparison;
+- each side's added and removed lines;
+- the test and E2E inventory.
+
+For the transmission merge, also check these, since both branches change them: `tier1-api.ts`, `tier2-portal.ts`, `tier4-fax.ts` and `routing-engine.ts`. A's guard and C's disclosure logging must both be present in each adapter, with the order: guard, then the disclosure log, then the send.
