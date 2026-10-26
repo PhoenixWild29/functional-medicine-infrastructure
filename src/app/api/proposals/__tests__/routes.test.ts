@@ -41,9 +41,10 @@ jest.mock('@/lib/proposals/propose', () => ({
 }))
 // The send, cancel and events routes are fail-closed on the log row (B15):
 // it resolves true here. (Updated: it resolved undefined.)
-jest.mock('@/lib/audit/phi-access', () => ({ logPhiAccess: jest.fn(async () => true) }))
+jest.mock('@/lib/audit/phi-access', () => ({ logPhiAccess: jest.fn(async () => true), logPhiWriteNotCompleted: jest.fn(async () => true) }))
 
 import { POST as create } from '../route'
+import { logPhiAccess, logPhiWriteNotCompleted } from '@/lib/audit/phi-access'
 import { POST as send } from '../[proposalId]/send/route'
 import { POST as cancel } from '../[proposalId]/cancel/route'
 import { POST as delivery } from '../[proposalId]/events/route'
@@ -143,4 +144,63 @@ it('events: only copied or qr', async () => {
   expect(lib.recordLinkDelivery).not.toHaveBeenCalled()
   await delivery(req({ delivery: 'qr' }), ctx)
   expect(lib.recordLinkDelivery).toHaveBeenCalledWith(expect.objectContaining({ service: true }), expect.objectContaining({ proposalId: PROPOSAL, delivery: 'qr' }))
+})
+
+// B's verification of L1 (B15): creating a plan writes the plan, its options
+// and the tagged drafts, so its row is written BEFORE the first of those
+// writes. createProposal calls beforeWrite once its checks have passed; a
+// false answer refuses the create with nothing written.
+describe('POST /api/proposals is logged before the plan is stored (L1)', () => {
+  const phiLog = jest.mocked(logPhiAccess)
+  const notCompleted = jest.mocked(logPhiWriteNotCompleted)
+  const STORED = { ok: true, proposalId: PROPOSAL, status: 'draft', link: null }
+  const body = { patientId: PATIENT, providerId: PROVIDER, send: false, options: [] }
+  // The library: run the hook as the real one does, after its checks.
+  const runsHook = (after: Record<string, unknown> = STORED) => async (_db: unknown, input: { beforeWrite?: (t: { patientId: string }) => Promise<boolean> }) => {
+    if (input.beforeWrite && !(await input.beforeWrite({ patientId: PATIENT }))) {
+      return { ok: false, status: 503, error: 'This change could not be recorded. Nothing was changed. Try again.' }
+    }
+    return after
+  }
+  beforeEach(() => { phiLog.mockClear(); notCompleted.mockClear() })
+
+  it('passes a beforeWrite hook that writes the create row for the patient', async () => {
+    lib.createProposal.mockImplementation(runsHook())
+    const res = await create(req(body))
+    expect(res.status).toBe(201)
+    expect(phiLog).toHaveBeenCalledTimes(1)
+    expect(phiLog).toHaveBeenCalledWith(expect.objectContaining({ action: 'create', resource: 'order', route: '/api/proposals', patientId: PATIENT, clinicId: CLINIC }))
+    expect(notCompleted).not.toHaveBeenCalled()
+  })
+
+  it('the row cannot be written: 503, the standard message, the library stores nothing', async () => {
+    lib.createProposal.mockImplementation(runsHook())
+    phiLog.mockResolvedValueOnce(false)
+    const res = await create(req(body))
+    expect(res.status).toBe(503)
+    expect((await res.json()).error).toBe('This change could not be recorded. Nothing was changed. Try again.')
+    expect(notCompleted).not.toHaveBeenCalled()
+  })
+
+  it('storing fails after the row was written: a not_completed row for the same entry', async () => {
+    lib.createProposal.mockImplementation(runsHook({ ok: false, status: 503, error: 'The plan could not be saved. Nothing was sent. Try again.' }))
+    expect((await create(req(body))).status).toBe(503)
+    expect(notCompleted).toHaveBeenCalledTimes(1)
+    expect(notCompleted).toHaveBeenCalledWith(phiLog.mock.calls[0]![0])
+  })
+
+  it('the plan was stored but its link failed (planStored): the create did happen, no not_completed row', async () => {
+    lib.createProposal.mockImplementation(runsHook({ ok: false, status: 503, error: 'The plan link could not be saved. Nothing was sent. Try again.', planStored: true }))
+    const res = await create(req({ ...body, send: true }))
+    expect(res.status).toBe(503)
+    expect(await res.json()).not.toHaveProperty('planStored')
+    expect(notCompleted).not.toHaveBeenCalled()
+  })
+
+  it('a refusal before the hook (a check) logs nothing', async () => {
+    lib.createProposal.mockResolvedValue({ ok: false, status: 409, error: 'Only draft prescriptions can be offered to the patient.' })
+    expect((await create(req(body))).status).toBe(409)
+    expect(phiLog).not.toHaveBeenCalled()
+    expect(notCompleted).not.toHaveBeenCalled()
+  })
 })
