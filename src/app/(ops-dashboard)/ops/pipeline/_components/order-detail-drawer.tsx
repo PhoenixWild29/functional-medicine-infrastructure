@@ -23,6 +23,7 @@
 import { useState, useEffect } from 'react'
 import type { PipelineOrder } from '@/types/pipeline'
 import { userMessage } from '@/lib/errors/user-message'
+import { TRACKING_PENDING_LABEL, trackingPending } from '@/lib/orders/tracking-pending'
 import { OPS_ACCESS_REASONS, OPS_ACCESS_REASON_HEADER, type OpsAccessReasonCode } from '@/lib/audit/ops-access-reason'
 
 // ── Detail types ─────────────────────────────────────────────
@@ -343,6 +344,12 @@ function DetailTab({
             <Field label="Tracking #">{o.trackingNumber}</Field>
             <Field label="Carrier">{o.carrier ?? '—'}</Field>
           </>
+        )}
+        {/* Decision 10: shipped without tracking is allowed; say it is pending. */}
+        {trackingPending(o.status, o.trackingNumber) && (
+          <Field label="Tracking #">
+            <span className="font-medium text-amber-800">{TRACKING_PENDING_LABEL}</span>
+          </Field>
         )}
         {/* Payment Flow v1.1: a failed payment attempt; the link still works. */}
         {o.paymentFailedLabel && (
