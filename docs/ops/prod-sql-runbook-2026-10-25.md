@@ -20,6 +20,8 @@ AI-facing (task A-2026-10-25-12). The orchestrator hands Sam one block at a time
   - Column names come back lower case; the value after `_expect_` is what the cell shows. `_expect_yes` shows `YES`, and `_expect_boolean_no_true` shows `boolean NO true`.
   - Where a value is longer, the line under the query spells it out.
 - **Checked before handing over:** every verification query was run on PGlite with all 89 migrations applied, and each returned its expected values.
+  - For 000009 and 000010 (added 2026-10-26), the run had 91 migrations: the 89, plus those two from signed-order-freeze 798508ad, which contains clinical-difference-saved d21721a0. Supabase's default table grants were set before any migration ran, so the privilege checks test the REVOKEs.
+  - Each of the two was also run without its migration, and fails there.
   - For 000004 the run first granted Supabase's default table privileges, since PGlite has none, so the "still readable" and "service role" counts are meaningful.
   - Each apply block below was checked to be byte-for-byte the branch file.
 
@@ -33,6 +35,8 @@ Source commits (each branch's origin head at the time of writing):
 | 20261024000006 | signup-squatting | 9e139268 |
 | 20261024000007 | rate-limit-db | 3c4791cf |
 | 20261024000008 | perf-indexes | 228c147b |
+| 20261024000009 | clinical-difference-saved | d21721a0 (added 2026-10-26) |
+| 20261024000010 | signed-order-freeze | 798508ad (added 2026-10-26) |
 | read-only check | state-machine-enforcement | b0bd60f8 |
 
 If a branch moves after this was written, re-copy from its new head before running.
@@ -1011,6 +1015,345 @@ DROP INDEX IF EXISTS idx_orders_updated;
 COMMIT;
 ```
 
+## 20261024000009: saved clinical difference statements (clinical-difference-saved)
+
+**Editor notes:** none. Idempotent (`IF NOT EXISTS`, `DROP POLICY IF EXISTS`). It ends with `SELECT apply_pharmacy_admin_scope();`, so the editor shows that call's result row before `COMMIT`. That is expected.
+
+**Apply** (verbatim, `supabase/migrations/20261024000009_saved_clinical_statements.sql` at d21721a0):
+
+```sql
+-- ============================================================
+-- Saved clinical difference statements (coverage gap 6)
+-- ============================================================
+--
+-- A provider types a patient-specific clinical difference statement
+-- ("Glycine added to help maintain muscle mass") under "Other
+-- (describe)". This table lets the clinic save it for that formulation,
+-- for the practice (patient_id NULL) or for one patient, and pick it next
+-- time. Nothing is pre-selected; the chosen text is copied into
+-- orders.clinical_difference as before, so the Rx and fax are unchanged.
+--
+-- Why a table, not an existing column: provider_favorites is a drug +
+-- pharmacy + doses card (a statement has no pharmacy or dose), and
+-- formulations.clinical_difference_options is catalog-wide (not per
+-- clinic, not per patient).
+--
+-- RLS from app_metadata only (src/lib/auth/claims): the clinic's users
+-- read their clinic's rows; ops_admin reads; the service role writes
+-- (no write policy, as treatment_proposals 20261024000002). Rows are soft
+-- deleted (deleted_at). Ends with apply_pharmacy_admin_scope()
+-- (20261014000001) as the last statement before COMMIT.
+--
+-- PREPARED: merges after 20261024000008 (perf-indexes).
+
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS saved_clinical_statements (
+  statement_id   UUID        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  clinic_id      UUID        NOT NULL REFERENCES clinics(clinic_id),
+  formulation_id UUID        NOT NULL REFERENCES formulations(formulation_id),
+  patient_id     UUID        REFERENCES patients(patient_id),
+  statement      TEXT        NOT NULL
+                 CONSTRAINT chk_saved_clinical_statements_length CHECK (char_length(statement) BETWEEN 20 AND 500),
+  created_by     UUID,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at     TIMESTAMPTZ
+);
+
+COMMENT ON TABLE saved_clinical_statements IS 'Coverage gap 6: clinical difference statements a clinic saved for a formulation, for the practice (patient_id NULL) or one patient. Picked, never pre-selected.';
+
+-- The picker's read: a clinic's live statements for one formulation.
+CREATE INDEX IF NOT EXISTS idx_saved_clinical_statements_lookup
+  ON saved_clinical_statements (clinic_id, formulation_id, created_at DESC)
+  WHERE deleted_at IS NULL;
+
+-- One live copy of a statement per clinic, formulation and scope.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_saved_clinical_statements_scope
+  ON saved_clinical_statements (clinic_id, formulation_id, COALESCE(patient_id, '00000000-0000-0000-0000-000000000000'::UUID), lower(statement))
+  WHERE deleted_at IS NULL;
+
+ALTER TABLE saved_clinical_statements ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS saved_clinical_statements_clinic_read ON saved_clinical_statements;
+CREATE POLICY saved_clinical_statements_clinic_read ON saved_clinical_statements FOR SELECT TO authenticated
+  USING ((auth.jwt() -> 'app_metadata' ->> 'app_role') IN ('clinic_admin', 'provider', 'medical_assistant')
+         AND clinic_id = (auth.jwt() -> 'app_metadata' ->> 'clinic_id')::UUID);
+
+DROP POLICY IF EXISTS saved_clinical_statements_ops_read ON saved_clinical_statements;
+CREATE POLICY saved_clinical_statements_ops_read ON saved_clinical_statements FOR SELECT TO authenticated
+  USING ((auth.jwt() -> 'app_metadata' ->> 'app_role') = 'ops_admin');
+
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON saved_clinical_statements FROM anon, authenticated;
+REVOKE DELETE, TRUNCATE ON saved_clinical_statements FROM service_role;
+
+-- Pharmacy admin scope (last statement before COMMIT)
+SELECT apply_pharmacy_admin_scope();
+
+COMMIT;
+```
+
+**Verify** (read only; before the migration this query errors with `relation "public.saved_clinical_statements" does not exist`):
+
+```sql
+SELECT
+  (to_regclass('public.saved_clinical_statements') IS NOT NULL)                AS table_exists_expect_true,
+  (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.saved_clinical_statements'::regclass)
+                                                                               AS rls_enabled_expect_true,
+  (SELECT count(*) FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'saved_clinical_statements'
+      AND permissive = 'PERMISSIVE' AND cmd = 'SELECT'
+      AND policyname IN ('saved_clinical_statements_clinic_read', 'saved_clinical_statements_ops_read'))
+                                                                               AS read_policies_expect_2,
+  (SELECT count(*) FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'saved_clinical_statements'
+      AND permissive = 'PERMISSIVE' AND cmd <> 'SELECT')                       AS write_policies_expect_0,
+  (SELECT count(*) FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'saved_clinical_statements'
+      AND permissive = 'RESTRICTIVE')                                          AS pharmacy_scope_policies_expect_1,
+  (has_table_privilege('authenticated', 'public.saved_clinical_statements', 'INSERT')
+   OR has_table_privilege('authenticated', 'public.saved_clinical_statements', 'UPDATE')
+   OR has_table_privilege('authenticated', 'public.saved_clinical_statements', 'DELETE')
+   OR has_table_privilege('anon', 'public.saved_clinical_statements', 'INSERT')
+   OR has_table_privilege('anon', 'public.saved_clinical_statements', 'UPDATE')
+   OR has_table_privilege('anon', 'public.saved_clinical_statements', 'DELETE'))
+                                                                               AS user_writes_expect_false,
+  (has_table_privilege('service_role', 'public.saved_clinical_statements', 'INSERT')
+   AND has_table_privilege('service_role', 'public.saved_clinical_statements', 'UPDATE'))
+                                                                               AS service_insert_update_expect_true,
+  (has_table_privilege('service_role', 'public.saved_clinical_statements', 'DELETE')
+   OR has_table_privilege('service_role', 'public.saved_clinical_statements', 'TRUNCATE'))
+                                                                               AS service_delete_expect_false,
+  (SELECT count(*) FROM pg_constraint
+    WHERE conrelid = 'public.saved_clinical_statements'::regclass
+      AND conname = 'chk_saved_clinical_statements_length'
+      AND pg_get_constraintdef(oid) LIKE '%char_length(statement)%20%500%')   AS length_check_expect_1,
+  (SELECT count(*) FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+    WHERE i.indrelid = 'public.saved_clinical_statements'::regclass AND i.indisvalid
+      AND ((c.relname = 'idx_saved_clinical_statements_lookup' AND NOT i.indisunique)
+        OR (c.relname = 'uq_saved_clinical_statements_scope' AND i.indisunique))
+      AND pg_get_indexdef(i.indexrelid) LIKE '%WHERE (deleted_at IS NULL)%')  AS partial_indexes_expect_2;
+```
+
+The four privilege columns depend on Supabase's default table grants, which PGlite does not have. The check run first granted them (`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role`, before any migration), so `user_writes_expect_false` and `service_delete_expect_false` prove the REVOKEs, not an empty grant list.
+
+**Safe before its PR merges: yes.**
+- It creates a new table with no data. Nothing else changes.
+- The code on main at that point (everything through perf-indexes) never names `saved_clinical_statements`. Searched on bundle-hipaa 1ea42cc7, the newest code that is on main by then: no reference.
+- **It must run before** clinical-difference-saved is deployed. That branch's `/api/clinical-statements` reads and writes the table, and the Review step's clinical difference field (`rx-details-row.tsx`) calls it. Without the table, the read answers 500, and the field shows no saved statements, with no error. Saving one shows "The statement could not be saved." Typing a statement and prescribing still work, because the order keeps `orders.clinical_difference` as before.
+
+**Down** (emergency only; verbatim, `supabase/migrations/down/20261024000009_down.sql`):
+
+```sql
+-- Down migration for 20261024000009_saved_clinical_statements.sql
+-- Atomic: either the whole rollback lands or none of it does.
+--
+-- Refuses while any live statement exists: they are the clinic's saved
+-- prescribing text (patient-scoped ones are part of a patient's record).
+
+BEGIN;
+
+DO $$
+DECLARE
+  live INTEGER;
+BEGIN
+  SELECT count(*) INTO live FROM saved_clinical_statements WHERE deleted_at IS NULL;
+  IF live > 0 THEN
+    RAISE EXCEPTION 'Cannot roll back 20261024000009: % saved clinical statement(s) exist', live;
+  END IF;
+END $$;
+
+DROP TABLE IF EXISTS saved_clinical_statements;
+
+COMMIT;
+```
+
+## 20261024000010: freeze every signed clinical column (signed-order-freeze)
+
+**Editor notes:**
+- It only replaces the function `prevent_snapshot_mutation()`. The trigger on `orders` (20260317000004) already calls it and is not touched. `CREATE OR REPLACE` makes a re-run a no-op.
+- It affects only UPDATEs of rows whose `locked_at` is already set (signed orders). Existing rows are not rewritten, so it runs instantly at any table size.
+- **Head used: 798508ad (2026-10-25 20:41).** A's order-transmission-integrity fixes (e2d293e1, 2026-10-25 23:27) add migration 20261024000011 with `orders.patient_snapshot` and `orders.prescriber_snapshot`. Its header says the 000010 freeze covers them, but the 000010 at 798508ad does not list them (38 columns, see Verify). **If signed-order-freeze moves to add them, re-copy this block and the verify count from the new head before running.**
+
+**Apply** (verbatim, `supabase/migrations/20261024000010_signed_order_freeze.sql` at 798508ad):
+
+```sql
+-- ============================================================
+-- Signed-order freeze: every signed clinical column (HIPAA B5)
+-- ============================================================
+--
+-- prevent_snapshot_mutation (BEFORE UPDATE on orders, last redefined in
+-- 20261012000001) froze 16 snapshot columns once locked_at is set, but
+-- not sig_text, quantity, refills, dispense, days supply and the other
+-- clinical columns the provider signed. This replaces the function so a
+-- signed order's whole signed content is frozen:
+--
+--   - the clinical columns the signature binding covers
+--     (SIGNED_CONTENT_COLUMNS, src/lib/orders/signature-binding.ts):
+--     patient, provider NPI, pharmacy snapshot, medication snapshot, sig
+--     and titration / cycling, quantity, dispense, days supply, refills,
+--     package, syringes, substitution, shipping type, clinical
+--     difference, diagnosis and special instructions;
+--   - the signature record: provider_signature_hash_snapshot, locked_at;
+--   - prices and where it ships: the price snapshots, shipping_fee and
+--     the shipping address snapshot;
+--   - who prescribed what: provider_id, formulation_id, catalog_item_id.
+--
+-- The list is FROZEN_ORDER_COLUMNS in src/lib/orders/signed-order-freeze.ts;
+-- src/lib/orders/__tests__/signed-order-freeze.test.ts fails if this
+-- array and that list differ.
+--
+-- One exception, read from the code: the ops reroute
+-- (api/ops/orders/[orderId]/action, 'reroute') moves an order from
+-- SUBMISSION_FAILED, FAX_FAILED or PHARMACY_REJECTED to REROUTE_PENDING,
+-- adds 1 to reroute_count and may change pharmacy_id, in one CAS update.
+-- pharmacy_id may change only in exactly that update. The pharmacy the
+-- provider signed for stays in pharmacy_snapshot (frozen, and bound by
+-- the signature). No other code path writes a frozen column on a signed
+-- order (the static scan in the same test).
+--
+-- Status, tracking, payment and transfer ids, the payment group, fax ids
+-- and attempt counts, ops assignee, protocol and proposal links,
+-- reroute_count, notes and timestamps stay updatable.
+--
+-- The message names the column (a column name, never a value: no PHI).
+-- Columns are compared through to_jsonb so one array is the whole list.
+-- Only the function is replaced; the trigger (20260317000004) stays.
+--
+-- PREPARED: merges after 20261024000008 (perf-indexes) and
+-- 20261024000009 (clinical-difference-saved).
+
+BEGIN;
+
+CREATE OR REPLACE FUNCTION prevent_snapshot_mutation()
+RETURNS TRIGGER AS $$
+DECLARE
+  frozen CONSTANT text[] := ARRAY[
+    -- the signed clinical content (SIGNED_CONTENT_COLUMNS)
+    'patient_id', 'provider_npi_snapshot', 'pharmacy_snapshot', 'medication_snapshot',
+    'sig_mode', 'sig_text', 'titration_steps', 'cycle_on_days', 'cycle_off_days',
+    'quantity', 'dispense_quantity', 'dispense_unit', 'days_supply', 'refills',
+    'package_id', 'package_label', 'package_count', 'syringe_option', 'substitution_allowed',
+    'shipping_type', 'clinical_difference', 'diagnosis_code', 'diagnosis_text', 'special_instructions',
+    -- the signature record
+    'provider_signature_hash_snapshot', 'locked_at',
+    -- prices and where it ships
+    'wholesale_price_snapshot', 'retail_price_snapshot', 'shipping_fee', 'shipping_state_snapshot',
+    'shipping_address_line1_snapshot', 'shipping_address_line2_snapshot', 'shipping_city_snapshot',
+    'shipping_zip_snapshot', 'shipping_address_snapshot_at',
+    -- who prescribed what
+    'provider_id', 'formulation_id', 'catalog_item_id'
+  ];
+  old_row jsonb;
+  new_row jsonb;
+  col     text;
+BEGIN
+  IF OLD.locked_at IS NOT NULL THEN
+    old_row := to_jsonb(OLD);
+    new_row := to_jsonb(NEW);
+    FOREACH col IN ARRAY frozen LOOP
+      IF new_row -> col IS DISTINCT FROM old_row -> col THEN
+        RAISE EXCEPTION 'Cannot modify signed clinical or snapshot fields after order is locked: %', col
+          USING HINT = 'A signed order is frozen (HIPAA B5). Cancel it and prescribe again instead.';
+      END IF;
+    END LOOP;
+
+    -- pharmacy_id: only the ops reroute, in its own CAS update.
+    IF NEW.pharmacy_id IS DISTINCT FROM OLD.pharmacy_id AND NOT (
+      OLD.status::text IN ('SUBMISSION_FAILED', 'FAX_FAILED', 'PHARMACY_REJECTED')
+      AND NEW.status::text = 'REROUTE_PENDING'
+      AND NEW.reroute_count = OLD.reroute_count + 1
+    ) THEN
+      RAISE EXCEPTION 'Cannot modify signed clinical or snapshot fields after order is locked: %', 'pharmacy_id'
+        USING HINT = 'The pharmacy of a signed order changes only through the ops reroute.';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMIT;
+```
+
+**Verify** (read only):
+
+```sql
+WITH f AS (
+  SELECT pg_get_functiondef('public.prevent_snapshot_mutation()'::regprocedure) AS def
+), frozen AS (
+  SELECT m[1] AS col
+    FROM f, regexp_matches(substring(f.def from 'ARRAY\[(.*?)\];'), '''([a-z0-9_]+)''', 'g') AS m
+)
+SELECT
+  (SELECT count(*) FROM frozen)                                                AS frozen_columns_expect_38,
+  (SELECT count(*) FROM frozen
+    WHERE col NOT IN (SELECT column_name FROM information_schema.columns
+                       WHERE table_schema = 'public' AND table_name = 'orders'))
+                                                                               AS frozen_not_on_orders_expect_0,
+  (SELECT count(*) FROM frozen WHERE col IN ('sig_text', 'quantity', 'refills', 'days_supply', 'dispense_quantity', 'patient_id', 'provider_id'))
+                                                                               AS newly_frozen_sample_expect_7,
+  (SELECT def LIKE '%REROUTE_PENDING%' AND def LIKE '%reroute_count + 1%' FROM f)
+                                                                               AS reroute_exception_expect_true,
+  (SELECT count(*) FROM pg_trigger t
+    WHERE t.tgrelid = 'public.orders'::regclass AND NOT t.tgisinternal
+      AND t.tgfoid = 'public.prevent_snapshot_mutation()'::regprocedure)       AS triggers_using_it_expect_1;
+```
+
+`frozen_not_on_orders_expect_0` catches a misspelt column name: a name that is not a column of `orders` would never be compared, so it would freeze nothing. Before the migration, the old function has no array: the first and third columns show `0` and the fourth `false` (checked on PGlite without 000010).
+
+**Safe before its PR merges: yes.**
+- It changes nothing until an UPDATE touches a signed order (`locked_at` set), and then only refuses an UPDATE that changes one of the 38 columns (or `pharmacy_id` outside the reroute).
+- **Checked against the code on main at that point** (everything through clinical-difference-saved): the freeze test's static scan (every `.from('orders') … .update({…})` that is not limited to `status = 'DRAFT'`, and every `casTransition` patch), run as a standalone script on bundle-hipaa 1ea42cc7, clinical-difference-saved d21721a0 and main 2696ff24.
+  - It finds no update that writes a frozen column on a signed order.
+  - The only `pharmacy_id` write is the ops reroute (`api/ops/orders/[orderId]/action`). Its single `casTransition` patch is exactly the exception: from SUBMISSION_FAILED, FAX_FAILED or PHARMACY_REJECTED to REROUTE_PENDING, `reroute_count + 1` and the new `pharmacy_id`.
+  - No SQL function in the 91 migrations updates a frozen column of `orders`.
+  - The E2E specs that update orders directly (`e2e/clinic-app.spec.ts`) update drafts only, which the freeze does not touch.
+- **Run it before** signed-order-freeze is deployed. Its code does not depend on it, but the HIPAA B5 claim does.
+
+**Down** (emergency only; verbatim, `supabase/migrations/down/20261024000010_down.sql`; restores the function exactly as 20261012000001 left it, 16 columns):
+
+```sql
+-- Down migration for 20261024000010_signed_order_freeze.sql
+-- Atomic: either the whole rollback lands or none of it does.
+--
+-- Restores prevent_snapshot_mutation exactly as 20261012000001 left it:
+-- the 16 snapshot columns frozen, and sig_text, quantity, refills,
+-- dispense and the other clinical columns editable after signing again.
+-- Nothing else changed, so nothing else is restored.
+
+BEGIN;
+
+CREATE OR REPLACE FUNCTION prevent_snapshot_mutation()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.locked_at IS NOT NULL THEN
+    IF (
+      NEW.wholesale_price_snapshot         IS DISTINCT FROM OLD.wholesale_price_snapshot         OR
+      NEW.retail_price_snapshot            IS DISTINCT FROM OLD.retail_price_snapshot            OR
+      NEW.medication_snapshot              IS DISTINCT FROM OLD.medication_snapshot              OR
+      NEW.shipping_state_snapshot          IS DISTINCT FROM OLD.shipping_state_snapshot          OR
+      NEW.shipping_address_line1_snapshot  IS DISTINCT FROM OLD.shipping_address_line1_snapshot  OR
+      NEW.shipping_address_line2_snapshot  IS DISTINCT FROM OLD.shipping_address_line2_snapshot  OR
+      NEW.shipping_city_snapshot           IS DISTINCT FROM OLD.shipping_city_snapshot           OR
+      NEW.shipping_zip_snapshot            IS DISTINCT FROM OLD.shipping_zip_snapshot            OR
+      NEW.shipping_address_snapshot_at     IS DISTINCT FROM OLD.shipping_address_snapshot_at     OR
+      NEW.provider_npi_snapshot            IS DISTINCT FROM OLD.provider_npi_snapshot            OR
+      NEW.provider_signature_hash_snapshot IS DISTINCT FROM OLD.provider_signature_hash_snapshot OR
+      NEW.pharmacy_snapshot                IS DISTINCT FROM OLD.pharmacy_snapshot                OR
+      NEW.clinical_difference              IS DISTINCT FROM OLD.clinical_difference              OR
+      NEW.diagnosis_code                   IS DISTINCT FROM OLD.diagnosis_code                   OR
+      NEW.diagnosis_text                   IS DISTINCT FROM OLD.diagnosis_text                   OR
+      NEW.locked_at                        IS DISTINCT FROM OLD.locked_at
+    ) THEN
+      RAISE EXCEPTION 'Cannot modify snapshot fields after order is locked';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMIT;
+```
+
 ## Pre-merge check for bundle-features: drafts missing a snapshot (read only)
 
 Run **before** bundle-features merges. It brings state-machine-enforcement, after which batch sign refuses a DRAFT missing any of the six snapshots.
@@ -1078,22 +1421,186 @@ ROLLBACK;
 
 # Part 2: merge checklist, in order
 
+Updated 2026-10-26 (D-2026-10-26-03) to the current plan: thirteen PRs, from the fax viewer to the signed-order freeze. Heads as of that day: bundle-security, bundle-ci and bundle-features as in the dry run and their bundle reports; bundle-hipaa 1ea42cc7; clinical-difference-saved d21721a0; signed-order-freeze 798508ad; order-transmission-integrity e2d293e1 (see "Not in the plan yet" at the end).
+
 Rules for every PR:
-- Just before merging, the branch merges `origin/main` (main then holds every PR above it in this list) and its CI goes green, E2E included.
-- The SQL named in "Before merging" is applied to prod and verified **first**.
-- The conflicts and fixes below are the ones the dry run (`docs/qa/merge-dry-run-2026-10-25.md`) and the bundle builds found at that point. Their resolutions are in those reports.
+- **Just before merging:** the branch merges `origin/main` and its CI goes green, E2E included. At that point main holds every PR above it in this list.
+- **Prod SQL first:** the SQL named in "Prod SQL before it" is applied to prod and verified **first**.
+- **Env vars first:** the variables named in "Env vars in Vercel production" exist in the production project **before** the merge deploys. Names only; Sam sets the values.
+- **Where conflicts come from:**
+  - For #1 to #8, the conflicts and fixes are the ones the dry run (`docs/qa/merge-dry-run-2026-10-25.md`) and the bundle builds found. Their resolutions are in those reports.
+  - For #9 to #13 there is no dry run yet. The conflicts listed are **predicted** from the files both sides change (`git merge-tree` and file overlap against each earlier branch), and need confirming at the merge.
+- **Migration order:** E2E shares one Supabase project, and every E2E run applies all of `supabase/migrations/`. So a PR with a migration merges before any other PR runs E2E (CLAUDE.md).
 
-| # | PR | Before merging | Merges origin/main first: expected conflicts | Combination fix at this point |
-|---|---|---|---|---|
-| 1 | ops-fax-viewer-documo | **Prod SQL 000003**, verified. | Yes (the branch is 1 commit behind main). Clean. | None. |
-| 2 | rls-user-write-lockdown-v2 | **Prod SQL 000004**, verified. | Yes. `src/lib/proposals/__tests__/proposals-migration-static.test.ts`: main now has #1's version of the same test change; take main's. | None. |
-| 3 | security-followups-2 | **Prod SQL 000005**, verified. | Yes. The same test: take main's. | None. |
-| 4 | signup-squatting | **Prod SQL 000006**, verified, **immediately before** the merge (see its window note). After deploy, re-run its verification: `unclaimed_in_approved_clinics_expect_0`. | Yes. The same test: take main's. | None. |
-| 5 | rate-limit-db | **Prod SQL 000007**, verified. | Yes. The same test (take main's). `src/app/api/signup/route.ts`: keep #4's duplicate-email guard and make the call `const limit = await signupLimiter.check(ipKey)`. | None. |
-| 6 | bundle-security | None. | Yes. Main now has #1 to #5. Expected: (a) the handlers security-followups-2 moved to `refuseCrossSite` (`orders/batch-sign`, `patients/[patientId]/duplicate-flag`, `patients/face-sheet`, `patients`, `settings/signup-link`): use the `xHandler` signature with `refuseCrossSite`, and batch-sign keeps api-input-validation's size checks; (b) `ops/onboarding/clinics/[clinicId]` imports (signup-squatting): keep both; (c) `ops/fax/_components/fax-triage-queue.tsx` imports (fax): keep both. Check that rate-limit-db's `await …Limiter.check(…)` calls survive in signup, join, invite accept, face-sheet and plan. | **Fax PDF route** (dry-run problem 2): `src/app/api/ops/fax/[faxId]/pdf/route.ts` must become `async function getHandler`, use `refuseCrossSite(request, 'Forbidden', { 'Cache-Control': 'no-store' })`, and export `export const GET = withApiErrors('/api/ops/fax/[faxId]/pdf', getHandler)`. Otherwise route-error-wrapper and same-origin-moved-routes fail. |
-| 7 | bundle-ci | None. | It is built on bundle-security, so merge origin/main **after #6 is on main**. Expected: `perf-bundles` vs signup-squatting in `ops/onboarding/[clinicId]/_components/clinic-review-details.tsx` and `ops/onboarding/_components/onboarding-admin.tsx`: import `provider-review-copy` (perf-bundles) and `npi-claims` (signup-squatting). | Already in the bundle: the sharded-trial job's Node 24 actions (problem 1) and the global-error `<title>` (problem 6). Nothing new at this point. |
-| 8 | bundle-features (not built yet: rx-quantity-shipping, rx-allergies-required, favorites-frequent, state-machine-enforcement, settings-notifications) | **The read-only drafts-missing-snapshots check** above. Act on any rows first. No prod SQL. | Yes, after #7. Expected (dry run): imports beside error-boundaries' `userMessage` in `margin-builder-form.tsx`, `batch-sign-form.tsx`, `new-protocol-form.tsx` and `allergy-notice.tsx`; favorites-frequent vs the route-wide changes. | Problem 3 (favorites-frequent): move `api/favorites/recent/__tests__/staff-role-gate.test.ts` to `frequent/__tests__/`; point `api/favorites/__tests__/input-validation.test.ts` at `../frequent/route`; in `frequent-route.test.ts` give the user `app_role: 'provider'`, use a uuid provider id and expect 400 for `provider_id=x`; label the route `withApiErrors('/api/favorites/frequent', …)`. Problem 4: drop the unused `computeBundleShipping` import in `margin-builder-form.tsx`. Merge duplicate same-module imports (problem 5). |
-| 9 | bundle-docs | None. | Yes. Docs only, so expect no conflicts. CI skips E2E. | None. It can also go earlier; it changes no code. |
-| 10 | perf-indexes | **Prod SQL 000008**, verified. | Yes. Not in the dry run, which predates the branch, so expect conflicts there for the first time. | None known. |
+### 1. ops-fax-viewer-documo (migration 000003)
 
-After all ten, every migration from 20261024000003 to 20261024000008 is on main, and each was applied to prod before the code that uses it.
+- **What must merge first:** nothing.
+- **Prod SQL before it:** **000003**, verified.
+- **Merges origin/main first:** yes (1 commit behind). Clean.
+- **Combination fix at this point:** none.
+- **Env vars in Vercel production:** `DOCUMO_API_KEY` and `DOCUMO_ACCOUNT_ID`, which main already uses for outbound fax.
+  - The fax viewer now also needs them to fetch each PDF from Documo.
+  - **If missing:** `GET /api/ops/fax/[faxId]/pdf` answers 502 ("could not be fetched"; `requireEnv` throws inside the Documo client and the route catches it). Ops cannot open any inbound fax, and outbound fax fails as it does today.
+
+### 2. rls-user-write-lockdown-v2 (migration 000004)
+
+- **What must merge first:** #1.
+- **Prod SQL before it:** **000004**, verified.
+- **Merges origin/main first:** yes. `src/lib/proposals/__tests__/proposals-migration-static.test.ts`: main now has #1's version of the same test change; take main's.
+- **Combination fix at this point:** none.
+- **Env vars in Vercel production:** none new.
+
+### 3. security-followups-2 (migration 000005)
+
+- **What must merge first:** #2.
+- **Prod SQL before it:** **000005**, verified.
+- **Merges origin/main first:** yes. The same test: take main's.
+- **Combination fix at this point:** none.
+- **Env vars in Vercel production:** none new.
+
+### 4. signup-squatting (migration 000006)
+
+- **What must merge first:** #3.
+- **Prod SQL before it:** **000006**, verified, **immediately before** the merge (see its window note). After the deploy, re-run its verification: `unclaimed_in_approved_clinics_expect_0`.
+- **Merges origin/main first:** yes. The same test: take main's.
+- **Combination fix at this point:** none.
+- **Env vars in Vercel production:** none new.
+
+### 5. rate-limit-db (migration 000007)
+
+- **What must merge first:** #4.
+- **Prod SQL before it:** **000007**, verified.
+- **Merges origin/main first:** yes.
+  - The same test: take main's.
+  - `src/app/api/signup/route.ts`: keep #4's duplicate-email guard and make the call `const limit = await signupLimiter.check(ipKey)`.
+- **Combination fix at this point:** none.
+- **Env vars in Vercel production:** none new (the counts live in the 000007 table).
+
+### 6. bundle-security
+
+- **What must merge first:** #1 to #5.
+- **Prod SQL before it:** none.
+- **Merges origin/main first:** yes. Main now has #1 to #5. Expected:
+  - (a) The handlers security-followups-2 moved to `refuseCrossSite` (`orders/batch-sign`, `patients/[patientId]/duplicate-flag`, `patients/face-sheet`, `patients`, `settings/signup-link`): use the `xHandler` signature with `refuseCrossSite`, and batch-sign keeps api-input-validation's size checks.
+  - (b) `ops/onboarding/clinics/[clinicId]` imports (signup-squatting): keep both.
+  - (c) `ops/fax/_components/fax-triage-queue.tsx` imports (fax): keep both.
+  - Check that rate-limit-db's `await …Limiter.check(…)` calls survive in signup, join, invite accept, face-sheet and plan.
+- **Combination fix at this point: the fax PDF route** (dry-run problem 2). `src/app/api/ops/fax/[faxId]/pdf/route.ts` must:
+  - become `async function getHandler`;
+  - use `refuseCrossSite(request, 'Forbidden', { 'Cache-Control': 'no-store' })`;
+  - export `export const GET = withApiErrors('/api/ops/fax/[faxId]/pdf', getHandler)`.
+
+  Otherwise route-error-wrapper and same-origin-moved-routes fail.
+- **Env vars in Vercel production:** none new. It reads only names main already sets (`CRON_SECRET`, `ADAPTER_INTERNAL_SECRET`, `WEBHOOK_SECRET_ENCRYPTION_KEY`, the Supabase URL and keys).
+
+### 7. bundle-ci
+
+- **What must merge first:** #6. It is built on bundle-security, so merge origin/main **after #6 is on main**.
+- **Prod SQL before it:** none.
+- **Merges origin/main first:** yes. Expected: `perf-bundles` against signup-squatting in `ops/onboarding/[clinicId]/_components/clinic-review-details.tsx` and `ops/onboarding/_components/onboarding-admin.tsx`. Import `provider-review-copy` (perf-bundles) and `npi-claims` (signup-squatting).
+- **Combination fix at this point:** nothing new. Already in the bundle: the sharded-trial job's Node 24 actions (problem 1) and the global-error `<title>` (problem 6).
+- **Env vars in Vercel production:** none new.
+  - `TEST_SHARD` and `TEST_SHARD_TOTAL` are set by the CI workflow's matrix, not in Vercel.
+  - The E2E and Sentry secrets it reads are the GitHub Actions secrets CI already has.
+
+### 8. bundle-features
+
+Contains rx-quantity-shipping, rx-allergies-required, favorites-frequent, state-machine-enforcement, settings-notifications and the later bundle-features fixes.
+
+- **What must merge first:** #7.
+- **Prod SQL before it:** **the read-only drafts-missing-snapshots check** (above). Act on any rows first. No migration.
+- **Merges origin/main first:** yes, after #7. Expected (dry run):
+  - imports beside error-boundaries' `userMessage` in `margin-builder-form.tsx`, `batch-sign-form.tsx`, `new-protocol-form.tsx` and `allergy-notice.tsx`;
+  - favorites-frequent against the route-wide changes.
+- **Combination fixes at this point:**
+  - Problem 3 (favorites-frequent):
+    - move `api/favorites/recent/__tests__/staff-role-gate.test.ts` to `frequent/__tests__/`;
+    - point `api/favorites/__tests__/input-validation.test.ts` at `../frequent/route`;
+    - in `frequent-route.test.ts`, give the user `app_role: 'provider'`, use a uuid provider id and expect 400 for `provider_id=x`;
+    - label the route `withApiErrors('/api/favorites/frequent', …)`.
+  - Problem 4: drop the unused `computeBundleShipping` import in `margin-builder-form.tsx`.
+  - Problem 5: merge duplicate same-module imports.
+- **Env vars in Vercel production:** none new. `PHARMACY_SUBMISSIONS_ENABLED` is already set as main uses it today. Unset or not `true`, paid orders wait and nothing is sent to a pharmacy (the existing switch).
+
+### 9. bundle-hipaa
+
+clinic-help, password-flows, auth-monitoring, audit-review-breakglass, and phi-access-log-coverage inside audit-review-breakglass. Built on bundle-features: D-2026-10-26-02, head 1ea42cc7.
+
+- **What must merge first:** #8. It contains bundle-features, so merge origin/main **after #8 is on main**.
+- **Prod SQL before it:** none. No migration: auth-monitoring's alerts use the existing `ops_alert_queue`, and the access-review reasons use existing `phi_access_log` columns.
+- **Merges origin/main first: predicted conflicts.** Main now has #1 to #7, which bundle-hipaa's own branches never saw. Files changed on both sides:
+  - `src/lib/audit/phi-access.ts`: #1 adds `faxId` to `PhiAccessEntry` and writes `fax_id`; phi-access-log-coverage adds the B14 resources, the boolean returns and the fail-closed alerting; audit-review-breakglass adds `OpsAccessReasonResource`. Keep all three.
+  - `src/app/(ops-dashboard)/ops/fax/page.tsx` and `src/app/api/ops/fax/route.ts`: see the combination fix below.
+  - `src/app/api/providers/route.ts` and `src/lib/signup/self-serve.ts`: signup-squatting's NPI claim check against password-flows' provider invite. Keep both: the invite flow, and the `.neq('npi_claimed', false)` list check.
+  - security-followups-2's and rate-limit-db's handlers (`orders/batch-sign`, `patients/face-sheet`, `onboarding/invite/accept`, `join/[token]`, `plan/[token]`) against coverage's PHI logging in the same handlers. Keep `refuseCrossSite`, the `await …check(…)` calls and the `logPhiAccess` calls.
+  - `src/middleware.ts`: keep every public path, the reset paths (`/forgot-password`, `/api/auth/password-reset`) and `/api/sign-in`.
+- **Combination fix at this point: the fax queue log.**
+  - After #1 the queue no longer hands out signed PDF URLs: each PDF opens through `/api/ops/fax/[faxId]/pdf`, which logs one `view`/`inbound_fax` row with `fax_id`.
+  - coverage's `logFaxQueueView` comment says "the signed URLs below open the fax PDFs". That is no longer true:
+    - keep the queue-view rows (the queue still shows each fax's matched order);
+    - correct that comment;
+    - keep #1's PDF-route log row as it is.
+  - Then in `src/lib/audit/access-review.ts`, `inbound_fax` must count as a list view only on the queue routes (`/ops/fax`, `/api/ops/fax`), not on the PDF route. Otherwise PDF opens are left out of `bulk_patients`. That is a two-line change, and its test goes beside `access-review-fixes.test.ts`.
+- **Env vars in Vercel production:**
+  - **`PHI_ACCESS_LOG_HASH_SECRET`**: exists on main, but bundle-hipaa makes it required.
+    - **If missing in production:** `GET /api/health` answers 503 (`checks.phi_audit_hash_secret: "missing"`), so the deploy verify job fails the deploy and notifies Slack. It does not roll back.
+    - PHI access rows are still written, but with null email, IP and user-agent hashes.
+    - The sign-in monitor's per-account alert never fires (it needs the email hash).
+  - `APP_BASE_URL`: exists. Password reset now also needs it for the email's link. **If missing:** `POST /api/auth/password-reset` answers 500 and no reset email is sent.
+  - **Demo deployment only:** `POC_OPS_PASSWORD`, `POC_CLINIC_ADMIN_PASSWORD`, `POC_PROVIDER_PASSWORD`, `POC_MA_PASSWORD`. **If missing:**
+    - ops "Reset Demo Credentials" skips that account with an error naming the variable;
+    - `scripts/seed-poc.ts` stops before writing;
+    - `scripts/fix-rls.ts` throws naming `POC_OPS_PASSWORD`;
+    - the demo-tools page shows which are set.
+  - Not needed for real clinics.
+  - Not a Vercel variable: `E2E_TEST_PASSWORD`. CI derives the E2E password from `E2E_SUPABASE_SERVICE_ROLE_KEY` when it is unset, so no new GitHub secret is needed.
+- **After the deploy (Sam):** rotate the old POC and E2E account passwords on every Supabase project where they were used (C's B9 note). The old values are still in git history.
+
+### 10. bundle-docs
+
+- **What must merge first:** nothing; it changes no code, so it can go earlier.
+- **Prod SQL before it:** none.
+- **Merges origin/main first:** yes. Docs only, so expect no conflicts. CI skips E2E.
+- **Combination fix at this point:** none.
+- **Env vars in Vercel production:** none.
+
+### 11. perf-indexes (migration 000008)
+
+- **What must merge first:** #9 (the plan's order; the indexes do not depend on it).
+- **Prod SQL before it:** **000008**, verified. Read its editor notes on lock time first.
+- **Merges origin/main first:** yes. The branch is on an older main. `git merge-tree` into bundle-hipaa 1ea42cc7 shows no conflicts. It changes the migration, its down file, its static test (`perf-indexes-migration.test.ts`) and the shared `proposals-migration-static.test.ts`. That last one is the test #2 to #5 also change: take main's version, then reapply perf-indexes' own change to it.
+- **Combination fix at this point:** none known.
+- **Env vars in Vercel production:** none.
+
+### 12. clinical-difference-saved (migration 000009)
+
+- **What must merge first:** #11.
+- **Prod SQL before it:** **000009**, verified.
+- **Merges origin/main first:** yes. Built on an earlier bundle-features (merge d1c66842). Main now has bundle-features' later commits, bundle-hipaa and bundle-docs. `git merge-tree` of clinical-difference-saved into bundle-hipaa 1ea42cc7 shows **no conflicts**. Re-check against #1 to #7, which bundle-hipaa does not contain: the branch's files (`api/clinical-statements`, `rx-details-row.tsx`, `database.types.ts`) are not among #1 to #7's changes in that overlap check.
+- **Combination fix at this point:** none known.
+- **Env vars in Vercel production:** none.
+
+### 13. signed-order-freeze (migration 000010)
+
+- **What must merge first:** #12. It contains clinical-difference-saved and an older order-transmission-integrity (2b9b69a5).
+- **Prod SQL before it:** **000010**, verified, from the head being merged. Re-copy it if the branch moved after 798508ad.
+- **Merges origin/main first:** yes. `git merge-tree` into bundle-hipaa 1ea42cc7 shows **one conflict**: `src/app/api/ops/orders/[orderId]/action/route.ts`, in its imports. signed-order-freeze imports `REROUTE_FROM_STATUSES` (the reroute's allowed statuses, shared with the freeze), and phi-access-log-coverage imports `logPhiAccess` and adds the fail-closed `ops_order_action` row. Keep both: the imports, the log row before any change, and `REROUTE_FROM_STATUSES.includes(currentStatus)` in the reroute.
+- **Combination fix at this point:** `FROZEN_ORDER_COLUMNS` and the migration's array must stay equal (`signed-order-freeze.test.ts` fails otherwise). See the next section for the two columns order-transmission-integrity adds.
+- **Env vars in Vercel production:**
+  - none at 798508ad;
+  - **`RX_BINDING_SECRET`** once order-transmission-integrity's T1-T7 code (e2d293e1) is merged into this branch or reaches main.
+
+### Not in the plan yet: order-transmission-integrity (migration 000011)
+
+A pushed T1-T7 on 2026-10-25 at 23:27 (e2d293e1). That head adds a migration, `20261024000011_order_signing_snapshots.sql`: `orders.patient_snapshot` and `orders.prescriber_snapshot`, marked "PREPARED: merges after 20261024000010". So it is now a migration branch, and the orchestrator has to decide where it goes. Facts for that decision:
+
+- **It cannot go into bundle-hipaa** (no migration branches in bundles). Its natural place is a PR of its own after #13, or merged into signed-order-freeze before #13.
+- **Its signing code writes the two new columns.** Deploying it before 000011 is applied would make every signing fail. Its prod SQL needs a runbook entry like the ones above, which this runbook does not have yet.
+- **Its 000011 header says the 000010 freeze covers the two new columns** ("its column list is the binding's"). The 000010 at 798508ad does not list them (38 columns, neither of the two). Either signed-order-freeze adds them (A's update; then re-copy 000010 and set the verify count to 40), or 000011 extends the freeze itself.
+- **`RX_BINDING_SECRET`** (new; must be in Vercel production before it deploys). **If missing in production:**
+  - `GET /api/health` answers 503 (`checks.rx_binding_secret: "missing"`), so the deploy verify job fails the deploy;
+  - batch sign refuses with 503 `BINDING_KEY_MISSING` before reading anything, so nothing can be signed;
+  - every transmission is refused with `binding_key_missing`, so nothing is sent to a pharmacy.
+- **Outside production:** the health check reports it, and the binding uses a fixed development key, so preview, local and CI sign as before.
+
+After all thirteen, every migration from 20261024000003 to 20261024000010 is on main, and each was applied to prod before the code that uses it. 20261024000011 waits for the orchestrator's decision above.
