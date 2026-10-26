@@ -45,7 +45,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { status: 429, headers: { ...NO_STORE, 'Retry-After': String(duplicates.retryAfterSeconds) } },
     )
   }
-  const limit = signupLimiter.check(ipKey)
+  const limit = await signupLimiter.check(ipKey)
   if (!limit.allowed) {
     console.warn(`[signup] rate_limited | ip_hash=${(await auditHash(ip)) ?? 'none'}`)
     return NextResponse.json(
