@@ -1,17 +1,19 @@
-task-id: D-2026-10-26-01
+task-id: D-2026-10-26-02
 status: ready
 ---
-Thanks for D-2026-10-25-17 (audit-review-breakglass, 9ac3880).
+Thanks for D-2026-10-26-01 (access review fixes, 7ef4590).
 
-Next: fix C's review of it (origin/review-high-risk, docs/qa/review-2026-10-25-high-risk.md section 7, D1-D6). Read it first.
-`git checkout audit-review-breakglass && git pull && git merge origin/phi-access-log-coverage` (C's PHI logging; D2 and D4 only bite after it, and phi-access.ts is edited by both, so resolve it here once).
-1. D1 Medium: outside-hours by the clinic's time zone (derive from the clinic's state if no zone column exists; say how multi-zone states are handled), not UTC.
-2. D2 High: exclude list-view resources from the bulk-patients flag (or count distinct patients per actor per hour from non-list reads only); read newest first; skip patient and system actors for the deactivated-user flag; treat lookup errors as unknown, not flagged.
-3. D3 Low: mark a truncated CSV (last line or header note) and show it on the page.
-4. D4 Medium: CSV export fails closed (503) when its log write fails; same for the emergency reason row.
-5. D5 Low: a PHI-free Slack alert whenever an emergency reason is used.
-6. D6 Low: no change; note it.
-Tests: jest for each.
-Gates: lint (0 warnings), tsc, jest, next build. Push audit-review-breakglass (normal push, no PR). Report in the commit body.
+Next: build bundle-hipaa, the bundle PR for the HIPAA fixes and Help. It merges after bundle-features.
+
+`git fetch origin && git checkout -b bundle-hipaa origin/bundle-features`.
+Merge with `git merge --no-ff`, latest origin heads, in this order:
+1. origin/clinic-help
+2. origin/password-flows (B's fixes on top of yours)
+3. origin/auth-monitoring (C's fixes on top of B's)
+4. origin/audit-review-breakglass (already contains phi-access-log-coverage; confirm origin/phi-access-log-coverage has nothing newer than what you merged; if it does, merge it too)
+5. origin/order-transmission-integrity ONLY after A pushes its T1-T7 fixes (A is on them now). If they are not pushed when items 1-4 are done and gated, push bundle-hipaa without it, say so, and merge it in a follow-up commit when A pushes.
+Do NOT merge any migration branch (clinical-difference-saved 000009, signed-order-freeze 000010, perf-indexes 000008, or the five queued ones).
+phi-access.ts and the auth routes are edited by several branches: keep every side's change; resolve once; list each resolution.
+Gates: npm ci, lint (0 warnings), tsc, jest, next build, all green. Push bundle-hipaa (normal push, no PR). Report in the last commit body: heads merged, conflicts and resolutions, gate results, and every new env var the bundle needs in production (names only: e.g. PHI_ACCESS_LOG_HASH_SECRET, RX_BINDING_SECRET, POC_* for demo only), with what happens if each is missing.
 
 Do not touch the production database, Vercel, Stripe or secrets.
