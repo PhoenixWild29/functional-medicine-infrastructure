@@ -10,6 +10,8 @@ For the orchestrator (or any careful tester) to verify production in a browser i
 
 Items new or changed for them are marked **(new)** or **(changed)**. Before testing, check the migrations ran: 20261024000003 to 20261024000007, in order.
 
+**Updated 2026-10-26** for the security and HIPAA branches: password-flows, auth-monitoring, audit-review-breakglass (which includes phi-access-log-coverage), order-transmission-integrity and signed-order-freeze, clinical-difference-saved and clinic-help. Their items are marked **(new, 10-26)**. Check each only once its branch is on production. Saved statements need migration 20261024000009.
+
 ## How to read this
 
 Each item is one line:
@@ -35,7 +37,7 @@ Text in quotes is the exact visible copy. `{x}` is a value that varies.
 3. **Demo phones.** Every seeded Sunrise patient uses the fictional 555-01xx exchange (for example +1 415 555 0110), so a text cannot reach a real phone. But every seeded patient has `sms_opt_in = true`, and patients created on prod by people (not in any seed) may have **real** numbers. Before any action in rule 2, open the patient and check the phone.
 4. **Faxes, pharmacy submissions and Slack alerts are real.** "Retry", "Force Fax", "Retry Fax", "Reject Order" and catalog "Trigger Sync" all reach outside systems.
 5. **Garbage tokens are safe.** `/plan/abc`, `/intake/abc`, `/join/abc`, `/checkout/abc`, `/onboard/clinic/abc`, `/onboard/join/abc`, `/onboard/pharmacy/abc` each validate before any write. Use them for the "invalid link" states.
-6. **/ops/demo-tools shows passwords in plain text.** Redact any screenshot of it.
+6. **/ops/demo-tools shows passwords in plain text** until auth-monitoring is live; redact any screenshot of it. **(new, 10-26)** With auth-monitoring, it shows each account's env var name and "(set)" or "(not set)", never a password.
 7. Keep a list of every row you create (test patient, test provider, test invite, test protocol). Section 9 says how to leave things.
 8. **(new) The sign page's allergy prompt sends.** On /new-prescription/sign, "Save allergies" inside "Record allergies or mark NKDA before signing" signs and sends at once. NEVER save there unless every selected draft is the test patient's and you mean to sign. (On Review, the same prompt only reopens the confirm step.)
 9. **(new) Never refresh checkout.** After the page loads, the address bar reads plain `/checkout`; a refresh shows "Please reopen your payment link". Reopen the copied link instead.
@@ -52,7 +54,7 @@ Text in quotes is the exact visible copy. `{x}` is a value that varies.
 | Pharmacy admin | pharmacy-admin@compoundiq-poc.com, **only if it was ever created on prod** (no seed creates it; Sam to confirm) | /pharmacy/onboarding |
 | Patient | no login; token pages only (section 7) | |
 
-Sources: `lib/poc/canonical-users.ts`, `lib/auth/landing-route.ts`, `lib/pharmacy-onboarding/demo-invite.ts`. Passwords are not in this document. Ops and pharmacy admin may be asked for two-step sign-in (`/mfa/challenge`); pharmacy admin always is.
+Sources: `lib/poc/canonical-users.ts`, `lib/auth/landing-route.ts`, `lib/pharmacy-onboarding/demo-invite.ts`. Passwords are not in this document. **(new, 10-26)** With auth-monitoring, the POC passwords are read from the env vars POC_OPS_PASSWORD, POC_CLINIC_ADMIN_PASSWORD, POC_PROVIDER_PASSWORD and POC_MA_PASSWORD. Ask the person who set them; they are never in the repo. Ops and pharmacy admin may be asked for two-step sign-in (`/mfa/challenge`); pharmacy admin always is.
 
 ## Demo data map
 
@@ -107,6 +109,12 @@ Known gaps in the demo data:
 - [SAFE] /login?error=auth_callback_failed -> "Email verification failed. Please try signing in again."
 - [SAFE] /login?error=zzz -> "Something went wrong. Please try again."
 - [SAFE] Wrong password once -> "Invalid email or password. Please try again."; must not: navigate away. Keep it to one or two tries (Supabase throttles).
+  - **(new, 10-26)** With auth-monitoring, each failure is recorded. 5 on one account in 15 minutes alerts ops in Slack. **Any** failure on ops@compoundiq-poc.com alerts at once, so do the wrong-password check on a clinic account, not the ops one.
+
+### (new, 10-26) Password reset (`app/forgot-password/`, `app/reset-password/`)
+- [SAFE] /login shows the link "Forgot password?" -> /forgot-password: "Reset your password", "Email address", "Send reset link", "Back to sign in".
+- [NEVER] Pressing "Send reset link" with a real person's address. It emails them a live reset link. View the page only.
+- [SAFE] /reset-password while signed out -> "Set a new password", "This reset link has expired or was already used." and "Request a new link". Signed in normally (not from a link) -> no form, "This page sets a new password from a reset link. To change your password while signed in, go to Settings, Account." and "Go to Settings".
 
 ### /get-started (`app/get-started/_components/get-started-form.tsx`)
 - [SAFE] Open -> "Get started with CompoundIQ", "Create your account and look around right away. Nothing can be ordered, signed or received until CompoundIQ approves you.", "What are you setting up?", radios "I'm a provider (solo practice)", "I run a clinic or practice", "I run a compounding pharmacy", link "Already have an account? Sign in"; must not: form fields before a radio is picked.
@@ -185,6 +193,8 @@ Known gaps in the demo data:
   - Amber notice: "Allergies not recorded for {name}" and "Record allergies or mark NKDA before signing. Confirm NKDA here, or record the allergies. You can still save as a draft.", with "Confirm NKDA" and "Record allergies".
   - Pressing the Sign & Send button opens the prompt "Record allergies or mark NKDA before signing": "{name}: the pharmacy receives allergies or NKDA on every prescription. Nothing has been signed, and your prescriptions are kept. Save, and signing continues."
   - The prompt holds "No known drug allergies (NKDA)", "Save allergies" and "Cancel". Press "Cancel".
+- [SAFE] **(new, 10-26)** Saved clinical difference statements: on a GLP-1 line, "Rx details" shows "Saved statements" as one-click choices when any exist. Nothing is pre-selected.
+- [WRITES DATA] **(new, 10-26)** Type an "Other (describe)" statement on the test line, then "Save this statement for next time:" -> "Save for the practice" or "Save for {patient} only". It saves a row for the whole practice or that patient. Use the test patient and the wording "TEST statement, delete me", and note it for section 9.
 - [SAFE] **(new)** The same patient in plan mode: "Send to patient for choice" is refused with "Record allergies or mark NKDA before sending this plan", and the same prompt opens. Press "Cancel".
 - [WRITES DATA] **(new)** "Save allergies" or "Confirm NKDA" writes the patient's allergy status. Test patient only.
 - [SAFE] "Let the patient choose" box with the checkbox "Send the patient a plan to choose from, instead of signing now". Tick it -> signature pad hides, "Option A" fieldset, "★ Required", "Add an option", button "Send to patient for choice". **Do not press it here** (section 8 does this on a safe patient). Untick it.
@@ -210,6 +220,8 @@ Known gaps in the demo data:
 - [SAFE] **Practice details**: "Practice details", "Your practice as it appears on prescriptions and payouts. We keep the last 4 digits of the tax ID only.", fields "Legal name", "DBA (optional)", "Address line 1", "City", "State", "ZIP code", "Phone", "Practice NPI (Type 2, optional)", "Tax ID (last 4 digits)" with "Only the last 4 digits. Never enter the whole number."
 - [WRITES DATA] "Save practice details" with the values unchanged -> "Practice details saved." Do not change the values; they are the practice's prescription identity.
 - [SAFE] Sign-in Security: "Two-step sign-in is on." or "Two-step sign-in is off." Do not enroll.
+- [SAFE] **(new, 10-26)** Section "Account" has the form "Change password": "Current password", "New password", "Confirm new password", "Change password".
+- [WRITES DATA] **(new, 10-26)** Change password on a **demo account only**, and only if you can set the matching POC_*_PASSWORD env var afterwards (the reset button and the seed read it). It signs out that account's other sessions. Otherwise view the form and stop.
 - [SAFE] **(changed)** Notifications card: "The texts CompoundIQ sends your patients (payment links, reminders, plan and intake links) and what your team sees in the app. CompoundIQ does not send email." -> "See what is sent".
 - [SAFE] **(new)** /settings/notifications (`settings/notifications/page.tsx`, `lib/notifications/catalog.ts`):
   - "Notifications" and "Back to Settings".
@@ -244,6 +256,12 @@ Known gaps in the demo data:
 - [SAFE] /settings/integrations -> "EHR sync", "Connection", "Sync log" ("No events yet."). "Rotate secret" / "Disconnect" -> confirmation -> "Cancel".
 - [NEVER] "Rotate now" / "Disconnect now" on a live connection. [WRITES DATA] "Generate secret": skip.
 - [SAFE] /settings/access-log -> "Access log", "... Read-only; entries cannot be edited or removed.", filters "Patient", "From", "To", "Filter". "Who" shows a person's name or "Unknown user"; must not: an email shown as the name. (Opening the page logs its own view; that is expected.)
+  - **(new, 10-26)** After an ops admin opens an order with a reason (5.3), that reason appears here for the clinic.
+
+### 2.12 (new, 10-26) /help (`app/(clinic-app)/help/`, `lib/help/topics.ts`)
+- [SAFE] Sidebar "Help" -> "Help", "Short guides to the everyday tasks in CompoundIQ. Button names are written in quotes, exactly as you see them."
+- [SAFE] The topics: "Add a patient", "Write and sign a prescription", "Favorites and Frequently used", "Send a treatment plan for the patient to choose", "Payment links", "Order status", "Team", "Settings", "Who to contact". Open two of them; each has a link back to /help.
+- [SAFE] "Who to contact": no support address is configured yet (decision 12). Record what it shows.
 
 ---
 
@@ -297,6 +315,16 @@ Known gaps in the demo data:
 - [SAFE] Bad URL value (`?tier=NOPE`) -> silently ignored.
 
 ### 5.3 Pipeline drawer and row actions on DEMO-1011
+- [SAFE] **(new, 10-26)** With audit-review-breakglass: clicking an order first asks "Why are you opening this order?" and "Your reason is logged with this access. The clinic sees it in their access log." The reasons:
+  - "A clinic asked for help with this order"
+  - "The order is stuck, failed or needs rerouting"
+  - "A payment, refund or dispute"
+  - "A pharmacy question or problem"
+  - "A compliance or audit review"
+  - "Emergency access (break-glass): urgent patient safety"
+- [SAFE] **(new, 10-26)** Select "Emergency access (break-glass): urgent patient safety" -> "Emergency access is reviewed within 24 hours. Use it only for urgent patient safety, and tell the security officer once it is done." Then select another reason, or close the drawer.
+- [NEVER] **(new, 10-26)** "Open order" with the emergency reason. It alerts the security team and starts a 24-hour review.
+- [SAFE] **(new, 10-26)** For the steps below, choose "The order is stuck, failed or needs rerouting", then "Open order". This writes access-log rows only, which is expected.
 - [SAFE] Click DEMO-1011 -> drawer "{clinic} · Express Digital Rx", tabs "Detail", "History", "Submissions", "SLA".
   - Detail: Status "SUBMISSION_FAILED", "Reroute Count" "0 / 2", Tier "TIER_1_API".
   - History: DRAFT → AWAITING_PAYMENT → PAID_PROCESSING → SUBMISSION_PENDING → SUBMISSION_FAILED, "by CompoundIQ (automatic)".
@@ -332,6 +360,13 @@ Known gaps in the demo data:
 - [SAFE] /ops/payables -> "Pharmacy payables", "...nothing here moves money."; per pharmacy "Owed", "Scheduled", "Paid"; lines for DEMO-1013 (Hybrid Labs), DEMO-1014 (Portal Plus), DEMO-1015 (Quick Rx) as "Owed".
 - [SAFE] Set "From" / "To" -> "Download remittance CSV". With no range -> "Choose a date range to download the remittance CSV."
 - [WRITES DATA, skip] "Mark paid" / "Mark scheduled" (no undo).
+
+### 5.6a (new, 10-26) Access review and Security
+- [SAFE] Tab "Access review" -> /ops/access-review: "Access review", "Who viewed, changed or exported patient data, across every clinic. Flags mark rows to look at more closely; a flag is not a finding. Opening this page and exporting it are both logged."
+  - Filters "All clinics", "Any role", "Any action", and "Flagged rows only".
+  - Columns "Time (UTC)", "Clinic time", "Actor", "Clinic", "Patient", "Action", "Resource", "Flags".
+- [WRITES DATA] "Export CSV" downloads every row (ids and codes, no names) and writes an export row in the log. Do it only if needed, then delete the file.
+- [SAFE] Tab "Security" -> /ops/security (with auth-monitoring): "Security", "Failed sign-ins recorded in the last 24 hours: {n}", and either the alerts table or "No failed sign-in alerts in the last 7 days." If you did the wrong-password check in section 1, expect it in the 24-hour count.
 
 ### 5.7 Demo tools
 - [SAFE] /ops/demo-tools -> "Demo Tools", "Self-service utilities for keeping the POC demo environment healthy." (404 if POC_MODE is off). Redact screenshots.

@@ -2,7 +2,7 @@
 
 Source content for a short Word summary for the cofounder (Lauren Perkins). Written for a non-technical reader.
 
-- **Coverage:** everything merged since the October 5 run-through (main at 2696ff2, 78 changes, 2026-10-05 to 10-25), checked in the code. It also covers the work still in the merge queue, marked **(finishing)**.
+- **Coverage:** everything merged since the October 5 run-through (main at 2696ff2, 78 changes, 2026-10-05 to 10-25), checked in the code. It also covers the work still in the merge queue, marked **(finishing)**, including the security and privacy work finished on October 25 and 26.
 - **Queue status:** the October 25 merge dry run found every queued item merges, with small fixes.
 - **Accuracy:** "is" means it works in the product today. "(finishing)" means it is built and reviewed and waiting to be merged.
 
@@ -153,11 +153,101 @@ What the pharmacy receives:
 - **Abuse limits:** every form and API checks its input, and sign-up and link pages are rate limited (finishing).
 - **Friendlier errors:** clear "Something went wrong" and "Page not found" pages replace raw errors (finishing).
 
-**What is still outstanding**
+## Security and privacy hardening (finishing)
+A security review against the HIPAA technical rules found gaps. Most are now fixed and waiting to be merged.
+
+**Passwords and sign-in**
+- **Forgot password and change password.**
+  - "Forgot password?" on the sign-in page emails a one-time link to set a new password. The answer is the same whether or not the email has an account, so it reveals nothing.
+  - Signed-in staff change their password in Settings, Account. They must enter their current one, and every other device is then signed out.
+  - A reset link only works for 15 minutes after it is opened.
+- **No admin-chosen passwords.** Adding a provider no longer sets a password for them. The provider gets an invite and chooses their own. The same password rules now apply everywhere a password is set.
+- **Failed sign-in alerts.**
+  - Every failed sign-in and wrong two-step code is recorded.
+  - CompoundIQ is alerted on any of these:
+    - 5 failures on one account in 15 minutes;
+    - 20 failures from one network;
+    - any failure on a CompoundIQ or pharmacy admin account.
+  - After repeated failures, sign-in pauses for a few minutes. Nobody is locked out for good.
+  - CompoundIQ staff see the alerts on a Security page.
+- **Demo passwords are out of the code and the documents.** Each demo account's password is now set privately on the server. The four demo accounts will get new passwords after the cofounder demo, because the old ones were visible in the project's history.
+
+**Patient data**
+- **Every view of patient data is logged.** That covers lists and single records, every send to a pharmacy, fax, the AI services, and patient link pages.
+  - Who looked, their role, what and when are recorded, without copying the patient data itself.
+  - If a send to a pharmacy cannot be recorded, it does not go out.
+- **Access review.** CompoundIQ staff have an access review page that shows who viewed, changed or exported patient data across every clinic. Unusual activity is flagged, and the review can be exported.
+- **Emergency access.**
+  - When CompoundIQ staff open a clinic's order, they must say why. The reason is logged, and the clinic sees it in its access log.
+  - "Emergency access" is reserved for urgent patient safety. It alerts the team at once and is reviewed within 24 hours, under a written procedure.
+
+**Prescriptions**
+- **Orders are refused unless signed and unchanged since signing.** Before any order goes to a pharmacy, it is checked: it must be signed, and its content must still match what the provider signed. Anything else is held back and CompoundIQ is alerted.
+- **Clinical fields are locked after signing.** Once a prescription is signed, its dose, directions, quantity, days supply, refills, substitution, instructions, patient, provider and medication cannot be changed.
+- **Pharmacy addresses must be secure.** Orders are only sent to pharmacy systems and portals at secure (https) addresses.
+
+**Also**
+- **Saved clinical difference statements.**
+  - A statement typed for a GLP-1 can be saved for the practice, or for one patient, and picked with one click next time.
+  - Nothing is pre-selected: the provider still chooses each time.
+- **In-app Help.** A "Help" link in the sidebar opens short guides to the everyday tasks, with button names exactly as they appear:
+  - adding a patient;
+  - writing and signing;
+  - favorites;
+  - treatment plans;
+  - payment links;
+  - order status;
+  - team;
+  - settings;
+  - who to contact.
+- **Keyboard and screen-reader fixes.**
+  - Prescriptions, favorites and the order details can be done with the keyboard alone.
+  - Pop-up windows keep the keyboard inside them, close with Escape and return you to where you were.
+  - Messages are read out by screen readers.
+
+## What is still outstanding
+**Before any real patient data**
 - **No BAAs are signed yet** with vendors or clinics. The BAA template is a draft pending legal review. So the live site holds **demo data only**.
-- **Texting is not switched on in production,** so no texts are sent today. Staff copy links or show QR codes instead.
-- **Two-step sign-in** is not yet required for everyone (one switch).
-- **Data retention** rules count what they would remove, but delete nothing yet.
+  - Vendors that receive patient data and need a BAA: the database host, the web host, texting, fax, the two AI services, the EHR link and error reporting.
+- **Real patients on a separate system.** The recommendation is a second, separate copy of CompoundIQ for real patients, with the demo left where it is. Then a demo order can never reach a real pharmacy or a demo text a real phone. Until then, every newly approved clinic gets a demo payout account.
+- **Two-step sign-in for everyone.** It is one switch, recommended on for the real system from day one and left off for the demo.
+- **Rotate the four demo passwords** after the demo.
+- **Hosted security settings** that the code cannot set:
+  - an idle and maximum session length on the server;
+  - password strength and leaked-password checks;
+  - backups with point-in-time restore, and a tested restore.
+
+**Security work still open**
+- **Two-step sign-in is checked by the app, but not yet by the database itself.**
+- **Prescription signature check.** It needs two more fixes before it can be relied on:
+  - the check can still be imitated by someone who can edit an order directly;
+  - some details the pharmacy receives are not yet covered: the patient's name and date of birth, the prescriber's details, and which pharmacy the order goes to.
+
+  Closing direct database edits for clinic staff is built and waiting.
+- **The patient-data log** has a few gaps being fixed now:
+  - texts to patients are not yet logged as disclosures;
+  - some changes are saved before their log entry, and should not be;
+  - the dashboard's 30-second refresh writes too many log rows.
+- **The two AI services.**
+  - The face sheet reader is on by default. The plan is to make it opt-in.
+  - The portal confirmation screenshots go to an AI vendor that has no BAA.
+- **Error reporting** is very likely not running yet, and needs switching on.
+- **Failed sign-in alerts** cover the app's own sign-in page. Attempts made straight against the sign-in service need a setting at the vendor.
+- **The provider invite link** is still handed to the admin to pass on. Options for Sam:
+  - email it straight to the provider (needs email set up);
+  - force a password change at first sign-in;
+  - keep trusting the admin.
+
+**Product decisions (recommended)**
+- **Texting:** start the texting BAA and US carrier registration now, because they take weeks. Switch texting on after them. No patient email at launch; texts only.
+- **Notification preferences:** keep the read-only "See what is sent" page now. Add switches per clinic once texting is live.
+- **Data retention:** keep counting only. Switch deletion on rule by rule once real data is separate.
+- **Pharmacy home page:** not needed for launch, because pharmacies receive orders by fax, system or portal. Add a small page later.
+- **Hybrid pharmacies:** leave them off, and stop offering "Hybrid" in pharmacy search.
+- **Clinical difference:** do not pre-select a reason. Saved statements cover the repeat typing.
+- **Order status:** do not require tracking numbers from pharmacies. Fix how portal pharmacies' status is read.
+- **Deleting saved statements and favorites:** only the person who created one, or a clinic admin.
+- **Help:** add a support email address to "Who to contact", one per environment.
 
 ## What is not built yet
 - **Direct EHR connection to Cerbo** (or whichever EHR the pilots use). Today the EHR link is Keragon, inbound patients only.
@@ -165,7 +255,7 @@ What the pharmacy receives:
 - **The Hybrid pharmacy tier.**
 - **A home page for pharmacies** after they are live. Today a pharmacy only sees setup and agreements.
 - **Notification preferences.** A read-only "See what is sent" page is finishing: it lists every text patients receive and says whether texting is on. Clinics cannot yet turn individual notifications on or off, and nothing is emailed.
-- **Clinical difference:** for GLP-1s the reason is required but not pre-filled, and patient-specific statements must be typed each time.
+- **Clinical difference:** for GLP-1s the reason is required and is not pre-filled, by decision. Saving statements for reuse is finishing (see above).
 - **Clinic payouts:** real payouts in clinic onboarding are not live (demo payouts for now).
 - **Patient's mobile number:** staff still type it when adding a patient, unless a face sheet is read.
 - **Demo versus real records:** the system cannot yet mark a clinic, pharmacy or patient as demo or real.
