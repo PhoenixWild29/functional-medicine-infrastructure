@@ -15,7 +15,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createProposal } from '@/lib/proposals/propose'
 import { failureResponse, proposalCaller } from '@/lib/proposals/request'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted, type PhiAccessEntry } from '@/lib/audit/phi-access'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 import { parseInput, UUID_RE } from '@/lib/api/input'
 import { z } from 'zod'
@@ -55,14 +55,28 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     if (!ids.ok) return ids.response
   }
 
-  const res = await createProposal(c.db, { clinicId: c.clinicId, caller: c.caller, input: body })
-  if (!res.ok) return failureResponse(res)
-
-  const patientId = (body as { patientId?: string }).patientId ?? null
-  await logPhiAccess({
-    user: c.user, action: 'create', resource: 'order', route: '/api/proposals',
-    patientId, clinicId: c.clinicId, headers: request.headers,
+  // L1 (B15): the create row is written BEFORE the plan is stored
+  // (createProposal calls beforeWrite once its checks have passed). If it
+  // cannot be written, nothing is stored (503). If storing then fails, the
+  // row gets a not_completed row; a plan stored whose link then failed was
+  // created, so it does not.
+  let logged: PhiAccessEntry | null = null
+  const res = await createProposal(c.db, {
+    clinicId: c.clinicId, caller: c.caller, input: body,
+    beforeWrite: async target => {
+      const entry: PhiAccessEntry = {
+        user: c.user, action: 'create', resource: 'order', route: '/api/proposals',
+        patientId: target.patientId, clinicId: c.clinicId, headers: request.headers,
+      }
+      if (!(await logPhiAccess(entry))) return false
+      logged = entry
+      return true
+    },
   })
+  if (!res.ok) {
+    if (logged && !res.planStored) await logPhiWriteNotCompleted(logged)
+    return failureResponse(res)
+  }
   return NextResponse.json(
     { proposalId: res.proposalId, status: res.status, link: res.link },
     { status: 201, headers: { 'Cache-Control': 'no-store' } },

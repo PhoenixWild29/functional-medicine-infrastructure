@@ -16,7 +16,8 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
-import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted, type PhiAccessEntry, type PhiUser } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
 import { createIntakeLink } from '@/lib/intake/links'
 import { sendIntakeLinkSms } from '@/lib/intake/sms'
 import { openPossibleDuplicate } from '@/lib/patients/display'
@@ -70,8 +71,20 @@ async function postHandler(request: NextRequest, context: Context): Promise<Next
     return NextResponse.json({ code: 'INTAKE_COMPLETE', error: 'This patient has already finished their details.' }, { status: 409 })
   }
 
+  // L1 (B15): the new link is a write to the patient, so its row is written
+  // first; nothing is made or texted when it cannot be written, and a link
+  // that then cannot be made gets a not_completed row.
+  const entry: PhiAccessEntry = {
+    user: c.user, action: 'update', resource: 'patient', route: '/api/patients/[patientId]/intake-link',
+    patientId: c.patientId, clinicId: c.clinicId, headers: request.headers,
+  }
+  if (!(await logPhiAccess(entry))) return phiWriteRefused()
+
   const link = await createIntakeLink(supabase, { clinicId: c.clinicId, patientId: c.patientId, createdBy: c.user.id })
-  if (!link.ok) return NextResponse.json({ error: 'Could not make a new link. Try again.' }, { status: 503 })
+  if (!link.ok) {
+    await logPhiWriteNotCompleted(entry)
+    return NextResponse.json({ error: 'Could not make a new link. Try again.' }, { status: 503 })
+  }
 
   let smsStatus: string = 'not_sent'
   if (p.phone_e164) {
@@ -80,7 +93,6 @@ async function postHandler(request: NextRequest, context: Context): Promise<Next
     })
   }
   console.info(`[intake-link] new link | patient=${c.patientId} | sms=${smsStatus}`)
-  await logPhiAccess({ user: c.user, action: 'update', resource: 'patient', route: '/api/patients/[patientId]/intake-link', patientId: c.patientId, clinicId: c.clinicId, headers: request.headers })
 
   return NextResponse.json({ intake: { url: link.url, expiresAt: link.expiresAt, smsStatus } }, { status: 200 })
 }

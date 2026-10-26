@@ -135,10 +135,10 @@ describe('GET /api/dashboard/orders', () => {
 // C-2026-10-26-04 (review L5): the 30-second poll is bounded and its log
 // rows are deduplicated per actor and patient over 15 minutes.
 describe('review L5: bounded poll, deduplicated log', () => {
-  it('reads at most 1000 orders', async () => {
+  it('reads one past the 1000-order bound, to know whether the list was cut', async () => {
     user = ADMIN
     await GET(req())
-    expect(db.to('orders', 'select')[0]?.limit).toBe(1000)
+    expect(db.to('orders', 'select')[0]?.limit).toBe(1001)
   })
 
   it('logs the patients with a 15-minute dedupe', async () => {
@@ -146,5 +146,49 @@ describe('review L5: bounded poll, deduplicated log', () => {
     jest.mocked(logPhiAccessMany).mockClear()
     await GET(req())
     expect(jest.mocked(logPhiAccessMany).mock.calls[0]?.[2]).toEqual({ dedupeMinutes: 15 })
+  })
+})
+
+// B-2026-10-26-08: the poll and the first render show the same window (the
+// newest 1000 by last update, or those before ?before=), and the poll says
+// whether it was cut.
+describe('the order window', () => {
+  const many = (n: number) => Array.from({ length: n }, (_, i) => ({
+    ...ORDER_ROWS[2]!, order_id: `o${i}`, updated_at: `2026-10-20T08:00:00.${String(999999 - i).padStart(6, '0')}+00:00`,
+    patients: { ...ORDER_ROWS[2]!.patients, patient_id: `a3000000-0000-0000-0000-${String(i).padStart(12, '0')}` },
+  }))
+
+  it('not cut: every row, window.truncated false, no cursor', async () => {
+    user = ADMIN
+    const body = await (await GET(req())).json() as { rows: unknown[]; window: Record<string, unknown> }
+    expect(body.rows).toHaveLength(3)
+    expect(body.window).toEqual({ limit: 1000, truncated: false, before: null, olderBefore: null })
+  })
+
+  it('cut: 1000 rows, truncated, the oldest shown as the next cursor; only the shown patients are logged', async () => {
+    user = ADMIN
+    const all = many(1001)
+    script = c => (c.table === 'orders' ? { data: all } : c.table === 'patients' ? { data: [] } : undefined)
+    const body = await (await GET(req())).json() as { rows: Array<{ order_id: string }>; window: Record<string, unknown> }
+    expect(body.rows).toHaveLength(1000)
+    expect(body.rows.at(-1)!.order_id).toBe('o999')
+    expect(body.window).toEqual({ limit: 1000, truncated: true, before: null, olderBefore: all[999]!.updated_at })
+    const ids = jest.mocked(logPhiAccessMany).mock.calls[0]![1] as string[]
+    expect(ids).toHaveLength(1000)
+    expect(ids).not.toContain(all[1000]!.patients.patient_id)
+  })
+
+  it('?before= reads only orders last updated before it, and echoes it', async () => {
+    user = ADMIN
+    const before = '2026-10-20T08:00:00.123456+00:00'
+    const body = await (await GET(req(`?before=${encodeURIComponent(before)}`))).json() as { window: Record<string, unknown> }
+    expect(db.to('orders', 'select')[0]!.filters).toEqual(expect.objectContaining({ 'updated_at:lt': before }))
+    expect(body.window).toEqual(expect.objectContaining({ before }))
+  })
+
+  it('a malformed ?before= is ignored (no filter)', async () => {
+    user = ADMIN
+    await GET(req('?before=yesterday'))
+    expect(db.to('orders', 'select')[0]!.filters).not.toHaveProperty('updated_at:lt')
   })
 })

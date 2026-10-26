@@ -37,6 +37,7 @@ import { serverEnv } from '@/lib/env'
 import { hashProposalToken, newProposalToken, proposalLinkExpiresAt } from './token'
 import { canTransitionProposal } from './status'
 import { sendProposalLinkSms, type TextingOutcome } from './sms'
+import { PHI_WRITE_REFUSED_MESSAGE } from '@/lib/audit/phi-write'
 import {
   LINK_DELIVERY_EVENT, PROPOSAL_OPTION_LABEL_MAX,
   type LinkDelivery, type ProposalEvent, type ProposalEventActor, type ProposalStatus,
@@ -64,6 +65,8 @@ export interface ProposalFailure {
   error:     string
   code?:     string
   problems?: BatchProblem[]
+  /** createProposal only: the plan was stored, and a later step (its link) failed. */
+  planStored?: boolean
 }
 
 export interface SentLink { url: string; expiresAt: string; texting: TextingOutcome }
@@ -285,7 +288,15 @@ async function unwind(db: Db, proposalId: string, optionIds: string[], now: Date
 
 export async function createProposal(
   db: Db,
-  input: { clinicId: string; caller: ProposalCaller; input: unknown; now?: Date },
+  input: {
+    clinicId: string; caller: ProposalCaller; input: unknown; now?: Date
+    /**
+     * L1 (B15): called once every check has passed and before anything is
+     * written, with the patient and the lines (the caller writes its create
+     * row here). false refuses the create: 503, nothing written.
+     */
+    beforeWrite?: (target: { patientId: string; orderIds: string[] }) => Promise<boolean>
+  },
 ): Promise<CreateProposalResult> {
   const now = input.now ?? new Date()
   const parsed = parseCreateProposal(input.input)
@@ -308,6 +319,11 @@ export async function createProposal(
 
   const check = await canSign(db, { clinicId, orderIds, as: { providerId: plan.providerId }, atSigning: true })
   if (check.problems.length > 0 || !check.signer) return refusal(check.problems)
+
+  // ── L1: the create row, before the first write ──
+  if (input.beforeWrite && !(await input.beforeWrite({ patientId: plan.patientId, orderIds }))) {
+    return fail(503, PHI_WRITE_REFUSED_MESSAGE)
+  }
 
   // ── Store: the plan, its options, the tagged lines ──
   const proposalId = randomUUID()
@@ -353,7 +369,9 @@ export async function createProposal(
     return { ok: true, proposalId, status: 'draft', link: null }
   }
   const sent = await issueLink(db, { proposal_id: proposalId, clinic_id: clinicId, patient_id: plan.patientId, provider_id: plan.providerId, status: 'draft' }, who.actor, caller, check.signer.last_name, now)
-  if (!sent.ok) return sent
+  // The plan stays stored (prepared) when its link fails: say so, so the
+  // caller's create row is not marked not completed.
+  if (!sent.ok) return { ...sent, planStored: true }
   return { ok: true, proposalId, status: 'sent', link: sent.link }
 }
 
