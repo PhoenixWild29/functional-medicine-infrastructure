@@ -19,6 +19,7 @@ import { getUserRole }         from '@/lib/auth/claims'
 import { downloadFaxPdf }      from '@/lib/documo/client'
 import { logPhiAccess }        from '@/lib/audit/phi-access'
 import { faxViewLimiter }      from '@/lib/fax/view-rate-limit'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 
 const ROUTE = '/api/ops/fax/[faxId]/pdf'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -33,8 +34,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ faxId: string }> },
 ): Promise<NextResponse> {
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') return json({ error: 'Forbidden' }, 403)
+  const crossSite = refuseCrossSite(request, 'Forbidden', { 'Cache-Control': 'no-store' })
+  if (crossSite) return crossSite
 
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
