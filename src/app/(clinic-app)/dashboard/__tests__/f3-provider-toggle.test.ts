@@ -158,6 +158,13 @@ beforeEach(() => {
   )
 })
 
+// The tests import the dashboard page (await import). Its first import
+// compiles the page and its import tree, 3.9 s alone under --coverage
+// (f3-rls-filter.test.ts), against jest's 5 s per-test default
+// (B-2026-10-26-10). Import it once here; the tests then get it from the
+// module registry.
+beforeAll(async () => { await import('../page') }, 120_000)
+
 describe('F-3 follow-up SSR: ?view=clinic forwards the opt-in header', () => {
   it('provider session + ?view=clinic mints a second client with x-provider-view-mode header', async () => {
     getUserMock.mockResolvedValue({

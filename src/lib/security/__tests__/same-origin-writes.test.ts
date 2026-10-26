@@ -96,6 +96,13 @@ const ROUTES: Array<[string, () => Promise<Handler>, Record<string, string>, str
   ['POST /api/integrations/keragon/connection/secret', async () => (await import('@/app/api/integrations/keragon/connection/secret/route')).POST as unknown as Handler, {}, 'Forbidden'],
 ]
 
+// Each case loads its route (await import) inside the test, and the first
+// load compiles the route and its import tree: up to 3.2 s for one case in a
+// full run, against jest's 5 s per-test default (B-2026-10-26-10). Load
+// every route once here, with room for cold compiles; the cases then get them
+// from the module registry (nothing here resets modules).
+beforeAll(async () => { await Promise.all(ROUTES.map(([, load]) => load())) }, 180_000)
+
 describe.each(ROUTES)('%s', (_name, load, params, wording) => {
   it.each(['same-site', 'cross-site'])('Sec-Fetch-Site %s: 403 with its wording, before any session read', async site => {
     sessionRead.mockClear()

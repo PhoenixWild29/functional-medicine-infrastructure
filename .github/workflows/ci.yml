@@ -79,6 +79,13 @@ jobs:
   test:
     name: Unit Tests (Jest)
     runs-on: ubuntu-latest
+    # A backstop for a hung test (B-2026-10-26-10). Without it a hang runs to
+    # GitHub's 6-hour default. The full suite with coverage took 35 min
+    # (2,106 s, 3 workers) on a heavily loaded 16-core dev machine, so an hour
+    # leaves room; a normal CI run is well under it. No test may block its
+    # worker synchronously (no execFileSync / spawnSync): jest's per-test
+    # timeout cannot fire while the event loop is blocked.
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4

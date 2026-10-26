@@ -67,6 +67,15 @@ beforeEach(() => {
 })
 afterEach(() => jest.restoreAllMocks())
 
+// Each test imports its page (await import), and the first import of a page
+// compiles it and its whole import tree: 2 s alone, up to 12.8 s in a loaded
+// full run, against jest's 5 s per-test default (B-2026-10-26-10). Import
+// the four pages once here, with room for a cold compile; the tests then get
+// them from the module registry (nothing here resets modules).
+beforeAll(async () => {
+  await Promise.all([import('../page'), import('../search/page'), import('../sign/page'), import('../margin/page')])
+}, 120_000)
+
 describe('/new-prescription (patient picker)', () => {
   it('logs view / patient_list once per patient listed', async () => {
     user = MA_USER
