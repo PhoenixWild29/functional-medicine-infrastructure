@@ -44,6 +44,8 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition } from '@/lib/orders/cas-transition'
 import { submitTier4Fax } from '@/lib/adapters/tier4-fax'
 import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
+import { isTransmissionRefusedError } from '@/lib/adapters/transmission-guard'
+import { refuseQueuedFax } from '@/lib/adapters/queued-fax-refusal'
 import { upsertFaxDeliverySla } from '@/lib/sla/creator'
 import { routeSlaAlert } from '@/lib/slack/alert-router'
 import { buildOpsAlert, sendSlackAlert } from '@/lib/slack/client'
@@ -148,8 +150,9 @@ async function escalateSla(
 // BLK-02 fix: explicitly upsert FAX_DELIVERY SLA after successful fax dispatch.
 
 async function attemptCascadeToFax(
-  orderId:  string,
-  slaType:  string
+  orderId:      string,
+  slaType:      string,
+  pharmacySlug: string
 ): Promise<boolean> {
   // Kill switch: with pharmacy submissions off the fax cannot be sent, so do
   // not move the order to FAX_QUEUED (it would be stranded there). The
@@ -217,6 +220,13 @@ async function attemptCascadeToFax(
   try {
     await submitTier4Fax(orderId)
   } catch (faxErr) {
+    // HIPAA B6 / B7: refused (unsigned, changed since signing), not
+    // stranded: FAX_FAILED with the code, and ops alerted. The breach still
+    // escalates.
+    if (isTransmissionRefusedError(faxErr)) {
+      await refuseQueuedFax({ orderId, pharmacySlug, code: faxErr.code, actor: 'sla_check_cascade' })
+      return false
+    }
     const msg = faxErr instanceof Error ? faxErr.message : String(faxErr)
     console.error(
       `[sla-check] CRITICAL: cascade fax failed after CAS — order stranded in FAX_QUEUED | order=${orderId}:`,
@@ -540,7 +550,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
       // ── REQ-SLM-011: Cascade-then-escalate for ADAPTER_SUBMISSION_ACK ──
       if (slaType === 'ADAPTER_SUBMISSION_ACK' && escalationTier === 0 && !cascadeAttempted) {
-        const cascaded = await attemptCascadeToFax(orderId, slaType)
+        const cascaded = await attemptCascadeToFax(orderId, slaType, pharmacySlug)
 
         if (cascaded) {
           results.push({ orderId, slaType, outcome: 'cascaded' })

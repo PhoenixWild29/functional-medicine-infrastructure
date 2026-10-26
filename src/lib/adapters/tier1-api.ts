@@ -29,6 +29,7 @@
 
 import { assertPharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { assertOrderNotControlled } from '@/lib/orders/controlled-substance'
+import { assertOrderTransmittable, assertSecurePharmacyUrl } from '@/lib/adapters/transmission-guard'
 import { createServiceClient } from '@/lib/supabase/service'
 import { shippingAddressFor, type OrderShippingAddressColumns } from '@/lib/adapters/shipping-address'
 import { getVaultSecret, buildAuthHeaders } from '@/lib/adapters/vault'
@@ -144,6 +145,8 @@ export async function submitTier1Api(
   assertPharmacySubmissionsEnabled('Tier 1 API submission')
   // Compliance C6: never a controlled substance (defence in depth beside routeOrder).
   await assertOrderNotControlled(createServiceClient(), orderId)
+  // HIPAA B6 / B7: signed, in a status that may be sent, unchanged since signing.
+  await assertOrderTransmittable(createServiceClient(), orderId)
 
   const supabase = createServiceClient()
 
@@ -173,6 +176,9 @@ export async function submitTier1Api(
       `[tier1-api] no active pharmacy_api_configs for pharmacy ${pharmacyId}: ${configError?.message ?? 'not found'}`
     )
   }
+
+  // HIPAA B17: https only, checked before the credential is read.
+  assertSecurePharmacyUrl(config.base_url, { orderId, pharmacyId, what: 'API base URL' })
 
   // Verify pharmacy is Tier 1 capable (config record existence implies this,
   // but guard against stale data)

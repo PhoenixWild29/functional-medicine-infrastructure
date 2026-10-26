@@ -97,10 +97,14 @@ jest.mock('@/lib/supabase/service', () => ({
         return { select: () => chain(() => ({ data: pharmacyRow, error: null })) }
       }
       if (table === 'orders') {
-        return { select: () => chain(() => ({ data: { order_id: 'o-1', status: orderStatus, pharmacy_id: 'pharm-1', shipping_state_snapshot: 'TX', formulation_id: null, catalog_item_id: null, ...orderLine }, error: null })) }
+        return { select: () => chain(() => ({ data: { order_id: 'o-1', status: orderStatus, pharmacy_id: 'pharm-1', shipping_state_snapshot: 'TX', formulation_id: null, catalog_item_id: null, locked_at: '2026-10-06T15:00:00Z', provider_signature_hash_snapshot: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', ...orderLine }, error: null })) }
       }
       if (table === 'formulations') {
         return { select: () => chain(() => ({ data: formulationRow, error: null })) }
+      }
+      // HIPAA B7: the signature check reads the patient's allergy fields.
+      if (table === 'patients') {
+        return { select: () => chain(() => ({ data: { allergies: [], nkda: true }, error: null })) }
       }
       if (table === 'catalog') {
         return { select: () => chain(() => ({ data: catalogRow, error: null })) }

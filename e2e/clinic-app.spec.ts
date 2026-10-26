@@ -3009,9 +3009,13 @@ test.describe('Clinic App — WO-99 batch sign', () => {
     // One payment group: one link for the patient.
     expect(t.payment_group_id).not.toBeNull()
     expect(r.payment_group_id).toBe(t.payment_group_id)
-    // One signature record per order, same signature and time.
-    expect(t.provider_signature_hash_snapshot).toMatch(/^[0-9a-f]{64}$/)
-    expect(r.provider_signature_hash_snapshot).toBe(t.provider_signature_hash_snapshot)
+    // One signature record per order, same signature and time; each bound
+    // to its own order's content (HIPAA B7: v2:<signature digest>:<binding>).
+    const BOUND = /^v2:([0-9a-f]{64}):([0-9a-f]{64})$/
+    expect(t.provider_signature_hash_snapshot).toMatch(BOUND)
+    expect(r.provider_signature_hash_snapshot).toMatch(BOUND)
+    expect(r.provider_signature_hash_snapshot!.split(':')[1]).toBe(t.provider_signature_hash_snapshot!.split(':')[1])
+    expect(r.provider_signature_hash_snapshot).not.toBe(t.provider_signature_hash_snapshot)
     expect(r.locked_at).toBe(t.locked_at)
     // Shipping once per pharmacy: on one order, zero on the other.
     expect([Number(t.shipping_fee), Number(r.shipping_fee)].sort()).toEqual([0, TEST_SHIPPING.tier2.standard])

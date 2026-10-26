@@ -90,6 +90,7 @@ export { MAX_BATCH_ORDERS } from './batch-sign-view'
 import { MAX_BATCH_ORDERS } from './batch-sign-view'
 import { prescriberProblems, todayUtc, type PrescriberProblemCode } from '@/lib/providers/credentials'
 import type { NpiStatus } from '@/lib/providers/npi'
+import { SIGNATURE_BINDING_VERSION, boundSignatureValue, canonicalSignedContent, readSignedContent } from './signature-binding'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -874,12 +875,14 @@ export async function signBatch(
     groupPis.set(created.groupId, created.stripePaymentIntentId)
   }
 
-  // ── 4. Sign every order — one statement, one timestamp, one hash ──
+  // ── 4. Sign every order — one statement, one timestamp, one signature ──
   // One signature record per order (orders.provider_signature_hash_snapshot
-  // + locked_at), all carrying the same signature and time. The update
-  // touches nothing else: a titration keeps its steps, a refill keeps
-  // refill_of_order_id.
+  // + locked_at), all carrying the same signature and time. The signing
+  // update touches nothing else: a titration keeps its steps, a refill
+  // keeps refill_of_order_id.
   const signedAt = new Date().toISOString()
+  // The signature digest. HIPAA B7: each order's column carries it bound to
+  // that order's content (lib/orders/signature-binding), written below.
   const signatureHash = await sha256Hex(`${signature.dataUrl}:${signedAt}`)
 
   // Compliance C8: what was known about compounding when it was signed:
@@ -927,18 +930,50 @@ export async function signBatch(
     }
   }
 
+  // HIPAA B7: bind the signature to what is signed. The content is read
+  // back after the compounding and address writes above, the same way the
+  // adapters read it at send, and each order's bound value is written while
+  // it is still DRAFT (the snapshot trigger freezes it from locked_at on).
+  // If any cannot be written, nothing is signed; a draft left holding a
+  // value is still unsigned (no locked_at) and is overwritten when signed.
+  const content = await readSignedContent(supabase, orderIds)
+  if (!content.ok) {
+    console.error(`[batch-sign] signed content could not be read: ${content.error}`)
+    await unwindGroups()
+    return { ok: false, status: 503, error: 'The prescriptions could not be read back to sign. Nothing was signed; try again.' }
+  }
+  for (const orderId of orderIds) {
+    const row = content.orders.get(orderId)
+    const bound = row
+      ? boundSignatureValue(signatureHash, signedAt, canonicalSignedContent(row, content.patients.get(row.patient_id) ?? null))
+      : null
+    const { data: boundRows, error: bindError } = bound
+      ? await supabase
+          .from('orders')
+          .update({ provider_signature_hash_snapshot: bound })
+          .eq('order_id', orderId)
+          .eq('status', 'DRAFT')
+          .select('order_id')
+      : { data: null, error: null }
+    if (bindError || !boundRows || boundRows.length !== 1) {
+      console.error(`[batch-sign] signature binding could not be written | order=${orderId}: ${bindError?.message ?? 'no row'}`)
+      await unwindGroups()
+      return { ok: false, status: 503, error: 'The signature could not be recorded on the prescriptions. Nothing was signed; try again.' }
+    }
+  }
+
   const { data: signedRows, error: signError } = await supabase
     .from('orders')
     .update({
-      status:                           'AWAITING_PAYMENT',
-      locked_at:                        signedAt,
-      provider_signature_hash_snapshot: signatureHash,
-      updated_at:                       signedAt,
+      status:     'AWAITING_PAYMENT',
+      locked_at:  signedAt,
+      updated_at: signedAt,
     })
     .in('order_id', orderIds)
     .eq('status', 'DRAFT')
     .eq('is_active', true)
     .is('deleted_at', null)
+    .not('provider_signature_hash_snapshot', 'is', null)
     .select('order_id')
 
   if (signError || !signedRows || signedRows.length === 0) {
@@ -972,11 +1007,12 @@ export async function signBatch(
     new_status: 'AWAITING_PAYMENT',
     changed_by: input.userId,
     metadata:   {
-      actor:            'provider_batch_sign',
-      signed_at:        signedAt,
-      signature_hash:   signatureHash,
-      batch_order_ids:  orderIds,
-      payment_group_id: groups.get(l.patientId) ?? null,
+      actor:             'provider_batch_sign',
+      signed_at:         signedAt,
+      signature_hash:    signatureHash,
+      signature_binding: SIGNATURE_BINDING_VERSION,
+      batch_order_ids:   orderIds,
+      payment_group_id:  groups.get(l.patientId) ?? null,
     },
   }))
   await insertStatusHistory(supabase, historyRows, 'batch-sign')
