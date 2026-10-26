@@ -1,16 +1,16 @@
-task-id: B-2026-10-26-02
+task-id: B-2026-10-26-03
 status: ready
 ---
-Thanks for B-2026-10-26-01 (review-hipaa-fixes, dd149b5). Strong review. You fix password-flows (D is on other work; you own the branch until you push; do not rewrite its history).
+Thanks for B-2026-10-26-02 (password-flows fixes, 1d0ed5e). C will verify them.
 
-`git checkout password-flows && git pull`.
-1. P1 High: POST /api/auth/password must only set a new password for a RECOVERY session (amr includes recovery, issued within the last 15 minutes; read how Supabase exposes amr in this SDK version and test it), otherwise 403. Add a per-user rate limit. The signed-in change flow stays the separate route that checks the current password.
-2. P3 Medium: forgot-password timing. Respond after a fixed minimum time (e.g. 600 ms) regardless of outcome, or do the Supabase call in after()/waitUntil so the response does not wait for it; pick the one that works on Vercel with this Next version and say why. Test that both paths take the same time within tolerance (mock timers).
-3. P4 Low: use newPasswordProblem (the shared policy) in invite accept, sign-up and pharmacy invite.
-4. P5 Low: check the per-IP limit before the per-address limit, and make the per-address limit not lock an address out for an hour from one attacker IP (e.g. count per address+IP, with a looser per-address cap).
-5. P2 Medium (provider invite link handed to the admin): do NOT change the invite design in this task. Write the options in your report for Sam's decision (email delivery via Supabase invite if email is configured; forced change on first sign-in via app_metadata.must_change_password; leave as is with the admin trusted) with the effort of each.
-Also: in your report, list the hosted Supabase settings that would let a browser updateUser bypass the server policy, and the Supabase dashboard setting names Sam should check (password strength, redirect allow-list), names only.
-Tests: jest for each fix (recovery-only, timing, policy reuse, limiter order).
-Gates: lint (0 warnings), tsc, jest, next build. Push password-flows (normal push, no PR). Report in the commit body.
+Next: independent review of origin/phi-access-log-coverage (C, 896cc3f; D has merged it into audit-review-breakglass, so also glance at that merge). Review the diff against origin/bundle-features, not C's report.
+Hunt for:
+- PHI paths still unlogged: list every server route, server component and server action that reads or writes patients, orders with patient data, proposals, intake, face sheets, imports, faxes, or sends PHI to a third party (pharmacy adapters, fax, OpenAI, Anthropic, Twilio, Keragon). For each: logged or not, with file:line.
+- Fail-closed correctness: disclosures and writes do not proceed when the log write fails; reads still serve but alert; no path where a thrown log error leaks a 500 with details.
+- Log content: no PHI in the log row beyond the allowed ids/hashes; patient actors on token pages identified without storing the token; list views bounded.
+- Performance: list views do not issue one insert per row per poll in a way that floods the table (the dashboard polls every 30 s); suggest batching if so.
+- The health check: production-only 503 when PHI_ACCESS_LOG_HASH_SECRET is missing, value never printed.
+For each finding: file:line, concrete failing scenario, severity, fix. Confirm before reporting.
+Do NOT push to C's or D's branches. Append to docs/qa/review-2026-10-26-hipaa-fixes.md on review-hipaa-fixes, push (normal push, no PR), summary in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.

@@ -1,15 +1,11 @@
-task-id: C-2026-10-26-02
+task-id: C-2026-10-26-03
 status: ready
 ---
-Thanks for C-2026-10-26-01 (review of auth-monitoring and audit-review-breakglass, 9a9a8d7), and for the clear health-check answer.
+Thanks for C-2026-10-26-02 (auth-monitoring fixes, 438d960).
 
-Next: fix your auth-monitoring findings (B is fixing password-flows; you own auth-monitoring until you push; do not rewrite its history).
-`git checkout auth-monitoring && git pull`.
-1. A1 Medium: key the app throttle on email + IP; keep account-wide detection in the alert rules only (no account-wide 429).
-2. A2 Medium: alert when count >= threshold, deduped per rule, key and window, so parallel failures and admin accounts always alert once per window.
-3. A4 Medium, design: direct Supabase Auth sign-ins with the anon key bypass the monitor. Implement the cheapest real coverage that needs no Supabase dashboard change and no migration (e.g. a cron that reads Supabase's auth audit log via the admin API if this SDK exposes it, feeding the same rules). If nothing works without a dashboard change or migration, write the options (Auth hook, audit-log poller, narrowing the B12 claim) with effort, for Sam.
-4. A3/A5: no change; note them.
-Tests: jest for A1 (another IP not throttled), A2 (6 parallel failures alert once; admin alerts after first failure once per window), and A4 if built.
-Gates: lint (0 warnings), tsc, jest, next build. Push auth-monitoring (normal push, no PR). Report in the commit body.
+Next: verify the fixes for B's review of password-flows (origin/password-flows 1d0ed5e and anything newer; findings in origin/review-hipaa-fixes docs/qa/review-2026-10-26-hipaa-fixes.md, P1-P5).
+For each finding: is it fixed, with a test that would have failed before? Specifically re-run B's P1 scenario (any signed-in non-recovery session calling POST /api/auth/password must get 403 and nothing changes), P3 timing (existing vs unknown email within tolerance), P4 policy reuse in invite accept, sign-up and pharmacy invite, P5 limiter order (one attacker IP cannot block another address's reset). Also check the fixes did not open anything new (e.g. recovery detection that a normal session can spoof via a client-set claim).
+Then do the same for origin/order-transmission-integrity once A pushes its T1-T7 fixes (if not pushed when you finish password-flows, report password-flows alone and say so).
+Report only confirmed results. Append to docs/qa/review-2026-10-26-hipaa-fixes.md? No: that is B's branch. Append to docs/qa/review-2026-10-25-high-risk.md on review-high-risk (new section "fix verification"), push (normal push, no PR), summary in the commit body.
 
 Do not touch the production database, Vercel, Stripe or secrets.
