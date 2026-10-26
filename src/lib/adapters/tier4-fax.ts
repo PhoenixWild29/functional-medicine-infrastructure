@@ -25,6 +25,15 @@
 // HIPAA: prescription PDF contains PHI (patient name, DOB, Rx
 // details). Documo is BAA-covered. Storage bucket is non-public;
 // PDFs are accessed only via time-limited signed URLs.
+//
+// PHI disclosure (C-2026-10-25-17, B14/B15): right before the Documo send,
+// one pharmacy_disclosure row (logPhiDisclosure, the system as the actor).
+// Fail-closed: when it cannot be written nothing is sent; the attempt is
+// marked failed and the adapter throws, as for any send failure (the
+// order is not updated: no fax id, no attempt counted). Callers keep their
+// retry: the routing engine lands it in SUBMISSION_FAILED for an ops
+// retry; the fax-retry cron tries again. DOCUMO_ENABLED=false sends
+// nothing, so it records nothing.
 
 import { createServiceClient } from '@/lib/supabase/service'
 import { shippingAddressFor, type OrderShippingAddressColumns } from '@/lib/adapters/shipping-address'
@@ -45,6 +54,7 @@ import { assertOrderNotControlled } from '@/lib/orders/controlled-substance'
 import { parseTitrationSteps } from '@/lib/orders/titration'
 import { cyclePatternFromRow } from '@/lib/orders/cycling'
 import { dispenseQuantity } from '@/lib/orders/rx-details'
+import { logPhiDisclosure, systemActor } from '@/lib/audit/phi-access'
 
 // ============================================================
 // TYPES
@@ -325,6 +335,18 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
         `to=${pharmacy.fax_number} | pdf=${storagePath} | synthetic_fax_id=${faxId}`
       )
     } else {
+      // Fail-closed: PHI leaves only once its disclosure is recorded.
+      const disclosed = await logPhiDisclosure({
+        actor:     systemActor(order.clinic_id),
+        resource:  'pharmacy_disclosure',
+        route:     '/adapters/tier4-fax',
+        orderId,
+        patientId: order.patient_id,
+        clinicId:  order.clinic_id,
+      })
+      if (!disclosed) {
+        throw new Error('[tier4-fax] the disclosure to the pharmacy could not be recorded; fax not sent')
+      }
       const result = await sendFax({
         recipientFaxNumber: pharmacy.fax_number,
         recipientName:      pharmacy.name,

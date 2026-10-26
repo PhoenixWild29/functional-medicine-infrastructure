@@ -18,7 +18,7 @@ import { practiceAccess } from '@/lib/practice/access'
 import { periodBounds } from '@/lib/practice/metrics'
 import { loadPracticeNumbers } from '@/lib/practice/load'
 import { loadAttention } from '@/lib/practice/attention'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccessMany } from '@/lib/audit/phi-access'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
@@ -45,11 +45,16 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       }),
   ])
 
-  // Compliance C2: the needs-attention queue names patients.
-  await logPhiAccess({
+  // Compliance C2 (B14): the needs-attention queue names patients. One row
+  // per distinct patient it names (the numbers name none). A read: the
+  // dashboard is served even when the rows could not be written.
+  const queuePatientIds = attention.ok
+    ? [...new Set(attention.data.items.flatMap(i => (i.patientId ? [i.patientId] : [])))]
+    : []
+  await logPhiAccessMany({
     user, clinicId: access.clinicId, action: 'view', resource: 'practice_dashboard', route: '/api/practice',
     headers: request.headers ?? null,
-  })
+  }, queuePatientIds)
   return NextResponse.json({ period, numbers, attention }, { headers: { 'Cache-Control': 'no-store' } })
 }
 

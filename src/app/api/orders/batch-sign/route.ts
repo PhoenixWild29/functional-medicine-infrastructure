@@ -89,15 +89,15 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       { status: result.status, headers: { 'Cache-Control': 'no-store' } },
     )
   }
-  // Compliance C2: one row for the signature. The patient and order are
-  // named when the batch has one of each; a wider batch names neither.
-  const signedOrderIds = result.patients.flatMap(p => p.orderIds)
-  await logPhiAccess({
+  // Compliance C2 (B14): one row per signed order, with its patient, so a
+  // batch for several patients names each of them. Logged after signing,
+  // as before: the signature is already recorded and cannot be undone, so
+  // a row that could not be written is alerted by the helper (Slack and
+  // Sentry) and the signing still answers 200.
+  await Promise.all(result.patients.flatMap(p => p.orderIds.map(orderId => logPhiAccess({
     user, action: 'sign', resource: 'prescription', route: '/api/orders/batch-sign',
-    patientId: result.patients.length === 1 ? result.patients[0]!.patientId : null,
-    orderId:   signedOrderIds.length === 1 ? signedOrderIds[0]! : null,
-    headers:   request.headers,
-  })
+    patientId: p.patientId, orderId, headers: request.headers,
+  }))))
   return NextResponse.json(
     { signedAt: result.signedAt, patients: result.patients },
     { status: 200, headers: { 'Cache-Control': 'no-store' } },

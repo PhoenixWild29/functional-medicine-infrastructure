@@ -10,7 +10,7 @@
 //     the record reconciles with what checkout charges
 //   - Rx details (read-only; the WO-96 columns the order stores, with the
 //     Review card's labels)
-//   - Full status timeline (from order_status_history)
+//   - Full status timeline (order_status_history, via GET /api/orders/[id]/timeline)
 //   - Tracking info (status-based summary)
 //
 // Rx PDF preview and adapter submission log are displayed
@@ -21,7 +21,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { isRefundEventRow } from '@/lib/refunds/events'
 import { isPaymentEventRow, paymentFailedLabel } from '@/lib/payments/events'
-import { createBrowserClient } from '@/lib/supabase/client'
 import type { DashboardOrder } from '../page'
 import { getStatusConfig } from '@/lib/orders/status-config'
 import { notify } from '@/lib/notifications'
@@ -266,9 +265,6 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [isOpen, onClose])
-  // BLK-03: stable ref prevents stale closure + avoids re-running effect when client recreated
-  const supabaseRef = useRef(createBrowserClient())
-
   const [history,           setHistory]           = useState<StatusHistoryRow[]>([])
   // Payment Flow v1.1: "Payment failed, awaiting retry" (lib/payments/events).
   const [paymentFailed,     setPaymentFailed]     = useState<string | null>(null)
@@ -354,34 +350,38 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
   useEffect(() => {
     if (!historyOrderId || !historyOrderStatus) return
 
-    // NB-3: select old_status, new_status, changed_by — there is no "status" or "note" column
-    supabaseRef.current
-      .from('order_status_history')
-      .select('old_status, new_status, changed_by, created_at, metadata')
-      .eq('order_id', historyOrderId)
-      .order('created_at', { ascending: true })
-      .then(({ data }) => {
-        // Refund bookkeeping rows (a refund Stripe is still processing, a
-        // late payment refunded) record facts, not steps in the order's
-        // timeline. Filtered by their event name only: other same-status
-        // rows — the draft-edit audit (DRAFT → DRAFT) — ARE timeline steps.
-        // Payment Flow v1.1: the Stripe payment event rows (a failed
-        // attempt, a refund, a dispute status) are skipped the same way,
-        // after the failed-payment label is read from the newest row.
-        const all = (data ?? []) as StatusHistoryRow[]
-        setPaymentFailed(paymentFailedLabel(historyOrderStatus, all))
-        const rows = all.filter(r => !isRefundEventRow(r.metadata) && !isPaymentEventRow(r.metadata))
-        setHistory(rows)
-        setIsLoadingHistory(false)
-        setActors({})
-        if (!rows.some(r => r.changed_by)) return
-        fetch(`/api/orders/${historyOrderId}/timeline-actors`)
-          .then(res => (res.ok ? res.json() : null))
-          .then((json: { actors?: Record<string, TimelineActor> } | null) => {
-            if (json?.actors) setActors(json.actors)
-          })
-          .catch(() => { /* non-fatal: ids stay visible */ })
-      })
+    // Read through GET /api/orders/[id]/timeline, never the browser client,
+    // so the read is logged (Compliance C2, B14). A failed read shows an
+    // empty timeline, as a failed browser read did.
+    void (async () => {
+      let data: StatusHistoryRow[] | null = null
+      try {
+        const res = await fetch(`/api/orders/${historyOrderId}/timeline`, { headers: { Accept: 'application/json' } })
+        if (res?.ok) data = ((await res.json()) as { history?: StatusHistoryRow[] } | null)?.history ?? null
+      } catch {
+        data = null
+      }
+      // Refund bookkeeping rows (a refund Stripe is still processing, a
+      // late payment refunded) record facts, not steps in the order's
+      // timeline. Filtered by their event name only: other same-status
+      // rows — the draft-edit audit (DRAFT → DRAFT) — ARE timeline steps.
+      // Payment Flow v1.1: the Stripe payment event rows (a failed
+      // attempt, a refund, a dispute status) are skipped the same way,
+      // after the failed-payment label is read from the newest row.
+      const all = Array.isArray(data) ? data : []
+      setPaymentFailed(paymentFailedLabel(historyOrderStatus, all))
+      const rows = all.filter(r => !isRefundEventRow(r.metadata) && !isPaymentEventRow(r.metadata))
+      setHistory(rows)
+      setIsLoadingHistory(false)
+      setActors({})
+      if (!rows.some(r => r.changed_by)) return
+      fetch(`/api/orders/${historyOrderId}/timeline-actors`)
+        .then(res => (res.ok ? res.json() : null))
+        .then((json: { actors?: Record<string, TimelineActor> } | null) => {
+          if (json?.actors) setActors(json.actors)
+        })
+        .catch(() => { /* non-fatal: ids stay visible */ })
+    })()
   }, [historyOrderId, historyOrderStatus])
 
   // Load the order's stored shipping + Rx details whenever the drawer opens
