@@ -106,6 +106,8 @@ const ORDER = {
   medication_snapshot: { medication_name: 'Semaglutide' }, provider_npi_snapshot: '1234567890',
   // Stored as every row before the fix was.
   quantity: 1, sig_text: 'Inject weekly', fax_attempt_count: 0, created_at: '2026-10-01T00:00:00Z', locked_at: '2026-10-06T15:00:00Z',
+  // Signed before signature binding (HIPAA B7): sent as before.
+  provider_signature_hash_snapshot: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
   shipping_address_line1_snapshot: '500 New St', shipping_address_line2_snapshot: null, shipping_city_snapshot: 'Dallas',
   shipping_zip_snapshot: '75201', shipping_state_snapshot: 'TX', shipping_address_snapshot_at: '2026-10-06T15:00:00Z',
 }

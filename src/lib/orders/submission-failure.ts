@@ -38,6 +38,11 @@ const REASONS: Record<string, string> = {
   fax_submission_error:    FAX,
   fax_permanently_failed:  FAX,
   portal_automation_error: "the pharmacy's ordering portal had an error",
+  // HIPAA B6 / B7 / B17 (lib/adapters/transmission-guard): refused, never sent.
+  unsigned_order:          'the prescription has not been signed',
+  order_not_submittable:   'the order was not in a state that can be sent',
+  signature_mismatch:      'the prescription changed after it was signed',
+  insecure_pharmacy_url:   "the pharmacy's connection is not secure (https is required)",
 }
 
 /**

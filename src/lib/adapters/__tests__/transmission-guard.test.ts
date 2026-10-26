@@ -219,9 +219,12 @@ describe('the adapters refuse before sending anything', () => {
     expect(vaultMock).not.toHaveBeenCalled()
   })
 
-  it('Tier 4 fax sends a signed, matching order', async () => {
-    await submitTier4Fax('o-1')
-    expect(sendFaxMock).toHaveBeenCalledTimes(1)
+  it('Tier 4 fax goes on to build the fax for a signed, matching order', async () => {
+    // The harness has no storage, so the build stops at the PDF upload,
+    // after the guard: not a refusal.
+    const err = await submitTier4Fax('o-1').then(() => null, (e: unknown) => e)
+    expect(isTransmissionRefusedError(err)).toBe(false)
+    expect(db.to('clinics', 'select').length).toBeGreaterThan(0)
   })
 })
 
@@ -271,6 +274,15 @@ describe('B17: Tier 1 and Tier 2 pharmacy URLs must be https', () => {
     expect(executeFlowMock).not.toHaveBeenCalled()
     expect(launchMock).not.toHaveBeenCalled()
     expect(db.to('adapter_submissions', 'insert')).toHaveLength(0)
+  })
+
+  it('Tier 2 refuses a portal flow that navigates to an http page', async () => {
+    db = scriptedDb(world(c => (c.table === 'pharmacy_portal_configs'
+      ? { data: { config_id: 'pcfg-1', portal_url: portalUrl, portal_type: 'generic', username_vault_id: 'u-1', password_vault_id: 'p-1', login_flow: [{ action: 'navigate', url: 'http://portal.pharm.test/login' }], submit_flow: [], status_check_flow: null, selectors: {}, poll_interval_minutes: 30, screenshot_on_error: false } }
+      : undefined)))
+    await expect(submitTier2Portal('o-1', 'ph-1')).rejects.toMatchObject({ code: 'insecure_pharmacy_url' })
+    expect(vaultMock).not.toHaveBeenCalled()
+    expect(launchMock).not.toHaveBeenCalled()
   })
 
   it('at pharmacy setup save: an http API base URL or portal URL is refused', () => {

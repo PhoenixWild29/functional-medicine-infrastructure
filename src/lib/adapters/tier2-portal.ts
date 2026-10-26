@@ -34,6 +34,7 @@
 
 import { assertPharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { assertOrderNotControlled } from '@/lib/orders/controlled-substance'
+import { assertOrderTransmittable, assertSecurePharmacyUrl } from '@/lib/adapters/transmission-guard'
 import { chromium } from 'playwright'
 import { createServiceClient } from '@/lib/supabase/service'
 import { shippingAddressFor, type OrderShippingAddressColumns } from '@/lib/adapters/shipping-address'
@@ -194,6 +195,8 @@ export async function submitTier2Portal(
   assertPharmacySubmissionsEnabled('Tier 2 portal submission')
   // Compliance C6: never a controlled substance (defence in depth beside routeOrder).
   await assertOrderNotControlled(createServiceClient(), orderId)
+  // HIPAA B6 / B7: signed, in a status that may be sent, unchanged since signing.
+  await assertOrderTransmittable(createServiceClient(), orderId)
 
   const supabase = createServiceClient()
 
@@ -225,6 +228,17 @@ export async function submitTier2Portal(
     throw new Error(
       `[tier2-portal] no active pharmacy_portal_configs for pharmacy ${pharmacyId}: ${configError?.message ?? 'not found'}`
     )
+  }
+
+  // HIPAA B17: https only, checked before the portal credentials are read.
+  assertSecurePharmacyUrl(config.portal_url, { orderId, pharmacyId, what: 'portal URL' })
+  // The flows' own navigate steps too: credentials are typed into those pages.
+  for (const flow of [config.login_flow, config.submit_flow]) {
+    for (const step of Array.isArray(flow) ? flow as Array<{ action?: unknown; url?: unknown }> : []) {
+      if (step?.action === 'navigate') {
+        assertSecurePharmacyUrl(typeof step.url === 'string' ? step.url : null, { orderId, pharmacyId, what: 'portal flow URL' })
+      }
+    }
   }
 
   // ── 2. Load order data for form field substitution ─────────

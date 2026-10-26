@@ -237,6 +237,11 @@ export const ADAPTER_ERROR_CODES = [
   'stripe_dispute',
   'stripe_dispute_group',
   'stripe_transfer_failed',
+  // HIPAA B6 / B7 / B17: a send refused by lib/adapters/transmission-guard.
+  'unsigned_order',
+  'order_not_submittable',
+  'signature_mismatch',
+  'insecure_pharmacy_url',
 ] as const
 export type AdapterErrorCode = typeof ADAPTER_ERROR_CODES[number]
 const ADAPTER_ERROR_CODE_SET: ReadonlySet<string> = new Set(ADAPTER_ERROR_CODES)

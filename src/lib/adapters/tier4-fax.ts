@@ -42,6 +42,7 @@ import {
 import { casTransition } from '@/lib/orders/cas-transition'
 import { assertPharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { assertOrderNotControlled } from '@/lib/orders/controlled-substance'
+import { assertOrderTransmittable } from '@/lib/adapters/transmission-guard'
 import { parseTitrationSteps } from '@/lib/orders/titration'
 import { cyclePatternFromRow } from '@/lib/orders/cycling'
 import { dispenseQuantity } from '@/lib/orders/rx-details'
@@ -81,6 +82,8 @@ export async function submitTier4Fax(orderId: string): Promise<Tier4FaxResult> {
   assertPharmacySubmissionsEnabled('Tier 4 fax submission')
   // Compliance C6: never a controlled substance (defence in depth beside routeOrder).
   await assertOrderNotControlled(createServiceClient(), orderId)
+  // HIPAA B6 / B7: signed, in a status that may be sent, unchanged since signing.
+  await assertOrderTransmittable(createServiceClient(), orderId)
 
   const supabase = createServiceClient()
 

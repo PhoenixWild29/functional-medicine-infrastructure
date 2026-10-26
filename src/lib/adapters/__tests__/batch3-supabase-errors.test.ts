@@ -62,6 +62,8 @@ beforeEach(() => {
 
 const ORDER = {
   order_id: 'o-1', order_number: 'CMP-1', status: 'PAID_PROCESSING',
+  // Signed before signature binding (HIPAA B7): sent as before.
+  locked_at: '2026-10-06T15:00:00Z', provider_signature_hash_snapshot: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
   pharmacy_id: 'ph-1', clinic_id: 'c-1', provider_id: 'pr-1', patient_id: 'pt-1', formulation_id: 'f-sema', catalog_item_id: null,
   medication_snapshot: { medication_name: 'Semaglutide' }, provider_npi_snapshot: '1234567890',
   quantity: 1, sig_text: 'Inject weekly', fax_attempt_count: 0, created_at: '2026-10-01T00:00:00Z',
@@ -132,9 +134,10 @@ describe('Tier 1 API adapter', () => {
       return undefined
     }))
     await expect(submitTier1Api('o-1', 'ph-1')).rejects.toThrow(/rate limit could not be checked: connection reset/)
-    // Only the controlled-substance check (compliance C6) reads the order
-    // before the rate limit; the order's data is not loaded.
-    expect(db.to('orders')).toHaveLength(1)
+    // Only the controlled-substance check (compliance C6) and the signature
+    // check (HIPAA B6 / B7) read the order before the rate limit; the
+    // order's data is not loaded.
+    expect(db.to('orders')).toHaveLength(2)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 

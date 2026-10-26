@@ -65,6 +65,8 @@ jest.mock('@/lib/supabase/service', () => ({
           return chain(() => ({ data: {
             order_id: 'o-1', status: orderStatus, shipping_state_snapshot: 'TX',
             formulation_id: 'f-1', catalog_item_id: null, pharmacy_id: 'ph-1',
+            // Signed before signature binding (HIPAA B7): sent as before.
+            locked_at: '2026-10-06T15:00:00Z', provider_signature_hash_snapshot: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
           }, error: null }))
         case 'formulations':
           return chain(() => ({ data: { formulation_id: 'f-1', dosage_forms: { name: sterile ? 'Injectable Solution' : 'Capsule', is_sterile: sterile }, salt_forms: { ingredients: { common_name: 'Fixture', dea_schedule: null, compounding_status: 'approved_drug_component' } } }, error: null }))
