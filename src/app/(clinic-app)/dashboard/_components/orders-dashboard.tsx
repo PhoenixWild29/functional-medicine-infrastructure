@@ -167,9 +167,11 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
   const queryClient = useQueryClient()
   const windowBefore = orderWindow?.before ?? null
   const ordersKey = useMemo(() => ['dashboard-orders', clinicId, providerViewMode, windowBefore] as const, [clinicId, providerViewMode, windowBefore])
-  // The window as the latest read reported it (the page's, then each poll's).
-  const [liveWindow, setLiveWindow] = useState<OrderWindow | undefined>(orderWindow)
-  useEffect(() => { setLiveWindow(orderWindow) }, [orderWindow])
+  // The window as the latest read reported it: each poll's, as long as it
+  // was read for the page's current window; a new server render (a new
+  // orderWindow) replaces it.
+  const [polledWindow, setPolledWindow] = useState<{ forWindow: OrderWindow | undefined; window: OrderWindow } | null>(null)
+  const liveWindow = polledWindow && polledWindow.forWindow === orderWindow ? polledWindow.window : orderWindow
 
   const [viewMode,        setViewMode]        = useState<'table' | 'kanban'>('table')
   // WO-106: the KPI cards link here (?tab=…), so the tab is addressable.
@@ -232,7 +234,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
         throw new Error(`Orders could not be loaded (${res.status})`)
       }
       const body = await res.json() as DashboardOrdersResponse
-      if (body.window) setLiveWindow(body.window)
+      if (body.window) setPolledWindow({ forWindow: orderWindow, window: body.window })
       const duplicateNames = new Map(Object.entries(body.duplicateNames ?? {}))
       return (body.rows ?? []).map(o => buildDashboardOrder(o, duplicateNames))
     },
