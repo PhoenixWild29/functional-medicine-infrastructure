@@ -15,6 +15,8 @@ export type OnboardingEvent =
   | 'submitted' | 'approved' | 'sent_back'
   /** A clinic or solo provider signed up at /get-started (no invite). */
   | 'self_signup'
+  /** Ops deleted an unapproved self sign-up (lib/onboarding/delete-signup). */
+  | 'signup_deleted'
 
 export async function recordOnboardingEvent(
   supabase: SupabaseClient<Database>,

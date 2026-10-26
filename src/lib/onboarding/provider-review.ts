@@ -13,6 +13,9 @@
 //     invalid, registry unreachable, or never checked). Approval then needs
 //     ops to confirm they checked the license with the state board; the
 //     confirmation is the approval event's note.
+//   - NPI held elsewhere (security review M3, lib/onboarding/npi-claims):
+//     whether an approved clinic's live provider already holds the NPI
+//     (Approve is then refused) and how many other pending sign-ups name it.
 //
 // Service role, behind the ops_admin gate. No patient data. A failed read
 // throws: ops never approve from a partial review.
@@ -44,6 +47,10 @@ export interface ProviderSummary {
   inviteStatus:  InviteStatus | null
   npiStatus:     string | null
   npiVerified:   boolean
+  /** An approved clinic's live provider holds this NPI: Approve is refused. */
+  npiApprovedElsewhere?: boolean
+  /** Other pending sign-ups (unclaimed providers) naming this NPI. */
+  npiPendingElsewhere?:  number
 }
 
 export async function loadProviderSummaries(
@@ -58,7 +65,7 @@ export async function loadProviderSummaries(
 
   const [provRes, invRes] = await Promise.all([
     supabase.from('providers')
-      .select('provider_id, clinic_id, first_name, last_name, user_id')
+      .select('provider_id, clinic_id, first_name, last_name, user_id, npi_number')
       .in('clinic_id', clinicIds)
       .is('deleted_at', null)
       .order('created_at'),
@@ -69,7 +76,15 @@ export async function loadProviderSummaries(
       .order('created_at', { ascending: false }),
   ])
   if (provRes.error || invRes.error) throw new Error(`providers could not be read: ${(provRes.error ?? invRes.error)?.message}`)
-  const providers = (provRes.data ?? []) as Array<{ provider_id: string; clinic_id: string; first_name: string; last_name: string; user_id: string | null }>
+  const providers = (provRes.data ?? []) as Array<{ provider_id: string; clinic_id: string; first_name: string; last_name: string; user_id: string | null; npi_number?: string | null }>
+
+  // Who else names each NPI (one read for every clinic on the list).
+  const npis = [...new Set(providers.map(p => p.npi_number).filter((n): n is string => !!n))]
+  const holdersRes = npis.length
+    ? await supabase.from('providers').select('provider_id, clinic_id, npi_number, npi_claimed').in('npi_number', npis).is('deleted_at', null)
+    : { data: [], error: null }
+  if (holdersRes.error) throw new Error(`NPI holders could not be read: ${holdersRes.error.message}`)
+  const holders = (holdersRes.data ?? []) as Array<{ clinic_id: string; npi_number: string; npi_claimed: boolean | null }>
 
   const providerIds = providers.map(p => p.provider_id)
   const npiRes = providerIds.length
@@ -85,9 +100,9 @@ export async function loadProviderSummaries(
   }
 
   // The account holders' sign-in emails.
-  const holders = providers.filter(p => selfServe.has(p.clinic_id) && p.user_id && !invites.has(p.provider_id))
+  const accountHolders = providers.filter(p => selfServe.has(p.clinic_id) && p.user_id && !invites.has(p.provider_id))
   const emails = new Map<string, string>()
-  await Promise.all(holders.map(async p => {
+  await Promise.all(accountHolders.map(async p => {
     const { data, error } = await supabase.auth.admin.getUserById(p.user_id!)
     if (error) console.error(`[ops/onboarding] account holder email not read | provider=${p.provider_id}: ${error.message}`)
     if (data?.user?.email) emails.set(p.provider_id, data.user.email)
@@ -96,8 +111,9 @@ export async function loadProviderSummaries(
   for (const c of clinicIds) out.set(c, [])
   for (const p of providers) {
     const invite = invites.get(p.provider_id)
-    const accountHolder = holders.includes(p)
+    const accountHolder = accountHolders.includes(p)
     const status = npi.get(p.provider_id) ?? null
+    const elsewhere = p.npi_number ? holders.filter(h => h.npi_number === p.npi_number && h.clinic_id !== p.clinic_id) : []
     out.get(p.clinic_id)?.push({
       providerId:    p.provider_id,
       name:          `${p.first_name} ${p.last_name}`,
@@ -106,6 +122,9 @@ export async function loadProviderSummaries(
       inviteStatus:  invite ? inviteStatus(invite, now) : null,
       npiStatus:     status,
       npiVerified:   status === 'verified',
+      // NOT NULL DEFAULT true: a row without the flag holds its NPI.
+      npiApprovedElsewhere: elsewhere.some(h => h.npi_claimed !== false),
+      npiPendingElsewhere:  elsewhere.filter(h => h.npi_claimed === false).length,
     })
   }
   return out

@@ -3358,6 +3358,7 @@ export type Database = {
           clinic_id: string | null
           patient_id: string | null
           order_id: string | null
+          fax_id: string | null
           action: string
           resource: string
           route: string
@@ -3373,6 +3374,7 @@ export type Database = {
           clinic_id?: string | null
           patient_id?: string | null
           order_id?: string | null
+          fax_id?: string | null
           action: string
           resource: string
           route: string
@@ -3388,6 +3390,7 @@ export type Database = {
           clinic_id?: string | null
           patient_id?: string | null
           order_id?: string | null
+          fax_id?: string | null
           action?: string
           resource?: string
           route?: string
@@ -3965,6 +3968,7 @@ export type Database = {
           license_number: string
           license_state: string
           npi_number: string
+          npi_claimed: boolean
           provider_id: string
           signature_hash: string | null
           signature_on_file: boolean
@@ -3985,6 +3989,7 @@ export type Database = {
           license_number: string
           license_state: string
           npi_number: string
+          npi_claimed?: boolean
           provider_id?: string
           signature_hash?: string | null
           signature_on_file?: boolean
@@ -4005,6 +4010,7 @@ export type Database = {
           license_number?: string
           license_state?: string
           npi_number?: string
+          npi_claimed?: boolean
           provider_id?: string
           signature_hash?: string | null
           signature_on_file?: boolean
