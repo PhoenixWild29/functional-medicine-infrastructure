@@ -367,6 +367,12 @@ jobs:
           # "Drop a face sheet". e2e/face-sheet-fill.spec.ts answers the read
           # in the browser (page.route), so no request reaches Anthropic.
           ANTHROPIC_API_KEY: 'sk-ant-e2e-placeholder-never-used'
+          # Security B12/B15: a fixed E2E-only key for the audit hashes
+          # (lib/audit/keyed-hash), so failed sign-ins are counted per
+          # account and e2e/hipaa-safeguards.spec.ts can match the alert's
+          # keyed-hash prefix. A placeholder, not a secret: the E2E project
+          # holds test data only.
+          PHI_ACCESS_LOG_HASH_SECRET: 'e2e-placeholder-audit-hash-key-not-a-secret'
           # WO-99: batch signing forms one payment group per patient, as in
           # production (flag on since 2026-06-14). The E2E clinic's Connect
           # account is poc_placeholder, so the group PaymentIntent carries no
