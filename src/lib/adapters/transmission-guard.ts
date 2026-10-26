@@ -366,7 +366,9 @@ export async function enforceHttpsOnly(
       try {
         response = hop === 0
           ? await route.fetch({ maxRedirects: 0 })
-          : await route.fetch({ url, method, headers, maxRedirects: 0, ...(postData !== undefined ? { postData } : {}) })
+          // Always an explicit body (A's V1): an omitted postData makes
+          // route.fetch re-send the original one, so a GET passes an empty body.
+          : await route.fetch({ url, method, headers, maxRedirects: 0, postData: postData ?? Buffer.alloc(0) })
       } catch {
         await route.abort('failed')
         return
