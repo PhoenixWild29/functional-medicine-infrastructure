@@ -1,0 +1,113 @@
+/**
+ * @jest-environment node
+ *
+ * A's probe for R1 (B's review, d4e00cec): redirect chains in Chromium
+ * against the real enforceHttpsOnly. Copied into the checkout being
+ * verified, run, then deleted. Server A is allowed, server B is blocked
+ * (as http is in production), and B records every request.
+ */
+import http from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { chromium } from 'playwright'
+import { enforceHttpsOnly } from '@/lib/adapters/transmission-guard'
+
+jest.setTimeout(120_000)
+jest.spyOn(console, 'error').mockImplementation(() => {})
+
+const hits: string[] = []
+const seenA: string[] = []
+const seenC: string[] = []
+let a: http.Server, b: http.Server, c: http.Server
+const port = (s: http.Server) => (s.address() as AddressInfo).port
+
+beforeAll(async () => {
+  b = http.createServer((req, res) => {
+    let body = ''
+    req.on('data', c => { body += c })
+    req.on('end', () => { hits.push(`${req.method} ${req.url} body=${body}`); res.end('<html>B</html>') })
+  })
+  a = http.createServer((req, res) => {
+    let body = ''
+    req.on('data', c => { body += c })
+    req.on('end', () => {
+      seenA.push(`${req.method} ${req.url} body=${body}`)
+      const B = `http://127.0.0.1:${port(b)}`
+      const A = `http://127.0.0.1:${port(a)}`
+      if (req.url === '/chain')   { res.writeHead(302, { Location: `${A}/chain2` }); return res.end() }
+      if (req.url === '/chain2')  { res.writeHead(301, { Location: `${B}/chain-end` }); return res.end() }
+      if (req.url === '/form')    { res.setHeader('content-type', 'text/html'); return res.end('<form method="post" action="/submit"><input name="phi" value="Jane Doe 1980-01-01"><button id="go">go</button></form>') }
+      if (req.url === '/submit')  { res.writeHead(307, { Location: `${A}/submit2` }); return res.end() }
+      if (req.url === '/submit2') { res.writeHead(307, { Location: `${B}/steal` }); return res.end() }
+      if (req.url === '/ok1')     { res.writeHead(302, { Location: `${A}/ok2` }); return res.end() }
+      if (req.url === '/ok2')     { res.writeHead(302, { Location: `${A}/done` }); return res.end() }
+      if (req.url === '/post-ok') { res.writeHead(307, { Location: `${A}/post-ok2` }); return res.end() }
+      if (req.url === '/post-ok2') { res.writeHead(303, { Location: `${A}/done` }); return res.end() }
+      if (req.url === '/setcookie') { res.setHeader('set-cookie', 'sid=A-secret; Path=/'); res.setHeader('content-type', 'text/html'); return res.end('<form method="post" action="/x-start"><input name="phi" value="Jane"><button id="go">go</button></form>') }
+      if (req.url === '/x-start') { res.writeHead(307, { Location: `http://localhost:${port(c)}/x-hop` }); return res.end() }
+      if (req.url === '/okform')  { res.setHeader('content-type', 'text/html'); return res.end('<form method="post" action="/post-ok"><input name="x" value="1"><button id="go">go</button></form>') }
+      res.setHeader('content-type', 'text/html'); res.end('<html>done</html>')
+    })
+  })
+  // C: another allowed origin (localhost, not 127.0.0.1: cookies ignore ports).
+  c = http.createServer((req, res) => {
+    let body = ''
+    req.on('data', d => { body += d })
+    req.on('end', () => {
+      seenC.push(`${req.method} ${req.url} host=${req.headers.host} cookie=${req.headers.cookie ?? ''} body=${body}`)
+      if (req.url === '/x-hop') { res.writeHead(307, { Location: `http://localhost:${port(c)}/x-end` }); return res.end() }
+      res.setHeader('content-type', 'text/html'); res.end('<html>C-end</html>')
+    })
+  })
+  await new Promise<void>(r => c.listen(0, 'localhost', r))
+  await new Promise<void>(r => b.listen(0, '127.0.0.1', r))
+  await new Promise<void>(r => a.listen(0, '127.0.0.1', r))
+})
+afterAll(() => { a.close(); b.close(); c.close() })
+
+it('R1 chains never reach B; allowed multi-hop chains still work', async () => {
+  const browser = await chromium.launch()
+  const out: Record<string, unknown> = {}
+  try {
+    const context = await browser.newContext()
+    const bPort = String(port(b))
+    await enforceHttpsOnly(context, (url: string) => new URL(url).port !== bPort)
+    const A = `http://127.0.0.1:${port(a)}`
+
+    const p1 = await context.newPage()
+    await p1.goto(`${A}/chain`).catch(e => { out['chainGoto'] = String(e.message).split('\n')[0] })
+    out['chainUrl'] = p1.url()
+
+    const p2 = await context.newPage()
+    await p2.goto(`${A}/form`)
+    await Promise.all([p2.waitForLoadState('load').catch(() => undefined), p2.click('#go')])
+    await p2.waitForTimeout(1500)
+    out['postUrl'] = p2.url()
+
+    const p3 = await context.newPage()
+    await p3.goto(`${A}/ok1`)
+    out['okUrl'] = p3.url()
+    out['okText'] = await p3.textContent('html')
+
+    const p4 = await context.newPage()
+    await p4.goto(`${A}/okform`)
+    await Promise.all([p4.waitForLoadState('load').catch(() => undefined), p4.click('#go')])
+    await p4.waitForTimeout(1500)
+    out['okPostUrl'] = p4.url()
+    out['okPostText'] = await p4.textContent('html').catch(() => null)
+
+    // Cross-origin allowed chain: A (sets a cookie) -> 307 -> C -> 307 -> C, POST kept.
+    const p5 = await context.newPage()
+    await p5.goto(`${A}/setcookie`)
+    await Promise.all([p5.waitForLoadState('load').catch(() => undefined), p5.click('#go')])
+    await p5.waitForTimeout(1500)
+    out['xUrl'] = p5.url()
+    out['xText'] = await p5.textContent('html').catch(() => null)
+  } finally {
+    await browser.close()
+  }
+  out['bReceived'] = hits
+  out['aReceived'] = seenA
+  out['cReceived'] = seenC
+  process.stdout.write('R1PROBE ' + JSON.stringify(out) + '\n')
+  expect(hits).toEqual([])
+})
