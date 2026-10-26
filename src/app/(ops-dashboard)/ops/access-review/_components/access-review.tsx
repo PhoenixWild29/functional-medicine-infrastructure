@@ -27,7 +27,6 @@ interface Props {
 interface ReviewResponse {
   from:          string
   to:            string
-  timezone:      string
   truncated:     boolean
   rowLimit:      number
   flagCounts:    Record<ReviewFlag, number>
@@ -161,9 +160,10 @@ export function AccessReview({ clinics }: Props) {
             ))}
           </ul>
           <p className="text-xs text-muted-foreground">
-            Times are UTC: clinics have no time zone recorded. More than {BULK_VIEW_PATIENTS_PER_HOUR} distinct
-            patients viewed by one person within 60 minutes is flagged.
-            {data.truncated && ` Only the first ${data.rowLimit} rows are shown: narrow the filters, or export a shorter range.`}
+            Hours are read in the clinic&apos;s time zone, taken from its state (UTC when it has none). A state with two
+            zones uses the one most of its people live in. More than {BULK_VIEW_PATIENTS_PER_HOUR} distinct patients
+            opened one at a time by one person within 60 minutes is flagged; list views do not count.
+            {data.truncated && ` Only the newest ${data.rowLimit} rows are shown. The CSV export is cut off the same way and says so in its last line: narrow the filters or the range.`}
           </p>
           <label className="flex items-center gap-2 text-sm text-foreground">
             <input type="checkbox" checked={flaggedOnly} onChange={e => setFlaggedOnly(e.target.checked)} />
@@ -184,6 +184,7 @@ export function AccessReview({ clinics }: Props) {
               <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                 <tr>
                   <th scope="col" className="px-3 py-2">Time (UTC)</th>
+                  <th scope="col" className="px-3 py-2">Clinic time</th>
                   <th scope="col" className="px-3 py-2">Actor</th>
                   <th scope="col" className="px-3 py-2">Clinic</th>
                   <th scope="col" className="px-3 py-2">Patient</th>
@@ -196,6 +197,7 @@ export function AccessReview({ clinics }: Props) {
                 {rows.map(r => (
                   <tr key={r.id} className={r.flags.length ? 'bg-amber-50/60' : undefined}>
                     <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">{r.occurred_at.replace('T', ' ').slice(0, 19)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs" title={r.time_zone}>{r.local_time} <span className="text-muted-foreground">{r.time_zone.split('/').pop()?.replace(/_/g, ' ')}</span></td>
                     <td className="px-3 py-2">
                       {roleLabel(r.actor_role)} <span className="font-mono text-xs text-muted-foreground" title={r.actor_user_id ?? undefined}>{short(r.actor_user_id)}</span>
                     </td>

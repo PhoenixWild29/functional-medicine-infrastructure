@@ -142,7 +142,7 @@ describe('accessReviewCsv', () => {
       deactivatedActorIds: new Set(), relatedPatients: new Set([`${CLINIC}:p-1`]),
     })
     const lines = accessReviewCsv([flagged!]).trimEnd().split('\n')
-    expect(lines[0]).toBe('occurred_at,actor_user_id,actor_role,clinic_id,patient_id,order_id,action,resource,route,flags')
+    expect(lines[0]).toBe('occurred_at,time_zone,local_time,actor_user_id,actor_role,clinic_id,patient_id,order_id,action,resource,route,flags')
     expect(lines).toHaveLength(2)
     expect(lines[1]).toContain('2026-10-20T23:00:00.000Z')
     expect(lines[1]).toContain(`"'=HYPERLINK(""x"")"`)

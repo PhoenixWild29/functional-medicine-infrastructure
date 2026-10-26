@@ -6,11 +6,19 @@
 // (docs/compliance/audit-log-review-procedure.md). Four flags mark rows
 // for a closer look; a flag is a prompt to check, not a finding:
 //
-//   outside_hours      access before 06:00 or from 22:00. Clinics have no
-//                      time zone column, so the hours are UTC.
-//   bulk_patients      one actor viewed more than BULK_VIEW_PATIENTS_PER_HOUR
-//                      distinct patients within 60 minutes.
+//   outside_hours      access before 06:00 or from 22:00 in the clinic's
+//                      time zone. Clinics have no time zone column, so the
+//                      zone comes from the clinic's state (STATE_TIME_ZONES);
+//                      a row with no clinic, or a clinic with no known
+//                      state, is read in UTC and says so.
+//   bulk_patients      one actor opened more than BULK_VIEW_PATIENTS_PER_HOUR
+//                      distinct patients within 60 minutes, counting
+//                      single-record views only: a list (LIST_REVIEW_RESOURCES)
+//                      logs one row per patient shown, and one dashboard
+//                      render is not 30 chart opens.
 //   deactivated_actor  the actor's login is deactivated, or no longer exists.
+//                      Patient and system actors are not logins, and are
+//                      never flagged; a failed lookup is unknown, not flagged.
 //   no_relationship    the patient has no order and no treatment proposal
 //                      in the clinic the row belongs to.
 //
@@ -24,10 +32,45 @@ export const REVIEW_ACTIONS: readonly PhiAction[] = ['view', 'create', 'update',
 
 /** More distinct patients than this, viewed by one actor within an hour, is flagged. */
 export const BULK_VIEW_PATIENTS_PER_HOUR = 30
-/** Local review hours: 06:00 up to 22:00. */
+/** Local review hours: 06:00 up to 22:00, in the clinic's time zone. */
 export const REVIEW_HOURS = { start: 6, end: 22 } as const
-/** No clinic time zone is recorded, so the hours are read in UTC. */
-export const REVIEW_TIMEZONE = 'UTC'
+/** The zone for a row with no clinic, or a clinic with no known state. */
+export const FALLBACK_TIME_ZONE = 'UTC'
+
+/**
+ * A clinic's time zone from its state (clinics.state, a USPS code). A state
+ * that spans two zones gets the zone most of its people live in, so a
+ * clinic in the other part (west Texas, the Florida panhandle, east
+ * Tennessee, north Idaho, eastern Oregon, western Kentucky, the Upper
+ * Peninsula, parts of the Dakotas, Nebraska and Kansas) is read an hour
+ * off. The flag is a prompt to look, so an hour at the edge of the window
+ * is accepted until clinics.timezone exists.
+ */
+export const STATE_TIME_ZONES: Readonly<Record<string, string>> = {
+  AL: 'America/Chicago',     AK: 'America/Anchorage',   AZ: 'America/Phoenix',     AR: 'America/Chicago',
+  CA: 'America/Los_Angeles', CO: 'America/Denver',      CT: 'America/New_York',    DE: 'America/New_York',
+  DC: 'America/New_York',    FL: 'America/New_York',    GA: 'America/New_York',    HI: 'Pacific/Honolulu',
+  ID: 'America/Boise',       IL: 'America/Chicago',     IN: 'America/Indiana/Indianapolis', IA: 'America/Chicago',
+  KS: 'America/Chicago',     KY: 'America/New_York',    LA: 'America/Chicago',     ME: 'America/New_York',
+  MD: 'America/New_York',    MA: 'America/New_York',    MI: 'America/Detroit',     MN: 'America/Chicago',
+  MS: 'America/Chicago',     MO: 'America/Chicago',     MT: 'America/Denver',      NE: 'America/Chicago',
+  NV: 'America/Los_Angeles', NH: 'America/New_York',    NJ: 'America/New_York',    NM: 'America/Denver',
+  NY: 'America/New_York',    NC: 'America/New_York',    ND: 'America/Chicago',     OH: 'America/New_York',
+  OK: 'America/Chicago',     OR: 'America/Los_Angeles', PA: 'America/New_York',    RI: 'America/New_York',
+  SC: 'America/New_York',    SD: 'America/Chicago',     TN: 'America/Chicago',     TX: 'America/Chicago',
+  UT: 'America/Denver',      VT: 'America/New_York',    VA: 'America/New_York',    WA: 'America/Los_Angeles',
+  WV: 'America/New_York',    WI: 'America/Chicago',     WY: 'America/Denver',
+}
+
+export function timeZoneForState(state: string | null | undefined): string | null {
+  if (typeof state !== 'string') return null
+  return STATE_TIME_ZONES[state.trim().toUpperCase()] ?? null
+}
+
+/** List views: one row per patient shown, so not counted toward bulk_patients. */
+export const LIST_REVIEW_RESOURCES: ReadonlySet<string> = new Set([
+  'order_list', 'patient_list', 'practice_dashboard', 'patient_import_preview', 'inbound_fax',
+])
 /** With no dates given: the last 7 days, through today (the weekly review). */
 export const REVIEW_DEFAULT_DAYS = 7
 /** The longest range one request reads. */
@@ -39,7 +82,7 @@ export const REVIEW_FLAGS = ['outside_hours', 'bulk_patients', 'deactivated_acto
 export type ReviewFlag = (typeof REVIEW_FLAGS)[number]
 
 export const REVIEW_FLAG_LABELS: Record<ReviewFlag, string> = {
-  outside_hours:     'Outside 6am to 10pm (UTC)',
+  outside_hours:     'Outside 6am to 10pm (clinic time)',
   bulk_patients:     `More than ${BULK_VIEW_PATIENTS_PER_HOUR} patients in an hour`,
   deactivated_actor: 'Deactivated user',
   no_relationship:   'No order or proposal in that clinic',
@@ -59,7 +102,11 @@ export interface AccessReviewRow {
 }
 
 export interface FlaggedAccessRow extends AccessReviewRow {
-  flags: ReviewFlag[]
+  flags:      ReviewFlag[]
+  /** The zone the hours were read in (the clinic's, or UTC). */
+  time_zone:  string
+  /** occurred_at in that zone, YYYY-MM-DD HH:MM. */
+  local_time: string
 }
 
 export interface AccessReviewFilters {
@@ -140,9 +187,22 @@ export function parseAccessReviewFilters(q: URLSearchParams, nowMs: number = Dat
   }
 }
 
-/** Before 06:00 or from 22:00, read in UTC. */
-export function isOutsideReviewHours(iso: string): boolean {
-  const hour = new Date(iso).getUTCHours()
+const formatters = new Map<string, Intl.DateTimeFormat>()
+
+/** The date, hour and minute of an instant in a zone. */
+function localParts(iso: string, timeZone: string): { date: string; hour: number; minute: string } {
+  let f = formatters.get(timeZone)
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    formatters.set(timeZone, f)
+  }
+  const p = Object.fromEntries(f.formatToParts(new Date(iso)).map(x => [x.type, x.value]))
+  return { date: `${p['year']}-${p['month']}-${p['day']}`, hour: Number(p['hour']), minute: p['minute'] ?? '00' }
+}
+
+/** Before 06:00 or from 22:00, in the given zone (UTC by default). */
+export function isOutsideReviewHours(iso: string, timeZone: string = FALLBACK_TIME_ZONE): boolean {
+  const { hour } = localParts(iso, timeZone)
   return hour < REVIEW_HOURS.start || hour >= REVIEW_HOURS.end
 }
 
@@ -151,7 +211,7 @@ function bulkViewIds(rows: ReadonlyArray<AccessReviewRow>): Set<string> {
   const flagged = new Set<string>()
   const byActor = new Map<string, { id: string; at: number; patient: string }[]>()
   for (const r of rows) {
-    if (r.action !== 'view' || !r.actor_user_id || !r.patient_id) continue
+    if (r.action !== 'view' || !r.actor_user_id || !r.patient_id || LIST_REVIEW_RESOURCES.has(r.resource)) continue
     const list = byActor.get(r.actor_user_id) ?? []
     list.push({ id: r.id, at: Date.parse(r.occurred_at), patient: r.patient_id })
     byActor.set(r.actor_user_id, list)
@@ -182,17 +242,21 @@ export interface FlagContext {
   deactivatedActorIds: ReadonlySet<string>
   /** `${clinicId}:${patientId}` for each patient with an order or a proposal in that clinic. */
   relatedPatients:     ReadonlySet<string>
+  /** clinic id -> IANA zone; a clinic not in it is read in UTC. */
+  clinicTimeZones?:    ReadonlyMap<string, string>
 }
 
 export function flagAccessRows(rows: ReadonlyArray<AccessReviewRow>, ctx: FlagContext): FlaggedAccessRow[] {
   const bulk = bulkViewIds(rows)
   return rows.map(r => {
     const flags: ReviewFlag[] = []
-    if (isOutsideReviewHours(r.occurred_at)) flags.push('outside_hours')
+    const timeZone = (r.clinic_id && ctx.clinicTimeZones?.get(r.clinic_id)) || FALLBACK_TIME_ZONE
+    const local = localParts(r.occurred_at, timeZone)
+    if (local.hour < REVIEW_HOURS.start || local.hour >= REVIEW_HOURS.end) flags.push('outside_hours')
     if (bulk.has(r.id)) flags.push('bulk_patients')
     if (r.actor_user_id && ctx.deactivatedActorIds.has(r.actor_user_id)) flags.push('deactivated_actor')
     if (r.patient_id && r.clinic_id && !ctx.relatedPatients.has(`${r.clinic_id}:${r.patient_id}`)) flags.push('no_relationship')
-    return { ...r, flags }
+    return { ...r, flags, time_zone: timeZone, local_time: `${local.date} ${String(local.hour).padStart(2, '0')}:${local.minute}` }
   })
 }
 
@@ -209,12 +273,18 @@ function cell(v: string | null): string {
   return /[",\r\n']/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
-const CSV_HEADER = ['occurred_at', 'actor_user_id', 'actor_role', 'clinic_id', 'patient_id', 'order_id', 'action', 'resource', 'route', 'flags']
+const CSV_HEADER = ['occurred_at', 'time_zone', 'local_time', 'actor_user_id', 'actor_role', 'clinic_id', 'patient_id', 'order_id', 'action', 'resource', 'route', 'flags']
 
-export function accessReviewCsv(rows: ReadonlyArray<FlaggedAccessRow>): string {
+/** The last line of a cut-off export (C's review D3). */
+export function truncatedCsvLine(rowLimit: number): string {
+  return `# TRUNCATED: only the newest ${rowLimit} rows are in this file. Narrow the range or the filters and export again.`
+}
+
+export function accessReviewCsv(rows: ReadonlyArray<FlaggedAccessRow>, cut?: { truncated: boolean; rowLimit: number }): string {
   const lines = rows.map(r => [
-    r.occurred_at, r.actor_user_id, r.actor_role, r.clinic_id, r.patient_id, r.order_id,
+    r.occurred_at, r.time_zone, r.local_time, r.actor_user_id, r.actor_role, r.clinic_id, r.patient_id, r.order_id,
     r.action, r.resource, r.route, r.flags.join(' '),
   ].map(cell).join(','))
+  if (cut?.truncated) lines.push(truncatedCsvLine(cut.rowLimit))
   return [CSV_HEADER.join(','), ...lines].join('\n') + '\n'
 }

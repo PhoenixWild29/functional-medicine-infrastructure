@@ -26,16 +26,16 @@ Two known limits, tracked as gap B14:
 
 ## How to review
 
-Open **Ops > Access review** (`/ops/access-review`). Only ops_admin can see it. Opening it is logged as a view of the access log. Exporting is logged as an export.
+Open **Ops > Access review** (`/ops/access-review`). Only ops_admin can see it. Opening it is logged as a view of the access log. Exporting is logged as an export, and the export fails closed: if that log row cannot be written, no file is sent (503) and you try again.
 
-1. **Set the range.** Use the review week. One request reads up to 92 days and up to 5,000 rows. When the screen says the rows were cut off, narrow the filters.
+1. **Set the range.** Use the review week. One request reads up to 92 days and up to 5,000 rows, newest first. When the screen says the rows were cut off, narrow the filters or the range. A cut-off CSV says so in its last line (`# TRUNCATED ...`) and in an `X-Truncated` header; never file a truncated CSV as the week's evidence.
 2. **Read the flag counts, then turn on "Flagged rows only".** Each flag is a prompt to check the row, not a finding:
 
    | Flag | Meaning | What to check |
    |---|---|---|
-   | Outside 6am to 10pm (UTC) | Access before 06:00 or from 22:00. Times are UTC because clinics have no time zone recorded yet. For a US clinic, 22:00 UTC is mid-afternoon to early evening. | Does it fit the clinic's hours and the person's role? |
-   | More than 30 patients in an hour | One person viewed more than 30 different patients within 60 minutes. | Was it a list review, a batch task, or browsing? |
-   | Deactivated user | The login is deactivated, or no longer exists. | Any access after the deactivation date is a finding. |
+   | Outside 6am to 10pm (clinic time) | Access before 06:00 or from 22:00 in the clinic's time zone. Clinics have no time zone column yet, so the zone comes from the clinic's state; a state with two zones uses the one most of its people live in (for example Texas is Central, Florida is Eastern), so a clinic in the other part is read an hour off. A row with no clinic, or a clinic with no state, is read in UTC. The "Clinic time" column shows the local time and zone used. | Does it fit the clinic's hours and the person's role? |
+   | More than 30 patients in an hour | One person opened more than 30 different patients one at a time within 60 minutes. List views (order list, patient list, practice dashboard, import preview, fax queue) log one row per patient shown and do not count. | Was it a batch task, or browsing? |
+   | Deactivated user | The login is deactivated, or no longer exists. Patient (token link) and system rows are not logins and are never flagged. If the login lookup fails, the row is not flagged and the screen counts the failed lookups: rerun the review later. | Any access after the deactivation date is a finding. |
    | No order or proposal in that clinic | The patient has no order and no treatment proposal in that clinic. | A new patient being set up is normal. Otherwise, why was the record opened? |
 
 3. **Check the ops rows.** Filter by Actor role = CompoundIQ operations. Each time ops opens an order, a second row records the reason they gave ("Reason given by CompoundIQ operations: ..."). Every **emergency** reason needs a completed post-event review (see `emergency-access-procedure.md`).

@@ -69,6 +69,8 @@ const TITLES = {
   stripe_dispute_lost:         '🔴 Stripe dispute lost',
   status_history_write_failed: '🔴 Order status change has no audit row',
   phi_access_log_write_failed: '🔴 A PHI access was not recorded in the audit log',
+  // C's review D5: ops opened an order with the emergency (break-glass) reason.
+  emergency_access:            '🚨 Emergency (break-glass) access to a patient order',
   submissions_paused:          '⏸️ Pharmacy submissions are turned off: paid orders are waiting',
   order_stuck:                 '⚠️ Order stuck: needs ops',
   queued_alert:                '⚠️ Ops alert',
@@ -157,6 +159,7 @@ const NOTES = {
   unmatched:            'UNMATCHED: manual review required.',
   clinic_not_notified:  '⚠️ The clinic was not notified in-app. Contact the clinic directly.',
   submissions_off:      'Nothing is sent to any pharmacy until PHARMACY_SUBMISSIONS_ENABLED=true.',
+  emergency_review:     'Post-event review due within 24 hours: Ops, Access review, resource ops_reason_emergency (docs/compliance/emergency-access-procedure.md).',
   free_text_withheld:   'Pharmacy and patient text is never sent to Slack. Open the order in ops for the details.',
   reconciliation_review: 'Record-only: no money was moved. The full list is in reconciliation_runs; compare it with the Stripe dashboard.',
   stuck_no_auto_action: 'Nothing was changed automatically. Open the order in ops to resubmit, reroute or refund.',

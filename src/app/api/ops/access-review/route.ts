@@ -10,9 +10,15 @@
 // actorUserId, actorRole, resource, action; format=csv for the export.
 // A malformed filter is a 400 naming it.
 //
-// The rows come back with the review flags (src/lib/audit/access-review).
+// The rows come back newest first, with the review flags
+// (src/lib/audit/access-review), each read in its clinic's time zone (from
+// the clinic's state). A cut-off result keeps the newest rows, and a
+// cut-off CSV says so in an X-Truncated header and its last line.
+//
 // The review is itself PHI access: viewing logs a view of access_log, and
 // the CSV logs an export, against the filtered clinic when there is one.
+// The export fails closed: no log row, no file (503). The view is
+// alert-only, as every read is.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
@@ -24,11 +30,11 @@ import { logPhiAccess } from '@/lib/audit/phi-access'
 import {
   ACCESS_REVIEW_ROW_LIMIT,
   BULK_VIEW_PATIENTS_PER_HOUR,
-  REVIEW_TIMEZONE,
   accessReviewCsv,
   countFlags,
   flagAccessRows,
   parseAccessReviewFilters,
+  timeZoneForState,
   type AccessReviewRow,
 } from '@/lib/audit/access-review'
 
@@ -68,19 +74,49 @@ async function relatedPatients(db: Service, patientIds: string[]): Promise<Set<s
   return out
 }
 
-/** Actors whose login is deactivated, or no longer exists. */
-async function deactivatedActors(db: Service, actorIds: string[]): Promise<Set<string>> {
-  const out = new Set<string>()
+/** clinic id -> time zone from the clinic's state; null on a failed read. */
+async function clinicTimeZones(db: Service, clinicIds: string[]): Promise<Map<string, string> | null> {
+  const out = new Map<string, string>()
+  for (const ids of chunks(clinicIds)) {
+    const { data, error } = await db.from('clinics').select('clinic_id, state').in('clinic_id', ids)
+    if (error) {
+      console.error('[ops/access-review] clinic state read failed:', error.message)
+      return null
+    }
+    for (const c of (data ?? []) as { clinic_id: string; state: string | null }[]) {
+      const zone = timeZoneForState(c.state)
+      if (zone) out.set(c.clinic_id, zone)
+    }
+  }
+  return out
+}
+
+/** Not logins: a patient on a token link, or the system (phi-access.ts). */
+const NON_LOGIN_ROLES: ReadonlySet<string> = new Set(['patient', 'system'])
+
+/**
+ * Actors whose login is deactivated, or no longer exists (Auth answers
+ * 404). Any other lookup error is unknown, not deactivated: it is counted
+ * in `failures` and the row is not flagged.
+ */
+async function deactivatedActors(db: Service, actorIds: string[]): Promise<{ ids: Set<string>; failures: number }> {
+  const ids = new Set<string>()
+  let failures = 0
   await Promise.all(actorIds.map(async id => {
     try {
       const { data, error } = await db.auth.admin.getUserById(id)
-      if (error || !data?.user || isDeactivated(data.user)) out.add(id)
+      if (error) {
+        if ((error as { status?: number }).status === 404) ids.add(id)
+        else failures++
+        return
+      }
+      if (!data?.user || isDeactivated(data.user)) ids.add(id)
     } catch (err) {
-      // Not known to be deactivated; the row is still shown.
+      failures++
       console.warn('[ops/access-review] user lookup failed (non-fatal):', err instanceof Error ? err.message : err)
     }
   }))
-  return out
+  return { ids, failures }
 }
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
@@ -107,7 +143,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   if (f.actorRole) query = query.eq('actor_role', f.actorRole)
   if (f.resource) query = query.eq('resource', f.resource)
   if (f.action) query = query.eq('action', f.action)
-  const { data, error } = await query.order('occurred_at', { ascending: true }).limit(ACCESS_REVIEW_ROW_LIMIT + 1)
+  // Newest first: a cut-off review keeps the latest rows.
+  const { data, error } = await query.order('occurred_at', { ascending: false }).limit(ACCESS_REVIEW_ROW_LIMIT + 1)
   if (error) {
     console.error('[ops/access-review] phi_access_log read failed:', error.message)
     return failed()
@@ -117,23 +154,37 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   const rows = truncated ? all.slice(0, ACCESS_REVIEW_ROW_LIMIT) : all
 
   const patientIds = [...new Set(rows.map(r => r.patient_id).filter((id): id is string => !!id))]
-  const actorIds = [...new Set(rows.map(r => r.actor_user_id).filter((id): id is string => !!id))]
-  const [related, deactivated] = await Promise.all([relatedPatients(db, patientIds), deactivatedActors(db, actorIds)])
-  if (!related) return failed()
-  const flagged = flagAccessRows(rows, { deactivatedActorIds: deactivated, relatedPatients: related })
+  const actorIds = [...new Set(rows
+    .filter(r => !NON_LOGIN_ROLES.has(r.actor_role))
+    .map(r => r.actor_user_id)
+    .filter((id): id is string => !!id))]
+  const clinicIds = [...new Set(rows.map(r => r.clinic_id).filter((id): id is string => !!id))]
+  const [related, deactivated, zones] = await Promise.all([
+    relatedPatients(db, patientIds), deactivatedActors(db, actorIds), clinicTimeZones(db, clinicIds),
+  ])
+  if (!related || !zones) return failed()
+  const flagged = flagAccessRows(rows, { deactivatedActorIds: deactivated.ids, relatedPatients: related, clinicTimeZones: zones })
 
-  await logPhiAccess({
+  const logged = await logPhiAccess({
     user, action: format === 'csv' ? 'export' : 'view', resource: 'access_log', route: ROUTE,
     clinicId: f.clinicId, headers: request.headers,
   })
 
   if (format === 'csv') {
-    return new NextResponse(accessReviewCsv(flagged), {
+    // C's review D4: an export is a disclosure; with no log row, no file.
+    if (!logged) {
+      return NextResponse.json(
+        { error: 'The export could not be recorded in the audit log, so it was not sent. Try again.' },
+        { status: 503, headers: { 'Cache-Control': 'no-store' } },
+      )
+    }
+    return new NextResponse(accessReviewCsv(flagged, { truncated, rowLimit: ACCESS_REVIEW_ROW_LIMIT }), {
       status: 200,
       headers: {
         'content-type':        'text/csv; charset=utf-8',
         'content-disposition': `attachment; filename="access-review-${f.from}_${f.to}.csv"`,
         'cache-control':       'no-store',
+        ...(truncated ? { 'x-truncated': 'true' } : {}),
       },
     })
   }
@@ -141,11 +192,13 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     from: f.from,
     to: f.to,
-    timezone: REVIEW_TIMEZONE,
+    // Each row carries time_zone: its clinic's (from the state), or UTC.
+    timeZoneBasis: 'clinic_state',
     bulkThreshold: BULK_VIEW_PATIENTS_PER_HOUR,
     truncated,
     rowLimit: ACCESS_REVIEW_ROW_LIMIT,
     flagCounts: countFlags(flagged),
+    actorLookupFailures: deactivated.failures,
     rows: flagged,
   }, { headers: { 'Cache-Control': 'no-store' } })
 }

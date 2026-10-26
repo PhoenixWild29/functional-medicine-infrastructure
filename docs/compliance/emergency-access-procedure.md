@@ -33,7 +33,7 @@ What changed: ops must now give a reason before an order opens.
    - **Emergency access (break-glass): urgent patient safety**.
 2. Nothing is loaded until a reason is chosen. Each order asks again.
 3. Choosing the emergency reason shows a notice that it is reviewed within 24 hours.
-4. The person who used it tells the Security Officer the same day.
+4. The person who used it tells the Security Officer the same day. Ops is also alerted in Slack on every emergency open (see "What is logged"), so the review does not depend on that report.
 
 ### The break-glass account (when no ops_admin can sign in)
 
@@ -53,7 +53,7 @@ The Supabase dashboard and the service-role key are not break-glass paths for re
 
 ## What is logged
 
-Every time ops opens an order (`GET /api/ops/orders/[orderId]/detail`), two rows are written to `phi_access_log`:
+Every time ops opens an order in the pipeline drawer (`GET /api/ops/orders/[orderId]/detail`), two rows are written to `phi_access_log`:
 
 | Row | Resource | Recorded with it |
 |---|---|---|
@@ -62,6 +62,9 @@ Every time ops opens an order (`GET /api/ops/orders/[orderId]/detail`), two rows
 
 - **Where the rows show:** the order's clinic admin sees both in Settings > Access log. The reason row reads "Reason given by CompoundIQ operations: ...". Ops sees them in Ops > Access review.
 - **Missing or unknown reason:** a request without a reason, or with a reason not on the list, is refused (400). Nothing is read, and nothing is logged.
+- **Emergency fails closed:** if the `ops_reason_emergency` row cannot be written, the order is not returned (503) and ops tries again. For the other reasons, a failed write is alerted (the audit-write alert) and the order is still shown, as for every other read.
+- **Slack alert on every emergency open:** "Emergency (break-glass) access to a patient order", with the code `ops_reason_emergency`, the actor's role and the time. It carries no order, patient, clinic or user id; the reviewer finds the rows in Ops > Access review. A Slack failure is logged and does not block the open.
+- **Scope:** the reason is required on the pipeline order drawer, the ops patient-level order view. Other ops screens that show order-linked PHI, notably the inbound fax queue (`/ops/fax`), do not ask for a reason; their views are logged (resource `inbound_fax`) but carry no reason row. Requiring a reason there is a separate change.
 - **Codes only:** the reason is a code, not free text. `phi_access_log` has no reason column, and this change adds no migration. A free-text note needs the design below.
 
 ## Post-event review (within 24 hours)

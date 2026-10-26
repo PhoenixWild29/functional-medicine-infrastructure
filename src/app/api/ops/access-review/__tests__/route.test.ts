@@ -151,8 +151,9 @@ describe('D1: hours in the clinic time zone', () => {
 describe('D2: newest first; patient and system actors; lookup errors', () => {
   it('asks for the newest rows first, so a cut-off review keeps the latest', async () => {
     const orderSpy = jest.fn()
-    const base = db.client.from as (t: string) => Record<string, (...a: unknown[]) => unknown>
-    db.client.from = ((t: string) => {
+    const client = db.client as Record<string, unknown>
+    const base = client['from'] as (t: string) => Record<string, (...a: unknown[]) => unknown>
+    client['from'] = ((t: string) => {
       const b = base(t)
       if (t === 'phi_access_log') {
         const order = b['order']!

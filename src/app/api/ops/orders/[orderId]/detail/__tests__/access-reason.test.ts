@@ -18,6 +18,8 @@ jest.mock('@/lib/supabase/server', () => ({
   createServerClient: async () => ({ auth: { getUser: async () => ({ data: { user: { id: 'ops-1', app_metadata: { app_role: 'ops_admin' } } }, error: null }) } }),
 }))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
+// The emergency reason sends a Slack alert (emergency-access.test.ts).
+jest.mock('@/lib/slack/client', () => ({ ...jest.requireActual('@/lib/slack/client'), sendSlackAlert: jest.fn(async () => undefined) }))
 
 import { GET } from '../route'
 

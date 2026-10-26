@@ -237,6 +237,19 @@ export function buildPhiAccessLogFailedAlert(params: { route: string; action: st
   })
 }
 
+/**
+ * C's review D5: ops opened a patient order with the emergency reason. No
+ * order, patient, clinic or user id: the reviewer finds the rows in Ops,
+ * Access review (resource ops_reason_emergency, that time).
+ */
+export function buildEmergencyAccessAlert(params: { actorRole: string; at: string }): SafeSlackPayload {
+  return buildOpsAlert({
+    type: 'emergency_access',
+    details: { code: 'ops_reason_emergency', actor: params.actorRole, failed_at: params.at },
+    notes: ['emergency_review'],
+  })
+}
+
 /** The only values the Slack "Code" field of an adapter-failure alert may carry. */
 export const ADAPTER_ERROR_CODES = [
   'order_rejected',

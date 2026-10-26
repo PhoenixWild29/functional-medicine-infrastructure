@@ -14,8 +14,8 @@ const BODY = {
   from: '2026-10-19', to: '2026-10-25', timezone: 'UTC', truncated: false, rowLimit: 5000,
   flagCounts: { outside_hours: 1, bulk_patients: 0, deactivated_actor: 0, no_relationship: 0 },
   rows: [
-    { id: 'a', occurred_at: '2026-10-20T15:00:00.000Z', actor_user_id: 'aaaaaaaa-1', actor_role: 'provider', clinic_id: CLINIC, patient_id: 'pppppppp-1', order_id: null, action: 'view', resource: 'patient', route: '/x', flags: [] },
-    { id: 'b', occurred_at: '2026-10-20T23:10:00.000Z', actor_user_id: 'bbbbbbbb-1', actor_role: 'medical_assistant', clinic_id: CLINIC, patient_id: 'qqqqqqqq-1', order_id: null, action: 'export', resource: 'practice_export', route: '/x', flags: ['outside_hours'] },
+    { id: 'a', occurred_at: '2026-10-20T15:00:00.000Z', actor_user_id: 'aaaaaaaa-1', actor_role: 'provider', clinic_id: CLINIC, patient_id: 'pppppppp-1', order_id: null, action: 'view', resource: 'patient', route: '/x', flags: [], time_zone: 'America/New_York', local_time: '2026-10-20 11:00' },
+    { id: 'b', occurred_at: '2026-10-20T23:10:00.000Z', actor_user_id: 'bbbbbbbb-1', actor_role: 'medical_assistant', clinic_id: CLINIC, patient_id: 'qqqqqqqq-1', order_id: null, action: 'export', resource: 'practice_export', route: '/x', flags: ['outside_hours'], time_zone: 'America/Los_Angeles', local_time: '2026-10-20 16:10' },
   ],
 }
 
