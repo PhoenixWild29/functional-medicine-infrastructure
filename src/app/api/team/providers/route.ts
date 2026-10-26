@@ -63,6 +63,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const added = await addProviderRecord(supabase, {
     clinicId, userId: null, firstName, lastName, npiNumber, licenses, deaNumber: deaRaw || null, actorId: user.id,
+    // An approved clinic: the provider holds the NPI now (checked first).
+    npiClaimed: true,
   })
   if (!added.ok) {
     return NextResponse.json({ error: added.error, ...(added.errors ? { errors: added.errors } : {}) }, { status: added.status })

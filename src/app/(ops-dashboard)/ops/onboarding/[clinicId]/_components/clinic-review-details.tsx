@@ -13,6 +13,7 @@
 import type { ReactNode } from 'react'
 import type { ClinicReview, ReviewProvider } from '@/lib/onboarding/review'
 import { ACCOUNT_HOLDER_LABEL, unverifiedWarning } from '@/lib/onboarding/provider-review'
+import { npiPendingElsewhereNote, npiRegisteredElsewhereWarning } from '@/lib/onboarding/npi-claims'
 
 const MUTED = 'text-slate-700 dark:text-slate-300'
 
@@ -25,6 +26,8 @@ const EVENT_LABEL: Record<string, string> = {
   submitted:       'Submitted for review',
   approved:        'Approved',
   sent_back:       'Sent back',
+  self_signup:     'Signed up on their own',
+  signup_deleted:  'Sign-up deleted by ops',
 }
 const AGREEMENT_LABEL = { baa: 'Business Associate Agreement', terms: 'Terms of service' } as const
 
@@ -77,6 +80,13 @@ function ProviderCard({ p }: { p: ReviewProvider }) {
         </Field>
         <Field label="Invite">{p.accountHolder ? ACCOUNT_HOLDER_LABEL : p.invite ? `Invite ${INVITE_LABEL[p.invite.status]?.toLowerCase() ?? p.invite.status}` : 'Not invited'}</Field>
       </dl>
+      {/* Security review M3: who else names this NPI (ops only). */}
+      {(p.npiConflict?.approvedElsewhere || (p.npiConflict?.pendingElsewhere ?? 0) > 0) && (
+        <div className="mt-3 space-y-1 rounded-lg border border-red-300 bg-red-50 p-3 dark:border-red-400 dark:bg-red-950">
+          {p.npiConflict?.approvedElsewhere && <p className="text-sm font-medium text-red-900 dark:text-red-100">{npiRegisteredElsewhereWarning(`${p.firstName} ${p.lastName}`)}</p>}
+          {(p.npiConflict?.pendingElsewhere ?? 0) > 0 && <p className="text-sm text-red-900 dark:text-red-100">{npiPendingElsewhereNote(p.npiConflict!.pendingElsewhere)}</p>}
+        </div>
+      )}
       <h4 className="mt-3 text-sm font-medium text-foreground">Licenses</h4>
       {p.licenses.length === 0 ? (
         <p className={`text-sm ${MUTED}`}>No licenses recorded.</p>

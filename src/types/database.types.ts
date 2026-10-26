@@ -3968,6 +3968,7 @@ export type Database = {
           license_number: string
           license_state: string
           npi_number: string
+          npi_claimed: boolean
           provider_id: string
           signature_hash: string | null
           signature_on_file: boolean
@@ -3988,6 +3989,7 @@ export type Database = {
           license_number: string
           license_state: string
           npi_number: string
+          npi_claimed?: boolean
           provider_id?: string
           signature_hash?: string | null
           signature_on_file?: boolean
@@ -4008,6 +4010,7 @@ export type Database = {
           license_number?: string
           license_state?: string
           npi_number?: string
+          npi_claimed?: boolean
           provider_id?: string
           signature_hash?: string | null
           signature_on_file?: boolean
