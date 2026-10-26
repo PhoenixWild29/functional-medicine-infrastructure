@@ -12,6 +12,7 @@
 // getUser(), never getSession(); role and clinic from app_metadata.
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
@@ -28,10 +29,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 type Context = { params: Promise<{ patientId: string }> }
 
 async function caller(request: NextRequest, context: Context) {
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (request.method !== 'GET' && sfSite && sfSite !== 'same-origin' && sfSite !== 'none') {
-    return { error: NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 }) }
-  }
+  // Writes only: GET reads the link's state.
+  const crossSite = request.method === 'GET' ? null : refuseCrossSite(request)
+  if (crossSite) return { error: crossSite }
+
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }

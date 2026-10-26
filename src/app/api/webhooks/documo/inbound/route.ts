@@ -33,6 +33,7 @@
 // All other outcomes return 200.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { clientIp } from '@/lib/security/client-ip'
 import { validateDocumoWebhook } from '@/lib/documo/client'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendSlackAlert } from '@/lib/slack/client'
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Step 2: Authenticate — verify X-Documo-Signature header
   const isValid = await validateDocumoWebhook(signature, rawBody)
   if (!isValid) {
-    const ip = request.headers.get('x-forwarded-for') ?? 'unknown'
+    const ip = clientIp(request.headers) ?? 'unknown'
     console.error(`[documo-inbound] signature verification failed | ip=${ip}`)
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
   }

@@ -20,6 +20,7 @@
 // createPaymentGroup so the policy lives in one place.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }        from '@/lib/supabase/server'
 import { createServiceClient }       from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
@@ -54,10 +55,9 @@ export async function POST(
   }
 
   // ── 1. CSRF (same-origin only) ────────────────────────────────
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') {
-    return NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 })
-  }
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
+
 
   const { orderId: anchorOrderId } = await params
   if (!UUID_RE.test(anchorOrderId)) {

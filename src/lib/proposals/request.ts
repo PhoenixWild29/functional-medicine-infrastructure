@@ -12,6 +12,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import type { PhiUser } from '@/lib/audit/phi-access'
 import type { ProposalFailure } from './propose'
@@ -27,10 +28,8 @@ export type ProposalRequestContext = {
 }
 
 export async function proposalCaller(request: NextRequest): Promise<ProposalRequestContext | { response: NextResponse }> {
-  const site = request.headers.get('sec-fetch-site')
-  if (site && site !== 'same-origin' && site !== 'none') {
-    return { response: NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 }) }
-  }
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return { response: crossSite }
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
