@@ -4,6 +4,13 @@ Source content for the Word run sheet. A click-by-click demo script for a 45 to 
 
 **Assumes the merge queue has landed:** rx-quantity-shipping, rx-allergies-required, favorites-frequent, error-boundaries, token-pages-hardening, checkout-token-out-of-url, ops-fax-viewer-documo, signup-squatting, security-followups-2 (and settings-notifications if it lands; the branch was not on origin when this was written).
 
+**Updated 2026-10-26: also assumes the security and privacy work has landed.**
+- bundle-hipaa: in-app Help, password reset and change, failed sign-in alerts, the PHI access log, ops access review and emergency access.
+- clinical-difference-saved: saved clinical difference statements.
+- signed-order-freeze, which includes order-transmission-integrity: orders refused unless signed and unchanged, and clinical fields locked after signing.
+
+Their steps are marked **(branch security)**.
+
 - Labels come from main (2696ff2) plus those branches' code. A label marked **(branch)** exists only once that branch merges.
 - Before the call, check every step that depends on a branch on prod.
 - Companion docs: `docs/qa/prod-clickthrough-checklist.md` (every button, SAFE / WRITES DATA / NEVER) and `docs/qa/practitioner-requirements-coverage.md` (what is built against what was asked).
@@ -24,6 +31,9 @@ Source content for the Word run sheet. A click-by-click demo script for a 45 to 
   - ops "Retry", "Force Fax", "Retry Fax", "Reject Order".
 - **(branch rx-allergies-required)** On the sign page, "Save allergies" inside the "Record allergies or mark NKDA before signing" prompt signs and sends straight away. Only save there for the test patient, and only if you mean to sign.
 - "Yes, delete <clinic>" on a clinic review page **(branch signup-squatting)**. It is irreversible.
+- **(branch security)** "Send reset link" on the forgot-password page with a real person's address. It emails them a live reset link. Show the page only.
+- **(branch security)** "Open order" with "Emergency access (break-glass): urgent patient safety" chosen. It alerts the security team at once and starts a 24-hour review.
+- **(branch security)** Mistyping the ops password. Any failed sign-in on the ops account alerts the team. Use the password manager and paste it.
 
 **Two rules for patient pages:**
 - **Do not refresh a checkout tab (branch checkout-token-out-of-url).** The address bar becomes plain `/checkout` and a refresh shows "Please reopen your payment link". Reopen the copied link instead.
@@ -31,7 +41,7 @@ Source content for the Word run sheet. A click-by-click demo script for a 45 to 
 
 ## 1. Before the call (15 minutes, the day before or one hour ahead)
 
-**Accounts.** Passwords are in the password manager, not here.
+**Accounts.** Passwords are in the password manager, not here. **(branch security)** The server reads them from the POC_*_PASSWORD settings. After the planned rotation, take the new ones from whoever set them.
 
 | Window | Account | Lands on |
 |---|---|---|
@@ -41,9 +51,9 @@ Source content for the Word run sheet. A click-by-click demo script for a 45 to 
 | D: private window | Patient pages (no login) | |
 
 **Tabs to open:**
-- In A: /practice, /settings/team, /settings/patients/signup-link.
+- In A: /practice, /settings/team, /settings/patients/signup-link, /help **(branch security)**.
 - In B: /dashboard.
-- In C: /ops/pipeline, /ops/onboarding, /ops/fax.
+- In C: /ops/pipeline, /ops/onboarding, /ops/fax, /ops/access-review and /ops/security **(branch security)**.
 
 **Demo data to check (window C, /ops/pipeline):**
 
@@ -121,7 +131,11 @@ Source content for the Word run sheet. A click-by-click demo script for a 45 to 
 - **Click:** "Review & Send (1)". On the card, open "Rx details" and point at each field:
   - "Days supply", "Dispense: 9.6 mL (2 × 5 mL vials)", "Refills";
   - "Syringe option" (SubQ syringe kit), "Shipping" (Cold chain);
-  - "Clinical difference (required)" ("Select a reason…": pick one);
+  - "Clinical difference (required)" ("Select a reason…"). Nothing is pre-selected, on purpose.
+    - **(branch security) Saved statements (WRITES DATA, demo patient only):**
+      1. Pick "Other (describe)" and type a statement, for example "Glycine added to help maintain muscle mass (demo)".
+      2. Under "Save this statement for next time:", press **"Save for Demo Runsheet only"**, not "Save for the practice". There is no delete button in the app, so the statement stays with the test patient only.
+      3. On the next Rx for this patient, it appears under "Saved statements" as a one-click choice.
   - "Diagnosis code" / "Diagnosis", "Special instructions (optional)".
 - **Point at:** the fax and every pharmacy API now carry "Quantity: 2" with "Dispense: 9.6 mL (2 x 5 mL vials)" **(branch rx-quantity-shipping)**. Before, every order said quantity 1.
 - **Allergies (branch rx-allergies-required):** the test patient shows NKDA, so signing is allowed. Explain: for a patient with nothing recorded, pressing Sign & Send shows "Record allergies or mark NKDA before signing", with "Confirm NKDA", "Record allergies" and "Save allergies". An Rx can no longer reach the pharmacy without allergies or NKDA.
@@ -190,7 +204,9 @@ Source content for the Word run sheet. A click-by-click demo script for a 45 to 
 - Tier "T4 Fax": DEMO-1001, 1002, 1008.
 - "From date" = the 1st: DEMO-1013 to 1015.
 - Reload: the filters stay (they are in the URL). "Clear all filters".
-- Click DEMO-1011 → tabs "Detail", "History", "Submissions" ("[PHARMACY_API_UNAVAILABLE] Express Digital Rx API returned 503 Service Unavailable on 3 attempts...").
+- Click DEMO-1011.
+  - **(branch security)** The drawer first asks "Why are you opening this order?". Choose "The order is stuck, failed or needs rerouting" → "Open order". The reason is logged, and the clinic sees it in its access log.
+  - Then the tabs: "Detail", "History", "Submissions" ("[PHARMACY_API_UNAVAILABLE] Express Digital Rx API returned 503 Service Unavailable on 3 attempts...").
 - **NEVER:** "Retry", "Force Fax", "Retry Fax", "Cancel" (refund). "Reroute" uses up DEMO-1011's demo state.
 
 **Approval with the license check, /ops/onboarding:**
@@ -215,6 +231,35 @@ Source content for the Word run sheet. A click-by-click demo script for a 45 to 
 - **NEVER:** "Approve", "Load into catalog".
 - **Why it matters:** a pharmacy can join on its own, and nothing reaches prescribers until its licenses and agreements are checked.
 
+### 2.12 Security and privacy (5 min max), windows A and C **(branch security)**
+1. **Window A, sidebar "Help":**
+   - "Help" lists 9 short guides: "Add a patient", "Write and sign a prescription", "Favorites and Frequently used", "Send a treatment plan for the patient to choose", "Payment links", "Order status", "Team", "Settings", "Who to contact".
+   - Open one; "All help topics" goes back.
+2. **Window D, /forgot-password (view only):**
+   - Point at "Reset your password", "Email address" and "Send reset link".
+   - Explain: the answer is the same whether or not the email has an account, and the link works once, for 15 minutes.
+   - **NEVER** press "Send reset link" with a real address.
+3. **Window A, /settings, section "Account":**
+   - Point at "Change password", with "Current password", "New password" and "Confirm new password".
+   - Explain: the current password is checked, and every other device is signed out.
+   - Do not change it: the demo password is shared.
+4. **Window C, /ops/access-review:**
+   - "Access review": who viewed, changed or exported patient data across every clinic.
+   - Filters "From", "To", "Clinic", "Actor role", "Resource", "Action"; flags on unusual rows; "Flagged rows only".
+   - Do not press "Export CSV" on the call: it is logged as an export.
+5. **Window C, /ops/security:**
+   - "Security": the failed sign-ins of the last 24 hours, and any alerts from the last 7 days.
+   - Accounts appear as the start of a keyed hash, never the email.
+6. **Window C, /ops/pipeline, the emergency reason:**
+   - Click any order. Point at the reasons in "Why are you opening this order?".
+   - Choose "Emergency access (break-glass): urgent patient safety". Show the warning "Emergency access is reviewed within 24 hours...".
+   - Then press "Close detail". **NEVER** press "Open order" with that reason.
+- **Why it matters:**
+  - every look at patient data is recorded and reviewed;
+  - passwords are the user's own;
+  - break-ins are noticed;
+  - emergency access is possible but always accounted for.
+
 ## 3. Expected questions and short answers
 
 **Do we connect to the clinic's EHR?**
@@ -222,9 +267,32 @@ Source content for the Word run sheet. A click-by-click demo script for a 45 to 
 - Not yet: a bulk pull of an existing EHR's patients (the CSV import covers that today), writing anything back to the EHR, and a direct Cerbo connector.
 - Open question for the pilots: which EHR do they use? That decides the first direct connector.
 
-**HIPAA and BAAs?**
-- No BAAs are signed yet with vendors or clinics, so prod holds demo data only.
-- The product is built for it: an access log on every patient record ("Access log"), two-step sign-in, BAA and terms acceptance in onboarding, patient pages that show no health details, and links that expire.
+**Where are we on HIPAA?**
+- **What is now protected:**
+  - **Every look at patient data is recorded:** lists, single records, and every send to a pharmacy, fax or AI service. Clinics see their own in "Access log". CompoundIQ reviews all of it on an access review page, with unusual activity flagged.
+  - **Staff must say why they open a clinic's order.** Emergency access exists, alerts the team, and is reviewed within a day.
+  - **Passwords:**
+    - people set and reset their own passwords;
+    - a change asks for the current password and signs out other devices;
+    - failed sign-ins are tracked, and repeated ones are slowed down and alerted;
+    - the demo passwords are out of the code.
+  - **Prescriptions:**
+    - an order only reaches a pharmacy if it is signed and unchanged since signing;
+    - its clinical details are locked once signed;
+    - pharmacies are only reached at secure addresses.
+  - **Still true from before:**
+    - patient pages show no health details, and their links expire;
+    - two-step sign-in is available to every staff member;
+    - staff are logged out after 15 minutes idle.
+- **What is still outstanding:**
+  - **No BAAs are signed yet** with vendors or clinics. So the live site holds demo data only.
+  - **Two-step sign-in for everyone.** It is one switch, recommended on from the first real clinic.
+  - **A separate system for real patients.** The recommendation is a second copy of CompoundIQ for real data, with the demo left as it is, so a demo order can never reach a real pharmacy or patient. This is Sam's decision.
+  - **Texting registration.** Texts need a signed agreement with the texting provider and US carrier registration. That takes weeks, so it should start now. No texts are sent until then.
+  - **A few finishing items are being fixed now:**
+    - logging texts to patients;
+    - the database also checking two-step sign-in;
+    - making the signature check impossible to imitate.
 
 **How do pharmacies receive orders?**
 By tier:
@@ -241,7 +309,7 @@ The Method column on the dashboard shows which. Sending is behind an on/off swit
 - CompoundIQ's monthly fee is billed separately, not taken from orders.
 
 **What is not built yet?** (from the coverage audit, assuming the queue above has merged)
-- The GLP-1 clinical difference opens on its own but nothing is pre-selected, and the patient-specific statements (Strive style) must be typed under "Other" each time.
+- The GLP-1 clinical difference opens on its own and nothing is pre-selected (a deliberate decision). Patient-specific statements can now be saved for the practice or one patient and picked with one click (finishing). Saved statements cannot yet be deleted in the app.
 - Direct Cerbo connector; bulk import through Keragon; anything written back to the EHR.
 - Staff still type the patient's mobile number on "+ New patient", unless a face sheet is read (the face sheet needs the AI key on prod).
 - Settings → Notifications is a placeholder, unless settings-notifications lands.
@@ -253,5 +321,6 @@ The Method column on the dashboard shows which. Sending is behind an on/off swit
 ## 4. After the call
 - Cancel any test plan that was not signed.
 - Revoke any test invite.
-- Note what was created: the test patient, a favorite, drafts, an imported row.
+- Note what was created: the test patient, a favorite, drafts, an imported row, and the saved clinical statement (for Demo Runsheet only; it cannot be deleted in the app yet).
+- **(branch security)** Note any failed sign-in alerts that appeared on /ops/security during the call.
 - Note what the texting line said (is Twilio live on prod?), and whether "Drop a face sheet" showed (is the AI key set?).
