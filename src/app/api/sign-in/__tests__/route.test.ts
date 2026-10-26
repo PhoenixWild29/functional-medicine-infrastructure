@@ -83,6 +83,18 @@ describe('POST /api/sign-in', () => {
     expect(signInWithPassword).not.toHaveBeenCalled()
   })
 
+  it('A1: failures from another IP do not throttle the account: the real user still signs in', async () => {
+    signInWithPassword.mockResolvedValue({ data: { user: null, session: null }, error: { code: 'invalid_credentials' } })
+    for (let i = 0; i < 5; i++) {
+      expect((await signIn(req('/api/sign-in', { email: 'jane@clinic.test', password: 'x' }, { 'x-forwarded-for': '198.51.100.66' }))).status).toBe(401)
+    }
+    // The attacker's own IP is now held for this account.
+    expect((await signIn(req('/api/sign-in', { email: 'jane@clinic.test', password: 'x' }, { 'x-forwarded-for': '198.51.100.66' }))).status).toBe(429)
+    signInWithPassword.mockResolvedValue({ data: { user, session: { user } }, error: null })
+    const res = await signIn(req('/api/sign-in', { email: 'jane@clinic.test', password: 'the-right-one' }))
+    expect(res.status).toBe(200)
+  })
+
   it('a missing email or password is 400, and nothing reaches Supabase', async () => {
     expect((await signIn(req('/api/sign-in', { email: 'jane@clinic.test' }))).status).toBe(400)
     expect((await signIn(req('/api/sign-in', { password: 'x' }))).status).toBe(400)

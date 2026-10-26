@@ -11,7 +11,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
-  ACCOUNT_ALERT_AT, AUTH_FAILURE, AUTH_FAILURE_ALERT, IP_ALERT_AT, THROTTLE_WINDOW_MS,
+  ACCOUNT_ALERT_AT, ALERT_WINDOW_MINUTES, AUTH_FAILURE, AUTH_FAILURE_ALERT, IP_ALERT_AT, THROTTLE_WINDOW_MS,
   alertRules, buildAuthAlert, createSignInThrottle, listSignInAlerts, privilegedRoleFor,
   reasonCode, recordSignInFailure, resetPrivilegedCache, throttledMessage,
 } from '../sign-in-monitor'
@@ -28,11 +28,13 @@ afterAll(() => { if (savedSecret === undefined) delete process.env['PHI_ACCESS_L
 /** ops_alert_queue: records inserts; a count filtered by account or IP answers the given number. */
 function fakeSvc(opts: { accountCount?: number; ipCount?: number; insertError?: boolean; countError?: boolean } = {}) {
   const inserts: Array<Record<string, unknown>> = []
+  const updates: Array<Record<string, unknown>> = []
   const filters: string[] = []
   const from = jest.fn(() => {
     let field = ''
     const q: Record<string, unknown> = {}
     q['insert'] = jest.fn(async (row: Record<string, unknown>) => { inserts.push(row); return { error: opts.insertError ? { code: '42501' } : null } })
+    q['update'] = (patch: Record<string, unknown>) => { updates.push(patch); return q }
     q['select'] = () => q
     q['eq'] = () => q
     q['gte'] = () => q
@@ -42,7 +44,7 @@ function fakeSvc(opts: { accountCount?: number; ipCount?: number; insertError?: 
       : { count: field === 'metadata->>email_hash' ? (opts.accountCount ?? 1) : (opts.ipCount ?? 1), error: null })
     return q
   })
-  return { svc: { from } as unknown as SupabaseClient, inserts, filters }
+  return { svc: { from } as unknown as SupabaseClient, inserts, updates, filters }
 }
 
 const failure = (over: Partial<Parameters<typeof recordSignInFailure>[1]> = {}) => ({
@@ -101,21 +103,23 @@ describe('recording a failure', () => {
 })
 
 describe('alert rules', () => {
-  it('the account rule fires once, at 5 failures in the window', () => {
+  // A2: a rule applies at or above its threshold (a count that jumps past
+  // it still alerts); sending once per window is the claim's job (below).
+  it('the account rule applies from 5 failures in the window', () => {
     expect(alertRules({ accountCount: ACCOUNT_ALERT_AT - 1, ipCount: 1, privileged: false })).toEqual([])
     expect(alertRules({ accountCount: ACCOUNT_ALERT_AT, ipCount: 1, privileged: false })).toEqual(['account'])
-    expect(alertRules({ accountCount: ACCOUNT_ALERT_AT + 1, ipCount: 1, privileged: false })).toEqual([])
+    expect(alertRules({ accountCount: ACCOUNT_ALERT_AT + 1, ipCount: 1, privileged: false })).toEqual(['account'])
   })
 
-  it('the IP rule fires once, at 20 failures in the window', () => {
+  it('the IP rule applies from 20 failures in the window', () => {
     expect(alertRules({ accountCount: 1, ipCount: IP_ALERT_AT - 1, privileged: false })).toEqual([])
     expect(alertRules({ accountCount: 1, ipCount: IP_ALERT_AT, privileged: false })).toEqual(['ip'])
-    expect(alertRules({ accountCount: 1, ipCount: IP_ALERT_AT + 1, privileged: false })).toEqual([])
+    expect(alertRules({ accountCount: 1, ipCount: IP_ALERT_AT + 1, privileged: false })).toEqual(['ip'])
   })
 
-  it('every failure on an admin account alerts, until the account rule covers it', () => {
+  it('an admin account applies the privileged rule on every failure', () => {
     for (let n = 1; n < ACCOUNT_ALERT_AT; n++) expect(alertRules({ accountCount: n, ipCount: n, privileged: true })).toEqual(['privileged'])
-    expect(alertRules({ accountCount: ACCOUNT_ALERT_AT, ipCount: 1, privileged: true })).toEqual(['account'])
+    expect(alertRules({ accountCount: ACCOUNT_ALERT_AT, ipCount: 1, privileged: true })).toEqual(['account', 'privileged'])
   })
 
   it('both rules can fire on one failure', () => {
@@ -125,14 +129,17 @@ describe('alert rules', () => {
 
 describe('alerting', () => {
   it('the fifth failure on an account sends one Slack alert and writes an alert row', async () => {
-    const { svc, inserts } = fakeSvc({ accountCount: 5, ipCount: 5 })
+    const { svc, inserts, updates } = fakeSvc({ accountCount: 5, ipCount: 5 })
     const send = jest.fn().mockResolvedValue(undefined)
     const r = await recordSignInFailure(svc, failure(), { send, roleForEmail: async () => null })
     expect(r.alerts).toEqual(['account'])
     expect(send).toHaveBeenCalledTimes(1)
     const alertRow = inserts.find(i => i['alert_type'] === AUTH_FAILURE_ALERT)!
     expect(alertRow['severity']).toBe('warning')
-    expect(alertRow['sent_at']).toEqual(expect.any(String))
+    // Claimed unsent, then marked sent once Slack took it.
+    expect(alertRow['sent_at']).toBeNull()
+    expect(alertRow['alert_id']).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    expect(updates).toEqual([{ sent_at: expect.any(String) }])
     expect(alertRow['metadata']).toMatchObject({ rule: 'account', count: 5, ip: IP })
   })
 
@@ -165,7 +172,7 @@ describe('alerting', () => {
     const { svc } = fakeSvc({ accountCount: 5, ipCount: 20 })
     const send = jest.fn().mockResolvedValue(undefined)
     await recordSignInFailure(svc, failure({ role: 'ops_admin' }), { send })
-    expect(send).toHaveBeenCalledTimes(2)
+    expect(send).toHaveBeenCalledTimes(3)
     for (const [payload] of send.mock.calls) {
       const text = JSON.stringify(payload)
       expect(text.toLowerCase()).not.toContain('jane.doe')
@@ -188,6 +195,87 @@ describe('alerting', () => {
     expect(reasonCode('invalid_credentials')).toBe('invalid_credentials')
     expect(reasonCode('Invalid login credentials')).toBe('unknown')
     expect(reasonCode(undefined)).toBe('unknown')
+  })
+})
+
+// ── A2: once per rule, key and window, even under parallel failures ──
+
+/** A shared ops_alert_queue: alert_id is its primary key (a repeat is 23505). */
+function sharedQueue(counts: { account: () => number; ip: () => number }) {
+  const rows: Array<Record<string, unknown>> = []
+  const from = () => {
+    let field = ''
+    let patch: Record<string, unknown> | null = null
+    const q: Record<string, unknown> = {}
+    q['insert'] = async (row: Record<string, unknown>) => {
+      if (row['alert_id'] && rows.some(r => r['alert_id'] === row['alert_id'])) return { error: { code: '23505' } }
+      rows.push({ ...row })
+      return { error: null }
+    }
+    q['update'] = (p: Record<string, unknown>) => { patch = p; return q }
+    q['select'] = () => q
+    q['gte'] = () => q
+    q['eq'] = (col: string, v: unknown) => {
+      if (patch && col === 'alert_id') { const r = rows.find(x => x['alert_id'] === v); if (r) Object.assign(r, patch) }
+      return q
+    }
+    q['filter'] = (col: string) => { field = col; return q }
+    q['then'] = (resolve: (v: unknown) => void) => resolve(patch
+      ? { error: null }
+      : { count: field === 'metadata->>email_hash' ? counts.account() : counts.ip(), error: null })
+    return q
+  }
+  return { svc: { from } as unknown as SupabaseClient, rows }
+}
+
+describe('A2: an alert is sent once per rule, key and window', () => {
+  const T0 = Date.parse('2026-10-25T12:00:00.000Z')
+
+  it('6 parallel failures on one account that all count 6 send one account alert', async () => {
+    const { svc, rows } = sharedQueue({ account: () => 6, ip: () => 6 })
+    const send = jest.fn().mockResolvedValue(undefined)
+    const deps = { send, roleForEmail: async () => null, now: () => new Date(T0) }
+    const results = await Promise.all(Array.from({ length: 6 }, () => recordSignInFailure(svc, failure(), deps)))
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(results.filter(r => r.alerts.includes('account'))).toHaveLength(1)
+    expect(rows.filter(r => r['alert_type'] === AUTH_FAILURE_ALERT)).toHaveLength(1)
+  })
+
+  it('an IP at 21, 22, 23 failures alerts once in the window', async () => {
+    let n = 20
+    const { svc } = sharedQueue({ account: () => 1, ip: () => ++n })
+    const send = jest.fn().mockResolvedValue(undefined)
+    for (let i = 0; i < 3; i++) {
+      await recordSignInFailure(svc, failure({ email: `u${i}@x.test` }), { send, roleForEmail: async () => null, now: () => new Date(T0 + i * 1000) })
+    }
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it('an admin account alerts on its first failure, once per window, and again in the next window', async () => {
+    let n = 0
+    const { svc } = sharedQueue({ account: () => ++n, ip: () => n })
+    const send = jest.fn().mockResolvedValue(undefined)
+    const at = (ms: number) => ({ send, roleForEmail: async () => 'ops_admin', now: () => new Date(ms) })
+    await recordSignInFailure(svc, failure(), at(T0))
+    expect(send).toHaveBeenCalledTimes(1)
+    await recordSignInFailure(svc, failure(), at(T0 + 60_000))
+    await recordSignInFailure(svc, failure(), at(T0 + 120_000))
+    expect(send).toHaveBeenCalledTimes(1)
+    // The next 15-minute window alerts again.
+    await recordSignInFailure(svc, failure(), at(T0 + ALERT_WINDOW_MINUTES * 60_000))
+    expect(send).toHaveBeenCalledTimes(2)
+  })
+
+  it('the claimed row is marked sent after Slack takes it, and stays unsent when Slack fails', async () => {
+    const ok = sharedQueue({ account: () => 5, ip: () => 1 })
+    await recordSignInFailure(ok.svc, failure(), { send: jest.fn().mockResolvedValue(undefined), roleForEmail: async () => null, now: () => new Date(T0) })
+    expect(ok.rows.find(r => r['alert_type'] === AUTH_FAILURE_ALERT)!['sent_at']).toEqual(expect.any(String))
+
+    const down = sharedQueue({ account: () => 5, ip: () => 1 })
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    await recordSignInFailure(down.svc, failure(), { send: jest.fn().mockRejectedValue(new Error('slack down')), roleForEmail: async () => null, now: () => new Date(T0) })
+    spy.mockRestore()
+    expect(down.rows.find(r => r['alert_type'] === AUTH_FAILURE_ALERT)!['sent_at']).toBeNull()
   })
 })
 
