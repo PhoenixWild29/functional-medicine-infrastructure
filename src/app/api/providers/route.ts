@@ -204,13 +204,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: `Clinic ${targetClinicId} is not active; cannot create providers` }, { status: 409 })
   }
 
-  // 4b. NPI is globally unique among non-deleted providers (partial unique index).
-  const { data: existingNpi, error: npiCheckErr } = await supabase
+  // 4b. NPI is unique among live providers of approved clinics (claimed
+  //     rows, partial unique index providers_npi_number_unique). Pending
+  //     sign-ups may share an NPI unclaimed, so this is a list, not one row.
+  const { data: existingNpiRows, error: npiCheckErr } = await supabase
     .from('providers')
     .select('provider_id')
     .eq('npi_number', body.npiNumber)
     .is('deleted_at', null)
-    .maybeSingle()
+    .neq('npi_claimed', false)
+    .limit(1)
+  const existingNpi = (existingNpiRows ?? [])[0] ?? null
 
   if (npiCheckErr) {
     console.error(`[providers POST] npi pre-check failed:`, npiCheckErr.message)

@@ -7,7 +7,8 @@
 //
 // REQ-FTQ-001: Inbound fax list view (sortable, filterable by status)
 // REQ-FTQ-003: Auto-match display (matched pharmacy + order, or unmatched)
-// REQ-FTQ-007: Access control — ops_admin only, 15-min signed URLs
+// REQ-FTQ-007: Access control — ops_admin only; each PDF via the ops-only
+//              /api/ops/fax/[faxId]/pdf (fetched from Documo, Issue Log 72)
 //
 // Auth: ops_admin only. Uses service client (RLS restrictive).
 
@@ -34,8 +35,8 @@ export interface FaxEntry {
   processedBy:        string | null
   createdAt:          string
   updatedAt:          string
-  // Signed PDF URL (15 min) — REQ-FTQ-007
-  signedUrl:          string | null
+  // Ops-only PDF route (fetched from Documo on demand) — REQ-FTQ-007
+  pdfUrl:             string
   // Matched pharmacy context
   matchedPharmacyId:  string | null
   pharmacyName:       string | null
@@ -54,7 +55,7 @@ export interface FaxQueueResponse {
   fetchedAt: string
 }
 
-// NB-01: signed URL generation moved to @/lib/fax/map-fax-row
+// NB-01: row mapping in @/lib/fax/map-fax-row
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
@@ -105,9 +106,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   // NB-01: shared row mapper (also used by page.tsx)
-  const faxes: FaxEntry[] = await Promise.all(
-    (data ?? []).map(row => mapFaxRow(row, supabase))
-  )
+  const faxes: FaxEntry[] = (data ?? []).map(row => mapFaxRow(row))
 
   return NextResponse.json({
     faxes,

@@ -63,7 +63,7 @@ it('the words ops reads', () => {
 it('the self sign-up account holder: their sign-in email, marked as the account holder', async () => {
   const map = await loadProviderSummaries(client(), [{ clinicId: SELF, signupSource: 'self_serve' }, { clinicId: INVITED, signupSource: 'invite' }])
   expect(map.get(SELF)).toEqual([
-    { providerId: 'p-solo', name: 'Sol Owner', email: 'solo@practice.test', accountHolder: true, inviteStatus: null, npiStatus: 'not_found', npiVerified: false },
+    { providerId: 'p-solo', name: 'Sol Owner', email: 'solo@practice.test', accountHolder: true, inviteStatus: null, npiStatus: 'not_found', npiVerified: false, npiApprovedElsewhere: false, npiPendingElsewhere: 0 },
   ])
   expect(getUserById).toHaveBeenCalledWith('u-solo')
 })
@@ -71,8 +71,8 @@ it('the self sign-up account holder: their sign-in email, marked as the account 
 it('invited providers: the invite’s email and status; none: no invite; NPI verified or not', async () => {
   const map = await loadProviderSummaries(client(), [{ clinicId: INVITED, signupSource: 'invite' }])
   expect(map.get(INVITED)).toEqual([
-    { providerId: 'p-inv', name: 'Ivy Invited', email: 'ivy@clinic.test', accountHolder: false, inviteStatus: 'pending', npiStatus: 'verified', npiVerified: true },
-    { providerId: 'p-none', name: 'Ned Nobody', email: null, accountHolder: false, inviteStatus: null, npiStatus: null, npiVerified: false },
+    { providerId: 'p-inv', name: 'Ivy Invited', email: 'ivy@clinic.test', accountHolder: false, inviteStatus: 'pending', npiStatus: 'verified', npiVerified: true, npiApprovedElsewhere: false, npiPendingElsewhere: 0 },
+    { providerId: 'p-none', name: 'Ned Nobody', email: null, accountHolder: false, inviteStatus: null, npiStatus: null, npiVerified: false, npiApprovedElsewhere: false, npiPendingElsewhere: 0 },
   ])
 })
 

@@ -40,6 +40,7 @@ jest.mock('@/lib/face-sheet/extract', () => ({
 
 import { POST } from '../route'
 import { faceSheetLimiter } from '@/lib/face-sheet/rate-limit'
+import { dbRateLimitHit } from '@/lib/security/db-rate-limit'
 
 const FIELDS = {
   firstName: 'Jane', lastName: 'Smith', dateOfBirth: '1985-04-15', sex: 'female', mobile: '+15125550142', email: 'jane@example.com',
@@ -123,6 +124,15 @@ describe('rate limit', () => {
     expect(extractMock).not.toHaveBeenCalled()
     signedIn('medical_assistant', 'user-2')
     expect((await POST(fileReq(PDF_BYTES))).status).toBe(200)
+  })
+
+  it('across instances: the shared count for this user is over 20, so the first request here is 429, nothing read', async () => {
+    jest.mocked(dbRateLimitHit).mockResolvedValueOnce({ count: 21, windowStart: Date.now() })
+    const res = await POST(fileReq(PDF_BYTES))
+    expect(res.status).toBe(429)
+    expect(Number(res.headers.get('retry-after'))).toBeGreaterThan(0)
+    expect(extractMock).not.toHaveBeenCalled()
+    expect(dbRateLimitHit).toHaveBeenCalledWith('face_sheet', 'user-1', 60 * 60)
   })
 })
 

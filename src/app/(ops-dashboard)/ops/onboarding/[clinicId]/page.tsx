@@ -15,6 +15,7 @@ import { notFound } from 'next/navigation'
 import { createServiceClient } from '@/lib/supabase/service'
 import { loadClinicReview, type ClinicReview } from '@/lib/onboarding/review'
 import { ClinicReviewDetails } from './_components/clinic-review-details'
+import { DeleteSignupPanel } from './_components/delete-signup-panel'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,6 +69,10 @@ export default async function ClinicReviewPage({ params }: { params: Promise<{ c
             )}
           </div>
           <ClinicReviewDetails review={review} />
+          {/* Security review M2/M3: a squatted sign-up can be removed until approved. */}
+          {c.signupSource === 'self_serve' && c.onboardingStatus !== 'approved' && (
+            <DeleteSignupPanel clinicId={c.clinicId} clinicName={c.name} />
+          )}
         </>
       ) : (
         <>

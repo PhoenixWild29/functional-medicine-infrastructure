@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
-import { TEST_USERS } from './fixtures/seed'
+import { TEST_IDS, TEST_USERS } from './fixtures/seed'
 import { npiChecksumValid } from '../src/lib/providers/npi'
 
 // ============================================================
@@ -42,8 +42,12 @@ function fictionalNpi(): string {
   throw new Error('no check digit')
 }
 
+/** The provider this run adds to the approved test clinic, holding an NPI (M3). */
+const HOLDER_LICENSE = `TX-E2E-HOLD-${RUN}`
+
 async function cleanup() {
   const db = e2eService()
+  await db.from('providers').delete().eq('clinic_id', TEST_IDS.clinic).like('license_number', 'TX-E2E-HOLD-%')
   const { data, error } = await db.auth.admin.listUsers({ perPage: 1000 })
   if (error) throw new Error(`listUsers: ${error.message}`)
   const mine = data.users.filter(u => u.email?.startsWith(EMAIL_PREFIX) && u.email.endsWith('@compoundiq.test'))
@@ -72,6 +76,27 @@ async function cleanup() {
     const { error: delError } = await db.auth.admin.deleteUser(u.id)
     if (delError) throw new Error(`deleteUser: ${delError.message}`)
   }
+}
+
+/** A submitted solo self sign-up: clinic, confirmed clinic_admin login, provider (unclaimed, as sign-up stores it). */
+async function seedSubmittedSignup(kind: string, name: string, npiNumber: string) {
+  const db = e2eService()
+  const now = new Date().toISOString()
+  const { data: clinic, error: clinicErr } = await db.from('clinics').insert({
+    name, is_active: false, onboarding_status: 'submitted', onboarding_submitted_at: now, signup_source: 'self_serve', signup_kind: 'solo_provider',
+  }).select('clinic_id').single()
+  if (clinicErr || !clinic) throw new Error(`clinic: ${clinicErr?.message}`)
+  const { data: login, error: loginErr } = await db.auth.admin.createUser({
+    email: email(kind), password: PASSWORD, email_confirm: true,
+    app_metadata: { app_role: 'clinic_admin', clinic_id: clinic.clinic_id }, user_metadata: { full_name: 'Dana Ruiz' },
+  })
+  if (loginErr || !login.user) throw new Error(`login: ${loginErr?.message}`)
+  const { data: provider, error: providerErr } = await db.from('providers').insert({
+    clinic_id: clinic.clinic_id, user_id: login.user.id, first_name: 'Dana', last_name: 'Ruiz', npi_number: npiNumber,
+    license_state: 'TX', license_number: `TX-E2E-${kind}`, signature_on_file: false, is_active: true, npi_claimed: false,
+  }).select('provider_id').single()
+  if (providerErr || !provider) throw new Error(`provider: ${providerErr?.message}`)
+  return { clinicId: clinic.clinic_id as string, userId: login.user.id, providerId: provider.provider_id as string }
 }
 
 async function signIn(page: Page, address: string, password: string) {
@@ -282,5 +307,85 @@ test.describe('Self sign-up', () => {
     await expect(ops.getByRole('link', { name: /^Pharmacy onboarding \d+ new$/ })).toBeVisible()
     const row = ops.getByRole('row').filter({ hasText: name })
     await expect(row.getByText('Signed up on their own')).toBeVisible({ timeout: 15_000 })
+  })
+
+  // Security review M3: an NPI an approved clinic's provider holds does
+  // not block (or reveal anything at) sign-up; ops sees it and cannot
+  // approve, and sees how many other pending sign-ups name it.
+  test('NPI squatting: the sign-up goes through; ops sees the NPI is held elsewhere and Approve is refused', async ({ page, browser }) => {
+    test.setTimeout(120_000)
+    const db = e2eService()
+    const npiNumber = fictionalNpi()
+    // The approved test clinic holds the NPI (claimed by default).
+    const { error: holdErr } = await db.from('providers').insert({
+      clinic_id: TEST_IDS.clinic, first_name: 'Hold', last_name: 'Er', npi_number: npiNumber,
+      license_state: 'TX', license_number: HOLDER_LICENSE, signature_on_file: false, is_active: true,
+    })
+    expect(holdErr).toBeNull()
+    // Another pending sign-up names it too.
+    await seedSubmittedSignup('npi-other', `E2E NPI Other ${RUN}`, npiNumber)
+
+    // The public form: the same answer as any NPI.
+    const address = email('npi')
+    const name = `E2E NPI Practice ${RUN}`
+    await startFromLogin(page, /solo practice/)
+    await fillCommon(page, address, 'Practice name', name)
+    await page.getByLabel('NPI', { exact: true }).fill(npiNumber)
+    await page.getByLabel('License 1 state').selectOption('TX')
+    await page.getByLabel('License 1 number').fill('TX-E2E-4321')
+    await page.getByLabel('License 1 expires').fill('2099-06-30')
+    await page.getByRole('button', { name: 'Create account' }).click()
+    await page.waitForURL('**/dashboard', { timeout: 30_000 })
+
+    const { data: clinic } = await db.from('clinics').select('clinic_id').eq('name', name).single()
+    const { data: mine } = await db.from('providers').select('npi_claimed').eq('clinic_id', clinic!.clinic_id).single()
+    expect(mine!.npi_claimed).toBe(false)
+    await db.from('clinics').update({ onboarding_status: 'submitted', onboarding_submitted_at: new Date().toISOString() }).eq('clinic_id', clinic!.clinic_id)
+
+    const ops = await (await browser.newContext()).newPage()
+    await signIn(ops, TEST_USERS.opsAdmin.email, TEST_USERS.opsAdmin.password)
+    await ops.goto('/ops/onboarding')
+    const card = ops.getByRole('listitem').filter({ has: ops.getByRole('heading', { level: 3, name }) })
+    await expect(card.getByText('Dana Ruiz’s NPI is already registered to a provider at an approved clinic. Approve is refused until this is resolved with the provider.')).toBeVisible({ timeout: 15_000 })
+    await expect(card.getByText('NPI also claimed by 1 other pending sign-up.')).toBeVisible()
+    await expect(card.getByRole('button', { name: `Approve ${name}` })).toBeDisabled()
+    const results = await new AxeBuilder({ page: ops }).withTags(WCAG_TAGS).analyze()
+    expect(results.violations.map(v => v.id)).toEqual([])
+
+    // The server refuses it too, and nothing changes.
+    const refused = await ops.evaluate(async (id: string) => {
+      const res = await fetch(`/api/ops/onboarding/clinics/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'approve', licenseChecked: true }) })
+      return { status: res.status, code: ((await res.json()) as { code?: string }).code }
+    }, clinic!.clinic_id as string)
+    expect(refused).toEqual({ status: 409, code: 'NPI_REGISTERED_ELSEWHERE' })
+    const { data: still } = await db.from('clinics').select('onboarding_status, is_active').eq('clinic_id', clinic!.clinic_id).single()
+    expect(still).toEqual({ onboarding_status: 'submitted', is_active: false })
+  })
+
+  test('ops deletes an unapproved self sign-up: logins and provider rows gone, the clinic closed, recorded', async ({ browser }) => {
+    test.setTimeout(120_000)
+    const db = e2eService()
+    const name = `E2E Delete Practice ${RUN}`
+    const seeded = await seedSubmittedSignup('delete', name, fictionalNpi())
+
+    const ops = await (await browser.newContext()).newPage()
+    await signIn(ops, TEST_USERS.opsAdmin.email, TEST_USERS.opsAdmin.password)
+    await ops.goto(`/ops/onboarding/${seeded.clinicId}`)
+    await ops.getByRole('button', { name: 'Delete this sign-up' }).click({ timeout: 15_000 })
+    await expect(ops.getByText(`Delete ${name}? Its logins, provider records and licenses are removed, and the clinic is closed. This cannot be undone.`)).toBeVisible()
+    await ops.getByRole('button', { name: `Yes, delete ${name}` }).click()
+    await ops.waitForURL(url => url.pathname === '/ops/onboarding', { timeout: 15_000 })
+
+    const { data: clinic } = await db.from('clinics').select('deleted_at, is_active').eq('clinic_id', seeded.clinicId).single()
+    expect(clinic!.deleted_at).not.toBeNull()
+    expect(clinic!.is_active).toBe(false)
+    const { data: providers } = await db.from('providers').select('provider_id').eq('clinic_id', seeded.clinicId)
+    expect(providers).toEqual([])
+    const { data: gone } = await db.auth.admin.getUserById(seeded.userId)
+    expect(gone?.user ?? null).toBeNull()
+    const { data: events } = await db.from('clinic_onboarding_events').select('event, actor_role').eq('clinic_id', seeded.clinicId).eq('event', 'signup_deleted')
+    expect(events).toEqual([{ event: 'signup_deleted', actor_role: 'ops_admin' }])
+    // Off the queue.
+    await expect(ops.getByRole('heading', { level: 3, name })).toHaveCount(0)
   })
 })
