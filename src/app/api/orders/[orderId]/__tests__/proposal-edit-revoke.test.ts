@@ -14,7 +14,7 @@ jest.mock('@/lib/onboarding/approval-guard', () => ({ refuseUnlessApproved: asyn
 jest.mock('@/lib/orders/provider-draft-guard', () => ({ checkProviderOwnsDraft: async () => ({ ok: true }) }))
 jest.mock('@/lib/orders/draft-edit', () => ({ canEditDraft: async () => true, diffDraftRows: () => ({ sig_text: ['a', 'b'] }), writeDraftAudit: async () => undefined }))
 jest.mock('@/lib/orders/apply-bundle-shipping', () => ({ reallocateDraftSiblingShipping: async () => undefined }))
-jest.mock('@/lib/audit/phi-access', () => ({ logPhiAccess: async () => undefined }))
+jest.mock('@/lib/audit/phi-access', () => ({ logPhiAccess: async () => true, logPhiWriteNotCompleted: async () => true }))
 jest.mock('@/lib/orders/resolve-line', () => ({
   lineSourceKind: () => 'formulation',
   resolveLine: async () => ({ ok: true, wholesaleCents: 9500, medicationSnapshot: {}, pharmacySnapshot: {}, package: {} }),
@@ -41,11 +41,16 @@ jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => service 
 
 import { PATCH, DELETE } from '../route'
 
-const ctx = { params: Promise.resolve({ orderId: 'o-1' }) }
-const body = { formulationId: 'f-1', pharmacyId: 'ph-1', retailCents: 20000, sigText: 'Inject 10 units weekly' }
+// Ids are ids: the route refuses anything else with a 400 before any read.
+const ORDER = 'a6000000-0000-0000-0000-000000000001'
+const FORM  = 'a7000000-0000-0000-0000-000000000001'
+const PHARM = 'a4000000-0000-0000-0000-000000000004'
+
+const ctx = { params: Promise.resolve({ orderId: ORDER }) }
+const body = { formulationId: FORM, pharmacyId: PHARM, retailCents: 20000, sigText: 'Inject 10 units weekly' }
 const request = () => ({ json: async () => body, headers: new Headers() }) as never
 const draft = (over: Record<string, unknown> = {}) => ({
-  order_id: 'o-1', status: 'DRAFT', clinic_id: 'c-1', patient_id: 'pat', provider_id: 'p-chen',
+  order_id: ORDER, status: 'DRAFT', clinic_id: 'c-1', patient_id: 'pat', provider_id: 'p-chen',
   shipping_state_snapshot: 'TX', payment_group_id: null, proposal_option_id: null, ...over,
 })
 
@@ -58,7 +63,7 @@ afterEach(() => jest.restoreAllMocks())
 it.each([['PATCH', PATCH], ['DELETE', DELETE]] as const)('%s of a proposed line revokes its link', async (_verb, handler) => {
   draftRow = draft({ proposal_option_id: 'opt-1' })
   expect((await handler(request(), ctx)).status).toBe(200)
-  expect(revokeMock).toHaveBeenCalledWith(service, { clinicId: 'c-1', orderId: 'o-1' })
+  expect(revokeMock).toHaveBeenCalledWith(service, { clinicId: 'c-1', orderId: ORDER })
 })
 
 it.each([['PATCH', PATCH], ['DELETE', DELETE]] as const)('%s of an ordinary draft touches no proposal', async (_verb, handler) => {

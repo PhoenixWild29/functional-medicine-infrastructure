@@ -16,12 +16,22 @@
 //
 //   400 a malformed request, or a choice the rules refuse (required items,
 //       one option, at least one item)
-//   401 { remaining } a wrong date of birth   423 locked (5 wrong)
-//   404 unknown link   409 signed, or the plan moved on   410 expired / closed
-//   429 rate limited (per IP and per link)    503 database unavailable
+//   401 { remaining } a wrong date of birth   423 this request's wrong date
+//       was the 5th (the link is now locked)
+//   410 { state: 'closed' } an unknown, expired, closed, locked or signed
+//       link: one answer, word for word, so a request never learns
+//       whether a link existed (GET: 200 { state: 'closed' })
+//   409 the plan moved on    429 rate limited (per IP and per link)
+//   503 database unavailable
 //
 // No SMS is sent here (PR 2 sends the link) and nothing is signed (PR 4).
 // Logs carry ids only.
+//
+// PHI access log (C-2026-10-25-17, B14/B15), the patient on the link as the
+// actor: verify (the plan shown after the date of birth check) is one view
+// row; choose and decline are writes on a known proposal, logged BEFORE
+// the write and refused 503 (nothing changed) when the row cannot be
+// written. A wrong date of birth is not access (its dob_failed event stays).
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -30,6 +40,8 @@ import { hashProposalToken } from '@/lib/proposals/token'
 import { choosePlan, declinePlan, loadPlan, quotePlan, resolvePlan, verifyPlanDob, type PlanSelection } from '@/lib/proposals/plan'
 import { PLAN_RATE_LIMITED_MESSAGE, planIpLimiter, planTokenLimiter } from '@/lib/proposals/plan-rate-limit'
 import { notifyClinicOfChoice } from '@/lib/proposals/queue'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { logPhiAccess, patientActor, type PhiAction } from '@/lib/audit/phi-access'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,32 +51,30 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 
 type Params = { params: Promise<{ token: string }> }
 
-const STATE_REPLY: Record<'not_found' | 'expired' | 'closed' | 'locked' | 'signed' | 'unavailable', { status: number; error: string }> = {
-  not_found:   { status: 404, error: 'This link is not valid.' },
-  expired:     { status: 410, error: 'This link has expired. Please contact your clinic.' },
-  closed:      { status: 410, error: 'This plan is no longer open. Please contact your clinic.' },
-  locked:      { status: 423, error: 'Too many incorrect dates of birth. This link is locked; please contact your clinic.' },
-  signed:      { status: 409, error: 'Your provider has already approved your plan.' },
-  unavailable: { status: 503, error: 'Please try again in a moment.' },
-}
+const NOT_ACTIVE  = { status: 410, error: 'This link is no longer active. Please contact your clinic.' }
+const LOCKED      = { status: 423, error: 'Too many incorrect dates of birth. This link is locked; please contact your clinic.' }
+const UNAVAILABLE = { status: 503, error: 'Please try again in a moment.' }
+const NOT_RECORDED = 'This change could not be recorded. Nothing was changed. Try again.'
+const ROUTE = '/api/plan/[token]'
 
-function limited(request: NextRequest, token: string | null): NextResponse | null {
-  const ip = planIpLimiter.check(clientIp(request.headers) ?? 'unknown')
+async function limited(request: NextRequest, token: string | null): Promise<NextResponse | null> {
+  const ip = await planIpLimiter.check(clientIp(request.headers) ?? 'unknown')
   if (!ip.allowed) return json({ error: PLAN_RATE_LIMITED_MESSAGE }, 429, { 'Retry-After': String(ip.retryAfterSeconds) })
   if (token !== null) {
-    const link = planTokenLimiter.check(hashProposalToken(token))
+    const link = await planTokenLimiter.check(hashProposalToken(token))
     if (!link.allowed) return json({ error: PLAN_RATE_LIMITED_MESSAGE }, 429, { 'Retry-After': String(link.retryAfterSeconds) })
   }
   return null
 }
 
-export async function GET(request: NextRequest, { params }: Params): Promise<NextResponse> {
+async function getHandler(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const { token } = await params
-  const refused = limited(request, null)
+  const refused = await limited(request, null)
   if (refused) return refused
   const r = await resolvePlan(createServiceClient(), token, new Date())
   if (r.state === 'open') return json({ state: 'open', logoUrl: r.logoUrl })
-  return json({ state: r.state }, r.state === 'unavailable' ? 503 : 200)
+  if (r.state === 'unavailable') return json({ state: 'unavailable' }, 503)
+  return json({ state: 'closed' })
 }
 
 type Action =
@@ -88,9 +98,9 @@ function parse(body: unknown): Action | null {
   return null
 }
 
-export async function POST(request: NextRequest, { params }: Params): Promise<NextResponse> {
+async function postHandler(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const { token } = await params
-  const refused = limited(request, token)
+  const refused = await limited(request, token)
   if (refused) return refused
 
   let body: unknown
@@ -101,10 +111,8 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
   const db = createServiceClient()
   const now = new Date()
   const r = await resolvePlan(db, token, now)
-  if (r.state !== 'open') {
-    const reply = STATE_REPLY[r.state]
-    return json({ error: reply.error, state: r.state }, reply.status)
-  }
+  if (r.state === 'unavailable') return json({ error: UNAVAILABLE.error, state: 'unavailable' }, UNAVAILABLE.status)
+  if (r.state !== 'open') return json({ error: NOT_ACTIVE.error, state: 'closed' }, NOT_ACTIVE.status)
   const proposal = r.proposal
 
   const dob = await verifyPlanDob(db, proposal, a.dob, now)
@@ -112,20 +120,33 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
     if (dob.reason === 'wrong') {
       return json({ error: `That date of birth doesn't match. ${dob.remaining} ${dob.remaining === 1 ? 'try' : 'tries'} left.`, remaining: dob.remaining }, 401)
     }
-    const reply = STATE_REPLY[dob.reason]
+    // Only the request whose wrong date was the 5th learns of the lock (it
+    // holds the link and was answering the date of birth question); every
+    // later request gets the neutral 410 above.
+    const reply = dob.reason === 'locked' ? LOCKED : UNAVAILABLE
     return json({ error: reply.error, state: dob.reason }, reply.status)
   }
+
+  const logPlan = (action: PhiAction) => logPhiAccess({
+    actor: patientActor(proposal.patient_id, proposal.clinic_id),
+    action, resource: 'plan', route: ROUTE,
+    patientId: proposal.patient_id, clinicId: proposal.clinic_id, headers: request.headers,
+  })
 
   switch (a.action) {
     case 'verify': {
       const plan = await loadPlan(db, proposal)
-      return plan ? json({ plan }) : json({ error: STATE_REPLY.unavailable.error }, 503)
+      if (!plan) return json({ error: UNAVAILABLE.error }, UNAVAILABLE.status)
+      // A read: served even when the row could not be written (the helper alerts).
+      await logPlan('view')
+      return json({ plan })
     }
     case 'quote': {
       const q = await quotePlan(db, proposal, a.selection)
       return q.ok ? json({ quote: q.quote }) : json({ error: q.error, code: q.code }, q.status)
     }
     case 'choose': {
+      if (!(await logPlan('update'))) return json({ error: NOT_RECORDED }, 503)
       const c = await choosePlan(db, proposal, a.selection, now)
       if (!c.ok) return json({ error: c.error, code: c.code }, c.status)
       console.info(`[plan] ${c.rechosen ? 'rechosen' : 'chosen'} | proposal=${proposal.proposal_id}`)
@@ -135,6 +156,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
       return json({ ok: true, rechosen: c.rechosen, plan })
     }
     case 'decline': {
+      if (!(await logPlan('update'))) return json({ error: NOT_RECORDED }, 503)
       const d = await declinePlan(db, proposal, now)
       if (!d.ok) return json({ error: d.error, code: d.code }, d.status)
       console.info(`[plan] declined | proposal=${proposal.proposal_id}`)
@@ -142,3 +164,6 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
     }
   }
 }
+
+export const GET = withApiErrors('/api/plan/[token]', getHandler)
+export const POST = withApiErrors('/api/plan/[token]', postHandler)

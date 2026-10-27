@@ -371,6 +371,7 @@ async function failSubmission(params: {
       expectedStatus: 'SUBMISSION_PENDING',
       newStatus:      'SUBMISSION_FAILED',
       actor:          'routing_engine',
+      actorRole:      'system',
       metadata:       {
         tier,
         reason,
@@ -423,6 +424,7 @@ async function markFaxQueued(params: {
       expectedStatus: 'SUBMISSION_PENDING',
       newStatus:      'FAX_QUEUED',
       actor:          'routing_engine',
+      actorRole:      'system',
       metadata,
     })
     if (!cas.wasAlreadyTransitioned) {
@@ -478,6 +480,7 @@ export async function routeOrder(params: RouteOrderParams): Promise<RouteOrderRe
     expectedStatus: currentStatus,
     newStatus:      'SUBMISSION_PENDING',
     actor:          'routing_engine',
+    actorRole:      'system',
     metadata:       { pharmacy_id: pharmacyId, attempt: attemptNumber },
   })
   if (claim.wasAlreadyTransitioned) {
@@ -639,11 +642,15 @@ async function submitClaimedOrder(params: {
   type PrimaryOutcome = 'accepted' | 'manual_review' | 'rejected' | 'exhausted'
   let primaryOutcome: PrimaryOutcome = 'exhausted'
   let primarySubmissionId: string | undefined
+  // Nothing reached the pharmacy because the audit log could not record the
+  // disclosure (C-2026-10-25-17). An audit outage, not a pharmacy failure.
+  let disclosureNotRecorded = false
 
   try {
     if (tier === 'TIER_1_API' || tier === 'TIER_3_SPEC') {
       const result = await submitTier1Api(orderId, pharmacyId, tier)
       primarySubmissionId = result.submissionId
+      disclosureNotRecorded = result.outcome === 'exhausted' && result.errorCode === 'DISCLOSURE_NOT_RECORDED'
       primaryOutcome      = result.outcome === 'accepted' ? 'accepted'
                           : result.outcome === 'rejected' ? 'rejected'
                           : 'exhausted'
@@ -654,6 +661,7 @@ async function submitClaimedOrder(params: {
       primarySubmissionId = result.submissionId
       // BLK-03: distinguish acknowledged (PHARMACY_ACKNOWLEDGED), manual_review (stays SUBMISSION_PENDING),
       // and portal_error (cascade to fax)
+      disclosureNotRecorded = result.outcome === 'portal_error' && result.errorCode === 'DISCLOSURE_NOT_RECORDED'
       primaryOutcome = result.outcome === 'portal_error'   ? 'exhausted'
                      : result.outcome === 'manual_review'  ? 'manual_review'
                      : 'accepted'
@@ -676,6 +684,7 @@ async function submitClaimedOrder(params: {
         expectedStatus: 'SUBMISSION_PENDING',
         newStatus:      'PHARMACY_ACKNOWLEDGED',
         actor:          'routing_engine',
+        actorRole:      'system',
         metadata:       { tier, submission_id: primarySubmissionId },
       })
       if (!cas.wasAlreadyTransitioned) {
@@ -712,6 +721,7 @@ async function submitClaimedOrder(params: {
         expectedStatus: 'SUBMISSION_PENDING',
         newStatus:      'REROUTE_PENDING',
         actor:          'routing_engine',
+        actorRole:      'system',
         metadata:       { tier, submission_id: primarySubmissionId, reason: 'pharmacy_rejected' },
       })
       if (!cas.wasAlreadyTransitioned) await resolveSlasForTransition(orderId, 'REROUTE_PENDING')
@@ -735,7 +745,11 @@ async function submitClaimedOrder(params: {
 
   // BLK-04: when the adapter threw before creating a submission, fall back to orderId
   // to ensure the circuit breaker always gets incremented on hard failures.
-  await recordCircuitFailure({
+  // An unrecorded disclosure sent nothing, so it says nothing about the
+  // pharmacy and is not counted (the audit failure is alerted on its own).
+  if (disclosureNotRecorded) {
+    console.warn(`[routing-engine] disclosure not recorded, circuit untouched | order=${orderId} | tier=${tier}`)
+  } else await recordCircuitFailure({
     pharmacyId,
     submissionId: primarySubmissionId ?? orderId,
     orderId,
@@ -853,6 +867,7 @@ export async function submitQueuedFax(params: {
       expectedStatus: 'FAX_QUEUED',
       newStatus:      'FAX_FAILED',
       actor:          'routing_engine',
+      actorRole:      'system',
       metadata:       { reason: 'pharmacy_not_licensed', error: licensure.message },
     }).catch(casErr =>
       console.error('[routing-engine] CAS FAX_FAILED (not licensed) error:', casErr)
@@ -885,6 +900,7 @@ export async function submitQueuedFax(params: {
       expectedStatus: 'FAX_QUEUED',
       newStatus:      'FAX_FAILED',
       actor:          'routing_engine',
+      actorRole:      'system',
       metadata:       { reason: 'ops_fax_send_failed', error: msg },
     }).catch(casErr =>
       console.error('[routing-engine] CAS FAX_FAILED (ops fax) error:', casErr)

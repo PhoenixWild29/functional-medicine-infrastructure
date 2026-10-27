@@ -21,6 +21,7 @@
 import { useState } from 'react'
 import type { StripeConnectStatusEnum } from '@/types/database.types'
 import { payoutAccountLabel } from '@/lib/stripe/demo-account'
+import { userMessage } from '@/lib/errors/user-message'
 
 interface Props {
   stripeConnectStatus: StripeConnectStatusEnum
@@ -50,7 +51,7 @@ export function StripeStatusSection({ stripeConnectStatus, stripeAccountId, isCl
       const { url } = await res.json() as { url: string }
       window.location.href = url
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred')
+      setError(userMessage(err, 'An unexpected error occurred'))
       setIsLoading(false)
     }
   }

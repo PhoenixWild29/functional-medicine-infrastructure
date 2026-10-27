@@ -28,6 +28,7 @@ import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { submitTier4Fax } from '@/lib/adapters/tier4-fax'
 import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // Retry delays per attempt (after fax attempt N fails, wait this long)
 const RETRY_DELAY_MS: Record<number, number> = {
@@ -35,7 +36,7 @@ const RETRY_DELAY_MS: Record<number, number> = {
   2: 15 * 60 * 1000,   // after attempt 2 failure: wait 15 min
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const denied = cronAuthFailure(request, 'fax-retry')
   if (denied) return denied
 
@@ -149,3 +150,5 @@ export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/cron/fax-retry', getHandler)

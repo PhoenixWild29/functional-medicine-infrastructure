@@ -16,8 +16,9 @@
 // only surfaces UI when the warning or timeout fires.
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { createBrowserClient } from '@/lib/supabase/client'
+import { signOutInBrowser } from '@/lib/supabase/sign-out'
 import { redirectToLogin } from '@/lib/auth/redirect-to-login'
+import { useDialogFocus } from '@/components/a11y/use-dialog-focus'
 
 export const DEFAULT_IDLE_TIMEOUT_MINUTES = 15
 const WARNING_LEAD_MS = 2 * 60 * 1000  // warn two minutes before sign-out
@@ -25,7 +26,6 @@ const WARNING_LEAD_MS = 2 * 60 * 1000  // warn two minutes before sign-out
 const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'] as const
 
 export function HipaaTimeout({ timeoutMinutes = DEFAULT_IDLE_TIMEOUT_MINUTES }: { timeoutMinutes?: number } = {}) {
-  const supabase = createBrowserClient()
   const TIMEOUT_MS = Math.max(1, timeoutMinutes) * 60 * 1000
   const WARNING_MS = TIMEOUT_MS - Math.min(WARNING_LEAD_MS, TIMEOUT_MS / 2)
   const LEAD_SECONDS = Math.round((TIMEOUT_MS - WARNING_MS) / 1000)
@@ -43,9 +43,9 @@ export function HipaaTimeout({ timeoutMinutes = DEFAULT_IDLE_TIMEOUT_MINUTES }: 
   // ── Sign out and redirect ─────────────────────────────────────
   const forceSignOut = useCallback(async () => {
     setShowWarning(false)
-    await supabase.auth.signOut()
+    await signOutInBrowser()
     redirectToLogin('session_timeout')
-  }, [supabase])
+  }, [])
 
   // ── Reset all timers ──────────────────────────────────────────
   // Restarts the warning and sign-out timers. Timers only: no state is set
@@ -120,6 +120,13 @@ export function HipaaTimeout({ timeoutMinutes = DEFAULT_IDLE_TIMEOUT_MINUTES }: 
     resetTimers()
   }
 
+  // The warning is a modal dialog: focus goes to "Stay Logged In", Tab
+  // stays inside it, and Escape means stay (the safe choice); focus goes
+  // back to where it was when the warning closes.
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const stayRef = useRef<HTMLButtonElement>(null)
+  useDialogFocus(dialogRef, { active: showWarning, onEscape: handleStayActive, initialFocus: stayRef })
+
   // Always render a hidden sentinel so E2E can verify the component is
   // mounted and its timers are active, without relying on a fake clock.
   // Real timer semantics are covered by the unit test at
@@ -130,6 +137,7 @@ export function HipaaTimeout({ timeoutMinutes = DEFAULT_IDLE_TIMEOUT_MINUTES }: 
 
   return (
     <div
+      ref={dialogRef}
       data-testid="hipaa-timeout-root"
       role="dialog"
       aria-modal="true"
@@ -148,6 +156,7 @@ export function HipaaTimeout({ timeoutMinutes = DEFAULT_IDLE_TIMEOUT_MINUTES }: 
         </p>
         <div className="flex gap-3">
           <button
+            ref={stayRef}
             type="button"
             onClick={handleStayActive}
             className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

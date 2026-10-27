@@ -53,3 +53,16 @@ it('read only: canSign writes nothing', async () => {
   await canSign(db.client, { clinicId: CLINIC, orderIds: [id(1), id(2), id(3)], as: { providerId: CHEN }, atSigning: true })
   expect(db.writes).toHaveLength(0)
 })
+
+it('a draft missing a snapshot AWAITING_PAYMENT requires is refused before anything is written (missing_snapshot)', async () => {
+  const db = world([draft(1, { provider_npi_snapshot: null }), draft(2, { pharmacy_snapshot: null, shipping_state_snapshot: null }), draft(3)])
+  const res = await canSign(db.client, { clinicId: CLINIC, orderIds: [id(1), id(2), id(3)], as: { providerId: CHEN }, atSigning: true })
+  const missing = res.problems.filter(p => p.code === 'missing_snapshot')
+  expect(missing.map(p => p.orderId)).toEqual([id(1), id(2)])
+  expect(missing[0]!.message).toContain('provider_npi_snapshot')
+  expect(missing[1]!.message).toContain('shipping_state_snapshot, pharmacy_snapshot')
+  expect(missing[0]!.message).toContain('cannot be signed')
+  expect(db.writes).toHaveLength(0)
+  // locked_at is written by the sign itself, so a draft never needs it.
+  expect(res.problems.some(p => p.message.includes('locked_at'))).toBe(false)
+})

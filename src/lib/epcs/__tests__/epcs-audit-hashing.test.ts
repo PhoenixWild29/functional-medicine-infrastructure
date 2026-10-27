@@ -62,6 +62,9 @@ describe('POST /api/epcs?action=audit', () => {
     jest.doMock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
   })
 
+  // The first import of the EPCS route compiles it and its imports, which
+  // takes longer than jest's 5 s default on a cold cache (Windows); the
+  // assertions themselves are instant.
   it('writes the hashes, not the IP or user agent', async () => {
     process.env['PHI_ACCESS_LOG_HASH_SECRET'] = 'k'
     db = scriptedDb(() => undefined)
@@ -80,7 +83,7 @@ describe('POST /api/epcs?action=audit', () => {
     expect(row['user_agent_hash']).toMatch(HEX64)
     expect(JSON.stringify(row)).not.toContain('203.0.113.7')
     expect(JSON.stringify(row)).not.toContain('Mozilla')
-  })
+  }, 30_000)
 })
 
 it('every epcs_audit_log writer takes its request fields from epcsRequestFields', () => {

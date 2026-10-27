@@ -41,6 +41,8 @@ jest.spyOn(console, 'error').mockImplementation(() => {})
 
 import { GET, POST } from '../route'
 import { planIpLimiter, planTokenLimiter } from '@/lib/proposals/plan-rate-limit'
+import { dbRateLimitHit } from '@/lib/security/db-rate-limit'
+import { logPhiAccess, patientActor } from '@/lib/audit/phi-access'
 
 const TOKEN = 'A'.repeat(43)
 const PROPOSAL = { proposal_id: 'p-1', clinic_id: 'c-1', patient_id: 'pt-1', status: 'sent' }
@@ -101,14 +103,36 @@ describe('POST verify', () => {
 })
 
 describe('the link state decides first', () => {
+  // An unknown, expired, closed, locked or signed link gets the same answer,
+  // so a request never learns whether a link existed. A database error is
+  // still 503 (it says nothing about the link).
   it.each([
-    ['not_found', 404], ['expired', 410], ['closed', 410], ['locked', 423], ['signed', 409], ['unavailable', 503],
-  ])('%s: %i, the date of birth is not checked', async (state, status) => {
+    ['not_found', 410, 'closed'], ['expired', 410, 'closed'], ['closed', 410, 'closed'], ['locked', 410, 'closed'], ['signed', 410, 'closed'],
+    ['unavailable', 503, 'unavailable'],
+  ])('%s: %i, the date of birth is not checked', async (state, status, reported) => {
     resolvePlan.mockResolvedValue({ state })
     const res = await post({ action: 'verify', dob: '1985-04-15' })
     expect(res.status).toBe(status)
-    expect((await res.json()).state).toBe(state)
+    expect((await res.json()).state).toBe(reported)
     expect(verifyPlanDob).not.toHaveBeenCalled()
+  })
+
+  it('the five closed states answer word for word the same', async () => {
+    const bodies = new Set<string>()
+    for (const state of ['not_found', 'expired', 'closed', 'locked', 'signed']) {
+      resolvePlan.mockResolvedValue({ state })
+      bodies.add(JSON.stringify(await (await post({ action: 'verify', dob: '1985-04-15' })).json()))
+    }
+    expect(bodies.size).toBe(1)
+  })
+
+  it('GET: a closed link of any kind is { state: "closed" }', async () => {
+    for (const state of ['not_found', 'expired', 'closed', 'locked', 'signed']) {
+      resolvePlan.mockResolvedValue({ state })
+      const res = await get()
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ state: 'closed' })
+    }
   })
 })
 
@@ -173,5 +197,95 @@ describe('rate limits', () => {
     for (let i = 0; i < 60; i++) await post({ action: 'quote', dob: '1985-04-15', optionId: 'o-a', orderIds: ['x'] }, `198.51.100.${i % 50}`)
     const res = await post({ action: 'quote', dob: '1985-04-15', optionId: 'o-a', orderIds: ['x'] }, '192.0.2.99')
     expect(res.status).toBe(429)
+  })
+
+  it('per IP across instances: the shared count is over 120, so the first request here is 429', async () => {
+    jest.mocked(dbRateLimitHit).mockResolvedValueOnce({ count: 121, windowStart: Date.now() })
+    const res = await post({ action: 'quote', dob: '1985-04-15', optionId: 'o-a', orderIds: ['x'] })
+    expect(res.status).toBe(429)
+    expect(Number(res.headers.get('Retry-After'))).toBeGreaterThan(0)
+    expect(jest.mocked(dbRateLimitHit).mock.calls[0]?.[0]).toBe('plan_ip')
+    expect(quotePlan).not.toHaveBeenCalled()
+  })
+
+  it('per token across instances: the shared count for the link is over 60, so the first request here is 429', async () => {
+    jest.mocked(dbRateLimitHit).mockResolvedValueOnce(null).mockResolvedValueOnce({ count: 61, windowStart: Date.now() })
+    const res = await post({ action: 'quote', dob: '1985-04-15', optionId: 'o-a', orderIds: ['x'] })
+    expect(res.status).toBe(429)
+    const tokenCall = jest.mocked(dbRateLimitHit).mock.calls[1]
+    expect(tokenCall?.[0]).toBe('plan_token')
+    expect(tokenCall?.[1]).not.toBe(TOKEN)
+    expect(quotePlan).not.toHaveBeenCalled()
+  })
+})
+
+// C-2026-10-25-17 (B14/B15): the patient on the link is the actor (no
+// signed-in user). Every successful view of the plan after the date of
+// birth check is a 'view' row; the choice and the decline are writes on a
+// known proposal, logged BEFORE the write and refused (503, nothing
+// changed) when the row cannot be written. A wrong date of birth is not
+// access: no row (the proposal's dob_failed event stays).
+describe('PHI access log', () => {
+  const phi = jest.mocked(logPhiAccess)
+  const NOT_RECORDED = 'This change could not be recorded. Nothing was changed. Try again.'
+  const patient = patientActor('pt-1', 'c-1')
+
+  it('verify: one view / plan row for the patient, after the date of birth check', async () => {
+    await post({ action: 'verify', dob: '1985-04-15' })
+    expect(phi).toHaveBeenCalledTimes(1)
+    expect(phi).toHaveBeenCalledWith(expect.objectContaining({
+      actor: patient, action: 'view', resource: 'plan', route: '/api/plan/[token]', patientId: 'pt-1', clinicId: 'c-1',
+    }))
+    expect(phi.mock.calls[0]![0].user).toBeUndefined()
+  })
+
+  it('a log failure on a view still serves the plan (a read; the helper alerts)', async () => {
+    phi.mockResolvedValueOnce(false)
+    const res = await post({ action: 'verify', dob: '1985-04-15' })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ plan: PLAN })
+  })
+
+  it('a wrong date of birth, a closed link or a GET: no row', async () => {
+    verifyPlanDob.mockResolvedValueOnce({ ok: false, reason: 'wrong', remaining: 3 })
+    await post({ action: 'verify', dob: '1985-04-16' })
+    resolvePlan.mockResolvedValueOnce({ state: 'expired' })
+    await post({ action: 'verify', dob: '1985-04-15' })
+    await get()
+    expect(phi).not.toHaveBeenCalled()
+  })
+
+  it('choose: one update / plan row before the choice is written', async () => {
+    let loggedBeforeWrite = false
+    choosePlan.mockImplementationOnce(async () => { loggedBeforeWrite = phi.mock.calls.length === 1; return { ok: true, rechosen: false } })
+    await post({ action: 'choose', dob: '1985-04-15', optionId: 'o-a', orderIds: ['x'] })
+    expect(loggedBeforeWrite).toBe(true)
+    expect(phi).toHaveBeenCalledTimes(1)
+    expect(phi).toHaveBeenCalledWith(expect.objectContaining({
+      actor: patient, action: 'update', resource: 'plan', route: '/api/plan/[token]', patientId: 'pt-1', clinicId: 'c-1',
+    }))
+  })
+
+  it('choose: the row cannot be written -> 503, nothing chosen, the clinic not notified', async () => {
+    phi.mockResolvedValueOnce(false)
+    const res = await post({ action: 'choose', dob: '1985-04-15', optionId: 'o-a', orderIds: ['x'] })
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: NOT_RECORDED })
+    expect(choosePlan).not.toHaveBeenCalled()
+    expect(notifyClinicOfChoice).not.toHaveBeenCalled()
+  })
+
+  it('decline: one update / plan row before the decline is written', async () => {
+    await post({ action: 'decline', dob: '1985-04-15' })
+    expect(phi).toHaveBeenCalledTimes(1)
+    expect(phi).toHaveBeenCalledWith(expect.objectContaining({ actor: patient, action: 'update', resource: 'plan', patientId: 'pt-1' }))
+  })
+
+  it('decline: the row cannot be written -> 503, nothing declined', async () => {
+    phi.mockResolvedValueOnce(false)
+    const res = await post({ action: 'decline', dob: '1985-04-15' })
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: NOT_RECORDED })
+    expect(declinePlan).not.toHaveBeenCalled()
   })
 })

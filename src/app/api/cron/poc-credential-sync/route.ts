@@ -50,8 +50,9 @@ import { cronAuthFailure } from '@/lib/cron/auth'
 import * as Sentry from '@sentry/nextjs'
 import { createServiceClient } from '@/lib/supabase/service'
 import { syncPocCredentials } from '@/lib/poc/sync-credentials'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const denied = cronAuthFailure(request, 'poc-credential-sync')
   if (denied) return denied
 
@@ -92,3 +93,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   console.log('[cron/poc-credential-sync] ok:', JSON.stringify(summary))
   return NextResponse.json(report)
 }
+
+export const GET = withApiErrors('/api/cron/poc-credential-sync', getHandler)

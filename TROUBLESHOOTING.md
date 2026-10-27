@@ -96,7 +96,7 @@ WHERE pharmacy_id = 'pharmacy-uuid-here';
 **Debug steps:**
 1. Check the JWT claims in the browser (DevTools → Application → Local Storage → Supabase auth token → decode)
 2. Verify `clinic_id` claim matches the row's `clinic_id`
-3. For ops-admin routes: verify `app_role = ops_admin` in `user_metadata`
+3. For ops-admin routes: verify `app_role = ops_admin` in `app_metadata`. Roles never live in `user_metadata`, which the user can write.
 
 **Verify service_role is used in API routes:**
 ```typescript
@@ -271,18 +271,95 @@ If the CI pipeline is failing with this error, the types file must be regenerate
 **Debug:**
 ```sql
 -- Check what Supabase sees for this user's JWT
-SELECT auth.jwt() -> 'user_metadata' ->> 'app_role';
+SELECT auth.jwt() -> 'app_metadata' ->> 'app_role';
 ```
 
-**Fix:** Verify the user was created with `user_metadata: { app_role: 'ops_admin' }`. If the user was created with `app_metadata` instead of `user_metadata`, update via the Supabase dashboard → Authentication → Users → edit user → User Metadata.
+**Fix:** The role must be in `app_metadata` (`{ app_role: 'ops_admin' }`), written with the service role. RLS and `src/lib/auth/claims.ts` read `app_metadata` only (migration 20261010000001). A role in `user_metadata` is ignored on purpose. On production, a role change is SQL or an admin API call that Sam makes.
 
 ### User redirected to `/unauthorized` after login
 
-**Cause:** `app_role` in `user_metadata` is missing, misspelled, or uses a value not in the allowed roles list
+**Cause:** `app_metadata.app_role` is missing, misspelled, or not an allowed value for that area.
 
-**Allowed values:** `ops_admin`, `clinic_admin`, `provider`, `medical_assistant`
+**Allowed values:** `ops_admin`, `clinic_admin`, `provider`, `medical_assistant`, `pharmacy_admin` (the pharmacy portal only).
 
-**Fix:** Check the user's metadata in the Supabase dashboard and correct the `app_role` value.
+**Fix:** Correct `app_metadata.app_role`. A clinic role also needs `app_metadata.clinic_id`, and a pharmacy admin needs `app_metadata.pharmacy_id`.
+
+### A team member cannot sign in
+
+**Cause:** Their clinic admin deactivated them (Settings > Team). Deactivation bans the login in Supabase Auth, ends its sessions, and sets `app_metadata.deactivated_at`, so the middleware signs them out.
+
+**Fix:** The clinic admin reactivates them in Settings > Team. Do not clear `banned_until` by hand.
+
+### Stuck on the MFA page after entering a valid code
+
+**Cause:** Since Next 16.3 the client router reuses a redirect it already saw, so a client-side navigation after the session reached AAL2 stayed on `/mfa/...`.
+
+**Fix (in code, already on main):** after MFA, sign-in, sign-up and invite acceptance, the app does a full page navigation (`src/lib/auth/full-navigation.ts`). Keep using it for any new flow that changes the session's access level.
+
+---
+
+## Clinic Onboarding and Ordering
+
+### "We're verifying your licenses. You can look around; ordering opens once you're approved."
+
+**Cause:** The clinic is not approved yet (`onboarding_status` is not `approved`, or `is_active` is false). Every route that orders, signs, charges or reaches a patient refuses with 403 `CLINIC_PENDING_REVIEW` (`src/lib/onboarding/approval-guard.ts`). Self sign-ups and new invites start here.
+
+**Fix:** Ops reviews and approves the clinic at `/ops/onboarding`. A provider with an unverified NPI needs the state-board confirmation first. Never set the columns by hand; approval also writes the event log and, with `DEMO_PAYOUTS_ON_APPROVAL`, the demo payout account.
+
+### "We could not check your clinic just now. Nothing was saved. Try again."
+
+**Cause:** The approval guard could not read the clinic, so it answered 503. It fails closed on purpose.
+
+**Fix:** A database or connection problem. Check Supabase status and the function logs; nothing was written.
+
+### The order drawer says sending to the pharmacy failed
+
+**Expected:** an order in SUBMISSION_FAILED, FAX_FAILED or PHARMACY_REJECTED shows one plain line: where it was going, why it failed, and what happens next. The reason maps the latest failed `adapter_submissions.error_code` (`src/lib/orders/submission-failure.ts`). An unknown code shows a generic reason. The adapter's raw message is never shown to the clinic. Ops sees the full submission in the pipeline drawer.
+
+### No "Drop a face sheet" on New patient
+
+**Cause:** The face-sheet fill is shown only when `ANTHROPIC_API_KEY` is set and `FACE_SHEET_AI_ENABLED` is not `false` (`src/lib/face-sheet/config.ts`).
+
+**Fix:** Set the key in Vercel if the feature should be on. Nothing is broken when it is hidden.
+
+### An upload is refused as too large
+
+**Cause:** Every upload, and every request that carries a file's contents, is limited to 4 MB (`src/lib/uploads/limits.ts`). Vercel refuses bodies over about 4.5 MB before the function runs. The browser checks first, and the server answers 413 with the same "4 MB" wording.
+
+**Fix:** Split the file: a CSV into smaller files, a scan at a lower resolution.
+
+### An upload is refused as the wrong type, although the name says .pdf
+
+**Cause:** The type is read from the file's first bytes (`src/lib/uploads/sniff.ts`), not from its name or the browser's declared type.
+
+**Fix:** Export a real PDF, PNG or JPEG.
+
+---
+
+## CI and E2E
+
+### Lint fails in CI with warnings only
+
+`npm run lint` is `eslint . --max-warnings=0`: any warning fails. The react-hooks 7.1 rules (eslint-config-next 16.4.3) flag, for example:
+- `set-state-in-effect`: setState in an effect body;
+- `purity`: `Date.now()` during render;
+- `refs`: writing a ref during render;
+- `preserve-manual-memoization`.
+
+Fix them in code; the usual fixes are in CLAUDE.md. CI lints the merge with current main, so merge main first. Run `npm ci` so your local plugin versions match the lockfile.
+
+### E2E failed on a PR that did not touch the failing area
+
+1. **Another PR's migration.** Every E2E run applies all migrations to the one shared E2E Supabase project. If another open PR with a migration ran E2E first, the shared schema is ahead of your branch. Merge the migration PR first, then merge main into yours and re-run.
+2. **A flake.** Look for a race in the app before touching the test. Recent ones:
+   - a hydration race on login;
+   - out-of-order reads in the setup checklist card.
+   Fix the app when a user could hit the race. Otherwise give the test a precise wait (the response or element it depends on). Never add sleeps, longer timeouts or retries.
+3. **Queued, not failed.** E2E runs one at a time across all PRs (`e2e-shared-supabase-project`). A run waiting for the slot is normal.
+
+### E2E did not run on my PR
+
+E2E is skipped for PRs that change only documentation: top-level `*.md`, `docs/` and `reviews/`. It also does not run on pushes to main; main is covered by the nightly run at 07:30 UTC, and you can run it by hand with workflow_dispatch.
 
 ---
 

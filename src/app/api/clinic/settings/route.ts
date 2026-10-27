@@ -25,11 +25,19 @@
 // absorption and logo.) Reading settings is unaffected.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { badRequest } from '@/lib/api/input'
 
-export async function PATCH(request: NextRequest): Promise<NextResponse> {
+/** Longest logo URL stored (a Supabase Storage public URL is ~150). */
+const MAX_LOGO_URL = 2048
+
+async function patchHandler(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   // Auth gate
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -59,6 +67,12 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     body = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
+
+  // A JSON body that is not an object (null, an array, a string) used to
+  // throw on the field reads below: a 500.
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return badRequest('Invalid request', ['(body)'])
   }
 
   const updates: Record<string, unknown> = {}
@@ -105,6 +119,9 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
       if (typeof url !== 'string' || url.trim() === '') {
         return NextResponse.json({ error: 'logo_url must be a non-empty string or null' }, { status: 400 })
       }
+      if (url.length > MAX_LOGO_URL) {
+        return badRequest('Invalid request', ['logo_url'])
+      }
       // Must be a valid https URL (Supabase Storage URLs are always https)
       try {
         const parsed = new URL(url)
@@ -141,3 +158,5 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
 
   return NextResponse.json({ success: true })
 }
+
+export const PATCH = withApiErrors('/api/clinic/settings', patchHandler)

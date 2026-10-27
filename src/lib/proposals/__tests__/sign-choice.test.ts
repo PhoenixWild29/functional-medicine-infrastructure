@@ -141,10 +141,12 @@ describe('signing the choice', () => {
       expect(row(db, n)['provider_signature_hash_snapshot']).toBeUndefined()
       expect(row(db, n)['locked_at']).toBeUndefined()
     }
-    expect(historyMock).toHaveBeenCalledWith(expect.anything(), [
-      expect.objectContaining({ order_id: id(2), old_status: 'DRAFT', new_status: 'CANCELLED', changed_by: USER_CHEN }),
-      expect.objectContaining({ order_id: id(4), old_status: 'DRAFT', new_status: 'CANCELLED', changed_by: USER_CHEN }),
-    ], 'proposal-sign')
+    // Each unchosen line went through casTransition as the signer (B-2026-10-25-08).
+    for (const n of [2, 4]) {
+      expect(historyMock).toHaveBeenCalledWith(expect.anything(),
+        expect.objectContaining({ order_id: id(n), old_status: 'DRAFT', new_status: 'CANCELLED', changed_by: USER_CHEN, metadata: expect.objectContaining({ reason: 'proposal_not_chosen' }) }),
+        'casTransition')
+    }
   })
 
   it('the proposal is signed, its link dies, and signed is recorded with the count', async () => {
@@ -267,6 +269,25 @@ describe('only a chosen proposal is signed', () => {
     const res = await sign(db)
     expect(res.ok).toBe(false)
     expect(row(db, 4)['status']).toBe('DRAFT')
+    expect(proposal(db)['status']).toBe('chosen')
+  })
+})
+
+describe('L1: the sign rows are written before signing', () => {
+  it('beforeWrite is passed to batch sign and called with the chosen lines and their patient', async () => {
+    const db = chosenWorld()
+    const beforeWrite = jest.fn(async () => true)
+    const res = await signChosenProposal(db.client, { clinicId: CLINIC, userId: USER_CHEN, appRole: 'provider', proposalId: PROPOSAL, signature: SIGNATURE, now: NOW, beforeWrite })
+    expect(res).toMatchObject({ ok: true })
+    expect(beforeWrite).toHaveBeenCalledWith([{ orderId: id(1), patientId: P1 }, { orderId: id(3), patientId: P1 }])
+  })
+
+  it('a refused log: 503 with the standard message unchanged, nothing signed or cancelled, the plan stays chosen', async () => {
+    const db = chosenWorld()
+    const res = await signChosenProposal(db.client, { clinicId: CLINIC, userId: USER_CHEN, appRole: 'provider', proposalId: PROPOSAL, signature: SIGNATURE, now: NOW, beforeWrite: async () => false })
+    expect(res).toEqual({ ok: false, status: 503, error: 'This change could not be recorded. Nothing was changed. Try again.' })
+    expect(signedIds(db)).toEqual([])
+    expect(row(db, 2)['status']).toBe('DRAFT')
     expect(proposal(db)['status']).toBe('chosen')
   })
 })

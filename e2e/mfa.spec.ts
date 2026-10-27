@@ -25,7 +25,7 @@ function admin() {
 
 async function resetFactors(): Promise<void> {
   const supabase = admin()
-  const { data, error } = await supabase.auth.admin.listUsers()
+  const { data, error } = await supabase.auth.admin.listUsers({ perPage: 1000 })
   if (error) throw new Error(`listUsers failed: ${error.message}`)
   const user = data.users.find(u => u.email === USER.email)
   if (!user) throw new Error(`E2E MFA user ${USER.email} not found; global setup creates it`)

@@ -29,6 +29,7 @@ jest.mock('@/lib/twilio/client', () => ({ validateTwilioWebhook: (...a: unknown[
 jest.mock('@/lib/slack/client', () => ({ sendSlackAlert: async () => undefined }))
 
 import { POST } from '../route'
+import { logPhiAccessBatch, logPhiWriteNotCompleted, systemActor } from '@/lib/audit/phi-access'
 
 const FROM = '+15125550123'
 const logs: string[] = []
@@ -146,5 +147,76 @@ describe('guards and logs', () => {
     expect(res.status).toBe(200)
     expect(db.to('sms_log', 'update')).toHaveLength(1)
     expect(patientUpdates()).toHaveLength(0)
+  })
+})
+
+// L8 (B14/B15): the consent change is a write to the patient, so it is
+// logged BEFORE the update: one update / patient row per patient with that
+// phone, by the system, with each patient's clinic (one insert). A STOP is
+// ALWAYS honoured (TCPA): a log that cannot be written does not refuse it
+// (the helper alerts). A failed update after logging gets a not_completed
+// row per patient.
+describe('PHI access log', () => {
+  const batch = jest.mocked(logPhiAccessBatch)
+  const notCompleted = jest.mocked(logPhiWriteNotCompleted)
+  const matched = [{ patient_id: 'pt-1', clinic_id: 'cl-1' }, { patient_id: 'pt-2', clinic_id: 'cl-2' }]
+  const world = (over: { select?: unknown; update?: unknown } = {}) => {
+    db = scriptedDb(c => (c.table === 'patients' && c.op === 'select' ? (over.select ?? { data: matched })
+      : c.table === 'patients' && c.op === 'update' ? (over.update ?? { data: matched })
+      : undefined) as never)
+  }
+  beforeEach(() => { batch.mockClear(); notCompleted.mockClear() })
+
+  it.each(['STOP', 'START'])('%s: one update / patient row per patient, with its clinic, BEFORE the update', async kw => {
+    world()
+    let updatesAtLog = -1
+    batch.mockImplementationOnce(async () => { updatesAtLog = patientUpdates().length; return true })
+    expect((await POST(inbound(kw))).status).toBe(200)
+    expect(updatesAtLog).toBe(0)
+    expect(batch).toHaveBeenCalledTimes(1)
+    expect(batch).toHaveBeenCalledWith(
+      expect.objectContaining({ actor: systemActor(null), action: 'update', resource: 'patient', route: '/api/webhooks/twilio' }),
+      [{ patientId: 'pt-1', clinicId: 'cl-1' }, { patientId: 'pt-2', clinicId: 'cl-2' }],
+    )
+    expect(JSON.stringify(batch.mock.calls[0]![0])).not.toContain('5125550123')
+    expect(patientUpdates()).toHaveLength(1)
+    expect(notCompleted).not.toHaveBeenCalled()
+  })
+
+  it('the log cannot be written: the STOP is still honoured (TCPA)', async () => {
+    world()
+    batch.mockResolvedValueOnce(false)
+    expect((await POST(inbound('STOP'))).status).toBe(200)
+    const [u] = patientUpdates()
+    expect(u!.payload).toEqual(expect.objectContaining({ sms_opt_in: false, sms_consent_source: 'sms_keyword_stop' }))
+  })
+
+  it('the update fails after logging: a not_completed row per patient', async () => {
+    world({ update: DB_DOWN })
+    expect((await POST(inbound('STOP'))).status).toBe(200)
+    expect(notCompleted.mock.calls.map(c => [c[0].patientId, c[0].clinicId])).toEqual([['pt-1', 'cl-1'], ['pt-2', 'cl-2']])
+    expect(notCompleted).toHaveBeenCalledWith(expect.objectContaining({ actor: systemActor(null), action: 'update', resource: 'patient' }))
+  })
+
+  it('the patients cannot be read first: the STOP is still honoured, and logged after (best effort)', async () => {
+    world({ select: DB_DOWN })
+    expect((await POST(inbound('STOP'))).status).toBe(200)
+    expect(patientUpdates()).toHaveLength(1)
+    expect(batch).toHaveBeenCalledTimes(1)
+    expect(batch.mock.calls[0]![1]).toEqual([{ patientId: 'pt-1', clinicId: 'cl-1' }, { patientId: 'pt-2', clinicId: 'cl-2' }])
+  })
+
+  it('a patient the update reached but the read did not is logged after', async () => {
+    world({ select: { data: [matched[0]] } })
+    await POST(inbound('STOP'))
+    expect(batch.mock.calls.map(c => c[1])).toEqual([[{ patientId: 'pt-1', clinicId: 'cl-1' }], [{ patientId: 'pt-2', clinicId: 'cl-2' }]])
+  })
+
+  it('a number no patient has, HELP or any other reply: no row', async () => {
+    world({ select: { data: [] }, update: { data: [] } })
+    await POST(inbound('STOP'))
+    await POST(inbound('help'))
+    await POST(inbound('Is my order shipped?'))
+    expect(batch).not.toHaveBeenCalled()
   })
 })

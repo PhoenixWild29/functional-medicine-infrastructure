@@ -39,12 +39,12 @@ function rowFor(table: string): Record<string, unknown> | null {
     case 'formulations': return formulationRow
     case 'pharmacy_formulations': return { pharmacy_formulation_id: 'pf-1', wholesale_price: 95 }
     case 'pharmacies': return {
-      pharmacy_id: 'pharmacy-strive', name: 'Strive Pharmacy', slug: 'strive',
+      pharmacy_id: 'a4000000-0000-4000-8000-000000000001', name: 'Strive Pharmacy', slug: 'strive',
       integration_tier: 'TIER_4_FAX', shipping_fee_standard: 9, shipping_fee_cold_chain: 22,
       free_shipping_threshold: null, is_active: true, deleted_at: null,
     }
-    case 'pharmacy_formulation_packages': return { id: 'pkg-oxy-10', package_label: '10 supp', package_qty: 10, package_unit: 'supp', wholesale_price: 28, is_default: true, active: true }
-    case 'pharmacy_state_licenses': return { pharmacy_id: 'pharmacy-strive', expiration_date: '2099-12-31', sterile_compounding: true }
+    case 'pharmacy_formulation_packages': return { id: 'b1000000-0000-4000-8000-000000000002', package_label: '10 supp', package_qty: 10, package_unit: 'supp', wholesale_price: 28, is_default: true, active: true }
+    case 'pharmacy_state_licenses': return { pharmacy_id: 'a4000000-0000-4000-8000-000000000001', expiration_date: '2099-12-31', sterile_compounding: true }
     default: return null
   }
 }
@@ -78,7 +78,7 @@ jest.mock('@/lib/supabase/service', () => ({
 const post = (body: Record<string, unknown>) => POST({ json: async () => body } as never)
 
 const oxytocin = (over: Record<string, unknown>) => draftBody({
-  formulationId: 'formulation-oxytocin', sigMode: 'standard', titrationSteps: [],
+  formulationId: 'f5000000-0000-4000-8000-000000000002', sigMode: 'standard', titrationSteps: [],
   sigText: 'Insert 400 units intravaginal once daily for 30 days', dose: '400 units', frequencyCode: 'QD',
   quantityLabel: '10 supp', retailCents: 15000,
   rxDetails: { ...(draftBody()['rxDetails'] as object), daysSupply: 30, dispenseQuantity: 30, dispenseUnit: 'suppository' },
@@ -88,14 +88,14 @@ const oxytocin = (over: Record<string, unknown>) => draftBody({
 beforeEach(() => {
   insertedRow = null
   formulationRow = {
-    formulation_id: 'formulation-oxytocin', salt_forms: { ingredients: { common_name: 'Fixture', dea_schedule: null, compounding_status: 'approved_drug_component' } }, name: 'Oxytocin Vaginal Suppository 400IU', concentration: '400IU',
+    formulation_id: 'f5000000-0000-4000-8000-000000000002', salt_forms: { ingredients: { common_name: 'Fixture', dea_schedule: null, compounding_status: 'approved_drug_component' } }, name: 'Oxytocin Vaginal Suppository 400IU', concentration: '400IU',
     concentration_value: 400, concentration_unit: 'units', dosage_forms: { name: 'Suppository' },
   }
 })
 
 describe('POST /api/orders counts suppository packs', () => {
   it('3 × 10 supp for 30 suppositories is priced as sent: $84', async () => {
-    const res = await post(oxytocin({ packageId: 'pkg-oxy-10', packageCount: 3 }))
+    const res = await post(oxytocin({ packageId: 'b1000000-0000-4000-8000-000000000002', packageCount: 3 }))
     expect(res.status).toBe(201)
     expect(insertedRow!['wholesale_price_snapshot']).toBe(84)
   })

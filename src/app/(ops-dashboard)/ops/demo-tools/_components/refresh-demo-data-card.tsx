@@ -20,6 +20,7 @@
 // data from going stale more than 24h unattended.
 
 import { useEffect, useState } from 'react'
+import { userMessage } from '@/lib/errors/user-message'
 
 interface RefreshOpResult {
   pre_delete:  number
@@ -111,7 +112,7 @@ export function RefreshDemoDataCard() {
       }
       setReport(data as DemoDataRefreshReport)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Network error')
+      setError(userMessage(err, 'Network error'))
     } finally {
       setBusy(false)
       void fetchStatus()

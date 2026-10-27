@@ -19,8 +19,10 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { getUserRole } from '@/lib/auth/claims'
 import { parsePipelineFilters } from '@/lib/ops/pipeline-filters'
 import { fetchPipelineOrders } from '@/lib/ops/pipeline-query'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { UUID_RE, badRequest } from '@/lib/api/input'
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   // Auth: ops_admin required
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -32,6 +34,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   const filters = parsePipelineFilters(new URL(request.url).searchParams)
+  // The clinic and pharmacy filters go to the query as ids: a malformed one
+  // reached Postgres as an invalid uuid (a 500). parsePipelineFilters
+  // already drops an unknown tier or status and a malformed date.
+  const badIds = (['clinicId', 'pharmacyId'] as const).filter(k => filters[k] !== '' && !UUID_RE.test(filters[k]))
+  if (badIds.length > 0) return badRequest('Invalid request', [...badIds])
   const result  = await fetchPipelineOrders(createServiceClient(), filters, Date.now())
 
   if (result.error !== null) {
@@ -46,3 +53,5 @@ export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/ops/pipeline', getHandler)

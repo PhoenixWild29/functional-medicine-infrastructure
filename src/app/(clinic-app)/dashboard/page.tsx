@@ -31,7 +31,7 @@ import { isTabId, dashboardKpis } from './_lib/tabs'
 import { paymentLinkCounts } from '@/lib/orders/payment-link'
 import { ProviderViewToggle } from './_components/provider-view-toggle'
 import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.types'
-import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
+import { logPhiAccessMany, currentRequestHeaders } from '@/lib/audit/phi-access'
 import { loadExpiringLicenses } from '@/lib/providers/expiring'
 import { LicenseExpiryWarning } from './_components/license-expiry-warning'
 import { loadAgreementNotice } from '@/lib/agreements/clinic-agreements'
@@ -43,6 +43,7 @@ import { platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
 import { PROPOSAL_EMBED, dashboardProposal, type DashboardProposal } from '@/lib/proposals/dashboard'
 import { loadChosenProposals } from '@/lib/proposals/queue'
 import { ChosenPlansQueue } from './_components/chosen-plans-queue'
+import { parseBefore, windowOrders } from '@/lib/dashboard/order-window'
 
 export const metadata = {
   title: 'Dashboard',
@@ -96,7 +97,7 @@ export interface DashboardOrder {
 }
 
 export default async function DashboardPage(
-  props: { searchParams?: Promise<{ view?: string; tab?: string; order?: string }> } = {},
+  props: { searchParams?: Promise<{ view?: string; tab?: string; order?: string; before?: string }> } = {},
 ) {
   const { searchParams } = props
 
@@ -306,11 +307,34 @@ export default async function DashboardPage(
     }
   }
 
-  // Compliance C2: the order list names this clinic's patients. One row
-  // for the page; the list itself is not itemised (see the PR notes).
-  await logPhiAccess({
-    user, action: 'view', resource: 'order_list', route: '/dashboard', headers: await currentRequestHeaders(),
-  })
+  // Compliance C2 (B14): the order list names this clinic's patients. One
+  // row per patient rendered: the orders' patients, and the patients named
+  // by a "Possible duplicate of <name>" flag. The 30-second poll logs the
+  // same way (GET /api/dashboard/orders).
+  //
+  // B-2026-10-26-08: the rows shown are one window (lib/dashboard/
+  // order-window), the same the 30-second poll shows: the newest
+  // DASHBOARD_ORDER_LIMIT by last update, or those before ?before=. The
+  // cards above are still counted from every order read here; only the
+  // list is windowed, and it says when it is cut. The log names the
+  // patients of the rows shown, and the duplicates those rows name.
+  const shown = windowOrders(orders, parseBefore(resolvedSearchParams.before))
+  const shownOrderIds = new Set(shown.rows.map(o => o.orderId))
+  const listedPatientIds = new Set<string>()
+  for (const o of shown.rows) if (o.patientId) listedPatientIds.add(o.patientId)
+  const shownDuplicateIds = openDuplicateIds((ordersResult.data ?? []).filter(o => shownOrderIds.has(o.order_id)).map(o => embeddedPatient(o.patients)))
+  for (const id of shownDuplicateIds) if (duplicateNames.has(id)) listedPatientIds.add(id)
+  // Review L4: the chosen-plan queue names patients too (first name and
+  // plan). It is clinic-wide by design (RLS treatment_proposals_clinic_read:
+  // any staff member sees whose plan waits; only its provider or an admin
+  // can sign), so a provider sees other providers' patients there.
+  if (chosenPlans.ok) for (const plan of chosenPlans.plans) if (plan.patientId) listedPatientIds.add(plan.patientId)
+  // Review L5: once per actor and patient per 15 minutes (the poll too).
+  await logPhiAccessMany(
+    { user, action: 'view', resource: 'order_list', route: '/dashboard', headers: await currentRequestHeaders() },
+    [...listedPatientIds],
+    { dedupeMinutes: 15 },
+  )
 
   // Compliance C4: licenses that expire within 30 days (the admin: every
   // provider's; a provider: their own). Never blocks the page.
@@ -366,7 +390,8 @@ export default async function DashboardPage(
 
         {/* Interactive order management — REQ-GDB-001/002/003/004 */}
         <OrdersDashboard
-          initialOrders={orders}
+          initialOrders={shown.rows}
+          orderWindow={shown.window}
           stripeConnectStatus={stripeConnectStatus}
           clinicId={clinicId}
           viewer={viewer}

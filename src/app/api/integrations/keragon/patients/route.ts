@@ -9,13 +9,16 @@ import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { handleKeragonWebhook } from '@/lib/integrations/keragon/webhook'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   // The raw body, exactly as sent: the signature covers these bytes.
   const rawBody = await request.text()
   const result = await handleKeragonWebhook(createServiceClient(), { headers: request.headers, rawBody })
   return NextResponse.json(result.body, { status: result.status })
 }
+
+export const POST = withApiErrors('/api/integrations/keragon/patients', postHandler)

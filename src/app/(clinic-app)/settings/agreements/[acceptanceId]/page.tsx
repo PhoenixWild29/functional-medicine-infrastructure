@@ -19,6 +19,7 @@ import { LegalMarkdown } from '@/components/onboarding/legal-markdown'
 import { getUserClinicId } from '@/lib/auth/claims'
 import { AGREEMENTS, isAgreementKey } from '@/lib/onboarding/agreement-texts'
 import { ACCEPTANCE_COLUMNS, toAcceptance, verifiedAcceptedText, type ClinicAcceptance } from '@/lib/agreements/clinic-agreements'
+import { contactCompoundIQ } from '@/lib/support/contact'
 
 export const metadata = {
   title: 'Agreement text',
@@ -103,7 +104,7 @@ export default async function AcceptedTextPage({ params }: { params: Promise<{ a
         </div>
       ) : (
         <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          The text of this version is not available here, or does not match the recorded hash, so it is not shown. Contact CompoundIQ for a copy of the agreement as accepted.
+          The text of this version is not available here, or does not match the recorded hash, so it is not shown. {contactCompoundIQ()} for a copy of the agreement as accepted.
         </p>
       )}
     </Shell>

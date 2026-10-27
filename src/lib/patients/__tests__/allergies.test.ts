@@ -14,6 +14,7 @@ import {
   hasRecordedAllergies,
   normalizeAllergies,
   validateAllergiesPatch,
+  ALLERGIES_REQUIRED_MESSAGE,
   MAX_ALLERGY_ENTRIES,
   MAX_ALLERGY_ENTRY_LENGTH,
 } from '../allergies'
@@ -99,8 +100,16 @@ describe('validateAllergiesPatch — API boundary', () => {
     expect(validateAllergiesPatch({ nkda: true, allergies: '  ,  ' })).toEqual({ ok: true, value: { allergies: [], nkda: true } })
   })
 
-  it('an empty body clears to "not recorded"', () => {
-    expect(validateAllergiesPatch({})).toEqual({ ok: true, value: { allergies: [], nkda: false } })
+  // Coverage gap 9: signing needs allergies or NKDA, so a save can never
+  // put a patient back to "not recorded" (a signed Rx would then print it).
+  it('a save that records nothing is refused (it would clear to "not recorded")', () => {
+    for (const body of [{}, { allergies: [], nkda: false }, { allergies: ' , ; ' }, { allergies: null, nkda: null }]) {
+      expect(validateAllergiesPatch(body)).toEqual({ ok: false, error: 'Enter at least one allergy, or mark NKDA.' })
+    }
+  })
+
+  it('ALLERGIES_REQUIRED_MESSAGE is the one sentence the sign check and the Review prompt share', () => {
+    expect(ALLERGIES_REQUIRED_MESSAGE).toBe('Record allergies or mark NKDA before signing')
   })
 
   it('rejects NKDA together with a non-empty list (mirrors the CHECK constraint)', () => {

@@ -4,7 +4,9 @@ import { createClient } from '@supabase/supabase-js'
 import { generateCheckoutToken } from '../src/lib/auth/checkout-token'
 import { cleanupTestOrders, TEST_IDS, TEST_USERS } from './fixtures/seed'
 import { hashInviteToken, inviteExpiresAt, newInviteToken } from '../src/lib/onboarding/tokens'
+import { shardEmail, shardId } from './fixtures/shard'
 import { TEST_PATIENT_DOB, closeTestProposals, seedProposal } from './fixtures/proposals'
+import { e2ePassword } from './fixtures/test-password'
 
 // ============================================================
 // Compliance C10: WCAG 2.1 AA, patient-facing pages, real browser
@@ -89,22 +91,26 @@ test.describe('Accessibility: WCAG 2.1 AA (C10)', () => {
 
   test('checkout, paid: no violations; reflows at 320px', async ({ page }) => {
     await page.goto(`/checkout/${tokens.paid}`)
-    await expect(page.getByText('Payment Already Processed')).toBeVisible({ timeout: 15_000 })
+    // A paid or cancelled link gets the same neutral page as an expired one (bundle-security).
+    await expect(page).toHaveURL(/\/checkout\/expired$/, { timeout: 15_000 })
+    await expect(page.getByRole('heading', { name: /link is no longer active/i })).toBeVisible({ timeout: 15_000 })
     expect(await axeViolations(page)).toEqual([])
     await expectReflowsAt320(page)
   })
 
   test('checkout, cancelled: no violations; reflows at 320px', async ({ page }) => {
     await page.goto(`/checkout/${tokens.cancelled}`)
-    await expect(page.getByText('Order No Longer Active')).toBeVisible({ timeout: 15_000 })
+    // A paid or cancelled link gets the same neutral page as an expired one (bundle-security).
+    await expect(page).toHaveURL(/\/checkout\/expired$/, { timeout: 15_000 })
+    await expect(page.getByRole('heading', { name: /link is no longer active/i })).toBeVisible({ timeout: 15_000 })
     expect(await axeViolations(page)).toEqual([])
     await expectReflowsAt320(page)
   })
 
   test('checkout, expired link: no violations; reflows at 320px', async ({ page }) => {
     await page.goto('/checkout/invalid-token-that-does-not-exist')
-    await expect(page.getByRole('heading', { name: /link has expired/i })).toBeVisible({ timeout: 15_000 })
-    await expect(page).toHaveTitle('Payment link expired')
+    await expect(page.getByRole('heading', { name: /link is no longer active/i })).toBeVisible({ timeout: 15_000 })
+    await expect(page).toHaveTitle('Payment link')
     expect(await axeViolations(page)).toEqual([])
     await expectReflowsAt320(page)
   })
@@ -156,9 +162,10 @@ test.describe('Accessibility: WCAG 2.1 AA (C10)', () => {
 // (service role, E2E project only), and removes them afterwards. Payout
 // setup is not live, so no Stripe is involved.
 
-const ONB_CLINIC = 'aaaaaaaa-0000-0000-0000-0000000000a1'
-const ONB_ADMIN = { email: 'test-onboarding-admin@compoundiq.test', password: 'TestPassword123!' }
-const ONB_INVITEE = 'test-onboarding-invitee@compoundiq.test'
+// Per shard (fixtures/shard), so two shards running this block at once never share rows.
+const ONB_CLINIC = shardId('aaaaaaaa-0000-0000-0000-0000000000a1')
+const ONB_ADMIN = { email: shardEmail('test-onboarding-admin@compoundiq.test'), get password() { return e2ePassword() } }
+const ONB_INVITEE = shardEmail('test-onboarding-invitee@compoundiq.test')
 const WIZARD_STEPS = ['Practice details', 'Providers', 'Staff', 'BAA', 'Terms of service', 'Payouts', 'Review and submit']
 
 function e2eService() {
@@ -306,9 +313,9 @@ test.describe('Accessibility: the patient plan link (WCAG 2.1 AA)', () => {
   })
 
   for (const [state, title] of [
-    ['locked', 'This link is locked'],
-    ['expired', 'This link has expired'],
-    ['signed', 'Your provider has approved your plan'],
+    ['locked', 'This link is no longer active'],
+    ['expired', 'This link is no longer active'],
+    ['signed', 'This link is no longer active'],
   ] as const) {
     test(`${state}: no violations; reflows at 320px`, async ({ page }) => {
       await page.goto(`/plan/${tokens[state]}`)
@@ -320,7 +327,7 @@ test.describe('Accessibility: the patient plan link (WCAG 2.1 AA)', () => {
 
   test('not a valid link: no violations; reflows at 320px', async ({ page }) => {
     await page.goto(`/plan/${'Z'.repeat(43)}`)
-    await expect(page.getByRole('heading', { level: 1, name: 'This link is not valid' })).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('heading', { level: 1, name: 'This link is no longer active' })).toBeVisible({ timeout: 15_000 })
     expect(await axeViolations(page)).toEqual([])
     await expectReflowsAt320(page)
   })

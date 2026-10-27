@@ -17,6 +17,7 @@
 //   Stored as NUMERIC(5,2) — max 10000.
 
 import { useState } from 'react'
+import { userMessage } from '@/lib/errors/user-message'
 
 interface Props {
   clinicName:       string
@@ -95,7 +96,7 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
       }
       setSaveSuccess(true)
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'An unexpected error occurred')
+      setSaveError(userMessage(err, 'An unexpected error occurred'))
     } finally {
       setIsSaving(false)
     }

@@ -2,14 +2,16 @@
 // Provider Admin Route — POST /api/providers
 // ============================================================
 //
-// Creates a provider record AND links it to a Supabase Auth identity
-// atomically. This is the production-grade replacement for the
-// seed-script convention (linkProviderToAuthUser from scripts/seed-poc.ts)
-// used during POC. Required for any real clinic onboarding because:
+// Creates a provider record and a one-time provider invite (the Team
+// invite flow, lib/onboarding/invite-actions). The provider opens the
+// invite link, sets their own password, and the login is created and
+// linked to this record then (providers.user_id, needed to sign: F-2).
 //
-//   - Real providers cannot be added by re-running the seed script
-//   - F-2 (sign-and-send signer enforcement) requires providers.user_id
-//     to be set or the provider cannot sign prescriptions
+// B10 (technical-safeguards-evidence-2026-10-25.md): this route used to
+// create the login with a password the admin chose, and nothing forced a
+// change. Now no login is created here and a password in the body is
+// refused: nobody but the provider ever knows their password. The link is
+// returned once, for the admin to copy; no email is sent.
 //
 // Auth model:
 //   - clinic_admin: can create providers in THEIR OWN clinic only.
@@ -19,30 +21,35 @@
 //     required (no clinic_id claim on ops_admin sessions).
 //   - All other roles (provider, medical_assistant): 403.
 //
-// Atomicity:
-//   Two-step (auth.admin.createUser then providers.insert). If the
-//   providers insert fails, the just-created auth user is rolled back
-//   to avoid orphan auth identities. A rollback failure is logged as
-//   CRITICAL — it's a rare double-fault that needs human cleanup, not
-//   a request to retry.
+// Order: providers.insert, then the invite. If the invite cannot be made,
+// the provider is still saved (201) and the admin resends the invite from
+// Settings > Team > Pending invites, as the Team route does.
 //
 // Out of scope (deliberate):
 //   - TOTP enrollment (provider self-enrolls on first login)
-//   - Invite-flow email delivery (POC: caller supplies initial password)
+//   - Email delivery of the invite (the admin copies the link)
 //   - signature_on_file (provider uploads on first EPCS sign)
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { npiChecksumValid } from '@/lib/providers/npi'
 import { runNpiCheck } from '@/lib/providers/verify-npi'
-import { appMetadataFor, getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { createInvite } from '@/lib/onboarding/invite-actions'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { MAX_NAME, UUID_RE } from '@/lib/api/input'
 
 // ── Validation constants ────────────────────────────────────────────
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+// Any 8-4-4-4-12 hex id (lib/api/input): the seeded demo clinic ids are
+// not RFC v4, so the v4-only pattern used before refused them.
 const NPI_RE  = /^\d{10}$/
-const MIN_PASSWORD_LENGTH = 12
+// B10: the provider sets their own password from the invite link.
+const PASSWORD_REFUSED = 'password is not accepted: the provider sets their own password from the invite link'
+// RFC 5321: an address is at most 254 characters.
+const MAX_EMAIL_LENGTH = 254
 
 // Mirrors the CHECK constraint in supabase/migrations/20260317000002_create_v1_tables.sql:31
 const US_STATES = new Set<string>([
@@ -58,7 +65,6 @@ const US_STATES = new Set<string>([
 
 interface CreateProviderBody {
   email:         string
-  password:      string
   firstName:     string
   lastName:      string
   npiNumber:     string
@@ -71,7 +77,9 @@ interface CreateProviderBody {
 
 // ── Route ───────────────────────────────────────────────────────────
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   // 1. Auth gate
   const supabaseAuth = await createServerClient()
   // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
@@ -94,32 +102,48 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
+  // JSON null, an array or a scalar is not a body (null was a thrown 500).
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
 
   const errs: string[] = []
 
   if (!body.email || typeof body.email !== 'string' || !body.email.includes('@')) {
     errs.push('email must be a valid email address')
+  } else if (body.email.trim().length > MAX_EMAIL_LENGTH) {
+    errs.push(`email must be at most ${MAX_EMAIL_LENGTH} characters`)
   }
-  if (!body.password || typeof body.password !== 'string' || body.password.length < MIN_PASSWORD_LENGTH) {
-    errs.push(`password must be at least ${MIN_PASSWORD_LENGTH} characters`)
-  }
+  if ('password' in body) errs.push(PASSWORD_REFUSED)
   if (!body.firstName || typeof body.firstName !== 'string' || !body.firstName.trim()) {
     errs.push('firstName is required')
+  } else if (body.firstName.trim().length > MAX_NAME) {
+    errs.push(`firstName must be at most ${MAX_NAME} characters`)
   }
   if (!body.lastName || typeof body.lastName !== 'string' || !body.lastName.trim()) {
     errs.push('lastName is required')
+  } else if (body.lastName.trim().length > MAX_NAME) {
+    errs.push(`lastName must be at most ${MAX_NAME} characters`)
   }
-  if (!body.npiNumber || !NPI_RE.test(body.npiNumber)) {
+  if (!body.npiNumber || typeof body.npiNumber !== 'string' || !NPI_RE.test(body.npiNumber)) {
     errs.push('npiNumber must be exactly 10 digits')
   } else if (!npiChecksumValid(body.npiNumber)) {
     // Compliance C4: the NPI check digit (Luhn with the 80840 prefix).
     errs.push('npiNumber is not a valid NPI (the check digit does not match)')
   }
-  if (!body.licenseState || !US_STATES.has(body.licenseState)) {
+  if (!body.licenseState || typeof body.licenseState !== 'string' || !US_STATES.has(body.licenseState)) {
     errs.push('licenseState must be a valid 2-letter US state/territory code')
   }
   if (!body.licenseNumber || typeof body.licenseNumber !== 'string' || !body.licenseNumber.trim()) {
     errs.push('licenseNumber is required')
+  } else if (body.licenseNumber.trim().length > MAX_NAME) {
+    errs.push(`licenseNumber must be at most ${MAX_NAME} characters`)
+  }
+  // Optional; a non-string was a thrown 500 at .trim().
+  if (body.deaNumber != null && typeof body.deaNumber !== 'string') {
+    errs.push('deaNumber must be text')
+  } else if (typeof body.deaNumber === 'string' && body.deaNumber.trim().length > MAX_NAME) {
+    errs.push(`deaNumber must be at most ${MAX_NAME} characters`)
   }
 
   if (errs.length > 0) {
@@ -141,7 +165,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     targetClinicId = callerClinicId
   } else {
     // ops_admin path
-    if (!body.clinicId || !UUID_RE.test(body.clinicId)) {
+    if (!body.clinicId || typeof body.clinicId !== 'string' || !UUID_RE.test(body.clinicId)) {
       return NextResponse.json({ error: 'ops_admin must specify a valid clinicId in the request body' }, { status: 400 })
     }
     targetClinicId = body.clinicId
@@ -173,13 +197,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: `Clinic ${targetClinicId} is not active; cannot create providers` }, { status: 409 })
   }
 
-  // 4b. NPI is globally unique among non-deleted providers (partial unique index).
-  const { data: existingNpi, error: npiCheckErr } = await supabase
+  // 4b. NPI is unique among live providers of approved clinics (claimed
+  //     rows, partial unique index providers_npi_number_unique). Pending
+  //     sign-ups may share an NPI unclaimed, so this is a list, not one row.
+  const { data: existingNpiRows, error: npiCheckErr } = await supabase
     .from('providers')
     .select('provider_id')
     .eq('npi_number', body.npiNumber)
     .is('deleted_at', null)
-    .maybeSingle()
+    .neq('npi_claimed', false)
+    .limit(1)
+  const existingNpi = (existingNpiRows ?? [])[0] ?? null
 
   if (npiCheckErr) {
     console.error(`[providers POST] npi pre-check failed:`, npiCheckErr.message)
@@ -189,35 +217,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: `NPI ${body.npiNumber} is already registered to another provider` }, { status: 409 })
   }
 
-  // 5. Create auth user
   const normalizedEmail = body.email.trim().toLowerCase()
-  const { data: createdUser, error: createUserErr } = await supabase.auth.admin.createUser({
-    email:         normalizedEmail,
-    password:      body.password,
-    email_confirm: true,
-    // Role and clinic are authorization facts: app_metadata, written with
-    // the service role. Never user_metadata (the user can rewrite that).
-    app_metadata:  appMetadataFor({ role: 'provider', clinicId: targetClinicId }),
-  })
 
-  if (createUserErr || !createdUser?.user) {
-    const msg = createUserErr?.message ?? 'unknown'
-    // Supabase returns variants of "already" for email-already-exists.
-    if (/already/i.test(msg)) {
-      return NextResponse.json({ error: 'Email is already registered with another account' }, { status: 409 })
-    }
-    console.error(`[providers POST] auth.admin.createUser failed:`, msg)
-    return NextResponse.json({ error: 'Failed to create auth user' }, { status: 500 })
-  }
-
-  const authUserId = createdUser.user.id
-
-  // 6. Insert providers row (linked via user_id, set by F-1)
+  // 5. Insert the providers row. No login yet: user_id is set when the
+  //    provider accepts the invite and sets their own password.
   const { data: provider, error: providerErr } = await supabase
     .from('providers')
     .insert({
       clinic_id:         targetClinicId,
-      user_id:           authUserId,
+      user_id:           null,
       first_name:        body.firstName.trim(),
       last_name:         body.lastName.trim(),
       npi_number:        body.npiNumber,
@@ -231,17 +239,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .single()
 
   if (providerErr || !provider) {
-    // Rollback the auth user so we don't leave an orphan identity.
-    console.error(`[providers POST] providers.insert failed (rolling back auth user ${authUserId}):`, providerErr?.message)
-    const { error: rollbackErr } = await supabase.auth.admin.deleteUser(authUserId)
-    if (rollbackErr) {
-      console.error(`[providers POST] CRITICAL: rollback of auth user ${authUserId} failed:`, rollbackErr.message,
-        '— orphan auth identity left in the system, needs manual cleanup')
-    }
+    console.error(`[providers POST] providers.insert failed:`, providerErr?.message)
     return NextResponse.json({ error: 'Failed to create provider record' }, { status: 500 })
   }
 
-  console.info(`[providers POST] created provider=${provider.provider_id} user_id=${authUserId} clinic=${targetClinicId} caller=${user.id}`)
+  // 6. The provider invite: the one-time link the admin copies.
+  const invite = await createInvite(supabase, {
+    kind:       'provider',
+    clinicId:   targetClinicId,
+    email:      normalizedEmail,
+    providerId: provider.provider_id,
+    createdBy:  user.id,
+    actorRole:  callerRole,
+  })
+
+  console.info(`[providers POST] created provider=${provider.provider_id} clinic=${targetClinicId} caller=${user.id} invite=${invite.ok ? invite.inviteId : 'failed'}`)
 
   // Compliance C4: check the NPI against the NPPES registry and store the
   // result. Never blocks the save: an unreachable registry is 'unverified'
@@ -259,6 +271,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     licenseState:  provider.license_state,
     licenseNumber: provider.license_number,
     deaNumber:     provider.dea_number,
+    inviteLink:      invite.ok ? invite.link : null,
+    inviteExpiresAt: invite.ok ? invite.expiresAt : null,
+    ...(invite.ok ? {} : { error: 'The provider was added, but their invite could not be created. Resend it from Settings, Team, Pending invites.' }),
   }, { status: 201 })
 }
 
@@ -267,3 +282,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/providers', postHandler)

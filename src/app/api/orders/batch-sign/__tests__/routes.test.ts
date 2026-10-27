@@ -8,6 +8,7 @@
 import { POST as signPOST } from '../route'
 import { POST as checkPOST } from '../check/route'
 import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
+import { logPhiAccessBatch, logPhiWriteNotCompleted } from '@/lib/audit/phi-access'
 import type { NextRequest } from 'next/server'
 
 const getUserMock = jest.fn()
@@ -43,6 +44,8 @@ const resolveSignerMock = jest.fn()
 jest.mock('@/lib/auth/signer', () => ({ resolveSigner: (...a: unknown[]) => resolveSignerMock(...a) }))
 
 const ID = 'a0000000-0000-4000-8000-000000000001'
+const batchLog = jest.mocked(logPhiAccessBatch)
+const notCompleted = jest.mocked(logPhiWriteNotCompleted)
 
 function req(body: unknown, headers: Record<string, string> = {}) {
   return {
@@ -147,28 +150,96 @@ describe('POST /api/orders/batch-sign/check', () => {
 describe('PHI access log', () => {
   beforeEach(() => phiLog.mockClear())
 
-  it('a signature logs exactly one row: sign, prescription, its patient and order', async () => {
+  // L1: the sign rows are written BEFORE signing (signBatch's beforeWrite,
+  // after its checks), one per order with its patient, in one insert.
+  type Target = { orderId: string; patientId: string }
+  type SignInput = { beforeWrite?: (t: Target[]) => Promise<boolean> }
+  const okResult = (patients: Array<{ patientId: string; orderIds: string[] }>) =>
+    ({ ok: true, signedAt: 't', patients: patients.map(p => ({ ...p, paymentGroupId: null, checkoutUrl: 'u' })) })
+  /** signBatch as it behaves: beforeWrite, then the signing (or `then`). */
+  function signsWith(targets: Target[], then: () => unknown) {
+    signBatchMock.mockImplementation(async (_db: unknown, input: SignInput) => {
+      if (input.beforeWrite && !(await input.beforeWrite(targets))) {
+        return { ok: false, status: 503, error: 'This change could not be recorded. Nothing was changed. Try again.' }
+      }
+      order.push('sign')
+      return then()
+    })
+  }
+  let order: string[] = []
+  beforeEach(() => {
+    order = []
+    batchLog.mockClear().mockImplementation(async () => { order.push('log'); return true })
+    notCompleted.mockClear()
+  })
+
+  it('a signature writes one sign row per order, with its patient, BEFORE signing; no row after', async () => {
     user('provider')
-    signBatchMock.mockResolvedValue({ ok: true, signedAt: 't', patients: [{ patientId: 'p', orderIds: [ID], paymentGroupId: null, checkoutUrl: 'u' }] })
+    signsWith([{ orderId: ID, patientId: 'p' }], () => okResult([{ patientId: 'p', orderIds: [ID] }]))
     expect((await signPOST(req({ orderIds: [ID], signature: { s: 1 } }))).status).toBe(200)
-    expectOnePhiRow({ action: 'sign', resource: 'prescription', route: '/api/orders/batch-sign', patientId: 'p', orderId: ID })
+    expect(order).toEqual(['log', 'sign'])
+    expect(batchLog).toHaveBeenCalledTimes(1)
+    expect(batchLog).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'sign', resource: 'prescription', route: '/api/orders/batch-sign', user: expect.objectContaining({ id: 'u-provider' }) }),
+      [{ patientId: 'p', orderId: ID }],
+    )
+    expect(phiEntries()).toHaveLength(0)
+    expect(notCompleted).not.toHaveBeenCalled()
   })
 
-  it('a batch for two patients still logs one row, naming neither', async () => {
+  it('a batch for two patients: one row per order, each with its patient, in one insert (B14)', async () => {
     user('provider')
-    signBatchMock.mockResolvedValue({ ok: true, signedAt: 't', patients: [
-      { patientId: 'p1', orderIds: ['o1'], paymentGroupId: null, checkoutUrl: 'u' },
-      { patientId: 'p2', orderIds: ['o2'], paymentGroupId: null, checkoutUrl: 'u' },
-    ] })
-    expect((await signPOST(req({ orderIds: ['o1', 'o2'], signature: { s: 1 } }))).status).toBe(200)
-    expectOnePhiRow({ action: 'sign', patientId: null, orderId: null })
+    signsWith(
+      [{ orderId: 'o1', patientId: 'p1' }, { orderId: 'o3', patientId: 'p1' }, { orderId: 'o2', patientId: 'p2' }],
+      () => okResult([{ patientId: 'p1', orderIds: ['o1', 'o3'] }, { patientId: 'p2', orderIds: ['o2'] }]),
+    )
+    expect((await signPOST(req({ orderIds: ['o1', 'o2', 'o3'], signature: { s: 1 } }))).status).toBe(200)
+    expect(batchLog.mock.calls[0]![1]).toEqual([
+      { patientId: 'p1', orderId: 'o1' }, { patientId: 'p1', orderId: 'o3' }, { patientId: 'p2', orderId: 'o2' },
+    ])
   })
 
-  it('a refused signature logs nothing', async () => {
+  it('the sign rows cannot be written: 503, the standard message, and nothing is signed', async () => {
+    user('provider')
+    batchLog.mockResolvedValueOnce(false)
+    const then = jest.fn()
+    signsWith([{ orderId: ID, patientId: 'p' }], then)
+    const res = await signPOST(req({ orderIds: [ID], signature: { s: 1 } }))
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'This change could not be recorded. Nothing was changed. Try again.' })
+    expect(then).not.toHaveBeenCalled()
+    expect(order).not.toContain('sign')
+    expect(notCompleted).not.toHaveBeenCalled()
+  })
+
+  it('signing that fails after the rows were written: a not-completed row per logged order', async () => {
+    user('provider')
+    signsWith([{ orderId: 'o1', patientId: 'p1' }, { orderId: 'o2', patientId: 'p2' }],
+      () => ({ ok: false, status: 503, error: 'Shipping could not be calculated. Nothing was signed.' }))
+    expect((await signPOST(req({ orderIds: ['o1', 'o2'], signature: { s: 1 } }))).status).toBe(503)
+    expect(notCompleted.mock.calls.map(c => ({ action: c[0].action, resource: c[0].resource, patientId: c[0].patientId, orderId: c[0].orderId }))).toEqual([
+      { action: 'sign', resource: 'prescription', patientId: 'p1', orderId: 'o1' },
+      { action: 'sign', resource: 'prescription', patientId: 'p2', orderId: 'o2' },
+    ])
+  })
+
+  it('a partial sign: not-completed rows only for the orders that were not signed', async () => {
+    user('provider')
+    signsWith([{ orderId: 'o1', patientId: 'p1' }, { orderId: 'o2', patientId: 'p2' }],
+      () => ({ ok: false, status: 500, error: 'Only 1 of 2 prescriptions were signed', unsignedOrderIds: ['o2'] }))
+    const res = await signPOST(req({ orderIds: ['o1', 'o2'], signature: { s: 1 } }))
+    expect(res.status).toBe(500)
+    expect(await res.json()).not.toHaveProperty('unsignedOrderIds')
+    expect(notCompleted.mock.calls.map(c => c[0].orderId)).toEqual(['o2'])
+  })
+
+  it('a refused signature (a check, before beforeWrite) logs nothing', async () => {
     user('provider')
     signBatchMock.mockResolvedValue({ ok: false, status: 422, error: 'line problem' })
     expect((await signPOST(req({ orderIds: [ID], signature: { s: 1 } }))).status).toBe(422)
     expect(phiEntries()).toHaveLength(0)
+    expect(batchLog).not.toHaveBeenCalled()
+    expect(notCompleted).not.toHaveBeenCalled()
   })
 
   it('the check logs exactly one row: view, prescription', async () => {

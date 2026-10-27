@@ -96,6 +96,7 @@ const PHI_KEY_PATTERNS: ReadonlyArray<RegExp> = [
   /^dose$/i,
   /^strength$/i,
   /^quantity$/i,
+  /^(quantity|qty)[_-]?unit$/i,
   // WO-96 Rx detail clinical narrative (diagnosis, 503A statement,
   // free-text pharmacy instructions). Structural fields (refills, DAW,
   // syringe kit, shipping type, days supply, dispense) are not PHI on

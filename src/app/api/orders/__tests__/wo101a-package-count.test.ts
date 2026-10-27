@@ -219,3 +219,86 @@ describe('POST /api/orders — WO-101a package count', () => {
     expect(orderInsert()).toEqual(expect.objectContaining({ wholesale_price_snapshot: 95, package_id: null, package_count: 1 }))
   })
 })
+
+// Requirement 3 (coverage audit, D-2026-10-25-05): orders.quantity was
+// always 1. It is now the dispense count the Dispense line states.
+describe('POST /api/orders: orders.quantity is the dispense count', () => {
+  it('2 × 5 mL vials → quantity 2', async () => {
+    fiveMlVial()
+    const res = await POST(makeRequest(formulationBody({
+      retailCents:  79800,
+      packageId:    PKG_5_ML,
+      packageCount: 2,
+      rxDetails:    { daysSupply: 90, dispenseQuantity: 9.6, dispenseUnit: 'mL' },
+    })))
+    expect(res.status).toBe(201)
+    expect(orderInsert()).toEqual(expect.objectContaining({ quantity: 2, package_count: 2 }))
+  })
+
+  it('30 capsules with no package → quantity 30', async () => {
+    const res = await POST(makeRequest(formulationBody({ rxDetails: { daysSupply: 30, dispenseQuantity: 30, dispenseUnit: 'capsule' } })))
+    expect(res.status).toBe(201)
+    expect(orderInsert()).toEqual(expect.objectContaining({ quantity: 30, dispense_quantity: 30, dispense_unit: 'capsule' }))
+  })
+
+  it('9.6 mL with no package → quantity 1, one fill; prices are not multiplied by it', async () => {
+    const res = await POST(makeRequest(formulationBody({ rxDetails: { daysSupply: 90, dispenseQuantity: 9.6, dispenseUnit: 'mL' } })))
+    expect(res.status).toBe(201)
+    expect(orderInsert()).toEqual(expect.objectContaining({ quantity: 1, wholesale_price_snapshot: 95, retail_price_snapshot: 190 }))
+  })
+
+  it('2 × 5 mL vials are priced once as two vials ($570), never × quantity again', async () => {
+    fiveMlVial()
+    await POST(makeRequest(formulationBody({
+      retailCents: 79800, packageId: PKG_5_ML, packageCount: 2,
+      rxDetails: { daysSupply: 90, dispenseQuantity: 9.6, dispenseUnit: 'mL' },
+    })))
+    expect(orderInsert()).toEqual(expect.objectContaining({ quantity: 2, wholesale_price_snapshot: 570, retail_price_snapshot: 798 }))
+  })
+})
+
+// C's review (docs/qa/review-2026-10-25-high-risk.md): a counted form is
+// counted in units whether or not a package was chosen, and a huge
+// dispense is a 400, not a 500 from the INTEGER column.
+describe('POST /api/orders: quantity means one thing', () => {
+  const PKG_30_CAPS = 'a9000000-0000-0000-0000-000000000030'
+
+  it('2 bottles of 30 capsules (a package) → quantity 60, the units dispensed', async () => {
+    fixtures['pharmacy_formulation_packages:maybeSingle'] = () => ({
+      data: { id: PKG_30_CAPS, package_label: '30 capsules', wholesale_price: 40 },
+      error: null,
+    })
+    const res = await POST(makeRequest(formulationBody({
+      retailCents:  16000,
+      packageId:    PKG_30_CAPS,
+      packageCount: 2,
+      rxDetails:    { daysSupply: 60, dispenseQuantity: 60, dispenseUnit: 'capsule' },
+    })))
+    expect(res.status).toBe(201)
+    // Priced once, as two bottles: quantity never multiplies the price.
+    expect(orderInsert()).toEqual(expect.objectContaining({ quantity: 60, package_count: 2, wholesale_price_snapshot: 80 }))
+  })
+
+  it('"Capsules" as sent is stored as "capsule" and counted: quantity 30', async () => {
+    const res = await POST(makeRequest(formulationBody({ rxDetails: { daysSupply: 30, dispenseQuantity: 30, dispenseUnit: 'Capsules' } })))
+    expect(res.status).toBe(201)
+    expect(orderInsert()).toEqual(expect.objectContaining({ quantity: 30, dispense_unit: 'capsule' }))
+  })
+
+  it('a dispense over 10,000 is refused with 400 and the route\'s own message, before any insert', async () => {
+    const res = await POST(makeRequest(formulationBody({ rxDetails: { daysSupply: 30, dispenseQuantity: 50_000, dispenseUnit: 'capsule' } })))
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'rxDetails.dispenseQuantity must be a positive number up to 10000' })
+    expect(insertedRows.find(r => r.table === 'orders')).toBeUndefined()
+  })
+
+  it('a dispense of 5,000,000,000 capsules is refused with 400 by the input schema bound, before any insert', async () => {
+    // api-input-validation's lineBodySchema caps dispenseQuantity at
+    // MAX_DISPENSE_QUANTITY (1,000,000, the column's bound) before the
+    // route's own rule runs, so this answer is the generic one.
+    const res = await POST(makeRequest(formulationBody({ rxDetails: { daysSupply: 30, dispenseQuantity: 5e9, dispenseUnit: 'capsule' } })))
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'Invalid request', fields: ['rxDetails'] })
+    expect(insertedRows.find(r => r.table === 'orders')).toBeUndefined()
+  })
+})

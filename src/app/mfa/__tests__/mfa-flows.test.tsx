@@ -27,6 +27,7 @@
  */
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { signInFetch } from '@/__tests__/helpers/sign-in-fetch'
 import { MfaEnroll } from '../_components/mfa-enroll'
 import { MfaChallenge } from '../_components/mfa-challenge'
 
@@ -48,6 +49,10 @@ const signOut = jest.fn()
 jest.mock('@/lib/supabase/client', () => ({
   createBrowserClient: () => ({ auth: { mfa, signOut } }),
 }))
+// Security B12: the challenge posts to /api/mfa/verify, answered here from
+// mfa.challengeAndVerify with the route's status mapping. (Enrollment still
+// verifies its new factor in the browser.)
+beforeEach(() => { global.fetch = signInFetch({ challengeAndVerify: mfa.challengeAndVerify }) as unknown as typeof fetch })
 
 const QR = 'data:image/svg+xml;utf-8,<svg/>'
 const SECRET = 'JBSWY3DPEHPK3PXP'

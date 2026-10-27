@@ -30,7 +30,7 @@ export default async function globalSetup(): Promise<void> {
   await seedStaticData()
 
   // Create Auth users idempotently
-  const { data: existingUsers } = await supabase.auth.admin.listUsers()
+  const { data: existingUsers } = await supabase.auth.admin.listUsers({ perPage: 1000 })
   for (const user of Object.values(TEST_USERS)) {
     // Role and clinic are authorization facts: app_metadata, written with
     // the service role. The app reads them only from app_metadata
@@ -40,8 +40,10 @@ export default async function globalSetup(): Promise<void> {
 
     const existing = existingUsers?.users.find((u) => u.email === user.email)
     if (existing) {
-      // Idempotent: keep an existing test user's claims canonical.
-      const { error: updateError } = await supabase.auth.admin.updateUserById(existing.id, { app_metadata: appMetadata })
+      // Idempotent: keep an existing test user's claims and password
+      // canonical (the password from fixtures/test-password, so an account
+      // seeded with an older one moves to it).
+      const { error: updateError } = await supabase.auth.admin.updateUserById(existing.id, { password: user.password, app_metadata: appMetadata })
       if (updateError) throw new Error(`Failed to sync test user ${user.email}: ${updateError.message}`)
       continue
     }

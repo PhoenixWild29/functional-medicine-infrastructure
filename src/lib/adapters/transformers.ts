@@ -55,7 +55,16 @@ export interface OrderPayload {
   medicationName:       string
   medicationForm:       string
   medicationDose:       string
+  /**
+   * What the pharmacy dispenses, counted in quantityUnit: the units for a
+   * counted form (capsule, tablet, troche, pellet, suppository, lozenge),
+   * package or not (2 bottles of 30 capsules → 60); the containers for a
+   * measured form (2 × 5 mL vials → 2, unit vial). The measured amount is
+   * dispenseQuantity + dispenseUnit. Never a price input.
+   */
   quantity:             number
+  /** The unit quantity counts, singular: "capsule", "vial", "container"… Optional so older payload builders compile. */
+  quantityUnit?:        string
   sigText:              string | null
   // WO-96 Rx detail fields (all tiers). Derived + defaulted at order
   // creation; null/false-y only for orders written before WO-96.
@@ -262,6 +271,7 @@ function transformViosPayload(p: OrderPayload): PharmacyPayload {
       form:      p.medicationForm,
       dose:      p.medicationDose,
       quantity:  p.quantity,
+      quantity_unit: p.quantityUnit ?? '',
       sig:       p.sigText,
       // WO-96
       days_supply:          p.daysSupply,
@@ -324,6 +334,7 @@ function transformLifeFilePayload(p: OrderPayload): PharmacyPayload {
         dosageForm:  p.medicationForm,
         strength:    p.medicationDose,
         quantity:    p.quantity,
+        quantityUnit: p.quantityUnit ?? '',
         directions:  p.sigText ?? '',
       },
       // WO-96 — LifeFile mandates a clinical-difference statement and
@@ -388,6 +399,7 @@ function transformMediVeraPayload(p: OrderPayload): PharmacyPayload {
       Form:           p.medicationForm,
       Dose:           p.medicationDose,
       Qty:            p.quantity,
+      QtyUnit:        p.quantityUnit ?? '',
       SigText:        p.sigText ?? '',
       // WO-96
       DaysSupply:          p.daysSupply ?? '',

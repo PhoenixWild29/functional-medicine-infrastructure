@@ -162,7 +162,7 @@ describe('add a provider', () => {
     expect(await res.json()).toEqual({ providerId: 'p-new', npiStatus: 'verified', inviteId: INVITE, link: 'https://app.test/onboard/join/TOKEN', expiresAt: '2026-10-25T00:00:00Z' })
     expect(addProviderMock).toHaveBeenCalledWith(db.client, {
       clinicId: CLINIC, userId: null, firstName: 'Priya', lastName: 'Shah', npiNumber: '1234567893',
-      licenses: PROVIDER.licenses, deaNumber: null, actorId: ADMIN,
+      licenses: PROVIDER.licenses, deaNumber: null, actorId: ADMIN, npiClaimed: true,
     })
     expect(createInviteMock).toHaveBeenCalledWith(db.client, { kind: 'provider', clinicId: CLINIC, email: 'priya@sunrise.test', providerId: 'p-new', createdBy: ADMIN, actorRole: 'clinic_admin' })
   })
@@ -246,6 +246,29 @@ describe('resend or revoke a pending invite', () => {
 
   it('a malformed id: 400', async () => {
     expect((await INVITE_ACTION(req('/api/team/invites/x', { action: 'resend' }), params({ inviteId: 'x' }))).status).toBe(400)
+  })
+
+  it('an unknown action: 400 before the invite is read', async () => {
+    const res = await INVITE_ACTION(req(`/api/team/invites/${INVITE}`, { action: 'delete' }), params({ inviteId: INVITE }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('action must be revoke or resend')
+    expect(db.to('onboarding_invites', 'select')).toEqual([])
+    expect(inviteActionMock).not.toHaveBeenCalled()
+  })
+
+  it('invalid JSON: 400 before the invite is read', async () => {
+    const bad = new Request(`https://app.test/api/team/invites/${INVITE}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{not json',
+    }) as unknown as import('next/server').NextRequest
+    const res = await INVITE_ACTION(bad, params({ inviteId: INVITE }))
+    expect(res.status).toBe(400)
+    expect(db.to('onboarding_invites', 'select')).toEqual([])
+  })
+
+  it('a medical assistant: 403, nothing read', async () => {
+    signedIn('medical_assistant')
+    expect((await INVITE_ACTION(req(`/api/team/invites/${INVITE}`, { action: 'revoke' }), params({ inviteId: INVITE }))).status).toBe(403)
+    expect(db.to('onboarding_invites', 'select')).toEqual([])
   })
 })
 

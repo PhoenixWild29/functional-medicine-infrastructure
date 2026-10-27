@@ -10,13 +10,19 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { CsvParseError, MAX_IMPORT_BYTES, MAX_IMPORT_ROWS, parseCsv } from '@/lib/patients/import/csv'
 import { suggestMapping } from '@/lib/patients/import/mapping'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 import { importCaller } from '@/lib/patients/import/request'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const bad = (error: string, status = 400) => NextResponse.json({ error }, { status })
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const caller = await importCaller(request)
   if ('response' in caller) return caller.response
+
+  // Refuse an oversize upload before reading it (allowing for the form framing).
+  const declared = Number(request.headers.get('content-length') ?? '0')
+  if (declared > MAX_IMPORT_BYTES + 64 * 1024) return bad('The file is larger than 4 MB. Split it into smaller files.', 413)
 
   let form: FormData
   try {
@@ -42,8 +48,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   const headers = headerRow.map(h => h.trim())
   console.info(`[patient-import] parsed | rows=${rows.length} | columns=${headers.length}`)
+  // Compliance C2 (B14): the file's patients are echoed back. They are not
+  // patients yet, so the row names none. A read: served even when the row
+  // could not be written (the helper alerts).
+  await logPhiAccess({
+    user: caller.user, clinicId: caller.clinicId, action: 'view', resource: 'patient_import_preview',
+    route: '/api/patients/import/parse', headers: request.headers,
+  })
   return NextResponse.json(
     { fileName: file.name.slice(0, 255), headers, rows, suggestedMapping: suggestMapping(headers) },
     { headers: { 'Cache-Control': 'no-store' } },
   )
 }
+
+export const POST = withApiErrors('/api/patients/import/parse', postHandler)

@@ -152,6 +152,9 @@ describe('Sentry.init options (client, server, edge)', () => {
     expect(opts['sendDefaultPii']).toBe(false)
     expect(opts['beforeSend']).toBe(scrubber.phiBeforeSend)
     expect(opts['beforeBreadcrumb']).toBe(scrubber.phiBeforeBreadcrumb)
+    // Transactions carry URLs too (patient token links): same scrubbing.
+    expect(typeof scrubber.phiBeforeSendTransaction).toBe('function')
+    expect(opts['beforeSendTransaction']).toBe(scrubber.phiBeforeSendTransaction)
     expect(opts['replaysSessionSampleRate'] ?? 0).toBe(0)
     expect(opts['replaysOnErrorSampleRate'] ?? 0).toBe(0)
 

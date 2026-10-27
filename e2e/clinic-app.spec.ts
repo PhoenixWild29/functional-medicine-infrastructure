@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
-import { seedStaticData, cleanupTestOrders, cleanupTestFavorites, seedSecondProvider, retireSecondProvider, seedLegacySemaglutideFavorites, insertRecentOrder, seedControlledAtFaxPharmacy, retireControlledAtFaxPharmacy, TEST_IDS, TEST_USERS, TEST_CATALOG, TEST_PATIENTS, TEST_SHIPPING } from './fixtures/seed'
+import { seedStaticData, cleanupTestOrders, cleanupTestFavorites, seedSecondProvider, retireSecondProvider, seedLegacySemaglutideFavorites, insertRecentOrder, seedControlledAtFaxPharmacy, retireControlledAtFaxPharmacy, TEST_IDS, TEST_NPIS, TEST_USERS, TEST_CATALOG, TEST_PATIENTS, TEST_SHIPPING } from './fixtures/seed'
 import { packageId } from '../src/lib/catalog/packages'
 import { decryptSecret } from '../src/lib/epcs/crypto'
 import { DEMO_TOTP_SECRET } from '../src/lib/poc/totp-enrollment'
@@ -745,7 +745,7 @@ test.describe('Clinic App — WO-96 Rx detail fields', () => {
     )
     const { data: order } = await supabase
       .from('orders')
-      .select('days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, special_instructions')
+      .select('quantity, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, special_instructions')
       .eq('clinic_id', TEST_IDS.clinic)
       .eq('formulation_id', TEST_IDS.formulation)
       .eq('is_active', true)
@@ -753,6 +753,8 @@ test.describe('Clinic App — WO-96 Rx detail fields', () => {
       .limit(1)
       .maybeSingle()
     expect(order).toEqual({
+      // Requirement 3: 30 mL with no package is one fill.
+      quantity:             1,
       days_supply:          30,
       dispense_quantity:    30,
       dispense_unit:        'mL',
@@ -782,12 +784,12 @@ test.describe('Clinic App — WO-96 Rx detail fields', () => {
 // ============================================================
 // WO-97 — Patient allergies / NKDA
 // ============================================================
-// Allergies live on the patient. The seed carries one patient per chip
-// state (see e2e/fixtures/seed.ts): "Patient, Test" not recorded,
-// "Nkda, Test" NKDA, "Allergic, Test" sulfa + penicillin. The tests that
-// write allergies do so on "Patient, Test" and reset the row afterwards
-// so the WO-96 block (and any other branch's run on the shared E2E
-// project) still meets the seeded "not recorded" state.
+// Allergies live on the patient. The seed carries "Nkda, Test" (NKDA) and
+// "Allergic, Test" (sulfa + penicillin); "Patient, Test" is seeded with
+// NKDA too, since signing needs allergies or NKDA (coverage gap 9). This
+// block puts "Patient, Test" in the "not recorded" state before each test
+// (beforeEach) and back to NKDA after it, so every other block still
+// signs for it.
 
 test.describe('Clinic App — WO-97 patient allergies / NKDA', () => {
   const supabase = () => createClient(
@@ -815,8 +817,15 @@ test.describe('Clinic App — WO-97 patient allergies / NKDA', () => {
     await seedStaticData()
   })
 
-  test.afterEach(async () => {
+  // "Patient, Test" is seeded with NKDA (signing needs allergies or NKDA,
+  // coverage gap 9); this block is about the "not recorded" state, so it
+  // starts every test there and puts the seeded NKDA back afterwards.
+  test.beforeEach(async () => {
     await resetTestPatientAllergies()
+  })
+
+  test.afterEach(async () => {
+    await restoreTestPatientNkda()
     await cleanupTestOrders()
   })
 
@@ -955,6 +964,17 @@ async function fillBuilder(page: Page, choice: BuilderChoice) {
 
 function e2eSupabase() {
   return createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
+}
+
+/**
+ * Coverage gap 9: signing needs allergies or NKDA, so "Patient, Test" is
+ * seeded with NKDA (e2e/fixtures/seed.ts). A test that starts from "not
+ * recorded" puts this back afterwards.
+ */
+async function restoreTestPatientNkda() {
+  await e2eSupabase().from('patients')
+    .update({ allergies: [], nkda: true, allergies_updated_at: new Date().toISOString() })
+    .eq('patient_id', TEST_IDS.patient)
 }
 
 test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft', () => {
@@ -1168,7 +1188,7 @@ test.describe('Clinic App — WO-98 edit at review / edit draft / add to draft',
       .insert({
         patient_id: TEST_IDS.patient, provider_id: TEST_IDS.provider, clinic_id: TEST_IDS.clinic,
         pharmacy_id: TEST_IDS.pharmacyTier1, formulation_id: TEST_IDS.formulation,
-        status: 'DRAFT', quantity: 1,
+        status: 'DRAFT', quantity: 1, provider_npi_snapshot: '1234567890',
         wholesale_price_snapshot: 100, retail_price_snapshot: 200,
         medication_snapshot: { medication_name: TEST_CATALOG.formulationName, form: 'Injectable Solution', dose: '10 mg/mL', wholesale_price: 100, dea_schedule: 0 },
         pharmacy_snapshot: { pharmacy_id: TEST_IDS.pharmacyTier1, name: 'Test Pharmacy Tier1', integration_tier: 'TIER_1_API', fax_number: null },
@@ -1240,7 +1260,7 @@ test.describe('Clinic App — WO-100 provider defaults to self', () => {
 
     // Session banner: patient on the left, the signed-in provider on the right.
     await expect(page.getByText('Test Provider', { exact: true }).first()).toBeVisible()
-    await expect(page.getByText('NPI: 1234567890').first()).toBeVisible()
+    await expect(page.getByText(`NPI: ${TEST_NPIS.provider}`).first()).toBeVisible()
     await expect(page.getByText('Patient', { exact: true }).first()).toBeVisible()
   })
 
@@ -1279,7 +1299,9 @@ test.describe('Clinic App — WO-100 provider defaults to self', () => {
       quantity:                 1,
       wholesale_price_snapshot: 100.00,
       retail_price_snapshot:    200.00,
-      provider_npi_snapshot:    '1987654321',
+      provider_npi_snapshot:    TEST_NPIS.providerB,
+      shipping_state_snapshot:  'TX',
+      pharmacy_snapshot:        { pharmacy_id: TEST_IDS.pharmacyTier1, name: 'Test Pharmacy Tier1', integration_tier: 'TIER_1_API', fax_number: null },
       sig_text:                 sig,
     })
     const { data: drafts, error } = await supabase
@@ -1346,7 +1368,7 @@ test.describe('Clinic App — WO-100 provider defaults to self', () => {
     expect(rows).toHaveLength(2)
     for (const row of rows ?? []) {
       expect(row.provider_id).toBe(TEST_IDS.provider)
-      expect(row.provider_npi_snapshot).toBe('1234567890')
+      expect(row.provider_npi_snapshot).toBe(TEST_NPIS.provider)
       expect(row.status).toBe('DRAFT')
     }
 
@@ -1554,7 +1576,7 @@ test.describe('Clinic App — WO-103 search bar, favorites/protocols panels, sav
 //     "Inject 20 units (0.20mL / 1.00mg) subcutaneous once weekly…" and
 //     the dose "20 units (1.0 mg)"
 //   - Custom chip → dose step, formulation pre-selected, dropdowns live
-//   - Recent strip shows last prescribed formulations; Make favorite
+//   - Frequently used (was Recent) shows the most-ordered doses; Make favorite
 //     creates a card
 //   - groups sorted in a fixed category order, A–Z within a group; a
 //     favorite pinned to the selected patient surfaces first
@@ -1573,7 +1595,8 @@ async function startSearchAsProvider(page: Page, patientButton: RegExp = /Patien
 // The collapse keeps the most used of the three rows (the 10-unit one).
 const SEMA_CARD_ID = 'aaaaaaaa-0000-4000-8000-000000000100'
 
-test.describe('Clinic App — WO-104 favorites: doses as chips, dose step, Recent, categories, patient favorites', () => {
+// @serial (playwright.config.ts): app-wide state, see SERIAL_REASONS there.
+test.describe('Clinic App — WO-104 favorites: doses as chips, dose step, Recent, categories, patient favorites', { tag: '@serial' }, () => {
   test.beforeAll(async () => {
     await seedStaticData()
   })
@@ -1659,7 +1682,7 @@ test.describe('Clinic App — WO-104 favorites: doses as chips, dose step, Recen
     await expect(page.getByRole('button', { name: /Continue.*Set Retail Price/i })).toBeEnabled({ timeout: 10_000 })
   })
 
-  test('Recent shows the last prescribed formulations; Make favorite creates a card', async ({ page }) => {
+  test('Frequently used shows the most-ordered doses with their count; Make favorite opens a dialog and creates a card', async ({ page }) => {
     await insertRecentOrder({
       formulationId: TEST_IDS.formulation, medicationName: TEST_CATALOG.formulationName,
       prescribedDose: '10 mg', frequencyCode: 'QD',
@@ -1667,10 +1690,15 @@ test.describe('Clinic App — WO-104 favorites: doses as chips, dose step, Recen
     await startSearchAsProvider(page)
     await page.getByRole('button', { name: /^Favorites \(\d+\)$/ }).click()
 
-    const item = page.getByTestId('favorites-recent').getByTestId(`recent-${TEST_IDS.formulation}`)
-    await expect(item).toContainText(TEST_CATALOG.formulationName, { timeout: 10_000 })
-    await expect(item).toContainText('10 mg daily · Test Pharmacy Tier1')
+    const item = page.getByTestId('favorites-frequent').getByTestId('frequent-item').filter({ hasText: TEST_CATALOG.formulationName })
+    await expect(item).toHaveCount(1, { timeout: 10_000 })
+    await expect(item).toContainText('10 mg daily · Test Pharmacy Tier1 · used once')
     await item.getByRole('button', { name: `Make ${TEST_CATALOG.formulationName} a favorite` }).click()
+    const dialog = page.getByRole('dialog', { name: `Make ${TEST_CATALOG.formulationName} a favorite` })
+    await expect(dialog.getByRole('radio', { name: 'The practice' })).toBeChecked()
+    await expect(dialog.getByRole('checkbox', { name: '10 mg daily' })).toBeChecked()
+    await dialog.getByRole('button', { name: 'Save favorite' }).click()
+    await expect(dialog).toHaveCount(0, { timeout: 10_000 })
     await expect(item).toContainText('★ Favorite', { timeout: 10_000 })
 
     const card = page.getByTestId('favorites-panel').locator('[data-testid^="favorite-"]:not([data-testid^="favorite-group-"])').filter({ hasText: TEST_CATALOG.formulationName })
@@ -1690,7 +1718,7 @@ test.describe('Clinic App — WO-104 favorites: doses as chips, dose step, Recen
       dose_presets: [{ dose: '10', unit: 'mg', frequency: 'QD', timing: '', duration: '', label: null }],
     })
 
-    // Clicking the Recent item opens its last dose on the dose step.
+    // Clicking the entry opens that dose on the dose step.
     await item.getByText(TEST_CATALOG.formulationName).click()
     await expect(page.getByLabel('Dose amount')).toHaveValue('10', { timeout: 10_000 })
     await expect(page.getByLabel('Dose unit')).toHaveValue('mg')
@@ -1869,7 +1897,7 @@ test.describe('Clinic App — WO-101: vial size is suggested from the Rx and pri
     const supabase = createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
     const { data } = await supabase
       .from('orders')
-      .select('package_id, package_label, package_count, wholesale_price_snapshot, retail_price_snapshot, medication_snapshot, days_supply, dispense_quantity')
+      .select('package_id, package_label, package_count, quantity, wholesale_price_snapshot, retail_price_snapshot, medication_snapshot, days_supply, dispense_quantity')
       .eq('clinic_id', TEST_IDS.clinic)
       .eq('pharmacy_id', TEST_IDS.pharmacyTier2)
       .eq('formulation_id', TEST_IDS.glp1Formulation)
@@ -1984,6 +2012,8 @@ test.describe('Clinic App — WO-101: vial size is suggested from the Rx and pri
       package_id:               packageId(TEST_IDS.glp1PackagedPharmacyFormulation, '5 mL vial'),
       package_label:            '5 mL vial',
       package_count:            2,
+      // Requirement 3: the quantity the pharmacy gets is the 2 vials.
+      quantity:                 2,
       wholesale_price_snapshot: 570,
       retail_price_snapshot:    retail,
       days_supply:              90,
@@ -2885,7 +2915,8 @@ const API_SIGNATURE = {
   padWidth: 300,
 }
 
-test.describe('Clinic App — WO-99 batch sign', () => {
+// @serial (playwright.config.ts): app-wide state, see SERIAL_REASONS there.
+test.describe('Clinic App — WO-99 batch sign', { tag: '@serial' }, () => {
   test.beforeAll(async () => {
     await seedStaticData()
     await seedControlledAtFaxPharmacy()
@@ -2893,6 +2924,7 @@ test.describe('Clinic App — WO-99 batch sign', () => {
 
   test.afterEach(async () => {
     await cleanupTestOrders()
+    await restoreTestPatientNkda()
   })
 
   test.afterAll(async () => {
@@ -2901,6 +2933,9 @@ test.describe('Clinic App — WO-99 batch sign', () => {
 
   test('two drafts → Sign all → one pad, one click → both Awaiting Payment, one payment group, shipping once', async ({ page }) => {
     const supabase = e2eSupabase()
+    // Coverage gap 9: start with nothing recorded, to record NKDA at signing.
+    // afterEach puts the seeded NKDA back.
+    await supabase.from('patients').update({ allergies: null, nkda: false, allergies_updated_at: null }).eq('patient_id', TEST_IDS.patient)
     // A refill needs a filled source with an authorized refill left.
     const { data: source, error: sourceError } = await supabase
       .from('orders')
@@ -2948,12 +2983,23 @@ test.describe('Clinic App — WO-99 batch sign', () => {
     await expect(send).toBeDisabled()
     await page.getByRole('button', { name: 'Clear Signature' }).click()
 
-    // Three strokes across the pad are. One click signs both.
+    // Three strokes across the pad are. One click signs both, once the
+    // patient's allergy status is recorded (coverage gap 9): the patient
+    // has neither allergies nor NKDA, so Sign & Send (still enabled) opens
+    // the prompt with the allergy entry in place; marking NKDA there saves
+    // to the patient and signing continues, with nothing re-entered.
     await drawSignature(page)
     await expect(page.getByText('Signature captured')).toBeVisible()
     await expect(send).toBeEnabled()
     await send.click()
+    const allergyPrompt = page.getByTestId('allergies-required-prompt')
+    await expect(allergyPrompt).toContainText('Record allergies or mark NKDA before signing', { timeout: 15_000 })
+    await expect(page).toHaveURL(/\/new-prescription\/sign\?orders=/)
+    await allergyPrompt.getByLabel('No known drug allergies (NKDA)').check()
+    await allergyPrompt.getByRole('button', { name: 'Save allergies' }).click()
     await expect(page).toHaveURL(/\/dashboard\?sent=2/, { timeout: 30_000 })
+    const { data: patientRow } = await supabase.from('patients').select('allergies, nkda').eq('patient_id', TEST_IDS.patient).single()
+    expect(patientRow).toEqual({ allergies: [], nkda: true })
 
     const { data: signed } = await supabase
       .from('orders')
@@ -3064,7 +3110,7 @@ test.describe('Clinic App — WO-99 batch sign', () => {
       .insert({
         patient_id: TEST_IDS.patient, provider_id: TEST_IDS.provider, clinic_id: TEST_IDS.clinic,
         pharmacy_id: TEST_IDS.pharmacyTier4, formulation_id: TEST_IDS.controlledFormulation,
-        status: 'DRAFT', quantity: 1,
+        status: 'DRAFT', quantity: 1, provider_npi_snapshot: '1234567890',
         wholesale_price_snapshot: 150, retail_price_snapshot: 250,
         medication_snapshot: { medication_name: TEST_CATALOG.controlledFormulationName, form: 'Injectable Solution', dose: '100 mg/mL', wholesale_price: 150, dea_schedule: 3, formulation_id: TEST_IDS.controlledFormulation, item_id: null },
         pharmacy_snapshot: { pharmacy_id: TEST_IDS.pharmacyTier4, name: 'Test Pharmacy Tier4', integration_tier: 'TIER_4_FAX', fax_number: '+15555550100' },
@@ -3350,7 +3396,8 @@ test.describe('Clinic App — WO-107 practice dashboard', () => {
 // cycling row's sig once, and reports how many rows it filled. CI
 // db-pushes migrations to the E2E project before this runs.
 
-test.describe('Cycling migration — structured on/off pattern', () => {
+// @serial (playwright.config.ts): app-wide state, see SERIAL_REASONS there.
+test.describe('Cycling migration — structured on/off pattern', { tag: '@serial' }, () => {
   const FAV_ID = 'aaaaaaaa-0000-4000-8000-0000000c1c01'
   const PROTO_ID = 'aaaaaaaa-0000-4000-8000-0000000c1c02'
   const ITEM_ID = 'aaaaaaaa-0000-4000-8000-0000000c1c03'
@@ -3372,6 +3419,7 @@ test.describe('Cycling migration — structured on/off pattern', () => {
       status: 'DRAFT', quantity: 1, wholesale_price_snapshot: 100, retail_price_snapshot: 200,
       medication_snapshot: { formulation_id: TEST_IDS.glp1Formulation, medication_name: 'E2E cycling' },
       pharmacy_snapshot: { pharmacy_id: TEST_IDS.pharmacyTier1, name: 'Test Pharmacy Tier1' },
+      provider_npi_snapshot: '1234567890', shipping_state_snapshot: 'TX',
       sig_text: 'E2E cycling, 5 days on / 2 days off',
     }
     const { data: ok, error } = await supabase.from('orders')
@@ -3521,18 +3569,37 @@ test.describe('Clinic App — cycling dose math', () => {
 // injectable sold as "1 vial" (no amount to size against mL) and a
 // topical sold in mL but filed as "Topical Gel" (dispensed in g).
 
-test.describe('Catalog unit corrections — sized vials, Topical Solution', () => {
+// @serial (playwright.config.ts): app-wide state, see SERIAL_REASONS there.
+test.describe('Catalog unit corrections — sized vials, Topical Solution', { tag: '@serial' }, () => {
   const EPITALON = 'aaaaaaaa-0000-4000-8000-0000000ca701'
   const FINASTERIDE = 'aaaaaaaa-0000-4000-8000-0000000ca702'
   const PF_T1 = 'aaaaaaaa-0000-4000-8000-0000000ca711'
   const PF_T2 = 'aaaaaaaa-0000-4000-8000-0000000ca712'
+  // Its own ingredient and salt form, not the shared "Test Compound E2E":
+  // while these formulations exist, no other spec's prescription builder
+  // (on another shard, running at the same time) sees them.
+  const UNIT_INGREDIENT = 'aaaaaaaa-0000-4000-8000-0000000ca720'
+  const UNIT_SALT_FORM = 'aaaaaaaa-0000-4000-8000-0000000ca721'
 
-  test.beforeAll(async () => { await seedStaticData() })
+  test.beforeAll(async () => {
+    await seedStaticData()
+    const supabase = e2eSupabase()
+    expect((await supabase.from('ingredients').upsert({
+      ingredient_id: UNIT_INGREDIENT, common_name: 'Unit Corrections E2E', therapeutic_category: 'Testing', dea_schedule: null, is_hazardous: false,
+      compounding_status: 'approved_drug_component', commercial_equivalent: false, on_fda_shortage: false,
+      compounding_status_source: 'E2E test data, not verified', compounding_status_reviewed_at: new Date().toISOString(), is_active: true,
+    }, { onConflict: 'ingredient_id' })).error).toBeNull()
+    expect((await supabase.from('salt_forms').upsert({
+      salt_form_id: UNIT_SALT_FORM, ingredient_id: UNIT_INGREDIENT, salt_name: 'Unit Corrections E2E Base', abbreviation: 'base', is_active: true,
+    }, { onConflict: 'salt_form_id' })).error).toBeNull()
+  })
   test.afterAll(async () => {
     const supabase = e2eSupabase()
     await supabase.from('pharmacy_formulation_packages').delete().in('pharmacy_formulation_id', [PF_T1, PF_T2])
     await supabase.from('pharmacy_formulations').delete().in('pharmacy_formulation_id', [PF_T1, PF_T2])
     await supabase.from('formulations').delete().in('formulation_id', [EPITALON, FINASTERIDE])
+    await supabase.from('salt_forms').delete().eq('salt_form_id', UNIT_SALT_FORM)
+    await supabase.from('ingredients').delete().eq('ingredient_id', UNIT_INGREDIENT)
   })
 
   test('the "1 vial" becomes a 10 mg vial at every pharmacy, the gel topical becomes a solution, and a second run changes nothing', async () => {
@@ -3547,7 +3614,7 @@ test.describe('Catalog unit corrections — sized vials, Topical Solution', () =
     const subq = await byName('routes_of_administration', 'Subcutaneous')
     const topical = await byName('routes_of_administration', 'Topical')
 
-    const base = { salt_form_id: TEST_IDS.saltForm, is_combination: false, total_ingredients: 1, is_active: true }
+    const base = { salt_form_id: UNIT_SALT_FORM, is_combination: false, total_ingredients: 1, is_active: true }
     expect((await supabase.from('formulations').upsert([
       { ...base, formulation_id: EPITALON, name: 'Epitalon Injectable', dosage_form_id: injectable, route_id: subq, concentration: '10mg/mL', concentration_value: 10, concentration_unit: 'mg/mL' },
       { ...base, formulation_id: FINASTERIDE, name: 'Finasteride Topical Serum 0.25%', dosage_form_id: gel, route_id: topical, concentration: '0.25%', concentration_value: 0.25, concentration_unit: '%' },
@@ -3623,6 +3690,8 @@ test.describe('Clinic App — dashboard KPI cards and row Refill', () => {
         quantity:                 1,
         wholesale_price_snapshot: 100.00,
         retail_price_snapshot:    200.00,
+        provider_npi_snapshot:    '1234567890',
+        shipping_state_snapshot:  'TX',
         medication_snapshot:      {
           formulation_id:  TEST_IDS.formulation,
           medication_name: TEST_CATALOG.formulationName,

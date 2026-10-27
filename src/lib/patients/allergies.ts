@@ -47,6 +47,20 @@ export interface AllergiesPatch {
 export const MAX_ALLERGY_ENTRIES      = 50
 export const MAX_ALLERGY_ENTRY_LENGTH = 120
 
+// ── Required before signing (coverage gap 9) ──────────────────
+//
+// Gina Rooks NP: allergies or NKDA on every Rx. A patient with neither
+// recorded cannot be signed for (lib/orders/batch-sign, every signing
+// path), and Review and the sign page prompt with this sentence. Once
+// recorded, a save can never put the patient back to "not recorded"
+// (validateAllergiesPatch), so a signed Rx never prints "Not recorded".
+
+export const ALLERGIES_REQUIRED_MESSAGE = 'Record allergies or mark NKDA before signing'
+export const ALLERGIES_REQUIRED_CODE    = 'ALLERGIES_REQUIRED'
+/** The same rule when a plan is proposed or sent (nothing is signed then). */
+export const PLAN_ALLERGIES_REQUIRED_MESSAGE = 'Record allergies or mark NKDA before sending this plan'
+const NOTHING_RECORDED_ERROR = 'Enter at least one allergy, or mark NKDA.'
+
 // ── Normalisation ─────────────────────────────────────────────
 
 /**
@@ -124,6 +138,8 @@ export type AllergiesPatchResult =
  * NKDA and a non-empty list are mutually exclusive (mirrors the CHECK
  * constraint): sending both is rejected rather than silently resolved,
  * so a stale client cannot wipe a recorded allergy by ticking NKDA.
+ * A save must record something (one allergy, or NKDA): nothing clears a
+ * patient back to "not recorded".
  */
 export function validateAllergiesPatch(body: unknown): AllergiesPatchResult {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
@@ -156,6 +172,10 @@ export function validateAllergiesPatch(body: unknown): AllergiesPatchResult {
 
   if (nkda && allergies.length > 0) {
     return { ok: false, error: 'nkda cannot be true when allergies are listed' }
+  }
+  // Coverage gap 9: never back to "not recorded" (see ALLERGIES_REQUIRED_MESSAGE).
+  if (!nkda && allergies.length === 0) {
+    return { ok: false, error: NOTHING_RECORDED_ERROR }
   }
 
   return { ok: true, value: { allergies, nkda } }

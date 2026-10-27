@@ -41,7 +41,7 @@ jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.clien
 import { POST as PARSE } from '../parse/route'
 import { POST as VALIDATE } from '../validate/route'
 import { POST as IMPORT } from '../route'
-import { logPhiAccessMany } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiAccessMany, logPhiWriteNotCompleted } from '@/lib/audit/phi-access'
 
 const HEADERS = ['First Name', 'Last Name', 'DOB', 'Mobile', 'Email', 'State', 'Zip']
 const GOOD = ['Jane', 'Smith', '04/15/1985', '(512) 555-0123', 'jane@example.test', 'TX', '78701']
@@ -68,6 +68,8 @@ beforeEach(() => {
   script = () => ({ data: [] })
   signedIn('medical_assistant')
   ;(logPhiAccessMany as jest.Mock).mockClear()
+  ;(logPhiAccess as jest.Mock).mockClear()
+  ;(logPhiWriteNotCompleted as jest.Mock).mockClear()
   jest.spyOn(console, 'error').mockImplementation(() => {})
   jest.spyOn(console, 'info').mockImplementation(() => {})
 })
@@ -157,6 +159,77 @@ describe('validate', () => {
   })
 })
 
+// Compliance C2 (B14): the preview echoes the file's patients back. They
+// are not patients yet, so the row names none; an existing patient shown
+// as a possible duplicate is logged by id.
+describe('PHI access log: the import preview', () => {
+  const one = jest.mocked(logPhiAccess)
+  beforeEach(() => one.mockClear())
+
+  it('parse logs view / patient_import_preview with no patient', async () => {
+    expect((await PARSE(upload(csv([GOOD, GOOD2])))).status).toBe(200)
+    expect(one).toHaveBeenCalledTimes(1)
+    const entry = one.mock.calls[0]![0]
+    expect(entry).toEqual(expect.objectContaining({ action: 'view', resource: 'patient_import_preview', route: '/api/patients/import/parse', clinicId: CLINIC_ID }))
+    expect(entry.user).toEqual(expect.objectContaining({ id: 'user-1' }))
+    expect(entry.patientId ?? null).toBeNull()
+    expect(entry.orderId ?? null).toBeNull()
+  })
+
+  it('a refused or unreadable upload logs nothing', async () => {
+    expect((await PARSE(upload('a,b\n1,2', 'patients.xlsx'))).status).toBe(400)
+    signedIn('provider')
+    expect((await PARSE(upload(csv([GOOD])))).status).toBe(403)
+    expect(one).not.toHaveBeenCalled()
+  })
+
+  it('validate logs view / patient_import_preview with no patient, and the existing patients shown as duplicates by id', async () => {
+    script = c => (c.table === 'patients'
+      ? { data: [{ patient_id: 'e1', first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', phone_e164: '+15125550999' }] }
+      : undefined)
+    expect((await VALIDATE(json('/api/patients/import/validate', { headers: HEADERS, rows: [GOOD, GOOD2], mapping: MAPPING }))).status).toBe(200)
+    expect(one).toHaveBeenCalledTimes(1)
+    const entry = one.mock.calls[0]![0]
+    expect(entry).toEqual(expect.objectContaining({ action: 'view', resource: 'patient_import_preview', route: '/api/patients/import/validate', clinicId: CLINIC_ID }))
+    expect(entry.patientId ?? null).toBeNull()
+    expect(logPhiAccessMany).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'view', resource: 'patient_import_preview', route: '/api/patients/import/validate', clinicId: CLINIC_ID }),
+      ['e1'],
+    )
+  })
+
+  it('parse: a log that fails still serves the preview', async () => {
+    one.mockResolvedValueOnce(false)
+    expect((await PARSE(upload(csv([GOOD])))).status).toBe(200)
+  })
+
+  // L3: validate echoes every row and the existing patients' names, so it
+  // is answered only once its rows are written.
+  it('validate: the preview row cannot be written: 503, no rows echoed', async () => {
+    one.mockResolvedValueOnce(false)
+    const res = await VALIDATE(json('/api/patients/import/validate', { headers: HEADERS, rows: [GOOD], mapping: MAPPING }))
+    expect(res.status).toBe(503)
+    const text = JSON.stringify(await res.json())
+    expect(text).not.toMatch(/Jane|Smith|rows/)
+  })
+
+  it('validate: the rows for the existing patients shown cannot be written: 503, no rows echoed', async () => {
+    script = c => (c.table === 'patients'
+      ? { data: [{ patient_id: 'e1', first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', phone_e164: '+15125550999' }] }
+      : undefined)
+    jest.mocked(logPhiAccessMany).mockResolvedValueOnce(false)
+    const res = await VALIDATE(json('/api/patients/import/validate', { headers: HEADERS, rows: [GOOD], mapping: MAPPING }))
+    expect(res.status).toBe(503)
+    expect(JSON.stringify(await res.json())).not.toMatch(/Jane|Smith|e1/)
+  })
+
+  it('validate failing (the duplicate check) logs nothing', async () => {
+    script = c => (c.table === 'patients' ? DB_DOWN : undefined)
+    expect((await VALIDATE(json('/api/patients/import/validate', { headers: HEADERS, rows: [GOOD], mapping: MAPPING }))).status).toBe(503)
+    expect(one).not.toHaveBeenCalled()
+  })
+})
+
 describe('import', () => {
   const rpcOk = (ids: string[]) => (c: ScriptedCall): ScriptedAnswer | undefined => {
     if (c.op === 'rpc') return { data: { batch_id: BATCH_ID, patient_ids: ids } }
@@ -191,6 +264,68 @@ describe('import', () => {
     script = rpcOk(['p1', 'p2'])
     await IMPORT(json('/api/patients/import', body()))
     expect(logPhiAccessMany).toHaveBeenCalledWith(expect.objectContaining({ action: 'create', resource: 'patient', route: '/api/patients/import', clinicId: CLINIC_ID }), ['p1', 'p2'])
+  })
+
+  // L1: the batch function makes the ids, so a create / patient row for the
+  // clinic (no patient yet) is written BEFORE it; the per-patient rows follow.
+  it('a create / patient row for the clinic is written BEFORE the batch function', async () => {
+    script = rpcOk(['p1', 'p2'])
+    let rpcsAtLog = -1
+    jest.mocked(logPhiAccess).mockImplementationOnce(async () => { rpcsAtLog = db.calls.filter(c => c.op === 'rpc').length; return true })
+    expect((await IMPORT(json('/api/patients/import', body()))).status).toBe(201)
+    expect(rpcsAtLog).toBe(0)
+    expect(logPhiAccess).toHaveBeenCalledTimes(1)
+    const entry = jest.mocked(logPhiAccess).mock.calls[0]![0]
+    expect(entry).toEqual(expect.objectContaining({ user: expect.objectContaining({ id: 'user-1' }), action: 'create', resource: 'patient', route: '/api/patients/import', clinicId: CLINIC_ID }))
+    expect(entry.patientId ?? null).toBeNull()
+    expect(logPhiWriteNotCompleted).not.toHaveBeenCalled()
+  })
+
+  it('that row cannot be written: 503, the batch function never runs', async () => {
+    script = rpcOk(['p1', 'p2'])
+    jest.mocked(logPhiAccess).mockResolvedValueOnce(false)
+    const res = await IMPORT(json('/api/patients/import', body()))
+    expect(res.status).toBe(503)
+    expect((await res.json()).error).toBe('This change could not be recorded. Nothing was changed. Try again.')
+    expect(db.calls.filter(c => c.op === 'rpc')).toHaveLength(0)
+    expect(logPhiAccessMany).not.toHaveBeenCalled()
+  })
+
+  it('the batch function fails after logging: a not_completed row for the same entry', async () => {
+    script = c => (c.op === 'rpc' ? { error: { message: 'boom' } } : c.table === 'patients' ? { data: [] } : undefined)
+    expect((await IMPORT(json('/api/patients/import', body()))).status).toBe(500)
+    expect(logPhiWriteNotCompleted).toHaveBeenCalledTimes(1)
+    expect(logPhiWriteNotCompleted).toHaveBeenCalledWith(jest.mocked(logPhiAccess).mock.calls[0]![0])
+  })
+
+  // L3: the 422 echoes every row and the existing patients' names: logged
+  // like validate's preview before it is answered.
+  it('the 422 is logged first: the preview row, and the existing patients it shows', async () => {
+    script = c => (c.table === 'patients'
+      ? { data: [{ patient_id: 'e1', first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', phone_e164: null }] }
+      : undefined)
+    const res = await IMPORT(json('/api/patients/import', body({ rows: [GOOD, BAD] })))
+    expect(res.status).toBe(422)
+    expect(logPhiAccess).toHaveBeenCalledTimes(1)
+    const entry = jest.mocked(logPhiAccess).mock.calls[0]![0]
+    expect(entry).toEqual(expect.objectContaining({ action: 'view', resource: 'patient_import_preview', route: '/api/patients/import', clinicId: CLINIC_ID }))
+    expect(entry.patientId ?? null).toBeNull()
+    expect(logPhiAccessMany).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'view', resource: 'patient_import_preview', route: '/api/patients/import', clinicId: CLINIC_ID }),
+      ['e1'],
+    )
+  })
+
+  it.each([['the preview row', 'one'], ['the existing patients\' rows', 'many']])('the 422: %s cannot be written: 503, no rows echoed', async (_l, which) => {
+    script = c => (c.table === 'patients'
+      ? { data: [{ patient_id: 'e1', first_name: 'Jane', last_name: 'Smith', date_of_birth: '1985-04-15', phone_e164: null }] }
+      : undefined)
+    if (which === 'one') jest.mocked(logPhiAccess).mockResolvedValueOnce(false)
+    else jest.mocked(logPhiAccessMany).mockResolvedValueOnce(false)
+    const res = await IMPORT(json('/api/patients/import', body({ rows: [GOOD, BAD] })))
+    expect(res.status).toBe(503)
+    expect(JSON.stringify(await res.json())).not.toMatch(/Jane|Smith|Nobody|e1/)
+    expect(db.calls.filter(c => c.op === 'rpc')).toHaveLength(0)
   })
 
   it('a row that needs fixing and is not excluded: 422 with the results; nothing written', async () => {
@@ -243,5 +378,43 @@ describe('import', () => {
   it('refuses oversized input: more than 5,000 rows, or a cell over 500 characters', async () => {
     expect((await IMPORT(json('/api/patients/import', body({ rows: Array.from({ length: 5001 }, () => GOOD) })))).status).toBe(400)
     expect((await IMPORT(json('/api/patients/import', body({ rows: [[...GOOD.slice(0, 6), 'x'.repeat(501)]] })))).status).toBe(400)
+  })
+})
+
+describe('the request body limit (4 MB, lib/uploads/limits)', () => {
+  // 9,000 rows of 500-character cells: each cell is within bounds, the
+  // whole body is not. Read no further than the limit; nothing is checked
+  // against the clinic's patients and nothing is written.
+  const bigRows = () => Array.from({ length: 1000 }, () => Array.from({ length: 9 }, () => 'x'.repeat(500)))
+
+  it('validate: over 4 MB is a 413, before any read', async () => {
+    const res = await VALIDATE(json('/api/patients/import/validate', { headers: HEADERS, rows: bigRows(), mapping: MAPPING }))
+    expect(res.status).toBe(413)
+    expect((await res.json()).error).toMatch(/4 MB/)
+    expect(db.calls).toHaveLength(0)
+  })
+
+  it('import: over 4 MB is a 413, before any read or write', async () => {
+    const res = await IMPORT(json('/api/patients/import', { fileName: 'p.csv', headers: HEADERS, rows: bigRows(), mapping: MAPPING, excluded: [], confirmDuplicates: [] }))
+    expect(res.status).toBe(413)
+    expect(db.calls).toHaveLength(0)
+  })
+
+  it('validate and import: a body that is not JSON keeps its 400 "Invalid request"', async () => {
+    const notJson = (url: string) => new Request(`https://app.test${url}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{not json' }) as unknown as import('next/server').NextRequest
+    for (const res of [await VALIDATE(notJson('/api/patients/import/validate')), await IMPORT(notJson('/api/patients/import'))]) {
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'Invalid request' })
+    }
+    expect(db.calls).toHaveLength(0)
+  })
+
+  it('parse: a declared body well over 4 MB is a 413 before the form is read', async () => {
+    const formData = jest.fn()
+    const req = { headers: new Headers({ 'content-length': String(6 * 1024 * 1024) }), formData } as unknown as import('next/server').NextRequest
+    const res = await PARSE(req)
+    expect(res.status).toBe(413)
+    expect((await res.json()).error).toBe('The file is larger than 4 MB. Split it into smaller files.')
+    expect(formData).not.toHaveBeenCalled()
   })
 })

@@ -27,6 +27,7 @@ import Papa                               from 'papaparse'
 import { MAX_REQUEST_BYTES, jsonBodyTooLarge } from '@/lib/uploads/limits'
 import type { CatalogResponse, CatalogUploadVersion } from '@/app/api/ops/catalog/route'
 import type { UploadResult, PriceDiscrepancy } from '@/app/api/ops/catalog/upload/route'
+import { userMessage } from '@/lib/errors/user-message'
 
 // ── Tab types ─────────────────────────────────────────────────
 
@@ -170,7 +171,7 @@ export function CatalogManager({ initialData }: Props) {
             void queryClient.invalidateQueries({ queryKey: ['ops-catalog'] })
           }
         } catch (err) {
-          setUploadError(err instanceof Error ? err.message : 'Upload failed')
+          setUploadError(userMessage(err, 'Upload failed'))
         } finally {
           setIsUploading(false)
         }
@@ -198,7 +199,7 @@ export function CatalogManager({ initialData }: Props) {
       if (!res.ok) throw new Error(json.error ?? 'Sync failed')
       void refetch()
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Sync failed')
+      setActionError(userMessage(err, 'Sync failed'))
     } finally {
       setSyncingPharmacy(null)
     }
@@ -218,7 +219,7 @@ export function CatalogManager({ initialData }: Props) {
       if (!res.ok) throw new Error(json.error ?? 'Rollback failed')
       void queryClient.invalidateQueries({ queryKey: ['ops-catalog'] })
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Rollback failed')
+      setActionError(userMessage(err, 'Rollback failed'))
     }
   }
 
@@ -261,7 +262,7 @@ export function CatalogManager({ initialData }: Props) {
       setManualForm({ pharmacyId: manualForm.pharmacyId, medicationName: '', form: '', dose: '', wholesalePrice: '', regulatoryStatus: 'ACTIVE', retailPrice: '', requiresPriorAuth: false })
       void queryClient.invalidateQueries({ queryKey: ['ops-catalog'] })
     } catch (err) {
-      setManualError(err instanceof Error ? err.message : 'Add failed')
+      setManualError(userMessage(err, 'Add failed'))
     } finally {
       setIsSubmittingManual(false)
     }

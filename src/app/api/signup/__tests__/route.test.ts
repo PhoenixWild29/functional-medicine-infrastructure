@@ -17,6 +17,7 @@ jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => ({ marke
 
 import { POST } from '../route'
 import { signupLimiter, SIGNUP_RATE_LIMITED_MESSAGE } from '@/lib/signup/rate-limit'
+import { dbRateLimitHit } from '@/lib/security/db-rate-limit'
 
 const req = (body: unknown, headers: Record<string, string> = {}) =>
   new NextRequest(new URL('https://app.example/api/signup'), {
@@ -66,6 +67,21 @@ it('rate limited per IP: the 6th attempt in 15 minutes is 429 with Retry-After, 
   // The address is never logged.
   const logged = (console.warn as jest.Mock).mock.calls.flat().map(String).join(' ')
   expect(logged).not.toContain('203.0.113.7')
+})
+
+it('rate limited across instances: the shared count is over the limit, so the first attempt here is 429', async () => {
+  jest.mocked(dbRateLimitHit).mockResolvedValueOnce({ count: 6, windowStart: Date.now() })
+  const res = await POST(req({}))
+  expect(res.status).toBe(429)
+  expect(Number(res.headers.get('retry-after'))).toBeGreaterThan(0)
+  expect(await res.json()).toEqual({ error: SIGNUP_RATE_LIMITED_MESSAGE })
+  expect(selfServeSignupMock).not.toHaveBeenCalled()
+  expect(dbRateLimitHit).toHaveBeenCalledWith('signup', '203.0.113.7', 15 * 60)
+})
+
+it('the shared count cannot be read: fails open (201)', async () => {
+  jest.mocked(dbRateLimitHit).mockResolvedValueOnce(null)
+  expect((await POST(req({}))).status).toBe(201)
 })
 
 it('a cross-site request is refused before anything runs', async () => {

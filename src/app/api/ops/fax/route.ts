@@ -7,7 +7,8 @@
 //
 // REQ-FTQ-001: Inbound fax list view (sortable, filterable by status)
 // REQ-FTQ-003: Auto-match display (matched pharmacy + order, or unmatched)
-// REQ-FTQ-007: Access control — ops_admin only, 15-min signed URLs
+// REQ-FTQ-007: Access control — ops_admin only; each PDF via the ops-only
+//              /api/ops/fax/[faxId]/pdf (fetched from Documo, Issue Log 72)
 //
 // Auth: ops_admin only. Uses service client (RLS restrictive).
 
@@ -15,8 +16,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { mapFaxRow }           from '@/lib/fax/map-fax-row'
+import { logFaxQueueView }     from '@/lib/fax/log-fax-view'
 import type { Enums } from '@/types/database.types'
 import { getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 type FaxQueueStatusEnum = Enums<'fax_queue_status_enum'>
 
@@ -33,8 +36,8 @@ export interface FaxEntry {
   processedBy:        string | null
   createdAt:          string
   updatedAt:          string
-  // Signed PDF URL (15 min) — REQ-FTQ-007
-  signedUrl:          string | null
+  // Ops-only PDF route (fetched from Documo on demand) — REQ-FTQ-007
+  pdfUrl:             string
   // Matched pharmacy context
   matchedPharmacyId:  string | null
   pharmacyName:       string | null
@@ -53,9 +56,9 @@ export interface FaxQueueResponse {
   fetchedAt: string
 }
 
-// NB-01: signed URL generation moved to @/lib/fax/map-fax-row
+// NB-01: row mapping in @/lib/fax/map-fax-row
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) {
@@ -86,7 +89,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       status, notes, processed_by, created_at, updated_at,
       matched_pharmacy_id, matched_order_id,
       pharmacies(name, integration_tier),
-      orders(order_number, status)
+      orders(order_number, status, patient_id, clinic_id)
     `, { count: 'exact' })
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
@@ -103,10 +106,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Failed to fetch fax queue' }, { status: 500 })
   }
 
+  // B14: the signed URLs below open the fax PDFs. One view row per matched
+  // order (+ one for unmatched faxes). A read: served whatever the log says.
+  await logFaxQueueView({ user, route: '/api/ops/fax', headers: request.headers }, data ?? [])
+
   // NB-01: shared row mapper (also used by page.tsx)
-  const faxes: FaxEntry[] = await Promise.all(
-    (data ?? []).map(row => mapFaxRow(row, supabase))
-  )
+  const faxes: FaxEntry[] = (data ?? []).map(row => mapFaxRow(row))
 
   return NextResponse.json({
     faxes,
@@ -119,3 +124,5 @@ export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/ops/fax', getHandler)

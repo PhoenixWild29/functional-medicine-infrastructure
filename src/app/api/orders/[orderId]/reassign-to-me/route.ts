@@ -22,25 +22,32 @@
 //   reassigned=false when the draft was already the caller's (no-op).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { insertStatusHistory } from '@/lib/orders/status-history'
 import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provider'
 import { REASSIGN_AUDIT_ACTOR } from '@/lib/orders/reassignment'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted, type PhiAccessEntry } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { z } from 'zod'
+import { parseParams, uuid } from '@/lib/api/input'
+
+const paramsSchema = z.object({ orderId: uuid() })
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
 }
 
-export async function POST(
+async function postHandler(
   request: NextRequest,
-  { params }: RouteParams
+  context: RouteParams
 ): Promise<NextResponse> {
-  const { orderId } = await params
-
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const supabaseAuth = await createServerClient()
   // getUser() verifies the token with Supabase; a cookie session alone is not trusted.
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -60,6 +67,12 @@ export async function POST(
   if (!isProviderRole(getUserRole(user))) {
     return NextResponse.json({ error: 'Only a provider can take over a draft.' }, { status: 403 })
   }
+
+  // The order id is an id before it is read (a bad one is a 400, not a
+  // Postgres 22P02 500).
+  const parsed = await parseParams(context, paramsSchema)
+  if (!parsed.ok) return parsed.response
+  const { orderId } = parsed.data
 
   const supabase = createServiceClient()
 
@@ -122,6 +135,14 @@ export async function POST(
   const orderIds = Array.from(new Set([order.order_id, ...(siblings ?? []).map(s => s.order_id)]))
   const reassignedAt = new Date().toISOString()
 
+  // Compliance C2 and L1 (B15): the patient's draft(s) move to this
+  // provider. Logged BEFORE the update; no row, no change (503).
+  const phiEntry: PhiAccessEntry = {
+    user: user, action: 'update', resource: 'order', route: '/api/orders/[orderId]/reassign-to-me',
+    orderId, patientId: order.patient_id, headers: request.headers ?? null,
+  }
+  if (!(await logPhiAccess(phiEntry))) return phiWriteRefused()
+
   // CAS-style predicate: only rows still DRAFT and still under the
   // original provider move. A concurrent sign or take-over leaves its
   // rows untouched and out of the returned list.
@@ -139,11 +160,13 @@ export async function POST(
 
   if (updateError) {
     console.error('[reassign-to-me] update failed:', updateError.message)
+    await logPhiWriteNotCompleted(phiEntry)
     return NextResponse.json({ error: 'Reassignment failed' }, { status: 500 })
   }
 
   const movedIds = (moved ?? []).map(m => m.order_id)
   if (!movedIds.includes(order.order_id)) {
+    await logPhiWriteNotCompleted(phiEntry)
     return NextResponse.json({ error: 'Draft changed while reassigning. Reload and try again' }, { status: 409 })
   }
 
@@ -166,11 +189,8 @@ export async function POST(
   })), 'reassign-to-me')
 
   console.info(`[reassign-to-me] reassigned ${movedIds.length} draft line(s) | order=${orderId} | clinic=${clinicId}`)
-  // Compliance C2: the patient's draft(s) moved to this provider.
-  await logPhiAccess({
-    user: user, action: 'update', resource: 'order', route: '/api/orders/[orderId]/reassign-to-me',
-    orderId, patientId: order.patient_id, headers: request.headers ?? null,
-  })
 
   return NextResponse.json({ orderIds: movedIds, providerId: me.provider_id, reassigned: true }, { status: 200 })
 }
+
+export const POST = withApiErrors('/api/orders/[orderId]/reassign-to-me', postHandler)

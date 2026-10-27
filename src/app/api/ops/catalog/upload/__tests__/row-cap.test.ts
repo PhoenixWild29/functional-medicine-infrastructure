@@ -33,6 +33,9 @@ it(`over ${MAX_CATALOG_ROWS} rows: 400 and no database read`, async () => {
 
 it('exactly the cap passes the check (and goes on to the database)', async () => {
   service.mockClear()
-  await expect(POST(req(Array.from({ length: MAX_CATALOG_ROWS }, () => row)))).rejects.toThrow('the database was read')
+  // The mocked database throws; withApiErrors turns that into the JSON 500.
+  const res = await POST(req(Array.from({ length: MAX_CATALOG_ROWS }, () => row)))
   expect(service).toHaveBeenCalled()
+  expect(res.status).toBe(500)
+  expect(await res.json()).toEqual({ error: 'Something went wrong. Please try again.', code: 'INTERNAL_ERROR' })
 })

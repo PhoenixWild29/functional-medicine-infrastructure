@@ -8,16 +8,41 @@
 // Auth: ops_admin only.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
+import { z } from 'zod'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { Enums } from '@/types/database.types'
 import { getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { MAX_NAME, UUID_RE, badRequest, boundedText, parseInput } from '@/lib/api/input'
+import { VALID_REGULATORY_STATUSES } from '@/lib/catalog/validate-csv-rows'
+import { readObjectBody } from '@/app/api/ops/_lib/body'
 
 type RegulatoryStatusEnum = Enums<'regulatory_status_enum'>
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+/** A price in dollars: a number, or a numeric string (what a form sends). Bounded. */
+const MAX_PRICE = 1_000_000
+function toPrice(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v.trim()) : NaN
+  return Number.isFinite(n) && n >= 0 && n <= MAX_PRICE ? n : null
+}
 
-const VALID_REGULATORY_STATUSES = ['ACTIVE', 'RECALLED', 'DISCONTINUED', 'SHORTAGE']
+// The text fields and flags, checked for type and bound before anything is
+// written (an object or a 10 MB string used to be String()-ed into the
+// row). Prices, the status and the ids keep their own messages below.
+const text = boundedText(MAX_NAME).optional().nullable()
+const fieldsSchema = z.object({
+  medicationName:    text,
+  form:              text,
+  dose:              text,
+  regulatoryStatus:  z.string().max(50).optional().nullable(),
+  requiresPriorAuth: z.union([z.boolean(), z.enum(['true', 'false'])]).optional().nullable(),
+})
+
+function isKnownStatus(s: string): boolean {
+  return (VALID_REGULATORY_STATUSES as readonly string[]).includes(s)
+}
 
 async function guard() {
   const supabaseAuth = await createServerClient()
@@ -30,36 +55,43 @@ async function guard() {
 }
 
 // ── POST: Add single item ─────────────────────────────────────
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const { user, error: authErr } = await guard()
   if (authErr) return authErr
 
-  let body: Record<string, unknown>
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
+  const parsed = await readObjectBody(request)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
 
-  const pharmacyId = body['pharmacyId'] as string | undefined
-  if (!pharmacyId || !UUID_RE.test(pharmacyId)) {
+  // Any 8-4-4-4-12 hex id (lib/api/input): the seeded demo ids are not RFC v4.
+  const pharmacyId = body['pharmacyId']
+  if (typeof pharmacyId !== 'string' || !UUID_RE.test(pharmacyId)) {
     return NextResponse.json({ error: 'Invalid or missing pharmacyId' }, { status: 400 })
   }
 
-  const { medicationName, form, dose, wholesalePrice, regulatoryStatus } =
-    body as Record<string, unknown>
+  const fields = parseInput(fieldsSchema, body)
+  if (!fields.ok) return fields.response
+  const { medicationName, form, dose, regulatoryStatus, requiresPriorAuth } = fields.data
 
   if (!medicationName || !form || !dose) {
     return NextResponse.json({ error: 'Missing required fields: medicationName, form, dose' }, { status: 400 })
   }
 
-  const price = parseFloat(String(wholesalePrice ?? ''))
-  if (isNaN(price) || price < 0) {
+  const price = toPrice(body['wholesalePrice'])
+  if (price === null) {
     return NextResponse.json({ error: 'Invalid wholesalePrice' }, { status: 400 })
   }
 
-  const status = String(regulatoryStatus ?? 'ACTIVE').toUpperCase()
-  if (!VALID_REGULATORY_STATUSES.includes(status)) {
+  let retailPrice: number | null = null
+  if (body['retailPrice'] != null) {
+    retailPrice = toPrice(body['retailPrice'])
+    if (retailPrice === null) return badRequest('Invalid request', ['retailPrice'])
+  }
+
+  const status = (regulatoryStatus ?? 'ACTIVE').toUpperCase()
+  if (!isKnownStatus(status)) {
     return NextResponse.json({ error: `Invalid regulatoryStatus: ${status}` }, { status: 400 })
   }
 
@@ -71,13 +103,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .from('catalog')
     .insert({
       pharmacy_id:         pharmacyId,
-      medication_name:     String(medicationName).trim(),
-      form:                String(form).trim(),
-      dose:                String(dose).trim(),
+      medication_name:     medicationName,
+      form,
+      dose,
       wholesale_price:     price,
-      retail_price:        body['retailPrice'] != null ? parseFloat(String(body['retailPrice'])) : null,
+      retail_price:        retailPrice,
       regulatory_status:   status as RegulatoryStatusEnum,
-      requires_prior_auth: body['requiresPriorAuth'] === true || String(body['requiresPriorAuth'] ?? '') === 'true',
+      requires_prior_auth: requiresPriorAuth === true || requiresPriorAuth === 'true',
       is_active:           true,
       updated_at:          now,
     })
@@ -94,46 +126,52 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 }
 
 // ── PATCH: Update single item ─────────────────────────────────
-export async function PATCH(request: NextRequest): Promise<NextResponse> {
+async function patchHandler(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const { user, error: authErr } = await guard()
   if (authErr) return authErr
 
-  let body: Record<string, unknown>
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
+  const parsed = await readObjectBody(request)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
 
-  const itemId = body['itemId'] as string | undefined
-  if (!itemId || !UUID_RE.test(itemId)) {
+  const itemId = body['itemId']
+  if (typeof itemId !== 'string' || !UUID_RE.test(itemId)) {
     return NextResponse.json({ error: 'Invalid or missing itemId' }, { status: 400 })
   }
 
+  const fields = parseInput(fieldsSchema, body)
+  if (!fields.ok) return fields.response
+  const f = fields.data
+
   const actorEmail = user!.email ?? `[no-email, id=${user!.id}]`
-  const supabase   = createServiceClient()
   const now        = new Date().toISOString()
 
   // Build partial update from provided fields
   const updates: Record<string, unknown> = { updated_at: now }
 
-  if (body['medicationName'] != null) updates['medication_name']     = String(body['medicationName']).trim()
-  if (body['form']           != null) updates['form']                = String(body['form']).trim()
-  if (body['dose']           != null) updates['dose']                = String(body['dose']).trim()
+  if (f.medicationName != null) updates['medication_name'] = f.medicationName
+  if (f.form           != null) updates['form']            = f.form
+  if (f.dose           != null) updates['dose']            = f.dose
   if (body['wholesalePrice'] != null) {
-    const p = parseFloat(String(body['wholesalePrice']))
-    if (isNaN(p) || p < 0) return NextResponse.json({ error: 'Invalid wholesalePrice' }, { status: 400 })
+    const p = toPrice(body['wholesalePrice'])
+    if (p === null) return NextResponse.json({ error: 'Invalid wholesalePrice' }, { status: 400 })
     updates['wholesale_price'] = p
   }
-  if (body['retailPrice']         != null) updates['retail_price']         = parseFloat(String(body['retailPrice']))
-  if (body['regulatoryStatus']    != null) {
-    const s = String(body['regulatoryStatus']).toUpperCase()
-    if (!VALID_REGULATORY_STATUSES.includes(s)) return NextResponse.json({ error: `Invalid regulatoryStatus` }, { status: 400 })
+  if (body['retailPrice'] != null) {
+    const p = toPrice(body['retailPrice'])
+    if (p === null) return badRequest('Invalid request', ['retailPrice'])
+    updates['retail_price'] = p
+  }
+  if (f.regulatoryStatus != null) {
+    const s = f.regulatoryStatus.toUpperCase()
+    if (!isKnownStatus(s)) return NextResponse.json({ error: `Invalid regulatoryStatus` }, { status: 400 })
     updates['regulatory_status'] = s
   }
-  if (body['requiresPriorAuth']   != null) updates['requires_prior_auth'] = body['requiresPriorAuth'] === true || String(body['requiresPriorAuth']) === 'true'
+  if (f.requiresPriorAuth != null) updates['requires_prior_auth'] = f.requiresPriorAuth === true || f.requiresPriorAuth === 'true'
 
-  const { error } = await supabase
+  const { error } = await createServiceClient()
     .from('catalog')
     .update(updates)
     .eq('item_id', itemId)
@@ -151,3 +189,6 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
 export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/ops/catalog/item', postHandler)
+export const PATCH = withApiErrors('/api/ops/catalog/item', patchHandler)

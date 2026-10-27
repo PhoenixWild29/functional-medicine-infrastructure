@@ -106,3 +106,15 @@ it('a write that fails: 500', async () => {
   db = scriptedDb(c => (c.table === 'ingredients' && c.op === 'update' ? DB_DOWN : undefined))
   expect((await PUT(req(GOOD), params())).status).toBe(500)
 })
+
+it('invalid JSON is 400, nothing written', async () => {
+  const res = await PUT(new NextRequest('https://app.test/api/ops/ingredients/x/compounding', { method: 'PUT', body: '{' }), params())
+  expect(res.status).toBe(400)
+  expect(db.calls).toHaveLength(0)
+})
+
+it('a JSON body that is not an object (null) is 400, not a thrown 500', async () => {
+  const res = await PUT(new NextRequest('https://app.test/api/ops/ingredients/x/compounding', { method: 'PUT', body: 'null' }), params())
+  expect(res.status).toBe(400)
+  expect(db.calls).toHaveLength(0)
+})

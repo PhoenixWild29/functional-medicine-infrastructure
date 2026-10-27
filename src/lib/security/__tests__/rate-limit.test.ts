@@ -58,3 +58,16 @@ it('forgets expired keys, so memory does not grow without bound', () => {
   l.check('fresh')
   expect(l.size()).toBe(1)
 })
+
+it('peek says whether a key is over the limit without counting an attempt (security B12)', () => {
+  const { l, advance } = limiter(2)
+  for (let i = 0; i < 5; i++) expect(l.peek('a')).toEqual({ allowed: true, retryAfterSeconds: 0 })
+  l.check('a')
+  expect(l.peek('a').allowed).toBe(true)
+  l.check('a')
+  advance(20_000)
+  expect(l.peek('a')).toEqual({ allowed: false, retryAfterSeconds: 40 })
+  advance(40_000)
+  expect(l.peek('a').allowed).toBe(true)
+  expect(l.peek('b').allowed).toBe(true)
+})

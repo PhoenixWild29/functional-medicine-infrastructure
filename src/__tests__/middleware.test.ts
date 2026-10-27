@@ -486,3 +486,38 @@ describe('middleware: the Keragon webhook is public, its admin routes are not', 
     expect(getUserMock).toHaveBeenCalled()
   })
 })
+
+// ── B11: password reset ─────────────────────────────────────────
+// /forgot-password and POST /api/auth/password-reset are for people who
+// cannot sign in: public, exact paths only. /reset-password needs the
+// recovery session the emailed link creates.
+describe('middleware: password reset pages', () => {
+  it.each(['/forgot-password', '/api/auth/password-reset'])('%s passes through with no session lookup', async path => {
+    getUserMock.mockResolvedValue(NO_SESSION)
+    const res = await middleware(makeReq(path))
+    expect(res.headers.get('location')).toBeNull()
+    expect(getUserMock).not.toHaveBeenCalled()
+  })
+
+  it('look-alike paths are not public', async () => {
+    getUserMock.mockResolvedValue(NO_SESSION)
+    for (const path of ['/forgot-password/x', '/api/auth/password-reset/x', '/api/auth/password']) {
+      const res = await middleware(makeReq(path))
+      expect(res.status === 401 || /\/login/.test(res.headers.get('location') ?? '')).toBe(true)
+    }
+  })
+
+  it('/reset-password with no session goes to /login', async () => {
+    getUserMock.mockResolvedValue(NO_SESSION)
+    const res = await middleware(makeReq('/reset-password'))
+    expect(res.headers.get('location')).toMatch(/\/login\?redirectTo=%2Freset-password/)
+  })
+
+  it('/reset-password with a session passes (clinic and ops roles)', async () => {
+    for (const session of [CLINIC_SESSION, OPS_SESSION]) {
+      getUserMock.mockResolvedValue(session)
+      const res = await middleware(makeReq('/reset-password'))
+      expect(res.headers.get('location')).toBeNull()
+    }
+  })
+})

@@ -39,7 +39,7 @@
 
 ### Step 1 — Show the Clinic App (2 min)
 
-1. Go to `/login` → log in as `admin@sunrise-clinic.com` / `POCClinic2026!`
+1. Go to `/login` → log in as `admin@sunrise-clinic.com` / the password in `POC_CLINIC_ADMIN_PASSWORD` (set in your local env)
 2. Show the **dashboard** — KPI cards, order table, kanban toggle
 3. Collapse/expand the **sidebar**
 
@@ -73,7 +73,7 @@
 2. Search **Sema** → Select pharmacy → 2x multiplier → Enter Sig
 3. Click **"Save as Draft — Provider Signs Later"** → redirects to dashboard
 4. Show **"Drafts" tab** — the draft order is visible *(note: the Drafts tab is count-conditional and only appears once a draft exists)*
-5. **Sign out** → Log in as provider: `dr.chen@sunrise-clinic.com` / `POCProvider2026!`
+5. **Sign out** → Log in as provider: `dr.chen@sunrise-clinic.com` / the password in `POC_PROVIDER_PASSWORD` (set in your local env)
 6. Click **Drafts** tab → Click draft → Click amber **"Review & Sign"** button
 7. Review details → **Sign** → Confirm → order moves to "Awaiting Payment"
 
@@ -96,7 +96,7 @@
 
 ### Step 4 — Ops Dashboard (3 min)
 
-1. New tab → log in as `ops@compoundiq-poc.com` / `POCAdmin2026!`
+1. New tab → log in as `ops@compoundiq-poc.com` / the password in `POC_OPS_PASSWORD` (set in your local env)
 2. Show the **dark-mode pipeline** — the order you just created should appear
 3. Click into the order → show **Detail, History, Submissions, SLA tabs**
 4. Navigate to **SLA** → show breach tracking *(superseded: the page currently reads "0 SLA deadlines — All SLAs are on track or resolved". See Detailed doc Part 5B.)*
@@ -130,10 +130,10 @@
 
 | Account | Email | Password |
 |---------|-------|----------|
-| Ops | `ops@compoundiq-poc.com` | `POCAdmin2026!` |
-| Clinic Admin | `admin@sunrise-clinic.com` | `POCClinic2026!` |
-| Provider | `dr.chen@sunrise-clinic.com` | `POCProvider2026!` |
-| MA | `ma@sunrise-clinic.com` | `POCMA2026!` |
+| Ops | `ops@compoundiq-poc.com` | `POC_OPS_PASSWORD` (set in your local env) |
+| Clinic Admin | `admin@sunrise-clinic.com` | `POC_CLINIC_ADMIN_PASSWORD` (set in your local env) |
+| Provider | `dr.chen@sunrise-clinic.com` | `POC_PROVIDER_PASSWORD` (set in your local env) |
+| MA | `ma@sunrise-clinic.com` | `POC_MA_PASSWORD` (set in your local env) |
 
 | Seed Data | |
 |-----------|---|

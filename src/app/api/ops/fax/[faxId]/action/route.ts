@@ -14,6 +14,12 @@
 //   archive       — set fax status = ARCHIVED (terminal, REQ-FTQ-004, REQ-FTQ-005)
 //
 // Auth: ops_admin only.
+//
+// PHI access log (B14/B15): every action is a write on a known fax. One
+// 'update' / 'inbound_fax' row (the order the fax is or becomes matched to,
+// its patient and clinic) is written BEFORE the first write; a log that
+// fails is a 503 and nothing is changed. phi_access_log has no fax id
+// column, so an unmatched fax is logged with no ids.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { refuseCrossSite } from '@/lib/security/same-origin'
@@ -23,15 +29,32 @@ import { casTransition }       from '@/lib/orders/cas-transition'
 import { sendSlackAlert }      from '@/lib/slack/client'
 import { buildOpsAlert }       from '@/lib/slack/ops-alert'
 import { getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+// Any 8-4-4-4-12 hex id: the seeded demo ids are not RFC v4.
+import { UUID_RE } from '@/lib/api/input'
+import { readObjectBody } from '@/app/api/ops/_lib/body'
+import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const ACTIONS = new Set(['acknowledge', 'reject', 'manual_match', 'archive'])
 
 // SLA business hours for PHARMACY_COMPOUNDING deadline (24 biz hrs ≈ 3 calendar days)
 const COMPOUNDING_SLA_HOURS = 72
 
+const ROUTE = '/api/ops/fax/[faxId]/action'
+const NOT_RECORDED = 'This change could not be recorded. Nothing was changed. Try again.'
+
+/** B15 fail-closed: the log row before the write, or a 503 and no write. */
+async function refuseUnlessLogged(
+  user: PhiUser, request: NextRequest,
+  ids: { orderId: string | null; patientId: string | null; clinicId: string | null },
+): Promise<NextResponse | null> {
+  const logged = await logPhiAccess({ user, action: 'update', resource: 'inbound_fax', route: ROUTE, ...ids, headers: request.headers })
+  return logged ? null : NextResponse.json({ error: NOT_RECORDED }, { status: 503 })
+}
+
 interface Params { params: Promise<{ faxId: string }> }
 
-export async function POST(request: NextRequest, { params }: Params): Promise<NextResponse> {
+async function postHandler(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request)
   if (crossSite) return crossSite
   const { faxId } = await params
@@ -48,16 +71,22 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
     return NextResponse.json({ error: 'Invalid faxId' }, { status: 400 })
   }
 
-  let body: Record<string, unknown>
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
+  const parsed = await readObjectBody(request)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
 
-  const action = body['action'] as string | undefined
-  if (!action) {
+  const action = body['action']
+  if (typeof action !== 'string' || !action) {
     return NextResponse.json({ error: 'Missing action' }, { status: 400 })
+  }
+  // Every input is checked before the fax is read: the action (not echoed)
+  // and manual_match's order id.
+  if (!ACTIONS.has(action)) {
+    return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+  }
+  const matchOrderId = body['orderId']
+  if (action === 'manual_match' && (typeof matchOrderId !== 'string' || !UUID_RE.test(matchOrderId))) {
+    return NextResponse.json({ error: 'Invalid or missing orderId for manual match' }, { status: 400 })
   }
 
   const actorEmail = user.email
@@ -72,7 +101,8 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
     .from('inbound_fax_queue')
     .select(`
       fax_id, status, matched_order_id, matched_pharmacy_id, notes,
-      pharmacies(name, integration_tier)
+      pharmacies(name, integration_tier),
+      orders(patient_id, clinic_id)
     `)
     .eq('fax_id', faxId)
     .is('deleted_at', null)
@@ -89,6 +119,13 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
   const faxRaw       = fax as unknown as Record<string, unknown>
   const currentStatus = faxRaw['status'] as string
   const pharmacy     = faxRaw['pharmacies'] as { name: string; integration_tier: string } | null
+  const matchedOrder = faxRaw['orders'] as { patient_id: string | null; clinic_id: string | null } | null
+  // The ids for the log row: the order the fax is matched to now.
+  const matchedIds = {
+    orderId:   (faxRaw['matched_order_id'] as string | null) ?? null,
+    patientId: matchedOrder?.patient_id ?? null,
+    clinicId:  matchedOrder?.clinic_id ?? null,
+  }
 
   switch (action) {
 
@@ -108,6 +145,8 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
       if (!orderId) {
         return NextResponse.json({ error: 'No matched order. Use manual_match first' }, { status: 409 })
       }
+      const notLogged = await refuseUnlessLogged(user, request, matchedIds)
+      if (notLogged) return notLogged
 
       // CAS transition on the order
       try {
@@ -116,6 +155,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
           expectedStatus: 'FAX_DELIVERED',
           newStatus:      'PHARMACY_ACKNOWLEDGED',
           actor:          actorEmail,
+          actorRole:      'ops_admin',
           metadata:       { source: 'ops_triage', faxId },
         })
       } catch (err) {
@@ -191,6 +231,8 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
       if (!orderId) {
         return NextResponse.json({ error: 'No matched order' }, { status: 409 })
       }
+      const notLogged = await refuseUnlessLogged(user, request, matchedIds)
+      if (notLogged) return notLogged
 
       try {
         await casTransition({
@@ -198,6 +240,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
           expectedStatus: 'FAX_DELIVERED',
           newStatus:      'PHARMACY_REJECTED',
           actor:          actorEmail,
+          actorRole:      'ops_admin',
           metadata:       { source: 'ops_triage', faxId },
         })
       } catch (err) {
@@ -254,10 +297,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
     // ── Manual Match ──────────────────────────────────────────
     // Link fax to correct order if auto-match failed
     case 'manual_match': {
-      const newOrderId = body['orderId'] as string | undefined
-      if (!newOrderId || !UUID_RE.test(newOrderId)) {
-        return NextResponse.json({ error: 'Invalid or missing orderId for manual match' }, { status: 400 })
-      }
+      const newOrderId = matchOrderId as string  // checked above, before the read
       if (currentStatus === 'PROCESSED' || currentStatus === 'ARCHIVED') {
         return NextResponse.json({ error: 'Fax already processed or archived' }, { status: 409 })
       }
@@ -265,7 +305,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
       // Verify order exists
       const { data: order, error: orderErr } = await supabase
         .from('orders')
-        .select('order_id')
+        .select('order_id, patient_id, clinic_id')
         .eq('order_id', newOrderId)
         .is('deleted_at', null)
         .maybeSingle()
@@ -273,6 +313,10 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
       if (orderErr || !order) {
         return NextResponse.json({ error: 'Order not found' }, { status: 404 })
       }
+      // Logged with the order the fax is matched TO.
+      const target = order as { patient_id: string | null; clinic_id: string | null }
+      const notLogged = await refuseUnlessLogged(user, request, { orderId: newOrderId, patientId: target.patient_id ?? null, clinicId: target.clinic_id ?? null })
+      if (notLogged) return notLogged
 
       const { error: updateErr } = await supabase
         .from('inbound_fax_queue')
@@ -302,6 +346,8 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
       if (currentStatus === 'PROCESSING') {
         return NextResponse.json({ error: 'Fax is currently being processed, cannot archive' }, { status: 409 })
       }
+      const notLogged = await refuseUnlessLogged(user, request, matchedIds)
+      if (notLogged) return notLogged
 
       const { error: updateErr } = await supabase
         .from('inbound_fax_queue')
@@ -330,3 +376,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/ops/fax/[faxId]/action', postHandler)

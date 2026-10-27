@@ -10,6 +10,7 @@
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { configureAxe } from 'jest-axe'
+import { signInFetch } from '@/__tests__/helpers/sign-in-fetch'
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), refresh: jest.fn() }),
@@ -18,6 +19,8 @@ const mfa = { listFactors: jest.fn(), enroll: jest.fn(), unenroll: jest.fn(), ch
 jest.mock('@/lib/supabase/client', () => ({
   createBrowserClient: () => ({ auth: { mfa, signOut: jest.fn() } }),
 }))
+// Security B12: the challenge posts to /api/mfa/verify (answered from the mock).
+beforeEach(() => { global.fetch = signInFetch({ challengeAndVerify: mfa.challengeAndVerify }) as unknown as typeof fetch })
 let serverUser: unknown = null
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: async () => ({ auth: { getUser: async () => ({ data: { user: serverUser }, error: null }) } }),

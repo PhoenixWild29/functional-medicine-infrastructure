@@ -46,7 +46,8 @@ jest.spyOn(console, 'error').mockImplementation(() => {})
 jest.spyOn(console, 'info').mockImplementation(() => {})
 jest.spyOn(console, 'warn').mockImplementation(() => {})
 
-function request(body: string, headers: Record<string, string> = {}) {
+// The Documo verifier is mocked; the route still wants a hex signature.
+function request(body: string, headers: Record<string, string> = { 'x-documo-signature': 'ab'.repeat(32) }) {
   return {
     text: async () => body,
     url: 'https://app.test/api/webhooks/x',

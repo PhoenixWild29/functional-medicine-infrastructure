@@ -46,11 +46,11 @@ const OUTSRC  = pharmacy('ph-503b', 'Outsourcing 503B', { facility_type: '503B' 
 beforeEach(() => {
   db = fakeDb({
     formulations: [
-      { formulation_id: 'f-inj', dosage_forms: { name: 'Injectable Solution', is_sterile: true } },
-      { formulation_id: 'f-cap', dosage_forms: { name: 'Capsule', is_sterile: false } },
+      { formulation_id: 'b4000000-0000-0000-0000-00000000000b', dosage_forms: { name: 'Injectable Solution', is_sterile: true } },
+      { formulation_id: 'b4000000-0000-0000-0000-00000000000c', dosage_forms: { name: 'Capsule', is_sterile: false } },
     ],
     pharmacy_formulations: [
-      ...['f-inj', 'f-cap'].flatMap(f => [pf(f, 'a', STRIVE), pf(f, 'b', EXPIRED), pf(f, 'c', NOSTER), pf(f, 'd', OUTSRC)]),
+      ...['b4000000-0000-0000-0000-00000000000b', 'b4000000-0000-0000-0000-00000000000c'].flatMap(f => [pf(f, 'a', STRIVE), pf(f, 'b', EXPIRED), pf(f, 'c', NOSTER), pf(f, 'd', OUTSRC)]),
     ],
     pharmacy_state_licenses: [
       license('ph-strive'),
@@ -69,13 +69,13 @@ async function optionNames(formulationId: string) {
 }
 
 it('an expired license is not offered', async () => {
-  expect(await optionNames('f-cap')).not.toContain('Lapsed Pharmacy')
+  expect(await optionNames('b4000000-0000-0000-0000-00000000000c')).not.toContain('Lapsed Pharmacy')
 })
 
 it('a non-sterile product is offered by every pharmacy with a valid license', async () => {
-  expect(await optionNames('f-cap')).toEqual(['Non-Sterile Pharmacy', 'Outsourcing 503B', 'Strive Pharmacy'])
+  expect(await optionNames('b4000000-0000-0000-0000-00000000000c')).toEqual(['Non-Sterile Pharmacy', 'Outsourcing 503B', 'Strive Pharmacy'])
 })
 
 it('a sterile product is offered only where the license covers sterile compounding, or by a 503B facility', async () => {
-  expect(await optionNames('f-inj')).toEqual(['Outsourcing 503B', 'Strive Pharmacy'])
+  expect(await optionNames('b4000000-0000-0000-0000-00000000000b')).toEqual(['Outsourcing 503B', 'Strive Pharmacy'])
 })

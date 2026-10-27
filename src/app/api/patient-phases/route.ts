@@ -14,13 +14,31 @@
 //     clinical decision;
 //   - every read and write is scoped to the caller's clinic: a patient,
 //     protocol or tracking row of another clinic is 404, nothing written.
+//
+// Input (after auth, before any read or write): ids are ids (a bad id
+// reaching Postgres was a 500, error 22P02), phase names and the reason
+// are bounded, the status is a closed set, and a body that is not JSON is
+// a 400 (lib/api/input).
+//
+// PHI access log (L1, writes are logged first): start, advance and a
+// status change write their patient_phases row BEFORE the write, after
+// every check, and answer 503 with nothing changed when it cannot be
+// written. A write that then fails (or an advance put back because its
+// history could not be kept) gets a not_completed_patient_phases row.
 
 import { NextRequest, NextResponse } from 'next/server'
 import type { User } from '@supabase/supabase-js'
+import type { Json } from '@/types/database.types'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted, type PhiAccessEntry } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { resolveCurrentProvider } from '@/lib/auth/current-provider'
+import { refuseCrossSite } from '@/lib/security/same-origin'
+import { z } from 'zod'
+import { MAX_NAME, MAX_NOTE, boundedText, parseInput, parseJsonBody, uuid } from '@/lib/api/input'
 
 const STAFF_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
 
@@ -46,6 +64,28 @@ async function resolveCaller(change: boolean): Promise<Caller> {
   }
   return { ok: true, user, clinicId }
 }
+
+const STATUSES = ['active', 'paused', 'completed', 'discontinued'] as const
+
+// A phase name ('loading', 'maintenance', ...) and the provider's reason.
+const phase = () => boundedText(MAX_NAME).min(1)
+const optionalId = () => uuid().nullish()
+const StartBody = z.object({
+  action:        z.literal('start'),
+  patient_id:    uuid(),
+  protocol_id:   uuid(),
+  initial_phase: phase(),
+  provider_id:   optionalId(),
+})
+const AdvanceBody = z.object({
+  action:      z.literal('advance'),
+  tracking_id: uuid(),
+  new_phase:   phase(),
+  provider_id: optionalId(),
+  reason:      boundedText(MAX_NOTE).nullish(),
+  // Stored as JSONB on the history row; its shape is the caller's.
+  lab_results: z.unknown().optional(),
+})
 
 const NOT_FOUND = () => NextResponse.json({ error: 'Not found' }, { status: 404 })
 const READ_FAILED = () => NextResponse.json({ error: 'The record could not be read. Nothing was changed. Try again.' }, { status: 500 })
@@ -92,7 +132,7 @@ async function trackingInClinic(
   return { ok: true, patientId: row.patient_id, currentPhase: row.current_phase }
 }
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   const caller = await resolveCaller(false)
   if (!caller.ok) return caller.response
 
@@ -101,6 +141,8 @@ export async function GET(req: NextRequest) {
   const patientId = searchParams.get('patient_id')
 
   if (!patientId) return NextResponse.json({ error: 'Missing patient_id' }, { status: 400 })
+  const query = parseInput(z.object({ patient_id: uuid() }), { patient_id: patientId })
+  if (!query.ok) return query.response
 
   const inClinic = await patientInClinic(supabase, patientId, caller.clinicId)
   if (inClinic === 'error') return READ_FAILED()
@@ -139,19 +181,50 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ data })
 }
 
-export async function POST(req: NextRequest) {
+/**
+ * Who advanced the phase: the signed-in provider (their own provider row
+ * in this clinic), never an id from the body. A body provider_id naming
+ * anyone else is refused, not ignored: it is a client bug or a forgery,
+ * and the record of who changed a treatment phase must not be put down to
+ * another provider. A provider login with no linked provider row cannot
+ * act as a provider (fail closed, lib/auth/current-provider).
+ */
+async function recordedAs(
+  supabase: Supabase, caller: { user: User; clinicId: string }, named: unknown,
+): Promise<{ ok: true; providerId: string } | { ok: false; response: NextResponse }> {
+  const me = await resolveCurrentProvider(supabase, { userId: caller.user.id, clinicId: caller.clinicId })
+  if (!me) {
+    return { ok: false, response: NextResponse.json({ error: 'This login is not linked to a provider record.' }, { status: 403 }) }
+  }
+  if (named !== undefined && named !== null && named !== '' && named !== me.provider_id) {
+    return { ok: false, response: NextResponse.json({ error: 'You can only record a phase change as yourself.' }, { status: 403 }) }
+  }
+  return { ok: true, providerId: me.provider_id }
+}
+
+async function postHandler(req: NextRequest) {
+  const crossSite = refuseCrossSite(req)
+  if (crossSite) return crossSite
   const caller = await resolveCaller(true)
   if (!caller.ok) return caller.response
 
+  const parsedBody = await parseJsonBody(req, z.record(z.string(), z.unknown()))
+  if (!parsedBody.ok) return parsedBody.response
+  const body = parsedBody.data
   const supabase = createServiceClient()
-  const body = await req.json()
+
 
   // Start patient on protocol or advance phase
-  if (body.action === 'start') {
-    const { patient_id, protocol_id, initial_phase, provider_id } = body
-    if (!patient_id || !protocol_id || !initial_phase) {
+  if (body['action'] === 'start') {
+    if (!body['patient_id'] || !body['protocol_id'] || !body['initial_phase']) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
+    const start = parseInput(StartBody, body)
+    if (!start.ok) return start.response
+    const { patient_id, protocol_id, initial_phase } = start.data
+    const as = await recordedAs(supabase, caller, start.data.provider_id)
+    if (!as.ok) return as.response
+    const advancedBy = as.providerId
 
     // The patient and the protocol must both be this clinic's.
     const inClinic = await patientInClinic(supabase, patient_id, caller.clinicId)
@@ -169,13 +242,17 @@ export async function POST(req: NextRequest) {
     }
     if (!protocol) return NOT_FOUND()
 
+    // Compliance C2: a protocol started for the patient. L1: logged first.
+    const startEntry: PhiAccessEntry = { user: caller.user, action: 'create', resource: 'patient_phases', route: '/api/patient-phases', patientId: patient_id, headers: req.headers ?? null }
+    if (!(await logPhiAccess(startEntry))) return phiWriteRefused()
+
     const { data, error } = await supabase
       .from('patient_protocol_phases')
       .upsert({
         patient_id,
         protocol_id,
         current_phase: initial_phase,
-        advanced_by: provider_id ?? null,
+        advanced_by: advancedBy,
         status: 'active',
       }, { onConflict: 'patient_id,protocol_id' })
       .select()
@@ -183,22 +260,33 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       console.error('[patient-phases] protocol start failed:', error.message)
+      await logPhiWriteNotCompleted(startEntry)
       return WRITE_FAILED()
     }
-    // Compliance C2: a protocol started for the patient.
-    await logPhiAccess({ user: caller.user, action: 'create', resource: 'patient_phases', route: '/api/patient-phases', patientId: patient_id, headers: req.headers ?? null })
     return NextResponse.json({ data }, { status: 201 })
   }
 
-  if (body.action === 'advance') {
-    const { tracking_id, new_phase, provider_id, reason, lab_results } = body
-    if (!tracking_id || !new_phase) {
+  if (body['action'] === 'advance') {
+    if (!body['tracking_id'] || !body['new_phase']) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
+    const advance = parseInput(AdvanceBody, body)
+    if (!advance.ok) return advance.response
+    const { tracking_id, new_phase, reason, lab_results } = advance.data
+    const as = await recordedAs(supabase, caller, advance.data.provider_id)
+    if (!as.ok) return as.response
+    const advancedBy = as.providerId
 
     // Get current phase for history (only a tracking row of this clinic's patient).
     const current = await trackingInClinic(supabase, tracking_id, caller.clinicId)
     if (!current.ok) return current.response
+
+    // Compliance C2: the patient's protocol phase changes. L1: logged first.
+    const advanceEntry: PhiAccessEntry = {
+      user: caller.user, action: 'update', resource: 'patient_phases', route: '/api/patient-phases',
+      patientId: current.patientId, headers: req.headers ?? null,
+    }
+    if (!(await logPhiAccess(advanceEntry))) return phiWriteRefused()
 
     // Update to new phase
     const { error: updateErr } = await supabase
@@ -206,7 +294,7 @@ export async function POST(req: NextRequest) {
       .update({
         current_phase: new_phase,
         phase_started_at: new Date().toISOString(),
-        advanced_by: provider_id ?? null,
+        advanced_by: advancedBy,
         advancement_note: reason ?? null,
         updated_at: new Date().toISOString(),
       })
@@ -214,6 +302,7 @@ export async function POST(req: NextRequest) {
 
     if (updateErr) {
       console.error('[patient-phases] phase advance failed:', updateErr.message, '| tracking=', tracking_id)
+      await logPhiWriteNotCompleted(advanceEntry)
       return WRITE_FAILED()
     }
 
@@ -223,9 +312,9 @@ export async function POST(req: NextRequest) {
       tracking_id,
       from_phase: current.currentPhase,
       to_phase: new_phase,
-      advanced_by: provider_id ?? null,
+      advanced_by: advancedBy,
       reason: reason ?? null,
-      lab_results: lab_results ?? null,
+      lab_results: (lab_results ?? null) as Json | null,
     })
 
     if (historyErr) {
@@ -235,26 +324,25 @@ export async function POST(req: NextRequest) {
         .update({ current_phase: current.currentPhase, updated_at: new Date().toISOString() })
         .eq('tracking_id', tracking_id)
       if (revertErr) {
+        // The phase did move (and its row says so): no not_completed row.
         console.error('[patient-phases] CRITICAL: revert failed:', revertErr.message, '| tracking=', tracking_id)
         return NextResponse.json({
           error: `The phase was advanced to ${new_phase}, but its history could not be recorded and the change could not be undone. Contact support before advancing again.`,
         }, { status: 500 })
       }
+      await logPhiWriteNotCompleted(advanceEntry)
       return NextResponse.json({ error: 'The phase change could not be recorded. Nothing was changed. Try again.' }, { status: 500 })
     }
 
-    // Compliance C2: the patient's protocol phase changed.
-    await logPhiAccess({
-      user: caller.user, action: 'update', resource: 'patient_phases', route: '/api/patient-phases',
-      patientId: current.patientId, headers: req.headers ?? null,
-    })
     return NextResponse.json({ ok: true, from: current.currentPhase, to: new_phase })
   }
 
   return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
 }
 
-export async function PATCH(req: NextRequest) {
+async function patchHandler(req: NextRequest) {
+  const crossSite = refuseCrossSite(req)
+  if (crossSite) return crossSite
   const caller = await resolveCaller(true)
   if (!caller.ok) return caller.response
 
@@ -262,17 +350,27 @@ export async function PATCH(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const trackingId = searchParams.get('tracking_id')
   if (!trackingId) return NextResponse.json({ error: 'Missing tracking_id' }, { status: 400 })
+  const query = parseInput(z.object({ tracking_id: uuid() }), { tracking_id: trackingId })
+  if (!query.ok) return query.response
 
-  const body = await req.json()
-  const { status: newStatus } = body as { status: string }
+  const parsedBody = await parseJsonBody(req, z.record(z.string(), z.unknown()))
+  if (!parsedBody.ok) return parsedBody.response
+  const newStatus = parsedBody.data['status']
 
-  if (!['active', 'paused', 'completed', 'discontinued'].includes(newStatus)) {
+  if (typeof newStatus !== 'string' || !(STATUSES as readonly string[]).includes(newStatus)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
   }
 
   // Only a tracking row of this clinic's patient.
   const current = await trackingInClinic(supabase, trackingId, caller.clinicId)
   if (!current.ok) return current.response
+
+  // Compliance C2: the patient's protocol status changes. L1: logged first.
+  const statusEntry: PhiAccessEntry = {
+    user: caller.user, action: 'update', resource: 'patient_phases', route: '/api/patient-phases',
+    patientId: current.patientId, headers: req.headers ?? null,
+  }
+  if (!(await logPhiAccess(statusEntry))) return phiWriteRefused()
 
   const { error } = await supabase
     .from('patient_protocol_phases')
@@ -281,12 +379,12 @@ export async function PATCH(req: NextRequest) {
 
   if (error) {
     console.error('[patient-phases] status update failed:', error.message, '| tracking=', trackingId)
+    await logPhiWriteNotCompleted(statusEntry)
     return WRITE_FAILED()
   }
-  // Compliance C2: the patient's protocol status changed.
-  await logPhiAccess({
-    user: caller.user, action: 'update', resource: 'patient_phases', route: '/api/patient-phases',
-    patientId: current.patientId, headers: req.headers ?? null,
-  })
   return NextResponse.json({ ok: true })
 }
+
+export const GET = withApiErrors('/api/patient-phases', getHandler)
+export const POST = withApiErrors('/api/patient-phases', postHandler)
+export const PATCH = withApiErrors('/api/patient-phases', patchHandler)

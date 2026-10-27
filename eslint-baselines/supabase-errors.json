@@ -107,55 +107,55 @@
     },
     {
       "file": "src/app/api/favorites/recent/route.ts",
-      "function": "GET",
+      "function": "getHandler",
       "line": "const { data: provider } = await supabase",
       "count": 1
     },
     {
       "file": "src/app/api/formulations/route.ts",
-      "function": "GET",
+      "function": "getHandler",
       "line": "const { data: combos } = await supabase",
       "count": 1
     },
     {
       "file": "src/app/api/formulations/route.ts",
-      "function": "GET",
+      "function": "getHandler",
       "line": "const { data: salts } = await supabase",
       "count": 1
     },
     {
       "file": "src/app/api/ops/catalog/route.ts",
-      "function": "GET",
+      "function": "getHandler",
       "line": "const [itemsResult, versionsResult, normalizedResult, syncResult] = await Promise.all([",
       "count": 1
     },
     {
       "file": "src/app/api/ops/orders/[orderId]/detail/route.ts",
-      "function": "GET",
+      "function": "getHandler",
       "line": "const [orderResult, historyResult, submissionsResult, slasResult] = await Promise.all([",
       "count": 4
     },
     {
       "file": "src/app/api/orders/[orderId]/record/route.ts",
-      "function": "GET",
+      "function": "getHandler",
       "line": "const [orderResult, clinicResult] = await Promise.all([",
       "count": 1
     },
     {
       "file": "src/app/api/orders/compliance-check/route.ts",
-      "function": "GET",
+      "function": "getHandler",
       "line": "await Promise.all([",
       "count": 5
     },
     {
       "file": "src/app/api/pharmacies/shipping/route.ts",
-      "function": "GET",
+      "function": "getHandler",
       "line": "const [rates, clinic] = await Promise.all([",
       "count": 1
     },
     {
       "file": "src/app/api/protocols/route.ts",
-      "function": "GET",
+      "function": "getHandler",
       "line": "const { data: clinic } = await supabase",
       "count": 1
     },

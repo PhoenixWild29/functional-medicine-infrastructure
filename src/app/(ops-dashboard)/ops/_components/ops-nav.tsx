@@ -33,6 +33,9 @@ const NAV_TABS = [
   { href: '/ops/onboarding/pharmacies', label: 'Pharmacy onboarding' },
   { href: '/ops/integrations', label: 'EHR sync' },
   { href: '/ops/payables', label: 'Payables' },
+  { href: '/ops/security', label: 'Security' },
+  // B16: the weekly review of patient data access.
+  { href: '/ops/access-review', label: 'Access review' },
   ...(SHOW_DEMO_TOOLS ? [{ href: '/ops/demo-tools', label: 'Demo Tools' } as const] : []),
 ] as const
 

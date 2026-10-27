@@ -20,9 +20,5 @@ export async function auditHash(value: string | null | undefined): Promise<strin
   return [...new Uint8Array(mac)].map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
-/** The client IP: the first x-forwarded-for entry, else x-real-ip. */
-export function clientIp(headers: Headers | null | undefined): string | null {
-  if (!headers) return null
-  const forwarded = headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-  return forwarded || headers.get('x-real-ip')?.trim() || null
-}
+/** The client IP (lib/security/client-ip: Vercel's header first). */
+export { clientIp } from '@/lib/security/client-ip'

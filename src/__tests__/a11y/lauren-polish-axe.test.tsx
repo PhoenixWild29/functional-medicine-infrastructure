@@ -3,8 +3,7 @@
  *
  * Lauren, 23 Oct polish: axe (WCAG 2.0/2.1 A and AA, best practice) on the
  * views this branch touched that other axe suites do not already render:
- * the pharmacy search card (suspended, controlled, turnaround), the ops
- * stuck refunds and late payments panels, the product catalog summary,
+ * the ops stuck refunds and late payments panels, the product catalog summary,
  * the allergy notice (read failed), and the copy without em dashes. The
  * pending-review banner, checklist card and order drawer history have
  * their own axe checks (pending-review-banner, coaching-axe,
@@ -14,11 +13,9 @@
 
 import { render, cleanup } from '@testing-library/react'
 import { configureAxe } from 'jest-axe'
-import { PharmacyResultCard } from '@/app/(clinic-app)/new-prescription/_components/pharmacy-result-card'
 import { StuckRefundsPanel, LatePaymentsPanel } from '@/app/(ops-dashboard)/ops/pipeline/_components/stuck-refunds-panel'
 import { ProductCatalogSummary } from '@/app/(ops-dashboard)/ops/catalog/_components/product-catalog-summary'
 import { AllergyNotice } from '@/app/(clinic-app)/new-prescription/review/_components/allergy-notice'
-import type { PharmacySearchResult } from '@/app/api/pharmacy-search/route'
 
 jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn(), refresh: jest.fn(), replace: jest.fn() }) }))
 
@@ -27,19 +24,6 @@ const ids = async (el: Element) => (await axe(el)).violations.map(v => `${v.id}:
 const EM = '—'
 
 afterEach(cleanup)
-
-const RESULT: PharmacySearchResult = {
-  catalog_item_id: 'ci-1', medication_name: 'Semaglutide', form: 'Injectable', dose: '5 mg/mL', wholesale_price: 95, dea_schedule: 3,
-  is_stale: false, catalog_updated_at: '2026-10-20T00:00:00Z', pharmacy_id: 'ph-1', pharmacy_name: 'Strive Pharmacy',
-  pharmacy_status: 'SUSPENDED', integration_tier: 'TIER_4_FAX', average_turnaround_days: 3, supports_real_time_status: false,
-  tier_badge: { label: 'Fax', color: 'gray', speed: '1-2 days' },
-}
-
-it('the pharmacy search card: suspended, controlled, turnaround, no em dash', async () => {
-  const { container } = render(<main><PharmacyResultCard result={RESULT} /></main>)
-  expect(container.textContent).not.toContain(EM)
-  expect(await ids(container)).toEqual([])
-})
 
 it('the ops stuck refunds and late payments panels', async () => {
   const { container } = render(

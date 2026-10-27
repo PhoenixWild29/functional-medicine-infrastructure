@@ -171,7 +171,7 @@ Thanks!
 
 1. Log in: `https://functional-medicine-infrastructure.vercel.app/login`
    - Email: `ops@compoundiq-poc.com`
-   - Password: `POCAdmin2026!`
+   - Password: the password in `POC_OPS_PASSWORD` (set in your local env)
 2. Click **"Catalog"** in the sidebar
 3. Drag the CSV file into the upload area (or click to browse)
 4. Review the preview — check for validation errors

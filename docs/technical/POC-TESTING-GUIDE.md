@@ -31,16 +31,16 @@ All accounts below are pre-configured test accounts for the POC environment.
 
 | Role | Email | Password | What they can do |
 |------|-------|----------|-----------------|
-| **Clinic Admin** | `admin@sunrise-clinic.com` | `POCClinic2026!` | Full access — orders, settings, Stripe setup |
-| **Provider (Doctor)** | `dr.chen@sunrise-clinic.com` | `POCProvider2026!` | Create prescriptions, view orders |
-| **Medical Assistant** | `ma@sunrise-clinic.com` | `POCMA2026!` | View orders, assist with prescriptions |
+| **Clinic Admin** | `admin@sunrise-clinic.com` | `POC_CLINIC_ADMIN_PASSWORD` (set in your local env) | Full access — orders, settings, Stripe setup |
+| **Provider (Doctor)** | `dr.chen@sunrise-clinic.com` | `POC_PROVIDER_PASSWORD` (set in your local env) | Create prescriptions, view orders |
+| **Medical Assistant** | `ma@sunrise-clinic.com` | `POC_MA_PASSWORD` (set in your local env) | View orders, assist with prescriptions |
 
 ### Ops Dashboard Account
 *(Same URL — this role automatically redirects to the ops dashboard)*
 
 | Role | Email | Password | What they can do |
 |------|-------|----------|-----------------|
-| **Ops Admin** | `ops@compoundiq-poc.com` | `POCAdmin2026!` | Full pipeline, SLA, adapter, fax, catalog views |
+| **Ops Admin** | `ops@compoundiq-poc.com` | `POC_OPS_PASSWORD` (set in your local env) | Full pipeline, SLA, adapter, fax, catalog views |
 
 ---
 
@@ -65,7 +65,7 @@ You can still fully review the checkout **UI** (layout, order summary, trust bad
 
 ## Surface 1 — Clinic App
 
-**Login as:** `admin@sunrise-clinic.com` / `POCClinic2026!`
+**Login as:** `admin@sunrise-clinic.com` / the password in `POC_CLINIC_ADMIN_PASSWORD` (set in your local env)
 
 ### Navigation
 The app has a sidebar on the left with three sections:
@@ -162,7 +162,7 @@ Try logging in as each role to see the access differences.
 
 ## Surface 2 — Ops Dashboard
 
-**Login as:** `ops@compoundiq-poc.com` / `POCAdmin2026!`
+**Login as:** `ops@compoundiq-poc.com` / the password in `POC_OPS_PASSWORD` (set in your local env)
 
 The ops dashboard is styled in **dark mode** (intentional — designed for high-density internal use). It has 5 tabs across the top navigation bar:
 
@@ -275,7 +275,7 @@ After a successful payment:
 ### Expired Link Page (`/checkout/expired`)
 To test: navigate to `/checkout/expired` directly
 - Amber clock icon (informational tone, not alarming red)
-- "This payment link has expired" heading
+- "This payment link is no longer active" heading (one neutral page for an invalid, expired, paid or cancelled link)
 - Calm instructional copy directing patient to contact their clinic
 
 ---

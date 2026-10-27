@@ -9,7 +9,8 @@
 import { randomBytes } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { appMetadataFor } from '@/lib/auth/claims'
-import { createLogin, passwordProblem, removeLogin } from '@/lib/auth/create-login'
+import { createLogin, removeLogin } from '@/lib/auth/create-login'
+import { newPasswordProblem } from '@/lib/auth/password-policy'
 import { AUDIT_UNAVAILABLE, recordOnboardingEvent, type OnboardingActor } from './events'
 import { generateInviteToken, hashInviteToken, inviteExpiry, inviteLink, inviteState, isWellFormedToken, type InviteState } from './invite-token'
 import { normalizeEmail } from './validate'
@@ -255,7 +256,9 @@ export async function acceptInvite(
   const fullName = typeof input.fullName === 'string' ? input.fullName.trim() : ''
   const password = typeof input.password === 'string' ? input.password : ''
   if (fullName.length < 2 || fullName.length > 100) errors['fullName'] = 'Enter your full name.'
-  const weak = passwordProblem(password)
+  // The shared policy (lib/auth/password-policy, review P4); the comparison
+  // with the address runs once the invite is read, below.
+  const weak = newPasswordProblem(password, null)
   if (weak) errors['password'] = weak
   if (Object.keys(errors).length > 0) return { ok: false, status: 400, error: 'Check the highlighted fields.', errors }
 
@@ -268,6 +271,8 @@ export async function acceptInvite(
   if (state === 'accepted') return { ok: false, status: 409, error: 'This invite was already used. Sign in instead.' }
   if (state === 'revoked') return { ok: false, status: 410, error: 'This invite was withdrawn. Ask CompoundIQ for a new one.' }
   if (state === 'expired') return { ok: false, status: 410, error: 'This invite has expired. Ask CompoundIQ to send a new one.' }
+  const sameAsEmail = newPasswordProblem(password, invite.admin_email)
+  if (sameAsEmail) return { ok: false, status: 400, error: 'Check the highlighted fields.', errors: { password: sameAsEmail } }
 
   // 1. The pharmacy, inactive while onboarding (it never reaches the
   //    builder or routing until ops approves).

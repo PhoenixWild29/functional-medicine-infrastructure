@@ -12,10 +12,11 @@ import { requireTeamAdmin } from '@/lib/team/access'
 import { emailAlreadyOnTeam } from '@/lib/team/team'
 import { cleanEmail, readJson } from '@/lib/onboarding/access'
 import { createInvite } from '@/lib/onboarding/invite-actions'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const ROLES = new Set(['medical_assistant', 'clinic_admin'])
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const access = await requireTeamAdmin(request)
   if (!access.ok) return access.response
   const { user, clinicId, supabase } = access
@@ -45,3 +46,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   console.info(`[team] invite created | clinic=${clinicId} invite=${invite.inviteId} role=${role}`)
   return NextResponse.json({ inviteId: invite.inviteId, link: invite.link, expiresAt: invite.expiresAt }, { status: 201 })
 }
+
+export const POST = withApiErrors('/api/team/invites', postHandler)

@@ -33,8 +33,10 @@ import { verifyCheckoutToken } from '@/lib/auth/checkout-token'
 import { createStripeClient } from '@/lib/stripe/client'
 import { NEUTRAL_DESCRIPTION } from '@/lib/stripe/phi-guard'
 import { createServiceClient } from '@/lib/supabase/service'
+import { badRequest } from '@/lib/api/input'
 import { platformFeeCents, stripeSplit } from '@/lib/orders/shipping'
 import { isDemoPayoutPlaceholder } from '@/lib/stripe/demo-account'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // PR #15: syntactic email validation (was for Stripe receipt_email; C7
 // stopped sending it to Stripe).
@@ -49,6 +51,9 @@ import { isDemoPayoutPlaceholder } from '@/lib/stripe/demo-account'
 // The .invalid TLD reject is explicit defense against seed/test fixtures
 // ever leaking into a production receipt send — see
 // src/lib/poc/refresh-demo-data.ts (demo-fixture@compoundiq-poc.invalid).
+/** Upper bound on a checkout token's length (a JWT of a few ids). */
+const MAX_CHECKOUT_TOKEN = 2048
+
 const EMAIL_PATTERN  = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const INVALID_TLD_RE = /\.invalid$/i
 function isValidReceiptEmail(email: unknown): email is string {
@@ -58,7 +63,7 @@ function isValidReceiptEmail(email: unknown): email is string {
     && !INVALID_TLD_RE.test(email)
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   let body: { token: string; email?: string }
   try {
     body = await request.json()
@@ -66,9 +71,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { token, email } = body
+  // A JSON body of null used to throw on this destructure (a 500); an
+  // array or another non-object has no token.
+  const { token, email } = (body && typeof body === 'object' && !Array.isArray(body) ? body : {}) as Partial<typeof body>
   if (typeof token !== 'string' || !token) {
     return NextResponse.json({ error: 'Missing token' }, { status: 400 })
+  }
+  // The token is the credential: an oversize one is refused before it is
+  // decoded or verified. Real checkout JWTs are a few hundred characters.
+  if (token.length > MAX_CHECKOUT_TOKEN) {
+    return badRequest('Invalid request', ['token'])
   }
 
   // Email is optional on the page-load call + required on the pre-submit
@@ -352,3 +364,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/checkout/payment-intent', postHandler)
