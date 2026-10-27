@@ -1,21 +1,28 @@
 'use client'
 
 // ============================================================
-// Allergy notice on Review & Send — WO-97
+// Allergy notice on Review & Send — WO-97, coverage gap 9
 // ============================================================
 //
 // Shown only while the session patient has no allergies recorded
-// (neither NKDA nor a list). Amber, non-blocking: the provider may
-// confirm NKDA inline — one click, written to the patient through the
-// same PATCH the chip editor uses — or record allergies via the banner
-// chip, or simply proceed. Sign & Send and Save as Draft never gate on
-// it. Once anything is recorded the notice disappears; the banner chip
+// (neither NKDA nor a list). Gina Rooks NP asked for allergies or NKDA on
+// every Rx, so a patient with neither cannot be signed for: the server
+// refuses (lib/orders/batch-sign, ALLERGIES_REQUIRED) and Review and the
+// sign page prompt first. Sign & Send stays enabled; pressing it shows the
+// prompt (`prompting`) with the allergy entry open in place, so nothing is
+// navigated away from and the Rx is kept. Saving NKDA or a list hands the
+// stored values back through onSaved, and the caller carries on signing.
+//
+// Outside a sign attempt the notice offers Confirm NKDA (one click,
+// written through the same PATCH the chip editor uses) and "Record
+// allergies" (the chip's editor, inline). Save as Draft never gates on it.
+// Once anything is recorded the notice disappears; the banner chip
 // carries the state from then on.
 
 import { patientName } from '@/lib/patients/display'
 import { useState } from 'react'
-import { hasRecordedAllergies, type PatientAllergyFields } from '@/lib/patients/allergies'
-import { saveAllergies, loadAllergies } from '../../_components/allergy-chip'
+import { ALLERGIES_REQUIRED_MESSAGE, PLAN_ALLERGIES_REQUIRED_MESSAGE, hasRecordedAllergies, type PatientAllergyFields } from '@/lib/patients/allergies'
+import { AllergyEditor, saveAllergies, loadAllergies } from '../../_components/allergy-chip'
 import { userMessage } from '@/lib/errors/user-message'
 
 interface Props {
@@ -23,11 +30,22 @@ interface Props {
   onSaved: (patch: {
     allergies: string[]; nkda: boolean; allergies_updated_at: string | null; allergiesLoadFailed?: boolean
   }) => void
+  /**
+   * A sign attempt found nothing recorded: show the prompt with the entry
+   * open. Also used when the server refused (ALLERGIES_REQUIRED) although
+   * this copy of the patient said otherwise.
+   */
+  prompting?: boolean
+  /** Close the prompt without saving (the Rx stays as it was). */
+  onCancelPrompt?: () => void
+  /** What the prompt is for: signing (the default) or sending a plan. */
+  promptFor?: 'signing' | 'plan'
 }
 
-export function AllergyNotice({ patient, onSaved }: Props) {
-  const [saving, setSaving] = useState(false)
-  const [error, setError]   = useState<string | null>(null)
+export function AllergyNotice({ patient, onSaved, prompting = false, onCancelPrompt, promptFor = 'signing' }: Props) {
+  const [saving, setSaving]   = useState(false)
+  const [error, setError]     = useState<string | null>(null)
+  const [editing, setEditing] = useState(false)
 
   // Retry re-runs the one read in place. The failure state stays up
   // while it is in flight, so there is never a moment where this notice
@@ -90,6 +108,37 @@ export function AllergyNotice({ patient, onSaved }: Props) {
     )
   }
 
+  const saved = (s: { allergies: string[]; nkda: boolean; allergiesUpdatedAt: string | null }) => {
+    setEditing(false)
+    onSaved({ allergies: s.allergies, nkda: s.nkda, allergies_updated_at: s.allergiesUpdatedAt })
+  }
+
+  // ── The prompt, on a sign attempt ──
+  if (prompting) {
+    return (
+      <div
+        role="status"
+        data-testid="allergies-required-prompt"
+        className="rounded-lg border-2 border-amber-400 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/20"
+      >
+        <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+          {promptFor === 'plan' ? PLAN_ALLERGIES_REQUIRED_MESSAGE : ALLERGIES_REQUIRED_MESSAGE}
+        </p>
+        <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">
+          {promptFor === 'plan'
+            ? `${patientName(patient)}: the pharmacy receives allergies or NKDA on every prescription. The plan has not been sent, and your prescriptions are kept. Save, and the plan is sent.`
+            : `${patientName(patient)}: the pharmacy receives allergies or NKDA on every prescription. Nothing has been signed, and your prescriptions are kept. Save, and signing continues.`}
+        </p>
+        <AllergyEditor
+          patientId={patient.patient_id}
+          patient={patient}
+          onSaved={saved}
+          onCancel={() => onCancelPrompt?.()}
+        />
+      </div>
+    )
+  }
+
   if (hasRecordedAllergies(patient)) return null
 
   async function confirmNkda() {
@@ -98,8 +147,13 @@ export function AllergyNotice({ patient, onSaved }: Props) {
     try {
       // confirmNkda: the server refuses the shortcut (409) if a list is
       // on file, so this button can never erase one.
-      const saved = await saveAllergies(patient.patient_id, { allergies: [], nkda: true, confirmNkda: true })
-      onSaved({ allergies: saved.allergies, nkda: saved.nkda, allergies_updated_at: saved.allergiesUpdatedAt })
+      saved(await saveAllergies(patient.patient_id, { allergies: [], nkda: true, confirmNkda: true }))
+      // The notice (and the focused button) goes away once NKDA is
+      // recorded: focus moves to the session banner's allergy chip, which
+      // now reads NKDA, instead of being lost to the page.
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>('[data-testid="session-banner"] [data-testid="allergy-chip"]')?.closest<HTMLElement>('button')?.focus()
+      })
     } catch (err) {
       setError(userMessage(err, 'Could not save'))
     } finally {
@@ -119,19 +173,33 @@ export function AllergyNotice({ patient, onSaved }: Props) {
             Allergies not recorded for {patientName(patient)}
           </p>
           <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">
-            The pharmacy will receive &ldquo;Allergies: not recorded&rdquo;. Confirm NKDA here, or add allergies
-            from the chip in the banner above. You can also proceed as is.
+            {ALLERGIES_REQUIRED_MESSAGE}. Confirm NKDA here, or record the allergies. You can still save as a draft.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void confirmNkda()}
-          disabled={saving}
-          className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 disabled:opacity-50 dark:bg-amber-950/40 dark:text-amber-100"
-        >
-          {saving ? 'Saving…' : 'Confirm NKDA'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => void confirmNkda()}
+            disabled={saving}
+            className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 disabled:opacity-50 dark:bg-amber-950/40 dark:text-amber-100"
+          >
+            {saving ? 'Saving…' : 'Confirm NKDA'}
+          </button>
+          {!editing && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              disabled={saving}
+              className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 disabled:opacity-50 dark:bg-amber-950/40 dark:text-amber-100"
+            >
+              Record allergies
+            </button>
+          )}
+        </div>
       </div>
+      {editing && (
+        <AllergyEditor patientId={patient.patient_id} patient={patient} onSaved={saved} onCancel={() => setEditing(false)} />
+      )}
       {error && (
         <p role="alert" className="mt-2 text-xs text-red-600">{error}</p>
       )}

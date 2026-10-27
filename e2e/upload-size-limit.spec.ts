@@ -5,6 +5,7 @@ import { TEST_USERS } from './fixtures/seed'
 import { totpCode } from './fixtures/totp'
 import { MAX_REQUEST_BYTES } from '../src/lib/uploads/limits'
 import { shardEmail, shardId, shardName, shardSlug } from './fixtures/shard'
+import { e2ePassword } from './fixtures/test-password'
 
 // ============================================================
 // #250: the 4 MB limit on uploads through a Vercel Function
@@ -30,7 +31,7 @@ import { shardEmail, shardId, shardName, shardSlug } from './fixtures/shard'
 // Per shard (fixtures/shard), so two shards running this spec at once never share rows.
 const PH_ID = shardId('aaaaaaaa-0000-0000-0000-0000000000c1')
 const PH_APP_ID = shardId('aaaaaaaa-0000-0000-0000-0000000000c2')
-const PH_ADMIN = { email: shardEmail('test-pharmacy-upload-limit@compoundiq.test'), password: 'TestPassword123!' }
+const PH_ADMIN = { email: shardEmail('test-pharmacy-upload-limit@compoundiq.test'), get password() { return e2ePassword() } }
 const JUST_OVER = MAX_REQUEST_BYTES + 1024
 // LICENSE_DOCUMENT_BUCKET in lib/pharmacy-onboarding/application (a server
 // module, not imported here).

@@ -26,14 +26,26 @@
 // Order state CAS transitions are NOT performed here — that is the
 // routing engine's (WO-23) responsibility. This adapter only manages
 // the adapter_submissions audit trail and returns the outcome.
+//
+// PHI disclosure (C-2026-10-25-17, B14/B15): each attempt's POST sends PHI
+// to the pharmacy, so one pharmacy_disclosure row (logPhiDisclosure, the
+// system as the actor) is written right before it. Fail-closed: when the
+// row cannot be written, that attempt sends nothing and fails as a
+// transient error (DISCLOSURE_NOT_RECORDED), retried with the same backoff
+// as a network error; three in a row is 'exhausted', which the routing
+// engine handles as any exhausted primary tier (the fax cascade, which
+// records its own disclosure, else SUBMISSION_FAILED for an ops retry).
 
 import { assertPharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { assertOrderNotControlled } from '@/lib/orders/controlled-substance'
+import { loadTransmittableOrder, assertSecurePharmacyUrl } from '@/lib/adapters/transmission-guard'
 import { createServiceClient } from '@/lib/supabase/service'
 import { shippingAddressFor, type OrderShippingAddressColumns } from '@/lib/adapters/shipping-address'
 import { getVaultSecret, buildAuthHeaders } from '@/lib/adapters/vault'
 import { getTransformer, rxDetailPayloadFields, patientAllergyPayloadFields, type OrderPayload } from '@/lib/adapters/transformers'
 import { getParser } from '@/lib/adapters/parsers'
+import { dispenseQuantity } from '@/lib/orders/rx-details'
+import { logPhiDisclosure, systemActor } from '@/lib/audit/phi-access'
 import {
   createSubmissionRecord,
   markSubmitted,
@@ -58,6 +70,15 @@ export interface Tier1SubmitResult {
   attemptsMade: number
   errorCode: string | null
   errorMessage: string | null
+}
+
+/** An attempt whose disclosure row could not be written: nothing was sent. */
+class DisclosureNotRecordedError extends Error {
+  readonly code = 'DISCLOSURE_NOT_RECORDED'
+  constructor() {
+    super('The disclosure to the pharmacy could not be recorded; not sent')
+    this.name = 'DisclosureNotRecordedError'
+  }
 }
 
 // Retry backoff delays: attempt 1→2 = 5s, attempt 2→3 = 15s, max = 45s at 3
@@ -143,6 +164,10 @@ export async function submitTier1Api(
   assertPharmacySubmissionsEnabled('Tier 1 API submission')
   // Compliance C6: never a controlled substance (defence in depth beside routeOrder).
   await assertOrderNotControlled(createServiceClient(), orderId)
+  // HIPAA B6 / B7: signed, in a status that may be sent, unchanged since
+  // signing, to this pharmacy. The one read of the order: the payload is
+  // built from this verified row and the signing snapshots (B's review T2, T3).
+  const sendable = await loadTransmittableOrder(createServiceClient(), orderId, { pharmacyId })
 
   const supabase = createServiceClient()
 
@@ -172,6 +197,9 @@ export async function submitTier1Api(
       `[tier1-api] no active pharmacy_api_configs for pharmacy ${pharmacyId}: ${configError?.message ?? 'not found'}`
     )
   }
+
+  // HIPAA B17: https only, checked before the credential is read.
+  assertSecurePharmacyUrl(config.base_url, { orderId, pharmacyId, what: 'API base URL' })
 
   // Verify pharmacy is Tier 1 capable (config record existence implies this,
   // but guard against stale data)
@@ -207,68 +235,40 @@ export async function submitTier1Api(
   // ── 4. Rate limit check ───────────────────────────────────
   await checkRateLimits(pharmacyId, tier, config.rate_limit_rpm, config.rate_limit_concurrent)
 
-  // ── 5. Load order data for payload transformation ─────────
-  const { data: order, error: orderError } = await (supabase
-    .from('orders')
-    .select('order_id, order_number, provider_id, patient_id, clinic_id, medication_snapshot, shipping_address_line1_snapshot, shipping_address_line2_snapshot, shipping_city_snapshot, shipping_zip_snapshot, shipping_state_snapshot, shipping_address_snapshot_at, provider_npi_snapshot, quantity, sig_text, sig_mode, cycle_on_days, cycle_off_days, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions, package_label, package_count, titration_steps')
-    .eq('order_id', orderId)
-    .single() as unknown as Promise<{
-      data: {
-        order_id: string
-        order_number: string
-        provider_id: string | null
-        patient_id: string
-        clinic_id: string
-        medication_snapshot: Record<string, unknown> | null
-        provider_npi_snapshot: string | null
-        quantity: number | null
-        sig_text: string | null
-        // WO-96
-        days_supply: number | null
-        dispense_quantity: number | null
-        dispense_unit: string | null
-        refills: number | null
-        substitution_allowed: boolean | null
-        syringe_option: string | null
-        shipping_type: string | null
-        clinical_difference: string | null
-        diagnosis_code: string | null
-        diagnosis_text: string | null
-        special_instructions: string | null
-        // WO-101a
-        titration_steps: unknown
-        sig_mode: string | null
-        cycle_on_days: number | null
-        cycle_off_days: number | null
-        package_label: string | null
-        package_count: number | null
-      } & OrderShippingAddressColumns | null
-      error: Error | null
-    }>)
-
-  if (orderError || !order) {
-    throw new Error(
-      `[tier1-api] order ${orderId} not found: ${orderError?.message ?? 'no data'}`
-    )
-  }
-
-  const { data: provider, error: providerError } = await supabase
-    .from('providers')
-    .select('first_name, last_name, npi_number, dea_number, license_state')
-    .eq('provider_id', order.provider_id!)
-    .maybeSingle()
-  if (providerError) {
-    throw new Error(`[tier1-api] provider ${order.provider_id} could not be read: ${providerError.message}`)
-  }
-
-  const { data: patient, error: patientError } = await supabase
-    .from('patients')
-    .select('first_name, last_name, date_of_birth, address_line1, address_line2, city, state, zip, allergies, nkda')
-    .eq('patient_id', order.patient_id)
-    .maybeSingle()
-  if (patientError) {
-    throw new Error(`[tier1-api] patient ${order.patient_id} could not be read: ${patientError.message}`)
-  }
+  // ── 5. The order, patient and prescriber: the verified row and snapshots ──
+  type OrderRow = {
+    order_id: string
+    order_number: string
+    provider_id: string | null
+    patient_id: string
+    clinic_id: string
+    medication_snapshot: Record<string, unknown> | null
+    provider_npi_snapshot: string | null
+    quantity: number | null
+    sig_text: string | null
+    // WO-96
+    days_supply: number | null
+    dispense_quantity: number | null
+    dispense_unit: string | null
+    refills: number | null
+    substitution_allowed: boolean | null
+    syringe_option: string | null
+    shipping_type: string | null
+    clinical_difference: string | null
+    diagnosis_code: string | null
+    diagnosis_text: string | null
+    special_instructions: string | null
+    // WO-101a
+    titration_steps: unknown
+    sig_mode: string | null
+    cycle_on_days: number | null
+    cycle_off_days: number | null
+    package_label: string | null
+    package_count: number | null
+  } & OrderShippingAddressColumns
+  const order = sendable.order as unknown as OrderRow
+  const provider = sendable.prescriber
+  const patient = sendable.patient
 
   // A failed read would put the "CompoundIQ Clinic" fallback on the Rx.
   const { data: clinic, error: clinicError } = await supabase
@@ -278,10 +278,6 @@ export async function submitTier1Api(
     .maybeSingle()
   if (clinicError) {
     throw new Error(`[tier1-api] clinic ${order.clinic_id} could not be read: ${clinicError.message}`)
-  }
-
-  if (!provider || !patient) {
-    throw new Error(`[tier1-api] provider or patient not found for order ${orderId}`)
   }
 
   // ── 6. Build canonical OrderPayload ──────────────────────
@@ -320,7 +316,9 @@ export async function submitTier1Api(
     medicationName:     String(med?.medication_name ?? 'Compounded Medication'),
     medicationForm:     String(med?.form ?? ''),
     medicationDose:     String(med?.dose ?? ''),
-    quantity:           order.quantity ?? 1,
+    // One meaning, with its unit: units for counted forms, containers for measured ones.
+    quantity:           dispenseQuantity(order).quantity,
+    quantityUnit:       dispenseQuantity(order).unit,
     sigText:            order.sig_text ?? null,
     // WO-96 Rx detail fields
     ...rxDetailPayloadFields(order),
@@ -367,8 +365,22 @@ export async function submitTier1Api(
     let statusCode = 0
 
     try {
+      // Fail-closed: PHI leaves only once its disclosure is recorded.
+      const disclosed = await logPhiDisclosure({
+        actor:     systemActor(order.clinic_id),
+        resource:  'pharmacy_disclosure',
+        route:     tier === 'TIER_3_SPEC' ? '/adapters/tier3-spec' : '/adapters/tier1-api',
+        orderId,
+        patientId: order.patient_id,
+        clinicId:  order.clinic_id,
+      })
+      if (!disclosed) throw new DisclosureNotRecordedError()
+
       // Execute HTTP POST to pharmacy API
+      // B's review T4: never follow a redirect: one to http would resend
+      // the PHI body in cleartext.
       const response = await fetch(submitUrl, {
+        redirect: 'error',
         method:  'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -390,23 +402,25 @@ export async function submitTier1Api(
       }
 
     } catch (fetchErr) {
-      // Network error or timeout — treat as transient
+      // Network error or timeout — treat as transient. So is a disclosure
+      // that could not be recorded (nothing was sent).
       const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr)
-      lastErrorCode    = 'NETWORK_ERROR'
+      const code = fetchErr instanceof DisclosureNotRecordedError ? fetchErr.code : 'NETWORK_ERROR'
+      lastErrorCode    = code
       lastErrorMessage = msg
 
-      await markFailed(submissionId, 'NETWORK_ERROR', msg)
+      await markFailed(submissionId, code, msg)
 
       if (attempt < MAX_ATTEMPTS) {
         console.warn(
-          `[tier1-api] attempt ${attempt}/${MAX_ATTEMPTS} network error | order=${orderId} | ${msg}`
+          `[tier1-api] attempt ${attempt}/${MAX_ATTEMPTS} ${code === 'NETWORK_ERROR' ? 'network error' : 'disclosure not recorded'} | order=${orderId} | ${msg}`
         )
         await sleep(RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)]!)
         continue
       }
 
-      // All retries exhausted — network errors
-      await markSubmissionFailed(submissionId, 'NETWORK_ERROR', msg, {
+      // All retries exhausted — network errors (or unrecorded disclosures)
+      await markSubmissionFailed(submissionId, code, msg, {
         attempts: attempt,
       })
 
@@ -415,7 +429,7 @@ export async function submitTier1Api(
         submissionId,
         externalOrderId: null,
         attemptsMade:    attempt,
-        errorCode:       'NETWORK_ERROR',
+        errorCode:       code,
         errorMessage:    msg,
       }
     }

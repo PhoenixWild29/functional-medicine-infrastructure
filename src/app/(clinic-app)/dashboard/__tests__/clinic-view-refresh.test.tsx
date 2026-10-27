@@ -20,13 +20,10 @@ jest.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
   usePathname: () => '/dashboard',
 }))
-const fakeBrowserClient = () => ({
-  from: () => ({ select: () => ({ eq: () => ({ is: () => ({ order: () => new Promise(() => {}) }) }) }) }),
-})
-const mockCreateBrowserClient = jest.fn<ReturnType<typeof fakeBrowserClient>, unknown[]>(fakeBrowserClient)
-jest.mock('@/lib/supabase/client', () => ({
-  createBrowserClient: (...args: unknown[]) => mockCreateBrowserClient(...args),
-}))
+// The poll reads through GET /api/dashboard/orders (logged server-side),
+// never the browser client. A poll that never answers keeps the cache as rendered.
+const fetchMock = jest.fn<Promise<never>, [string, RequestInit?]>(() => new Promise(() => {}))
+beforeAll(() => { global.fetch = fetchMock as unknown as typeof fetch })
 
 const CLINIC = 'c0000000-0000-4000-8000-000000000001'
 const ME = 'prov-chen'
@@ -81,9 +78,17 @@ describe('the table and tab counts follow the view toggle', () => {
     expect(screen.queryByText('Colleague 0')).not.toBeInTheDocument()
   })
 
-  it('the 30-second poll asks for the view on screen', () => {
+  it('the 30-second poll asks for the view on screen', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={client}>{view(CLINIC_WIDE, 'clinic')}</QueryClientProvider>)
-    expect(mockCreateBrowserClient).toHaveBeenCalledWith({ extraHeaders: { 'x-provider-view-mode': 'clinic' } })
+    void client.refetchQueries({ queryKey: ['dashboard-orders', CLINIC, 'clinic'] })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/dashboard/orders?view=clinic', expect.anything()))
+  })
+
+  it("the poll for a provider's own view asks for no view", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}>{view(MINE, 'mine')}</QueryClientProvider>)
+    void client.refetchQueries({ queryKey: ['dashboard-orders', CLINIC, 'mine'] })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/dashboard/orders', expect.anything()))
   })
 })

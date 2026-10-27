@@ -24,6 +24,7 @@
 import { PATCH, DELETE } from '../route'
 import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
 import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
+import { logPhiWriteNotCompleted } from '@/lib/audit/phi-access'
 
 const CLINIC_ID   = 'a1000000-0000-0000-0000-000000000001'
 const ORDER_ID    = 'a6000000-0000-0000-0000-000000000001'
@@ -444,6 +445,43 @@ describe('PHI access log', () => {
     expect((await PATCH(makeRequest(patchBody({ retailCents: 0 })), ctx)).status).toBe(400)
     expect(phiEntries()).toHaveLength(0)
   })
+
+  // L1: the row is written BEFORE the update; no row, no change.
+  const orderUpdates = () => updatedRows.filter(u => u.table === 'orders')
+  it.each([
+    ['PATCH', () => PATCH(makeRequest(patchBody()), ctx)],
+    ['DELETE', () => DELETE(makeRequest(), ctx)],
+  ])('%s: the row is written before the update, naming the patient', async (_verb, call) => {
+    let updatesAtLog = -1
+    phiLog.mockImplementationOnce(async () => { updatesAtLog = orderUpdates().length; return true })
+    expect((await call()).status).toBe(200)
+    expect(updatesAtLog).toBe(0)
+    expectOnePhiRow({ action: 'update', resource: 'order', route: '/api/orders/[orderId]', orderId: ORDER_ID, patientId: 'pat' })
+  })
+
+  it.each([
+    ['PATCH', () => PATCH(makeRequest(patchBody()), ctx)],
+    ['DELETE', () => DELETE(makeRequest(), ctx)],
+  ])('%s: the row cannot be written: 503, the standard message, nothing updated or audited', async (_verb, call) => {
+    phiLog.mockResolvedValueOnce(false)
+    const res = await call()
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'This change could not be recorded. Nothing was changed. Try again.' })
+    expect(orderUpdates()).toHaveLength(0)
+    expect(auditRows()).toHaveLength(0)
+  })
+
+  it.each([
+    ['PATCH', () => PATCH(makeRequest(patchBody()), ctx)],
+    ['DELETE', () => DELETE(makeRequest(), ctx)],
+  ])('%s: an update that fails after the row was written writes the not-completed row', async (_verb, call) => {
+    jest.mocked(logPhiWriteNotCompleted).mockClear()
+    fixtures['orders:update'] = () => ({ data: null, error: { message: 'boom' } })
+    const quiet = jest.spyOn(console, 'error').mockImplementation(() => {})
+    expect((await call()).status).toBe(500)
+    expect(jest.mocked(logPhiWriteNotCompleted)).toHaveBeenCalledWith(phiEntries()[0])
+    quiet.mockRestore()
+  })
 })
 
 // getUser(), never getSession(): a cookie whose token no longer verifies
@@ -452,5 +490,22 @@ describe('a session that does not verify', () => {
   it('PATCH and DELETE are 401', async () => {
     expect((await withForgedSession(() => PATCH(makeRequest(patchBody()), ctx))).status).toBe(401)
     expect((await withForgedSession(() => DELETE(makeRequest(), ctx))).status).toBe(401)
+  })
+})
+
+// Requirement 3 (coverage audit, D-2026-10-25-05): an edited draft's
+// quantity follows its new dispense, as POST stores it.
+describe('PATCH /api/orders/[orderId]: orders.quantity is the dispense count', () => {
+  it('a 5 mL dispense with no package → quantity 1', async () => {
+    const res = await PATCH(makeRequest(patchBody()), ctx)
+    expect(res.status).toBe(200)
+    expect(updatedRows.find(u => u.table === 'orders')!.row).toEqual(expect.objectContaining({ quantity: 1 }))
+  })
+
+  it('edited to 30 capsules → quantity 30', async () => {
+    const body = patchBody()
+    const res = await PATCH(makeRequest({ ...body, rxDetails: { ...body.rxDetails, dispenseQuantity: 30, dispenseUnit: 'capsule' } }), ctx)
+    expect(res.status).toBe(200)
+    expect(updatedRows.find(u => u.table === 'orders')!.row).toEqual(expect.objectContaining({ quantity: 30, dispense_quantity: 30 }))
   })
 })

@@ -79,7 +79,8 @@ describe('accepting a clinic admin invite', () => {
     const attrs = createUser.mock.calls[0]![0] as Record<string, unknown>
     expect(attrs).toEqual(expect.objectContaining({
       email: 'lauren@sunrise.test', password: 'Correct-Horse-9', email_confirm: true,
-      app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC },
+      // B's review P2: an invite link an admin could have opened forces a new password.
+      app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC, must_change_password: true },
     }))
     const userMeta = (attrs['user_metadata'] ?? {}) as Record<string, unknown>
     expect(userMeta['app_role']).toBeUndefined()
@@ -115,7 +116,7 @@ describe('accepting a provider or staff invite', () => {
     db = scriptedDb(script(invite({ kind: 'provider', provider_id: PROVIDER, email: 'dr.chen@sunrise.test' })))
     const res = await POST(req(GOOD))
     expect(res.status).toBe(201)
-    expect((createUser.mock.calls[0]![0] as Record<string, unknown>)['app_metadata']).toEqual({ app_role: 'provider', clinic_id: CLINIC })
+    expect((createUser.mock.calls[0]![0] as Record<string, unknown>)['app_metadata']).toEqual({ app_role: 'provider', clinic_id: CLINIC, must_change_password: true })
     const [link] = db.to('providers', 'update')
     expect(link!.payload).toEqual({ user_id: 'new-user' })
     expect(link!.filters).toEqual(expect.objectContaining({ provider_id: PROVIDER, clinic_id: CLINIC, 'user_id:is': null }))
@@ -124,7 +125,7 @@ describe('accepting a provider or staff invite', () => {
   it('a medical assistant gets the medical_assistant role', async () => {
     db = scriptedDb(script(invite({ kind: 'medical_assistant', email: 'ma@sunrise.test' })))
     expect((await POST(req(GOOD))).status).toBe(201)
-    expect((createUser.mock.calls[0]![0] as Record<string, unknown>)['app_metadata']).toEqual({ app_role: 'medical_assistant', clinic_id: CLINIC })
+    expect((createUser.mock.calls[0]![0] as Record<string, unknown>)['app_metadata']).toEqual({ app_role: 'medical_assistant', clinic_id: CLINIC, must_change_password: true })
   })
 })
 
@@ -161,6 +162,17 @@ describe('refused invites create no account', () => {
     expect((await POST(req({ ...GOOD, password: 'short' }))).status).toBe(400)
     expect((await POST(req({ ...GOOD, fullName: ' ' }))).status).toBe(400)
     expect(createUser).not.toHaveBeenCalled()
+  })
+
+  // Review P4: the shared policy (lib/auth/password-policy), not length only.
+  it('the shared policy: a common password, or the invited address itself, is 400 and nothing is claimed or created', async () => {
+    for (const password of ['password1234', 'lauren@sunrise.test', 'LAUREN@sunrise.test', 'aaaaaaaaaaaaaa']) {
+      const res = await POST(req({ ...GOOD, password }))
+      expect(res.status).toBe(400)
+      expect(((await res.json()) as { errors?: { password?: string } }).errors?.password).toEqual(expect.any(String))
+    }
+    expect(createUser).not.toHaveBeenCalled()
+    expect(db.to('onboarding_invites', 'update')).toEqual([])
   })
 
   it('an email that already has an account is 409 and frees the invite', async () => {

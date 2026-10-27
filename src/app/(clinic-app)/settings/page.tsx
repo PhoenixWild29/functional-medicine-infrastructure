@@ -19,6 +19,7 @@ import { ClinicSettingsForm } from './_components/clinic-settings-form'
 import { PracticeDetailsForm } from './_components/practice-details-form'
 import { StripeStatusSection } from './_components/stripe-status-section'
 import { SignInSecuritySection } from './_components/sign-in-security-section'
+import { ChangePasswordForm } from './_components/change-password-form'
 import { hasVerifiedTotp, mfaEnforcedFor } from '@/lib/auth/mfa'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { IMPORT_ROLES } from '@/lib/patients/import/roles'
@@ -108,6 +109,7 @@ export default async function SettingsPage() {
             { href: '#stripe-connect',  label: payoutsAtLaunch ? 'Payouts' : 'Stripe Connect' },
             { href: '#clinic-profile',  label: 'Clinic Profile'  },
             { href: '#sign-in-security', label: 'Sign-in Security' },
+            { href: '#account',         label: 'Account'         },
             ...(canSeeTeam ? [{ href: '#team', label: 'Team' }] : []),
             ...(canImportPatients ? [{ href: '#patients', label: 'Patients' }] : []),
             ...(isClinicAdmin ? [{ href: '#access-log', label: 'Access log' }] : []),
@@ -163,6 +165,17 @@ export default async function SettingsPage() {
           {/* Compliance C3: two-step sign-in for this account */}
           <div id="sign-in-security" className="scroll-mt-6">
             <SignInSecuritySection enrolled={hasVerifiedTotp(user)} enforced={mfaEnforcedFor(user.email)} />
+          </div>
+
+          {/* B11: change your own password (every clinic role) */}
+          <div id="account" className="scroll-mt-6">
+            <section className="rounded-lg border border-border bg-card p-6 space-y-3" data-testid="settings-account">
+              <h2 className="text-base font-semibold text-foreground">Account</h2>
+              <p className="text-sm text-slate-700 dark:text-slate-300">
+                Change the password you sign in with. Your other devices are signed out when you do.
+              </p>
+              <ChangePasswordForm />
+            </section>
           </div>
 
           {/* Compliance C4: Team, for the clinic admin and each provider */}
@@ -256,14 +269,19 @@ export default async function SettingsPage() {
             </div>
           )}
 
-          {/* Notifications: says what is true today (nothing is configurable yet) */}
+          {/* Notifications: what CompoundIQ sends today, and to whom */}
           <div id="notifications" className="scroll-mt-6">
-            <section className="rounded-lg border border-border bg-card p-6 space-y-3">
+            <section className="rounded-lg border border-border bg-card p-6 space-y-3" data-testid="settings-notifications">
               <h2 className="text-base font-semibold text-foreground">Notifications</h2>
               <p className="text-sm text-muted-foreground">
-                Email and SMS notification preferences are not yet configurable.
-                Automatic order status emails and texts are not turned on yet.
+                The texts CompoundIQ sends your patients (payment links, reminders, plan and intake links) and what your team sees in the app. CompoundIQ does not send email.
               </p>
+              <Link
+                href="/settings/notifications"
+                className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
+              >
+                See what is sent
+              </Link>
             </section>
           </div>
 

@@ -14,14 +14,12 @@
  *   GET /api/favorites?patient_id=
  *     - clinic-wide favorites plus that patient's own; other patients'
  *       pinned favorites are never returned
- *   GET /api/favorites/recent?provider_id=
- *     - last 8 distinct formulations, newest first, dose from the
- *       structured snapshot (never sig_text)
+ *   (GET /api/favorites/frequent, which replaced /recent, is in
+ *   frequent-route.test.ts)
  */
 
 import { NextRequest } from 'next/server'
 import { GET, POST } from '../route'
-import { GET as GET_RECENT } from '../recent/route'
 
 const CLINIC_ID   = 'clinic-A'
 const PROVIDER    = 'a2000000-0000-0000-0000-000000000001'
@@ -89,7 +87,9 @@ describe('POST /api/favorites — WO-104 cards with dose presets', () => {
     }))
     expect(res.status).toBe(201)
     expect(inserts).toHaveLength(1)
+    // L1: the id is generated before the insert (so a pinned card can be logged first).
     expect(inserts[0]!.row).toEqual({
+      favorite_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
       provider_id: PROVIDER, formulation_id: FORMULATION, pharmacy_id: PHARMACY, patient_id: null,
       label: 'Semaglutide', category: 'Weight Management',
       dose_presets: [preset('10')], sig_mode: 'standard', titration_steps: [], default_refills: 2,
@@ -205,52 +205,3 @@ describe('GET /api/favorites — WO-104 patient scope', () => {
   })
 })
 
-describe('GET /api/favorites/recent — WO-104 Recent strip', () => {
-  it('lists the last distinct formulations with their structured dose, never parsing the sig', async () => {
-    fixtures['providers:maybeSingle'] = () => ({ data: { provider_id: PROVIDER }, error: null })
-    fixtures['orders:await'] = () => ({
-      data: [
-        { formulation_id: 'f-sema', pharmacy_id: PHARMACY, created_at: '2026-09-12T10:00:00Z',
-          medication_snapshot: { medication_name: 'Semaglutide', prescribed_dose: '20 units', frequency_code: 'QW' },
-          pharmacy_snapshot: { name: 'Strive Pharmacy' }, sig_text: 'Inject 40 units … for 90 days' },
-        { formulation_id: 'f-sema', pharmacy_id: PHARMACY, created_at: '2026-09-01T10:00:00Z',
-          medication_snapshot: { medication_name: 'Semaglutide', prescribed_dose: '10 units', frequency_code: 'QW' },
-          pharmacy_snapshot: { name: 'Strive Pharmacy' } },
-        { formulation_id: 'f-bpc', pharmacy_id: null, created_at: '2026-09-11T10:00:00Z',
-          medication_snapshot: { medication_name: 'BPC-157' }, pharmacy_snapshot: null },
-      ],
-      error: null,
-    })
-    fixtures['formulations:await'] = () => ({
-      data: [
-        { formulation_id: 'f-sema', name: 'Semaglutide 5mg/mL Injectable', concentration_value: 5, concentration_unit: 'mg/mL', is_active: true, deleted_at: null, dosage_forms: { name: 'Injectable Solution' } },
-      ],
-      error: null,
-    })
-    const res = await GET_RECENT(new NextRequest(new URL(`http://localhost/api/favorites/recent?provider_id=${PROVIDER}`)))
-    expect(res.status).toBe(200)
-    const json = await res.json() as { data: Array<Record<string, unknown>> }
-    expect(json.data.map(r => r['formulation_id'])).toEqual(['f-sema', 'f-bpc'])
-    expect(json.data[0]).toEqual(expect.objectContaining({
-      formulation_name: 'Semaglutide 5mg/mL Injectable',
-      pharmacy_name: 'Strive Pharmacy',
-      formulation_active: true,
-      preset: { dose: '20', unit: 'units', frequency: 'QW', timing: '', duration: '', label: null },
-    }))
-    // No structured dose on the order → no preset (and no Make favorite).
-    expect(json.data[1]).toEqual(expect.objectContaining({ preset: null, formulation_active: false }))
-    // Scoped to the provider + clinic, cancelled and deleted orders skipped.
-    expect(filters).toEqual(expect.arrayContaining([
-      { table: 'orders', op: 'eq', args: ['provider_id', PROVIDER] },
-      { table: 'orders', op: 'eq', args: ['clinic_id', CLINIC_ID] },
-      { table: 'orders', op: 'neq', args: ['status', 'CANCELLED'] },
-      { table: 'orders', op: 'is', args: ['deleted_at', null] },
-    ]))
-  })
-
-  it('403 for a provider outside the clinic; 400 without provider_id', async () => {
-    fixtures['providers:maybeSingle'] = () => ({ data: null, error: null })
-    expect((await GET_RECENT(new NextRequest(new URL('http://localhost/api/favorites/recent?provider_id=a2000000-0000-0000-0000-000000000009')))).status).toBe(403)
-    expect((await GET_RECENT(new NextRequest(new URL('http://localhost/api/favorites/recent')))).status).toBe(400)
-  })
-})

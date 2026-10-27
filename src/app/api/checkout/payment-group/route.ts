@@ -18,6 +18,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { createPaymentGroup }  from '@/lib/payment-group/create-group'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { mfaApiRefusal } from '@/lib/auth/mfa'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 // Any 8-4-4-4-12 hex id. The v4-only pattern used here before refused the
 // seeded demo order ids, which are not RFC v4.
@@ -50,6 +51,12 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   const appRole  = getUserRole(user)
   const clinicId = getUserClinicId(user) ?? null
+
+  // HIPAA B3: /api/checkout is a public middleware prefix (the patient
+  // checkout pages), so the middleware MFA gate never runs here. This is a
+  // staff route that goes on with the service role: apply the same gate.
+  const mfa = await mfaApiRefusal(supabaseAuth, user, appRole)
+  if (mfa) return NextResponse.json(mfa, { status: 401 })
 
   if (appRole !== 'clinic_admin' && appRole !== 'provider' && appRole !== 'medical_assistant') {
     return NextResponse.json({ error: 'Forbidden: clinic-app role required' }, { status: 403 })

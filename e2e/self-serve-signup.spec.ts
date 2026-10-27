@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { TEST_IDS, TEST_USERS } from './fixtures/seed'
 import { npiChecksumValid } from '../src/lib/providers/npi'
 import { shardPrefix } from './fixtures/shard'
+import { e2ePassword } from './fixtures/test-password'
 
 // ============================================================
 // Self sign-up: /login > Get started > lands in the app, pending review
@@ -29,7 +30,7 @@ const RUN = randomUUID().slice(0, 8)
 // Per shard (fixtures/shard): cleanup sweeps this prefix, so each shard sweeps only its own.
 const EMAIL_PREFIX = shardPrefix('e2e-signup-')
 const email = (kind: string) => `${EMAIL_PREFIX}${kind}-${RUN}@compoundiq.test`
-const PASSWORD = 'e2e sign-up passphrase 42'
+const PASSWORD = e2ePassword()
 const BANNER = "We're verifying your licenses. You can look around; ordering opens once you're approved."
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
 

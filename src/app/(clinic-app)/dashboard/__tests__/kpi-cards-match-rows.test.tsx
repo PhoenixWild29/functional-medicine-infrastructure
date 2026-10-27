@@ -134,6 +134,32 @@ describe('the orders list with ?period=mtd', () => {
     expect(mockReplace).toHaveBeenCalledWith('/dashboard?tab=shipped', { scroll: false })
   })
 
+  it('keyboard: one tab stop; Left / Right / Home / End move between the tabs and select them', () => {
+    mockSearch = new URLSearchParams('tab=all')
+    renderDashboard()
+    const tabs = screen.getAllByRole('tab')
+    const all = screen.getByRole('tab', { name: /^All/ })
+    const drafts = screen.getByRole('tab', { name: /^Drafts/ })
+    // Only the selected tab is in the Tab order.
+    expect(tabs.filter(t => t.tabIndex === 0)).toEqual([all])
+    all.focus()
+    fireEvent.keyDown(all, { key: 'ArrowRight' })
+    expect(drafts).toHaveFocus()
+    expect(drafts).toHaveAttribute('aria-selected', 'true')
+    expect(drafts.tabIndex).toBe(0)
+    expect(all.tabIndex).toBe(-1)
+    fireEvent.keyDown(drafts, { key: 'ArrowLeft' })
+    expect(all).toHaveFocus()
+    // Left from the first wraps to the last; Home and End jump.
+    fireEvent.keyDown(all, { key: 'ArrowLeft' })
+    expect(tabs[tabs.length - 1]).toHaveFocus()
+    fireEvent.keyDown(tabs[tabs.length - 1]!, { key: 'Home' })
+    expect(all).toHaveFocus()
+    fireEvent.keyDown(all, { key: 'End' })
+    expect(tabs[tabs.length - 1]).toHaveFocus()
+    expect(mockReplace).toHaveBeenLastCalledWith(expect.stringMatching(/^\/dashboard\?tab=/), { scroll: false })
+  })
+
   it('without ?period every date is shown, as before', () => {
     mockSearch = new URLSearchParams('tab=all')
     renderDashboard()

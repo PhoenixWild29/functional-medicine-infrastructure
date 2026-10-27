@@ -26,6 +26,12 @@
 //
 // No SMS is sent here (PR 2 sends the link) and nothing is signed (PR 4).
 // Logs carry ids only.
+//
+// PHI access log (C-2026-10-25-17, B14/B15), the patient on the link as the
+// actor: verify (the plan shown after the date of birth check) is one view
+// row; choose and decline are writes on a known proposal, logged BEFORE
+// the write and refused 503 (nothing changed) when the row cannot be
+// written. A wrong date of birth is not access (its dob_failed event stays).
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -35,6 +41,7 @@ import { choosePlan, declinePlan, loadPlan, quotePlan, resolvePlan, verifyPlanDo
 import { PLAN_RATE_LIMITED_MESSAGE, planIpLimiter, planTokenLimiter } from '@/lib/proposals/plan-rate-limit'
 import { notifyClinicOfChoice } from '@/lib/proposals/queue'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { logPhiAccess, patientActor, type PhiAction } from '@/lib/audit/phi-access'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,6 +54,8 @@ type Params = { params: Promise<{ token: string }> }
 const NOT_ACTIVE  = { status: 410, error: 'This link is no longer active. Please contact your clinic.' }
 const LOCKED      = { status: 423, error: 'Too many incorrect dates of birth. This link is locked; please contact your clinic.' }
 const UNAVAILABLE = { status: 503, error: 'Please try again in a moment.' }
+const NOT_RECORDED = 'This change could not be recorded. Nothing was changed. Try again.'
+const ROUTE = '/api/plan/[token]'
 
 async function limited(request: NextRequest, token: string | null): Promise<NextResponse | null> {
   const ip = await planIpLimiter.check(clientIp(request.headers) ?? 'unknown')
@@ -118,16 +127,26 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
     return json({ error: reply.error, state: dob.reason }, reply.status)
   }
 
+  const logPlan = (action: PhiAction) => logPhiAccess({
+    actor: patientActor(proposal.patient_id, proposal.clinic_id),
+    action, resource: 'plan', route: ROUTE,
+    patientId: proposal.patient_id, clinicId: proposal.clinic_id, headers: request.headers,
+  })
+
   switch (a.action) {
     case 'verify': {
       const plan = await loadPlan(db, proposal)
-      return plan ? json({ plan }) : json({ error: UNAVAILABLE.error }, UNAVAILABLE.status)
+      if (!plan) return json({ error: UNAVAILABLE.error }, UNAVAILABLE.status)
+      // A read: served even when the row could not be written (the helper alerts).
+      await logPlan('view')
+      return json({ plan })
     }
     case 'quote': {
       const q = await quotePlan(db, proposal, a.selection)
       return q.ok ? json({ quote: q.quote }) : json({ error: q.error, code: q.code }, q.status)
     }
     case 'choose': {
+      if (!(await logPlan('update'))) return json({ error: NOT_RECORDED }, 503)
       const c = await choosePlan(db, proposal, a.selection, now)
       if (!c.ok) return json({ error: c.error, code: c.code }, c.status)
       console.info(`[plan] ${c.rechosen ? 'rechosen' : 'chosen'} | proposal=${proposal.proposal_id}`)
@@ -137,6 +156,7 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
       return json({ ok: true, rechosen: c.rechosen, plan })
     }
     case 'decline': {
+      if (!(await logPlan('update'))) return json({ error: NOT_RECORDED }, 503)
       const d = await declinePlan(db, proposal, now)
       if (!d.ok) return json({ error: d.error, code: d.code }, d.status)
       console.info(`[plan] declined | proposal=${proposal.proposal_id}`)

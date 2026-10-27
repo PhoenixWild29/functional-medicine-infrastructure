@@ -28,6 +28,8 @@ import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { submitTier4Fax } from '@/lib/adapters/tier4-fax'
 import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
+import { isTransmissionRefusedError } from '@/lib/adapters/transmission-guard'
+import { refuseQueuedFax } from '@/lib/adapters/queued-fax-refusal'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // Retry delays per attempt (after fax attempt N fails, wait this long)
@@ -53,7 +55,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   // ── Find FAX_QUEUED orders eligible for retry ─────────────
   const { data: candidates, error: fetchError } = await supabase
     .from('orders')
-    .select('order_id, fax_attempt_count')
+    .select('order_id, fax_attempt_count, pharmacy_id')
     .eq('status', 'FAX_QUEUED')
     .in('fax_attempt_count', [1, 2])
 
@@ -64,12 +66,12 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
   const results: {
     orderId: string
-    outcome: 'retried' | 'skipped' | 'error'
+    outcome: 'retried' | 'skipped' | 'error' | 'refused'
     reason?: string
   }[] = []
 
   for (const order of candidates ?? []) {
-    const { order_id: orderId, fax_attempt_count: attemptCount } = order
+    const { order_id: orderId, fax_attempt_count: attemptCount, pharmacy_id: pharmacyId } = order
 
     try {
       // ── Check webhook_events for last failure and any subsequent queued ──
@@ -127,6 +129,13 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       results.push({ orderId, outcome: 'retried' })
 
     } catch (err) {
+      // HIPAA B6 / B7: the adapter refused (unsigned, changed since
+      // signing). FAX_FAILED with the code, so it is not retried again.
+      if (isTransmissionRefusedError(err)) {
+        await refuseQueuedFax({ orderId, pharmacySlug: pharmacyId ?? 'unknown', code: err.code, actor: 'fax_retry_cron' })
+        results.push({ orderId, outcome: 'refused', reason: err.code })
+        continue
+      }
       const msg = err instanceof Error ? err.message : String(err)
       console.error(`[fax-retry] error retrying order ${orderId}:`, msg)
       results.push({ orderId, outcome: 'error', reason: msg })

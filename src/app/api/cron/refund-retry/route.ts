@@ -76,6 +76,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
           expectedStatus: 'REFUND_PENDING',
           newStatus:      'REFUNDED',
           actor:          'cron:refund-retry',
+          actorRole:      'system',
           metadata:       { refund_id: known.refundId },
         })
         if (done.wasAlreadyTransitioned) {
@@ -131,6 +132,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       expectedStatus: 'REFUND_PENDING',
       newStatus:      'REFUNDED',
       actor:          'cron:refund-retry',
+      actorRole:      'system',
       metadata:       { refund_id: result.refundId },
     })
     if (done.wasAlreadyTransitioned) {

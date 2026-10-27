@@ -6,6 +6,7 @@ import { totpCode } from './fixtures/totp'
 import { hashInviteToken, inviteExpiry, generateInviteToken } from '../src/lib/pharmacy-onboarding/invite-token'
 import { ONBOARDING_STEPS } from '../src/lib/pharmacy-onboarding/steps'
 import { shardEmail, shardId, shardName, shardSlug } from './fixtures/shard'
+import { e2ePassword } from './fixtures/test-password'
 
 // ============================================================
 // Pharmacy onboarding: WCAG 2.1 AA in a real browser
@@ -29,7 +30,7 @@ const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
 const PH_ID = shardId('aaaaaaaa-0000-0000-0000-0000000000b1')
 const PH_APP_ID = shardId('aaaaaaaa-0000-0000-0000-0000000000b2')
 const PH_NAME = shardName('A11y Onboarding Pharmacy')
-const PH_ADMIN = { email: shardEmail('test-pharmacy-onboarding-admin@compoundiq.test'), password: 'TestPassword123!' }
+const PH_ADMIN = { email: shardEmail('test-pharmacy-onboarding-admin@compoundiq.test'), get password() { return e2ePassword() } }
 const PH_INVITEE = shardEmail('test-pharmacy-onboarding-invitee@compoundiq.test')
 const PH_INVITED_NAME = shardName('A11y Invited Pharmacy')
 

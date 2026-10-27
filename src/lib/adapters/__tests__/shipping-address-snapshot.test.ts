@@ -41,7 +41,7 @@ jest.mock('../prescription-pdf', () => ({
 jest.mock('playwright', () => ({
   chromium: {
     launch: async () => ({
-      newContext: async () => ({ newPage: async () => ({ screenshot: async () => Buffer.from(''), goto: async () => undefined }) }),
+      newContext: async () => ({ route: async () => undefined, newPage: async () => ({ screenshot: async () => Buffer.from(''), goto: async () => undefined }) }),
       close: async () => undefined,
     }),
   },
@@ -99,6 +99,8 @@ const ORDER = {
   pharmacy_id: 'ph-1', clinic_id: 'c-1', provider_id: 'pr-1', patient_id: 'pt-1', formulation_id: 'f-sema', catalog_item_id: null,
   medication_snapshot: { medication_name: 'Semaglutide' }, provider_npi_snapshot: '1234567890',
   quantity: 1, sig_text: 'Inject weekly', fax_attempt_count: 0, created_at: '2026-10-01T00:00:00Z', locked_at: '2026-10-06T15:00:00Z',
+  // Signed before signature binding (HIPAA B7): sent as before.
+  provider_signature_hash_snapshot: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
 }
 const PATIENT = { first_name: 'Alex', last_name: 'Demo', date_of_birth: '1985-06-15', allergies: [], nkda: true, ...LIVE }
 
@@ -108,6 +110,8 @@ function world(order: Record<string, unknown>, tier: string): Script {
       case 'orders':    return { data: { ...ORDER, ...order } }
       case 'providers': return { data: { first_name: 'Sarah', last_name: 'Chen', npi_number: '1234567890', dea_number: null, license_state: 'TX' } }
       case 'patients':  return { data: PATIENT }
+      // HIPAA B7 (B's review T1): the legacy signature is proven by its signing row.
+      case 'order_status_history': return { data: [{ old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', created_at: '2026-10-06T15:00:00Z', metadata: { actor: 'provider_batch_sign', signed_at: '2026-10-06T15:00:00Z', signature_hash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' } }] }
       case 'clinics':   return { data: { name: 'Sunrise Functional Medicine' } }
       // Compliance C6: each adapter checks the catalog; Semaglutide is not controlled.
       case 'formulations': return { data: { formulation_id: 'f-sema', salt_forms: { ingredients: { dea_schedule: null } }, formulation_ingredients: [] } }

@@ -127,6 +127,16 @@ describe('the invitee', () => {
     expect(await acceptInvite(db.client, { token, fullName: 'Dana Ruiz', password: 'a long passphrase 42' }, NOW)).toMatchObject({ ok: false, status: 409 })
   })
 
+  // Review P4: the shared policy (lib/auth/password-policy), not length only.
+  it('the shared policy: a common password, or the invited address itself, is refused before anything is created', async () => {
+    const { db, token } = await invited()
+    for (const password of ['password1234', 'dana@strive.example', 'Dana@Strive.example']) {
+      expect(await acceptInvite(db.client, { token, fullName: 'Dana Ruiz', password }, NOW)).toMatchObject({ ok: false, status: 400, errors: { password: expect.any(String) } })
+    }
+    expect(db.rows('pharmacies')).toEqual([])
+    expect(db.users).toEqual([])
+  })
+
   it('refuses a weak password or missing name, before anything is created', async () => {
     const { db, token } = await invited()
     expect(await acceptInvite(db.client, { token, fullName: 'Dana Ruiz', password: 'short' }, NOW)).toMatchObject({ ok: false, status: 400, errors: { password: expect.any(String) } })

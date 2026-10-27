@@ -39,6 +39,7 @@ const createSlasMock        = jest.fn()
 const upsertFaxSlaMock      = jest.fn()
 const resolveSlasMock       = jest.fn()
 const sendSlackAlertMock    = jest.fn()
+const circuitUpsertMock     = jest.fn(async () => ({ error: null }))
 
 const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
 const warnSpy  = jest.spyOn(console, 'warn').mockImplementation(() => {})
@@ -96,11 +97,22 @@ jest.mock('@/lib/supabase/service', () => ({
       if (table === 'pharmacies') {
         return { select: () => chain(() => ({ data: pharmacyRow, error: null })) }
       }
+      // HIPAA B7 (B's review T1): the legacy signature is proven by its signing row.
+      if (table === 'order_status_history') {
+        return { select: () => chain(() => ({ data: [{ old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', created_at: '2026-10-06T15:00:00Z', metadata: { actor: 'provider_batch_sign', signed_at: '2026-10-06T15:00:00Z', signature_hash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' } }], error: null })) }
+      }
+      if (table === 'providers') {
+        return { select: () => chain(() => ({ data: { first_name: 'Sarah', last_name: 'Chen', npi_number: '1234567890', dea_number: null, license_state: 'TX' }, error: null })) }
+      }
       if (table === 'orders') {
-        return { select: () => chain(() => ({ data: { order_id: 'o-1', status: orderStatus, pharmacy_id: 'pharm-1', shipping_state_snapshot: 'TX', formulation_id: null, catalog_item_id: null, ...orderLine }, error: null })) }
+        return { select: () => chain(() => ({ data: { order_id: 'o-1', status: orderStatus, pharmacy_id: 'pharm-1', shipping_state_snapshot: 'TX', formulation_id: null, catalog_item_id: null, locked_at: '2026-10-06T15:00:00Z', provider_signature_hash_snapshot: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', ...orderLine }, error: null })) }
       }
       if (table === 'formulations') {
         return { select: () => chain(() => ({ data: formulationRow, error: null })) }
+      }
+      // HIPAA B7: the signature check reads the patient's allergy fields.
+      if (table === 'patients') {
+        return { select: () => chain(() => ({ data: { allergies: [], nkda: true }, error: null })) }
       }
       if (table === 'catalog') {
         return { select: () => chain(() => ({ data: catalogRow, error: null })) }
@@ -112,7 +124,7 @@ jest.mock('@/lib/supabase/service', () => ({
       if (table === 'circuit_breaker_state') {
         return {
           select: () => chain(() => ({ data: circuitRow, error: null })),
-          upsert: async () => ({ error: null }),
+          upsert: (...a: unknown[]) => circuitUpsertMock(...(a as [])),
           update: () => chain(() => ({ error: null })),
         }
       }
@@ -145,6 +157,7 @@ beforeEach(() => {
   upsertFaxSlaMock.mockReset().mockResolvedValue(undefined)
   resolveSlasMock.mockReset().mockResolvedValue(undefined)
   sendSlackAlertMock.mockReset().mockResolvedValue(undefined)
+  circuitUpsertMock.mockClear()
   errorSpy.mockClear(); warnSpy.mockClear(); infoSpy.mockClear()
 })
 
@@ -294,6 +307,32 @@ describe('Tier 3 hybrid (unsupported)', () => {
     expect(result.outcome).toBe('submission_failed')
     expect(adapterCalls()).toBe(0)
     expect(alertKinds()).toContain('submission_failed')
+  })
+})
+
+// C-2026-10-25-17 (B15): a disclosure that could not be recorded means
+// nothing reached the pharmacy. That is an audit-log outage, not a pharmacy
+// failure, so it must not count toward the pharmacy's circuit breaker.
+describe('an unrecorded disclosure is not a pharmacy failure', () => {
+  it('control: an API exhausted by network errors counts toward the circuit', async () => {
+    submitTier1ApiMock.mockResolvedValue({ outcome: 'exhausted', submissionId: 'sub-1', externalOrderId: null, attemptsMade: 3, errorCode: 'NETWORK_ERROR', errorMessage: 'timeout' })
+    await route()
+    expect(circuitUpsertMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('Tier 1 exhausted with DISCLOSURE_NOT_RECORDED: the circuit is untouched, the order still cascades', async () => {
+    submitTier1ApiMock.mockResolvedValue({ outcome: 'exhausted', submissionId: 'sub-1', externalOrderId: null, attemptsMade: 3, errorCode: 'DISCLOSURE_NOT_RECORDED', errorMessage: 'not recorded' })
+    const result = await route()
+    expect(circuitUpsertMock).not.toHaveBeenCalled()
+    expect(submitTier4FaxMock).toHaveBeenCalledTimes(1)
+    expect(result.outcome).toBe('cascaded_to_fax')
+  })
+
+  it('Tier 2 portal_error with DISCLOSURE_NOT_RECORDED: the circuit is untouched', async () => {
+    pharmacyRow = { integration_tier: 'TIER_2_PORTAL', name: 'Pharm', slug: 'pharm' }
+    submitTier2PortalMock.mockResolvedValue({ outcome: 'portal_error', submissionId: 'sub-2', aiConfidenceScore: null, screenshotUrl: null, errorCode: 'DISCLOSURE_NOT_RECORDED' })
+    await route()
+    expect(circuitUpsertMock).not.toHaveBeenCalled()
   })
 })
 

@@ -1694,9 +1694,11 @@ export type Database = {
           package_id: string | null
           package_label: string | null
           patient_id: string
+          patient_snapshot: Json | null
           payment_group_id: string | null
           pharmacy_id: string | null
           pharmacy_snapshot: Json | null
+          prescriber_snapshot: Json | null
           proposal_option_id: string | null
           proposal_required: boolean | null
           protocol_instance_id: string | null
@@ -1763,9 +1765,11 @@ export type Database = {
           package_id?: string | null
           package_label?: string | null
           patient_id: string
+          patient_snapshot?: Json | null
           payment_group_id?: string | null
           pharmacy_id?: string | null
           pharmacy_snapshot?: Json | null
+          prescriber_snapshot?: Json | null
           proposal_option_id?: string | null
           proposal_required?: boolean | null
           protocol_instance_id?: string | null
@@ -1832,9 +1836,11 @@ export type Database = {
           package_id?: string | null
           package_label?: string | null
           patient_id?: string
+          patient_snapshot?: Json | null
           payment_group_id?: string | null
           pharmacy_id?: string | null
           pharmacy_snapshot?: Json | null
+          prescriber_snapshot?: Json | null
           proposal_option_id?: string | null
           proposal_required?: boolean | null
           protocol_instance_id?: string | null
@@ -4212,6 +4218,39 @@ export type Database = {
             referencedColumns: ["ingredient_id"]
           },
         ]
+      }
+      saved_clinical_statements: {
+        Row: {
+          clinic_id: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          formulation_id: string
+          patient_id: string | null
+          statement: string
+          statement_id: string
+        }
+        Insert: {
+          clinic_id: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          formulation_id: string
+          patient_id?: string | null
+          statement: string
+          statement_id?: string
+        }
+        Update: {
+          clinic_id?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          formulation_id?: string
+          patient_id?: string | null
+          statement?: string
+          statement_id?: string
+        }
+        Relationships: []
       }
       sig_templates: {
         Row: {

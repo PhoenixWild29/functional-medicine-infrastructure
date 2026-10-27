@@ -28,6 +28,8 @@ import { CascadingPrescriptionBuilder } from '../_components/cascading-prescript
 import { editTargetFromParams } from '../_lib/edit-target'
 import { getWizardSteps }    from '../_lib/wizard-steps'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { HelpLink } from '@/components/help-link'
+import { logPhiAccess, currentRequestHeaders } from '@/lib/audit/phi-access'
 
 export const metadata = {
   title: 'New Prescription: Find a Pharmacy',
@@ -67,6 +69,16 @@ export default async function PharmacySearchPage({ searchParams }: PageProps) {
     if (!draft) editTarget = null
   }
 
+  // Compliance C2 (B14): reopening a draft loads its patient (name, DOB,
+  // phone, allergies) onto the page. A read: the page is served even when
+  // the row could not be written (the helper alerts).
+  if (draft && user) {
+    await logPhiAccess({
+      user, action: 'view', resource: 'draft_edit', route: '/new-prescription/search',
+      orderId: draft.orderId, patientId: draft.patient.patient_id, headers: await currentRequestHeaders(),
+    })
+  }
+
   const isEditing = editTarget?.kind === 'session' || editTarget?.kind === 'draft'
   const heading = isEditing
     ? 'Edit Prescription'
@@ -81,7 +93,10 @@ export default async function PharmacySearchPage({ searchParams }: PageProps) {
 
         <div className="mb-6">
           <WizardProgress steps={WIZARD_STEPS} currentStep={2} />
-          <h1 className="mt-4 text-2xl font-bold text-foreground">{heading}</h1>
+          <div className="mt-4 flex items-baseline justify-between gap-3">
+            <h1 className="text-2xl font-bold text-foreground">{heading}</h1>
+            <HelpLink topic="write-and-sign" />
+          </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {isEditing
               ? 'The current values are pre-selected. Change what you need, then continue to save the line in place.'

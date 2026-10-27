@@ -210,31 +210,41 @@ POST /api/orders
 }
 ```
 
-#### Sign and Send Payment Link
+#### Sign and Send Payment Link (retired)
 
 ```
 POST /api/orders/{orderId}/sign-and-send
 ```
 
-**Auth:** Supabase JWT (provider or clinic_admin)
+**Retired.** Returns **410 Gone** with `{ "code": "USE_BATCH_SIGN" }` and reads or writes nothing. Sign with `POST /api/orders/batch-sign` instead.
+
+#### Batch Sign (the only signing route)
+
+```
+POST /api/orders/batch-sign
+```
+
+**Auth:** Supabase JWT (provider). Same-origin writes only.
 
 **Body:**
 ```json
 {
-  "signature_hash": "sha256-hex-string"
+  "orderIds": ["uuid"],
+  "signature": { "dataUrl": "data:image/png;base64,...", "strokes": [], "padWidth": 300 }
 }
 ```
 
-Transitions order from DRAFT to AWAITING_PAYMENT. Generates checkout JWT, dispatches SMS (if TWILIO_ENABLED=true), creates 3 SLA deadlines.
+All or nothing: every line is checked before anything is written. Signed lines move from DRAFT to AWAITING_PAYMENT, with one payment link per patient. A patient with neither allergies nor NKDA recorded is refused with 422 `ALLERGIES_REQUIRED`.
 
 **Response (200):**
 ```json
 {
-  "order_id": "uuid",
-  "status": "AWAITING_PAYMENT",
-  "checkout_url": "https://functional-medicine-infrastructure.vercel.app/checkout/{jwt_token}"
+  "signedAt": "2026-10-25T12:00:00.000Z",
+  "patients": [{ "patientId": "uuid", "orderIds": ["uuid"], "paymentGroupId": "uuid or null", "checkoutUrl": "https://.../checkout/{token}" }]
 }
 ```
+
+**Errors:** 400 bad body or signature; 403 not a provider, or a line belongs to another provider; 404, 409 or 422 a line cannot be sent (`problems[]`); 503 a check could not run (nothing signed).
 
 #### Compliance Check
 
@@ -276,7 +286,7 @@ GET /api/orders/{orderId}/bundlable-siblings
 
 **Auth:** Supabase JWT (clinic_user)
 
-Returns other orders for the same patient that are eligible to be bundled with this order into a single combined payment group (same patient, compatible status, not already grouped). Used to offer "pay for everything at once" at sign-and-send time.
+Returns other orders for the same patient that are eligible to be bundled with this order into a single combined payment group (same patient, compatible status, not already grouped). Used to offer "pay for everything at once" when signing (batch sign).
 
 **Response (200):**
 ```json

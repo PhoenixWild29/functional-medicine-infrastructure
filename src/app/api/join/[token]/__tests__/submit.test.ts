@@ -44,6 +44,7 @@ import { POST } from '../route'
 import { joinSubmitLimiter } from '@/lib/intake/join-abuse'
 import { dbRateLimitHit } from '@/lib/security/db-rate-limit'
 import { PRIVACY_NOTICE_VERSION, SMS_CONSENT_TEXT_VERSION } from '@/lib/intake/consent'
+import { logPhiAccess, logPhiWriteNotCompleted, patientActor, systemActor } from '@/lib/audit/phi-access'
 
 const VALID = {
   consent: { privacyNotice: true, sms: false },
@@ -254,5 +255,78 @@ describe('a valid sign-up', () => {
     const src = readFileSync(join(__dirname, '..', 'route.ts'), 'utf8')
     expect(src).not.toMatch(/@\/lib\/(sms|intake\/sms)/)
     expect(src).not.toMatch(/twilio/i)
+  })
+})
+
+// C-2026-10-25-17 (B14/B15), L1 (writes logged first): the database
+// function makes the patient's id, so a create / signup row is written
+// BEFORE it with the link's clinic (system actor). When that row cannot be
+// written, nothing is created (503). A create that does not happen gets a
+// not_completed_signup row. After the create, a second best-effort row
+// names the new patient, with the patient as the actor.
+describe('PHI access log', () => {
+  const phi = jest.mocked(logPhiAccess)
+  const notCompleted = jest.mocked(logPhiWriteNotCompleted)
+  beforeEach(() => { phi.mockClear(); notCompleted.mockClear() })
+
+  const PRE = {
+    actor: systemActor(CLINIC_ID), action: 'create', resource: 'signup', route: '/api/join/[token]', clinicId: CLINIC_ID,
+  }
+
+  it('a create / signup row BEFORE the create, then one naming the new patient', async () => {
+    let rpcsAtFirstLog = -1
+    phi.mockImplementationOnce(async () => { rpcsAtFirstLog = rpcs().length; return true })
+    const res = await POST(req(VALID), ctx())
+    expect(res.status).toBe(200)
+    expect(rpcs()).toHaveLength(1)
+    expect(rpcsAtFirstLog).toBe(0)
+    expect(phi).toHaveBeenCalledTimes(2)
+    expect(phi.mock.calls[0]![0]).toEqual(expect.objectContaining(PRE))
+    expect(phi.mock.calls[0]![0].patientId).toBeUndefined()
+    expect(phi.mock.calls[1]![0]).toEqual(expect.objectContaining({
+      actor: patientActor(PATIENT_ID, CLINIC_ID), action: 'create', resource: 'signup', route: '/api/join/[token]',
+      patientId: PATIENT_ID, clinicId: CLINIC_ID,
+    }))
+    for (const call of phi.mock.calls) {
+      expect(JSON.stringify({ ...call[0], headers: null })).not.toMatch(/Jane|Smith|1985|5550142|Main St/)
+    }
+    expect(notCompleted).not.toHaveBeenCalled()
+  })
+
+  it('the first row cannot be written: 503, the standard message, nothing created', async () => {
+    phi.mockResolvedValueOnce(false)
+    const res = await POST(req(VALID), ctx())
+    expect(res.status).toBe(503)
+    expect((await res.json()).error).toBe('This change could not be recorded. Nothing was changed. Try again.')
+    expect(rpcs()).toHaveLength(0)
+    expect(flagMock).not.toHaveBeenCalled()
+  })
+
+  it('the second row cannot be written: the sign-up still succeeds (the helper alerts)', async () => {
+    phi.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    const res = await POST(req(VALID), ctx())
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true })
+  })
+
+  it.each([
+    ['the function fails', { error: { message: 'boom', code: 'XX000' } }, 500],
+    ['the link was turned off', { data: { status: 'inactive' } }, 410],
+    ['the daily cap', { data: { status: 'cap' } }, 429],
+    ['an unexpected result', { data: { status: 'weird' } }, 500],
+  ])('%s after logging: a not_completed row, the existing answer', async (_l, answer, status) => {
+    script = c => (c.op === 'rpc' ? answer : approvedClinic(c))
+    const res = await POST(req(VALID), ctx())
+    expect(res.status).toBe(status)
+    expect(phi).toHaveBeenCalledTimes(1)
+    expect(notCompleted).toHaveBeenCalledTimes(1)
+    expect(notCompleted).toHaveBeenCalledWith(expect.objectContaining(PRE))
+  })
+
+  it('nothing tried (honeypot, link off before the function): no row', async () => {
+    await POST(req({ ...VALID, website: 'http://spam.test' }), ctx())
+    resolveMock.mockResolvedValue({ state: 'inactive' })
+    await POST(req(VALID), ctx())
+    expect(phi).not.toHaveBeenCalled()
   })
 })

@@ -20,6 +20,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import { NextRequest } from 'next/server'
 import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
+import { logPhiDisclosure } from '@/lib/audit/phi-access'
 
 const CLINIC_ID = 'aaaaaaaa-aaaa-4aaa-9aaa-aaaaaaaaaaaa'
 
@@ -277,5 +278,43 @@ describe('privacy', () => {
     const res = await POST(fileReq(PDF_BYTES))
     expect(res.status).toBe(503)
     expect(logs.join(' ')).not.toMatch(/Jane|Smith|1985|Penicillin|5550142|example\.com|Austin|Levothyroxine/)
+  })
+})
+
+// C-2026-10-25-17 (B14/B15): sending the face sheet to Claude is a
+// disclosure to an AI vendor. One ai_face_sheet disclosure row with the
+// signed-in user BEFORE the call; when it cannot be written the sheet is
+// not sent (503, try again). The existing face_sheet_fill view row stays.
+describe('the disclosure to Claude', () => {
+  const disclosure = jest.mocked(logPhiDisclosure)
+  beforeEach(() => disclosure.mockClear())
+
+  it('one ai_face_sheet disclosure with the user and the clinic, before the sheet is sent', async () => {
+    let loggedBeforeSend = false
+    extractMock.mockImplementationOnce(async () => {
+      loggedBeforeSend = disclosure.mock.calls.length === 1
+      return { ok: true, fields: FIELDS, filled: ['firstName'] }
+    })
+    const res = await POST(fileReq(PDF_BYTES))
+    expect(res.status).toBe(200)
+    expect(loggedBeforeSend).toBe(true)
+    expect(disclosure).toHaveBeenCalledTimes(1)
+    const entry = disclosure.mock.calls[0]![0]
+    expect(entry).toEqual(expect.objectContaining({ resource: 'ai_face_sheet', route: '/api/patients/face-sheet', clinicId: CLINIC_ID }))
+    expect(entry.user?.id).toBe('user-1')
+    expect(entry.patientId ?? null).toBeNull()
+  })
+
+  it('the disclosure cannot be recorded: 503, the sheet is not sent to Claude', async () => {
+    disclosure.mockResolvedValueOnce(false)
+    const res = await POST(fileReq(PDF_BYTES))
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'The face sheet could not be read right now. Try again.' })
+    expect(extractMock).not.toHaveBeenCalled()
+  })
+
+  it('a request refused before the read (wrong type): no disclosure', async () => {
+    await POST(fileReq(Buffer.from('GIF89a'), 'a.gif', 'image/gif'))
+    expect(disclosure).not.toHaveBeenCalled()
   })
 })

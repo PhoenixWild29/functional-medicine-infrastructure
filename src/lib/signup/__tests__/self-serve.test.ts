@@ -241,6 +241,10 @@ describe('every kind', () => {
   it.each([
     ['a password under 12 characters', { password: 'short pass1' }, 'password'],
     ['a password over 72 bytes', { password: 'x'.repeat(73) }, 'password'],
+    // Review P4: the shared policy (lib/auth/password-policy), not length only.
+    ['a common password', { password: 'password1234' }, 'password'],
+    ['the sign-up email as the password', { password: 'dana.ruiz@example.test' }, 'password'],
+    ['the part of the email before the @ (12+ characters)', { password: 'Dana.Ruiz.MD', email: 'dana.ruiz.md@example.test' }, 'password'],
     ['no first name', { firstName: '' }, 'firstName'],
     ['no last name', { lastName: '' }, 'lastName'],
     ['a bad email', { email: 'not-an-email' }, 'email'],

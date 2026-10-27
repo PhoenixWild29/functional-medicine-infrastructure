@@ -19,24 +19,23 @@
 //
 // REQ-GDB-004: Loading, empty, and offline states.
 
-import { POSSIBLE_DUPLICATE_COLUMNS, loadDuplicateNames, openDuplicateIds } from '@/lib/patients/duplicate-names'
 import type { NameablePatient } from '@/lib/patients/display'
-import { dashboardPatient, embeddedPatient } from '@/lib/patients/dashboard-patient'
+import { dashboardPatient } from '@/lib/patients/dashboard-patient'
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
-import { createBrowserClient } from '@/lib/supabase/client'
 import type { DashboardOrder } from '../page'
 import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.types'
 import { OrdersTable }  from './orders-table'
 import { isProposedOrder, isTabId, isPeriod, ordersForView, ordersInPeriod, TABS, type TabDef, type TabId, type Period } from '../_lib/tabs'
-import { PROPOSAL_EMBED, dashboardProposal } from '@/lib/proposals/dashboard'
+import { dashboardProposal } from '@/lib/proposals/dashboard'
 import { paymentLinkCounts } from '@/lib/orders/payment-link'
 import type { DraftViewer } from '@/lib/orders/draft-edit-access'
 import { OrderDrawer }  from './order-drawer'
 import { batchSignHref, MAX_BATCH_ORDERS } from '@/lib/orders/batch-sign-view'
 import { platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
+import { olderOrdersHref, type OrderWindow } from '@/lib/dashboard/order-window'
 
 // The kanban (and @dnd-kit) loads when the kanban view is first chosen;
 // the table is the default view.
@@ -63,6 +62,12 @@ interface Props {
    */
   providerViewMode?: 'mine' | 'clinic'
   /**
+   * B-2026-10-26-08: the window of orders the page showed (the newest
+   * DASHBOARD_ORDER_LIMIT, or those before ?before=). The poll asks for the
+   * same window, and the list says when it is cut.
+   */
+  orderWindow?: OrderWindow
+  /**
    * A clinic onboarded through the portal (isPortalOnboardedClinic): its
    * payouts are set up at launch, so it is not sent to Stripe onboarding.
    * Absent or false: today's wording.
@@ -88,7 +93,31 @@ const EMPTY_TAB_TEXT: Record<TabId, string> = {
 const LAUNCH_COPY = 'Ordering opens at launch, once payouts are set up. CompoundIQ will contact you.'
 
 
-// ── Query function (Supabase browser client) ────────────────
+// ── Query function (GET /api/dashboard/orders) ──────────────
+//
+// The poll reads through the server, never the browser client, so the
+// read of patients' names and phones is logged (Compliance C2, B14). The
+// route returns the raw order rows (built here, as before) and the names
+// behind duplicate flags.
+
+interface DashboardOrdersResponse {
+  rows:           Array<Record<string, unknown>>
+  duplicateNames: Record<string, NameablePatient>
+  /** The order window (lib/dashboard/order-window): the same one the page showed. */
+  window?:        OrderWindow
+}
+
+/**
+ * The poll's URL: a provider's clinic view asks for it, as the page did,
+ * and an older-orders window keeps its cursor (B-2026-10-26-08).
+ */
+function dashboardOrdersUrl(providerViewMode: 'mine' | 'clinic', before: string | null = null): string {
+  const q = new URLSearchParams()
+  if (providerViewMode === 'clinic') q.set('view', 'clinic')
+  if (before) q.set('before', before)
+  const qs = q.toString()
+  return qs ? `/api/dashboard/orders?${qs}` : '/api/dashboard/orders'
+}
 
 function buildDashboardOrder(o: Record<string, unknown>, duplicateNames?: ReadonlyMap<string, NameablePatient>): DashboardOrder {
   const retailCents     = Math.round(((o['retail_price_snapshot']    as number) ?? 0) * 100)
@@ -137,19 +166,16 @@ function buildDashboardOrder(o: Record<string, unknown>, duplicateNames?: Readon
 
 // ── Component ───────────────────────────────────────────────
 
-export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, viewer, initialTab, initialOrderId, providerViewMode = 'mine', payoutsAtLaunch = false, canSendProposals = false }: Props) {
+export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, viewer, initialTab, initialOrderId, providerViewMode = 'mine', payoutsAtLaunch = false, canSendProposals = false, orderWindow }: Props) {
   const router = useRouter()
-  // The clinic view's poll carries the same header the server render
-  // used; without it the poll read "My patients" rows under the clinic
-  // view's cards.
-  const supabase = useMemo(
-    () => (providerViewMode === 'clinic'
-      ? createBrowserClient({ extraHeaders: { 'x-provider-view-mode': 'clinic' } })
-      : createBrowserClient()),
-    [providerViewMode],
-  )
   const queryClient = useQueryClient()
-  const ordersKey = useMemo(() => ['dashboard-orders', clinicId, providerViewMode] as const, [clinicId, providerViewMode])
+  const windowBefore = orderWindow?.before ?? null
+  const ordersKey = useMemo(() => ['dashboard-orders', clinicId, providerViewMode, windowBefore] as const, [clinicId, providerViewMode, windowBefore])
+  // The window as the latest read reported it: each poll's, as long as it
+  // was read for the page's current window; a new server render (a new
+  // orderWindow) replaces it.
+  const [polledWindow, setPolledWindow] = useState<{ forWindow: OrderWindow | undefined; window: OrderWindow } | null>(null)
+  const liveWindow = polledWindow && polledWindow.forWindow === orderWindow ? polledWindow.window : orderWindow
 
   const [viewMode,        setViewMode]        = useState<'table' | 'kanban'>('table')
   // WO-106: the KPI cards link here (?tab=…), so the tab is addressable.
@@ -201,29 +227,20 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
     // different lists and must never share a cache entry.
     queryKey:       ordersKey,
     queryFn:        async () => {
-      // BLK-01: explicit clinic_id filter as defence-in-depth (RLS also enforces this)
-      const { data, error } = await supabase
-        .from('orders')
-        .select(`
-          order_id, status, created_at, updated_at, locked_at, payment_group_id, provider_id,
-          retail_price_snapshot, wholesale_price_snapshot,
-          medication_snapshot, pharmacy_snapshot, refills, refill_of_order_id, proposal_required,
-          patients!inner(patient_id, first_name, last_name, phone, intake_status, ${POSSIBLE_DUPLICATE_COLUMNS}),
-          ${PROPOSAL_EMBED}
-        `)
-        .eq('clinic_id', clinicId)
-        .is('deleted_at', null)
-        .order('updated_at', { ascending: false })
-
-      if (error) {
+      // The clinic view's poll asks for the same view the server render
+      // used; without it the poll read "My patients" rows under the clinic
+      // view's cards. The clinic comes from the session on the server
+      // (RLS + an explicit clinic_id filter, BLK-01).
+      const res = await fetch(dashboardOrdersUrl(providerViewMode, windowBefore), { headers: { Accept: 'application/json' }, cache: 'no-store' })
+      if (!res.ok) {
         // BLK-07: log for ops visibility
-        console.error('[dashboard] orders poll failed:', error.message, '| clinic=', clinicId)
-        throw new Error(error.message)
+        console.error('[dashboard] orders poll failed: status', res.status, '| clinic=', clinicId)
+        throw new Error(`Orders could not be loaded (${res.status})`)
       }
-      const rows = (data ?? []) as unknown as Array<Record<string, unknown>>
-      // Patient Intake PR 2: duplicate flags' names, one separate read.
-      const duplicateNames = await loadDuplicateNames(supabase, clinicId, openDuplicateIds(rows.map(o => embeddedPatient(o['patients']))))
-      return rows.map(o => buildDashboardOrder(o, duplicateNames))
+      const body = await res.json() as DashboardOrdersResponse
+      if (body.window) setPolledWindow({ forWindow: orderWindow, window: body.window })
+      const duplicateNames = new Map(Object.entries(body.duplicateNames ?? {}))
+      return (body.rows ?? []).map(o => buildDashboardOrder(o, duplicateNames))
     },
     initialData:    initialOrders,
     refetchInterval: 30 * 1000,  // REQ-GDB-001: 30-second polling
@@ -329,7 +346,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
           <button
             type="button"
             onClick={() => void refetch()}
-            className="underline hover:no-underline focus-visible:outline-none"
+            className="underline hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Retry
           </button>
@@ -423,7 +440,24 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
       </div>
 
       {/* ── Status filter tabs — REQ-GDB-001 ── */}
-      <div className="flex gap-1 flex-wrap border-b border-border pb-px" role="tablist" aria-label="Order status filters">
+      {/* ARIA tabs: one tab stop (the selected tab); Left / Right / Home /
+          End move between tabs and select them. */}
+      <div
+        className="flex gap-1 flex-wrap border-b border-border pb-px"
+        role="tablist"
+        aria-label="Order status filters"
+        onKeyDown={e => {
+          const keys = ['ArrowRight', 'ArrowLeft', 'Home', 'End']
+          if (!keys.includes(e.key)) return
+          e.preventDefault()
+          const at = TABS.findIndex(t => t.id === activeTab)
+          const next = e.key === 'Home' ? 0
+            : e.key === 'End' ? TABS.length - 1
+            : (at + (e.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length
+          selectTab(TABS[next]!.id)
+          e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
+        }}
+      >
         {TABS.map(tab => {
           const count = tabCount(tab)
           // Pending Payment: the open count is the card's number; expired
@@ -436,6 +470,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
               type="button"
               role="tab"
               aria-selected={isActive}
+              tabIndex={isActive ? 0 : -1}
               onClick={() => selectTab(tab.id)}
               className={`
                 flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-t-md border-b-2 transition-colors
@@ -577,6 +612,31 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
             onCardClick={handleRowClick}
           />
         )
+      )}
+
+      {/* ── The order window (B-2026-10-26-08): say when the list is cut ── */}
+      {liveWindow && (liveWindow.truncated || liveWindow.before) && (
+        <p data-testid="orders-window-note" className="text-xs text-muted-foreground">
+          {liveWindow.before
+            ? `Showing ${(liveWindow.truncated ? liveWindow.limit : orders.length).toLocaleString('en-US')} orders last updated before ${new Date(liveWindow.before).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}.`
+            : `Showing the most recent ${liveWindow.limit.toLocaleString('en-US')} orders.`}
+          {liveWindow.truncated && liveWindow.olderBefore && (
+            <>
+              {' '}
+              <a href={olderOrdersHref(searchParams, liveWindow.olderBefore)} className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Show older orders
+              </a>
+            </>
+          )}
+          {liveWindow.before && (
+            <>
+              {' '}
+              <a href={olderOrdersHref(searchParams, null)} className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Back to the most recent orders
+              </a>
+            </>
+          )}
+        </p>
       )}
 
       {/* ── Order count footer ── */}

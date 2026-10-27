@@ -18,6 +18,7 @@ import { DEMO_TOTP_SECRET } from '../../src/lib/poc/totp-enrollment'
 import { packageRowsFor } from '../../src/lib/catalog/packages'
 import { withPhoneE164 } from '../../src/lib/patients/phone'
 import { shardEmail, shardId, shardIndex, shardName, shardNpi } from './shard'
+import { e2ePassword } from './test-password'
 
 // E2E tests MUST run against an isolated Supabase project — never production.
 // If these env vars are missing, fail loudly rather than silently falling back
@@ -154,22 +155,24 @@ export const TEST_PATIENTS = {
 }
 
 // ── Test users (Supabase Auth) ────────────────────────────────
+// The password is read when used, from the env (fixtures/test-password;
+// security B9): never written here.
 export const TEST_USERS = {
   clinicAdmin: {
     email:    shardEmail('test-clinic-admin@compoundiq.test'),
-    password: 'TestPassword123!',
+    get password() { return e2ePassword() },
     role:     'clinic_admin',
     clinicId: TEST_IDS.clinic,
   },
   provider: {
     email:    shardEmail('test-provider@compoundiq.test'),
-    password: 'TestPassword123!',
+    get password() { return e2ePassword() },
     role:     'provider',
     clinicId: TEST_IDS.clinic,
   },
   opsAdmin: {
     email:    shardEmail('test-ops-admin@compoundiq.test'),
-    password: 'TestPassword123!',
+    get password() { return e2ePassword() },
     role:     'ops_admin',
     clinicId: null,
   },
@@ -178,7 +181,7 @@ export const TEST_USERS = {
   // signing in with a password only, as REQUIRE_MFA is off in E2E.
   mfaClinicAdmin: {
     email:    shardEmail('test-mfa-admin@compoundiq.test'),
-    password: 'TestPassword123!',
+    get password() { return e2ePassword() },
     role:     'clinic_admin',
     clinicId: TEST_IDS.clinic,
   },
@@ -225,11 +228,15 @@ export async function seedStaticData(): Promise<void> {
   // single provider that auto-selects.
   await retireSecondProvider()
 
-  // Patients — one per WO-97 allergy chip state. The upsert re-asserts the
+  // Patients — the WO-97 allergy chip states. The upsert re-asserts the
   // allergy columns on every run, so a test that edits them (the banner
   // editor / the Review "Confirm NKDA" beat) starts from a known state.
   // The wizard helpers search "Test" and click "Patient, Test"; the two
   // extra last names deliberately do not match that regex.
+  // Coverage gap 9: signing needs allergies or NKDA, and most specs sign
+  // for "Patient, Test", so it is seeded with NKDA. The WO-97 block in
+  // clinic-app.spec.ts sets it to "not recorded" for its own tests and
+  // back to NKDA afterwards.
   await supabase.from('patients').upsert(([
     {
       patient_id:   TEST_IDS.patient,
@@ -242,10 +249,10 @@ export async function seedStaticData(): Promise<void> {
       state:        'TX',
       sms_opt_in:   true,
       is_active:    true,
-      // not recorded
-      allergies:            null,
-      nkda:                 false,
-      allergies_updated_at: null,
+      // NKDA (see above)
+      allergies:            [],
+      nkda:                 true,
+      allergies_updated_at: new Date().toISOString(),
     },
     {
       patient_id:   TEST_IDS.patientNkda,
@@ -906,6 +913,8 @@ export async function insertRecentOrder(input: {
     quantity:                 1,
     wholesale_price_snapshot: 100.00,
     retail_price_snapshot:    200.00,
+    provider_npi_snapshot:    '1234567890',
+    shipping_state_snapshot:  'TX',
     medication_snapshot:      {
       formulation_id:  input.formulationId,
       medication_name: input.medicationName,

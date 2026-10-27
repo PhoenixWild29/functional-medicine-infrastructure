@@ -30,9 +30,10 @@ import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted, type PhiAccessEntry } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
 import { resolveProtocolLinkage, type ProtocolLinkage } from '@/lib/protocols/resolve-instance'
-import { rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
+import { dispenseCount, rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
 import { lineSourceKind, resolveLine } from '@/lib/orders/resolve-line'
 import { writeDraftAudit } from '@/lib/orders/draft-edit'
 import { checkProviderOwnsDraft } from '@/lib/orders/provider-draft-guard'
@@ -342,6 +343,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     }
   }
 
+  // Compliance C2 and L1 (B15): a prescription written for this patient,
+  // logged BEFORE anything is written (the protocol linkage below may
+  // create an instance). The order id is generated here and passed to the
+  // insert, so the row can name it. No row, no order (503).
+  const newOrderId = crypto.randomUUID()
+  const phiEntry: PhiAccessEntry = {
+    user: user, action: 'create', resource: 'order', route: '/api/orders',
+    orderId: newOrderId, patientId, headers: request.headers ?? null,
+  }
+  if (!(await logPhiAccess(phiEntry))) return phiWriteRefused()
+
   let protocolLinkage: ProtocolLinkage | null = null
   if (typeof protocolId === 'string' && protocolId.length > 0) {
     try {
@@ -368,6 +380,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const { data: order, error: orderError } = await supabase
     .from('orders')
     .insert({
+      order_id:                 newOrderId,
       patient_id:               patientId,
       provider_id:              providerId,
       catalog_item_id:          hasCatalog ? (catalogItemId as string) : null,
@@ -375,7 +388,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       clinic_id:                clinicId,
       pharmacy_id:              pharmacyId,
       status:                   'DRAFT',
-      quantity:                 1,
+      // What the pharmacy dispenses, counted as the Dispense line states it.
+      quantity:                 dispenseCount({ ...rxDetailColumns, ...line.package }),
       wholesale_price_snapshot: wholesalePrice,
       retail_price_snapshot:    retailPrice,
       medication_snapshot:      medicationSnapshot,
@@ -404,6 +418,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   if (orderError || !order) {
     console.error('[orders] order insert failed:', orderError?.message)
+    await logPhiWriteNotCompleted(phiEntry)
     return NextResponse.json({ error: 'Failed to create order' }, { status: 500 })
   }
 
@@ -450,12 +465,6 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   console.info(`[orders] DRAFT created | order=${order.order_id} | clinic=${clinicId}`)
-
-  // Compliance C2: a prescription written for this patient.
-  await logPhiAccess({
-    user: user, action: 'create', resource: 'order', route: '/api/orders',
-    orderId: order.order_id, patientId, headers: request.headers ?? null,
-  })
 
   return NextResponse.json({ orderId: order.order_id }, { status: 201 })
 }

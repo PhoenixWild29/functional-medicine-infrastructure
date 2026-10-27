@@ -38,12 +38,19 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
+import { phiLog, phiEntries } from '@/__tests__/helpers/phi-log'
+import { logPhiAccessMany } from '@/lib/audit/phi-access'
 
 // ── 1. SSR uses the session client (not service-role) ──────────────────
 
 const fromSpy = jest.fn()
 const getUserMock = jest.fn()
+// The chosen-plan queue (review L4): no plans unless a test says so.
+const chosenMock = jest.fn<Promise<{ ok: boolean; plans: unknown[] }>, unknown[]>(async () => ({ ok: true, plans: [] }))
+jest.mock('@/lib/proposals/queue', () => ({
+  ...jest.requireActual('@/lib/proposals/queue'),
+  loadChosenProposals: (...a: unknown[]) => chosenMock(...a),
+}))
 
 jest.mock('next/navigation', () => ({
   redirect: () => { throw new Error('REDIRECT') },
@@ -74,6 +81,13 @@ beforeEach(() => {
   getUserMock.mockReset()
   serviceClientShouldNeverBeCalled.mockClear()
 })
+
+// The tests import the dashboard page (await import); the first import
+// compiles it and its import tree: 3.9 s alone under --coverage, 4.9 s in a
+// loaded full run, against jest's 5 s per-test default (B-2026-10-26-10).
+// Import it once here, with room for a cold compile; the tests then get it
+// from the module registry (nothing here resets modules).
+beforeAll(async () => { await import('../page') }, 120_000)
 
 describe('F-3 SSR client wiring', () => {
   it('dashboard page uses session-scoped client, not service-role', async () => {
@@ -186,29 +200,48 @@ describe('F-3 migration: 20260611000004_f3_dashboard_rls_filter.sql', () => {
   })
 })
 
-// ── Compliance C2: the dashboard's order list is logged once ───────────
+// ── Compliance C2: the dashboard's order list is logged per patient ───
 
 describe('PHI access log', () => {
-  beforeEach(() => phiLog.mockClear())
+  const P1 = 'a3000000-0000-0000-0000-000000000001'
+  const P2 = 'a3000000-0000-0000-0000-000000000002'
+  const patient = (patient_id: string) => ({ patient_id, first_name: 'Alex', last_name: 'Demo', phone: null, intake_status: null, possible_duplicate_of: null, possible_duplicate_dismissed_at: null })
+  const ORDER_ROWS = [
+    { order_id: 'o1', status: 'DRAFT', created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z', patients: patient(P1) },
+    { order_id: 'o2', status: 'DRAFT', created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z', patients: patient(P1) },
+    { order_id: 'o3', status: 'DRAFT', created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z', patients: patient(P2) },
+  ]
+
+  beforeEach(() => {
+    phiLog.mockClear()
+    jest.mocked(logPhiAccessMany).mockClear()
+  })
 
   function arrange(user: unknown) {
     getUserMock.mockResolvedValue({ data: { user } })
-    const chain: Record<string, jest.Mock> = {}
-    chain['select']      = jest.fn().mockReturnValue(chain)
-    chain['eq']          = jest.fn().mockReturnValue(chain)
-    chain['is']          = jest.fn().mockReturnValue(chain)
-    chain['gte']         = jest.fn().mockReturnValue(chain)
-    chain['lt']          = jest.fn().mockReturnValue(chain)
-    chain['order']       = jest.fn().mockResolvedValue({ data: [], error: null })
-    chain['maybeSingle'] = jest.fn().mockResolvedValue({ data: { stripe_connect_status: 'ACTIVE' }, error: null })
-    fromSpy.mockReturnValue(chain)
+    fromSpy.mockImplementation((table: string) => {
+      const chain: Record<string, jest.Mock> = {}
+      chain['select']      = jest.fn().mockReturnValue(chain)
+      chain['eq']          = jest.fn().mockReturnValue(chain)
+      chain['is']          = jest.fn().mockReturnValue(chain)
+      chain['gte']         = jest.fn().mockReturnValue(chain)
+      chain['lt']          = jest.fn().mockReturnValue(chain)
+      chain['order']       = jest.fn().mockResolvedValue({ data: table === 'orders' ? ORDER_ROWS : [], error: null })
+      chain['maybeSingle'] = jest.fn().mockResolvedValue({ data: { stripe_connect_status: 'ACTIVE' }, error: null })
+      return chain
+    })
   }
 
-  it('a rendered dashboard logs exactly one row: view, order_list', async () => {
-    arrange({ id: 'auth-uid-clinic-admin', app_metadata: { clinic_id: 'a1000000-0000-0000-0000-000000000001', app_role: 'clinic_admin' } })
+  it('a rendered dashboard logs view / order_list once per distinct patient listed', async () => {
+    const user = { id: 'auth-uid-clinic-admin', app_metadata: { clinic_id: 'a1000000-0000-0000-0000-000000000001', app_role: 'clinic_admin' } }
+    arrange(user)
     const mod = await import('../page')
     await mod.default()
-    expectOnePhiRow({ action: 'view', resource: 'order_list', route: '/dashboard' })
+    expect(logPhiAccessMany).toHaveBeenCalledTimes(1)
+    const [entry, ids] = jest.mocked(logPhiAccessMany).mock.calls[0]!
+    expect(entry).toEqual(expect.objectContaining({ user, action: 'view', resource: 'order_list', route: '/dashboard' }))
+    expect([...ids].sort()).toEqual([P1, P2])
+    expect(phiEntries().filter(e => e.resource === 'order_list')).toHaveLength(0)
   })
 
   it('no user, no row', async () => {
@@ -216,5 +249,28 @@ describe('PHI access log', () => {
     const mod = await import('../page')
     await mod.default()
     expect(phiEntries()).toHaveLength(0)
+    expect(logPhiAccessMany).not.toHaveBeenCalled()
   })
+
+  // C-2026-10-26-04 (review L4): the chosen-plan queue names patients too
+  // (first name and plan). It is clinic-wide by design (any staff member
+  // sees whose plan waits; only its provider or an admin can sign), so a
+  // provider sees other providers' patients there: they are in the logged set.
+  it('review L4: the chosen-plan queue patients are in the logged set', async () => {
+    const P3 = 'a3000000-0000-0000-0000-000000000003'
+    chosenMock.mockResolvedValueOnce({ ok: true, plans: [{ proposalId: 'pr-1', providerId: 'pv-2', patientId: P3, patientFirstName: 'Jordan', optionLabel: 'Foundation', chosenOrderIds: [], chosenCount: 0, optionCount: 1, chosenAt: 't', choiceNo: 1 }] })
+    arrange({ id: 'auth-uid-provider', app_metadata: { clinic_id: 'a1000000-0000-0000-0000-000000000001', app_role: 'provider' } })
+    const mod = await import('../page')
+    await mod.default()
+    const [, ids] = jest.mocked(logPhiAccessMany).mock.calls[0]!
+    expect([...ids].sort()).toEqual([P1, P2, P3])
+  })
+
+  it('review L5: logged with a 15-minute dedupe', async () => {
+    arrange({ id: 'auth-uid-clinic-admin', app_metadata: { clinic_id: 'a1000000-0000-0000-0000-000000000001', app_role: 'clinic_admin' } })
+    const mod = await import('../page')
+    await mod.default()
+    expect(jest.mocked(logPhiAccessMany).mock.calls[0]?.[2]).toEqual({ dedupeMinutes: 15 })
+  })
+
 })

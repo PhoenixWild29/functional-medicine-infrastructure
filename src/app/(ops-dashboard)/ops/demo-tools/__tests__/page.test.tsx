@@ -4,7 +4,8 @@
  * Regression test for the POC_MODE gate on /ops/demo-tools
  * (audit X-1, docs/audits/ops-dashboard-gap-list.md).
  *
- * The page renders plaintext POC credentials and a destructive
+ * The page lists the POC accounts (their password env var names, never
+ * the values: security B9) and a destructive
  * "Refresh Demo Data" button. It MUST NOT be reachable in any
  * non-POC deployment (e.g., once a real clinic is onboarded).
  *
@@ -16,6 +17,7 @@
  * mirroring src/app/api/admin/refresh-demo-data/route.ts.
  */
 
+import { renderToStaticMarkup } from 'react-dom/server'
 import DemoToolsPage from '../page'
 
 // ── Mocks ────────────────────────────────────────────────────
@@ -31,22 +33,31 @@ jest.mock('next/navigation', () => ({
   notFound: () => notFoundMock(),
 }))
 
-// Stub the canonical-users module so the test doesn't need to
-// import real POC passwords (and so the module is import-safe in
-// the jest environment, with no Supabase client side effects).
+// Stub the canonical-users module so the module is import-safe in the
+// jest environment, with no Supabase client side effects. The accounts
+// carry no password: each is read from its env var (security B9).
 jest.mock('@/lib/poc/canonical-users', () => ({
   POC_CANONICAL_USERS: [
-    { label: 'ops_admin',    email: 'ops@example.com',     password: 'pw-ops' },
-    { label: 'clinic_admin', email: 'admin@example.com',   password: 'pw-clinic' },
-    { label: 'provider',     email: 'provider@example.com', password: 'pw-provider' },
-    { label: 'ma',           email: 'ma@example.com',       password: 'pw-ma' },
+    { label: 'ops_admin',         email: 'ops@example.com' },
+    { label: 'clinic_admin',      email: 'admin@example.com' },
+    { label: 'provider',          email: 'provider@example.com' },
+    { label: 'medical_assistant', email: 'ma@example.com' },
   ],
+  POC_PASSWORD_ENV: {
+    ops_admin:         'POC_OPS_PASSWORD',
+    clinic_admin:      'POC_CLINIC_ADMIN_PASSWORD',
+    provider:          'POC_PROVIDER_PASSWORD',
+    medical_assistant: 'POC_MA_PASSWORD',
+  },
 }))
 
 // Stub the client component children — we only care that the
-// gate fires before anything renders, not that the cards work.
+// gate fires before anything renders, not that the cards work. The
+// credentials card records its props, so the test can check what the
+// browser would be sent.
+const credentialCardProps: Array<{ users: Array<Record<string, unknown>> }> = []
 jest.mock('../_components/reset-credentials-card', () => ({
-  ResetCredentialsCard: () => null,
+  ResetCredentialsCard: (props: { users: Array<Record<string, unknown>> }) => { credentialCardProps.push(props); return null },
 }))
 
 jest.mock('../_components/refresh-demo-data-card', () => ({
@@ -119,5 +130,32 @@ describe('/ops/demo-tools — POC_MODE gate (audit X-1)', () => {
     process.env['POC_MODE'] = 'true'
     expect(() => DemoToolsPage()).not.toThrow()
     expect(notFoundMock).not.toHaveBeenCalled()
+  })
+})
+
+// ── Security B9: no password reaches the page ────────────────
+
+describe('/ops/demo-tools: the credentials table (security B9)', () => {
+  const ENV = ['POC_OPS_PASSWORD', 'POC_CLINIC_ADMIN_PASSWORD', 'POC_PROVIDER_PASSWORD', 'POC_MA_PASSWORD']
+  const saved = Object.fromEntries(ENV.map(k => [k, process.env[k]]))
+  afterEach(() => {
+    for (const k of ENV) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k] }
+  })
+
+  it('passes each account its env var name and whether it is set, never the value', () => {
+    process.env['POC_MODE'] = 'true'
+    process.env['POC_OPS_PASSWORD'] = 'value-that-must-not-render'
+    delete process.env['POC_CLINIC_ADMIN_PASSWORD']
+    credentialCardProps.length = 0
+    renderToStaticMarkup(DemoToolsPage())
+    const users = credentialCardProps[0]!.users
+    expect(users.map(u => [u['passwordEnv'], u['passwordSet']])).toEqual([
+      ['POC_OPS_PASSWORD', true],
+      ['POC_CLINIC_ADMIN_PASSWORD', false],
+      ['POC_PROVIDER_PASSWORD', Boolean(process.env['POC_PROVIDER_PASSWORD'])],
+      ['POC_MA_PASSWORD', Boolean(process.env['POC_MA_PASSWORD'])],
+    ])
+    for (const u of users) expect(u).not.toHaveProperty('password')
+    expect(JSON.stringify(credentialCardProps)).not.toContain('value-that-must-not-render')
   })
 })

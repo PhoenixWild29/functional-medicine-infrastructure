@@ -5,7 +5,11 @@
 All database migrations live in `supabase/migrations/` as timestamped SQL files.
 Down (rollback) migrations live in `supabase/migrations/down/`.
 
-Migrations run automatically as part of the deploy pipeline (`supabase db push`).
+Migrations are **not** run by CI or the deploy. **Sam applies every migration to production by hand**, before the PR that needs it merges. Nobody else, and no agent or CI job, runs SQL against production. See DEPLOYMENT.md, "Database Migration Execution":
+- the handoff;
+- numbering across pushed branches;
+- why a migration PR must merge before any other PR runs E2E (every E2E run applies all migrations to the one shared E2E project).
+For a local or development project, `npm run db:migrate` runs `npx supabase@2.120.0 db push` against the linked project. CI applies all migrations to the E2E project at the start of every E2E run.
 **Never edit a migration that has already been applied to production.**
 Instead, create a new migration to amend it.
 

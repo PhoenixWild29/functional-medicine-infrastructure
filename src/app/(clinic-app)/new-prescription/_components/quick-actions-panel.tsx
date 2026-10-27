@@ -17,9 +17,14 @@
 // or Custom opens the builder's DOSE STEP with the dropdowns populated —
 // not the price step with a free-text sig. The list is grouped by
 // category in a fixed order, A–Z inside each group; the selected
-// patient's own favorites come first. A Recent strip at the top shows
-// the last 8 formulations the session provider prescribed, each with
-// "Make favorite".
+// patient's own favorites come first.
+//
+// Requirement 19 (Gina Rooks, 2026-09-11): a "Frequently used" section at
+// the top (it replaced WO-104's Recent strip) lists the session provider's
+// most-ordered formulation + dose combinations over 90 days with how many
+// times each was used ("Recent" when nothing is in the window). "Make
+// favorite" opens MakeFavoriteDialog: for the practice or this patient,
+// and which of the drug's doses.
 //
 // Protocols add all medications to the WO-80 session at once,
 // priced from the LIVE wholesale price + clinic default markup
@@ -43,7 +48,7 @@
 // the session are never added twice.
 
 import { patientName } from '@/lib/patients/display'
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import {
@@ -59,6 +64,7 @@ import { CONTROLLED_LABEL, isControlledSchedule } from '@/lib/orders/controlled-
 import { NOT_COMPOUNDABLE_LABEL } from '@/lib/compliance/compounding'
 import {
   favoriteCycle,
+  frequentItemKey,
   groupFavorites,
   presetChipText,
   presetKey,
@@ -67,6 +73,7 @@ import {
 import type { TitrationStep } from '@/lib/orders/titration'
 import { EmptyState } from '@/components/coaching/empty-state'
 import { userMessage } from '@/lib/errors/user-message'
+import { MakeFavoriteDialog } from './make-favorite-dialog'
 
 // ── Types ───────────────────────────────────
 
@@ -112,8 +119,8 @@ export interface Favorite {
   } | null
 }
 
-/** WO-104: one entry of the Recent strip (GET /api/favorites/recent). */
-export interface RecentItem {
+/** Requirement 19: one entry of Frequently used (GET /api/favorites/frequent). */
+export interface FrequentItem {
   formulation_id: string
   pharmacy_id: string | null
   medication_name: string
@@ -122,6 +129,8 @@ export interface RecentItem {
   last_prescribed_at: string
   formulation_active: boolean
   preset: DosePreset | null
+  /** How many orders carried this formulation + pharmacy + dose. */
+  use_count: number
   formulations: {
     concentration_value: number | null
     concentration_unit: string | null
@@ -207,11 +216,27 @@ async function fetchFavorites(patientState: string | null, patientId: string | n
   return json.data ?? []
 }
 
-async function fetchRecent(providerId: string): Promise<RecentItem[]> {
-  const res = await fetch(`/api/favorites/recent?provider_id=${encodeURIComponent(providerId)}`)
-  if (!res.ok) return []
-  const json = await res.json()
-  return json.data ?? []
+interface FrequentlyUsedResponse {
+  mode:        'frequent' | 'recent'
+  window_days: number
+  items:       FrequentItem[]
+}
+
+async function fetchFrequent(providerId: string): Promise<FrequentlyUsedResponse> {
+  const empty: FrequentlyUsedResponse = { mode: 'frequent', window_days: 90, items: [] }
+  const res = await fetch(`/api/favorites/frequent?provider_id=${encodeURIComponent(providerId)}`)
+  if (!res.ok) return empty
+  const json = await res.json() as { mode?: string; window_days?: number; data?: FrequentItem[] }
+  return {
+    mode:        json.mode === 'recent' ? 'recent' : 'frequent',
+    window_days: typeof json.window_days === 'number' ? json.window_days : 90,
+    items:       json.data ?? [],
+  }
+}
+
+/** "used once", "used 4 times" */
+function usedText(count: number): string {
+  return count === 1 ? 'used once' : `used ${count} times`
 }
 
 /**
@@ -261,8 +286,8 @@ export type QuickActionsPanelName = 'favorites' | 'protocols'
 interface QuickActionsPanelProps {
   /** WO-104: a dose chip (preset) or Custom (null) — opens the builder's dose step. */
   onLoadFavorite: (fav: Favorite, preset: DosePreset | null) => void
-  /** WO-104: a Recent item — opens the builder's dose step with its last dose. */
-  onLoadRecent?: (item: RecentItem) => void
+  /** Requirement 19: a Frequently used entry — opens the builder's dose step with its dose. */
+  onLoadFrequent?: (item: FrequentItem) => void
   /** The medication search control — rendered first, buttons beside it. */
   children?: ReactNode
   /**
@@ -277,7 +302,7 @@ interface QuickActionsPanelProps {
 
 // ── Component ───────────────────────────────────
 
-export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNewFavorite, initialPanel }: QuickActionsPanelProps) {
+export function QuickActionsPanel({ onLoadFavorite, onLoadFrequent, children, onNewFavorite, initialPanel }: QuickActionsPanelProps) {
   const router = useRouter()
   const session = usePrescriptionSession()
   const queryClient = useQueryClient()
@@ -310,15 +335,19 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
   // refetches with the right state.
   const { favorites, patientState } = useClinicFavorites()
   const providerId = session.provider?.provider_id ?? null
-  // WO-104: "Make favorite" on a Recent item.
-  const [makingFavorite, setMakingFavorite] = useState<string | null>(null)
-  const [recentError, setRecentError] = useState<string | null>(null)
+  // Requirement 19: the entry whose Make favorite dialog is open.
+  const [favoriteDialogItem, setFavoriteDialogItem] = useState<FrequentItem | null>(null)
+  // Each Frequently used entry's main button, by item key: after Make
+  // favorite saves, its "Make favorite" button becomes "★ Favorite", so
+  // focus returns to the entry instead (B-2026-10-25-11).
+  const frequentButtons = useRef(new Map<string, HTMLButtonElement>())
 
-  const { data: recent = [] } = useQuery({
-    queryKey: ['provider-recent', providerId],
-    queryFn: () => fetchRecent(providerId!),
+  const { data: frequent } = useQuery({
+    queryKey: ['provider-frequent', providerId],
+    queryFn: () => fetchFrequent(providerId!),
     enabled: !!providerId && activePanel === 'favorites',
   })
+  const frequentItems = frequent?.items ?? []
 
   const { data: protocols = [] } = useQuery({
     queryKey: ['clinic-protocols'],
@@ -516,40 +545,33 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
     onLoadFavorite(fav, preset)
   }
 
-  function handleRecentClick(item: RecentItem) {
-    if (!item.formulation_active || !onLoadRecent) return
+  function handleFrequentClick(item: FrequentItem) {
+    if (!item.formulation_active || !onLoadFrequent) return
     setActivePanel(null)
-    onLoadRecent(item)
+    onLoadFrequent(item)
   }
 
-  // ── WO-104: Recent → favorite card ─────────────────────
-  async function handleMakeFavorite(item: RecentItem) {
-    if (!providerId || !item.preset || makingFavorite) return
-    setMakingFavorite(item.formulation_id)
-    setRecentError(null)
-    try {
-      const res = await fetch('/api/favorites', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider_id:    providerId,
-          formulation_id: item.formulation_id,
-          pharmacy_id:    item.pharmacy_id,
-          patient_id:     null,
-          label:          item.formulation_name,
-          dose_presets:   [item.preset],
-        }),
-      })
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(json.error ?? `Save failed (${res.status})`)
-      }
-      await queryClient.invalidateQueries({ queryKey: ['provider-favorites'] })
-    } catch (err) {
-      setRecentError(userMessage(err, 'Save failed'))
-    } finally {
-      setMakingFavorite(null)
-    }
+  // ── Requirement 19: Frequently used → favorite ─────────
+  // The drug's other doses the dialog offers: its other frequently used
+  // doses at this pharmacy, and the clinic's practice favorites for the
+  // formulation. Favorites pinned only to the session patient are offered
+  // separately (patientDosesFor), and only when saving for that patient.
+  function otherDosesFor(item: FrequentItem): DosePreset[] {
+    const fromFrequent = frequentItems
+      .filter(i => i.formulation_id === item.formulation_id && (i.pharmacy_id ?? null) === (item.pharmacy_id ?? null) && i.preset)
+      .map(i => i.preset!)
+    const fromFavorites = favorites
+      .filter(f => f.formulation_id === item.formulation_id && f.patient_id === null)
+      .flatMap(f => f.dose_presets)
+    return [...fromFrequent, ...fromFavorites].filter(p => !item.preset || presetKey(p) !== presetKey(item.preset))
+  }
+  function patientDosesFor(item: FrequentItem): DosePreset[] {
+    const patientId = session.patient?.patient_id ?? null
+    if (!patientId) return []
+    return favorites
+      .filter(f => f.formulation_id === item.formulation_id && f.patient_id === patientId)
+      .flatMap(f => f.dose_presets)
+      .filter(p => !item.preset || presetKey(p) !== presetKey(item.preset))
   }
 
   // ── Handle favorite delete (two-step confirm) ─────────
@@ -629,11 +651,13 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
     visibleFavorites,
     session.patient ? { patientId: session.patient.patient_id, name: patientName(session.patient) } : null,
   )
-  // A Recent item is already a favorite when a practice card for that
-  // formulation + pharmacy carries its dose.
-  function recentIsFavorite(item: RecentItem): boolean {
+  // An entry is already a favorite when a card for that formulation +
+  // pharmacy, for the practice or for this session's patient, carries its dose.
+  const sessionPatientId = session.patient?.patient_id ?? null
+  function frequentIsFavorite(item: FrequentItem): boolean {
     return favorites.some(f =>
-      f.patient_id === null && f.formulation_id === item.formulation_id && (f.pharmacy_id ?? null) === (item.pharmacy_id ?? null)
+      (f.patient_id === null || f.patient_id === sessionPatientId)
+      && f.formulation_id === item.formulation_id && (f.pharmacy_id ?? null) === (item.pharmacy_id ?? null)
       && (!item.preset || f.dose_presets.some(p => presetKey(p) === presetKey(item.preset!))))
   }
 
@@ -715,30 +739,32 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
             Click a dose to open it on the dose step, or Custom to enter your own. Saved for the practice unless pinned to a patient; new favorites are saved with ☆ from the builder, the price page, or any Review card.
           </p>
 
-          {/* WO-104: Recent — the last formulations this provider prescribed */}
-          {recent.length > 0 && (
-            <div data-testid="favorites-recent" className="rounded-md border border-border bg-muted/20 p-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Recent</p>
-              {recentError && <p role="alert" className="mt-1 text-xs text-red-600">{recentError}</p>}
+          {/* Requirement 19: Frequently used — the provider's most-ordered doses */}
+          {frequentItems.length > 0 && (
+            <div data-testid="favorites-frequent" className="rounded-md border border-border bg-muted/20 p-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {frequent?.mode === 'recent' ? 'Recent' : `Frequently used (last ${frequent?.window_days ?? 90} days)`}
+              </p>
               <ul className="mt-1 flex flex-wrap gap-1.5">
-                {recent.map(item => {
+                {frequentItems.map(item => {
                   const text = item.preset ? presetChipText(item.preset, item.formulations) : null
-                  const isFavorite = recentIsFavorite(item)
+                  const isFavorite = frequentIsFavorite(item)
                   return (
                     <li
-                      key={item.formulation_id}
-                      data-testid={`recent-${item.formulation_id}`}
+                      key={frequentItemKey(item)}
+                      data-testid="frequent-item"
                       className="flex items-stretch rounded-md border border-border bg-background"
                     >
                       <button
+                        ref={el => { if (el) frequentButtons.current.set(frequentItemKey(item), el); else frequentButtons.current.delete(frequentItemKey(item)) }}
                         type="button"
-                        onClick={() => handleRecentClick(item)}
+                        onClick={() => handleFrequentClick(item)}
                         disabled={!item.formulation_active}
                         className="px-2 py-1 text-left text-xs hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <span className="block font-medium text-foreground">{item.formulation_name}</span>
                         <span className="block text-[10px] text-muted-foreground">
-                          {[text ? `${text.primary} ${text.secondary}`.trim() : null, item.pharmacy_name].filter(Boolean).join(' · ')}
+                          {[text ? `${text.primary} ${text.secondary}`.trim() : null, item.pharmacy_name, usedText(item.use_count)].filter(Boolean).join(' · ')}
                         </span>
                       </button>
                       {isFavorite ? (
@@ -746,12 +772,12 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
                       ) : (
                         <button
                           type="button"
-                          onClick={() => { void handleMakeFavorite(item) }}
-                          disabled={!item.preset || !item.formulation_active || makingFavorite === item.formulation_id}
+                          onClick={() => setFavoriteDialogItem(item)}
+                          disabled={!item.preset || !item.formulation_active || !providerId}
                           aria-label={`Make ${item.formulation_name} a favorite`}
                           className="border-l border-border px-2 text-[10px] font-medium text-primary hover:bg-primary/5 disabled:opacity-50"
                         >
-                          {makingFavorite === item.formulation_id ? 'Saving…' : 'Make favorite'}
+                          Make favorite
                         </button>
                       )}
                     </li>
@@ -759,6 +785,18 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadRecent, children, onNe
                 })}
               </ul>
             </div>
+          )}
+          {favoriteDialogItem?.preset && providerId && (
+            <MakeFavoriteDialog
+              target={{ ...favoriteDialogItem, preset: favoriteDialogItem.preset }}
+              otherDoses={otherDosesFor(favoriteDialogItem)}
+              patientDoses={patientDosesFor(favoriteDialogItem)}
+              patient={session.patient ? { patientId: session.patient.patient_id, name: patientName(session.patient) } : null}
+              providerId={providerId}
+              onClose={() => setFavoriteDialogItem(null)}
+              onSaved={() => queryClient.invalidateQueries({ queryKey: ['provider-favorites'] })}
+              focusAfterSave={() => frequentButtons.current.get(frequentItemKey(favoriteDialogItem))}
+            />
           )}
 
           {deleteError && (

@@ -32,6 +32,7 @@ const sendSmsMock = jest.fn()
 jest.mock('@/lib/intake/sms', () => ({ sendIntakeLinkSms: (...a: unknown[]) => sendSmsMock(...a) }))
 
 import { POST } from '../route'
+import { logPhiAccess, logPhiWriteNotCompleted } from '@/lib/audit/phi-access'
 
 const req = () => new Request(`https://app.test/api/patients/${PATIENT_ID}/intake-link`, {
   method: 'POST', headers: { origin: 'https://app.test', host: 'app.test' },
@@ -148,5 +149,46 @@ describe('GET carries an open "possible duplicate" flag', () => {
           possible_duplicate_of: 'b3000000-0000-4000-8000-000000000001', possible_duplicate_dismissed_at: '2026-10-09T00:00:00Z', duplicate: { first_name: 'Jane', last_name: 'Smyth' } } }
       : undefined)
     expect((await (await GET(req(), ctx())).json()).duplicate).toBeNull()
+  })
+})
+
+// B's verification of L1 (B15): the new link is a write to the patient, so
+// its log row is written BEFORE the link is made, and nothing is made or
+// texted when the row cannot be written.
+describe('POST is logged before the link is made (L1)', () => {
+  const phiLog = jest.mocked(logPhiAccess)
+  const notCompleted = jest.mocked(logPhiWriteNotCompleted)
+  beforeEach(() => { phiLog.mockClear(); notCompleted.mockClear() })
+
+  it('the row is written before the link is created or texted', async () => {
+    let linksAtLog = -1, textsAtLog = -1
+    phiLog.mockImplementationOnce(async () => { linksAtLog = createLinkMock.mock.calls.length; textsAtLog = sendSmsMock.mock.calls.length; return true })
+    expect((await POST(req(), ctx())).status).toBe(200)
+    expect([linksAtLog, textsAtLog]).toEqual([0, 0])
+    expect(phiLog).toHaveBeenCalledWith(expect.objectContaining({ action: 'update', resource: 'patient', patientId: PATIENT_ID, clinicId: CLINIC_ID }))
+    expect(notCompleted).not.toHaveBeenCalled()
+  })
+
+  it('the row cannot be written: 503, the standard message, no link made and nothing texted', async () => {
+    phiLog.mockResolvedValueOnce(false)
+    const res = await POST(req(), ctx())
+    expect(res.status).toBe(503)
+    expect((await res.json()).error).toBe('This change could not be recorded. Nothing was changed. Try again.')
+    expect(createLinkMock).not.toHaveBeenCalled()
+    expect(sendSmsMock).not.toHaveBeenCalled()
+  })
+
+  it('the link cannot be made after logging: 503 and a not_completed row for the same entry', async () => {
+    createLinkMock.mockResolvedValueOnce({ ok: false })
+    expect((await POST(req(), ctx())).status).toBe(503)
+    expect(notCompleted).toHaveBeenCalledTimes(1)
+    expect(notCompleted).toHaveBeenCalledWith(phiLog.mock.calls[0]![0])
+    expect(sendSmsMock).not.toHaveBeenCalled()
+  })
+
+  it('a refused request (intake already finished) logs nothing', async () => {
+    patient('complete')
+    expect((await POST(req(), ctx())).status).toBe(409)
+    expect(phiLog).not.toHaveBeenCalled()
   })
 })

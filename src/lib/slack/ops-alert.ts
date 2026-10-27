@@ -68,12 +68,19 @@ const TITLES = {
   stripe_refund_unsynced:      '⚠️ Stripe refund needs ops review',
   stripe_dispute_lost:         '🔴 Stripe dispute lost',
   status_history_write_failed: '🔴 Order status change has no audit row',
+  phi_access_log_write_failed: '🔴 A PHI access was not recorded in the audit log',
+  // C's review D5: ops opened an order with the emergency (break-glass) reason.
+  emergency_access:            '🚨 Emergency (break-glass) access to a patient order',
   submissions_paused:          '⏸️ Pharmacy submissions are turned off: paid orders are waiting',
   order_stuck:                 '⚠️ Order stuck: needs ops',
   queued_alert:                '⚠️ Ops alert',
   daily_digest:                '📊 CompoundIQ daily digest',
   reconciliation_mismatch:     '🔴 Stripe reconciliation: the ledger and Stripe disagree',
   reconciliation_failed:       '🔴 Stripe reconciliation could not run',
+  // Security B12: failed sign-in monitoring (lib/auth/sign-in-monitor).
+  auth_failures_account:       '🔐 Repeated failed sign-ins on one account',
+  auth_failures_ip:            '🔐 Many failed sign-ins from one IP address',
+  auth_failure_privileged:     '🔐 Failed sign-in on an admin account',
 } as const
 export type OpsAlertType = keyof typeof TITLES
 
@@ -110,6 +117,8 @@ const DETAIL_LABELS = {
   failed_at:         'At',
   count:             'Orders waiting',
   alert_type:        'Alert type',
+  // C-2026-10-25-17 (B15): the audit-log write that failed (an action code, never data).
+  audit_action:      'Audit action',
   severity:          'Severity',
   // Stripe reconciliation: the day, counts, and Stripe IDs with amounts (minor units).
   recon_date:        'Day (UTC)',
@@ -137,6 +146,11 @@ const DETAIL_LABELS = {
   m16_webhook_retry_count:             'Webhook retries',
   m17_failures_by_endpoint:            'Failures by endpoint',
   unavailable_metrics:                 'Metrics that could not be read',
+  // Failed sign-ins: never the email or the IP, only keyed-hash prefixes.
+  sign_in_step:      'Step',
+  account_ref:       'Account (keyed hash)',
+  ip_ref:            'IP address (keyed hash)',
+  window_minutes:    'Window (minutes)',
 } as const
 export type OpsAlertDetailKey = keyof typeof DETAIL_LABELS
 export type OpsAlertDetailValue = string | number | boolean | null | undefined
@@ -154,11 +168,13 @@ const NOTES = {
   unmatched:            'UNMATCHED: manual review required.',
   clinic_not_notified:  '⚠️ The clinic was not notified in-app. Contact the clinic directly.',
   submissions_off:      'Nothing is sent to any pharmacy until PHARMACY_SUBMISSIONS_ENABLED=true.',
+  emergency_review:     'Post-event review due within 24 hours: Ops, Access review, resource ops_reason_emergency (docs/compliance/emergency-access-procedure.md).',
   free_text_withheld:   'Pharmacy and patient text is never sent to Slack. Open the order in ops for the details.',
   reconciliation_review: 'Record-only: no money was moved. The full list is in reconciliation_runs; compare it with the Stripe dashboard.',
   stuck_no_auto_action: 'Nothing was changed automatically. Open the order in ops to resubmit, reroute or refund.',
   unknown_tier_no_auto_fax: 'Integration tier unknown: not faxed automatically, as nothing says this pharmacy takes a fax. Check its setup, then resolve the order by hand.',
   portal_no_auto_fax:   'Portal order: not faxed automatically, as the portal submission may already have reached the pharmacy. Check the portal, then resolve the order by hand.',
+  auth_review:          'No email or IP address is sent to Slack. Open Ops, Security for the account and the IP, and check with the account holder.',
 } as const
 export type OpsAlertNote = keyof typeof NOTES
 

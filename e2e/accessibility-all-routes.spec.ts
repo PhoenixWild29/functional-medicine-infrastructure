@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { cleanupTestOrders, seedStaticData, TEST_IDS, TEST_USERS } from './fixtures/seed'
+import { e2ePassword } from './fixtures/test-password'
 
 // ============================================================
 // WCAG 2.1 AA on every route a user can reach, per role, real browser
@@ -50,7 +51,7 @@ const AUTH_DIR = join('test-results', '.auth-a11y')
 
 // When e2e/fixtures/shard.ts lands (e2e-shard-ready), wrap this email in
 // shardEmail() so each shard has its own; nothing else here is fixed.
-const MA_USER = { email: 'test-a11y-ma@compoundiq.test', password: 'TestPassword123!' }
+const MA_USER = { email: 'test-a11y-ma@compoundiq.test', get password() { return e2ePassword() } }
 
 function e2eService() {
   return createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)

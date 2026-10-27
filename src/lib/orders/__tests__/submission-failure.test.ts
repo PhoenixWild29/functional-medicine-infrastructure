@@ -57,3 +57,24 @@ describe('submissionFailureNotice', () => {
     for (const c of codes) expect(submissionFailureNotice({ pharmacyName: 'P', plainReason: plainFailureReason(c) })).not.toContain('—')
   })
 })
+
+describe('B review T6: a refusal that needs a new prescription says so', () => {
+  it.each(['allergies_changed', 'signature_mismatch', 'unsigned_order', 'pharmacy_mismatch'])('%s: CompoundIQ cancels and refunds, the clinic prescribes again', code => {
+    const notice = submissionFailureNotice({ pharmacyName: 'Strive Pharmacy', plainReason: plainFailureReason(code), code })
+    // D's finding 5: a clinic cannot cancel a paid order; ops cancel_refund does.
+    expect(notice).toContain('CompoundIQ ops will cancel and refund it')
+    expect(notice).not.toMatch(/^.*\bCancel this prescription/)
+    expect(notice).not.toContain('will re-route or retry')
+    expect(notice).not.toMatch(/—/)
+  })
+
+  it('the allergy case reads in full', () => {
+    expect(submissionFailureNotice({ pharmacyName: 'Strive Pharmacy', plainReason: plainFailureReason('allergies_changed'), code: 'allergies_changed' }))
+      .toBe("Sending to Strive Pharmacy failed: the patient's allergies changed after the prescription was signed. CompoundIQ ops will cancel and refund it; then prescribe it again, so the prescriber signs it with the current allergies.")
+  })
+
+  it('other codes keep the retry wording', () => {
+    expect(submissionFailureNotice({ pharmacyName: null, plainReason: plainFailureReason('fax_send_failed'), code: 'fax_send_failed' }))
+      .toContain('will re-route or retry')
+  })
+})

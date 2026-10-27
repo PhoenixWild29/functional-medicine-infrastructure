@@ -34,6 +34,10 @@ export function getBrowserContextOptions(): BrowserContextOptions {
     // allow MITM interception of portal credentials on internet-accessible envs.
     // Set PLAYWRIGHT_IGNORE_HTTPS_ERRORS=true only in local dev, never in staging/preview.
     ignoreHTTPSErrors: process.env['PLAYWRIGHT_IGNORE_HTTPS_ERRORS'] === 'true',
+    // B's review (2026-10-26): a context route does not see what a service
+    // worker answers, so a portal's service worker could bypass the
+    // https-only rule (lib/adapters/transmission-guard enforceHttpsOnly).
+    serviceWorkers: 'block',
   }
 }
 

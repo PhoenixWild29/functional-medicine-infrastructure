@@ -42,6 +42,7 @@ jest.mock('@/lib/auth/checkout-token', () => ({ generateCheckoutToken: (...a: un
 
 import { POST } from '../route'
 import { SMS_CONSENT_TEXT_VERSION, PRIVACY_NOTICE_VERSION } from '@/lib/intake/consent'
+import { logPhiAccess, patientActor } from '@/lib/audit/phi-access'
 
 const VALID = {
   consent: { privacyNotice: true, sms: true },
@@ -254,5 +255,46 @@ describe('duplicate check on submission', () => {
     expect(res.status).toBe(200)
     expect(flagUpdate()).toBeUndefined()
     expect(JSON.stringify(err.mock.calls)).not.toMatch(/Jane|Smith|1985|5550123/)
+  })
+})
+
+// C-2026-10-25-17 (B14/B15): the patient's submission is a write on a
+// known patient (the link names it), so it is logged BEFORE anything is
+// written (the link claim included) with the patient on the link as the
+// actor, and refused (503, nothing changed, the link still open) when the
+// row cannot be written. The page itself shows only the clinic's name, so
+// it logs no view.
+describe('PHI access log', () => {
+  const phi = jest.mocked(logPhiAccess)
+  beforeEach(() => phi.mockClear())
+
+  it('one update / intake row for the patient, before the link is claimed or the patient written', async () => {
+    let loggedBeforeClaim = false
+    claimMock.mockImplementationOnce(async () => { loggedBeforeClaim = phi.mock.calls.length === 1; return true })
+    const res = await POST(req(VALID), ctx())
+    expect(res.status).toBe(200)
+    expect(loggedBeforeClaim).toBe(true)
+    expect(phi).toHaveBeenCalledTimes(1)
+    expect(phi).toHaveBeenCalledWith(expect.objectContaining({
+      actor: patientActor(PATIENT_ID, CLINIC_ID), action: 'update', resource: 'intake', route: '/api/intake/[token]',
+      patientId: PATIENT_ID, clinicId: CLINIC_ID,
+    }))
+    expect(JSON.stringify({ ...phi.mock.calls[0]![0], headers: null })).not.toMatch(/Jane|Smith|1985|Main St|Penicillin/)
+  })
+
+  it('the row cannot be written: 503, the link is not claimed, nothing written', async () => {
+    phi.mockResolvedValueOnce(false)
+    const res = await POST(req(VALID), ctx())
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'This change could not be recorded. Nothing was changed. Try again.' })
+    expect(claimMock).not.toHaveBeenCalled()
+    expect(db.to('patients', 'update')).toHaveLength(0)
+  })
+
+  it('a closed link or an invalid submission: no row', async () => {
+    resolveMock.mockResolvedValueOnce({ state: 'expired' })
+    await POST(req(VALID), ctx())
+    await POST(req({ ...VALID, details: { ...VALID.details, firstName: '' } }), ctx())
+    expect(phi).not.toHaveBeenCalled()
   })
 })

@@ -59,6 +59,8 @@ import { resolveSlasForTransition } from '@/lib/sla/resolver'
 import type { IntegrationTier } from '@/lib/adapters/audit-trail'
 import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { checkOrderLicensure, normalizeFacilityType } from '@/lib/compliance/pharmacy-licensure'
+import { assertOrderTransmittable, isTransmissionRefusedError } from '@/lib/adapters/transmission-guard'
+import { refuseQueuedFax } from '@/lib/adapters/queued-fax-refusal'
 
 // ============================================================
 // CONSTANTS
@@ -371,6 +373,7 @@ async function failSubmission(params: {
       expectedStatus: 'SUBMISSION_PENDING',
       newStatus:      'SUBMISSION_FAILED',
       actor:          'routing_engine',
+      actorRole:      'system',
       metadata:       {
         tier,
         reason,
@@ -423,6 +426,7 @@ async function markFaxQueued(params: {
       expectedStatus: 'SUBMISSION_PENDING',
       newStatus:      'FAX_QUEUED',
       actor:          'routing_engine',
+      actorRole:      'system',
       metadata,
     })
     if (!cas.wasAlreadyTransitioned) {
@@ -478,6 +482,7 @@ export async function routeOrder(params: RouteOrderParams): Promise<RouteOrderRe
     expectedStatus: currentStatus,
     newStatus:      'SUBMISSION_PENDING',
     actor:          'routing_engine',
+    actorRole:      'system',
     metadata:       { pharmacy_id: pharmacyId, attempt: attemptNumber },
   })
   if (claim.wasAlreadyTransitioned) {
@@ -549,6 +554,18 @@ async function submitClaimedOrder(params: {
   const tier = pharmacy.integration_tier
   const pharmacySlug = pharmacy.slug
 
+  // HIPAA B6 / B7: nothing unsigned, and nothing changed since it was
+  // signed, is sent. Checked before any tier is tried, so a refusal never
+  // cascades to fax: SUBMISSION_FAILED with the code as the reason. A read
+  // that fails throws: routeOrder lands it as a routing error.
+  try {
+    await assertOrderTransmittable(createServiceClient(), orderId, { pharmacyId })
+  } catch (err) {
+    if (!isTransmissionRefusedError(err)) throw err
+    await failSubmission({ orderId, pharmacySlug, tier, reason: err.code })
+    return { outcome: 'submission_failed', tier }
+  }
+
   // Compliance C6: a controlled substance is never sent to a pharmacy from
   // CompoundIQ (certified EPCS is required). Checked from the catalog, not
   // only the snapshot, and an order whose schedule cannot be determined is
@@ -616,7 +633,8 @@ async function submitClaimedOrder(params: {
       const msg = err instanceof Error ? err.message : String(err)
       console.error(`[routing-engine] tier4 direct failed | order=${orderId}:`, msg)
       // Tier 4 is the final fallback — no cascade possible
-      await failSubmission({ orderId, pharmacySlug, tier, reason: 'tier4_fax_send_failed', error: msg })
+      const reason = isTransmissionRefusedError(err) ? err.code : 'tier4_fax_send_failed'
+      await failSubmission({ orderId, pharmacySlug, tier, reason, error: msg })
       return { outcome: 'submission_failed', tier }
     }
 
@@ -639,11 +657,15 @@ async function submitClaimedOrder(params: {
   type PrimaryOutcome = 'accepted' | 'manual_review' | 'rejected' | 'exhausted'
   let primaryOutcome: PrimaryOutcome = 'exhausted'
   let primarySubmissionId: string | undefined
+  // Nothing reached the pharmacy because the audit log could not record the
+  // disclosure (C-2026-10-25-17). An audit outage, not a pharmacy failure.
+  let disclosureNotRecorded = false
 
   try {
     if (tier === 'TIER_1_API' || tier === 'TIER_3_SPEC') {
       const result = await submitTier1Api(orderId, pharmacyId, tier)
       primarySubmissionId = result.submissionId
+      disclosureNotRecorded = result.outcome === 'exhausted' && result.errorCode === 'DISCLOSURE_NOT_RECORDED'
       primaryOutcome      = result.outcome === 'accepted' ? 'accepted'
                           : result.outcome === 'rejected' ? 'rejected'
                           : 'exhausted'
@@ -654,6 +676,7 @@ async function submitClaimedOrder(params: {
       primarySubmissionId = result.submissionId
       // BLK-03: distinguish acknowledged (PHARMACY_ACKNOWLEDGED), manual_review (stays SUBMISSION_PENDING),
       // and portal_error (cascade to fax)
+      disclosureNotRecorded = result.outcome === 'portal_error' && result.errorCode === 'DISCLOSURE_NOT_RECORDED'
       primaryOutcome = result.outcome === 'portal_error'   ? 'exhausted'
                      : result.outcome === 'manual_review'  ? 'manual_review'
                      : 'accepted'
@@ -662,6 +685,13 @@ async function submitClaimedOrder(params: {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[routing-engine] dispatch error | order=${orderId} | tier=${tier}:`, msg)
+    // HIPAA B6 / B7 / B17: the adapter refused to send (unsigned, changed
+    // since signing, an http pharmacy URL). Not a pharmacy failure: no
+    // circuit-breaker count and no fax cascade.
+    if (isTransmissionRefusedError(err)) {
+      await failSubmission({ orderId, pharmacySlug, tier, reason: err.code, error: msg })
+      return { outcome: 'submission_failed', tier }
+    }
     primaryOutcome = 'exhausted'
   }
 
@@ -676,6 +706,7 @@ async function submitClaimedOrder(params: {
         expectedStatus: 'SUBMISSION_PENDING',
         newStatus:      'PHARMACY_ACKNOWLEDGED',
         actor:          'routing_engine',
+        actorRole:      'system',
         metadata:       { tier, submission_id: primarySubmissionId },
       })
       if (!cas.wasAlreadyTransitioned) {
@@ -712,6 +743,7 @@ async function submitClaimedOrder(params: {
         expectedStatus: 'SUBMISSION_PENDING',
         newStatus:      'REROUTE_PENDING',
         actor:          'routing_engine',
+        actorRole:      'system',
         metadata:       { tier, submission_id: primarySubmissionId, reason: 'pharmacy_rejected' },
       })
       if (!cas.wasAlreadyTransitioned) await resolveSlasForTransition(orderId, 'REROUTE_PENDING')
@@ -735,7 +767,11 @@ async function submitClaimedOrder(params: {
 
   // BLK-04: when the adapter threw before creating a submission, fall back to orderId
   // to ensure the circuit breaker always gets incremented on hard failures.
-  await recordCircuitFailure({
+  // An unrecorded disclosure sent nothing, so it says nothing about the
+  // pharmacy and is not counted (the audit failure is alerted on its own).
+  if (disclosureNotRecorded) {
+    console.warn(`[routing-engine] disclosure not recorded, circuit untouched | order=${orderId} | tier=${tier}`)
+  } else await recordCircuitFailure({
     pharmacyId,
     submissionId: primarySubmissionId ?? orderId,
     orderId,
@@ -766,7 +802,7 @@ async function submitClaimedOrder(params: {
       orderId,
       pharmacySlug,
       tier,
-      reason:  `${cascadeReason}; cascade fax failed`,
+      reason:  isTransmissionRefusedError(faxErr) ? faxErr.code : `${cascadeReason}; cascade fax failed`,
       error:   faxMsg,
       ...withSubmission,
     })
@@ -796,7 +832,8 @@ async function submitClaimedOrder(params: {
 
 export interface SubmitQueuedFaxResult {
   /** not_licensed: C5, the pharmacy cannot lawfully fill it; moved to FAX_FAILED, nothing sent. */
-  outcome:       'accepted' | 'fax_failed' | 'not_claimed' | 'submissions_disabled' | 'not_licensed'
+  /** refused: HIPAA B6 / B7, unsigned or changed since signing; moved to FAX_FAILED, nothing sent. */
+  outcome:       'accepted' | 'fax_failed' | 'not_claimed' | 'submissions_disabled' | 'not_licensed' | 'refused'
   submissionId?: string
 }
 
@@ -853,6 +890,7 @@ export async function submitQueuedFax(params: {
       expectedStatus: 'FAX_QUEUED',
       newStatus:      'FAX_FAILED',
       actor:          'routing_engine',
+      actorRole:      'system',
       metadata:       { reason: 'pharmacy_not_licensed', error: licensure.message },
     }).catch(casErr =>
       console.error('[routing-engine] CAS FAX_FAILED (not licensed) error:', casErr)
@@ -870,6 +908,16 @@ export async function submitQueuedFax(params: {
     return { outcome: 'not_licensed' }
   }
 
+  // HIPAA B6 / B7: the same rule as routeOrder. A read that fails throws to
+  // the caller; nothing is sent blind.
+  try {
+    await assertOrderTransmittable(supabase, orderId, { pharmacyId })
+  } catch (err) {
+    if (!isTransmissionRefusedError(err)) throw err
+    await refuseQueuedFax({ orderId, pharmacySlug: faxPharmacy?.slug ?? pharmacyId, code: err.code, actor: 'routing_engine' })
+    return { outcome: 'refused' }
+  }
+
   await upsertFaxDeliverySla(orderId)
 
   try {
@@ -880,11 +928,17 @@ export async function submitQueuedFax(params: {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[routing-engine] ops fax failed | order=${orderId}:`, msg)
 
+    if (isTransmissionRefusedError(err)) {
+      await refuseQueuedFax({ orderId, pharmacySlug: faxPharmacy?.slug ?? pharmacyId, code: err.code, actor: 'routing_engine' })
+      return { outcome: 'refused' }
+    }
+
     await casTransition({
       orderId,
       expectedStatus: 'FAX_QUEUED',
       newStatus:      'FAX_FAILED',
       actor:          'routing_engine',
+      actorRole:      'system',
       metadata:       { reason: 'ops_fax_send_failed', error: msg },
     }).catch(casErr =>
       console.error('[routing-engine] CAS FAX_FAILED (ops fax) error:', casErr)

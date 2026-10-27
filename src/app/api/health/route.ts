@@ -10,14 +10,34 @@
 // fast and avoids DB connection noise during deploys.
 
 import { NextResponse } from 'next/server'
+import { phiAuditSecretConfigured } from '@/lib/audit/phi-access'
+import { bindingKeyRequired, rxBindingKeyConfigured } from '@/lib/orders/signature-binding'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+// C-2026-10-25-17 (B15): in production the check fails (503) when
+// PHI_ACCESS_LOG_HASH_SECRET is not set: the PHI access log would store no
+// email, IP or user agent hashes. Preview and local runs report it without
+// failing.
+// B's review T1, D's verification: on any Vercel deployment (production or
+// preview), or any server not in local test or development mode, the check
+// fails (503) when RX_BINDING_SECRET is not set: nothing can be signed,
+// rerouted or sent. Local test and development runs report it without failing.
+// Only "set" or "missing" is reported for either, never the value.
 export function GET() {
+  const secret = phiAuditSecretConfigured() ? 'set' : 'missing'
+  const rxBinding = rxBindingKeyConfigured() ? 'set' : 'missing'
+  // Review L10: production on Vercel, or a production run off Vercel
+  // (NODE_ENV production with no VERCEL_ENV). A Vercel preview build also
+  // has NODE_ENV production, so VERCEL_ENV decides there.
+  const vercelEnv = process.env['VERCEL_ENV']
+  const production = vercelEnv ? vercelEnv === 'production' : process.env['NODE_ENV'] === 'production'
+  const ok = !(production && secret === 'missing') && !(bindingKeyRequired() && rxBinding === 'missing')
   return NextResponse.json({
-    ok:        true,
+    ok,
     timestamp: new Date().toISOString(),
     version:   process.env['VERCEL_GIT_COMMIT_SHA']?.slice(0, 7) ?? 'local',
-  })
+    checks:    { phi_audit_hash_secret: secret, rx_binding_secret: rxBinding },
+  }, { status: ok ? 200 : 503 })
 }

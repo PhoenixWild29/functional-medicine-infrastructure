@@ -85,6 +85,13 @@ jobs:
   test:
     name: Unit Tests (Jest)
     runs-on: ubuntu-latest
+    # A backstop for a hung test (B-2026-10-26-10). Without it a hang runs to
+    # GitHub's 6-hour default. The full suite with coverage took 35 min
+    # (2,106 s, 3 workers) on a heavily loaded 16-core dev machine, so an hour
+    # leaves room; a normal CI run is well under it. No test may block its
+    # worker synchronously (no execFileSync / spawnSync): jest's per-test
+    # timeout cannot fire while the event loop is blocked.
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -368,11 +375,22 @@ jobs:
           # "Drop a face sheet". e2e/face-sheet-fill.spec.ts answers the read
           # in the browser (page.route), so no request reaches Anthropic.
           ANTHROPIC_API_KEY: 'sk-ant-e2e-placeholder-never-used'
+          # Security B12/B15: a fixed E2E-only key for the audit hashes
+          # (lib/audit/keyed-hash), so failed sign-ins are counted per
+          # account and e2e/hipaa-safeguards.spec.ts can match the alert's
+          # keyed-hash prefix. A placeholder, not a secret: the E2E project
+          # holds test data only.
+          PHI_ACCESS_LOG_HASH_SECRET: 'e2e-placeholder-audit-hash-key-not-a-secret'
           # WO-99: batch signing forms one payment group per patient, as in
           # production (flag on since 2026-06-14). The E2E clinic's Connect
           # account is poc_placeholder, so the group PaymentIntent carries no
           # transfer, and no test ever confirms it — nothing is charged.
           PHASE_C_GROUPS_ENABLED: 'true'
+          # HIPAA B7: the app runs under `next start` (NODE_ENV=production),
+          # where the prescription binding key is required. An E2E-only value,
+          # not a secret: the E2E project holds test data only, and production
+          # and preview have their own RX_BINDING_SECRET (docs/ops/rx-binding-key.md).
+          RX_BINDING_SECRET: 'e2e-only-rx-binding-key-not-a-secret-0123456789'
           # ── Misc ─────────────────────────────────────────────────
           NEXT_TELEMETRY_DISABLED: '1'
           # PLAYWRIGHT_BASE_URL intentionally omitted — playwright.config.ts

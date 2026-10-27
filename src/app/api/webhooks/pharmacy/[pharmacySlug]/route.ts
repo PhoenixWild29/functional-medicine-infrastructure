@@ -366,6 +366,7 @@ async function handleOrderConfirmed(
     expectedStatus: 'SUBMISSION_PENDING',
     newStatus: 'PHARMACY_ACKNOWLEDGED',
     actor: 'pharmacy_webhook',
+    actorRole: 'system',
     metadata: { external_order_id: envelope.orderId },
   })
 
@@ -440,6 +441,7 @@ async function handleOrderCompounding(
     expectedStatus: 'PHARMACY_ACKNOWLEDGED',
     newStatus: 'PHARMACY_COMPOUNDING',
     actor: 'pharmacy_webhook',
+    actorRole: 'system',
     metadata: { external_order_id: envelope.orderId },
   })
 
@@ -530,6 +532,7 @@ async function handleOrderShipped(
       expectedStatus: 'PHARMACY_ACKNOWLEDGED',
       newStatus: 'PHARMACY_COMPOUNDING',
       actor: 'pharmacy_webhook',
+      actorRole: 'system',
       metadata: { external_order_id: envelope.orderId, reason: 'implicit_from_shipped' },
     }).catch(err =>
       console.warn(`[pharmacy-webhook] order.shipped: intermediate CAS ACKNOWLEDGED→COMPOUNDING non-fatal:`, err)
@@ -539,6 +542,7 @@ async function handleOrderShipped(
       expectedStatus: 'PHARMACY_COMPOUNDING',
       newStatus: 'READY_TO_SHIP',
       actor: 'pharmacy_webhook',
+      actorRole: 'system',
       metadata: { external_order_id: envelope.orderId, reason: 'implicit_from_shipped' },
     }).catch(err =>
       console.warn(`[pharmacy-webhook] order.shipped: intermediate CAS COMPOUNDING→READY_TO_SHIP non-fatal:`, err)
@@ -550,6 +554,7 @@ async function handleOrderShipped(
       expectedStatus: 'PHARMACY_COMPOUNDING',
       newStatus: 'READY_TO_SHIP',
       actor: 'pharmacy_webhook',
+      actorRole: 'system',
       metadata: { external_order_id: envelope.orderId, reason: 'implicit_from_shipped' },
     }).catch(err =>
       console.warn(`[pharmacy-webhook] order.shipped: intermediate CAS COMPOUNDING→READY_TO_SHIP non-fatal:`, err)
@@ -561,6 +566,7 @@ async function handleOrderShipped(
       expectedStatus: 'PHARMACY_PROCESSING',
       newStatus: 'READY_TO_SHIP',
       actor: 'pharmacy_webhook',
+      actorRole: 'system',
       metadata: { external_order_id: envelope.orderId, reason: 'implicit_from_shipped' },
     }).catch(err =>
       console.warn(`[pharmacy-webhook] order.shipped: intermediate CAS PROCESSING→READY_TO_SHIP non-fatal:`, err)
@@ -574,6 +580,7 @@ async function handleOrderShipped(
     expectedStatus: 'READY_TO_SHIP',
     newStatus: 'SHIPPED',
     actor: 'pharmacy_webhook',
+    actorRole: 'system',
     metadata: {
       external_order_id: envelope.orderId,
       tracking_number: trackingNumber,
@@ -644,6 +651,7 @@ async function handleOrderRejected(
     expectedStatus: order.status,
     newStatus: 'PHARMACY_REJECTED',
     actor: 'pharmacy_webhook',
+    actorRole: 'system',
     metadata: {
       external_order_id: envelope.orderId,
       rejection_reason: envelope.data?.rejectionReason ?? null,

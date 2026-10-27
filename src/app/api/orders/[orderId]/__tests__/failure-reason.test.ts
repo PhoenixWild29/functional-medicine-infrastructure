@@ -119,3 +119,38 @@ it.each([
   const body = await (await call()).json()
   expect(body.failure).toEqual(expect.objectContaining({ code, plainReason }))
 })
+
+describe('B review T6: a send the guard refused shows its own reason', () => {
+  const refused = (reason: string, at = '2026-10-26T09:00:00Z') => (c: ScriptedCall) => {
+    if (c.table === 'order_status_history') return { data: [{ new_status: 'SUBMISSION_FAILED', created_at: at, metadata: { reason, tier: 'TIER_4_FAX' } }] }
+    return failedOrder('SUBMISSION_FAILED', null)(c)
+  }
+
+  it("allergies changed after signing: the clinic is told why, with the order's pharmacy", async () => {
+    db = scriptedDb(refused('allergies_changed'))
+    const body = await (await call()).json()
+    expect(body.failure).toEqual({
+      code: 'allergies_changed', plainReason: "the patient's allergies changed after the prescription was signed",
+      pharmacyName: 'Strive Pharmacy', at: '2026-10-26T09:00:00Z',
+    })
+    const h = db.to('order_status_history', 'select')[0]!
+    expect(h.filters).toEqual(expect.objectContaining({ order_id: ORDER }))
+  })
+
+  it('a refusal newer than the last failed submission wins; an older one does not', async () => {
+    db = scriptedDb(c => (c.table === 'order_status_history'
+      ? { data: [{ new_status: 'SUBMISSION_FAILED', created_at: '2026-10-24T09:00:00Z', metadata: { reason: 'signature_mismatch' } }] }
+      : failedOrder()(c)))
+    expect((await (await call()).json()).failure.code).toBe('NETWORK_ERROR')
+    db = scriptedDb(c => (c.table === 'order_status_history'
+      ? { data: [{ new_status: 'SUBMISSION_FAILED', created_at: '2026-10-25T09:00:00Z', metadata: { reason: 'signature_mismatch' } }] }
+      : failedOrder()(c)))
+    expect((await (await call()).json()).failure.code).toBe('signature_mismatch')
+  })
+
+  it('a history reason that is not a guard refusal is ignored (never shown raw)', async () => {
+    db = scriptedDb(refused('routing_error: something internal'))
+    const body = await (await call()).json()
+    expect(body.failure.code).toBeNull()
+  })
+})

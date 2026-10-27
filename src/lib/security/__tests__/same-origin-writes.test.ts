@@ -50,6 +50,9 @@ const ROUTES: Array<[string, () => Promise<Handler>, Record<string, string>, str
   ['POST /api/ops/fax/[faxId]/action', async () => (await import('@/app/api/ops/fax/[faxId]/action/route')).POST as unknown as Handler, { faxId: ID }, 'Cross-site requests are not permitted'],
   ['POST /api/ops/orders/[orderId]/action', async () => (await import('@/app/api/ops/orders/[orderId]/action/route')).POST as unknown as Handler, { orderId: ID }, 'Cross-site requests are not permitted'],
   ['POST /api/ops/catalog/upload', async () => (await import('@/app/api/ops/catalog/upload/route')).POST as unknown as Handler, {}, 'Cross-site requests are not permitted'],
+  // Saved clinical difference statements (coverage gap 6).
+  ['POST /api/clinical-statements', async () => (await import('@/app/api/clinical-statements/route')).POST as unknown as Handler, {}, CROSS_SITE],
+  ['DELETE /api/clinical-statements', async () => (await import('@/app/api/clinical-statements/route')).DELETE as unknown as Handler, {}, CROSS_SITE],
   // Security follow-ups 3: every other cookie-authenticated write.
   ['POST /api/ops/adapters/[pharmacyId]/action', async () => (await import('@/app/api/ops/adapters/[pharmacyId]/action/route')).POST as unknown as Handler, { pharmacyId: ID }, CROSS_SITE],
   ['POST /api/ops/catalog/item', async () => (await import('@/app/api/ops/catalog/item/route')).POST as unknown as Handler, {}, CROSS_SITE],
@@ -95,6 +98,13 @@ const ROUTES: Array<[string, () => Promise<Handler>, Record<string, string>, str
   ['DELETE /api/integrations/keragon/connection', async () => (await import('@/app/api/integrations/keragon/connection/route')).DELETE as unknown as Handler, {}, 'Forbidden'],
   ['POST /api/integrations/keragon/connection/secret', async () => (await import('@/app/api/integrations/keragon/connection/secret/route')).POST as unknown as Handler, {}, 'Forbidden'],
 ]
+
+// Each case loads its route (await import) inside the test, and the first
+// load compiles the route and its import tree: up to 3.2 s for one case in a
+// full run, against jest's 5 s per-test default (B-2026-10-26-10). Load
+// every route once here, with room for cold compiles; the cases then get them
+// from the module registry (nothing here resets modules).
+beforeAll(async () => { await Promise.all(ROUTES.map(([, load]) => load())) }, 180_000)
 
 describe.each(ROUTES)('%s', (_name, load, params, wording) => {
   it.each(['same-site', 'cross-site'])('Sec-Fetch-Site %s: 403 with its wording, before any session read', async site => {

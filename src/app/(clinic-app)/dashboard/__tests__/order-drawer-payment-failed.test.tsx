@@ -12,18 +12,6 @@ let historyRows: Array<Record<string, unknown>> = []
 
 jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn(), push: jest.fn() }) }))
 jest.mock('@/lib/notifications', () => ({ notify: { success: jest.fn(), error: jest.fn() } }))
-jest.mock('@/lib/supabase/client', () => ({
-  createBrowserClient: () => ({
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          order: () => ({ then: (resolve: (result: { data: unknown[] }) => void) => resolve({ data: historyRows }) }),
-        }),
-      }),
-    }),
-  }),
-}))
-
 const order: DashboardOrder = {
   orderId:           '45e03578-e208-468d-a35b-ab9bc82320ae',
   patientName:       'Demo, Alex',
@@ -44,7 +32,10 @@ const SIGNED = { old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', changed_by
 const FAILED = { old_status: 'AWAITING_PAYMENT', new_status: 'AWAITING_PAYMENT', changed_by: 'stripe_webhook', created_at: '2026-10-10T10:00:00Z', metadata: { event: 'stripe_payment_failed', failure_code: 'card_declined' } }
 
 beforeAll(() => {
-  global.fetch = jest.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })) as unknown as typeof fetch
+  // The timeline is read through the server route (logged), not the browser client.
+  global.fetch = jest.fn((url: string) => Promise.resolve({
+    ok: true, status: 200, json: () => Promise.resolve(url.endsWith('/timeline') ? { history: historyRows } : {}),
+  })) as unknown as typeof fetch
 })
 
 it('shows the label when the newest row is a failed payment, and keeps the row out of the timeline', async () => {

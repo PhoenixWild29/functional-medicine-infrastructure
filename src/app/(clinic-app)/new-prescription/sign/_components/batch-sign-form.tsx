@@ -24,6 +24,7 @@
 // All or nothing: the server validates every line before it signs any.
 
 import { patientName } from '@/lib/patients/display'
+import { ALLERGIES_REQUIRED_CODE, hasRecordedAllergies } from '@/lib/patients/allergies'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import SignatureCanvas from 'react-signature-canvas'
@@ -45,6 +46,9 @@ import { checkSignature, signatureFromPad, SIGNATURE_REJECTION_COPY, type Signat
 import type { PharmacyShippingRates } from '@/lib/orders/shipping'
 import { formatDiagnosis, syringeOptionLabel, shippingTypeLabel } from '@/lib/orders/rx-details'
 import { userMessage } from '@/lib/errors/user-message'
+import { multiPharmacyWarning } from '@/lib/orders/reroute'
+import { MultiPharmacyNoticeBanner } from '../../_components/multi-pharmacy-notice'
+import { HelpLink } from '@/components/help-link'
 
 function toCurrency(cents: number): string {
   return '$' + (cents / 100).toFixed(2)
@@ -196,6 +200,15 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [serverProblems, setServerProblems] = useState<Problem[]>([])
+  // Coverage gap 9: Sign & Send pressed while a selected patient has
+  // neither allergies nor NKDA recorded (or the server said so). Their
+  // section shows the prompt with the entry; once every selected patient
+  // is recorded, signing continues.
+  const [allergyPrompt, setAllergyPrompt] = useState(false)
+  const notRecorded = (patientId: string, state: Record<string, AllergyState> = allergy) => {
+    const s = state[patientId]
+    return s?.state === 'loaded' && !hasRecordedAllergies(s)
+  }
 
   const lineProblems = new Map<string, Problem[]>()
   const batchProblems: Problem[] = []
@@ -262,6 +275,13 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
         router.push(`/dashboard?sent=${selectedIds.length}`)
         return
       }
+      // Coverage gap 9: no allergies or NKDA on the server's copy. Nothing
+      // was signed; the prompt opens for the patient(s).
+      if (body.code === ALLERGIES_REQUIRED_CODE) {
+        setAllergyPrompt(true)
+        setSubmitting(false)
+        return
+      }
       setServerProblems(body.problems ?? [])
       const message = body.error ?? 'Signing failed.'
       const refused = /nothing was signed/i.test(message) ? message : `${message} Nothing was signed.`
@@ -275,6 +295,8 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
 
   function handleSignAndSend() {
     if (!canSend) return
+    // Coverage gap 9: allergies or NKDA first, asked for in place.
+    if (activePatients.some(p => notRecorded(p.patientId))) { setAllergyPrompt(true); return }
     void send()
   }
 
@@ -297,7 +319,10 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
     <div className="space-y-6">
       {proposal && (
         <section aria-label="The patient's choice" className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-950">
-          <p className="font-semibold">{proposal.summary}</p>
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="font-semibold">{proposal.summary}</p>
+            <HelpLink topic="treatment-plans" />
+          </div>
           <p className="mt-1 text-xs">
             These are the prescriptions the patient chose. Signing sends them one payment link; the items they did not choose are cancelled, never signed.
           </p>
@@ -348,6 +373,9 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
         const chosen = p.lines.filter(l => selected.has(l.orderId))
         const unchosen = p.lines.filter(l => !selected.has(l.orderId))
         const { shipping, totals } = patientBatchTotals(chosen, rates, absorbShipping)
+        // Requirement 15: saved drafts at more than one pharmacy ship, and
+        // charge shipping, once per pharmacy. Same warning as Review.
+        const pharmacyWarning = multiPharmacyWarning(chosen, rates)
         return (
           <section key={p.patientId} className="space-y-3 rounded-lg border border-border p-4" data-testid={`batch-patient-${p.patientId}`}>
             <div className="flex items-start justify-between gap-4">
@@ -362,12 +390,22 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
             <div className="space-y-3" data-testid="draft-safety-checks">
               <AllergyNotice
                 patient={allergyPatient}
-                onSaved={patch => setAllergy(prev => ({
-                  ...prev,
-                  [p.patientId]: patch.allergiesLoadFailed === true
-                    ? { state: 'failed' }
-                    : { state: 'loaded', allergies: patch.allergies, nkda: patch.nkda, updatedAt: patch.allergies_updated_at },
-                }))}
+                prompting={allergyPrompt && chosen.length > 0 && (notRecorded(p.patientId) || !activePatients.some(a => notRecorded(a.patientId)))}
+                onCancelPrompt={() => setAllergyPrompt(false)}
+                onSaved={patch => {
+                  const next: Record<string, AllergyState> = {
+                    ...allergy,
+                    [p.patientId]: patch.allergiesLoadFailed === true
+                      ? { state: 'failed' }
+                      : { state: 'loaded', allergies: patch.allergies, nkda: patch.nkda, updatedAt: patch.allergies_updated_at },
+                  }
+                  setAllergy(next)
+                  // Every selected patient now recorded: signing continues.
+                  if (allergyPrompt && !activePatients.some(a => notRecorded(a.patientId, next))) {
+                    setAllergyPrompt(false)
+                    void send()
+                  }
+                }}
               />
               {chosen.length > 0 && (
                 <DrugInteractionAlerts
@@ -420,6 +458,8 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
                 </button>
               </div>
             )}
+
+            {pharmacyWarning && <MultiPharmacyNoticeBanner notice={pharmacyWarning} />}
 
             {chosen.length > 0 && (
               <div className="rounded-md bg-muted/30 p-3 text-sm" data-testid={`batch-totals-${p.patientId}`}>

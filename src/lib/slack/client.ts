@@ -225,6 +225,31 @@ export function buildStatusHistoryWriteFailedAlert(params: {
   })
 }
 
+/**
+ * B15: a PHI access was not recorded in phi_access_log. Only the error
+ * code, the route pattern (ids masked) and the action: no patient, order
+ * or user id, no row value.
+ */
+export function buildPhiAccessLogFailedAlert(params: { route: string; action: string; code: string }): SafeSlackPayload {
+  return buildOpsAlert({
+    type: 'phi_access_log_write_failed',
+    details: { code: params.code, source: params.route, audit_action: params.action },
+  })
+}
+
+/**
+ * C's review D5: ops opened a patient order with the emergency reason. No
+ * order, patient, clinic or user id: the reviewer finds the rows in Ops,
+ * Access review (resource ops_reason_emergency, that time).
+ */
+export function buildEmergencyAccessAlert(params: { actorRole: string; at: string }): SafeSlackPayload {
+  return buildOpsAlert({
+    type: 'emergency_access',
+    details: { code: 'ops_reason_emergency', actor: params.actorRole, failed_at: params.at },
+    notes: ['emergency_review'],
+  })
+}
+
 /** The only values the Slack "Code" field of an adapter-failure alert may carry. */
 export const ADAPTER_ERROR_CODES = [
   'order_rejected',
@@ -237,6 +262,15 @@ export const ADAPTER_ERROR_CODES = [
   'stripe_dispute',
   'stripe_dispute_group',
   'stripe_transfer_failed',
+  // HIPAA B6 / B7 / B17: a send refused by lib/adapters/transmission-guard.
+  'unsigned_order',
+  'order_not_submittable',
+  'signature_mismatch',
+  'insecure_pharmacy_url',
+  // B's review T1, T2, T6
+  'pharmacy_mismatch',
+  'allergies_changed',
+  'binding_key_missing',
 ] as const
 export type AdapterErrorCode = typeof ADAPTER_ERROR_CODES[number]
 const ADAPTER_ERROR_CODE_SET: ReadonlySet<string> = new Set(ADAPTER_ERROR_CODES)

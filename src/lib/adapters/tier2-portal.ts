@@ -28,12 +28,23 @@
 // logs only selectors, never values. Screenshots contain PHI (patient
 // info on confirmation page) — stored in non-public bucket with 72h TTL.
 //
+// PHI disclosures (C-2026-10-25-17, B14/B15), the system as the actor,
+// each written right before the send and FAIL-CLOSED:
+//   - pharmacy_disclosure before the submit flow fills the portal form.
+//     Not recorded: the form is not filled; the attempt is a portal_error
+//     (the routing engine cascades to fax, which records its own).
+//   - ai_portal_screenshot before the confirmation screenshot goes to
+//     OpenAI. Not recorded: it is not sent; the score is 0, as for an
+//     answer that cannot be read, so the order goes to manual review (the
+//     form was already submitted: never a portal_error that would fax it).
+//
 // Required env vars:
 //   OPENAI_API_KEY          — for AI vision confidence scoring (REQ-PTA-004)
 //   PLAYWRIGHT_HEADLESS     — "true" in production; "false" for local dev
 
 import { assertPharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { assertOrderNotControlled } from '@/lib/orders/controlled-substance'
+import { loadTransmittableOrder, assertSecurePharmacyUrl, assertSecureFlowUrls, enforceHttpsOnly } from '@/lib/adapters/transmission-guard'
 import { chromium } from 'playwright'
 import { createServiceClient } from '@/lib/supabase/service'
 import { shippingAddressFor, type OrderShippingAddressColumns } from '@/lib/adapters/shipping-address'
@@ -42,9 +53,10 @@ import { getBrowserLaunchOptions, getBrowserContextOptions, SCREENSHOT_BUCKET } 
 import { executeFlow } from '@/lib/adapters/portal-flow-executor'
 import type { FlowStep, FlowFieldValues } from '@/lib/adapters/portal-flow-executor'
 import { allergiesForPayload } from '@/lib/patients/allergies'
-import { formatDispenseWithPackage } from '@/lib/orders/rx-details'
+import { dispenseQuantity, formatDispenseWithPackage } from '@/lib/orders/rx-details'
 import { cycleScheduleText } from '@/lib/adapters/transformers'
 import { cyclePatternFromRow } from '@/lib/orders/cycling'
+import { logPhiDisclosure, systemActor, type PhiResource } from '@/lib/audit/phi-access'
 import {
   createSubmissionRecord,
   markSubmitted,
@@ -63,6 +75,14 @@ export interface Tier2PortalResult {
   outcome:          'acknowledged' | 'manual_review' | 'portal_error'
   aiConfidenceScore: number | null
   screenshotUrl:    string | null
+  /** 'DISCLOSURE_NOT_RECORDED' when the form was not filled because its
+   *  disclosure row could not be written (not a portal failure). */
+  errorCode?:       string
+}
+
+/** Thrown before the form is filled when the disclosure is not recorded. */
+class DisclosureNotRecordedError extends Error {
+  readonly code = 'DISCLOSURE_NOT_RECORDED'
 }
 
 // REQ-PTA-004: Auto-accept threshold for AI confidence score
@@ -194,6 +214,11 @@ export async function submitTier2Portal(
   assertPharmacySubmissionsEnabled('Tier 2 portal submission')
   // Compliance C6: never a controlled substance (defence in depth beside routeOrder).
   await assertOrderNotControlled(createServiceClient(), orderId)
+  // HIPAA B6 / B7: signed, in a status that may be sent, unchanged since
+  // signing, to this pharmacy. The one read of the order: the fields typed
+  // into the portal come from this verified row and the signing snapshots
+  // (B's review T2, T3).
+  const sendable = await loadTransmittableOrder(createServiceClient(), orderId, { pharmacyId })
 
   const supabase = createServiceClient()
 
@@ -227,70 +252,44 @@ export async function submitTier2Portal(
     )
   }
 
-  // ── 2. Load order data for form field substitution ─────────
-  const { data: order, error: orderError } = await (supabase
-    .from('orders')
-    .select('order_id, order_number, patient_id, provider_id, medication_snapshot, shipping_address_line1_snapshot, shipping_address_line2_snapshot, shipping_city_snapshot, shipping_zip_snapshot, shipping_state_snapshot, shipping_address_snapshot_at, quantity, sig_text, sig_mode, cycle_on_days, cycle_off_days, days_supply, dispense_quantity, dispense_unit, refills, substitution_allowed, syringe_option, shipping_type, clinical_difference, diagnosis_code, diagnosis_text, special_instructions, package_label, package_count, titration_steps')
-    .eq('order_id', orderId)
-    .single() as unknown as Promise<{
-      data: {
-        order_id: string
-        order_number: string
-        patient_id: string
-        provider_id: string | null
-        medication_snapshot: Record<string, unknown> | null
-        quantity: number | null
-        sig_text: string | null
-        // WO-96
-        days_supply: number | null
-        dispense_quantity: number | null
-        dispense_unit: string | null
-        refills: number | null
-        substitution_allowed: boolean | null
-        syringe_option: string | null
-        shipping_type: string | null
-        clinical_difference: string | null
-        diagnosis_code: string | null
-        diagnosis_text: string | null
-        special_instructions: string | null
-        // WO-101a
-        titration_steps: unknown
-        sig_mode: string | null
-        cycle_on_days: number | null
-        cycle_off_days: number | null
-        package_label: string | null
-        package_count: number | null
-      } & OrderShippingAddressColumns | null
-      error: Error | null
-    }>)
+  // HIPAA B17: https only, checked before the portal credentials are read.
+  assertSecurePharmacyUrl(config.portal_url, { orderId, pharmacyId, what: 'portal URL' })
+  // The flows' own navigate steps too: credentials are typed into those pages.
+  assertSecureFlowUrls([config.login_flow, config.submit_flow], { orderId, pharmacyId })
 
-  if (orderError || !order) {
-    throw new Error(
-      `[tier2-portal] order ${orderId} not found: ${orderError?.message ?? 'no data'}`
-    )
-  }
-
-  const { data: patient, error: patientError } = await supabase
-    .from('patients')
-    .select('first_name, last_name, date_of_birth, address_line1, address_line2, city, state, zip, allergies, nkda')
-    .eq('patient_id', order.patient_id)
-    .maybeSingle()
-  if (patientError) {
-    throw new Error(`[tier2-portal] patient ${order.patient_id} could not be read: ${patientError.message}`)
-  }
-
-  const { data: provider, error: providerError } = await supabase
-    .from('providers')
-    .select('first_name, last_name, npi_number, dea_number')
-    .eq('provider_id', order.provider_id!)
-    .maybeSingle()
-  if (providerError) {
-    throw new Error(`[tier2-portal] provider ${order.provider_id} could not be read: ${providerError.message}`)
-  }
-
-  if (!patient || !provider) {
-    throw new Error(`[tier2-portal] patient or provider not found for order ${orderId}`)
-  }
+  // ── 2. The order, patient and prescriber: the verified row and snapshots ──
+  type OrderRow = {
+    order_id: string
+    order_number: string
+    patient_id: string
+    clinic_id: string
+    provider_id: string | null
+    medication_snapshot: Record<string, unknown> | null
+    quantity: number | null
+    sig_text: string | null
+    // WO-96
+    days_supply: number | null
+    dispense_quantity: number | null
+    dispense_unit: string | null
+    refills: number | null
+    substitution_allowed: boolean | null
+    syringe_option: string | null
+    shipping_type: string | null
+    clinical_difference: string | null
+    diagnosis_code: string | null
+    diagnosis_text: string | null
+    special_instructions: string | null
+    // WO-101a
+    titration_steps: unknown
+    sig_mode: string | null
+    cycle_on_days: number | null
+    cycle_off_days: number | null
+    package_label: string | null
+    package_count: number | null
+  } & OrderShippingAddressColumns
+  const order = sendable.order as unknown as OrderRow
+  const patient = sendable.patient
+  const provider = sendable.prescriber
 
   // ── 3. Create audit trail record ───────────────────────────
   const submissionId = await createSubmissionRecord({
@@ -349,7 +348,9 @@ export async function submitTier2Portal(
     medicationName:   String(med?.medication_name ?? ''),
     medicationForm:   String(med?.form ?? ''),
     medicationDose:   String(med?.dose ?? ''),
-    quantity:         String(order.quantity ?? ''),
+    // {quantity} with {quantity_unit}: units for counted forms, containers for measured ones.
+    quantity:         String(dispenseQuantity(order).quantity),
+    quantity_unit:    dispenseQuantity(order).unit,
     sigText:          order.sig_text ?? '',
     // WO-96 Rx detail fields — available to portal flow steps as
     // {daysSupply}, {dispenseQuantity}, {refills}, {daw}, … placeholders.
@@ -376,6 +377,16 @@ export async function submitTier2Portal(
     cycleSchedule:       cycleScheduleText(cyclePatternFromRow(order), order.days_supply),
   }
 
+  // One disclosure row before PHI leaves (fail-closed: false means do not send).
+  const recordDisclosure = (resource: PhiResource) => logPhiDisclosure({
+    actor:     systemActor(order.clinic_id ?? null),
+    resource,
+    route:     '/adapters/tier2-portal',
+    orderId,
+    patientId: order.patient_id,
+    clinicId:  order.clinic_id ?? null,
+  })
+
   // ── 6. Mark SUBMITTED (pre-browser) ───────────────────────
   await markSubmitted(submissionId, {
     portal_url:  config.portal_url,
@@ -396,6 +407,9 @@ export async function submitTier2Portal(
 
   try {
     context = await browser.newContext(getBrowserContextOptions())
+    // B's review T5: every request of this browser is https, redirects and
+    // form posts included; the executor also refuses to type on an http page.
+    await enforceHttpsOnly(context)
     page    = await context.newPage()
 
     // ── 7a. Execute login flow ─────────────────────────────
@@ -424,6 +438,9 @@ export async function submitTier2Portal(
       throw new Error('[tier2-portal] submit_flow is empty — portal cannot be automated')
     }
 
+    if (!(await recordDisclosure('pharmacy_disclosure'))) {
+      throw new DisclosureNotRecordedError('[tier2-portal] the disclosure to the pharmacy could not be recorded; the form was not filled')
+    }
     const submitResults = await executeFlow(page, submitSteps, creds, fieldValues)
 
     // ── 7c. Capture confirmation screenshot ───────────────
@@ -437,7 +454,14 @@ export async function submitTier2Portal(
     screenshotUrl = await uploadScreenshot(orderId, submissionId, 'confirmation', confirmationBytes)
 
     // ── 7d. AI confidence scoring (REQ-PTA-004) ───────────
-    aiConfidenceScore = await scoreConfirmationScreenshot(confirmationBytes)
+    // Fail-closed: the screenshot shows PHI. Unrecorded, it is not sent and
+    // scores 0 (manual review), as an answer that cannot be read does.
+    if (await recordDisclosure('ai_portal_screenshot')) {
+      aiConfidenceScore = await scoreConfirmationScreenshot(confirmationBytes)
+    } else {
+      console.warn(`[tier2-portal] screenshot disclosure not recorded; not scored | order=${orderId}`)
+      aiConfidenceScore = 0
+    }
 
     console.info(
       `[tier2-portal] AI score=${aiConfidenceScore.toFixed(2)} | order=${orderId} | threshold=${AI_CONFIDENCE_THRESHOLD}`
@@ -494,6 +518,7 @@ export async function submitTier2Portal(
       outcome:           'portal_error',
       aiConfidenceScore: null,
       screenshotUrl:     errorScreenshotUrl ?? null,
+      ...(err instanceof DisclosureNotRecordedError ? { errorCode: err.code } : {}),
     }
 
   } finally {

@@ -180,6 +180,7 @@ export async function handleGroupPaymentSucceeded(
         expectedStatus: 'AWAITING_PAYMENT',
         newStatus: 'PAID_PROCESSING',
         actor: 'stripe_webhook_group',
+        actorRole: 'system',
         metadata: {
           stripe_payment_intent_id: paymentIntent.id,
           payment_group_id: groupId,

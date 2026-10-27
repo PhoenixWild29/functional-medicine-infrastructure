@@ -16,6 +16,7 @@
 import { GET, PATCH, POST } from '../route'
 import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
 import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
+import { logPhiWriteNotCompleted } from '@/lib/audit/phi-access'
 
 const CLINIC_ID   = 'aaaaaaaa-aaaa-4aaa-9aaa-aaaaaaaaaaaa'
 const PATIENT_ID  = 'a3000000-0000-0000-0000-000000000001'
@@ -183,6 +184,19 @@ describe('PATCH', () => {
     expect(updateMock).not.toHaveBeenCalled()
   })
 
+  // Coverage gap 9: a signed Rx must never go out "Allergies: Not
+  // recorded". Signing needs allergies or NKDA, so a patient's record
+  // can never be put back to "not recorded" afterwards: a save must
+  // record at least one allergy or NKDA.
+  it('400 for a save that records nothing (no allergy and no NKDA): nothing is written', async () => {
+    for (const body of [{}, { allergies: [], nkda: false }, { allergies: '  , ;' }, { allergies: null, nkda: null }]) {
+      const res = await PATCH(request(body), ctx())
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toBe('Enter at least one allergy, or mark NKDA.')
+    }
+    expect(updateMock).not.toHaveBeenCalled()
+  })
+
   it('404 when the scoped update matches no row (other clinic / deleted / unknown)', async () => {
     updateChainMock.mockResolvedValue({ data: null, error: null })
     expect((await PATCH(request({ nkda: true }), ctx())).status).toBe(404)
@@ -206,6 +220,38 @@ describe('PHI access log', () => {
   it('PATCH logs exactly one row: update, patient_allergies, the patient', async () => {
     expect((await PATCH(request({ allergies: ['sulfa'] }), ctx())).status).toBe(200)
     expectOnePhiRow({ action: 'update', resource: 'patient_allergies', patientId: PATIENT_ID })
+  })
+
+  // L1: writes are logged first.
+  describe('PATCH is logged BEFORE the update', () => {
+    const notCompleted = jest.mocked(logPhiWriteNotCompleted)
+    beforeEach(() => notCompleted.mockClear())
+
+    it('the row is written before the update runs', async () => {
+      let updatesAtLog = -1
+      phiLog.mockImplementationOnce(async () => { updatesAtLog = updateMock.mock.calls.length; return true })
+      expect((await PATCH(request({ allergies: ['sulfa'] }), ctx())).status).toBe(200)
+      expect(updatesAtLog).toBe(0)
+      expect(notCompleted).not.toHaveBeenCalled()
+    })
+
+    it('the row cannot be written: 503, the standard message, nothing updated', async () => {
+      phiLog.mockResolvedValueOnce(false)
+      const res = await PATCH(request({ allergies: ['sulfa'] }), ctx())
+      expect(res.status).toBe(503)
+      expect((await res.json()).error).toBe('This change could not be recorded. Nothing was changed. Try again.')
+      expect(updateMock).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['the database rejects the write', { data: null, error: { message: 'boom' } }, 500],
+      ['no row matched', { data: null, error: null }, 404],
+    ])('%s after logging: a not_completed row for the same entry', async (_l, answer, status) => {
+      updateChainMock.mockResolvedValue(answer)
+      expect((await PATCH(request({ nkda: true }), ctx())).status).toBe(status)
+      expect(notCompleted).toHaveBeenCalledTimes(1)
+      expect(notCompleted).toHaveBeenCalledWith(phiEntries()[0])
+    })
   })
 
   it('refused or not-found requests log nothing', async () => {

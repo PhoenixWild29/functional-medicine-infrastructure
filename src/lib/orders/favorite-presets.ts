@@ -391,25 +391,102 @@ export function recentFormulations(rows: ReadonlyArray<RecentOrderRow>, limit = 
   for (const row of sorted) {
     if (!row.formulation_id || seen.has(row.formulation_id)) continue
     seen.add(row.formulation_id)
-    const snap = (row.medication_snapshot ?? {}) as Record<string, unknown>
-    const doseMatch = PURE_DOSE.exec(typeof snap['prescribed_dose'] === 'string' ? snap['prescribed_dose'] : '')
-    const candidate = doseMatch
-      ? validateDosePreset({
-          dose: doseMatch[1], unit: normaliseUnit(doseMatch[2]!),
-          frequency: typeof snap['frequency_code'] === 'string' ? snap['frequency_code'] : '',
-          timing: '', duration: '', label: null,
-        })
-      : null
-    out.push({
-      formulation_id:     row.formulation_id,
-      pharmacy_id:        row.pharmacy_id,
-      medication_name:    typeof snap['medication_name'] === 'string' ? snap['medication_name'] : 'Medication',
-      last_prescribed_at: row.created_at,
-      preset:             candidate?.ok ? candidate.preset : null,
-    })
+    out.push(recentFromRow(row as RecentOrderRow & { formulation_id: string }))
     if (out.length >= limit) break
   }
   return out
+}
+
+/** One order line as an entry: its pharmacy and the structured dose on its snapshot. */
+function recentFromRow(row: RecentOrderRow & { formulation_id: string }): RecentFormulation {
+  const snap = (row.medication_snapshot ?? {}) as Record<string, unknown>
+  const doseMatch = PURE_DOSE.exec(typeof snap['prescribed_dose'] === 'string' ? snap['prescribed_dose'] : '')
+  const candidate = doseMatch
+    ? validateDosePreset({
+        dose: doseMatch[1], unit: normaliseUnit(doseMatch[2]!),
+        frequency: typeof snap['frequency_code'] === 'string' ? snap['frequency_code'] : '',
+        timing: '', duration: '', label: null,
+      })
+    : null
+  return {
+    formulation_id:     row.formulation_id,
+    pharmacy_id:        row.pharmacy_id,
+    medication_name:    typeof snap['medication_name'] === 'string' ? snap['medication_name'] : 'Medication',
+    last_prescribed_at: row.created_at,
+    preset:             candidate?.ok ? candidate.preset : null,
+  }
+}
+
+// ── Frequently used ──────────────────────────────────────────
+//
+// Requirement 19 (Gina Rooks, 2026-09-11): "a frequently used section ...
+// with the ability to then convert it to a favorite". The provider's
+// most-ordered formulation + dose combinations: the same formulation at
+// another pharmacy, or another dose or frequency, is its own entry.
+
+/** The window the counts cover, in days. */
+export const FREQUENT_WINDOW_DAYS = 90
+export const FREQUENT_LIMIT = 8
+
+export interface FrequentDose extends RecentFormulation {
+  /** Orders of this formulation + pharmacy + dose: in the window, or (recent fallback) in the orders read. */
+  use_count: number
+}
+
+export interface FrequentlyUsed {
+  /** 'recent' when nothing was ordered in the window: the newest combinations instead, same shape. */
+  mode:        'frequent' | 'recent'
+  window_days: number
+  items:       FrequentDose[]
+}
+
+/** Identifies a formulation + pharmacy + dose combination (the dose's structured fields). */
+export function frequentItemKey(item: Pick<RecentFormulation, 'formulation_id' | 'pharmacy_id' | 'preset'>): string {
+  return `${item.formulation_id}:${item.pharmacy_id ?? 'none'}:${item.preset ? presetKey(item.preset) : 'no-dose'}`
+}
+
+function combinations(rows: ReadonlyArray<RecentOrderRow>): FrequentDose[] {
+  const byKey = new Map<string, FrequentDose>()
+  for (const row of rows) {
+    if (!row.formulation_id) continue
+    const entry = recentFromRow(row as RecentOrderRow & { formulation_id: string })
+    const key = frequentItemKey(entry)
+    const seen = byKey.get(key)
+    if (!seen) byKey.set(key, { ...entry, use_count: 1 })
+    else {
+      seen.use_count += 1
+      // The newest order dates the combination and names it.
+      if (entry.last_prescribed_at > seen.last_prescribed_at) {
+        seen.last_prescribed_at = entry.last_prescribed_at
+        seen.medication_name = entry.medication_name
+      }
+    }
+  }
+  return [...byKey.values()]
+}
+
+const newestFirst = (a: FrequentDose, b: FrequentDose) => b.last_prescribed_at.localeCompare(a.last_prescribed_at)
+
+/**
+ * The provider's most-ordered combinations over the last
+ * FREQUENT_WINDOW_DAYS days, ranked by count, ties by the most recent
+ * order. With none in the window, the newest combinations among `rows`
+ * (counted over `rows`), so the section keeps its shape. Drafts count;
+ * the caller leaves out cancelled and deleted orders.
+ */
+export function frequentlyUsed(
+  rows: ReadonlyArray<RecentOrderRow>,
+  now: Date = new Date(),
+  opts: { windowDays?: number; limit?: number } = {},
+): FrequentlyUsed {
+  const windowDays = opts.windowDays ?? FREQUENT_WINDOW_DAYS
+  const limit = opts.limit ?? FREQUENT_LIMIT
+  const since = now.getTime() - windowDays * 86_400_000
+  const inWindow = rows.filter(r => Date.parse(r.created_at) >= since)
+  const frequent = combinations(inWindow).sort((a, b) => (b.use_count - a.use_count) || newestFirst(a, b)).slice(0, limit)
+  if (frequent.length > 0 || rows.length === 0) return { mode: 'frequent', window_days: windowDays, items: frequent }
+  const recent = combinations(rows).sort(newestFirst).slice(0, limit)
+  return { mode: recent.length > 0 ? 'recent' : 'frequent', window_days: windowDays, items: recent }
 }
 
 function normaliseUnit(u: string): string {

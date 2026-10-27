@@ -22,10 +22,18 @@
 // persist cookies, and a redirect() raised from inside the loading.tsx
 // Suspense boundary can never be delivered — the boundary is left unresolved
 // and the route hangs on the spinner forever. That was this route's prod bug.
+//
+// The PHI access log's actor (B14) comes from getRequestUser(): a cached
+// getUser() outside the page body, never getSession() (no token rotation),
+// never a redirect. No user only means no actor row (the
+// layout has already refused anyone who is not ops_admin).
 
 import { createServiceClient } from '@/lib/supabase/service'
+import { getRequestUser }      from '@/lib/auth/request-user'
+import { currentRequestHeaders } from '@/lib/audit/phi-access'
 import { FaxTriageQueue }      from './_components/fax-triage-queue'
 import { mapFaxRow }           from '@/lib/fax/map-fax-row'
+import { logFaxQueueView }     from '@/lib/fax/log-fax-view'
 import type { FaxQueueResponse } from '@/app/api/ops/fax/route'
 
 export const dynamic = 'force-dynamic'
@@ -45,7 +53,7 @@ export default async function FaxPage() {
       status, notes, processed_by, created_at, updated_at,
       matched_pharmacy_id, matched_order_id,
       pharmacies(name, integration_tier),
-      orders(order_number, status)
+      orders(order_number, status, patient_id, clinic_id)
     `, { count: 'exact' })
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
@@ -53,6 +61,23 @@ export default async function FaxPage() {
 
   if (error) {
     console.error('[ops/fax/page] fetch error:', error.message)
+  }
+
+  // B14: one view row per matched order (+ one for unmatched faxes) for the
+  // queue. A read: rendered whatever the log says. Review L6: with no
+  // resolvable user (a transient auth error) the queue is not shown: the log
+  // call reports no_actor, and the page asks for a reload.
+  const user = await getRequestUser()
+  await logFaxQueueView({ user, route: '/ops/fax', headers: await currentRequestHeaders() }, data ?? [])
+  if (!user) {
+    return (
+      <>
+        <h1 className="sr-only">Fax Queue</h1>
+        <p role="alert" className="mx-auto max-w-7xl px-4 py-8 text-sm text-foreground">
+          The fax queue could not be shown. Reload the page to try again.
+        </p>
+      </>
+    )
   }
 
   // NB-01: shared row mapper. Each row links to /api/ops/fax/[faxId]/pdf,
@@ -72,3 +97,5 @@ export default async function FaxPage() {
     </>
   )
 }
+
+/** The signed-in ops user for the log row: getUser() only, never a redirect, never a throw. */

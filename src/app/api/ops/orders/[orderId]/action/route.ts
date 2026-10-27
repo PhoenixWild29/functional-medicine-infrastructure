@@ -21,13 +21,17 @@
 // Resubmission is exactly-once per click: the status CAS is the claim, a
 // request whose CAS no-ops answers 409 and sends nothing, and the work runs
 // after the response so a slow pharmacy never holds the ops UI.
+//
+// PHI access log (B14/B15): every action is a write on a known order. One
+// 'update' / 'ops_order_action' row (the order, its patient and clinic) is
+// written once the order is found and BEFORE anything changes; a log that
+// fails is a 503 and nothing is written, transitioned, refunded or sent.
 
 import { NextRequest, NextResponse, after } from 'next/server'
 import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition }       from '@/lib/orders/cas-transition'
-import { insertStatusHistory } from '@/lib/orders/status-history'
 import { createStripeClient }  from '@/lib/stripe/client'
 import { decideRefund, pendingRefund, issueRefund, refundMetadata, recordPendingRefund, refundedWithRefund } from '@/lib/refunds/refund'
 import { recordRefundLedger } from '@/lib/payments/ledger'
@@ -39,10 +43,15 @@ import { withApiErrors } from '@/lib/api/with-api-errors'
 import { z } from 'zod'
 import { MAX_NAME, UUID_RE, badRequest, parseInput, uuid } from '@/lib/api/input'
 import { readObjectBody } from '@/app/api/ops/_lib/body'
+import { logPhiAccess } from '@/lib/audit/phi-access'
+import { REROUTE_FROM_STATUSES } from '@/lib/orders/signed-order-freeze'
+import { isBindingKeyMissingError, rerouteBinding } from '@/lib/orders/signature-binding'
 
 interface Params { params: Promise<{ orderId: string }> }
 
 const MAX_REROUTES = 2  // HC-06
+
+const NOT_RECORDED = 'This change could not be recorded. Nothing was changed. Try again.'
 
 const ACTIONS = new Set(['claim', 'release', 'add_tracking', 'cancel_refund', 'retry_submission', 'force_fax', 'retry_fax', 'reroute'])
 
@@ -106,7 +115,7 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
   // ── Fetch order for CAS predicates ──────────────────────────
   const { data: order, error: fetchError } = await supabase
     .from('orders')
-    .select('order_id, status, stripe_payment_intent_id, payment_group_id, retail_price_snapshot, reroute_count, pharmacy_id, ops_assignee')
+    .select('order_id, status, patient_id, clinic_id, stripe_payment_intent_id, payment_group_id, retail_price_snapshot, reroute_count, pharmacy_id, ops_assignee, provider_signature_hash_snapshot')
     .eq('order_id', orderId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -120,6 +129,13 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
   }
 
   const currentStatus = order.status as OrderStatusEnum
+
+  // B15 fail-closed: the log row first, or nothing changes.
+  const logged = await logPhiAccess({
+    user, action: 'update', resource: 'ops_order_action', route: '/api/ops/orders/[orderId]/action',
+    orderId, patientId: order.patient_id ?? null, clinicId: order.clinic_id ?? null, headers: request.headers,
+  })
+  if (!logged) return NextResponse.json({ error: NOT_RECORDED }, { status: 503 })
 
   // ── Dispatch by action ───────────────────────────────────────
 
@@ -187,6 +203,7 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
         expectedStatus: 'READY_TO_SHIP',
         newStatus:      'SHIPPED',
         actor,
+        actorRole: 'ops_admin',
         metadata:       { tracking_number: trackingNumber, carrier },
       })
 
@@ -242,6 +259,7 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
           expectedStatus: currentStatus,
           newStatus:      'CANCELLED',
           actor,
+          actorRole: 'ops_admin',
           metadata:       { reason: 'ops_cancel_no_payment' },
         })
         if (cancelled.wasAlreadyTransitioned) {
@@ -260,6 +278,7 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
           expectedStatus: currentStatus,
           newStatus:      'REFUND_PENDING',
           actor,
+          actorRole: 'ops_admin',
           metadata:       { reason: 'ops_cancel_refund', pi_id: target.paymentIntentId, ...refundMetadata(target) },
         })
         // BLK-04 kept: only the request that made the transition refunds.
@@ -304,6 +323,7 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
         expectedStatus: 'REFUND_PENDING',
         newStatus:      'REFUNDED',
         actor,
+        actorRole: 'ops_admin',
         metadata:       { refund_id: refund.refundId },
       })
       if (refundedCas.wasAlreadyTransitioned) {
@@ -343,6 +363,7 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
         expectedStatus: 'SUBMISSION_FAILED',
         newStatus:      'REROUTE_PENDING',
         actor,
+        actorRole: 'ops_admin',
         metadata:       { reason: 'ops_retry_submission' },
       })
       if (claimed.wasAlreadyTransitioned) {
@@ -395,6 +416,7 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
         expectedStatus: currentStatus,
         newStatus:      'FAX_QUEUED',
         actor,
+        actorRole: 'ops_admin',
         metadata:       { reason: action === 'force_fax' ? 'ops_force_fax' : 'ops_retry_fax' },
       })
       if (claimed.wasAlreadyTransitioned) {
@@ -417,8 +439,9 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
 
     // ── AC-OPV-004.5: Reroute — REQ-OPV-008, HC-06 ──────────────
     case 'reroute': {
-      const REROUTABLE: OrderStatusEnum[] = ['SUBMISSION_FAILED', 'FAX_FAILED', 'PHARMACY_REJECTED']
-      if (!REROUTABLE.includes(currentStatus)) {
+      // The statuses the signed-order freeze allows a pharmacy change from
+      // (HIPAA B5, migration 20261024000010).
+      if (!REROUTE_FROM_STATUSES.includes(currentStatus)) {
         return NextResponse.json(
           { error: `reroute not supported from status ${currentStatus}` },
           { status: 422 }
@@ -433,43 +456,57 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
         )
       }
 
-      const newPharmacyId = body['pharmacyId'] as string | undefined
+      const requested = body['pharmacyId'] as string | null | undefined
+      const newPharmacyId = requested && requested !== order.pharmacy_id ? requested : undefined
+
+      // B's review T2: a signed order goes only to the pharmacy it was signed
+      // for. A pharmacy change re-binds it here: a proof keyed by
+      // RX_BINDING_SECRET over the order, its signature, the new pharmacy and
+      // the reroute count, recorded in this transition's history row (append
+      // only, service-written). The send guard accepts the new pharmacy only
+      // with it. No key in production: refused before anything changes.
+      let rerouteProof: string | undefined
+      if (newPharmacyId && order.provider_signature_hash_snapshot) {
+        try {
+          rerouteProof = rerouteBinding(orderId, order.provider_signature_hash_snapshot, newPharmacyId, rerouteCount + 1)
+        } catch (err) {
+          if (!isBindingKeyMissingError(err)) throw err
+          console.error(`[ops/action] CRITICAL: reroute refused, RX_BINDING_SECRET is not set | order=${orderId}`)
+          return NextResponse.json({ error: 'Reroute is unavailable: the prescription signing key is not configured on the server.' }, { status: 503 })
+        }
+      }
 
       // BLK-05: Single atomic CAS UPDATE — combines status transition + reroute_count increment
-      // + optional pharmacy_id change in one DB operation to prevent TOCTOU race where
-      // reroute_count increments without the corresponding status change succeeding.
-      const { data: rerouteData, error: rerouteErr } = await supabase
-        .from('orders')
-        .update({
-          status:        'REROUTE_PENDING',
-          reroute_count: rerouteCount + 1,
-          ...(newPharmacyId ? { pharmacy_id: newPharmacyId } : {}),
-          updated_at: new Date().toISOString(),
+      // + optional pharmacy_id change in one DB operation (casTransition's patch) to prevent
+      // TOCTOU race where reroute_count increments without the corresponding status change
+      // succeeding. casTransition writes the audit record.
+      let rerouted: Awaited<ReturnType<typeof casTransition>>
+      try {
+        rerouted = await casTransition({
+          orderId,
+          expectedStatus: currentStatus,
+          newStatus:      'REROUTE_PENDING',
+          actor,
+          actorRole:      'ops_admin',
+          patch: {
+            reroute_count: rerouteCount + 1,
+            ...(newPharmacyId ? { pharmacy_id: newPharmacyId } : {}),
+          },
+          metadata: {
+            reason: 'ops_reroute', reroute_count: rerouteCount + 1, new_pharmacy_id: newPharmacyId ?? null,
+            ...(rerouteProof ? { reroute_binding: rerouteProof } : {}),
+          },
         })
-        .eq('order_id', orderId)
-        .eq('status', currentStatus)  // CAS predicate — atomic with the status change above
-        .select('order_id')
-
-      if (rerouteErr) {
-        console.error(`[ops/action] reroute update failed | order=${orderId}:`, rerouteErr.message)
+      } catch (err) {
+        console.error(`[ops/action] reroute update failed | order=${orderId}:`, err instanceof Error ? err.message : err)
         return NextResponse.json({ error: 'Reroute failed' }, { status: 500 })
       }
 
-      if ((rerouteData?.length ?? 0) === 0) {
+      if (rerouted.wasAlreadyTransitioned) {
         // CAS no-op: order already moved past currentStatus — safe idempotent return
         console.info(`[ops/action] reroute no-op (CAS) | order=${orderId}`)
         return NextResponse.json({ ok: true })
       }
-
-      // Write audit record (non-fatal — transition already committed above;
-      // a failure alerts ops)
-      await insertStatusHistory(supabase, {
-        order_id:   orderId,
-        old_status: currentStatus,
-        new_status: 'REROUTE_PENDING',
-        changed_by: actor,
-        metadata:   { reason: 'ops_reroute', reroute_count: rerouteCount + 1, new_pharmacy_id: newPharmacyId ?? null },
-      }, 'ops:reroute')
 
       console.info(`[ops/action] reroute | order=${orderId} | count=${rerouteCount + 1}`)
       return NextResponse.json({ ok: true })

@@ -22,6 +22,7 @@ import { getUserClinicId, getUserRole, isClinicStaffRole } from '@/lib/auth/clai
 import { z } from 'zod'
 import { parseParams, uuid } from '@/lib/api/input'
 import { FAILED_ADAPTER_STATUSES, isSubmissionFailure, knownFailureCode, plainFailureReason } from '@/lib/orders/submission-failure'
+import { TRANSMISSION_REFUSAL_CODES } from '@/lib/adapters/transmission-guard'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const paramsSchema = z.object({ orderId: uuid() })
@@ -91,12 +92,33 @@ async function getHandler(_request: NextRequest, context: RouteParams): Promise<
     pharmacyName = (pharmacy as { name?: string | null } | null)?.name ?? null
   }
 
-  const rawCode = sub?.error_code ?? null
+  // B's review T6: a send the transmission guard refused never reached an
+  // adapter, so it has no failed submission row. Its reason is on the
+  // status history (readable by the clinic under RLS). Only a guard code is
+  // used, never other history text, and only when newer than the last
+  // failed submission.
+  const { data: refusals, error: historyError } = await supabase
+    .from('order_status_history')
+    .select('new_status, metadata, created_at')
+    .eq('order_id', orderId)
+    .in('new_status', ['SUBMISSION_FAILED', 'FAX_FAILED'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+  if (historyError) console.error('[failure-reason] status history lookup failed:', historyError.message)
+  const latest = ((refusals ?? []) as Array<{ metadata: unknown; created_at: string | null }>)[0] ?? null
+  const latestReason = (latest?.metadata as { reason?: unknown } | null)?.reason
+  const subAt = sub ? (sub.completed_at ?? sub.created_at) : null
+  const refusal = typeof latestReason === 'string' && (TRANSMISSION_REFUSAL_CODES as readonly string[]).includes(latestReason)
+    && (!subAt || (latest?.created_at ?? '') > subAt)
+    ? { code: latestReason, at: latest?.created_at ?? null }
+    : null
+
+  const rawCode = refusal ? refusal.code : (sub?.error_code ?? null)
   const failure: SubmissionFailure = {
     code:         knownFailureCode(rawCode),
     plainReason:  plainFailureReason(rawCode),
     pharmacyName,
-    at:           sub ? (sub.completed_at ?? sub.created_at) : null,
+    at:           refusal ? refusal.at : subAt,
   }
   return NextResponse.json({ failure })
 }

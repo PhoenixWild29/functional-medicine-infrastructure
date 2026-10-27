@@ -19,10 +19,10 @@ The seed script credential sync fix is validated. All 4 POC accounts authenticat
 
 | Check | Result | Notes |
 |-------|--------|-------|
-| Ops Admin login | ✅ PASS | `ops@compoundiq-poc.com` / `POCAdmin2026!` → Redirected to `/ops/pipeline` (dark mode Ops Dashboard). Pipeline shows 2 orders. |
-| Clinic Admin login | ✅ PASS | `admin@sunrise-clinic.com` / `POCClinic2026!` → Redirected to `/dashboard` (Clinic App). Dashboard shows KPI cards and 2 orders. |
-| Provider login | ✅ PASS | `dr.chen@sunrise-clinic.com` / `POCProvider2026!` → Redirected to `/dashboard` (Clinic App). |
-| MA login | ✅ PASS | `ma@sunrise-clinic.com` / `POCMA2026!` → Redirected to `/dashboard` (Clinic App). |
+| Ops Admin login | ✅ PASS | `ops@compoundiq-poc.com` / `POC_OPS_PASSWORD` (set in your local env) → Redirected to `/ops/pipeline` (dark mode Ops Dashboard). Pipeline shows 2 orders. |
+| Clinic Admin login | ✅ PASS | `admin@sunrise-clinic.com` / `POC_CLINIC_ADMIN_PASSWORD` (set in your local env) → Redirected to `/dashboard` (Clinic App). Dashboard shows KPI cards and 2 orders. |
+| Provider login | ✅ PASS | `dr.chen@sunrise-clinic.com` / `POC_PROVIDER_PASSWORD` (set in your local env) → Redirected to `/dashboard` (Clinic App). |
+| MA login | ✅ PASS | `ma@sunrise-clinic.com` / `POC_MA_PASSWORD` (set in your local env) → Redirected to `/dashboard` (Clinic App). |
 | RBAC: ops → /dashboard blocked | ✅ PASS | Ops admin navigated to `/dashboard` → Redirected to `/unauthorized`. "Access Denied" page shows: signed in as `ops@compoundiq-poc.com`, Role: `ops_admin`. |
 | RBAC: clinic → /ops blocked | ✅ PASS | Clinic admin navigated to `/ops/pipeline` → Redirected to `/unauthorized`. "Access Denied" page displayed. |
 | Seed data: medications searchable | ✅ PASS | Typed "Sema" in medication search → Dropdown shows "Semaglutide Injectable · 0.5mg/0.5mL". |

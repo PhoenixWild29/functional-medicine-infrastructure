@@ -6,6 +6,7 @@ import { cleanupTestOrders, TEST_IDS, TEST_USERS } from './fixtures/seed'
 import { hashInviteToken, inviteExpiresAt, newInviteToken } from '../src/lib/onboarding/tokens'
 import { shardEmail, shardId } from './fixtures/shard'
 import { TEST_PATIENT_DOB, closeTestProposals, seedProposal } from './fixtures/proposals'
+import { e2ePassword } from './fixtures/test-password'
 
 // ============================================================
 // Compliance C10: WCAG 2.1 AA, patient-facing pages, real browser
@@ -138,6 +139,9 @@ test.describe('Accessibility: WCAG 2.1 AA (C10)', () => {
 
     await page.getByLabel('Email address').focus()
     await page.keyboard.press('Tab')
+    // The "Forgot password?" link sits in the password label row (bundle-hipaa).
+    await expect(page.getByRole('link', { name: /forgot/i })).toBeFocused()
+    await page.keyboard.press('Tab')
     await expect(page.getByLabel('Password')).toBeFocused()
     await page.getByLabel('Email address').fill('a11y@example.test')
     await page.getByLabel('Password').fill('not-a-real-password')
@@ -163,7 +167,7 @@ test.describe('Accessibility: WCAG 2.1 AA (C10)', () => {
 
 // Per shard (fixtures/shard), so two shards running this block at once never share rows.
 const ONB_CLINIC = shardId('aaaaaaaa-0000-0000-0000-0000000000a1')
-const ONB_ADMIN = { email: shardEmail('test-onboarding-admin@compoundiq.test'), password: 'TestPassword123!' }
+const ONB_ADMIN = { email: shardEmail('test-onboarding-admin@compoundiq.test'), get password() { return e2ePassword() } }
 const ONB_INVITEE = shardEmail('test-onboarding-invitee@compoundiq.test')
 const WIZARD_STEPS = ['Practice details', 'Providers', 'Staff', 'BAA', 'Terms of service', 'Payouts', 'Review and submit']
 

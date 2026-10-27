@@ -7,10 +7,13 @@
  * Critical paths under test:
  *   - Role gating: only clinic_admin (own clinic) + ops_admin (any clinic)
  *   - Cross-tenancy: clinic_admin cannot plant a provider in another clinic
- *   - Input validation: email, password ≥12, NPI 10 digits, valid US state
+ *   - Input validation: email, NPI 10 digits, valid US state
  *   - Pre-checks: duplicate NPI → 409
- *   - Auth user collision: email already exists → 409
- *   - Atomicity rollback: if providers.insert fails, auth user is deleted
+ *   - B10 (technical-safeguards-evidence-2026-10-25.md): no admin-chosen
+ *     password. The route makes the provider record and a provider invite
+ *     (the Team invite flow); the provider sets their own password from
+ *     the one-time link, which links their login. No auth user is created
+ *     here, and a password in the body is refused.
  */
 
 import { POST } from '../route'
@@ -31,7 +34,6 @@ function makeRequest(body: unknown): import('next/server').NextRequest {
 function validBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     email:         'new.provider@clinic.test',
-    password:      'a-strong-password-123',
     firstName:     'Test',
     lastName:      'Provider',
     npiNumber:     '1987654328',
@@ -60,6 +62,10 @@ jest.mock('@/lib/supabase/server', () => ({
 // Compliance C4: the NPPES check after the save is mocked (no network).
 const runNpiCheckMock = jest.fn()
 jest.mock('@/lib/providers/verify-npi', () => ({ runNpiCheck: (...a: unknown[]) => runNpiCheckMock(...a) }))
+
+// B10: the provider invite (the Team invite flow) is mocked.
+const createInviteMock = jest.fn()
+jest.mock('@/lib/onboarding/invite-actions', () => ({ createInvite: (...a: unknown[]) => createInviteMock(...a) }))
 
 jest.mock('@/lib/supabase/service', () => ({
   createServiceClient: jest.fn().mockReturnValue({
@@ -118,6 +124,7 @@ beforeEach(() => {
   createUserMock.mockReset()
   providerInsertMock.mockReset()
   deleteUserMock.mockReset()
+  createInviteMock.mockReset().mockResolvedValue({ ok: true, inviteId: 'invite-1', link: 'https://app.test/onboard/join/tok', expiresAt: '2026-11-01T00:00:00Z' })
 
   // Default happy-path mock state — individual tests override
   npiCheckMock.mockResolvedValue({ data: null, error: null })
@@ -126,7 +133,7 @@ beforeEach(() => {
   providerInsertMock.mockResolvedValue({
     data: {
       provider_id:    'provider-uuid-new',
-      user_id:        NEW_PROVIDER_USER_ID,
+      user_id:        null,
       clinic_id:      TEST_CLINIC_ID,
       first_name:     'Test',
       last_name:      'Provider',
@@ -213,9 +220,12 @@ describe('POST /api/providers — input validation', () => {
     expect(createUserMock).not.toHaveBeenCalled()
   })
 
-  it('returns 400 when password is too short', async () => {
-    const res = await POST(makeRequest(validBody({ password: 'short' })))
+  it('B10: a password in the body is refused; the provider sets their own from the invite', async () => {
+    const res = await POST(makeRequest(validBody({ password: 'a-strong-password-123' })))
     expect(res.status).toBe(400)
+    const body = await res.json() as { details: string[] }
+    expect(body.details).toEqual(expect.arrayContaining(['password is not accepted: the provider sets their own password from the invite link']))
+    expect(providerInsertMock).not.toHaveBeenCalled()
     expect(createUserMock).not.toHaveBeenCalled()
   })
 })
@@ -271,80 +281,66 @@ describe('POST /api/providers — collision handling', () => {
     expect(createUserMock).not.toHaveBeenCalled()
   })
 
-  it('returns 409 when the email is already registered (createUser returns "already")', async () => {
-    createUserMock.mockResolvedValue({
-      data: { user: null },
-      error: { message: 'A user with this email address has already been registered' },
-    })
-
-    const res = await POST(makeRequest(validBody()))
-    expect(res.status).toBe(409)
-    const body = await res.json() as { error: string }
-    expect(body.error).toMatch(/already/i)
-    expect(providerInsertMock).not.toHaveBeenCalled()
-  })
 })
 
 // ── Atomicity rollback ─────────────────────────────────────────────
 
-describe('POST /api/providers — rollback on providers.insert failure', () => {
+describe('POST /api/providers — providers.insert failure', () => {
   beforeEach(() => mockSession('clinic_admin', TEST_CLINIC_ID))
 
-  it('deletes the auth user when providers.insert fails', async () => {
+  it('is a 500 with no invite made and no login to roll back', async () => {
     providerInsertMock.mockResolvedValue({
       data: null,
       error: { message: 'simulated DB error' },
     })
-    deleteUserMock.mockResolvedValue({ error: null })
 
     const res = await POST(makeRequest(validBody()))
     expect(res.status).toBe(500)
-    expect(deleteUserMock).toHaveBeenCalledTimes(1)
-    expect(deleteUserMock).toHaveBeenCalledWith(NEW_PROVIDER_USER_ID)
+    expect(createInviteMock).not.toHaveBeenCalled()
+    expect(createUserMock).not.toHaveBeenCalled()
+    expect(deleteUserMock).not.toHaveBeenCalled()
   })
 
-  it('still returns 500 (no retry signal) when even the rollback delete fails', async () => {
-    // CRITICAL double-fault path: providers.insert failed AND we couldn't clean
-    // up the auth user. The caller still gets 500 — the orphan identity is a
-    // logged operational issue requiring manual cleanup, not a retry signal.
-    providerInsertMock.mockResolvedValue({
-      data: null,
-      error: { message: 'simulated DB error' },
-    })
-    deleteUserMock.mockResolvedValue({ error: { message: 'simulated rollback failure' } })
-
+  it('a failed invite still saves the provider: 201 and an instruction to resend', async () => {
+    createInviteMock.mockResolvedValue({ ok: false, error: 'The invite could not be created. Try again.' })
     const res = await POST(makeRequest(validBody()))
-    expect(res.status).toBe(500)
-    expect(deleteUserMock).toHaveBeenCalledTimes(1)
+    expect(res.status).toBe(201)
+    const body = await res.json() as { providerId: string; inviteLink: string | null; error: string }
+    expect(body.providerId).toBe('provider-uuid-new')
+    expect(body.inviteLink).toBeNull()
+    expect(body.error).toBe('The provider was added, but their invite could not be created. Resend it from Settings, Team, Pending invites.')
   })
 })
 
 // ── Happy path ─────────────────────────────────────────────────────
 
 describe('POST /api/providers — happy path', () => {
-  it('creates auth user + provider row for clinic_admin in own clinic, returns 201', async () => {
+  it('creates the provider row and a provider invite for clinic_admin in own clinic; no login, no password', async () => {
     mockSession('clinic_admin', TEST_CLINIC_ID)
 
     const res = await POST(makeRequest(validBody()))
     expect(res.status).toBe(201)
 
     const body = await res.json() as {
-      providerId: string; userId: string; clinicId: string
+      providerId: string; userId: string | null; clinicId: string
       firstName: string; lastName: string; npiNumber: string
+      inviteLink: string; inviteExpiresAt: string
     }
     expect(body.providerId).toBe('provider-uuid-new')
-    expect(body.userId).toBe(NEW_PROVIDER_USER_ID)
+    expect(body.userId).toBeNull()
     expect(body.clinicId).toBe(TEST_CLINIC_ID)
     expect(body.firstName).toBe('Test')
     expect(body.lastName).toBe('Provider')
+    // The one-time link the admin copies; the provider sets their own password there.
+    expect(body.inviteLink).toBe('https://app.test/onboard/join/tok')
+    expect(body.inviteExpiresAt).toBe('2026-11-01T00:00:00Z')
 
-    // Auth user created with provider role + clinic_id metadata
-    expect(createUserMock).toHaveBeenCalledWith(expect.objectContaining({
-      email:         'new.provider@clinic.test',
-      email_confirm: true,
-      app_metadata: { app_role: 'provider', clinic_id: TEST_CLINIC_ID },
-    }))
-    // No rollback called on the happy path
+    expect(createInviteMock).toHaveBeenCalledWith(expect.anything(), {
+      kind: 'provider', clinicId: TEST_CLINIC_ID, email: 'new.provider@clinic.test',
+      providerId: 'provider-uuid-new', createdBy: 'caller-uid', actorRole: 'clinic_admin',
+    })
+    // B10: no auth user is created with an admin-known password.
+    expect(createUserMock).not.toHaveBeenCalled()
     expect(deleteUserMock).not.toHaveBeenCalled()
   })
 
@@ -368,9 +364,10 @@ describe('POST /api/providers — happy path', () => {
 
     const res = await POST(makeRequest(validBody({ clinicId: OTHER_CLINIC_ID })))
     expect(res.status).toBe(201)
-    expect(createUserMock).toHaveBeenCalledWith(expect.objectContaining({
-      app_metadata: { app_role: 'provider', clinic_id: OTHER_CLINIC_ID },
+    expect(createInviteMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      kind: 'provider', clinicId: OTHER_CLINIC_ID, actorRole: 'ops_admin',
     }))
+    expect(createUserMock).not.toHaveBeenCalled()
   })
 })
 

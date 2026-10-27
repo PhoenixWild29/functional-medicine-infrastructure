@@ -34,7 +34,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import type { NpiStatus } from '@/lib/providers/npi'
 import { appMetadataFor } from '@/lib/auth/claims'
-import { createLogin, passwordProblem, removeLogin } from '@/lib/auth/create-login'
+import { createLogin, removeLogin } from '@/lib/auth/create-login'
+import { newPasswordProblem } from '@/lib/auth/password-policy'
 import { cleanEmail, setStep } from '@/lib/onboarding/access'
 import { recordOnboardingEvent } from '@/lib/onboarding/events'
 import { DEA_RE, NAME_RE, addProviderRecord, licenseErrors, npiProblem, type LicenseInput } from '@/lib/onboarding/provider-record'
@@ -88,7 +89,8 @@ export async function selfServeSignup(db: Db, body: Record<string, unknown>): Pr
   if (!NAME_RE.test(firstName)) errors['firstName'] = 'Enter your first name.'
   if (!NAME_RE.test(lastName)) errors['lastName'] = 'Enter your last name.'
   if (!email) errors['email'] = 'Enter your email address.'
-  const weak = passwordProblem(password)
+  // The shared policy (lib/auth/password-policy, review P4).
+  const weak = newPasswordProblem(password, email)
   if (weak) errors['password'] = weak
   if (!organizationName) {
     errors['organizationName'] = kind === 'pharmacy' ? 'Enter the pharmacy name.' : 'Enter the name of your practice.'

@@ -25,20 +25,6 @@ const HISTORY = [
     metadata: { event: 'draft_line_removed' } },
 ]
 
-jest.mock('@/lib/supabase/client', () => ({
-  createBrowserClient: () => ({
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          order: () => ({
-            then: (resolve: (result: { data: unknown[] }) => void) => resolve({ data: HISTORY }),
-          }),
-        }),
-      }),
-    }),
-  }),
-}))
-
 const draft: DashboardOrder = {
   orderId:           'a6000000-0000-0000-0000-000000000001',
   patientName:       'Demo, Alex',
@@ -58,6 +44,10 @@ const draft: DashboardOrder = {
 
 it('renders "Draft edited · Sarah Chen" and falls back to the id for an unresolved actor', async () => {
   const fetchMock = jest.fn((url: string) => {
+    // The timeline is read through the server route (logged), not the browser client.
+    if (url === `/api/orders/${draft.orderId}/timeline`) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ history: HISTORY }) })
+    }
     if (url.endsWith('/timeline-actors')) {
       return Promise.resolve({
         ok: true,
@@ -74,4 +64,5 @@ it('renders "Draft edited · Sarah Chen" and falls back to the id for an unresol
   expect(screen.queryByText(new RegExp(CHEN_UID))).not.toBeInTheDocument()
   expect(screen.getByText(new RegExp(`still a draft · ${UNKNOWN_UID}`))).toBeInTheDocument()
   expect(fetchMock).toHaveBeenCalledWith(`/api/orders/${draft.orderId}/timeline-actors`)
+  expect(fetchMock).toHaveBeenCalledWith(`/api/orders/${draft.orderId}/timeline`, expect.anything())
 })

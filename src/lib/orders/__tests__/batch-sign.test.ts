@@ -12,7 +12,9 @@
  */
 
 import { signBatch, checkBatch } from '../batch-sign'
+import { ALLERGIES_REQUIRED_MESSAGE } from '@/lib/patients/allergies'
 import { fakeDb } from './fake-db'
+import { verifySignatureBinding, type SignedOrderRow } from '../signature-binding'
 
 // ── Collaborators ─────────────────────────────────────────────
 
@@ -39,7 +41,7 @@ jest.mock('@/lib/sms/triggers', () => ({ sendPaymentLinkSms: (...a: unknown[]) =
 jest.mock('@/lib/sla/creator', () => ({ createSlasForTransition: jest.fn(async () => undefined) }))
 const historyMock = jest.fn()
 jest.mock('../status-history', () => ({ insertStatusHistory: (...a: unknown[]) => historyMock(...a) }))
-jest.mock('@/lib/env', () => ({ serverEnv: { appBaseUrl: () => 'https://app.test/' } }))
+jest.mock('@/lib/env', () => ({ serverEnv: { ...jest.requireActual('@/lib/env').serverEnv, appBaseUrl: () => 'https://app.test/' } }))
 
 // ── Fixture ──────────────────────────────────────────────────
 
@@ -56,7 +58,7 @@ function draft(n: number, over: Record<string, unknown> = {}) {
     order_id: id(n), status: 'DRAFT', clinic_id: CLINIC, is_active: true, deleted_at: null,
     patient_id: P1, provider_id: CHEN, catalog_item_id: null, formulation_id: 'f-plain',
     pharmacy_id: 'ph-strive', retail_price_snapshot: 200, wholesale_price_snapshot: 100,
-    shipping_state_snapshot: 'TX',
+    shipping_state_snapshot: 'TX', provider_npi_snapshot: '1234567893', pharmacy_snapshot: { name: 'Strive' },
     medication_snapshot: { medication_name: `Plain compound ${n}`, dea_schedule: 0 },
     package_id: null, package_count: 1, refills: 0, substitution_allowed: true,
     syringe_option: 'none', shipping_type: 'standard', clinical_difference: null,
@@ -114,8 +116,8 @@ function world(orders: Array<Record<string, unknown>>, clinicOver: Record<string
       ] },
     ],
     patients: [
-      { patient_id: P1, allergies: ['sulfa'], nkda: false },
-      { patient_id: P2, allergies: [], nkda: true },
+      { patient_id: P1, first_name: 'Alex', last_name: 'Demo', date_of_birth: '1985-06-15', allergies: ['sulfa'], nkda: false },
+      { patient_id: P2, first_name: 'Test', last_name: 'Patient', date_of_birth: '1980-01-01', allergies: [], nkda: true },
     ],
     drug_interactions: [
       { interaction_id: 'i1', severity: 'warning', description: 'Monitor', ingredient_a: { common_name: 'Semaglutide' }, ingredient_b: { common_name: 'Testosterone' } },
@@ -334,6 +336,39 @@ describe('a check that could not run blocks the whole batch (503), never reads a
     expect(signingUpdates(db)).toHaveLength(0)
   })
 
+  // Coverage gap 9 (Gina Rooks NP): every Rx reaches the pharmacy with
+  // allergies or NKDA, never "Not recorded". Signing is refused, with one
+  // message, until the patient has at least one allergy or NKDA marked.
+  // Every signing path goes through here: Review's Sign & Send, Sign all,
+  // the chosen lines of a protocol (signChosenProposal), and refills
+  // (drafts first, then this).
+  it('a patient with neither allergies nor NKDA recorded: 422 ALLERGIES_REQUIRED, the same message, nothing signed', async () => {
+    const db = world([draft(1), draft(2)])
+    Object.assign(db.tables['patients']![0]!, { allergies: [], nkda: false })
+    const res = await sign(db, [id(1), id(2)])
+    expect(res).toMatchObject({ ok: false, status: 422, code: 'ALLERGIES_REQUIRED', error: ALLERGIES_REQUIRED_MESSAGE })
+    if (res.ok) throw new Error('unreachable')
+    expect(res.problems!.length).toBeGreaterThan(0)
+    expect(res.problems!.every(p => p.code === 'allergies_required' && p.message === ALLERGIES_REQUIRED_MESSAGE)).toBe(true)
+    expect(signingUpdates(db)).toHaveLength(0)
+  })
+
+  it('null allergies and null nkda count as not recorded too', async () => {
+    const db = world([draft(1)])
+    Object.assign(db.tables['patients']![0]!, { allergies: null, nkda: null })
+    expect(await sign(db, [id(1)])).toMatchObject({ ok: false, status: 422, code: 'ALLERGIES_REQUIRED' })
+    expect(signingUpdates(db)).toHaveLength(0)
+  })
+
+  it('NKDA marked, or one allergy listed: signs', async () => {
+    const nkda = world([draft(1)])
+    Object.assign(nkda.tables['patients']![0]!, { allergies: [], nkda: true })
+    expect(await sign(nkda, [id(1)])).toMatchObject({ ok: true })
+    const listed = world([draft(1)])
+    Object.assign(listed.tables['patients']![0]!, { allergies: ['penicillin'], nkda: false })
+    expect(await sign(listed, [id(1)])).toMatchObject({ ok: true })
+  })
+
   it('the drug interaction check could not run', async () => {
     const db = world([draft(1)])
     db.failOn('drug_interactions:select')
@@ -490,6 +525,59 @@ describe('one payment link per patient', () => {
   })
 })
 
+// ── HIPAA B7: the signature binds what was signed ─────────────
+
+describe('signature binding', () => {
+  it('each signed order verifies against its content, and stops verifying when it changes', async () => {
+    const db = world([draft(1), draft(2, { patient_id: P2 })])
+    const res = await sign(db, [id(1), id(2)])
+    if (!res.ok) throw new Error(res.error)
+    for (const n of [1, 2]) {
+      const row = orderRow(db, n) as unknown as SignedOrderRow
+      expect(row.provider_signature_hash_snapshot).toMatch(/^v3:/)
+      expect(verifySignatureBinding(row)).toBe('match')
+      expect(verifySignatureBinding({ ...row, refills: 7 })).toBe('mismatch')
+    }
+    // HIPAA T2: what the pharmacy receives is snapshotted at signing and bound.
+    expect(orderRow(db, 1)['patient_snapshot']).toEqual({
+      first_name: 'Alex', last_name: 'Demo', date_of_birth: '1985-06-15', allergy_status: { kind: 'recorded', allergies: ['sulfa'] },
+    })
+    expect(orderRow(db, 2)['patient_snapshot']).toMatchObject({ first_name: 'Test', allergy_status: { kind: 'nkda' } })
+    expect(orderRow(db, 1)['prescriber_snapshot']).toEqual({
+      provider_id: CHEN, first_name: 'Sarah', last_name: 'Chen', npi_number: '1234567890', dea_number: null, license_state: null,
+    })
+    // The history row keeps the signature digest (not the bound value).
+    const rows = historyMock.mock.calls[0]![1] as Array<{ metadata: Record<string, unknown> }>
+    expect(String(orderRow(db, 1)['provider_signature_hash_snapshot']).split(':')[1]).toBe(rows[0]!.metadata['signature_hash'])
+    expect(rows[0]!.metadata).toMatchObject({ signature_binding: 'v3' })
+  })
+
+  it('HIPAA T1: with no binding key on a Vercel deployment (here preview), nothing is signed and nothing is written', async () => {
+    const env = process.env as Record<string, string | undefined>
+    const saved = env['RX_BINDING_SECRET']
+    delete env['RX_BINDING_SECRET']
+    env['VERCEL_ENV'] = 'preview'
+    try {
+      const db = world([draft(1), draft(2)])
+      const res = await sign(db, [id(1), id(2)])
+      expect(res).toMatchObject({ ok: false, status: 503, code: 'BINDING_KEY_MISSING' })
+      expect(db.writes).toHaveLength(0)
+    } finally {
+      delete env['VERCEL_ENV']
+      if (saved !== undefined) env['RX_BINDING_SECRET'] = saved
+    }
+  })
+
+  it('if a binding cannot be written, nothing is signed', async () => {
+    const db = world([draft(1), draft(2)])
+    db.failOn('orders:update', 'connection reset', p => 'provider_signature_hash_snapshot' in p)
+    const res = await sign(db, [id(1), id(2)])
+    expect(res).toMatchObject({ ok: false, status: 503 })
+    expect(signingUpdates(db)).toHaveLength(0)
+    expect(orderRow(db, 1)['status']).toBe('DRAFT')
+  })
+})
+
 // ── What signing writes ──────────────────────────────────────
 
 describe('the signature record', () => {
@@ -504,13 +592,19 @@ describe('the signature record', () => {
 
     const updates = signingUpdates(db)
     expect(updates).toHaveLength(1)
-    expect(Object.keys(updates[0]!.patch!).sort()).toEqual(['locked_at', 'provider_signature_hash_snapshot', 'status', 'updated_at'])
+    expect(Object.keys(updates[0]!.patch!).sort()).toEqual(['locked_at', 'status', 'updated_at'])
     expect(updates[0]!.matched!.map(r => r['order_id'])).toEqual([id(1), id(2)])
 
     const [a, b] = [orderRow(db, 1), orderRow(db, 2)]
     expect(a['status']).toBe('AWAITING_PAYMENT')
-    expect(a['provider_signature_hash_snapshot']).toMatch(/^[0-9a-f]{64}$/)
-    expect(b['provider_signature_hash_snapshot']).toBe(a['provider_signature_hash_snapshot'])
+    // HIPAA B7: each order's signature value binds its own content, under
+    // the same signature digest and time.
+    const BOUND = /^v3:([0-9a-f]{64}):([0-9a-f]{64})$/
+    const [, aDigest, aBinding] = String(a['provider_signature_hash_snapshot']).match(BOUND) ?? []
+    const [, bDigest, bBinding] = String(b['provider_signature_hash_snapshot']).match(BOUND) ?? []
+    expect(aDigest).toMatch(/^[0-9a-f]{64}$/)
+    expect(bDigest).toBe(aDigest)
+    expect(bBinding).not.toBe(aBinding)
     expect(b['locked_at']).toBe(a['locked_at'])
     // A titration keeps its steps; a refill keeps its source.
     expect(a['sig_mode']).toBe('titration')
@@ -1006,5 +1100,58 @@ describe('patient intake not finished', () => {
   it('a complete patient signs as before', async () => {
     const db = world([draft(1, { patients: { intake_status: 'complete' } })])
     expect(await sign(db, [id(1)])).toMatchObject({ ok: true })
+  })
+})
+
+// ── L1: the sign rows are written before anything is signed ──
+
+describe('L1: beforeWrite (the sign rows) runs after every check and before any write', () => {
+  it('is called once with each line and its patient, after the checks and before shipping or any write', async () => {
+    const db = world([draft(1), draft(2), draft(3, { patient_id: P2 })])
+    const seen: Array<{ targets: unknown; writes: number; shippingCalls: number }> = []
+    const beforeWrite = jest.fn(async (targets: ReadonlyArray<{ orderId: string; patientId: string }>) => {
+      seen.push({ targets, writes: db.writes.length, shippingCalls: applyBundleShippingMock.mock.calls.length })
+      return true
+    })
+    const res = await sign(db, [id(1), id(2), id(3)], { beforeWrite })
+    expect(res).toMatchObject({ ok: true })
+    expect(beforeWrite).toHaveBeenCalledTimes(1)
+    expect(seen[0]).toEqual({
+      targets: [{ orderId: id(1), patientId: P1 }, { orderId: id(2), patientId: P1 }, { orderId: id(3), patientId: P2 }],
+      writes: 0,
+      shippingCalls: 0,
+    })
+  })
+
+  it('false: 503 with the standard refusal, nothing is written or allocated', async () => {
+    const db = world([draft(1)])
+    const res = await sign(db, [id(1)], { beforeWrite: async () => false })
+    expect(res).toEqual({ ok: false, status: 503, error: 'This change could not be recorded. Nothing was changed. Try again.' })
+    expect(db.writes).toHaveLength(0)
+    expect(applyBundleShippingMock).not.toHaveBeenCalled()
+    expect(createPaymentGroupMock).not.toHaveBeenCalled()
+  })
+
+  it('a refused check never calls it (nothing to record)', async () => {
+    const db = world([draft(1, { provider_id: PATEL })])
+    const beforeWrite = jest.fn(async () => true)
+    expect(await sign(db, [id(1)], { beforeWrite })).toMatchObject({ ok: false, status: 403 })
+    expect(beforeWrite).not.toHaveBeenCalled()
+  })
+
+  it('an order that leaves DRAFT mid-sign: nothing is signed (503), no partial sign', async () => {
+    const db = world([draft(1), draft(2, { patient_id: P2 })])
+    // A race outside the app: order 2 leaves DRAFT after the checks.
+    applyBundleShippingMock.mockImplementation(async () => {
+      orderRow(db, 2)['status'] = 'CANCELLED'
+      return { ok: true, shipping: { totalCents: 900, byPharmacy: [] }, feesByOrder: {} }
+    })
+    const res = await sign(db, [id(1), id(2)], { beforeWrite: async () => true })
+    // signed-order-freeze: the signature binding is written per order while it
+    // is still DRAFT, before anything is signed, so the race stops the whole
+    // batch there (no partial sign to name).
+    expect(res).toMatchObject({ ok: false, status: 503 })
+    expect(res).not.toHaveProperty('unsignedOrderIds')
+    expect((res as { error?: string }).error).toMatch(/Nothing was signed/)
   })
 })

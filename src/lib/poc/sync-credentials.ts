@@ -35,7 +35,7 @@
 // invariants in.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { POC_CANONICAL_USERS, pocAppMetadataFor, type PocUserLabel } from './canonical-users'
+import { POC_CANONICAL_USERS, PocPasswordMissingError, pocAppMetadataFor, pocPassword, type PocUserLabel } from './canonical-users'
 import { enrollDemoProvider, type DemoTotpEnrollmentResult } from './totp-enrollment'
 import { refreshDemoData, type DemoDataRefreshReport } from './refresh-demo-data'
 
@@ -115,12 +115,25 @@ export async function syncPocCredentials(
 
   for (const user of POC_CANONICAL_USERS) {
     const existing = existingByEmail.get(user.email)
+    // The password comes from the account's env var, read only when it is
+    // sent (a create or a reset); a missing variable fails that account
+    // and the error names the variable, never a value.
+    let password: string | undefined
+    if (!existing || resetPasswords) {
+      try {
+        password = pocPassword(user)
+      } catch (err) {
+        if (!(err instanceof PocPasswordMissingError)) throw err
+        results.push({ label: user.label, email: user.email, action: 'skipped', error: err.message })
+        continue
+      }
+    }
     if (existing) {
       // Session safety: metadata-only unless the caller explicitly asked
       // for a password reset. Sending `password` here revokes all of the
       // user's sessions (see header comment).
       const attributes = resetPasswords
-        ? { password: user.password, app_metadata: pocAppMetadataFor(user) }
+        ? { ...(password !== undefined ? { password } : {}), app_metadata: pocAppMetadataFor(user) }
         : { app_metadata: pocAppMetadataFor(user) }
       const { error } = await supabase.auth.admin.updateUserById(existing.id, attributes)
       if (error) {
@@ -134,7 +147,7 @@ export async function syncPocCredentials(
     // New user: no session exists yet, so setting the password is safe.
     const { error } = await supabase.auth.admin.createUser({
       email:         user.email,
-      password:      user.password,
+      ...(password !== undefined ? { password } : {}),
       app_metadata:  pocAppMetadataFor(user),
       email_confirm: true,
     })

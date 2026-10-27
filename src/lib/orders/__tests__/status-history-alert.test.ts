@@ -32,13 +32,16 @@ const client = {
   from: (table: string) => {
     if (table === 'orders') {
       return {
-        update: () => ({
-          eq: () => ({
-            eq: () => ({
-              select: async () => ({ data: [{ order_id: ORDER_ID, status: 'PAID_PROCESSING' }], error: null }),
-            }),
-          }),
-        }),
+        update: () => {
+          // casTransition adds .not(field, 'is', null) for each field the
+          // new status requires (PAID_PROCESSING: stripe_payment_intent_id).
+          const chain = {
+            eq: () => chain,
+            not: () => chain,
+            select: async () => ({ data: [{ order_id: ORDER_ID, status: 'PAID_PROCESSING' }], error: null }),
+          }
+          return chain
+        },
       }
     }
     return { insert: (rows: unknown) => { inserted.push(rows); return historyInsert(rows) } }
@@ -57,7 +60,7 @@ beforeEach(() => {
 })
 
 const transition = () => casTransition({
-  orderId: ORDER_ID, expectedStatus: 'AWAITING_PAYMENT', newStatus: 'PAID_PROCESSING', actor: 'stripe_webhook',
+  orderId: ORDER_ID, expectedStatus: 'AWAITING_PAYMENT', newStatus: 'PAID_PROCESSING', actor: 'stripe_webhook', actorRole: 'system',
 })
 
 function alertText(): string {

@@ -43,7 +43,8 @@ jest.mock('@/lib/adapters/vault', () => ({ getVaultSecret: async () => 'secret' 
 jest.mock('@/lib/adapters/portal-flow-executor', () => ({ executeFlow: async () => [] }))
 jest.mock('@/lib/playwright/config', () => ({ getBrowserLaunchOptions: () => ({}), getBrowserContextOptions: () => ({}) }))
 jest.mock('playwright', () => ({
-  chromium: { launch: async () => ({ newContext: async () => ({ newPage: async () => ({}) }), close: async () => undefined }) },
+  // route: the poll's browser is https-only (B's review T7).
+  chromium: { launch: async () => ({ newContext: async () => ({ route: async () => undefined, newPage: async () => ({}) }), close: async () => undefined }) },
 }))
 
 import { GET as dailyDigest } from '../daily-digest/route'

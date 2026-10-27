@@ -43,11 +43,17 @@ async function notificationsCard(): Promise<string> {
   return card.replace(/<[^>]+>/g, ' ').replace(/&#x27;|&apos;/g, "'").replace(/\s+/g, ' ').trim()
 }
 
-it('says order status emails and texts are not turned on yet', async () => {
-  user = as('clinic_admin')
-  const text = await notificationsCard()
-  expect(text).toContain('Email and SMS notification preferences are not yet configurable.')
-  expect(text).toContain('Automatic order status emails and texts are not turned on yet.')
+it('says what is sent (patient texts, the app) and that no email is sent, and links to the full list; no placeholder', async () => {
+  for (const role of ['clinic_admin', 'provider', 'medical_assistant']) {
+    user = as(role)
+    const text = await notificationsCard()
+    expect(text).toContain('CompoundIQ does not send email.')
+    expect(text).toContain('payment links, reminders, plan and intake links')
+    expect(text).toContain('See what is sent')
+    expect(text).not.toMatch(/coming soon|not yet configurable/i)
+  }
+  const out = renderToStaticMarkup(await SettingsPage())
+  expect(out).toContain('href="/settings/notifications"')
 })
 
 it('no longer claims updates are sent to the clinic contact email', async () => {

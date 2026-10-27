@@ -38,7 +38,26 @@ const REASONS: Record<string, string> = {
   fax_submission_error:    FAX,
   fax_permanently_failed:  FAX,
   portal_automation_error: "the pharmacy's ordering portal had an error",
+  // HIPAA B6 / B7 / B17 (lib/adapters/transmission-guard): refused, never sent.
+  unsigned_order:          'the prescription has not been signed',
+  order_not_submittable:   'the order was not in a state that can be sent',
+  signature_mismatch:      'the prescription changed after it was signed',
+  insecure_pharmacy_url:   "the pharmacy's connection is not secure (https is required)",
+  // B's review T1, T2, T6
+  pharmacy_mismatch:       'the order was set to go to a pharmacy it was not signed for',
+  allergies_changed:       "the patient's allergies changed after the prescription was signed",
+  binding_key_missing:     'prescription signing is not configured on the server',
 }
+
+/**
+ * Refusals a retry or re-route cannot fix: the prescription must be signed
+ * again (B's review T6). A clinic cannot cancel a paid order, so it is told
+ * that CompoundIQ ops cancel and refund it (ops cancel_refund), and that it
+ * then prescribes again (D's verification, finding 5).
+ */
+const NEEDS_NEW_PRESCRIPTION: ReadonlySet<string> = new Set([
+  'allergies_changed', 'signature_mismatch', 'unsigned_order', 'pharmacy_mismatch',
+])
 
 /**
  * The code itself, only when the drawer knows it: a key of the plain-reason
@@ -68,7 +87,12 @@ export function plainFailureReason(code: string | null | undefined): string {
 }
 
 /** The drawer line. Without a reason (the lookup failed), where and what next. */
-export function submissionFailureNotice({ pharmacyName, plainReason }: { pharmacyName: string | null; plainReason: string | null }): string {
+export function submissionFailureNotice({ pharmacyName, plainReason, code }: { pharmacyName: string | null; plainReason: string | null; code?: string | null }): string {
   const where = `Sending to ${pharmacyName?.trim() || 'the pharmacy'} failed`
-  return `${where}${plainReason ? `: ${plainReason}` : ''}. CompoundIQ ops has been alerted and will re-route or retry.`
+  const why = `${where}${plainReason ? `: ${plainReason}` : ''}.`
+  if (code && NEEDS_NEW_PRESCRIPTION.has(code)) {
+    const after = code === 'allergies_changed' ? ', so the prescriber signs it with the current allergies' : ''
+    return `${why} CompoundIQ ops will cancel and refund it; then prescribe it again${after}.`
+  }
+  return `${why} CompoundIQ ops has been alerted and will re-route or retry.`
 }
