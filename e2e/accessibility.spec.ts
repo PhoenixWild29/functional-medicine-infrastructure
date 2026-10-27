@@ -139,6 +139,9 @@ test.describe('Accessibility: WCAG 2.1 AA (C10)', () => {
 
     await page.getByLabel('Email address').focus()
     await page.keyboard.press('Tab')
+    // The "Forgot password?" link sits in the password label row (bundle-hipaa).
+    await expect(page.getByRole('link', { name: /forgot/i })).toBeFocused()
+    await page.keyboard.press('Tab')
     await expect(page.getByLabel('Password')).toBeFocused()
     await page.getByLabel('Email address').fill('a11y@example.test')
     await page.getByLabel('Password').fill('not-a-real-password')

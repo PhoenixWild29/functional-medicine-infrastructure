@@ -169,7 +169,8 @@ test.describe('HIPAA safeguards', () => {
   test('7. /help: open from the sidebar, topics and the way back work with the keyboard', async ({ page }) => {
     await signIn(page, TEST_USERS.clinicAdmin.email, TEST_USERS.clinicAdmin.password, /\/(practice|dashboard)/)
     // The sidebar's Help (pages also carry "Help" links to single topics).
-    await tabTo(page, page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Help', exact: true }))
+    // The sidebar's Help sits in its footer, below the Main navigation list.
+    await tabTo(page, page.locator('a[href="/help"]').first())
     await page.keyboard.press('Enter')
     await expect(page).toHaveURL(/\/help$/)
     await expect(page.getByRole('heading', { name: 'Help', level: 1 })).toBeVisible()

@@ -1302,6 +1302,8 @@ test.describe('Clinic App — WO-100 provider defaults to self', () => {
       provider_npi_snapshot:    TEST_NPIS.providerB,
       shipping_state_snapshot:  'TX',
       pharmacy_snapshot:        { pharmacy_id: TEST_IDS.pharmacyTier1, name: 'Test Pharmacy Tier1', integration_tier: 'TIER_1_API', fax_number: null },
+      // All six snapshots batch sign requires (state-machine-enforcement), so the refusal is not_signer.
+      medication_snapshot:      { medication_name: 'Test Compound Injectable' },
       sig_text:                 sig,
     })
     const { data: drafts, error } = await supabase

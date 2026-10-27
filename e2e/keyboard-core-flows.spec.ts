@@ -39,10 +39,12 @@ async function tabTo(page: Page, target: Locator, max = 150) {
 /** ArrowDown on a focused <select> until it holds `value` (or any value when `value` is null). */
 async function arrowTo(page: Page, select: Locator, value: string | null, max = 40) {
   await tabTo(page, select)
-  for (let i = 0; i < max; i++) {
-    const v = await select.inputValue()
-    if (value === null ? v !== '' : v === value) return
-    await page.keyboard.press('ArrowDown')
+  for (const key of ['ArrowDown', 'ArrowUp']) {
+    for (let i = 0; i < max; i++) {
+      const v = await select.inputValue()
+      if (value === null ? v !== '' : v === value) return
+      await page.keyboard.press(key)
+    }
   }
   expect(await select.inputValue()).toBe(value)
 }
