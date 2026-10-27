@@ -174,7 +174,7 @@ async function runIntakeSteps(page: Page, where: string): Promise<void> {
   await page.getByLabel('I have read the privacy notice.').check()
   await page.getByRole('button', { name: 'Continue' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Your details' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2, name: 'Your details', exact: true }).first()).toBeVisible()
   await expectFitsPhone(page, `${where}: details (choose)`)
   await page.getByRole('button', { name: 'Type my details' }).click()
   const fields: Array<[string, string]> = [['First name', 'given-name'], ['Last name', 'family-name'], ['Date of birth', 'bday']]
