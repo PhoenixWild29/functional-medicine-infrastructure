@@ -48,7 +48,7 @@ const NO_STORE = { 'Cache-Control': 'no-store' }
 async function postHandler(request: NextRequest, context: { params: Promise<{ token: string }> }): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request, undefined, NO_STORE)
   if (crossSite) return crossSite
-  const limit = joinSubmitLimiter.check(clientIp(request.headers) ?? 'unknown')
+  const limit = await joinSubmitLimiter.check(clientIp(request.headers) ?? 'unknown')
   if (!limit.allowed) {
     return NextResponse.json(
       { error: JOIN_RATE_LIMITED_MESSAGE },

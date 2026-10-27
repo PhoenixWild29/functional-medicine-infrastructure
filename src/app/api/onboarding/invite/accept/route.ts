@@ -19,7 +19,7 @@
 // so the link can be used again. MFA applies on first sign-in through the
 // normal middleware gate.
 //
-// Rate limited per client IP (the first x-forwarded-for entry): 10
+// Rate limited per client IP (lib/security/client-ip): 10
 // attempts per 15 minutes, then 429 with Retry-After, before anything is
 // read. Per IP, so a real invitee is never blocked by someone else's
 // guesses. The token is never logged; a refusal logs only the IP's keyed
@@ -42,7 +42,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request)
   if (crossSite) return crossSite
   const ip = clientIp(request.headers)
-  const limit = inviteAcceptLimiter.check(ip ?? 'unknown')
+  const limit = await inviteAcceptLimiter.check(ip ?? 'unknown')
   if (!limit.allowed) {
     console.warn(`[onboarding/accept] rate_limited | ip_hash=${(await auditHash(ip)) ?? 'none'}`)
     return NextResponse.json(

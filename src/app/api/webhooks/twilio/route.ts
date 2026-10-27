@@ -38,6 +38,7 @@
 // All other outcomes return 200.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { clientIp } from '@/lib/security/client-ip'
 import { validateTwilioWebhook } from '@/lib/twilio/client'
 import { handleInboundSms } from '@/lib/sms/inbound'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -70,7 +71,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   // Validate X-Twilio-Signature using full request URL (includes any query params)
   const isValid = validateTwilioWebhook(signature, request.url, formParams)
   if (!isValid) {
-    const ip = request.headers.get('x-forwarded-for') ?? 'unknown'
+    const ip = clientIp(request.headers) ?? 'unknown'
     console.error(`[twilio-webhook] signature verification failed | ip=${ip}`)
     return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
   }

@@ -28,6 +28,7 @@
 // All other outcomes (processing errors, not-found, etc.) return 200.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { clientIp } from '@/lib/security/client-ip'
 import { validateDocumoWebhook } from '@/lib/documo/client'
 import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition } from '@/lib/orders/cas-transition'
@@ -71,7 +72,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   // verifier throw (a 500) instead of refusing it.
   const isValid = HEX_SIGNATURE_RE.test(signature) && await validateDocumoWebhook(signature, rawBody)
   if (!isValid) {
-    const ip = request.headers.get('x-forwarded-for') ?? 'unknown'
+    const ip = clientIp(request.headers) ?? 'unknown'
     console.error(`[documo-webhook] signature verification failed | ip=${ip}`)
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
   }
