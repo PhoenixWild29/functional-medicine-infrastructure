@@ -56,3 +56,9 @@ it('no longer claims updates are sent to the clinic contact email', async () => 
   expect(text).not.toMatch(/sent automatically/i)
   expect(text).not.toMatch(/registered contact email/i)
 })
+
+it('promises nothing that is not built (TODO sweep: no "Coming soon" chip)', async () => {
+  user = as('clinic_admin')
+  const text = await notificationsCard()
+  expect(text).not.toMatch(/coming soon/i)
+})

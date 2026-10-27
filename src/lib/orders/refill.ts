@@ -28,7 +28,7 @@
 //
 // No React, no I/O.
 
-import { titrationTotalDays, type TitrationStep } from '@/lib/orders/titration'
+import type { TitrationStep } from '@/lib/orders/titration'
 import { FREQUENCY_OPTIONS } from '@/app/(clinic-app)/new-prescription/_components/structured-sig-builder.types'
 
 // ── Refill authorization ────────────────────────────────────
@@ -146,11 +146,6 @@ export function maintenanceFromTitration(steps: ReadonlyArray<TitrationStep>): M
       `Refilling at the maintenance dose, ${last.dose} ${last.unit} ${frequencyWords(last.frequency)}. ` +
       'Change it if the patient is still titrating.',
   }
-}
-
-/** Total days the source titration covered — for the "was" line on screen. */
-export function titrationSourceDays(steps: ReadonlyArray<TitrationStep>): number {
-  return titrationTotalDays(steps)
 }
 
 // ── Package re-pricing ──────────────────────────────────────

@@ -30,7 +30,7 @@ export default async function globalSetup(): Promise<void> {
   await seedStaticData()
 
   // Create Auth users idempotently
-  const { data: existingUsers } = await supabase.auth.admin.listUsers()
+  const { data: existingUsers } = await supabase.auth.admin.listUsers({ perPage: 1000 })
   for (const user of Object.values(TEST_USERS)) {
     // Role and clinic are authorization facts: app_metadata, written with
     // the service role. The app reads them only from app_metadata

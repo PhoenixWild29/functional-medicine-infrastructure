@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { generateCheckoutToken } from '../src/lib/auth/checkout-token'
 import { cleanupTestOrders, TEST_IDS, TEST_USERS } from './fixtures/seed'
 import { hashInviteToken, inviteExpiresAt, newInviteToken } from '../src/lib/onboarding/tokens'
+import { shardEmail, shardId } from './fixtures/shard'
 import { TEST_PATIENT_DOB, closeTestProposals, seedProposal } from './fixtures/proposals'
 
 // ============================================================
@@ -160,9 +161,10 @@ test.describe('Accessibility: WCAG 2.1 AA (C10)', () => {
 // (service role, E2E project only), and removes them afterwards. Payout
 // setup is not live, so no Stripe is involved.
 
-const ONB_CLINIC = 'aaaaaaaa-0000-0000-0000-0000000000a1'
-const ONB_ADMIN = { email: 'test-onboarding-admin@compoundiq.test', password: 'TestPassword123!' }
-const ONB_INVITEE = 'test-onboarding-invitee@compoundiq.test'
+// Per shard (fixtures/shard), so two shards running this block at once never share rows.
+const ONB_CLINIC = shardId('aaaaaaaa-0000-0000-0000-0000000000a1')
+const ONB_ADMIN = { email: shardEmail('test-onboarding-admin@compoundiq.test'), password: 'TestPassword123!' }
+const ONB_INVITEE = shardEmail('test-onboarding-invitee@compoundiq.test')
 const WIZARD_STEPS = ['Practice details', 'Providers', 'Staff', 'BAA', 'Terms of service', 'Payouts', 'Review and submit']
 
 function e2eService() {

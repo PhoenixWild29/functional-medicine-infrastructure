@@ -23,7 +23,7 @@ import { useRouter } from 'next/navigation'
 import { ONBOARDING_STEPS, STEP_LABELS, NOT_LIVE_STEPS, NOT_LIVE_LABEL } from '@/lib/onboarding/steps'
 import type { OpsApprovedClinic, OpsClinicOnboarding, OpsInvite, OpsOnboarding } from '@/lib/onboarding/ops'
 import { SELF_SIGNUP_APPROVE_NOTE } from '@/lib/onboarding/self-signup-note'
-import { ACCOUNT_HOLDER_LABEL, LICENSE_CHECK_LABEL, unverifiedWarning } from '@/lib/onboarding/provider-review'
+import { ACCOUNT_HOLDER_LABEL, LICENSE_CHECK_LABEL, unverifiedWarning } from '@/lib/onboarding/provider-review-copy'
 import { npiPendingElsewhereNote, npiRegisteredElsewhereWarning } from '@/lib/onboarding/npi-claims'
 import { TextField, FormAlert, InviteLink, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_DANGER } from '@/components/onboarding/fields'
 

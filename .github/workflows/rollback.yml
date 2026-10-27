@@ -42,11 +42,13 @@ jobs:
   # ── Guard: require explicit environment approval ──────────────
   rollback:
     name: Rollback ${{ inputs.environment }}
-    runs-on: ubuntu-latest
+    # Pinned to today's ubuntu-latest so the Ubuntu 26.04 migration
+    # (from 2026-10-19) cannot change how the pinned Supabase CLI runs.
+    runs-on: ubuntu-24.04
     environment: ${{ inputs.environment }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Log rollback intent
         run: |
@@ -55,6 +57,7 @@ jobs:
           echo "Run down migrations: ${{ inputs.rollback_migrations }}"
 
       # ── Optional: run down migrations ────────────────────────
+      # setup-cli stays on v1 on purpose: see the note in deploy.yml.
       - name: Setup Supabase CLI
         if: inputs.rollback_migrations == 'true'
         uses: supabase/setup-cli@v1
