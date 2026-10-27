@@ -21,6 +21,12 @@ on:
   pull_request:
     branches: [main, develop]
   workflow_dispatch:  # manual runs (E2E included), e.g. on main after a risky merge
+    inputs:
+      e2e:
+        description: 'E2E mode: "single" (the PR job) or "sharded-trial" (2 shards at once, e2e-sharded-trial)'
+        type: choice
+        options: [single, sharded-trial]
+        default: single
   schedule:
     # Nightly E2E on main, 07:30 UTC (after the 06:00 UTC recon cron): the
     # safety net for anything that merged without a PR E2E on the final
@@ -41,10 +47,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -61,10 +67,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -81,10 +87,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -106,7 +112,7 @@ jobs:
           NEXT_TELEMETRY_DISABLED: '1'
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-report
@@ -119,10 +125,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -182,7 +188,7 @@ jobs:
     steps:
       - name: Checkout
         if: github.event_name == 'pull_request'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -220,9 +226,30 @@ jobs:
   # E2E project (runs are serialized below) for long.
   e2e:
     name: E2E Tests (Playwright)
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: this job depends on OS packages
+    # (Playwright's browser deps from apt) and the Supabase CLI's linux-x64
+    # binary, and ubuntu-latest moves to Ubuntu 26.04 from 2026-10-19.
+    # 24.04 (noble) also matches the Playwright image's -noble tag if the E2E
+    # job moves into that container. Move to ubuntu-26.04 deliberately, in
+    # its own PR with a green E2E run, once Playwright publishes a 26.04
+    # image and lists 26.04 as supported (or before GitHub retires 24.04).
+    runs-on: ubuntu-24.04
     timeout-minutes: 30  # full jobs take 10-15 min as of 2026-10; see the note above
     needs: [changes, test, build]
+    # The official Playwright image: Chromium, Firefox and WebKit and their
+    # OS packages are baked in, so there is no browser download or
+    # install-deps step (it took ~31 s and could hang on the apt mirror,
+    # #247/#248). The tag MUST equal the installed @playwright/test version:
+    # scripts/ci/check-playwright-image.mjs (first step after npm ci) and
+    # src/__tests__/ci-playwright-container.test.ts fail on a mismatch, so
+    # bump both together. --user 1001 is the runner's uid, as Playwright's
+    # CI docs give it: the workspace and HOME (/github/home) belong to it,
+    # and Firefox refuses to run as root with a HOME it does not own.
+    # Node still comes from setup-node (the image ships Node 24; every job
+    # here runs NODE_VERSION).
+    container:
+      image: mcr.microsoft.com/playwright:v1.58.2-noble
+      options: --user 1001
     # Serialize E2E across ALL branches/PRs: the job seeds and cleans one
     # shared E2E Supabase project, so concurrent runs corrupt each other's
     # fixtures. A running E2E is never cancelled by another run
@@ -240,13 +267,13 @@ jobs:
         && github.event.pull_request.head.repo.full_name == github.repository
         && needs.changes.outputs.e2e == 'true')
       || github.event_name == 'schedule'
-      || github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'workflow_dispatch' && inputs.e2e != 'sharded-trial')
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -254,36 +281,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Keyed on the Playwright version, not the whole lockfile: the
-      # browsers only change with Playwright, and any dependency bump used
-      # to miss the cache and download all browsers again.
-      - name: Playwright version
-        id: playwright-version
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-
-      # apt mirror hangs (Oct 23 2026, #247 and #248): cap each attempt and retry.
-      - name: Install Playwright OS dependencies
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        timeout-minutes: 6
-        run: |
-          for attempt in 1 2 3; do
-            if timeout 110 npx playwright install-deps; then exit 0; fi
-            echo "playwright install-deps attempt $attempt failed or timed out"
-            if [ "$attempt" -lt 3 ]; then sleep 10; fi
-          done
-          echo "playwright install-deps failed 3 times"
-          exit 1
+      # The image's browsers are built for one Playwright version: stop
+      # here, with what to change, if it is not the installed one.
+      - name: Check the Playwright image matches @playwright/test
+        run: node scripts/ci/check-playwright-image.mjs
 
       # Keep the E2E Supabase project's schema in sync with supabase/migrations/.
       # Uses the session-pooler connection string. E2E_DATABASE_URL must be a
@@ -311,7 +312,7 @@ jobs:
       # checks every cached entry against its inputs, so a stale entry is
       # rebuilt, never reused.
       - name: Cache Next.js build cache (E2E build)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .next/cache
           key: nextjs-e2e-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
@@ -379,7 +380,7 @@ jobs:
           # Set this secret if you prefer to run E2E against a Vercel preview URL.
 
       - name: Upload Playwright HTML report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: playwright-report
@@ -387,9 +388,198 @@ jobs:
           retention-days: 14
 
       - name: Upload JUnit XML results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-junit
           path: test-results/junit.xml
+          retention-days: 14
+
+  # ── Job 6: E2E sharded trial (manual) ───────────────────────
+  # Proves the two-shard split (e2e/fixtures/shard.ts, playwright.config.ts)
+  # before the PR E2E moves to it. Same setup as Job 5.
+  e2e-sharded-trial:
+    name: E2E sharded trial (2 shards at once, manual)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [changes, test, build]
+    # One job, both shards in parallel on this runner (servers on :3000 and
+    # :3001), not a matrix: the job holds the same e2e-shared-supabase-project
+    # group as the PR E2E for its whole run, so it never overlaps a PR's E2E,
+    # yet its two shards really run at the same time against the one E2E
+    # project. A 2-job matrix in that group would queue its legs one after
+    # the other. e2e/fixtures/shard.ts keeps the shards' rows apart.
+    concurrency:
+      group: e2e-shared-supabase-project
+      cancel-in-progress: false
+    # Manual only: Actions > CI > Run workflow, E2E mode "sharded-trial".
+    if: github.event_name == 'workflow_dispatch' && inputs.e2e == 'sharded-trial'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Keyed on the Playwright version, not the whole lockfile: the
+      # browsers only change with Playwright, and any dependency bump used
+      # to miss the cache and download all browsers again.
+      - name: Playwright version
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+
+      # apt mirror hangs (Oct 23 2026, #247 and #248): cap each attempt and retry.
+      - name: Install Playwright OS dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        timeout-minutes: 6
+        run: |
+          for attempt in 1 2 3; do
+            if timeout 110 npx playwright install-deps; then exit 0; fi
+            echo "playwright install-deps attempt $attempt failed or timed out"
+            if [ "$attempt" -lt 3 ]; then sleep 10; fi
+          done
+          echo "playwright install-deps failed 3 times"
+          exit 1
+
+      # Keep the E2E Supabase project's schema in sync with supabase/migrations/.
+      # Uses the session-pooler connection string. E2E_DATABASE_URL must be a
+      # fully percent-encoded Postgres connection string (e.g. from `supabase db
+      # connection-string --linked` against the E2E project).
+      # Supabase CLI pinned: supabase@2.121.0 (Oct 14, 2026) ships no linux-x64
+      # binary ("No matching Supabase CLI binary package found"), so an unpinned
+      # npx broke every E2E run. 2.120.0 is the last version that ran green here.
+      - name: Sync E2E Supabase schema (apply migrations)
+        run: npx supabase@2.120.0 db push --db-url "$E2E_DATABASE_URL" --include-all --yes
+        env:
+          E2E_DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+
+      # Playwright's webServer runs `npm run start`, which requires a production
+      # build. We do NOT use `next dev` in CI — it previously hung 50+ minutes
+      # because of HMR compilation under CI resource constraints. Building here
+      # produces a deterministic artifact that `next start` can cold-boot in
+      # under 10 seconds. NEXT_PUBLIC_* vars are passed at build time as
+      # defence-in-depth: Next.js inlines any direct `process.env.NEXT_PUBLIC_*`
+      # references into client bundles at build, so these must be the E2E
+      # values — same values the runtime step below uses, so builds stay
+      # environment-consistent.
+      # Turbopack's build cache (Next 16.3+, on by default) lives in
+      # .next/cache. Restored from the newest E2E build on any key; Next
+      # checks every cached entry against its inputs, so a stale entry is
+      # rebuilt, never reused.
+      - name: Cache Next.js build cache (E2E build)
+        uses: actions/cache@v6
+        with:
+          path: .next/cache
+          key: nextjs-e2e-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            nextjs-e2e-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+            nextjs-e2e-${{ runner.os }}-
+
+      - name: Build Next.js app (for Playwright webServer)
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL:           ${{ secrets.E2E_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY:      ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_SENTRY_DSN:             ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
+          NEXT_TELEMETRY_DISABLED:            '1'
+
+      - name: Run E2E, shards 1/2 and 2/2 at the same time
+        run: |
+          set +e
+          start=$(date +%s)
+          npx playwright test --shard=1/2 > shard-1.log 2>&1 &
+          p1=$!
+          npx playwright test --shard=2/2 > shard-2.log 2>&1 &
+          p2=$!
+          wait $p1; r1=$?; t1=$(( $(date +%s) - start ))
+          wait $p2; r2=$?; t2=$(( $(date +%s) - start ))
+          for n in 1 2; do echo "::group::shard $n"; cat shard-$n.log; echo "::endgroup::"; done
+          echo "shard 1: exit $r1 after ${t1}s; shard 2: exit $r2 after ${t2}s; wall $(( $(date +%s) - start ))s" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$r1" -eq 0 ] && [ "$r2" -eq 0 ]
+        env:
+          CI: 'true'
+          # E2E runs against an ISOLATED Supabase project, never production.
+          # All browser-side, server-side, and test-side clients point at E2E_SUPABASE_*.
+          # ── Next.js public vars (injected into browser bundle) ──
+          NEXT_PUBLIC_SUPABASE_URL:            ${{ secrets.E2E_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY:       ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:  ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_SENTRY_DSN:              ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
+          # ── Server-side vars (used by Next.js API routes) ──
+          SUPABASE_URL:                        ${{ secrets.E2E_SUPABASE_URL }}
+          SUPABASE_ANON_KEY:                   ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY:           ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
+          # ── Playwright test-side vars (read directly by seed.ts + specs) ──
+          E2E_SUPABASE_URL:                    ${{ secrets.E2E_SUPABASE_URL }}
+          E2E_SUPABASE_SERVICE_ROLE_KEY:       ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
+          DATABASE_URL:                        ${{ secrets.E2E_DATABASE_URL }}
+          STRIPE_SECRET_KEY:                   ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET:               ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          JWT_SECRET:                          ${{ secrets.JWT_SECRET }}
+          CHECKOUT_TOKEN_EXPIRY:               '3600'
+          APP_BASE_URL:                        'http://localhost:3000'
+          # ── Sentry (optional — source maps + release tracking) ──
+          SENTRY_AUTH_TOKEN:                   ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG:                          ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT:                      ${{ secrets.SENTRY_PROJECT }}
+          # ── Feature flags: suppress external services in CI ──────
+          TWILIO_ENABLED:   'false'
+          DOCUMO_ENABLED:   'false'
+          # Compliance C3: multi-factor sign-in enforced for the dedicated
+          # E2E account only (e2e/mfa.spec.ts). REQUIRE_MFA stays unset, so
+          # every other test account signs in with a password, as before.
+          MFA_ENFORCED_EMAILS: 'test-mfa-admin@compoundiq.test,test-mfa-admin+s2@compoundiq.test'
+          # Patient Intake PR 4: a placeholder so New Prescription offers
+          # "Drop a face sheet". e2e/face-sheet-fill.spec.ts answers the read
+          # in the browser (page.route), so no request reaches Anthropic.
+          ANTHROPIC_API_KEY: 'sk-ant-e2e-placeholder-never-used'
+          # WO-99: batch signing forms one payment group per patient, as in
+          # production (flag on since 2026-06-14). The E2E clinic's Connect
+          # account is poc_placeholder, so the group PaymentIntent carries no
+          # transfer, and no test ever confirms it — nothing is charged.
+          PHASE_C_GROUPS_ENABLED: 'true'
+          # ── Misc ─────────────────────────────────────────────────
+          NEXT_TELEMETRY_DISABLED: '1'
+          # PLAYWRIGHT_BASE_URL intentionally omitted — playwright.config.ts
+          # starts a local `next dev` server when this is not set.
+          # Set this secret if you prefer to run E2E against a Vercel preview URL.
+
+      - name: Upload Playwright HTML reports
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: playwright-report-sharded-trial
+          path: |
+            playwright-report-shard-1/
+            playwright-report-shard-2/
+            shard-1.log
+            shard-2.log
+          retention-days: 14
+
+      - name: Upload JUnit XML results
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-junit-sharded-trial
+          path: |
+            test-results-shard-1/junit.xml
+            test-results-shard-2/junit.xml
           retention-days: 14

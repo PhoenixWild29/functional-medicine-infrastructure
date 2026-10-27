@@ -17,6 +17,7 @@ import { encryptSecret } from '../../src/lib/epcs/crypto'
 import { DEMO_TOTP_SECRET } from '../../src/lib/poc/totp-enrollment'
 import { packageRowsFor } from '../../src/lib/catalog/packages'
 import { withPhoneE164 } from '../../src/lib/patients/phone'
+import { shardEmail, shardId, shardIndex, shardName, shardNpi } from './shard'
 
 // E2E tests MUST run against an isolated Supabase project — never production.
 // If these env vars are missing, fail loudly rather than silently falling back
@@ -35,19 +36,25 @@ if (!E2E_SUPABASE_URL || !E2E_SUPABASE_SERVICE_ROLE_KEY) {
 const supabase = createClient(E2E_SUPABASE_URL, E2E_SUPABASE_SERVICE_ROLE_KEY)
 
 // ── Deterministic test UUIDs ──────────────────────────────────
+//
+// Shards (e2e/fixtures/shard.ts): the clinic, its providers and its
+// patients are per shard (shard 1 keeps these ids; shard N gets its own),
+// so two shards running at once never touch each other's rows. Pharmacies
+// and the catalog below them are shared, read-only reference data.
+export const SHARD = shardIndex()
 export const TEST_IDS = {
-  clinic:        'aaaaaaaa-0000-0000-0000-000000000001',
-  provider:      'aaaaaaaa-0000-0000-0000-000000000002',
+  clinic:        shardId('aaaaaaaa-0000-0000-0000-000000000001'),
+  provider:      shardId('aaaaaaaa-0000-0000-0000-000000000002'),
   // WO-100: a second provider row with NO auth login, seeded ONLY by the
   // WO-100 describe block (seedSecondProvider / retireSecondProvider) so
   // the shared clinic keeps a single active provider for every other spec.
-  providerB:     'aaaaaaaa-0000-0000-0000-000000000004',
-  patient:       'aaaaaaaa-0000-0000-0000-000000000003',
+  providerB:     shardId('aaaaaaaa-0000-0000-0000-000000000004'),
+  patient:       shardId('aaaaaaaa-0000-0000-0000-000000000003'),
   // WO-97: one patient per allergy chip state. `patient` above is the
   // "not recorded" case (amber chip + non-blocking Review notice); these
   // two mirror the demo seed (Alex Demo → NKDA, Jordan Rivera → sulfa).
-  patientNkda:      'aaaaaaaa-0000-0000-0000-000000000004',
-  patientAllergies: 'aaaaaaaa-0000-0000-0000-000000000005',
+  patientNkda:      shardId('aaaaaaaa-0000-0000-0000-000000000004'),
+  patientAllergies: shardId('aaaaaaaa-0000-0000-0000-000000000005'),
   pharmacyTier1: 'aaaaaaaa-0000-0000-0000-000000000010',
   pharmacyTier2: 'aaaaaaaa-0000-0000-0000-000000000011',
   pharmacyTier4: 'aaaaaaaa-0000-0000-0000-000000000013',
@@ -130,6 +137,14 @@ export const TEST_CATALOG = {
 // Same sizes and prices as the Strive demo seed.
 export const TEST_GLP1_PACKAGES_CELL = '1 mL vial@95.00*|2.5 mL vial@165.00|5 mL vial@285.00'
 
+// The clinic's display name (per shard), and the providers' NPIs, which
+// are unique among live providers, so each shard needs its own.
+export const TEST_CLINIC_NAME = shardName('Test Clinic E2E')
+export const TEST_NPIS = {
+  provider:  shardNpi('1234567890'),
+  providerB: shardNpi('1987654321'),
+}
+
 // WO-97 patients by allergy state. Last names render as "{last}, Test"
 // in the selector; chip text is what the app derives from the columns.
 export const TEST_PATIENTS = {
@@ -141,19 +156,19 @@ export const TEST_PATIENTS = {
 // ── Test users (Supabase Auth) ────────────────────────────────
 export const TEST_USERS = {
   clinicAdmin: {
-    email:    'test-clinic-admin@compoundiq.test',
+    email:    shardEmail('test-clinic-admin@compoundiq.test'),
     password: 'TestPassword123!',
     role:     'clinic_admin',
     clinicId: TEST_IDS.clinic,
   },
   provider: {
-    email:    'test-provider@compoundiq.test',
+    email:    shardEmail('test-provider@compoundiq.test'),
     password: 'TestPassword123!',
     role:     'provider',
     clinicId: TEST_IDS.clinic,
   },
   opsAdmin: {
-    email:    'test-ops-admin@compoundiq.test',
+    email:    shardEmail('test-ops-admin@compoundiq.test'),
     password: 'TestPassword123!',
     role:     'ops_admin',
     clinicId: null,
@@ -162,7 +177,7 @@ export const TEST_USERS = {
   // enforced (MFA_ENFORCED_EMAILS in ci.yml). Every other account keeps
   // signing in with a password only, as REQUIRE_MFA is off in E2E.
   mfaClinicAdmin: {
-    email:    'test-mfa-admin@compoundiq.test',
+    email:    shardEmail('test-mfa-admin@compoundiq.test'),
     password: 'TestPassword123!',
     role:     'clinic_admin',
     clinicId: TEST_IDS.clinic,
@@ -177,13 +192,16 @@ export async function seedStaticData(): Promise<void> {
   // Clinic
   await supabase.from('clinics').upsert({
     clinic_id:             TEST_IDS.clinic,
-    name:                  'Test Clinic E2E',
+    name:                  TEST_CLINIC_NAME,
     stripe_connect_status: 'ACTIVE',
     // `poc_placeholder` is the official sentinel in /api/checkout/payment-intent
     // (see route.ts line 138) that bypasses Stripe Connect routing. This keeps
     // the E2E API-level checkout test self-contained — it doesn't require a
     // real Stripe Connect account to exist for the clinic.
-    stripe_connect_account_id: 'poc_placeholder',
+    // The column is UNIQUE: shard N uses the per-clinic form
+    // poc_placeholder_<clinic_id>, which checkout treats the same way
+    // (lib/stripe/demo-account isDemoPayoutPlaceholder).
+    stripe_connect_account_id: SHARD === 1 ? 'poc_placeholder' : `poc_placeholder_${TEST_IDS.clinic}`,
     is_active:             true,
   }, { onConflict: 'clinic_id' })
 
@@ -193,14 +211,14 @@ export async function seedStaticData(): Promise<void> {
     clinic_id:       TEST_IDS.clinic,
     first_name:      'Test',
     last_name:       'Provider',
-    npi_number:      '1234567890',
+    npi_number:      TEST_NPIS.provider,
     license_state:   'TX',
     license_number:  'TEST-LICENSE-001',
     signature_on_file: true,
     is_active:       true,
   }, { onConflict: 'provider_id' })
   // Compliance C4: signing needs a verified NPI and a TX license (E2E patients are TX).
-  await seedProviderCredentials(TEST_IDS.provider, '1234567890')
+  await seedProviderCredentials(TEST_IDS.provider, TEST_NPIS.provider)
 
   // WO-100: the second provider is NOT part of the shared seed. Retire it
   // if a previous run left it active, so every other spec keeps seeing a
@@ -681,7 +699,7 @@ export async function seedSecondProvider(): Promise<void> {
     clinic_id:       TEST_IDS.clinic,
     first_name:      'Other',
     last_name:       'Provider',
-    npi_number:      '1987654321',
+    npi_number:      TEST_NPIS.providerB,
     license_state:   'TX',
     license_number:  'TEST-LICENSE-002',
     signature_on_file: false,
@@ -689,7 +707,7 @@ export async function seedSecondProvider(): Promise<void> {
     deleted_at:      null,
   }, { onConflict: 'provider_id' })
   if (error) throw new Error(`seedSecondProvider: ${error.message}`)
-  await seedProviderCredentials(TEST_IDS.providerB, '1987654321')
+  await seedProviderCredentials(TEST_IDS.providerB, TEST_NPIS.providerB)
 }
 
 /**
@@ -725,7 +743,7 @@ export async function retireSecondProvider(): Promise<void> {
  * The same link is made for the POC demo provider by scripts/seed-poc.ts.
  */
 export async function linkE2eProviderToAuthUser(): Promise<void> {
-  const { data } = await supabase.auth.admin.listUsers()
+  const { data } = await supabase.auth.admin.listUsers({ perPage: 1000 })
   const providerUser = data?.users.find(u => u.email === TEST_USERS.provider.email)
   if (!providerUser) return
   const { error } = await supabase
@@ -847,7 +865,7 @@ export async function cleanupTestOrders(): Promise<void> {
  */
 export async function seedLegacySemaglutideFavorites(): Promise<number> {
   const rows = ['10', '20', '40'].map((dose, i) => ({
-    favorite_id:      `aaaaaaaa-0000-4000-8000-0000000001${i}0`,
+    favorite_id:      shardId(`aaaaaaaa-0000-4000-8000-0000000001${i}0`),
     provider_id:      TEST_IDS.provider,
     formulation_id:   TEST_IDS.glp1Formulation,
     pharmacy_id:      TEST_IDS.pharmacyTier1,

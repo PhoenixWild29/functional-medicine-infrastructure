@@ -23,7 +23,8 @@ import { useRouter } from 'next/navigation'
 import { ONBOARDING_STEPS, STEP_LABELS, NOT_LIVE_STEPS, NOT_LIVE_LABEL } from '@/lib/onboarding/steps'
 import type { OpsApprovedClinic, OpsClinicOnboarding, OpsInvite, OpsOnboarding } from '@/lib/onboarding/ops'
 import { SELF_SIGNUP_APPROVE_NOTE } from '@/lib/onboarding/self-signup-note'
-import { ACCOUNT_HOLDER_LABEL, LICENSE_CHECK_LABEL, unverifiedWarning } from '@/lib/onboarding/provider-review'
+import { ACCOUNT_HOLDER_LABEL, LICENSE_CHECK_LABEL, unverifiedWarning } from '@/lib/onboarding/provider-review-copy'
+import { npiPendingElsewhereNote, npiRegisteredElsewhereWarning } from '@/lib/onboarding/npi-claims'
 import { TextField, FormAlert, InviteLink, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_DANGER } from '@/components/onboarding/fields'
 
 // Self sign-up (/get-started), not an invite.
@@ -225,6 +226,10 @@ function ClinicReview({ clinic: c, onReviewed }: { clinic: OpsClinicOnboarding; 
   // A provider whose NPI is not verified: Approve waits for the state-board license check.
   const unverified = (c.providers ?? []).filter(p => !p.npiVerified)
   const [licenseChecked, setLicenseChecked] = useState(false)
+  // Security review M3: an NPI an approved clinic already holds refuses
+  // Approve (the server refuses it too); other pending sign-ups are noted.
+  const heldElsewhere = (c.providers ?? []).filter(p => p.npiApprovedElsewhere)
+  const pendingElsewhere = (c.providers ?? []).filter(p => !p.npiApprovedElsewhere && (p.npiPendingElsewhere ?? 0) > 0)
 
   async function review(action: 'approve' | 'send_back') {
     if (action === 'send_back' && !note.trim()) { setNoteError('Write what the clinic needs to change.'); return }
@@ -279,6 +284,16 @@ function ClinicReview({ clinic: c, onReviewed }: { clinic: OpsClinicOnboarding; 
           ))}
         </div>
       )}
+      {(heldElsewhere.length > 0 || pendingElsewhere.length > 0) && (
+        <div className="mt-3 space-y-1 rounded-lg border border-red-300 bg-red-50 p-3 dark:border-red-400 dark:bg-red-950">
+          {heldElsewhere.map(p => (
+            <p key={`held-${p.providerId}`} id={`npi-held-${c.clinicId}-${p.providerId}`} className="text-sm font-medium text-red-900 dark:text-red-100">{npiRegisteredElsewhereWarning(p.name)}</p>
+          ))}
+          {[...heldElsewhere, ...pendingElsewhere].filter(p => (p.npiPendingElsewhere ?? 0) > 0).map(p => (
+            <p key={`pending-${p.providerId}`} className="text-sm text-red-900 dark:text-red-100">{npiPendingElsewhereNote(p.npiPendingElsewhere ?? 0)}</p>
+          ))}
+        </div>
+      )}
       {c.onboardingStatus === 'changes_requested' && c.reviewNote && (
         <p className="mt-3 text-sm text-slate-700 dark:text-slate-300">Last note: {c.reviewNote}</p>
       )}
@@ -317,7 +332,7 @@ function ClinicReview({ clinic: c, onReviewed }: { clinic: OpsClinicOnboarding; 
             </div>
           )}
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={BUTTON_PRIMARY} disabled={busy || (unverified.length > 0 && !licenseChecked)} onClick={() => review('approve')} aria-describedby={c.signupSource === 'self_serve' ? `${noteId}-self-signup` : undefined}>Approve {c.name}</button>
+            <button type="button" className={BUTTON_PRIMARY} disabled={busy || heldElsewhere.length > 0 || (unverified.length > 0 && !licenseChecked)} onClick={() => review('approve')} aria-describedby={[c.signupSource === 'self_serve' ? `${noteId}-self-signup` : '', ...heldElsewhere.map(p => `npi-held-${c.clinicId}-${p.providerId}`)].filter(Boolean).join(' ') || undefined}>Approve {c.name}</button>
             <button type="button" className={BUTTON_SECONDARY} disabled={busy} onClick={() => review('send_back')}>Send {c.name} back</button>
           </div>
         </div>

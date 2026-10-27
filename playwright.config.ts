@@ -14,8 +14,54 @@ import { defineConfig, devices } from '@playwright/test'
 
 const isCI = !!process.env['CI']
 
+// ── Shards ───────────────────────────────────────────────────
+// `--shard=1/2` and `--shard=2/2` can run at the same time against the ONE
+// E2E Supabase project: e2e/fixtures/shard.ts gives each shard its own
+// clinic, providers, patients and logins (shard 1 keeps today's), read
+// from TEST_SHARD. That is set here, from --shard, before globalSetup, the
+// web server and the workers start (each inherits this process's env).
+function cliShard(): { current: number; total: number } | null {
+  const argv = process.argv
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!
+    const v = a.startsWith('--shard=') ? a.slice('--shard='.length) : a === '--shard' ? argv[i + 1] : undefined
+    const m = v ? /^(\d+)\/(\d+)$/.exec(v) : null
+    if (m) return { current: Number(m[1]), total: Number(m[2]) }
+  }
+  return null
+}
+const shardFromCli = cliShard()
+if (shardFromCli && !process.env['TEST_SHARD']) {
+  process.env['TEST_SHARD'] = String(shardFromCli.current)
+  process.env['TEST_SHARD_TOTAL'] = String(shardFromCli.total)
+}
+const sharded = Number(process.env['TEST_SHARD_TOTAL'] ?? '1') > 1
+const shard = Number(process.env['TEST_SHARD'] ?? '1')
+// Shard N's server listens on 3000 + N - 1, so two shards can run on one
+// machine. Unsharded (and shard 1): 3000, exactly as before.
+const port = sharded ? 3000 + shard - 1 : 3000
+const localBaseURL = `http://localhost:${port}`
+if (sharded) {
+  // Links the app builds (intake, checkout) and specs that read it point
+  // at this shard's server.
+  process.env['APP_BASE_URL'] = localBaseURL
+}
+// Two shards on one machine write their results side by side.
+const shardSuffix = sharded ? `-shard-${shard}` : ''
+
+// SERIAL_REASONS: describes tagged @serial change app-wide state that
+// per-shard data cannot isolate (table-wide RPCs over every provider's
+// favorites, every protocol item, the whole catalog; an offer on a shared
+// pharmacy). When sharded they run in the 'serial' project, listed first:
+// Playwright cuts one ordered list of (project, file) groups into
+// contiguous slices, and a group belongs to the shard its first test
+// falls in, so a first project holding under half the tests always runs
+// whole on shard 1. Unsharded, nothing changes.
+const SERIAL = /@serial/
+
 export default defineConfig({
   testDir:     './e2e',
+  outputDir:   `test-results${shardSuffix}`,
   testMatch:   '**/*.spec.ts',
   globalSetup: './e2e/global-setup',
 
@@ -32,12 +78,12 @@ export default defineConfig({
     // each test's result as it finishes, so a run cut off by the job
     // timeout still shows which tests passed, failed or hung (html, junit
     // and github write nothing until the run ends).
-    ? [['list'], ['html', { open: 'never' }], ['junit', { outputFile: 'test-results/junit.xml' }], ['github']]
+    ? [['list'], ['html', { open: 'never', outputFolder: `playwright-report${shardSuffix}` }], ['junit', { outputFile: `test-results${shardSuffix}/junit.xml` }], ['github']]
     : [['html', { open: 'on-failure' }]],
 
   // Shared test options
   use: {
-    baseURL: process.env['PLAYWRIGHT_BASE_URL'] ?? 'http://localhost:3000',
+    baseURL: process.env['PLAYWRIGHT_BASE_URL'] ?? localBaseURL,
 
     // Capture screenshot on failure for debugging
     screenshot: 'only-on-failure',
@@ -54,10 +100,17 @@ export default defineConfig({
 
   // Projects: desktop web (Chromium, Firefox, WebKit) and mobile checkout
   projects: [
+    ...(sharded ? [{
+      name: 'serial',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: ['**/clinic-app.spec.ts'],
+      grep: SERIAL,
+    }] : []),
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testMatch: ['**/clinic-app.spec.ts', '**/ops-dashboard.spec.ts', '**/auth.spec.ts', '**/rbac.spec.ts', '**/feature-flags.spec.ts', '**/checkout.spec.ts', '**/accessibility.spec.ts', '**/accessibility-auth.spec.ts', '**/pharmacy-onboarding-a11y.spec.ts', '**/mfa.spec.ts', '**/legal-pages-a11y.spec.ts', '**/intake.spec.ts', '**/patient-import.spec.ts', '**/ehr-sync-keragon.spec.ts', '**/patient-signup-link.spec.ts', '**/self-serve-signup.spec.ts', '**/team-invites.spec.ts', '**/first-run-checklist.spec.ts', '**/face-sheet-fill.spec.ts', '**/nav-after-redirect.spec.ts', '**/order-failure-reason.spec.ts', '**/upload-size-limit.spec.ts', '**/clinic-onboarding-status.spec.ts', '**/patient-protocol-choice.spec.ts', '**/error-pages.spec.ts', '**/practitioner-requirements.spec.ts', '**/keyboard-core-flows.spec.ts'],
+      ...(sharded ? { grepInvert: SERIAL } : {}),
+      testMatch: ['**/clinic-app.spec.ts', '**/ops-dashboard.spec.ts', '**/auth.spec.ts', '**/rbac.spec.ts', '**/feature-flags.spec.ts', '**/checkout.spec.ts', '**/accessibility.spec.ts', '**/accessibility-all-routes.spec.ts', '**/accessibility-auth.spec.ts', '**/pharmacy-onboarding-a11y.spec.ts', '**/mfa.spec.ts', '**/legal-pages-a11y.spec.ts', '**/intake.spec.ts', '**/patient-import.spec.ts', '**/ehr-sync-keragon.spec.ts', '**/patient-signup-link.spec.ts', '**/self-serve-signup.spec.ts', '**/team-invites.spec.ts', '**/first-run-checklist.spec.ts', '**/face-sheet-fill.spec.ts', '**/nav-after-redirect.spec.ts', '**/order-failure-reason.spec.ts', '**/upload-size-limit.spec.ts', '**/clinic-onboarding-status.spec.ts', '**/patient-protocol-choice.spec.ts', '**/error-pages.spec.ts', '**/patient-pages-mobile.spec.ts', '**/practitioner-requirements.spec.ts', '**/keyboard-core-flows.spec.ts'],
     },
     {
       name: 'firefox',
@@ -89,8 +142,8 @@ export default defineConfig({
     ? {}
     : {
         webServer: {
-          command: 'npm run start',
-          url: 'http://localhost:3000',
+          command: port === 3000 ? 'npm run start' : `npm run start -- -p ${port}`,
+          url: localBaseURL,
           reuseExistingServer: !isCI,
           timeout: 120_000,
         },

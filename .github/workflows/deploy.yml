@@ -56,13 +56,19 @@ jobs:
   # ── Step 1: Run Supabase migrations ──────────────────────────
   migrate:
     name: Run Migrations
-    runs-on: ubuntu-latest
+    # Pinned to today's ubuntu-latest so the Ubuntu 26.04 migration
+    # (from 2026-10-19) cannot change how the pinned Supabase CLI runs.
+    runs-on: ubuntu-24.04
     needs: resolve-env
     environment: ${{ needs.resolve-env.outputs.environment }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
+      # Kept on v1 on purpose (it runs on node20, which the runner now
+      # forces onto Node 24). v2/v3 are composite actions and v3 installs
+      # the CLI from npm instead of GitHub releases: a change to how the
+      # pinned 1.171.0 is installed, to be made and tested on its own.
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
@@ -106,10 +112,10 @@ jobs:
       deployment_url: ${{ steps.deploy.outputs.deployment_url }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'

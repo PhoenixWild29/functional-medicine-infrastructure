@@ -131,10 +131,14 @@ describe('providers', () => {
     expect(db.to('providers', 'insert')).toEqual([])
   })
 
-  it('refuses an NPI already registered to a provider', async () => {
-    db = scriptedDb(clinicWith('in_progress', c => (c.table === 'providers' && c.op === 'select' && c.filters['npi_number'] ? { data: { provider_id: 'other' } } : undefined)))
-    expect((await addProvider(req(NEW))).status).toBe(409)
-    expect(db.to('providers', 'insert')).toEqual([])
+  // Security review M3: the clinic is not approved yet, so its provider
+  // holds no NPI (stored unclaimed, nothing checked here); ops approval
+  // refuses an NPI an approved clinic holds (lib/onboarding/npi-claims).
+  it('an NPI another provider has: stored unclaimed, settled at approval', async () => {
+    db = scriptedDb(clinicWith('in_progress', c => (c.table === 'providers' && c.op === 'select' && c.filters['npi_number'] ? { data: [{ provider_id: 'other' }] } : undefined)))
+    await addProvider(req(NEW))
+    expect(db.to('providers', 'insert')[0]?.payload).toEqual(expect.objectContaining({ npi_claimed: false }))
+    expect(db.to('providers', 'select').some(c => 'npi_number' in c.filters)).toBe(false)
   })
 })
 

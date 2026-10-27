@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import { TEST_IDS, TEST_USERS } from './fixtures/seed'
+import { shardPrefix } from './fixtures/shard'
 
 // ============================================================
 // Navigation after the session changes, when the destination was redirected
@@ -22,7 +23,8 @@ import { TEST_IDS, TEST_USERS } from './fixtures/seed'
 // service role (a reserved nav-e2e- email) and deletes it and the login it
 // creates in beforeAll and afterAll.
 
-const EMAIL_PREFIX = 'nav-e2e-'
+// Per shard (fixtures/shard): cleanup sweeps this prefix, so each shard sweeps only its own.
+const EMAIL_PREFIX = shardPrefix('nav-e2e-')
 const PASSWORD = 'nav e2e passphrase 42'
 
 function e2eService() {
