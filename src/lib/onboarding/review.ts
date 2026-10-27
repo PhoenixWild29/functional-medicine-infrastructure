@@ -34,6 +34,8 @@ export interface ReviewClinic extends OnboardingClinicDetails {
   reviewedAt:  string | null
   /** Who last approved or sent it back: a name, or 'CompoundIQ ops'. */
   reviewedBy:  string | null
+  /** 'self_serve' for a self sign-up (ops may delete it until approved). */
+  signupSource?: string | null
 }
 
 export interface ReviewProvider extends Omit<OnboardingProvider, 'npiStatus'> {
@@ -46,6 +48,8 @@ export interface ReviewProvider extends Omit<OnboardingProvider, 'npiStatus'> {
     registryName: string | null
     checkedAt:    string | null
   }
+  /** Security review M3: who else names this NPI (lib/onboarding/npi-claims). */
+  npiConflict?: { approvedElsewhere: boolean; pendingElsewhere: number }
 }
 
 export interface ReviewAgreement {
@@ -176,6 +180,7 @@ export async function loadClinicReview(supabase: Supabase, clinicId: string, now
       submittedAt: c?.onboarding_submitted_at ?? null,
       reviewedAt:  c?.onboarding_reviewed_at ?? null,
       reviewedBy:  c?.onboarding_reviewed_by ? names.get(c.onboarding_reviewed_by) ?? ROLE_LABELS['ops_admin']! : null,
+      signupSource: c?.signup_source ?? null,
     },
     providers: state.providers.map(provider => {
       const p = withoutNpiStatus(provider)
@@ -186,6 +191,10 @@ export async function loadClinicReview(supabase: Supabase, clinicId: string, now
         email: summaries.get(p.providerId)?.accountHolder ? summaries.get(p.providerId)!.email : providerEmails.get(p.providerId) ?? p.invite?.email ?? null,
         accountHolder: summaries.get(p.providerId)?.accountHolder === true,
         npi: { status: (n?.status as NpiStatus | undefined) ?? null, reason: n?.reason ?? null, registryName, checkedAt: n?.checked_at ?? null },
+        npiConflict: {
+          approvedElsewhere: summaries.get(p.providerId)?.npiApprovedElsewhere === true,
+          pendingElsewhere:  summaries.get(p.providerId)?.npiPendingElsewhere ?? 0,
+        },
       }
     }),
     staff: state.staff,

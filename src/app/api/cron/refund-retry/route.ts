@@ -28,10 +28,11 @@ import {
   issueRefund, retrieveRefund, recordPendingRefund, pendingRefund,
   REFUND_RETRY_WINDOW_MS, type RefundableOrder,
 } from '@/lib/refunds/refund'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const MAX_BATCH = 100
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const denied = cronAuthFailure(request, 'refund-retry')
   if (denied) return denied
 
@@ -75,6 +76,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           expectedStatus: 'REFUND_PENDING',
           newStatus:      'REFUNDED',
           actor:          'cron:refund-retry',
+          actorRole:      'system',
           metadata:       { refund_id: known.refundId },
         })
         if (done.wasAlreadyTransitioned) {
@@ -130,6 +132,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       expectedStatus: 'REFUND_PENDING',
       newStatus:      'REFUNDED',
       actor:          'cron:refund-retry',
+      actorRole:      'system',
       metadata:       { refund_id: result.refundId },
     })
     if (done.wasAlreadyTransitioned) {
@@ -159,3 +162,5 @@ async function recordRefund(
     console.error(`[refund-retry] ledger: refund ${refundId} not recorded | order=${orderId}:`, err instanceof Error ? err.message : err)
   }
 }
+
+export const GET = withApiErrors('/api/cron/refund-retry', getHandler)

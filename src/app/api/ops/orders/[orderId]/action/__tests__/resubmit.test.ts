@@ -16,7 +16,7 @@
 import { POST } from '../route'
 
 let orderRow: { order_id: string; status: string; pharmacy_id: string | null; reroute_count: number } = {
-  order_id: 'o-1', status: 'SUBMISSION_FAILED', pharmacy_id: 'pharm-1', reroute_count: 0,
+  order_id: '0a000000-0000-4000-8000-000000000001', status: 'SUBMISSION_FAILED', pharmacy_id: 'pharm-1', reroute_count: 0,
 }
 let afterQueue: Array<() => unknown> = []
 
@@ -53,9 +53,9 @@ jest.mock('@/lib/stripe/client', () => ({ createStripeClient: () => ({}) }))
 
 jest.mock('@/lib/orders/cas-transition', () => ({
   casTransition: async (args: { expectedStatus: string; newStatus: string }) => {
-    if (orderRow.status !== args.expectedStatus) return { success: true, wasAlreadyTransitioned: true, orderId: 'o-1' }
+    if (orderRow.status !== args.expectedStatus) return { success: true, wasAlreadyTransitioned: true, orderId: '0a000000-0000-4000-8000-000000000001' }
     orderRow.status = args.newStatus
-    return { success: true, wasAlreadyTransitioned: false, orderId: 'o-1' }
+    return { success: true, wasAlreadyTransitioned: false, orderId: '0a000000-0000-4000-8000-000000000001' }
   },
 }))
 jest.mock('@/lib/orders/status-history', () => ({ insertStatusHistory: jest.fn().mockResolvedValue(true) }))
@@ -90,7 +90,7 @@ jest.mock('@/lib/supabase/service', () => ({
 function act(action: string) {
   return POST(
     { json: async () => ({ action }) } as never,
-    { params: Promise.resolve({ orderId: 'o-1' }) },
+    { params: Promise.resolve({ orderId: '0a000000-0000-4000-8000-000000000001' }) },
   )
 }
 
@@ -101,7 +101,7 @@ async function flushAfter() {
 beforeEach(() => {
   // These tests describe the switch ON; the kill-switch tests below turn it off.
   process.env['PHARMACY_SUBMISSIONS_ENABLED'] = 'true'
-  orderRow = { order_id: 'o-1', status: 'SUBMISSION_FAILED', pharmacy_id: 'pharm-1', reroute_count: 0 }
+  orderRow = { order_id: '0a000000-0000-4000-8000-000000000001', status: 'SUBMISSION_FAILED', pharmacy_id: 'pharm-1', reroute_count: 0 }
   afterQueue = []
   routeOrderMock.mockReset().mockResolvedValue({ outcome: 'accepted', tier: 'TIER_1_API' })
   submitQueuedFaxMock.mockReset().mockResolvedValue({ outcome: 'accepted' })
@@ -122,7 +122,7 @@ describe('retry_submission', () => {
     expect(res.status).toBe(200)
     expect(routeOrderMock).toHaveBeenCalledTimes(1)
     expect(routeOrderMock).toHaveBeenCalledWith(expect.objectContaining({
-      orderId: 'o-1', pharmacyId: 'pharm-1', currentStatus: 'REROUTE_PENDING',
+      orderId: '0a000000-0000-4000-8000-000000000001', pharmacyId: 'pharm-1', currentStatus: 'REROUTE_PENDING',
     }))
   })
 
@@ -164,7 +164,7 @@ describe('force_fax', () => {
     expect(res.status).toBe(200)
     expect(orderRow.status).toBe('FAX_QUEUED')
     expect(submitQueuedFaxMock).toHaveBeenCalledTimes(1)
-    expect(submitQueuedFaxMock).toHaveBeenCalledWith(expect.objectContaining({ orderId: 'o-1', pharmacyId: 'pharm-1' }))
+    expect(submitQueuedFaxMock).toHaveBeenCalledWith(expect.objectContaining({ orderId: '0a000000-0000-4000-8000-000000000001', pharmacyId: 'pharm-1' }))
   })
 
   it('from FAX_FAILED: queues the fax and sends it', async () => {

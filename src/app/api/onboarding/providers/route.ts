@@ -12,11 +12,15 @@
 // The provider row has no login until the provider accepts the invite.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { requireOnboardingAdmin, readJson, cleanEmail, setStep } from '@/lib/onboarding/access'
 import { createInvite } from '@/lib/onboarding/invite-actions'
 import { NAME_RE, addProviderRecord, licenseErrors, npiProblem } from '@/lib/onboarding/provider-record'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const access = await requireOnboardingAdmin({ editable: true })
   if (!access.ok) return access.response
   const { user, clinicId, supabase } = access
@@ -46,6 +50,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // provider's self sign-up (lib/onboarding/provider-record).
   const added = await addProviderRecord(supabase, {
     clinicId, userId: null, firstName, lastName, npiNumber, licenses: [license], actorId: user.id,
+    // The wizard: the clinic is not approved yet, so it holds no NPI until
+    // ops approves (security review M3).
+    npiClaimed: false,
   })
   if (!added.ok) {
     return NextResponse.json({ error: added.error, ...(added.errors ? { errors: added.errors } : {}) }, { status: added.status })
@@ -59,3 +66,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   return NextResponse.json({ providerId: provider.provider_id, npiStatus, link: invite.link, expiresAt: invite.expiresAt }, { status: 201 })
 }
+
+export const POST = withApiErrors('/api/onboarding/providers', postHandler)

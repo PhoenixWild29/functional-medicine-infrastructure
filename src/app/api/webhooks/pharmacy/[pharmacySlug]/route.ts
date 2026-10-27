@@ -32,11 +32,13 @@
 // All other outcomes return 200 (including processing errors).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { clientIp } from '@/lib/security/client-ip'
 import { createServiceClient } from '@/lib/supabase/service'
 import { readVaultSecret } from '@/lib/vault/read-secret'
 import { casTransition } from '@/lib/orders/cas-transition'
 import { sendSlackAlert, buildAdapterFailureAlert } from '@/lib/slack/client'
 import type { OrderStatus } from '@/lib/orders/state-machine'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // ============================================================
 // PAYLOAD TYPES
@@ -61,7 +63,7 @@ interface PharmacyEventData {
 // ROUTE HANDLER
 // ============================================================
 
-export async function POST(
+async function postHandler(
   request: NextRequest,
   { params }: { params: Promise<{ pharmacySlug: string }> }
 ): Promise<NextResponse> {
@@ -134,7 +136,7 @@ export async function POST(
   )
 
   if (!isValid) {
-    const ip = request.headers.get('x-forwarded-for') ?? 'unknown'
+    const ip = clientIp(request.headers) ?? 'unknown'
     console.error(
       `[pharmacy-webhook] signature verification failed | pharmacy=${pharmacySlug} | ip=${ip}`
     )
@@ -364,6 +366,7 @@ async function handleOrderConfirmed(
     expectedStatus: 'SUBMISSION_PENDING',
     newStatus: 'PHARMACY_ACKNOWLEDGED',
     actor: 'pharmacy_webhook',
+    actorRole: 'system',
     metadata: { external_order_id: envelope.orderId },
   })
 
@@ -438,6 +441,7 @@ async function handleOrderCompounding(
     expectedStatus: 'PHARMACY_ACKNOWLEDGED',
     newStatus: 'PHARMACY_COMPOUNDING',
     actor: 'pharmacy_webhook',
+    actorRole: 'system',
     metadata: { external_order_id: envelope.orderId },
   })
 
@@ -528,6 +532,7 @@ async function handleOrderShipped(
       expectedStatus: 'PHARMACY_ACKNOWLEDGED',
       newStatus: 'PHARMACY_COMPOUNDING',
       actor: 'pharmacy_webhook',
+      actorRole: 'system',
       metadata: { external_order_id: envelope.orderId, reason: 'implicit_from_shipped' },
     }).catch(err =>
       console.warn(`[pharmacy-webhook] order.shipped: intermediate CAS ACKNOWLEDGED→COMPOUNDING non-fatal:`, err)
@@ -537,6 +542,7 @@ async function handleOrderShipped(
       expectedStatus: 'PHARMACY_COMPOUNDING',
       newStatus: 'READY_TO_SHIP',
       actor: 'pharmacy_webhook',
+      actorRole: 'system',
       metadata: { external_order_id: envelope.orderId, reason: 'implicit_from_shipped' },
     }).catch(err =>
       console.warn(`[pharmacy-webhook] order.shipped: intermediate CAS COMPOUNDING→READY_TO_SHIP non-fatal:`, err)
@@ -548,6 +554,7 @@ async function handleOrderShipped(
       expectedStatus: 'PHARMACY_COMPOUNDING',
       newStatus: 'READY_TO_SHIP',
       actor: 'pharmacy_webhook',
+      actorRole: 'system',
       metadata: { external_order_id: envelope.orderId, reason: 'implicit_from_shipped' },
     }).catch(err =>
       console.warn(`[pharmacy-webhook] order.shipped: intermediate CAS COMPOUNDING→READY_TO_SHIP non-fatal:`, err)
@@ -559,6 +566,7 @@ async function handleOrderShipped(
       expectedStatus: 'PHARMACY_PROCESSING',
       newStatus: 'READY_TO_SHIP',
       actor: 'pharmacy_webhook',
+      actorRole: 'system',
       metadata: { external_order_id: envelope.orderId, reason: 'implicit_from_shipped' },
     }).catch(err =>
       console.warn(`[pharmacy-webhook] order.shipped: intermediate CAS PROCESSING→READY_TO_SHIP non-fatal:`, err)
@@ -572,6 +580,7 @@ async function handleOrderShipped(
     expectedStatus: 'READY_TO_SHIP',
     newStatus: 'SHIPPED',
     actor: 'pharmacy_webhook',
+    actorRole: 'system',
     metadata: {
       external_order_id: envelope.orderId,
       tracking_number: trackingNumber,
@@ -642,6 +651,7 @@ async function handleOrderRejected(
     expectedStatus: order.status,
     newStatus: 'PHARMACY_REJECTED',
     actor: 'pharmacy_webhook',
+    actorRole: 'system',
     metadata: {
       external_order_id: envelope.orderId,
       rejection_reason: envelope.data?.rejectionReason ?? null,
@@ -698,3 +708,5 @@ async function handleCatalogUpdated(
     `[pharmacy-webhook] catalog.updated | pharmacy=${pharmacySlug} (${pharmacyId}) | sync pending`
   )
 }
+
+export const POST = withApiErrors('/api/webhooks/pharmacy/[pharmacySlug]', postHandler)

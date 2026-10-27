@@ -21,9 +21,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
 import { cycleLengthFrom, cyclePatternFrom } from '@/lib/orders/cycling'
-import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { getUserClinicId, getUserRole, isClinicStaffRole } from '@/lib/auth/claims'
 import { refuseCrossSite } from '@/lib/security/same-origin'
 import { resolveCurrentProvider, isProviderRole } from '@/lib/auth/current-provider'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { MAX_NAME, MAX_NOTE, parseInput, parseQuery, uuid, UUID_RE } from '@/lib/api/input'
+import { z } from 'zod'
+
+// ?id= is a protocol id (an empty id reads as the list, as before). A bad
+// id reaching Postgres is error 22P02, a 500. patient_state is not
+// checked here: an invalid one is treated as absent, as before.
+const ProtocolQuery = z.object({ id: z.union([z.literal(''), uuid()]).optional() })
 
 // A failed read is logged here and answered with a plain message: the
 // database's own text (tables, columns, constraints) never reaches the
@@ -33,17 +41,21 @@ function readFailed(what: string, clinicId: string, err: { message: string }): N
   return NextResponse.json({ error: 'Protocols could not be loaded. Try again.' }, { status: 500 })
 }
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Clinic staff only: any other role, or none, is refused before anything is read.
+  if (!isClinicStaffRole(getUserRole(user))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const supabase = createServiceClient()
   const clinicId = getUserClinicId(user)
   if (!clinicId) return NextResponse.json({ error: 'No clinic context' }, { status: 403 })
 
   const { searchParams } = new URL(req.url)
-  const protocolId = searchParams.get('id')
+  const query = parseQuery(searchParams, ProtocolQuery)
+  if (!query.ok) return query.response
+  const protocolId = query.data.id || null
 
   // Optional 2-letter patient shipping state — enables the per-item
   // pharmacy_licensed enrichment. Invalid values are treated as absent.
@@ -57,7 +69,7 @@ export async function GET(req: NextRequest) {
       .select('*')
       .eq('protocol_id', protocolId)
       .eq('clinic_id', clinicId)
-      .single()
+      .maybeSingle()
 
     if (protoErr) return readFailed('protocol', clinicId, protoErr)
     if (!protocol) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -273,22 +285,48 @@ interface ProtocolItemBody {
   cycle_duration_days: number | null
 }
 
+// Ids and bounds, checked once the messages above have had their say:
+// every id is an id (a bad one reaching Postgres is error 22P02, a 500)
+// and the free text is bounded. A field that is absent, empty or not a
+// string is left as before (saved as null).
+const PROTOCOL_REFILLS_MAX = 99
+const idIfGiven = z.unknown().refine(v => typeof v !== 'string' || !v.trim() || UUID_RE.test(v.trim()), 'must be an id').optional()
+const textIfGiven = (max: number) => z.unknown().refine(v => typeof v !== 'string' || v.trim().length <= max, `at most ${max} characters`).optional()
+const ProtocolBody = z.looseObject({
+  created_by:  idIfGiven,
+  description: textIfGiven(MAX_NOTE),
+  items: z.array(z.looseObject({
+    formulation_id:   idIfGiven,
+    pharmacy_id:      idIfGiven,
+    dose_amount:      textIfGiven(MAX_NAME),
+    dose_unit:        textIfGiven(MAX_NAME),
+    frequency_code:   textIfGiven(MAX_NAME),
+    sig_text:         textIfGiven(MAX_NOTE),
+    default_quantity: textIfGiven(MAX_NAME),
+    default_refills:  z.unknown().refine(v => typeof v !== 'number' || !Number.isInteger(v) || v <= PROTOCOL_REFILLS_MAX, `at most ${PROTOCOL_REFILLS_MAX}`).optional(),
+  })),
+})
+
 function optionalStr(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v.trim() : null
 }
 
-export async function POST(req: NextRequest) {
+async function postHandler(req: NextRequest) {
   const crossSite = refuseCrossSite(req)
   if (crossSite) return crossSite
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Clinic staff only: any other role, or none, is refused before anything is read.
+  if (!isClinicStaffRole(getUserRole(user))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const clinicId = getUserClinicId(user)
   if (!clinicId) return NextResponse.json({ error: 'No clinic context' }, { status: 403 })
 
   let body: Record<string, unknown>
   try { body = await req.json() as Record<string, unknown> } catch { body = {} }
+  // JSON null, an array or a scalar is no body (was a thrown 500 on null).
+  if (!body || typeof body !== 'object' || Array.isArray(body)) body = {}
 
   const name = optionalStr(body['name'])
   if (!name) return NextResponse.json({ error: 'name is required' }, { status: 400 })
@@ -332,6 +370,9 @@ export async function POST(req: NextRequest) {
       cycle_duration_days: cyclePattern ? cycleLength : null,
     })
   }
+
+  const checked = parseInput(ProtocolBody, body)
+  if (!checked.ok) return checked.response
 
   const supabase = createServiceClient()
 
@@ -404,3 +445,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ data: { ...protocol, item_count: items.length } }, { status: 201 })
 }
+
+export const GET = withApiErrors('/api/protocols', getHandler)
+export const POST = withApiErrors('/api/protocols', postHandler)

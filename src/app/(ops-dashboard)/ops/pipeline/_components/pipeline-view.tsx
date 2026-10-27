@@ -26,12 +26,14 @@ import type { PipelineOrder, FilterOption } from '@/types/pipeline'
 import type { OrderStatusEnum, IntegrationTierEnum } from '@/types/database.types'
 import { OrderDetailDrawer } from './order-detail-drawer'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { TRACKING_PENDING_LABEL, trackingPending } from '@/lib/orders/tracking-pending'
 import { getStatusConfig } from '@/lib/orders/status-config'
 import { SkeletonTableRow } from '@/components/ui/skeleton'
 import {
   EMPTY_PIPELINE_FILTERS, hasPipelineFilters, matchesPipelineFilters, pipelineFiltersToSearchParams,
   type PipelineFilters,
 } from '@/lib/ops/pipeline-filters'
+import { userMessage } from '@/lib/errors/user-message'
 
 // ── Status lane config ───────────────────────────────────────
 
@@ -255,7 +257,7 @@ export function PipelineView({
       }
       void refetch()
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Action failed')
+      setActionError(userMessage(err, 'Action failed'))
     }
   }, [refetch])
 
@@ -763,6 +765,10 @@ function OrderRow({
       {/* Status badge */}
       <td className="px-3 py-2">
         <StatusBadge status={order.status} className="text-[11px]" />
+        {/* Decision 10: shipped without tracking is allowed; say it is pending. */}
+        {trackingPending(order.status, order.trackingNumber) && (
+          <span className="ml-1 text-[11px] font-medium text-amber-800">{TRACKING_PENDING_LABEL}</span>
+        )}
         {order.rerouteCount > 0 && (
           <span className="ml-1 text-[10px] text-amber-600">
             {order.rerouteCount}/2 reroutes

@@ -21,6 +21,8 @@ export interface ScriptedCall {
   head:    boolean
   /** The select() column list, for a test that checks an embed. */
   columns?: string
+  /** The .limit(n) given, for a test that checks a query is bounded. */
+  limit?: number
 }
 
 export interface ScriptedAnswer {
@@ -60,7 +62,7 @@ export function scriptedDb(script: Script) {
       eq: filter('eq'), neq: filter('neq'), in: filter('in'), is: filter('is'), not: filter('not'),
       gt: filter('gt'), gte: filter('gte'), lt: filter('lt'), lte: filter('lte'),
       or: filter('or'), ilike: filter('ilike'), contains: filter('contains'),
-      order() { return q }, limit() { return q }, range() { return q }, returns() { return q },
+      order() { return q }, limit(n?: number) { if (typeof n === 'number') call.limit = n; return q }, range() { return q }, returns() { return q },
       maybeSingle() { call.single = 'maybe'; return Promise.resolve(run()) },
       single() { call.single = 'one'; return Promise.resolve(run()) },
       then<T>(resolve: (v: ReturnType<typeof run>) => T, reject?: (e: unknown) => T) {

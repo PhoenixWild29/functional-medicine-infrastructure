@@ -21,15 +21,20 @@
 //        (checked only when Twilio is configured)
 //   201  { patient, intake: { url, expiresAt, smsStatus } | null }
 //
+//   503  the PHI access row for the create could not be written: nothing
+//        is created and no text is sent (L1, writes are logged first)
+//
 // getUser(), never getSession(); role and clinic from app_metadata
 // (claims.ts). Logs carry ids only, never the number or a name.
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
-import { logPhiAccess, logPhiAccessMany } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiAccessMany, logPhiWriteNotCompleted, type PhiAccessEntry } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
 import { toE164, withPhoneE164 } from '@/lib/patients/phone'
 import { mobileLast4, patientName } from '@/lib/patients/display'
 import { checkMobileLineType } from '@/lib/twilio/line-type'
@@ -37,9 +42,12 @@ import { ilikeLiteral } from '@/lib/patients/duplicates'
 import { createIntakeLink } from '@/lib/intake/links'
 import { sendIntakeLinkSms } from '@/lib/intake/sms'
 import { staffDetails } from '@/lib/patients/staff-details'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { US_STATES } from '@/lib/geo/us-states'
 
 const STAFF_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
 const NAME_MAX = 100
+const STATE_CODES = new Set(US_STATES.map(s => s.code))
 
 /** The columns the Select Patient list and the session need. */
 const PATIENT_COLUMNS = 'patient_id, first_name, last_name, date_of_birth, phone, phone_e164, state, sms_opt_in, allergies, nkda, allergies_updated_at, intake_status'
@@ -57,11 +65,9 @@ function optionalName(v: unknown): string | null | undefined {
 }
 
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') {
-    return NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 })
-  }
+async function postHandler(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
 
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -93,7 +99,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   let state: string | null = null
   if (body['state'] !== undefined && body['state'] !== null && body['state'] !== '') {
     const s = typeof body['state'] === 'string' ? body['state'].trim().toUpperCase() : ''
-    if (!/^[A-Z]{2}$/.test(s)) return bad('state', 'Choose a state.')
+    // The states + New patient offers (lib/geo/us-states): a closed set.
+    if (!STATE_CODES.has(s)) return bad('state', 'Choose a state.')
     state = s
   }
   const confirmNew = body['confirmNew'] === true
@@ -154,9 +161,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // ── Create: pending, texts off until the patient chooses ──
+  // L1: logged BEFORE the insert, with the id generated here; refused
+  // (nothing created, no link, no text) when the row cannot be written.
+  const patientId = crypto.randomUUID()
+  const createEntry: PhiAccessEntry = { user, action: 'create', resource: 'patient', route: '/api/patients', patientId, clinicId, headers: request.headers }
+  if (!(await logPhiAccess(createEntry))) return phiWriteRefused()
+
   const { data: created, error: insertError } = await supabase
     .from('patients')
     .insert(withPhoneE164({
+      patient_id:    patientId,
       clinic_id:     clinicId,
       first_name:    firstName,
       last_name:     lastName,
@@ -172,12 +186,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .single()
   if (insertError || !created) {
     console.error('[patients] create failed:', insertError?.code ?? 'no row')
+    await logPhiWriteNotCompleted(createEntry)
     return NextResponse.json({ error: 'The patient could not be saved. Try again.' }, { status: 500 })
   }
-  const patientId = (created as { patient_id: string }).patient_id
   console.info(`[patients] created pending patient | patient=${patientId}`)
-
-  await logPhiAccess({ user, action: 'create', resource: 'patient', route: '/api/patients', patientId, clinicId, headers: request.headers })
 
   // ── Intake link, and the text when it can be sent ──
   let intake: { url: string; expiresAt: string; smsStatus: string } | null = null
@@ -207,3 +219,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     intake,
   }, { status: 201 })
 }
+
+export const POST = withApiErrors('/api/patients', postHandler)

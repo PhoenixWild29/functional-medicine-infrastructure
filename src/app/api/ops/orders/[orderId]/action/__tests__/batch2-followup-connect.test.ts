@@ -68,7 +68,7 @@ jest.spyOn(console, 'error').mockImplementation(() => {})
 jest.spyOn(console, 'info').mockImplementation(() => {})
 
 const SOLO = {
-  order_id: 'o-solo', status: 'PAID_PROCESSING', stripe_payment_intent_id: 'pi_solo',
+  order_id: '0a000000-0000-4000-8000-00000000050f', status: 'PAID_PROCESSING', stripe_payment_intent_id: 'pi_solo',
   payment_group_id: null, reroute_count: 0, pharmacy_id: 'ph-1', ops_assignee: null, retail_price_snapshot: 190,
 }
 const member = (id: string, status: string, retail: number) => ({
@@ -89,7 +89,7 @@ describe('refunds unwind the Connect destination charge', () => {
   it('a single-order refund reverses the transfer and refunds the application fee', async () => {
     orderFetchMock.mockResolvedValue({ data: SOLO, error: null })
 
-    await post('o-solo')
+    await post('0a000000-0000-4000-8000-00000000050f')
 
     expect(refundsCreateMock).toHaveBeenCalledWith(
       { payment_intent: 'pi_solo', reverse_transfer: true, refund_application_fee: true },
@@ -98,13 +98,13 @@ describe('refunds unwind the Connect destination charge', () => {
   })
 
   it('a bundle member\'s partial refund does too — Stripe prorates both', async () => {
-    const a = member('o-a', 'PAID_PROCESSING', 200)
-    const b = member('o-b', 'PAID_PROCESSING', 250)
+    const a = member('0a000000-0000-4000-8000-00000000000a', 'PAID_PROCESSING', 200)
+    const b = member('0a000000-0000-4000-8000-00000000000b', 'PAID_PROCESSING', 250)
     orderFetchMock.mockResolvedValue({ data: a, error: null })
     groupFetchMock.mockResolvedValue({ data: { group_id: 'g-1', status: 'PAID', stripe_payment_intent_id: 'pi_group', total_cents: 50000 }, error: null })
     membersFetchMock.mockResolvedValue({ data: [a, b], error: null })
 
-    await post('o-a')
+    await post('0a000000-0000-4000-8000-00000000000a')
 
     // amount is the member's retail; the transfer reversal and fee
     // refund are left to Stripe's proration — not computed here.
@@ -120,11 +120,11 @@ describe('a refund Stripe reports as pending', () => {
     orderFetchMock.mockResolvedValue({ data: SOLO, error: null })
     refundsCreateMock.mockResolvedValue({ id: 're_pending_1', status: 'pending' })
 
-    const res = await post('o-solo')
+    const res = await post('0a000000-0000-4000-8000-00000000050f')
 
     expect(res.status).toBe(200)
     expect(historyInsertMock).toHaveBeenCalledWith(expect.objectContaining({
-      order_id: 'o-solo',
+      order_id: '0a000000-0000-4000-8000-00000000050f',
       old_status: 'REFUND_PENDING',
       new_status: 'REFUND_PENDING',
       metadata: expect.objectContaining({ refund_id: 're_pending_1' }),

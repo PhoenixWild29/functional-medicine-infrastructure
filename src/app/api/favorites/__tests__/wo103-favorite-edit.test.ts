@@ -138,9 +138,9 @@ describe('PATCH /api/favorites — WO-103 edits', () => {
   })
 
   it('pins to a patient in the clinic, and back to the practice with null', async () => {
-    fixtures['patients:maybeSingle'] = () => ({ data: { patient_id: 'patient-1' }, error: null })
-    expect((await PATCH(makeRequest({ patient_id: 'patient-1' }))).status).toBe(200)
-    expect(favoriteUpdate()).toEqual(expect.objectContaining({ patient_id: 'patient-1' }))
+    fixtures['patients:maybeSingle'] = () => ({ data: { patient_id: 'a3000000-0000-0000-0000-000000000001' }, error: null })
+    expect((await PATCH(makeRequest({ patient_id: 'a3000000-0000-0000-0000-000000000001' }))).status).toBe(200)
+    expect(favoriteUpdate()).toEqual(expect.objectContaining({ patient_id: 'a3000000-0000-0000-0000-000000000001' }))
 
     updates = []
     expect((await PATCH(makeRequest({ patient_id: null }))).status).toBe(200)
@@ -148,7 +148,7 @@ describe('PATCH /api/favorites — WO-103 edits', () => {
 
     updates = []
     fixtures['patients:maybeSingle'] = () => ({ data: null, error: null })
-    expect((await PATCH(makeRequest({ patient_id: 'patient-other-clinic' }))).status).toBe(403)
+    expect((await PATCH(makeRequest({ patient_id: 'a3000000-0000-0000-0000-000000000099' }))).status).toBe(403)
     expect(updates).toEqual([])
   })
 

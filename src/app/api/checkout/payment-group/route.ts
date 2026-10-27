@@ -12,19 +12,25 @@
 // POST /api/orders/[orderId]/group-and-send (Stage 4) can reuse them.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { createPaymentGroup }  from '@/lib/payment-group/create-group'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+import { mfaApiRefusal } from '@/lib/auth/mfa'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+// Any 8-4-4-4-12 hex id. The v4-only pattern used here before refused the
+// seeded demo order ids, which are not RFC v4.
+import { UUID_RE } from '@/lib/api/input'
 
 interface CreatePaymentGroupBody {
   orderIds: string[]
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   // ── 0. Feature flag — Codex 2026-06-09 sweep, critical finding #2 ────
   if (process.env['PHASE_C_GROUPS_ENABLED'] !== 'true') {
     return NextResponse.json(
@@ -46,6 +52,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const appRole  = getUserRole(user)
   const clinicId = getUserClinicId(user) ?? null
 
+  // HIPAA B3: /api/checkout is a public middleware prefix (the patient
+  // checkout pages), so the middleware MFA gate never runs here. This is a
+  // staff route that goes on with the service role: apply the same gate.
+  const mfa = await mfaApiRefusal(supabaseAuth, user, appRole)
+  if (mfa) return NextResponse.json(mfa, { status: 401 })
+
   if (appRole !== 'clinic_admin' && appRole !== 'provider' && appRole !== 'medical_assistant') {
     return NextResponse.json({ error: 'Forbidden: clinic-app role required' }, { status: 403 })
   }
@@ -65,7 +77,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  if (!Array.isArray(body.orderIds)) {
+  // A JSON body of null used to throw here (a 500).
+  if (!body || typeof body !== 'object' || !Array.isArray(body.orderIds)) {
     return NextResponse.json({ error: 'orderIds must be an array' }, { status: 400 })
   }
   if (body.orderIds.length < 2) {
@@ -75,7 +88,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'A payment group cannot contain more than 25 orders' }, { status: 400 })
   }
   for (const id of body.orderIds) {
-    if (!UUID_RE.test(id)) {
+    if (typeof id !== 'string' || !UUID_RE.test(id)) {
       return NextResponse.json({ error: `Invalid orderId: ${id}` }, { status: 400 })
     }
   }
@@ -111,3 +124,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/checkout/payment-group', postHandler)

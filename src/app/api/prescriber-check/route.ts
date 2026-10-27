@@ -14,10 +14,11 @@ import { prescriberProblems, todayUtc } from '@/lib/providers/credentials'
 import type { NpiStatus } from '@/lib/providers/npi'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { mayOpenSignPage, resolveSigner } from '@/lib/auth/signer'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -68,3 +69,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }, states, todayUtc())
   return NextResponse.json({ applies: true, problems }, { headers: NO_STORE })
 }
+
+export const GET = withApiErrors('/api/prescriber-check', getHandler)

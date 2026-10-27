@@ -117,7 +117,7 @@ describe('a refund that is allowed to transition', () => {
     await run(db, stripe)
 
     expect(casTransition).toHaveBeenCalledWith({
-      orderId: 'o-1', expectedStatus: 'REFUND_PENDING', newStatus: 'REFUNDED', actor: 'stripe_webhook',
+      orderId: 'o-1', expectedStatus: 'REFUND_PENDING', newStatus: 'REFUNDED', actor: 'stripe_webhook', actorRole: 'system',
       metadata: { refund_id: 're_1', source: 'charge.refunded' },
     })
     const synced = history.find(r => r.metadata?.['event'] === 'stripe_refund_synced')!

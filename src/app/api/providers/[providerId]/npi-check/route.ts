@@ -11,11 +11,15 @@
 // could no longer sign. 409, nothing called or written.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { clinicAdminForProvider } from '@/lib/providers/team-access'
 import { runNpiCheck } from '@/lib/providers/verify-npi'
 import { DEMO_RECORD_NOTE } from '@/lib/providers/credentials'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(_request: NextRequest, { params }: { params: Promise<{ providerId: string }> }): Promise<NextResponse> {
+async function postHandler(request: NextRequest, { params }: { params: Promise<{ providerId: string }> }): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const { providerId } = await params
   const access = await clinicAdminForProvider(providerId)
   if (!access.ok) return access.response
@@ -43,3 +47,5 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     checkedAt:    result.checkedAt,
   })
 }
+
+export const POST = withApiErrors('/api/providers/[providerId]/npi-check', postHandler)

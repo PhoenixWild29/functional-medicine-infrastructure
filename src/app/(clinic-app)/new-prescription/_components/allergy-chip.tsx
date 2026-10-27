@@ -28,6 +28,7 @@ import {
   normalizeAllergies,
   type PatientAllergyFields,
 } from '@/lib/patients/allergies'
+import { userMessage } from '@/lib/errors/user-message'
 
 // ── Shared result shape ───────────────────────────────────────
 
@@ -196,13 +197,19 @@ export function AllergyEditor({ patientId, patient, onSaved, onCancel }: Allergy
   }
 
   async function handleSave() {
+    // Coverage gap 9: a save records something. The server refuses an empty
+    // one too, so a patient is never put back to "not recorded".
+    if (!nkda && entries.length === 0) {
+      setError('Enter at least one allergy, or mark NKDA.')
+      return
+    }
     setSaving(true)
     setError(null)
     try {
       const saved = await saveAllergies(patientId, { allergies: nkda ? [] : entries, nkda })
       onSaved(saved)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save allergies')
+      setError(userMessage(err, 'Could not save allergies'))
     } finally {
       setSaving(false)
     }
@@ -262,12 +269,12 @@ export function AllergyEditor({ patientId, patient, onSaved, onCancel }: Allergy
           type="button"
           onClick={onCancel}
           disabled={saving}
-          className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground underline hover:text-foreground focus-visible:outline-none"
+          className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground underline hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           Cancel
         </button>
         {!nkda && entries.length === 0 && (
-          <span className="text-[11px] text-muted-foreground">Leave empty to keep &ldquo;not recorded&rdquo;.</span>
+          <span className="text-[11px] text-muted-foreground">Enter at least one allergy, or tick NKDA.</span>
         )}
       </div>
     </div>

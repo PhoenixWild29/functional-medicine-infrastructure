@@ -5,7 +5,7 @@ import Stripe from 'stripe'
 // It avoids exposing SUPABASE_SERVICE_ROLE_KEY as a bearer token over a local HTTP call.
 // Trade-off: these tests must run with the source tree present (CI only, not against deployed prod).
 import { generateCheckoutToken } from '../src/lib/auth/checkout-token'
-import { cleanupTestOrders, TEST_IDS } from './fixtures/seed'
+import { cleanupTestOrders, TEST_CLINIC_NAME, TEST_IDS } from './fixtures/seed'
 
 // ============================================================
 // Patient Checkout E2E — WO-42 (rewritten PR 6.3)
@@ -103,7 +103,17 @@ test.describe('Patient Checkout Flow', () => {
     // Clinic branding renders. The clinic name appears in TWO places on the
     // checkout page (banner and the order-summary subtitle), so scope the
     // selector to the banner to avoid a strict-mode multi-match.
-    await expect(page.getByRole('banner').getByText('Test Clinic E2E')).toBeVisible()
+    await expect(page.getByRole('banner').getByText(TEST_CLINIC_NAME)).toBeVisible()
+
+    // The token is out of the address bar once the payment form is up:
+    // Stripe.js (a third-party script) loads only after the page replaced
+    // /checkout/<token> with /checkout, so it never sees the token there.
+    await expect(page.getByRole('button', { name: 'Pay $200.00' })).toBeVisible({ timeout: 20_000 })
+    await expect(page).toHaveURL(/\/checkout$/)
+    expect(page.url()).not.toContain(checkoutToken)
+    // A refresh has no token (nothing stored it): reopen the link.
+    await page.reload()
+    await expect(page.getByTestId('checkout-reopen')).toContainText('For your security, please reopen the payment link from your text message.')
   })
 
   // ── Test A.2 — Stripe Link panel suppression (WO-87) ─────────
@@ -130,7 +140,7 @@ test.describe('Patient Checkout Flow', () => {
 
     await page.goto(`/checkout/${checkoutToken}`)
     await expect(page.getByLabel('Amount due: $200.00')).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByRole('banner').getByText('Test Clinic E2E')).toBeVisible()
+    await expect(page.getByRole('banner').getByText(TEST_CLINIC_NAME)).toBeVisible()
 
     // Filter out expected Stripe iframe noise (CSP warnings, etc.) and assert
     // no React hydration mismatches or uncaught exceptions fired.
@@ -227,7 +237,7 @@ test.describe('Patient Checkout Flow', () => {
   test('expired or invalid checkout token shows error page', async ({ page }) => {
     await page.goto('/checkout/invalid-token-that-does-not-exist')
     await expect(
-      page.getByText(/link has expired/i).or(page.getByText(/not found/i))
+      page.getByText(/link is no longer active/i).or(page.getByText(/not found/i))
     ).toBeVisible()
   })
 })

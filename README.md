@@ -226,10 +226,10 @@ To run a proof-of-concept demo environment:
 
 | Role | Email | Password |
 |------|-------|----------|
-| `ops_admin` | `ops@compoundiq-poc.com` | `POCAdmin2026!` |
-| `clinic_admin` | `admin@sunrise-clinic.com` | `POCClinic2026!` |
-| `provider` | `dr.chen@sunrise-clinic.com` | `POCProvider2026!` |
-| `medical_assistant` | `ma@sunrise-clinic.com` | `POCMA2026!` |
+| `ops_admin` | `ops@compoundiq-poc.com` | `POC_OPS_PASSWORD` (set in your local env) |
+| `clinic_admin` | `admin@sunrise-clinic.com` | `POC_CLINIC_ADMIN_PASSWORD` (set in your local env) |
+| `provider` | `dr.chen@sunrise-clinic.com` | `POC_PROVIDER_PASSWORD` (set in your local env) |
+| `medical_assistant` | `ma@sunrise-clinic.com` | `POC_MA_PASSWORD` (set in your local env) |
 
 See [docs/technical/poc-setup.md](docs/technical/poc-setup.md) for full infrastructure runbook.
 

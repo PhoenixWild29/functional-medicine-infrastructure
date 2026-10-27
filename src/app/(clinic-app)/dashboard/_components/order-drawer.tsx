@@ -10,18 +10,15 @@
 //     the record reconciles with what checkout charges
 //   - Rx details (read-only; the WO-96 columns the order stores, with the
 //     Review card's labels)
-//   - Full status timeline (from order_status_history)
+//   - Full status timeline (order_status_history, via GET /api/orders/[id]/timeline)
 //   - Tracking info (status-based summary)
 //
-// Rx PDF preview and adapter submission log are displayed
-// as placeholders — full implementation follows pharmacy
-// adapter work orders (out of scope for WO-31).
+// No Rx PDF preview: none is built, so the drawer does not promise one.
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { isRefundEventRow } from '@/lib/refunds/events'
 import { isPaymentEventRow, paymentFailedLabel } from '@/lib/payments/events'
-import { createBrowserClient } from '@/lib/supabase/client'
 import type { DashboardOrder } from '../page'
 import { getStatusConfig } from '@/lib/orders/status-config'
 import { notify } from '@/lib/notifications'
@@ -42,6 +39,8 @@ import { isSubmissionFailure, submissionFailureNotice } from '@/lib/orders/submi
 import type { SubmissionFailure } from '@/app/api/orders/[orderId]/failure-reason/route'
 import { ProposalPanel } from './proposal-panel'
 import { isProposedOrder } from '../_lib/tabs'
+import { userMessage } from '@/lib/errors/user-message'
+import { useDialogFocus } from '@/components/a11y/use-dialog-focus'
 
 interface Props {
   order: DashboardOrder | null
@@ -113,7 +112,7 @@ async function readBundlableSiblings(orderId: string): Promise<{ state: Bundlabl
   } catch (err) {
     notify.error(
       'Could not check for bundlable prescriptions',
-      err instanceof Error ? err.message : 'Unexpected error',
+      userMessage(err, 'Unexpected error'),
     )
     return { state: { anchorBundlable: false, siblings: [] }, loaded: null }
   }
@@ -163,7 +162,7 @@ async function readGroupLink(orderId: string): Promise<GroupLinkInfo | null> {
   } catch (err) {
     notify.error(
       'Could not load bundle payment link',
-      err instanceof Error ? err.message : 'Unexpected error',
+      userMessage(err, 'Unexpected error'),
     )
     return null
   }
@@ -254,19 +253,13 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
   // Patient protocol choice: a DRAFT in an open plan (the Proposed tab).
   const proposed = order ? isProposedOrder(order) : false
   const router = useRouter()
-  // Escape closes the drawer, and focus moves into it when it opens
-  // (WCAG 2.1.2 / 2.4.3); the dashboard returns focus to the row on close.
+  // Escape closes the drawer, focus moves into it when it opens and Tab
+  // stays inside it (WCAG 2.1.2 / 2.4.3); the dashboard returns focus to
+  // the row on close.
   const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const drawerRef = useRef<HTMLDivElement>(null)
   const isOpen = order !== null
-  useEffect(() => {
-    if (!isOpen) return
-    closeButtonRef.current?.focus()
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [isOpen, onClose])
-  // BLK-03: stable ref prevents stale closure + avoids re-running effect when client recreated
-  const supabaseRef = useRef(createBrowserClient())
+  useDialogFocus(drawerRef, { active: isOpen, onEscape: onClose, initialFocus: closeButtonRef, restoreFocus: false })
 
   const [history,           setHistory]           = useState<StatusHistoryRow[]>([])
   // Payment Flow v1.1: "Payment failed, awaiting retry" (lib/payments/events).
@@ -353,34 +346,38 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
   useEffect(() => {
     if (!historyOrderId || !historyOrderStatus) return
 
-    // NB-3: select old_status, new_status, changed_by — there is no "status" or "note" column
-    supabaseRef.current
-      .from('order_status_history')
-      .select('old_status, new_status, changed_by, created_at, metadata')
-      .eq('order_id', historyOrderId)
-      .order('created_at', { ascending: true })
-      .then(({ data }) => {
-        // Refund bookkeeping rows (a refund Stripe is still processing, a
-        // late payment refunded) record facts, not steps in the order's
-        // timeline. Filtered by their event name only: other same-status
-        // rows — the draft-edit audit (DRAFT → DRAFT) — ARE timeline steps.
-        // Payment Flow v1.1: the Stripe payment event rows (a failed
-        // attempt, a refund, a dispute status) are skipped the same way,
-        // after the failed-payment label is read from the newest row.
-        const all = (data ?? []) as StatusHistoryRow[]
-        setPaymentFailed(paymentFailedLabel(historyOrderStatus, all))
-        const rows = all.filter(r => !isRefundEventRow(r.metadata) && !isPaymentEventRow(r.metadata))
-        setHistory(rows)
-        setIsLoadingHistory(false)
-        setActors({})
-        if (!rows.some(r => r.changed_by)) return
-        fetch(`/api/orders/${historyOrderId}/timeline-actors`)
-          .then(res => (res.ok ? res.json() : null))
-          .then((json: { actors?: Record<string, TimelineActor> } | null) => {
-            if (json?.actors) setActors(json.actors)
-          })
-          .catch(() => { /* non-fatal: ids stay visible */ })
-      })
+    // Read through GET /api/orders/[id]/timeline, never the browser client,
+    // so the read is logged (Compliance C2, B14). A failed read shows an
+    // empty timeline, as a failed browser read did.
+    void (async () => {
+      let data: StatusHistoryRow[] | null = null
+      try {
+        const res = await fetch(`/api/orders/${historyOrderId}/timeline`, { headers: { Accept: 'application/json' } })
+        if (res?.ok) data = ((await res.json()) as { history?: StatusHistoryRow[] } | null)?.history ?? null
+      } catch {
+        data = null
+      }
+      // Refund bookkeeping rows (a refund Stripe is still processing, a
+      // late payment refunded) record facts, not steps in the order's
+      // timeline. Filtered by their event name only: other same-status
+      // rows — the draft-edit audit (DRAFT → DRAFT) — ARE timeline steps.
+      // Payment Flow v1.1: the Stripe payment event rows (a failed
+      // attempt, a refund, a dispute status) are skipped the same way,
+      // after the failed-payment label is read from the newest row.
+      const all = Array.isArray(data) ? data : []
+      setPaymentFailed(paymentFailedLabel(historyOrderStatus, all))
+      const rows = all.filter(r => !isRefundEventRow(r.metadata) && !isPaymentEventRow(r.metadata))
+      setHistory(rows)
+      setIsLoadingHistory(false)
+      setActors({})
+      if (!rows.some(r => r.changed_by)) return
+      fetch(`/api/orders/${historyOrderId}/timeline-actors`)
+        .then(res => (res.ok ? res.json() : null))
+        .then((json: { actors?: Record<string, TimelineActor> } | null) => {
+          if (json?.actors) setActors(json.actors)
+        })
+        .catch(() => { /* non-fatal: ids stay visible */ })
+    })()
   }, [historyOrderId, historyOrderStatus])
 
   // Load the order's stored shipping + Rx details whenever the drawer opens
@@ -555,7 +552,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
     } catch (err) {
       notify.error(
         'Failed to create group payment link',
-        err instanceof Error ? err.message : 'Unexpected error',
+        userMessage(err, 'Unexpected error'),
       )
     } finally {
       setIsCreatingGroup(false)
@@ -603,7 +600,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
     } catch (err) {
       notify.error(
         'Failed to generate link',
-        err instanceof Error ? err.message : 'An unexpected error occurred'
+        userMessage(err, 'An unexpected error occurred')
       )
     } finally {
       setIsGeneratingLink(false)
@@ -638,6 +635,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
 
       {/* Drawer panel (a div: <aside> may not take role="dialog") */}
       <div
+        ref={drawerRef}
         role="dialog"
         aria-modal="true"
         aria-label={`Order details: ${orderDisplayNumber(order.orderId)}`}
@@ -834,7 +832,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
           {/* Clipboard-failure fallback for the GROUP link */}
           {groupFallbackUrl && (
             <div
-              role="dialog"
+              role="group"
               aria-label="Bundle payment link (copy manually)"
               className="rounded-lg border-2 border-emerald-400 bg-white p-4"
             >
@@ -844,7 +842,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
                   type="button"
                   onClick={() => setGroupFallbackUrl(null)}
                   aria-label="Dismiss"
-                  className="rounded p-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                  className="rounded p-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   ✕
                 </button>
@@ -865,7 +863,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
           {/* Clipboard-failure fallback: show URL so the operator can manually select + copy */}
           {fallbackUrl && (
             <div
-              role="dialog"
+              role="group"
               aria-label="Payment link (copy manually)"
               className="rounded-lg border-2 border-emerald-400 bg-white p-4"
             >
@@ -875,7 +873,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
                   type="button"
                   onClick={() => setFallbackUrl(null)}
                   aria-label="Dismiss"
-                  className="rounded p-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                  className="rounded p-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   ✕
                 </button>
@@ -1093,14 +1091,6 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
               </dl>
             </section>
           )}
-
-          {/* Rx PDF preview placeholder */}
-          <section className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Rx Document</p>
-            <div className="rounded-md border border-dashed border-border bg-muted/20 p-4 text-center text-sm text-muted-foreground">
-              PDF preview available after pharmacy submission
-            </div>
-          </section>
 
           {/* Status timeline — REQ-GDB-002 */}
           <section className="space-y-3">

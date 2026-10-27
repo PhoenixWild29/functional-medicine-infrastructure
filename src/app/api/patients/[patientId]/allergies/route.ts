@@ -20,19 +20,28 @@
 // Body (PATCH):
 //   { allergies?: string[] | string, nkda?: boolean }
 //   NKDA together with a non-empty list is a 400 (mirrors the CHECK
-//   constraint chk_patients_nkda_excludes_allergies). An empty body
-//   writes allergies = [] / nkda = false, which the UI reads as "not
-//   recorded" — status is derived from the two value columns, never
-//   from the timestamp.
+//   constraint chk_patients_nkda_excludes_allergies). A body that
+//   records nothing (no allergy and no NKDA) is a 400: signing requires
+//   allergies or NKDA (coverage gap 9), so a patient is never put back
+//   to "not recorded". Status is derived from the two value columns,
+//   never from the timestamp.
 //
 // Every successful PATCH stamps allergies_updated_at and updated_at.
+//
+// PHI access log (L1, writes are logged first): the PATCH writes its
+// update / patient_allergies row BEFORE the update, and answers 503 with
+// nothing changed when it cannot. An update that then fails (an error, or
+// no row of this clinic matched) gets a not_completed_patient_allergies row.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted, type PhiAccessEntry, type PhiUser } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
 import { validateAllergiesPatch } from '@/lib/patients/allergies'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -91,14 +100,15 @@ function toResponse(row: PatientAllergyRow) {
 
 // ── GET ─────────────────────────────────────────────────────────────
 
-export async function GET(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+async function getHandler(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+  // Who is calling first, then the id (a bad id never reaches Postgres).
+  const auth = await resolveCaller()
+  if (!auth.ok) return auth.response
+
   const { patientId } = await params
   if (!UUID_RE.test(patientId)) {
     return NextResponse.json({ error: 'Invalid patientId' }, { status: 400 })
   }
-
-  const auth = await resolveCaller()
-  if (!auth.ok) return auth.response
 
   const supabase = createServiceClient()
   const { data, error } = await supabase
@@ -125,14 +135,17 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
 
 // ── PATCH ───────────────────────────────────────────────────────────
 
-export async function PATCH(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+async function patchHandler(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
+  // Who is calling first, then the id (a bad id never reaches Postgres).
+  const auth = await resolveCaller()
+  if (!auth.ok) return auth.response
+
   const { patientId } = await params
   if (!UUID_RE.test(patientId)) {
     return NextResponse.json({ error: 'Invalid patientId' }, { status: 400 })
   }
-
-  const auth = await resolveCaller()
-  if (!auth.ok) return auth.response
 
   let body: unknown
   try {
@@ -179,6 +192,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
     }
   }
 
+  // L1: logged before the update; refused when the row cannot be written.
+  const entry: PhiAccessEntry = {
+    user: auth.caller.user, action: 'update', resource: 'patient_allergies',
+    route: '/api/patients/[patientId]/allergies', patientId, headers: request.headers ?? null,
+  }
+  if (!(await logPhiAccess(entry))) return phiWriteRefused()
+
   // Scoped UPDATE: the clinic filter is part of the write itself, so a
   // patient of another clinic is never touched even if the id is known.
   const { data, error } = await supabase
@@ -196,20 +216,19 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
     .maybeSingle()
 
   if (error) {
-    console.error('[patients/allergies PATCH] update failed:', error.message)
+    // The code only: a Postgres message can quote the row.
+    console.error('[patients/allergies PATCH] update failed | code=', (error as { code?: string }).code ?? 'unknown')
+    await logPhiWriteNotCompleted(entry)
     return NextResponse.json({ error: 'Update failed' }, { status: 500 })
   }
   if (!data) {
+    await logPhiWriteNotCompleted(entry)
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
   }
 
   // No PHI in the log line: ids only.
   const entryCount = validated.value.allergies.length
   console.info(`[patients/allergies PATCH] patient=${patientId} clinic=${auth.caller.clinicId} nkda=${validated.value.nkda} entries=${entryCount}`)
-  await logPhiAccess({
-    user: auth.caller.user, action: 'update', resource: 'patient_allergies',
-    route: '/api/patients/[patientId]/allergies', patientId, headers: request.headers ?? null,
-  })
 
   return NextResponse.json(toResponse(data as PatientAllergyRow))
 }
@@ -218,3 +237,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
 export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/patients/[patientId]/allergies', getHandler)
+export const PATCH = withApiErrors('/api/patients/[patientId]/allergies', patchHandler)

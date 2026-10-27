@@ -17,7 +17,7 @@
 
 import { RuleTester } from 'eslint'
 import path from 'path'
-import { execFileSync } from 'child_process'
+import { readFileSync } from 'fs'
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const tsParser = require('@typescript-eslint/parser')
 import rule from '../no-phi-in-logs'
@@ -54,15 +54,30 @@ tester.run('no-phi-in-logs', rule, {
 })
 
 describe('wired into the repo lint config', () => {
-  // The flat config is ESM; Jest cannot import it in-process, so ask a
-  // child Node process what ESLint resolves for a src file.
-  it('is an error for src files', () => {
-    const script =
-      "const { ESLint } = require('eslint'); " +
-      "new ESLint({ cwd: process.cwd() }).calculateConfigForFile('src/lib/sms/sender.ts')" +
-      ".then(c => process.stdout.write(JSON.stringify(c.rules['phi/no-phi-in-logs'] ?? null)))"
-    const out = execFileSync(process.execPath, ['-e', script], { cwd: path.resolve(__dirname, '..', '..'), encoding: 'utf8' })
-    const setting = JSON.parse(out) as unknown
-    expect(Array.isArray(setting) ? setting[0] : setting).toBe(2)
+  // Read from the config file itself. This used to ask a child Node
+  // process what ESLint resolves for a src file (execFileSync): a cold
+  // ESLint config load that took 7 s alone, 65 s under --coverage, and
+  // 1,321 s in a loaded full run (B-2026-10-26-10). Being synchronous, it
+  // blocked the worker, so jest's per-test timeout could not stop it. The
+  // lint job (eslint . --max-warnings=0) is what enforces the rule; this
+  // checks that the config wires it, as an error, for src.
+  const config = readFileSync(path.resolve(__dirname, '..', '..', 'eslint.config.mjs'), 'utf8')
+
+  it('the flat config has a block for src that registers the rule and sets it to error', () => {
+    expect(config).toMatch(/import noPhiInLogs from '\.\/eslint-rules\/no-phi-in-logs\.js'/)
+    // The block: from its files line to its closing brace.
+    const block = /\{\s*files:\s*\['src\/\*\*\/\*\.\{ts,tsx\}'\][\s\S]*?\n {2}\}/.exec(
+      config.slice(config.indexOf("'no-phi-in-logs': noPhiInLogs") - 400),
+    )?.[0] ?? ''
+    expect(block).toContain("plugins: { phi: { rules: { 'no-phi-in-logs': noPhiInLogs } } }")
+    expect(block).toMatch(/'phi\/no-phi-in-logs':\s*'error'/)
+  })
+
+  it('the block is in the exported config array', () => {
+    const exportedAt = config.indexOf('export default config')
+    const blockAt = config.indexOf("'phi/no-phi-in-logs'")
+    const arrayEnd = config.lastIndexOf(']', exportedAt)
+    expect(blockAt).toBeGreaterThan(0)
+    expect(blockAt).toBeLessThan(arrayEnd)
   })
 })

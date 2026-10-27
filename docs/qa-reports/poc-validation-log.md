@@ -31,7 +31,7 @@ Tracks every issue found during the POC end-to-end happy path walk-through.
 |--------|-------|
 | ✅ Pass | Login confirmed working after password reset via Supabase admin API |
 
-**Issues found:** Initial password guesses were wrong — confirmed password is `POCAdmin2026!` from seed script.
+**Issues found:** Initial password guesses were wrong — confirmed password is the password in `POC_OPS_PASSWORD` (set in your local env) from seed script.
 
 ---
 

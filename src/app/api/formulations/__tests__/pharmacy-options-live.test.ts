@@ -22,7 +22,7 @@ jest.mock('@/lib/supabase/server', () => ({
 let db: ReturnType<typeof fakeDb>
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
 
-const FORM = 'f-sema'
+const FORM = 'b4000000-0000-0000-0000-00000000000a'
 const pf = (id: string, pharmacy: Record<string, unknown>, over: Record<string, unknown> = {}) => ({
   pharmacy_formulation_id: id, formulation_id: FORM, pharmacy_id: pharmacy['pharmacy_id'],
   wholesale_price: 95, available_supply_durations: null, estimated_turnaround_days: 5,

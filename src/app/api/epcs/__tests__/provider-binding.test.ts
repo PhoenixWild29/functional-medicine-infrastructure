@@ -96,13 +96,13 @@ beforeEach(() => {
 
 describe('EPCS audit: a provider cannot write a row for another provider', () => {
   it('naming another provider is 403 and nothing is written', async () => {
-    const res = await post('audit', { provider_id: OTHER, event_type: 'sign', dea_schedule: 2 })
+    const res = await post('audit', { provider_id: OTHER, event_type: 'ORDER_SIGNED', dea_schedule: 2 })
     expect(res.status).toBe(403)
     expect(inserts).toEqual([])
   })
 
   it('the row is written under the signed-in provider, resolved from the user', async () => {
-    const res = await post('audit', { event_type: 'sign', dea_schedule: 2 })
+    const res = await post('audit', { event_type: 'ORDER_SIGNED', dea_schedule: 2 })
     expect(res.status).toBe(200)
     expect(inserts).toHaveLength(1)
     expect(inserts[0]!.table).toBe('epcs_audit_log')
@@ -111,7 +111,7 @@ describe('EPCS audit: a provider cannot write a row for another provider', () =>
   })
 
   it('naming yourself is accepted', async () => {
-    const res = await post('audit', { provider_id: ME, event_type: 'sign' })
+    const res = await post('audit', { provider_id: ME, event_type: 'ORDER_SIGNED' })
     expect(res.status).toBe(200)
     expect(inserts[0]!.row['provider_id']).toBe(ME)
   })
@@ -155,14 +155,14 @@ describe('EPCS setup / verify / status act only on the signed-in provider', () =
 describe('only a provider may use EPCS', () => {
   it.each(['clinic_admin', 'medical_assistant', 'ops_admin'])('%s is 403', async role => {
     asUser(role)
-    const res = await post('audit', { provider_id: ME, event_type: 'sign' })
+    const res = await post('audit', { provider_id: ME, event_type: 'ORDER_SIGNED' })
     expect(res.status).toBe(403)
     expect(inserts).toEqual([])
   })
 
   it('a provider login with no linked provider row is 403', async () => {
     resolveMock.mockResolvedValue(null)
-    const res = await post('audit', { event_type: 'sign' })
+    const res = await post('audit', { event_type: 'ORDER_SIGNED' })
     expect(res.status).toBe(403)
     expect(inserts).toEqual([])
   })

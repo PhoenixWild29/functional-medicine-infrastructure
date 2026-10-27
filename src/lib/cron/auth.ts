@@ -15,6 +15,7 @@
 //   if (denied) return denied
 
 import { NextResponse } from 'next/server'
+import { safeEqual } from '@/lib/security/constant-time'
 
 export function cronAuthFailure(
   request: { headers: { get(name: string): string | null } },
@@ -25,7 +26,7 @@ export function cronAuthFailure(
     console.error(`[${cronName}] CRON_SECRET is not set: refusing to run`)
     return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 })
   }
-  if (request.headers.get('authorization') !== `Bearer ${secret}`) {
+  if (!safeEqual(request.headers.get('authorization'), `Bearer ${secret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   return null

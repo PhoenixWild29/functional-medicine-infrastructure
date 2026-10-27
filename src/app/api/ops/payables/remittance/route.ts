@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { requireOpsAdmin } from '@/lib/payments/ops-auth'
 import { PAYABLE_COLUMNS, UUID_RE, isIsoDate, toLine } from '@/lib/payments/payables'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,7 +36,7 @@ function nextDay(day: string): string {
   return new Date(Date.parse(`${day}T00:00:00.000Z`) + 86_400_000).toISOString().slice(0, 10)
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireOpsAdmin()
   if (auth.denied) return auth.denied
 
@@ -88,3 +89,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     },
   })
 }
+
+export const GET = withApiErrors('/api/ops/payables/remittance', getHandler)

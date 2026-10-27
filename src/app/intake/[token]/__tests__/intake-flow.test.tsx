@@ -248,7 +248,7 @@ describe('5. submit', () => {
     await fillAddress()
     await fillHealth()
     await click('Submit')
-    expect(screen.getByRole('alert')).toHaveTextContent(/link has expired or was already used/)
+    expect(screen.getByRole('alert')).toHaveTextContent(/This link is no longer active/)
   })
 
   it('a server error keeps the answers and lets the patient try again', async () => {

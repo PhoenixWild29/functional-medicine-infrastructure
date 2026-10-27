@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next'
 import { withSentryConfig } from '@sentry/nextjs'
 import { STATIC_SECURITY_HEADERS } from './src/lib/security/headers'
+import { TOKEN_HEADERS, TOKEN_HEADER_SOURCES } from './src/lib/security/token-paths'
 
 export const baseConfig: NextConfig = {
   // Server Components are default in App Router
@@ -12,8 +13,15 @@ export const baseConfig: NextConfig = {
   // Compliance C9: HSTS, X-Frame-Options, nosniff and Referrer-Policy on
   // every path, static assets included. The per-request CSP and the
   // Permissions-Policy are set by src/middleware.ts.
+  //
+  // Token pages (patient checkout, plan, intake and sign-up links,
+  // invites): no-referrer and noindex. Listed after the global rule: for
+  // the same key, the later matching rule wins (src/lib/security/token-paths).
   async headers() {
-    return [{ source: '/:path*', headers: [...STATIC_SECURITY_HEADERS] }]
+    return [
+      { source: '/:path*', headers: [...STATIC_SECURITY_HEADERS] },
+      ...TOKEN_HEADER_SOURCES.map(source => ({ source, headers: [...TOKEN_HEADERS] })),
+    ]
   },
 
   // Disable Supabase Realtime — all updates via polling (HIPAA requirement)

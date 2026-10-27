@@ -18,6 +18,18 @@ if (typeof globalThis.TextEncoder === 'undefined') {
 // test the helper itself.
 jest.mock('@/lib/audit/phi-access', () => ({
   ...jest.requireActual('@/lib/audit/phi-access'),
-  logPhiAccess: jest.fn(async () => undefined),
-  logPhiAccessMany: jest.fn(async () => undefined),
+  logPhiAccess: jest.fn(async () => true),
+  logPhiAccessMany: jest.fn(async () => true),
+  logPhiDisclosure: jest.fn(async () => true),
+  logPhiAccessBatch: jest.fn(async () => true),
+  logPhiWriteNotCompleted: jest.fn(async () => true),
+}))
+
+// Security review L7: the shared rate-limit count (rate_limit_hit RPC).
+// Mocked here so route tests' fake databases see no extra call; null is
+// "no shared count", so only the in-memory limit applies. A route test
+// makes it answer over the limit to check its 429, and
+// src/lib/security/__tests__/db-rate-limit.test.ts unmocks it.
+jest.mock('@/lib/security/db-rate-limit', () => ({
+  dbRateLimitHit: jest.fn(async () => null),
 }))

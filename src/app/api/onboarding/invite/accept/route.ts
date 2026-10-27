@@ -19,7 +19,7 @@
 // so the link can be used again. MFA applies on first sign-in through the
 // normal middleware gate.
 //
-// Rate limited per client IP (the first x-forwarded-for entry): 10
+// Rate limited per client IP (lib/security/client-ip): 10
 // attempts per 15 minutes, then 429 with Retry-After, before anything is
 // read. Per IP, so a real invitee is never blocked by someone else's
 // guesses. The token is never logged; a refusal logs only the IP's keyed
@@ -34,14 +34,16 @@ import { hashInviteToken, inviteStatus, plausibleToken, type InviteKind } from '
 import { recordOnboardingEvent } from '@/lib/onboarding/events'
 import { auditHash, clientIp } from '@/lib/audit/keyed-hash'
 import { inviteAcceptLimiter, INVITE_ACCEPT_RATE_LIMITED_MESSAGE } from '@/lib/onboarding/accept-rate-limit'
-import { createLogin, passwordProblem, removeLogin } from '@/lib/auth/create-login'
+import { createLogin, removeLogin } from '@/lib/auth/create-login'
+import { newPasswordProblem } from '@/lib/auth/password-policy'
 import { isApprovedClinic } from '@/lib/onboarding/approval-guard'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request)
   if (crossSite) return crossSite
   const ip = clientIp(request.headers)
-  const limit = inviteAcceptLimiter.check(ip ?? 'unknown')
+  const limit = await inviteAcceptLimiter.check(ip ?? 'unknown')
   if (!limit.allowed) {
     console.warn(`[onboarding/accept] rate_limited | ip_hash=${(await auditHash(ip)) ?? 'none'}`)
     return NextResponse.json(
@@ -59,7 +61,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!plausibleToken(token)) return NextResponse.json({ error: 'This invite link is not valid.' }, { status: 404 })
   const errors: Record<string, string> = {}
   if (!fullName) errors['fullName'] = 'Enter your full name.'
-  const weak = passwordProblem(password)
+  // The shared policy (lib/auth/password-policy, review P4); the comparison
+  // with the address runs once the invite is read, below.
+  const weak = newPasswordProblem(password, null)
   if (weak) errors['password'] = weak
   if (Object.keys(errors).length > 0) return NextResponse.json({ error: 'Check the highlighted fields.', errors }, { status: 400 })
 
@@ -84,6 +88,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         : 'This invite has expired. Ask for a new one.'
     return NextResponse.json({ error: message, status }, { status: 410 })
   }
+
+  const sameAsEmail = newPasswordProblem(password, invite.email)
+  if (sameAsEmail) return NextResponse.json({ error: 'Check the highlighted fields.', errors: { password: sameAsEmail } }, { status: 400 })
 
   const kind = invite.kind as InviteKind
   const now = new Date().toISOString()
@@ -112,9 +119,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // 2. The account, with role and clinic in app_metadata, confirmed: the
   //    invite link proved the address (lib/auth/create-login).
+  //    B's review P2: whoever sent the link could have opened it, so the
+  //    login must set its own password from an emailed reset link before
+  //    anything else (lib/auth/must-change-password).
   const login = await createLogin(supabase, {
     email: invite.email, password, fullName,
-    appMetadata: appMetadataFor({ role: kind, clinicId: invite.clinic_id }),
+    appMetadata: { ...appMetadataFor({ role: kind, clinicId: invite.clinic_id }), must_change_password: true },
   })
   if (!login.ok) {
     await release()
@@ -185,3 +195,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     next,
   }, { status: 201 })
 }
+
+export const POST = withApiErrors('/api/onboarding/invite/accept', postHandler)

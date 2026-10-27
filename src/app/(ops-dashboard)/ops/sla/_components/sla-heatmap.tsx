@@ -14,6 +14,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery }          from '@tanstack/react-query'
 import type { SlaRow, HandoffMetrics, SlaResponse } from '@/app/api/ops/sla/route'
+import { userMessage } from '@/lib/errors/user-message'
 
 // ── Tier label map ───────────────────────────────────────────
 // NB-12: lookup map instead of fragile chained .replace()
@@ -164,7 +165,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
       }
       void refetch()
     } catch (err) {
-      setAckError(err instanceof Error ? err.message : 'Acknowledge failed')
+      setAckError(userMessage(err, 'Acknowledge failed'))
     } finally {
       setAckLoading(null)
     }

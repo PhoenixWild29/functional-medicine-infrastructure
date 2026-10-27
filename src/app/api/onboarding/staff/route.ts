@@ -7,10 +7,14 @@
 // optional; the step completes with or without assistants.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { requireOnboardingAdmin, readJson, cleanEmail, setStep } from '@/lib/onboarding/access'
 import { createInvite } from '@/lib/onboarding/invite-actions'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const access = await requireOnboardingAdmin({ editable: true })
   if (!access.ok) return access.response
   const { user, clinicId, supabase } = access
@@ -25,3 +29,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   await setStep(supabase, clinicId, 'staff', 'in_progress', user.id)
   return NextResponse.json({ inviteId: invite.inviteId, link: invite.link, expiresAt: invite.expiresAt }, { status: 201 })
 }
+
+export const POST = withApiErrors('/api/onboarding/staff', postHandler)

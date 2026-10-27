@@ -21,9 +21,9 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import {
   formatDispenseWithPackage,
-  MAX_REFILLS,
   MIN_OTHER_REASON_LENGTH,
   MISSING_RX_DETAIL_LABEL,
+  REFILL_CHOICES,
   rxDetailsNeedConfirmation,
   SHIPPING_TYPES,
   shippingTypeLabel,
@@ -144,7 +144,7 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
       {open && (
         <div id={`rx-details-panel-${lineId}`} className="space-y-3 border-t border-border/60 px-3 pb-3 pt-2">
           {missing.length > 0 && (
-            <p className="text-[11px] font-medium text-amber-800" role="alert">
+            <p className="text-[11px] font-medium text-amber-800" role="status">
               {missingDiagnosis && 'A diagnosis is required for a controlled substance. '}
               {missingClinical && 'A clinical difference statement is required for this medication. '}
               Confirm below to enable sending.
@@ -167,7 +167,7 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
                 onChange={e => onChange({ refills: parseInt(e.target.value, 10) })}
                 className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
               >
-                {Array.from({ length: MAX_REFILLS + 1 }, (_, n) => (
+                {REFILL_CHOICES.map(n => (
                   <option key={n} value={n}>{n}</option>
                 ))}
               </select>

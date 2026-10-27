@@ -20,6 +20,7 @@ import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { computeAdapterStatus, percentile } from '@/lib/ops/adapter-health'
 import { getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 export type CircuitBreakerState = 'CLOSED' | 'OPEN' | 'HALF_OPEN'
 
@@ -66,7 +67,7 @@ export interface AdaptersResponse {
 
 // NB-01: computeAdapterStatus and percentile are imported from @/lib/ops/adapter-health
 
-export async function GET(): Promise<NextResponse> {
+async function getHandler(): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) {
@@ -231,3 +232,5 @@ export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/ops/adapters', getHandler)

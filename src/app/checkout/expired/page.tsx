@@ -5,12 +5,15 @@
 // REQ-GCX-005: Expired token state — "Payment link expired."
 // REQ-GCX-007: Invalid token state — "Invalid payment link."
 //
-// This page is the redirect target for both scenarios from middleware.
+// This page is the redirect target for both scenarios from middleware,
+// and from the checkout page for a link that is paid or cancelled. One
+// neutral page for all of them: it names no clinic and never says whether
+// the link was valid, expired or used.
 // Static — no server fetch required.
 
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: 'Payment link expired' }
+export const metadata: Metadata = { title: 'Payment link' }
 
 export default function CheckoutExpiredPage() {
   return (
@@ -38,12 +41,13 @@ export default function CheckoutExpiredPage() {
 
         {/* WO-73 NB-2: Calm, professional copy — use semantic tokens, not hardcoded gray */}
         <h1 className="text-2xl font-semibold text-foreground">
-          This payment link has expired
+          This payment link is no longer active
         </h1>
 
         <p className="text-base text-muted-foreground">
-          Payment links expire after 72 hours for security. Please contact your
-          clinic to request a new one.
+          Payment links stop working after 72 hours or once they have been
+          used. If you have already paid, there is nothing more to do.
+          Otherwise, please contact your clinic for a new link.
         </p>
       </div>
     </main>

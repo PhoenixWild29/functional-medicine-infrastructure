@@ -9,19 +9,33 @@
 //
 // Never trusts the browser: the rows are re-checked here. A row that needs
 // fixing and is not excluded: 422. A possible duplicate that staff did not
-// confirm: 409. The clinic comes from the caller's claims only. One PHI
-// access log row per created patient. Logs carry counts, never patient
-// details.
+// confirm: 409. The clinic comes from the caller's claims only. Logs carry
+// counts, never patient details.
+//
+// PHI access log (B14/B15):
+//   - L1, writes are logged first: the database function makes the
+//     patients' ids, so one create / patient row for the clinic (no patient
+//     yet) is written BEFORE it, and nothing is imported (503) when it
+//     cannot be. A function that then fails gets a not_completed_patient
+//     row. After the import, one best-effort create row per new patient.
+//   - L3: the 422 echoes every row and the existing patients it matched, so
+//     it is logged as validate's preview is (view / patient_import_preview
+//     for the clinic, plus one row per existing patient shown) BEFORE it is
+//     answered; when that cannot be written the answer is a 503 without
+//     the rows.
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
-import { logPhiAccessMany } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiAccessMany, logPhiWriteNotCompleted, type PhiAccessEntry } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
 import { mappingErrors } from '@/lib/patients/import/mapping'
 import { importCaller, readIndexes, readRowsBody } from '@/lib/patients/import/request'
 import { reviewImport } from '@/lib/patients/import/review'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { readImportJson } from './read-body'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const caller = await importCaller(request)
   if ('response' in caller) return caller.response
   // Pending review: nothing is imported until ops approves the clinic
@@ -29,8 +43,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const pendingReview = await refuseUnlessApproved(createServiceClient(), caller.clinicId)
   if (pendingReview) return pendingReview
 
-  let body: unknown
-  try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid request' }, { status: 400 }) }
+  // 4 MB at most (lib/uploads/limits): 413 over it; 400 when not JSON.
+  const read = await readImportJson(request)
+  if ('response' in read) return read.response
+  const body = read.body
   const input = readRowsBody(body)
   if ('error' in input) return NextResponse.json({ error: input.error }, { status: 400 })
   const problems = mappingErrors(input.mapping, input.headers.length)
@@ -46,6 +62,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const included = review.rows.filter(r => !excluded.has(r.index))
   if (included.some(r => r.status === 'error')) {
+    // L3: the answer echoes every row: logged first, like validate.
+    const preview = {
+      user: caller.user, clinicId: caller.clinicId, action: 'view', resource: 'patient_import_preview',
+      route: '/api/patients/import', headers: request.headers,
+    } as const
+    const existingShown = [...new Set(review.rows.flatMap(r => (r.duplicate?.kind === 'existing' ? [r.duplicate.patientId] : [])))]
+    if (!(await logPhiAccess(preview)) || !(await logPhiAccessMany(preview, existingShown))) {
+      return NextResponse.json({ error: 'Some rows need fixing, but they could not be shown. Nothing was saved; try again.' }, { status: 503 })
+    }
     return NextResponse.json({ error: 'Some rows need fixing. Fix or exclude them, then import again.', ...review }, { status: 422 })
   }
   const unconfirmed = included.filter(r => r.status === 'duplicate' && !confirmed.has(r.index))
@@ -68,6 +93,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   })
 
+  // L1: logged before the import. The function makes the ids, so this row
+  // names the clinic only.
+  const createEntry: PhiAccessEntry = {
+    user: caller.user, action: 'create', resource: 'patient', route: '/api/patients/import', clinicId: caller.clinicId, headers: request.headers,
+  }
+  if (!(await logPhiAccess(createEntry))) return phiWriteRefused()
+
   const { data, error } = await supabase.rpc('import_patient_batch', {
     p_clinic_id: caller.clinicId,
     p_imported_by: caller.user.id,
@@ -81,13 +113,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (error || !result?.batch_id || !Array.isArray(result.patient_ids)) {
     // The code only: a Postgres message can quote the failing row.
     console.error(`[patient-import] import failed | code=${(error as { code?: string } | null)?.code ?? 'no result'} | rows=${patients.length}`)
+    await logPhiWriteNotCompleted(createEntry)
     return NextResponse.json({ error: 'The patients could not be imported. Nothing was saved; try again.' }, { status: 500 })
   }
 
   console.info(`[patient-import] imported | batch=${result.batch_id} | rows=${result.patient_ids.length} | excluded=${excluded.size}`)
+  // One row per new patient, best effort: the import was logged before it
+  // ran; a failure here is alerted by the helper.
   await logPhiAccessMany(
     { user: caller.user, action: 'create', resource: 'patient', route: '/api/patients/import', clinicId: caller.clinicId, headers: request.headers },
     result.patient_ids,
   )
   return NextResponse.json({ batchId: result.batch_id, imported: result.patient_ids.length }, { status: 201 })
 }
+
+export const POST = withApiErrors('/api/patients/import', postHandler)

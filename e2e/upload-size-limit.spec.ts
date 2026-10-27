@@ -4,6 +4,8 @@ import { createClient } from '@supabase/supabase-js'
 import { TEST_USERS } from './fixtures/seed'
 import { totpCode } from './fixtures/totp'
 import { MAX_REQUEST_BYTES } from '../src/lib/uploads/limits'
+import { shardEmail, shardId, shardName, shardSlug } from './fixtures/shard'
+import { e2ePassword } from './fixtures/test-password'
 
 // ============================================================
 // #250: the 4 MB limit on uploads through a Vercel Function
@@ -26,9 +28,10 @@ import { MAX_REQUEST_BYTES } from '../src/lib/uploads/limits'
 // - Import: the small file is the spec fixture, and only the parse step
 //   runs, which writes nothing.
 
-const PH_ID = 'aaaaaaaa-0000-0000-0000-0000000000c1'
-const PH_APP_ID = 'aaaaaaaa-0000-0000-0000-0000000000c2'
-const PH_ADMIN = { email: 'test-pharmacy-upload-limit@compoundiq.test', password: 'TestPassword123!' }
+// Per shard (fixtures/shard), so two shards running this spec at once never share rows.
+const PH_ID = shardId('aaaaaaaa-0000-0000-0000-0000000000c1')
+const PH_APP_ID = shardId('aaaaaaaa-0000-0000-0000-0000000000c2')
+const PH_ADMIN = { email: shardEmail('test-pharmacy-upload-limit@compoundiq.test'), get password() { return e2ePassword() } }
 const JUST_OVER = MAX_REQUEST_BYTES + 1024
 // LICENSE_DOCUMENT_BUCKET in lib/pharmacy-onboarding/application (a server
 // module, not imported here).
@@ -80,7 +83,7 @@ test.describe('#250 4 MB upload limit: pharmacy license document', () => {
   test.beforeAll(async () => {
     const db = e2eService()
     const { error: phErr } = await db.from('pharmacies').upsert({
-      pharmacy_id: PH_ID, name: 'Upload Limit Pharmacy', slug: 'upload-limit-pharmacy', integration_tier: 'TIER_4_FAX',
+      pharmacy_id: PH_ID, name: shardName('Upload Limit Pharmacy'), slug: shardSlug('upload-limit-pharmacy'), integration_tier: 'TIER_4_FAX',
       is_active: false, onboarding_status: 'onboarding', email: PH_ADMIN.email,
     }, { onConflict: 'pharmacy_id' })
     if (phErr) throw new Error(`pharmacy: ${phErr.message}`)

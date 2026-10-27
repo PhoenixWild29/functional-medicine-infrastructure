@@ -47,13 +47,6 @@ export const DURATION_OPTIONS = [
 
 // ── Titration step intervals ────────────────────────────────
 
-export const TITRATION_INTERVALS = [
-  { code: 'Q3-4D', display: 'Every 3-4 days', sig: 'every 3-4 days' },
-  { code: 'QW', display: 'Every week', sig: 'every week' },
-  { code: 'Q2W', display: 'Every 2 weeks', sig: 'every 2 weeks' },
-  { code: 'Q4W', display: 'Every 4 weeks', sig: 'every 4 weeks' },
-  { code: 'CUSTOM', display: 'Custom...', sig: '' },
-] as const
 
 // ── Type interfaces ─────────────────────────────────────────
 

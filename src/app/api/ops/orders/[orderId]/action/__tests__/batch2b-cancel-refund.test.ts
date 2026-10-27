@@ -95,7 +95,7 @@ beforeEach(() => {
 })
 
 const SOLO_PAID = {
-  order_id: 'o-solo', status: 'PAID_PROCESSING', stripe_payment_intent_id: 'pi_solo',
+  order_id: '0a000000-0000-4000-8000-00000000050f', status: 'PAID_PROCESSING', stripe_payment_intent_id: 'pi_solo',
   payment_group_id: null, reroute_count: 0, pharmacy_id: 'ph-1', ops_assignee: null,
   retail_price_snapshot: 190,
 }
@@ -105,7 +105,7 @@ describe('cancel + refund — a single order', () => {
     orderFetchMock.mockResolvedValue({ data: SOLO_PAID, error: null })
     refundsCreateMock.mockRejectedValue(new Error('Your card was declined for refund'))
 
-    const res = await post('o-solo')
+    const res = await post('0a000000-0000-4000-8000-00000000050f')
     const body = await res.json() as { ok?: boolean; error?: string }
 
     expect(res.status).toBeGreaterThanOrEqual(500)
@@ -116,7 +116,7 @@ describe('cancel + refund — a single order', () => {
   it('mirrors the existing refund parameters exactly, and completes to REFUNDED', async () => {
     orderFetchMock.mockResolvedValue({ data: SOLO_PAID, error: null })
 
-    const res = await post('o-solo')
+    const res = await post('0a000000-0000-4000-8000-00000000050f')
 
     expect(res.status).toBe(200)
     // CHANGED (batch-2 follow-up, decision 1): every refund on a Connect
@@ -140,13 +140,13 @@ describe('cancel + refund — a paid bundle member', () => {
 
   // Payment Flow v1.1: a paid member now carries the bundle's PaymentIntent.
   it('a member carrying the bundle PaymentIntent still refunds only its share', async () => {
-    const a = { ...member('o-a', 'PAID_PROCESSING', 200), stripe_payment_intent_id: 'pi_group' }
-    const b = { ...member('o-b', 'PAID_PROCESSING', 250), stripe_payment_intent_id: 'pi_group' }
+    const a = { ...member('0a000000-0000-4000-8000-00000000000a', 'PAID_PROCESSING', 200), stripe_payment_intent_id: 'pi_group' }
+    const b = { ...member('0a000000-0000-4000-8000-00000000000b', 'PAID_PROCESSING', 250), stripe_payment_intent_id: 'pi_group' }
     orderFetchMock.mockResolvedValue({ data: a, error: null })
     groupFetchMock.mockResolvedValue({ data: GROUP, error: null })
     membersFetchMock.mockResolvedValue({ data: [a, b], error: null })
 
-    const res = await post('o-a')
+    const res = await post('0a000000-0000-4000-8000-00000000000a')
 
     expect(res.status).toBe(200)
     expect(refundsCreateMock).toHaveBeenCalledWith(
@@ -157,13 +157,13 @@ describe('cancel + refund — a paid bundle member', () => {
 
   it('cancelling one of two paid members refunds that member only', async () => {
     // Retail $200 + $250 = $450; the group charged $500, so $50 shipping.
-    const a = member('o-a', 'PAID_PROCESSING', 200)
-    const b = member('o-b', 'PAID_PROCESSING', 250)
+    const a = member('0a000000-0000-4000-8000-00000000000a', 'PAID_PROCESSING', 200)
+    const b = member('0a000000-0000-4000-8000-00000000000b', 'PAID_PROCESSING', 250)
     orderFetchMock.mockResolvedValue({ data: a, error: null })
     groupFetchMock.mockResolvedValue({ data: GROUP, error: null })
     membersFetchMock.mockResolvedValue({ data: [a, b], error: null })
 
-    const res = await post('o-a')
+    const res = await post('0a000000-0000-4000-8000-00000000000a')
 
     expect(res.status).toBe(200)
     expect(refundsCreateMock).toHaveBeenCalledWith(
@@ -173,13 +173,13 @@ describe('cancel + refund — a paid bundle member', () => {
   })
 
   it('cancelling the last paid member also refunds the shipping', async () => {
-    const a = member('o-a', 'REFUNDED', 200)
-    const b = member('o-b', 'PAID_PROCESSING', 250)
+    const a = member('0a000000-0000-4000-8000-00000000000a', 'REFUNDED', 200)
+    const b = member('0a000000-0000-4000-8000-00000000000b', 'PAID_PROCESSING', 250)
     orderFetchMock.mockResolvedValue({ data: b, error: null })
     groupFetchMock.mockResolvedValue({ data: GROUP, error: null })
     membersFetchMock.mockResolvedValue({ data: [a, b], error: null })
 
-    const res = await post('o-b')
+    const res = await post('0a000000-0000-4000-8000-00000000000b')
 
     expect(res.status).toBe(200)
     // $250 for the member + $50 shipping ($500 charged − $450 retail).
@@ -190,14 +190,14 @@ describe('cancel + refund — a paid bundle member', () => {
   })
 
   it('a clinic that absorbed shipping refunds no shipping, even for the last member', async () => {
-    const a = member('o-a', 'CANCELLED', 200)
-    const b = member('o-b', 'PAID_PROCESSING', 250)
+    const a = member('0a000000-0000-4000-8000-00000000000a', 'CANCELLED', 200)
+    const b = member('0a000000-0000-4000-8000-00000000000b', 'PAID_PROCESSING', 250)
     orderFetchMock.mockResolvedValue({ data: b, error: null })
     // Absorbed: the patient was charged retail only.
     groupFetchMock.mockResolvedValue({ data: { ...GROUP, total_cents: 45000 }, error: null })
     membersFetchMock.mockResolvedValue({ data: [a, b], error: null })
 
-    await post('o-b')
+    await post('0a000000-0000-4000-8000-00000000000b')
 
     expect(refundsCreateMock).toHaveBeenCalledWith(
       { payment_intent: 'pi_group', amount: 25000, reverse_transfer: true, refund_application_fee: true },
@@ -206,10 +206,10 @@ describe('cancel + refund — a paid bundle member', () => {
   })
 
   it('refuses rather than guessing when the group cannot be read', async () => {
-    orderFetchMock.mockResolvedValue({ data: member('o-a', 'PAID_PROCESSING', 200), error: null })
+    orderFetchMock.mockResolvedValue({ data: member('0a000000-0000-4000-8000-00000000000a', 'PAID_PROCESSING', 200), error: null })
     groupFetchMock.mockResolvedValue({ data: null, error: { message: 'connection reset' } })
 
-    const res = await post('o-a')
+    const res = await post('0a000000-0000-4000-8000-00000000000a')
     const body = await res.json() as { ok?: boolean }
 
     expect(res.status).toBeGreaterThanOrEqual(500)
@@ -223,7 +223,7 @@ describe('cancel + refund — a transition that no-ops is reported', () => {
     orderFetchMock.mockResolvedValue({ data: SOLO_PAID, error: null })
     casTransitionMock.mockResolvedValue({ success: true, wasAlreadyTransitioned: true })
 
-    const res = await post('o-solo')
+    const res = await post('0a000000-0000-4000-8000-00000000050f')
     const body = await res.json() as { ok?: boolean; error?: string }
 
     expect(res.status).toBe(409)
@@ -238,7 +238,7 @@ describe('cancel + refund — a transition that no-ops is reported', () => {
     })
     casTransitionMock.mockResolvedValue({ success: true, wasAlreadyTransitioned: true })
 
-    const res = await post('o-solo')
+    const res = await post('0a000000-0000-4000-8000-00000000050f')
     const body = await res.json() as { ok?: boolean }
 
     expect(res.status).toBe(409)
@@ -251,8 +251,8 @@ describe('cancel + refund: the payments ledger', () => {
 
   it('a confirmed full refund is recorded, keyed by its refund id', async () => {
     orderFetchMock.mockResolvedValue({ data: SOLO_PAID, error: null })
-    expect((await post('o-solo')).status).toBe(200)
-    expect(recordRefundMock).toHaveBeenCalledWith({ orderId: 'o-solo', refundId: 're_1', amountCents: null, currency: 'usd' })
+    expect((await post('0a000000-0000-4000-8000-00000000050f')).status).toBe(200)
+    expect(recordRefundMock).toHaveBeenCalledWith({ orderId: '0a000000-0000-4000-8000-00000000050f', refundId: 're_1', amountCents: null, currency: 'usd' })
   })
 })
 
@@ -264,9 +264,9 @@ describe('cancel + refund racing the charge.refunded webhook', () => {
     casTransitionMock
       .mockResolvedValueOnce({ success: true, wasAlreadyTransitioned: false })
       .mockResolvedValueOnce({ success: true, wasAlreadyTransitioned: true })
-    historyFetchMock.mockResolvedValue({ data: [{ order_id: 'o-solo' }], error: null })
+    historyFetchMock.mockResolvedValue({ data: [{ order_id: '0a000000-0000-4000-8000-00000000050f' }], error: null })
 
-    const res = await post('o-solo')
+    const res = await post('0a000000-0000-4000-8000-00000000050f')
 
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ ok: true, status: 'REFUNDED', refundId: 're_1' })
@@ -278,7 +278,7 @@ describe('cancel + refund racing the charge.refunded webhook', () => {
       .mockResolvedValueOnce({ success: true, wasAlreadyTransitioned: false })
       .mockResolvedValueOnce({ success: true, wasAlreadyTransitioned: true })
 
-    const res = await post('o-solo')
+    const res = await post('0a000000-0000-4000-8000-00000000050f')
 
     expect(res.status).toBe(409)
   })

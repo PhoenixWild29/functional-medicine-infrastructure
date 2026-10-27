@@ -21,11 +21,13 @@
 // REQ-OAS-010: DELETE is a soft delete (is_active = false, deleted_at).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
-import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
-import { RX_DETAIL_COLUMN_LIST, rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
+import { logPhiAccess, logPhiWriteNotCompleted, type PhiAccessEntry, type PhiUser } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
+import { RX_DETAIL_COLUMN_LIST, dispenseCount, rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
 import { resolveLine, lineSourceKind } from '@/lib/orders/resolve-line'
 import { canEditDraft, diffDraftRows, writeDraftAudit } from '@/lib/orders/draft-edit'
 import { checkProviderOwnsDraft } from '@/lib/orders/provider-draft-guard'
@@ -33,8 +35,12 @@ import { reallocateDraftSiblingShipping } from '@/lib/orders/apply-bundle-shippi
 import { parseTitrationSteps, isSigMode } from '@/lib/orders/titration'
 import { cyclePatternFrom } from '@/lib/orders/cycling'
 import type { Json } from '@/types/database.types'
-import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { getUserClinicId, getUserRole, isClinicStaffRole } from '@/lib/auth/claims'
 import { revokeProposalLinkForOrder } from '@/lib/proposals/propose'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { z } from 'zod'
+import { parseParams, parseInput, uuid } from '@/lib/api/input'
+import { lineBodySchema } from '@/lib/orders/line-body-schema'
 
 interface RouteContext {
   params: Promise<{ orderId: string }>
@@ -57,9 +63,17 @@ type DraftRow = Record<string, unknown> & {
   shipping_state_snapshot: string | null
 }
 
-/** Auth + load the draft (clinic-scoped, active) + permission. */
-async function loadEditableDraft(orderId: string): Promise<
-  | { ok: true; actor: Actor; draft: DraftRow; supabase: ReturnType<typeof createServiceClient>; user: PhiUser }
+const paramsSchema = z.object({ orderId: uuid() })
+
+type Caller = { actor: Actor; user: PhiUser; orderId: string }
+
+/**
+ * Who is calling (verified user, clinic, approval), then the order id:
+ * both before anything about the order is read. A bad id is a 400 here,
+ * never a Postgres 22P02 500.
+ */
+async function authenticate(context: RouteContext): Promise<
+  | { ok: true; caller: Caller }
   | { ok: false; response: NextResponse }
 > {
   const supabaseAuth = await createServerClient()
@@ -67,6 +81,10 @@ async function loadEditableDraft(orderId: string): Promise<
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) {
     return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  }
+  // Clinic staff only: any other role, or none, is refused before anything is read.
+  if (!isClinicStaffRole(getUserRole(user))) {
+    return { ok: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
   const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) {
@@ -79,10 +97,18 @@ async function loadEditableDraft(orderId: string): Promise<
   const role = getUserRole(user) ?? null
   const actor: Actor = { userId: user.id, role, clinicId }
 
-  if (!orderId) {
-    return { ok: false, response: NextResponse.json({ error: 'orderId required' }, { status: 400 }) }
-  }
+  const parsed = await parseParams(context, paramsSchema)
+  if (!parsed.ok) return { ok: false, response: parsed.response }
 
+  return { ok: true, caller: { actor, user, orderId: parsed.data.orderId } }
+}
+
+/** Load the draft (clinic-scoped, active) + permission, for an authenticated caller. */
+async function loadEditableDraft({ actor, user, orderId }: Caller): Promise<
+  | { ok: true; actor: Actor; draft: DraftRow; supabase: ReturnType<typeof createServiceClient>; user: PhiUser }
+  | { ok: false; response: NextResponse }
+> {
+  const { clinicId, role } = actor
   const supabase = createServiceClient()
   const { data: draft, error } = await supabase
     .from('orders')
@@ -146,10 +172,15 @@ async function revokeLinkIfProposed(supabase: ReturnType<typeof createServiceCli
   await revokeProposalLinkForOrder(supabase, { clinicId, orderId: draft.order_id })
 }
 
-export async function PATCH(request: NextRequest, context: RouteContext): Promise<NextResponse> {
-  const { orderId } = await context.params
+async function patchHandler(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
+  // Who is calling first; then the body; then the draft.
+  const auth = await authenticate(context)
+  if (!auth.ok) return auth.response
+  const { orderId } = auth.caller
 
-  let body: {
+  type EditLineBody = {
     catalogItemId?: string | null
     formulationId?: string | null
     pharmacyId:     string
@@ -166,11 +197,17 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     cycleOnDays?:   unknown
     cycleOffDays?:  unknown
   }
+  let raw: unknown
   try {
-    body = await request.json()
+    raw = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
+  // Ids, text bounds and the sig mode (lib/orders/line-body-schema); the
+  // prescription rules below keep their own messages.
+  const shape = parseInput(lineBodySchema, raw)
+  if (!shape.ok) return shape.response
+  const body = shape.data as unknown as EditLineBody
 
   const { catalogItemId, formulationId, pharmacyId, retailCents, sigText, rxDetails, dose, frequencyCode, quantityLabel, packageId, packageCount } = body
 
@@ -216,7 +253,7 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     }
   }
 
-  const loaded = await loadEditableDraft(orderId)
+  const loaded = await loadEditableDraft(auth.caller)
   if (!loaded.ok) return loaded.response
   const { actor, draft, supabase } = loaded
 
@@ -241,6 +278,7 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     )
   }
 
+  const rxDetailColumns = rxDetailsToColumns(rxDetailsValidation.details)
   const update = {
     catalog_item_id:          sourceKind === 'catalog' ? (catalogItemId as string) : null,
     formulation_id:           sourceKind === 'formulation' ? (formulationId as string) : null,
@@ -250,13 +288,24 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     medication_snapshot:      line.medicationSnapshot,
     pharmacy_snapshot:        line.pharmacySnapshot,
     sig_text:                 sigTrimmed,
-    ...rxDetailsToColumns(rxDetailsValidation.details),
+    ...rxDetailColumns,
     // WO-101
     ...line.package,
+    // What the pharmacy dispenses, counted as the Dispense line states it.
+    quantity:                 dispenseCount({ ...rxDetailColumns, ...line.package }),
     ...modeColumns,
   }
 
   const diff = diffDraftRows(draft, update)
+  const owner = draft as unknown as { patient_id: string; provider_id: string }
+
+  // Compliance C2 and L1 (B15): a patient's prescription changes. Logged
+  // BEFORE the update; no row, no change (503).
+  const phiEntry: PhiAccessEntry = {
+    user: loaded.user, action: 'update', resource: 'order', route: '/api/orders/[orderId]',
+    orderId, patientId: owner.patient_id, headers: request.headers ?? null,
+  }
+  if (!(await logPhiAccess(phiEntry))) return phiWriteRefused()
 
   const { error: updateError } = await supabase
     .from('orders')
@@ -266,6 +315,7 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
 
   if (updateError) {
     console.error('[orders/edit] draft update failed:', updateError.message)
+    await logPhiWriteNotCompleted(phiEntry)
     return NextResponse.json({ error: 'Failed to update draft' }, { status: 500 })
   }
 
@@ -273,7 +323,6 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
 
   // WO-102: a changed pharmacy or shipping type moves shipping between
   // this patient's draft lines — re-allocate once per pharmacy.
-  const owner = draft as unknown as { patient_id: string; provider_id: string }
   await reallocateDraftSiblingShipping(supabase, actor.clinicId, owner.patient_id, owner.provider_id)
 
   await writeDraftAudit(supabase, orderId, {
@@ -283,20 +332,29 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
   })
 
   console.info(`[orders/edit] DRAFT edited | order=${orderId} | fields=${Object.keys(diff).length}`)
-  // Compliance C2: a patient's prescription changed.
-  await logPhiAccess({
-    user: loaded.user, action: 'update', resource: 'order', route: '/api/orders/[orderId]',
-    orderId, patientId: owner.patient_id, headers: request.headers ?? null,
-  })
   return NextResponse.json({ orderId, changed: Object.keys(diff) }, { status: 200 })
 }
 
-export async function DELETE(request: NextRequest, context: RouteContext): Promise<NextResponse> {
-  const { orderId } = await context.params
+async function deleteHandler(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
+  const auth = await authenticate(context)
+  if (!auth.ok) return auth.response
+  const { orderId } = auth.caller
 
-  const loaded = await loadEditableDraft(orderId)
+  const loaded = await loadEditableDraft(auth.caller)
   if (!loaded.ok) return loaded.response
   const { actor, draft, supabase } = loaded
+  const owner = draft as unknown as { patient_id: string; provider_id: string }
+
+  // Compliance C2 and L1 (B15): removing a draft line changes the
+  // patient's prescriptions. Logged BEFORE the soft delete; no row, no
+  // change (503).
+  const phiEntry: PhiAccessEntry = {
+    user: loaded.user, action: 'update', resource: 'order', route: '/api/orders/[orderId]',
+    orderId, patientId: owner.patient_id, headers: request.headers ?? null,
+  }
+  if (!(await logPhiAccess(phiEntry))) return phiWriteRefused()
 
   // REQ-OAS-010: soft delete only.
   const { error: deleteError } = await supabase
@@ -307,13 +365,13 @@ export async function DELETE(request: NextRequest, context: RouteContext): Promi
 
   if (deleteError) {
     console.error('[orders/edit] draft soft-delete failed:', deleteError.message)
+    await logPhiWriteNotCompleted(phiEntry)
     return NextResponse.json({ error: 'Failed to remove draft' }, { status: 500 })
   }
 
   await revokeLinkIfProposed(supabase, actor.clinicId, draft)
 
   // WO-102: the removed line may have carried its pharmacy's shipping.
-  const owner = draft as unknown as { patient_id: string; provider_id: string }
   await reallocateDraftSiblingShipping(supabase, actor.clinicId, owner.patient_id, owner.provider_id)
 
   await writeDraftAudit(supabase, orderId, {
@@ -322,10 +380,8 @@ export async function DELETE(request: NextRequest, context: RouteContext): Promi
   })
 
   console.info(`[orders/edit] DRAFT soft-deleted | order=${orderId}`)
-  // Compliance C2: removing a draft line changes the patient's prescriptions.
-  await logPhiAccess({
-    user: loaded.user, action: 'update', resource: 'order', route: '/api/orders/[orderId]',
-    orderId, patientId: owner.patient_id, headers: request.headers ?? null,
-  })
   return NextResponse.json({ orderId, removed: true }, { status: 200 })
 }
+
+export const PATCH = withApiErrors('/api/orders/[orderId]', patchHandler)
+export const DELETE = withApiErrors('/api/orders/[orderId]', deleteHandler)

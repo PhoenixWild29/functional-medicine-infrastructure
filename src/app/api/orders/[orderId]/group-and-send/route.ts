@@ -20,16 +20,19 @@
 // createPaymentGroup so the policy lives in one place.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }        from '@/lib/supabase/server'
 import { createServiceClient }       from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { createPaymentGroup, cancelPaymentGroup } from '@/lib/payment-group/create-group'
 import { generateGroupCheckoutToken } from '@/lib/auth/checkout-token'
 import { serverEnv }                 from '@/lib/env'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted, type PhiAccessEntry } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { UUID_RE } from '@/lib/api/input'
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const CLINIC_APP_ROLES = ['clinic_admin', 'provider', 'medical_assistant'] as const
 type ClinicAppRole = typeof CLINIC_APP_ROLES[number]
 
@@ -41,7 +44,7 @@ interface GroupAndSendBody {
   siblingOrderIds: string[]
 }
 
-export async function POST(
+async function postHandler(
   request: NextRequest,
   { params }: RouteParams,
 ): Promise<NextResponse> {
@@ -54,15 +57,9 @@ export async function POST(
   }
 
   // ── 1. CSRF (same-origin only) ────────────────────────────────
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') {
-    return NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 })
-  }
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
 
-  const { orderId: anchorOrderId } = await params
-  if (!UUID_RE.test(anchorOrderId)) {
-    return NextResponse.json({ error: 'Invalid order id' }, { status: 400 })
-  }
 
   // ── 2. Auth gate ──────────────────────────────────────────────
   const supabaseAuth = await createServerClient()
@@ -85,20 +82,28 @@ export async function POST(
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }
+
+  // Any 8-4-4-4-12 id (seeded demo ids are not v4), checked after who is
+  // calling and before anything is read.
+  const { orderId: anchorOrderId } = await params
+  if (!UUID_RE.test(anchorOrderId)) {
+    return NextResponse.json({ error: 'Invalid order id' }, { status: 400 })
+  }
   // Pending review: nothing is ordered, signed or sent until ops approves
   // the clinic (lib/onboarding/approval-guard).
   const pendingReview = await refuseUnlessApproved(createServiceClient(), clinicId)
   if (pendingReview) return pendingReview
 
   // ── 3. Body validation ────────────────────────────────────────
-  let body: GroupAndSendBody
+  let body: GroupAndSendBody | null
   try {
-    body = await request.json() as GroupAndSendBody
+    body = await request.json() as GroupAndSendBody | null
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  if (!Array.isArray(body.siblingOrderIds)) {
+  // A body that is not an object (null, a string) has no siblingOrderIds.
+  if (!body || typeof body !== 'object' || !Array.isArray(body.siblingOrderIds)) {
     return NextResponse.json({ error: 'siblingOrderIds must be an array' }, { status: 400 })
   }
   if (body.siblingOrderIds.length < 1) {
@@ -109,7 +114,7 @@ export async function POST(
     return NextResponse.json({ error: 'A payment group cannot contain more than 25 orders' }, { status: 400 })
   }
   for (const id of body.siblingOrderIds) {
-    if (!UUID_RE.test(id)) {
+    if (typeof id !== 'string' || !UUID_RE.test(id)) {
       return NextResponse.json({ error: `Invalid sibling order id: ${id}` }, { status: 400 })
     }
     if (id === anchorOrderId) {
@@ -123,6 +128,16 @@ export async function POST(
   }
 
   // ── 4. Bundle ─────────────────────────────────────────────────
+  // Compliance C2 and L1 (B15): logged BEFORE the bundle is created; no
+  // row, no bundle (503). The patient (and the group id) exist only once
+  // createPaymentGroup has read the orders, so this row names the anchor
+  // order and the clinic; a second row after the create names the patient.
+  const phiEntry: PhiAccessEntry = {
+    user: user, action: 'create', resource: 'payment_group', route: '/api/orders/[orderId]/group-and-send',
+    orderId: anchorOrderId, clinicId, headers: request.headers ?? null,
+  }
+  if (!(await logPhiAccess(phiEntry))) return phiWriteRefused()
+
   const supabase = createServiceClient()
   const result = await createPaymentGroup({
     supabase,
@@ -133,6 +148,7 @@ export async function POST(
   })
 
   if (!result.ok) {
+    await logPhiWriteNotCompleted(phiEntry)
     return NextResponse.json({ error: result.error }, { status: result.status })
   }
 
@@ -159,6 +175,7 @@ export async function POST(
       orderIds: allIds,
       stripePaymentIntentId: result.stripePaymentIntentId,
     })
+    await logPhiWriteNotCompleted({ ...phiEntry, patientId: result.patientId })
     return NextResponse.json(
       { error: 'Failed to generate payment link for group. The bundle was rolled back; please try again.' },
       { status: 500 },
@@ -171,11 +188,9 @@ export async function POST(
   console.info(
     `[group-and-send] generated | group=${result.groupId} anchor=${anchorOrderId} orders=${result.orderCount} clinic=${clinicId}`,
   )
-  // Compliance C2: the patient's orders were bundled under one payment link.
-  await logPhiAccess({
-    user: user, action: 'create', resource: 'payment_group', route: '/api/orders/[orderId]/group-and-send',
-    orderId: anchorOrderId, patientId: result.patientId, headers: request.headers ?? null,
-  })
+  // The patient, now known (best effort: the bundle is made and was
+  // logged above; a failure here is alerted by the helper).
+  await logPhiAccess({ ...phiEntry, patientId: result.patientId })
 
   return NextResponse.json(
     {
@@ -194,3 +209,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/orders/[orderId]/group-and-send', postHandler)

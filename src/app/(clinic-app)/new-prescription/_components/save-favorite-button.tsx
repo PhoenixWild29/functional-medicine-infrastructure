@@ -22,6 +22,7 @@
 import { useContext, useState } from 'react'
 import { QueryClientContext } from '@tanstack/react-query'
 import type { CycleSchedule } from '@/lib/orders/cycling'
+import { userMessage } from '@/lib/errors/user-message'
 
 export interface SaveFavoriteInput {
   providerId:     string
@@ -115,7 +116,7 @@ export function SaveFavoriteButton({
       void queryClient?.invalidateQueries({ queryKey: ['provider-favorites'] })
       setTimeout(() => setSaved(null), 3000)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed')
+      setError(userMessage(err, 'Save failed'))
     } finally {
       setSaving(false)
     }

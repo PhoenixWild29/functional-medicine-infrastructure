@@ -1,6 +1,8 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
+import { shardPrefix } from './fixtures/shard'
+import { e2ePassword } from './fixtures/test-password'
 
 // ============================================================
 // #248 submitted banner + checklist link; #245 demo payout label
@@ -23,8 +25,9 @@ import { randomUUID } from 'node:crypto'
 // when a row elsewhere still names the clinic).
 
 const RUN = randomUUID().slice(0, 8)
-const EMAIL_PREFIX = 'e2e-onboarding-status-'
-const PASSWORD = 'e2e onboarding status passphrase 7'
+// Per shard (fixtures/shard): cleanup sweeps this prefix, so each shard sweeps only its own.
+const EMAIL_PREFIX = shardPrefix('e2e-onboarding-status-')
+const PASSWORD = e2ePassword()
 const SUBMITTED = "Submitted. We're reviewing your clinic; ordering opens once you're approved."
 
 function e2eService() {

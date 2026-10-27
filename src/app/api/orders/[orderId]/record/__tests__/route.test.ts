@@ -52,7 +52,7 @@ const call = () => GET({} as never, { params: Promise.resolve({ orderId: ORDER_I
 beforeEach(() => {
   getUserMock.mockReset()
   getSessionMock.mockReset()
-  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { clinic_id: CLINIC } } } })
+  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { clinic_id: CLINIC, app_role: 'provider' } } } })
   filters.length = 0
   absorb = false
   orderRow = {
@@ -118,7 +118,7 @@ describe('GET /api/orders/[orderId]/record', () => {
   it('401 without a verified user; 400 without clinic_id', async () => {
     getUserMock.mockResolvedValueOnce({ data: { user: null } })
     expect((await call()).status).toBe(401)
-    getUserMock.mockResolvedValueOnce({ data: { user: { id: 'u1', user_metadata: {} } } })
+    getUserMock.mockResolvedValueOnce({ data: { user: { id: 'u1', app_metadata: { app_role: 'provider' } } } })
     expect((await call()).status).toBe(400)
     expect(getSessionMock).not.toHaveBeenCalled()
   })

@@ -19,6 +19,8 @@
 import { POST } from '../route'
 import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
 import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
+import { logPhiWriteNotCompleted } from '@/lib/audit/phi-access'
+import { generateCheckoutToken } from '@/lib/auth/checkout-token'
 
 // ── Mocks ──────────────────────────────────────────────────────────
 
@@ -224,6 +226,41 @@ describe('PHI access log', () => {
     mockOrder({ status: 'DRAFT' })
     expect((await POST(makeRequest(), makeParams())).status).toBe(422)
     expect(phiEntries()).toHaveLength(0)
+  })
+
+  // L1: the row is written BEFORE the link is issued; no row, no link.
+  it('the row is written before the token is generated, naming the patient', async () => {
+    mockSession({ app_role: 'clinic_admin', clinic_id: TEST_CLINIC_ID })
+    mockOrder({ status: 'AWAITING_PAYMENT' })
+    const token = jest.mocked(generateCheckoutToken)
+    token.mockClear()
+    let tokensAtLog = -1
+    phiLog.mockImplementationOnce(async () => { tokensAtLog = token.mock.calls.length; return true })
+    expect((await POST(makeRequest(), makeParams())).status).toBe(200)
+    expect(tokensAtLog).toBe(0)
+    expectOnePhiRow({ action: 'create', resource: 'payment_link', orderId: TEST_ORDER_ID, patientId: TEST_PATIENT_ID })
+  })
+
+  it('the row cannot be written: 503, the standard message, and no link is issued', async () => {
+    mockSession({ app_role: 'clinic_admin', clinic_id: TEST_CLINIC_ID })
+    mockOrder({ status: 'AWAITING_PAYMENT' })
+    jest.mocked(generateCheckoutToken).mockClear()
+    phiLog.mockResolvedValueOnce(false)
+    const res = await POST(makeRequest(), makeParams())
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'This change could not be recorded. Nothing was changed. Try again.' })
+    expect(generateCheckoutToken).not.toHaveBeenCalled()
+  })
+
+  it('a token that fails after the row was written writes the not-completed row', async () => {
+    mockSession({ app_role: 'clinic_admin', clinic_id: TEST_CLINIC_ID })
+    mockOrder({ status: 'AWAITING_PAYMENT' })
+    jest.mocked(logPhiWriteNotCompleted).mockClear()
+    jest.mocked(generateCheckoutToken).mockRejectedValueOnce(new Error('no secret'))
+    const quiet = jest.spyOn(console, 'error').mockImplementation(() => {})
+    expect((await POST(makeRequest(), makeParams())).status).toBe(500)
+    expect(jest.mocked(logPhiWriteNotCompleted)).toHaveBeenCalledWith(phiEntries()[0])
+    quiet.mockRestore()
   })
 })
 

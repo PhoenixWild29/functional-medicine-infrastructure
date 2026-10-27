@@ -14,6 +14,7 @@
 import { POST } from '../route'
 import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
 import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
+import { logPhiWriteNotCompleted } from '@/lib/audit/phi-access'
 import { REASSIGN_AUDIT_ACTOR } from '@/lib/orders/reassignment'
 
 const CLINIC_ID   = 'a1000000-0000-0000-0000-000000000001'
@@ -208,6 +209,36 @@ describe('PHI access log', () => {
     fixtures['orders:one'] = () => ({ data: null, error: null })
     expect((await call()).status).toBe(404)
     expect(phiEntries()).toHaveLength(0)
+  })
+
+  // L1: the row is written BEFORE the update; no row, no reassignment.
+  const orderUpdates = () => updates.filter(u => u.table === 'orders')
+  it('the row is written before the update', async () => {
+    let updatesAtLog = -1
+    phiLog.mockImplementationOnce(async () => { updatesAtLog = orderUpdates().length; return true })
+    expect((await call()).status).toBe(200)
+    expect(updatesAtLog).toBe(0)
+    expectOnePhiRow({ action: 'update', resource: 'order', orderId: ORDER_A, patientId: PATIENT_ID })
+  })
+
+  it('the row cannot be written: 503, the standard message, nothing moved or audited', async () => {
+    phiLog.mockResolvedValueOnce(false)
+    const res = await call()
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'This change could not be recorded. Nothing was changed. Try again.' })
+    expect(orderUpdates()).toHaveLength(0)
+    expect(inserts).toHaveLength(0)
+  })
+
+  it.each([
+    ['the update fails', () => ({ data: null, error: { message: 'boom' } }), 500],
+    ['a concurrent change won (CAS lost)', () => ({ data: [{ order_id: ORDER_B }], error: null }), 409],
+  ])('%s after the row was written: the not-completed row', async (_case, updated, status) => {
+    jest.mocked(logPhiWriteNotCompleted).mockClear()
+    fixtures['orders:updated'] = updated
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    expect((await call()).status).toBe(status)
+    expect(jest.mocked(logPhiWriteNotCompleted)).toHaveBeenCalledWith(phiEntries()[0])
   })
 })
 

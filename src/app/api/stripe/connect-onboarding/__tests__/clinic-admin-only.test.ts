@@ -51,7 +51,7 @@ const user = (app_role: string) => ({
   error: null,
 })
 
-const post = () => POST()
+const post = () => POST(new Request('https://app.test/', { method: 'POST' }) as never)
 
 const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
 const infoSpy  = jest.spyOn(console, 'info').mockImplementation(() => {})

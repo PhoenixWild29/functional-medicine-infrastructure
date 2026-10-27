@@ -35,25 +35,11 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import * as Sentry from '@sentry/nextjs'
 import SignatureCanvas from 'react-signature-canvas'
 
-// ── F5 diagnostic (PR #7c, self-reverts) ─────────────────────
-// See draft-sign-form.tsx for the full rationale. This instrumented
-// control canvas produces breadcrumbs we can compare side-by-side
-// with the draft-sign canvas during the next cowork walkthrough.
-// REMOVE THIS INSTRUMENTATION once F5 is root-caused.
-function logSignatureEvent(component: 'draft-sign-form' | 'batch-review-form', event: 'onBegin' | 'onEnd') {
-  console.log(`[F5-diag] ${component} ${event} fired`)
-  Sentry.addBreadcrumb({
-    category: 'signature',
-    message:  `${component} ${event} fired`,
-    level:    'info',
-    data:     { component, event, ts: Date.now() },
-  })
-}
 import { usePrescriptionSession, type SessionPrescription } from '../../_context/prescription-session'
 import { isIntakePending, patientName } from '@/lib/patients/display'
+import { ALLERGIES_REQUIRED_CODE, hasRecordedAllergies } from '@/lib/patients/allergies'
 import { CONTROLLED_LABEL, isControlledSchedule } from '@/lib/orders/controlled-substance'
 import { NOT_COMPOUNDABLE_LABEL } from '@/lib/compliance/compounding'
 import { DrugInteractionAlerts } from '../../_components/drug-interaction-alerts'
@@ -93,6 +79,8 @@ import { PENDING_REVIEW_CODE, refusalText } from '@/lib/onboarding/pending-revie
 import { ProposalOptions, alignPlan, defaultProposalPlan, planProblems, proposalOptionsBody, type ProposalLine, type ProposalPlan } from './proposal-options'
 import { PlanLinkPanel } from '@/components/proposals/plan-link-panel'
 import type { SentLink } from '@/lib/proposals/propose'
+import { userMessage } from '@/lib/errors/user-message'
+import { HelpLink } from '@/components/help-link'
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -324,6 +312,9 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
   const router = useRouter()
   const session = usePrescriptionSession()
   const sigCanvasRef = useRef<SignatureCanvas>(null)
+  // Removing a line removes the button that had focus: focus goes to
+  // "+ Add Another Prescription" instead of being lost to the page.
+  const addAnotherRef = useRef<HTMLButtonElement>(null)
 
   // WO-99: the stroke rule (at least 3 strokes spanning at least 40% of
   // the pad), read off the pad after each stroke. The server checks the
@@ -337,6 +328,12 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitProgress, setSubmitProgress] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  // Coverage gap 9: Sign & Send pressed for a patient with neither
+  // allergies nor NKDA recorded (or the server said so). The prompt shows
+  // the allergy entry in place; saving continues to the confirm step.
+  const [allergyPrompt, setAllergyPrompt] = useState(false)
+  // The same prompt, for sending a plan (coverage gap 9 at propose time).
+  const [planAllergyPrompt, setPlanAllergyPrompt] = useState(false)
 
   // Non-provider "Save as Draft" flow (batched WO-77 pattern)
   const [isSavingDraft, setIsSavingDraft] = useState(false)
@@ -788,6 +785,14 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
       if (!sendRes.ok) {
         const err = await sendRes.json().catch(() => ({})) as { error?: string; code?: string }
         if (err.code === PENDING_REVIEW_CODE) throw new Error(refusalText(err, ''))
+        // Coverage gap 9: the server found no allergies or NKDA. Nothing
+        // was signed; the drafts are reused on the next attempt.
+        if (err.code === ALLERGIES_REQUIRED_CODE) {
+          setSubmitProgress(null)
+          setIsSubmitting(false)
+          setAllergyPrompt(true)
+          return
+        }
         const message = err.error ?? 'Unknown error'
         throw new Error(/nothing was signed/i.test(message) ? message : `${message} Nothing was signed.`)
       }
@@ -806,7 +811,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
       router.push(`/dashboard?sent=${totalCount}`)
 
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'An unexpected error occurred'
+      const msg = userMessage(err, 'An unexpected error occurred')
       setSubmitError(msg)
       setSubmitProgress(null)
       setIsSubmitting(false)
@@ -891,11 +896,18 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
   // made), then POST /api/proposals tags them to their options and, for
   // a provider or clinic admin, makes the plan link. The server runs
   // every signing check first and answers with sign's own words.
-  async function handleSendForChoice() {
-    if (!patient || !provider || !plan) return
+  async function handleSendForChoice(current: typeof patient = patient) {
+    if (!current || !provider || !plan) return
+    const patient = current
     const problems = planProblems(plan)
     if (problems.length > 0) {
       setProposalErrors(problems)
+      return
+    }
+    // Coverage gap 9: allergies or NKDA first, as for Sign & Send.
+    if (!hasRecordedAllergies(patient)) {
+      setProposalErrors([])
+      setPlanAllergyPrompt(true)
       return
     }
     setIsProposing(true)
@@ -913,7 +925,12 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
           options:    proposalOptionsBody(plan, proposalLines, lineId => createdOrderIdsRef.current.get(lineId) ?? ''),
         }),
       })
-      const body = await res.json().catch(() => ({})) as { error?: string; problems?: Array<{ message?: string }>; proposalId?: string; status?: 'draft' | 'sent'; link?: SentLink | null }
+      const body = await res.json().catch(() => ({})) as { error?: string; code?: string; problems?: Array<{ message?: string }>; proposalId?: string; status?: 'draft' | 'sent'; link?: SentLink | null }
+      // The server found no allergies or NKDA: the prompt, once, not a list.
+      if (!res.ok && body.code === ALLERGIES_REQUIRED_CODE) {
+        setPlanAllergyPrompt(true)
+        return
+      }
       if (!res.ok) {
         const lines = (body.problems ?? []).map(pr => pr.message).filter((m): m is string => typeof m === 'string')
         setProposalErrors(lines.length > 0 ? lines : [body.error ?? 'The plan could not be sent. Try again.'])
@@ -923,7 +940,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
       clearSessionOnUnmountRef.current = true
       setProposalResult({ proposalId: body.proposalId ?? '', status: body.status ?? 'sent', link: body.link ?? null })
     } catch (err) {
-      setProposalErrors([err instanceof Error ? err.message : 'An unexpected error occurred'])
+      setProposalErrors([userMessage(err, 'An unexpected error occurred')])
     } finally {
       setSubmitProgress(null)
       setIsProposing(false)
@@ -958,7 +975,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
       clearSessionOnUnmountRef.current = true
       router.push(`/dashboard?draft=${totalCount}`)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'An unexpected error occurred'
+      const msg = userMessage(err, 'An unexpected error occurred')
       setDraftError(msg)
       setSubmitProgress(null)
       setIsSavingDraft(false)
@@ -974,9 +991,11 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
         onCheckUnavailable={setInteractionsUnavailable}
       />
 
-      {/* WO-97: allergies not recorded → amber notice with an inline
-          "Confirm NKDA". Never blocks Sign & Send or Save as Draft. */}
-      <AllergyNotice patient={patient} onSaved={session.updatePatient} />
+      {/* WO-97: allergies not recorded → amber notice with "Confirm NKDA"
+          and "Record allergies". Coverage gap 9: signing needs one of
+          them; the prompt by Sign & Send takes over on a sign attempt.
+          Save as Draft never gates on it. */}
+      {!allergyPrompt && <AllergyNotice patient={patient} onSaved={session.updatePatient} />}
 
       {prescriberProblems.length > 0 && (
         <div
@@ -1178,7 +1197,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => session.removePrescription(rx.id)}
+                    onClick={() => { session.removePrescription(rx.id); requestAnimationFrame(() => addAnotherRef.current?.focus()) }}
                     disabled={isBusy}
                     aria-label={`Remove ${rx.medicationName}`}
                     className="text-[10px] text-red-500 underline hover:text-red-700 disabled:opacity-50"
@@ -1203,6 +1222,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
           Back
         </button>
         <button
+          ref={addAnotherRef}
           type="button"
           onClick={() => router.push('/new-prescription/search')}
           disabled={isBusy}
@@ -1286,7 +1306,10 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
           instead of signing now (docs/design/patient-protocol-choice.md). */}
       {proposalRole && (
         <section aria-labelledby="patient-choice-heading" className="space-y-4 rounded-lg border border-border bg-card p-4">
-          <h2 id="patient-choice-heading" className="text-base font-semibold text-foreground">Let the patient choose</h2>
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 id="patient-choice-heading" className="text-base font-semibold text-foreground">Let the patient choose</h2>
+            <HelpLink topic="treatment-plans" />
+          </div>
           <label htmlFor="patient-choice-toggle" className="flex min-h-[44px] items-center gap-2 text-sm text-foreground">
             <input
               id="patient-choice-toggle"
@@ -1303,6 +1326,22 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
           {choiceMode && plan && (
             <>
               <ProposalOptions lines={proposalLines} plan={plan} onChange={setProposalPlan} disabled={isProposing} />
+              {planAllergyPrompt && (
+                <AllergyNotice
+                  patient={patient}
+                  prompting
+                  promptFor="plan"
+                  onSaved={patch => {
+                    session.updatePatient(patch)
+                    if (hasRecordedAllergies(patch)) {
+                      setPlanAllergyPrompt(false)
+                      // Sending continues with the recorded status.
+                      void handleSendForChoice({ ...patient, ...patch })
+                    }
+                  }}
+                  onCancelPrompt={() => setPlanAllergyPrompt(false)}
+                />
+              )}
               {proposalErrors.length > 0 && (
                 <div role="alert" data-testid="proposal-errors" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                   <ul className="list-disc space-y-1 pl-5">{proposalErrors.map(e => <li key={e}>{e}</li>)}</ul>
@@ -1339,10 +1378,8 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
 
           <div className="mt-3 rounded-lg border border-border bg-white">
             {/*
-             * Fire "captured" on BOTH pointerdown (onBegin) and pointerup
-             * (onEnd). Kept consistent with draft-sign-form (F5 fix) so
-             * both signature surfaces behave identically. See draft-
-             * sign-form.tsx for the full F5 root-cause TODO.
+             * F5 fix: the pad is read when the pen lifts (onEnd), and Sign
+             * & Send re-checks it, so lost strokes are caught.
              */}
             <SignatureCanvas
               ref={sigCanvasRef}
@@ -1350,11 +1387,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
                 className: 'w-full h-32 rounded-lg',
                 'aria-label': 'Provider signature pad',
               }}
-              onBegin={() => {
-                logSignatureEvent('batch-review-form', 'onBegin')
-              }}
               onEnd={() => {
-                logSignatureEvent('batch-review-form', 'onEnd')
                 readSignaturePad()
               }}
             />
@@ -1388,6 +1421,23 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
           {submitProgress}
         </div>
+      )}
+
+      {/* Coverage gap 9: the allergy prompt, in place of the confirm step.
+          Saving NKDA or a list continues to Confirm & Send. */}
+      {isProvider && allergyPrompt && (
+        <AllergyNotice
+          patient={patient}
+          prompting
+          onSaved={patch => {
+            session.updatePatient(patch)
+            if (hasRecordedAllergies(patch)) {
+              setAllergyPrompt(false)
+              setConfirmOpen(true)
+            }
+          }}
+          onCancelPrompt={() => setAllergyPrompt(false)}
+        />
       )}
 
       {/* Confirm dialog — providers only */}
@@ -1425,11 +1475,16 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
       )}
 
       {/* Sign & Send button — providers only */}
-      {isProvider && !confirmOpen && (
+      {isProvider && !confirmOpen && !allergyPrompt && (
         <>
           <button
             type="button"
-            onClick={() => setConfirmOpen(true)}
+            onClick={() => {
+              // Coverage gap 9: allergies or NKDA first (the button stays
+              // enabled; the prompt says what is needed, in place).
+              if (!hasRecordedAllergies(patient)) { setAllergyPrompt(true); return }
+              setConfirmOpen(true)
+            }}
             disabled={!canSubmit}
             className={`w-full rounded-lg px-6 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               canSubmit

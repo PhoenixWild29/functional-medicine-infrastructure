@@ -21,21 +21,14 @@
 // Cache-Control set to allow CDN caching (spec rarely changes).
 
 import { NextResponse } from 'next/server'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+// Webhook event types (AC-SPC-001.4): one list, shared with webhook
+// registration, which accepts only these.
+import { WEBHOOK_EVENT_TYPES } from '@/lib/spec/webhook-event-types'
 
 // Current published spec version (AC-SPC-003.1: major.minor scheme)
 const SPEC_VERSION = 'v1.0'
 const SPEC_PUBLISHED_DATE = '2026-03-18'
-
-// ── Webhook event types (AC-SPC-001.4) ──────────────────────
-const WEBHOOK_EVENT_TYPES = [
-  'order.acknowledged',
-  'order.compounding',
-  'order.ready',
-  'order.shipped',
-  'order.delivered',
-  'order.rejected',
-  'order.cancelled',
-] as const
 
 const spec = {
   openapi: '3.1.0',
@@ -113,7 +106,7 @@ const spec = {
           'orderId', 'providerFirstName', 'providerLastName', 'providerNpi',
           'providerLicenseState', 'patientFirstName', 'patientLastName',
           'patientDateOfBirth', 'medicationName', 'medicationForm',
-          'medicationDose', 'quantity', 'clinicName',
+          'medicationDose', 'quantity', 'quantityUnit', 'clinicName',
         ],
         properties: {
           orderId:              { type: 'string', format: 'uuid', description: 'CompoundIQ order UUID' },
@@ -134,7 +127,21 @@ const spec = {
           medicationName:       { type: 'string' },
           medicationForm:       { type: 'string' },
           medicationDose:       { type: 'string' },
-          quantity:             { type: 'number' },
+          quantity:             {
+            type: 'number',
+            description:
+              'What to dispense, counted in quantityUnit. Counted forms (capsule, tablet, troche, pellet, suppository, lozenge): ' +
+              'the units dispensed, whether or not a package was chosen (2 bottles of 30 capsules = 60). Measured forms (mL, g, mg): ' +
+              'the containers dispensed (2 x 5 mL vials = 2, quantityUnit vial); the measured amount is dispenseQuantity + dispenseUnit. ' +
+              'Never a price input.',
+          },
+          quantityUnit:         {
+            type: 'string',
+            description:
+              'The unit quantity counts, singular: capsule, tablet, troche, pellet, suppository or lozenge for a counted form; ' +
+              'vial, bottle, tube, pen, kit, syringe or cartridge for a measured form; "package" when the package label names no ' +
+              'container, "container" when a measured line has no package.',
+          },
           sigText:              { type: 'string', nullable: true },
           clinicName:           { type: 'string' },
         },
@@ -502,7 +509,7 @@ const spec = {
   },
 }
 
-export async function GET(): Promise<NextResponse> {
+async function getHandler(): Promise<NextResponse> {
   return NextResponse.json(spec, {
     status: 200,
     headers: {
@@ -518,3 +525,5 @@ export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/spec/v1/openapi', getHandler)

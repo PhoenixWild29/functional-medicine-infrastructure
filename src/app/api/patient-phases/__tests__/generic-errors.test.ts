@@ -11,7 +11,11 @@ import type { NextRequest } from 'next/server'
 import { scriptedDb, type ScriptedCall } from '@/__tests__/helpers/scripted-db'
 import { GET, POST, PATCH } from '../route'
 
-const DB_TEXT = 'duplicate key value violates unique constraint "ppp_patient_protocol" Key (patient_id)=(pt-1)'
+const PT_1 = 'a3000000-0000-4000-8000-000000000001'
+const PR_1 = 'c1000000-0000-4000-8000-000000000001'
+const T_1 = 'e1000000-0000-4000-8000-000000000001'
+
+const DB_TEXT = 'duplicate key value violates unique constraint "ppp_patient_protocol" Key (patient_id)=(' + PT_1 + ')'
 const FAILED = { data: null, error: { message: DB_TEXT } }
 
 let db = scriptedDb(() => undefined)
@@ -23,8 +27,15 @@ jest.mock('@/lib/supabase/server', () => ({
     },
   }),
 }))
+// The signed-in provider's own row (C-2026-10-25-07: advanced_by is the caller,
+// and the body's provider_id must be theirs).
+jest.mock('@/lib/auth/current-provider', () => ({
+  ...jest.requireActual('@/lib/auth/current-provider'),
+  resolveCurrentProvider: async () => ({ provider_id: 'c1000000-0000-4000-8000-000000000001', clinic_id: 'c', first_name: 'P', last_name: 'One', npi_number: '1', signature_hash: null }),
+}))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
-jest.mock('@/lib/audit/phi-access', () => ({ logPhiAccess: jest.fn(async () => {}) }))
+// L1: the write is refused unless its log row is written, so the stub says it was.
+jest.mock('@/lib/audit/phi-access', () => ({ logPhiAccess: jest.fn(async () => true), logPhiWriteNotCompleted: jest.fn(async () => true) }))
 
 const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
 afterAll(() => errorSpy.mockRestore())
@@ -33,9 +44,9 @@ afterAll(() => errorSpy.mockRestore())
 function failing(target: (c: ScriptedCall) => boolean) {
   db = scriptedDb(c => {
     if (target(c)) return FAILED
-    if (c.table === 'patients') return { data: { patient_id: 'pt-1' } }
-    if (c.table === 'protocol_templates') return { data: { protocol_id: 'pr-1' } }
-    if (c.table === 'patient_protocol_phases' && c.op === 'select' && c.single) return { data: { current_phase: 'loading', patient_id: 'pt-1' } }
+    if (c.table === 'patients') return { data: { patient_id: PT_1 } }
+    if (c.table === 'protocol_templates') return { data: { protocol_id: PR_1 } }
+    if (c.table === 'patient_protocol_phases' && c.op === 'select' && c.single) return { data: { current_phase: 'loading', patient_id: PT_1 } }
     return undefined
   })
 }
@@ -45,27 +56,27 @@ async function expectGeneric(res: Response) {
   const body = await res.json() as { error?: string }
   expect(body.error).toBeTruthy()
   expect(body.error).not.toContain('duplicate key')
-  expect(body.error).not.toContain('pt-1')
+  expect(body.error).not.toContain(PT_1)
 }
 
 const req = (url: string, body?: unknown) => ({ url, json: async () => body, headers: new Headers() }) as unknown as NextRequest
 
 it('GET: a failed phases read', async () => {
   failing(c => c.table === 'patient_protocol_phases' && c.op === 'select' && !c.single)
-  await expectGeneric(await GET(req('https://app.test/api/patient-phases?patient_id=pt-1')))
+  await expectGeneric(await GET(req(`https://app.test/api/patient-phases?patient_id=${PT_1}`)))
 })
 
 it('POST start: a failed upsert', async () => {
   failing(c => c.table === 'patient_protocol_phases' && c.op === 'upsert')
-  await expectGeneric(await POST(req('https://app.test/api/patient-phases', { action: 'start', patient_id: 'pt-1', protocol_id: 'pr-1', initial_phase: 'loading' })))
+  await expectGeneric(await POST(req('https://app.test/api/patient-phases', { action: 'start', patient_id: PT_1, protocol_id: PR_1, initial_phase: 'loading' })))
 })
 
 it('POST advance: a failed phase update', async () => {
   failing(c => c.table === 'patient_protocol_phases' && c.op === 'update')
-  await expectGeneric(await POST(req('https://app.test/api/patient-phases', { action: 'advance', tracking_id: 't-1', new_phase: 'maintenance', provider_id: 'pr-1' })))
+  await expectGeneric(await POST(req('https://app.test/api/patient-phases', { action: 'advance', tracking_id: T_1, new_phase: 'maintenance', provider_id: PR_1 })))
 })
 
 it('PATCH: a failed status update', async () => {
   failing(c => c.table === 'patient_protocol_phases' && c.op === 'update')
-  await expectGeneric(await PATCH(req('https://app.test/api/patient-phases?tracking_id=t-1', { status: 'paused' })))
+  await expectGeneric(await PATCH(req(`https://app.test/api/patient-phases?tracking_id=${T_1}`, { status: 'paused' })))
 })

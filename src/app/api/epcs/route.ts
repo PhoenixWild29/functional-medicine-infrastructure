@@ -29,9 +29,45 @@ import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provider'
 import type { Json } from '@/types/database.types'
 import { epcsRequestFields } from '@/lib/epcs/audit-request'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { z } from 'zod'
+import { badRequest, boundedText, parseInput, uuid } from '@/lib/api/input'
+import { refuseCrossSite } from '@/lib/security/same-origin'
+
+/** epcs_audit_log.event_type: the table's CHECK constraint (migration 20260409000001). */
+const EPCS_EVENT_TYPES = [
+  'PRESCRIPTION_CREATED', 'PRESCRIPTION_ALTERED', 'PRE_SIGN_REVIEW',
+  'TOTP_CHALLENGE_SENT', 'TOTP_VERIFIED', 'TOTP_FAILED',
+  'SIGNATURE_CAPTURED', 'ORDER_SIGNED', 'ORDER_TRANSMITTED', 'ORDER_VOIDED',
+] as const
+
+/** A TOTP code is 6 digits; anything this long is not one. */
+const MAX_TOTP_CODE = 32
+/** A medication name can list several ingredients: generous. */
+const MAX_MEDICATION_NAME = 1000
+/** Upper bound on an audit row's details JSON. */
+const MAX_DETAILS_JSON = 10_000
+
+/** An optional id: absent, null or '' (stored as null), else a uuid. */
+const optionalId = z.union([z.literal(''), z.null(), uuid()]).optional()
+
+/**
+ * action=audit, after the event_type presence check. ids are uuids (a bad
+ * one was a 22P02 500), dea_schedule an integer 0-5, text bounded, details
+ * a small JSON object. provider_id is not here: it is only compared with
+ * the signed-in provider, never stored.
+ */
+const AuditBody = z.object({
+  event_type:      z.enum(EPCS_EVENT_TYPES),
+  patient_id:      optionalId,
+  order_id:        optionalId,
+  dea_schedule:    z.number().int().min(0).max(5).optional(),
+  medication_name: z.union([z.null(), boundedText(MAX_MEDICATION_NAME)]).optional(),
+  details:         z.union([z.null(), z.record(z.string(), z.unknown()).refine(d => JSON.stringify(d).length <= MAX_DETAILS_JSON)]).optional(),
+})
 
 type EpcsCaller =
-  | { ok: true; providerId: string }
+  | { ok: true; providerId: string; clinicId: string }
   | { ok: false; response: NextResponse }
 
 /** The verified, signed-in provider; or the response that refuses the request. */
@@ -48,7 +84,7 @@ async function signedInProvider(): Promise<EpcsCaller> {
   if (!me) {
     return { ok: false, response: NextResponse.json({ error: 'This login is not linked to a provider record.' }, { status: 403 }) }
   }
-  return { ok: true, providerId: me.provider_id }
+  return { ok: true, providerId: me.provider_id, clinicId: me.clinic_id }
 }
 
 /** A client-sent provider_id that is not the signed-in provider. */
@@ -65,7 +101,7 @@ const NOT_YOURS = () => NextResponse.json(
 // demo pre-enrollment path in @/lib/poc/totp-enrollment can share exactly
 // one code path. See that module for format + key-derivation details.
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   const caller = await signedInProvider()
   if (!caller.ok) return caller.response
 
@@ -104,18 +140,26 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
 }
 
-export async function POST(req: NextRequest) {
+async function postHandler(req: NextRequest) {
+  const crossSite = refuseCrossSite(req)
+  if (crossSite) return crossSite
   const caller = await signedInProvider()
   if (!caller.ok) return caller.response
 
   const { searchParams } = new URL(req.url)
   const action = searchParams.get('action')
-  let body: Record<string, unknown>
+  let raw: unknown
   try {
-    body = await req.json() as Record<string, unknown>
+    raw = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
+  // A JSON body that is not an object (null, an array) used to throw on
+  // the provider_id read below: a 500.
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return badRequest('Invalid request', ['(body)'])
+  }
+  const body = raw as Record<string, unknown>
   if (namesAnotherProvider(body['provider_id'], caller.providerId)) return NOT_YOURS()
   // Always the signed-in provider, whatever the client sent.
   const provider_id = caller.providerId
@@ -191,6 +235,9 @@ export async function POST(req: NextRequest) {
     if (typeof code !== 'string' || !code) {
       return NextResponse.json({ error: 'Missing code' }, { status: 400 })
     }
+    if (code.length > MAX_TOTP_CODE) {
+      return badRequest('Invalid request', ['code'])
+    }
 
     // Get stored secret
     const { data: provider, error: providerError } = await supabase
@@ -250,22 +297,43 @@ export async function POST(req: NextRequest) {
 
   // ── Audit: Log EPCS event ─────────────────────────────
   if (action === 'audit') {
-    const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
-    const eventType = str(body['event_type'])
-    if (!eventType) return NextResponse.json({ error: 'Missing event_type' }, { status: 400 })
-    const details = body['details']
+    if (typeof body['event_type'] !== 'string' || !body['event_type']) {
+      return NextResponse.json({ error: 'Missing event_type' }, { status: 400 })
+    }
+    const parsed = parseInput(AuditBody, body)
+    if (!parsed.ok) return parsed.response
+    const a = parsed.data
+
+    // The row may name only the caller's own clinic's patient and order:
+    // one scoped read each (the FK alone only proves the row exists).
+    // Another clinic's id, or none such, is a 404 and nothing is written.
+    for (const [table, column, id] of [['patients', 'patient_id', a.patient_id], ['orders', 'order_id', a.order_id]] as const) {
+      if (!id) continue
+      const { data: row, error: scopeErr } = await supabase
+        .from(table)
+        .select(column)
+        .eq(column, id)
+        .eq('clinic_id', caller.clinicId)
+        .is('deleted_at', null)
+        .maybeSingle()
+      if (scopeErr) {
+        console.error(`[epcs] audit ${table} scope read failed | code=`, scopeErr.code ?? 'unknown')
+        return NextResponse.json({ error: 'Could not record the EPCS event. Try again.' }, { status: 500 })
+      }
+      if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
 
     const { error } = await supabase
       .from('epcs_audit_log')
       .insert({
         // The signed-in provider, never the client's provider_id.
         provider_id,
-        patient_id: str(body['patient_id']),
-        order_id: str(body['order_id']),
-        event_type: eventType,
-        dea_schedule: typeof body['dea_schedule'] === 'number' ? body['dea_schedule'] : 0,
-        medication_name: str(body['medication_name']) ?? '',
-        details: (details && typeof details === 'object' ? details : {}) as Json,
+        patient_id: a.patient_id || null,
+        order_id: a.order_id || null,
+        event_type: a.event_type,
+        dea_schedule: a.dea_schedule ?? 0,
+        medication_name: a.medication_name ?? '',
+        details: (a.details ?? {}) as Json,
         // C10: keyed hashes of the IP and user agent, never the raw values.
         ...(await epcsRequestFields(req.headers ?? null)),
       })
@@ -276,3 +344,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
 }
+
+export const GET = withApiErrors('/api/epcs', getHandler)
+export const POST = withApiErrors('/api/epcs', postHandler)

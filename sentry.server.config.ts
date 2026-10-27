@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/nextjs'
-import { phiBeforeSend, phiBeforeBreadcrumb } from '@/lib/sentry/phi-scrubber'
+import { phiBeforeSend, phiBeforeBreadcrumb, phiBeforeSendTransaction } from '@/lib/sentry/phi-scrubber'
 
 // Sentry server-side initialization.
 // PHI scrubbing is MANDATORY — phiBeforeSend runs on every event before transmission.
@@ -19,6 +19,8 @@ Sentry.init({
   // PHI scrubbing — runs before every event is sent to Sentry
   beforeSend: phiBeforeSend,
   beforeBreadcrumb: phiBeforeBreadcrumb,
+  // Transactions carry URLs too (patient token links): same scrubbing.
+  beforeSendTransaction: phiBeforeSendTransaction,
 
   // Compliance C9: never attach IPs, cookies or request bodies automatically.
   sendDefaultPii: false,

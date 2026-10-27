@@ -13,7 +13,10 @@
 // REQ-SCS-008: Stale data indicator (catalog updated_at > 7 days).
 // REQ-SCS-011: DEA schedule >= 2 → flag, restrict to Tier 4 only.
 //
-// Auth: Requires active Clinic App session.
+// Auth: a verified clinic user (getUser(); provider, medical assistant or
+// clinic admin from app_metadata): the results carry wholesale prices.
+// Input, before any read: state a US license state (lib/providers/states),
+// itemId an id (a bad id reaching Postgres was a 500), form at most 200.
 // Response: { results: PharmacySearchResult[] }
 
 import { checkLicensure, isSterileProduct, normalizeFacilityType, readLicenses, todayIso } from '@/lib/compliance/pharmacy-licensure'
@@ -21,12 +24,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { IntegrationTierEnum } from '@/types/database.types'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { getUserRole } from '@/lib/auth/claims'
+import { US_STATES } from '@/lib/providers/states'
+import { MAX_NAME, parseInput, uuid } from '@/lib/api/input'
+import { isOfferedTier } from '@/lib/pharmacies/offered-tier'
+import { z } from 'zod'
+
+const CLINIC_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
+const SearchInput = z.object({ itemId: uuid(), form: z.string().max(MAX_NAME) })
 
 // ── Tier ordering for sort (lower = ranked first) ────────────
-// API-connected tiers (1 and 3) ranked above portal/fax (2 and 4)
-const TIER_ORDER: Record<IntegrationTierEnum, number> = {
+// API-connected tiers (1 and 3) ranked above portal/fax (2 and 4).
+// Decision 8: TIER_3_HYBRID is never offered (lib/pharmacies/offered-tier).
+type OfferedTier = Exclude<IntegrationTierEnum, 'TIER_3_HYBRID'>
+const TIER_ORDER: Record<OfferedTier, number> = {
   TIER_1_API:     1,
-  TIER_3_HYBRID:  2,
   TIER_3_SPEC:    2,
   TIER_2_PORTAL:  3,
   TIER_4_FAX:     4,
@@ -49,7 +62,7 @@ export interface PharmacySearchResult {
   pharmacy_name:           string
   pharmacy_status:         'ACTIVE' | 'SUSPENDED' | 'BANNED'
   // REQ-SCS-005: BANNED excluded before this point; SUSPENDED included with badge
-  integration_tier:        IntegrationTierEnum
+  integration_tier:        OfferedTier
   average_turnaround_days: number | null
   supports_real_time_status: boolean
   tier_badge:              TierBadge
@@ -61,22 +74,24 @@ export interface TierBadge {
   speed:            string
 }
 
-function buildTierBadge(tier: IntegrationTierEnum): TierBadge {
+function buildTierBadge(tier: OfferedTier): TierBadge {
   switch (tier) {
     case 'TIER_1_API':    return { label: 'API Connected',     color: 'green', speed: 'Instant'  }
     case 'TIER_2_PORTAL': return { label: 'Portal',            color: 'blue',  speed: '~5 min'   }
-    case 'TIER_3_HYBRID': return { label: 'Standardized API',  color: 'teal',  speed: 'Instant'  }
     case 'TIER_3_SPEC':   return { label: 'Spec API',          color: 'teal',  speed: 'Instant'  }
     case 'TIER_4_FAX':    return { label: 'Fax',               color: 'gray',  speed: '~30 min'  }
   }
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   // Auth gate
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  if (!CLINIC_ROLES.has(getUserRole(user) ?? '')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const { searchParams } = request.nextUrl
@@ -85,7 +100,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const formFilter   = (searchParams.get('form') ?? '').trim()
 
   // REQ-SCS-002: state is required
-  if (!patientState || patientState.length !== 2) {
+  if (!US_STATES.has(patientState)) {
     return NextResponse.json(
       { error: 'state parameter required (2-letter US state code)' },
       { status: 400 }
@@ -98,6 +113,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       { status: 400 }
     )
   }
+
+  const checked = parseInput(SearchInput, { itemId, form: formFilter })
+  if (!checked.ok) return checked.response
 
   const supabase = createServiceClient()
 
@@ -218,6 +236,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     // REQ-SCS-005: BANNED pharmacies never shown; soft-deleted pharmacies excluded
     if (pharmacy.pharmacy_status === 'BANNED' || !pharmacy.is_active || pharmacy.deleted_at) continue
+    // Decision 8: a tier with no adapter (Hybrid) is never offered.
+    if (!isOfferedTier(pharmacy.integration_tier)) continue
+    const tier = pharmacy.integration_tier as OfferedTier
 
     const catalogUpdatedAt = row.updated_at
     const isStale = new Date(catalogUpdatedAt) < staleThreshold
@@ -234,10 +255,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       pharmacy_id:              pharmacy.pharmacy_id,
       pharmacy_name:            pharmacy.name,
       pharmacy_status:          pharmacy.pharmacy_status ?? 'ACTIVE',
-      integration_tier:         pharmacy.integration_tier,
+      integration_tier:         tier,
       average_turnaround_days:  pharmacy.average_turnaround_days,
       supports_real_time_status: pharmacy.supports_real_time_status,
-      tier_badge:               buildTierBadge(pharmacy.integration_tier),
+      tier_badge:               buildTierBadge(tier),
     })
   }
 
@@ -250,3 +271,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   return NextResponse.json({ results }, { status: 200 })
 }
+
+export const GET = withApiErrors('/api/pharmacy-search', getHandler)

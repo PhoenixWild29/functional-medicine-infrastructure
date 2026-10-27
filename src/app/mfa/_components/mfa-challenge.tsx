@@ -4,8 +4,10 @@
 // Two-step sign-in: the code on every new sign-in (compliance C3)
 // ============================================================
 //
-// The user's verified TOTP factor is challenged and verified in one call;
-// success raises the session to AAL2 and the user continues. Someone with
+// The user's verified TOTP factor is challenged and verified in one call,
+// on the server (POST /api/mfa/verify, security B12: each wrong code is
+// recorded and alerted, and repeated ones are throttled); success raises
+// the session to AAL2 and the user continues. Someone with
 // no verified factor (removed, or never finished) is sent to set one up.
 
 import { useEffect, useState } from 'react'
@@ -52,11 +54,24 @@ export function MfaChallenge({ destination }: Props) {
     setVerifying(true)
     setError(null)
     setCodeRefused(false)
-    const { error: verifyError } = await supabase.auth.mfa.challengeAndVerify({ factorId, code })
+    let res: Response
+    let body: { error?: string } | null
+    try {
+      res = await fetch('/api/mfa/verify', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ factorId, code }),
+      })
+      body = await res.json().catch(() => null) as typeof body
+    } catch {
+      setVerifying(false)
+      setError('The code could not be checked. Check your connection and try again.')
+      return
+    }
     setVerifying(false)
-    if (verifyError) {
-      setError('That code did not match. Check the time on your device and try the newest code.')
-      setCodeRefused(true)
+    if (!res.ok) {
+      setError(res.status === 429 && body?.error ? body.error : 'That code did not match. Check the time on your device and try the newest code.')
+      setCodeRefused(res.status !== 429)
       return
     }
     // A full page load, not the client router: since Next 16.3 the router

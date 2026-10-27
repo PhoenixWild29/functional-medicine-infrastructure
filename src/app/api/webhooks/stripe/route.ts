@@ -21,6 +21,7 @@
 // All other outcomes (processing errors, not-found, etc.) return 200.
 
 import { NextRequest, NextResponse, after } from 'next/server'
+import { clientIp } from '@/lib/security/client-ip'
 import type Stripe from 'stripe'
 import { createStripeClient } from '@/lib/stripe/client'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -38,12 +39,13 @@ import { handleChargeRefunded } from './handle-charge-refunded'
 import { handleDisputeStatusChanged } from './handle-dispute-status'
 import { resolvePaymentTarget } from './resolve-payment'
 import { recordRefundInLedger } from '@/lib/payments/ledger-hook'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // ============================================================
 // ROUTE HANDLER
 // ============================================================
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   // Step 1: Read raw body — must happen before any parsing for HMAC to work
   const rawBody = await request.text()
   const signature = request.headers.get('stripe-signature') ?? ''
@@ -60,7 +62,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       300 // explicit 5-minute tolerance
     )
   } catch (err) {
-    const ip = request.headers.get('x-forwarded-for') ?? 'unknown'
+    const ip = clientIp(request.headers) ?? 'unknown'
     console.error(`[stripe-webhook] signature verification failed | ip=${ip}`, err)
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
   }
@@ -321,6 +323,7 @@ async function handleSoloPaymentSucceeded(
     expectedStatus: 'AWAITING_PAYMENT',
     newStatus: 'PAID_PROCESSING',
     actor: 'stripe_webhook',
+    actorRole: 'system',
     metadata: { stripe_payment_intent_id: paymentIntent.id },
   })
 
@@ -884,3 +887,5 @@ async function handleAccountUpdated(account: Stripe.Account): Promise<void> {
     `[stripe-webhook] clinic stripe_connect_status → ${connectStatus} for account ${account.id}`
   )
 }
+
+export const POST = withApiErrors('/api/webhooks/stripe', postHandler)

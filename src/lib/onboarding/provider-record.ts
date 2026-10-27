@@ -4,9 +4,15 @@
 //
 // One path for the onboarding wizard's providers step (an invited provider,
 // no login yet) and a solo provider's self sign-up (linked to their own
-// login). In order:
-//   1. the NPI is unique among live providers (409 on the field)
-//   2. the provider row
+// login), and Settings > Team (an approved clinic). In order:
+//   1. for an approved clinic, the NPI is not held by another approved
+//      clinic's provider (409 on the field)
+//   2. the provider row, holding its NPI (npi_claimed) only in an approved
+//      clinic. Security review M3: a clinic ops has not approved yet holds
+//      no NPI, so a pending sign-up never blocks another or an approved
+//      clinic; ops approval claims the clinic's NPIs (lib/onboarding/
+//      npi-claims), and the unique index providers_npi_number_unique
+//      (over claimed rows) settles it there.
 //   3. each state license with its expiry (any failure removes the row)
 //   4. Compliance C4: the NPPES registry check (runNpiCheck), stored and
 //      never blocking the save. Signing needs it to have passed.
@@ -53,18 +59,28 @@ export type ProviderRecordResult =
 
 export const NPI_TAKEN = { error: 'This NPI is already registered to a provider.', errors: { npiNumber: 'This NPI is already registered.' } }
 
-/** true when a live provider already has this NPI; null when it could not be checked. */
+/**
+ * true when a live provider of an approved clinic holds this NPI (a claimed
+ * row); null when it could not be checked. Unclaimed rows (pending
+ * sign-ups, several may name one NPI) never count.
+ */
 export async function npiTaken(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: SupabaseClient<any>,
   npi: string,
 ): Promise<boolean | null> {
-  const { data, error } = await db.from('providers').select('provider_id').eq('npi_number', npi).is('deleted_at', null).maybeSingle()
+  const { data, error } = await db.from('providers')
+    .select('provider_id')
+    .eq('npi_number', npi)
+    .is('deleted_at', null)
+    // NOT NULL DEFAULT true in the database: "not false" is "claimed".
+    .neq('npi_claimed', false)
+    .limit(1)
   if (error) {
     console.error(`[provider-record] NPI pre-check failed: ${error.message}`)
     return null
   }
-  return !!data
+  return ((data ?? []) as unknown[]).length > 0
 }
 
 export async function addProviderRecord(
@@ -81,11 +97,20 @@ export async function addProviderRecord(
     deaNumber?: string | null
     /** Who is adding it (verified_by / checked_by). */
     actorId:    string
+    /**
+     * Does the clinic hold its providers' NPIs yet? true for an approved
+     * clinic (Settings > Team); false before approval (the wizard, a self
+     * sign-up): the row is stored unclaimed and nothing is checked here.
+     */
+    npiClaimed?: boolean
   },
 ): Promise<ProviderRecordResult> {
-  const taken = await npiTaken(db, input.npiNumber)
-  if (taken === null) return { ok: false, status: 503, error: 'The NPI could not be checked. Try again.' }
-  if (taken) return { ok: false, status: 409, ...NPI_TAKEN }
+  const claimed = input.npiClaimed !== false
+  if (claimed) {
+    const taken = await npiTaken(db, input.npiNumber)
+    if (taken === null) return { ok: false, status: 503, error: 'The NPI could not be checked. Try again.' }
+    if (taken) return { ok: false, status: 409, ...NPI_TAKEN }
+  }
 
   const first = input.licenses[0]!
   const { data: provider, error: insErr } = await db
@@ -101,9 +126,12 @@ export async function addProviderRecord(
       dea_number:        input.deaNumber ?? null,
       signature_on_file: false,
       is_active:         true,
+      npi_claimed:       claimed,
     })
     .select('provider_id, first_name, last_name, npi_number')
     .single()
+  // The unique index (claimed rows) caught one the pre-check missed (a race).
+  if (insErr?.code === '23505') return { ok: false, status: 409, ...NPI_TAKEN }
   if (insErr || !provider) {
     console.error(`[provider-record] provider insert failed | clinic=${input.clinicId}: ${insErr?.message}`)
     return { ok: false, status: 500, error: 'The provider could not be added. Try again.' }
