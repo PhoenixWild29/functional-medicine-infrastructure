@@ -4069,6 +4069,28 @@ export type Database = {
         }
         Relationships: []
       }
+      // Shared rate-limit counts (20261024000007): hand-extended
+      rate_limit_hits: {
+        Row: {
+          bucket: string
+          hit_count: number
+          key_hash: string
+          window_start: string
+        }
+        Insert: {
+          bucket: string
+          hit_count?: number
+          key_hash: string
+          window_start: string
+        }
+        Update: {
+          bucket?: string
+          hit_count?: number
+          key_hash?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       retention_runs: {
         Row: {
           created_at: string
@@ -4847,6 +4869,11 @@ export type Database = {
           p_patients: Json
         }
         Returns: Json
+      }
+      // Shared rate-limit counts (20261024000007): hand-extended
+      rate_limit_hit: {
+        Args: { p_bucket: string; p_key_hash: string; p_window_seconds: number }
+        Returns: { hits: number; window_started: string }[]
       }
       read_vault_secret: {
         Args: { p_secret_id: string }

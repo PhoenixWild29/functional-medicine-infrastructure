@@ -41,7 +41,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request)
   if (crossSite) return crossSite
   const ip = clientIp(request.headers)
-  const limit = inviteAcceptLimiter.check(ip ?? 'unknown')
+  const limit = await inviteAcceptLimiter.check(ip ?? 'unknown')
   if (!limit.allowed) {
     console.warn(`[onboarding/accept] rate_limited | ip_hash=${(await auditHash(ip)) ?? 'none'}`)
     return NextResponse.json(

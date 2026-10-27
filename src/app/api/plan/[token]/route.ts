@@ -48,11 +48,11 @@ const STATE_REPLY: Record<'not_found' | 'expired' | 'closed' | 'locked' | 'signe
   unavailable: { status: 503, error: 'Please try again in a moment.' },
 }
 
-function limited(request: NextRequest, token: string | null): NextResponse | null {
-  const ip = planIpLimiter.check(clientIp(request.headers) ?? 'unknown')
+async function limited(request: NextRequest, token: string | null): Promise<NextResponse | null> {
+  const ip = await planIpLimiter.check(clientIp(request.headers) ?? 'unknown')
   if (!ip.allowed) return json({ error: PLAN_RATE_LIMITED_MESSAGE }, 429, { 'Retry-After': String(ip.retryAfterSeconds) })
   if (token !== null) {
-    const link = planTokenLimiter.check(hashProposalToken(token))
+    const link = await planTokenLimiter.check(hashProposalToken(token))
     if (!link.allowed) return json({ error: PLAN_RATE_LIMITED_MESSAGE }, 429, { 'Retry-After': String(link.retryAfterSeconds) })
   }
   return null
@@ -60,7 +60,7 @@ function limited(request: NextRequest, token: string | null): NextResponse | nul
 
 export async function GET(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const { token } = await params
-  const refused = limited(request, null)
+  const refused = await limited(request, null)
   if (refused) return refused
   const r = await resolvePlan(createServiceClient(), token, new Date())
   if (r.state === 'open') return json({ state: 'open', logoUrl: r.logoUrl })
@@ -90,7 +90,7 @@ function parse(body: unknown): Action | null {
 
 export async function POST(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const { token } = await params
-  const refused = limited(request, token)
+  const refused = await limited(request, token)
   if (refused) return refused
 
   let body: unknown
