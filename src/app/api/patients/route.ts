@@ -25,6 +25,7 @@
 // (claims.ts). Logs carry ids only, never the number or a name.
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
@@ -37,12 +38,9 @@ import { ilikeLiteral } from '@/lib/patients/duplicates'
 import { createIntakeLink } from '@/lib/intake/links'
 import { sendIntakeLinkSms } from '@/lib/intake/sms'
 import { staffDetails } from '@/lib/patients/staff-details'
-import { withApiErrors } from '@/lib/api/with-api-errors'
-import { US_STATES } from '@/lib/geo/us-states'
 
 const STAFF_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
 const NAME_MAX = 100
-const STATE_CODES = new Set(US_STATES.map(s => s.code))
 
 /** The columns the Select Patient list and the session need. */
 const PATIENT_COLUMNS = 'patient_id, first_name, last_name, date_of_birth, phone, phone_e164, state, sms_opt_in, allergies, nkda, allergies_updated_at, intake_status'
@@ -60,11 +58,10 @@ function optionalName(v: unknown): string | null | undefined {
 }
 
 
-async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') {
-    return NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 })
-  }
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
+
 
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -96,8 +93,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   let state: string | null = null
   if (body['state'] !== undefined && body['state'] !== null && body['state'] !== '') {
     const s = typeof body['state'] === 'string' ? body['state'].trim().toUpperCase() : ''
-    // The states + New patient offers (lib/geo/us-states): a closed set.
-    if (!STATE_CODES.has(s)) return bad('state', 'Choose a state.')
+    if (!/^[A-Z]{2}$/.test(s)) return bad('state', 'Choose a state.')
     state = s
   }
   const confirmNew = body['confirmNew'] === true
@@ -211,5 +207,3 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     intake,
   }, { status: 201 })
 }
-
-export const POST = withApiErrors('/api/patients', postHandler)

@@ -6,9 +6,18 @@
 //       registry result and licenses, staff invites, agreements,
 //       history): lib/onboarding/review. Read-only.
 //
-// POST:
+// POST (same-origin only):
 // { action: 'approve' }               activate the clinic
 // { action: 'send_back', note }        return it to the admin with a note
+// { action: 'delete_signup', confirm: true }
+//                                      delete an unapproved self sign-up
+//                                      (lib/onboarding/delete-signup)
+//
+// Security review M3 (lib/onboarding/npi-claims): approving claims the
+// clinic's providers' NPIs. When an approved clinic's live provider
+// already holds one, Approve is refused (409 NPI_REGISTERED_ELSEWHERE,
+// ops-only words) and nothing changes; the unique index refuses a claim
+// that races. If the approval write then fails, the claim is undone.
 //
 // Approving a clinic with a provider whose NPI is not verified in the
 // national registry needs { licenseChecked: true } (422 otherwise): ops
@@ -26,9 +35,10 @@ import { UUID_RE } from '@/lib/providers/team-access'
 import { loadClinicReview } from '@/lib/onboarding/review'
 import { DEMO_PAYOUT_NOTE, demoPayoutFields, needsDemoPayouts, onlyWithoutPayoutAccount } from '@/lib/clinics/demo-payouts'
 import { LICENSE_CHECK_REQUIRED_MESSAGE, licenseCheckNote, loadProviderSummaries, type ProviderSummary } from '@/lib/onboarding/provider-review'
-import { withApiErrors } from '@/lib/api/with-api-errors'
+import { NPI_REGISTERED_ELSEWHERE, claimClinicNpis, npiRegisteredElsewhereMessage, releaseClinicNpis } from '@/lib/onboarding/npi-claims'
+import { deleteSelfServeSignup } from '@/lib/onboarding/delete-signup'
 
-async function getHandler(_request: NextRequest, { params }: { params: Promise<{ clinicId: string }> }): Promise<NextResponse> {
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ clinicId: string }> }): Promise<NextResponse> {
   const access = await requireOpsAdmin()
   if (!access.ok) return access.response
   const { clinicId } = await params
@@ -43,7 +53,7 @@ async function getHandler(_request: NextRequest, { params }: { params: Promise<{
   }
 }
 
-async function postHandler(request: NextRequest, { params }: { params: Promise<{ clinicId: string }> }): Promise<NextResponse> {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ clinicId: string }> }): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request)
   if (crossSite) return crossSite
   const access = await requireOpsAdmin()
@@ -56,8 +66,18 @@ async function postHandler(request: NextRequest, { params }: { params: Promise<{
   if (!body) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   const action = body['action']
   const note = typeof body['note'] === 'string' ? body['note'].trim().slice(0, 2000) : ''
+
+  if (action === 'delete_signup') {
+    if (body['confirm'] !== true) {
+      return NextResponse.json({ error: 'Confirm that you want to delete this sign-up.' }, { status: 400 })
+    }
+    const deleted = await deleteSelfServeSignup(supabase, { clinicId, actorUserId: user.id })
+    if (!deleted.ok) return NextResponse.json({ error: deleted.error }, { status: deleted.status })
+    return NextResponse.json({ ok: true, removedLogins: deleted.removedLogins, removedProviders: deleted.removedProviders })
+  }
+
   if (action !== 'approve' && action !== 'send_back') {
-    return NextResponse.json({ error: 'action must be approve or send_back' }, { status: 400 })
+    return NextResponse.json({ error: 'action must be approve, send_back or delete_signup' }, { status: 400 })
   }
   if (action === 'send_back' && !note) {
     return NextResponse.json({ error: 'Write a note telling the clinic what to change.' }, { status: 400 })
@@ -90,6 +110,11 @@ async function postHandler(request: NextRequest, { params }: { params: Promise<{
       console.error(`[ops/onboarding] providers read failed | clinic=${clinicId}:`, err instanceof Error ? err.message : err)
       return NextResponse.json({ error: 'The clinic’s providers could not be checked. Try again.' }, { status: 503 })
     }
+    // Security review M3: an NPI an approved clinic already holds.
+    const heldElsewhere = summaries.filter(p => p.npiApprovedElsewhere).map(p => p.name)
+    if (heldElsewhere.length > 0) {
+      return NextResponse.json({ error: npiRegisteredElsewhereMessage(heldElsewhere), code: NPI_REGISTERED_ELSEWHERE, providers: heldElsewhere }, { status: 409 })
+    }
     const unverified = summaries.filter(p => !p.npiVerified).map(p => p.name)
     if (unverified.length > 0) {
       if (body['licenseChecked'] !== true) {
@@ -106,6 +131,16 @@ async function postHandler(request: NextRequest, { params }: { params: Promise<{
   const needsPayouts = action === 'approve' ? await needsDemoPayouts(supabase, clinicId) : false
   if (needsPayouts === null) return NextResponse.json({ error: 'The clinic could not be read. Try again.' }, { status: 503 })
   const demoPayouts = needsPayouts
+
+  // The clinic's providers take their NPIs before the clinic is approved;
+  // the unique index refuses one an approved clinic took meanwhile.
+  if (action === 'approve') {
+    const claim = await claimClinicNpis(supabase, clinicId)
+    if (claim === 'conflict') {
+      return NextResponse.json({ error: npiRegisteredElsewhereMessage([]), code: NPI_REGISTERED_ELSEWHERE }, { status: 409 })
+    }
+    if (claim === 'error') return NextResponse.json({ error: 'The providers’ NPIs could not be checked. Try again.' }, { status: 503 })
+  }
 
   const now = new Date().toISOString()
   const patch = action === 'approve'
@@ -126,10 +161,12 @@ async function postHandler(request: NextRequest, { params }: { params: Promise<{
   // and the write changes nothing, and nothing is recorded.
   const { data: updated, error: updErr } = await write.select('clinic_id')
   if (!updErr && Array.isArray(updated) && updated.length === 0) {
+    if (action === 'approve') await releaseClinicNpis(supabase, clinicId)
     return NextResponse.json({ error: 'The clinic changed while you were reviewing it. Reload and try again.' }, { status: 409 })
   }
   if (demoPayouts) approvalNote = [approvalNote, DEMO_PAYOUT_NOTE].filter(Boolean).join(' ')
   if (updErr) {
+    if (action === 'approve') await releaseClinicNpis(supabase, clinicId)
     console.error(`[ops/onboarding] review failed | clinic=${clinicId} action=${action}: ${updErr.message}`)
     return NextResponse.json({ error: 'The review could not be saved. Try again.' }, { status: 500 })
   }
@@ -141,6 +178,3 @@ async function postHandler(request: NextRequest, { params }: { params: Promise<{
   console.info(`[ops/onboarding] clinic ${action === 'approve' ? 'approved' : 'sent back'} | clinic=${clinicId} by=${user.id}`)
   return NextResponse.json({ ok: true, onboardingStatus: patch.onboarding_status })
 }
-
-export const GET = withApiErrors('/api/ops/onboarding/clinics/[clinicId]', getHandler)
-export const POST = withApiErrors('/api/ops/onboarding/clinics/[clinicId]', postHandler)

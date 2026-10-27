@@ -14,20 +14,19 @@
 // getUser(), never getSession(). Same-origin only. Logs carry ids only.
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { createSignupLink, setSignupLinkEnabled } from '@/lib/intake/signup-links'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
-import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const FAILED = 'The sign-up link could not be changed. Try again.'
 
-async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') {
-    return NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 })
-  }
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
+
 
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -68,5 +67,3 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
 }
-
-export const POST = withApiErrors('/api/settings/signup-link', postHandler)

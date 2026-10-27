@@ -25,6 +25,7 @@
 // getUser(), never getSession(); role and clinic from app_metadata.
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
@@ -34,7 +35,6 @@ import { extractFaceSheet, type FaceSheetInput, type FaceSheetMediaType, type Fa
 import { FACE_SHEET_NOT_SET_UP, MAX_FACE_SHEET_BYTES, faceSheetStatus } from '@/lib/face-sheet/config'
 import { FACE_SHEET_RATE_LIMITED_MESSAGE, faceSheetLimiter } from '@/lib/face-sheet/rate-limit'
 import { sniffDocumentType } from '@/lib/uploads/sniff'
-import { withApiErrors } from '@/lib/api/with-api-errors'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -88,9 +88,10 @@ async function readInput(request: NextRequest): Promise<FaceSheetInput | NextRes
   return { kind: 'file', mediaType, data: Buffer.from(bytes) }
 }
 
-async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') return json({ error: 'Cross-site requests are not permitted' }, 403)
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request, 'Cross-site requests are not permitted', NO_STORE)
+  if (crossSite) return crossSite
+
 
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -107,7 +108,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const pendingReview = await refuseUnlessApproved(createServiceClient(), clinicId)
   if (pendingReview) return pendingReview
 
-  const limit = faceSheetLimiter.check(user.id)
+  const limit = await faceSheetLimiter.check(user.id)
   if (!limit.allowed) {
     return json({ error: FACE_SHEET_RATE_LIMITED_MESSAGE }, 429, { 'Retry-After': String(limit.retryAfterSeconds) })
   }
@@ -133,5 +134,3 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
   return json({ fields: result.fields, filled: result.filled })
 }
-
-export const POST = withApiErrors('/api/patients/face-sheet', postHandler)
