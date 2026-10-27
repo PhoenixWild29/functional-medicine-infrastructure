@@ -75,7 +75,14 @@ jest.mock('@/lib/supabase/service', () => ({
           select: () => ({
             eq: () => ({
               is: () => ({
-                maybeSingle: () => npiCheckMock(),
+                // Security review M3: claimed rows only, as a list (pending
+                // sign-ups may share an NPI unclaimed).
+                neq: () => ({
+                  limit: async () => {
+                    const r = await npiCheckMock() as { data: unknown; error: unknown }
+                    return { ...r, data: r.data ? [r.data] : [] }
+                  },
+                }),
               }),
             }),
           }),

@@ -6,7 +6,8 @@
 // QR code can open. No CAPTCHA; instead:
 //   - 20 submissions an hour per client IP. Generous on purpose: patients
 //     in the waiting room share the clinic's Wi-Fi, so they share one IP.
-//     (In memory per server instance; see lib/security/rate-limit.)
+//     (Counted across every server instance; see
+//     lib/security/shared-rate-limit.)
 //   - A honeypot field, "website", hidden from people and assistive tech:
 //     a bot that fills every field gets a success answer and nothing saved.
 //   - At most SIGNUP_DAILY_CAP (50) new patients per link in 24 hours,
@@ -14,12 +15,12 @@
 // Kept outside the route module because a Next.js route file may only
 // export its handlers; the tests reset the limiter between cases.
 
-import { createRateLimiter } from '@/lib/security/rate-limit'
+import { createSharedRateLimiter } from '@/lib/security/shared-rate-limit'
 
 export const JOIN_SUBMIT_LIMIT = 20
 export const JOIN_SUBMIT_WINDOW_MS = 60 * 60 * 1000
 
-export const joinSubmitLimiter = createRateLimiter({ limit: JOIN_SUBMIT_LIMIT, windowMs: JOIN_SUBMIT_WINDOW_MS })
+export const joinSubmitLimiter = createSharedRateLimiter({ bucket: 'join', limit: JOIN_SUBMIT_LIMIT, windowMs: JOIN_SUBMIT_WINDOW_MS })
 
 export const HONEYPOT_FIELD = 'website'
 

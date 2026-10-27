@@ -41,8 +41,8 @@ interface PageProps {
 
 export default async function PharmacySearchPage({ searchParams }: PageProps) {
   // Session validation — the session context is client-side, so we can't
-  // enforce it here. The SessionBanner + PharmacySearchForm will redirect
-  // to /new-prescription if no patient is selected.
+  // enforce it here. The SessionBanner redirects to /new-prescription if
+  // no patient is selected.
   const params = await searchParams
   let editTarget = editTargetFromParams(params)
 

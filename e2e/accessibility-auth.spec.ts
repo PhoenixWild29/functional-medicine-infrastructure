@@ -40,7 +40,7 @@ async function signIn(page: Page, user: { email: string; password: string }) {
 
 async function resetMfaFactors(): Promise<void> {
   const supabase = createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
-  const { data, error } = await supabase.auth.admin.listUsers()
+  const { data, error } = await supabase.auth.admin.listUsers({ perPage: 1000 })
   if (error) throw new Error(`listUsers failed: ${error.message}`)
   const user = data.users.find(u => u.email === MFA_USER.email)
   if (!user) throw new Error(`E2E MFA user ${MFA_USER.email} not found; global setup creates it`)

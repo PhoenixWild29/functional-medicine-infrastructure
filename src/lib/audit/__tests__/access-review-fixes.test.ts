@@ -90,11 +90,12 @@ describe('D2: list views do not count toward bulk_patients', () => {
     expect([...LIST_REVIEW_RESOURCES].sort()).toEqual(['inbound_fax', 'order_list', 'patient_import_preview', 'patient_list', 'practice_dashboard'])
   })
 
-  function views(count: number, resource: string, prefix = 'p'): AccessReviewRow[] {
+  function views(count: number, resource: string, prefix = 'p', route?: string): AccessReviewRow[] {
     const start = Date.parse('2026-10-20T15:00:00.000Z')
     return Array.from({ length: count }, (_, i) => row({
       id: `${resource}-${i}`, patient_id: `${prefix}-${i}`, resource,
       occurred_at: new Date(start + i * 1000).toISOString(),
+      ...(route ? { route } : resource === 'inbound_fax' ? { route: '/ops/fax' } : {}),
     }))
   }
   const ctxFor = (rows: AccessReviewRow[]) => ({
@@ -105,6 +106,16 @@ describe('D2: list views do not count toward bulk_patients', () => {
   it.each(['order_list', 'patient_list', 'practice_dashboard', 'patient_import_preview', 'inbound_fax'])('one %s render of 40 patients is not flagged', resource => {
     const rows = views(40, resource)
     expect(flagAccessRows(rows, ctxFor(rows)).some(r => r.flags.includes('bulk_patients'))).toBe(false)
+  })
+
+  it.each(['/ops/fax', '/api/ops/fax'])('inbound_fax on the queue route %s is a list view', route => {
+    const rows = views(40, 'inbound_fax', 'p', route)
+    expect(flagAccessRows(rows, ctxFor(rows)).some(r => r.flags.includes('bulk_patients'))).toBe(false)
+  })
+
+  it('opened fax PDFs (inbound_fax on /api/ops/fax/[faxId]/pdf) count toward bulk_patients', () => {
+    const rows = views(31, 'inbound_fax', 'p', '/api/ops/fax/[faxId]/pdf')
+    expect(flagAccessRows(rows, ctxFor(rows)).every(r => r.flags.includes('bulk_patients'))).toBe(true)
   })
 
   it('single-record views still count: 31 is flagged, 20 plus a 40-patient list is not', () => {

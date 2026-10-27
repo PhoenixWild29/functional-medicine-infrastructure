@@ -41,6 +41,7 @@ jest.spyOn(console, 'error').mockImplementation(() => {})
 
 import { GET, POST } from '../route'
 import { planIpLimiter, planTokenLimiter } from '@/lib/proposals/plan-rate-limit'
+import { dbRateLimitHit } from '@/lib/security/db-rate-limit'
 import { logPhiAccess, patientActor } from '@/lib/audit/phi-access'
 
 const TOKEN = 'A'.repeat(43)
@@ -196,6 +197,25 @@ describe('rate limits', () => {
     for (let i = 0; i < 60; i++) await post({ action: 'quote', dob: '1985-04-15', optionId: 'o-a', orderIds: ['x'] }, `198.51.100.${i % 50}`)
     const res = await post({ action: 'quote', dob: '1985-04-15', optionId: 'o-a', orderIds: ['x'] }, '192.0.2.99')
     expect(res.status).toBe(429)
+  })
+
+  it('per IP across instances: the shared count is over 120, so the first request here is 429', async () => {
+    jest.mocked(dbRateLimitHit).mockResolvedValueOnce({ count: 121, windowStart: Date.now() })
+    const res = await post({ action: 'quote', dob: '1985-04-15', optionId: 'o-a', orderIds: ['x'] })
+    expect(res.status).toBe(429)
+    expect(Number(res.headers.get('Retry-After'))).toBeGreaterThan(0)
+    expect(jest.mocked(dbRateLimitHit).mock.calls[0]?.[0]).toBe('plan_ip')
+    expect(quotePlan).not.toHaveBeenCalled()
+  })
+
+  it('per token across instances: the shared count for the link is over 60, so the first request here is 429', async () => {
+    jest.mocked(dbRateLimitHit).mockResolvedValueOnce(null).mockResolvedValueOnce({ count: 61, windowStart: Date.now() })
+    const res = await post({ action: 'quote', dob: '1985-04-15', optionId: 'o-a', orderIds: ['x'] })
+    expect(res.status).toBe(429)
+    const tokenCall = jest.mocked(dbRateLimitHit).mock.calls[1]
+    expect(tokenCall?.[0]).toBe('plan_token')
+    expect(tokenCall?.[1]).not.toBe(TOKEN)
+    expect(quotePlan).not.toHaveBeenCalled()
   })
 })
 

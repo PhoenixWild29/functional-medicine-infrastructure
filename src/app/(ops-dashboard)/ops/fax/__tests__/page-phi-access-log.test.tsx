@@ -1,9 +1,10 @@
 /**
  * @jest-environment node
  *
- * PHI access log (B14/B15): the server-rendered /ops/fax page mints the
- * same 15-minute signed URLs to inbound fax PDFs as GET /api/ops/fax, so it
- * writes the same 'view' / 'inbound_fax' rows: one per matched order
+ * PHI access log (B14/B15): the server-rendered /ops/fax page shows the
+ * same inbound fax queue as GET /api/ops/fax (each fax linked to
+ * /api/ops/fax/[faxId]/pdf, Issue Log 72), so it writes the same
+ * 'view' / 'inbound_fax' rows: one per matched order
  * (order, patient, clinic) and one without ids for unmatched faxes. A read:
  * the page still renders when the log write fails.
  *
@@ -80,7 +81,11 @@ it('review L6: no resolvable user: the log is still called (it reports no_actor)
   expect(JSON.stringify(page)).toContain('The fax queue could not be shown')
 })
 
-it('with a user, the signed URLs are minted as before', async () => {
-  await FaxPage()
-  expect(signMock).toHaveBeenCalled()
+it('with a user, the queue renders with each fax linked to its PDF route', async () => {
+  const page = await FaxPage()
+  const json = JSON.stringify(page)
+  expect(json).toContain('/api/ops/fax/f4000000-0000-0000-0000-000000000001/pdf')
+  expect(json).toContain('/api/ops/fax/f4000000-0000-0000-0000-000000000002/pdf')
+  // Issue Log 72: the PDF is fetched from Documo per view, never a signed storage URL.
+  expect(signMock).not.toHaveBeenCalled()
 })

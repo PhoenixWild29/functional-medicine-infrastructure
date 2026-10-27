@@ -71,6 +71,18 @@ export function timeZoneForState(state: string | null | undefined): string | nul
 export const LIST_REVIEW_RESOURCES: ReadonlySet<string> = new Set([
   'order_list', 'patient_list', 'practice_dashboard', 'patient_import_preview', 'inbound_fax',
 ])
+/**
+ * inbound_fax is a list view only on the fax queue routes. An opened fax PDF
+ * (GET /api/ops/fax/[faxId]/pdf, Issue Log 72) is a single-record view and
+ * counts toward bulk_patients.
+ */
+export const FAX_QUEUE_ROUTES: ReadonlySet<string> = new Set(['/ops/fax', '/api/ops/fax'])
+
+/** A list render (one row per patient shown), not counted toward bulk_patients. */
+export function isListView(r: { resource: string; route: string }): boolean {
+  if (r.resource === 'inbound_fax') return FAX_QUEUE_ROUTES.has(r.route)
+  return LIST_REVIEW_RESOURCES.has(r.resource)
+}
 /** With no dates given: the last 7 days, through today (the weekly review). */
 export const REVIEW_DEFAULT_DAYS = 7
 /** The longest range one request reads. */
@@ -211,7 +223,7 @@ function bulkViewIds(rows: ReadonlyArray<AccessReviewRow>): Set<string> {
   const flagged = new Set<string>()
   const byActor = new Map<string, { id: string; at: number; patient: string }[]>()
   for (const r of rows) {
-    if (r.action !== 'view' || !r.actor_user_id || !r.patient_id || LIST_REVIEW_RESOURCES.has(r.resource)) continue
+    if (r.action !== 'view' || !r.actor_user_id || !r.patient_id || isListView(r)) continue
     const list = byActor.get(r.actor_user_id) ?? []
     list.push({ id: r.id, at: Date.parse(r.occurred_at), patient: r.patient_id })
     byActor.set(r.actor_user_id, list)

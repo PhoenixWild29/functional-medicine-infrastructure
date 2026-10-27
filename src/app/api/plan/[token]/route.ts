@@ -57,11 +57,11 @@ const UNAVAILABLE = { status: 503, error: 'Please try again in a moment.' }
 const NOT_RECORDED = 'This change could not be recorded. Nothing was changed. Try again.'
 const ROUTE = '/api/plan/[token]'
 
-function limited(request: NextRequest, token: string | null): NextResponse | null {
-  const ip = planIpLimiter.check(clientIp(request.headers) ?? 'unknown')
+async function limited(request: NextRequest, token: string | null): Promise<NextResponse | null> {
+  const ip = await planIpLimiter.check(clientIp(request.headers) ?? 'unknown')
   if (!ip.allowed) return json({ error: PLAN_RATE_LIMITED_MESSAGE }, 429, { 'Retry-After': String(ip.retryAfterSeconds) })
   if (token !== null) {
-    const link = planTokenLimiter.check(hashProposalToken(token))
+    const link = await planTokenLimiter.check(hashProposalToken(token))
     if (!link.allowed) return json({ error: PLAN_RATE_LIMITED_MESSAGE }, 429, { 'Retry-After': String(link.retryAfterSeconds) })
   }
   return null
@@ -69,7 +69,7 @@ function limited(request: NextRequest, token: string | null): NextResponse | nul
 
 async function getHandler(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const { token } = await params
-  const refused = limited(request, null)
+  const refused = await limited(request, null)
   if (refused) return refused
   const r = await resolvePlan(createServiceClient(), token, new Date())
   if (r.state === 'open') return json({ state: 'open', logoUrl: r.logoUrl })
@@ -100,7 +100,7 @@ function parse(body: unknown): Action | null {
 
 async function postHandler(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const { token } = await params
-  const refused = limited(request, token)
+  const refused = await limited(request, token)
   if (refused) return refused
 
   let body: unknown

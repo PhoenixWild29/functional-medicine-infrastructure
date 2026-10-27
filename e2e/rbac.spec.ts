@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import { seedStaticData, cleanupTestOrders, TEST_IDS, TEST_USERS } from './fixtures/seed'
+import { shardEmail, shardId, shardName, shardSlug } from './fixtures/shard'
 import { e2ePassword } from './fixtures/test-password'
 
 // ============================================================
@@ -12,9 +13,10 @@ import { e2ePassword } from './fixtures/test-password'
 //   - Checkout JWT only grants access to its specific order_id
 
 // Second clinic deterministic IDs (isolated from primary test clinic)
-const CLINIC_B_ID   = 'bbbbbbbb-0000-0000-0000-000000000001'
+// Per shard (fixtures/shard): two shards running at once each get their own Clinic B.
+const CLINIC_B_ID   = shardId('bbbbbbbb-0000-0000-0000-000000000001')
 const CLINIC_B_USER = {
-  email:    'test-clinic-b@compoundiq.test',
+  email:    shardEmail('test-clinic-b@compoundiq.test'),
   get password() { return e2ePassword() },
   role:     'clinic_admin',
   clinicId: CLINIC_B_ID,
@@ -28,16 +30,16 @@ async function seedClinicB(): Promise<void> {
 
   await supabase.from('clinics').upsert({
     clinic_id:             CLINIC_B_ID,
-    name:                  'Test Clinic B (RBAC Isolation)',
+    name:                  shardName('Test Clinic B (RBAC Isolation)'),
     stripe_connect_status: 'ACTIVE',
-    stripe_connect_account_id: 'acct_test_rbac_b',
+    stripe_connect_account_id: shardSlug('acct_test_rbac_b'),   // the column is UNIQUE
     is_active:             true,
   }, { onConflict: 'clinic_id' })
 
   // Create Clinic B auth user idempotently
   // Role and clinic in app_metadata (service role), never user_metadata.
   const appMetadata = { app_role: CLINIC_B_USER.role, clinic_id: CLINIC_B_ID }
-  const existing = await supabase.auth.admin.listUsers()
+  const existing = await supabase.auth.admin.listUsers({ perPage: 1000 })
   const found = existing.data?.users.find(u => u.email === CLINIC_B_USER.email)
   if (found) {
     await supabase.auth.admin.updateUserById(found.id, { password: CLINIC_B_USER.password, app_metadata: appMetadata })

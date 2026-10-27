@@ -18,6 +18,10 @@ export default function GlobalError({
   useReportError(error, 'global')
   return (
     <html lang="en">
+      {/* WCAG 2.1 A: a document title (e2e-axe-all-routes). */}
+      <head>
+        <title>Something went wrong | CompoundIQ</title>
+      </head>
       <body className="font-sans">
         <ErrorScreen
           testId="error-screen-global"

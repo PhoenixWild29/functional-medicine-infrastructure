@@ -38,7 +38,7 @@ import { createLogin, removeLogin } from '@/lib/auth/create-login'
 import { newPasswordProblem } from '@/lib/auth/password-policy'
 import { cleanEmail, setStep } from '@/lib/onboarding/access'
 import { recordOnboardingEvent } from '@/lib/onboarding/events'
-import { DEA_RE, NAME_RE, NPI_TAKEN, addProviderRecord, licenseErrors, npiProblem, npiTaken, type LicenseInput } from '@/lib/onboarding/provider-record'
+import { DEA_RE, NAME_RE, addProviderRecord, licenseErrors, npiProblem, type LicenseInput } from '@/lib/onboarding/provider-record'
 import { createApplication, createOnboardingPharmacy } from '@/lib/pharmacy-onboarding/invites'
 import { recordOnboardingEvent as recordPharmacyEvent } from '@/lib/pharmacy-onboarding/events'
 
@@ -54,7 +54,7 @@ export const MAX_LICENSES = 10
 
 export type SignupResult =
   | { ok: true; email: string; next: string; npiStatus?: NpiStatus; honeypot?: true }
-  | { ok: false; status: number; error: string; errors?: Record<string, string> }
+  | { ok: false; status: number; error: string; errors?: Record<string, string>; code?: 'DUPLICATE_EMAIL' }
 
 const str = (v: unknown, max = 200) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 
@@ -118,12 +118,11 @@ export async function selfServeSignup(db: Db, body: Record<string, unknown>): Pr
   const fullName = `${firstName} ${lastName}`
   if (kind === 'pharmacy') return pharmacySignup(db, { email: email!, password, fullName, pharmacyName: organizationName })
 
-  if (kind === 'solo_provider') {
-    // Before anything is made: an NPI another provider already has.
-    const taken = await npiTaken(db, npiNumber)
-    if (taken === null) return { ok: false, status: 503, error: FAILED }
-    if (taken) return { ok: false, status: 409, ...NPI_TAKEN }
-  }
+  // Security review M3: no NPI check here. A pending sign-up holds no NPI
+  // (its provider row is unclaimed), so it never blocks another, and an NPI
+  // an approved clinic holds gets exactly the answer any NPI gets: nobody
+  // can probe which NPIs are customers. Ops approval settles it
+  // (lib/onboarding/npi-claims).
   return clinicSignup(db, {
     kind: kind as 'clinic' | 'solo_provider', email: email!, password, fullName, firstName, lastName, clinicName: organizationName,
     npiNumber, licenses, deaNumber: deaNumber || null,
@@ -155,7 +154,7 @@ async function clinicSignup(db: Db, input: {
   })
   if (!login.ok) {
     await dropClinic()
-    if (login.reason === 'exists') return { ok: false, status: 409, error: DUPLICATE_EMAIL_MESSAGE }
+    if (login.reason === 'exists') return { ok: false, status: 409, code: 'DUPLICATE_EMAIL', error: DUPLICATE_EMAIL_MESSAGE }
     if (login.reason === 'weak_password') return { ok: false, status: 400, error: 'Check the highlighted fields.', errors: { password: 'That password is not strong enough. Try a longer one.' } }
     console.error(`[signup] login could not be created | clinic=${clinicId}: ${login.message}`)
     return { ok: false, status: 503, error: FAILED }
@@ -167,6 +166,8 @@ async function clinicSignup(db: Db, input: {
     const added = await addProviderRecord(db, {
       clinicId, userId, firstName: input.firstName, lastName: input.lastName, npiNumber: input.npiNumber,
       licenses: input.licenses, deaNumber: input.deaNumber, actorId: userId,
+      // Not approved yet: the NPI is claimed at ops approval.
+      npiClaimed: false,
     })
     if (!added.ok) {
       await removeLogin(db, userId, 'signup')
@@ -198,7 +199,7 @@ async function pharmacySignup(db: Db, input: { email: string; password: string; 
   })
   if (!login.ok) {
     await pharmacy.drop()
-    if (login.reason === 'exists') return { ok: false, status: 409, error: DUPLICATE_EMAIL_MESSAGE }
+    if (login.reason === 'exists') return { ok: false, status: 409, code: 'DUPLICATE_EMAIL', error: DUPLICATE_EMAIL_MESSAGE }
     if (login.reason === 'weak_password') return { ok: false, status: 400, error: 'Check the highlighted fields.', errors: { password: 'That password is not strong enough. Try a longer one.' } }
     console.error(`[signup] login could not be created | pharmacy=${pharmacy.pharmacyId}: ${login.message}`)
     return { ok: false, status: 503, error: FAILED }

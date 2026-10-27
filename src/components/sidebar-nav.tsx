@@ -27,7 +27,7 @@ import {
   HelpCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { createBrowserClient } from '@/lib/supabase/client'
+import { signOutInBrowser } from '@/lib/supabase/sign-out'
 import { redirectToLogin } from '@/lib/auth/redirect-to-login'
 import { ShowChecklistLink } from './coaching/show-checklist-link'
 
@@ -83,8 +83,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
 
   async function handleSignOut() {
     setSigningOut(true)
-    const supabase = createBrowserClient()
-    await supabase.auth.signOut()
+    await signOutInBrowser()
     redirectToLogin()
   }
 

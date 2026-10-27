@@ -28,6 +28,7 @@
 // getUser(), never getSession(); role and clinic from app_metadata.
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
@@ -93,8 +94,8 @@ async function readInput(request: NextRequest): Promise<FaceSheetInput | NextRes
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') return json({ error: 'Cross-site requests are not permitted' }, 403)
+  const crossSite = refuseCrossSite(request, 'Cross-site requests are not permitted', NO_STORE)
+  if (crossSite) return crossSite
 
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -111,7 +112,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const pendingReview = await refuseUnlessApproved(createServiceClient(), clinicId)
   if (pendingReview) return pendingReview
 
-  const limit = faceSheetLimiter.check(user.id)
+  const limit = await faceSheetLimiter.check(user.id)
   if (!limit.allowed) {
     return json({ error: FACE_SHEET_RATE_LIMITED_MESSAGE }, 429, { 'Retry-After': String(limit.retryAfterSeconds) })
   }

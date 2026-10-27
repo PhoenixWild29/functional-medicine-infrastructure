@@ -42,6 +42,7 @@ jest.mock('@/lib/patients/duplicates', () => ({ flagPossibleDuplicate: (...a: un
 
 import { POST } from '../route'
 import { joinSubmitLimiter } from '@/lib/intake/join-abuse'
+import { dbRateLimitHit } from '@/lib/security/db-rate-limit'
 import { PRIVACY_NOTICE_VERSION, SMS_CONSENT_TEXT_VERSION } from '@/lib/intake/consent'
 import { logPhiAccess, logPhiWriteNotCompleted, patientActor, systemActor } from '@/lib/audit/phi-access'
 
@@ -148,6 +149,15 @@ describe('abuse limits', () => {
     expect(Number(res.headers.get('Retry-After'))).toBeGreaterThan(0)
     expect(resolveMock).not.toHaveBeenCalled()
     expect((await POST(req(VALID, '198.51.100.4'), ctx())).status).toBe(200)
+  })
+
+  it('rate limit across instances: the shared count is over 20, so the first submission here is 429; the link is not read', async () => {
+    jest.mocked(dbRateLimitHit).mockResolvedValueOnce({ count: 21, windowStart: Date.now() })
+    const res = await POST(req(VALID), ctx())
+    expect(res.status).toBe(429)
+    expect(Number(res.headers.get('Retry-After'))).toBeGreaterThan(0)
+    expect(resolveMock).not.toHaveBeenCalled()
+    expect(jest.mocked(dbRateLimitHit).mock.calls.at(-1)?.[0]).toBe('join')
   })
 
   it('honeypot filled: answers like a success, writes nothing, reads nothing', async () => {

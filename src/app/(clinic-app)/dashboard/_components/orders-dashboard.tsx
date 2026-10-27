@@ -24,10 +24,10 @@ import { dashboardPatient } from '@/lib/patients/dashboard-patient'
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter, useSearchParams } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import type { DashboardOrder } from '../page'
 import type { OrderStatusEnum, StripeConnectStatusEnum } from '@/types/database.types'
 import { OrdersTable }  from './orders-table'
-import { OrdersKanban } from './orders-kanban'
 import { isProposedOrder, isTabId, isPeriod, ordersForView, ordersInPeriod, TABS, type TabDef, type TabId, type Period } from '../_lib/tabs'
 import { dashboardProposal } from '@/lib/proposals/dashboard'
 import { paymentLinkCounts } from '@/lib/orders/payment-link'
@@ -36,6 +36,10 @@ import { OrderDrawer }  from './order-drawer'
 import { batchSignHref, MAX_BATCH_ORDERS } from '@/lib/orders/batch-sign-view'
 import { platformFeeCents as platformFeeFor } from '@/lib/orders/shipping'
 import { olderOrdersHref, type OrderWindow } from '@/lib/dashboard/order-window'
+
+// The kanban (and @dnd-kit) loads when the kanban view is first chosen;
+// the table is the default view.
+const OrdersKanban = dynamic(() => import('./orders-kanban').then(m => m.OrdersKanban))
 
 // ── Status tabs: TABS, in ../_lib/tabs (shared with the KPI cards) ──
 

@@ -16,7 +16,7 @@
 // only surfaces UI when the warning or timeout fires.
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { createBrowserClient } from '@/lib/supabase/client'
+import { signOutInBrowser } from '@/lib/supabase/sign-out'
 import { redirectToLogin } from '@/lib/auth/redirect-to-login'
 import { useDialogFocus } from '@/components/a11y/use-dialog-focus'
 
@@ -26,7 +26,6 @@ const WARNING_LEAD_MS = 2 * 60 * 1000  // warn two minutes before sign-out
 const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'] as const
 
 export function HipaaTimeout({ timeoutMinutes = DEFAULT_IDLE_TIMEOUT_MINUTES }: { timeoutMinutes?: number } = {}) {
-  const supabase = createBrowserClient()
   const TIMEOUT_MS = Math.max(1, timeoutMinutes) * 60 * 1000
   const WARNING_MS = TIMEOUT_MS - Math.min(WARNING_LEAD_MS, TIMEOUT_MS / 2)
   const LEAD_SECONDS = Math.round((TIMEOUT_MS - WARNING_MS) / 1000)
@@ -44,9 +43,9 @@ export function HipaaTimeout({ timeoutMinutes = DEFAULT_IDLE_TIMEOUT_MINUTES }: 
   // ── Sign out and redirect ─────────────────────────────────────
   const forceSignOut = useCallback(async () => {
     setShowWarning(false)
-    await supabase.auth.signOut()
+    await signOutInBrowser()
     redirectToLogin('session_timeout')
-  }, [supabase])
+  }, [])
 
   // ── Reset all timers ──────────────────────────────────────────
   // Restarts the warning and sign-out timers. Timers only: no state is set

@@ -21,6 +21,7 @@
 // All other outcomes (processing errors, not-found, etc.) return 200.
 
 import { NextRequest, NextResponse, after } from 'next/server'
+import { clientIp } from '@/lib/security/client-ip'
 import type Stripe from 'stripe'
 import { createStripeClient } from '@/lib/stripe/client'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -61,7 +62,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       300 // explicit 5-minute tolerance
     )
   } catch (err) {
-    const ip = request.headers.get('x-forwarded-for') ?? 'unknown'
+    const ip = clientIp(request.headers) ?? 'unknown'
     console.error(`[stripe-webhook] signature verification failed | ip=${ip}`, err)
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
   }
