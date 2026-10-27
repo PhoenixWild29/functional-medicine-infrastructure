@@ -25,7 +25,8 @@ import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
-import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted, type PhiAccessEntry, type PhiUser } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
 import { RX_DETAIL_COLUMN_LIST, dispenseCount, rxDetailsToColumns, validateRxDetailsBody } from '@/lib/orders/rx-details'
 import { resolveLine, lineSourceKind } from '@/lib/orders/resolve-line'
 import { canEditDraft, diffDraftRows, writeDraftAudit } from '@/lib/orders/draft-edit'
@@ -296,6 +297,15 @@ async function patchHandler(request: NextRequest, context: RouteContext): Promis
   }
 
   const diff = diffDraftRows(draft, update)
+  const owner = draft as unknown as { patient_id: string; provider_id: string }
+
+  // Compliance C2 and L1 (B15): a patient's prescription changes. Logged
+  // BEFORE the update; no row, no change (503).
+  const phiEntry: PhiAccessEntry = {
+    user: loaded.user, action: 'update', resource: 'order', route: '/api/orders/[orderId]',
+    orderId, patientId: owner.patient_id, headers: request.headers ?? null,
+  }
+  if (!(await logPhiAccess(phiEntry))) return phiWriteRefused()
 
   const { error: updateError } = await supabase
     .from('orders')
@@ -305,6 +315,7 @@ async function patchHandler(request: NextRequest, context: RouteContext): Promis
 
   if (updateError) {
     console.error('[orders/edit] draft update failed:', updateError.message)
+    await logPhiWriteNotCompleted(phiEntry)
     return NextResponse.json({ error: 'Failed to update draft' }, { status: 500 })
   }
 
@@ -312,7 +323,6 @@ async function patchHandler(request: NextRequest, context: RouteContext): Promis
 
   // WO-102: a changed pharmacy or shipping type moves shipping between
   // this patient's draft lines — re-allocate once per pharmacy.
-  const owner = draft as unknown as { patient_id: string; provider_id: string }
   await reallocateDraftSiblingShipping(supabase, actor.clinicId, owner.patient_id, owner.provider_id)
 
   await writeDraftAudit(supabase, orderId, {
@@ -322,11 +332,6 @@ async function patchHandler(request: NextRequest, context: RouteContext): Promis
   })
 
   console.info(`[orders/edit] DRAFT edited | order=${orderId} | fields=${Object.keys(diff).length}`)
-  // Compliance C2: a patient's prescription changed.
-  await logPhiAccess({
-    user: loaded.user, action: 'update', resource: 'order', route: '/api/orders/[orderId]',
-    orderId, patientId: owner.patient_id, headers: request.headers ?? null,
-  })
   return NextResponse.json({ orderId, changed: Object.keys(diff) }, { status: 200 })
 }
 
@@ -340,6 +345,16 @@ async function deleteHandler(request: NextRequest, context: RouteContext): Promi
   const loaded = await loadEditableDraft(auth.caller)
   if (!loaded.ok) return loaded.response
   const { actor, draft, supabase } = loaded
+  const owner = draft as unknown as { patient_id: string; provider_id: string }
+
+  // Compliance C2 and L1 (B15): removing a draft line changes the
+  // patient's prescriptions. Logged BEFORE the soft delete; no row, no
+  // change (503).
+  const phiEntry: PhiAccessEntry = {
+    user: loaded.user, action: 'update', resource: 'order', route: '/api/orders/[orderId]',
+    orderId, patientId: owner.patient_id, headers: request.headers ?? null,
+  }
+  if (!(await logPhiAccess(phiEntry))) return phiWriteRefused()
 
   // REQ-OAS-010: soft delete only.
   const { error: deleteError } = await supabase
@@ -350,13 +365,13 @@ async function deleteHandler(request: NextRequest, context: RouteContext): Promi
 
   if (deleteError) {
     console.error('[orders/edit] draft soft-delete failed:', deleteError.message)
+    await logPhiWriteNotCompleted(phiEntry)
     return NextResponse.json({ error: 'Failed to remove draft' }, { status: 500 })
   }
 
   await revokeLinkIfProposed(supabase, actor.clinicId, draft)
 
   // WO-102: the removed line may have carried its pharmacy's shipping.
-  const owner = draft as unknown as { patient_id: string; provider_id: string }
   await reallocateDraftSiblingShipping(supabase, actor.clinicId, owner.patient_id, owner.provider_id)
 
   await writeDraftAudit(supabase, orderId, {
@@ -365,11 +380,6 @@ async function deleteHandler(request: NextRequest, context: RouteContext): Promi
   })
 
   console.info(`[orders/edit] DRAFT soft-deleted | order=${orderId}`)
-  // Compliance C2: removing a draft line changes the patient's prescriptions.
-  await logPhiAccess({
-    user: loaded.user, action: 'update', resource: 'order', route: '/api/orders/[orderId]',
-    orderId, patientId: owner.patient_id, headers: request.headers ?? null,
-  })
   return NextResponse.json({ orderId, removed: true }, { status: 200 })
 }
 

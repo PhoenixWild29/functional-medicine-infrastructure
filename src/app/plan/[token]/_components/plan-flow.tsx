@@ -227,8 +227,8 @@ export function PlanFlow({ token, logoUrl }: { token: string; logoUrl: string | 
           <ul className="mt-3 space-y-2">
             {kept.map(i => (
               <li key={i.orderId} className="flex justify-between gap-3 text-sm">
-                <span className="text-foreground">{i.medicationName}</span>
-                <span className="text-foreground">{money(i.priceCents)}</span>
+                <span className="min-w-0 break-words text-foreground">{i.medicationName}</span>
+                <span className="shrink-0 whitespace-nowrap text-foreground">{money(i.priceCents)}</span>
               </li>
             ))}
           </ul>
@@ -282,27 +282,32 @@ export function PlanFlow({ token, logoUrl }: { token: string; logoUrl: string | 
           const headingId = `option-${o.optionId}`
           return (
             <section key={o.optionId} aria-labelledby={headingId} className="rounded-lg border border-border bg-card p-4">
-              <h2 id={headingId} className="text-lg font-semibold text-foreground">{o.label}</h2>
+              <h2 id={headingId} className="break-words text-lg font-semibold text-foreground">{o.label}</h2>
               <ul className="mt-3 space-y-4">
                 {o.items.map(i => {
                   const boxId = `item-${o.optionId}-${i.orderId}`
                   const noteId = `${boxId}-note`
                   return (
-                    <li key={i.orderId} className="flex gap-3">
-                      <input
-                        id={boxId}
-                        type="checkbox"
-                        className="mt-1 h-5 w-5 shrink-0 rounded border-slate-500"
-                        checked={i.required || sel.includes(i.orderId)}
-                        disabled={i.required}
-                        aria-describedby={i.required ? noteId : undefined}
-                        onChange={e => void toggle(o.optionId, i.orderId, e.target.checked)}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <label htmlFor={boxId} className="flex justify-between gap-3">
-                          <span className="font-medium text-foreground">{i.medicationName}</span>
-                          <span className="text-foreground">{money(i.priceCents)}</span>
-                        </label>
+                    <li key={i.orderId}>
+                      {/* One label: the 20px box in a 44x44 tap area, with the drug name and price. */}
+                      <label htmlFor={boxId} className="-ml-3 flex min-h-[44px] cursor-pointer items-start gap-1">
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center">
+                          <input
+                            id={boxId}
+                            type="checkbox"
+                            className="h-5 w-5 rounded border-slate-500"
+                            checked={i.required || sel.includes(i.orderId)}
+                            disabled={i.required}
+                            aria-describedby={i.required ? noteId : undefined}
+                            onChange={e => void toggle(o.optionId, i.orderId, e.target.checked)}
+                          />
+                        </span>
+                        <span className="flex min-w-0 flex-1 justify-between gap-3 pt-2.5">
+                          <span className="min-w-0 break-words font-medium text-foreground">{i.medicationName}</span>
+                          <span className="shrink-0 whitespace-nowrap text-foreground">{money(i.priceCents)}</span>
+                        </span>
+                      </label>
+                      <div className="min-w-0 pl-9">
                         {(i.form || i.strength) && <p className="text-sm text-muted-foreground">{[i.form, i.strength].filter(Boolean).join(', ')}</p>}
                         {i.sig && <p className="text-sm text-foreground">{i.sig}</p>}
                         {itemDetail(i) && <p className="text-sm text-muted-foreground">{itemDetail(i)}</p>}

@@ -9,6 +9,7 @@
 // add or remove anyone. Writes use the service role, after these checks.
 
 import { NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import type { User } from '@supabase/supabase-js'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -22,10 +23,9 @@ export type TeamAdminAccess =
   | { ok: false; response: NextResponse }
 
 export async function requireTeamAdmin(request: Request): Promise<TeamAdminAccess> {
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') {
-    return { ok: false, response: NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 }) }
-  }
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return { ok: false, response: crossSite }
+
 
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()

@@ -12,7 +12,9 @@
 //   3. Launches Playwright, executes the status check flow
 //   4. Extracts status text via 'getText' steps in the flow
 //   5. Maps pharmacy status text to CompoundIQ order status
-//   6. Updates order status via casTransition if changed (NB-06)
+//      (lib/orders/portal-status: a real status, decision 10)
+//   6. Moves the order there through the legal steps, one casTransition
+//      each (NB-06); a step another run already took stops the walk
 //   7. Updates adapter_submissions.portal_last_polled_at (BUG-02)
 //
 // Safe to re-run: casTransition prevents double-transitions.
@@ -27,31 +29,10 @@ import type { FlowStep } from '@/lib/adapters/portal-flow-executor'
 import { getVaultSecret } from '@/lib/adapters/vault'
 import { assertSecureFlowUrls, enforceHttpsOnly, isTransmissionRefusedError } from '@/lib/adapters/transmission-guard'
 import { casTransition } from '@/lib/orders/cas-transition'
+import { portalStatusTarget, portalSteps } from '@/lib/orders/portal-status'
 import type { OrderStatusEnum } from '@/types/database.types'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 
-// ── Map pharmacy portal status text → CompoundIQ order status ──
-const PORTAL_STATUS_MAP: Record<string, string> = {
-  'order received':       'PHARMACY_PROCESSING',
-  'processing':           'PHARMACY_PROCESSING',
-  'in compounding':       'PHARMACY_PROCESSING',
-  'compounding':          'PHARMACY_PROCESSING',
-  'ready for pickup':     'PHARMACY_READY',
-  'ready':                'PHARMACY_READY',
-  'shipped':              'SHIPPED',
-  'out for delivery':     'SHIPPED',
-  'delivered':            'DELIVERED',
-  'cancelled':            'CANCELLED',
-  'rejected':             'REROUTE_PENDING',
-}
-
-function mapPortalStatus(rawStatus: string): string | null {
-  const normalized = rawStatus.toLowerCase().trim()
-  for (const [key, val] of Object.entries(PORTAL_STATUS_MAP)) {
-    if (normalized.includes(key)) return val
-  }
-  return null
-}
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const denied = cronAuthFailure(request, 'portal-status-poll')
@@ -150,7 +131,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         // Extract status from getText step results
         const statusResult = flowResults.find(r => r.action === 'getText' && r.textContent)
         const rawStatus    = statusResult?.textContent ?? ''
-        const mappedStatus = rawStatus ? mapPortalStatus(rawStatus) : null
+        const mappedStatus = rawStatus ? portalStatusTarget(rawStatus) : null
 
         // BUG-02: Update portal_last_polled_at after every poll attempt
         const { error: polledAtError } = await supabase
@@ -183,31 +164,42 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
           throw new Error(`order status could not be read: ${currentOrderError?.message ?? 'not found'}`)
         }
 
-        if (currentOrder?.status === mappedStatus) {
+        // Decision 10: only the legal steps to the portal's status, forward
+        // only. Already there, backwards or unreachable: nothing to do.
+        const steps = portalSteps(currentOrder.status as OrderStatusEnum, mappedStatus)
+        if (steps.length === 0) {
           results.push({ orderId, outcome: 'no_change' })
           continue
         }
 
-        // NB-06: Use casTransition instead of direct .update() to respect
-        // the order state machine and prevent invalid transitions.
-        const casResult = await casTransition({
-          orderId,
-          expectedStatus: currentOrder.status,
-          newStatus:      mappedStatus as OrderStatusEnum,
-          actor:          'portal_status_poll',
-          actorRole:      'system',
-          metadata:       { poll_source: 'status_check_flow' },
-        })
+        // NB-06: casTransition for each step, so the state machine, its
+        // actor rules and the audit row apply to every move.
+        let at = currentOrder.status as OrderStatusEnum
+        let moved = 0
+        for (const step of steps) {
+          const casResult = await casTransition({
+            orderId,
+            expectedStatus: at,
+            newStatus:      step,
+            actor:          'portal_status_poll',
+            actorRole:      'system',
+            metadata:       { poll_source: 'status_check_flow', portal_status_target: mappedStatus },
+          })
+          // Another run (or a webhook) moved the order: stop here.
+          if (casResult.wasAlreadyTransitioned) break
+          at = step
+          moved++
+        }
 
-        if (casResult.wasAlreadyTransitioned) {
+        if (moved === 0) {
           results.push({ orderId, outcome: 'no_change', reason: 'cas_already_transitioned' })
           continue
         }
 
         console.info(
-          `[portal-status-poll] status_updated | order=${orderId} | ${currentOrder.status} → ${mappedStatus}`
+          `[portal-status-poll] status_updated | order=${orderId} | ${currentOrder.status} → ${at} (${moved} step${moved === 1 ? '' : 's'})`
         )
-        results.push({ orderId, outcome: 'status_updated', newStatus: mappedStatus })
+        results.push({ orderId, outcome: 'status_updated', newStatus: at })
 
       } finally {
         await browser.close().catch(() => {})

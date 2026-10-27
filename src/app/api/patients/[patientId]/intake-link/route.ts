@@ -12,11 +12,13 @@
 // getUser(), never getSession(); role and clinic from app_metadata.
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
-import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted, type PhiAccessEntry, type PhiUser } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
 import { createIntakeLink } from '@/lib/intake/links'
 import { sendIntakeLinkSms } from '@/lib/intake/sms'
 import { openPossibleDuplicate } from '@/lib/patients/display'
@@ -29,10 +31,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 type Context = { params: Promise<{ patientId: string }> }
 
 async function caller(request: NextRequest, context: Context) {
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (request.method !== 'GET' && sfSite && sfSite !== 'same-origin' && sfSite !== 'none') {
-    return { error: NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 }) }
-  }
+  // Writes only: GET reads the link's state.
+  const crossSite = request.method === 'GET' ? null : refuseCrossSite(request)
+  if (crossSite) return { error: crossSite }
+
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
@@ -70,8 +72,20 @@ async function postHandler(request: NextRequest, context: Context): Promise<Next
     return NextResponse.json({ code: 'INTAKE_COMPLETE', error: 'This patient has already finished their details.' }, { status: 409 })
   }
 
+  // L1 (B15): the new link is a write to the patient, so its row is written
+  // first; nothing is made or texted when it cannot be written, and a link
+  // that then cannot be made gets a not_completed row.
+  const entry: PhiAccessEntry = {
+    user: c.user, action: 'update', resource: 'patient', route: '/api/patients/[patientId]/intake-link',
+    patientId: c.patientId, clinicId: c.clinicId, headers: request.headers,
+  }
+  if (!(await logPhiAccess(entry))) return phiWriteRefused()
+
   const link = await createIntakeLink(supabase, { clinicId: c.clinicId, patientId: c.patientId, createdBy: c.user.id })
-  if (!link.ok) return NextResponse.json({ error: 'Could not make a new link. Try again.' }, { status: 503 })
+  if (!link.ok) {
+    await logPhiWriteNotCompleted(entry)
+    return NextResponse.json({ error: 'Could not make a new link. Try again.' }, { status: 503 })
+  }
 
   let smsStatus: string = 'not_sent'
   if (p.phone_e164) {
@@ -80,7 +94,6 @@ async function postHandler(request: NextRequest, context: Context): Promise<Next
     })
   }
   console.info(`[intake-link] new link | patient=${c.patientId} | sms=${smsStatus}`)
-  await logPhiAccess({ user: c.user, action: 'update', resource: 'patient', route: '/api/patients/[patientId]/intake-link', patientId: c.patientId, clinicId: c.clinicId, headers: request.headers })
 
   return NextResponse.json({ intake: { url: link.url, expiresAt: link.expiresAt, smsStatus } }, { status: 200 })
 }

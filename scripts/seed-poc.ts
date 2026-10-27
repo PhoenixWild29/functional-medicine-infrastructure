@@ -26,7 +26,7 @@
 // ⚠️  All data is fake — no real patients, no real credentials
 
 import { createClient } from '@supabase/supabase-js'
-import { POC_CANONICAL_USERS, pocAppMetadataFor } from '../src/lib/poc/canonical-users'
+import { POC_CANONICAL_USERS, POC_PASSWORD_ENV, missingPocPasswordEnv, pocAppMetadataFor, pocPassword } from '../src/lib/poc/canonical-users'
 import { DEMO_PHARMACIES, refreshDemoData } from '../src/lib/poc/refresh-demo-data'
 import { withPhoneE164 } from '../src/lib/patients/phone'
 import { hashInviteToken, inviteExpiresAt, invitePath, newInviteToken } from '../src/lib/onboarding/tokens'
@@ -86,14 +86,22 @@ const IDS = {
 //
 // Canonical user list lives in src/lib/poc/canonical-users.ts so the
 // cron route + in-app reset button can share the exact same values.
-// Keep all credential edits there, not here.
+// Keep all credential edits there, not here. The passwords come from
+// POC_OPS_PASSWORD, POC_CLINIC_ADMIN_PASSWORD, POC_PROVIDER_PASSWORD and
+// POC_MA_PASSWORD in your local env; the seed stops, naming any that are
+// missing, before it writes anything.
 //
 // Role and clinic go in app_metadata (service role), never user_metadata:
 // any signed-in user can rewrite their own user_metadata.
 
+const missingPasswordEnv = missingPocPasswordEnv()
+if (missingPasswordEnv.length > 0) {
+  throw new Error(`Set ${missingPasswordEnv.join(', ')} in your local env before seeding (the POC account passwords are not in the repo).`)
+}
+
 const AUTH_USERS = POC_CANONICAL_USERS.map(u => ({
   email:        u.email,
-  password:     u.password,
+  password:     pocPassword(u),
   app_metadata: pocAppMetadataFor(u),
   label:        u.label,
 }))
@@ -643,11 +651,11 @@ async function main() {
     await seedDemoData()
     await seedDemoClinicInvite()
 
-    console.log('\n✅  Seed complete. Test credentials:')
-    console.log('   ops@compoundiq-poc.com      / POCAdmin2026!')
-    console.log('   admin@sunrise-clinic.com    / POCClinic2026!')
-    console.log('   dr.chen@sunrise-clinic.com  / POCProvider2026!')
-    console.log('   ma@sunrise-clinic.com       / POCMA2026!')
+    // The passwords are never printed: each is in its env var (security B9).
+    console.log('\n✅  Seed complete. Test accounts (passwords from your local env):')
+    for (const user of AUTH_USERS) {
+      console.log(`   ${user.email.padEnd(28)} / $${POC_PASSWORD_ENV[user.label]}`)
+    }
   } catch (err) {
     console.error('\n❌  Seed failed:', err instanceof Error ? err.message : err)
     process.exit(1)

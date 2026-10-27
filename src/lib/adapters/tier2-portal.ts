@@ -28,6 +28,16 @@
 // logs only selectors, never values. Screenshots contain PHI (patient
 // info on confirmation page) — stored in non-public bucket with 72h TTL.
 //
+// PHI disclosures (C-2026-10-25-17, B14/B15), the system as the actor,
+// each written right before the send and FAIL-CLOSED:
+//   - pharmacy_disclosure before the submit flow fills the portal form.
+//     Not recorded: the form is not filled; the attempt is a portal_error
+//     (the routing engine cascades to fax, which records its own).
+//   - ai_portal_screenshot before the confirmation screenshot goes to
+//     OpenAI. Not recorded: it is not sent; the score is 0, as for an
+//     answer that cannot be read, so the order goes to manual review (the
+//     form was already submitted: never a portal_error that would fax it).
+//
 // Required env vars:
 //   OPENAI_API_KEY          — for AI vision confidence scoring (REQ-PTA-004)
 //   PLAYWRIGHT_HEADLESS     — "true" in production; "false" for local dev
@@ -46,6 +56,7 @@ import { allergiesForPayload } from '@/lib/patients/allergies'
 import { dispenseQuantity, formatDispenseWithPackage } from '@/lib/orders/rx-details'
 import { cycleScheduleText } from '@/lib/adapters/transformers'
 import { cyclePatternFromRow } from '@/lib/orders/cycling'
+import { logPhiDisclosure, systemActor, type PhiResource } from '@/lib/audit/phi-access'
 import {
   createSubmissionRecord,
   markSubmitted,
@@ -64,6 +75,14 @@ export interface Tier2PortalResult {
   outcome:          'acknowledged' | 'manual_review' | 'portal_error'
   aiConfidenceScore: number | null
   screenshotUrl:    string | null
+  /** 'DISCLOSURE_NOT_RECORDED' when the form was not filled because its
+   *  disclosure row could not be written (not a portal failure). */
+  errorCode?:       string
+}
+
+/** Thrown before the form is filled when the disclosure is not recorded. */
+class DisclosureNotRecordedError extends Error {
+  readonly code = 'DISCLOSURE_NOT_RECORDED'
 }
 
 // REQ-PTA-004: Auto-accept threshold for AI confidence score
@@ -243,6 +262,7 @@ export async function submitTier2Portal(
     order_id: string
     order_number: string
     patient_id: string
+    clinic_id: string
     provider_id: string | null
     medication_snapshot: Record<string, unknown> | null
     quantity: number | null
@@ -357,6 +377,16 @@ export async function submitTier2Portal(
     cycleSchedule:       cycleScheduleText(cyclePatternFromRow(order), order.days_supply),
   }
 
+  // One disclosure row before PHI leaves (fail-closed: false means do not send).
+  const recordDisclosure = (resource: PhiResource) => logPhiDisclosure({
+    actor:     systemActor(order.clinic_id ?? null),
+    resource,
+    route:     '/adapters/tier2-portal',
+    orderId,
+    patientId: order.patient_id,
+    clinicId:  order.clinic_id ?? null,
+  })
+
   // ── 6. Mark SUBMITTED (pre-browser) ───────────────────────
   await markSubmitted(submissionId, {
     portal_url:  config.portal_url,
@@ -408,6 +438,9 @@ export async function submitTier2Portal(
       throw new Error('[tier2-portal] submit_flow is empty — portal cannot be automated')
     }
 
+    if (!(await recordDisclosure('pharmacy_disclosure'))) {
+      throw new DisclosureNotRecordedError('[tier2-portal] the disclosure to the pharmacy could not be recorded; the form was not filled')
+    }
     const submitResults = await executeFlow(page, submitSteps, creds, fieldValues)
 
     // ── 7c. Capture confirmation screenshot ───────────────
@@ -421,7 +454,14 @@ export async function submitTier2Portal(
     screenshotUrl = await uploadScreenshot(orderId, submissionId, 'confirmation', confirmationBytes)
 
     // ── 7d. AI confidence scoring (REQ-PTA-004) ───────────
-    aiConfidenceScore = await scoreConfirmationScreenshot(confirmationBytes)
+    // Fail-closed: the screenshot shows PHI. Unrecorded, it is not sent and
+    // scores 0 (manual review), as an answer that cannot be read does.
+    if (await recordDisclosure('ai_portal_screenshot')) {
+      aiConfidenceScore = await scoreConfirmationScreenshot(confirmationBytes)
+    } else {
+      console.warn(`[tier2-portal] screenshot disclosure not recorded; not scored | order=${orderId}`)
+      aiConfidenceScore = 0
+    }
 
     console.info(
       `[tier2-portal] AI score=${aiConfidenceScore.toFixed(2)} | order=${orderId} | threshold=${AI_CONFIDENCE_THRESHOLD}`
@@ -478,6 +518,7 @@ export async function submitTier2Portal(
       outcome:           'portal_error',
       aiConfidenceScore: null,
       screenshotUrl:     errorScreenshotUrl ?? null,
+      ...(err instanceof DisclosureNotRecordedError ? { errorCode: err.code } : {}),
     }
 
   } finally {

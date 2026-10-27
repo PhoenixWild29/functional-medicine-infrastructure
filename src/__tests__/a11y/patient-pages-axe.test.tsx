@@ -10,6 +10,7 @@
  * what axe does not: names, error association and focus styles.
  */
 
+import { signInFetch } from '@/__tests__/helpers/sign-in-fetch'
 import { render, screen, fireEvent, act, waitFor, cleanup } from '@testing-library/react'
 import { configureAxe } from 'jest-axe'
 
@@ -234,6 +235,9 @@ describe('/checkout/success', () => {
 
 // ── /login ───────────────────────────────────────────────────
 describe('/login', () => {
+  // Security B12: the page posts to /api/sign-in (answered from signInMock).
+  beforeEach(() => { global.fetch = signInFetch({ signInWithPassword: signInMock, fallback: fetchMock as unknown as typeof fetch }) as unknown as typeof fetch })
+
   it('no axe violations; one main landmark and one h1 a screen reader can reach', async () => {
     render(<LoginPage />)
     await screen.findByLabelText('Email address')

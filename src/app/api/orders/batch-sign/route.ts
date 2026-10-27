@@ -12,14 +12,16 @@
 // 400 bad body / signature rejected
 // 403 not a provider / a line belongs to another provider
 // 404 / 409 / 422 a line cannot be sent (problems[])
-// 503 a check could not run — nothing signed (problems[])
+// 503 a check could not run — nothing signed (problems[]); or the sign
+//     rows could not be written (L1) — nothing signed
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { signBatch } from '@/lib/orders/batch-sign'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccessBatch, logPhiWriteNotCompleted, type PhiAccessEntry, type PhiAccessTarget } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 import { z } from 'zod'
@@ -51,10 +53,8 @@ function signatureTooLarge(raw: unknown): boolean {
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') {
-    return NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 })
-  }
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
 
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -75,29 +75,40 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const body = parsed.data
   if (signatureTooLarge(body.signature)) return badRequest('Signature is too large', ['signature'])
 
+  // Compliance C2 (B14) and L1 (B15): one sign row per order, with its
+  // patient, written in one insert BEFORE anything is signed (signBatch
+  // calls beforeWrite once every check has passed). If the rows cannot be
+  // written, nothing is signed (503). If signing then fails, the orders
+  // not signed get a not-completed row.
+  const entry: Omit<PhiAccessEntry, 'patientId' | 'orderId'> = {
+    user, action: 'sign', resource: 'prescription', route: '/api/orders/batch-sign', headers: request.headers,
+  }
+  let logged: PhiAccessTarget[] = []
   const result = await signBatch(createServiceClient(), {
     clinicId,
     userId:    user.id,
     appRole,
     orderIds:  body.orderIds,
     signature: body.signature,
+    beforeWrite: async targets => {
+      const rows = targets.map(t => ({ patientId: t.patientId, orderId: t.orderId }))
+      if (!(await logPhiAccessBatch(entry, rows))) return false
+      logged = rows
+      return true
+    },
   })
 
   if (!result.ok) {
+    if (logged.length > 0) {
+      const unsigned = result.unsignedOrderIds ? new Set(result.unsignedOrderIds) : null
+      await Promise.all(logged.filter(t => !unsigned || unsigned.has(t.orderId ?? ''))
+        .map(t => logPhiWriteNotCompleted({ ...entry, patientId: t.patientId ?? null, orderId: t.orderId ?? null })))
+    }
     return NextResponse.json(
       { error: result.error, code: result.code, problems: result.problems },
       { status: result.status, headers: { 'Cache-Control': 'no-store' } },
     )
   }
-  // Compliance C2: one row for the signature. The patient and order are
-  // named when the batch has one of each; a wider batch names neither.
-  const signedOrderIds = result.patients.flatMap(p => p.orderIds)
-  await logPhiAccess({
-    user, action: 'sign', resource: 'prescription', route: '/api/orders/batch-sign',
-    patientId: result.patients.length === 1 ? result.patients[0]!.patientId : null,
-    orderId:   signedOrderIds.length === 1 ? signedOrderIds[0]! : null,
-    headers:   request.headers,
-  })
   return NextResponse.json(
     { signedAt: result.signedAt, patients: result.patients },
     { status: 200, headers: { 'Cache-Control': 'no-store' } },

@@ -129,7 +129,7 @@ describe('the row', () => {
 describe('never throws into the request', () => {
   it('a failed insert resolves, and the error logged carries no row value', async () => {
     db = scriptedDb(c => (c.table === 'phi_access_log' ? { data: null, error: { message: 'new row violates check constraint "x" Failing row contains (dr.chen@sunrise.example, 203.0.113.7)', code: '23514' } } : undefined))
-    await expect(logPhiAccess({ user: USER, patientId: PATIENT, action: 'view', resource: 'patient', route: '/refill', headers: headers() })).resolves.toBeUndefined()
+    await expect(logPhiAccess({ user: USER, patientId: PATIENT, action: 'view', resource: 'patient', route: '/refill', headers: headers() })).resolves.toBe(false)
     const all = logs.join('\n')
     expect(all).toMatch(/phi_access_log insert failed.*23514/)
     expect(all).not.toContain('dr.chen')
@@ -139,18 +139,18 @@ describe('never throws into the request', () => {
 
   it('a database that is down resolves', async () => {
     db = scriptedDb(() => DB_DOWN)
-    await expect(logPhiAccess({ user: USER, action: 'view', resource: 'order_list', route: '/dashboard', headers: headers() })).resolves.toBeUndefined()
+    await expect(logPhiAccess({ user: USER, action: 'view', resource: 'order_list', route: '/dashboard', headers: headers() })).resolves.toBe(false)
   })
 
   it('a client that cannot be created resolves', async () => {
     clientThrows = true
-    await expect(logPhiAccess({ user: USER, action: 'view', resource: 'order_list', route: '/dashboard', headers: headers() })).resolves.toBeUndefined()
+    await expect(logPhiAccess({ user: USER, action: 'view', resource: 'order_list', route: '/dashboard', headers: headers() })).resolves.toBe(false)
     expect(logs.join('\n')).toMatch(/phi_access_log/)
   })
 
   it('a bad action or resource is refused here, not sent to the database', async () => {
-    await expect(logPhiAccess({ user: USER, action: 'delete' as never, resource: 'order', route: '/x', headers: null })).resolves.toBeUndefined()
-    await expect(logPhiAccess({ user: USER, action: 'view', resource: 'Patient Jane Doe' as never, route: '/x', headers: null })).resolves.toBeUndefined()
+    await expect(logPhiAccess({ user: USER, action: 'delete' as never, resource: 'order', route: '/x', headers: null })).resolves.toBe(false)
+    await expect(logPhiAccess({ user: USER, action: 'view', resource: 'Patient Jane Doe' as never, route: '/x', headers: null })).resolves.toBe(false)
     expect(inserted()).toHaveLength(0)
   })
 })
@@ -178,6 +178,6 @@ describe('logPhiAccessMany', () => {
     await logPhiAccessMany({ user: USER, action: 'nope' as never, resource: 'patient', route: '/x', headers: null }, [P(1)])
     expect(inserted()).toHaveLength(0)
     db = scriptedDb(() => DB_DOWN)
-    await expect(logPhiAccessMany({ user: USER, action: 'create', resource: 'patient', route: '/x', headers: null }, [P(1)])).resolves.toBeUndefined()
+    await expect(logPhiAccessMany({ user: USER, action: 'create', resource: 'patient', route: '/x', headers: null }, [P(1)])).resolves.toBe(false)
   })
 })

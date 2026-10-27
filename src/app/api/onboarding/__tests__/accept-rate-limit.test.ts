@@ -21,6 +21,7 @@ jest.mock('@/lib/supabase/service', () => ({
 
 import { POST } from '../invite/accept/route'
 import { inviteAcceptLimiter } from '@/lib/onboarding/accept-rate-limit'
+import { dbRateLimitHit } from '@/lib/security/db-rate-limit'
 
 const TOKEN = 'tok_abcdefghijklmnopqrstuvwxyz0123456789ABCDEF'
 const GOOD = { token: TOKEN, fullName: 'Lauren Perkins', password: 'Correct-Horse-9' }
@@ -65,6 +66,16 @@ it('over the limit, it returns 429 with a plain message and Retry-After', async 
   expect(res.status).toBe(429)
   expect(await res.json()).toEqual({ error: 'Too many attempts. Wait a few minutes, then try again.' })
   expect(res.headers.get('Retry-After')).toBe(String(15 * 60))
+})
+
+it('over the limit across instances (the shared count): 429 on the first attempt here, Retry-After to the end of the shared window', async () => {
+  jest.mocked(dbRateLimitHit).mockResolvedValueOnce({ count: 11, windowStart: Date.now() - 5 * 60 * 1000 })
+  const res = await POST(req('203.0.113.7'))
+  expect(res.status).toBe(429)
+  expect(await res.json()).toEqual({ error: 'Too many attempts. Wait a few minutes, then try again.' })
+  expect(res.headers.get('Retry-After')).toBe(String(10 * 60))
+  expect(db.calls.filter(c => c.table === 'onboarding_invites')).toHaveLength(0)
+  expect(jest.mocked(dbRateLimitHit).mock.calls.at(-1)?.[0]).toBe('invite_accept')
 })
 
 it('a refused attempt never reaches the database', async () => {

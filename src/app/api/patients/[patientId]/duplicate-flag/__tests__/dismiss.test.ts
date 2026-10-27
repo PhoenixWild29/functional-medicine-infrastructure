@@ -22,7 +22,7 @@ let db = scriptedDb(c => script(c))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
 
 import { DELETE } from '../route'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted } from '@/lib/audit/phi-access'
 
 const req = () => new Request(`https://app.test/api/patients/${PATIENT_ID}/duplicate-flag`, {
   method: 'DELETE', headers: { origin: 'https://app.test', host: 'app.test' },
@@ -77,8 +77,42 @@ it('records who dismissed it and when, on this clinic\'s patient only, and logs 
   expect(logPhiAccess).toHaveBeenCalledWith(expect.objectContaining({ action: 'update', resource: 'patient_duplicate_flag', patientId: PATIENT_ID }))
 })
 
-it('a database failure is a 503 and is not logged as done', async () => {
+it('a database failure is a 503, and the row written before it is followed by a not_completed row', async () => {
+  // L1 (B15): the row is written before the update, so a failed update is
+  // recorded as not completed rather than left looking done.
+  ;(logPhiWriteNotCompleted as jest.Mock).mockClear()
   script = c => (c.op === 'update' ? DB_DOWN : { data: { patient_id: PATIENT_ID, possible_duplicate_of: OTHER_ID, possible_duplicate_dismissed_at: null } })
   expect((await DELETE(req(), ctx())).status).toBe(503)
-  expect(logPhiAccess).not.toHaveBeenCalled()
+  expect(logPhiAccess).toHaveBeenCalledTimes(1)
+  expect(logPhiWriteNotCompleted).toHaveBeenCalledWith((logPhiAccess as jest.Mock).mock.calls[0]![0])
+})
+
+// B's verification of L1 (B15): the dismissal is a write to the patient, so
+// its row is written BEFORE the update, and nothing changes without it.
+describe('DELETE is logged before the update (L1)', () => {
+  const phiLog = jest.mocked(logPhiAccess)
+  const notCompleted = jest.mocked(logPhiWriteNotCompleted)
+  beforeEach(() => notCompleted.mockClear())
+
+  it('the row is written before the update runs', async () => {
+    let updatesAtLog = -1
+    phiLog.mockImplementationOnce(async () => { updatesAtLog = db.to('patients', 'update').length; return true })
+    expect((await DELETE(req(), ctx())).status).toBe(200)
+    expect(updatesAtLog).toBe(0)
+    expect(notCompleted).not.toHaveBeenCalled()
+  })
+
+  it('the row cannot be written: 503, the standard message, the flag stays open', async () => {
+    phiLog.mockResolvedValueOnce(false)
+    const res = await DELETE(req(), ctx())
+    expect(res.status).toBe(503)
+    expect((await res.json()).error).toBe('This change could not be recorded. Nothing was changed. Try again.')
+    expect(db.to('patients', 'update')).toHaveLength(0)
+  })
+
+  it('no row matched after logging: 503 and a not_completed row', async () => {
+    script = c => (c.op === 'update' ? { data: null } : { data: { patient_id: PATIENT_ID, possible_duplicate_of: OTHER_ID, possible_duplicate_dismissed_at: null } })
+    expect((await DELETE(req(), ctx())).status).toBe(503)
+    expect(notCompleted).toHaveBeenCalledTimes(1)
+  })
 })

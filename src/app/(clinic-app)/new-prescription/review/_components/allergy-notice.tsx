@@ -148,6 +148,12 @@ export function AllergyNotice({ patient, onSaved, prompting = false, onCancelPro
       // confirmNkda: the server refuses the shortcut (409) if a list is
       // on file, so this button can never erase one.
       saved(await saveAllergies(patient.patient_id, { allergies: [], nkda: true, confirmNkda: true }))
+      // The notice (and the focused button) goes away once NKDA is
+      // recorded: focus moves to the session banner's allergy chip, which
+      // now reads NKDA, instead of being lost to the page.
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>('[data-testid="session-banner"] [data-testid="allergy-chip"]')?.closest<HTMLElement>('button')?.focus()
+      })
     } catch (err) {
       setError(userMessage(err, 'Could not save'))
     } finally {

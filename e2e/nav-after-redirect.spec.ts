@@ -2,6 +2,8 @@ import { createHash, randomBytes } from 'node:crypto'
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import { TEST_IDS, TEST_USERS } from './fixtures/seed'
+import { shardPrefix } from './fixtures/shard'
+import { e2ePassword } from './fixtures/test-password'
 
 // ============================================================
 // Navigation after the session changes, when the destination was redirected
@@ -22,8 +24,9 @@ import { TEST_IDS, TEST_USERS } from './fixtures/seed'
 // service role (a reserved nav-e2e- email) and deletes it and the login it
 // creates in beforeAll and afterAll.
 
-const EMAIL_PREFIX = 'nav-e2e-'
-const PASSWORD = 'nav e2e passphrase 42'
+// Per shard (fixtures/shard): cleanup sweeps this prefix, so each shard sweeps only its own.
+const EMAIL_PREFIX = shardPrefix('nav-e2e-')
+const PASSWORD = e2ePassword()
 
 function e2eService() {
   return createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
@@ -98,7 +101,10 @@ test.describe('Navigation after a redirect', () => {
     await page.getByLabel('Confirm password').fill(PASSWORD)
     await page.getByRole('button', { name: 'Create account' }).click()
 
-    // Lands in the app (a medical assistant's home is /dashboard), not /login.
-    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 20_000 })
+    // Lands signed in, not on /login. B's review P2: a login created from an
+    // invite first sets its own password from an emailed link, so the app
+    // sends it to /reset-password before its home page.
+    await expect(page).toHaveURL(/\/reset-password$/, { timeout: 20_000 })
+    await expect(page.getByRole('link', { name: 'Email me a link' })).toBeVisible()
   })
 })

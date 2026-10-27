@@ -26,6 +26,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { loadRxDefaults } from '@/lib/orders/rx-defaults-loader'
 import { packageOptionsFromRows } from '@/lib/orders/rx-details'
 import { isLivePharmacy, type PharmacyLiveness } from '@/lib/pharmacies/live'
+import { isOfferedTier } from '@/lib/pharmacies/offered-tier'
 import { getUserClinicId } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 import { z } from 'zod'
@@ -351,7 +352,10 @@ async function getHandler(req: NextRequest) {
         // An active link is not enough: the pharmacy itself must be live.
         // A soft-deleted pharmacy whose links were never deactivated (the
         // E2E test pharmacies on prod) used to be offered here.
-        let filtered = (data ?? []).filter(pf => isLivePharmacy(pf.pharmacies as PharmacyLiveness | null))
+        // Decision 8: and never one on a tier with no adapter (Hybrid).
+        let filtered = (data ?? []).filter(pf =>
+          isLivePharmacy(pf.pharmacies as PharmacyLiveness | null)
+          && isOfferedTier((pf.pharmacies as { integration_tier?: string } | null)?.integration_tier))
         if (patientState && filtered.length > 0) {
           const pharmacyIds = filtered
             .map(pf => (pf.pharmacies as Record<string, unknown>)?.pharmacy_id as string)

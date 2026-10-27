@@ -33,7 +33,8 @@ import { createServiceClient }        from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { generateGroupCheckoutToken } from '@/lib/auth/checkout-token'
 import { serverEnv }                  from '@/lib/env'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted, type PhiAccessEntry } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 import { UUID_RE } from '@/lib/api/input'
@@ -151,11 +152,20 @@ async function getHandler(
     console.error(`[group-link] order count failed | group=${group.group_id}:`, countErr.message)
   }
 
+  // Compliance C2 and L1 (B15): the patient's bundle payment link is
+  // re-issued. Logged BEFORE the link is made; no row, no link (503).
+  const phiEntry: PhiAccessEntry = {
+    user: user, action: 'create', resource: 'payment_link', route: '/api/orders/[orderId]/group-link',
+    orderId, patientId: group.patient_id, headers: request.headers ?? null,
+  }
+  if (!(await logPhiAccess(phiEntry))) return phiWriteRefused({ 'Cache-Control': 'no-store' })
+
   let token: string
   try {
     token = await generateGroupCheckoutToken(group.group_id, group.patient_id, clinicId)
   } catch (err) {
     console.error(`[group-link] token generation failed | group=${group.group_id}:`, err instanceof Error ? err.message : err)
+    await logPhiWriteNotCompleted(phiEntry)
     return NextResponse.json({ error: 'Failed to generate bundle payment link' }, { status: 500 })
   }
 
@@ -165,11 +175,6 @@ async function getHandler(
   console.info(
     `[group-link] re-issued | order=${orderId} group=${group.group_id} clinic=${clinicId}`,
   )
-  // Compliance C2: the patient's bundle payment link was re-issued.
-  await logPhiAccess({
-    user: user, action: 'create', resource: 'payment_link', route: '/api/orders/[orderId]/group-link',
-    orderId, patientId: group.patient_id, headers: request.headers ?? null,
-  })
 
   return NextResponse.json(
     {

@@ -19,12 +19,6 @@ jest.mock('@/lib/notifications', () => ({ notify: { success: jest.fn(), error: j
 
 const CHEN_UID = '11111111-1111-4111-8111-111111111111'
 let mockHistory: unknown[] = []
-jest.mock('@/lib/supabase/client', () => ({
-  createBrowserClient: () => ({
-    from: () => ({ select: () => ({ eq: () => ({ order: () => ({ then: (resolve: (r: { data: unknown[] }) => void) => resolve({ data: mockHistory }) }) }) }) }),
-  }),
-}))
-
 const order = (status: DashboardOrder['status']): DashboardOrder => ({
   orderId: 'a6000000-0000-0000-0000-000000000001', patientName: 'Demo, Alex', medicationName: 'Semaglutide', status,
   submissionTier: null, createdAt: '2026-09-13T11:00:00.000Z', updatedAt: '2026-09-17T12:00:00.000Z',
@@ -37,7 +31,10 @@ const SIGNED = { old_status: 'DRAFT', new_status: 'AWAITING_PAYMENT', changed_by
 const EXPIRED = { old_status: 'AWAITING_PAYMENT', new_status: 'PAYMENT_EXPIRED', changed_by: 'cron:payment-expiry', created_at: '2026-09-17T09:00:00.000Z', metadata: null }
 
 beforeEach(() => {
-  global.fetch = jest.fn(async (url: string) => (url.endsWith('/timeline-actors')
+  // The timeline is read through the server route (logged), not the browser client.
+  global.fetch = jest.fn(async (url: string) => (url.endsWith('/timeline')
+    ? { ok: true, json: async () => ({ history: mockHistory }) }
+    : url.endsWith('/timeline-actors')
     ? { ok: true, json: async () => ({ actors: { [CHEN_UID]: { name: 'Sarah Chen', role: 'provider' } } }) }
     : { ok: true, json: async () => ({}) })) as unknown as typeof fetch
 })

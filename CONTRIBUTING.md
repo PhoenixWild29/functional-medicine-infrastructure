@@ -10,9 +10,9 @@ CompoundIQ is proprietary software (see [LICENSE](LICENSE)). Unless you have bee
 
 | Tool | Minimum Version | Purpose |
 |------|-----------------|---------|
-| Node.js | 18.17 | Runtime for Next.js 16 + CLI scripts |
-| npm | 9+ | Package manager (repo uses `package-lock.json`) |
-| Supabase CLI | latest | Local database schema, migrations, type generation |
+| Node.js | 20.9 | Runtime for Next.js 16 (which needs 20.9+) + CLI scripts; CI uses Node 20 |
+| npm | 10+ | Package manager (repo uses `package-lock.json`; install with `npm ci`) |
+| Supabase CLI | 2.120.0 (pinned) | Run as `npx supabase@2.120.0`; 2.121.0 shipped no linux-x64 binary |
 | Vercel CLI | latest (optional) | Local preview deployments + env pulls |
 | Stripe CLI | latest (optional) | Local webhook event forwarding |
 | Git | 2.40+ | Source control |
@@ -86,7 +86,7 @@ npm test            # Jest unit tests
 npm run build       # Next.js production build
 ```
 
-If any fail, fix locally before pushing. The GitHub Actions CI workflow will re-run all 4 jobs + Playwright E2E tests on your PR and block the merge until green.
+If any fail, fix locally before pushing. Lint allows no warnings (`--max-warnings=0`). The GitHub Actions CI workflow re-runs all 4 jobs on your PR and blocks the merge until green. Playwright E2E also runs on the PR, unless it changes only documentation (top-level `*.md`, `docs/`, `reviews/`). E2E runs one at a time on a shared E2E database; a PR with a migration must merge before other PRs run E2E (see DEPLOYMENT.md).
 
 ### Database Changes
 

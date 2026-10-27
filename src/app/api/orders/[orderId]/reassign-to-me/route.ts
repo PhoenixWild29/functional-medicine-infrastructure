@@ -29,7 +29,8 @@ import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { insertStatusHistory } from '@/lib/orders/status-history'
 import { isProviderRole, resolveCurrentProvider } from '@/lib/auth/current-provider'
 import { REASSIGN_AUDIT_ACTOR } from '@/lib/orders/reassignment'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted, type PhiAccessEntry } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 import { z } from 'zod'
@@ -134,6 +135,14 @@ async function postHandler(
   const orderIds = Array.from(new Set([order.order_id, ...(siblings ?? []).map(s => s.order_id)]))
   const reassignedAt = new Date().toISOString()
 
+  // Compliance C2 and L1 (B15): the patient's draft(s) move to this
+  // provider. Logged BEFORE the update; no row, no change (503).
+  const phiEntry: PhiAccessEntry = {
+    user: user, action: 'update', resource: 'order', route: '/api/orders/[orderId]/reassign-to-me',
+    orderId, patientId: order.patient_id, headers: request.headers ?? null,
+  }
+  if (!(await logPhiAccess(phiEntry))) return phiWriteRefused()
+
   // CAS-style predicate: only rows still DRAFT and still under the
   // original provider move. A concurrent sign or take-over leaves its
   // rows untouched and out of the returned list.
@@ -151,11 +160,13 @@ async function postHandler(
 
   if (updateError) {
     console.error('[reassign-to-me] update failed:', updateError.message)
+    await logPhiWriteNotCompleted(phiEntry)
     return NextResponse.json({ error: 'Reassignment failed' }, { status: 500 })
   }
 
   const movedIds = (moved ?? []).map(m => m.order_id)
   if (!movedIds.includes(order.order_id)) {
+    await logPhiWriteNotCompleted(phiEntry)
     return NextResponse.json({ error: 'Draft changed while reassigning. Reload and try again' }, { status: 409 })
   }
 
@@ -178,11 +189,6 @@ async function postHandler(
   })), 'reassign-to-me')
 
   console.info(`[reassign-to-me] reassigned ${movedIds.length} draft line(s) | order=${orderId} | clinic=${clinicId}`)
-  // Compliance C2: the patient's draft(s) moved to this provider.
-  await logPhiAccess({
-    user: user, action: 'update', resource: 'order', route: '/api/orders/[orderId]/reassign-to-me',
-    orderId, patientId: order.patient_id, headers: request.headers ?? null,
-  })
 
   return NextResponse.json({ orderIds: movedIds, providerId: me.provider_id, reassigned: true }, { status: 200 })
 }

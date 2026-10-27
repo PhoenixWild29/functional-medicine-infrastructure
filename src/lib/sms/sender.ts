@@ -26,6 +26,7 @@ import { createTwilioClient } from '@/lib/twilio/client'
 import { serverEnv } from '@/lib/env'
 import { sendSlackMessage } from '@/lib/slack/client'
 import { buildOpsAlert } from '@/lib/slack/ops-alert'
+import { logPhiDisclosure, systemActor } from '@/lib/audit/phi-access'
 
 // ============================================================
 // TYPES
@@ -222,19 +223,21 @@ type OptInState = 'opted_in' | 'opted_out' | 'not_found' | 'unreadable'
  * caller: a caller can forget the check, or read the row before a STOP
  * reply landed.
  */
-async function patientOptIn(patientId: string): Promise<OptInState> {
+async function patientOptIn(patientId: string): Promise<{ state: OptInState; clinicId: string | null }> {
   const supabase = createServiceClient()
   const { data, error } = await supabase
     .from('patients')
-    .select('sms_opt_in')
+    .select('sms_opt_in, clinic_id')
     .eq('patient_id', patientId)
     .maybeSingle()
   if (error) {
     console.error(`[sms-sender] opt-in could not be read | patient=${patientId}:`, error.message)
-    return 'unreadable'
+    return { state: 'unreadable', clinicId: null }
   }
-  if (!data) return 'not_found'
-  return (data as { sms_opt_in: boolean | null }).sms_opt_in === true ? 'opted_in' : 'opted_out'
+  if (!data) return { state: 'not_found', clinicId: null }
+  // The clinic too: the disclosure row's clinic (review L2).
+  const row = data as { sms_opt_in: boolean | null; clinic_id?: string | null }
+  return { state: row.sms_opt_in === true ? 'opted_in' : 'opted_out', clinicId: row.clinic_id ?? null }
 }
 
 /** A refused send, on record: no Twilio SID, status 'suppressed', the reason. */
@@ -277,7 +280,7 @@ export async function sendSms(params: SendSmsParams): Promise<SendSmsResult> {
   // check it too; this is the check that cannot be skipped. It runs
   // before the TWILIO_ENABLED switch so the record is the same in every
   // environment. Fails closed: an opt-in that cannot be read is no consent.
-  const optIn = await patientOptIn(params.patientId)
+  const { state: optIn, clinicId } = await patientOptIn(params.patientId)
   if (optIn === 'unreadable') return { outcome: 'failed', reason: 'opt_in_check_failed' }
   if (optIn === 'not_found') {
     console.error(`[sms-sender] patient not found; not sent | order=${params.orderId} | patient=${params.patientId}`)
@@ -338,7 +341,18 @@ export async function sendSms(params: SendSmsParams): Promise<SendSmsResult> {
     return { outcome: 'skipped', reason: 'already_sent' }
   }
 
-  // Gate 4: dispatch
+  // Gate 4: the disclosure row (review L2). The text sends the phone and
+  // first name to Twilio; fail-closed, so no row means no text, and the
+  // trigger reports failed (retried as any failed send).
+  if (!(await logPhiDisclosure({
+    actor: systemActor(clinicId), resource: 'sms_disclosure', route: `/sms/${params.templateName}`,
+    patientId: params.patientId, orderId: params.orderId, clinicId,
+  }))) {
+    console.error(`[sms-sender] disclosure not recorded; not sent | order=${params.orderId} | template=${params.templateName}`)
+    return { outcome: 'failed', reason: 'disclosure_not_recorded' }
+  }
+
+  // Gate 5: dispatch
   try {
     const { messageSid } = await dispatchWithRetry({
       toNumber: params.toNumber,

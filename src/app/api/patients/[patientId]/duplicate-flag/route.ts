@@ -10,20 +10,20 @@
 // getUser(), never getSession(); role and clinic from app_metadata.
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted, type PhiAccessEntry } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const STAFF_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 async function deleteHandler(request: NextRequest, context: { params: Promise<{ patientId: string }> }): Promise<NextResponse> {
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') {
-    return NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 })
-  }
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -51,6 +51,14 @@ async function deleteHandler(request: NextRequest, context: { params: Promise<{ 
     return NextResponse.json({ code: 'NO_OPEN_FLAG', error: 'This patient has no open duplicate flag.' }, { status: 409 })
   }
 
+  // L1 (B15): the row is written before the update; nothing changes when it
+  // cannot be written, and an update that then fails gets a not_completed row.
+  const entry: PhiAccessEntry = {
+    user, action: 'update', resource: 'patient_duplicate_flag', route: '/api/patients/[patientId]/duplicate-flag',
+    patientId, clinicId, headers: request.headers,
+  }
+  if (!(await logPhiAccess(entry))) return phiWriteRefused()
+
   const { data: updated, error: updateError } = await supabase
     .from('patients')
     .update({ possible_duplicate_dismissed_at: new Date().toISOString(), possible_duplicate_dismissed_by: user.id })
@@ -60,14 +68,11 @@ async function deleteHandler(request: NextRequest, context: { params: Promise<{ 
     .maybeSingle()
   if (updateError || !updated) {
     console.error('[duplicate-flag] dismiss failed | patient=', patientId, '| code=', updateError?.code ?? 'no row')
+    await logPhiWriteNotCompleted(entry)
     return NextResponse.json({ error: 'The flag could not be dismissed. Try again.' }, { status: 503 })
   }
 
   console.info(`[duplicate-flag] dismissed | patient=${patientId}`)
-  await logPhiAccess({
-    user, action: 'update', resource: 'patient_duplicate_flag', route: '/api/patients/[patientId]/duplicate-flag',
-    patientId, clinicId, headers: request.headers,
-  })
   return NextResponse.json({ ok: true })
 }
 

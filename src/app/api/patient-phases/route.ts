@@ -19,13 +19,20 @@
 // reaching Postgres was a 500, error 22P02), phase names and the reason
 // are bounded, the status is a closed set, and a body that is not JSON is
 // a 400 (lib/api/input).
+//
+// PHI access log (L1, writes are logged first): start, advance and a
+// status change write their patient_phases row BEFORE the write, after
+// every check, and answer 503 with nothing changed when it cannot be
+// written. A write that then fails (or an advance put back because its
+// history could not be kept) gets a not_completed_patient_phases row.
 
 import { NextRequest, NextResponse } from 'next/server'
 import type { User } from '@supabase/supabase-js'
 import type { Json } from '@/types/database.types'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted, type PhiAccessEntry } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 import { resolveCurrentProvider } from '@/lib/auth/current-provider'
@@ -235,6 +242,10 @@ async function postHandler(req: NextRequest) {
     }
     if (!protocol) return NOT_FOUND()
 
+    // Compliance C2: a protocol started for the patient. L1: logged first.
+    const startEntry: PhiAccessEntry = { user: caller.user, action: 'create', resource: 'patient_phases', route: '/api/patient-phases', patientId: patient_id, headers: req.headers ?? null }
+    if (!(await logPhiAccess(startEntry))) return phiWriteRefused()
+
     const { data, error } = await supabase
       .from('patient_protocol_phases')
       .upsert({
@@ -249,10 +260,9 @@ async function postHandler(req: NextRequest) {
 
     if (error) {
       console.error('[patient-phases] protocol start failed:', error.message)
+      await logPhiWriteNotCompleted(startEntry)
       return WRITE_FAILED()
     }
-    // Compliance C2: a protocol started for the patient.
-    await logPhiAccess({ user: caller.user, action: 'create', resource: 'patient_phases', route: '/api/patient-phases', patientId: patient_id, headers: req.headers ?? null })
     return NextResponse.json({ data }, { status: 201 })
   }
 
@@ -271,6 +281,13 @@ async function postHandler(req: NextRequest) {
     const current = await trackingInClinic(supabase, tracking_id, caller.clinicId)
     if (!current.ok) return current.response
 
+    // Compliance C2: the patient's protocol phase changes. L1: logged first.
+    const advanceEntry: PhiAccessEntry = {
+      user: caller.user, action: 'update', resource: 'patient_phases', route: '/api/patient-phases',
+      patientId: current.patientId, headers: req.headers ?? null,
+    }
+    if (!(await logPhiAccess(advanceEntry))) return phiWriteRefused()
+
     // Update to new phase
     const { error: updateErr } = await supabase
       .from('patient_protocol_phases')
@@ -285,6 +302,7 @@ async function postHandler(req: NextRequest) {
 
     if (updateErr) {
       console.error('[patient-phases] phase advance failed:', updateErr.message, '| tracking=', tracking_id)
+      await logPhiWriteNotCompleted(advanceEntry)
       return WRITE_FAILED()
     }
 
@@ -306,19 +324,16 @@ async function postHandler(req: NextRequest) {
         .update({ current_phase: current.currentPhase, updated_at: new Date().toISOString() })
         .eq('tracking_id', tracking_id)
       if (revertErr) {
+        // The phase did move (and its row says so): no not_completed row.
         console.error('[patient-phases] CRITICAL: revert failed:', revertErr.message, '| tracking=', tracking_id)
         return NextResponse.json({
           error: `The phase was advanced to ${new_phase}, but its history could not be recorded and the change could not be undone. Contact support before advancing again.`,
         }, { status: 500 })
       }
+      await logPhiWriteNotCompleted(advanceEntry)
       return NextResponse.json({ error: 'The phase change could not be recorded. Nothing was changed. Try again.' }, { status: 500 })
     }
 
-    // Compliance C2: the patient's protocol phase changed.
-    await logPhiAccess({
-      user: caller.user, action: 'update', resource: 'patient_phases', route: '/api/patient-phases',
-      patientId: current.patientId, headers: req.headers ?? null,
-    })
     return NextResponse.json({ ok: true, from: current.currentPhase, to: new_phase })
   }
 
@@ -350,6 +365,13 @@ async function patchHandler(req: NextRequest) {
   const current = await trackingInClinic(supabase, trackingId, caller.clinicId)
   if (!current.ok) return current.response
 
+  // Compliance C2: the patient's protocol status changes. L1: logged first.
+  const statusEntry: PhiAccessEntry = {
+    user: caller.user, action: 'update', resource: 'patient_phases', route: '/api/patient-phases',
+    patientId: current.patientId, headers: req.headers ?? null,
+  }
+  if (!(await logPhiAccess(statusEntry))) return phiWriteRefused()
+
   const { error } = await supabase
     .from('patient_protocol_phases')
     .update({ status: newStatus, updated_at: new Date().toISOString() })
@@ -357,13 +379,9 @@ async function patchHandler(req: NextRequest) {
 
   if (error) {
     console.error('[patient-phases] status update failed:', error.message, '| tracking=', trackingId)
+    await logPhiWriteNotCompleted(statusEntry)
     return WRITE_FAILED()
   }
-  // Compliance C2: the patient's protocol status changed.
-  await logPhiAccess({
-    user: caller.user, action: 'update', resource: 'patient_phases', route: '/api/patient-phases',
-    patientId: current.patientId, headers: req.headers ?? null,
-  })
   return NextResponse.json({ ok: true })
 }
 

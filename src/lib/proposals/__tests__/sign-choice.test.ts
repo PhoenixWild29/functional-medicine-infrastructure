@@ -272,3 +272,22 @@ describe('only a chosen proposal is signed', () => {
     expect(proposal(db)['status']).toBe('chosen')
   })
 })
+
+describe('L1: the sign rows are written before signing', () => {
+  it('beforeWrite is passed to batch sign and called with the chosen lines and their patient', async () => {
+    const db = chosenWorld()
+    const beforeWrite = jest.fn(async () => true)
+    const res = await signChosenProposal(db.client, { clinicId: CLINIC, userId: USER_CHEN, appRole: 'provider', proposalId: PROPOSAL, signature: SIGNATURE, now: NOW, beforeWrite })
+    expect(res).toMatchObject({ ok: true })
+    expect(beforeWrite).toHaveBeenCalledWith([{ orderId: id(1), patientId: P1 }, { orderId: id(3), patientId: P1 }])
+  })
+
+  it('a refused log: 503 with the standard message unchanged, nothing signed or cancelled, the plan stays chosen', async () => {
+    const db = chosenWorld()
+    const res = await signChosenProposal(db.client, { clinicId: CLINIC, userId: USER_CHEN, appRole: 'provider', proposalId: PROPOSAL, signature: SIGNATURE, now: NOW, beforeWrite: async () => false })
+    expect(res).toEqual({ ok: false, status: 503, error: 'This change could not be recorded. Nothing was changed. Try again.' })
+    expect(signedIds(db)).toEqual([])
+    expect(row(db, 2)['status']).toBe('DRAFT')
+    expect(proposal(db)['status']).toBe('chosen')
+  })
+})

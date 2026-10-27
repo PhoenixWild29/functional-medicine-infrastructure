@@ -90,6 +90,7 @@ export { MAX_BATCH_ORDERS } from './batch-sign-view'
 import { MAX_BATCH_ORDERS } from './batch-sign-view'
 import { prescriberProblems, todayUtc, type PrescriberProblemCode } from '@/lib/providers/credentials'
 import type { NpiStatus } from '@/lib/providers/npi'
+import { PHI_WRITE_REFUSED_MESSAGE } from '@/lib/audit/phi-write'
 import {
   SIGNATURE_BINDING_VERSION, boundSignatureValue, canonicalSignedContent, patientSnapshotFor, prescriberSnapshotFor,
   bindingKeyRequired, readSignedContent, rxBindingKeyConfigured, type PatientSnapshot, type PrescriberSnapshot,
@@ -711,7 +712,17 @@ export interface SignedPatient {
 
 export type SignBatchResult =
   | { ok: true; signedAt: string; patients: SignedPatient[] }
-  | { ok: false; status: number; error: string; code?: string; problems?: BatchProblem[] }
+  | {
+    ok: false; status: number; error: string; code?: string; problems?: BatchProblem[]
+    /** A partial sign only: the orders that were NOT signed (the rest were). */
+    unsignedOrderIds?: string[]
+  }
+
+/** One line about to be signed, for the caller's audit rows. */
+export interface SignTarget {
+  orderId:   string
+  patientId: string
+}
 
 async function sha256Hex(input: string): Promise<string> {
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
@@ -816,6 +827,12 @@ export async function signBatch(
     appRole:   string | null
     orderIds:  unknown
     signature: unknown
+    /**
+     * L1 (B15): called once every check has passed and before anything is
+     * written, with each line and its patient (the caller writes its sign
+     * rows here). false refuses the batch: 503, nothing written.
+     */
+    beforeWrite?: (targets: ReadonlyArray<SignTarget>) => Promise<boolean>
   },
 ): Promise<SignBatchResult> {
   // HIPAA B7 (B's review T1, D's verification): without the binding key
@@ -890,6 +907,11 @@ export async function signBatch(
   if (!groupsEnabled() && [...byPatient.values()].some(ls => ls.length > 1)) {
     console.error('[batch-sign] payment groups are disabled; refusing a multi-prescription batch')
     return { ok: false, status: 503, error: 'Signing several prescriptions for one patient needs payment groups, which are not enabled here. Nothing was signed.' }
+  }
+
+  // ── L1: the sign rows, before the first write ──
+  if (input.beforeWrite && !(await input.beforeWrite(lines.map(l => ({ orderId: l.orderId, patientId: l.patientId }))))) {
+    return { ok: false, status: 503, error: PHI_WRITE_REFUSED_MESSAGE }
   }
 
   // ── 2. Shipping once per pharmacy per patient (still DRAFTs) ──
@@ -1049,7 +1071,7 @@ export async function signBatch(
     const signedIds = new Set(signedRows.map(r => r.order_id))
     const unsigned = orderIds.filter(id => !signedIds.has(id))
     console.error(`[batch-sign] CRITICAL: partial sign | signed=${[...signedIds].join(',')} unsigned=${unsigned.join(',')}`)
-    return { ok: false, status: 500, error: `Only ${signedIds.size} of ${orderIds.length} prescriptions were signed; ${unsigned.length} changed while signing. Contact support before retrying.` }
+    return { ok: false, status: 500, error: `Only ${signedIds.size} of ${orderIds.length} prescriptions were signed; ${unsigned.length} changed while signing. Contact support before retrying.`, unsignedOrderIds: unsigned }
   }
 
   // ── 5. Everything that follows a signature ──

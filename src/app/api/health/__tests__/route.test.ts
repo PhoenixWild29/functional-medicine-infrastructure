@@ -28,7 +28,10 @@ describe('GET /api/health', () => {
 
 describe('B review T1: the prescription binding key', () => {
   const env = process.env as Record<string, string | undefined>
-  afterEach(() => { delete env['RX_BINDING_SECRET']; delete env['VERCEL_ENV']; delete env['VERCEL'] })
+  // The PHI audit hash secret is set here, so only the binding key decides
+  // (the same route fails in production without either; phi-audit-secret.test).
+  beforeEach(() => { env['PHI_ACCESS_LOG_HASH_SECRET'] = 'phi-hash-secret-for-tests' })
+  afterEach(() => { delete env['RX_BINDING_SECRET']; delete env['VERCEL_ENV']; delete env['VERCEL']; delete env['PHI_ACCESS_LOG_HASH_SECRET'] })
 
   it('reports "set" or "missing" by name only, never the value', async () => {
     env['RX_BINDING_SECRET'] = 'the-actual-secret-value-0123456789'
@@ -37,6 +40,16 @@ describe('B review T1: the prescription binding key', () => {
     expect(JSON.stringify(set)).not.toContain('the-actual-secret-value')
     delete env['RX_BINDING_SECRET']
     expect((await route.GET().json()).checks).toMatchObject({ rx_binding_secret: 'missing' })
+  })
+
+  it('reports both secrets; production fails when either is missing', async () => {
+    env['VERCEL_ENV'] = 'production'
+    env['RX_BINDING_SECRET'] = 'set-0123456789abcdef0123456789abcd'
+    expect((await route.GET().json()).checks).toEqual({ phi_audit_hash_secret: 'set', rx_binding_secret: 'set' })
+    delete env['PHI_ACCESS_LOG_HASH_SECRET']
+    const res = route.GET()
+    expect(res.status).toBe(503)
+    expect((await res.json()).checks).toEqual({ phi_audit_hash_secret: 'missing', rx_binding_secret: 'set' })
   })
 
   it("fails (503) on any Vercel deployment when it is missing, preview included (D's finding 2); local and tests only report it", async () => {

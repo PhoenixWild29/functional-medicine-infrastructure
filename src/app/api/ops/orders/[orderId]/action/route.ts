@@ -21,6 +21,11 @@
 // Resubmission is exactly-once per click: the status CAS is the claim, a
 // request whose CAS no-ops answers 409 and sends nothing, and the work runs
 // after the response so a slow pharmacy never holds the ops UI.
+//
+// PHI access log (B14/B15): every action is a write on a known order. One
+// 'update' / 'ops_order_action' row (the order, its patient and clinic) is
+// written once the order is found and BEFORE anything changes; a log that
+// fails is a 503 and nothing is written, transitioned, refunded or sent.
 
 import { NextRequest, NextResponse, after } from 'next/server'
 import { refuseCrossSite } from '@/lib/security/same-origin'
@@ -38,12 +43,15 @@ import { withApiErrors } from '@/lib/api/with-api-errors'
 import { z } from 'zod'
 import { MAX_NAME, UUID_RE, badRequest, parseInput, uuid } from '@/lib/api/input'
 import { readObjectBody } from '@/app/api/ops/_lib/body'
+import { logPhiAccess } from '@/lib/audit/phi-access'
 import { REROUTE_FROM_STATUSES } from '@/lib/orders/signed-order-freeze'
 import { isBindingKeyMissingError, rerouteBinding } from '@/lib/orders/signature-binding'
 
 interface Params { params: Promise<{ orderId: string }> }
 
 const MAX_REROUTES = 2  // HC-06
+
+const NOT_RECORDED = 'This change could not be recorded. Nothing was changed. Try again.'
 
 const ACTIONS = new Set(['claim', 'release', 'add_tracking', 'cancel_refund', 'retry_submission', 'force_fax', 'retry_fax', 'reroute'])
 
@@ -107,7 +115,7 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
   // ── Fetch order for CAS predicates ──────────────────────────
   const { data: order, error: fetchError } = await supabase
     .from('orders')
-    .select('order_id, status, stripe_payment_intent_id, payment_group_id, retail_price_snapshot, reroute_count, pharmacy_id, ops_assignee, provider_signature_hash_snapshot')
+    .select('order_id, status, patient_id, clinic_id, stripe_payment_intent_id, payment_group_id, retail_price_snapshot, reroute_count, pharmacy_id, ops_assignee, provider_signature_hash_snapshot')
     .eq('order_id', orderId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -121,6 +129,13 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
   }
 
   const currentStatus = order.status as OrderStatusEnum
+
+  // B15 fail-closed: the log row first, or nothing changes.
+  const logged = await logPhiAccess({
+    user, action: 'update', resource: 'ops_order_action', route: '/api/ops/orders/[orderId]/action',
+    orderId, patientId: order.patient_id ?? null, clinicId: order.clinic_id ?? null, headers: request.headers,
+  })
+  if (!logged) return NextResponse.json({ error: NOT_RECORDED }, { status: 503 })
 
   // ── Dispatch by action ───────────────────────────────────────
 

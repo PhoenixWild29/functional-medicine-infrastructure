@@ -23,6 +23,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import type { CurrentProvider } from './current-provider'
+import { contactCompoundIQ } from '@/lib/support/contact'
 
 export type SignerResult =
   | { ok: true; provider: CurrentProvider }
@@ -31,7 +32,7 @@ export type SignerResult =
 export const SIGNER_COPY = {
   notProvider: 'Only a provider can sign prescriptions.',
   unlinked:    'Only a provider can sign, and your login is not linked to a provider in this clinic.',
-  unverified:  'Your NPI has not passed the registry check yet, so nothing can be signed. Check it on Settings, or contact CompoundIQ.',
+  unverified:  `Your NPI has not passed the registry check yet, so nothing can be signed. Check it on Settings, or ${contactCompoundIQ({ lower: true })}.`,
   unavailable: 'Your provider record could not be read. Nothing was signed. Try again.',
 } as const
 

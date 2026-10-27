@@ -11,12 +11,16 @@
 
 import { useEffect, useRef, useState, FormEvent, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { createBrowserClient } from '@/lib/supabase/client'
 import { postLoginDestination } from '@/lib/auth/landing-route'
 import { navigateFully } from '@/lib/auth/full-navigation'
-import { getUserRole, ACCOUNT_DEACTIVATED_MESSAGE } from '@/lib/auth/claims'
+import { ACCOUNT_DEACTIVATED_MESSAGE } from '@/lib/auth/claims'
 import Link from 'next/link'
 import { LegalFooter } from '@/components/legal/legal-footer'
+
+// B11: notices after a password flow, shown as a status (not an error).
+const LOGIN_NOTICES: Record<string, string> = {
+  password_reset: 'Your password was changed. Sign in with your new password.',
+}
 
 const AUTH_CALLBACK_ERROR_MESSAGES: Record<string, string> = {
   auth_callback_failed: 'Email verification failed. Please try signing in again.',
@@ -35,6 +39,9 @@ function LoginForm() {
   const initialError = errorParam
     ? (AUTH_CALLBACK_ERROR_MESSAGES[errorParam] ?? 'Something went wrong. Please try again.')
     : null
+
+  const noticeParam = searchParams.get('notice')
+  const notice = noticeParam ? LOGIN_NOTICES[noticeParam] ?? null : null
 
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
@@ -63,19 +70,36 @@ function LoginForm() {
     setError(null)
     setCredentialsRefused(false)
 
-    const supabase = createBrowserClient()
-    const { data, error: authError } = await supabase.auth.signInWithPassword({
-      email:    email.trim().toLowerCase(),
-      password,
-    })
+    // Security B12: the server signs in (POST /api/sign-in), so it records
+    // and alerts on each failure and throttles repeated ones. It writes the
+    // session cookies on its response.
+    let res: Response
+    let body: { appRole?: string | null; code?: string; error?: string } | null
+    try {
+      res = await fetch('/api/sign-in', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ email: email.trim().toLowerCase(), password }),
+      })
+      body = await res.json().catch(() => null) as typeof body
+    } catch {
+      setError('Sign-in could not be reached. Check your connection and try again.')
+      setLoading(false)
+      return
+    }
 
     // Team invites: a deactivated team member's sign-in is banned.
-    if ((authError as { code?: string } | null)?.code === 'user_banned') {
+    if (res.status === 403 && body?.code === 'user_banned') {
       setError(ACCOUNT_DEACTIVATED_MESSAGE)
       setLoading(false)
       return
     }
-    if (authError || !data.session || !data.user) {
+    if (res.status === 429) {
+      setError(body?.error ?? 'Too many attempts. Wait a few minutes and try again.')
+      setLoading(false)
+      return
+    }
+    if (!res.ok) {
       setError('Invalid email or password. Please try again.')
       setCredentialsRefused(true)
       setLoading(false)
@@ -92,13 +116,19 @@ function LoginForm() {
     // (the clinic admin lands on Practice). NB-1 (cowork): absolute and
     // protocol-relative targets (//evil.com) are ignored; see landing-route.ts.
     // The role comes from the user the auth server just returned for this
-    // sign-in, not from a decoded session cookie.
-    const appRole = getUserRole(data.user)
-    navigateFully(postLoginDestination(appRole, redirectTo))
+    // sign-in (the route reads it from that user), not from a decoded
+    // session cookie.
+    navigateFully(postLoginDestination(body?.appRole ?? undefined, redirectTo))
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+
+      {notice && !error && (
+        <p data-testid="login-notice" role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          {notice}
+        </p>
+      )}
 
       {/* Error — inline below the heading, not a banner */}
       {error && (
@@ -135,9 +165,15 @@ function LoginForm() {
 
       {/* Password */}
       <div className="space-y-1.5">
-        <label htmlFor="password" className="block text-sm font-medium text-foreground">
-          Password
-        </label>
+        <div className="flex items-baseline justify-between gap-3">
+          <label htmlFor="password" className="block text-sm font-medium text-foreground">
+            Password
+          </label>
+          {/* B11: a reset link by email (Supabase Auth) */}
+          <Link href="/forgot-password" className="text-xs font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            Forgot password?
+          </Link>
+        </div>
         <input
           ref={passwordRef}
           id="password"

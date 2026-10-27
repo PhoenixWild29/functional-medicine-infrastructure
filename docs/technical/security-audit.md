@@ -1,4 +1,36 @@
-# CompoundIQ Security Audit — Phase 11 Dependency Upgrade
+# CompoundIQ Security Audit
+
+## October 24, 2026 review (routes and SQL changed Oct 13 to 24)
+
+Full findings: the report in commit `cdb34b9` (#267). Follow-ups: `bbf27e5` (#264).
+
+**Fixed on main:**
+- **C1 (critical):** a self sign-up's clinic_admin JWT could update its own `clinics` row through PostgREST (approve itself, set a payout account). Migration 20261024000001 revokes every user write on `clinics` and drops `clinics_clinic_user_update`. It also revokes user writes on `clinic_signup_links` (L3) and sets `pg_catalog` first in the search_path of the two team SECURITY DEFINER functions (L4). Applied on production.
+- **M1:** no raw database text in API error bodies: `/api/protocols` POST and GET.
+- **L1:** an ops approval that changed no row answers 409 and records nothing.
+- **L2:** invite acceptance no longer echoes the auth service's password message.
+- **L6:** one same-origin rule for browser writes (`src/lib/security/same-origin.ts`), wired into sign-up, join, invite accept, protocols, the pharmacy onboarding writes and the ops write routes. Routes that already had a strict inline check keep it for now.
+- **L9:** upload types are read from the bytes (`src/lib/uploads/sniff.ts`), including pharmacy license documents.
+- **L10:** the submission failure reason returns only known codes.
+- **L11:** the 409 POSSIBLE_DUPLICATE answer logs a `phi_access_log` view row for each patient shown.
+- **L13:** a provider is always the creator of their own protocol; a medical assistant's protocol has no creator.
+- **L14:** an ops catalog upload is capped at 5000 rows.
+- Production dependencies upgraded by `npm audit fix`; the only high left is zod (below).
+
+**Pending (on branches, not on main):**
+- **H1:** demo payouts are refused whenever a live Stripe key is set. Waiting for Sam's decision (`demo-payouts-live-key-guard`).
+- **L5:** the remaining permissive user-write RLS policies on orders, patients, providers, payment_groups and the provider license and NPI tables (`rls-user-write-lockdown`, migration 20261024000004).
+- **L8:** the client IP is read from x-vercel-forwarded-for first. **L12:** reactivating a member lifts only the ban that deactivation set (migration 20261024000005). Both are on `security-followups-2`, along with moving the remaining inline Sec-Fetch-Site checks onto the shared helper.
+
+**Open (not started):**
+- **L7:** rate limits are in memory, per Vercel instance. Recommended: a shared store (Marketplace Redis).
+- **M2 and M3:** self sign-up confirms the email at once, and refuses an NPI already in use with 409. Both allow squatting and enumeration. They are design decisions; until they change, ops confirms the email and phone before approval.
+- **zod 3.25.76:** `npm audit` flags it High. It is mitigated: every public route caps body fields, and Vercel caps bodies at 4.5 MB. Moving to zod 4 is its own change (`@anthropic-ai/sdk` also depends on zod 3).
+- **Server-side Sentry:** there is no `instrumentation.ts`, so server-side Sentry may not run.
+
+---
+
+# Phase 11 Dependency Upgrade (March 2026)
 
 **Audit Date:** 2026-03-24
 **Auditor:** Claude Code (Phase 11 automated build)

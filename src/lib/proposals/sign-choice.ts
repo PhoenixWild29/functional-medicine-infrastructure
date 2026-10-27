@@ -29,7 +29,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
-import { signBatch, type BatchProblem, type SignedPatient } from '@/lib/orders/batch-sign'
+import { signBatch, type BatchProblem, type SignedPatient, type SignTarget } from '@/lib/orders/batch-sign'
+import { PHI_WRITE_REFUSED_MESSAGE } from '@/lib/audit/phi-write'
 import { cancelDraftLines, clinicActorRole } from './cancel-lines'
 import { ALLERGIES_REQUIRED_CODE } from '@/lib/patients/allergies'
 import { resolveProtocolLinkage } from '@/lib/protocols/resolve-instance'
@@ -39,7 +40,7 @@ type Db = SupabaseClient<Database>
 
 export type SignChoiceResult =
   | { ok: true; signedOrderIds: string[]; cancelledOrderIds: string[]; patients: SignedPatient[] }
-  | { ok: false; status: number; error: string; code?: string; problems?: BatchProblem[] }
+  | { ok: false; status: number; error: string; code?: string; problems?: BatchProblem[]; unsignedOrderIds?: string[] }
 
 const NOT_CHOSEN: Record<string, string> = {
   draft:     'This plan has not been sent to the patient yet.',
@@ -52,7 +53,11 @@ const NOT_CHOSEN: Record<string, string> = {
 
 export async function signChosenProposal(
   db: Db,
-  input: { clinicId: string; userId: string; appRole: string | null; proposalId: string; signature: unknown; now?: Date },
+  input: {
+    clinicId: string; userId: string; appRole: string | null; proposalId: string; signature: unknown; now?: Date
+    /** L1: batch sign's beforeWrite (the sign rows, after its checks, before any write). */
+    beforeWrite?: (targets: ReadonlyArray<SignTarget>) => Promise<boolean>
+  },
 ): Promise<SignChoiceResult> {
   const now = input.now ?? new Date()
   const { data: found, error } = await db.from('treatment_proposals')
@@ -81,6 +86,7 @@ export async function signChosenProposal(
   const signed = await signBatch(db, {
     clinicId: input.clinicId, userId: input.userId, appRole: input.appRole,
     orderIds: choice.chosenOrderIds, signature: input.signature,
+    ...(input.beforeWrite ? { beforeWrite: input.beforeWrite } : {}),
   })
   if (!signed.ok) {
     return {
@@ -88,9 +94,13 @@ export async function signChosenProposal(
       status: signed.status,
       // Coverage gap 9: the allergy refusal keeps its one sentence (the
       // sign page opens its allergy prompt on the code).
-      error: /nothing was signed/i.test(signed.error) || signed.code === ALLERGIES_REQUIRED_CODE ? signed.error : `${signed.error} Nothing was signed.`,
+      // L1: the could-not-be-recorded refusal keeps its own wording too.
+      error: /nothing was signed/i.test(signed.error) || signed.code === ALLERGIES_REQUIRED_CODE || signed.error === PHI_WRITE_REFUSED_MESSAGE
+        ? signed.error
+        : `${signed.error} Nothing was signed.`,
       ...(signed.code ? { code: signed.code } : {}),
       ...(signed.problems ? { problems: signed.problems } : {}),
+      ...(signed.unsignedOrderIds ? { unsignedOrderIds: signed.unsignedOrderIds } : {}),
     }
   }
 

@@ -657,11 +657,15 @@ async function submitClaimedOrder(params: {
   type PrimaryOutcome = 'accepted' | 'manual_review' | 'rejected' | 'exhausted'
   let primaryOutcome: PrimaryOutcome = 'exhausted'
   let primarySubmissionId: string | undefined
+  // Nothing reached the pharmacy because the audit log could not record the
+  // disclosure (C-2026-10-25-17). An audit outage, not a pharmacy failure.
+  let disclosureNotRecorded = false
 
   try {
     if (tier === 'TIER_1_API' || tier === 'TIER_3_SPEC') {
       const result = await submitTier1Api(orderId, pharmacyId, tier)
       primarySubmissionId = result.submissionId
+      disclosureNotRecorded = result.outcome === 'exhausted' && result.errorCode === 'DISCLOSURE_NOT_RECORDED'
       primaryOutcome      = result.outcome === 'accepted' ? 'accepted'
                           : result.outcome === 'rejected' ? 'rejected'
                           : 'exhausted'
@@ -672,6 +676,7 @@ async function submitClaimedOrder(params: {
       primarySubmissionId = result.submissionId
       // BLK-03: distinguish acknowledged (PHARMACY_ACKNOWLEDGED), manual_review (stays SUBMISSION_PENDING),
       // and portal_error (cascade to fax)
+      disclosureNotRecorded = result.outcome === 'portal_error' && result.errorCode === 'DISCLOSURE_NOT_RECORDED'
       primaryOutcome = result.outcome === 'portal_error'   ? 'exhausted'
                      : result.outcome === 'manual_review'  ? 'manual_review'
                      : 'accepted'
@@ -762,7 +767,11 @@ async function submitClaimedOrder(params: {
 
   // BLK-04: when the adapter threw before creating a submission, fall back to orderId
   // to ensure the circuit breaker always gets incremented on hard failures.
-  await recordCircuitFailure({
+  // An unrecorded disclosure sent nothing, so it says nothing about the
+  // pharmacy and is not counted (the audit failure is alerted on its own).
+  if (disclosureNotRecorded) {
+    console.warn(`[routing-engine] disclosure not recorded, circuit untouched | order=${orderId} | tier=${tier}`)
+  } else await recordCircuitFailure({
     pharmacyId,
     submissionId: primarySubmissionId ?? orderId,
     orderId,

@@ -6,6 +6,7 @@ import { MFA_API_CODES, MFA_PAGES, hasVerifiedTotp, isMfaExemptPath, isMfaRole, 
 import { buildCsp, newNonce, permissionsPolicy } from '@/lib/security/headers'
 import { TOKEN_HEADERS, isTokenPath } from '@/lib/security/token-paths'
 import { getUserRole, isDeactivated, ACCOUNT_DEACTIVATED_MESSAGE } from '@/lib/auth/claims'
+import { MUST_CHANGE_PASSWORD_CODE, MUST_CHANGE_PASSWORD_MESSAGE, mustChangeAllowedPath, mustChangePassword } from '@/lib/auth/must-change-password'
 import { mayOpenSignPage } from '@/lib/auth/signer'
 
 // PR R7-Bucket-1: Apply HIPAA-grade no-store cache headers to every response
@@ -64,6 +65,11 @@ function isHttpsRequest(request: NextRequest): boolean {
   const forwarded = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim().toLowerCase()
   if (forwarded) return forwarded === 'https'
   return request.nextUrl.protocol === 'https:'
+}
+
+// B11: setting a new password from the reset link, open to every signed-in role.
+function isPasswordPath(pathname: string): boolean {
+  return pathname === '/reset-password' || pathname === '/api/auth/password'
 }
 
 export async function middleware(request: NextRequest) {
@@ -250,8 +256,13 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
   //
   // Self sign-up: /get-started and POST /api/signup, for visitors with no
   // account. Exact paths only (no prefix), so nothing else is opened.
+  //
+  // Sign-in: POST /api/sign-in, from /login (security B12: the server signs
+  // in so it sees each failure). Exact path, no session yet.
   const publicRoutes = ['/login', '/auth/callback', '/api/webhooks', '/api/cron', '/api/health', '/api/checkout', '/onboard/', '/api/onboard/', '/api/onboarding/invite/', '/legal/', '/api/integrations/keragon/patients']
-  const publicExactRoutes = ['/get-started', '/api/signup']
+  // B11: the reset request is for people who cannot sign in. Exact paths
+  // only; /reset-password itself needs the recovery session from the link.
+  const publicExactRoutes = ['/get-started', '/api/signup', '/forgot-password', '/api/auth/password-reset', '/api/sign-in']
   if (publicRoutes.some(route => pathname.startsWith(route)) || publicExactRoutes.includes(pathname)) {
     return response
   }
@@ -386,6 +397,19 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
     return applySecurityHeaders(redirectWithSessionCookies(loginUrl))
   }
 
+  // B's review P2: a login created from an invite sets its own password,
+  // from an emailed reset link, before anything else. Pages go to
+  // /reset-password; APIs answer 403 MUST_CHANGE_PASSWORD. The reset
+  // paths stay open (lib/auth/must-change-password).
+  if (mustChangePassword(user) && !mustChangeAllowedPath(pathname)) {
+    if (pathname.startsWith('/api/')) {
+      const refused = NextResponse.json({ error: MUST_CHANGE_PASSWORD_MESSAGE, code: MUST_CHANGE_PASSWORD_CODE }, { status: 403 })
+      response.cookies.getAll().forEach(cookie => refused.cookies.set(cookie))
+      return applySecurityHeaders(refused)
+    }
+    return applySecurityHeaders(redirectWithSessionCookies(new URL('/reset-password', request.url)))
+  }
+
   const appRole = getUserRole(user)
 
   // ── Compliance C3: multi-factor sign-in ────────────────────────────────
@@ -437,7 +461,8 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
     return applySecurityHeaders(redirectWithSessionCookies(new URL('/unauthorized', request.url)))
   }
   if (appRole === 'pharmacy_admin') {
-    if (isPharmacyPortal || isMfaExemptPath(pathname)) return applySecurityHeaders(response)
+    // B11: a pharmacy admin resets or sets their password like anyone else.
+    if (isPharmacyPortal || isMfaExemptPath(pathname) || isPasswordPath(pathname)) return applySecurityHeaders(response)
     if (pathname === '/') return applySecurityHeaders(redirectWithSessionCookies(new URL('/pharmacy/onboarding', request.url)))
     return denyRequest()
   }

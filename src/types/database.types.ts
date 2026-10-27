@@ -3364,6 +3364,7 @@ export type Database = {
           clinic_id: string | null
           patient_id: string | null
           order_id: string | null
+          fax_id: string | null
           action: string
           resource: string
           route: string
@@ -3379,6 +3380,7 @@ export type Database = {
           clinic_id?: string | null
           patient_id?: string | null
           order_id?: string | null
+          fax_id?: string | null
           action: string
           resource: string
           route: string
@@ -3394,6 +3396,7 @@ export type Database = {
           clinic_id?: string | null
           patient_id?: string | null
           order_id?: string | null
+          fax_id?: string | null
           action?: string
           resource?: string
           route?: string
@@ -3971,6 +3974,7 @@ export type Database = {
           license_number: string
           license_state: string
           npi_number: string
+          npi_claimed: boolean
           provider_id: string
           signature_hash: string | null
           signature_on_file: boolean
@@ -3991,6 +3995,7 @@ export type Database = {
           license_number: string
           license_state: string
           npi_number: string
+          npi_claimed?: boolean
           provider_id?: string
           signature_hash?: string | null
           signature_on_file?: boolean
@@ -4011,6 +4016,7 @@ export type Database = {
           license_number?: string
           license_state?: string
           npi_number?: string
+          npi_claimed?: boolean
           provider_id?: string
           signature_hash?: string | null
           signature_on_file?: boolean
@@ -4066,6 +4072,28 @@ export type Database = {
           status?: string
           stripe_cents?: number
           stripe_count?: number
+        }
+        Relationships: []
+      }
+      // Shared rate-limit counts (20261024000007): hand-extended
+      rate_limit_hits: {
+        Row: {
+          bucket: string
+          hit_count: number
+          key_hash: string
+          window_start: string
+        }
+        Insert: {
+          bucket: string
+          hit_count?: number
+          key_hash: string
+          window_start: string
+        }
+        Update: {
+          bucket?: string
+          hit_count?: number
+          key_hash?: string
+          window_start?: string
         }
         Relationships: []
       }
@@ -4880,6 +4908,11 @@ export type Database = {
           p_patients: Json
         }
         Returns: Json
+      }
+      // Shared rate-limit counts (20261024000007): hand-extended
+      rate_limit_hit: {
+        Args: { p_bucket: string; p_key_hash: string; p_window_seconds: number }
+        Returns: { hits: number; window_started: string }[]
       }
       read_vault_secret: {
         Args: { p_secret_id: string }

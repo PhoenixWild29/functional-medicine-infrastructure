@@ -20,7 +20,7 @@ export interface EpcsRequestFields {
 
 let warnedNoSecret = false
 
-/** From the request headers (the client IP is the first x-forwarded-for entry). */
+/** From the request headers (the client IP from lib/security/client-ip). */
 export async function epcsRequestFields(headers: Headers | null | undefined): Promise<EpcsRequestFields> {
   if (!process.env[AUDIT_HASH_SECRET_ENV] && !warnedNoSecret) {
     warnedNoSecret = true

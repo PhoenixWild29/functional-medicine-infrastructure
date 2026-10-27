@@ -22,6 +22,8 @@ import { getUserRole } from '@/lib/auth/claims'
 import { UUID_RE, badRequest } from '@/lib/api/input'
 import { deadlinePassed } from '@/lib/sla/deadline'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { OPS_ACCESS_REASON_HEADER, opsAccessReasonResource, parseOpsAccessReason } from '@/lib/audit/ops-access-reason'
+import { buildEmergencyAccessAlert, sendSlackAlert } from '@/lib/slack/client'
 
 interface Params { params: Promise<{ orderId: string }> }
 
@@ -42,6 +44,9 @@ async function getHandler(request: NextRequest, { params }: Params): Promise<Nex
   }
   // An 8-4-4-4-12 hex id, before any of the four queries.
   if (!UUID_RE.test(orderId)) return badRequest('Invalid request', ['orderId'])
+  // B13: ops says why before a patient's order is read (the drawer asks).
+  const reason = parseOpsAccessReason(request.headers?.get(OPS_ACCESS_REASON_HEADER) ?? null)
+  if (!reason) return badRequest('Choose why you are opening this order', ['reason'])
 
   const supabase = createServiceClient()
   const nowMs = Date.now()
@@ -93,12 +98,34 @@ async function getHandler(request: NextRequest, { params }: Params): Promise<Nex
 
   // Compliance C2: ops viewed a patient's order (the medication, the
   // state). The row belongs to the order's clinic, so its admin sees it.
-  await logPhiAccess({
-    user: user, action: 'view', resource: 'order', route: '/api/ops/orders/[orderId]/detail',
+  // B13: a second row, against the same order, records the reason given.
+  const accessed = {
+    user: user, action: 'view', route: '/api/ops/orders/[orderId]/detail',
     orderId, clinicId: typeof o['clinic_id'] === 'string' ? o['clinic_id'] : null,
     patientId: typeof o['patient_id'] === 'string' ? o['patient_id'] : null,
     headers: request.headers ?? null,
-  })
+  } as const
+  await logPhiAccess({ ...accessed, resource: 'order' })
+  const reasonLogged = await logPhiAccess({ ...accessed, resource: opsAccessReasonResource(reason) })
+  if (reason === 'emergency') {
+    // C's review D4: the emergency reason row is the accountability record
+    // for a break-glass open; without it, nothing about the order is sent.
+    // Other reasons are alert-only, as the view row is.
+    if (!reasonLogged) {
+      return NextResponse.json(
+        { error: 'This emergency access could not be recorded in the audit log, so the order was not opened. Try again.' },
+        { status: 503, headers: { 'Cache-Control': 'no-store' } },
+      )
+    }
+    // C's review D5: tell ops now, so the 24-hour review does not depend on
+    // the user reporting it. No ids in the alert; a Slack failure is logged
+    // and does not block the open.
+    try {
+      await sendSlackAlert(buildEmergencyAccessAlert({ actorRole: 'ops_admin', at: new Date().toISOString() }))
+    } catch (err) {
+      console.error('[ops/orders/detail] emergency access alert not sent:', err instanceof Error ? err.message : 'error')
+    }
+  }
 
   // Calculate latency from created_at → completed_at for submissions
   const submissions = (submissionsResult.data ?? []).map(s => ({

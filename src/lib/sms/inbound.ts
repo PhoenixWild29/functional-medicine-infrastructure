@@ -16,9 +16,27 @@
 // carrier confirmation for STOP and START, so those get an empty reply.
 //
 // Logs name patients by id. The phone and the message are never logged.
+//
+// PHI access log (L8, B14/B15): the consent change is a write to each
+// patient, so it is logged BEFORE the update: one update / patient row
+// per patient with that phone, by the system, with that patient's clinic
+// (one insert, logPhiAccessBatch). Unlike other writes, a log that cannot
+// be written does NOT refuse it: a STOP must always be honoured (TCPA),
+// so the update runs and the failure is left to the helper's alert. A
+// patient the pre-read missed (it failed, or the row appeared meanwhile)
+// is logged after the update, best effort. An update that fails after
+// logging gets a not_completed_patient row per patient.
 
 import { createServiceClient } from '@/lib/supabase/service'
 import { toE164 } from '@/lib/patients/phone'
+import { logPhiAccessBatch, logPhiWriteNotCompleted, systemActor, type PhiAccessTarget } from '@/lib/audit/phi-access'
+
+const ROUTE = '/api/webhooks/twilio'
+// Built per call, not at module load (every SMS module imports this one).
+const entry = () => ({ actor: systemActor(null), action: 'update', resource: 'patient', route: ROUTE } as const)
+
+type PatientRef = { patient_id: string; clinic_id: string | null }
+const targetsOf = (rows: PatientRef[]): PhiAccessTarget[] => rows.map(r => ({ patientId: r.patient_id, clinicId: r.clinic_id ?? null }))
 
 export type InboundKeyword = 'opt_out' | 'opt_in' | 'help'
 
@@ -80,6 +98,26 @@ export async function handleInboundSms(params: { from: string; body: string }): 
   }
 
   const supabase = createServiceClient()
+
+  // L8: who this changes, logged before the change (never refusing it).
+  const { data: before, error: readError } = await supabase
+    .from('patients')
+    .select('patient_id, clinic_id')
+    .eq('phone_e164', phone)
+  const logged = new Set<string>()
+  if (readError) {
+    console.error(`[twilio-inbound] patients for the ${what} could not be read first; logging after | code=${(readError as { code?: string }).code ?? 'unknown'}`)
+  } else {
+    const rows = (before ?? []) as PatientRef[]
+    if (rows.length > 0) {
+      // A false is alerted by the helper; the opt-out goes ahead regardless.
+      if (!(await logPhiAccessBatch(entry(), targetsOf(rows)))) {
+        console.error(`[twilio-inbound] ${what} not recorded in the access log; applied anyway | patients=${rows.map(r => r.patient_id).join(',')}`)
+      }
+      for (const r of rows) logged.add(r.patient_id)
+    }
+  }
+
   const { data, error } = await supabase
     .from('patients')
     .update({
@@ -88,13 +126,20 @@ export async function handleInboundSms(params: { from: string; body: string }): 
       sms_consent_source: optIn ? SMS_CONSENT_SOURCE.keywordStart : SMS_CONSENT_SOURCE.keywordStop,
     })
     .eq('phone_e164', phone)
-    .select('patient_id')
+    .select('patient_id, clinic_id')
 
   if (error) {
-    console.error(`[twilio-inbound] CRITICAL: ${what} could not be recorded: ${error.message}`)
+    // The code only: a Postgres message can quote the phone.
+    console.error(`[twilio-inbound] CRITICAL: ${what} could not be recorded | code=${(error as { code?: string }).code ?? 'unknown'}`)
+    for (const r of (before ?? []) as PatientRef[]) {
+      if (logged.has(r.patient_id)) await logPhiWriteNotCompleted({ ...entry(), patientId: r.patient_id, clinicId: r.clinic_id ?? null })
+    }
     return twiml()
   }
-  const ids = ((data ?? []) as Array<{ patient_id: string }>).map(p => p.patient_id)
+  const updated = (data ?? []) as PatientRef[]
+  const missed = updated.filter(r => !logged.has(r.patient_id))
+  if (missed.length > 0) await logPhiAccessBatch(entry(), targetsOf(missed))
+  const ids = updated.map(p => p.patient_id)
   if (ids.length === 0) {
     console.info(`[twilio-inbound] ${what} from a number no patient has; nothing changed`)
   } else {

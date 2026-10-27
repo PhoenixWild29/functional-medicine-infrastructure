@@ -35,6 +35,7 @@ function row(id: string, status: string, over: Record<string, unknown> = {}) {
     order_id: id, status, clinic_id: CLINIC, is_active: true, deleted_at: null,
     created_at: hoursAgo(1), locked_at: null,
     medication_snapshot: { medication_name: 'Semaglutide 5mg/mL' },
+    patient_id: `pt-${id}`,
     patients: { first_name: 'Alex', last_name: 'Demo' },
     ...over,
   }
@@ -103,6 +104,22 @@ describe('loadAttention', () => {
     }))
   })
 
+  it('each item that names a patient carries that patient id (for the PHI access log); refunds name none', async () => {
+    const res = await loadAttention(world().client, { clinicId: CLINIC, viewerIsProvider: false, nowMs: NOW })
+    const ids = Object.fromEntries(res.items.map(i => [`${i.kind}:${i.orderId}`, i.patientId]))
+    expect(ids).toEqual({
+      'awaiting_payment:unpaid-old':  'pt-unpaid-old',
+      'blocked_draft:draft-cost':     'pt-draft-cost',
+      'fax_review:faxed':             'pt-faxed',
+      'late_payment:late-1':          null,
+      'reprice:draft-moved':          'pt-draft-moved',
+      'stale_draft:draft-old':        'pt-draft-old',
+      'stuck_refund:refund-stuck':    null,
+      'submission_failed:failed':     'pt-failed',
+      'submission_failed:fax-failed': 'pt-fax-failed',
+    })
+  })
+
   it('a provider is sent to sign a stale draft', async () => {
     const res = await loadAttention(world().client, { clinicId: CLINIC, viewerIsProvider: true, nowMs: NOW })
     expect(res.items.find(i => i.kind === 'stale_draft')!.href).toBe('/new-prescription/sign?orders=draft-old')
@@ -128,6 +145,8 @@ describe('loadAttention', () => {
       ] })
       const res = await loadAttention(world().client, { clinicId: CLINIC, viewerIsProvider: false, nowMs: NOW })
       expect(res.errors).toEqual([expect.objectContaining({ error: "Semaglutide: today's price could not be read." })])
+      // Review L7: the error names the patient, so it carries the id the log needs.
+      expect(res.errors[0]!.patientId).toEqual(expect.any(String))
     })
 
     it('refunds and late payments that could not be read are named', async () => {

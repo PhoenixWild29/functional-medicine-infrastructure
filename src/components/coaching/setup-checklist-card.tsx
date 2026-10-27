@@ -14,7 +14,7 @@
 // when the role has none, it is hidden or done, or the read failed.
 
 import Link from 'next/link'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 interface Step { id: string; label: string; href: string; done: boolean }
@@ -39,7 +39,17 @@ export function SetupChecklistCard() {
   const [checklist, setChecklist] = useState<Checklist | null>(null)
   const [hiding, setHiding] = useState(false)
 
-  const load = useCallback(() => readChecklist().then(setChecklist), [])
+  // Reads can answer out of order: the read made on load (while hidden) can
+  // land after the read "Show setup checklist" triggers, and would blank the
+  // card it just showed. Only the latest read's answer is applied; hiding
+  // also outdates any read in flight.
+  const latestRead = useRef(0)
+  const load = useCallback(() => {
+    const read = ++latestRead.current
+    return readChecklist().then(next => {
+      if (read === latestRead.current) setChecklist(next)
+    })
+  }, [])
 
   useEffect(() => {
     void load()
@@ -55,6 +65,7 @@ export function SetupChecklistCard() {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ checklistHidden: true }),
       })
       if (res.ok) {
+        latestRead.current++
         setChecklist(null)
         router.refresh()
       }

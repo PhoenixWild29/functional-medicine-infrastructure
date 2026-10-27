@@ -15,6 +15,7 @@
 import { POST } from '../route'
 import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
 import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
+import { logPhiWriteNotCompleted } from '@/lib/audit/phi-access'
 
 const TEST_CLINIC_ID   = 'a1000000-0000-0000-0000-000000000001'
 const TEST_PROVIDER_ID = 'a2000000-0000-0000-0000-000000000001'
@@ -247,6 +248,38 @@ describe('PHI access log', () => {
   it('a refused request logs nothing', async () => {
     expect((await POST(makeRequest(formulationBody({ rxDetails: { refills: 13 } })))).status).toBe(400)
     expect(phiEntries()).toHaveLength(0)
+  })
+
+  // L1: logged BEFORE the insert, naming the order id generated for it.
+  it('the row is written before the insert, with the order id the insert then uses', async () => {
+    let ordersInsertedAtLog = -1
+    phiLog.mockImplementationOnce(async () => {
+      ordersInsertedAtLog = insertedRows.filter(r => r.table === 'orders').length
+      return true
+    })
+    expect((await POST(makeRequest(formulationBody()))).status).toBe(201)
+    expect(ordersInsertedAtLog).toBe(0)
+    const logged = phiEntries()[0]!.orderId
+    expect(logged).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    expect(orderInsert()['order_id']).toBe(logged)
+  })
+
+  it('the row cannot be written: 503, the standard message, and no order is inserted', async () => {
+    phiLog.mockResolvedValueOnce(false)
+    const res = await POST(makeRequest(formulationBody()))
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'This change could not be recorded. Nothing was changed. Try again.' })
+    expect(insertedRows.filter(r => r.table === 'orders')).toHaveLength(0)
+  })
+
+  it('an insert that fails after the row was written writes the not-completed row', async () => {
+    jest.mocked(logPhiWriteNotCompleted).mockClear()
+    fixtures['orders:single'] = () => ({ data: null, error: { message: 'boom' } })
+    const quiet = jest.spyOn(console, 'error').mockImplementation(() => {})
+    expect((await POST(makeRequest(formulationBody()))).status).toBe(500)
+    const logged = phiEntries()[0]!
+    expect(jest.mocked(logPhiWriteNotCompleted)).toHaveBeenCalledWith(logged)
+    quiet.mockRestore()
   })
 })
 
