@@ -102,14 +102,36 @@ describe('POST verify', () => {
 })
 
 describe('the link state decides first', () => {
+  // An unknown, expired, closed, locked or signed link gets the same answer,
+  // so a request never learns whether a link existed. A database error is
+  // still 503 (it says nothing about the link).
   it.each([
-    ['not_found', 404], ['expired', 410], ['closed', 410], ['locked', 423], ['signed', 409], ['unavailable', 503],
-  ])('%s: %i, the date of birth is not checked', async (state, status) => {
+    ['not_found', 410, 'closed'], ['expired', 410, 'closed'], ['closed', 410, 'closed'], ['locked', 410, 'closed'], ['signed', 410, 'closed'],
+    ['unavailable', 503, 'unavailable'],
+  ])('%s: %i, the date of birth is not checked', async (state, status, reported) => {
     resolvePlan.mockResolvedValue({ state })
     const res = await post({ action: 'verify', dob: '1985-04-15' })
     expect(res.status).toBe(status)
-    expect((await res.json()).state).toBe(state)
+    expect((await res.json()).state).toBe(reported)
     expect(verifyPlanDob).not.toHaveBeenCalled()
+  })
+
+  it('the five closed states answer word for word the same', async () => {
+    const bodies = new Set<string>()
+    for (const state of ['not_found', 'expired', 'closed', 'locked', 'signed']) {
+      resolvePlan.mockResolvedValue({ state })
+      bodies.add(JSON.stringify(await (await post({ action: 'verify', dob: '1985-04-15' })).json()))
+    }
+    expect(bodies.size).toBe(1)
+  })
+
+  it('GET: a closed link of any kind is { state: "closed" }', async () => {
+    for (const state of ['not_found', 'expired', 'closed', 'locked', 'signed']) {
+      resolvePlan.mockResolvedValue({ state })
+      const res = await get()
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ state: 'closed' })
+    }
   })
 })
 

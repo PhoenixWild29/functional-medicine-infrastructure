@@ -31,15 +31,16 @@ import { createServerClient }        from '@/lib/supabase/server'
 import { createServiceClient }       from '@/lib/supabase/service'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { UUID_RE } from '@/lib/api/input'
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const CLINIC_APP_ROLES = ['clinic_admin', 'provider', 'medical_assistant'] as const
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
 }
 
-export async function GET(
+async function getHandler(
   request: NextRequest,
   { params }: RouteParams,
 ): Promise<NextResponse> {
@@ -50,11 +51,6 @@ export async function GET(
       { anchorBundlable: false, siblings: [], reason: 'feature_disabled' },
       { status: 503 },
     )
-  }
-
-  const { orderId } = await params
-  if (!UUID_RE.test(orderId)) {
-    return NextResponse.json({ error: 'Invalid order id' }, { status: 400 })
   }
 
   const supabaseAuth = await createServerClient()
@@ -73,6 +69,13 @@ export async function GET(
   const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
+  }
+
+  // Any 8-4-4-4-12 id (seeded demo ids are not v4), checked after who is
+  // calling and before the order is read.
+  const { orderId } = await params
+  if (!UUID_RE.test(orderId)) {
+    return NextResponse.json({ error: 'Invalid order id' }, { status: 400 })
   }
 
   const supabase = createServiceClient()
@@ -194,3 +197,5 @@ export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/orders/[orderId]/bundlable-siblings', getHandler)

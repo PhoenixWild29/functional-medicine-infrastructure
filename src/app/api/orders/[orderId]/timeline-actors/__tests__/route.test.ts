@@ -81,12 +81,12 @@ describe('GET /api/orders/[orderId]/timeline-actors', () => {
   })
 
   it('400 when the verified user has no clinic_id', async () => {
-    getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { app_role: 'ops_admin' } } } })
+    getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { app_role: 'provider' } } } })
     expect((await call()).status).toBe(400)
   })
 
   it('404 when the order is not in the caller’s clinic', async () => {
-    getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { clinic_id: CLINIC } } } })
+    getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { clinic_id: CLINIC, app_role: 'provider' } } } })
     orderRow = null
     expect((await call()).status).toBe(404)
     expect(resolveMock).not.toHaveBeenCalled()

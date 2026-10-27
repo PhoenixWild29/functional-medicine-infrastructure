@@ -23,15 +23,19 @@ import { casTransition }       from '@/lib/orders/cas-transition'
 import { sendSlackAlert }      from '@/lib/slack/client'
 import { buildOpsAlert }       from '@/lib/slack/ops-alert'
 import { getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+// Any 8-4-4-4-12 hex id: the seeded demo ids are not RFC v4.
+import { UUID_RE } from '@/lib/api/input'
+import { readObjectBody } from '@/app/api/ops/_lib/body'
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const ACTIONS = new Set(['acknowledge', 'reject', 'manual_match', 'archive'])
 
 // SLA business hours for PHARMACY_COMPOUNDING deadline (24 biz hrs ≈ 3 calendar days)
 const COMPOUNDING_SLA_HOURS = 72
 
 interface Params { params: Promise<{ faxId: string }> }
 
-export async function POST(request: NextRequest, { params }: Params): Promise<NextResponse> {
+async function postHandler(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request)
   if (crossSite) return crossSite
   const { faxId } = await params
@@ -48,16 +52,22 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
     return NextResponse.json({ error: 'Invalid faxId' }, { status: 400 })
   }
 
-  let body: Record<string, unknown>
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
+  const parsed = await readObjectBody(request)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
 
-  const action = body['action'] as string | undefined
-  if (!action) {
+  const action = body['action']
+  if (typeof action !== 'string' || !action) {
     return NextResponse.json({ error: 'Missing action' }, { status: 400 })
+  }
+  // Every input is checked before the fax is read: the action (not echoed)
+  // and manual_match's order id.
+  if (!ACTIONS.has(action)) {
+    return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+  }
+  const matchOrderId = body['orderId']
+  if (action === 'manual_match' && (typeof matchOrderId !== 'string' || !UUID_RE.test(matchOrderId))) {
+    return NextResponse.json({ error: 'Invalid or missing orderId for manual match' }, { status: 400 })
   }
 
   const actorEmail = user.email
@@ -254,10 +264,7 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
     // ── Manual Match ──────────────────────────────────────────
     // Link fax to correct order if auto-match failed
     case 'manual_match': {
-      const newOrderId = body['orderId'] as string | undefined
-      if (!newOrderId || !UUID_RE.test(newOrderId)) {
-        return NextResponse.json({ error: 'Invalid or missing orderId for manual match' }, { status: 400 })
-      }
+      const newOrderId = matchOrderId as string  // checked above, before the read
       if (currentStatus === 'PROCESSED' || currentStatus === 'ARCHIVED') {
         return NextResponse.json({ error: 'Fax already processed or archived' }, { status: 409 })
       }
@@ -330,3 +337,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/ops/fax/[faxId]/action', postHandler)

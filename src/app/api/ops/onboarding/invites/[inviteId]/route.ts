@@ -6,11 +6,15 @@
 // returns a new link (new token; the old link stops working).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { requireOpsAdmin, readJson } from '@/lib/onboarding/access'
 import { inviteAction, INVITE_COLUMNS, type InviteRow } from '@/lib/onboarding/invite-actions'
 import { UUID_RE } from '@/lib/providers/team-access'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ inviteId: string }> }): Promise<NextResponse> {
+async function postHandler(request: NextRequest, { params }: { params: Promise<{ inviteId: string }> }): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const access = await requireOpsAdmin()
   if (!access.ok) return access.response
   const { inviteId } = await params
@@ -18,6 +22,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const body = await readJson(request)
   if (!body) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  // The action is checked before the invite is read (inviteAction checks it
+  // again, with the same message).
+  if (body['action'] !== 'revoke' && body['action'] !== 'resend') {
+    return NextResponse.json({ error: 'action must be revoke or resend' }, { status: 400 })
+  }
 
   const { data: invite, error } = await access.supabase
     .from('onboarding_invites')
@@ -33,3 +42,5 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   return inviteAction(access.supabase, invite as InviteRow, body['action'], { userId: access.user.id, role: 'ops_admin' })
 }
+
+export const POST = withApiErrors('/api/ops/onboarding/invites/[inviteId]', postHandler)

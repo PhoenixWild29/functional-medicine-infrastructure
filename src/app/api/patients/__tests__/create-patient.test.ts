@@ -115,6 +115,23 @@ describe('validation', () => {
     expect((await res.json()).field).toBe('state')
   })
 
+  it('refuses two letters that are not a US state, and writes nothing', async () => {
+    for (const state of ['ZZ', 'XX']) {
+      const res = await POST(req({ phone: '5125550123', state }))
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'Choose a state.', field: 'state' })
+    }
+    expect(db.to('patients', 'insert')).toHaveLength(0)
+  })
+
+  it('refuses a body that is not JSON (400), and writes nothing', async () => {
+    const bad = new Request('https://app.test/api/patients', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{not json',
+    }) as unknown as import('next/server').NextRequest
+    expect((await POST(bad)).status).toBe(400)
+    expect(db.to('patients', 'insert')).toHaveLength(0)
+  })
+
   it('refuses a landline or VoIP number when Twilio can tell', async () => {
     lineTypeMock.mockResolvedValue({ ok: false, checked: true, lineType: 'landline' })
     const res = await POST(req({ phone: '5125550123' }))

@@ -18,10 +18,11 @@ import { cronAuthFailure } from '@/lib/cron/auth'
 import { createServiceClient } from '@/lib/supabase/service'
 import { runRetention } from '@/lib/retention/policies'
 import { retentionEnabled } from '@/lib/retention/switch'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const denied = cronAuthFailure(request, 'retention')
   if (denied) return denied
 
@@ -33,3 +34,5 @@ export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/cron/retention', getHandler)

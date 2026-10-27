@@ -28,10 +28,11 @@ import { duplicateEmailGuard, signupLimiter, SIGNUP_RATE_LIMITED_MESSAGE } from 
 import { cleanEmail } from '@/lib/onboarding/access'
 import { auditHash, clientIp } from '@/lib/audit/keyed-hash'
 import { refuseCrossSite } from '@/lib/security/same-origin'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request, 'Forbidden', NO_STORE)
   if (crossSite) return crossSite
 
@@ -74,3 +75,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 }
 
 export function GET() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/signup', postHandler)

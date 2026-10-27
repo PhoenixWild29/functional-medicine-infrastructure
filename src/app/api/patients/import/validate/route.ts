@@ -11,13 +11,17 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { mappingErrors } from '@/lib/patients/import/mapping'
 import { importCaller, readRowsBody } from '@/lib/patients/import/request'
 import { reviewImport } from '@/lib/patients/import/review'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { readImportJson } from '../read-body'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const caller = await importCaller(request)
   if ('response' in caller) return caller.response
 
-  let body: unknown
-  try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid request' }, { status: 400 }) }
+  // 4 MB at most (lib/uploads/limits): 413 over it; 400 when not JSON.
+  const read = await readImportJson(request)
+  if ('response' in read) return read.response
+  const body = read.body
   const input = readRowsBody(body)
   if ('error' in input) return NextResponse.json({ error: input.error }, { status: 400 })
   const problems = mappingErrors(input.mapping, input.headers.length)
@@ -27,3 +31,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!review) return NextResponse.json({ error: 'Existing patients could not be checked for duplicates. Try again.' }, { status: 503 })
   return NextResponse.json(review, { headers: { 'Cache-Control': 'no-store' } })
 }
+
+export const POST = withApiErrors('/api/patients/import/validate', postHandler)

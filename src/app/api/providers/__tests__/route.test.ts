@@ -450,3 +450,50 @@ describe('NPI verification on save', () => {
     expect(createUserMock).not.toHaveBeenCalled()
   })
 })
+
+// ── Input validation (body shape, bounds, ids) ─────────────────────
+
+describe('POST /api/providers — input validation', () => {
+  beforeEach(() => mockSession('clinic_admin', TEST_CLINIC_ID))
+
+  it('a body that is JSON null is 400, not a thrown 500', async () => {
+    const res = await POST(makeRequest(null))
+    expect(res.status).toBe(400)
+    expect(createUserMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['firstName', { firstName: 'x'.repeat(201) }],
+    ['lastName', { lastName: 'x'.repeat(201) }],
+    ['email', { email: `${'x'.repeat(250)}@clinic.test` }],
+    ['licenseNumber', { licenseNumber: 'x'.repeat(201) }],
+    ['deaNumber', { deaNumber: 'x'.repeat(201) }],
+    ['password', { password: 'x'.repeat(73) }],
+  ])('an oversize %s is 400 with the field named; nothing created', async (field, over) => {
+    const res = await POST(makeRequest(validBody(over)))
+    expect(res.status).toBe(400)
+    const body = await res.json() as { error: string; details: string[] }
+    expect(body.error).toBe('Validation failed')
+    expect(body.details).toEqual(expect.arrayContaining([expect.stringContaining(field)]))
+    expect(clinicCheckMock).not.toHaveBeenCalled()
+    expect(createUserMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['npiNumber', { npiNumber: 1987654328 }],
+    ['deaNumber', { deaNumber: 12345 }],
+    ['licenseState', { licenseState: ['TX'] }],
+  ])('a %s of the wrong type is 400 (was a thrown 500 or a coerced value)', async (_f, over) => {
+    const res = await POST(makeRequest(validBody(over)))
+    expect(res.status).toBe(400)
+    expect(createUserMock).not.toHaveBeenCalled()
+  })
+
+  it('ops_admin: a seeded (non-v4) clinic id is accepted and checked against clinics', async () => {
+    mockSession('ops_admin')
+    const SEEDED = 'a1000000-0000-0000-0000-000000000001'
+    const res = await POST(makeRequest(validBody({ clinicId: SEEDED })))
+    expect(res.status).toBe(201)
+    expect(clinicCheckMock).toHaveBeenCalled()
+  })
+})

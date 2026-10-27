@@ -13,14 +13,18 @@
 // getUser() (never getSession()).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { isCompoundingStatus } from '@/lib/compliance/compounding'
 import { getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { UUID_RE } from '@/lib/api/input'
+import { readObjectBody } from '@/app/api/ops/_lib/body'
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ ingredientId: string }> }): Promise<NextResponse> {
+async function putHandler(request: NextRequest, { params }: { params: Promise<{ ingredientId: string }> }): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
   const { ingredientId } = await params
 
   const supabaseAuth = await createServerClient()
@@ -31,12 +35,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
   if (!UUID_RE.test(ingredientId)) return NextResponse.json({ error: 'Invalid ingredient id' }, { status: 400 })
 
-  let body: Record<string, unknown>
-  try {
-    body = await request.json() as Record<string, unknown>
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
+  const parsed = await readObjectBody(request)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
 
   const { status, commercialEquivalent, onFdaShortage } = body
   const source = typeof body['source'] === 'string' ? body['source'].trim() : ''
@@ -71,3 +72,5 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   console.info(`[ops/ingredients] compounding status set | ingredient=${ingredientId} | status=${status} | by=${user.id}`)
   return NextResponse.json({ ok: true, reviewedAt })
 }
+
+export const PUT = withApiErrors('/api/ops/ingredients/[ingredientId]/compounding', putHandler)

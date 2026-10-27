@@ -164,15 +164,15 @@ test.describe('Patient Intake PR 2', () => {
     expect(patient?.privacy_notice_version).toBeTruthy()
     expect(patient?.intake_completed_at).toBeTruthy()
 
-    // Single use: the same link now says it was used.
+    // Single use: the same link is no longer active (the neutral page).
     await page.goto(`/intake/${token}`)
-    await expect(page.getByRole('heading', { level: 1, name: 'This link has already been used' })).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('heading', { level: 1, name: 'This link is no longer active' })).toBeVisible({ timeout: 15_000 })
     expect(await axeViolations(page)).toEqual([])
   })
 
-  test('an unknown link says it is not valid', async ({ page }) => {
+  test('an unknown link gets the same neutral page', async ({ page }) => {
     await page.goto(`/intake/${newIntakeToken()}`)
-    await expect(page.getByRole('heading', { level: 1, name: 'This link is not valid' })).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('heading', { level: 1, name: 'This link is no longer active' })).toBeVisible({ timeout: 15_000 })
     expect(await axeViolations(page)).toEqual([])
   })
 

@@ -50,6 +50,7 @@ import { buildOpsAlert, sendSlackAlert } from '@/lib/slack/client'
 import { triggerPortalSubmissionUnconfirmed, triggerUnknownTierSubmission } from '@/lib/pagerduty/client'
 import { sendReminder24hSms, sendReminder48hSms } from '@/lib/sms/triggers'
 import type { Enums } from '@/types/database.types'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 type SlaTypeEnum = Enums<'sla_type_enum'>
 
@@ -375,7 +376,7 @@ async function alertUnknownTierSubmission(breach: SlaBreachRow): Promise<void> {
 // ROUTE HANDLER
 // ============================================================
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const denied = cronAuthFailure(request, 'sla-check')
   if (denied) return denied
 
@@ -604,3 +605,5 @@ export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/cron/sla-check', getHandler)

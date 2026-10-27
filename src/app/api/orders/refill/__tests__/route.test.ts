@@ -101,7 +101,7 @@ const call = (orderIds: string[]) =>
 
 beforeEach(() => {
   getUserMock.mockReset()
-  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { clinic_id: CLINIC } } } })
+  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC } } } })
   orderRows = [orderRow()]
   refillRows = []
   pharmacyFormulationRows = [packagesRow([PKG_5ML])]
@@ -211,7 +211,7 @@ describe('guards', () => {
   it('401 without a verified user; 400 without clinic_id', async () => {
     getUserMock.mockResolvedValueOnce({ data: { user: null } })
     expect((await call([SOURCE])).status).toBe(401)
-    getUserMock.mockResolvedValueOnce({ data: { user: { id: 'u1', user_metadata: {} } } })
+    getUserMock.mockResolvedValueOnce({ data: { user: { id: 'u1', app_metadata: { app_role: 'clinic_admin' }, user_metadata: {} } } })
     expect((await call([SOURCE])).status).toBe(400)
   })
 

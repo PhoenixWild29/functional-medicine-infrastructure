@@ -241,6 +241,9 @@ export function OrderingStep({ state, onSaved }: StepProps) {
           { value: 'api', label: 'API', description: 'Orders arrive in your system through your API.' },
           { value: 'portal', label: 'Web portal', description: 'CompoundIQ enters orders in your online portal.' },
           { value: 'fax', label: 'Fax', description: 'Each order arrives by fax.' },
+          // The Hybrid tier has no adapter yet: shown, not selectable (the
+          // server refuses it too, and the submit API answers 501).
+          { value: 'hybrid', label: 'Hybrid', description: 'Not available yet', disabled: true },
         ]}
       />
       {method === 'api' && (

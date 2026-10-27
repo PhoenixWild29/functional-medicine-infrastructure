@@ -20,8 +20,10 @@ import { logPhiAccessMany } from '@/lib/audit/phi-access'
 import { mappingErrors } from '@/lib/patients/import/mapping'
 import { importCaller, readIndexes, readRowsBody } from '@/lib/patients/import/request'
 import { reviewImport } from '@/lib/patients/import/review'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { readImportJson } from './read-body'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const caller = await importCaller(request)
   if ('response' in caller) return caller.response
   // Pending review: nothing is imported until ops approves the clinic
@@ -29,8 +31,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const pendingReview = await refuseUnlessApproved(createServiceClient(), caller.clinicId)
   if (pendingReview) return pendingReview
 
-  let body: unknown
-  try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid request' }, { status: 400 }) }
+  // 4 MB at most (lib/uploads/limits): 413 over it; 400 when not JSON.
+  const read = await readImportJson(request)
+  if ('response' in read) return read.response
+  const body = read.body
   const input = readRowsBody(body)
   if ('error' in input) return NextResponse.json({ error: input.error }, { status: 400 })
   const problems = mappingErrors(input.mapping, input.headers.length)
@@ -91,3 +95,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   )
   return NextResponse.json({ batchId: result.batch_id, imported: result.patient_ids.length }, { status: 201 })
 }
+
+export const POST = withApiErrors('/api/patients/import', postHandler)

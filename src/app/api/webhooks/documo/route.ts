@@ -33,6 +33,7 @@ import { validateDocumoWebhook } from '@/lib/documo/client'
 import { createServiceClient } from '@/lib/supabase/service'
 import { casTransition } from '@/lib/orders/cas-transition'
 import { sendSlackAlert, buildAdapterFailureAlert } from '@/lib/slack/client'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // ============================================================
 // WEBHOOK PAYLOAD TYPES
@@ -57,14 +58,19 @@ interface DocumoFaxData {
 // ROUTE HANDLER
 // ============================================================
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+/** An HMAC-SHA256 signature in hex: whole bytes, hex digits only. */
+const HEX_SIGNATURE_RE = /^(?:[0-9a-f]{2})+$/i
+
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   // Step 1: Read raw body — must happen before any parsing for HMAC to work
   const rawBody = await request.text()
   const signature = request.headers.get('x-documo-signature') ?? ''
 
   // Step 2: Authenticate — verify X-Documo-Signature header
   // validateDocumoWebhook: signature first, rawBody second (HMAC-SHA256)
-  const isValid = await validateDocumoWebhook(signature, rawBody)
+  // The signature must be hex before it is decoded: a missing one made the
+  // verifier throw (a 500) instead of refusing it.
+  const isValid = HEX_SIGNATURE_RE.test(signature) && await validateDocumoWebhook(signature, rawBody)
   if (!isValid) {
     const ip = clientIp(request.headers) ?? 'unknown'
     console.error(`[documo-webhook] signature verification failed | ip=${ip}`)
@@ -368,3 +374,5 @@ async function handleFaxFailed(fax: DocumoFaxData): Promise<string | null> {
   )
   return order.order_id
 }
+
+export const POST = withApiErrors('/api/webhooks/documo', postHandler)

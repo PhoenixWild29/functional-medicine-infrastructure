@@ -101,14 +101,14 @@ afterAll(() => {
 describe('POST /api/admin/refresh-demo-data — auth', () => {
   it('returns 401 when no session', async () => {
     getUserMock.mockResolvedValue({ data: { user: null } })
-    const res = await POST()
+    const res = await POST(new Request('https://app.test/', { method: 'POST' }) as never)
     expect(res.status).toBe(401)
     expect(refreshDemoDataMock).not.toHaveBeenCalled()
   })
 
   it('returns 403 for non-ops_admin role', async () => {
     getUserMock.mockResolvedValue(CLINIC_SESSION)
-    const res = await POST()
+    const res = await POST(new Request('https://app.test/', { method: 'POST' }) as never)
     expect(res.status).toBe(403)
     expect(refreshDemoDataMock).not.toHaveBeenCalled()
   })
@@ -130,7 +130,7 @@ describe('POST /api/admin/refresh-demo-data — status-code contract', () => {
       fax_seed:         { pre_delete: 4, post_delete: 0, inserted: 4, action: 'refreshed' },
       submission_seed:  { pre_delete: 200, post_delete: 0, inserted: 200, action: 'refreshed' },
     })
-    const res = await POST()
+    const res = await POST(new Request('https://app.test/', { method: 'POST' }) as never)
     expect(res.status).toBe(200)
   })
 
@@ -147,7 +147,7 @@ describe('POST /api/admin/refresh-demo-data — status-code contract', () => {
       fax_seed:         { pre_delete: 0, post_delete: 0, inserted: 0, action: 'skipped' },
       submission_seed:  { pre_delete: 0, post_delete: 0, inserted: 0, action: 'skipped' },
     })
-    const res  = await POST()
+    const res  = await POST(new Request('https://app.test/', { method: 'POST' }) as never)
     expect(res.status).toBe(428)
     const body = await res.json()
     expect(body.skipped).toBe('not_poc_mode')
@@ -162,7 +162,7 @@ describe('POST /api/admin/refresh-demo-data — status-code contract', () => {
       fax_seed:         { pre_delete: 0, post_delete: 0, inserted: 0, action: 'aborted', error: 'bad' },
       submission_seed:  { pre_delete: 0, post_delete: 0, inserted: 0, action: 'aborted', error: 'bad' },
     })
-    const res = await POST()
+    const res = await POST(new Request('https://app.test/', { method: 'POST' }) as never)
     expect(res.status).toBe(500)
   })
 })

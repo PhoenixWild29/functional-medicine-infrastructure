@@ -21,10 +21,29 @@ import type { Enums } from '@/types/database.types'
 import { getUserRole } from '@/lib/auth/claims'
 import { validateCatalogRows } from '@/lib/catalog/validate-csv-rows'
 import { MAX_CATALOG_ROWS } from '@/lib/pharmacy-onboarding/application'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+// Any 8-4-4-4-12 hex id: the seeded demo ids are not RFC v4.
+import { MAX_NAME, UUID_RE, parseInput } from '@/lib/api/input'
+import { readObjectBody } from '@/app/api/ops/_lib/body'
+import { z } from 'zod'
 
 type RegulatoryStatusEnum = Enums<'regulatory_status_enum'>
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+// One CSV row (Papa Parse, header: true): an object of cells. The columns
+// the catalog reads are bounded here; validateCatalogRows (shared with
+// pharmacy onboarding) then skips or defaults a row it cannot use. Other
+// columns pass through unread.
+const cell = (max: number) => z.union([z.string().max(max), z.number(), z.boolean(), z.null()]).optional()
+const rowSchema = z.looseObject({
+  medication_name:     cell(MAX_NAME),
+  form:                cell(MAX_NAME),
+  dose:                cell(MAX_NAME),
+  wholesale_price:     cell(50),
+  retail_price:        cell(50),
+  regulatory_status:   cell(50),
+  requires_prior_auth: cell(50),
+})
+const rowsSchema = z.array(rowSchema)
 
 export interface CsvRow {
   medication_name:     string
@@ -54,7 +73,7 @@ export interface UploadResult {
   warnings:          string[]
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request)
   if (crossSite) return crossSite
   const supabaseAuth = await createServerClient()
@@ -66,15 +85,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  let body: { pharmacyId?: unknown; rows?: unknown }
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
+  const parsed = await readObjectBody(request)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
 
-  const pharmacyId = body['pharmacyId'] as string | undefined
-  if (!pharmacyId || !UUID_RE.test(pharmacyId)) {
+  const pharmacyId = body['pharmacyId']
+  if (typeof pharmacyId !== 'string' || !UUID_RE.test(pharmacyId)) {
     return NextResponse.json({ error: 'Invalid or missing pharmacyId' }, { status: 400 })
   }
 
@@ -86,6 +102,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (rows.length > MAX_CATALOG_ROWS) {
     return NextResponse.json({ error: `A catalog upload can have at most ${MAX_CATALOG_ROWS} rows.` }, { status: 400 })
   }
+  const rowsOk = parseInput(rowsSchema, rows)
+  if (!rowsOk.ok) return rowsOk.response
 
   const actorEmail = user.email
     ? user.email
@@ -284,3 +302,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/ops/catalog/upload', postHandler)

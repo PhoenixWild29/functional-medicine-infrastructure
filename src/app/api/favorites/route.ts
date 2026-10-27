@@ -22,6 +22,7 @@
 import { checkLicensure, readLicenses, todayIso } from '@/lib/compliance/pharmacy-licensure'
 import { isLivePharmacy, type PharmacyLiveness } from '@/lib/pharmacies/live'
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServiceClient } from '@/lib/supabase/service'
 import { createServerClient } from '@/lib/supabase/server'
 import type { Json } from '@/types/database.types'
@@ -35,7 +36,17 @@ import {
 import { parseTitrationSteps } from '@/lib/orders/titration'
 import { cycleLengthFrom, cyclePatternFrom } from '@/lib/orders/cycling'
 import { isNoRows } from '@/lib/supabase/no-rows'
-import { getUserClinicId } from '@/lib/auth/claims'
+import { getUserClinicId, getUserRole, isClinicStaffRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { UUID_RE, badRequest } from '@/lib/api/input'
+import { MAX_REFILLS } from '@/lib/orders/rx-details'
+
+/** A uuid, or the field name that is not one (ids reach Postgres: 22P02 is a 500). */
+function badIds(fields: Record<string, unknown>): string[] {
+  return Object.entries(fields)
+    .filter(([, v]) => typeof v === 'string' && !UUID_RE.test(v))
+    .map(([k]) => k)
+}
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
@@ -76,6 +87,8 @@ async function callerClinic(): Promise<{ clinicId: string } | { response: NextRe
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  // Clinic staff only: any other role, or none, is refused before anything is read.
+  if (!isClinicStaffRole(getUserRole(user))) return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) return { response: NextResponse.json({ error: 'No clinic context' }, { status: 403 }) }
   return { clinicId }
@@ -158,7 +171,7 @@ function isFormulationLive(f: unknown): boolean {
   return rec.is_active === true && rec.deleted_at === null
 }
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   return failLoud(() => getFavorites(req))
 }
 
@@ -279,7 +292,9 @@ async function getFavorites(req: NextRequest): Promise<NextResponse> {
 // are added to it (duplicates dropped) and 200 is returned with
 // merged: true; otherwise a new favorite is created (201).
 
-export async function POST(req: NextRequest) {
+async function postHandler(req: NextRequest) {
+  const crossSite = refuseCrossSite(req)
+  if (crossSite) return crossSite
   return failLoud(() => createFavorite(req))
 }
 
@@ -304,6 +319,15 @@ async function createFavorite(req: NextRequest): Promise<NextResponse> {
   const formulationId = body['formulation_id']
   const pharmacyId = typeof body['pharmacy_id'] === 'string' && body['pharmacy_id'] ? body['pharmacy_id'] : null
   const patientId = typeof body['patient_id'] === 'string' && body['patient_id'] ? body['patient_id'] : null
+  const notIds = badIds({ provider_id: providerId, formulation_id: formulationId, pharmacy_id: pharmacyId, patient_id: patientId })
+  if (notIds.length > 0) return badRequest('Invalid request', notIds)
+  // Refills: an integer 0..MAX_REFILLS (the builder's range); a value past
+  // the column's range was a 500. Anything that is not an integer still
+  // falls back to 0, as before.
+  const rawRefills = body['default_refills']
+  if (typeof rawRefills === 'number' && Number.isInteger(rawRefills) && rawRefills > MAX_REFILLS) {
+    return badRequest('Invalid request', ['default_refills'])
+  }
 
   // Verify provider belongs to this clinic
   const validIds = await getClinicProviderIds(clinicId)
@@ -388,7 +412,9 @@ async function createFavorite(req: NextRequest): Promise<NextResponse> {
 // place — clinic-scoped like DELETE, the pharmacy must actively offer the
 // formulation, and a pinned patient must belong to the clinic.
 
-export async function PATCH(req: NextRequest) {
+async function patchHandler(req: NextRequest) {
+  const crossSite = refuseCrossSite(req)
+  if (crossSite) return crossSite
   return failLoud(() => editFavorite(req))
 }
 
@@ -400,12 +426,15 @@ async function editFavorite(req: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(req.url)
   const favoriteId = searchParams.get('id')
   if (!favoriteId) return NextResponse.json({ error: 'Missing id param' }, { status: 400 })
+  if (!UUID_RE.test(favoriteId)) return badRequest('Invalid request', ['id'])
 
   // The body is optional (the panel's use-count bump sends none).
   let body: unknown = null
   try { body = await req.json() } catch { body = null }
   const validation = validateFavoriteEdit(body)
   if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 })
+  const notIds = badIds({ pharmacy_id: validation.patch['pharmacy_id'], patient_id: validation.patch['patient_id'] })
+  if (notIds.length > 0) return badRequest('Invalid request', notIds)
   const isEdit = FAVORITE_EDITABLE_FIELDS.some(k => k in validation.patch)
 
   const supabase = createServiceClient()
@@ -478,7 +507,9 @@ async function editFavorite(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({ data })
 }
 
-export async function DELETE(req: NextRequest) {
+async function deleteHandler(req: NextRequest) {
+  const crossSite = refuseCrossSite(req)
+  if (crossSite) return crossSite
   return failLoud(() => deleteFavorite(req))
 }
 
@@ -490,6 +521,7 @@ async function deleteFavorite(req: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(req.url)
   const favoriteId = searchParams.get('id')
   if (!favoriteId) return NextResponse.json({ error: 'Missing id param' }, { status: 400 })
+  if (!UUID_RE.test(favoriteId)) return badRequest('Invalid request', ['id'])
 
   const supabase = createServiceClient()
 
@@ -518,3 +550,8 @@ async function deleteFavorite(req: NextRequest): Promise<NextResponse> {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
+
+export const GET = withApiErrors('/api/favorites', getHandler)
+export const POST = withApiErrors('/api/favorites', postHandler)
+export const PATCH = withApiErrors('/api/favorites', patchHandler)
+export const DELETE = withApiErrors('/api/favorites', deleteHandler)

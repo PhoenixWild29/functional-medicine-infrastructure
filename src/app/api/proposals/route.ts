@@ -16,8 +16,31 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createProposal } from '@/lib/proposals/propose'
 import { failureResponse, proposalCaller } from '@/lib/proposals/request'
 import { logPhiAccess } from '@/lib/audit/phi-access'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { parseInput, UUID_RE } from '@/lib/api/input'
+import { z } from 'zod'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+// The ids are checked as ids here, before the library reads anything (a
+// bad id reaching Postgres is error 22P02, a 500). A missing or wrongly
+// typed field is left to the library, which answers in its own words
+// (lib/proposals/propose parseCreateProposal); the order ids are checked
+// there too (parseOrderIds).
+const idIfGiven = z.unknown().refine(v => typeof v !== 'string' || v === '' || UUID_RE.test(v), 'must be an id').optional()
+const ProposalIds = z.looseObject({
+  patientId:  idIfGiven,
+  providerId: idIfGiven,
+  options: z.unknown().superRefine((v, ctx) => {
+    if (!Array.isArray(v)) return
+    v.forEach((o, i) => {
+      const protocolId = o && typeof o === 'object' ? (o as Record<string, unknown>)['protocolId'] : undefined
+      if (typeof protocolId === 'string' && protocolId !== '' && !UUID_RE.test(protocolId)) {
+        ctx.addIssue({ code: 'custom', message: 'must be an id', path: [i, 'protocolId'] })
+      }
+    })
+  }).optional(),
+})
+
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const c = await proposalCaller(request)
   if ('response' in c) return c.response
 
@@ -26,6 +49,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     body = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
+  if (body && typeof body === 'object' && !Array.isArray(body)) {
+    const ids = parseInput(ProposalIds, body)
+    if (!ids.ok) return ids.response
   }
 
   const res = await createProposal(c.db, { clinicId: c.clinicId, caller: c.caller, input: body })
@@ -41,3 +68,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     { status: 201, headers: { 'Cache-Control': 'no-store' } },
   )
 }
+
+export const POST = withApiErrors('/api/proposals', postHandler)

@@ -73,11 +73,23 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks())
 
 describe('the link', () => {
-  it.each([['expired', 410], ['used', 410], ['invalid', 404], ['unavailable', 503]])('%s link: %i, nothing written', async (state, status) => {
+  it.each([['expired', 410], ['used', 410], ['invalid', 410], ['unavailable', 503]])('%s link: %i, nothing written', async (state, status) => {
     resolveMock.mockResolvedValue({ state })
     expect((await POST(req(VALID), ctx())).status).toBe(status)
     expect(db.to('patients', 'update')).toHaveLength(0)
     expect(claimMock).not.toHaveBeenCalled()
+  })
+
+  it('expired, used, unknown, or claimed in between: one answer word for word (it never says whether the link existed)', async () => {
+    const bodies = new Set<string>()
+    for (const state of ['expired', 'used', 'invalid']) {
+      resolveMock.mockResolvedValue({ state })
+      bodies.add(JSON.stringify(await (await POST(req(VALID), ctx())).json()))
+    }
+    resolveMock.mockResolvedValue({ state: 'open', link: { linkId: 'l', clinicId: 'c', patientId: 'p', expiresAt: 'x' }, clinicName: 'Test Clinic' })
+    claimMock.mockResolvedValue(false)
+    bodies.add(JSON.stringify(await (await POST(req(VALID), ctx())).json()))
+    expect(bodies.size).toBe(1)
   })
 
   it('a link claimed by another submit in between: 410, nothing written', async () => {

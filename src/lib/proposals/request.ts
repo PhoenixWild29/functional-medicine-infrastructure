@@ -15,10 +15,10 @@ import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { refuseCrossSite } from '@/lib/security/same-origin'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import type { PhiUser } from '@/lib/audit/phi-access'
+import { UUID_RE } from '@/lib/api/input'
 import type { ProposalFailure } from './propose'
 
 const STAFF_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
-export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export type ProposalRequestContext = {
   db:       ReturnType<typeof createServiceClient>

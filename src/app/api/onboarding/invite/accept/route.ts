@@ -36,8 +36,9 @@ import { auditHash, clientIp } from '@/lib/audit/keyed-hash'
 import { inviteAcceptLimiter, INVITE_ACCEPT_RATE_LIMITED_MESSAGE } from '@/lib/onboarding/accept-rate-limit'
 import { createLogin, passwordProblem, removeLogin } from '@/lib/auth/create-login'
 import { isApprovedClinic } from '@/lib/onboarding/approval-guard'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request)
   if (crossSite) return crossSite
   const ip = clientIp(request.headers)
@@ -185,3 +186,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     next,
   }, { status: 201 })
 }
+
+export const POST = withApiErrors('/api/onboarding/invite/accept', postHandler)

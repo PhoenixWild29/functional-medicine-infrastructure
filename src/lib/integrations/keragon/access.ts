@@ -31,5 +31,7 @@ export async function requireClinicAdmin(): Promise<ClinicAdminAccess> {
 
 /** A write from another site is refused (the browser says so). */
 export function crossSite(request: { headers: { get(name: string): string | null } }): NextResponse | null {
+  // The shared same-origin rule (lib/security/same-origin): same-site is
+  // refused too, not only cross-site.
   return refuseCrossSite(request, 'Forbidden')
 }

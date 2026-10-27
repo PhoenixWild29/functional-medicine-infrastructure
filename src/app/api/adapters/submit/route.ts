@@ -36,15 +36,18 @@ import { submitTier2Portal } from '@/lib/adapters/tier2-portal'
 import { submitTier4Fax } from '@/lib/adapters/tier4-fax'
 import type { IntegrationTier } from '@/lib/adapters/audit-trail'
 import { isPharmacySubmissionsDisabledError, PHARMACY_SUBMISSIONS_OFF_MESSAGE } from '@/lib/adapters/submission-switch'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { UUID_RE, badRequest } from '@/lib/api/input'
+import { safeEqual } from '@/lib/security/constant-time'
 
 // ============================================================
 // ROUTE HANDLER
 // ============================================================
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   // ── Auth: internal secret ─────────────────────────────────
   const token = request.headers.get('x-internal-token')
-  if (!token || token !== process.env.ADAPTER_INTERNAL_SECRET) {
+  if (!safeEqual(token, process.env.ADAPTER_INTERNAL_SECRET)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -56,6 +59,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
+  // A JSON body that is not an object (null, an array) used to throw on
+  // the destructure below: a 500.
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return badRequest('Invalid request', ['(body)'])
+  }
   const { orderId, pharmacyId, tier } = body
 
   if (!orderId || typeof orderId !== 'string') {
@@ -64,6 +72,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!pharmacyId || typeof pharmacyId !== 'string') {
     return NextResponse.json({ error: 'pharmacyId is required' }, { status: 400 })
   }
+  // Ids reach Postgres: a value that is not a uuid is error 22P02 (a 500).
+  if (!UUID_RE.test(orderId)) return badRequest('Invalid request', ['orderId'])
+  if (!UUID_RE.test(pharmacyId)) return badRequest('Invalid request', ['pharmacyId'])
   if (!tier || typeof tier !== 'string') {
     return NextResponse.json({ error: 'tier is required' }, { status: 400 })
   }
@@ -140,3 +151,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/adapters/submit', postHandler)

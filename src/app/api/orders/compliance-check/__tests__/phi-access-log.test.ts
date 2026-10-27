@@ -23,7 +23,7 @@ jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.clien
 import { GET } from '../route'
 import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
 
-const url = `https://app.test/api/orders/compliance-check?patientId=${PATIENT}&providerId=pr-1&pharmacyId=ph-1&itemId=it-1&retailCents=10000`
+const url = `https://app.test/api/orders/compliance-check?patientId=${PATIENT}&providerId=a2000000-0000-0000-0000-000000000001&pharmacyId=a4000000-0000-0000-0000-000000000004&itemId=a5000000-0000-0000-0000-000000000001&retailCents=10000`
 
 beforeEach(() => {
   phiLog.mockClear()

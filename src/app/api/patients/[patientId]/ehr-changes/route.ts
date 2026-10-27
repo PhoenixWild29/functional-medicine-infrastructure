@@ -16,6 +16,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { logPhiAccess } from '@/lib/audit/phi-access'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +24,7 @@ const STAFF_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MAX_ROWS = 200
 
-export async function GET(request: NextRequest, context: { params: Promise<{ patientId: string }> }): Promise<NextResponse> {
+async function getHandler(request: NextRequest, context: { params: Promise<{ patientId: string }> }): Promise<NextResponse> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -55,3 +56,5 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pat
   }
   return NextResponse.json({ changes })
 }
+
+export const GET = withApiErrors('/api/patients/[patientId]/ehr-changes', getHandler)

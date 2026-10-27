@@ -18,9 +18,9 @@
 //     (never signed; it stays tagged, so the clinic sees what was not
 //     chosen, decision 9);
 //   - the proposal is signed (signed_at) and 'signed' is recorded with the
-//     count. The plan is closed by that status: the link keeps its hash so
-//     /plan/<token> says "Your provider has approved your plan" (PR 3
-//     finds the proposal by the hash) and shows nothing else;
+//     count. The plan is closed by that status: the link keeps its hash
+//     (it resolves to 'signed'); /plan/<token> shows its neutral "no
+//     longer active" page and nothing else;
 //   - the chosen lines of a protocol option start or advance the
 //     patient's protocol instance (decision 8: at signing, not proposal).
 // A check that fails at sign stops the whole choice: nothing is signed or

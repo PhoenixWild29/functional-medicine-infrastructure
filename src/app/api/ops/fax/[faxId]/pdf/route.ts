@@ -20,6 +20,7 @@ import { downloadFaxPdf }      from '@/lib/documo/client'
 import { logPhiAccess }        from '@/lib/audit/phi-access'
 import { faxViewLimiter }      from '@/lib/fax/view-rate-limit'
 import { refuseCrossSite } from '@/lib/security/same-origin'
+import { withApiErrors }       from '@/lib/api/with-api-errors'
 
 const ROUTE = '/api/ops/fax/[faxId]/pdf'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -30,7 +31,7 @@ function json(body: unknown, status: number, headers: Record<string, string> = {
   return NextResponse.json(body, { status, headers: { 'Cache-Control': 'no-store', ...headers } })
 }
 
-export async function GET(
+async function getHandler(
   request: NextRequest,
   { params }: { params: Promise<{ faxId: string }> },
 ): Promise<NextResponse> {
@@ -88,3 +89,5 @@ export async function GET(
     },
   })
 }
+
+export const GET = withApiErrors('/api/ops/fax/[faxId]/pdf', getHandler)

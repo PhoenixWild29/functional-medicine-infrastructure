@@ -1,4 +1,7 @@
-import type { Breadcrumb, ErrorEvent } from '@sentry/nextjs'
+import type { Breadcrumb, ErrorEvent, init } from '@sentry/nextjs'
+
+/** The event beforeSendTransaction receives (@sentry/nextjs does not export the type by name). */
+export type TransactionEvent = Parameters<NonNullable<NonNullable<Parameters<typeof init>[0]>['beforeSendTransaction']>>[0]
 
 // PHI scrubbing patterns for Sentry beforeSend hook.
 //
@@ -42,8 +45,30 @@ const PHI_PATTERNS: RegExp[] = [
 
 const SCRUBBED = '[SCRUBBED]'
 
+// Token links: the credential is a path segment (/checkout/<jwt>,
+// /plan/<token>, /intake/<token>, /join/<token>, /onboard/<kind>/<token>
+// and their APIs) or a ?token= value. Wherever a URL sits in an event (the
+// request URL, the Referer header, a breadcrumb, a message, the
+// transaction name, a span) the segment becomes [token]. /checkout/expired
+// and /checkout/success carry no token, and /api/checkout/* takes the
+// token in the body, so those are left as they are. No lookbehind: this
+// file also runs in older browsers (sentry.client.config).
+const TOKEN_SEGMENT = /(\/api)?(\/(?:checkout|plan|intake|join|onboard\/(?:clinic|join|pharmacy))\/)([^/?#\s"'<>]+)/g
+const TOKEN_QUERY = /([?&]token=)[^&#\s"'<>]+/gi
+const NOT_A_TOKEN = new Set(['expired', 'success', '[token]'])
+
+function scrubTokenUrls(value: string): string {
+  return value
+    .replace(TOKEN_SEGMENT, (match, api: string | undefined, prefix: string, segment: string) => {
+      if (NOT_A_TOKEN.has(segment)) return match
+      if (api && prefix === '/checkout/') return match
+      return `${api ?? ''}${prefix}[token]`
+    })
+    .replace(TOKEN_QUERY, `$1${SCRUBBED}`)
+}
+
 function scrubString(value: string): string {
-  let result = value
+  let result = scrubTokenUrls(value)
   for (const pattern of PHI_PATTERNS) {
     result = result.replace(pattern, SCRUBBED)
   }
@@ -155,6 +180,7 @@ export function phiBeforeSend(event: ErrorEvent): ErrorEvent | null {
   }
 
   if (event.message !== undefined) event.message = scrubString(event.message)
+  if (event.transaction !== undefined) event.transaction = scrubString(event.transaction)
   if (event.logentry?.message !== undefined) {
     event.logentry = { ...event.logentry, message: scrubString(event.logentry.message) }
   }
@@ -227,4 +253,24 @@ export function phiBeforeSend(event: ErrorEvent): ErrorEvent | null {
   }
 
   return event
+}
+
+/**
+ * Sentry beforeSendTransaction. beforeSend only sees errors; a performance
+ * transaction carries the same request, breadcrumbs and contexts, plus its
+ * name and spans, all of which can hold a token URL (/plan/<token>,
+ * /checkout/<jwt>). The same scrubbing as an error, then the name and every
+ * span's description and data.
+ */
+export function phiBeforeSendTransaction(event: TransactionEvent): TransactionEvent | null {
+  const out = phiBeforeSend(event as unknown as ErrorEvent) as unknown as TransactionEvent | null
+  if (!out) return null
+  if (out.spans) {
+    out.spans = out.spans.map(span => ({
+      ...span,
+      ...(span.description !== undefined ? { description: scrubString(span.description) } : {}),
+      ...(span.data !== undefined ? { data: scrubObject(span.data as Record<string, unknown>) as typeof span.data } : {}),
+    }))
+  }
+  return out
 }

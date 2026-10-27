@@ -191,7 +191,7 @@ test.describe('Auth — Checkout Token Validation', () => {
   test('invalid checkout token shows error page', async ({ page }) => {
     await page.goto('/checkout/invalid-token')
     // Should see expired/invalid message or redirect to expired page
-    const errorVisible = await page.getByText(/link has expired/i)
+    const errorVisible = await page.getByText(/link is no longer active/i)
       .or(page.getByText(/not found/i))
       .or(page.getByText(/invalid/i))
       .isVisible({ timeout: 10_000 })
@@ -200,7 +200,7 @@ test.describe('Auth — Checkout Token Validation', () => {
 
   test('checkout/expired page renders without auth', async ({ page }) => {
     await page.goto('/checkout/expired')
-    await expect(page.getByText(/expired/i)).toBeVisible()
+    await expect(page.getByText(/no longer active/i)).toBeVisible()
     // Should not redirect to /login — this is a public informational page
     await expect(page).toHaveURL('/checkout/expired')
   })

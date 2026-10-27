@@ -17,20 +17,27 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { recentFormulations, RECENT_LIMIT, type RecentOrderRow } from '@/lib/orders/favorite-presets'
-import { getUserClinicId } from '@/lib/auth/claims'
+import { getUserClinicId, getUserRole, isClinicStaffRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { UUID_RE, badRequest } from '@/lib/api/input'
 
 /** Orders scanned to find 8 distinct formulations; a provider rarely repeats one 25 times in a row. */
 const SCAN_LIMIT = 200
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Clinic staff only: any other role, or none, is refused before anything is read.
+  if (!isClinicStaffRole(getUserRole(user))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) return NextResponse.json({ error: 'No clinic context' }, { status: 403 })
 
   const providerId = new URL(req.url).searchParams.get('provider_id')?.trim() ?? ''
   if (!providerId) return NextResponse.json({ error: 'Missing provider_id' }, { status: 400 })
+  // A provider_id that is not a uuid used to fail the lookup silently and
+  // answer 403 "Provider not in clinic".
+  if (!UUID_RE.test(providerId)) return badRequest('Invalid request', ['provider_id'])
 
   const supabase = createServiceClient()
 
@@ -90,3 +97,5 @@ export async function GET(req: NextRequest) {
     }),
   })
 }
+
+export const GET = withApiErrors('/api/favorites/recent', getHandler)

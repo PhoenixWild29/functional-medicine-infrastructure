@@ -40,6 +40,8 @@ import { POST as delivery } from '../[proposalId]/events/route'
 
 const CLINIC = 'c0000000-0000-4000-8000-000000000001'
 const PROPOSAL = 'b0000000-0000-4000-8000-000000000001'
+const PATIENT  = 'a4000000-0000-0000-0000-000000000001'
+const PROVIDER = 'a2000000-0000-0000-0000-000000000001'
 
 function req(body: unknown, headers: Record<string, string> = { 'sec-fetch-site': 'same-origin' }) {
   return new Request('https://app.test/api/proposals', {
@@ -50,7 +52,7 @@ function req(body: unknown, headers: Record<string, string> = { 'sec-fetch-site'
 const ctx = { params: Promise.resolve({ proposalId: PROPOSAL }) }
 
 const ROUTES: Array<[string, (r: never) => Promise<Response>, keyof typeof lib, unknown]> = [
-  ['POST /api/proposals', r => create(r), 'createProposal', { patientId: 'p', providerId: 'v', send: true, options: [] }],
+  ['POST /api/proposals', r => create(r), 'createProposal', { patientId: PATIENT, providerId: PROVIDER, send: true, options: [] }],
   ['POST /api/proposals/[id]/send', r => send(r, ctx), 'sendProposal', {}],
   ['POST /api/proposals/[id]/cancel', r => cancel(r, ctx), 'cancelProposal', {}],
   ['POST /api/proposals/[id]/events', r => delivery(r, ctx), 'recordLinkDelivery', { delivery: 'copied' }],
@@ -113,7 +115,7 @@ it('POST /api/proposals: a body that is not JSON is 400', async () => {
 
 it('POST /api/proposals: 201 with the proposal and its link', async () => {
   lib.createProposal.mockResolvedValue({ ok: true, proposalId: PROPOSAL, status: 'sent', link: { url: 'https://app.test/plan/t', expiresAt: 'x', texting: 'texting_off' } })
-  const res = await create(req({ patientId: 'p' }))
+  const res = await create(req({ patientId: PATIENT }))
   expect(res.status).toBe(201)
   expect(res.headers.get('cache-control')).toBe('no-store')
   expect(await res.json()).toEqual({ proposalId: PROPOSAL, status: 'sent', link: { url: 'https://app.test/plan/t', expiresAt: 'x', texting: 'texting_off' } })

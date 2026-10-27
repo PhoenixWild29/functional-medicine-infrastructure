@@ -24,9 +24,9 @@ import { GET, POST } from '../route'
 import { GET as GET_RECENT } from '../recent/route'
 
 const CLINIC_ID   = 'clinic-A'
-const PROVIDER    = 'provider-in'
-const FORMULATION = 'formulation-sema'
-const PHARMACY    = 'pharmacy-strive'
+const PROVIDER    = 'a2000000-0000-0000-0000-000000000001'
+const FORMULATION = 'a7000000-0000-0000-0000-000000000001'
+const PHARMACY    = 'a4000000-0000-0000-0000-000000000001'
 
 type ChainBuilder = Record<string, unknown>
 let inserts: Array<{ table: string; row: Record<string, unknown> }> = []
@@ -71,7 +71,7 @@ const preset = (dose: string) => ({ dose, unit: 'units', frequency: 'QW', timing
 beforeEach(() => {
   inserts = []; updates = []; filters = []
   Object.keys(fixtures).forEach(k => delete fixtures[k])
-  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { clinic_id: CLINIC_ID } } } })
+  getUserMock.mockResolvedValue({ data: { user: { id: 'u1', app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC_ID } } } })
   fixtures['providers:await'] = () => ({ data: [{ provider_id: PROVIDER }], error: null })
   fixtures['provider_favorites:await'] = () => ({ data: [], error: null })
   fixtures['provider_favorites:single'] = () => ({ data: { favorite_id: 'fav-1', label: 'Semaglutide' }, error: null })
@@ -121,7 +121,7 @@ describe('POST /api/favorites — WO-104 cards with dose presets', () => {
   it('adds the dose to the existing card for the same formulation + pharmacy + scope', async () => {
     fixtures['provider_favorites:await'] = () => ({
       data: [
-        { favorite_id: 'fav-patient', pharmacy_id: PHARMACY, patient_id: 'patient-1', dose_presets: [preset('80')] },
+        { favorite_id: 'fav-patient', pharmacy_id: PHARMACY, patient_id: 'a3000000-0000-0000-0000-000000000001', dose_presets: [preset('80')] },
         { favorite_id: 'fav-1', pharmacy_id: PHARMACY, patient_id: null, dose_presets: [preset('40'), preset('10')] },
       ],
       error: null,
@@ -143,18 +143,18 @@ describe('POST /api/favorites — WO-104 cards with dose presets', () => {
       data: [{ favorite_id: 'fav-1', pharmacy_id: PHARMACY, patient_id: null, dose_presets: [preset('10')] }],
       error: null,
     })
-    fixtures['patients:maybeSingle'] = () => ({ data: { patient_id: 'patient-1' }, error: null })
+    fixtures['patients:maybeSingle'] = () => ({ data: { patient_id: 'a3000000-0000-0000-0000-000000000001' }, error: null })
     const res = await POST(post({
-      provider_id: PROVIDER, formulation_id: FORMULATION, pharmacy_id: PHARMACY, patient_id: 'patient-1',
+      provider_id: PROVIDER, formulation_id: FORMULATION, pharmacy_id: PHARMACY, patient_id: 'a3000000-0000-0000-0000-000000000001',
       label: 'Semaglutide', dose_presets: [preset('10')],
     }))
     expect(res.status).toBe(201)
-    expect(inserts[0]!.row).toEqual(expect.objectContaining({ patient_id: 'patient-1' }))
+    expect(inserts[0]!.row).toEqual(expect.objectContaining({ patient_id: 'a3000000-0000-0000-0000-000000000001' }))
 
     inserts = []
     fixtures['patients:maybeSingle'] = () => ({ data: null, error: null })
     const forbidden = await POST(post({
-      provider_id: PROVIDER, formulation_id: FORMULATION, pharmacy_id: PHARMACY, patient_id: 'patient-elsewhere',
+      provider_id: PROVIDER, formulation_id: FORMULATION, pharmacy_id: PHARMACY, patient_id: 'a3000000-0000-0000-0000-000000000099',
       label: 'Semaglutide', dose_presets: [preset('10')],
     }))
     expect(forbidden.status).toBe(403)
@@ -178,7 +178,7 @@ describe('POST /api/favorites — WO-104 cards with dose presets', () => {
   it('401 without a verified user; 403 for a provider outside the clinic', async () => {
     getUserMock.mockResolvedValueOnce({ data: { user: null } })
     expect((await POST(post({}))).status).toBe(401)
-    const res = await POST(post({ provider_id: 'provider-out', formulation_id: FORMULATION, label: 'x', dose_presets: [preset('10')] }))
+    const res = await POST(post({ provider_id: 'a2000000-0000-0000-0000-000000000009', formulation_id: FORMULATION, label: 'x', dose_presets: [preset('10')] }))
     expect(res.status).toBe(403)
   })
 })
@@ -189,12 +189,12 @@ describe('GET /api/favorites — WO-104 patient scope', () => {
     fixtures['provider_favorites:await'] = () => ({
       data: [
         { favorite_id: 'practice', pharmacy_id: null, patient_id: null, dose_presets: [preset('10'), { dose: 'bad' }], formulations: live },
-        { favorite_id: 'mine', pharmacy_id: null, patient_id: 'patient-1', dose_presets: [preset('80')], formulations: live },
-        { favorite_id: 'theirs', pharmacy_id: null, patient_id: 'patient-2', dose_presets: [preset('40')], formulations: live },
+        { favorite_id: 'mine', pharmacy_id: null, patient_id: 'a3000000-0000-0000-0000-000000000001', dose_presets: [preset('80')], formulations: live },
+        { favorite_id: 'theirs', pharmacy_id: null, patient_id: 'a3000000-0000-0000-0000-000000000002', dose_presets: [preset('40')], formulations: live },
       ],
       error: null,
     })
-    const withPatient = await GET(new NextRequest(new URL('http://localhost/api/favorites?patient_id=patient-1')))
+    const withPatient = await GET(new NextRequest(new URL('http://localhost/api/favorites?patient_id=a3000000-0000-0000-0000-000000000001')))
     const json = await withPatient.json() as { data: Array<{ favorite_id: string; dose_presets: unknown[] }> }
     expect(json.data.map(f => f.favorite_id)).toEqual(['practice', 'mine'])
     // Invalid stored presets never reach the client.
@@ -250,7 +250,7 @@ describe('GET /api/favorites/recent — WO-104 Recent strip', () => {
 
   it('403 for a provider outside the clinic; 400 without provider_id', async () => {
     fixtures['providers:maybeSingle'] = () => ({ data: null, error: null })
-    expect((await GET_RECENT(new NextRequest(new URL('http://localhost/api/favorites/recent?provider_id=x')))).status).toBe(403)
+    expect((await GET_RECENT(new NextRequest(new URL('http://localhost/api/favorites/recent?provider_id=a2000000-0000-0000-0000-000000000009')))).status).toBe(403)
     expect((await GET_RECENT(new NextRequest(new URL('http://localhost/api/favorites/recent')))).status).toBe(400)
   })
 })

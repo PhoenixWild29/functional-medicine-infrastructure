@@ -28,11 +28,13 @@
 // Every successful PATCH stamps allergies_updated_at and updated_at.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }  from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { logPhiAccess, type PhiUser } from '@/lib/audit/phi-access'
 import { validateAllergiesPatch } from '@/lib/patients/allergies'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -91,14 +93,15 @@ function toResponse(row: PatientAllergyRow) {
 
 // ── GET ─────────────────────────────────────────────────────────────
 
-export async function GET(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+async function getHandler(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+  // Who is calling first, then the id (a bad id never reaches Postgres).
+  const auth = await resolveCaller()
+  if (!auth.ok) return auth.response
+
   const { patientId } = await params
   if (!UUID_RE.test(patientId)) {
     return NextResponse.json({ error: 'Invalid patientId' }, { status: 400 })
   }
-
-  const auth = await resolveCaller()
-  if (!auth.ok) return auth.response
 
   const supabase = createServiceClient()
   const { data, error } = await supabase
@@ -125,14 +128,17 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
 
 // ── PATCH ───────────────────────────────────────────────────────────
 
-export async function PATCH(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+async function patchHandler(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
+  // Who is calling first, then the id (a bad id never reaches Postgres).
+  const auth = await resolveCaller()
+  if (!auth.ok) return auth.response
+
   const { patientId } = await params
   if (!UUID_RE.test(patientId)) {
     return NextResponse.json({ error: 'Invalid patientId' }, { status: 400 })
   }
-
-  const auth = await resolveCaller()
-  if (!auth.ok) return auth.response
 
   let body: unknown
   try {
@@ -218,3 +224,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
 export function POST()   { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const GET = withApiErrors('/api/patients/[patientId]/allergies', getHandler)
+export const PATCH = withApiErrors('/api/patients/[patientId]/allergies', patchHandler)

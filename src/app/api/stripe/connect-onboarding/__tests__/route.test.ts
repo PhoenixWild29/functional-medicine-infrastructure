@@ -68,7 +68,7 @@ beforeEach(() => {
 
 describe('POST /api/stripe/connect-onboarding (C7)', () => {
   it('authenticates with getUser() and creates the Express account with only type and clinic_id', async () => {
-    const res = await POST()
+    const res = await POST(new Request('https://app.test/', { method: 'POST' }) as never)
     expect(res.status).toBe(200)
     expect(getUserMock).toHaveBeenCalled()
     expect(getSessionMock).not.toHaveBeenCalled()
@@ -78,14 +78,14 @@ describe('POST /api/stripe/connect-onboarding (C7)', () => {
   })
 
   it('creates the account link with only the account, URLs and type', async () => {
-    await POST()
+    await POST(new Request('https://app.test/', { method: 'POST' }) as never)
     const link = accountLinksMock.mock.calls[0]![0] as Record<string, unknown>
     expect(Object.keys(link).sort()).toEqual(['account', 'refresh_url', 'return_url', 'type'])
   })
 
   it('returns 401 when there is no verified user', async () => {
     getUserMock.mockResolvedValue({ data: { user: null }, error: null })
-    const res = await POST()
+    const res = await POST(new Request('https://app.test/', { method: 'POST' }) as never)
     expect(res.status).toBe(401)
     expect(accountsCreateMock).not.toHaveBeenCalled()
   })

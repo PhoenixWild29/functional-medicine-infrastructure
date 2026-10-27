@@ -41,6 +41,7 @@ import { pharmacySubmissionsEnabled } from '@/lib/adapters/submission-switch'
 import { sendSlackAlert } from '@/lib/slack/client'
 import { buildOpsAlert } from '@/lib/slack/ops-alert'
 import { alertStuckOrders } from '@/lib/orders/stuck-orders'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const STALE_AFTER_MIN = 5
 const MAX_AGE_HOURS   = 24
@@ -52,7 +53,7 @@ const WAITING_LOG_LIMIT = 100
 const PAUSED_ALERT_EVERY_MS = 60 * 60 * 1000
 const PAUSED_ALERT_TYPE = 'submissions_paused'
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const denied = cronAuthFailure(request, 'submit-paid-orders')
   if (denied) return denied
 
@@ -184,3 +185,5 @@ async function claimPausedAlert(
   }
   return true
 }
+
+export const GET = withApiErrors('/api/cron/submit-paid-orders', getHandler)

@@ -19,14 +19,14 @@ let db = scriptedDb(() => undefined)
 
 jest.mock('@/lib/supabase/server', () => ({
   createServerClient: jest.fn().mockResolvedValue({
-    auth: { getUser: async () => ({ data: { user: { id: 'u1', app_metadata: { clinic_id: 'c-1' } } } }) },
+    auth: { getUser: async () => ({ data: { user: { id: 'u1', app_metadata: { app_role: 'clinic_admin', clinic_id: 'c-1' } } } }) },
   }),
 }))
 jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.client }))
 
 jest.spyOn(console, 'error').mockImplementation(() => {})
 
-const BODY = { name: 'Weight loss', created_by: 'pr-1', items: [{ formulation_id: 'f-1' }] }
+const BODY = { name: 'Weight loss', created_by: 'a2000000-0000-0000-0000-000000000001', items: [{ formulation_id: 'a7000000-0000-0000-0000-000000000001' }] }
 
 async function create(more: Script) {
   db = scriptedDb(c => more(c) ?? (

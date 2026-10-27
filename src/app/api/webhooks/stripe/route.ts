@@ -39,12 +39,13 @@ import { handleChargeRefunded } from './handle-charge-refunded'
 import { handleDisputeStatusChanged } from './handle-dispute-status'
 import { resolvePaymentTarget } from './resolve-payment'
 import { recordRefundInLedger } from '@/lib/payments/ledger-hook'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 // ============================================================
 // ROUTE HANDLER
 // ============================================================
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   // Step 1: Read raw body — must happen before any parsing for HMAC to work
   const rawBody = await request.text()
   const signature = request.headers.get('stripe-signature') ?? ''
@@ -885,3 +886,5 @@ async function handleAccountUpdated(account: Stripe.Account): Promise<void> {
     `[stripe-webhook] clinic stripe_connect_status → ${connectStatus} for account ${account.id}`
   )
 }
+
+export const POST = withApiErrors('/api/webhooks/stripe', postHandler)

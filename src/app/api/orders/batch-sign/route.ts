@@ -22,11 +22,38 @@ import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { signBatch } from '@/lib/orders/batch-sign'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { z } from 'zod'
+import { parseJsonBody, badRequest } from '@/lib/api/input'
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+// The ids and the stroke rule are checked by signBatch (parseOrderIds,
+// checkSignature) with their own messages. This route bounds the size of
+// what it hands over: a real pad capture is tens to hundreds of KB with a
+// few hundred points, so these limits only stop a payload built to be
+// expensive (the stroke check spreads every x into Math.max).
+const MAX_SIGNATURE_DATA_URL = 5_000_000
+const MAX_SIGNATURE_STROKES  = 1_000
+const MAX_SIGNATURE_POINTS   = 100_000
+
+const bodySchema = z.object({ orderIds: z.unknown().optional(), signature: z.unknown().optional() })
+
+function signatureTooLarge(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') return false
+  const { dataUrl, strokes } = raw as { dataUrl?: unknown; strokes?: unknown }
+  if (typeof dataUrl === 'string' && dataUrl.length > MAX_SIGNATURE_DATA_URL) return true
+  if (!Array.isArray(strokes)) return false
+  if (strokes.length > MAX_SIGNATURE_STROKES) return true
+  let points = 0
+  for (const s of strokes) {
+    if (Array.isArray(s)) points += s.length
+    if (points > MAX_SIGNATURE_POINTS) return true
+  }
+  return false
+}
+
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request)
   if (crossSite) return crossSite
-
 
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -40,12 +67,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (pendingReview) return pendingReview
   const appRole = getUserRole(user) ?? null
 
-  let body: { orderIds?: unknown; signature?: unknown }
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
-  }
+  // A body that is not an object is a 400 (it used to throw on
+  // body.orderIds, a 500).
+  const parsed = await parseJsonBody(request, bodySchema)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.data
+  if (signatureTooLarge(body.signature)) return badRequest('Signature is too large', ['signature'])
 
   const result = await signBatch(createServiceClient(), {
     clinicId,
@@ -77,3 +104,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 }
 
 export function GET()    { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/orders/batch-sign', postHandler)

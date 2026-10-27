@@ -22,6 +22,7 @@ import { createIntakeLink } from '@/lib/intake/links'
 import { sendIntakeLinkSms } from '@/lib/intake/sms'
 import { openPossibleDuplicate } from '@/lib/patients/display'
 import { POSSIBLE_DUPLICATE_COLUMNS, loadDuplicateNames, openDuplicateIds } from '@/lib/patients/duplicate-names'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 const STAFF_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -44,7 +45,7 @@ async function caller(request: NextRequest, context: Context) {
   return { user: user as PhiUser & { id: string }, clinicId, patientId }
 }
 
-export async function POST(request: NextRequest, context: Context): Promise<NextResponse> {
+async function postHandler(request: NextRequest, context: Context): Promise<NextResponse> {
   const c = await caller(request, context)
   if ('error' in c) return c.error
   // Pending review: no link reaches a patient until ops approves the
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest, context: Context): Promise<Next
   return NextResponse.json({ intake: { url: link.url, expiresAt: link.expiresAt, smsStatus } }, { status: 200 })
 }
 
-export async function GET(request: NextRequest, context: Context): Promise<NextResponse> {
+async function getHandler(request: NextRequest, context: Context): Promise<NextResponse> {
   const c = await caller(request, context)
   if ('error' in c) return c.error
   const supabase = createServiceClient()
@@ -115,3 +116,6 @@ export async function GET(request: NextRequest, context: Context): Promise<NextR
     duplicate: openPossibleDuplicate(p, await loadDuplicateNames(supabase, c.clinicId, openDuplicateIds([p]))),
   }, { headers: { 'Cache-Control': 'no-store' } })
 }
+
+export const POST = withApiErrors('/api/patients/[patientId]/intake-link', postHandler)
+export const GET = withApiErrors('/api/patients/[patientId]/intake-link', getHandler)

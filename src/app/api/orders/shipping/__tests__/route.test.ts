@@ -12,6 +12,11 @@ import { POST } from '../route'
 const CLINIC = 'c0000000-0000-4000-8000-000000000001'
 const STRIVE = 'a4000000-0000-0000-0000-000000000001'
 const QUICK_RX = 'a4000000-0000-0000-0000-000000000002'
+// Order ids are ids: the route refuses anything else with a 400.
+const SEMA = 'a6000000-0000-0000-0000-00000000000a'
+const BPC  = 'a6000000-0000-0000-0000-00000000000b'
+const A    = 'a6000000-0000-0000-0000-000000000001'
+const B    = 'a6000000-0000-0000-0000-000000000002'
 
 const getUserMock = jest.fn()
 const getSessionMock = jest.fn()
@@ -85,46 +90,46 @@ beforeEach(() => {
 
 describe('POST /api/orders/shipping', () => {
   it('Semaglutide via Quick Rx (cold) + BPC-157 via Strive (standard) → $25 + $9 on the two orders', async () => {
-    orders = [order('o-sema', QUICK_RX, 'cold_chain', 95), order('o-bpc', STRIVE, 'standard', 65)]
-    const res = await POST(req({ orderIds: ['o-sema', 'o-bpc'] }))
+    orders = [order(SEMA, QUICK_RX, 'cold_chain', 95), order(BPC, STRIVE, 'standard', 65)]
+    const res = await POST(req({ orderIds: [SEMA, BPC] }))
     expect(res.status).toBe(200)
-    await expect(res.json()).resolves.toEqual(expect.objectContaining({ totalCents: 3400, feesByOrder: { 'o-sema': 2500, 'o-bpc': 900 } }))
+    await expect(res.json()).resolves.toEqual(expect.objectContaining({ totalCents: 3400, feesByOrder: { [SEMA]: 2500, [BPC]: 900 } }))
     expect(updates).toEqual([
-      { orderId: 'o-sema', row: { shipping_fee: 25 } },
-      { orderId: 'o-bpc',  row: { shipping_fee: 9 } },
+      { orderId: SEMA, row: { shipping_fee: 25 } },
+      { orderId: BPC,  row: { shipping_fee: 9 } },
     ])
     expect(getSessionMock).not.toHaveBeenCalled()
     expect(orderFilters).toContainEqual(['clinic_id', CLINIC])
   })
 
   it('both via Strive → $22 once: on the first order, $0 on the second', async () => {
-    orders = [order('o-sema', STRIVE, 'cold_chain', 95), order('o-bpc', STRIVE, 'standard', 65, { shipping_fee: 9 })]
-    const res = await POST(req({ orderIds: ['o-sema', 'o-bpc'] }))
-    await expect(res.json()).resolves.toEqual(expect.objectContaining({ totalCents: 2200, feesByOrder: { 'o-sema': 2200, 'o-bpc': 0 } }))
+    orders = [order(SEMA, STRIVE, 'cold_chain', 95), order(BPC, STRIVE, 'standard', 65, { shipping_fee: 9 })]
+    const res = await POST(req({ orderIds: [SEMA, BPC] }))
+    await expect(res.json()).resolves.toEqual(expect.objectContaining({ totalCents: 2200, feesByOrder: { [SEMA]: 2200, [BPC]: 0 } }))
     // The second order had its own $9 from creation; the send zeroes it.
     expect(updates).toEqual([
-      { orderId: 'o-sema', row: { shipping_fee: 22 } },
-      { orderId: 'o-bpc',  row: { shipping_fee: 0 } },
+      { orderId: SEMA, row: { shipping_fee: 22 } },
+      { orderId: BPC,  row: { shipping_fee: 0 } },
     ])
   })
 
   it('two prescriptions to the same pharmacy never pay shipping twice', async () => {
-    orders = [order('a', STRIVE, 'standard', 65, { shipping_fee: 9 }), order('b', STRIVE, 'standard', 70, { shipping_fee: 9 })]
-    const res = await POST(req({ orderIds: ['a', 'b'] }))
-    await expect(res.json()).resolves.toEqual(expect.objectContaining({ totalCents: 900, feesByOrder: { a: 900, b: 0 } }))
-    expect(updates).toEqual([{ orderId: 'b', row: { shipping_fee: 0 } }])
+    orders = [order(A, STRIVE, 'standard', 65, { shipping_fee: 9 }), order(B, STRIVE, 'standard', 70, { shipping_fee: 9 })]
+    const res = await POST(req({ orderIds: [A, B] }))
+    await expect(res.json()).resolves.toEqual(expect.objectContaining({ totalCents: 900, feesByOrder: { [A]: 900, [B]: 0 } }))
+    expect(updates).toEqual([{ orderId: B, row: { shipping_fee: 0 } }])
   })
 
   it('refuses orders that are no longer drafts (their link already charges its shipping)', async () => {
-    orders = [order('a', STRIVE, 'standard', 65, { status: 'AWAITING_PAYMENT' })]
-    const res = await POST(req({ orderIds: ['a'] }))
+    orders = [order(A, STRIVE, 'standard', 65, { status: 'AWAITING_PAYMENT' })]
+    const res = await POST(req({ orderIds: [A] }))
     expect(res.status).toBe(409)
     expect(updates).toEqual([])
   })
 
   it('404 when an order is not in the caller\'s clinic', async () => {
-    orders = [order('a', STRIVE, 'standard', 65, { clinic_id: 'other' })]
-    expect((await POST(req({ orderIds: ['a'] }))).status).toBe(404)
+    orders = [order(A, STRIVE, 'standard', 65, { clinic_id: 'other' })]
+    expect((await POST(req({ orderIds: [A] }))).status).toBe(404)
   })
 
   it.each([[undefined], [[]], ['a'], [[1]], [Array.from({ length: 26 }, (_, i) => `o${i}`)]])('400 for orderIds %p', async (orderIds) => {

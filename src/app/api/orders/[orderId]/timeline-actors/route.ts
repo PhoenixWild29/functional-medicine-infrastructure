@@ -19,27 +19,34 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { resolveTimelineActors } from '@/lib/orders/timeline-actors'
-import { getUserClinicId } from '@/lib/auth/claims'
+import { getUserClinicId, getUserRole, isClinicStaffRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { z } from 'zod'
+import { parseParams, uuid } from '@/lib/api/input'
+
+const paramsSchema = z.object({ orderId: uuid() })
 
 interface RouteParams {
   params: Promise<{ orderId: string }>
 }
 
-export async function GET(_request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
-  const { orderId } = await params
-
+async function getHandler(_request: NextRequest, context: RouteParams): Promise<NextResponse> {
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  // Clinic staff only: any other role, or none, is refused before anything is read.
+  if (!isClinicStaffRole(getUserRole(user))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }
-  if (!orderId) {
-    return NextResponse.json({ error: 'orderId required' }, { status: 400 })
-  }
+  // The order id is an id before it is read (a bad one is a 400, not a
+  // Postgres 22P02 500).
+  const parsed = await parseParams(context, paramsSchema)
+  if (!parsed.ok) return parsed.response
+  const { orderId } = parsed.data
 
   const supabase = createServiceClient()
 
@@ -73,3 +80,5 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
   )
   return NextResponse.json({ actors }, { status: 200 })
 }
+
+export const GET = withApiErrors('/api/orders/[orderId]/timeline-actors', getHandler)

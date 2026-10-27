@@ -23,6 +23,7 @@ import {
   type SessionProvider,
   type SessionPrescription,
 } from '../../new-prescription/_context/prescription-session'
+import { userMessage } from '@/lib/errors/user-message'
 
 export interface RefillableOrder {
   orderId:        string
@@ -169,7 +170,7 @@ export function RefillPicker({ patients, provider, preselectOrderId = null, pres
       // on/off pattern was stored stops at the dose step and asks for it.
       router.push(refillLandingHref(created))
     } catch (err) {
-      setLoadFailed(err instanceof Error ? err.message : 'This refill could not be prepared. Nothing was changed. Try again.')
+      setLoadFailed(userMessage(err, 'This refill could not be prepared. Nothing was changed. Try again.'))
     } finally {
       setIsLoading(false)
     }

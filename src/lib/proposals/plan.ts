@@ -88,6 +88,17 @@ export type DobResult =
 
 const DOB_RE = /^\d{4}-\d{2}-\d{2}$/
 
+/** The proposal's failure count and lock as they are now; null on a database error. */
+async function currentCount(db: Db, proposalId: string): Promise<{ failures: number; locked: boolean } | null> {
+  const { data, error } = await db.from('treatment_proposals').select('dob_failures, locked_at').eq('proposal_id', proposalId).maybeSingle()
+  if (error || !data) {
+    if (error) console.error('[plan] DOB count lookup failed:', error.message)
+    return null
+  }
+  const row = data as { dob_failures: number; locked_at: string | null }
+  return { failures: row.dob_failures, locked: row.locked_at !== null }
+}
+
 export async function verifyPlanDob(db: Db, p: PlanProposal, dob: string, now: Date): Promise<DobResult> {
   const { data, error } = await db.from('patients').select('date_of_birth').eq('patient_id', p.patient_id).eq('clinic_id', p.clinic_id).maybeSingle()
   if (error) {
@@ -96,6 +107,11 @@ export async function verifyPlanDob(db: Db, p: PlanProposal, dob: string, now: D
   }
   const stored = (data as { date_of_birth?: string | null } | null)?.date_of_birth?.slice(0, 10) ?? null
   if (DOB_RE.test(dob) && stored !== null && stored === dob) {
+    // Wrong guesses sent alongside this one may have locked the link since
+    // it was read: the right date does not get past a lock.
+    const latest = await currentCount(db, p.proposal_id)
+    if (!latest) return { ok: false, reason: 'unavailable' }
+    if (latest.locked) return { ok: false, reason: 'locked' }
     if (!p.first_viewed_at) {
       const { error: viewError } = await db.from('treatment_proposals').update({ first_viewed_at: now.toISOString() })
         .eq('proposal_id', p.proposal_id).is('first_viewed_at', null)
@@ -105,13 +121,33 @@ export async function verifyPlanDob(db: Db, p: PlanProposal, dob: string, now: D
     return { ok: true }
   }
 
-  const failures = p.dob_failures + 1
+  // A wrong date counts with a compare-and-set on dob_failures. Guesses
+  // sent at once all read the same count, so all but one find it already
+  // moved on: each of those re-reads the count and tries again, so every
+  // wrong date is counted (a burst of guesses used to cost one try). The
+  // count only rises, so this ends within MAX_DOB_FAILURES rounds, at the
+  // lock at the latest.
+  let seen = p.dob_failures
+  let failures = seen + 1
+  let counted = false
+  for (let round = 0; round <= MAX_DOB_FAILURES && !counted; round++) {
+    failures = seen + 1
+    const { data: rows, error: countError } = await db.from('treatment_proposals')
+      .update({ dob_failures: failures, ...(failures >= MAX_DOB_FAILURES ? { locked_at: now.toISOString() } : {}) })
+      .eq('proposal_id', p.proposal_id)
+      .eq('dob_failures', seen)
+      .select('dob_failures')
+    if (countError) {
+      console.error('[plan] DOB failure not counted:', countError.message)
+      break
+    }
+    if (Array.isArray(rows) && rows.length > 0) { counted = true; break }
+    const current = await currentCount(db, p.proposal_id)
+    if (!current) return { ok: false, reason: 'unavailable' }
+    if (current.locked) return { ok: false, reason: 'locked' }
+    seen = current.failures
+  }
   const locked = failures >= MAX_DOB_FAILURES
-  const { error: countError } = await db.from('treatment_proposals')
-    .update({ dob_failures: failures, ...(locked ? { locked_at: now.toISOString() } : {}) })
-    .eq('proposal_id', p.proposal_id)
-    .eq('dob_failures', p.dob_failures)
-  if (countError) console.error('[plan] DOB failure not counted:', countError.message)
   await addEvent(db, p.proposal_id, 'dob_failed')
   if (locked) {
     await addEvent(db, p.proposal_id, 'locked')

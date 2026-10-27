@@ -7,10 +7,11 @@ import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { crossSite, requireClinicAdmin } from '@/lib/integrations/keragon/access'
 import { issueSecret } from '@/lib/integrations/keragon/connection'
+import { withApiErrors } from '@/lib/api/with-api-errors'
 
 export const dynamic = 'force-dynamic'
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   const refused = crossSite(request)
   if (refused) return refused
   const who = await requireClinicAdmin()
@@ -22,3 +23,5 @@ export async function POST(request: NextRequest) {
     { headers: { 'Cache-Control': 'no-store' } },
   )
 }
+
+export const POST = withApiErrors('/api/integrations/keragon/connection/secret', postHandler)

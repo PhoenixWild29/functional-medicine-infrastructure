@@ -12,6 +12,7 @@ import { LegalFooter } from '@/components/legal/legal-footer'
 export const metadata: Metadata = {
   title: 'Secure Checkout',
   robots: { index: false, follow: false },
+  referrer: 'no-referrer',
 }
 
 export default function CheckoutLayout({

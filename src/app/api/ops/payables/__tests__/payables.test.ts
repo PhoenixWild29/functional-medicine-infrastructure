@@ -133,3 +133,16 @@ describe('GET /api/ops/payables/remittance', () => {
     expect((await remittance(get(qs))).status).toBe(400)
   })
 })
+
+describe('POST /api/ops/payables/mark: body shape', () => {
+  const rawPost = (body: string) => new NextRequest('http://localhost/api/ops/payables/mark', { method: 'POST', body })
+  it('a JSON body that is not an object (null) is 400, not a thrown 500', async () => {
+    expect((await mark(rawPost('null'))).status).toBe(400)
+    expect(db.calls).toHaveLength(0)
+  })
+  it('invalid JSON keeps its message', async () => {
+    const res = await mark(rawPost('{'))
+    expect(res.status).toBe(400)
+    expect((await res.json() as { error: string }).error).toBe('Invalid JSON')
+  })
+})

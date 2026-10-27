@@ -29,8 +29,9 @@ import { generateGroupCheckoutToken } from '@/lib/auth/checkout-token'
 import { serverEnv }                 from '@/lib/env'
 import { logPhiAccess } from '@/lib/audit/phi-access'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { UUID_RE } from '@/lib/api/input'
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const CLINIC_APP_ROLES = ['clinic_admin', 'provider', 'medical_assistant'] as const
 type ClinicAppRole = typeof CLINIC_APP_ROLES[number]
 
@@ -42,7 +43,7 @@ interface GroupAndSendBody {
   siblingOrderIds: string[]
 }
 
-export async function POST(
+async function postHandler(
   request: NextRequest,
   { params }: RouteParams,
 ): Promise<NextResponse> {
@@ -58,11 +59,6 @@ export async function POST(
   const crossSite = refuseCrossSite(request)
   if (crossSite) return crossSite
 
-
-  const { orderId: anchorOrderId } = await params
-  if (!UUID_RE.test(anchorOrderId)) {
-    return NextResponse.json({ error: 'Invalid order id' }, { status: 400 })
-  }
 
   // ── 2. Auth gate ──────────────────────────────────────────────
   const supabaseAuth = await createServerClient()
@@ -85,20 +81,28 @@ export async function POST(
   if (!clinicId) {
     return NextResponse.json({ error: 'Session missing clinic_id' }, { status: 400 })
   }
+
+  // Any 8-4-4-4-12 id (seeded demo ids are not v4), checked after who is
+  // calling and before anything is read.
+  const { orderId: anchorOrderId } = await params
+  if (!UUID_RE.test(anchorOrderId)) {
+    return NextResponse.json({ error: 'Invalid order id' }, { status: 400 })
+  }
   // Pending review: nothing is ordered, signed or sent until ops approves
   // the clinic (lib/onboarding/approval-guard).
   const pendingReview = await refuseUnlessApproved(createServiceClient(), clinicId)
   if (pendingReview) return pendingReview
 
   // ── 3. Body validation ────────────────────────────────────────
-  let body: GroupAndSendBody
+  let body: GroupAndSendBody | null
   try {
-    body = await request.json() as GroupAndSendBody
+    body = await request.json() as GroupAndSendBody | null
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  if (!Array.isArray(body.siblingOrderIds)) {
+  // A body that is not an object (null, a string) has no siblingOrderIds.
+  if (!body || typeof body !== 'object' || !Array.isArray(body.siblingOrderIds)) {
     return NextResponse.json({ error: 'siblingOrderIds must be an array' }, { status: 400 })
   }
   if (body.siblingOrderIds.length < 1) {
@@ -109,7 +113,7 @@ export async function POST(
     return NextResponse.json({ error: 'A payment group cannot contain more than 25 orders' }, { status: 400 })
   }
   for (const id of body.siblingOrderIds) {
-    if (!UUID_RE.test(id)) {
+    if (typeof id !== 'string' || !UUID_RE.test(id)) {
       return NextResponse.json({ error: `Invalid sibling order id: ${id}` }, { status: 400 })
     }
     if (id === anchorOrderId) {
@@ -194,3 +198,5 @@ export function GET()    { return new NextResponse(null, { status: 405 }) }
 export function PUT()    { return new NextResponse(null, { status: 405 }) }
 export function PATCH()  { return new NextResponse(null, { status: 405 }) }
 export function DELETE() { return new NextResponse(null, { status: 405 }) }
+
+export const POST = withApiErrors('/api/orders/[orderId]/group-and-send', postHandler)

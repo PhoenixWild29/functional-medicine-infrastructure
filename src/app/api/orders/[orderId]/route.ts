@@ -21,6 +21,7 @@
 // REQ-OAS-010: DELETE is a soft delete (is_active = false, deleted_at).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
@@ -33,8 +34,12 @@ import { reallocateDraftSiblingShipping } from '@/lib/orders/apply-bundle-shippi
 import { parseTitrationSteps, isSigMode } from '@/lib/orders/titration'
 import { cyclePatternFrom } from '@/lib/orders/cycling'
 import type { Json } from '@/types/database.types'
-import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
+import { getUserClinicId, getUserRole, isClinicStaffRole } from '@/lib/auth/claims'
 import { revokeProposalLinkForOrder } from '@/lib/proposals/propose'
+import { withApiErrors } from '@/lib/api/with-api-errors'
+import { z } from 'zod'
+import { parseParams, parseInput, uuid } from '@/lib/api/input'
+import { lineBodySchema } from '@/lib/orders/line-body-schema'
 
 interface RouteContext {
   params: Promise<{ orderId: string }>
@@ -57,9 +62,17 @@ type DraftRow = Record<string, unknown> & {
   shipping_state_snapshot: string | null
 }
 
-/** Auth + load the draft (clinic-scoped, active) + permission. */
-async function loadEditableDraft(orderId: string): Promise<
-  | { ok: true; actor: Actor; draft: DraftRow; supabase: ReturnType<typeof createServiceClient>; user: PhiUser }
+const paramsSchema = z.object({ orderId: uuid() })
+
+type Caller = { actor: Actor; user: PhiUser; orderId: string }
+
+/**
+ * Who is calling (verified user, clinic, approval), then the order id:
+ * both before anything about the order is read. A bad id is a 400 here,
+ * never a Postgres 22P02 500.
+ */
+async function authenticate(context: RouteContext): Promise<
+  | { ok: true; caller: Caller }
   | { ok: false; response: NextResponse }
 > {
   const supabaseAuth = await createServerClient()
@@ -67,6 +80,10 @@ async function loadEditableDraft(orderId: string): Promise<
   const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) {
     return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  }
+  // Clinic staff only: any other role, or none, is refused before anything is read.
+  if (!isClinicStaffRole(getUserRole(user))) {
+    return { ok: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
   const clinicId = getUserClinicId(user) ?? null
   if (!clinicId) {
@@ -79,10 +96,18 @@ async function loadEditableDraft(orderId: string): Promise<
   const role = getUserRole(user) ?? null
   const actor: Actor = { userId: user.id, role, clinicId }
 
-  if (!orderId) {
-    return { ok: false, response: NextResponse.json({ error: 'orderId required' }, { status: 400 }) }
-  }
+  const parsed = await parseParams(context, paramsSchema)
+  if (!parsed.ok) return { ok: false, response: parsed.response }
 
+  return { ok: true, caller: { actor, user, orderId: parsed.data.orderId } }
+}
+
+/** Load the draft (clinic-scoped, active) + permission, for an authenticated caller. */
+async function loadEditableDraft({ actor, user, orderId }: Caller): Promise<
+  | { ok: true; actor: Actor; draft: DraftRow; supabase: ReturnType<typeof createServiceClient>; user: PhiUser }
+  | { ok: false; response: NextResponse }
+> {
+  const { clinicId, role } = actor
   const supabase = createServiceClient()
   const { data: draft, error } = await supabase
     .from('orders')
@@ -146,10 +171,15 @@ async function revokeLinkIfProposed(supabase: ReturnType<typeof createServiceCli
   await revokeProposalLinkForOrder(supabase, { clinicId, orderId: draft.order_id })
 }
 
-export async function PATCH(request: NextRequest, context: RouteContext): Promise<NextResponse> {
-  const { orderId } = await context.params
+async function patchHandler(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
+  // Who is calling first; then the body; then the draft.
+  const auth = await authenticate(context)
+  if (!auth.ok) return auth.response
+  const { orderId } = auth.caller
 
-  let body: {
+  type EditLineBody = {
     catalogItemId?: string | null
     formulationId?: string | null
     pharmacyId:     string
@@ -166,11 +196,17 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     cycleOnDays?:   unknown
     cycleOffDays?:  unknown
   }
+  let raw: unknown
   try {
-    body = await request.json()
+    raw = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
+  // Ids, text bounds and the sig mode (lib/orders/line-body-schema); the
+  // prescription rules below keep their own messages.
+  const shape = parseInput(lineBodySchema, raw)
+  if (!shape.ok) return shape.response
+  const body = shape.data as unknown as EditLineBody
 
   const { catalogItemId, formulationId, pharmacyId, retailCents, sigText, rxDetails, dose, frequencyCode, quantityLabel, packageId, packageCount } = body
 
@@ -216,7 +252,7 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
     }
   }
 
-  const loaded = await loadEditableDraft(orderId)
+  const loaded = await loadEditableDraft(auth.caller)
   if (!loaded.ok) return loaded.response
   const { actor, draft, supabase } = loaded
 
@@ -291,10 +327,14 @@ export async function PATCH(request: NextRequest, context: RouteContext): Promis
   return NextResponse.json({ orderId, changed: Object.keys(diff) }, { status: 200 })
 }
 
-export async function DELETE(request: NextRequest, context: RouteContext): Promise<NextResponse> {
-  const { orderId } = await context.params
+async function deleteHandler(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
+  const auth = await authenticate(context)
+  if (!auth.ok) return auth.response
+  const { orderId } = auth.caller
 
-  const loaded = await loadEditableDraft(orderId)
+  const loaded = await loadEditableDraft(auth.caller)
   if (!loaded.ok) return loaded.response
   const { actor, draft, supabase } = loaded
 
@@ -329,3 +369,6 @@ export async function DELETE(request: NextRequest, context: RouteContext): Promi
   })
   return NextResponse.json({ orderId, removed: true }, { status: 200 })
 }
+
+export const PATCH = withApiErrors('/api/orders/[orderId]', patchHandler)
+export const DELETE = withApiErrors('/api/orders/[orderId]', deleteHandler)
