@@ -23,9 +23,15 @@
 //      duplicate for staff, never merged. The patient gets the same answer
 //      either way: nothing says whether they were already a patient.
 //
-// No text is sent. Logs carry ids only. The PHI access log needs a signed-in
-// user, so a patient's own sign-up is not written there; the patient row
-// (created_at, signup_link_id) and the link's use count record it.
+// No text is sent. Logs carry ids only. PHI access log (C-2026-10-25-17,
+// B14/B15; L1, writes are logged first): the database function creates the
+// patient and does not accept an id, so the create / signup row is written
+// BEFORE the function with the ids that exist then (the link's clinic, the
+// system as the actor: the patient has no id yet). When it cannot be
+// written, nothing is created (503). When the function then creates no
+// patient (an error, the link turned off, the cap), a not_completed_signup
+// row follows. After the create, a second best-effort row names the new
+// patient, with the patient as the actor.
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { refuseCrossSite } from '@/lib/security/same-origin'
@@ -42,13 +48,15 @@ import { toE164 } from '@/lib/patients/phone'
 import { flagPossibleDuplicate } from '@/lib/patients/duplicates'
 import { clinicApproval } from '@/lib/onboarding/approval-guard'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { logPhiAccess, logPhiWriteNotCompleted, patientActor, systemActor, type PhiAccessEntry } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
 
 async function postHandler(request: NextRequest, context: { params: Promise<{ token: string }> }): Promise<NextResponse> {
   const crossSite = refuseCrossSite(request, undefined, NO_STORE)
   if (crossSite) return crossSite
-  const limit = joinSubmitLimiter.check(clientIp(request.headers) ?? 'unknown')
+  const limit = await joinSubmitLimiter.check(clientIp(request.headers) ?? 'unknown')
   if (!limit.allowed) {
     return NextResponse.json(
       { error: JOIN_RATE_LIMITED_MESSAGE },
@@ -89,6 +97,14 @@ async function postHandler(request: NextRequest, context: { params: Promise<{ to
   const s = validateIntakeSubmission(body)
   if ('field' in s) return NextResponse.json(s, { status: 400, headers: NO_STORE })
 
+  // L1: logged before the create. The function makes the patient's id, so
+  // this row carries the link's clinic only.
+  const preEntry: PhiAccessEntry = {
+    actor: systemActor(link.clinicId), action: 'create', resource: 'signup', route: '/api/join/[token]',
+    clinicId: link.clinicId, headers: request.headers,
+  }
+  if (!(await logPhiAccess(preEntry))) return phiWriteRefused(NO_STORE)
+
   const { data, error } = await supabase.rpc('signup_link_create_patient', {
     p_link_id: link.linkId,
     p_daily_cap: SIGNUP_DAILY_CAP,
@@ -115,28 +131,39 @@ async function postHandler(request: NextRequest, context: { params: Promise<{ to
   })
   if (error) {
     console.error('[join] sign-up failed | link=', link.linkId, '| code=', error.code ?? 'unknown')
+    await logPhiWriteNotCompleted(preEntry)
     return NextResponse.json({ error: 'Your details could not be saved. Please try again.' }, { status: 500, headers: NO_STORE })
   }
 
   const result = (data ?? {}) as { status?: string; patient_id?: string; clinic_id?: string }
   if (result.status === 'inactive') {
+    await logPhiWriteNotCompleted(preEntry)
     return NextResponse.json({ error: JOIN_INACTIVE_MESSAGE }, { status: 410, headers: NO_STORE })
   }
   if (result.status === 'cap') {
     console.warn('[join] daily cap reached | link=', link.linkId)
+    await logPhiWriteNotCompleted(preEntry)
     return NextResponse.json({ error: JOIN_DAILY_CAP_MESSAGE }, { status: 429, headers: NO_STORE })
   }
   if (result.status !== 'created' || !result.patient_id) {
     console.error('[join] unexpected result | link=', link.linkId)
+    await logPhiWriteNotCompleted(preEntry)
     return NextResponse.json({ error: 'Your details could not be saved. Please try again.' }, { status: 500, headers: NO_STORE })
   }
   console.info(`[join] signed up | patient=${result.patient_id} | link=${link.linkId}`)
+  const newClinicId = result.clinic_id ?? link.clinicId
+  // The second row, best effort: the patient now exists (the create was
+  // already logged before it ran); a failure is alerted by the helper.
+  await logPhiAccess({
+    actor: patientActor(result.patient_id, newClinicId), action: 'create', resource: 'signup', route: '/api/join/[token]',
+    patientId: result.patient_id, clinicId: newClinicId, headers: request.headers,
+  })
 
   // A possible duplicate is flagged for staff, never merged, and never
   // shown to the patient. It cannot fail this sign-up: the patient exists.
   await flagPossibleDuplicate(supabase, {
     patientId: result.patient_id,
-    clinicId: result.clinic_id ?? link.clinicId,
+    clinicId: newClinicId,
     phoneE164: mobile,
     firstName: s.firstName, lastName: s.lastName, dateOfBirth: s.dateOfBirth,
   })

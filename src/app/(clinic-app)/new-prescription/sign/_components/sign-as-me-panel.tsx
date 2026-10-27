@@ -89,7 +89,7 @@ export function SignAsMePanel({ orderId, assignedProviderName, myProviderName, l
           type="button"
           onClick={() => router.push('/dashboard')}
           disabled={isSubmitting}
-          className="text-sm text-muted-foreground underline hover:text-foreground focus-visible:outline-none"
+          className="text-sm text-muted-foreground underline hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           Back to dashboard
         </button>

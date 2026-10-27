@@ -37,9 +37,9 @@ The Clinic App renders correctly after the Phase 13 UI/UX redesign. All screens 
 
 **Clinic user passwords were out of sync with Supabase.** All four auth users existed in Supabase but the three clinic-role users (clinic_admin, provider, medical_assistant) could not authenticate with the documented POC passwords. The ops_admin account worked fine. Passwords were reset via the Supabase Admin API during testing:
 
-- `admin@sunrise-clinic.com` → reset to `POCClinic2026!`
-- `dr.chen@sunrise-clinic.com` → reset to `POCProvider2026!`
-- `ma@sunrise-clinic.com` → reset to `POCMA2026!`
+- `admin@sunrise-clinic.com` → reset to the password in `POC_CLINIC_ADMIN_PASSWORD` (set in your local env)
+- `dr.chen@sunrise-clinic.com` → reset to the password in `POC_PROVIDER_PASSWORD` (set in your local env)
+- `ma@sunrise-clinic.com` → reset to the password in `POC_MA_PASSWORD` (set in your local env)
 
 **Recommendation:** Re-run `npm run seed:poc` or verify that the seed script is part of the CI/CD pipeline to prevent credential drift.
 

@@ -14,6 +14,7 @@
 import { createTwilioClient } from '@/lib/twilio/client'
 import { isTwilioConfigured } from '@/lib/twilio/config'
 import { renderProposalLinkSms } from '@/lib/sms/templates'
+import { logPhiDisclosure, systemActor } from '@/lib/audit/phi-access'
 
 type Db = { from: (table: string) => unknown }
 type Q = {
@@ -60,18 +61,26 @@ export async function sendProposalLinkSms(db: Db, input: ProposalSmsInput): Prom
 
   // Opt-in is read here, not trusted from a caller. Unreadable: not sent.
   const { data, error } = await (db.from('patients') as Q)
-    .select('first_name, phone_e164, sms_opt_in')
+    .select('first_name, phone_e164, sms_opt_in, clinic_id')
     .eq('patient_id', input.patientId)
     .maybeSingle()
   if (error || !data) {
     console.error('[proposal-sms] patient consent unreadable; not sent | proposal=', input.proposalId)
     return 'failed'
   }
-  const p = data as { first_name: string | null; phone_e164: string | null; sms_opt_in: boolean | null }
+  const p = data as { first_name: string | null; phone_e164: string | null; sms_opt_in: boolean | null; clinic_id?: string | null }
   if (!p.phone_e164) return 'no_phone'
   if (p.sms_opt_in !== true) {
     await logSms(db, input, p.phone_e164, 'suppressed', null, 'sms_opt_out')
     return 'not_opted_in'
+  }
+
+  // Review L2: the text discloses the phone, first name and provider to
+  // Twilio. Fail-closed: no row, no text.
+  const clinicId = p.clinic_id ?? null
+  if (!(await logPhiDisclosure({ actor: systemActor(clinicId), resource: 'sms_disclosure', route: `/sms/${PROPOSAL_SMS_TEMPLATE}`, patientId: input.patientId, clinicId }))) {
+    console.error('[proposal-sms] disclosure not recorded; not sent | proposal=', input.proposalId)
+    return 'failed'
   }
 
   try {

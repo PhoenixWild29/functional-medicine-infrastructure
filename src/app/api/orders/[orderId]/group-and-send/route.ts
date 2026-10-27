@@ -20,13 +20,15 @@
 // createPaymentGroup so the policy lives in one place.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient }        from '@/lib/supabase/server'
 import { createServiceClient }       from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { createPaymentGroup, cancelPaymentGroup } from '@/lib/payment-group/create-group'
 import { generateGroupCheckoutToken } from '@/lib/auth/checkout-token'
 import { serverEnv }                 from '@/lib/env'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted, type PhiAccessEntry } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 import { UUID_RE } from '@/lib/api/input'
@@ -55,10 +57,9 @@ async function postHandler(
   }
 
   // ── 1. CSRF (same-origin only) ────────────────────────────────
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') {
-    return NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 })
-  }
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
+
 
   // ── 2. Auth gate ──────────────────────────────────────────────
   const supabaseAuth = await createServerClient()
@@ -127,6 +128,16 @@ async function postHandler(
   }
 
   // ── 4. Bundle ─────────────────────────────────────────────────
+  // Compliance C2 and L1 (B15): logged BEFORE the bundle is created; no
+  // row, no bundle (503). The patient (and the group id) exist only once
+  // createPaymentGroup has read the orders, so this row names the anchor
+  // order and the clinic; a second row after the create names the patient.
+  const phiEntry: PhiAccessEntry = {
+    user: user, action: 'create', resource: 'payment_group', route: '/api/orders/[orderId]/group-and-send',
+    orderId: anchorOrderId, clinicId, headers: request.headers ?? null,
+  }
+  if (!(await logPhiAccess(phiEntry))) return phiWriteRefused()
+
   const supabase = createServiceClient()
   const result = await createPaymentGroup({
     supabase,
@@ -137,6 +148,7 @@ async function postHandler(
   })
 
   if (!result.ok) {
+    await logPhiWriteNotCompleted(phiEntry)
     return NextResponse.json({ error: result.error }, { status: result.status })
   }
 
@@ -163,6 +175,7 @@ async function postHandler(
       orderIds: allIds,
       stripePaymentIntentId: result.stripePaymentIntentId,
     })
+    await logPhiWriteNotCompleted({ ...phiEntry, patientId: result.patientId })
     return NextResponse.json(
       { error: 'Failed to generate payment link for group. The bundle was rolled back; please try again.' },
       { status: 500 },
@@ -175,11 +188,9 @@ async function postHandler(
   console.info(
     `[group-and-send] generated | group=${result.groupId} anchor=${anchorOrderId} orders=${result.orderCount} clinic=${clinicId}`,
   )
-  // Compliance C2: the patient's orders were bundled under one payment link.
-  await logPhiAccess({
-    user: user, action: 'create', resource: 'payment_group', route: '/api/orders/[orderId]/group-and-send',
-    orderId: anchorOrderId, patientId: result.patientId, headers: request.headers ?? null,
-  })
+  // The patient, now known (best effort: the bundle is made and was
+  // logged above; a failure here is alerted by the helper).
+  await logPhiAccess({ ...phiEntry, patientId: result.patientId })
 
   return NextResponse.json(
     {

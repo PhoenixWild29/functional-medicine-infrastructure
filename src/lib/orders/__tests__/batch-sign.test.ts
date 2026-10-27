@@ -1042,3 +1042,51 @@ describe('patient intake not finished', () => {
     expect(await sign(db, [id(1)])).toMatchObject({ ok: true })
   })
 })
+
+// ── L1: the sign rows are written before anything is signed ──
+
+describe('L1: beforeWrite (the sign rows) runs after every check and before any write', () => {
+  it('is called once with each line and its patient, after the checks and before shipping or any write', async () => {
+    const db = world([draft(1), draft(2), draft(3, { patient_id: P2 })])
+    const seen: Array<{ targets: unknown; writes: number; shippingCalls: number }> = []
+    const beforeWrite = jest.fn(async (targets: ReadonlyArray<{ orderId: string; patientId: string }>) => {
+      seen.push({ targets, writes: db.writes.length, shippingCalls: applyBundleShippingMock.mock.calls.length })
+      return true
+    })
+    const res = await sign(db, [id(1), id(2), id(3)], { beforeWrite })
+    expect(res).toMatchObject({ ok: true })
+    expect(beforeWrite).toHaveBeenCalledTimes(1)
+    expect(seen[0]).toEqual({
+      targets: [{ orderId: id(1), patientId: P1 }, { orderId: id(2), patientId: P1 }, { orderId: id(3), patientId: P2 }],
+      writes: 0,
+      shippingCalls: 0,
+    })
+  })
+
+  it('false: 503 with the standard refusal, nothing is written or allocated', async () => {
+    const db = world([draft(1)])
+    const res = await sign(db, [id(1)], { beforeWrite: async () => false })
+    expect(res).toEqual({ ok: false, status: 503, error: 'This change could not be recorded. Nothing was changed. Try again.' })
+    expect(db.writes).toHaveLength(0)
+    expect(applyBundleShippingMock).not.toHaveBeenCalled()
+    expect(createPaymentGroupMock).not.toHaveBeenCalled()
+  })
+
+  it('a refused check never calls it (nothing to record)', async () => {
+    const db = world([draft(1, { provider_id: PATEL })])
+    const beforeWrite = jest.fn(async () => true)
+    expect(await sign(db, [id(1)], { beforeWrite })).toMatchObject({ ok: false, status: 403 })
+    expect(beforeWrite).not.toHaveBeenCalled()
+  })
+
+  it('a partial sign names the orders that were not signed', async () => {
+    const db = world([draft(1), draft(2, { patient_id: P2 })])
+    // A race outside the app: order 2 leaves DRAFT after the checks.
+    applyBundleShippingMock.mockImplementation(async () => {
+      orderRow(db, 2)['status'] = 'CANCELLED'
+      return { ok: true, shipping: { totalCents: 900, byPharmacy: [] }, feesByOrder: {} }
+    })
+    const res = await sign(db, [id(1), id(2)], { beforeWrite: async () => true })
+    expect(res).toMatchObject({ ok: false, status: 500, unsignedOrderIds: [id(2)] })
+  })
+})

@@ -35,23 +35,8 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import * as Sentry from '@sentry/nextjs'
 import SignatureCanvas from 'react-signature-canvas'
 
-// ── F5 diagnostic (PR #7c, self-reverts) ─────────────────────
-// See draft-sign-form.tsx for the full rationale. This instrumented
-// control canvas produces breadcrumbs we can compare side-by-side
-// with the draft-sign canvas during the next cowork walkthrough.
-// REMOVE THIS INSTRUMENTATION once F5 is root-caused.
-function logSignatureEvent(component: 'draft-sign-form' | 'batch-review-form', event: 'onBegin' | 'onEnd') {
-  console.log(`[F5-diag] ${component} ${event} fired`)
-  Sentry.addBreadcrumb({
-    category: 'signature',
-    message:  `${component} ${event} fired`,
-    level:    'info',
-    data:     { component, event, ts: Date.now() },
-  })
-}
 import { usePrescriptionSession, type SessionPrescription } from '../../_context/prescription-session'
 import { isIntakePending, patientName } from '@/lib/patients/display'
 import { ALLERGIES_REQUIRED_CODE, hasRecordedAllergies } from '@/lib/patients/allergies'
@@ -95,6 +80,7 @@ import { ProposalOptions, alignPlan, defaultProposalPlan, planProblems, proposal
 import { PlanLinkPanel } from '@/components/proposals/plan-link-panel'
 import type { SentLink } from '@/lib/proposals/propose'
 import { userMessage } from '@/lib/errors/user-message'
+import { HelpLink } from '@/components/help-link'
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -326,6 +312,9 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
   const router = useRouter()
   const session = usePrescriptionSession()
   const sigCanvasRef = useRef<SignatureCanvas>(null)
+  // Removing a line removes the button that had focus: focus goes to
+  // "+ Add Another Prescription" instead of being lost to the page.
+  const addAnotherRef = useRef<HTMLButtonElement>(null)
 
   // WO-99: the stroke rule (at least 3 strokes spanning at least 40% of
   // the pad), read off the pad after each stroke. The server checks the
@@ -1210,7 +1199,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => session.removePrescription(rx.id)}
+                    onClick={() => { session.removePrescription(rx.id); requestAnimationFrame(() => addAnotherRef.current?.focus()) }}
                     disabled={isBusy}
                     aria-label={`Remove ${rx.medicationName}`}
                     className="text-[10px] text-red-500 underline hover:text-red-700 disabled:opacity-50"
@@ -1235,6 +1224,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
           Back
         </button>
         <button
+          ref={addAnotherRef}
           type="button"
           onClick={() => router.push('/new-prescription/search')}
           disabled={isBusy}
@@ -1318,7 +1308,10 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
           instead of signing now (docs/design/patient-protocol-choice.md). */}
       {proposalRole && (
         <section aria-labelledby="patient-choice-heading" className="space-y-4 rounded-lg border border-border bg-card p-4">
-          <h2 id="patient-choice-heading" className="text-base font-semibold text-foreground">Let the patient choose</h2>
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 id="patient-choice-heading" className="text-base font-semibold text-foreground">Let the patient choose</h2>
+            <HelpLink topic="treatment-plans" />
+          </div>
           <label htmlFor="patient-choice-toggle" className="flex min-h-[44px] items-center gap-2 text-sm text-foreground">
             <input
               id="patient-choice-toggle"
@@ -1387,10 +1380,8 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
 
           <div className="mt-3 rounded-lg border border-border bg-white">
             {/*
-             * Fire "captured" on BOTH pointerdown (onBegin) and pointerup
-             * (onEnd). Kept consistent with draft-sign-form (F5 fix) so
-             * both signature surfaces behave identically. See draft-
-             * sign-form.tsx for the full F5 root-cause TODO.
+             * F5 fix: the pad is read when the pen lifts (onEnd), and Sign
+             * & Send re-checks it, so lost strokes are caught.
              */}
             <SignatureCanvas
               ref={sigCanvasRef}
@@ -1398,11 +1389,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
                 className: 'w-full h-32 rounded-lg',
                 'aria-label': 'Provider signature pad',
               }}
-              onBegin={() => {
-                logSignatureEvent('batch-review-form', 'onBegin')
-              }}
               onEnd={() => {
-                logSignatureEvent('batch-review-form', 'onEnd')
                 readSignaturePad()
               }}
             />

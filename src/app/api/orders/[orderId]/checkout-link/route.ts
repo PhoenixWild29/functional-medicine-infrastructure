@@ -30,12 +30,14 @@
 // PAID_PROCESSING and onward (payment complete), and anything else.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
 import { generateCheckoutToken } from '@/lib/auth/checkout-token'
 import { serverEnv } from '@/lib/env'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiWriteNotCompleted, type PhiAccessEntry } from '@/lib/audit/phi-access'
+import { phiWriteRefused } from '@/lib/audit/phi-write'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 import { z } from 'zod'
@@ -64,10 +66,9 @@ async function postHandler(
   // CSRF: reject cross-site POSTs. Same-origin requests from our own app
   // send Sec-Fetch-Site: same-origin. Direct navigations / absent headers
   // (e.g., curl) are fine because they lack a third-party cross-site cookie.
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') {
-    return NextResponse.json({ error: 'Cross-site requests are not permitted' }, { status: 403 })
-  }
+  const crossSite = refuseCrossSite(request)
+  if (crossSite) return crossSite
+
 
   // Auth gate
   const supabaseAuth = await createServerClient()
@@ -134,11 +135,20 @@ async function postHandler(
     )
   }
 
+  // Compliance C2 and L1 (B15): a payment link for the patient's order is
+  // issued. Logged BEFORE the link is made; no row, no link (503).
+  const phiEntry: PhiAccessEntry = {
+    user: user, action: 'create', resource: 'payment_link', route: '/api/orders/[orderId]/checkout-link',
+    orderId, patientId: order.patient_id, headers: request.headers,
+  }
+  if (!(await logPhiAccess(phiEntry))) return phiWriteRefused({ 'Cache-Control': 'no-store' })
+
   let token: string
   try {
     token = await generateCheckoutToken(orderId, order.patient_id, order.clinic_id)
   } catch (err) {
     console.error(`[checkout-link] token generation failed | order=${orderId}:`, err instanceof Error ? err.message : err)
+    await logPhiWriteNotCompleted(phiEntry)
     return NextResponse.json({ error: 'Failed to generate payment link' }, { status: 500 })
   }
 
@@ -148,11 +158,6 @@ async function postHandler(
   console.info(
     `[checkout-link] generated | order=${orderId} | clinic=${clinicId} | status=${order.status}`
   )
-  // Compliance C2: a payment link for the patient's order was issued.
-  await logPhiAccess({
-    user: user, action: 'create', resource: 'payment_link', route: '/api/orders/[orderId]/checkout-link',
-    orderId, patientId: order.patient_id, headers: request.headers,
-  })
 
   return NextResponse.json(
     { checkoutUrl, expiresAt },

@@ -114,6 +114,14 @@ describe('REQUIRE_MFA=true', () => {
     }
   })
 
+  it('the challenge verify API is reachable at AAL1, while other APIs answer MFA_REQUIRED (security B12)', async () => {
+    getUserMock.mockResolvedValue(session('provider', VERIFIED))
+    getClaimsMock.mockResolvedValue(claims('aal1'))
+    expect((await middleware(req('/api/mfa/verify'))).status).toBe(200)
+    const other = await middleware(req('/api/orders'))
+    expect(other.status).toBe(401)
+  })
+
   it('an unauthenticated visitor still goes to /login, not to MFA', async () => {
     getUserMock.mockResolvedValue({ data: { user: null } })
     const res = await middleware(req('/dashboard'))

@@ -17,9 +17,12 @@
 //   4. If an order is waiting for payment, the response carries a checkout
 //      link and the page goes straight to payment.
 //
-// Logs carry ids only. The PHI access log needs a signed-in user, so a
-// patient's own submission is not written there; the patient row's
-// intake_completed_at and the link's used_at record it.
+// Logs carry ids only. PHI access log (C-2026-10-25-17, B14/B15): the
+// submission is a write on the patient the link names, so one update /
+// intake row with the patient as the actor is written BEFORE anything else
+// (the link claim included); when it cannot be written the answer is 503
+// and nothing is changed (the link stays open). The page shows only the
+// clinic's name, so it logs no view.
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -30,6 +33,7 @@ import { flagPossibleDuplicate } from '@/lib/patients/duplicates'
 import { INTAKE_CONSENT_SOURCE, PRIVACY_NOTICE_VERSION, SMS_CONSENT_TEXT_VERSION } from '@/lib/intake/consent'
 import { validateIntakeSubmission } from '@/lib/intake/submission'
 import { withApiErrors } from '@/lib/api/with-api-errors'
+import { logPhiAccess, patientActor } from '@/lib/audit/phi-access'
 
 const NOT_ACTIVE = 'This link is no longer active. Please ask your clinic to send you a new one.'
 
@@ -55,6 +59,13 @@ async function postHandler(request: NextRequest, context: { params: Promise<{ to
   if ('field' in s) return NextResponse.json(s, { status: 400 })
 
   const { linkId, clinicId, patientId } = link.link
+  const recorded = await logPhiAccess({
+    actor: patientActor(patientId, clinicId), action: 'update', resource: 'intake', route: '/api/intake/[token]',
+    patientId, clinicId, headers: request.headers,
+  })
+  if (!recorded) {
+    return NextResponse.json({ error: 'This change could not be recorded. Nothing was changed. Try again.' }, { status: 503 })
+  }
   if (!(await claimIntakeLink(supabase, linkId))) {
     return NextResponse.json({ error: NOT_ACTIVE }, { status: 410 })
   }

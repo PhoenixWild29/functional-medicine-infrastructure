@@ -14,6 +14,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { loadOnboardingState, type OnboardingState } from '@/lib/onboarding/state'
 import { OnboardingWizard } from './_components/onboarding-wizard'
+import { contactCompoundIQ } from '@/lib/support/contact'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Clinic onboarding | CompoundIQ' }
@@ -28,7 +29,7 @@ export default async function OnboardingPage() {
     return (
       <main className="mx-auto max-w-xl px-4 py-12">
         <h1 className="text-2xl font-bold text-foreground">Clinic onboarding</h1>
-        <p className="mt-2 text-sm text-slate-700">Your account is not linked to a clinic. Contact CompoundIQ for help.</p>
+        <p className="mt-2 text-sm text-slate-700">Your account is not linked to a clinic. {contactCompoundIQ()} for help.</p>
       </main>
     )
   }

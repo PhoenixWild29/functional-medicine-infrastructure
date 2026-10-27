@@ -20,16 +20,20 @@
 // Privacy: the file stays in memory for this request only. It is never
 // written to disk or to storage, and never logged; neither are the values
 // read from it. One phi_access_log row per read sent to Claude (resource
-// face_sheet_fill, no patient yet, no values).
+// face_sheet_fill, no patient yet, no values). Sending the sheet to Claude
+// is a disclosure (C-2026-10-25-17, B14/B15): one ai_face_sheet row
+// (logPhiDisclosure, action export) BEFORE the call, fail-closed: when it
+// cannot be written the sheet is not sent and the answer is 503.
 //
 // getUser(), never getSession(); role and clinic from app_metadata.
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { refuseCrossSite } from '@/lib/security/same-origin'
 import { createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { refuseUnlessApproved } from '@/lib/onboarding/approval-guard'
-import { logPhiAccess } from '@/lib/audit/phi-access'
+import { logPhiAccess, logPhiDisclosure } from '@/lib/audit/phi-access'
 import { extractFaceSheet, type FaceSheetInput, type FaceSheetMediaType, type FaceSheetResult } from '@/lib/face-sheet/extract'
 import { FACE_SHEET_NOT_SET_UP, MAX_FACE_SHEET_BYTES, faceSheetStatus } from '@/lib/face-sheet/config'
 import { FACE_SHEET_RATE_LIMITED_MESSAGE, faceSheetLimiter } from '@/lib/face-sheet/rate-limit'
@@ -44,6 +48,7 @@ export const maxDuration = 60
 const STAFF_ROLES = new Set(['provider', 'medical_assistant', 'clinic_admin'])
 const MAX_TEXT = 50_000
 const NO_STORE = { 'Cache-Control': 'no-store' }
+const ROUTE = '/api/patients/face-sheet'
 
 const MESSAGES: Record<Exclude<FaceSheetResult, { ok: true }>['reason'], { status: number; error: string; code?: string }> = {
   unreadable: { status: 422, error: 'Nothing could be read from this face sheet. Enter the details by hand.' },
@@ -89,8 +94,8 @@ async function readInput(request: NextRequest): Promise<FaceSheetInput | NextRes
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const sfSite = request.headers.get('sec-fetch-site')
-  if (sfSite && sfSite !== 'same-origin' && sfSite !== 'none') return json({ error: 'Cross-site requests are not permitted' }, 403)
+  const crossSite = refuseCrossSite(request, 'Cross-site requests are not permitted', NO_STORE)
+  if (crossSite) return crossSite
 
   const supabaseAuth = await createServerClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -107,13 +112,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const pendingReview = await refuseUnlessApproved(createServiceClient(), clinicId)
   if (pendingReview) return pendingReview
 
-  const limit = faceSheetLimiter.check(user.id)
+  const limit = await faceSheetLimiter.check(user.id)
   if (!limit.allowed) {
     return json({ error: FACE_SHEET_RATE_LIMITED_MESSAGE }, 429, { 'Retry-After': String(limit.retryAfterSeconds) })
   }
 
   const input = await readInput(request)
   if (input instanceof NextResponse) return input
+
+  // Fail-closed: nothing goes to Claude unless the disclosure is recorded.
+  const disclosed = await logPhiDisclosure({ user, resource: 'ai_face_sheet', route: ROUTE, clinicId, headers: request.headers })
+  if (!disclosed) return json({ error: 'The face sheet could not be read right now. Try again.' }, 503)
 
   let result: FaceSheetResult
   try {
@@ -125,7 +134,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   // Compliance C2: the sheet was sent to be read, whatever came back.
-  await logPhiAccess({ user, action: 'view', resource: 'face_sheet_fill', route: '/api/patients/face-sheet', clinicId, headers: request.headers })
+  await logPhiAccess({ user, action: 'view', resource: 'face_sheet_fill', route: ROUTE, clinicId, headers: request.headers })
 
   if (!result.ok) {
     const m = MESSAGES[result.reason]

@@ -34,7 +34,8 @@ import { join } from 'node:path'
 
 const OPS_DIR = join(process.cwd(), 'src', 'app', '(ops-dashboard)')
 
-const ROUTES = ['pipeline', 'sla', 'adapters', 'fax', 'catalog'] as const
+// access-review (B16) follows the same rules.
+const ROUTES = ['pipeline', 'sla', 'adapters', 'fax', 'catalog', 'access-review'] as const
 
 function pageSource(route: string): string {
   return readFileSync(join(OPS_DIR, 'ops', route, 'page.tsx'), 'utf8')

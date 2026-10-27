@@ -16,14 +16,31 @@
 // REQ-GCX-005/006/007: Token/order state handling below.
 // REQ-GCX-008: Zero PHI — no patient name, medication name, or diagnosis displayed.
 // REQ-GCX-009: WCAG 2.1 AA — semantic HTML, aria labels, sufficient contrast.
+//
+// PHI access log (C-2026-10-25-17, B14/B15): a payable checkout shows the
+// patient's order (amount, titration schedule, clinic), so each render is
+// one view / checkout row, the patient from the token's order or group as
+// the actor. A read: a failed row is alerted by the helper and the page
+// still renders. A link sent to the neutral page logs nothing.
 
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createServiceClient } from '@/lib/supabase/service'
 import { CheckoutPageContent } from './checkout-page-content'
 import { parseTitrationSteps, titrationPatientSchedule } from '@/lib/orders/titration'
+import { currentRequestHeaders, logPhiAccess, patientActor } from '@/lib/audit/phi-access'
 
 type ActiveState = 'active' | 'paid' | 'cancelled_expired'
+
+const ROUTE = '/checkout/[token]'
+
+/** One view / checkout row; never throws (a read keeps rendering). */
+async function logCheckoutView(params: { patientId: string; clinicId: string; orderId: string | null }): Promise<void> {
+  await logPhiAccess({
+    actor: patientActor(params.patientId, params.clinicId), action: 'view', resource: 'checkout', route: ROUTE,
+    patientId: params.patientId, orderId: params.orderId, clinicId: params.clinicId, headers: await currentRequestHeaders(),
+  })
+}
 
 export async function renderCheckout(token: string) {
   const headersList = await headers()
@@ -58,7 +75,7 @@ async function renderSoloCheckout({
   const [orderResult, clinicResult] = await Promise.all([
     supabase
       .from('orders')
-      .select('order_id, status, retail_price_snapshot, shipping_fee, titration_steps, formulations(concentration_value, concentration_unit, dosage_forms(name)), patients(sms_opt_in)')
+      .select('order_id, patient_id, status, retail_price_snapshot, shipping_fee, titration_steps, formulations(concentration_value, concentration_unit, dosage_forms(name)), patients(sms_opt_in)')
       .eq('order_id', orderId)
       .is('deleted_at', null)
       .maybeSingle(),
@@ -109,6 +126,8 @@ async function renderSoloCheckout({
       })
     : null
 
+  await logCheckoutView({ patientId: (order as { patient_id: string }).patient_id, clinicId, orderId })
+
   return (
     <CheckoutPageContent
       token={token}
@@ -145,7 +164,7 @@ async function renderGroupCheckout({
   const [groupResult, clinicResult, countResult] = await Promise.all([
     supabase
       .from('payment_groups')
-      .select('group_id, status, total_cents, shipping_total, patients(sms_opt_in)')
+      .select('group_id, patient_id, status, total_cents, shipping_total, patients(sms_opt_in)')
       .eq('group_id', groupId)
       .eq('clinic_id', clinicId)
       .maybeSingle(),
@@ -181,6 +200,8 @@ async function renderGroupCheckout({
   // A paid or cancelled group link: the neutral page (see the solo flavor).
   if (group.status !== 'AWAITING_PAYMENT') redirect('/checkout/expired')
   const checkoutState: ActiveState = 'active'
+
+  await logCheckoutView({ patientId: (group as { patient_id: string }).patient_id, clinicId, orderId: null })
 
   return (
     <CheckoutPageContent

@@ -20,6 +20,11 @@
 //    flagged for staff. Every field sync does change is recorded there
 //    too, with the old and new value.
 // 4. SMS consent is never written.
+// 5. L1 (writes are logged first): ctx.beforeWrite, when given, is called
+//    once before the first write to a patient (the link, the insert, the
+//    update or the field changes), with 'create' and a pre-generated id
+//    for a new patient. False means the write must not happen: the event
+//    fails with audit_log_failed (retryable) and nothing is written.
 //
 // The result goes to the sync log: ids, codes and field names only.
 
@@ -54,9 +59,19 @@ interface PatientRow extends Record<string, unknown> {
 
 const PATIENT_COLUMNS = 'patient_id, clinic_id, is_active, deleted_at, first_name, last_name, date_of_birth, sex, phone, phone_e164, email, address_line1, address_line2, city, state, zip, allergies, nkda, intake_completed_at'
 
-type Ctx = { clinicId: string; syncEventId: string | null; now: Date }
+/** A write about to happen: a new patient (its id generated here) or an existing one. */
+export interface PatientWrite { action: 'create' | 'update'; patientId: string }
+
+type Ctx = {
+  clinicId: string; syncEventId: string | null; now: Date
+  /** L1: called before the write; false refuses it (audit_log_failed). */
+  beforeWrite?: (write: PatientWrite) => Promise<boolean>
+}
+
+export const AUDIT_LOG_FAILED = 'audit_log_failed'
 
 const fail = (code: string, patientId: string | null = null): SyncOutcome => ({ status: 'error', patientId, detail: {}, errorCode: code })
+const allowed = async (ctx: Ctx, write: PatientWrite): Promise<boolean> => (ctx.beforeWrite ? ctx.beforeWrite(write) : true)
 const sameName = (a: string | null | undefined, b: string | null | undefined) =>
   (a ?? '').replace(/\s+/g, ' ').trim().toLowerCase() === (b ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
 
@@ -112,9 +127,11 @@ export async function applyPatientEvent(db: SupabaseClient, ctx: Ctx, patient: K
   if (otherError) return fail('read_failed')
   if (other) return createPatient(db, ctx, fields, patient.externalPatientId, { of: best.patient_id, matchedOn, reason: 'match_linked_elsewhere', candidates: 1 })
 
+  // The link is the first write to this patient: logged before it.
+  if (!(await allowed(ctx, { action: 'update', patientId: best.patient_id }))) return fail(AUDIT_LOG_FAILED, best.patient_id)
   const linked = await link_(db, ctx, best.patient_id, patient.externalPatientId)
   if (!linked.ok) return fail(linked.code, best.patient_id)
-  return updatePatient(db, ctx, best, fields, { action: 'linked', matched_on: matchedOn })
+  return updatePatient(db, ctx, best, fields, { action: 'linked', matched_on: matchedOn }, true)
 }
 
 async function link_(db: SupabaseClient, ctx: Ctx, patientId: string, externalId: string): Promise<{ ok: true } | { ok: false; code: string }> {
@@ -134,7 +151,11 @@ async function createPatient(
   // A patient needs a mobile or an email (chk_patients_phone_or_email).
   const { phone, ...rest } = fields
   if (!phone && !rest.email) return fail('contact_required')
+  // L1: the id is generated here so the create can be logged before it.
+  const newId = crypto.randomUUID()
+  if (!(await allowed(ctx, { action: 'create', patientId: newId }))) return fail(AUDIT_LOG_FAILED)
   const row = withPhoneE164({
+    patient_id: newId,
     clinic_id: ctx.clinicId,
     ...rest,
     phone: phone ?? null,
@@ -163,6 +184,7 @@ async function createPatient(
 
 async function updatePatient(
   db: SupabaseClient, ctx: Ctx, p: PatientRow, fields: PatientSyncFields, detail: Record<string, unknown>,
+  alreadyLogged = false,
 ): Promise<SyncOutcome> {
   const selfIntake = !!p.intake_completed_at
   const update: Record<string, unknown> = {}
@@ -186,6 +208,8 @@ async function updatePatient(
     changes.push({ field: key, old_value: asText(current), new_value: asText(value), applied: true })
   }
 
+  if (!alreadyLogged && (Object.keys(update).length > 0 || changes.length > 0)
+    && !(await allowed(ctx, { action: 'update', patientId: p.patient_id }))) return fail(AUDIT_LOG_FAILED, p.patient_id)
   if (Object.keys(update).length > 0) {
     const { error } = await db.from('patients').update(withPhoneE164(update)).eq('patient_id', p.patient_id).eq('clinic_id', ctx.clinicId)
     if (error) return fail('write_failed', p.patient_id)

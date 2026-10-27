@@ -8,7 +8,7 @@
 // ============================================================
 
 import { useState } from 'react'
-import { createBrowserClient } from '@/lib/supabase/client'
+import { signOutInBrowser } from '@/lib/supabase/sign-out'
 import { redirectToLogin } from '@/lib/auth/redirect-to-login'
 
 export function NavSignOutButton() {
@@ -16,8 +16,7 @@ export function NavSignOutButton() {
 
   async function handleSignOut() {
     setLoading(true)
-    const supabase = createBrowserClient()
-    await supabase.auth.signOut()
+    await signOutInBrowser()
     redirectToLogin()
   }
 

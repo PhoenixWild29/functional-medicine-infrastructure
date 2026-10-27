@@ -47,7 +47,8 @@ it('Copy link copies it and records link_copied', async () => {
 it('Show QR code draws it as one path and records qr_shown once', async () => {
   panel()
   fireEvent.click(screen.getByRole('button', { name: 'Show QR code' }))
-  const qr = screen.getByRole('img', { name: 'QR code for the plan link' })
+  // The QR code loads on first show (next/dynamic), so wait for it.
+  const qr = await screen.findByRole('img', { name: 'QR code for the plan link' })
   expect(qr.querySelectorAll('path')).toHaveLength(1)
   await waitFor(() => expect(deliveries()).toEqual(['qr']))
   fireEvent.click(screen.getByRole('button', { name: 'Hide QR code' }))
@@ -74,6 +75,7 @@ it('no em dash anywhere', () => {
 it('axe clean, with the QR code shown', async () => {
   const { container } = panel()
   fireEvent.click(screen.getByRole('button', { name: 'Show QR code' }))
+  await screen.findByRole('img', { name: 'QR code for the plan link' })
   const axe = configureAxe({ runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'] } })
   expect((await axe(container)).violations.map(v => v.id)).toEqual([])
 })

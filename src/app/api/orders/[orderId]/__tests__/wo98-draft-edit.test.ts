@@ -24,6 +24,7 @@
 import { PATCH, DELETE } from '../route'
 import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
 import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
+import { logPhiWriteNotCompleted } from '@/lib/audit/phi-access'
 
 const CLINIC_ID   = 'a1000000-0000-0000-0000-000000000001'
 const ORDER_ID    = 'a6000000-0000-0000-0000-000000000001'
@@ -443,6 +444,43 @@ describe('PHI access log', () => {
   it('a refused edit logs nothing', async () => {
     expect((await PATCH(makeRequest(patchBody({ retailCents: 0 })), ctx)).status).toBe(400)
     expect(phiEntries()).toHaveLength(0)
+  })
+
+  // L1: the row is written BEFORE the update; no row, no change.
+  const orderUpdates = () => updatedRows.filter(u => u.table === 'orders')
+  it.each([
+    ['PATCH', () => PATCH(makeRequest(patchBody()), ctx)],
+    ['DELETE', () => DELETE(makeRequest(), ctx)],
+  ])('%s: the row is written before the update, naming the patient', async (_verb, call) => {
+    let updatesAtLog = -1
+    phiLog.mockImplementationOnce(async () => { updatesAtLog = orderUpdates().length; return true })
+    expect((await call()).status).toBe(200)
+    expect(updatesAtLog).toBe(0)
+    expectOnePhiRow({ action: 'update', resource: 'order', route: '/api/orders/[orderId]', orderId: ORDER_ID, patientId: 'pat' })
+  })
+
+  it.each([
+    ['PATCH', () => PATCH(makeRequest(patchBody()), ctx)],
+    ['DELETE', () => DELETE(makeRequest(), ctx)],
+  ])('%s: the row cannot be written: 503, the standard message, nothing updated or audited', async (_verb, call) => {
+    phiLog.mockResolvedValueOnce(false)
+    const res = await call()
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'This change could not be recorded. Nothing was changed. Try again.' })
+    expect(orderUpdates()).toHaveLength(0)
+    expect(auditRows()).toHaveLength(0)
+  })
+
+  it.each([
+    ['PATCH', () => PATCH(makeRequest(patchBody()), ctx)],
+    ['DELETE', () => DELETE(makeRequest(), ctx)],
+  ])('%s: an update that fails after the row was written writes the not-completed row', async (_verb, call) => {
+    jest.mocked(logPhiWriteNotCompleted).mockClear()
+    fixtures['orders:update'] = () => ({ data: null, error: { message: 'boom' } })
+    const quiet = jest.spyOn(console, 'error').mockImplementation(() => {})
+    expect((await call()).status).toBe(500)
+    expect(jest.mocked(logPhiWriteNotCompleted)).toHaveBeenCalledWith(phiEntries()[0])
+    quiet.mockRestore()
   })
 })
 

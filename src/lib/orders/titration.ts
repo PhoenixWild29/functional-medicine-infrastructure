@@ -276,10 +276,6 @@ export function stepWeekLabel(step: Pick<TitrationStepDispense, 'weekFrom' | 'we
   return step.weekFrom === step.weekTo ? `Week ${step.weekFrom}` : `Weeks ${step.weekFrom}–${step.weekTo}`
 }
 
-export function formatStepQuantity(step: TitrationStepDispense, dispenseUnit: string): string {
-  return step.quantity == null ? '—' : `${step.quantity} ${dispenseUnit}`
-}
-
 /**
  * The sig sentence a titration still carries. Tier 4 is a fax, so text
  * is the transport and the steps have to read as a sentence there — but

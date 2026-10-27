@@ -15,7 +15,8 @@
 
 import { POST } from '../route'
 import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
-import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
+import { phiLog, phiEntries } from '@/__tests__/helpers/phi-log'
+import { logPhiWriteNotCompleted } from '@/lib/audit/phi-access'
 
 const TEST_CLINIC_ID  = 'aaaaaaaa-aaaa-4aaa-9aaa-aaaaaaaaaaaa'
 const ORDER_ID        = '11111111-1111-4111-9111-111111111111'
@@ -245,23 +246,59 @@ describe('POST /api/orders/[orderId]/group-and-send', () => {
   })
 })
 
-// Compliance C2: bundling a patient's orders is logged once.
+// Compliance C2 and L1: the bundle is logged BEFORE it is created. The
+// patient is known only once createPaymentGroup has read the orders, so
+// the first row names the anchor order and the clinic, and a second,
+// best-effort row after the create names the patient.
 describe('PHI access log', () => {
-  beforeEach(() => phiLog.mockClear())
+  const notCompleted = jest.mocked(logPhiWriteNotCompleted)
+  const OK_GROUP = {
+    ok: true, groupId: 'group-uuid-1', stripePaymentIntentId: 'pi_test', totalCents: 17500,
+    orderCount: 2, patientId: 'pat-uuid-1', providerId: 'prov-uuid-1',
+  }
+  const rows = () => phiEntries().map(e => ({ action: e.action, resource: e.resource, route: e.route, orderId: e.orderId, patientId: e.patientId ?? null, clinicId: e.clinicId }))
+  const PRE = { action: 'create', resource: 'payment_group', route: '/api/orders/[orderId]/group-and-send', orderId: ORDER_ID, patientId: null, clinicId: TEST_CLINIC_ID }
+  beforeEach(() => { phiLog.mockClear(); notCompleted.mockClear() })
 
-  test('a bundle created logs exactly one row: create, payment_group, the patient', async () => {
-    createGroupMock.mockResolvedValueOnce({
-      ok: true, groupId: 'group-uuid-1', stripePaymentIntentId: 'pi_test', totalCents: 17500,
-      orderCount: 2, patientId: 'pat-uuid-1', providerId: 'prov-uuid-1',
-    })
+  test('a bundle: one row BEFORE the create (anchor order, clinic), then one naming the patient', async () => {
+    let createsAtLog = -1
+    phiLog.mockImplementationOnce(async () => { createsAtLog = createGroupMock.mock.calls.length; return true })
+    createGroupMock.mockResolvedValueOnce(OK_GROUP)
     const res = await POST(makeRequest({ siblingOrderIds: [SIBLING_ID] }, { 'sec-fetch-site': 'same-origin' }), makeParams(ORDER_ID))
     expect(res.status).toBe(201)
-    expectOnePhiRow({ action: 'create', resource: 'payment_group', route: '/api/orders/[orderId]/group-and-send', orderId: ORDER_ID, patientId: 'pat-uuid-1' })
+    expect(createsAtLog).toBe(0)
+    expect(rows()).toEqual([PRE, { ...PRE, patientId: 'pat-uuid-1' }])
+    expect(phiEntries()[0]!.user).toBeTruthy()
+    expect(notCompleted).not.toHaveBeenCalled()
   })
 
-  test('a refused bundle logs nothing', async () => {
+  test('the row cannot be written: 503, the standard message, no bundle is created', async () => {
+    phiLog.mockResolvedValueOnce(false)
+    const res = await POST(makeRequest({ siblingOrderIds: [SIBLING_ID] }), makeParams(ORDER_ID))
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'This change could not be recorded. Nothing was changed. Try again.' })
+    expect(createGroupMock).not.toHaveBeenCalled()
+  })
+
+  test('a bundle createPaymentGroup refuses: the pre-row, then a not-completed row', async () => {
     createGroupMock.mockResolvedValueOnce({ ok: false, status: 409, error: 'changed' })
     expect((await POST(makeRequest({ siblingOrderIds: [SIBLING_ID] }), makeParams(ORDER_ID))).status).toBe(409)
+    expect(rows()).toEqual([PRE])
+    expect(notCompleted).toHaveBeenCalledWith(phiEntries()[0])
+  })
+
+  test('a token that fails (the bundle rolled back): a not-completed row', async () => {
+    createGroupMock.mockResolvedValueOnce(OK_GROUP)
+    generateTokenMock.mockRejectedValueOnce(new Error('no secret'))
+    cancelGroupMock.mockResolvedValueOnce(undefined)
+    const quiet = jest.spyOn(console, 'error').mockImplementation(() => {})
+    expect((await POST(makeRequest({ siblingOrderIds: [SIBLING_ID] }), makeParams(ORDER_ID))).status).toBe(500)
+    expect(notCompleted).toHaveBeenCalledWith(expect.objectContaining({ action: 'create', resource: 'payment_group', orderId: ORDER_ID }))
+    quiet.mockRestore()
+  })
+
+  test('a bad body is refused before anything is logged', async () => {
+    expect((await POST(makeRequest({ siblingOrderIds: [] }), makeParams(ORDER_ID))).status).toBe(400)
     expect(phiEntries()).toHaveLength(0)
   })
 })

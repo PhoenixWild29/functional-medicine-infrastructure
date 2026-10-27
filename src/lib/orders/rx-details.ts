@@ -72,7 +72,9 @@ export const GLP1_INGREDIENTS = ['Semaglutide', 'Tirzepatide', 'Liraglutide', 'R
 
 /**
  * Standard 503A "not essentially a copy of a commercial product" reasons.
- * First entry is the pre-selected default. Mirrored verbatim in
+ * None is pre-selected: the provider chooses the reason, so a signed
+ * prescription records a decision, not a default (C8; decision 9 in
+ * docs/decisions/before-real-patients-2026-10-25.md). Mirrored verbatim in
  * supabase/migrations/20260912000001_wo96_rx_detail_fields.sql — the
  * rx-details unit test asserts the two stay in sync.
  */

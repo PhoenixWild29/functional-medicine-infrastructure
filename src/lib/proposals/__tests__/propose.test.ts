@@ -389,3 +389,39 @@ describe('how the link reaches the patient', () => {
     expect(db.tables['sms_log']).toEqual([expect.objectContaining({ status: 'failed', error_code: '21211' })])
   })
 })
+
+// B's verification of L1 (B15): beforeWrite (the create row) runs once every
+// check has passed and before the first write; false stores nothing.
+describe('L1: beforeWrite runs after the checks and before any write', () => {
+  const PLAN = (send = false) => ({ patientId: 'pat-1', providerId: CHEN, send, options: [{ label: 'A', protocolId: null, lines: [{ orderId: id(1), required: true }] }] })
+  const propose2 = (db: World, beforeWrite: (t: { patientId: string; orderIds: string[] }) => Promise<boolean>) =>
+    createProposal(db.client, { clinicId: CLINIC, caller: CALLERS.chen, input: PLAN(), now: NOW, beforeWrite })
+
+  it('is called once, with the patient and the lines, before the plan is stored', async () => {
+    const db = world([draft(1)])
+    const seen: Array<{ target: unknown; proposals: number; tagged: number }> = []
+    const beforeWrite = jest.fn(async (target: { patientId: string; orderIds: string[] }) => {
+      seen.push({ target, proposals: (db.tables['treatment_proposals'] ?? []).length, tagged: (db.tables['orders'] ?? []).filter(o => o['proposal_option_id']).length })
+      return true
+    })
+    expect(await propose2(db, beforeWrite)).toMatchObject({ ok: true, status: 'draft' })
+    expect(beforeWrite).toHaveBeenCalledTimes(1)
+    expect(seen[0]).toEqual({ target: { patientId: 'pat-1', orderIds: [id(1)] }, proposals: 0, tagged: 0 })
+  })
+
+  it('false: 503 with the standard refusal; no plan, no options, no line tagged', async () => {
+    const db = world([draft(1)])
+    const res = await propose2(db, async () => false)
+    expect(res).toEqual({ ok: false, status: 503, error: 'This change could not be recorded. Nothing was changed. Try again.' })
+    expect(db.tables['treatment_proposals'] ?? []).toHaveLength(0)
+    expect(db.tables['treatment_proposal_options'] ?? []).toHaveLength(0)
+    expect(order(db, 1)['proposal_option_id'] ?? null).toBeNull()
+  })
+
+  it('a refused check never calls it (nothing to record)', async () => {
+    const db = world([draft(1, { status: 'AWAITING_PAYMENT' })])
+    const beforeWrite = jest.fn(async () => true)
+    expect(await propose2(db, beforeWrite)).toMatchObject({ ok: false, status: 409 })
+    expect(beforeWrite).not.toHaveBeenCalled()
+  })
+})

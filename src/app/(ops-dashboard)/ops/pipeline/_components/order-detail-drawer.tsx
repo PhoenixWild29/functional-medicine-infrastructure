@@ -14,10 +14,17 @@
 //
 // Quick actions are delegated back to the parent via onAction.
 // REQ-OPV-008: Reroute limit displayed here (reroute_count shown).
+//
+// B13: the drawer asks why before it opens a patient's order. Nothing is
+// fetched until a reason is chosen; the reason goes in the
+// x-ops-access-reason header and is logged with the access (the order's
+// clinic sees it in their access log). Each order asks again.
 
 import { useState, useEffect } from 'react'
 import type { PipelineOrder } from '@/types/pipeline'
 import { userMessage } from '@/lib/errors/user-message'
+import { TRACKING_PENDING_LABEL, trackingPending } from '@/lib/orders/tracking-pending'
+import { OPS_ACCESS_REASONS, OPS_ACCESS_REASON_HEADER, type OpsAccessReasonCode } from '@/lib/audit/ops-access-reason'
 
 // ── Detail types ─────────────────────────────────────────────
 
@@ -95,6 +102,9 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
   const [detailError, setDetailError] = useState<string | null>(null)
   const [activeTab,   setActiveTab]   = useState<'detail' | 'history' | 'submissions' | 'sla'>('detail')
   const [actionLoading, setActionLoading] = useState(false)
+  // B13: the reason given for this order (null until chosen), and the choice in the form.
+  const [reason,       setReason]       = useState<OpsAccessReasonCode | null>(null)
+  const [chosenReason, setChosenReason] = useState<OpsAccessReasonCode | null>(null)
 
   // A different order (or none): reset while rendering, when the order
   // changes (React's pattern for adjusting state to an input); the fetch
@@ -104,17 +114,16 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
   if (orderId !== shownOrderId) {
     setShownOrderId(orderId)
     setDetailError(null)
-    if (orderId) {
-      setIsLoading(true)
-      setActiveTab('detail')
-    } else {
-      setDetail(null)
-    }
+    setDetail(null)
+    setIsLoading(false)
+    setReason(null)
+    setChosenReason(null)
+    if (orderId) setActiveTab('detail')
   }
 
   useEffect(() => {
-    if (!orderId) return
-    fetch(`/api/ops/orders/${orderId}/detail`)
+    if (!orderId || !reason) return
+    fetch(`/api/ops/orders/${orderId}/detail`, { headers: { [OPS_ACCESS_REASON_HEADER]: reason } })
       .then(async res => {
         if (!res.ok) {
           const err = await res.json() as { error?: string }
@@ -127,7 +136,7 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
         setDetailError(userMessage(err, 'Failed to load order detail'))
       })
       .finally(() => setIsLoading(false))
-  }, [orderId])
+  }, [orderId, reason])
 
   if (!order) return null
 
@@ -136,8 +145,10 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
     setActionLoading(true)
     await onAction(order.orderId, action, payload)
     // Refresh detail
-    const res = await fetch(`/api/ops/orders/${order.orderId}/detail`)
-    if (res.ok) setDetail(await res.json() as OrderDetail)
+    const res = reason
+      ? await fetch(`/api/ops/orders/${order.orderId}/detail`, { headers: { [OPS_ACCESS_REASON_HEADER]: reason } })
+      : null
+    if (res?.ok) setDetail(await res.json() as OrderDetail)
     setActionLoading(false)
   }
 
@@ -150,8 +161,8 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
         aria-hidden
       />
 
-      {/* Drawer */}
-      <aside
+      {/* Drawer: a div, since role="dialog" is not allowed on <aside> (axe aria-allowed-role) */}
+      <div
         role="dialog"
         aria-modal="true"
         aria-label={`Order detail: ${order.orderNumber ?? order.orderId}`}
@@ -207,6 +218,50 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 text-sm">
+          {!reason && (
+            <form
+              onSubmit={e => {
+                e.preventDefault()
+                if (!chosenReason) return
+                setIsLoading(true)
+                setReason(chosenReason)
+              }}
+              className="space-y-4"
+            >
+              <fieldset className="space-y-2">
+                <legend className="mb-1 font-medium text-foreground">Why are you opening this order?</legend>
+                <p className="text-xs text-muted-foreground">
+                  Your reason is logged with this access. The clinic sees it in their access log.
+                </p>
+                {OPS_ACCESS_REASONS.map(r => (
+                  <label key={r.code} className="flex items-start gap-2 rounded-md px-1 py-1 text-foreground hover:bg-accent">
+                    <input
+                      type="radio"
+                      name="ops-access-reason"
+                      value={r.code}
+                      checked={chosenReason === r.code}
+                      onChange={() => setChosenReason(r.code)}
+                      className="mt-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                    <span>{r.label}</span>
+                  </label>
+                ))}
+              </fieldset>
+              {chosenReason === 'emergency' && (
+                <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Emergency access is reviewed within 24 hours. Use it only for urgent patient safety, and tell the security officer once it is done.
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={!chosenReason}
+                className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Open order
+              </button>
+            </form>
+          )}
+
           {isLoading && (
             <div className="flex items-center gap-2 text-muted-foreground">
               <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -235,7 +290,7 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
             <SlaTab rows={detail.slas} />
           )}
         </div>
-      </aside>
+      </div>
     </>
   )
 }
@@ -289,6 +344,12 @@ function DetailTab({
             <Field label="Tracking #">{o.trackingNumber}</Field>
             <Field label="Carrier">{o.carrier ?? '—'}</Field>
           </>
+        )}
+        {/* Decision 10: shipped without tracking is allowed; say it is pending. */}
+        {trackingPending(o.status, o.trackingNumber) && (
+          <Field label="Tracking #">
+            <span className="font-medium text-amber-800">{TRACKING_PENDING_LABEL}</span>
+          </Field>
         )}
         {/* Payment Flow v1.1: a failed payment attempt; the link still works. */}
         {o.paymentFailedLabel && (

@@ -15,7 +15,7 @@
 // Saving is POST /api/favorites, which adds the doses to the card the
 // clinic already has for this drug, pharmacy and scope, or makes one.
 
-import { useEffect, useId, useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { DOSE_UNITS } from '@/lib/orders/dose-display'
 import type { ConcentrationSource } from '@/lib/orders/dose-display'
 import { FREQUENCY_OPTIONS } from './structured-sig-builder.types'
@@ -27,6 +27,7 @@ import {
   type DosePreset,
 } from '@/lib/orders/favorite-presets'
 import { userMessage } from '@/lib/errors/user-message'
+import { useDialogFocus } from '@/components/a11y/use-dialog-focus'
 
 export interface MakeFavoriteTarget {
   formulation_id:   string
@@ -46,6 +47,8 @@ interface Props {
    * the practice card.
    */
   patientDoses?: ReadonlyArray<DosePreset>
+  /** Where focus goes after a successful save (the opener is about to be replaced). */
+  focusAfterSave?: () => HTMLElement | null | undefined
   /** The session patient, when there is one. */
   patient:     { patientId: string; name: string } | null
   providerId:  string
@@ -54,7 +57,7 @@ interface Props {
   onSaved:     () => Promise<void> | void
 }
 
-export function MakeFavoriteDialog({ target, otherDoses, patientDoses = [], patient, providerId, onClose, onSaved }: Props) {
+export function MakeFavoriteDialog({ target, otherDoses, patientDoses = [], patient, providerId, onClose, onSaved, focusAfterSave }: Props) {
   const titleId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
   const [doses, setDoses] = useState<DosePreset[]>(() => mergePresets([target.preset], otherDoses))
@@ -84,7 +87,11 @@ export function MakeFavoriteDialog({ target, otherDoses, patientDoses = [], pati
   // patient's pinned doses only when it is saved for that patient.
   const offered = scope === 'patient' && patient ? mergePresets(doses, patientDoses) : doses
 
-  useEffect(() => { dialogRef.current?.focus() }, [])
+  // Focus in, Tab kept inside, Escape closes, focus back to the opener on
+  // close; after a save, to focusAfterSave instead (the opener is replaced
+  // by "★ Favorite" once the list refreshes).
+  const savedRef = useRef(false)
+  useDialogFocus(dialogRef, { onEscape: onClose, returnFocusTo: () => (savedRef.current ? focusAfterSave?.() : null) })
 
   const doseText = (p: DosePreset) => {
     const t = presetChipText(p, target.formulations)
@@ -135,6 +142,7 @@ export function MakeFavoriteDialog({ target, otherDoses, patientDoses = [], pati
         const json = await res.json().catch(() => ({})) as { error?: string }
         throw new Error(json.error ?? `Save failed (${res.status})`)
       }
+      savedRef.current = true
       await onSaved()
       onClose()
     } catch (err) {
@@ -154,7 +162,6 @@ export function MakeFavoriteDialog({ target, otherDoses, patientDoses = [], pati
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }}
         className="w-full max-w-md space-y-4 rounded-lg border border-border bg-card p-4 shadow-lg focus:outline-none"
       >
         <h2 id={titleId} className="text-sm font-semibold text-foreground">Make {target.formulation_name} a favorite</h2>
@@ -192,13 +199,13 @@ export function MakeFavoriteDialog({ target, otherDoses, patientDoses = [], pati
               value={newDose.dose}
               onChange={e => setNewDose(d => ({ ...d, dose: e.target.value }))}
               placeholder="Dose"
-              className="w-20 rounded-md border border-input bg-background px-2 py-1 text-sm"
+              className="w-20 rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <select
               aria-label="New dose unit"
               value={newDose.unit}
               onChange={e => setNewDose(d => ({ ...d, unit: e.target.value }))}
-              className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+              className="rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {DOSE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
             </select>
@@ -206,29 +213,29 @@ export function MakeFavoriteDialog({ target, otherDoses, patientDoses = [], pati
               aria-label="New dose frequency"
               value={newDose.frequency}
               onChange={e => setNewDose(d => ({ ...d, frequency: e.target.value }))}
-              className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+              className="rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="">No frequency</option>
               {FREQUENCY_OPTIONS.map(f => <option key={f.code} value={f.code}>{f.display}</option>)}
             </select>
-            <button type="button" onClick={addDose} className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted/50">
+            <button type="button" onClick={addDose} className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               Add dose
             </button>
           </div>
-          {newDoseError && <p className="text-xs text-red-700" data-testid="make-favorite-dose-error">{newDoseError}</p>}
+          <p role="status" aria-live="polite" className="text-xs text-red-700 empty:hidden" data-testid="make-favorite-dose-error">{newDoseError ?? ''}</p>
         </fieldset>
 
-        {error && <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" data-testid="make-favorite-error">{error}</p>}
+        <p role="status" aria-live="polite" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 empty:hidden" data-testid="make-favorite-error">{error ?? ''}</p>
 
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/50">
+          <button type="button" onClick={onClose} className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             Cancel
           </button>
           <button
             type="button"
             onClick={() => { void save() }}
             disabled={tickedCount === 0 || saving}
-            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {saving ? 'Saving…' : 'Save favorite'}
           </button>

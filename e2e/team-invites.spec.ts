@@ -3,6 +3,7 @@ import AxeBuilder from '@axe-core/playwright'
 import { createClient } from '@supabase/supabase-js'
 import { npiChecksumValid } from '../src/lib/providers/npi'
 import { TEST_IDS, TEST_USERS } from './fixtures/seed'
+import { e2ePassword } from './fixtures/test-password'
 
 // ============================================================
 // Team invites for approved clinics, end to end (E2E project only)
@@ -24,7 +25,7 @@ import { TEST_IDS, TEST_USERS } from './fixtures/seed'
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
 const EMAIL_PREFIX = 'team-e2e-'
 const LAST_NAME = 'Teamspec'
-const PASSWORD = 'Team-e2e-Passw0rd!'
+const PASSWORD = e2ePassword()
 const RUN = Date.now().toString(36)
 const PROVIDER_EMAIL = `${EMAIL_PREFIX}${RUN}-provider@compoundiq.test`
 const MA_EMAIL = `${EMAIL_PREFIX}${RUN}-ma@compoundiq.test`

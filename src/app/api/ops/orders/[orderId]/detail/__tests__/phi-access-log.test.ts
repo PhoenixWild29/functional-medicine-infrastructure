@@ -6,7 +6,7 @@
  */
 
 import { scriptedDb } from '@/__tests__/helpers/scripted-db'
-import { phiLog, phiEntries, expectOnePhiRow } from '@/__tests__/helpers/phi-log'
+import { phiLog, phiEntries } from '@/__tests__/helpers/phi-log'
 
 const ORDER = '45e03578-e208-468d-a35b-ab9bc82320ae'
 let session: unknown = null
@@ -20,7 +20,7 @@ jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => db.clien
 import { GET } from '../route'
 import { userFromSession, withForgedSession } from '@/__tests__/helpers/auth-from-session'
 
-const call = () => GET({ headers: new Headers() } as never, { params: Promise.resolve({ orderId: ORDER }) })
+const call = () => GET({ headers: new Headers({ 'x-ops-access-reason': 'support_request' }) } as never, { params: Promise.resolve({ orderId: ORDER }) })
 
 beforeEach(() => {
   phiLog.mockClear()
@@ -30,9 +30,14 @@ beforeEach(() => {
     : { data: [] }))
 })
 
-it('a read logs exactly one row: view, order, the order\'s clinic and patient', async () => {
+// B13: a second row records why ops opened it (access-reason.test.ts).
+it('a read logs the view (order, the order\'s clinic and patient) and the reason', async () => {
   expect((await call()).status).toBe(200)
-  expectOnePhiRow({ action: 'view', resource: 'order', route: '/api/ops/orders/[orderId]/detail', orderId: ORDER, clinicId: 'clinic-1', patientId: 'pt-1' })
+  const where = { route: '/api/ops/orders/[orderId]/detail', orderId: ORDER, clinicId: 'clinic-1', patientId: 'pt-1' }
+  expect(phiEntries()).toEqual([
+    expect.objectContaining({ action: 'view', resource: 'order', ...where }),
+    expect.objectContaining({ action: 'view', resource: 'ops_reason_support_request', ...where }),
+  ])
 })
 
 it('a non-ops user, or a missing order, logs nothing', async () => {

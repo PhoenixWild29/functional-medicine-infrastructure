@@ -6,9 +6,9 @@
 // no session, so attempts are limited per client IP: ACCEPT_LIMIT per
 // ACCEPT_WINDOW_MS (a fixed window), then 429 with Retry-After.
 //
-// The client IP is the first x-forwarded-for value, which Vercel's edge
-// sets to the address it saw; values a proxy appends after it do not move
-// the bucket. A request with none shares one "unknown" bucket.
+// The client IP comes from lib/security/client-ip (x-vercel-forwarded-for,
+// then x-real-ip, then the first x-forwarded-for hop). A request with none
+// shares one "unknown" bucket.
 //
 // The store is in memory, per function instance: on Vercel each warm
 // instance counts separately and a cold start begins at zero, so this
@@ -18,6 +18,8 @@
 // route) can replace createMemoryRateLimiter without touching the route.
 //
 // Nothing here logs the token or the IP.
+
+import { clientIp as sharedClientIp } from '@/lib/security/client-ip'
 
 export const ACCEPT_LIMIT = 10
 export const ACCEPT_WINDOW_MS = 15 * 60_000
@@ -61,10 +63,9 @@ export function createMemoryRateLimiter(opts: { limit: number; windowMs: number;
   }
 }
 
-/** The first x-forwarded-for value, trimmed; "unknown" when there is none. */
+/** The client IP (lib/security/client-ip); "unknown" when there is none. */
 export function clientIp(headers: { get(name: string): string | null }): string {
-  const first = headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-  return first ? first : 'unknown'
+  return sharedClientIp(headers) ?? 'unknown'
 }
 
 /** The limiter the route uses. Swap this for a shared store. */

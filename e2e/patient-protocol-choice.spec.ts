@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
 import { createClient } from '@supabase/supabase-js'
 import { seedStaticData, cleanupTestOrders, TEST_CATALOG, TEST_USERS } from './fixtures/seed'
 import { TEST_PATIENT_DOB, closeTestProposals, latestChoice, latestTestProposal, proposalEvents, proposalLines, proposalRow } from './fixtures/proposals'
@@ -33,6 +34,16 @@ import { TEST_PATIENT_DOB, closeTestProposals, latestChoice, latestTestProposal,
 // a proposal is never deleted, so cleanup closes it and soft-deletes its
 // orders. No accounts are created: the provider is the seeded E2E provider
 // and the patient needs no login.
+
+// WCAG 2.1 AA (axe, contrast included) at each state of the flow: these
+// states exist only inside it, so the all-routes axe spec cannot reach
+// them cold. Stripe's Payment Element iframe is Stripe's.
+const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
+async function expectNoAxeViolations(page: Page, state: string) {
+  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS)
+    .exclude('iframe[name^="__privateStripeFrame"], iframe[src*="js.stripe.com"]').analyze()
+  expect(results.violations.map(v => `${state}: ${v.id} (${v.impact}) ${v.nodes.map(n => n.target.join(' ')).join(', ')}`)).toEqual([])
+}
 
 async function pickProviderIfListed(page: Page) {
   const providerButton = page.getByRole('button', { name: /Provider,\s*Test/i })
@@ -161,6 +172,7 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     // The plain compound left in Option A becomes optional ("nice to have").
     await optionA.getByLabel(`Required: ${TEST_CATALOG.formulationName}`).uncheck()
     await expect(optionA.getByLabel(`Required: ${TEST_CATALOG.glp1FormulationName}`)).toBeChecked()
+    await expectNoAxeViolations(page, 'Review, two options')
 
     await page.getByRole('button', { name: 'Send to patient for choice' }).click()
     const share = page.getByRole('region', { name: 'Share the plan link' })
@@ -188,6 +200,7 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     expect(planPath).toMatch(/^\/plan\/[A-Za-z0-9_-]{43}$/)
     await share.getByRole('button', { name: 'Show QR code' }).click()
     await expect(share.getByRole('img', { name: 'QR code for the plan link' })).toBeVisible()
+    await expectNoAxeViolations(page, 'Share the plan link, QR shown')
     await expect.poll(() => proposalEvents(proposal.proposal_id)).toEqual(expect.arrayContaining(['link_copied', 'qr_shown']))
 
     // ── 3. The patient, on a phone, with no session ──
@@ -197,12 +210,14 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     await expect(patient.getByRole('heading', { level: 1, name: 'Your provider has a plan ready' })).toBeVisible({ timeout: 15_000 })
     await expect(patient.locator('body')).not.toContainText(TEST_CATALOG.glp1FormulationName)
     await expect(patient.locator('body')).not.toContainText('Foundation plan')
+    await expectNoAxeViolations(patient, 'Plan link, date of birth')
 
     // One wrong date of birth: counted, and the tries left are shown.
     await patient.getByLabel('Date of birth').fill('1979-12-31')
     await patient.getByRole('button', { name: 'Continue' }).click()
     // Scoped to the page's main: Next's route announcer is also role=alert.
     await expect(patient.getByRole('main').getByRole('alert')).toHaveText("That date of birth doesn't match. 4 tries left.")
+    await expectNoAxeViolations(patient, 'Plan link, wrong date of birth')
     await expect.poll(async () => (await proposalRow(proposal.proposal_id)).dob_failures).toBe(1)
     await expect.poll(() => proposalEvents(proposal.proposal_id)).toContain('dob_failed')
 
@@ -213,6 +228,7 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     const foundation = patient.getByRole('region', { name: 'Foundation plan' })
     await expect(foundation).toBeVisible()
     await expect(patient.getByRole('region', { name: 'Weight focus' })).toBeVisible()
+    await expectNoAxeViolations(patient, 'Choose your plan')
     await expect.poll(() => proposalEvents(proposal.proposal_id)).toContain('viewed')
 
     // The required item is locked on; the optional one is ticked and can be unticked.
@@ -235,8 +251,10 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     await expect(confirm.getByText('Foundation plan', { exact: true })).toBeVisible()
     await expect(confirm.getByText(TEST_CATALOG.glp1FormulationName, { exact: true })).toBeVisible()
     await expect(confirm.getByText(TEST_CATALOG.formulationName)).toHaveCount(0)
+    await expectNoAxeViolations(patient, 'Confirm your choice')
     await confirm.getByRole('button', { name: 'Confirm' }).click()
     await expect(patient.getByRole('heading', { level: 1, name: 'Sent to your provider for final approval' })).toBeVisible({ timeout: 15_000 })
+    await expectNoAxeViolations(patient, 'Sent to your provider')
 
     // Stored: chosen, Foundation plan, the GLP-1 only.
     await expect.poll(async () => (await proposalRow(proposal.proposal_id)).status).toBe('chosen')
@@ -247,9 +265,11 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     // ── 4. The provider sees the choice and signs it ──
     await page.goto(`/dashboard?tab=proposed&order=${glp1Line.orderId}`)
     await expect(page.getByRole('region', { name: 'Patient choice' }).getByText('The patient has chosen. Signing comes next.', { exact: true })).toBeVisible({ timeout: 15_000 })
+    await expectNoAxeViolations(page, 'Dashboard, Proposed tab, order drawer')
     await page.goto('/dashboard')
     const queue = page.getByRole('region', { name: 'Plans ready to sign' })
     await expect(queue.getByText('Test chose Foundation plan (1 of 2 items)', { exact: true })).toBeVisible({ timeout: 15_000 })
+    await expectNoAxeViolations(page, 'Dashboard, Plans ready to sign')
     await queue.getByRole('link', { name: 'Review and sign: Test chose Foundation plan (1 of 2 items)' }).click()
     await expect(page).toHaveURL(`/new-prescription/sign?proposal=${proposal.proposal_id}`, { timeout: 15_000 })
     await expect(page.getByTestId(`select-${glp1Line.orderId}`)).toBeChecked({ timeout: 15_000 })
@@ -280,6 +300,7 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     // The plan link is now no longer active (the neutral page), and shows nothing about the plan.
     await patient.goto(planPath)
     await expect(patient.getByRole('heading', { level: 1, name: 'This link is no longer active' })).toBeVisible({ timeout: 15_000 })
+    await expectNoAxeViolations(patient, 'Plan link, no longer active')
     await expect(patient.locator('body')).not.toContainText(TEST_CATALOG.glp1FormulationName)
 
     await phone.close()

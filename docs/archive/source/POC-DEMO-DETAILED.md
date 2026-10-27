@@ -154,10 +154,10 @@ Most authenticator apps accept either a QR scan of the `otpauth://` URI (generat
 
 | Role | Email | Password | Redirects To | Used in |
 |------|-------|----------|-------------|---------|
-| Ops Admin | `ops@compoundiq-poc.com` | `POCAdmin2026!` | `/ops/pipeline` | Part 2, Part 5 |
-| Clinic Admin | `admin@sunrise-clinic.com` | `POCClinic2026!` | `/dashboard` | Part 2, Part 3K (Settings) |
-| Provider | `dr.chen@sunrise-clinic.com` | `POCProvider2026!` | `/dashboard` | Part 3H (signs the drafts) |
-| Medical Assistant | `ma@sunrise-clinic.com` | `POCMA2026!` | `/dashboard` | **Part 3A–3G (the whole prescribing flow)** |
+| Ops Admin | `ops@compoundiq-poc.com` | `POC_OPS_PASSWORD` (set in your local env) | `/ops/pipeline` | Part 2, Part 5 |
+| Clinic Admin | `admin@sunrise-clinic.com` | `POC_CLINIC_ADMIN_PASSWORD` (set in your local env) | `/dashboard` | Part 2, Part 3K (Settings) |
+| Provider | `dr.chen@sunrise-clinic.com` | `POC_PROVIDER_PASSWORD` (set in your local env) | `/dashboard` | Part 3H (signs the drafts) |
+| Medical Assistant | `ma@sunrise-clinic.com` | `POC_MA_PASSWORD` (set in your local env) | `/dashboard` | **Part 3A–3G (the whole prescribing flow)** |
 
 > **v2.12 — who you are actually signed in as matters.** Prior versions narrated "the MA does this" while the presenter was signed in as clinic_admin. The whole compliance story in Part 3G depends on genuinely being the medical assistant, so the flow now uses the MA login. Clinic admin still has a job — the `/settings` stop in Part 3K, which is real admin work.
 
@@ -244,13 +244,13 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 ### Demonstrate Role-Based Routing
 
-3. Log in as **Clinic Admin**: `admin@sunrise-clinic.com` / `POCClinic2026!`
+3. Log in as **Clinic Admin**: `admin@sunrise-clinic.com` / the password in `POC_CLINIC_ADMIN_PASSWORD` (set in your local env)
 4. **Point out:** Redirected to `/dashboard` — the Clinic App
 
 > "Clinic users — admins, providers, medical assistants — all land on the clinic dashboard. They can only see their own clinic's data. Row-Level Security is enforced at the PostgreSQL level, not just application code."
 
 5. Sign out
-6. Log in as **Medical Assistant**: `ma@sunrise-clinic.com` / `POCMA2026!`
+6. Log in as **Medical Assistant**: `ma@sunrise-clinic.com` / the password in `POC_MA_PASSWORD` (set in your local env)
 7. **Point out:** the MA lands on the same `/dashboard`, with the same KPI cards and the same order table
 
 > "Same landing page, same data, different authority. The medical assistant sees everything the clinic admin sees — the difference shows up the moment someone tries to *do* something, not when they log in. We'll come back to that in a few minutes, and it's the most important thing in this demo."
@@ -258,7 +258,7 @@ The expanded seed gives the presenter named characters to point at. Every row be
 **This is the account we run the entire prescribing workflow on in Part 3.** Do not switch back to clinic admin to "make it easier" — the whole point of Part 3G is that we are genuinely the MA.
 
 8. Sign out
-9. Log in as **Ops Admin**: `ops@compoundiq-poc.com` / `POCAdmin2026!`
+9. Log in as **Ops Admin**: `ops@compoundiq-poc.com` / the password in `POC_OPS_PASSWORD` (set in your local env)
 10. **Point out:** Redirected to `/ops/pipeline` — the Ops Dashboard (dark mode)
 
 > "Ops admins see a completely different application — the dark-mode operations dashboard. They have cross-clinic visibility for monitoring the entire order pipeline."
@@ -278,7 +278,7 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 > ### 👤 You are the medical assistant for all of Part 3 (new in v2.12)
 >
-> **Sign in as `ma@sunrise-clinic.com` / `POCMA2026!` and stay there** through step 44. The narration says "the MA" because you *are* the MA.
+> **Sign in as `ma@sunrise-clinic.com` / the password in `POC_MA_PASSWORD` (set in your local env) and stay there** through step 44. The narration says "the MA" because you *are* the MA.
 >
 > Why this matters: at the Review step the MA does **not** get a Sign & Send button. They get **"Save as Draft — Provider Signs Later."** That is not a UI quirk to work around — it is the product's central compliance claim, and it only lands if you are actually signed in as the medical assistant when it happens. Running this flow as clinic_admin (as versions up to v2.11 did) quietly skips the single strongest beat in the demo.
 >
@@ -301,7 +301,7 @@ The expanded seed gives the presenter named characters to point at. Every row be
 
 ### 3A — Dashboard Overview (as the Medical Assistant)
 
-1. Log in as **Medical Assistant**: `ma@sunrise-clinic.com` / `POCMA2026!`
+1. Log in as **Medical Assistant**: `ma@sunrise-clinic.com` / the password in `POC_MA_PASSWORD` (set in your local env)
 2. **Point out the dashboard.** Verified live in prod on 2026-09-10, the MA sees exactly the same dashboard the clinic admin does:
 
    **KPI cards (verified baseline):**
@@ -564,7 +564,7 @@ Two things worth showing if asked: applying the **LDN Starter — Titration** fa
 
 > **Know before you log in: there are two drafts and you will sign them together.** An N-prescription session saves as N separate draft orders (see step 43), so the scripted flow leaves **2** drafts in the queue — Semaglutide and Testosterone Cypionate. **v2.24 (WO-99):** Dr. Chen signs both **at once** — one page, one signature, one click, one authenticator code for the controlled line. There is no second pass.
 
-50. **Log in as provider:** `dr.chen@sunrise-clinic.com` / `POCProvider2026!`
+50. **Log in as provider:** `dr.chen@sunrise-clinic.com` / the password in `POC_PROVIDER_PASSWORD` (set in your local env)
 51. Click the **"Drafts"** tab on the dashboard — it reads **Drafts 2**. Above the table: **Sign all (2)**. Each of Dr. Chen's draft rows has a checkbox (ticking rows offers **Sign selected (k)**).
 
 > **The Drafts tab exists now because the MA saved in step 43.** It is count-conditional (see step 2). If you skipped step 43, there is no tab and nothing to sign — go back and save the drafts.
@@ -626,7 +626,7 @@ Two things worth showing if asked: applying the **LDN Starter — Titration** fa
 
 > **Do not skip this.** You have now quoted the clinic's **40% default markup** four or five times without ever showing where it comes from. It takes one minute, it answers the "can we change that?" question before it's asked, and it is the natural place to explain how the clinic actually gets paid. This is also the one part of the demo that is genuinely **clinic-admin** work — the MA does not administer the clinic's payout account.
 
-64. **Sign out** and log in as **Clinic Admin**: `admin@sunrise-clinic.com` / `POCClinic2026!`. Navigate to **`/settings`** (Settings in the sidebar).
+64. **Sign out** and log in as **Clinic Admin**: `admin@sunrise-clinic.com` / the password in `POC_CLINIC_ADMIN_PASSWORD` (set in your local env). Navigate to **`/settings`** (Settings in the sidebar).
 65. **Point out the page shell:** the heading **"Clinic Settings"**, the subtitle *"Manage your clinic profile, Stripe payout account, and default pricing."*, and the **sticky section nav** down the left with three anchors: **Stripe Connect**, **Clinic Profile**, **Notifications**.
 66. **Stripe Connect** — the section renders as **"Stripe Payout Account"** with the subtitle *"Required to receive clinic payouts from patient payments."* and a **status badge** in the top-right reading one of **Pending / Onboarding / Active / Restricted / Deactivated**. Read whatever badge is actually showing. If the account is not yet fully verified, a **"Start Onboarding"** / **"Continue Onboarding"** button appears; if it is verified you get a green **"Payouts active"** panel with the connected account ID.
 
@@ -752,7 +752,7 @@ Two things worth showing if asked: applying the **LDN Starter — Titration** fa
 ### 5A — Pipeline View
 
 1. Open a new tab, navigate to `https://functional-medicine-infrastructure.vercel.app/login`
-2. Log in as **Ops Admin**: `ops@compoundiq-poc.com` / `POCAdmin2026!`
+2. Log in as **Ops Admin**: `ops@compoundiq-poc.com` / the password in `POC_OPS_PASSWORD` (set in your local env)
 3. **Point out the dark-mode dashboard:**
    - Pipeline stage groups in the left sidebar (Payment, Submission, Pharmacy, Shipping, Errors / Terminal)
    - Each stage has a count badge

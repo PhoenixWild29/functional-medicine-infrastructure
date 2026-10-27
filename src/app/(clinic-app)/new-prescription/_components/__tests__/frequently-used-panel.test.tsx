@@ -189,6 +189,47 @@ describe('Make favorite dialog', () => {
     return screen.getByRole('dialog', { name: 'Make Tirzepatide 10mg/mL Injectable a favorite' })
   }
 
+  it('keyboard: after a save, focus goes to the entry itself (its Make favorite button is replaced by "★ Favorite"), never to the page', async () => {
+    renderPanel({ patient: PATIENT })
+    await openFavorites()
+    await screen.findByTestId('favorites-frequent')
+    const entry = entries()[0]!
+    const main = within(entry).getAllByRole('button')[0]!
+    const opener = within(entry).getByRole('button', { name: 'Make Tirzepatide 10mg/mL Injectable a favorite' })
+    opener.focus()
+    fireEvent.click(opener)
+    const dialog = screen.getByRole('dialog', { name: 'Make Tirzepatide 10mg/mL Injectable a favorite' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save favorite' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(main).toHaveFocus()
+    expect(document.activeElement).not.toBe(document.body)
+  })
+
+  it('keyboard: focus moves into the dialog, Tab and Shift+Tab stay inside it, Escape closes it and focus returns to Make favorite', async () => {
+    renderPanel({ patient: PATIENT })
+    await openFavorites()
+    await screen.findByTestId('favorites-frequent')
+    const opener = within(entries()[0]!).getByRole('button', { name: 'Make Tirzepatide 10mg/mL Injectable a favorite' })
+    opener.focus()
+    fireEvent.click(opener)
+    const dialog = screen.getByRole('dialog', { name: 'Make Tirzepatide 10mg/mL Injectable a favorite' })
+    expect(dialog).toHaveFocus()
+
+    // The first and last tabbable controls: the practice radio, Save favorite.
+    const practice = within(dialog).getByRole('radio', { name: 'The practice' })
+    const save = within(dialog).getByRole('button', { name: 'Save favorite' })
+    save.focus()
+    fireEvent.keyDown(save, { key: 'Tab' })
+    expect(practice).toHaveFocus()
+    fireEvent.keyDown(practice, { key: 'Tab', shiftKey: true })
+    expect(save).toHaveFocus()
+
+    // Escape closes it; focus is back on the button that opened it.
+    fireEvent.keyDown(save, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(opener).toHaveFocus()
+  })
+
   it('opens with the practice chosen, the used dose ticked and the drug\'s other doses offered', async () => {
     const dialog = await openDialog()
     expect(within(dialog).getByRole('radio', { name: 'The practice' })).toBeChecked()
@@ -274,7 +315,8 @@ describe('Make favorite dialog', () => {
     postStatus = 500
     const dialog = await openDialog()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save favorite' }))
-    expect(await within(dialog).findByTestId('make-favorite-error')).toHaveTextContent('Favorites could not be loaded or saved. Nothing was changed. Try again.')
+    // The error is a live region (always in the DOM, announced when it fills).
+    await waitFor(() => expect(within(dialog).getByTestId('make-favorite-error')).toHaveTextContent('Favorites could not be loaded or saved. Nothing was changed. Try again.'))
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 })
