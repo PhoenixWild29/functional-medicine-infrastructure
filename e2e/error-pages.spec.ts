@@ -20,7 +20,8 @@ test.describe('error pages', () => {
     await page.getByLabel('Email address').fill(TEST_USERS.clinicAdmin.email)
     await page.getByLabel('Password', { exact: true }).fill(TEST_USERS.clinicAdmin.password)
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    // A clinic admin lands on /practice (lib/auth/landing-route); any signed-in clinic page will do.
+    await expect(page).toHaveURL(/\/(practice|dashboard)/, { timeout: 15_000 })
 
     const res = await page.goto('/settings/no-such-page')
     expect(res?.status()).toBe(404)

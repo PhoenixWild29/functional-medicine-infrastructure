@@ -89,14 +89,18 @@ test.describe('Accessibility: WCAG 2.1 AA (C10)', () => {
 
   test('checkout, paid: no violations; reflows at 320px', async ({ page }) => {
     await page.goto(`/checkout/${tokens.paid}`)
-    await expect(page.getByText('Payment Already Processed')).toBeVisible({ timeout: 15_000 })
+    // A paid or cancelled link gets the same neutral page as an expired one (bundle-security).
+    await expect(page).toHaveURL(/\/checkout\/expired$/, { timeout: 15_000 })
+    await expect(page.getByRole('heading', { name: /link is no longer active/i })).toBeVisible({ timeout: 15_000 })
     expect(await axeViolations(page)).toEqual([])
     await expectReflowsAt320(page)
   })
 
   test('checkout, cancelled: no violations; reflows at 320px', async ({ page }) => {
     await page.goto(`/checkout/${tokens.cancelled}`)
-    await expect(page.getByText('Order No Longer Active')).toBeVisible({ timeout: 15_000 })
+    // A paid or cancelled link gets the same neutral page as an expired one (bundle-security).
+    await expect(page).toHaveURL(/\/checkout\/expired$/, { timeout: 15_000 })
+    await expect(page.getByRole('heading', { name: /link is no longer active/i })).toBeVisible({ timeout: 15_000 })
     expect(await axeViolations(page)).toEqual([])
     await expectReflowsAt320(page)
   })
