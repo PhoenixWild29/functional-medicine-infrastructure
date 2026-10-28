@@ -13,7 +13,7 @@ import { useState } from 'react'
 import type { ConnectionView, SyncEventView } from '@/lib/integrations/keragon/connection'
 import { CONNECTION_STATUS_LABEL, OUTCOME_LABEL, errorText } from '@/lib/integrations/keragon/labels'
 
-const BUTTON = 'inline-flex min-h-[44px] items-center justify-center rounded-md px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
+const BUTTON = 'inline-flex min-h-[44px] items-center justify-center rounded-md px-4 py-2 text-sm font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
 const PRIMARY = `${BUTTON} bg-primary text-primary-foreground hover:bg-primary-hover`
 const SECONDARY = `${BUTTON} border border-border bg-background text-foreground hover:bg-muted`
 const DANGER = `${BUTTON} border border-red-700 bg-background text-red-700 hover:bg-red-50`
@@ -141,7 +141,7 @@ export function EhrSyncPanel({ initial, appOrigin }: { initial: { connection: Co
           <p className="text-sm text-foreground">No events yet.</p>
         ) : (
           <div className="overflow-x-auto rounded-md border border-border">
-            <table className="w-full min-w-[40rem] text-left text-sm">
+            <table className="w-full min-w-160 text-left text-sm">
               <caption className="sr-only">Sync log</caption>
               <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
@@ -159,7 +159,7 @@ export function EhrSyncPanel({ initial, appOrigin }: { initial: { connection: Co
                     <td className="break-all px-3 py-2 font-mono text-foreground">{e.eventId ?? '—'}</td>
                     <td className="px-3 py-2 text-foreground">{OUTCOME_LABEL[e.status] ?? e.status}</td>
                     <td className="break-all px-3 py-2 font-mono text-xs text-foreground">{e.patientId ?? '—'}</td>
-                    <td className="break-words px-3 py-2 text-foreground">{detailText(e)}</td>
+                    <td className="wrap-break-word px-3 py-2 text-foreground">{detailText(e)}</td>
                   </tr>
                 ))}
               </tbody>

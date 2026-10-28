@@ -60,7 +60,7 @@ export function ProviderViewToggle({ viewMode }: Props) {
         onClick={() => setMode('mine')}
         aria-pressed={viewMode === 'mine'}
         disabled={isPending && viewMode !== 'mine'}
-        className={`px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${
+        className={`px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${
           viewMode === 'mine'
             ? 'bg-primary text-primary-foreground'
             : 'bg-card text-muted-foreground hover:bg-accent'
@@ -73,7 +73,7 @@ export function ProviderViewToggle({ viewMode }: Props) {
         onClick={() => setMode('clinic')}
         aria-pressed={viewMode === 'clinic'}
         disabled={isPending && viewMode !== 'clinic'}
-        className={`px-3 py-1.5 text-xs font-medium border-l border-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${
+        className={`px-3 py-1.5 text-xs font-medium border-l border-border transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${
           viewMode === 'clinic'
             ? 'bg-primary text-primary-foreground'
             : 'bg-card text-muted-foreground hover:bg-accent'

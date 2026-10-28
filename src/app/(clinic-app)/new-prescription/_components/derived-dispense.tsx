@@ -125,7 +125,7 @@ export function DerivedDispense({ derived, basis, override, onChange }: Props) {
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="shrink-0 text-xs text-primary underline hover:text-primary/80"
+            className="shrink-0 text-xs text-primary underline hover:text-primary-hover"
           >
             {isOverridden ? 'Edit override' : 'Override'}
           </button>
@@ -153,7 +153,7 @@ export function DerivedDispense({ derived, basis, override, onChange }: Props) {
               placeholder={derived?.daysSupply != null ? String(derived.daysSupply) : '—'}
               value={override.daysSupply}
               onChange={e => onChange({ ...override, daysSupply: e.target.value })}
-              className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>
           <div>
@@ -167,7 +167,7 @@ export function DerivedDispense({ derived, basis, override, onChange }: Props) {
               placeholder={derived ? String(derived.dispenseQuantity) : '—'}
               value={override.dispenseQuantity}
               onChange={e => onChange({ ...override, dispenseQuantity: e.target.value })}
-              className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>
           <div>
@@ -178,7 +178,7 @@ export function DerivedDispense({ derived, basis, override, onChange }: Props) {
               placeholder={derived?.dispenseUnit ?? 'mL'}
               value={override.dispenseUnit}
               onChange={e => onChange({ ...override, dispenseUnit: e.target.value })}
-              className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>
           <div className="col-span-3 flex justify-end gap-3">
@@ -194,7 +194,7 @@ export function DerivedDispense({ derived, basis, override, onChange }: Props) {
             <button
               type="button"
               onClick={() => setEditing(false)}
-              className="text-xs text-primary underline hover:text-primary/80"
+              className="text-xs text-primary underline hover:text-primary-hover"
             >
               Done
             </button>

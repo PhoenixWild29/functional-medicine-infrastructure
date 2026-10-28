@@ -25,8 +25,8 @@ function stateText(p: DashboardProposal): string {
     : 'Awaiting patient choice. The link was turned off when a line was edited; send a new link.'
 }
 
-const button = 'inline-flex min-h-[44px] items-center rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
-const danger = 'inline-flex min-h-[44px] items-center rounded-md bg-red-700 px-3 text-sm font-medium text-white hover:bg-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
+const button = 'inline-flex min-h-[44px] items-center rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
+const danger = 'inline-flex min-h-[44px] items-center rounded-md bg-red-700 px-3 text-sm font-medium text-white hover:bg-red-800 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
 
 export function ProposalPanel({ proposal, canSend, onChanged }: {
   proposal:  DashboardProposal

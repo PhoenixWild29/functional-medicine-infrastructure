@@ -92,7 +92,7 @@ export function CredentialsEditor({ providerId, providerName, demoRecord = false
           Expires on
           <input required type="date" value={expiresOn} onChange={e => setExpiresOn(e.target.value)} className="rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground" />
         </label>
-        <button type="submit" disabled={busy !== null} className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+        <button type="submit" disabled={busy !== null} className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-50">
           {busy === 'license' ? 'Saving...' : 'Save license'}
         </button>
         <button type="button" onClick={rerunNpi} disabled={busy !== null || demoRecord} aria-describedby={demoRecord ? `demo-npi-${providerId}` : undefined} className="rounded-md border border-border px-4 py-1.5 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50">

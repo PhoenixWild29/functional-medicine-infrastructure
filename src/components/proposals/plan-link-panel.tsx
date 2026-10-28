@@ -26,7 +26,7 @@ const TEXTING_COPY: Record<TextingOutcome, string> = {
   failed:       'The text could not be sent, copy the link or show the QR code',
 }
 
-const button = 'inline-flex min-h-[44px] items-center rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+const button = 'inline-flex min-h-[44px] items-center rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring'
 
 function recordDelivery(proposalId: string, delivery: 'copied' | 'qr') {
   void fetch(`/api/proposals/${proposalId}/events`, {

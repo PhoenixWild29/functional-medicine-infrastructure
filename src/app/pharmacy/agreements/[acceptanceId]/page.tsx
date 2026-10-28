@@ -31,15 +31,15 @@ export default async function AcceptedAgreementPage({ params }: { params: Promis
 
   return (
     <main id="main-content" className="mx-auto max-w-4xl px-4 py-6 sm:py-8">
-      <Link href="/pharmacy/agreements" className="inline-flex min-h-[44px] items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Back to agreements</Link>
+      <Link href="/pharmacy/agreements" className="inline-flex min-h-[44px] items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">Back to agreements</Link>
       {r.ok ? (
         <>
-          <h1 className="mt-2 break-words text-2xl font-bold text-foreground">{r.acceptance.title}, version {r.acceptance.version}</h1>
-          <p className="mt-1 break-words text-sm text-muted-foreground">
+          <h1 className="mt-2 wrap-break-word text-2xl font-bold text-foreground">{r.acceptance.title}, version {r.acceptance.version}</h1>
+          <p className="mt-1 wrap-break-word text-sm text-muted-foreground">
             Accepted by {r.acceptance.signerName} ({r.acceptance.signerTitle}) on <time dateTime={r.acceptance.acceptedAt}>{new Date(r.acceptance.acceptedAt).toLocaleString('en-US')}</time>.
           </p>
           {r.acceptance.text ? (
-            <section aria-label={`${r.acceptance.title} text`} className="mt-6 space-y-3 break-words rounded-md border border-border bg-muted/30 p-4 text-sm leading-relaxed text-foreground">
+            <section aria-label={`${r.acceptance.title} text`} className="mt-6 space-y-3 wrap-break-word rounded-md border border-border bg-muted/30 p-4 text-sm leading-relaxed text-foreground">
               <LegalMarkdown text={r.acceptance.text} headingLevel={3} />
             </section>
           ) : (

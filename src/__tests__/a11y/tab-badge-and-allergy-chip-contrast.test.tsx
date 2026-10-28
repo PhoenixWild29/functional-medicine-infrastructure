@@ -52,6 +52,12 @@ function token(name: string, theme: 'light' | 'dark'): RGB {
   return hslToRgb(Number(m[1]), Number(m[2]), Number(m[3]))
 }
 
+/** The tokens before the staff contrast pass (queue2-b), for the "was not" checks. */
+const OLD: Record<string, Record<'light' | 'dark', RGB>> = {
+  'muted-foreground': { light: hslToRgb(215, 16, 47), dark: hslToRgb(220, 20, 55) },
+  primary:            { light: hslToRgb(221, 83, 53), dark: hslToRgb(217, 91, 60) },
+}
+
 // Tailwind 3 palette
 const P = {
   'emerald-100': '#d1fae5', 'emerald-800': '#065f46', 'emerald-950': '#022c22', 'emerald-300': '#6ee7b7',
@@ -68,12 +74,12 @@ describe.each(['light', 'dark'] as const)('tab count badges, %s', theme => {
   })
   it('inactive: text-foreground on bg-muted is at least 4.5:1 (text-muted-foreground was not)', () => {
     expect(contrast(token('foreground', theme), token('muted', theme))).toBeGreaterThanOrEqual(4.5)
-    expect(contrast(token('muted-foreground', theme), token('muted', theme))).toBeLessThan(4.5)
+    expect(contrast(OLD['muted-foreground']![theme], token('muted', theme))).toBeLessThan(4.5)
   })
 })
 
 it('the old active badge (text-primary on primary/10 over the card) was under 4.5:1 in dark', () => {
-  expect(contrast(token('primary', 'dark'), mix(token('primary', 'dark'), token('card', 'dark'), 0.1))).toBeLessThan(4.5)
+  expect(contrast(OLD['primary']!.dark, mix(OLD['primary']!.dark, token('card', 'dark'), 0.1))).toBeLessThan(4.5)
 })
 
 describe('allergy chip colour pairs', () => {

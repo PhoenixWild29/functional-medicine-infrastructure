@@ -24,7 +24,7 @@ jest.mock('@/lib/auth/checkout-token', () => ({ verifyCheckoutToken: jest.fn() }
 process.env['NEXT_PUBLIC_SUPABASE_URL'] = 'http://localhost'
 process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY'] = 'anon'
 
-import { middleware } from '../middleware'
+import { proxy } from '../proxy'
 
 const location = (res: Response) => (res.headers.get('location') ? new URL(res.headers.get('location')!).pathname : null)
 const req = (path: string, method = 'GET') => new NextRequest(new URL(`http://localhost${path}`), { method })
@@ -33,12 +33,12 @@ describe('middleware: who can reach onboarding', () => {
   beforeEach(() => getUserMock.mockReset().mockResolvedValue({ data: { user: null } }))
 
   it.each(['/onboard/clinic/abc123', '/onboard/join/abc123'])('%s is reachable signed out', async path => {
-    const res = await middleware(req(path))
+    const res = await proxy(req(path))
     expect(location(res)).toBeNull()
   })
 
   it('the accept API is reachable signed out', async () => {
-    const res = await middleware(req('/api/onboarding/invite/accept', 'POST'))
+    const res = await proxy(req('/api/onboarding/invite/accept', 'POST'))
     expect(location(res)).toBeNull()
   })
 
@@ -46,16 +46,16 @@ describe('middleware: who can reach onboarding', () => {
   // account yet). Nothing else is opened by the prefix.
   // Security B12: POST /api/sign-in (the login page signs in through the server).
   it.each([['/get-started', 'GET'], ['/api/signup', 'POST'], ['/api/sign-in', 'POST']])('%s is reachable signed out', async (path, method) => {
-    const res = await middleware(req(path, method))
+    const res = await proxy(req(path, method))
     expect(location(res)).toBeNull()
   })
 
   it.each(['/get-started-admin', '/api/signup-admin', '/api/signups', '/api/sign-in/x', '/api/sign-ins'])('%s is not opened by the prefix', async path => {
-    expect(location(await middleware(req(path)))).toBe('/login')
+    expect(location(await proxy(req(path)))).toBe('/login')
   })
 
   it.each(['/onboarding', '/api/onboarding/practice', '/api/ops/onboarding'])('%s needs a signed-in user', async path => {
-    const res = await middleware(req(path))
+    const res = await proxy(req(path))
     expect(location(res)).toBe('/login')
   })
 })

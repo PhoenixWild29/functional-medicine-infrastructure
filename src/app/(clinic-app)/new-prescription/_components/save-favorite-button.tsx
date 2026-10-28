@@ -145,7 +145,7 @@ export function SaveFavoriteButton({
             if (e.key === 'Escape') setOpen(false)
           }}
           autoFocus
-          className="w-56 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="w-56 rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         />
         {patient && (
           <fieldset className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
@@ -164,7 +164,7 @@ export function SaveFavoriteButton({
           type="button"
           onClick={() => { void handleSave() }}
           disabled={!label.trim() || saving || !providerId}
-          className="rounded-md bg-primary/10 px-2 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 disabled:opacity-50"
+          className="rounded-md bg-primary/10 px-2 py-1.5 text-xs font-medium text-primary-hover hover:bg-primary/20 disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save favorite'}
         </button>
@@ -176,7 +176,7 @@ export function SaveFavoriteButton({
         >
           Cancel
         </button>
-        {error && <p role="alert" className="w-full text-xs text-red-600">{error}</p>}
+        {error && <p role="alert" className="w-full text-xs text-red-700">{error}</p>}
       </div>
     )
   }

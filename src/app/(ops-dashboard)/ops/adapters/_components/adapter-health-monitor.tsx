@@ -23,9 +23,9 @@ import { userMessage } from '@/lib/errors/user-message'
 // ── Status color map ─────────────────────────────────────────
 
 const STATUS_STYLES = {
-  green:  { dot: 'bg-emerald-500', card: 'border-l-4 border-l-emerald-400', badge: 'bg-emerald-100 text-emerald-700' },
-  yellow: { dot: 'bg-amber-500',   card: 'border-l-4 border-l-amber-400',   badge: 'bg-amber-100 text-amber-700' },
-  red:    { dot: 'bg-red-500',     card: 'border-l-4 border-l-red-400',     badge: 'bg-red-100 text-red-700' },
+  green:  { dot: 'bg-emerald-500', card: 'border-l-4 border-l-emerald-400', badge: 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300' },
+  yellow: { dot: 'bg-amber-500',   card: 'border-l-4 border-l-amber-400',   badge: 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300' },
+  red:    { dot: 'bg-red-500',     card: 'border-l-4 border-l-red-400',     badge: 'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-300' },
   // Idle = no submissions in the last 24h. Neutral styling — there's nothing
   // to grade, so "Healthy" would be dishonest and "Critical" was the bug.
   idle:   { dot: 'bg-slate-400',   card: 'border-l-4 border-l-slate-300',   badge: 'bg-muted text-muted-foreground' },
@@ -145,13 +145,13 @@ export function AdapterHealthMonitor({ initialData }: Props) {
         <div className="flex gap-4 text-xs">
           <span className="text-muted-foreground">{summary.total} pharmacies</span>
           {summary.red > 0 && (
-            <span className="font-semibold text-red-600">{summary.red} critical</span>
+            <span className="font-semibold text-red-600 dark:text-red-300">{summary.red} critical</span>
           )}
           {summary.yellow > 0 && (
-            <span className="font-semibold text-amber-600">{summary.yellow} degraded</span>
+            <span className="font-semibold text-amber-600 dark:text-amber-300">{summary.yellow} degraded</span>
           )}
           {summary.cbOpen > 0 && (
-            <span className="font-semibold text-red-600">{summary.cbOpen} CB open</span>
+            <span className="font-semibold text-red-600 dark:text-red-300">{summary.cbOpen} CB open</span>
           )}
         </div>
         {data?.fetchedAt && (
@@ -163,15 +163,15 @@ export function AdapterHealthMonitor({ initialData }: Props) {
 
       {/* ── Error banners ── */}
       {isError && (
-        <div className="flex items-center justify-between rounded-md border border-orange-300 bg-orange-50 px-4 py-2.5 text-sm text-orange-800" role="alert">
+        <div className="flex items-center justify-between rounded-md border border-orange-300 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/40 px-4 py-2.5 text-sm text-orange-800 dark:text-orange-300" role="alert">
           <span>Connection lost. Showing cached data</span>
-          <button type="button" onClick={() => void refetch()} className="underline focus-visible:outline-none">Retry</button>
+          <button type="button" onClick={() => void refetch()} className="underline focus-visible:outline-hidden">Retry</button>
         </div>
       )}
       {actionError && (
-        <div className="flex items-center gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700" role="alert">
+        <div className="flex items-center gap-3 rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-4 py-2.5 text-sm text-red-700 dark:text-red-300" role="alert">
           <span>{actionError}</span>
-          <button type="button" onClick={() => setActionError(null)} className="underline focus-visible:outline-none">Dismiss</button>
+          <button type="button" onClick={() => setActionError(null)} className="underline focus-visible:outline-hidden">Dismiss</button>
         </div>
       )}
 
@@ -182,7 +182,7 @@ export function AdapterHealthMonitor({ initialData }: Props) {
           <select
             value={tierFilter}
             onChange={e => setTierFilter(e.target.value as TierFilter)}
-            className="rounded border border-input bg-background px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded border border-input bg-background px-2 py-1 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value="all">All Tiers</option>
             <option value="TIER_1_API">T1 API</option>
@@ -198,7 +198,7 @@ export function AdapterHealthMonitor({ initialData }: Props) {
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value as StatusFilter)}
-            className="rounded border border-input bg-background px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded border border-input bg-background px-2 py-1 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value="all">All Status</option>
             <option value="green">Healthy</option>
@@ -212,7 +212,7 @@ export function AdapterHealthMonitor({ initialData }: Props) {
           <select
             value={cbFilter}
             onChange={e => setCbFilter(e.target.value as CbFilter)}
-            className="rounded border border-input bg-background px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded border border-input bg-background px-2 py-1 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value="all">All States</option>
             {/* PR #16: filter labels driven from CB_BADGE so chips + filter
@@ -343,13 +343,13 @@ function PharmacyCard({
 
       {/* Circuit breaker detail */}
       {cb?.state === 'OPEN' && cb.cooldownUntil && (
-        <div className="mx-4 mb-2 rounded border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] text-red-700">
+        <div className="mx-4 mb-2 rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-3 py-1.5 text-[10px] text-red-700 dark:text-red-300">
           Breaker open, cooldown until {new Date(cb.cooldownUntil).toLocaleTimeString()}
           {' · '}{cb.failureCount} consecutive failures
         </div>
       )}
       {cb?.state === 'HALF_OPEN' && (
-        <div className="mx-4 mb-2 rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-[10px] text-amber-700">
+        <div className="mx-4 mb-2 rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 text-[10px] text-amber-700 dark:text-amber-300">
           Half-open, testing recovery ({cb.failureCount} failure{cb.failureCount !== 1 ? 's' : ''})
         </div>
       )}
@@ -364,8 +364,8 @@ function PharmacyCard({
       {/* NB-08: two-step confirmation — first click arms, second click executes */}
       <div className="flex flex-wrap gap-1.5 border-t border-border px-4 py-3">
         {isArmed('disable_adapter') || isArmed('enable_adapter') || isArmed('force_tier4') || isArmed('close_circuit') ? (
-          <div className="flex w-full items-center gap-2 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px]">
-            <span className="text-amber-800 font-medium">Confirm action?</span>
+          <div className="flex w-full items-center gap-2 rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-2 py-1.5 text-[11px]">
+            <span className="text-amber-800 dark:text-amber-300 font-medium">Confirm action?</span>
             <button type="button" onClick={() => {
               // NB-4: lookup map — avoids silent no-op if a new action type is added
               const ACTION_LABELS: Record<string, string> = {
@@ -379,10 +379,10 @@ function PharmacyCard({
               const label = ACTION_LABELS[armed]
               if (!label) return
               handleConfirmClick(armed, label)
-            }} className="rounded bg-amber-600 px-2 py-0.5 text-white hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            }} className="rounded bg-amber-700 px-2 py-0.5 text-white hover:bg-amber-800 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
               Yes, proceed
             </button>
-            <button type="button" onClick={cancelConfirm} className="rounded border border-border px-2 py-0.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <button type="button" onClick={cancelConfirm} className="rounded border border-border px-2 py-0.5 hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
               Cancel
             </button>
           </div>
@@ -460,7 +460,7 @@ function Stat({ label, value, highlight = false }: { label: string; value: strin
   return (
     <div>
       <p className="text-[10px] text-muted-foreground">{label}</p>
-      <p className={`text-sm font-bold ${highlight ? 'text-red-600' : 'text-foreground'}`}>{value}</p>
+      <p className={`text-sm font-bold ${highlight ? 'text-red-600 dark:text-red-300' : 'text-foreground'}`}>{value}</p>
     </div>
   )
 }
@@ -474,16 +474,16 @@ interface ActionBtnProps {
 
 function ActionBtn({ label, loading, onClick, variant }: ActionBtnProps) {
   const cls =
-    variant === 'primary' ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+    variant === 'primary' ? 'bg-primary text-primary-foreground hover:bg-primary-hover'
     : variant === 'danger'  ? 'bg-red-600 text-white hover:bg-red-700'
-    : 'bg-amber-500 text-white hover:bg-amber-600'
+    : 'bg-amber-700 text-white hover:bg-amber-800'
 
   return (
     <button
       type="button"
       disabled={loading}
       onClick={onClick}
-      className={`rounded px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${cls}`}
+      className={`rounded px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${cls}`}
     >
       {loading ? '…' : label}
     </button>

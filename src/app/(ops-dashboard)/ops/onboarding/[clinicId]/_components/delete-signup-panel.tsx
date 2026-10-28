@@ -14,8 +14,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-const BUTTON = 'inline-flex min-h-[44px] items-center rounded-md border border-slate-500 bg-background px-4 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
-const DANGER = 'inline-flex min-h-[44px] items-center rounded-md bg-red-700 px-4 text-sm font-semibold text-white hover:bg-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
+const BUTTON = 'inline-flex min-h-[44px] items-center rounded-md border border-slate-500 bg-background px-4 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
+const DANGER = 'inline-flex min-h-[44px] items-center rounded-md bg-red-700 px-4 text-sm font-semibold text-white hover:bg-red-800 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
 
 export function DeleteSignupPanel({ clinicId, clinicName }: { clinicId: string; clinicName: string }) {
   const router = useRouter()
@@ -51,7 +51,7 @@ export function DeleteSignupPanel({ clinicId, clinicName }: { clinicId: string; 
       <p className="text-sm text-slate-700 dark:text-slate-300">
         For a sign-up made with someone else&apos;s email or NPI. Nothing was ordered: the clinic is not approved.
       </p>
-      {error && <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
+      {error && <p role="alert" className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-3 py-2 text-sm text-red-800 dark:text-red-300">{error}</p>}
       {confirming ? (
         <div className="space-y-2">
           <p className="text-sm font-medium text-foreground">

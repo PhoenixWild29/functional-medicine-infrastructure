@@ -7,7 +7,7 @@ import { useState, type FormEvent } from 'react'
 import { navigateFully } from '@/lib/auth/full-navigation'
 import { MIN_PASSWORD_LENGTH } from '@/lib/auth/create-login'
 
-const INPUT = 'w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+const INPUT = 'w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring'
 
 export function ResetPasswordForm() {
   const [password, setPassword] = useState('')

@@ -8,9 +8,9 @@
  *
  * jsdom cannot compute colours, so this pins the classes that fix it and
  * checks the colour pairs they resolve to against WCAG's formula:
- *   - primary button: bg-primary-hover in dark (#2563EB, the --primary-
- *     hover token from #212), hover blue-700 (#1D4ED8); never the 90%
- *     opacity hover, which lightens the blue
+ *   - primary button: bg-primary / text-primary-foreground, which in dark
+ *     are #5593F7 with navy #090E1A (6.3:1), hover --primary-hover
+ *     #74B1FB; never the 90% opacity hover
  *   - muted text: slate-300 (#CBD5E1) in dark
  *   - errors and the danger button: red-300 (#FCA5A5) in dark
  *   - "complete" step text: emerald-300 (#6EE7B7) in dark
@@ -50,8 +50,8 @@ afterEach(cleanup)
 
 describe('colour pairs used in the ops dark theme meet 4.5:1', () => {
   it.each([
-    ['white on the dark primary (#2563EB, --primary-hover)', '#FFFFFF', '#2563EB'],
-    ['white on the hover blue-700 (#1D4ED8)',                '#FFFFFF', '#1D4ED8'],
+    ['navy on the dark --primary (#5593F7)',                 '#090E1A', '#5593F7'],
+    ['navy on the dark --primary-hover (#74B1FB)',           '#090E1A', '#74B1FB'],
     ['slate-300 on the dark card',                           '#CBD5E1', OPS_CARD],
     ['slate-300 on the dark background',                     '#CBD5E1', OPS_BACKGROUND],
     ['red-300 on the dark card',                             '#FCA5A5', OPS_CARD],
@@ -73,12 +73,14 @@ describe('the ops onboarding page uses the dark-safe classes', () => {
     return render(<div className="dark">{ui}</div>)
   }
 
-  it('the primary buttons: --primary-hover in dark, blue-700 on hover, no opacity hover', async () => {
+  it('the primary buttons: the primary token pair, --primary-hover on hover, no opacity hover', async () => {
     await renderPage()
     for (const name of [/create invite/i, /approve blue cedar/i]) {
       const cls = screen.getByRole('button', { name }).className
-      expect(cls).toMatch(/(^|\s)dark:bg-primary-hover(\s|$)/)
-      expect(cls).toMatch(/(^|\s)dark:hover:bg-blue-700(\s|$)/)
+      expect(cls).toMatch(/(^|\s)bg-primary(\s|$)/)
+      expect(cls).toMatch(/(^|\s)text-primary-foreground(\s|$)/)
+      expect(cls).toMatch(/(^|\s)hover:bg-primary-hover(\s|$)/)
+      expect(cls).not.toMatch(/dark:(hover:)?bg-blue-\d+/)
       expect(cls).not.toMatch(/bg-primary\/\d+/)
     }
   })

@@ -144,7 +144,7 @@ export default async function AccessLogPage({ searchParams }: PageProps = {}) {
           To
           <input type="date" name="to" defaultValue={filters.to ?? ''} className="rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground" />
         </label>
-        <button type="submit" className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+        <button type="submit" className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary-hover">
           Filter
         </button>
       </form>

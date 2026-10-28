@@ -40,14 +40,14 @@ export default async function ResetPasswordPage() {
         {user && !recovery && mustChangePassword(user) ? (
           <p className="mt-3 text-sm text-foreground">
             {MUST_CHANGE_PASSWORD_MESSAGE}{' '}
-            <Link href="/forgot-password" className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <Link href="/forgot-password" className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
               Email me a link
             </Link>
           </p>
         ) : user && !recovery ? (
           <p className="mt-3 text-sm text-foreground">
             {NOT_RECOVERY_MESSAGE}{' '}
-            <Link href="/settings" className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <Link href="/settings" className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
               Go to Settings
             </Link>
           </p>
@@ -61,7 +61,7 @@ export default async function ResetPasswordPage() {
         ) : (
           <p className="mt-3 text-sm text-foreground">
             This reset link has expired or was already used.{' '}
-            <Link href="/forgot-password" className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <Link href="/forgot-password" className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
               Request a new link
             </Link>
           </p>

@@ -146,8 +146,8 @@ function DraggableCard({
       {...listeners}
       className={[
         'rounded-lg border bg-card p-3 cursor-grab active:cursor-grabbing select-none',
-        'transition-shadow duration-[var(--duration-normal)]',
-        isDragging ? 'shadow-lg opacity-50' : 'shadow-sm hover:shadow-md',
+        'transition-shadow duration-(--duration-normal)',
+        isDragging ? 'shadow-lg opacity-50' : 'shadow-xs hover:shadow-md',
         order.isOverdue48h ? 'bg-amber-50 border-amber-300' : 'border-border',
       ].join(' ')}
       aria-label={`${order.medicationName}, ${order.patientName}`}
@@ -171,7 +171,7 @@ function DraggableCard({
           type="button"
           onClick={e => { e.stopPropagation(); onClick() }}
           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onClick() } }}
-          className="text-[10px] text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded"
+          className="text-[10px] text-primary underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring rounded"
         >
           View
         </button>
@@ -198,7 +198,7 @@ function DroppableLane({
       ref={setNodeRef}
       className={[
         'flex flex-col gap-2 rounded-lg p-2 flex-1 min-h-[80px] max-h-[200px] overflow-y-auto',
-        'transition-colors duration-[var(--duration-fast)]',
+        'transition-colors duration-(--duration-fast)',
         isOver && isInvalidTarget  ? 'bg-red-50 ring-2 ring-red-400 ring-inset'  : '',
         isOver && !isInvalidTarget ? 'bg-primary/5 ring-2 ring-primary/30 ring-inset' : '',
         !isOver ? 'bg-slate-50/60' : '',

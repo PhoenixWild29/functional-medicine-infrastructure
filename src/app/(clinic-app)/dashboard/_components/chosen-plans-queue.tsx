@@ -43,7 +43,7 @@ export function ChosenPlansQueue({ plans, viewerProviderId, isClinicAdmin }: {
                 <Link
                   href={`/new-prescription/sign?proposal=${plan.proposalId}`}
                   aria-label={`Review and sign: ${summary}`}
-                  className="inline-flex min-h-[44px] items-center rounded-md bg-emerald-800 px-3 text-sm font-semibold text-white hover:bg-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="inline-flex min-h-[44px] items-center rounded-md bg-emerald-800 px-3 text-sm font-semibold text-white hover:bg-emerald-900 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Review and sign
                 </Link>

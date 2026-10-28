@@ -1561,6 +1561,8 @@ test.describe('Clinic App — WO-103 search bar, favorites/protocols panels, sav
       .select('*', { count: 'exact', head: true })
       .eq('provider_id', TEST_IDS.provider)
       .eq('label', favoriteName)
+      .is('deleted_at', null)
+    // Soft delete (decision 11): the row stays with deleted_at set; no live row remains.
     expect(count ?? 0).toBe(0)
   })
 })

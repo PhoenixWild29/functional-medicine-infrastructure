@@ -150,7 +150,7 @@ export function AllergyChip({ patient, onClick, expanded, className = '', loadin
       type="button"
       onClick={onClick}
       aria-expanded={expanded ?? false}
-      className={`${base} cursor-pointer underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
+      className={`${base} cursor-pointer underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring`}
       data-testid="allergy-chip"
       data-allergy-status={status.kind}
       title={`${label}. Click to edit`}
@@ -234,7 +234,7 @@ export function AllergyEditor({ patientId, patient, onSaved, onCancel }: Allergy
         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void handleSave() } }}
         placeholder="penicillin, sulfa"
         aria-describedby={`${inputId}-hint`}
-        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
       />
       <p id={`${inputId}-hint`} className="mt-1 text-[11px] text-muted-foreground">
         Separate with commas. Saved to the patient and attached to every prescription.
@@ -253,7 +253,7 @@ export function AllergyEditor({ patientId, patient, onSaved, onCancel }: Allergy
       </label>
 
       {error && (
-        <p role="alert" className="mt-2 text-xs text-red-600">{error}</p>
+        <p role="alert" className="mt-2 text-xs text-red-700">{error}</p>
       )}
 
       <div className="mt-3 flex items-center gap-2">
@@ -261,7 +261,7 @@ export function AllergyEditor({ patientId, patient, onSaved, onCancel }: Allergy
           type="button"
           onClick={() => void handleSave()}
           disabled={saving}
-          className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save allergies'}
         </button>
@@ -269,7 +269,7 @@ export function AllergyEditor({ patientId, patient, onSaved, onCancel }: Allergy
           type="button"
           onClick={onCancel}
           disabled={saving}
-          className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground underline hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground underline hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           Cancel
         </button>

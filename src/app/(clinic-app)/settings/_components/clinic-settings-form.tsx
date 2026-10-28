@@ -137,7 +137,7 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
             onChange={e => setMarkupInput(e.target.value)}
             disabled={!isClinicAdmin}
             placeholder="e.g., 40"
-            className="w-36 rounded-md border border-input bg-background px-3 py-2 text-base shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            className="w-36 rounded-md border border-input bg-background px-3 py-2 text-base shadow-xs focus:outline-hidden focus:ring-2 focus:ring-ring"
             // Disable scroll-to-change to prevent accidental input
             onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
             style={{ appearance: 'textfield' }}
@@ -201,7 +201,7 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
           onChange={e => setLogoInput(e.target.value)}
           disabled={!isClinicAdmin}
           placeholder="https://…"
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-base shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-base shadow-xs focus:outline-hidden focus:ring-2 focus:ring-ring"
         />
         {logoInput.trim() !== '' && (
           // Preview thumbnail
@@ -231,7 +231,7 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
         type="button"
         onClick={handleSave}
         disabled={isSaving}
-        className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
       >
         {isSaving ? 'Saving…' : 'Save Settings'}
       </button>}

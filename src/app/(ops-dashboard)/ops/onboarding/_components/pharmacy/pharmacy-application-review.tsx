@@ -124,7 +124,7 @@ export function PharmacyApplicationReview({ applicationId }: { applicationId: st
             ['Carriers', p['ship_carriers']], ['Cold chain', p['ships_cold_chain'] === null || p['ships_cold_chain'] === undefined ? null : p['ships_cold_chain'] ? 'Yes' : 'No'],
             ['Ships to', p['ship_to_states']], ['Order cutoff', p['order_cutoff_local']],
           ].map(([k, v]) => (
-            <div key={String(k)} className="flex gap-2"><dt className="min-w-[9rem] text-muted-foreground dark:text-slate-300">{String(k)}</dt><dd className="text-foreground">{show(v)}</dd></div>
+            <div key={String(k)} className="flex gap-2"><dt className="min-w-36 text-muted-foreground dark:text-slate-300">{String(k)}</dt><dd className="text-foreground">{show(v)}</dd></div>
           ))}
         </dl>
       </section>
@@ -246,7 +246,7 @@ function AcceptanceCard({ label, title, acceptance: a }: { label: string; title:
     <div className="min-w-0 rounded-lg border border-border p-3 text-sm">
       <h3 className="font-semibold text-foreground">{label}</h3>
       {a ? (
-        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 break-words">
+        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 wrap-break-word">
           <dt className="text-muted-foreground dark:text-slate-300">Agreement</dt><dd className="text-foreground">{a.title}</dd>
           <dt className="text-muted-foreground dark:text-slate-300">Signer</dt><dd className="text-foreground">{a.signerName}</dd>
           <dt className="text-muted-foreground dark:text-slate-300">Title</dt><dd className="text-foreground">{a.signerTitle}</dd>

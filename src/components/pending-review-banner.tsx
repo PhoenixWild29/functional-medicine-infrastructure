@@ -25,7 +25,7 @@ export function PendingReviewBanner({ submitted = false }: { submitted?: boolean
         <span>{submitted ? SUBMITTED_MESSAGE : PENDING_REVIEW_MESSAGE}</span>
         <Link
           href="/onboarding"
-          className="font-semibold underline underline-offset-2 hover:text-amber-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="font-semibold underline underline-offset-2 hover:text-amber-800 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           {submitted ? 'View what you submitted' : 'See your remaining setup steps'}
         </Link>

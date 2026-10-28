@@ -71,14 +71,21 @@ describe('the invite page', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('creates the account, signs in, and goes to MFA enrollment then the wizard', async () => {
+  it('says the password is set again from an emailed link, then two-step sign-in', () => {
+    render(<AcceptInviteForm token="tok" pharmacyName="Strive Pharmacy" adminEmail="dana@strive.example" />)
+    expect(screen.getByText(/we email you a link to set your own password/i)).toBeInTheDocument()
+  })
+
+  // B's review P2: the new login must set its own password first (the proxy
+  // sends it to /reset-password); two-step sign-in and the wizard follow.
+  it('creates the account, signs in, and goes to set its own password', async () => {
     fetchMock.mockResolvedValue(reply({ email: 'dana@strive.example' }))
     render(<AcceptInviteForm token="tok" pharmacyName="Strive Pharmacy" adminEmail="dana@strive.example" />)
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Dana Ruiz' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'a long passphrase 42' } })
     fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'a long passphrase 42' } })
     fireEvent.click(screen.getByRole('button', { name: /create account/i }))
-    await waitFor(() => expect(navigateFullyMock).toHaveBeenCalledWith('/mfa/enroll?redirectTo=%2Fpharmacy%2Fonboarding'))
+    await waitFor(() => expect(navigateFullyMock).toHaveBeenCalledWith('/reset-password'))
     expect(push).not.toHaveBeenCalled()
     expect(fetchMock).toHaveBeenCalledWith('/api/onboard/pharmacy/tok', expect.objectContaining({ method: 'POST', body: JSON.stringify({ fullName: 'Dana Ruiz', password: 'a long passphrase 42' }) }))
     expect(signInWithPassword).toHaveBeenCalledWith({ email: 'dana@strive.example', password: 'a long passphrase 42' })

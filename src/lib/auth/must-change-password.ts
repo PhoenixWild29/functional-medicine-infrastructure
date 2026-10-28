@@ -5,9 +5,14 @@
 // An admin (or ops) copies an invite link to send it, so they could open it
 // themselves and choose the invitee's password. A login created from an
 // invite therefore carries app_metadata.must_change_password = true
-// (api/onboarding/invite/accept). Until it is cleared:
-//   - the middleware sends every page to /reset-password, and every API
-//     answers 403 MUST_CHANGE_PASSWORD, except the reset paths themselves;
+// (api/onboarding/invite/accept for clinic and staff invites;
+// lib/pharmacy-onboarding/invites acceptInvite, through
+// POST /api/onboard/pharmacy/<token>, for pharmacy invites). Until it is
+// cleared:
+//   - the proxy (src/proxy.ts) sends every page to /reset-password, and
+//     every API answers 403 MUST_CHANGE_PASSWORD, except the reset paths
+//     themselves, which a flagged login reaches without the MFA gate (its
+//     recovery session is aal1; pharmacy_admin always needs MFA after);
 //   - /reset-password asks for an emailed reset link: only a recovery
 //     session (the link from the inbox) may set the new password
 //     (api/auth/password), which proves the address belongs to the user.

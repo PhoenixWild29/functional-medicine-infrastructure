@@ -116,7 +116,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
         // the md icon-rail), all six inside the viewport from first paint.
         // With App Router's default prefetching, each page paint fired up to
         // three extra RSC requests within milliseconds of the navigation
-        // that caused them. src/middleware.ts matches on PATH, so every one
+        // that caused them. src/proxy.ts matches on PATH, so every one
         // of those re-entered the auth middleware and ran its own
         // supabase.auth.getUser().
         //
@@ -131,12 +131,12 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
         //
         // Prefetch is a latency optimisation on three links that are one
         // click away on a desktop app; the session is not negotiable.
-        // src/middleware.ts also short-circuits any prefetch that does
+        // src/proxy.ts also short-circuits any prefetch that does
         // reach the server (from anywhere in the app) with a 204.
         prefetch={false}
         onClick={() => setMobileOpen(false)}
         className={cn(
-          'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-[var(--duration-fast)]',
+          'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-(--duration-fast)',
           // Active: text-foreground on the primary tint (16.7:1 light,
           // 13.4:1 dark). text-primary on it was under 4.5:1 (WCAG 1.4.3).
           isActive
@@ -148,7 +148,9 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
         title={collapsed ? item.label : undefined}
         aria-current={isActive ? 'page' : undefined}
       >
-        <Icon className="h-4.5 w-4.5 flex-shrink-0" />
+        {/* h-6 w-6: 24px, what these icons always rendered at. "h-4.5 w-4.5" generated
+            nothing in Tailwind 3 (not on its spacing scale) and became 18px in v4. */}
+        <Icon className="h-6 w-6 shrink-0" />
         {!collapsed && <span>{item.label}</span>}
       </Link>
     )
@@ -175,7 +177,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
             </div>
           ) : (
             <>
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary flex-shrink-0">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary shrink-0">
                 <svg width="14" height="14" viewBox="0 0 32 32" fill="none" aria-hidden>
                   <rect x="4" y="4" width="11" height="11" rx="2" fill="white" fillOpacity="0.95" />
                   <rect x="18" y="4" width="11" height="11" rx="2" fill="white" fillOpacity="0.6" />
@@ -200,7 +202,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
         )}>
           {!collapsed && (
             <div className="flex items-center gap-2.5 rounded-lg px-3 py-2">
-              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary uppercase">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary-hover uppercase">
                 {userEmail.charAt(0)}
               </div>
               <div className="min-w-0">
@@ -225,7 +227,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
             title={collapsed ? 'Help' : undefined}
             aria-label={collapsed ? 'Help' : undefined}
           >
-            <HelpCircle className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+            <HelpCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
             {!collapsed && <span>Help</span>}
           </Link>
           <button
@@ -241,7 +243,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
             // is not an accessible name).
             aria-label={collapsed ? 'Sign out' : undefined}
           >
-            <LogOut className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+            <LogOut className="h-4 w-4 shrink-0" aria-hidden="true" />
             {!collapsed && <span>{signingOut ? 'Signing out…' : 'Sign out'}</span>}
           </button>
 
@@ -272,7 +274,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
       {/* ── Desktop/tablet sidebar ── */}
       <aside
         className={cn(
-          'hidden md:flex flex-col fixed inset-y-0 left-0 z-30 border-r border-border bg-card transition-all duration-[var(--duration-normal)]',
+          'hidden md:flex flex-col fixed inset-y-0 left-0 z-30 border-r border-border bg-card transition-all duration-(--duration-normal)',
           // xl: respect collapse toggle | md–lg: always icon-rail
           'xl:w-[240px]',
           isCollapsed && 'xl:w-14',
@@ -314,7 +316,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
             className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Open navigation"
           >
-            <Menu className="h-4.5 w-4.5" />
+            <Menu className="h-6 w-6" />
           </button>
         </header>
 
@@ -322,11 +324,11 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
         {mobileOpen && (
           <>
             <div
-              className="fixed inset-0 z-40 bg-black/40"
+              className="fixed inset-0 z-40 m-0 bg-black/40"
               onClick={() => setMobileOpen(false)}
               aria-hidden="true"
             />
-            <aside className="fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border shadow-xl">
+            <aside className="fixed inset-y-0 left-0 z-50 m-0 w-64 bg-card border-r border-border shadow-xl">
               <div className="absolute right-3 top-3">
                 <button
                   type="button"

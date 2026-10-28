@@ -15,7 +15,7 @@
 //
 // Uses service client for cross-clinic access.
 //
-// Auth: ops_admin only, enforced OUTSIDE this component — src/middleware.ts
+// Auth: ops_admin only, enforced OUTSIDE this component — src/proxy.ts
 // rejects non-ops_admin on /ops before the page runs, and
 // (ops-dashboard)/layout.tsx re-checks the role server-side.
 //

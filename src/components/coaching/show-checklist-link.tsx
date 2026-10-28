@@ -44,7 +44,7 @@ export function ShowChecklistLink({ home, className = '' }: { home: string; clas
       type="button"
       onClick={() => void show()}
       disabled={busy || !hydrated}
-      className={`text-left text-xs font-medium text-foreground underline underline-offset-2 hover:text-primary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${className}`}
+      className={`text-left text-xs font-medium text-foreground underline underline-offset-2 hover:text-primary disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${className}`}
     >
       Show setup checklist
     </button>

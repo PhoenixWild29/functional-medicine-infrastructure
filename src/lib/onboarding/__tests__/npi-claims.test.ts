@@ -11,7 +11,10 @@
  *   - npiConflicts tells ops, per provider, whether an approved clinic
  *     holds the NPI and how many other pending sign-ups name it;
  *   - claimClinicNpis claims a clinic's providers at approval, refusing
- *     when an approved clinic already holds one of the NPIs.
+ *     when an approved clinic already holds one of the NPIs, or when two of
+ *     the clinic's own providers name the same NPI (said so, not "an
+ *     approved clinic");
+ *   - releaseClinicNpis undoes a claim, never throws.
  */
 
 import { onboardingFake } from '@/__tests__/helpers/onboarding-fake'
@@ -23,7 +26,7 @@ jest.mock('@/lib/providers/npi', () => ({
 }))
 
 import { addProviderRecord, npiTaken, NPI_TAKEN } from '../provider-record'
-import { claimClinicNpis, npiConflicts, npiPendingElsewhereNote, npiRegisteredElsewhereWarning } from '../npi-claims'
+import { claimClinicNpis, npiConflicts, npiPendingElsewhereNote, npiRegisteredElsewhereWarning, npiSharedInClinicMessage, releaseClinicNpis } from '../npi-claims'
 
 const NPI = '1234567893'
 const OTHER_NPI = '1245319599'
@@ -116,5 +119,31 @@ describe('claimClinicNpis (at approval)', () => {
     const db = world([provider('mine-1', 'c-new', NPI, { npi_claimed: false }), provider('approved', 'c-1', NPI)])
     expect(await claimClinicNpis(db.client, 'c-new')).toBe('conflict')
     expect(db.rows('providers').find(p => p['provider_id'] === 'mine-1')!['npi_claimed']).toBe(false)
+  })
+
+  it("two of the clinic's own providers name the same NPI: 'shared', nothing claimed", async () => {
+    const db = world([provider('mine-1', 'c-new', NPI, { npi_claimed: false }), provider('mine-2', 'c-new', NPI, { npi_claimed: false })])
+    expect(await claimClinicNpis(db.client, 'c-new')).toBe('shared')
+    expect(db.rows('providers').every(p => p['npi_claimed'] === false)).toBe(true)
+  })
+
+  it('the words ops read for a shared NPI: not "an approved clinic"', () => {
+    expect(npiSharedInClinicMessage()).toBe('Two or more of this clinic’s providers have the same NPI. Each provider needs their own NPI. Approve is refused until this is corrected.')
+    expect(npiSharedInClinicMessage()).not.toMatch(/approved clinic/)
+  })
+})
+
+describe('releaseClinicNpis', () => {
+  it("unclaims the clinic's live providers", async () => {
+    const db = world([provider('mine-1', 'c-new', NPI), provider('other', 'c-1', OTHER_NPI)])
+    await releaseClinicNpis(db.client, 'c-new')
+    expect(db.rows('providers').find(p => p['provider_id'] === 'mine-1')!['npi_claimed']).toBe(false)
+    expect(db.rows('providers').find(p => p['provider_id'] === 'other')!['npi_claimed']).toBe(true)
+  })
+
+  it('never throws, and logs when the undo itself fails', async () => {
+    const client = { from: () => { throw new Error('socket hang up') } }
+    await expect(releaseClinicNpis(client as never, 'c-new')).resolves.toBeUndefined()
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('CRITICAL: NPIs left claimed'))
   })
 })

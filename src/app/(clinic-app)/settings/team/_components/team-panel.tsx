@@ -32,10 +32,10 @@ interface Issued { name: string; link: string; note?: string }
 
 const EMPTY_LICENSE: License = { state: '', licenseNumber: '', expiresOn: '' }
 
-const primaryButton = 'rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
-const secondaryButton = 'rounded-md border border-slate-500 px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
+const primaryButton = 'rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
+const secondaryButton = 'rounded-md border border-slate-500 px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
 const inputClass = (invalid: boolean) =>
-  `mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${invalid ? 'border-red-700' : 'border-slate-500'}`
+  `mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${invalid ? 'border-red-700' : 'border-slate-500'}`
 
 const displayName = (m: { name: string | null; email: string }) => m.name?.trim() || m.email
 
@@ -242,7 +242,7 @@ export function TeamPanel({ members, invites, canManage, currentUserId }: Props)
               <div>
                 <label htmlFor={id('issued-link')} className="block text-sm font-medium text-emerald-950">Invite link for {issued.name}</label>
                 <input id={id('issued-link')} type="text" readOnly value={issued.link} onFocus={e => e.currentTarget.select()}
-                  className="mt-1 block w-full rounded-md border border-slate-500 bg-white px-3 py-2 font-mono text-xs text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+                  className="mt-1 block w-full rounded-md border border-slate-500 bg-white px-3 py-2 font-mono text-xs text-slate-900 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring" />
               </div>
               <div className="flex items-center gap-3">
                 <button type="button" onClick={() => void copy()} className={secondaryButton}>Copy link</button>

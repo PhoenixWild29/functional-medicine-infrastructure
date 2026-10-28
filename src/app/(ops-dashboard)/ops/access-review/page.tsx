@@ -11,7 +11,7 @@
 // change adds no migration. The reviewer records sign-off as the
 // procedure describes until the access_reviews table exists.
 //
-// Auth: ops_admin only, enforced OUTSIDE this component (src/middleware.ts
+// Auth: ops_admin only, enforced OUTSIDE this component (src/proxy.ts
 // and (ops-dashboard)/layout.tsx), as on every ops page; the API checks it
 // again. No Supabase auth client here.
 

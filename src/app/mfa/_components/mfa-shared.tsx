@@ -9,7 +9,7 @@ import { redirectToLogin } from '@/lib/auth/redirect-to-login'
 export function MfaCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
-      <div className="w-full max-w-sm space-y-4 rounded-lg border border-border bg-card p-6 shadow-sm">
+      <div className="w-full max-w-sm space-y-4 rounded-lg border border-border bg-card p-6 shadow-xs">
         <h1 className="text-lg font-semibold text-foreground">{title}</h1>
         {children}
       </div>
@@ -49,12 +49,12 @@ export function CodeForm({ onSubmit, busy, submitLabel, codeRefused = false, onC
         onChange={e => { setCode(e.target.value.trim()); onCodeChange?.() }}
         aria-invalid={codeRefused || undefined}
         aria-describedby={codeRefused ? MFA_ERROR_ID : undefined}
-        className="w-full rounded-md border border-slate-500 bg-background px-3 py-2 text-center font-mono text-lg tracking-widest focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="w-full rounded-md border border-slate-500 bg-background px-3 py-2 text-center font-mono text-lg tracking-widest focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
       />
       <button
         type="submit"
         disabled={!valid || busy}
-        className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
       >
         {busy ? 'Checking...' : submitLabel}
       </button>
@@ -69,7 +69,7 @@ export function SignOutLink() {
     <button
       type="button"
       onClick={async () => { await supabase.auth.signOut(); redirectToLogin() }}
-      className="rounded-sm text-xs text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="rounded-sm text-xs text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
       Sign out
     </button>

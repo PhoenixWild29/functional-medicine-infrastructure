@@ -110,7 +110,7 @@ export function LicenseScanner({ onScanned, onCancel }: Props) {
     <div className="space-y-3">
       <div className="overflow-hidden rounded-lg border border-slate-500 bg-black">
         {/* The live camera view; nothing is recorded. */}
-        <video ref={videoRef} muted playsInline aria-label="Camera view for scanning your license" className="aspect-[4/3] w-full object-cover" />
+        <video ref={videoRef} muted playsInline aria-label="Camera view for scanning your license" className="aspect-4/3 w-full object-cover" />
       </div>
       <p role={status === 'error' ? 'alert' : 'status'} className={`text-sm ${status === 'error' ? 'text-red-700' : 'text-foreground'}`}>
         {message}
@@ -118,7 +118,7 @@ export function LicenseScanner({ onScanned, onCancel }: Props) {
       <button
         type="button"
         onClick={onCancel}
-        className="min-h-[44px] w-full rounded-lg border border-slate-500 px-4 py-2 text-base font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        className="min-h-[44px] w-full rounded-lg border border-slate-500 px-4 py-2 text-base font-medium text-foreground hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         Stop scanning
       </button>

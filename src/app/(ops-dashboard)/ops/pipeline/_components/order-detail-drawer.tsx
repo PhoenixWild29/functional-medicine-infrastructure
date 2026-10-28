@@ -156,7 +156,7 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-40 bg-black/30"
+        className="fixed inset-0 z-40 m-0 bg-black/30"
         onClick={onClose}
         aria-hidden
       />
@@ -166,7 +166,7 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
         role="dialog"
         aria-modal="true"
         aria-label={`Order detail: ${order.orderNumber ?? order.orderId}`}
-        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col bg-card shadow-2xl border-l border-border"
+        className="fixed inset-y-0 right-0 z-50 m-0 flex w-full max-w-lg flex-col bg-card shadow-2xl border-l border-border"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
@@ -179,7 +179,7 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Close detail"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
@@ -198,7 +198,7 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
               aria-selected={activeTab === tab}
               onClick={() => setActiveTab(tab)}
               className={`
-                mr-4 border-b-2 py-2.5 text-sm transition-colors focus-visible:outline-none
+                mr-4 border-b-2 py-2.5 text-sm transition-colors focus-visible:outline-hidden
                 ${activeTab === tab
                   ? 'border-primary text-primary font-medium'
                   : 'border-transparent text-muted-foreground hover:text-foreground'}
@@ -208,7 +208,7 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
                   generic-capitalized 'Sla', to match the rest of the app. */}
               {tab === 'sla' ? 'SLA' : tab.charAt(0).toUpperCase() + tab.slice(1)}
               {tab === 'sla' && detail?.slas.some(s => s.isBreached) && (
-                <span className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                <span className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-700 text-[9px] font-bold text-white">
                   {detail.slas.filter(s => s.isBreached).length}
                 </span>
               )}
@@ -241,21 +241,21 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
                       value={r.code}
                       checked={chosenReason === r.code}
                       onChange={() => setChosenReason(r.code)}
-                      className="mt-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="mt-0.5 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                     />
                     <span>{r.label}</span>
                   </label>
                 ))}
               </fieldset>
               {chosenReason === 'emergency' && (
-                <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                <p className="rounded-md border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-xs text-amber-900 dark:text-amber-300">
                   Emergency access is reviewed within 24 hours. Use it only for urgent patient safety, and tell the security officer once it is done.
                 </p>
               )}
               <button
                 type="submit"
                 disabled={!chosenReason}
-                className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Open order
               </button>
@@ -272,7 +272,7 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
           )}
 
           {detailError && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+            <div className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-3 py-2 text-sm text-red-700 dark:text-red-300" role="alert">
               {detailError}
             </div>
           )}
@@ -318,7 +318,7 @@ function DetailTab({
           <span className="font-medium">{o.status}</span>
         </Field>
         <Field label="Reroute Count">
-          <span className={o.rerouteCount >= 2 ? 'font-medium text-red-600' : ''}>
+          <span className={o.rerouteCount >= 2 ? 'font-medium text-red-600 dark:text-red-300' : ''}>
             {o.rerouteCount} / 2
           </span>
         </Field>
@@ -348,13 +348,13 @@ function DetailTab({
         {/* Decision 10: shipped without tracking is allowed; say it is pending. */}
         {trackingPending(o.status, o.trackingNumber) && (
           <Field label="Tracking #">
-            <span className="font-medium text-amber-800">{TRACKING_PENDING_LABEL}</span>
+            <span className="font-medium text-amber-800 dark:text-amber-300">{TRACKING_PENDING_LABEL}</span>
           </Field>
         )}
         {/* Payment Flow v1.1: a failed payment attempt; the link still works. */}
         {o.paymentFailedLabel && (
           <Field label="Payment" className="col-span-2">
-            <span role="status" data-testid="payment-failed-label" className="font-medium text-amber-800">{o.paymentFailedLabel}</span>
+            <span role="status" data-testid="payment-failed-label" className="font-medium text-amber-800 dark:text-amber-300">{o.paymentFailedLabel}</span>
           </Field>
         )}
         {/* AC-OPV-003.5: Payment info */}
@@ -382,7 +382,7 @@ function DetailTab({
                   type="button"
                   disabled={loading}
                   onClick={() => onAction('release')}
-                  className="ml-2 text-xs text-muted-foreground underline hover:text-foreground focus-visible:outline-none"
+                  className="ml-2 text-xs text-muted-foreground underline hover:text-foreground focus-visible:outline-hidden"
                 >
                   Release
                 </button>
@@ -396,7 +396,7 @@ function DetailTab({
                   type="button"
                   disabled={loading}
                   onClick={() => onAction('claim', { opsAssignee: currentUserEmail })}
-                  className="ml-2 text-xs text-primary underline hover:no-underline focus-visible:outline-none"
+                  className="ml-2 text-xs text-primary underline hover:no-underline focus-visible:outline-hidden"
                 >
                   Claim
                 </button>
@@ -462,9 +462,9 @@ function SubmissionsTab({ rows }: { rows: SubmissionRow[] }) {
               <span className="text-xs font-medium">{row.tier}</span>
               <span className={`text-[10px] rounded-full px-1.5 py-0.5 font-medium ${
                 row.status === 'CONFIRMED' || row.status === 'SUBMITTED'
-                  ? 'bg-emerald-100 text-emerald-700'
+                  ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
                   : row.status === 'FAILED' || row.status === 'TIMEOUT'
-                  ? 'bg-red-100 text-red-700'
+                  ? 'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-300'
                   : 'bg-muted text-muted-foreground'
               }`}>
                 {row.status}
@@ -478,7 +478,7 @@ function SubmissionsTab({ rows }: { rows: SubmissionRow[] }) {
             )}
           </div>
           {row.errorMessage && (
-            <p className="text-xs text-red-600 font-mono">{row.errorCode ? `[${row.errorCode}] ` : ''}{row.errorMessage}</p>
+            <p className="text-xs text-red-600 dark:text-red-300 font-mono">{row.errorCode ? `[${row.errorCode}] ` : ''}{row.errorMessage}</p>
           )}
           <p className="text-[10px] text-muted-foreground">{new Date(row.createdAt).toLocaleString()}</p>
         </div>
@@ -500,9 +500,9 @@ function SlaTab({ rows }: { rows: SlaRow[] }) {
           key={row.slaType}
           className={`rounded-md border p-3 ${
             row.isBreached
-              ? 'border-red-200 bg-red-50'
+              ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40'
               : row.resolvedAt
-              ? 'border-emerald-200 bg-emerald-50'
+              ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40'
               : 'border-border bg-muted/30'
           }`}
         >
@@ -512,9 +512,9 @@ function SlaTab({ rows }: { rows: SlaRow[] }) {
             </span>
             <span className={`text-[10px] font-medium rounded-full px-1.5 py-0.5 ${
               row.resolvedAt
-                ? 'bg-emerald-100 text-emerald-700'
+                ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
                 : row.isBreached
-                ? 'bg-red-100 text-red-700'
+                ? 'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-300'
                 : 'bg-muted text-muted-foreground'
             }`}>
               {row.resolvedAt ? 'Resolved' : row.isBreached ? 'Breached' : 'Active'}
@@ -529,7 +529,7 @@ function SlaTab({ rows }: { rows: SlaRow[] }) {
             </p>
           )}
           {row.escalationTier > 0 && (
-            <p className="text-xs text-amber-600">
+            <p className="text-xs text-amber-600 dark:text-amber-300">
               Escalation Tier {row.escalationTier}
             </p>
           )}

@@ -10,7 +10,7 @@ export function EhrConnectionsTable({ connections }: { connections: Row[] }) {
   if (connections.length === 0) return <p className="text-sm text-foreground">No clinic has connected an EHR yet.</p>
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full min-w-[48rem] text-left text-sm">
+      <table className="w-full min-w-3xl text-left text-sm">
         <caption className="sr-only">EHR sync connections</caption>
         <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground dark:text-slate-300">
           <tr>

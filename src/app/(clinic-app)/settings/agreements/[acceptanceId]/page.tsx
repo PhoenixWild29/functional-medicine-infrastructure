@@ -27,7 +27,7 @@ export const metadata = {
 
 // Acceptance ids are UUIDs; anything that is not an id-shaped token is not looked up.
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/
-const LINK = 'text-sm font-medium text-blue-700 underline underline-offset-2 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+const LINK = 'text-sm font-medium text-blue-700 underline underline-offset-2 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring'
 const MUTED = 'text-slate-700 dark:text-slate-300'
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -98,7 +98,7 @@ export default async function AcceptedTextPage({ params }: { params: Promise<{ a
           tabIndex={0}
           role="region"
           aria-label={`${title} ${acceptance.version} text`}
-          className="space-y-3 rounded-lg border border-slate-500 bg-background p-4 text-sm leading-relaxed text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="space-y-3 rounded-lg border border-slate-500 bg-background p-4 text-sm leading-relaxed text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           <LegalMarkdown text={text} headingLevel={3} />
         </div>

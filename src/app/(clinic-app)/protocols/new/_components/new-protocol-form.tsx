@@ -48,7 +48,7 @@ interface ItemDraft {
   refills:       string
 }
 
-const FIELD = 'mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+const FIELD = 'mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring'
 const LABEL = 'block text-sm font-medium text-foreground'
 
 let nextKey = 1
@@ -179,7 +179,7 @@ export function NewProtocolForm({ createdBy, returnTo }: { createdBy: string | n
         <button
           type="button"
           onClick={() => setItems(prev => [...prev, emptyItem()])}
-          className="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           Add another medication
         </button>
@@ -191,11 +191,11 @@ export function NewProtocolForm({ createdBy, returnTo }: { createdBy: string | n
           <button
             type="submit"
             disabled={saving}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             {saving ? 'Saving…' : 'Save protocol'}
           </button>
-          <Link href={returnTo} className="text-sm font-medium text-foreground underline underline-offset-2 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Link href={returnTo} className="text-sm font-medium text-foreground underline underline-offset-2 hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
             Cancel
           </Link>
         </div>
@@ -269,7 +269,7 @@ function ItemEditor({ index, item, onChange, onRemove }: {
           <ul className="mt-1 space-y-1">
             {ingredients.map(ing => (
               <li key={ing.ingredient_id}>
-                <button type="button" onClick={() => void pickIngredient(ing)} className="w-full rounded-md border border-border px-3 py-1.5 text-left text-sm text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <button type="button" onClick={() => void pickIngredient(ing)} className="w-full rounded-md border border-border px-3 py-1.5 text-left text-sm text-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
                   {ing.common_name}
                 </button>
               </li>
@@ -338,7 +338,7 @@ function ItemEditor({ index, item, onChange, onRemove }: {
       </div>
 
       {onRemove && (
-        <button type="button" onClick={onRemove} className="text-sm font-medium text-red-700 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <button type="button" onClick={onRemove} className="text-sm font-medium text-red-700 underline underline-offset-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
           Remove medication {n}
         </button>
       )}

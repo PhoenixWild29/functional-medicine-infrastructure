@@ -29,7 +29,7 @@ function StepCircle({
   isCompleted: boolean
   isActive:    boolean
 }) {
-  const base = 'flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors'
+  const base = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors'
   const variant = isCompleted || isActive
     ? 'bg-primary text-primary-foreground'
     : 'border-2 border-muted-foreground/30 bg-background text-muted-foreground'
@@ -82,7 +82,7 @@ export function WizardProgress({ steps, currentStep }: Props) {
                 <Link
                   href={step.href}
                   aria-label={`Go back to step ${step.number}: ${step.label}`}
-                  className="rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="rounded focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {inner}
                 </Link>

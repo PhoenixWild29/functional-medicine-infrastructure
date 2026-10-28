@@ -33,8 +33,8 @@ export default async function ReviewAgreementPage({ params }: { params: Promise<
 
   return (
     <main id="main-content" className="mx-auto max-w-4xl px-4 py-6 sm:py-8">
-      <Link href="/pharmacy/agreements" className="inline-flex min-h-[44px] items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Back to agreements</Link>
-      <h1 className="mt-2 break-words text-2xl font-bold text-foreground">{view.title}, version {view.version}</h1>
+      <Link href="/pharmacy/agreements" className="inline-flex min-h-[44px] items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">Back to agreements</Link>
+      <h1 className="mt-2 wrap-break-word text-2xl font-bold text-foreground">{view.title}, version {view.version}</h1>
       <div className="mt-6">
         {current.ok ? (
           <ReviewAndAccept agreementKey={key} view={view} />

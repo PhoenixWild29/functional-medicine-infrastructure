@@ -96,7 +96,7 @@ export function DrugInteractionAlerts({ medicationNames, onCheckUnavailable }: D
           type="button"
           onClick={() => { void refetch() }}
           disabled={isFetching}
-          className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-transparent dark:text-red-200"
+          className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring dark:bg-transparent dark:text-red-200"
         >
           {isFetching ? 'Retrying…' : 'Retry'}
         </button>

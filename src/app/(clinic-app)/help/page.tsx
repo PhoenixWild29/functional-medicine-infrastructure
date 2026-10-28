@@ -27,7 +27,7 @@ export default function HelpPage() {
           <li key={t.slug}>
             <Link
               href={`/help/${t.slug}`}
-              className="block px-4 py-3 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="block px-4 py-3 hover:bg-muted/50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span className="block text-sm font-semibold text-foreground">{t.title}</span>
               <span className="block text-xs text-slate-700 dark:text-slate-300">{t.summary}</span>

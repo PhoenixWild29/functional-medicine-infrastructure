@@ -58,7 +58,7 @@ export function AcceptInviteForm({ token, kind, clinicName, email, status, invit
       <section aria-labelledby="invite-title" className="space-y-3">
         <h1 id="invite-title" className="text-2xl font-bold text-foreground">{u.title}</h1>
         <p className="text-sm text-slate-700">{u.body}</p>
-        <a href="/login" className="inline-block text-sm font-medium text-primary underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <a href="/login" className="inline-block text-sm font-medium text-primary underline underline-offset-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
           Go to sign in
         </a>
       </section>

@@ -944,14 +944,14 @@ function MarginBuilderFormForLine({
                     value={packageCount}
                     onChange={e => changePackageCount(e.target.value)}
                     onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
-                    className="w-16 rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="w-16 rounded-md border border-input bg-background px-2 py-1.5 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   />
                   <span className="text-sm text-muted-foreground" aria-hidden="true">×</span>
                   <select
                     aria-label="Package"
                     value={selectedPackage.id}
                     onChange={e => changePackage(e.target.value)}
-                    className="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {packages.map(p => (
                       <option key={p.id} value={p.id}>
@@ -1050,7 +1050,7 @@ function MarginBuilderFormForLine({
               key={label}
               type="button"
               onClick={() => applyMultiplier(factor)}
-              className="rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               {label}
             </button>
@@ -1075,7 +1075,7 @@ function MarginBuilderFormForLine({
             aria-describedby={isBelowWholesale ? 'retail-error' : undefined}
             // NB-07: suppress browser spinner arrows for currency input
             style={{ appearance: 'textfield' } as React.CSSProperties}
-            className={`w-full rounded-md border pl-7 pr-3 py-2 text-base shadow-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring ${
+            className={`w-full rounded-md border pl-7 pr-3 py-2 text-base shadow-xs bg-background focus:outline-hidden focus:ring-2 focus:ring-ring ${
               isBelowWholesale ? 'border-destructive' : 'border-input'
             }`}
           />
@@ -1102,7 +1102,7 @@ function MarginBuilderFormForLine({
             </span>
 
             <span className="text-muted-foreground">Est. clinic margin</span>
-            <span className={`font-semibold text-right ${clinicMarginCents >= 1000 ? 'text-emerald-600' : 'text-amber-600'}`}>
+            <span className={`font-semibold text-right ${clinicMarginCents >= 1000 ? 'text-emerald-700' : 'text-amber-700'}`}>
               ${toCurrency(clinicMarginCents)}
             </span>
           </div>
@@ -1148,7 +1148,7 @@ function MarginBuilderFormForLine({
           onChange={e => setSigText(e.target.value)}
           aria-invalid={isSigTooShort ? 'true' : undefined}
           aria-describedby="sig-hint"
-          className={`w-full rounded-md border px-3 py-2 text-base shadow-sm bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none ${
+          className={`w-full rounded-md border px-3 py-2 text-base shadow-xs bg-background placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-ring resize-none ${
             isSigTooShort ? 'border-destructive' : 'border-input'
           }`}
         />
@@ -1160,7 +1160,7 @@ function MarginBuilderFormForLine({
               ? 'text-muted-foreground'
               : sigTrimmed.length < 10
               ? 'text-destructive'
-              : 'text-emerald-600'
+              : 'text-emerald-700'
           }`}
         >
           {sigText.length === 0
@@ -1189,7 +1189,7 @@ function MarginBuilderFormForLine({
             type="button"
             onClick={handleAddAnother}
             disabled={!canContinue}
-            className="flex-1 rounded-md border border-primary bg-background px-4 py-2 text-sm font-medium text-primary shadow-sm hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex-1 rounded-md border border-primary bg-background px-4 py-2 text-sm font-medium text-primary shadow-xs hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Add & Search Another
           </button>
@@ -1199,7 +1199,7 @@ function MarginBuilderFormForLine({
             type="button"
             onClick={() => router.push(editTarget?.kind === 'session' ? '/new-prescription/review' : (draftReturnTo ?? '/dashboard'))}
             disabled={isSavingLine}
-            className="rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted/50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-xs hover:bg-muted/50 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Cancel
           </button>
@@ -1207,7 +1207,7 @@ function MarginBuilderFormForLine({
         <button
           type="submit"
           disabled={!canContinue || isSavingLine}
-          className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           {isSavingLine
             ? 'Saving...'
@@ -1223,7 +1223,7 @@ function MarginBuilderFormForLine({
         </button>
       </div>
       {lineError && (
-        <p className="text-center text-xs text-red-600" role="alert">{lineError}</p>
+        <p className="text-center text-xs text-red-700" role="alert">{lineError}</p>
       )}
       {!isEditing && !isDraftMode && rxSession.prescriptionCount > 0 && (
         <p className="text-center text-xs text-muted-foreground">
@@ -1238,7 +1238,7 @@ function MarginBuilderFormForLine({
           type="button"
           onClick={handleSaveDraft}
           disabled={!canContinue || isSavingDraft || !rxSession.isSessionStarted}
-          className="w-full rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="w-full rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-muted-foreground shadow-xs hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           {isSavingDraft ? 'Saving...' : 'Save as Draft: Provider Signs Later'}
         </button>
@@ -1246,7 +1246,7 @@ function MarginBuilderFormForLine({
           Creates the order without signing. The provider can review and sign from the dashboard.
         </p>
         {draftError && (
-          <p className="mt-2 text-center text-xs text-red-600">{draftError}</p>
+          <p className="mt-2 text-center text-xs text-red-700">{draftError}</p>
         )}
       </div>
       )}

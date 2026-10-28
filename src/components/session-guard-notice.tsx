@@ -13,7 +13,7 @@
 // src/app/(ops-dashboard)/ops/__tests__/ops-page-no-inline-auth.test.ts.
 //
 // The real auth gates run in the two places that CAN redirect safely:
-// src/middleware.ts, and the route-group layout (which sits OUTSIDE the
+// src/proxy.ts, and the route-group layout (which sits OUTSIDE the
 // boundary its sibling loading.tsx creates). A page body reaching this
 // component means the session evaporated between the layout and the page,
 // so it renders a terminal state instead of hanging.
@@ -35,7 +35,7 @@ export function SessionGuardNotice({
       <p className="mt-2 text-sm text-muted-foreground">{message}</p>
       <Link
         href="/login"
-        className="mt-6 inline-block rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        className="mt-6 inline-block rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-xs hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         Sign in
       </Link>

@@ -13,7 +13,12 @@
 //     holds the NPI (then Approve is refused) and how many other pending
 //     sign-ups name it;
 //   - approval claims the clinic's providers; a claim the unique index
-//     refuses is the same refusal (a race).
+//     refuses is the same refusal (a race). Two of the clinic's own
+//     providers naming the same NPI is refused with words that say so;
+//   - a claim whose approval did not happen is undone (releaseClinicNpis),
+//     unless the clinic is approved by then (another reviewer won: the
+//     claim is theirs). There is no single transaction for claim plus
+//     approval (no RPC), so this compensation is the guarantee.
 //
 // Service role, behind the ops_admin gate. Ops-only words: nothing here
 // reaches the person who signed up.
@@ -24,6 +29,11 @@ import type { Database } from '@/types/database.types'
 type Db = SupabaseClient<Database>
 
 export const NPI_REGISTERED_ELSEWHERE = 'NPI_REGISTERED_ELSEWHERE'
+export const NPI_SHARED_IN_CLINIC = 'NPI_SHARED_IN_CLINIC'
+
+export function npiSharedInClinicMessage(): string {
+  return 'Two or more of this clinic’s providers have the same NPI. Each provider needs their own NPI. Approve is refused until this is corrected.'
+}
 
 export interface NpiConflict {
   /** A live provider of another, approved clinic holds this NPI. */
@@ -79,11 +89,13 @@ export async function npiConflicts(
 }
 
 /**
- * At approval: the clinic's live providers take their NPIs. 'conflict' when
- * an approved clinic already holds one (checked first, and the unique
- * index refuses it in a race); nothing is claimed then.
+ * At approval: the clinic's live providers take their NPIs. 'shared' when
+ * two of the clinic's own providers name the same NPI (the unique index
+ * would refuse it, and "an approved clinic" would be wrong); 'conflict'
+ * when an approved clinic already holds one (checked first, and the unique
+ * index refuses it in a race). Nothing is claimed then.
  */
-export async function claimClinicNpis(db: Db, clinicId: string): Promise<'ok' | 'conflict' | 'error'> {
+export async function claimClinicNpis(db: Db, clinicId: string): Promise<'ok' | 'shared' | 'conflict' | 'error'> {
   const { data: mine, error: readErr } = await db.from('providers')
     .select('provider_id, npi_number')
     .eq('clinic_id', clinicId)
@@ -93,6 +105,8 @@ export async function claimClinicNpis(db: Db, clinicId: string): Promise<'ok' | 
     return 'error'
   }
   const rows = (mine ?? []) as Array<{ provider_id: string; npi_number: string | null }>
+  const npis = rows.map(r => r.npi_number).filter((n): n is string => !!n)
+  if (new Set(npis).size !== npis.length) return 'shared'
   let conflicts: Map<string, NpiConflict>
   try {
     conflicts = await npiConflicts(db, clinicId, rows.map(r => ({ providerId: r.provider_id, npi: r.npi_number })))
@@ -114,8 +128,24 @@ export async function claimClinicNpis(db: Db, clinicId: string): Promise<'ok' | 
   return 'ok'
 }
 
-/** Undo claimClinicNpis when the approval itself did not happen. Never throws. */
+/**
+ * Undo claimClinicNpis when the approval itself did not happen. A clinic
+ * that is approved by now (another reviewer won the race, or a write that
+ * reported an error did land) keeps its claim. Never throws.
+ */
 export async function releaseClinicNpis(db: Db, clinicId: string): Promise<void> {
-  const { error } = await db.from('providers').update({ npi_claimed: false }).eq('clinic_id', clinicId).is('deleted_at', null)
-  if (error) console.error(`[npi-claims] CRITICAL: NPIs left claimed after a failed approval | clinic=${clinicId}: ${error.message}`)
+  try {
+    const { data: clinic, error: readErr } = await db.from('clinics')
+      .select('onboarding_status')
+      .eq('clinic_id', clinicId)
+      .maybeSingle()
+    if (!readErr && (clinic as { onboarding_status?: string } | null)?.onboarding_status === 'approved') {
+      console.info(`[npi-claims] clinic approved meanwhile, claim kept | clinic=${clinicId}`)
+      return
+    }
+    const { error } = await db.from('providers').update({ npi_claimed: false }).eq('clinic_id', clinicId).is('deleted_at', null)
+    if (error) console.error(`[npi-claims] CRITICAL: NPIs left claimed after a failed approval | clinic=${clinicId}: ${error.message}`)
+  } catch (err) {
+    console.error(`[npi-claims] CRITICAL: NPIs left claimed after a failed approval | clinic=${clinicId}: ${err instanceof Error ? err.name : 'error'}`)
+  }
 }

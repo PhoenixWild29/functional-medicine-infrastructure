@@ -46,17 +46,17 @@ interface StatusGroup {
 const STATUS_GROUPS: StatusGroup[] = [
   {
     label:    'Payment',
-    color:    'text-blue-600',
+    color:    'text-blue-600 dark:text-blue-300',
     statuses: ['DRAFT', 'AWAITING_PAYMENT', 'PAYMENT_EXPIRED', 'PAID_PROCESSING'],
   },
   {
     label:    'Submission',
-    color:    'text-indigo-600',
+    color:    'text-indigo-600 dark:text-indigo-300',
     statuses: ['SUBMISSION_PENDING', 'SUBMISSION_FAILED', 'FAX_QUEUED', 'FAX_DELIVERED', 'FAX_FAILED'],
   },
   {
     label:    'Pharmacy',
-    color:    'text-purple-600',
+    color:    'text-purple-600 dark:text-purple-300',
     statuses: [
       'PHARMACY_ACKNOWLEDGED', 'PHARMACY_COMPOUNDING', 'PHARMACY_PROCESSING',
       'PHARMACY_REJECTED', 'REROUTE_PENDING',
@@ -64,12 +64,12 @@ const STATUS_GROUPS: StatusGroup[] = [
   },
   {
     label:    'Shipping',
-    color:    'text-emerald-600',
+    color:    'text-emerald-600 dark:text-emerald-300',
     statuses: ['READY_TO_SHIP', 'SHIPPED', 'DELIVERED'],
   },
   {
     label:    'Errors / Terminal',
-    color:    'text-red-600',
+    color:    'text-red-600 dark:text-red-300',
     statuses: [
       'CANCELLED', 'ERROR_PAYMENT_FAILED', 'ERROR_COMPLIANCE_HOLD',
       'REFUND_PENDING', 'REFUNDED', 'DISPUTED',
@@ -366,8 +366,8 @@ export function PipelineView({
                 onClick={() => setSelectedGroup(isSelected ? null : group.label)}
                 className={`
                   w-full flex items-center justify-between rounded-md px-2 py-1 text-left text-xs font-semibold
-                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
-                  ${isSelected ? 'bg-primary/10 text-primary' : `hover:bg-accent ${group.color}`}
+                  focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring
+                  ${isSelected ? 'bg-primary/10 text-primary-hover' : `hover:bg-accent ${group.color}`}
                 `}
                 aria-pressed={isSelected}
               >
@@ -398,9 +398,9 @@ export function PipelineView({
                       }}
                       className={`
                         w-full flex items-center justify-between rounded px-2 py-0.5 text-left text-xs
-                        focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring
+                        focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring
                         ${filters.statuses.includes(status)
-                          ? 'bg-primary/10 text-primary font-medium'
+                          ? 'bg-primary/10 text-primary-hover font-medium'
                           : 'text-muted-foreground hover:bg-accent hover:text-foreground'}
                       `}
                     >
@@ -420,12 +420,12 @@ export function PipelineView({
 
         {/* ── Error banner ── */}
         {isError && (
-          <div className="flex items-center justify-between rounded-md border border-orange-300 bg-orange-50 px-4 py-2.5 text-sm text-orange-800" role="alert">
+          <div className="flex items-center justify-between rounded-md border border-orange-300 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/40 px-4 py-2.5 text-sm text-orange-800 dark:text-orange-300" role="alert">
             <span>Connection lost. Showing cached data</span>
             <button
               type="button"
               onClick={() => void refetch()}
-              className="underline hover:no-underline focus-visible:outline-none"
+              className="underline hover:no-underline focus-visible:outline-hidden"
             >
               Retry
             </button>
@@ -433,7 +433,7 @@ export function PipelineView({
         )}
 
         {actionError && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700" role="alert">
+          <div className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-4 py-2.5 text-sm text-red-700 dark:text-red-300" role="alert">
             {actionError}
             <button
               type="button"
@@ -450,7 +450,7 @@ export function PipelineView({
           <select
             value={filters.clinicId}
             onChange={e => setFilters(f => ({ ...f, clinicId: e.target.value }))}
-            className="rounded-md border border-input bg-background text-foreground px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md border border-input bg-background text-foreground px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Filter by clinic"
           >
             <option value="">All Clinics</option>
@@ -462,7 +462,7 @@ export function PipelineView({
           <select
             value={filters.pharmacyId}
             onChange={e => setFilters(f => ({ ...f, pharmacyId: e.target.value }))}
-            className="rounded-md border border-input bg-background text-foreground px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md border border-input bg-background text-foreground px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Filter by pharmacy"
           >
             <option value="">All Pharmacies</option>
@@ -474,7 +474,7 @@ export function PipelineView({
           <select
             value={filters.tier}
             onChange={e => setFilters(f => ({ ...f, tier: e.target.value as PipelineFilters['tier'] }))}
-            className="rounded-md border border-input bg-background text-foreground px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md border border-input bg-background text-foreground px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Filter by integration tier"
           >
             <option value="">All Tiers</option>
@@ -488,14 +488,14 @@ export function PipelineView({
             type="date"
             value={filters.dateFrom}
             onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value }))}
-            className="rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="From date"
           />
           <input
             type="date"
             value={filters.dateTo}
             onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value }))}
-            className="rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="To date"
           />
 
@@ -506,7 +506,7 @@ export function PipelineView({
                 setFilters(EMPTY_FILTERS)
                 setSelectedGroup(null)
               }}
-              className="text-xs text-muted-foreground underline hover:text-foreground focus-visible:outline-none"
+              className="text-xs text-muted-foreground underline hover:text-foreground focus-visible:outline-hidden"
             >
               Clear all filters
             </button>
@@ -527,34 +527,34 @@ export function PipelineView({
         {(filters.statuses.length > 0 || selectedGroup || filterChips.length > 0) && (
           <div className="flex flex-wrap gap-1">
             {filterChips.map(chip => (
-              <span key={chip.label} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+              <span key={chip.label} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary-hover">
                 {chip.label}
                 <button
                   type="button"
                   onClick={chip.clear}
-                  className="hover:text-destructive focus-visible:outline-none"
+                  className="hover:text-destructive focus-visible:outline-hidden"
                   aria-label={`Remove ${chip.label} filter`}
                 >×</button>
               </span>
             ))}
             {selectedGroup && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary-hover">
                 {selectedGroup}
                 <button
                   type="button"
                   onClick={() => setSelectedGroup(null)}
-                  className="hover:text-destructive focus-visible:outline-none"
+                  className="hover:text-destructive focus-visible:outline-hidden"
                   aria-label={`Remove ${selectedGroup} filter`}
                 >×</button>
               </span>
             )}
             {filters.statuses.map(s => (
-              <span key={s} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+              <span key={s} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary-hover">
                 {getStatusConfig(s).label}
                 <button
                   type="button"
                   onClick={() => setFilters(f => ({ ...f, statuses: f.statuses.filter(x => x !== s) }))}
-                  className="hover:text-destructive focus-visible:outline-none"
+                  className="hover:text-destructive focus-visible:outline-hidden"
                   aria-label={`Remove ${getStatusConfig(s).label} filter`}
                 >×</button>
               </span>
@@ -573,7 +573,7 @@ export function PipelineView({
                 type="button"
                 disabled={bulkLoading}
                 onClick={() => void handleBulkAction(bulkAction)}
-                className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {bulkLoading ? 'Processing…' : (
                   bulkAction === 'force_fax' ? 'Force Fax All' : 'Retry Fax All'
@@ -583,7 +583,7 @@ export function PipelineView({
             <button
               type="button"
               onClick={() => setSelectedIds(new Set())}
-              className="text-xs text-muted-foreground underline hover:text-foreground focus-visible:outline-none"
+              className="text-xs text-muted-foreground underline hover:text-foreground focus-visible:outline-hidden"
             >
               Deselect all
             </button>
@@ -621,7 +621,7 @@ export function PipelineView({
               <button
                 type="button"
                 onClick={() => { setFilters(EMPTY_FILTERS); setSelectedGroup(null) }}
-                className="mt-3 text-sm text-primary underline hover:no-underline focus-visible:outline-none"
+                className="mt-3 text-sm text-primary underline hover:no-underline focus-visible:outline-hidden"
               >
                 Clear filters
               </button>
@@ -753,7 +753,7 @@ function OrderRow({
         <button
           type="button"
           onClick={onOpenDetail}
-          className="text-left font-mono text-xs text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+          className="text-left font-mono text-xs text-primary underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded"
         >
           {order.orderNumber ?? order.orderId.slice(0, 8)}
         </button>
@@ -767,10 +767,10 @@ function OrderRow({
         <StatusBadge status={order.status} className="text-[11px]" />
         {/* Decision 10: shipped without tracking is allowed; say it is pending. */}
         {trackingPending(order.status, order.trackingNumber) && (
-          <span className="ml-1 text-[11px] font-medium text-amber-800">{TRACKING_PENDING_LABEL}</span>
+          <span className="ml-1 text-[11px] font-medium text-amber-800 dark:text-amber-300">{TRACKING_PENDING_LABEL}</span>
         )}
         {order.rerouteCount > 0 && (
-          <span className="ml-1 text-[10px] text-amber-600">
+          <span className="ml-1 text-[10px] text-amber-600 dark:text-amber-300">
             {order.rerouteCount}/2 reroutes
           </span>
         )}
@@ -807,7 +807,7 @@ function OrderRow({
               {slaText}
             </span>
           ) : slaUrgency === 'amber' ? (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-500">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-500 dark:text-amber-300">
               <svg className="h-3 w-3 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clipRule="evenodd" /></svg>
               {slaText}
             </span>
@@ -915,14 +915,14 @@ function OrderRow({
               placeholder="Tracking #"
               value={trackingInput}
               onChange={e => setTrackingInput(e.target.value)}
-              className="w-24 rounded border border-input px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-24 rounded border border-input px-2 py-1 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             />
             <input
               type="text"
               placeholder="Carrier"
               value={carrierInput}
               onChange={e => setCarrierInput(e.target.value)}
-              className="w-20 rounded border border-input px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-20 rounded border border-input px-2 py-1 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             />
             <button
               type="button"
@@ -937,14 +937,14 @@ function OrderRow({
                 setTrackingInput('')
                 setCarrierInput('')
               }}
-              className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary-hover disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               Save
             </button>
             <button
               type="button"
               onClick={() => setShowTracking(false)}
-              className="text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none"
+              className="text-xs text-muted-foreground hover:text-foreground focus-visible:outline-hidden"
             >
               ✕
             </button>
@@ -967,7 +967,7 @@ interface ActionButtonProps {
 
 function ActionButton({ label, disabled, title, onClick, variant = 'default' }: ActionButtonProps) {
   const cls =
-    variant === 'primary' ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+    variant === 'primary' ? 'bg-primary text-primary-foreground hover:bg-primary-hover'
     : variant === 'danger'  ? 'bg-red-600 text-white hover:bg-red-700'
     : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground border border-border'
 
@@ -977,7 +977,7 @@ function ActionButton({ label, disabled, title, onClick, variant = 'default' }: 
       disabled={disabled}
       title={title}
       onClick={onClick}
-      className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${cls}`}
+      className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${cls}`}
     >
       {label}
     </button>

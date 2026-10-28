@@ -27,7 +27,7 @@ function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivElement>)
 /** Placeholder for a metric/stat card */
 function SkeletonCard({ className }: { className?: string }) {
   return (
-    <div className={cn('rounded-xl border border-border bg-card p-5 shadow-sm', className)}>
+    <div className={cn('rounded-xl border border-border bg-card p-5 shadow-xs', className)}>
       <div className="flex items-center justify-between">
         <Skeleton className="h-4 w-24" />
         <Skeleton className="h-8 w-8 rounded-lg" />
@@ -57,7 +57,7 @@ function SkeletonTableRow({ cols = 7 }: { cols?: number }) {
 /** Placeholder for a kanban card */
 function SkeletonKanbanCard({ className }: { className?: string }) {
   return (
-    <div className={cn('rounded-xl border border-border bg-card p-3 shadow-sm', className)}>
+    <div className={cn('rounded-xl border border-border bg-card p-3 shadow-xs', className)}>
       <Skeleton className="h-3.5 w-3/4" />
       <Skeleton className="mt-2 h-3 w-1/2" />
       <div className="mt-3 flex items-center gap-2">

@@ -14,7 +14,7 @@
 //   server-side via POST /api/checkout/payment-intent.
 //
 // WO-73 upgrades:
-//   - Sticky backdrop-blur header (CompoundIQ + clinic name)
+//   - Sticky backdrop-blur-sm header (CompoundIQ + clinic name)
 //   - Upgraded order summary card (32px amount, "Amount due" label)
 //   - Trust badges: 🔒 256-bit TLS + ⚡ Stripe only (NO HIPAA badge — legal risk)
 //   - 48px-minimum Pay button (mobile touch target standard)
@@ -159,7 +159,7 @@ function PaymentForm({ token, smsConsent, intentEndpoint, retailCents, onError, 
           disabled={isSubmitting}
           aria-invalid={emailRejected || undefined}
           aria-describedby={[smsConsent ? 'checkout-email-help' : null, emailRejected ? PAY_ERROR_ID : null].filter(Boolean).join(' ') || undefined}
-          className="mt-1 block w-full min-h-[44px] rounded-lg border border-slate-500 bg-background px-3 py-2 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
+          className="mt-1 block w-full min-h-[44px] rounded-lg border border-slate-500 bg-background px-3 py-2 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
         />
         {smsConsent && (
           <p id="checkout-email-help" className="mt-1 text-xs text-muted-foreground">
@@ -196,7 +196,7 @@ function PaymentForm({ token, smsConsent, intentEndpoint, retailCents, onError, 
       <button
         type="submit"
         disabled={!stripe || !elements || isSubmitting}
-        className="w-full min-h-[48px] rounded-lg bg-primary px-4 py-3 text-base font-semibold text-primary-foreground shadow-sm hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        className="w-full min-h-[48px] rounded-lg bg-primary px-4 py-3 text-base font-semibold text-primary-foreground shadow-xs hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         {isSubmitting ? 'Processing…' : `Pay ${toCurrency(retailCents)}`}
       </button>
@@ -372,7 +372,7 @@ export function CheckoutPageContent({
   return (
     <>
       {/* WO-73: Sticky header — backdrop-blur, CompoundIQ wordmark + clinic name */}
-      <header className="sticky top-0 z-10 flex h-12 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur-sm">
+      <header className="sticky top-0 z-10 flex h-12 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur-xs">
         <div className="flex items-center gap-2">
           <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary" aria-hidden>
             <svg width="12" height="12" viewBox="0 0 32 32" fill="none">
@@ -397,7 +397,7 @@ export function CheckoutPageContent({
           <h1 className="sr-only">Payment to {clinicName}</h1>
 
           {/* WO-73: Order summary card — "Amount due" label + 32px amount */}
-          <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+          <div className="rounded-xl border border-border bg-card p-5 shadow-xs">
             {logoUrl && (
               // eslint-disable-next-line @next/next/no-img-element -- the clinic logo is any URL the clinic set; next/image needs every host in images.remotePatterns, which is empty
               <img
@@ -411,7 +411,7 @@ export function CheckoutPageContent({
               Amount due
             </p>
             <div className="mt-2 flex items-start justify-between gap-4">
-              <div className="min-w-0 break-words">
+              <div className="min-w-0 wrap-break-word">
                 {/* REQ-GCX-008: Generic description — no medication name or diagnosis.
                     Phase C Stage 5: for group bundles, swap label + show item count
                     (count is a number, not PHI). */}
@@ -448,7 +448,7 @@ export function CheckoutPageContent({
           {titrationSchedule && (
             <div
               data-testid="checkout-titration-schedule"
-              className="rounded-xl border border-border bg-card p-5 shadow-sm"
+              className="rounded-xl border border-border bg-card p-5 shadow-xs"
             >
               <h2 className="text-sm font-semibold text-foreground">Your dosing schedule</h2>
               <ol className="mt-2 space-y-1 text-sm text-muted-foreground">
@@ -464,19 +464,19 @@ export function CheckoutPageContent({
 
           {/* State-specific content */}
           {checkoutState === 'paid' && (
-            <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+            <div className="rounded-xl border border-border bg-card p-5 shadow-xs">
               <PaidState clinicName={clinicName} />
             </div>
           )}
 
           {checkoutState === 'cancelled_expired' && (
-            <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+            <div className="rounded-xl border border-border bg-card p-5 shadow-xs">
               <CancelledState clinicName={clinicName} />
             </div>
           )}
 
           {checkoutState === 'active' && (
-            <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+            <div className="rounded-xl border border-border bg-card p-5 shadow-xs">
 
               {/* HSA/FSA eligibility — shown at top of payment area so patients see it before entering card */}
               <div className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">

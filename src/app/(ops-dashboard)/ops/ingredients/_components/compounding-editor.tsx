@@ -86,7 +86,7 @@ export function CompoundingEditor(props: {
         {busy ? 'Saving...' : 'Save review'}
       </button>
       {message && (
-        <p role={message.tone === 'error' ? 'alert' : 'status'} className={`text-xs ${message.tone === 'error' ? 'text-red-700' : 'text-emerald-700'}`}>
+        <p role={message.tone === 'error' ? 'alert' : 'status'} className={`text-xs ${message.tone === 'error' ? 'text-red-700 dark:text-red-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
           {message.text}
         </p>
       )}

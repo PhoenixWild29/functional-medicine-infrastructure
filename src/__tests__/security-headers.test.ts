@@ -19,7 +19,7 @@
  */
 
 import { NextRequest } from 'next/server'
-import { middleware } from '../middleware'
+import { proxy } from '../proxy'
 import { baseConfig } from '../../next.config'
 
 const verifyCheckoutTokenMock = jest.fn()
@@ -72,19 +72,19 @@ beforeEach(() => {
 
 // Every way middleware can answer.
 const CASES: Array<[string, () => Promise<Response>]> = [
-  ['signed-in clinic page',        async () => middleware(req('/dashboard'))],
-  ['signed-in ops page',           async () => { getUserMock.mockResolvedValue(OPS); return middleware(req('/ops/pipeline')) }],
-  ['new prescription page',        async () => middleware(req('/new-prescription'))],
-  ['patient checkout',             async () => middleware(req('/checkout/some.jwt.token'))],
-  ['expired checkout redirect',    async () => { verifyCheckoutTokenMock.mockResolvedValue(null); return middleware(req('/checkout/bad')) }],
-  ['login page',                   async () => middleware(req('/login'))],
-  ['auth callback',                async () => middleware(req('/auth/callback'))],
-  ['unauthorized page',            async () => middleware(req('/unauthorized'))],
-  ['signed-out redirect to login', async () => { getUserMock.mockResolvedValue(NONE); return middleware(req('/dashboard')) }],
-  ['API route',                    async () => middleware(req('/api/orders'))],
-  ['webhook API route',            async () => middleware(req('/api/webhooks/stripe'))],
-  ['cron API route',               async () => middleware(req('/api/cron/sla-check'))],
-  ['prefetch short-circuit',       async () => middleware(req('/dashboard', { 'next-router-prefetch': '1' }))],
+  ['signed-in clinic page',        async () => proxy(req('/dashboard'))],
+  ['signed-in ops page',           async () => { getUserMock.mockResolvedValue(OPS); return proxy(req('/ops/pipeline')) }],
+  ['new prescription page',        async () => proxy(req('/new-prescription'))],
+  ['patient checkout',             async () => proxy(req('/checkout/some.jwt.token'))],
+  ['expired checkout redirect',    async () => { verifyCheckoutTokenMock.mockResolvedValue(null); return proxy(req('/checkout/bad')) }],
+  ['login page',                   async () => proxy(req('/login'))],
+  ['auth callback',                async () => proxy(req('/auth/callback'))],
+  ['unauthorized page',            async () => proxy(req('/unauthorized'))],
+  ['signed-out redirect to login', async () => { getUserMock.mockResolvedValue(NONE); return proxy(req('/dashboard')) }],
+  ['API route',                    async () => proxy(req('/api/orders'))],
+  ['webhook API route',            async () => proxy(req('/api/webhooks/stripe'))],
+  ['cron API route',               async () => proxy(req('/api/cron/sla-check'))],
+  ['prefetch short-circuit',       async () => proxy(req('/dashboard', { 'next-router-prefetch': '1' }))],
 ]
 
 describe.each(CASES)('%s', (_name, run) => {
@@ -122,7 +122,7 @@ describe.each(CASES)('%s', (_name, run) => {
 
 describe('per-area allowlists', () => {
   it('a signed-in page allows only Supabase and Sentry ingest as outside hosts', async () => {
-    const csp = parseCsp((await middleware(req('/dashboard'))).headers.get('Content-Security-Policy'))
+    const csp = parseCsp((await proxy(req('/dashboard'))).headers.get('Content-Security-Policy'))
 
     expect(csp['connect-src']).toEqual(expect.arrayContaining(["'self'", SUPABASE, SENTRY_INGEST]))
     expect(new Set(externalHosts(csp))).toEqual(new Set([SUPABASE, SENTRY_INGEST]))
@@ -131,14 +131,14 @@ describe('per-area allowlists', () => {
 
   it('an ops page allows no Stripe and no other third party', async () => {
     getUserMock.mockResolvedValue(OPS)
-    const csp = parseCsp((await middleware(req('/ops/pipeline'))).headers.get('Content-Security-Policy'))
+    const csp = parseCsp((await proxy(req('/ops/pipeline'))).headers.get('Content-Security-Policy'))
 
     expect(JSON.stringify(csp)).not.toContain('stripe')
     expect(new Set(externalHosts(csp))).toEqual(new Set([SUPABASE, SENTRY_INGEST]))
   })
 
   it('checkout allows Stripe.js, Stripe frames and the Stripe API, and nothing else extra', async () => {
-    const csp = parseCsp((await middleware(req('/checkout/some.jwt.token'))).headers.get('Content-Security-Policy'))
+    const csp = parseCsp((await proxy(req('/checkout/some.jwt.token'))).headers.get('Content-Security-Policy'))
 
     expect(csp['script-src']).toEqual(expect.arrayContaining(['https://js.stripe.com']))
     expect(csp['frame-src']).toEqual(expect.arrayContaining(['https://js.stripe.com', 'https://hooks.stripe.com']))
@@ -149,8 +149,8 @@ describe('per-area allowlists', () => {
   })
 
   it('payment is allowed only on checkout (Stripe wallets)', async () => {
-    const checkout = (await middleware(req('/checkout/some.jwt.token'))).headers.get('Permissions-Policy')!
-    const dashboard = (await middleware(req('/dashboard'))).headers.get('Permissions-Policy')!
+    const checkout = (await proxy(req('/checkout/some.jwt.token'))).headers.get('Permissions-Policy')!
+    const dashboard = (await proxy(req('/dashboard'))).headers.get('Permissions-Policy')!
 
     expect(checkout).toMatch(/payment=\(self "https:\/\/js\.stripe\.com"\)/)
     expect(dashboard).toContain('payment=()')
@@ -159,13 +159,13 @@ describe('per-area allowlists', () => {
 
 describe('the nonce', () => {
   it('is new on every request', async () => {
-    const a = (await middleware(req('/dashboard'))).headers.get('Content-Security-Policy')
-    const b = (await middleware(req('/dashboard'))).headers.get('Content-Security-Policy')
+    const a = (await proxy(req('/dashboard'))).headers.get('Content-Security-Policy')
+    const b = (await proxy(req('/dashboard'))).headers.get('Content-Security-Policy')
     expect(a).not.toEqual(b)
   })
 
   it('is forwarded to the page render (Next applies it to its own scripts)', async () => {
-    const res = await middleware(req('/dashboard'))
+    const res = await proxy(req('/dashboard'))
     const csp = res.headers.get('Content-Security-Policy')!
     const nonce = /'nonce-([^']+)'/.exec(csp)![1]
 
@@ -175,7 +175,7 @@ describe('the nonce', () => {
   })
 
   it('is forwarded on checkout too, alongside the checkout claims', async () => {
-    const res = await middleware(req('/checkout/some.jwt.token'))
+    const res = await proxy(req('/checkout/some.jwt.token'))
     const nonce = /'nonce-([^']+)'/.exec(res.headers.get('Content-Security-Policy')!)![1]
 
     expect(res.headers.get('x-middleware-request-x-nonce')).toBe(nonce)
@@ -213,13 +213,13 @@ describe('next.config headers (every path, static assets included)', () => {
 describe('upgrade-insecure-requests', () => {
   it('is NOT sent for a page served over plain http (local and E2E builds)', async () => {
     for (const path of ['/login', '/dashboard', '/checkout/some.jwt.token']) {
-      const res = await middleware(req(path))
+      const res = await proxy(req(path))
       expect(res.headers.get('Content-Security-Policy')).not.toContain('upgrade-insecure-requests')
     }
   })
 
   it('is sent for a page served over https', async () => {
-    const res = await middleware(new NextRequest(new URL('https://app.compoundiq.test/login'), { method: 'GET' }))
+    const res = await proxy(new NextRequest(new URL('https://app.compoundiq.test/login'), { method: 'GET' }))
     expect(res.headers.get('Content-Security-Policy')).toContain('upgrade-insecure-requests')
   })
 })
@@ -234,18 +234,18 @@ describe('upgrade-insecure-requests behind a proxy', () => {
 
   it('is sent when the URL is http but x-forwarded-proto is https (Vercel)', async () => {
     for (const path of ['/login', '/checkout/expired']) {
-      const res = await middleware(proxied(path, 'https'))
+      const res = await proxy(proxied(path, 'https'))
       expect(res.headers.get('Content-Security-Policy')).toContain('upgrade-insecure-requests')
     }
   })
 
   it('reads the first value of a comma-separated x-forwarded-proto', async () => {
-    expect((await middleware(proxied('/login', 'https, http'))).headers.get('Content-Security-Policy')).toContain('upgrade-insecure-requests')
-    expect((await middleware(proxied('/login', 'http, https'))).headers.get('Content-Security-Policy')).not.toContain('upgrade-insecure-requests')
+    expect((await proxy(proxied('/login', 'https, http'))).headers.get('Content-Security-Policy')).toContain('upgrade-insecure-requests')
+    expect((await proxy(proxied('/login', 'http, https'))).headers.get('Content-Security-Policy')).not.toContain('upgrade-insecure-requests')
   })
 
   it('is not sent when x-forwarded-proto says http (local / E2E production build)', async () => {
-    const res = await middleware(new NextRequest(new URL('http://localhost/login'), { method: 'GET', headers: { 'x-forwarded-proto': 'http' } }))
+    const res = await proxy(new NextRequest(new URL('http://localhost/login'), { method: 'GET', headers: { 'x-forwarded-proto': 'http' } }))
     expect(res.headers.get('Content-Security-Policy')).not.toContain('upgrade-insecure-requests')
   })
 })

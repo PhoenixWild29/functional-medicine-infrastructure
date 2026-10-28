@@ -52,7 +52,7 @@ type Stage =
   | { kind: 'declined' }
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`
-const BUTTON = 'w-full min-h-[48px] rounded-lg px-4 py-3 text-base font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50'
+const BUTTON = 'w-full min-h-[48px] rounded-lg px-4 py-3 text-base font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50'
 const PRIMARY = `${BUTTON} bg-primary text-primary-foreground hover:bg-primary-hover`
 const SECONDARY = `${BUTTON} border border-slate-500 bg-background text-foreground hover:bg-muted`
 
@@ -227,7 +227,7 @@ export function PlanFlow({ token, logoUrl }: { token: string; logoUrl: string | 
           <ul className="mt-3 space-y-2">
             {kept.map(i => (
               <li key={i.orderId} className="flex justify-between gap-3 text-sm">
-                <span className="min-w-0 break-words text-foreground">{i.medicationName}</span>
+                <span className="min-w-0 wrap-break-word text-foreground">{i.medicationName}</span>
                 <span className="shrink-0 whitespace-nowrap text-foreground">{money(i.priceCents)}</span>
               </li>
             ))}
@@ -282,7 +282,7 @@ export function PlanFlow({ token, logoUrl }: { token: string; logoUrl: string | 
           const headingId = `option-${o.optionId}`
           return (
             <section key={o.optionId} aria-labelledby={headingId} className="rounded-lg border border-border bg-card p-4">
-              <h2 id={headingId} className="break-words text-lg font-semibold text-foreground">{o.label}</h2>
+              <h2 id={headingId} className="wrap-break-word text-lg font-semibold text-foreground">{o.label}</h2>
               <ul className="mt-3 space-y-4">
                 {o.items.map(i => {
                   const boxId = `item-${o.optionId}-${i.orderId}`
@@ -303,7 +303,7 @@ export function PlanFlow({ token, logoUrl }: { token: string; logoUrl: string | 
                           />
                         </span>
                         <span className="flex min-w-0 flex-1 justify-between gap-3 pt-2.5">
-                          <span className="min-w-0 break-words font-medium text-foreground">{i.medicationName}</span>
+                          <span className="min-w-0 wrap-break-word font-medium text-foreground">{i.medicationName}</span>
                           <span className="shrink-0 whitespace-nowrap text-foreground">{money(i.priceCents)}</span>
                         </span>
                       </label>

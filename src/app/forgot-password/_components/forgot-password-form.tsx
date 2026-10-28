@@ -7,8 +7,8 @@
 import Link from 'next/link'
 import { useState, type FormEvent } from 'react'
 
-const INPUT = 'w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-const LINK = 'font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+const INPUT = 'w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring'
+const LINK = 'font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring'
 
 export function ForgotPasswordForm() {
   const [email, setEmail] = useState('')

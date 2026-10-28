@@ -9,7 +9,7 @@ import { getUserRole } from '@/lib/auth/claims'
 // Cross-clinic access — restricted to operations team only
 //
 // Reads with getUser(), never getSession(). By the time this layout runs,
-// src/middleware.ts has already refreshed the token and forwarded the
+// src/proxy.ts has already refreshed the token and forwarded the
 // rotated cookies onto this request, so getUser() validates against a
 // current access token and does not itself rotate anything. A Server
 // Component cannot persist a rotated pair (src/lib/supabase/server.ts
@@ -35,8 +35,8 @@ export default async function OpsDashboardLayout({
   return (
     <Providers>
       <BfcacheGuard />
-      {/* dark: scoped to ops subtree — does not affect clinic app or checkout */}
-      <div className="dark min-h-screen bg-background">
+      {/* dark: scoped to ops subtree, does not affect clinic app or checkout. text-foreground: body sets its colour from the light tokens, so without it unstyled text here inherits near-black on the dark background. */}
+      <div className="dark min-h-screen bg-background text-foreground">
         <header className="border-b border-border bg-card px-4 py-3 flex items-center justify-between">
           <span className="text-sm font-semibold text-foreground">CompoundIQ Ops</span>
           <NavSignOutButton />

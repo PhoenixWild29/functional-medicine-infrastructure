@@ -8,7 +8,7 @@
  * the page's width and the steps scroll inside the list (reproduced in
  * Chromium at 320px: 573px of overflow without it, 0 with it).
  *
- * jsdom has no layout, so this pins the classes. It also pins break-words
+ * jsdom has no layout, so this pins the classes. It also pins wrap-break-word
  * on the free text a later step shows (license number, ops' note, CSV
  * warnings, send-back note, agreement text), so one long unbroken string
  * cannot do the same.
@@ -60,15 +60,15 @@ it('the step nav can shrink below its buttons, and the list scrolls inside it', 
 
 it('long free text wraps: send-back note, license number, ops note, CSV warnings, agreement', () => {
   render(<OnboardingWizard initial={state()} />)
-  expect(hasUp(screen.getByText(`Fix ${LONG}`), 'break-words')).toBe(true)
+  expect(hasUp(screen.getByText(`Fix ${LONG}`), 'wrap-break-word')).toBe(true)
 
   go('State licenses')
-  expect(hasUp(screen.getByText(new RegExp(`TX-${LONG}`)), 'break-words')).toBe(true)
-  expect(hasUp(screen.getByText(new RegExp(`Unreadable ${LONG}`)), 'break-words')).toBe(true)
+  expect(hasUp(screen.getByText(new RegExp(`TX-${LONG}`)), 'wrap-break-word')).toBe(true)
+  expect(hasUp(screen.getByText(new RegExp(`Unreadable ${LONG}`)), 'wrap-break-word')).toBe(true)
 
   go('Catalog')
-  expect(hasUp(screen.getByText(`Row 3: ${LONG}`), 'break-words')).toBe(true)
+  expect(hasUp(screen.getByText(`Row 3: ${LONG}`), 'wrap-break-word')).toBe(true)
 
   go('BAA')
-  expect(screen.getByRole('region', { name: 'Business Associate Agreement text' })).toHaveClass('break-words')
+  expect(screen.getByRole('region', { name: 'Business Associate Agreement text' })).toHaveClass('wrap-break-word')
 })

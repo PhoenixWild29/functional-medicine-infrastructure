@@ -103,7 +103,9 @@ describe('DELETE /api/favorites — clinic-scope guard', () => {
     fromMock.mockImplementation(() => ({
       select: () => ({
         eq: () => ({
-          single: () => Promise.resolve({ data: null, error: null }),
+          is: () => ({
+            single: () => Promise.resolve({ data: null, error: null }),
+          }),
         }),
       }),
     }))
@@ -119,14 +121,16 @@ describe('DELETE /api/favorites — clinic-scope guard', () => {
         return {
           select: () => ({
             eq: () => ({
-              single: () => Promise.resolve({
-                data: { provider_id: PROVIDER_OUT },
-                error: null,
+              is: () => ({
+                single: () => Promise.resolve({
+                  data: { provider_id: PROVIDER_OUT },
+                  error: null,
+                }),
               }),
             }),
           }),
-          delete: () => ({
-            eq: () => Promise.resolve({ error: null }),
+          update: () => ({
+            eq: () => ({ is: () => Promise.resolve({ error: null }) }),
           }),
         }
       }
@@ -151,20 +155,25 @@ describe('DELETE /api/favorites — clinic-scope guard', () => {
   it('returns 200 when favorite belongs to a provider in caller\'s clinic', async () => {
     getSessionMock.mockResolvedValue(SESSION_IN_CLINIC)
 
-    const deleteEqSpy = jest.fn(() => Promise.resolve({ error: null }))
+    // A soft delete (decision 11 follow-up): an update that sets deleted_at.
+    const deleteIsSpy = jest.fn(() => Promise.resolve({ error: null }))
+    const deleteEqSpy = jest.fn(() => ({ is: deleteIsSpy }))
+    const updateSpy = jest.fn(() => ({ eq: deleteEqSpy }))
 
     fromMock.mockImplementation((table: string) => {
       if (table === 'provider_favorites') {
         return {
           select: () => ({
             eq: () => ({
-              single: () => Promise.resolve({
-                data: { provider_id: PROVIDER_IN },
-                error: null,
+              is: () => ({
+                single: () => Promise.resolve({
+                  data: { provider_id: PROVIDER_IN },
+                  error: null,
+                }),
               }),
             }),
           }),
-          delete: () => ({ eq: deleteEqSpy }),
+          update: updateSpy,
         }
       }
       if (table === 'providers') {
@@ -182,7 +191,9 @@ describe('DELETE /api/favorites — clinic-scope guard', () => {
 
     const res = await DELETE(makeRequest(FAV_ID))
     expect(res.status).toBe(200)
+    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({ deleted_at: expect.any(String) }))
     expect(deleteEqSpy).toHaveBeenCalledWith('favorite_id', FAV_ID)
+    expect(deleteIsSpy).toHaveBeenCalledWith('deleted_at', null)
   })
 })
 
@@ -205,26 +216,28 @@ describe('GET /api/favorites — formulation_active flag (stale-favorite hardeni
         return {
           select: () => ({
             in: () => ({
-              order: () => Promise.resolve({
-                data: [
-                  {
-                    favorite_id: 'fav-live',
-                    formulations: { formulation_id: 'f1', name: 'Live', is_active: true, deleted_at: null },
-                  },
-                  {
-                    favorite_id: 'fav-inactive',
-                    formulations: { formulation_id: 'f2', name: 'Inactive', is_active: false, deleted_at: null },
-                  },
-                  {
-                    favorite_id: 'fav-deleted',
-                    formulations: { formulation_id: 'f3', name: 'Deleted', is_active: true, deleted_at: '2026-01-01T00:00:00Z' },
-                  },
-                  {
-                    favorite_id: 'fav-orphan',
-                    formulations: null,
-                  },
-                ],
-                error: null,
+              is: () => ({
+                order: () => Promise.resolve({
+                  data: [
+                    {
+                      favorite_id: 'fav-live',
+                      formulations: { formulation_id: 'f1', name: 'Live', is_active: true, deleted_at: null },
+                    },
+                    {
+                      favorite_id: 'fav-inactive',
+                      formulations: { formulation_id: 'f2', name: 'Inactive', is_active: false, deleted_at: null },
+                    },
+                    {
+                      favorite_id: 'fav-deleted',
+                      formulations: { formulation_id: 'f3', name: 'Deleted', is_active: true, deleted_at: '2026-01-01T00:00:00Z' },
+                    },
+                    {
+                      favorite_id: 'fav-orphan',
+                      formulations: null,
+                    },
+                  ],
+                  error: null,
+                }),
               }),
             }),
           }),

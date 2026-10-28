@@ -17,7 +17,7 @@ import { coachingPrefs } from '@/lib/coaching/prefs'
 //
 // Reads with getUser(), never getSession() — see the note in
 // (ops-dashboard)/layout.tsx. Token refresh and cookie persistence are
-// owned exclusively by src/middleware.ts.
+// owned exclusively by src/proxy.ts.
 export default async function ClinicAppLayout({
   children,
 }: {

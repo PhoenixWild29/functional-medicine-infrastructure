@@ -98,7 +98,7 @@ export function OnboardingWizard({ initial }: { initial: WizardState }) {
                   onClick={() => go(s.key)}
                   aria-current={current ? 'step' : undefined}
                   className={[
-                    'flex min-h-[44px] w-full items-center gap-2 rounded-md px-3 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    'flex min-h-[44px] w-full items-center gap-2 rounded-md px-3 text-left text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring',
                     current ? 'bg-primary/10 font-semibold text-foreground' : 'text-muted-foreground hover:bg-muted',
                   ].join(' ')}
                 >
@@ -118,7 +118,7 @@ export function OnboardingWizard({ initial }: { initial: WizardState }) {
         {state.status === 'sent_back' && (
           <div role="status" className="rounded-md border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
             <p className="font-semibold">CompoundIQ sent your application back.</p>
-            {state.reviewNote && <p className="mt-1 break-words">{state.reviewNote}</p>}
+            {state.reviewNote && <p className="mt-1 wrap-break-word">{state.reviewNote}</p>}
             <p className="mt-1">Make the changes, then submit again from Review and submit.</p>
           </div>
         )}
@@ -134,8 +134,8 @@ export function OnboardingWizard({ initial }: { initial: WizardState }) {
         )}
         <FormAlert message={loadError} />
 
-        <section aria-labelledby="step-heading" className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
-          <h2 id="step-heading" ref={heading} tabIndex={-1} className="mb-4 text-lg font-semibold text-foreground focus-visible:outline-none">{label}</h2>
+        <section aria-labelledby="step-heading" className="rounded-xl border border-border bg-card p-4 shadow-xs sm:p-6">
+          <h2 id="step-heading" ref={heading} tabIndex={-1} className="mb-4 text-lg font-semibold text-foreground focus-visible:outline-hidden">{label}</h2>
           {!editable ? (
             <ReviewSummary state={state} />
           ) : step === 'details' ? <DetailsStep {...props} />

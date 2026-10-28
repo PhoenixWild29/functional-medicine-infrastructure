@@ -72,7 +72,7 @@ function isPasswordPath(pathname: string): boolean {
   return pathname === '/reset-password' || pathname === '/api/auth/password'
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const nonce = newNonce()
   const csp = buildCsp({ nonce, pathname, secure: isHttpsRequest(request) })
@@ -92,7 +92,7 @@ export async function middleware(request: NextRequest) {
   return res
 }
 
-// Edge Middleware: runs on every request before page rendering
+// Proxy (Node.js runtime): runs on every request before page rendering
 // Handles auth verification for clinic-app and ops-dashboard route groups
 async function handleRequest(request: NextRequest): Promise<NextResponse> {
   let response = NextResponse.next({ request })
@@ -397,11 +397,16 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
     return applySecurityHeaders(redirectWithSessionCookies(loginUrl))
   }
 
-  // B's review P2: a login created from an invite sets its own password,
-  // from an emailed reset link, before anything else. Pages go to
-  // /reset-password; APIs answer 403 MUST_CHANGE_PASSWORD. The reset
-  // paths stay open (lib/auth/must-change-password).
-  if (mustChangePassword(user) && !mustChangeAllowedPath(pathname)) {
+  // B's review P2: a login created from an invite (clinic, staff or
+  // pharmacy) sets its own password, from an emailed reset link, before
+  // anything else. Pages go to /reset-password; APIs answer 403
+  // MUST_CHANGE_PASSWORD. The reset paths stay open
+  // (lib/auth/must-change-password), and for a flagged login they skip the
+  // MFA gate below: the recovery session from the link is aal1 and a new
+  // invitee has no factor, so MFA would send it to enrollment, which this
+  // gate sends back. MFA applies once the flag is cleared.
+  const flaggedForReset = mustChangePassword(user)
+  if (flaggedForReset && !mustChangeAllowedPath(pathname)) {
     if (pathname.startsWith('/api/')) {
       const refused = NextResponse.json({ error: MUST_CHANGE_PASSWORD_MESSAGE, code: MUST_CHANGE_PASSWORD_CODE }, { status: 403 })
       response.cookies.getAll().forEach(cookie => refused.cookies.set(cookie))
@@ -424,7 +429,7 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
   // which VERIFIES the JWT (JWKS, or getUser for a symmetric key). It is
   // only read when it can matter, so with enforcement off and no factor
   // the request path is exactly what it was.
-  if (!isMfaExemptPath(pathname) && isMfaRole(appRole)) {
+  if (!isMfaExemptPath(pathname) && !flaggedForReset && isMfaRole(appRole)) {
     const enforced = mfaEnforcedForUser(appRole, user.email)
     const verifiedFactor = hasVerifiedTotp(user)
     if (enforced || verifiedFactor) {
@@ -539,7 +544,7 @@ export const config = {
     //
     // 2026-09: this filter is PATH-ONLY and can never distinguish a prefetch
     // from a navigation — a prefetch of /dashboard has the path /dashboard.
-    // Prefetch suppression is therefore done by header inside middleware()
+    // Prefetch suppression is therefore done by header inside proxy()
     // (see isPrefetchRequest); this list only trims requests that never
     // needed the gate in the first place, so the auth round-trip is not
     // spent on them.

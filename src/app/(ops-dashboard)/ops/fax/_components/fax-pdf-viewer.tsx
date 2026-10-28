@@ -59,13 +59,13 @@ export function FaxPdfViewer({ faxId, pdfUrl }: { faxId: string; pdfUrl: string 
           onClick={open}
           disabled={state.kind === 'loading'}
           aria-busy={state.kind === 'loading'}
-          className="flex w-full items-center justify-center gap-1.5 rounded border border-border bg-background px-3 py-1.5 text-xs text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+          className="flex w-full items-center justify-center gap-1.5 rounded border border-border bg-background px-3 py-1.5 text-xs text-foreground hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
         >
           Open fax
         </button>
       )}
       {state.kind === 'error' && (
-        <p role="alert" className="text-xs text-red-700">{state.message}</p>
+        <p role="alert" className="text-xs text-red-700 dark:text-red-300">{state.message}</p>
       )}
       {state.kind === 'open' && (
         <iframe

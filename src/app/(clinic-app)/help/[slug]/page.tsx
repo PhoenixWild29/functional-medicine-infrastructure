@@ -27,7 +27,7 @@ export default async function HelpTopicPage({ params }: { params: Promise<{ slug
       <div>
         <Link
           href="/help"
-          className="text-sm font-medium text-blue-700 underline underline-offset-2 hover:text-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-blue-300 dark:hover:text-blue-200"
+          className="text-sm font-medium text-blue-700 underline underline-offset-2 hover:text-blue-800 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring dark:text-blue-300 dark:hover:text-blue-200"
         >
           All help topics
         </Link>

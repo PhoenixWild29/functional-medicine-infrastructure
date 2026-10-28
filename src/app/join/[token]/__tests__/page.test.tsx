@@ -4,8 +4,9 @@
  *
  * An open link runs the self-intake flow in sign-up mode with the clinic's
  * name. A link that is turned off, revoked or unknown shows one plain
- * message, "This link is no longer active. Contact your clinic." (an
- * unknown token is not told apart). A database error is not shown as
+ * page, the same structure as /plan and /intake: the heading "This link is
+ * no longer active" and a body that says why a link stops working and to
+ * contact the clinic (an unknown token is not told apart). A database error is not shown as
  * inactive. Not indexed; one h1; no axe violations.
  */
 
@@ -34,6 +35,8 @@ jest.mock('@/lib/onboarding/clinic-approval', () => ({
 
 import JoinPage, { metadata } from '../page'
 
+const NOT_ACTIVE_BODY = 'Sign-up links stop working when your clinic turns them off or makes a new one. Please contact your clinic if you need a new link or have questions.'
+
 const axe = configureAxe({ runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'] }, rules: { region: { enabled: true } } })
 const TOKEN = 'A'.repeat(43)
 
@@ -58,11 +61,14 @@ it('open: the sign-up flow with the clinic name and the token', async () => {
   expect(flowProps).toHaveBeenCalledWith(expect.objectContaining({ token: TOKEN, clinicName: 'Test Clinic', variant: 'signup' }))
 })
 
-it.each(['inactive', 'invalid'])('%s: "This link is no longer active. Contact your clinic.", one h1, no axe violations', async state => {
+it.each(['inactive', 'invalid'])('%s: the not-active heading and a body that says why, one h1, no axe violations', async state => {
   resolveMock.mockResolvedValue({ state })
   await renderPage()
   expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
-  expect(screen.getByRole('main')).toHaveTextContent('This link is no longer active. Contact your clinic.')
+  expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('This link is no longer active')
+  expect(screen.getByRole('main')).toHaveTextContent(NOT_ACTIVE_BODY)
+  // The body no longer repeats the heading word for word.
+  expect(screen.getByRole('main')).not.toHaveTextContent('This link is no longer active. Contact your clinic.')
   expect(flowProps).not.toHaveBeenCalled()
   expect((await axe(document.body)).violations).toEqual([])
 })
@@ -70,14 +76,14 @@ it.each(['inactive', 'invalid'])('%s: "This link is no longer active. Contact yo
 // Self sign-up: a clinic that is not approved (or is switched off) gets
 // the inactive-link message instead of the form, checked on the server
 // before anything renders. The 410 on submit stays as the backstop.
-it('an open link whose clinic is not approved: "This link is no longer active. Contact your clinic." instead of the form', async () => {
+it('an open link whose clinic is not approved: the not-active page instead of the form', async () => {
   resolveMock.mockResolvedValue({ state: 'open', linkId: 'l', clinicId: 'c-pending', clinicName: 'Test Clinic' })
   approvalMock.mockResolvedValue({ state: 'pending', onboardingStatus: 'submitted' })
   await renderPage()
   expect(approvalMock).toHaveBeenCalledWith(expect.anything(), 'c-pending')
   expect(flowProps).not.toHaveBeenCalled()
   expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
-  expect(screen.getByRole('main')).toHaveTextContent('This link is no longer active. Contact your clinic.')
+  expect(screen.getByRole('main')).toHaveTextContent(NOT_ACTIVE_BODY)
   expect(screen.queryByText('Test Clinic')).toBeNull()
   expect((await axe(document.body)).violations).toEqual([])
 })

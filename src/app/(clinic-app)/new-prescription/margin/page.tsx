@@ -111,7 +111,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
     redirect('/new-prescription/search')
   }
 
-  // 2026-09 sweep: getUser(), never getSession(). src/middleware.ts has
+  // 2026-09 sweep: getUser(), never getSession(). src/proxy.ts has
   // already refreshed and persisted the token pair for this request, so
   // this read validates a current token and cannot start a rotation this
   // context is unable to write back. No auth redirect() from this
@@ -268,7 +268,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
             </p>
             <Link
               href="/new-prescription/search"
-              className="mt-4 inline-block rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
+              className="mt-4 inline-block rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-xs hover:bg-primary-hover"
             >
               Choose a Replacement
             </Link>

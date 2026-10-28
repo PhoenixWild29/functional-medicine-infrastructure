@@ -63,8 +63,10 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
     return <GenericErrorState />
   }
 
+  // No payment in the address (a bookmark, a refresh, a shared link): not
+  // a failed payment. The neutral reopen page, like /checkout.
   if (!paymentIntentId) {
-    return <GenericErrorState />
+    return <ReopenState />
   }
 
   const supabase = createServiceClient()
@@ -212,7 +214,7 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
         </div>
 
         {/* WO-73: "What happens next" — 3-step static list (icon + text, not color alone) — REQ-SPG-002 */}
-        <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+        <div className="rounded-xl border border-border bg-card p-5 shadow-xs">
           <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             What Happens Next
           </h2>
@@ -247,7 +249,7 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
 
         {/* Clinic contact — REQ-SPG-003 */}
         {(clinicPhone || clinicEmail) && (
-          <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+          <div className="rounded-xl border border-border bg-card p-5 shadow-xs">
             <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Questions? Contact {clinicName}
             </h2>
@@ -255,7 +257,7 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
               {clinicPhone && (
                 <a
                   href={`tel:${clinicPhone}`}
-                  className="flex min-h-[44px] items-center gap-2 text-sm text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex min-h-[44px] items-center gap-2 text-sm text-primary hover:text-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
@@ -266,7 +268,7 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
               {clinicEmail && (
                 <a
                   href={`mailto:${clinicEmail}`}
-                  className="flex min-h-[44px] items-center gap-2 break-all text-sm text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex min-h-[44px] items-center gap-2 break-all text-sm text-primary hover:text-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -366,7 +368,7 @@ function GroupBundleSuccessState({
           </p>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+        <div className="rounded-xl border border-border bg-card p-5 shadow-xs">
           <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">What Happens Next</h2>
           <ol className="mt-3 space-y-3">
             <li className="flex items-start gap-3">
@@ -396,13 +398,13 @@ function GroupBundleSuccessState({
         </div>
 
         {(clinicPhone || clinicEmail) && (
-          <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+          <div className="rounded-xl border border-border bg-card p-5 shadow-xs">
             <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Questions? Contact {clinicName}
             </h2>
             <div className="mt-2 space-y-1.5">
               {clinicPhone && (
-                <a href={`tel:${clinicPhone}`} className="flex min-h-[44px] items-center gap-2 text-sm text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <a href={`tel:${clinicPhone}`} className="flex min-h-[44px] items-center gap-2 text-sm text-primary hover:text-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                   </svg>
@@ -410,7 +412,7 @@ function GroupBundleSuccessState({
                 </a>
               )}
               {clinicEmail && (
-                <a href={`mailto:${clinicEmail}`} className="flex min-h-[44px] items-center gap-2 break-all text-sm text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <a href={`mailto:${clinicEmail}`} className="flex min-h-[44px] items-center gap-2 break-all text-sm text-primary hover:text-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
@@ -425,6 +427,21 @@ function GroupBundleSuccessState({
           {smsConsent
             ? <>Payment received. You&rsquo;ll get a text confirming your payment and when your order ships. You&rsquo;ll receive additional updates as each prescription moves through our pharmacy network.</>
             : 'Payment received.'}
+        </p>
+      </div>
+    </main>
+  )
+}
+
+function ReopenState() {
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-center px-4 py-16" data-testid="checkout-success-reopen">
+      <div className="w-full max-w-sm space-y-4 text-center">
+        <h1 className="text-2xl font-semibold text-foreground">
+          Please reopen your payment link
+        </h1>
+        <p className="text-base text-muted-foreground">
+          For your security, please reopen the payment link from your text message to see your payment.
         </p>
       </div>
     </main>
