@@ -123,6 +123,14 @@ test.describe('Accessibility: WCAG 2.1 AA (C10)', () => {
     await expectReflowsAt320(page)
   })
 
+  test('success, no payment in the address: the neutral reopen page, no violations; reflows at 320px', async ({ page }) => {
+    await page.goto('/checkout/success')
+    await expect(page.getByRole('heading', { level: 1, name: 'Please reopen your payment link' })).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('heading', { name: 'Payment Unsuccessful' })).toHaveCount(0)
+    expect(await axeViolations(page)).toEqual([])
+    await expectReflowsAt320(page)
+  })
+
   test('success, payment unsuccessful: no violations; reflows at 320px', async ({ page }) => {
     await page.goto('/checkout/success?payment_intent=pi_e2e_unknown&redirect_status=failed')
     await expect(page.getByRole('heading', { name: 'Payment Unsuccessful' })).toBeVisible({ timeout: 15_000 })

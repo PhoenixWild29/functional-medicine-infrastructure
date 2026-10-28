@@ -122,3 +122,22 @@ it('the lookups read the patient SMS consent', () => {
   expect(src.match(/patients\s*\(\s*sms_opt_in\s*\)/g)).toHaveLength(2)
 })
 
+// QA: the bare /checkout/success (no payment_intent) is not a failed
+// payment: it shows a neutral reopen page, like /checkout. A real failed
+// redirect still says the payment was unsuccessful.
+describe('checkout success without a payment', () => {
+  const REOPEN = 'For your security, please reopen the payment link from your text message to see your payment.'
+
+  it('no query at all: the neutral reopen page, not "Payment Unsuccessful"', async () => {
+    render(await CheckoutSuccessPage({ searchParams: Promise.resolve({}) }))
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Please reopen your payment link')
+    expect(screen.getByRole('main')).toHaveTextContent(REOPEN)
+    expect(screen.queryByText(/Unsuccessful|could not be completed/)).toBeNull()
+  })
+
+  it('redirect_status=failed: still "Payment Unsuccessful"', async () => {
+    render(await CheckoutSuccessPage({ searchParams: Promise.resolve({ payment_intent: 'pi_1', redirect_status: 'failed' }) }))
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Payment Unsuccessful')
+  })
+})

@@ -63,8 +63,10 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
     return <GenericErrorState />
   }
 
+  // No payment in the address (a bookmark, a refresh, a shared link): not
+  // a failed payment. The neutral reopen page, like /checkout.
   if (!paymentIntentId) {
-    return <GenericErrorState />
+    return <ReopenState />
   }
 
   const supabase = createServiceClient()
@@ -425,6 +427,21 @@ function GroupBundleSuccessState({
           {smsConsent
             ? <>Payment received. You&rsquo;ll get a text confirming your payment and when your order ships. You&rsquo;ll receive additional updates as each prescription moves through our pharmacy network.</>
             : 'Payment received.'}
+        </p>
+      </div>
+    </main>
+  )
+}
+
+function ReopenState() {
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-center px-4 py-16" data-testid="checkout-success-reopen">
+      <div className="w-full max-w-sm space-y-4 text-center">
+        <h1 className="text-2xl font-semibold text-foreground">
+          Please reopen your payment link
+        </h1>
+        <p className="text-base text-muted-foreground">
+          For your security, please reopen the payment link from your text message to see your payment.
         </p>
       </div>
     </main>
