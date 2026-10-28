@@ -31,8 +31,9 @@ export function ShowChecklistLink({ home, className = '' }: { home: string; clas
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ checklistHidden: false }),
       })
       if (!res.ok) return
-      if (pathname === home) window.dispatchEvent(new Event(SHOW_CHECKLIST_EVENT))
-      else router.push(home)
+      // Always announced: the card reloads, and the sidebar hides this link.
+      window.dispatchEvent(new Event(SHOW_CHECKLIST_EVENT))
+      if (pathname !== home) router.push(home)
       router.refresh()
     } finally {
       setBusy(false)

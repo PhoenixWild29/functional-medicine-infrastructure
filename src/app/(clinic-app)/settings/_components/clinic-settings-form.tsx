@@ -59,7 +59,8 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
         setIsSaving(false)
         return
       }
-      body['default_markup_pct'] = parsed
+      // Sent only when it changed, so an untouched form says "No changes to save."
+      if (parsed !== defaultMarkupPct) body['default_markup_pct'] = parsed
     }
 
     // WO-102: include absorb_shipping when changed
