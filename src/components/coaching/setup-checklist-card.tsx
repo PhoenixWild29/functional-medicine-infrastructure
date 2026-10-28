@@ -21,6 +21,9 @@ interface Step { id: string; label: string; href: string; done: boolean }
 interface Checklist { notice: string | null; steps: Step[] }
 
 export const SHOW_CHECKLIST_EVENT = 'coaching:show-checklist'
+// Fired after the checklist is hidden, so the sidebar shows
+// "Show setup checklist" at once (without waiting for a reload).
+export const CHECKLIST_HIDDEN_EVENT = 'coaching:checklist-hidden'
 
 // The checklist to show, or null (hidden, done, or it cannot be read).
 async function readChecklist(): Promise<Checklist | null> {
@@ -67,6 +70,7 @@ export function SetupChecklistCard() {
       if (res.ok) {
         latestRead.current++
         setChecklist(null)
+        window.dispatchEvent(new Event(CHECKLIST_HIDDEN_EVENT))
         router.refresh()
       }
     } finally {

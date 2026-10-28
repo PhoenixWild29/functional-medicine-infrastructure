@@ -4,7 +4,9 @@ import type { Metadata } from 'next'
 import { LegalDocumentPage } from '@/components/legal/legal-document-page'
 import { PUBLIC_LEGAL_DOCUMENTS } from '@/lib/legal/public-documents'
 
-export const dynamic = 'force-static'
+// Dynamic so the CSP nonce reaches Next's inline scripts (a static page
+// has no nonce and its scripts are blocked by the strict CSP).
+export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: `${PUBLIC_LEGAL_DOCUMENTS.privacy.title} | CompoundIQ` }
 
 export default function PrivacyPage() {

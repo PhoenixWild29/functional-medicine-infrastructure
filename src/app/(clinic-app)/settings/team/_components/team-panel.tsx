@@ -144,6 +144,8 @@ export function TeamPanel({ members, invites, canManage, currentUserId }: Props)
       return
     }
     if (action === 'resend' && typeof r.data['link'] === 'string') show({ name: displayName(invite), link: r.data['link'] })
+    // A revoked invite's link no longer works, so stop showing it.
+    if (action === 'revoke') setIssued(prev => (prev && prev.name === displayName(invite) ? null : prev))
     router.refresh()
   }
 

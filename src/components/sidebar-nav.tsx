@@ -30,6 +30,7 @@ import { cn } from '@/lib/utils'
 import { signOutInBrowser } from '@/lib/supabase/sign-out'
 import { redirectToLogin } from '@/lib/auth/redirect-to-login'
 import { ShowChecklistLink } from './coaching/show-checklist-link'
+import { CHECKLIST_HIDDEN_EVENT, SHOW_CHECKLIST_EVENT } from './coaching/setup-checklist-card'
 
 interface NavItem {
   href:  string
@@ -61,6 +62,20 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
   const [isCollapsed,    setIsCollapsed]    = useState(false)
   const [mobileOpen,     setMobileOpen]     = useState(false)
   const [signingOut,     setSigningOut]     = useState(false)
+  // Hiding or showing the checklist updates the link at once; the server
+  // value (showChecklistLink) catches up on the next refresh.
+  const [checklistToggle, setChecklistToggle] = useState<'hidden' | 'shown' | null>(null)
+  useEffect(() => {
+    const onHidden = () => setChecklistToggle('hidden')
+    const onShown  = () => setChecklistToggle('shown')
+    window.addEventListener(CHECKLIST_HIDDEN_EVENT, onHidden)
+    window.addEventListener(SHOW_CHECKLIST_EVENT, onShown)
+    return () => {
+      window.removeEventListener(CHECKLIST_HIDDEN_EVENT, onHidden)
+      window.removeEventListener(SHOW_CHECKLIST_EVENT, onShown)
+    }
+  }, [])
+  const checklistLinkVisible = checklistToggle === 'hidden' || (checklistToggle !== 'shown' && showChecklistLink)
 
   useEffect(() => {
     try {
@@ -211,7 +226,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
               </div>
             </div>
           )}
-          {!collapsed && showChecklistLink && (
+          {!collapsed && checklistLinkVisible && (
             <div className="px-3 py-1">
               <ShowChecklistLink home="/dashboard" />
             </div>

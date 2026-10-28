@@ -158,6 +158,13 @@ describe('the clinic admin', () => {
     await click(within(list).getByRole('button', { name: 'Revoke invite to Priya Shah' }))
     expect(lastBody()).toEqual({ action: 'revoke' })
     expect(refreshMock).toHaveBeenCalled()
+    // Revoking someone else leaves Sam Late's new link on screen.
+    expect(screen.getByLabelText('Invite link for Sam Late')).toHaveValue('https://app.test/onboard/join/NEW')
+
+    // Revoking the invite whose link is showing removes that link.
+    fetchMock.mockReturnValueOnce(ok({ ok: true, status: 'revoked' }))
+    await click(within(list).getByRole('button', { name: 'Revoke invite to Sam Late' }))
+    expect(screen.queryByLabelText('Invite link for Sam Late')).not.toBeInTheDocument()
   })
 
   it('deactivate asks first, then posts; never offered on your own login', async () => {
