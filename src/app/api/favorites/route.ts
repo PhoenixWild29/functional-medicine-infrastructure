@@ -13,7 +13,8 @@
 //   for a card that already exists adds it to that card's dose_presets)
 // PATCH /api/favorites?id=xxx  → update use_count (on load) — WO-103:
 //   with a JSON body, edits label / pharmacy / dose presets / patient
-// DELETE /api/favorites?id=xxx → remove a favorite
+// DELETE /api/favorites?id=xxx → remove a favorite (a soft delete:
+//   deleted_at is set and every read here ignores the row)
 //
 // Auth: verified user via getUser(), never getSession(); clinic_id is
 // read from that verified user.
@@ -251,6 +252,7 @@ async function getFavorites(req: NextRequest): Promise<NextResponse> {
       pharmacies ( pharmacy_id, name, is_active, deleted_at )
     `)
     .in('provider_id', providerIds)
+    .is('deleted_at', null)
     .order('use_count', { ascending: false })
 
   if (error) return serverError('favorites read', error)
@@ -381,6 +383,7 @@ async function createFavorite(req: NextRequest): Promise<NextResponse> {
     .select('favorite_id, pharmacy_id, patient_id, dose_presets')
     .in('provider_id', validIds)
     .eq('formulation_id', formulationId)
+    .is('deleted_at', null)
   if (findErr) return serverError('favorite lookup', findErr)
 
   const existing = (candidates ?? []).find(c =>
@@ -500,6 +503,7 @@ async function editFavorite(req: NextRequest): Promise<NextResponse> {
     .from('provider_favorites')
     .select('provider_id, formulation_id, use_count, patient_id')
     .eq('favorite_id', favoriteId)
+    .is('deleted_at', null)
     .single()
   if (currentError && !isNoRows(currentError)) readFailed('favorite', currentError)
 
@@ -530,6 +534,7 @@ async function editFavorite(req: NextRequest): Promise<NextResponse> {
       .from('provider_favorites')
       .update({ use_count: newCount, last_used_at: new Date().toISOString() })
       .eq('favorite_id', favoriteId)
+      .is('deleted_at', null)
     if (error) {
       await notCompletedFor(editEntry, touched)
       return serverError('favorite use count', error)
@@ -609,6 +614,7 @@ async function deleteFavorite(req: NextRequest): Promise<NextResponse> {
     .from('provider_favorites')
     .select('provider_id, patient_id')
     .eq('favorite_id', favoriteId)
+    .is('deleted_at', null)
     .single()
   if (favError && !isNoRows(favError)) readFailed('favorite', favError)
 
@@ -638,16 +644,22 @@ async function deleteFavorite(req: NextRequest): Promise<NextResponse> {
   // Compliance C2 (B14): removing a favorite pinned to a patient changes
   // their data ('update': there is no delete action). Logged BEFORE the
   // delete; refused when the row cannot be written.
+  //
+  // Decision 11 follow-up: a soft delete. The row stays with deleted_at
+  // set (migration 20261028000001) and every read here ignores it. Only a
+  // live row is marked, so a second delete changes nothing.
   const pinned = (fav as { patient_id?: string | null }).patient_id ?? null
   const deleteEntry: PhiAccessEntry = { user, action: 'update', resource: 'favorite', route: ROUTE, patientId: pinned, headers: req.headers }
   if (pinned && !(await logPhiAccess(deleteEntry))) {
     return notRecorded()
   }
 
+  const now = new Date().toISOString()
   const { error } = await supabase
     .from('provider_favorites')
-    .delete()
+    .update({ deleted_at: now, updated_at: now })
     .eq('favorite_id', favoriteId)
+    .is('deleted_at', null)
 
   if (error) {
     if (pinned) await logPhiWriteNotCompleted(deleteEntry)

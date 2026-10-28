@@ -267,7 +267,7 @@ describe('PATCH', () => {
 })
 
 describe('DELETE', () => {
-  it('deleting a pinned favorite logs update for its patient BEFORE the delete', async () => {
+  it('deleting a pinned favorite logs update for its patient BEFORE the (soft) delete', async () => {
     fixtures['provider_favorites:single'] = () => ({ data: { provider_id: PROVIDER, patient_id: PATIENT }, error: null })
     one.mockImplementationOnce(async () => {
       expect(writes).toEqual([])
@@ -275,7 +275,8 @@ describe('DELETE', () => {
     })
     expect((await DELETE(send('DELETE', `?id=${FAV_ID}`))).status).toBe(200)
     expect(entries()).toEqual([expect.objectContaining({ user: USER, action: 'update', resource: 'favorite', route: '/api/favorites', patientId: PATIENT })])
-    expect(writes).toEqual([{ table: 'provider_favorites', op: 'delete' }])
+    // A soft delete (decision 11 follow-up): deleted_at is set, the row stays.
+    expect(writes).toEqual([{ table: 'provider_favorites', op: 'update', row: expect.objectContaining({ deleted_at: expect.any(String) }) }])
   })
 
   it('a log that fails is refused 503 and nothing is deleted', async () => {
