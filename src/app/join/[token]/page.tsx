@@ -26,6 +26,18 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 }
 
+// A link that is turned off, replaced, unknown, or whose clinic is not
+// approved shows one neutral page, the same structure as /plan and /intake.
+// A database error is the only other page: it says nothing about the link.
+const NOT_ACTIVE = {
+  title: 'This link is no longer active',
+  body: 'Sign-up links stop working when your clinic turns them off or makes a new one. Please contact your clinic if you need a new link or have questions.',
+}
+const UNAVAILABLE = {
+  title: 'This page could not be opened right now',
+  body: 'Please try again in a few minutes.',
+}
+
 export default async function JoinPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
   const supabase = createServiceClient()
@@ -36,11 +48,9 @@ export default async function JoinPage({ params }: { params: Promise<{ token: st
     return <IntakeFlow token={token} clinicName={link.clinicName} variant="signup" />
   }
 
-  const copy = link.state === 'unavailable' || approval === 'unavailable'
-    ? { title: 'This page could not be opened right now', body: 'Please try again in a few minutes.' }
-    : { title: 'This link is no longer active', body: 'This link is no longer active. Contact your clinic.' }
+  const copy = link.state === 'unavailable' || approval === 'unavailable' ? UNAVAILABLE : NOT_ACTIVE
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-12 text-center">
+    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4 py-12 text-center">
       <h1 className="text-2xl font-semibold text-foreground">{copy.title}</h1>
       <p className="mt-3 text-base text-muted-foreground">{copy.body}</p>
     </main>

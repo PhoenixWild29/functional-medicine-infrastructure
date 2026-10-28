@@ -28,7 +28,7 @@ const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
 const SPEC_PREFIX = '+1646555'
 const MOBILE_TYPED = '(646) 555-0101'
 const MOBILE_E164 = '+16465550101'
-const INACTIVE = 'This link is no longer active. Contact your clinic.'
+const INACTIVE = 'Sign-up links stop working when your clinic turns them off or makes a new one. Please contact your clinic if you need a new link or have questions.'
 
 function admin() {
   return createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
