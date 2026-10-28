@@ -25,7 +25,7 @@ beforeEach(() => {
     ok: true, status: 200,
     json: async () => ({
       show: true, hidden: false,
-      notice: 'Waiting for CompoundIQ approval. You can look around and set up; ordering opens when approved.',
+      notice: "Waiting for CompoundIQ approval. You can look around and set up; ordering opens once you're approved and payouts are set up.",
       steps: [
         { id: 'practice', label: 'Enter your practice details', href: '/settings#clinic-profile', done: true },
         { id: 'team', label: 'Add your team', href: '/settings/team', done: false },

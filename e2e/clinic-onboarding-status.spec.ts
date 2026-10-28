@@ -28,7 +28,7 @@ const RUN = randomUUID().slice(0, 8)
 // Per shard (fixtures/shard): cleanup sweeps this prefix, so each shard sweeps only its own.
 const EMAIL_PREFIX = shardPrefix('e2e-onboarding-status-')
 const PASSWORD = e2ePassword()
-const SUBMITTED = "Submitted. We're reviewing your clinic; ordering opens once you're approved."
+const SUBMITTED = "Submitted. We're reviewing your clinic; ordering opens once you're approved and payouts are set up."
 
 function e2eService() {
   return createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)

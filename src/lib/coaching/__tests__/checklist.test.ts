@@ -30,7 +30,7 @@ describe('buildChecklist', () => {
     const c = buildChecklist('clinic_admin', {
       kind: 'clinic_admin', approved: false, practiceDetails: true, agreementsAccepted: false, hasTeam: false, hasPatients: true, sentPrescription: false,
     })
-    expect(c.notice).toBe('Waiting for CompoundIQ approval. You can look around and set up; ordering opens when approved.')
+    expect(c.notice).toBe("Waiting for CompoundIQ approval. You can look around and set up; ordering opens once you're approved and payouts are set up.")
     expect(WAITING_FOR_APPROVAL).toBe(c.notice)
     expect(c.steps.map(s => [s.id, s.href, s.done])).toEqual([
       // Not approved yet: the wizard's Practice details step.

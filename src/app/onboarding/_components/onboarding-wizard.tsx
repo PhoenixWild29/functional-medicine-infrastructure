@@ -235,7 +235,7 @@ function ProvidersStep({ state, readOnly, onChanged, onDone }: { state: Onboardi
   return (
     <div className="space-y-6">
       <p className="text-sm text-slate-700">
-        Add each prescriber with their NPI and a state license. We check the NPI against the national registry, and invite each provider by email to create their own account.
+        Add each prescriber with their NPI and a state license. We check the NPI against the national registry, and create an invite link for each provider to set up their own account.
       </p>
       {msg && <FormAlert>{msg}</FormAlert>}
       {link && <InviteLink link={link.link} email={link.email} subject="Your CompoundIQ provider invite" idPrefix="provider-invite" />}
@@ -255,7 +255,7 @@ function ProvidersStep({ state, readOnly, onChanged, onDone }: { state: Onboardi
             <legend className="sr-only">New provider</legend>
             <TextField id="np-first" label="First name" autoComplete="off" value={v.firstName} onChange={set('firstName')} error={errors['firstName']} required />
             <TextField id="np-last" label="Last name" autoComplete="off" value={v.lastName} onChange={set('lastName')} error={errors['lastName']} required />
-            <div className="sm:col-span-2"><TextField id="np-email" label="Email" type="email" autoComplete="off" value={v.email} onChange={set('email')} error={errors['email']} hint="Their invite goes to this address." required /></div>
+            <div className="sm:col-span-2"><TextField id="np-email" label="Email" type="email" autoComplete="off" value={v.email} onChange={set('email')} error={errors['email']} hint="Their invite is for this address." required /></div>
             <TextField id="np-npi" label="NPI" inputMode="numeric" value={v.npiNumber} onChange={set('npiNumber')} error={errors['npiNumber']} required />
             <SelectField id="np-state" label="License state" value={v.licenseState} onChange={set('licenseState')} error={errors['licenseState']} required>
               <option value="">Choose a state</option>

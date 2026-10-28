@@ -49,7 +49,7 @@ export interface Checklist {
   allDone: boolean
 }
 
-export const WAITING_FOR_APPROVAL = 'Waiting for CompoundIQ approval. You can look around and set up; ordering opens when approved.'
+export const WAITING_FOR_APPROVAL = "Waiting for CompoundIQ approval. You can look around and set up; ordering opens once you're approved and payouts are set up."
 
 // Statuses at which a pharmacy has received an order (sent to it, or later).
 const RECEIVED_STATUSES = [

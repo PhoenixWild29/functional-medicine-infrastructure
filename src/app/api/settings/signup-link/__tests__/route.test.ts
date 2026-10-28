@@ -43,7 +43,7 @@ jest.mock('@/lib/onboarding/approval-guard', () => ({
 
 import { POST } from '../route'
 
-const BANNER = "We're verifying your licenses. You can look around; ordering opens once you're approved."
+const BANNER = "We're verifying your licenses. You can look around; ordering opens once you're approved and payouts are set up."
 /** A clinic row as the real guard reads it. */
 const clinicDb = (row: Record<string, unknown>) => ({
   from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: row, error: null }) }) }) }),

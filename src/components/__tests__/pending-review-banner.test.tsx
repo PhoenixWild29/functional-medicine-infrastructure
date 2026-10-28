@@ -17,7 +17,7 @@ const axe = configureAxe({ runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa',
 it('says what is happening in the spec words, and links to the remaining setup steps', () => {
   render(<PendingReviewBanner />)
   const banner = screen.getByRole('region', { name: 'Account under review' })
-  expect(banner).toHaveTextContent("We're verifying your licenses. You can look around; ordering opens once you're approved.")
+  expect(banner).toHaveTextContent("We're verifying your licenses. You can look around; ordering opens once you're approved and payouts are set up.")
   const link = screen.getByRole('link', { name: 'See your remaining setup steps' })
   expect(link).toHaveAttribute('href', '/onboarding')
   expect(banner.textContent).not.toMatch(/—/)
@@ -36,7 +36,7 @@ describe('after the clinic has submitted for review', () => {
   it('says it was submitted and links to what was submitted', () => {
     render(<PendingReviewBanner submitted />)
     const banner = screen.getByRole('region', { name: 'Account under review' })
-    expect(banner).toHaveTextContent("Submitted. We're reviewing your clinic; ordering opens once you're approved.")
+    expect(banner).toHaveTextContent("Submitted. We're reviewing your clinic; ordering opens once you're approved and payouts are set up.")
     expect(screen.getByRole('link', { name: 'View what you submitted' })).toHaveAttribute('href', '/onboarding')
     expect(screen.queryByRole('link', { name: 'See your remaining setup steps' })).toBeNull()
     expect(banner.textContent).not.toMatch(/—/)

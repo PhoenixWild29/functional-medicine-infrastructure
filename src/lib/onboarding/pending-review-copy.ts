@@ -1,6 +1,6 @@
 // Pending review: the words, shared by the banner (client-safe, no server
 // imports) and every refusal (lib/onboarding/approval-guard).
-export const PENDING_REVIEW_MESSAGE = "We're verifying your licenses. You can look around; ordering opens once you're approved."
+export const PENDING_REVIEW_MESSAGE = "We're verifying your licenses. You can look around; ordering opens once you're approved and payouts are set up."
 export const PENDING_REVIEW_CODE = 'CLINIC_PENDING_REVIEW'
 
 /**
