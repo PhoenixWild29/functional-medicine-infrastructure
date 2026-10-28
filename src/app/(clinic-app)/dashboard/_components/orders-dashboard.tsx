@@ -415,7 +415,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
               type="button"
               disabled={!isStripeActive}
               onClick={() => router.push('/new-prescription')}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               aria-describedby={!isStripeActive ? 'stripe-gate-tooltip' : undefined}
             >
               + New Prescription
@@ -519,7 +519,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
             type="button"
             data-testid="sign-all-drafts"
             onClick={() => router.push(batchSignHref(myDraftIds.slice(0, MAX_BATCH_ORDERS)))}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Sign all ({myDraftIds.length})
           </button>
@@ -567,7 +567,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
                 <button
                   type="button"
                   onClick={() => router.push('/new-prescription')}
-                  className="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring transition-colors"
+                  className="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring transition-colors"
                 >
                   New Prescription
                 </button>

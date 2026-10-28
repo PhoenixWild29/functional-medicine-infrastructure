@@ -231,7 +231,7 @@ export function ClinicSettingsForm({ clinicName, logoUrl, defaultMarkupPct, abso
         type="button"
         onClick={handleSave}
         disabled={isSaving}
-        className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+        className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
       >
         {isSaving ? 'Saving…' : 'Save Settings'}
       </button>}

@@ -202,7 +202,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
         )}>
           {!collapsed && (
             <div className="flex items-center gap-2.5 rounded-lg px-3 py-2">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary uppercase">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary-hover uppercase">
                 {userEmail.charAt(0)}
               </div>
               <div className="min-w-0">

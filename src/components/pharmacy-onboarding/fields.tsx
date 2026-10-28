@@ -164,7 +164,7 @@ export function PrimaryButton(props: { children: ReactNode; type?: 'submit' | 'b
       disabled={disabled || busy}
       aria-busy={busy || undefined}
       aria-describedby={props['aria-describedby']}
-      className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover dark:bg-primary-hover dark:hover:bg-blue-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {children}
     </button>

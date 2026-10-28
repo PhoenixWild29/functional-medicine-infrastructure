@@ -268,7 +268,7 @@ export default async function MarginPage({ searchParams }: PageProps) {
             </p>
             <Link
               href="/new-prescription/search"
-              className="mt-4 inline-block rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-xs hover:bg-primary/90"
+              className="mt-4 inline-block rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-xs hover:bg-primary-hover"
             >
               Choose a Replacement
             </Link>

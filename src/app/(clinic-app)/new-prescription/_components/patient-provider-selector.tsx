@@ -270,7 +270,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
                 setSelectedPatientId('')
                 setSelectedProviderId('')
               }}
-              className="rounded-md px-3 py-1.5 text-xs font-medium text-blue-600 underline hover:text-blue-800 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-md px-3 py-1.5 text-xs font-medium text-blue-700 underline hover:text-blue-800 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               Start Over
             </button>
@@ -481,7 +481,7 @@ export function PatientProviderSelector({ patients: initialPatients, providers, 
           disabled={!canProceed}
           className={`rounded-lg px-6 py-3 text-sm font-semibold transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
             canProceed
-              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+              ? 'bg-primary text-primary-foreground hover:bg-primary-hover'
               : 'bg-muted text-muted-foreground cursor-not-allowed'
           }`}
         >

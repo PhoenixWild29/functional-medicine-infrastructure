@@ -42,10 +42,10 @@ interface Props {
 // ── Regulatory status config ──────────────────────────────────
 
 const STATUS_BADGE: Record<string, string> = {
-  ACTIVE:       'bg-emerald-100 text-emerald-700',
-  RECALLED:     'bg-red-100 text-red-700',
+  ACTIVE:       'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300',
+  RECALLED:     'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-300',
   DISCONTINUED: 'bg-muted text-muted-foreground',
-  SHORTAGE:     'bg-amber-100 text-amber-700',
+  SHORTAGE:     'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300',
 }
 
 // ── Component ─────────────────────────────────────────────────
@@ -299,13 +299,13 @@ export function CatalogManager({ initialData }: Props) {
 
       {/* ── Error banners ── */}
       {isError && (
-        <div className="flex items-center justify-between rounded-md border border-orange-300 bg-orange-50 px-4 py-2.5 text-sm text-orange-800" role="alert">
+        <div className="flex items-center justify-between rounded-md border border-orange-300 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/40 px-4 py-2.5 text-sm text-orange-800 dark:text-orange-300" role="alert">
           <span>Connection lost. Showing cached data</span>
           <button type="button" onClick={() => void refetch()} className="underline focus-visible:outline-hidden">Retry</button>
         </div>
       )}
       {actionError && (
-        <div className="flex items-center gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700" role="alert">
+        <div className="flex items-center gap-3 rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-4 py-2.5 text-sm text-red-700 dark:text-red-300" role="alert">
           <span>{actionError}</span>
           <button type="button" onClick={() => setActionError(null)} className="underline focus-visible:outline-hidden">Dismiss</button>
         </div>
@@ -355,11 +355,11 @@ export function CatalogManager({ initialData }: Props) {
         </div>
 
         {uploadError && (
-          <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">{uploadError}</div>
+          <div className="rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-3 py-2 text-[11px] text-red-700 dark:text-red-300">{uploadError}</div>
         )}
 
         {uploadResult && (
-          <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800 space-y-1">
+          <div className="rounded border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2 text-[11px] text-emerald-800 dark:text-emerald-300 space-y-1">
             <p className="font-medium">Upload successful: Version {uploadResult.versionNumber}</p>
             <p>{uploadResult.rowsInserted} rows inserted | +{uploadResult.delta.added} added, ~{uploadResult.delta.modified} modified, -{uploadResult.delta.removed} removed</p>
             {uploadResult.priceDiscrepancies.length > 0 && (
@@ -367,7 +367,7 @@ export function CatalogManager({ initialData }: Props) {
             )}
             {uploadResult.warnings.length > 0 && (
               <details className="mt-1">
-                <summary className="cursor-pointer text-amber-700">{uploadResult.warnings.length} warning(s)</summary>
+                <summary className="cursor-pointer text-amber-700 dark:text-amber-300">{uploadResult.warnings.length} warning(s)</summary>
                 <ul className="mt-1 space-y-0.5 list-disc list-inside">
                   {uploadResult.warnings.map((w, i) => <li key={i}>{w}</li>)}
                 </ul>
@@ -450,10 +450,10 @@ export function CatalogManager({ initialData }: Props) {
                 Requires Prior Auth
               </label>
             </div>
-            {manualError   && <div className="rounded border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] text-red-700">{manualError}</div>}
-            {manualSuccess && <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] text-emerald-800">{manualSuccess}</div>}
+            {manualError   && <div className="rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-3 py-1.5 text-[11px] text-red-700 dark:text-red-300">{manualError}</div>}
+            {manualSuccess && <div className="rounded border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1.5 text-[11px] text-emerald-800 dark:text-emerald-300">{manualSuccess}</div>}
             <button type="submit" disabled={isSubmittingManual}
-              className="rounded bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
+              className="rounded bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary-hover disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
               {isSubmittingManual ? 'Adding…' : 'Add Item'}
             </button>
           </form>
@@ -574,7 +574,7 @@ export function CatalogManager({ initialData }: Props) {
         <div className="space-y-3">
           {/* Compare selector hint — BLK-06 */}
           {compareSelected.length > 0 && compareSelected.length < 2 && (
-            <div className="flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-xs text-blue-700">
+            <div className="flex items-center justify-between rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 px-4 py-2 text-xs text-blue-700 dark:text-blue-300">
               <span>1 version selected. Select one more to compare</span>
               <button type="button" onClick={() => setCompareSelected([])} className="underline focus-visible:outline-hidden">Clear</button>
             </div>
@@ -620,16 +620,16 @@ export function CatalogManager({ initialData }: Props) {
                       <td className="px-3 py-2 text-muted-foreground">{v.uploadSource}</td>
                       <td className="px-3 py-2">{v.rowCount}</td>
                       <td className="px-3 py-2">
-                        <span className="text-emerald-700">+{v.deltaSummary.added}</span>
+                        <span className="text-emerald-700 dark:text-emerald-300">+{v.deltaSummary.added}</span>
                         {' / '}
-                        <span className="text-amber-600">~{v.deltaSummary.modified}</span>
+                        <span className="text-amber-600 dark:text-amber-300">~{v.deltaSummary.modified}</span>
                         {' / '}
-                        <span className="text-red-600">-{v.deltaSummary.removed}</span>
+                        <span className="text-red-600 dark:text-red-300">-{v.deltaSummary.removed}</span>
                       </td>
                       <td className="px-3 py-2 text-muted-foreground truncate max-w-[120px]">{v.uploader}</td>
                       <td className="px-3 py-2 text-muted-foreground">{new Date(v.uploadedAt).toLocaleDateString()}</td>
                       <td className="px-3 py-2">
-                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${v.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground'}`}>
+                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${v.isActive ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'}`}>
                           {v.isActive ? 'Active' : 'Inactive'}
                         </span>
                       </td>
@@ -641,7 +641,7 @@ export function CatalogManager({ initialData }: Props) {
                           aria-pressed={isCompareSelected}
                           className={`rounded border px-1.5 py-0.5 text-[10px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
                             isCompareSelected
-                              ? 'border-blue-400 bg-blue-100 text-blue-700'
+                              ? 'border-blue-400 dark:border-blue-800 bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300'
                               : 'border-border text-muted-foreground hover:bg-muted'
                           }`}
                         >
@@ -657,7 +657,7 @@ export function CatalogManager({ initialData }: Props) {
                                 <button
                                   type="button"
                                   onClick={() => { void handleRollback(v.historyId, v.pharmacyId) }}
-                                  className="rounded bg-amber-600 px-1.5 py-0.5 text-[10px] text-white hover:bg-amber-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                                  className="rounded bg-amber-700 px-1.5 py-0.5 text-[10px] text-white hover:bg-amber-800 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                                 >
                                   Confirm
                                 </button>
@@ -673,7 +673,7 @@ export function CatalogManager({ initialData }: Props) {
                               <button
                                 type="button"
                                 onClick={() => setConfirmRollback(v.historyId)}
-                                className="rounded border border-border px-1.5 py-0.5 text-[10px] text-amber-700 hover:bg-amber-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                                className="rounded border border-border px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                               >
                                 Rollback
                               </button>
@@ -721,7 +721,7 @@ export function CatalogManager({ initialData }: Props) {
                       <td className="px-3 py-2 text-foreground">{n.wholesalePrice != null ? `$${n.wholesalePrice.toFixed(2)}` : '—'}</td>
                       <td className="px-3 py-2">
                         {n.confidence != null ? (
-                          <span className={n.confidence >= 0.8 ? 'text-emerald-700 font-medium' : n.confidence >= 0.5 ? 'text-amber-600' : 'text-red-600'}>
+                          <span className={n.confidence >= 0.8 ? 'text-emerald-700 dark:text-emerald-300 font-medium' : n.confidence >= 0.5 ? 'text-amber-600 dark:text-amber-300' : 'text-red-600 dark:text-red-300'}>
                             {(n.confidence * 100).toFixed(0)}%
                           </span>
                         ) : '—'}
@@ -761,14 +761,14 @@ export function CatalogManager({ initialData }: Props) {
                       <td className="px-3 py-2 text-muted-foreground">
                         {s.lastSyncedAt
                           ? new Date(s.lastSyncedAt).toLocaleString()
-                          : <span className="text-amber-600">Never synced</span>}
+                          : <span className="text-amber-600 dark:text-amber-300">Never synced</span>}
                       </td>
                       <td className="px-3 py-2">
                         <button
                           type="button"
                           disabled={syncingPharmacy === s.pharmacyId}
                           onClick={() => { void handleSync(s.pharmacyId) }}
-                          className="rounded bg-primary px-2 py-0.5 text-[10px] text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                          className="rounded bg-primary px-2 py-0.5 text-[10px] text-primary-foreground hover:bg-primary-hover disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           {syncingPharmacy === s.pharmacyId ? 'Syncing…' : 'Trigger Sync'}
                         </button>
@@ -789,12 +789,12 @@ export function CatalogManager({ initialData }: Props) {
 
 function PriceDiscrepancyAlert({ discrepancies }: { discrepancies: PriceDiscrepancy[] }) {
   return (
-    <div className="mt-1 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+    <div className="mt-1 rounded border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-300">
       <p className="font-medium">⚠ Price discrepancies detected ({discrepancies.length})</p>
       <ul className="mt-1 space-y-0.5">
         {discrepancies.slice(0, 10).map((d) => (
           <li key={`${d.medicationName}|${d.form}|${d.dose}`} className="flex items-center gap-2">
-            <span className={`rounded-full px-1 py-0 text-[10px] font-bold ${d.direction === 'increase' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+            <span className={`rounded-full px-1 py-0 text-[10px] font-bold ${d.direction === 'increase' ? 'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-300' : 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300'}`}>
               {d.direction === 'increase' ? '↑' : '↓'} {d.changePct}%
             </span>
             <span>{d.medicationName} {d.form} {d.dose}: ${d.oldPrice.toFixed(2)} → ${d.newPrice.toFixed(2)}</span>
@@ -830,11 +830,11 @@ function VersionComparison({
             <p className="text-muted-foreground">{new Date(v.uploadedAt).toLocaleString()}</p>
             <p>{v.rowCount} rows · {v.uploadSource}</p>
             <p>
-              <span className="text-emerald-700">+{v.deltaSummary.added}</span>
+              <span className="text-emerald-700 dark:text-emerald-300">+{v.deltaSummary.added}</span>
               {' added / '}
-              <span className="text-amber-600">~{v.deltaSummary.modified}</span>
+              <span className="text-amber-600 dark:text-amber-300">~{v.deltaSummary.modified}</span>
               {' modified / '}
-              <span className="text-red-600">-{v.deltaSummary.removed}</span>
+              <span className="text-red-600 dark:text-red-300">-{v.deltaSummary.removed}</span>
               {' removed'}
             </p>
             <p className="text-muted-foreground">by {v.uploader}</p>

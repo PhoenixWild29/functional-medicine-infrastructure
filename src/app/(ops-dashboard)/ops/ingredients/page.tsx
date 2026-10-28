@@ -108,7 +108,7 @@ export default async function IngredientsPage() {
               return (
                 <tr key={i.ingredient_id} className="border-t border-border align-top">
                   <td className="px-3 py-2 font-medium text-foreground">{i.common_name}</td>
-                  <td className={`px-3 py-2 ${isBlocked ? 'text-red-700' : 'text-foreground'}`}>
+                  <td className={`px-3 py-2 ${isBlocked ? 'text-red-700 dark:text-red-300' : 'text-foreground'}`}>
                     {isCompoundingStatus(i.compounding_status) ? COMPOUNDING_STATUS_LABEL[i.compounding_status] : i.compounding_status}
                     {isBlocked && <span className="sr-only" data-testid={`ingredient-blocked-${i.ingredient_id}`}> (blocked)</span>}
                   </td>

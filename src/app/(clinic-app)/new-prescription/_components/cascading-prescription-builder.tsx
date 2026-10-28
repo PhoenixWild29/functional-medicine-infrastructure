@@ -841,7 +841,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
                 onClick={() => selectSaltForm(sf)}
                 className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
                   selectedSaltForm?.salt_form_id === sf.salt_form_id
-                    ? 'border-primary bg-primary/10 text-primary'
+                    ? 'border-primary bg-primary/10 text-primary-hover'
                     : 'border-border text-foreground hover:bg-muted/50'
                 }`}
               >
@@ -1073,7 +1073,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
             type="button"
             onClick={navigateToMargin}
             disabled={!canAdd}
-            className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-xs hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-xs hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Continue to Set Retail Price
           </button>

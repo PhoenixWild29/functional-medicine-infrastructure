@@ -47,6 +47,12 @@ function token(name: string, theme: 'light' | 'dark'): RGB {
   return hslToRgb(Number(m[1]), Number(m[2]), Number(m[3]))
 }
 
+/** The tokens before the staff contrast pass (queue2-b), for the "was not" checks. */
+const OLD: Record<string, Record<'light' | 'dark', RGB>> = {
+  'muted-foreground': { light: hslToRgb(215, 16, 47), dark: hslToRgb(220, 20, 55) },
+  primary:            { light: hslToRgb(221, 83, 53), dark: hslToRgb(217, 91, 60) },
+}
+
 describe.each(['light', 'dark'] as const)('%s', theme => {
   it('active sidebar link: text-foreground on the primary/10 tint over the card is at least 4.5:1', () => {
     const tint = mix(token('primary', theme), token('card', theme), 0.1)
@@ -54,13 +60,15 @@ describe.each(['light', 'dark'] as const)('%s', theme => {
   })
 
   it('the old active colour (text-primary on that tint) was under 4.5:1 somewhere, so this test means something', () => {
-    const tint = mix(token('primary', theme), token('card', theme), 0.1)
-    if (theme === 'dark') expect(contrast(token('primary', theme), tint)).toBeLessThan(4.5)
+    if (theme === 'dark') {
+      const old = mix(OLD['primary']!.dark, token('card', theme), 0.1)
+      expect(contrast(OLD['primary']!.dark, old)).toBeLessThan(4.5)
+    }
   })
 
   it('patient-row badge: text-foreground on bg-muted is at least 4.5:1 (text-muted-foreground was not)', () => {
     expect(contrast(token('foreground', theme), token('muted', theme))).toBeGreaterThanOrEqual(4.5)
-    expect(contrast(token('muted-foreground', theme), token('muted', theme))).toBeLessThan(4.5)
+    expect(contrast(OLD['muted-foreground']![theme], token('muted', theme))).toBeLessThan(4.5)
   })
 })
 
@@ -98,8 +106,8 @@ describe.each(['light', 'dark'] as const)('selected tints, %s', theme => {
 
 it('light: muted text on the primary/10 and primary/5 tints was under 4.5:1 (what axe found)', () => {
   const card = token('card', 'light')
-  expect(contrast(token('muted-foreground', 'light'), mix(token('primary', 'light'), card, 0.1))).toBeLessThan(4.5)
-  expect(contrast(token('muted-foreground', 'light'), mix(token('primary', 'light'), card, 0.05))).toBeLessThan(4.5)
+  expect(contrast(OLD['muted-foreground']!.light, mix(token('primary', 'light'), card, 0.1))).toBeLessThan(4.5)
+  expect(contrast(OLD['muted-foreground']!.light, mix(token('primary', 'light'), card, 0.05))).toBeLessThan(4.5)
 })
 
 it('"No signature on file": amber-800 on the selected tint and on the card is at least 4.5:1 (amber-600 was not)', () => {

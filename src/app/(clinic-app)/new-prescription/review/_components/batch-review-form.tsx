@@ -654,7 +654,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
         <button
           type="button"
           onClick={() => router.push('/new-prescription/search')}
-          className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
         >
           Add a Prescription
         </button>
@@ -684,7 +684,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
         <button
           type="button"
           onClick={() => router.push('/dashboard?tab=proposed')}
-          className="w-full rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+          className="w-full rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           Go to the dashboard
         </button>
@@ -1148,7 +1148,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
                   <p className="text-[10px] text-muted-foreground">
                     Wholesale: {toCurrency(rx.wholesaleCents)}
                   </p>
-                  <p className="text-[10px] text-emerald-600">
+                  <p className="text-[10px] text-emerald-700">
                     Clinic margin: {toCurrency(clinicMarginCents)}
                   </p>
                 </div>
@@ -1193,7 +1193,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
                     onClick={() => router.push(builderHref({ kind: 'session', lineId: rx.id }))}
                     disabled={isBusy}
                     aria-label={`Edit ${rx.medicationName}`}
-                    className="text-[10px] font-medium text-primary underline hover:text-primary/80 disabled:opacity-50"
+                    className="text-[10px] font-medium text-primary underline hover:text-primary-hover disabled:opacity-50"
                   >
                     Edit
                   </button>
@@ -1202,7 +1202,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
                     onClick={() => { session.removePrescription(rx.id); requestAnimationFrame(() => addAnotherRef.current?.focus()) }}
                     disabled={isBusy}
                     aria-label={`Remove ${rx.medicationName}`}
-                    className="text-[10px] text-red-500 underline hover:text-red-700 disabled:opacity-50"
+                    className="text-[10px] text-red-700 underline hover:text-red-800 disabled:opacity-50"
                   >
                     Remove
                   </button>
@@ -1242,7 +1242,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
         </div>
         {/* WO-102: shipping per pharmacy — once per pharmacy, not per Rx */}
         <ShippingLines shipping={bundle.shipping} absorbShipping={bundle.absorbShipping} rates={bundle.rates} unpriced={bundle.unpriced} pending={bundle.pending} />
-        <div className="mt-2 flex items-center justify-between text-xs text-emerald-600 font-medium">
+        <div className="mt-2 flex items-center justify-between text-xs text-emerald-700 font-medium">
           <span>Clinic payout</span>
           <span data-testid="review-clinic-payout">{toCurrency(totalClinicPayoutCents)}</span>
         </div>
@@ -1354,7 +1354,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
                 type="button"
                 onClick={() => void handleSendForChoice()}
                 disabled={isProposing || prescriptions.length === 0 || hasInvalidItems || hasMissingDetails}
-                className="w-full rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {isProposing ? 'Sending...' : proposalRole === 'send' ? 'Send to patient for choice' : 'Save the plan for the provider to send'}
               </button>
@@ -1405,7 +1405,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
               Clear Signature
             </button>
             {signatureCaptured && (
-              <span className="text-xs text-emerald-600 font-medium">Signature captured</span>
+              <span className="text-xs text-emerald-700 font-medium">Signature captured</span>
             )}
           </div>
         </div>
@@ -1460,7 +1460,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
               type="button"
               onClick={() => { void handleSignAndSend() }}
               disabled={isSubmitting}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
             >
               {isSubmitting ? 'Sending...' : 'Confirm & Send'}
             </button>
@@ -1490,7 +1490,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
             disabled={!canSubmit}
             className={`w-full rounded-lg px-6 py-3 text-sm font-semibold transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
               canSubmit
-                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                ? 'bg-primary text-primary-foreground hover:bg-primary-hover'
                 : 'bg-muted text-muted-foreground cursor-not-allowed'
             }`}
           >
@@ -1550,7 +1550,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
             Creates the order{prescriptions.length > 1 ? 's' : ''} without signing. Sign from the dashboard Drafts tab once {patientName(patient)} has finished their details.
           </p>
           {draftError && (
-            <p className="text-center text-xs text-red-600" role="alert">{draftError}</p>
+            <p className="text-center text-xs text-red-700" role="alert">{draftError}</p>
           )}
         </div>
       )}
@@ -1594,7 +1594,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
             Creates the order{prescriptions.length > 1 ? 's' : ''} without signing. The provider can review and sign from the dashboard.
           </p>
           {draftError && (
-            <p className="text-center text-xs text-red-600" role="alert">{draftError}</p>
+            <p className="text-center text-xs text-red-700" role="alert">{draftError}</p>
           )}
         </div>
       )}

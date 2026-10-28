@@ -164,7 +164,7 @@ export function SaveFavoriteButton({
           type="button"
           onClick={() => { void handleSave() }}
           disabled={!label.trim() || saving || !providerId}
-          className="rounded-md bg-primary/10 px-2 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 disabled:opacity-50"
+          className="rounded-md bg-primary/10 px-2 py-1.5 text-xs font-medium text-primary-hover hover:bg-primary/20 disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save favorite'}
         </button>
@@ -176,7 +176,7 @@ export function SaveFavoriteButton({
         >
           Cancel
         </button>
-        {error && <p role="alert" className="w-full text-xs text-red-600">{error}</p>}
+        {error && <p role="alert" className="w-full text-xs text-red-700">{error}</p>}
       </div>
     )
   }

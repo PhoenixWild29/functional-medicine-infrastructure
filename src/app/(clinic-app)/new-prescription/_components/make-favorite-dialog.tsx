@@ -235,7 +235,7 @@ export function MakeFavoriteDialog({ target, otherDoses, patientDoses = [], pati
             type="button"
             onClick={() => { void save() }}
             disabled={tickedCount === 0 || saving}
-            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             {saving ? 'Saving…' : 'Save favorite'}
           </button>

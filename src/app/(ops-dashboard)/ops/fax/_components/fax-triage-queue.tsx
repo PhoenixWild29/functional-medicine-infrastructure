@@ -25,13 +25,13 @@ import { userMessage } from '@/lib/errors/user-message'
 // ── Status config ─────────────────────────────────────────────
 
 const STATUS_BADGE: Record<FaxStatus, { label: string; cls: string }> = {
-  RECEIVED:   { label: 'Received',   cls: 'bg-blue-100 text-blue-700' },
-  MATCHED:    { label: 'Matched',    cls: 'bg-emerald-100 text-emerald-700' },
-  UNMATCHED:  { label: 'Unmatched',  cls: 'bg-amber-100 text-amber-700' },
-  PROCESSING: { label: 'Processing', cls: 'bg-sky-100 text-sky-700' },
+  RECEIVED:   { label: 'Received',   cls: 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300' },
+  MATCHED:    { label: 'Matched',    cls: 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300' },
+  UNMATCHED:  { label: 'Unmatched',  cls: 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300' },
+  PROCESSING: { label: 'Processing', cls: 'bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300' },
   PROCESSED:  { label: 'Processed',  cls: 'bg-muted text-muted-foreground' },
   ARCHIVED:   { label: 'Archived',   cls: 'bg-muted text-muted-foreground/60' },
-  ERROR:      { label: 'Error',      cls: 'bg-red-100 text-red-700' },
+  ERROR:      { label: 'Error',      cls: 'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-300' },
 }
 
 const FILTER_OPTIONS: Array<{ value: string; label: string }> = [
@@ -145,9 +145,9 @@ export function FaxTriageQueue({ initialData }: Props) {
           <div className="text-base font-semibold text-foreground">Inbound Fax Triage</div>
           {isFetching && <span className="text-[10px] text-muted-foreground">↻ refreshing</span>}
           <div className="flex gap-3 text-xs">
-            {summary.received  > 0 && <span className="font-semibold text-blue-600">{summary.received} new</span>}
-            {summary.unmatched > 0 && <span className="font-semibold text-amber-600">{summary.unmatched} unmatched</span>}
-            {summary.anomaly   > 0 && <span className="font-semibold text-red-600">{summary.anomaly} anomaly</span>}
+            {summary.received  > 0 && <span className="font-semibold text-blue-600 dark:text-blue-300">{summary.received} new</span>}
+            {summary.unmatched > 0 && <span className="font-semibold text-amber-600 dark:text-amber-300">{summary.unmatched} unmatched</span>}
+            {summary.anomaly   > 0 && <span className="font-semibold text-red-600 dark:text-red-300">{summary.anomaly} anomaly</span>}
           </div>
           <span className="ml-auto text-[10px] text-muted-foreground">
             {data?.totalCount ?? 0} total entries
@@ -156,13 +156,13 @@ export function FaxTriageQueue({ initialData }: Props) {
 
         {/* Error banners */}
         {isError && (
-          <div className="flex items-center justify-between rounded-md border border-orange-300 bg-orange-50 px-4 py-2.5 text-sm text-orange-800" role="alert">
+          <div className="flex items-center justify-between rounded-md border border-orange-300 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/40 px-4 py-2.5 text-sm text-orange-800 dark:text-orange-300" role="alert">
             <span>Connection lost. Showing cached data</span>
             <button type="button" onClick={() => void refetch()} className="underline focus-visible:outline-hidden">Retry</button>
           </div>
         )}
         {actionError && (
-          <div className="flex items-center gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700" role="alert">
+          <div className="flex items-center gap-3 rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-4 py-2.5 text-sm text-red-700 dark:text-red-300" role="alert">
             <span>{actionError}</span>
             <button type="button" onClick={() => setActionError(null)} className="underline focus-visible:outline-hidden">Dismiss</button>
           </div>
@@ -248,7 +248,7 @@ export function FaxTriageQueue({ initialData }: Props) {
                             {badge.label}
                           </span>
                           {fax.isAnomalyTier && (
-                            <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700" title="Anomaly: fax from API-tier pharmacy">
+                            <span className="rounded-full bg-red-100 dark:bg-red-950/40 px-1.5 py-0.5 text-[10px] font-bold text-red-700 dark:text-red-300" title="Anomaly: fax from API-tier pharmacy">
                               ANOMALY
                             </span>
                           )}
@@ -302,7 +302,7 @@ export function FaxTriageQueue({ initialData }: Props) {
 
           {/* Anomaly warning — REQ-FTQ-006 */}
           {selectedFaxLive.isAnomalyTier && (
-            <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-[11px] text-red-700">
+            <div className="rounded border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-3 py-2 text-[11px] text-red-700 dark:text-red-300">
               <strong>⚠ Tier Anomaly</strong>: Fax received from{' '}
               <strong>{selectedFaxLive.pharmacyTier}</strong> pharmacy (API-capable).
               This likely indicates an integration issue. Investigate before acknowledging.
@@ -360,12 +360,12 @@ export function FaxTriageQueue({ initialData }: Props) {
               {/* Acknowledge — only for MATCHED faxes; hidden once PROCESSED */}
               {selectedFaxLive.status !== 'PROCESSED' && selectedFaxLive.matchedOrderId && (
                 confirmKey === `${selectedFaxLive.faxId}:acknowledge` ? (
-                  <div className="flex items-center gap-2 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px]">
-                    <span className="text-amber-800 font-medium">Confirm acknowledge?</span>
+                  <div className="flex items-center gap-2 rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-2 py-1.5 text-[11px]">
+                    <span className="text-amber-800 dark:text-amber-300 font-medium">Confirm acknowledge?</span>
                     <button
                       type="button"
                       onClick={() => { void handleAction(selectedFaxLive.faxId, 'acknowledge') }}
-                      className="rounded bg-amber-600 px-2 py-0.5 text-white hover:bg-amber-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                      className="rounded bg-amber-700 px-2 py-0.5 text-white hover:bg-amber-800 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       Yes
                     </button>
@@ -384,8 +384,8 @@ export function FaxTriageQueue({ initialData }: Props) {
               {/* Reject — hidden once PROCESSED */}
               {selectedFaxLive.status !== 'PROCESSED' && selectedFaxLive.matchedOrderId && (
                 confirmKey === `${selectedFaxLive.faxId}:reject` ? (
-                  <div className="flex items-center gap-2 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-[11px]">
-                    <span className="text-red-800 font-medium">Reject this order?</span>
+                  <div className="flex items-center gap-2 rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-2 py-1.5 text-[11px]">
+                    <span className="text-red-800 dark:text-red-300 font-medium">Reject this order?</span>
                     <button
                       type="button"
                       onClick={() => { void handleAction(selectedFaxLive.faxId, 'reject') }}
@@ -418,7 +418,7 @@ export function FaxTriageQueue({ initialData }: Props) {
                     placeholder="Order UUID"
                     className={`flex-1 rounded border bg-background px-2 py-1 text-[11px] font-mono focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
                       manualMatchId && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(manualMatchId)
-                        ? 'border-red-400'
+                        ? 'border-red-400 dark:border-red-800'
                         : 'border-input'
                     }`}
                     aria-label="Order ID for manual match"
@@ -432,13 +432,13 @@ export function FaxTriageQueue({ initialData }: Props) {
                       isLoading(selectedFaxLive.faxId, 'manual_match')
                     }
                     onClick={() => { void handleAction(selectedFaxLive.faxId, 'manual_match', { orderId: manualMatchId.trim() }) }}
-                    className="rounded bg-primary px-2 py-1 text-[11px] text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                    className="rounded bg-primary px-2 py-1 text-[11px] text-primary-foreground hover:bg-primary-hover disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {isLoading(selectedFaxLive.faxId, 'manual_match') ? '…' : 'Match'}
                   </button>
                 </div>
                 {manualMatchId && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(manualMatchId) && (
-                  <p id="manual-match-hint" className="text-[10px] text-red-600">Must be a valid UUID</p>
+                  <p id="manual-match-hint" className="text-[10px] text-red-600 dark:text-red-300">Must be a valid UUID</p>
                 )}
               </div>
               )}
@@ -450,7 +450,7 @@ export function FaxTriageQueue({ initialData }: Props) {
                   <button
                     type="button"
                     onClick={() => { void handleAction(selectedFaxLive.faxId, 'archive') }}
-                    className="rounded bg-muted-foreground px-2 py-0.5 text-background hover:opacity-80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                    className="rounded bg-muted-foreground px-2 py-0.5 text-background hover:bg-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     Yes
                   </button>
@@ -489,7 +489,7 @@ interface ActionBtnProps {
 
 function ActionBtn({ label, loading, onClick, variant }: ActionBtnProps) {
   const cls =
-    variant === 'primary'   ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+    variant === 'primary'   ? 'bg-primary text-primary-foreground hover:bg-primary-hover'
     : variant === 'danger'  ? 'bg-red-600 text-white hover:bg-red-700'
     : 'border border-border bg-background text-foreground hover:bg-muted'
 

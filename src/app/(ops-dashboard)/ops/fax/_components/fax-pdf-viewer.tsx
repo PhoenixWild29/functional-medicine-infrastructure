@@ -65,7 +65,7 @@ export function FaxPdfViewer({ faxId, pdfUrl }: { faxId: string; pdfUrl: string 
         </button>
       )}
       {state.kind === 'error' && (
-        <p role="alert" className="text-xs text-red-700">{state.message}</p>
+        <p role="alert" className="text-xs text-red-700 dark:text-red-300">{state.message}</p>
       )}
       {state.kind === 'open' && (
         <iframe

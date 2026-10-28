@@ -125,7 +125,7 @@ export function DerivedDispense({ derived, basis, override, onChange }: Props) {
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="shrink-0 text-xs text-primary underline hover:text-primary/80"
+            className="shrink-0 text-xs text-primary underline hover:text-primary-hover"
           >
             {isOverridden ? 'Edit override' : 'Override'}
           </button>
@@ -194,7 +194,7 @@ export function DerivedDispense({ derived, basis, override, onChange }: Props) {
             <button
               type="button"
               onClick={() => setEditing(false)}
-              className="text-xs text-primary underline hover:text-primary/80"
+              className="text-xs text-primary underline hover:text-primary-hover"
             >
               Done
             </button>

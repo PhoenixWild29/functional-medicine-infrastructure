@@ -541,7 +541,7 @@ export function StructuredSigBuilder({
             onClick={() => handleModeChange(mode)}
             className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
               sigMode === mode
-                ? 'border-primary bg-primary/10 text-primary'
+                ? 'border-primary bg-primary/10 text-primary-hover'
                 : 'border-border text-muted-foreground hover:bg-muted/50'
             }`}
           >
@@ -792,8 +792,8 @@ export function StructuredSigBuilder({
           {/* Character counter + NCPDP limit */}
           <div className="mt-1 flex items-center justify-between">
             <span className={`text-[10px] ${
-              isOverLimit ? 'font-semibold text-red-600' :
-              isNearLimit ? 'text-amber-600' :
+              isOverLimit ? 'font-semibold text-red-700' :
+              isNearLimit ? 'text-amber-700' :
               'text-muted-foreground'
             }`}>
               {charCount} / {NCPDP_SIG_LIMIT} characters
@@ -801,7 +801,7 @@ export function StructuredSigBuilder({
               {!isOverLimit && isNearLimit && ', approaching limit'}
             </span>
             {sigMode !== 'standard' && (
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary-hover">
                 {sigMode === 'titration' ? 'Titration' : 'Cycling'}
               </span>
             )}

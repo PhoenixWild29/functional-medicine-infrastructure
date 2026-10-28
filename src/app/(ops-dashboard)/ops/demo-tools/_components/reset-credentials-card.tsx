@@ -195,8 +195,8 @@ export function ResetCredentialsCard({ users }: { users: PocUserRow[] }) {
                 {report.demo_data_refresh.ok
                   ? (report.demo_data_refresh.skipped === 'not_poc_mode'
                       ? <span>skipped (POC_MODE off)</span>
-                      : <span className="text-emerald-700">synced</span>)
-                  : <span className="text-amber-700">failed, check logs / Sentry</span>}
+                      : <span className="text-emerald-700 dark:text-emerald-300">synced</span>)
+                  : <span className="text-amber-700 dark:text-amber-300">failed, check logs / Sentry</span>}
               </span>
             </p>
           )}

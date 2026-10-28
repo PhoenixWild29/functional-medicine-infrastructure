@@ -141,7 +141,7 @@ export function RefreshDemoDataCard() {
           type="button"
           onClick={handleRefresh}
           disabled={busy}
-          className="shrink-0 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="shrink-0 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy ? 'Refreshing…' : 'Refresh Demo Data'}
         </button>

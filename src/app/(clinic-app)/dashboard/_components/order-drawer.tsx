@@ -748,7 +748,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
                               type="checkbox"
                               checked={checked}
                               onChange={() => toggleSibling(s.orderId)}
-                              className="mt-0.5 rounded border-emerald-400 text-emerald-600 focus-visible:ring-emerald-600"
+                              className="mt-0.5 rounded border-emerald-400 text-emerald-700 focus-visible:ring-emerald-600"
                             />
                             <span className="flex-1 text-sm text-foreground">
                               <span className="block font-medium">{s.medicationName}</span>
@@ -1063,7 +1063,7 @@ export function OrderDrawer({ order, allOrders, onClose, onGroupCreated, viewer,
               </div>
               <div className="border-t border-border pt-1.5 flex justify-between font-semibold">
                 <span className="text-foreground">Clinic payout</span>
-                <span className="text-emerald-600" data-testid="drawer-clinic-payout">{toCurrency(clinicPayoutCents)}</span>
+                <span className="text-emerald-700" data-testid="drawer-clinic-payout">{toCurrency(clinicPayoutCents)}</span>
               </div>
             </div>
           </section>

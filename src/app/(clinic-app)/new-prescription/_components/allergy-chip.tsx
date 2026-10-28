@@ -253,7 +253,7 @@ export function AllergyEditor({ patientId, patient, onSaved, onCancel }: Allergy
       </label>
 
       {error && (
-        <p role="alert" className="mt-2 text-xs text-red-600">{error}</p>
+        <p role="alert" className="mt-2 text-xs text-red-700">{error}</p>
       )}
 
       <div className="mt-3 flex items-center gap-2">
@@ -261,7 +261,7 @@ export function AllergyEditor({ patientId, patient, onSaved, onCancel }: Allergy
           type="button"
           onClick={() => void handleSave()}
           disabled={saving}
-          className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save allergies'}
         </button>

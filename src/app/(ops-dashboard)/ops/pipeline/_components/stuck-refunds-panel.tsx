@@ -20,7 +20,7 @@ export function StuckRefundsPanel({ result }: { result: StuckRefundsResult }) {
       <div
         role="alert"
         data-testid="stuck-refunds-error"
-        className="rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700"
+        className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-4 py-2.5 text-sm text-red-700 dark:text-red-300"
       >
         Stuck refunds could not be loaded: {result.error}. This is an error, not an empty list.
       </div>
@@ -30,7 +30,7 @@ export function StuckRefundsPanel({ result }: { result: StuckRefundsResult }) {
   return (
     <section
       data-testid="stuck-refunds"
-      className={`rounded-md border px-4 py-2.5 text-sm ${result.rows.length > 0 ? 'border-red-200 bg-red-50 text-red-800' : 'border-border bg-muted/30 text-muted-foreground'}`}
+      className={`rounded-md border px-4 py-2.5 text-sm ${result.rows.length > 0 ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300' : 'border-border bg-muted/30 text-muted-foreground'}`}
     >
       {result.rows.length === 0 ? (
         <p>No stuck refunds.</p>
@@ -61,7 +61,7 @@ export function StuckRefundsPanel({ result }: { result: StuckRefundsResult }) {
 export function LatePaymentsPanel({ result }: { result: LatePaymentsResult }) {
   if (!result.ok) {
     return (
-      <div role="alert" data-testid="late-payments-error" className="rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+      <div role="alert" data-testid="late-payments-error" className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-4 py-2.5 text-sm text-red-700 dark:text-red-300">
         Late payments could not be loaded: {result.error}. This is an error, not an empty list.
       </div>
     )
@@ -69,7 +69,7 @@ export function LatePaymentsPanel({ result }: { result: LatePaymentsResult }) {
   if (result.rows.length === 0) return null
 
   return (
-    <section data-testid="late-payments" className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+    <section data-testid="late-payments" className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-4 py-2.5 text-sm text-amber-900 dark:text-amber-300">
       <p className="font-semibold">
         {result.rows.length} late payment{result.rows.length !== 1 ? 's' : ''} on expired bundles: refunded, not fulfilled.
       </p>

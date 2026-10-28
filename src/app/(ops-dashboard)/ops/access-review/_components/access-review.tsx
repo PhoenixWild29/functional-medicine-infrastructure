@@ -132,7 +132,7 @@ export function AccessReview({ clinics }: Props) {
         <div className="flex items-end gap-2">
           <button
             type="submit"
-            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Apply filters
           </button>
@@ -195,7 +195,7 @@ export function AccessReview({ clinics }: Props) {
               </thead>
               <tbody className="divide-y divide-border">
                 {rows.map(r => (
-                  <tr key={r.id} className={r.flags.length ? 'bg-amber-50/60' : undefined}>
+                  <tr key={r.id} className={r.flags.length ? 'bg-amber-50/60 dark:bg-amber-950/40' : undefined}>
                     <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">{r.occurred_at.replace('T', ' ').slice(0, 19)}</td>
                     <td className="whitespace-nowrap px-3 py-2 font-mono text-xs" title={r.time_zone}>{r.local_time} <span className="text-muted-foreground">{r.time_zone.split('/').pop()?.replace(/_/g, ' ')}</span></td>
                     <td className="px-3 py-2">
@@ -209,7 +209,7 @@ export function AccessReview({ clinics }: Props) {
                       {r.flags.length === 0 ? '' : (
                         <ul className="flex flex-wrap gap-1">
                           {r.flags.map(f => (
-                            <li key={f} className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-900">{REVIEW_FLAG_LABELS[f]}</li>
+                            <li key={f} className="rounded bg-amber-100 dark:bg-amber-950/40 px-1.5 py-0.5 text-xs text-amber-900 dark:text-amber-300">{REVIEW_FLAG_LABELS[f]}</li>
                           ))}
                         </ul>
                       )}

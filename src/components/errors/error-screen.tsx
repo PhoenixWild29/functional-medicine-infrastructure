@@ -38,7 +38,7 @@ export function ErrorScreen({
         <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
           {actions.map((a, i) => {
             const cls = i === 0
-              ? 'min-h-[44px] rounded-md bg-primary px-4 py-2 text-base font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
+              ? 'min-h-[44px] rounded-md bg-primary px-4 py-2 text-base font-medium text-primary-foreground hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
               : 'min-h-[44px] rounded-md border border-border px-4 py-2 text-base font-medium text-foreground hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
             return 'href' in a
               ? <Link key={a.label} href={a.href} className={cls}>{a.label}</Link>
