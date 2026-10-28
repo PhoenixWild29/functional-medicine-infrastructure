@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
 import { TEST_IDS, TEST_USERS } from './fixtures/seed'
 import { npiChecksumValid } from '../src/lib/providers/npi'
+import { demoPayoutsOnApproval } from '../src/lib/clinics/demo-payouts'
 import { shardPrefix } from './fixtures/shard'
 import { e2ePassword } from './fixtures/test-password'
 
@@ -275,6 +276,15 @@ test.describe('Self sign-up', () => {
     await expect(ops.getByText(`${name} approved. It can now sign and send orders.`)).toBeVisible({ timeout: 15_000 })
     const { data: event } = await db.from('clinic_onboarding_events').select('note').eq('clinic_id', clinic!.clinic_id).eq('event', 'approved').single()
     expect(event!.note).toContain('I checked this provider’s license with the state board')
+
+    // H1: with a live Stripe key (or DEMO_PAYOUTS_ON_APPROVAL=false) approval
+    // never sets a demo payout account; the clinic connects its own Stripe.
+    if (!demoPayoutsOnApproval()) {
+      expect(event!.note ?? '').not.toContain('Demo payout account set on approval')
+      const { data: none } = await db.from('clinics').select('stripe_connect_account_id').eq('clinic_id', clinic!.clinic_id).single()
+      expect(none!.stripe_connect_account_id ?? null).toBeNull()
+      return
+    }
 
     // Ordering opens on approval: the clinic's own demo payout account is set
     // (unique per clinic; Sunrise keeps 'poc_placeholder'), and the clinic's
