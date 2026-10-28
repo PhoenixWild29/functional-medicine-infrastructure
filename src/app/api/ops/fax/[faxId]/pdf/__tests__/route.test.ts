@@ -10,7 +10,8 @@
  *     same-origin; rate limited per user.
  *   - application/pdf, Cache-Control no-store, inline.
  *   - one phi_access_log row per view: who, which fax (and its order when
- *     matched); no content.
+ *     matched); no content. FAIL-CLOSED: when the row cannot be written
+ *     (logPhiAccess resolves false), 503 with a plain message, no PDF.
  *   - a missing or expired fax: 404 with a plain message; Documo down: 502;
  *     never a stack trace, the API key or Documo's response.
  */
@@ -118,6 +119,16 @@ describe('the fax', () => {
     }))
     const entry = (logPhiAccess as jest.Mock).mock.calls[0]![0] as Record<string, unknown>
     expect(JSON.stringify(entry)).not.toContain('documo-fax-9')
+  })
+
+  it('the access row cannot be written: 503, a plain message, no PDF', async () => {
+    ;(logPhiAccess as jest.Mock).mockResolvedValueOnce(false)
+    const res = await GET(req(), ctx())
+    expect(res.status).toBe(503)
+    expect(res.headers.get('content-type')).not.toMatch(/pdf/)
+    expect(res.headers.get('cache-control')).toBe('no-store')
+    expect(await res.json()).toEqual({ error: 'The fax could not be opened right now. Try again in a few minutes.' })
+    expect(logPhiAccess).toHaveBeenCalledTimes(1)
   })
 
   it('a fax that is not in the queue: 404, a plain message, nothing fetched or logged', async () => {

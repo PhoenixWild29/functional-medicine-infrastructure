@@ -9,7 +9,9 @@
 //
 // ops_admin only (app_metadata via getUser), same-origin, 60 views per 10
 // minutes per user. One phi_access_log row per view (who, which fax, its
-// order when matched; nothing from the fax). Never cached. A missing or
+// order when matched; nothing from the fax). FAIL-CLOSED: when that row
+// cannot be written (logPhiAccess resolves false, already alerted), the PDF
+// is not served: a plain 503. Never cached. A missing or
 // expired fax is a plain 404; Documo down is a plain 502.
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -25,6 +27,7 @@ import { withApiErrors }       from '@/lib/api/with-api-errors'
 const ROUTE = '/api/ops/fax/[faxId]/pdf'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const NOT_AVAILABLE = 'This fax is no longer available.'
+const NOT_LOGGED = 'The fax could not be opened right now. Try again in a few minutes.'
 const FETCH_FAILED = 'The fax could not be fetched right now. Try again in a few minutes.'
 
 function json(body: unknown, status: number, headers: Record<string, string> = {}) {
@@ -74,10 +77,11 @@ async function getHandler(
     return result.reason === 'not_found' ? json({ error: NOT_AVAILABLE }, 404) : json({ error: FETCH_FAILED }, 502)
   }
 
-  await logPhiAccess({
+  const logged = await logPhiAccess({
     user, action: 'view', resource: 'inbound_fax', route: ROUTE,
     faxId: fax.fax_id, orderId: fax.matched_order_id ?? null, headers: request.headers,
   })
+  if (!logged) return json({ error: NOT_LOGGED }, 503)
 
   return new NextResponse(result.bytes, {
     status: 200,
