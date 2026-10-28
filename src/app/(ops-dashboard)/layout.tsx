@@ -9,7 +9,7 @@ import { getUserRole } from '@/lib/auth/claims'
 // Cross-clinic access — restricted to operations team only
 //
 // Reads with getUser(), never getSession(). By the time this layout runs,
-// src/middleware.ts has already refreshed the token and forwarded the
+// src/proxy.ts has already refreshed the token and forwarded the
 // rotated cookies onto this request, so getUser() validates against a
 // current access token and does not itself rotate anything. A Server
 // Component cannot persist a rotated pair (src/lib/supabase/server.ts

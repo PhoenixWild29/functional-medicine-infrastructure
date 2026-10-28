@@ -15,7 +15,7 @@ The codebase serves three distinct audiences through a single Next.js applicatio
 | `intake/`, `join/` | Patients (intake form, clinic sign-up link) | Stateless — a token checked against its stored hash |
 | `get-started`, `onboard/` | New clinics, providers, pharmacies (self sign-up, invite acceptance) | None until the account exists |
 
-The request gate is `src/middleware.ts`: session refresh, roles, MFA, the checkout token, public routes and security headers. Next.js 16 renames middleware to `proxy.ts`. That rename is pending in #266; until it merges, middleware.ts is current.
+The request gate is `src/proxy.ts`: session refresh, roles, MFA, the checkout token, public routes and security headers. It is the Next.js 16 proxy (formerly `middleware.ts`, renamed in #266).
 
 ## Authentication Flows
 
@@ -44,7 +44,7 @@ The request gate is `src/middleware.ts`: session refresh, roles, MFA, the checko
   → otherwise the role's landing page (as above)
 ```
 
-Role claims are stored in `app_metadata.app_role`, `app_metadata.clinic_id` and `app_metadata.pharmacy_id`. They are written only with the service role and read through `src/lib/auth/claims.ts`. Never read them from `user_metadata`, which any signed-in user can rewrite. Identity is always `getUser()`, never `getSession()`. The middleware (`src/middleware.ts`) enforces role checks on every request. Layouts provide a second layer of defense. A deactivated team member is banned in Auth and carries `app_metadata.deactivated_at`, so the middleware signs them out.
+Role claims are stored in `app_metadata.app_role`, `app_metadata.clinic_id` and `app_metadata.pharmacy_id`. They are written only with the service role and read through `src/lib/auth/claims.ts`. Never read them from `user_metadata`, which any signed-in user can rewrite. Identity is always `getUser()`, never `getSession()`. The middleware (`src/proxy.ts`) enforces role checks on every request. Layouts provide a second layer of defense. A deactivated team member is banned in Auth and carries `app_metadata.deactivated_at`, so the middleware signs them out.
 
 ### Patients (Stateless Checkout Token)
 

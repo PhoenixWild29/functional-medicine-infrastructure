@@ -2,7 +2,7 @@
 // MFA in RLS (HIPAA B3): which tables, and the database switch
 // ============================================================
 //
-// The middleware MFA gate (lib/auth/mfa, src/middleware.ts) runs only for
+// The middleware MFA gate (lib/auth/mfa, src/proxy.ts) runs only for
 // requests through the app. A staff session at aal1 could still read PHI
 // straight from PostgREST with the public anon key. Migration
 // 20261024000012_rls_require_aal2 puts a RESTRICTIVE policy,

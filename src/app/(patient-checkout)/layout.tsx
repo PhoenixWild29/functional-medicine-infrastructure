@@ -6,7 +6,7 @@ import { Providers } from '@/components/providers'
 // Mobile-first: optimized for 320px-428px viewports
 // No login required — access via one-time checkout token in URL
 //
-// JWT validation is performed at the Edge Middleware layer (src/middleware.ts).
+// JWT validation is performed in the proxy (src/proxy.ts).
 // On success, middleware forwards x-checkout-order-id as a request header.
 // This layout reads that header as a defense-in-depth guard — if the header
 // is absent it means middleware either rejected the token (rare: middleware

@@ -24,7 +24,7 @@
  *      JWT clinic_id, not just the auth.uid match).
  *
  * 2026-09 prod-logout sweep: the page now reads identity with
- * auth.getUser() rather than auth.getSession(). Only src/middleware.ts
+ * auth.getUser() rather than auth.getSession(). Only src/proxy.ts
  * may rotate and persist the Supabase token pair; a Server Component
  * must never trigger a rotation it cannot write back. Enforced app-wide
  * by src/app/__tests__/no-inline-page-auth.test.ts.

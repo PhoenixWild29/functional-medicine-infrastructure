@@ -5,7 +5,7 @@
 // Everything ops reads before approving one clinic (lib/onboarding/
 // review). Approve and send back stay on /ops/onboarding.
 //
-// Auth: ops_admin only, enforced OUTSIDE this component (src/middleware.ts
+// Auth: ops_admin only, enforced OUTSIDE this component (src/proxy.ts
 // and (ops-dashboard)/layout.tsx), as on every ops page; GET
 // /api/ops/onboarding/clinics/[clinicId] checks ops_admin again. No
 // Supabase auth client here.

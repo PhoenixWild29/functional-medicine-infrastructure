@@ -23,7 +23,7 @@ jest.mock('@/lib/auth/checkout-token', () => ({ verifyCheckoutToken: jest.fn() }
 process.env['NEXT_PUBLIC_SUPABASE_URL'] = 'http://localhost'
 process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY'] = 'anon'
 
-import { middleware } from '../middleware'
+import { proxy } from '../proxy'
 
 const req = (path: string) => new NextRequest(new URL(`http://localhost${path}`), { method: 'GET' })
 const as = (meta: Record<string, unknown>) => ({ data: { user: { id: 'u-p', email: 'dr@clinic.test', app_metadata: meta } } })
@@ -33,21 +33,21 @@ beforeEach(() => getUserMock.mockReset())
 
 it.each(['/dashboard', '/new-prescription', '/settings', '/practice'])('a page (%s): sent to /reset-password', async path => {
   getUserMock.mockResolvedValue(FLAGGED)
-  const res = await middleware(req(path))
+  const res = await proxy(req(path))
   expect(res.status).toBe(307)
   expect(new URL(res.headers.get('location')!).pathname).toBe('/reset-password')
 })
 
 it.each(['/api/orders', '/api/auth/password/change', '/api/patients'])('an API route (%s): 403 MUST_CHANGE_PASSWORD', async path => {
   getUserMock.mockResolvedValue(FLAGGED)
-  const res = await middleware(req(path))
+  const res = await proxy(req(path))
   expect(res.status).toBe(403)
   expect(await res.json()).toEqual(expect.objectContaining({ code: 'MUST_CHANGE_PASSWORD' }))
 })
 
 it.each(['/reset-password', '/api/auth/password', '/forgot-password', '/api/auth/password-reset'])('the reset path (%s) stays open', async path => {
   getUserMock.mockResolvedValue(FLAGGED)
-  const res = await middleware(req(path))
+  const res = await proxy(req(path))
   expect(res.status).not.toBe(403)
   expect(res.headers.get('location')).toBeNull()
 })
@@ -55,7 +55,7 @@ it.each(['/reset-password', '/api/auth/password', '/forgot-password', '/api/auth
 it('a login without the flag (or with it false) is untouched', async () => {
   for (const meta of [{ app_role: 'provider', clinic_id: 'c-1' }, { app_role: 'provider', clinic_id: 'c-1', must_change_password: false }]) {
     getUserMock.mockResolvedValue(as(meta))
-    const res = await middleware(req('/dashboard'))
+    const res = await proxy(req('/dashboard'))
     expect(res.headers.get('location')).toBeNull()
   }
 })

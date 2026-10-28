@@ -4,7 +4,7 @@
 //
 // Invite clinics, follow their onboarding, and approve or send back.
 //
-// Auth: ops_admin only, enforced OUTSIDE this component (src/middleware.ts
+// Auth: ops_admin only, enforced OUTSIDE this component (src/proxy.ts
 // and (ops-dashboard)/layout.tsx), as on every ops page; the APIs this
 // page calls check ops_admin again. No Supabase auth client here.
 

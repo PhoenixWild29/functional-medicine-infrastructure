@@ -5,7 +5,7 @@
 // Supabase auth client in the page body (see ops-page-no-inline-auth.test.ts);
 // /ops/fax reads its PHI access log actor here instead.
 //
-// getUser(), never getSession(): src/middleware.ts owns token rotation, and a
+// getUser(), never getSession(): src/proxy.ts owns token rotation, and a
 // Server Component cannot persist a rotated pair. Never redirects and never
 // throws: a failure is simply no user, and the caller decides what that means.
 

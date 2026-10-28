@@ -36,7 +36,7 @@
  * navigations would be an auth bypass.
  */
 
-import { middleware } from '../middleware'
+import { proxy } from '../proxy'
 import { NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
@@ -87,7 +87,7 @@ describe('middleware prefetch short-circuit (refresh fan-out fix)', () => {
   describe.each(PREFETCH_HEADERS)('%s', (_label, headers) => {
     it('answers 204 and never touches Supabase', async () => {
       getUserMock.mockResolvedValue(CLINIC_SESSION)
-      const res = await middleware(makeReq('/dashboard', { ...headers, ...RSC }))
+      const res = await proxy(makeReq('/dashboard', { ...headers, ...RSC }))
 
       expect(res.status).toBe(204)
       // The whole point: no auth client, therefore no refresh, therefore no
@@ -98,12 +98,12 @@ describe('middleware prefetch short-circuit (refresh fan-out fix)', () => {
 
     it('still carries the HIPAA no-store headers', async () => {
       getUserMock.mockResolvedValue(CLINIC_SESSION)
-      const res = await middleware(makeReq('/dashboard', headers))
+      const res = await proxy(makeReq('/dashboard', headers))
       expect(res.headers.get('Cache-Control')).toBe(NO_STORE)
     })
 
     it('short-circuits before the checkout branch too (no token rotation anywhere)', async () => {
-      const res = await middleware(makeReq('/checkout/some.jwt.token', headers))
+      const res = await proxy(makeReq('/checkout/some.jwt.token', headers))
       expect(res.status).toBe(204)
     })
   })
@@ -112,7 +112,7 @@ describe('middleware prefetch short-circuit (refresh fan-out fix)', () => {
 describe('middleware still gates REAL navigations (no auth bypass)', () => {
   it('an RSC navigation without a prefetch header is fully gated', async () => {
     getUserMock.mockResolvedValue(CLINIC_SESSION)
-    const res = await middleware(makeReq('/dashboard', RSC))
+    const res = await proxy(makeReq('/dashboard', RSC))
 
     expect(res.status).not.toBe(204)
     expect(createServerClientMock).toHaveBeenCalled()
@@ -121,27 +121,27 @@ describe('middleware still gates REAL navigations (no auth bypass)', () => {
 
   it('a plain document navigation is fully gated', async () => {
     getUserMock.mockResolvedValue(CLINIC_SESSION)
-    await middleware(makeReq('/dashboard'))
+    await proxy(makeReq('/dashboard'))
     expect(getUserMock).toHaveBeenCalled()
   })
 
   it('keeps the /ops gate strict on a real RSC navigation', async () => {
     getUserMock.mockResolvedValue(CLINIC_SESSION)
-    const res = await middleware(makeReq('/ops/pipeline', RSC))
+    const res = await proxy(makeReq('/ops/pipeline', RSC))
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/unauthorized')
   })
 
   it('keeps the provider-only sign gate strict on a real RSC navigation', async () => {
     getUserMock.mockResolvedValue(MA_SESSION)
-    const res = await middleware(makeReq('/new-prescription/sign/abc', RSC))
+    const res = await proxy(makeReq('/new-prescription/sign/abc', RSC))
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/unauthorized')
   })
 
   it('still bounces an unauthenticated real navigation to /login', async () => {
     getUserMock.mockResolvedValue(NO_SESSION)
-    const res = await middleware(makeReq('/dashboard', RSC))
+    const res = await proxy(makeReq('/dashboard', RSC))
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/login')
   })

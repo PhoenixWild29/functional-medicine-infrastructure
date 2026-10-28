@@ -72,7 +72,7 @@ function isPasswordPath(pathname: string): boolean {
   return pathname === '/reset-password' || pathname === '/api/auth/password'
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const nonce = newNonce()
   const csp = buildCsp({ nonce, pathname, secure: isHttpsRequest(request) })
@@ -92,7 +92,7 @@ export async function middleware(request: NextRequest) {
   return res
 }
 
-// Edge Middleware: runs on every request before page rendering
+// Proxy (Node.js runtime): runs on every request before page rendering
 // Handles auth verification for clinic-app and ops-dashboard route groups
 async function handleRequest(request: NextRequest): Promise<NextResponse> {
   let response = NextResponse.next({ request })
@@ -539,7 +539,7 @@ export const config = {
     //
     // 2026-09: this filter is PATH-ONLY and can never distinguish a prefetch
     // from a navigation — a prefetch of /dashboard has the path /dashboard.
-    // Prefetch suppression is therefore done by header inside middleware()
+    // Prefetch suppression is therefore done by header inside proxy()
     // (see isPrefetchRequest); this list only trims requests that never
     // needed the gate in the first place, so the auth round-trip is not
     // spent on them.

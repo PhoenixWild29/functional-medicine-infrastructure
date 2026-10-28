@@ -21,10 +21,10 @@
  *     already consumed — which kills the session for every later request.
  *
  * Auth for /ops is enforced in two places that CAN do it safely:
- * src/middleware.ts and (ops-dashboard)/layout.tsx. Page bodies must not.
+ * src/proxy.ts and (ops-dashboard)/layout.tsx. Page bodies must not.
  *
  * 2026-09 follow-up: the layout now reads with getUser() rather than
- * getSession(). Only src/middleware.ts may rotate and persist tokens; the
+ * getSession(). Only src/proxy.ts may rotate and persist tokens; the
  * layout must never trigger a rotation it cannot write back. The refreshed
  * cookies themselves are covered in src/__tests__/middleware.test.ts.
  */
@@ -88,7 +88,7 @@ describe('ops route pages', () => {
   })
 
   it('still enforces ops_admin in middleware and the ops layout', () => {
-    const middleware = readFileSync(join(process.cwd(), 'src', 'middleware.ts'), 'utf8')
+    const middleware = readFileSync(join(process.cwd(), 'src', 'proxy.ts'), 'utf8')
     expect(middleware).toMatch(/pathname\.startsWith\('\/ops'\)/)
     expect(middleware).toMatch(/ops_admin/)
 
