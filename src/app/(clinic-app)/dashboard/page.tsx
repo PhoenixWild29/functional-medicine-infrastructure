@@ -101,7 +101,7 @@ export default async function DashboardPage(
 ) {
   const { searchParams } = props
 
-  // 2026-09 sweep: getUser(), never getSession(). src/middleware.ts has
+  // 2026-09 sweep: getUser(), never getSession(). src/proxy.ts has
   // already refreshed and PERSISTED the token pair for this request and
   // forwarded the rotated cookies onto it, so this read validates a
   // current token and cannot start a rotation this context is unable to

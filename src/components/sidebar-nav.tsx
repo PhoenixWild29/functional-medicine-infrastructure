@@ -116,7 +116,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
         // the md icon-rail), all six inside the viewport from first paint.
         // With App Router's default prefetching, each page paint fired up to
         // three extra RSC requests within milliseconds of the navigation
-        // that caused them. src/middleware.ts matches on PATH, so every one
+        // that caused them. src/proxy.ts matches on PATH, so every one
         // of those re-entered the auth middleware and ran its own
         // supabase.auth.getUser().
         //
@@ -131,7 +131,7 @@ export function SidebarNav({ userEmail, userRole, showPractice = false, showChec
         //
         // Prefetch is a latency optimisation on three links that are one
         // click away on a desktop app; the session is not negotiable.
-        // src/middleware.ts also short-circuits any prefetch that does
+        // src/proxy.ts also short-circuits any prefetch that does
         // reach the server (from anywhere in the app) with a 204.
         prefetch={false}
         onClick={() => setMobileOpen(false)}

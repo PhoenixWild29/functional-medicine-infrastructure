@@ -20,7 +20,7 @@ jest.mock('@supabase/ssr', () => ({
 process.env['NEXT_PUBLIC_SUPABASE_URL']      = 'http://localhost'
 process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY'] = 'anon'
 
-import { middleware } from '../middleware'
+import { proxy } from '../proxy'
 
 const ROOT = process.cwd()
 const req = (path: string) => new NextRequest(new URL(`http://localhost${path}`), { method: 'GET' })
@@ -29,19 +29,19 @@ describe('middleware', () => {
   beforeEach(() => jest.clearAllMocks())
 
   it.each(['/legal/privacy', '/legal/patient-terms'])('%s is public: no redirect, no auth client', async path => {
-    const res = await middleware(req(path))
+    const res = await proxy(req(path))
     expect(res.headers.get('location')).toBeNull()
     expect(res.status).toBe(200)
     expect(createServerClient).not.toHaveBeenCalled()
   })
 
   it('lists the legal pages with a trailing slash, as the other prefixes', () => {
-    const src = readFileSync(join(ROOT, 'src', 'middleware.ts'), 'utf8')
+    const src = readFileSync(join(ROOT, 'src', 'proxy.ts'), 'utf8')
     expect(src).toMatch(/const publicRoutes = \[[^\]]*'\/legal\/'/)
   })
 
   it('a path that only starts with "/legal" is still gated', async () => {
-    const res = await middleware(req('/legalese'))
+    const res = await proxy(req('/legalese'))
     expect(res.headers.get('location')).toContain('/login')
   })
 })

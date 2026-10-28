@@ -8,7 +8,7 @@
 // client IP, which Slack never carries. Plus how many failed sign-ins
 // were recorded in the last 24 hours.
 //
-// Auth: ops_admin only, enforced OUTSIDE this component (src/middleware.ts
+// Auth: ops_admin only, enforced OUTSIDE this component (src/proxy.ts
 // and (ops-dashboard)/layout.tsx), as on every ops page.
 
 import { createServiceClient } from '@/lib/supabase/service'

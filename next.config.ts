@@ -12,7 +12,7 @@ export const baseConfig: NextConfig = {
 
   // Compliance C9: HSTS, X-Frame-Options, nosniff and Referrer-Policy on
   // every path, static assets included. The per-request CSP and the
-  // Permissions-Policy are set by src/middleware.ts.
+  // Permissions-Policy are set by src/proxy.ts.
   //
   // Token pages (patient checkout, plan, intake and sign-up links,
   // invites): no-referrer and noindex. Listed after the global rule: for

@@ -259,7 +259,7 @@ If the CI pipeline is failing with this error, the types file must be regenerate
 **Causes and fixes:**
 1. `JWT_SECRET` is wrong or rotated — set the correct value in Vercel environment variables
 2. `/auth/callback` is not in middleware `publicRoutes` — the route will redirect to `/login` before the PKCE exchange can run
-   - Fix: ensure `publicRoutes` in `src/middleware.ts` includes `/auth/callback`
+   - Fix: ensure `publicRoutes` in `src/proxy.ts` includes `/auth/callback`
 3. Supabase "Confirm email" is enabled — the verification link redirects to `/auth/callback?code=...`; if the code has expired (10-minute window), the exchange will fail. Re-send the verification email.
 
 ### Ops admin cannot see cross-clinic data (RLS blocking)

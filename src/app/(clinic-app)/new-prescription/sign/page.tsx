@@ -17,7 +17,7 @@
 // /api/proposals/[id]/sign. A plan's drafts never show in the ordinary
 // mode: they are signed only through their plan.
 //
-// Provider only: src/middleware.ts sends every other role to
+// Provider only: src/proxy.ts sends every other role to
 // /unauthorized for this exact path and the /sign/ prefix; the check
 // below is the belt behind it, and batch-sign refuses anyone else.
 

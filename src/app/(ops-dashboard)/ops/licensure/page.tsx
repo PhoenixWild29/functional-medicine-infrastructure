@@ -7,7 +7,7 @@
 // licenses expiring within 30 days, expired ones and unrecorded sterile
 // scope flagged. Read-only: licenses are maintained in the database.
 //
-// Auth: ops_admin only, enforced OUTSIDE this component (src/middleware.ts
+// Auth: ops_admin only, enforced OUTSIDE this component (src/proxy.ts
 // and (ops-dashboard)/layout.tsx), as on every ops page. No Supabase auth
 // client here (see /ops/sla for why).
 

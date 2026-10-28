@@ -3,7 +3,7 @@
 // /checkout/[token]
 // ============================================================
 //
-// Server Component — token validated by Edge Middleware before render
+// Server Component — token validated by the proxy (src/proxy.ts) before render
 // (see _components/render-checkout.tsx, shared with /checkout?token=). Once the
 // page is on screen the client takes the token out of the address bar
 // (history.replaceState to /checkout) before Stripe.js loads; see

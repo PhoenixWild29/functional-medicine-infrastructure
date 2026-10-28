@@ -101,9 +101,10 @@ describe('the migration', () => {
     expect(code(sql)).toMatch(/COMMIT;$/)
     expect(code(down)).toMatch(/^BEGIN;/)
     expect(code(down)).toMatch(/COMMIT;$/)
-    // Only order-transmission-integrity's 000011 (the snapshot columns this freeze names) follows it.
-    const later = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql') && f > '20261024000010_signed_order_freeze.sql')
-    expect(later).toEqual(['20261024000011_order_signing_snapshots.sql'])
+    // order-transmission-integrity's 000011 (the snapshot columns this freeze
+    // names) follows it first; later ones (000012 rls-aal2, ...) may follow.
+    const later = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql') && f > '20261024000010_signed_order_freeze.sql').sort()
+    expect(later[0]).toBe('20261024000011_order_signing_snapshots.sql')
   })
 
   it('freezes exactly the shared list', () => {

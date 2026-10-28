@@ -12,7 +12,7 @@
  *   - MFA: a provider who wrote a non-staff app_role is still gated
  */
 
-import { middleware } from '../middleware'
+import { proxy } from '../proxy'
 import { NextRequest } from 'next/server'
 
 const getUserMock   = jest.fn()
@@ -56,12 +56,12 @@ beforeEach(() => {
 describe('self-edited user_metadata grants nothing in middleware', () => {
   it('provider who wrote app_role=ops_admin does not reach /ops', async () => {
     getUserMock.mockResolvedValue(signedIn('provider', 'ops_admin'))
-    expect(location(await middleware(req('/ops/pipeline')))).toBe('/unauthorized')
+    expect(location(await proxy(req('/ops/pipeline')))).toBe('/unauthorized')
   })
 
   it('medical assistant who wrote app_role=clinic_admin does not reach Practice', async () => {
     getUserMock.mockResolvedValue(signedIn('medical_assistant', 'clinic_admin'))
-    expect(location(await middleware(req('/practice')))).toBe('/unauthorized')
+    expect(location(await proxy(req('/practice')))).toBe('/unauthorized')
   })
 
   // Self sign-up, decision 1: a clinic_admin now reaches the sign page
@@ -69,17 +69,17 @@ describe('self-edited user_metadata grants nothing in middleware', () => {
   // medical assistant. (Updated: this used a clinic_admin.)
   it('medical assistant who wrote app_role=provider does not reach the signing page', async () => {
     getUserMock.mockResolvedValue(signedIn('medical_assistant', 'provider'))
-    expect(location(await middleware(req('/new-prescription/sign')))).toBe('/unauthorized')
+    expect(location(await proxy(req('/new-prescription/sign')))).toBe('/unauthorized')
   })
 
   it('a role that exists only in user_metadata is not a role: no Practice', async () => {
     getUserMock.mockResolvedValue(signedIn(undefined, 'clinic_admin'))
-    expect(location(await middleware(req('/practice')))).toBe('/unauthorized')
+    expect(location(await proxy(req('/practice')))).toBe('/unauthorized')
   })
 
   it('control: the real clinic admin (app_metadata) reaches Practice', async () => {
     getUserMock.mockResolvedValue(signedIn('clinic_admin', 'clinic_admin'))
-    const res = await middleware(req('/practice'))
+    const res = await proxy(req('/practice'))
     expect(res.status).toBe(200)
     expect(location(res)).toBeNull()
   })
@@ -87,13 +87,13 @@ describe('self-edited user_metadata grants nothing in middleware', () => {
   it('MFA: a provider who wrote a non-staff app_role is still sent to enroll', async () => {
     process.env['REQUIRE_MFA'] = 'true'
     getUserMock.mockResolvedValue(signedIn('provider', 'patient'))
-    expect(location(await middleware(req('/dashboard')))).toBe('/mfa/enroll')
+    expect(location(await proxy(req('/dashboard')))).toBe('/mfa/enroll')
   })
 
   it('MFA: a user who wrote app_role=provider into user_metadata alone is not treated as staff', async () => {
     process.env['REQUIRE_MFA'] = 'true'
     getUserMock.mockResolvedValue(signedIn('ops_admin', 'provider'))
     // Gated as ops_admin (the real role), on the ops pipeline.
-    expect(location(await middleware(req('/ops/pipeline')))).toBe('/mfa/enroll')
+    expect(location(await proxy(req('/ops/pipeline')))).toBe('/mfa/enroll')
   })
 })

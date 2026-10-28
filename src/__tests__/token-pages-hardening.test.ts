@@ -16,7 +16,7 @@
  */
 
 import { NextRequest } from 'next/server'
-import { middleware } from '../middleware'
+import { proxy } from '../proxy'
 import { baseConfig } from '../../next.config'
 import robots from '../app/robots'
 import { isTokenPath } from '@/lib/security/token-paths'
@@ -65,7 +65,7 @@ afterEach(() => jest.restoreAllMocks())
 
 describe('middleware: every token path', () => {
   it.each(TOKEN_PATHS)('%s: no-referrer, noindex, private no-store', async path => {
-    const res = await middleware(req(path))
+    const res = await proxy(req(path))
     expect(res.headers.get('Referrer-Policy')).toBe('no-referrer')
     expect(res.headers.get('X-Robots-Tag')).toBe('noindex, nofollow')
     const cc = res.headers.get('Cache-Control') ?? ''
@@ -75,7 +75,7 @@ describe('middleware: every token path', () => {
 
   it('an invalid checkout token: the redirect to the neutral page carries the same headers', async () => {
     verifyCheckoutTokenMock.mockResolvedValue(null)
-    const res = await middleware(req(`/checkout/${JWT}`))
+    const res = await proxy(req(`/checkout/${JWT}`))
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toBe('http://localhost/checkout/expired')
     expect(res.headers.get('Referrer-Policy')).toBe('no-referrer')
@@ -85,7 +85,7 @@ describe('middleware: every token path', () => {
 
   it('POSTs to the token APIs too', async () => {
     for (const path of [`/api/plan/${T43}`, `/api/intake/${T43}`, `/api/join/${T43}`, '/api/checkout/payment-intent']) {
-      const res = await middleware(req(path, 'POST'))
+      const res = await proxy(req(path, 'POST'))
       expect(res.headers.get('Referrer-Policy')).toBe('no-referrer')
       expect(res.headers.get('Cache-Control')).toMatch(/no-store/)
     }

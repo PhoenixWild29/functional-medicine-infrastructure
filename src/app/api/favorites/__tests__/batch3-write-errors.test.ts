@@ -115,6 +115,7 @@ describe('DELETE', () => {
     const r = await call(DELETE, c => (c.table === 'provider_favorites' && c.op === 'select' ? DB_DOWN : undefined), `${URL_}?id=a5000000-0000-0000-0000-000000000001`)
     expectSafe500(r)
     expect(db.to('provider_favorites', 'delete')).toHaveLength(0)
+    expect(db.to('provider_favorites', 'update')).toHaveLength(0)
   })
 })
 

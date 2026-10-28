@@ -13,7 +13,7 @@
 // src/app/(ops-dashboard)/ops/__tests__/ops-page-no-inline-auth.test.ts.
 //
 // The real auth gates run in the two places that CAN redirect safely:
-// src/middleware.ts, and the route-group layout (which sits OUTSIDE the
+// src/proxy.ts, and the route-group layout (which sits OUTSIDE the
 // boundary its sibling loading.tsx creates). A page body reaching this
 // component means the session evaporated between the layout and the page,
 // so it renders a terminal state instead of hanging.

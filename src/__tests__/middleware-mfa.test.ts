@@ -16,7 +16,7 @@
  * - Patient checkout links, webhooks, crons and /login are not affected.
  */
 
-import { middleware } from '../middleware'
+import { proxy } from '../proxy'
 import { NextRequest } from 'next/server'
 
 const getUserMock = jest.fn()
@@ -57,7 +57,7 @@ describe('REQUIRE_MFA=true', () => {
   it.each(['provider', 'medical_assistant', 'clinic_admin'])('%s at AAL1 without a factor is sent to enroll', async role => {
     getUserMock.mockResolvedValue(session(role))
     getClaimsMock.mockResolvedValue(claims('aal1'))
-    const res = await middleware(req('/dashboard'))
+    const res = await proxy(req('/dashboard'))
     expect(res.status).toBe(307)
     expect(location(res).pathname).toBe('/mfa/enroll')
     expect(location(res).searchParams.get('redirectTo')).toBe('/dashboard')
@@ -66,7 +66,7 @@ describe('REQUIRE_MFA=true', () => {
   it('ops_admin at AAL1 with a factor is challenged on /ops', async () => {
     getUserMock.mockResolvedValue(session('ops_admin', VERIFIED))
     getClaimsMock.mockResolvedValue(claims('aal1'))
-    const res = await middleware(req('/ops/pipeline'))
+    const res = await proxy(req('/ops/pipeline'))
     expect(res.status).toBe(307)
     expect(location(res).pathname).toBe('/mfa/challenge')
     expect(location(res).searchParams.get('redirectTo')).toBe('/ops/pipeline')
@@ -75,7 +75,7 @@ describe('REQUIRE_MFA=true', () => {
   it('an API route at AAL1 answers 401 MFA_REQUIRED, not a redirect', async () => {
     getUserMock.mockResolvedValue(session('provider', VERIFIED))
     getClaimsMock.mockResolvedValue(claims('aal1'))
-    const res = await middleware(req('/api/orders'))
+    const res = await proxy(req('/api/orders'))
     expect(res.status).toBe(401)
     expect(await res.json()).toEqual(expect.objectContaining({ code: 'MFA_REQUIRED' }))
   })
@@ -83,7 +83,7 @@ describe('REQUIRE_MFA=true', () => {
   it('an API route at AAL1 without a factor answers 401 MFA_ENROLLMENT_REQUIRED', async () => {
     getUserMock.mockResolvedValue(session('clinic_admin'))
     getClaimsMock.mockResolvedValue(claims('aal1'))
-    const res = await middleware(req('/api/favorites'))
+    const res = await proxy(req('/api/favorites'))
     expect(res.status).toBe(401)
     expect(await res.json()).toEqual(expect.objectContaining({ code: 'MFA_ENROLLMENT_REQUIRED' }))
   })
@@ -92,7 +92,7 @@ describe('REQUIRE_MFA=true', () => {
     getUserMock.mockResolvedValue(session('provider', VERIFIED))
     getClaimsMock.mockResolvedValue(claims('aal2'))
     for (const path of ['/dashboard', '/api/orders', '/settings']) {
-      const res = await middleware(req(path))
+      const res = await proxy(req(path))
       expect(res.status).toBe(200)
       expect(res.headers.get('location')).toBeNull()
     }
@@ -101,7 +101,7 @@ describe('REQUIRE_MFA=true', () => {
   it('a claims read that fails is not AAL2', async () => {
     getUserMock.mockResolvedValue(session('provider', VERIFIED))
     getClaimsMock.mockResolvedValue({ data: null, error: { message: 'invalid JWT' } })
-    const res = await middleware(req('/dashboard'))
+    const res = await proxy(req('/dashboard'))
     expect(location(res).pathname).toBe('/mfa/challenge')
   })
 
@@ -109,7 +109,7 @@ describe('REQUIRE_MFA=true', () => {
     getUserMock.mockResolvedValue(session('provider'))
     getClaimsMock.mockResolvedValue(claims('aal1'))
     for (const path of ['/mfa/enroll', '/mfa/challenge']) {
-      const res = await middleware(req(path))
+      const res = await proxy(req(path))
       expect(res.status).toBe(200)
     }
   })
@@ -117,21 +117,21 @@ describe('REQUIRE_MFA=true', () => {
   it('the challenge verify API is reachable at AAL1, while other APIs answer MFA_REQUIRED (security B12)', async () => {
     getUserMock.mockResolvedValue(session('provider', VERIFIED))
     getClaimsMock.mockResolvedValue(claims('aal1'))
-    expect((await middleware(req('/api/mfa/verify'))).status).toBe(200)
-    const other = await middleware(req('/api/orders'))
+    expect((await proxy(req('/api/mfa/verify'))).status).toBe(200)
+    const other = await proxy(req('/api/orders'))
     expect(other.status).toBe(401)
   })
 
   it('an unauthenticated visitor still goes to /login, not to MFA', async () => {
     getUserMock.mockResolvedValue({ data: { user: null } })
-    const res = await middleware(req('/dashboard'))
+    const res = await proxy(req('/dashboard'))
     expect(location(res).pathname).toBe('/login')
   })
 
   it('patient checkout links, webhooks, crons and /login are not affected', async () => {
     verifyCheckoutTokenMock.mockResolvedValue({ orderId: 'o-1', patientId: 'p-1', clinicId: 'c-1' })
     for (const path of ['/checkout/tok', '/api/webhooks/stripe', '/api/cron/sla-check', '/login', '/api/health']) {
-      const res = await middleware(req(path))
+      const res = await proxy(req(path))
       expect(res.headers.get('location') ?? '').not.toMatch(/\/mfa\//)
       expect(res.status).not.toBe(401)
     }
@@ -142,7 +142,7 @@ describe('REQUIRE_MFA=true', () => {
 describe('enforcement off (REQUIRE_MFA unset)', () => {
   it('unchanged for a user without a factor: no AAL read, no redirect', async () => {
     getUserMock.mockResolvedValue(session('provider'))
-    const res = await middleware(req('/dashboard'))
+    const res = await proxy(req('/dashboard'))
     expect(res.status).toBe(200)
     expect(getClaimsMock).not.toHaveBeenCalled()
   })
@@ -150,7 +150,7 @@ describe('enforcement off (REQUIRE_MFA unset)', () => {
   it('a user who enrolled voluntarily is challenged at AAL1', async () => {
     getUserMock.mockResolvedValue(session('provider', VERIFIED))
     getClaimsMock.mockResolvedValue(claims('aal1'))
-    const res = await middleware(req('/dashboard'))
+    const res = await proxy(req('/dashboard'))
     expect(location(res).pathname).toBe('/mfa/challenge')
   })
 })
@@ -161,13 +161,13 @@ describe('MFA_ENFORCED_EMAILS (the E2E test user)', () => {
   it('enforces it for the named account', async () => {
     getUserMock.mockResolvedValue(session('clinic_admin', [], 'test-mfa-admin@compoundiq.test'))
     getClaimsMock.mockResolvedValue(claims('aal1'))
-    const res = await middleware(req('/dashboard'))
+    const res = await proxy(req('/dashboard'))
     expect(location(res).pathname).toBe('/mfa/enroll')
   })
 
   it('leaves everyone else unchanged', async () => {
     getUserMock.mockResolvedValue(session('clinic_admin', [], 'test-clinic-admin@compoundiq.test'))
-    const res = await middleware(req('/dashboard'))
+    const res = await proxy(req('/dashboard'))
     expect(res.status).toBe(200)
   })
 })

@@ -73,3 +73,10 @@ it('a failed password update leaves the flag', async () => {
   expect((await SET(req())).status).toBe(400)
   expect(updateUserByIdMock).not.toHaveBeenCalled()
 })
+
+it('a pharmacy_admin from a pharmacy invite: the reset clears the flag too, keeping role and pharmacy', async () => {
+  const meta = { app_role: 'pharmacy_admin', clinic_id: null, pharmacy_id: 'p-1', must_change_password: true }
+  getUserMock.mockResolvedValue({ data: { user: { id: 'u-1', email: 'admin@pharmacy.test', app_metadata: meta } }, error: null })
+  expect((await SET(req())).status).toBe(200)
+  expect(updateUserByIdMock).toHaveBeenCalledWith('u-1', { app_metadata: { ...meta, must_change_password: false } })
+})

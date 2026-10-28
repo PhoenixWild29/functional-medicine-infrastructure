@@ -44,7 +44,7 @@ Do NOT re-derive the prompt structure from scratch each round. The compounding p
   - `useSyncExternalStore` for "hydrated";
   - a query's `dataUpdatedAt` instead of `Date.now()` during render.
 - A scoped `// eslint-disable-next-line <rule> -- <reason>` only where the fix would change behaviour. For example, restoring `sessionStorage` or `localStorage` after hydration, which a server render cannot do.
-- `src/middleware.ts` is the request gate today: auth, roles, MFA, the checkout token, public routes and security headers. Next 16 renames it to `proxy.ts`. That rename is pending in #266. Until it merges, middleware.ts is current.
+- `src/proxy.ts` is the request gate: auth, roles, MFA, the checkout token, public routes and security headers. It is the Next 16 proxy (formerly `src/middleware.ts`, renamed in #266); tests import `proxy` from it.
 
 ## Code rules that every change keeps
 
@@ -98,7 +98,7 @@ Work for the coding agents (A, B, C, D, ...) comes from `tasks/agent-<x>.md` on 
 ## Multi-factor sign-in (compliance C3)
 
 - `REQUIRE_MFA` (read through `src/lib/env`) turns multi-factor sign-in on for provider, medical_assistant, clinic_admin and ops_admin. It is OFF unless exactly `true`, so demo accounts and E2E sign in with a password until the owner turns it on. `MFA_ENFORCED_EMAILS` enforces it for named accounts only (E2E uses `test-mfa-admin@compoundiq.test`).
-- The rule lives in `src/lib/auth/mfa.ts`; `src/middleware.ts` applies it to every authenticated page (redirect to `/mfa/enroll` or `/mfa/challenge` with `redirectTo`) and API route (401 `MFA_ENROLLMENT_REQUIRED` / `MFA_REQUIRED`). Patient checkout, webhooks, crons, health and `/login` are not gated.
+- The rule lives in `src/lib/auth/mfa.ts`; `src/proxy.ts` applies it to every authenticated page (redirect to `/mfa/enroll` or `/mfa/challenge` with `redirectTo`) and API route (401 `MFA_ENROLLMENT_REQUIRED` / `MFA_REQUIRED`). Patient checkout, webhooks, crons, health and `/login` are not gated.
 - The AAL comes from `supabase.auth.getClaims()`, which verifies the JWT. Never read it from an unverified session. `getUser()` stays the identity read.
 - A user who enrolled voluntarily (Settings) is challenged on every new sign-in even with enforcement off.
 - The login factor is Supabase Auth's TOTP factor (`auth.mfa_factors`). The EPCS signing secret (`providers.totp_secret_encrypted`, WO-86 / #171) is a separate factor on purpose: Supabase can only raise a session to AAL2 through its own factors, and EPCS needs its code checked by our server at the moment of signing. A provider may hold both in one authenticator app as two entries.

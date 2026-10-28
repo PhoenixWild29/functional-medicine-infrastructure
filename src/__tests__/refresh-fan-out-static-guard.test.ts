@@ -8,14 +8,14 @@
  * likely to break silently:
  *
  *   1. The prefetch short-circuit must run BEFORE createServerClient in
- *      src/middleware.ts. Ordering is the entire fix — a short-circuit that
+ *      src/proxy.ts. Ordering is the entire fix — a short-circuit that
  *      runs after the auth client is built has already paid for the refresh
  *      and can still lose the rotation race.
  *   2. SidebarNav must keep prefetch={false}. It is mounted on every
  *      authenticated clinic page and renders its three links twice, so it is
  *      the dominant prefetch fan-out and the reason the bug reproduced under
  *      automation but not under manual clicking.
- *   3. src/middleware.ts must remain the only context that both rotates and
+ *   3. src/proxy.ts must remain the only context that both rotates and
  *      persists the token pair (re-asserted here so this file fails loudly
  *      if someone "fixes" the race by refreshing somewhere else).
  */
@@ -27,7 +27,7 @@ const read = (rel: string): string =>
   readFileSync(join(process.cwd(), rel), 'utf8')
 
 describe('refresh fan-out guards', () => {
-  const middlewareSrc = read('src/middleware.ts')
+  const middlewareSrc = read('src/proxy.ts')
 
   it('middleware short-circuits prefetch requests', () => {
     expect(middlewareSrc).toMatch(/isPrefetchRequest/)
@@ -48,7 +48,7 @@ describe('refresh fan-out guards', () => {
     // Skipping on RSC would hand every soft navigation an ungated response.
     const detector = middlewareSrc.slice(
       middlewareSrc.indexOf('function isPrefetchRequest'),
-      middlewareSrc.indexOf('// Edge Middleware'),
+      middlewareSrc.indexOf('// Proxy (Node.js runtime)'),
     )
     expect(detector).not.toMatch(/get\('rsc'\)/i)
   })

@@ -3768,6 +3768,7 @@ export type Database = {
           cycle_on_days: number | null
           default_quantity: string | null
           default_refills: number | null
+          deleted_at: string | null
           dose_amount: string | null
           dose_presets: Json
           dose_unit: string | null
@@ -3795,6 +3796,7 @@ export type Database = {
           cycle_on_days?: number | null
           default_quantity?: string | null
           default_refills?: number | null
+          deleted_at?: string | null
           dose_amount?: string | null
           dose_presets?: Json
           dose_unit?: string | null
@@ -3822,6 +3824,7 @@ export type Database = {
           cycle_on_days?: number | null
           default_quantity?: string | null
           default_refills?: number | null
+          deleted_at?: string | null
           dose_amount?: string | null
           dose_presets?: Json
           dose_unit?: string | null

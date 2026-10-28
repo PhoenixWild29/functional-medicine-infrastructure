@@ -8,7 +8,7 @@
 //      static assets included): HSTS, X-Frame-Options, nosniff,
 //      Referrer-Policy. These never vary by page.
 //
-//   2. buildCsp() + permissionsPolicy() (src/middleware.ts, every page and
+//   2. buildCsp() + permissionsPolicy() (src/proxy.ts, every page and
 //      API response the middleware sees): an ENFORCED Content-Security-
 //      Policy with a fresh nonce per request, and a Permissions-Policy.
 //      Both vary by area: only patient checkout may load Stripe.js, frame

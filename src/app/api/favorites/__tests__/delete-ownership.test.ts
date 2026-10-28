@@ -43,7 +43,8 @@ beforeEach(() => {
 })
 
 const del = () => DELETE(new NextRequest(`http://localhost/api/favorites?id=${FAV}`, { method: 'DELETE', headers: { 'sec-fetch-site': 'same-origin' } }))
-const deleted = () => db.calls.some(c => c.table === 'provider_favorites' && c.op === 'delete')
+// A soft delete (decision 11 follow-up): the row gets deleted_at; a hard delete never runs.
+const deleted = () => db.calls.some(c => c.table === 'provider_favorites' && (c.op === 'delete' || (c.op === 'update' && typeof (c.payload as { deleted_at?: unknown } | null)?.deleted_at === 'string')))
 
 it('the owning provider can delete it', async () => {
   user = as('u-owner', 'provider')

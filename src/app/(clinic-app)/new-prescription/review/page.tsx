@@ -34,7 +34,7 @@ export default async function ReviewPage() {
   // submit. Non-providers get the existing "Save as Draft — Provider
   // Signs Later" action instead.
   //
-  // 2026-09 sweep: getUser(), never getSession(). src/middleware.ts has
+  // 2026-09 sweep: getUser(), never getSession(). src/proxy.ts has
   // already refreshed the token pair for this request and forwarded the
   // rotated cookies onto it, so this read validates a current token and
   // cannot start a rotation a Server Component is unable to persist.

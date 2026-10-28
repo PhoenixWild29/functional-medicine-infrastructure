@@ -281,10 +281,14 @@ export async function acceptInvite(
   const { pharmacyId, drop: dropPharmacy } = pharmacy
 
   // 2. The account: role and pharmacy in app_metadata (service role only).
-  //    Confirmed: the invite link proved the address.
+  //    Confirmed: the invite link proved the address. must_change_password
+  //    (B's review P2, as api/onboarding/invite/accept does for clinic
+  //    invites): whoever sent the link could have opened it and chosen this
+  //    password, so the invitee sets their own from an emailed reset link
+  //    before anything else (lib/auth/must-change-password).
   const login = await createLogin(db, {
     email: invite.admin_email, password, fullName,
-    appMetadata: appMetadataFor({ role: 'pharmacy_admin', clinicId: null, pharmacyId }),
+    appMetadata: { ...appMetadataFor({ role: 'pharmacy_admin', clinicId: null, pharmacyId }), must_change_password: true },
   })
   if (!login.ok) {
     await dropPharmacy()
