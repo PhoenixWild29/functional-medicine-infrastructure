@@ -115,7 +115,10 @@ describe('the invitee', () => {
     expect(String(pharmacy!['slug'])).toMatch(/^strive-pharmacy-[0-9a-f]{6}$/)
 
     const [user] = db.users
-    expect(user).toEqual(expect.objectContaining({ email: 'dana@strive.example', app_metadata: { app_role: 'pharmacy_admin', clinic_id: null, pharmacy_id: pharmacy!['pharmacy_id'] }, user_metadata: { full_name: 'Dana Ruiz' } }))
+    // B's review P2, as for clinic invites: whoever sent the link could have
+    // opened it and chosen the password, so the new login must set its own
+    // (must_change_password, cleared by api/auth/password).
+    expect(user).toEqual(expect.objectContaining({ email: 'dana@strive.example', app_metadata: { app_role: 'pharmacy_admin', clinic_id: null, pharmacy_id: pharmacy!['pharmacy_id'], must_change_password: true }, user_metadata: { full_name: 'Dana Ruiz' } }))
     const created = db.calls.find(c => c.kind === 'auth' && c.name === 'createUser')!.payload as Record<string, unknown>
     expect(created['email_confirm']).toBe(true)
 
