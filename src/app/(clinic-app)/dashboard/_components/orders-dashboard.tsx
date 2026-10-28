@@ -346,7 +346,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
           <button
             type="button"
             onClick={() => void refetch()}
-            className="underline hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="underline hover:no-underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Retry
           </button>
@@ -363,7 +363,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
             <button
               type="button"
               onClick={() => setViewMode('table')}
-              className={`px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:bg-accent'}`}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:bg-accent'}`}
               aria-pressed={viewMode === 'table'}
             >
               Table
@@ -371,7 +371,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
             <button
               type="button"
               onClick={() => setViewMode('kanban')}
-              className={`px-3 py-1.5 text-xs font-medium border-l border-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${viewMode === 'kanban' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:bg-accent'}`}
+              className={`px-3 py-1.5 text-xs font-medium border-l border-border transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${viewMode === 'kanban' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:bg-accent'}`}
               aria-pressed={viewMode === 'kanban'}
             >
               Cards
@@ -393,7 +393,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
               // A protocol is a template: created directly, no patient
               // (Lauren, 18 Oct). Back here on save or Cancel.
               onClick={() => router.push('/protocols/new?from=%2Fdashboard')}
-              className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               + New Protocol
             </button>
@@ -403,7 +403,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
               type="button"
               disabled={!isStripeActive}
               onClick={() => router.push('/refill')}
-              className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               Refill
             </button>
@@ -415,7 +415,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
               type="button"
               disabled={!isStripeActive}
               onClick={() => router.push('/new-prescription')}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               aria-describedby={!isStripeActive ? 'stripe-gate-tooltip' : undefined}
             >
               + New Prescription
@@ -474,7 +474,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
               onClick={() => selectTab(tab.id)}
               className={`
                 flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-t-md border-b-2 transition-colors
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
+                focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring
                 ${isActive
                   ? 'border-primary text-primary font-medium'
                   : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'}
@@ -505,7 +505,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
           <button
             type="button"
             onClick={clearPeriod}
-            className="text-sm text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="text-sm text-primary underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Show all dates
           </button>
@@ -519,7 +519,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
             type="button"
             data-testid="sign-all-drafts"
             onClick={() => router.push(batchSignHref(myDraftIds.slice(0, MAX_BATCH_ORDERS)))}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Sign all ({myDraftIds.length})
           </button>
@@ -528,7 +528,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
               type="button"
               data-testid="sign-selected-drafts"
               onClick={() => router.push(batchSignHref(chosenDraftIds.slice(0, MAX_BATCH_ORDERS)))}
-              className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-xs hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               Sign selected ({chosenDraftIds.length})
             </button>
@@ -567,7 +567,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
                 <button
                   type="button"
                   onClick={() => router.push('/new-prescription')}
-                  className="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
+                  className="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring transition-colors"
                 >
                   New Prescription
                 </button>
@@ -580,7 +580,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
               <button
                 type="button"
                 onClick={clearPeriod}
-                className="text-sm text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="text-sm text-primary underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Clear filters
               </button>
@@ -623,7 +623,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
           {liveWindow.truncated && liveWindow.olderBefore && (
             <>
               {' '}
-              <a href={olderOrdersHref(searchParams, liveWindow.olderBefore)} className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <a href={olderOrdersHref(searchParams, liveWindow.olderBefore)} className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
                 Show older orders
               </a>
             </>
@@ -631,7 +631,7 @@ export function OrdersDashboard({ initialOrders, stripeConnectStatus, clinicId, 
           {liveWindow.before && (
             <>
               {' '}
-              <a href={olderOrdersHref(searchParams, null)} className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <a href={olderOrdersHref(searchParams, null)} className="font-medium text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
                 Back to the most recent orders
               </a>
             </>

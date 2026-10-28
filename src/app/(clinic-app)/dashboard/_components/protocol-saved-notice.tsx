@@ -30,7 +30,7 @@ export function ProtocolSavedNotice() {
       <button
         type="button"
         onClick={dismiss}
-        className="text-sm font-medium text-green-800 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="text-sm font-medium text-green-800 underline underline-offset-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
       >
         Dismiss
       </button>

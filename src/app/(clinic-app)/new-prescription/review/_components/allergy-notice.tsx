@@ -86,7 +86,7 @@ export function AllergyNotice({ patient, onSaved, prompting = false, onCancelPro
           type="button"
           onClick={retryLoad}
           disabled={retrying}
-          className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-transparent dark:text-red-200"
+          className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring dark:bg-transparent dark:text-red-200"
         >
           {retrying ? 'Retrying…' : 'Retry'}
         </button>
@@ -181,7 +181,7 @@ export function AllergyNotice({ patient, onSaved, prompting = false, onCancelPro
             type="button"
             onClick={() => void confirmNkda()}
             disabled={saving}
-            className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 disabled:opacity-50 dark:bg-amber-950/40 dark:text-amber-100"
+            className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-500 disabled:opacity-50 dark:bg-amber-950/40 dark:text-amber-100"
           >
             {saving ? 'Saving…' : 'Confirm NKDA'}
           </button>
@@ -190,7 +190,7 @@ export function AllergyNotice({ patient, onSaved, prompting = false, onCancelPro
               type="button"
               onClick={() => setEditing(true)}
               disabled={saving}
-              className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 disabled:opacity-50 dark:bg-amber-950/40 dark:text-amber-100"
+              className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-500 disabled:opacity-50 dark:bg-amber-950/40 dark:text-amber-100"
             >
               Record allergies
             </button>

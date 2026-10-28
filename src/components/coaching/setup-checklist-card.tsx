@@ -78,7 +78,7 @@ export function SetupChecklistCard() {
   const done = checklist.steps.filter(s => s.done).length
 
   return (
-    <section aria-labelledby="setup-checklist-title" className="rounded-xl border border-border bg-card p-5 shadow-sm" data-testid="setup-checklist">
+    <section aria-labelledby="setup-checklist-title" className="rounded-xl border border-border bg-card p-5 shadow-xs" data-testid="setup-checklist">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="setup-checklist-title" className="text-base font-semibold text-foreground">Get set up</h2>
@@ -88,7 +88,7 @@ export function SetupChecklistCard() {
           type="button"
           onClick={() => void hide()}
           disabled={hiding}
-          className="rounded-md px-2 py-1 text-sm font-medium text-foreground underline underline-offset-2 hover:bg-accent disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-md px-2 py-1 text-sm font-medium text-foreground underline underline-offset-2 hover:bg-accent disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           Hide checklist
         </button>
@@ -103,7 +103,7 @@ export function SetupChecklistCard() {
           <li key={step.id}>
             <Link
               href={step.href}
-              className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span className={step.done ? 'text-muted-foreground line-through decoration-1' : 'font-medium'}>{step.label}</span>
               <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${step.done ? 'bg-emerald-100 text-emerald-800' : 'bg-muted text-foreground'}`}>

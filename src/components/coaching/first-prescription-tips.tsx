@@ -41,16 +41,16 @@ export function FirstPrescriptionTips({ seen }: { seen: boolean }) {
       <p className="mt-1 text-sm text-foreground" aria-live="polite">{RX_TIPS[index]}</p>
       <div className="mt-2 flex flex-wrap items-center gap-3">
         {last ? (
-          <button type="button" onClick={finish} className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <button type="button" onClick={finish} className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
             Done
           </button>
         ) : (
-          <button type="button" onClick={() => setIndex(i => i + 1)} className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <button type="button" onClick={() => setIndex(i => i + 1)} className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
             Next
           </button>
         )}
         {!last && (
-          <button type="button" onClick={finish} className="text-sm font-medium text-foreground underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <button type="button" onClick={finish} className="text-sm font-medium text-foreground underline underline-offset-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
             Skip tips
           </button>
         )}

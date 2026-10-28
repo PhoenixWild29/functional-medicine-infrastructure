@@ -40,7 +40,7 @@ export function ResendIntakeLink({ patientId, className = '' }: { patientId: str
         onClick={e => { e.stopPropagation(); void resend() }}
         onKeyDown={e => e.stopPropagation()}
         disabled={busy}
-        className="rounded-md border border-slate-500 px-2 py-1 text-xs font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+        className="rounded-md border border-slate-500 px-2 py-1 text-xs font-medium text-foreground hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
       >
         {busy ? 'Sending…' : 'Resend link'}
       </button>

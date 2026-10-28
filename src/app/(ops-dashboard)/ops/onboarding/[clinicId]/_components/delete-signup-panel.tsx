@@ -14,8 +14,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-const BUTTON = 'inline-flex min-h-[44px] items-center rounded-md border border-slate-500 bg-background px-4 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
-const DANGER = 'inline-flex min-h-[44px] items-center rounded-md bg-red-700 px-4 text-sm font-semibold text-white hover:bg-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
+const BUTTON = 'inline-flex min-h-[44px] items-center rounded-md border border-slate-500 bg-background px-4 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
+const DANGER = 'inline-flex min-h-[44px] items-center rounded-md bg-red-700 px-4 text-sm font-semibold text-white hover:bg-red-800 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
 
 export function DeleteSignupPanel({ clinicId, clinicName }: { clinicId: string; clinicName: string }) {
   const router = useRouter()

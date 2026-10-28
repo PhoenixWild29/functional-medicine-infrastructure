@@ -366,7 +366,7 @@ export function PipelineView({
                 onClick={() => setSelectedGroup(isSelected ? null : group.label)}
                 className={`
                   w-full flex items-center justify-between rounded-md px-2 py-1 text-left text-xs font-semibold
-                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
+                  focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring
                   ${isSelected ? 'bg-primary/10 text-primary' : `hover:bg-accent ${group.color}`}
                 `}
                 aria-pressed={isSelected}
@@ -398,7 +398,7 @@ export function PipelineView({
                       }}
                       className={`
                         w-full flex items-center justify-between rounded px-2 py-0.5 text-left text-xs
-                        focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring
+                        focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring
                         ${filters.statuses.includes(status)
                           ? 'bg-primary/10 text-primary font-medium'
                           : 'text-muted-foreground hover:bg-accent hover:text-foreground'}
@@ -425,7 +425,7 @@ export function PipelineView({
             <button
               type="button"
               onClick={() => void refetch()}
-              className="underline hover:no-underline focus-visible:outline-none"
+              className="underline hover:no-underline focus-visible:outline-hidden"
             >
               Retry
             </button>
@@ -450,7 +450,7 @@ export function PipelineView({
           <select
             value={filters.clinicId}
             onChange={e => setFilters(f => ({ ...f, clinicId: e.target.value }))}
-            className="rounded-md border border-input bg-background text-foreground px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md border border-input bg-background text-foreground px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Filter by clinic"
           >
             <option value="">All Clinics</option>
@@ -462,7 +462,7 @@ export function PipelineView({
           <select
             value={filters.pharmacyId}
             onChange={e => setFilters(f => ({ ...f, pharmacyId: e.target.value }))}
-            className="rounded-md border border-input bg-background text-foreground px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md border border-input bg-background text-foreground px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Filter by pharmacy"
           >
             <option value="">All Pharmacies</option>
@@ -474,7 +474,7 @@ export function PipelineView({
           <select
             value={filters.tier}
             onChange={e => setFilters(f => ({ ...f, tier: e.target.value as PipelineFilters['tier'] }))}
-            className="rounded-md border border-input bg-background text-foreground px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md border border-input bg-background text-foreground px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Filter by integration tier"
           >
             <option value="">All Tiers</option>
@@ -488,14 +488,14 @@ export function PipelineView({
             type="date"
             value={filters.dateFrom}
             onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value }))}
-            className="rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="From date"
           />
           <input
             type="date"
             value={filters.dateTo}
             onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value }))}
-            className="rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md border border-input bg-background px-2 py-1.5 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="To date"
           />
 
@@ -506,7 +506,7 @@ export function PipelineView({
                 setFilters(EMPTY_FILTERS)
                 setSelectedGroup(null)
               }}
-              className="text-xs text-muted-foreground underline hover:text-foreground focus-visible:outline-none"
+              className="text-xs text-muted-foreground underline hover:text-foreground focus-visible:outline-hidden"
             >
               Clear all filters
             </button>
@@ -532,7 +532,7 @@ export function PipelineView({
                 <button
                   type="button"
                   onClick={chip.clear}
-                  className="hover:text-destructive focus-visible:outline-none"
+                  className="hover:text-destructive focus-visible:outline-hidden"
                   aria-label={`Remove ${chip.label} filter`}
                 >×</button>
               </span>
@@ -543,7 +543,7 @@ export function PipelineView({
                 <button
                   type="button"
                   onClick={() => setSelectedGroup(null)}
-                  className="hover:text-destructive focus-visible:outline-none"
+                  className="hover:text-destructive focus-visible:outline-hidden"
                   aria-label={`Remove ${selectedGroup} filter`}
                 >×</button>
               </span>
@@ -554,7 +554,7 @@ export function PipelineView({
                 <button
                   type="button"
                   onClick={() => setFilters(f => ({ ...f, statuses: f.statuses.filter(x => x !== s) }))}
-                  className="hover:text-destructive focus-visible:outline-none"
+                  className="hover:text-destructive focus-visible:outline-hidden"
                   aria-label={`Remove ${getStatusConfig(s).label} filter`}
                 >×</button>
               </span>
@@ -573,7 +573,7 @@ export function PipelineView({
                 type="button"
                 disabled={bulkLoading}
                 onClick={() => void handleBulkAction(bulkAction)}
-                className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {bulkLoading ? 'Processing…' : (
                   bulkAction === 'force_fax' ? 'Force Fax All' : 'Retry Fax All'
@@ -583,7 +583,7 @@ export function PipelineView({
             <button
               type="button"
               onClick={() => setSelectedIds(new Set())}
-              className="text-xs text-muted-foreground underline hover:text-foreground focus-visible:outline-none"
+              className="text-xs text-muted-foreground underline hover:text-foreground focus-visible:outline-hidden"
             >
               Deselect all
             </button>
@@ -621,7 +621,7 @@ export function PipelineView({
               <button
                 type="button"
                 onClick={() => { setFilters(EMPTY_FILTERS); setSelectedGroup(null) }}
-                className="mt-3 text-sm text-primary underline hover:no-underline focus-visible:outline-none"
+                className="mt-3 text-sm text-primary underline hover:no-underline focus-visible:outline-hidden"
               >
                 Clear filters
               </button>
@@ -753,7 +753,7 @@ function OrderRow({
         <button
           type="button"
           onClick={onOpenDetail}
-          className="text-left font-mono text-xs text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+          className="text-left font-mono text-xs text-primary underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded"
         >
           {order.orderNumber ?? order.orderId.slice(0, 8)}
         </button>
@@ -915,14 +915,14 @@ function OrderRow({
               placeholder="Tracking #"
               value={trackingInput}
               onChange={e => setTrackingInput(e.target.value)}
-              className="w-24 rounded border border-input px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-24 rounded border border-input px-2 py-1 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             />
             <input
               type="text"
               placeholder="Carrier"
               value={carrierInput}
               onChange={e => setCarrierInput(e.target.value)}
-              className="w-20 rounded border border-input px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-20 rounded border border-input px-2 py-1 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             />
             <button
               type="button"
@@ -937,14 +937,14 @@ function OrderRow({
                 setTrackingInput('')
                 setCarrierInput('')
               }}
-              className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               Save
             </button>
             <button
               type="button"
               onClick={() => setShowTracking(false)}
-              className="text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none"
+              className="text-xs text-muted-foreground hover:text-foreground focus-visible:outline-hidden"
             >
               ✕
             </button>
@@ -977,7 +977,7 @@ function ActionButton({ label, disabled, title, onClick, variant = 'default' }: 
       disabled={disabled}
       title={title}
       onClick={onClick}
-      className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${cls}`}
+      className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${cls}`}
     >
       {label}
     </button>

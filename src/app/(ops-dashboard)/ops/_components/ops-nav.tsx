@@ -66,7 +66,7 @@ export function OpsNav({ badges }: { badges?: OpsNavBadges } = {}) {
       className="sticky top-0 z-10 border-b border-border bg-card"
       aria-label="Ops dashboard sections"
     >
-      <div className="mx-auto max-w-screen-2xl px-4">
+      <div className="mx-auto max-w-(--breakpoint-2xl) px-4">
         <div className="flex h-11 items-end gap-0">
           {NAV_TABS.map(tab => {
             const isActive = tab.href === current
@@ -77,8 +77,8 @@ export function OpsNav({ badges }: { badges?: OpsNavBadges } = {}) {
                 key={tab.href}
                 href={tab.href}
                 className={[
-                  'inline-flex items-center px-4 pb-2.5 pt-2 text-sm border-b-2 transition-colors duration-[var(--duration-fast)]',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0',
+                  'inline-flex items-center px-4 pb-2.5 pt-2 text-sm border-b-2 transition-colors duration-(--duration-fast)',
+                  'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0',
                   isActive
                     ? 'border-primary text-foreground font-medium'
                     : 'border-transparent text-muted-foreground hover:text-foreground',

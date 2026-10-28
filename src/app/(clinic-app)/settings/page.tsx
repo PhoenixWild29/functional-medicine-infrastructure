@@ -100,7 +100,7 @@ export default async function SettingsPage() {
 
         {/* ── Section navigation — sticky on desktop ── */}
         <nav
-          className="hidden md:block w-44 flex-shrink-0 sticky top-6"
+          className="hidden md:block w-44 shrink-0 sticky top-6"
           aria-label="Settings sections"
         >
           {/* In the order of the sections below, so the marked section

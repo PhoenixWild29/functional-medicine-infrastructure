@@ -69,7 +69,7 @@ export function AcceptAgreementVersion({ agreement, title, version, text }: { ag
         tabIndex={0}
         role="region"
         aria-label={`${title} ${version} text`}
-        className="max-h-80 space-y-3 overflow-y-auto rounded-lg border border-slate-500 bg-background p-4 text-sm leading-relaxed text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="max-h-80 space-y-3 overflow-y-auto rounded-lg border border-slate-500 bg-background p-4 text-sm leading-relaxed text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
       >
         <LegalMarkdown text={text} headingLevel={3} />
       </div>

@@ -191,7 +191,7 @@ export function SessionBanner() {
           <button
             type="button"
             onClick={() => router.push('/new-prescription/review')}
-            className="text-xs font-medium text-primary underline hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="text-xs font-medium text-primary underline hover:text-primary/80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Review & Send
           </button>

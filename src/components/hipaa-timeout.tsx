@@ -143,7 +143,7 @@ export function HipaaTimeout({ timeoutMinutes = DEFAULT_IDLE_TIMEOUT_MINUTES }: 
       aria-modal="true"
       aria-labelledby="hipaa-timeout-title"
       aria-describedby="hipaa-timeout-desc"
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-100 m-0 flex items-center justify-center bg-black/60 p-4"
     >
       <div className="w-full max-w-sm rounded-lg bg-card border border-border p-6 shadow-xl space-y-4">
         <h2 id="hipaa-timeout-title" className="text-lg font-semibold text-foreground">
@@ -159,14 +159,14 @@ export function HipaaTimeout({ timeoutMinutes = DEFAULT_IDLE_TIMEOUT_MINUTES }: 
             ref={stayRef}
             type="button"
             onClick={handleStayActive}
-            className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Stay Logged In
           </button>
           <button
             type="button"
             onClick={() => void forceSignOut()}
-            className="flex-1 rounded-md border border-input px-4 py-2 text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex-1 rounded-md border border-input px-4 py-2 text-sm hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Sign Out
           </button>

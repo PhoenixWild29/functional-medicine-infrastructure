@@ -25,7 +25,7 @@ export const metadata = {
 }
 
 const MUTED = 'text-slate-700 dark:text-slate-300'
-const LINK = 'text-sm font-medium text-blue-700 underline underline-offset-2 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+const LINK = 'text-sm font-medium text-blue-700 underline underline-offset-2 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring'
 
 export default async function NotificationsPage() {
   const supabaseAuth = await createServerClient()

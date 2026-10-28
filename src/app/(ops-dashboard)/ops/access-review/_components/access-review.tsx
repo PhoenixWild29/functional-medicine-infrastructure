@@ -35,7 +35,7 @@ interface ReviewResponse {
 
 const ROLES = ['clinic_admin', 'provider', 'medical_assistant', 'ops_admin', 'pharmacy_admin'] as const
 
-const FIELD = 'mt-1 block w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+const FIELD = 'mt-1 block w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring'
 
 function daysAgo(n: number): string {
   return new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
@@ -132,13 +132,13 @@ export function AccessReview({ clinics }: Props) {
         <div className="flex items-end gap-2">
           <button
             type="submit"
-            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Apply filters
           </button>
           <a
             href={`/api/ops/access-review?${query}&format=csv`}
-            className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Export CSV
           </a>

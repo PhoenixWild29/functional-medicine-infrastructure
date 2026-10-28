@@ -33,7 +33,7 @@ export default async function OnboardingLayout({ children }: { children: React.R
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
           <span className="text-lg font-bold tracking-tight text-foreground">CompoundIQ</span>
           <div className="flex items-center gap-4">
-            <a href="/dashboard" className="text-sm font-medium text-primary underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <a href="/dashboard" className="text-sm font-medium text-primary underline underline-offset-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
               Go to the app
             </a>
             <NavSignOutButton />

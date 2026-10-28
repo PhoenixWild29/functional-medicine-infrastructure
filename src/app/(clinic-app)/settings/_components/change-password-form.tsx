@@ -7,7 +7,7 @@
 import { useState, type FormEvent } from 'react'
 import { MIN_PASSWORD_LENGTH } from '@/lib/auth/create-login'
 
-const INPUT = 'mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+const INPUT = 'mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring'
 const LABEL = 'block text-sm font-medium text-foreground'
 
 export function ChangePasswordForm() {

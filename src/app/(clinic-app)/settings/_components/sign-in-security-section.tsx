@@ -31,7 +31,7 @@ export function SignInSecuritySection({ enrolled, enforced }: Props) {
       {!enrolled && (
         <Link
           href={`/mfa/enroll?redirectTo=${encodeURIComponent('/settings')}`}
-          className="inline-flex rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           Set up two-step sign-in
         </Link>

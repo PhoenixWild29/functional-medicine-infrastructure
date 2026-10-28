@@ -48,7 +48,7 @@ export function PossibleDuplicateFlag({ patientId, duplicateName, onDismissed, c
           onClick={() => void dismiss()}
           disabled={busy}
           aria-label={`Dismiss possible duplicate of ${duplicateName}`}
-          className="rounded border border-amber-700 px-1.5 py-0.5 text-[11px] font-semibold text-amber-950 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+          className="rounded border border-amber-700 px-1.5 py-0.5 text-[11px] font-semibold text-amber-950 hover:bg-amber-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
         >
           {busy ? 'Dismissing…' : 'Dismiss'}
         </button>

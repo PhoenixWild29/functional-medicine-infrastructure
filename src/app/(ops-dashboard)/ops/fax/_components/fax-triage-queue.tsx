@@ -158,13 +158,13 @@ export function FaxTriageQueue({ initialData }: Props) {
         {isError && (
           <div className="flex items-center justify-between rounded-md border border-orange-300 bg-orange-50 px-4 py-2.5 text-sm text-orange-800" role="alert">
             <span>Connection lost. Showing cached data</span>
-            <button type="button" onClick={() => void refetch()} className="underline focus-visible:outline-none">Retry</button>
+            <button type="button" onClick={() => void refetch()} className="underline focus-visible:outline-hidden">Retry</button>
           </div>
         )}
         {actionError && (
           <div className="flex items-center gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700" role="alert">
             <span>{actionError}</span>
-            <button type="button" onClick={() => setActionError(null)} className="underline focus-visible:outline-none">Dismiss</button>
+            <button type="button" onClick={() => setActionError(null)} className="underline focus-visible:outline-hidden">Dismiss</button>
           </div>
         )}
 
@@ -176,7 +176,7 @@ export function FaxTriageQueue({ initialData }: Props) {
               key={opt.value}
               type="button"
               onClick={() => setStatusFilter(opt.value)}
-              className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
                 statusFilter === opt.value
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted text-muted-foreground hover:bg-muted/80'
@@ -270,7 +270,7 @@ export function FaxTriageQueue({ initialData }: Props) {
                         <button
                           type="button"
                           onClick={e => { e.stopPropagation(); setSelectedFax(fax) }}
-                          className="text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className="text-primary underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                           aria-label={`View fax ${fax.faxId}`}
                         >
                           View
@@ -293,7 +293,7 @@ export function FaxTriageQueue({ initialData }: Props) {
             <button
               type="button"
               onClick={() => setSelectedFax(null)}
-              className="text-muted-foreground hover:text-foreground focus-visible:outline-none"
+              className="text-muted-foreground hover:text-foreground focus-visible:outline-hidden"
               aria-label="Close detail pane"
             >
               ✕
@@ -335,15 +335,15 @@ export function FaxTriageQueue({ initialData }: Props) {
             <dt className="text-muted-foreground">Order status</dt>
             {/* WO-93: long enum values like PHARMACY_ACKNOWLEDGED overflow the
                 160px column and force a horizontal scrollbar on the panel.
-                break-words allows the value to wrap; precedent at the Notes
+                wrap-break-word allows the value to wrap; precedent at the Notes
                 field below already uses this pattern. */}
-            <dd className="break-words">{selectedFaxLive.orderStatus ?? '—'}</dd>
+            <dd className="wrap-break-word">{selectedFaxLive.orderStatus ?? '—'}</dd>
             <dt className="text-muted-foreground">Received</dt>
             <dd>{new Date(selectedFaxLive.createdAt).toLocaleString()}</dd>
             {selectedFaxLive.notes && (
               <>
                 <dt className="text-muted-foreground">Notes</dt>
-                <dd className="col-span-1 break-words">{selectedFaxLive.notes}</dd>
+                <dd className="col-span-1 wrap-break-word">{selectedFaxLive.notes}</dd>
               </>
             )}
           </dl>
@@ -365,11 +365,11 @@ export function FaxTriageQueue({ initialData }: Props) {
                     <button
                       type="button"
                       onClick={() => { void handleAction(selectedFaxLive.faxId, 'acknowledge') }}
-                      className="rounded bg-amber-600 px-2 py-0.5 text-white hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="rounded bg-amber-600 px-2 py-0.5 text-white hover:bg-amber-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       Yes
                     </button>
-                    <button type="button" onClick={() => setConfirmKey(null)} className="rounded border border-border px-2 py-0.5 hover:bg-muted focus-visible:outline-none">Cancel</button>
+                    <button type="button" onClick={() => setConfirmKey(null)} className="rounded border border-border px-2 py-0.5 hover:bg-muted focus-visible:outline-hidden">Cancel</button>
                   </div>
                 ) : (
                   <ActionBtn
@@ -389,11 +389,11 @@ export function FaxTriageQueue({ initialData }: Props) {
                     <button
                       type="button"
                       onClick={() => { void handleAction(selectedFaxLive.faxId, 'reject') }}
-                      className="rounded bg-red-600 px-2 py-0.5 text-white hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="rounded bg-red-600 px-2 py-0.5 text-white hover:bg-red-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       Yes, reject
                     </button>
-                    <button type="button" onClick={() => setConfirmKey(null)} className="rounded border border-border px-2 py-0.5 hover:bg-muted focus-visible:outline-none">Cancel</button>
+                    <button type="button" onClick={() => setConfirmKey(null)} className="rounded border border-border px-2 py-0.5 hover:bg-muted focus-visible:outline-hidden">Cancel</button>
                   </div>
                 ) : (
                   <ActionBtn
@@ -416,7 +416,7 @@ export function FaxTriageQueue({ initialData }: Props) {
                     value={manualMatchId}
                     onChange={e => setManualMatchId(e.target.value)}
                     placeholder="Order UUID"
-                    className={`flex-1 rounded border bg-background px-2 py-1 text-[11px] font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    className={`flex-1 rounded border bg-background px-2 py-1 text-[11px] font-mono focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
                       manualMatchId && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(manualMatchId)
                         ? 'border-red-400'
                         : 'border-input'
@@ -432,7 +432,7 @@ export function FaxTriageQueue({ initialData }: Props) {
                       isLoading(selectedFaxLive.faxId, 'manual_match')
                     }
                     onClick={() => { void handleAction(selectedFaxLive.faxId, 'manual_match', { orderId: manualMatchId.trim() }) }}
-                    className="rounded bg-primary px-2 py-1 text-[11px] text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="rounded bg-primary px-2 py-1 text-[11px] text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {isLoading(selectedFaxLive.faxId, 'manual_match') ? '…' : 'Match'}
                   </button>
@@ -450,11 +450,11 @@ export function FaxTriageQueue({ initialData }: Props) {
                   <button
                     type="button"
                     onClick={() => { void handleAction(selectedFaxLive.faxId, 'archive') }}
-                    className="rounded bg-muted-foreground px-2 py-0.5 text-background hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="rounded bg-muted-foreground px-2 py-0.5 text-background hover:opacity-80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     Yes
                   </button>
-                  <button type="button" onClick={() => setConfirmKey(null)} className="rounded border border-border px-2 py-0.5 hover:bg-muted focus-visible:outline-none">Cancel</button>
+                  <button type="button" onClick={() => setConfirmKey(null)} className="rounded border border-border px-2 py-0.5 hover:bg-muted focus-visible:outline-hidden">Cancel</button>
                 </div>
               ) : (
                 <ActionBtn
@@ -498,7 +498,7 @@ function ActionBtn({ label, loading, onClick, variant }: ActionBtnProps) {
       type="button"
       disabled={loading}
       onClick={onClick}
-      className={`w-full rounded px-3 py-1.5 text-[11px] font-medium transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${cls}`}
+      className={`w-full rounded px-3 py-1.5 text-[11px] font-medium transition-colors disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${cls}`}
     >
       {loading ? '…' : label}
     </button>

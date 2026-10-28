@@ -18,7 +18,7 @@ import { IMPORT_ROLES } from '@/lib/patients/import/roles'
 import Link from 'next/link'
 import { ImportWizard } from './_components/import-wizard'
 
-const BACK_LINK = 'text-sm font-medium text-blue-700 underline underline-offset-2 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+const BACK_LINK = 'text-sm font-medium text-blue-700 underline underline-offset-2 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring'
 
 /** The way back to Settings, above either view. */
 function BackToSettings() {

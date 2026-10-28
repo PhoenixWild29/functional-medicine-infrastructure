@@ -287,7 +287,7 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
                 value={details.refills}
                 disabled={disabled}
                 onChange={e => onChange({ refills: parseInt(e.target.value, 10) })}
-                className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
               >
                 {REFILL_CHOICES.map(n => (
                   <option key={n} value={n}>{n}</option>
@@ -317,7 +317,7 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
                 value={details.syringeOption}
                 disabled={disabled}
                 onChange={e => onChange({ syringeOption: e.target.value as SyringeOption })}
-                className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
               >
                 {SYRINGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
@@ -330,7 +330,7 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
                 value={details.shippingType}
                 disabled={disabled}
                 onChange={e => onChange({ shippingType: e.target.value as ShippingType })}
-                className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
               >
                 {SHIPPING_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
@@ -359,7 +359,7 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
                       onChange({ clinicalDifference: e.target.value || null })
                     }
                   }}
-                  className={`mt-0.5 w-full rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${missingClinical ? 'border-amber-500' : 'border-input'}`}
+                  className={`mt-0.5 w-full rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${missingClinical ? 'border-amber-500' : 'border-input'}`}
                 >
                   <option value="">Select a reason…</option>
                   {options.map(o => <option key={o} value={o}>{o}</option>)}
@@ -374,7 +374,7 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
                     value={details.clinicalDifference ?? ''}
                     disabled={disabled}
                     onChange={e => onChange({ clinicalDifference: e.target.value || null })}
-                    className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                    className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                   />
                 )}
                 {clinicalOther && <p className="mt-0.5 text-[11px] text-muted-foreground">At least {MIN_OTHER_REASON_LENGTH} characters.</p>}
@@ -388,7 +388,7 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
                 disabled={disabled}
                 aria-invalid={missingClinical ? 'true' : undefined}
                 onChange={e => onChange({ clinicalDifference: e.target.value || null })}
-                className={`mt-0.5 w-full rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${missingClinical ? 'border-amber-500' : 'border-input'}`}
+                className={`mt-0.5 w-full rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${missingClinical ? 'border-amber-500' : 'border-input'}`}
               />
             )}
             {formulationId && (
@@ -430,7 +430,7 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
                 disabled={disabled}
                 aria-invalid={missingDiagnosis ? 'true' : undefined}
                 onChange={e => onChange({ diagnosisCode: e.target.value || null })}
-                className={`mt-0.5 w-full rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${missingDiagnosis ? 'border-amber-500' : 'border-input'}`}
+                className={`mt-0.5 w-full rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${missingDiagnosis ? 'border-amber-500' : 'border-input'}`}
               />
             </div>
             <div className="col-span-2">
@@ -443,7 +443,7 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
                 value={details.diagnosisText ?? ''}
                 disabled={disabled}
                 onChange={e => onChange({ diagnosisText: e.target.value || null })}
-                className={`mt-0.5 w-full rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${missingDiagnosis ? 'border-amber-500' : 'border-input'}`}
+                className={`mt-0.5 w-full rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${missingDiagnosis ? 'border-amber-500' : 'border-input'}`}
               />
             </div>
           </div>
@@ -459,7 +459,7 @@ export function RxDetailsRow({ lineId, details, rules, missing, disabled, onChan
               value={details.specialInstructions ?? ''}
               disabled={disabled}
               onChange={e => onChange({ specialInstructions: e.target.value || null })}
-              className="mt-0.5 w-full resize-none rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              className="mt-0.5 w-full resize-none rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
             />
           </div>
         </div>

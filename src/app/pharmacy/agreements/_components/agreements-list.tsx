@@ -10,7 +10,7 @@
 import Link from 'next/link'
 import type { AgreementSummary } from '@/lib/pharmacy-onboarding/agreements-history'
 
-const LINK = 'inline-flex min-h-[44px] items-center font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+const LINK = 'inline-flex min-h-[44px] items-center font-medium text-primary underline underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring'
 
 const date = (iso: string) => new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
@@ -29,7 +29,7 @@ export function AgreementsList({ agreements }: { agreements: AgreementSummary[] 
           <p className="font-semibold">A new version is available</p>
           <ul className="space-y-1">
             {outdated.map(a => (
-              <li key={a.key} className="break-words">
+              <li key={a.key} className="wrap-break-word">
                 {a.title}: version {a.currentVersion} replaces the version you accepted.{' '}
                 <Link href={`/pharmacy/agreements/review/${a.key}`} className={LINK} aria-label={`Review and accept ${a.title} ${a.currentVersion}`}>Review and accept</Link>
               </li>
@@ -41,7 +41,7 @@ export function AgreementsList({ agreements }: { agreements: AgreementSummary[] 
       {notYet.length > 0 && (
         <ul className="space-y-1 text-sm text-foreground">
           {notYet.map(a => (
-            <li key={a.key} className="break-words">
+            <li key={a.key} className="wrap-break-word">
               {a.title} {a.currentVersion}: not accepted yet.{' '}
               <Link href={`/pharmacy/agreements/review/${a.key}`} className={LINK} aria-label={`Review and accept ${a.title} ${a.currentVersion}`}>Review and accept</Link>
             </li>
@@ -69,7 +69,7 @@ export function AgreementsList({ agreements }: { agreements: AgreementSummary[] 
                 <tr key={r.acceptanceId} className="border-t border-border align-top">
                   <td className="px-3 py-2 text-foreground">{r.title}</td>
                   <td className="px-3 py-2 text-foreground">{r.version}{r.current ? '' : ' (older)'}</td>
-                  <td className="break-words px-3 py-2 text-foreground">{r.signerName}, {r.signerTitle}</td>
+                  <td className="wrap-break-word px-3 py-2 text-foreground">{r.signerName}, {r.signerTitle}</td>
                   <td className="px-3 py-2 text-foreground"><time dateTime={r.acceptedAt}>{date(r.acceptedAt)}</time></td>
                   <td className="px-3 py-2">
                     <Link href={`/pharmacy/agreements/${r.acceptanceId}`} className={LINK} aria-label={`View text of ${r.title} ${r.version}`}>View text</Link>

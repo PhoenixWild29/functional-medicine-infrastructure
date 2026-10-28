@@ -684,7 +684,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
         <button
           type="button"
           onClick={() => router.push('/dashboard?tab=proposed')}
-          className="w-full rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="w-full rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           Go to the dashboard
         </button>
@@ -1025,7 +1025,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
           <button
             type="button"
             onClick={() => setRulesAttempt(a => a + 1)}
-            className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-transparent dark:text-red-200"
+            className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring dark:bg-transparent dark:text-red-200"
           >
             Retry
           </button>
@@ -1054,7 +1054,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
           return (
             <div
               key={rx.id}
-              className={`rounded-lg border bg-card p-4 shadow-sm ${invalid ? 'border-amber-300' : 'border-border'}`}
+              className={`rounded-lg border bg-card p-4 shadow-xs ${invalid ? 'border-amber-300' : 'border-border'}`}
             >
               <div className="flex items-start justify-between">
                 <div>
@@ -1354,7 +1354,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
                 type="button"
                 onClick={() => void handleSendForChoice()}
                 disabled={isProposing || prescriptions.length === 0 || hasInvalidItems || hasMissingDetails}
-                className="w-full rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {isProposing ? 'Sending...' : proposalRole === 'send' ? 'Send to patient for choice' : 'Save the plan for the provider to send'}
               </button>
@@ -1370,7 +1370,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
       {/* Provider signature — providers only. Non-providers can't sign
           (server returns 403), so the canvas is hidden for them. */}
       {isProvider && (
-        <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+        <div className="rounded-lg border border-border bg-card p-4 shadow-xs">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Provider Signature: {provider.first_name} {provider.last_name}
           </h2>
@@ -1488,7 +1488,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
               setConfirmOpen(true)
             }}
             disabled={!canSubmit}
-            className={`w-full rounded-lg px-6 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+            className={`w-full rounded-lg px-6 py-3 text-sm font-semibold transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
               canSubmit
                 ? 'bg-primary text-primary-foreground hover:bg-primary/90'
                 : 'bg-muted text-muted-foreground cursor-not-allowed'
@@ -1542,7 +1542,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
             type="button"
             onClick={handleSaveDraftAll}
             disabled={isSavingDraft || prescriptions.length === 0 || hasInvalidItems || hasMissingDetails}
-            className="w-full rounded-lg border border-border bg-background px-6 py-3 text-sm font-semibold text-foreground shadow-sm hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="w-full rounded-lg border border-border bg-background px-6 py-3 text-sm font-semibold text-foreground shadow-xs hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             {isSavingDraft ? 'Saving...' : 'Save as Draft: Sign When the Patient Finishes'}
           </button>
@@ -1572,7 +1572,7 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
             type="button"
             onClick={handleSaveDraftAll}
             disabled={isSavingDraft || prescriptions.length === 0 || hasInvalidItems || hasMissingDetails}
-            className="w-full rounded-lg border border-border bg-background px-6 py-3 text-sm font-semibold text-foreground shadow-sm hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="w-full rounded-lg border border-border bg-background px-6 py-3 text-sm font-semibold text-foreground shadow-xs hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             {isSavingDraft ? 'Saving...' : 'Save as Draft: Provider Signs Later'}
           </button>

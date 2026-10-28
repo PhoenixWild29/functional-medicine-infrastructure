@@ -8,7 +8,7 @@ export function HelpLink({ topic, label = 'Help' }: { topic: string; label?: str
   return (
     <Link
       href={`/help/${topic}`}
-      className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 underline underline-offset-2 hover:text-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-blue-300 dark:hover:text-blue-200"
+      className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 underline underline-offset-2 hover:text-blue-800 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring dark:text-blue-300 dark:hover:text-blue-200"
       data-testid={`help-link-${topic}`}
     >
       <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />

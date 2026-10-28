@@ -155,14 +155,14 @@ export function MakeFavoriteDialog({ target, otherDoses, patientDoses = [], pati
   const tickedCount = offered.filter(p => ticked.has(presetKey(p))).length
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className="fixed inset-0 z-50 m-0 flex items-center justify-center bg-black/40 p-4">
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="w-full max-w-md space-y-4 rounded-lg border border-border bg-card p-4 shadow-lg focus:outline-none"
+        className="w-full max-w-md space-y-4 rounded-lg border border-border bg-card p-4 shadow-lg focus:outline-hidden"
       >
         <h2 id={titleId} className="text-sm font-semibold text-foreground">Make {target.formulation_name} a favorite</h2>
 
@@ -199,13 +199,13 @@ export function MakeFavoriteDialog({ target, otherDoses, patientDoses = [], pati
               value={newDose.dose}
               onChange={e => setNewDose(d => ({ ...d, dose: e.target.value }))}
               placeholder="Dose"
-              className="w-20 rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-20 rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             />
             <select
               aria-label="New dose unit"
               value={newDose.unit}
               onChange={e => setNewDose(d => ({ ...d, unit: e.target.value }))}
-              className="rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               {DOSE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
             </select>
@@ -213,12 +213,12 @@ export function MakeFavoriteDialog({ target, otherDoses, patientDoses = [], pati
               aria-label="New dose frequency"
               value={newDose.frequency}
               onChange={e => setNewDose(d => ({ ...d, frequency: e.target.value }))}
-              className="rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="">No frequency</option>
               {FREQUENCY_OPTIONS.map(f => <option key={f.code} value={f.code}>{f.display}</option>)}
             </select>
-            <button type="button" onClick={addDose} className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <button type="button" onClick={addDose} className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted/50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
               Add dose
             </button>
           </div>
@@ -228,14 +228,14 @@ export function MakeFavoriteDialog({ target, otherDoses, patientDoses = [], pati
         <p role="status" aria-live="polite" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 empty:hidden" data-testid="make-favorite-error">{error ?? ''}</p>
 
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <button type="button" onClick={onClose} className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
             Cancel
           </button>
           <button
             type="button"
             onClick={() => { void save() }}
             disabled={tickedCount === 0 || saving}
-            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             {saving ? 'Saving…' : 'Save favorite'}
           </button>

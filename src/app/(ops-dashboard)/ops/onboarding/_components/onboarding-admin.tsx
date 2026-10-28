@@ -42,7 +42,7 @@ const STATUS_LABEL: Record<string, string> = {
 const INVITE_LABEL: Record<string, string> = { pending: 'Pending', accepted: 'Accepted', revoked: 'Revoked', expired: 'Expired' }
 const STEP_STATUS: Record<string, string> = { complete: 'Complete', in_progress: 'In progress', not_started: 'Not started' }
 
-export const REVIEW_LINK = 'inline-flex min-h-[44px] items-center text-sm font-medium text-blue-700 underline underline-offset-2 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+export const REVIEW_LINK = 'inline-flex min-h-[44px] items-center text-sm font-medium text-blue-700 underline underline-offset-2 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring'
 
 const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '—')
 
@@ -148,7 +148,7 @@ export function OnboardingAdmin(props: { invites: OpsInvite[]; clinics: OpsClini
           <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">No clinics have been approved through onboarding yet.</p>
         ) : (
           <div className="mt-3 overflow-x-auto rounded-lg border border-border">
-            <table className="w-full min-w-[36rem] text-left text-sm">
+            <table className="w-full min-w-xl text-left text-sm">
               <caption className="sr-only">Clinics approved through onboarding</caption>
               <thead className="bg-muted text-foreground">
                 <tr>
@@ -179,7 +179,7 @@ export function OnboardingAdmin(props: { invites: OpsInvite[]; clinics: OpsClini
           <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">No invites yet.</p>
         ) : (
           <div className="mt-3 overflow-x-auto rounded-lg border border-border">
-            <table className="w-full min-w-[40rem] text-left text-sm">
+            <table className="w-full min-w-160 text-left text-sm">
               <caption className="sr-only">Clinic admin invites</caption>
               <thead className="bg-muted text-foreground">
                 <tr>
@@ -310,7 +310,7 @@ function ClinicReview({ clinic: c, onReviewed }: { clinic: OpsClinicOnboarding; 
               disabled={busy}
               aria-invalid={noteError ? true : undefined}
               aria-describedby={noteError ? `${noteId}-error` : undefined}
-              className="w-full rounded-lg border border-slate-500 bg-background px-3.5 py-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-full rounded-lg border border-slate-500 bg-background px-3.5 py-2.5 text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             />
             {noteError && <p id={`${noteId}-error`} role="alert" className="text-sm text-red-700 dark:text-red-300">{noteError}</p>}
           </div>
@@ -326,7 +326,7 @@ function ClinicReview({ clinic: c, onReviewed }: { clinic: OpsClinicOnboarding; 
                 onChange={e => setLicenseChecked(e.target.checked)}
                 disabled={busy}
                 aria-describedby={unverified.map(p => `unverified-${c.clinicId}-${p.providerId}`).join(' ')}
-                className="mt-0.5 h-4 w-4 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="mt-0.5 h-4 w-4 accent-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               />
               <label htmlFor={`license-check-${c.clinicId}`} className="text-sm font-medium text-foreground">{LICENSE_CHECK_LABEL}</label>
             </div>

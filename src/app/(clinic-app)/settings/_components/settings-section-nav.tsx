@@ -60,7 +60,7 @@ export function SettingsSectionNav({ items }: { items: ReadonlyArray<SettingsNav
               href={href}
               aria-current={isActive ? 'location' : undefined}
               onClick={isSection ? () => setActive(href.slice(1)) : undefined}
-              className={`block rounded-md px-3 py-1.5 text-sm transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              className={`block rounded-md px-3 py-1.5 text-sm transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
                 isActive ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'
               }`}
             >

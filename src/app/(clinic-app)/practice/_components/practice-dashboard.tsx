@@ -160,7 +160,7 @@ export function PracticeDashboard({ viewerIsProvider }: { viewerIsProvider: bool
             <button
               type="button"
               onClick={cancelCustom}
-              className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               Cancel
             </button>

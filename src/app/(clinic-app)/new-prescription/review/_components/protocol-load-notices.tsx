@@ -43,7 +43,7 @@ export function ProtocolLoadNotices() {
             <button
               type="button"
               onClick={() => session.dismissNotice(notice.id)}
-              className="shrink-0 rounded text-xs font-medium text-amber-800 underline hover:text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-300"
+              className="shrink-0 rounded text-xs font-medium text-amber-800 underline hover:text-amber-900 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-300"
             >
               Dismiss
             </button>

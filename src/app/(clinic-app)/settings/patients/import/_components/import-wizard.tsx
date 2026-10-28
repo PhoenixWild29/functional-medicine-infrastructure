@@ -57,8 +57,8 @@ const MATCHED_ON: Record<string, string> = {
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 const csvRow = (index: number) => index + 2   // the header is row 1
 
-const primaryButton = 'rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
-const secondaryButton = 'rounded-md border border-slate-500 px-4 py-2 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
+const primaryButton = 'rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
+const secondaryButton = 'rounded-md border border-slate-500 px-4 py-2 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
 
 async function readJson(res: Response): Promise<Record<string, unknown>> {
   return res.json().catch(() => ({})) as Promise<Record<string, unknown>>
@@ -213,7 +213,7 @@ export function ImportWizard() {
       </div>
 
       <section aria-labelledby={id('step')} className="space-y-4 rounded-lg border border-border bg-card p-6">
-        <h2 id={id('step')} ref={headingRef} tabIndex={-1} className="text-base font-semibold text-foreground focus-visible:outline-none">
+        <h2 id={id('step')} ref={headingRef} tabIndex={-1} className="text-base font-semibold text-foreground focus-visible:outline-hidden">
           {step === 'upload' ? 'Choose a file' : step === 'map' ? 'Match the columns' : step === 'review' ? 'Review before importing' : 'Import complete'}
         </h2>
 
@@ -261,7 +261,7 @@ export function ImportWizard() {
                       else next[f.key as ImportField] = Number(e.target.value)
                       return next
                     })}
-                    className="mt-1 block w-full rounded-md border border-slate-500 bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="mt-1 block w-full rounded-md border border-slate-500 bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <option value="">Not in the file</option>
                     {parsed.headers.map((h, i) => <option key={i} value={String(i)}>{h || `Column ${i + 1}`}</option>)}
@@ -287,7 +287,7 @@ export function ImportWizard() {
               Rows that need fixing cannot be imported: correct them in the file and upload it again. Possible duplicates are
               left out unless you include them; patients are never merged.
             </p>
-            <div role="region" aria-label="Rows to import" tabIndex={0} className="max-h-[28rem] overflow-auto rounded-md border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <div role="region" aria-label="Rows to import" tabIndex={0} className="max-h-112 overflow-auto rounded-md border border-border focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
               <table className="w-full text-left text-sm">
                 <caption className="sr-only">Rows in {parsed.fileName}</caption>
                 <thead className="sticky top-0 bg-card">
@@ -314,7 +314,7 @@ export function ImportWizard() {
                             checked={included.has(r.index)}
                             disabled={r.status === 'error'}
                             onChange={() => toggle(r.index)}
-                            className="h-4 w-4 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            className="h-4 w-4 accent-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </td>
                         <td className="px-3 py-2 text-foreground">{row}</td>

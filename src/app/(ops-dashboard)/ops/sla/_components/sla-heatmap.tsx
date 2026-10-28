@@ -196,7 +196,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
           <h1 className="text-base font-semibold text-foreground">SLA Heatmap</h1>
           {breachCount > 0 && (
             <span
-              className="inline-flex items-center justify-center rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white min-w-[1.5rem]"
+              className="inline-flex items-center justify-center rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white min-w-6"
               aria-label={`${breachCount} active breaches`}
             >
               {breachCount}
@@ -207,7 +207,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
         <button
           type="button"
           onClick={() => setShowHandoff(v => !v)}
-          className="ml-auto rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="ml-auto rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           aria-expanded={showHandoff}
           aria-controls="sla-handoff-report"
         >
@@ -219,7 +219,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
       {isError && (
         <div className="flex items-center justify-between rounded-md border border-orange-300 bg-orange-50 px-4 py-2.5 text-sm text-orange-800" role="alert">
           <span>Connection lost. Showing cached data</span>
-          <button type="button" onClick={() => void refetch()} className="underline hover:no-underline focus-visible:outline-none">
+          <button type="button" onClick={() => void refetch()} className="underline hover:no-underline focus-visible:outline-hidden">
             Retry
           </button>
         </div>
@@ -227,7 +227,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
       {ackError && (
         <div className="flex items-center gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700" role="alert">
           <span>{ackError}</span>
-          <button type="button" onClick={() => setAckError(null)} className="underline focus-visible:outline-none">Dismiss</button>
+          <button type="button" onClick={() => setAckError(null)} className="underline focus-visible:outline-hidden">Dismiss</button>
         </div>
       )}
 
@@ -254,7 +254,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
             onClick={() => setActiveView(view.id)}
             className={`
               rounded-md px-3 py-1 text-xs font-medium transition-colors
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
+              focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring
               ${activeView === view.id
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'}
@@ -262,7 +262,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
           >
             {view.label}
             {view.id === 'breached' && breachCount > 0 && (
-              <span className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+              <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
                 {breachCount}
               </span>
             )}
@@ -372,7 +372,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
                       type="button"
                       disabled={isLoading}
                       onClick={() => void handleAcknowledge(row.orderId, row.slaType)}
-                      className="mt-2 w-full rounded-md bg-red-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-red-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="mt-2 w-full rounded-md bg-red-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-red-700 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {isLoading ? 'Acknowledging…' : 'Acknowledge'}
                     </button>

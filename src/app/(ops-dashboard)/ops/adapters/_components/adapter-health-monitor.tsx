@@ -165,13 +165,13 @@ export function AdapterHealthMonitor({ initialData }: Props) {
       {isError && (
         <div className="flex items-center justify-between rounded-md border border-orange-300 bg-orange-50 px-4 py-2.5 text-sm text-orange-800" role="alert">
           <span>Connection lost. Showing cached data</span>
-          <button type="button" onClick={() => void refetch()} className="underline focus-visible:outline-none">Retry</button>
+          <button type="button" onClick={() => void refetch()} className="underline focus-visible:outline-hidden">Retry</button>
         </div>
       )}
       {actionError && (
         <div className="flex items-center gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700" role="alert">
           <span>{actionError}</span>
-          <button type="button" onClick={() => setActionError(null)} className="underline focus-visible:outline-none">Dismiss</button>
+          <button type="button" onClick={() => setActionError(null)} className="underline focus-visible:outline-hidden">Dismiss</button>
         </div>
       )}
 
@@ -182,7 +182,7 @@ export function AdapterHealthMonitor({ initialData }: Props) {
           <select
             value={tierFilter}
             onChange={e => setTierFilter(e.target.value as TierFilter)}
-            className="rounded border border-input bg-background px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded border border-input bg-background px-2 py-1 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value="all">All Tiers</option>
             <option value="TIER_1_API">T1 API</option>
@@ -198,7 +198,7 @@ export function AdapterHealthMonitor({ initialData }: Props) {
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value as StatusFilter)}
-            className="rounded border border-input bg-background px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded border border-input bg-background px-2 py-1 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value="all">All Status</option>
             <option value="green">Healthy</option>
@@ -212,7 +212,7 @@ export function AdapterHealthMonitor({ initialData }: Props) {
           <select
             value={cbFilter}
             onChange={e => setCbFilter(e.target.value as CbFilter)}
-            className="rounded border border-input bg-background px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded border border-input bg-background px-2 py-1 text-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value="all">All States</option>
             {/* PR #16: filter labels driven from CB_BADGE so chips + filter
@@ -379,10 +379,10 @@ function PharmacyCard({
               const label = ACTION_LABELS[armed]
               if (!label) return
               handleConfirmClick(armed, label)
-            }} className="rounded bg-amber-600 px-2 py-0.5 text-white hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            }} className="rounded bg-amber-600 px-2 py-0.5 text-white hover:bg-amber-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
               Yes, proceed
             </button>
-            <button type="button" onClick={cancelConfirm} className="rounded border border-border px-2 py-0.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <button type="button" onClick={cancelConfirm} className="rounded border border-border px-2 py-0.5 hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
               Cancel
             </button>
           </div>
@@ -483,7 +483,7 @@ function ActionBtn({ label, loading, onClick, variant }: ActionBtnProps) {
       type="button"
       disabled={loading}
       onClick={onClick}
-      className={`rounded px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${cls}`}
+      className={`rounded px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${cls}`}
     >
       {loading ? '…' : label}
     </button>

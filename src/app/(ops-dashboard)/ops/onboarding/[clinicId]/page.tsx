@@ -52,7 +52,7 @@ export default async function ClinicReviewPage({ params }: { params: Promise<{ c
   const c = review?.clinic
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 space-y-6">
-      <Link href="/ops/onboarding" className="text-sm text-blue-700 underline underline-offset-2 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <Link href="/ops/onboarding" className="text-sm text-blue-700 underline underline-offset-2 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
         <span aria-hidden="true">← </span>Back to clinic onboarding
       </Link>
       {review && c ? (
