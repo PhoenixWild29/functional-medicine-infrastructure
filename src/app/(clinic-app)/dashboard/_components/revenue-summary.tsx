@@ -47,7 +47,7 @@ function Trend({ current, prior, label }: { current: number; prior: number; labe
   const display = abs < 1 ? '<1%' : `${Math.round(abs)}%`
 
   return (
-    <p className={`mt-2 flex items-center gap-1 text-xs font-medium ${up ? 'text-green-600' : 'text-red-600'}`}>
+    <p className={`mt-2 flex items-center gap-1 text-xs font-medium ${up ? 'text-green-700' : 'text-red-700'}`}>
       {/* Use arrow + text — never color alone (colorblind) */}
       <span aria-hidden>{up ? '↑' : '↓'}</span>
       <span>{up ? '+' : '-'}{display}</span>

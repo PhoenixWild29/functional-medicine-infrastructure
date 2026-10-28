@@ -201,7 +201,7 @@ export function AllergyNotice({ patient, onSaved, prompting = false, onCancelPro
         <AllergyEditor patientId={patient.patient_id} patient={patient} onSaved={saved} onCancel={() => setEditing(false)} />
       )}
       {error && (
-        <p role="alert" className="mt-2 text-xs text-red-600">{error}</p>
+        <p role="alert" className="mt-2 text-xs text-red-700">{error}</p>
       )}
     </div>
   )

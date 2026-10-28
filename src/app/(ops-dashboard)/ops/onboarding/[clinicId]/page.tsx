@@ -77,7 +77,7 @@ export default async function ClinicReviewPage({ params }: { params: Promise<{ c
       ) : (
         <>
           <h1 className="text-2xl font-bold text-foreground">Clinic review</h1>
-          <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <div role="alert" className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300">
             The clinic review could not be loaded. Refresh to try again.
           </div>
         </>

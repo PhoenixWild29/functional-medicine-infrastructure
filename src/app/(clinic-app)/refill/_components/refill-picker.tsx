@@ -294,7 +294,7 @@ export function RefillPicker({ patients, provider, preselectOrderId = null, pres
             data-testid="refill-start"
             disabled={selected.size === 0 || isLoading}
             onClick={() => void startRefill()}
-            className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {isLoading
               ? 'Preparing…'

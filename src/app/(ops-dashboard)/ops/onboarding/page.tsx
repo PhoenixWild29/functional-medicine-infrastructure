@@ -37,7 +37,7 @@ export default async function OpsOnboardingPage() {
       {data ? (
         <OnboardingAdmin invites={data.invites} clinics={data.clinics} approved={data.approved ?? []} />
       ) : (
-        <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div role="alert" className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300">
           Onboarding could not be loaded. Refresh to try again.
         </div>
       )}

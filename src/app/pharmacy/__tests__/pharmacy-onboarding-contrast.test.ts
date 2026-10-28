@@ -4,8 +4,11 @@
  * Text contrast (WCAG 2.1 AA 1.4.3, 4.5:1) on the pharmacy onboarding
  * pages. #215's ops onboarding page failed axe color-contrast in the ops
  * dark theme; the same patterns were here:
- *   - white on --primary in the dark theme (#3B82F6, 3.7:1): buttons need
- *     dark:bg-primary-hover (#2563EB, 5.2:1), and no faded hover;
+ *   - white on --primary in the dark theme (#3B82F6, 3.7:1): the dark
+ *     tokens now pair a lighter --primary with a navy --primary-foreground
+ *     (6.3:1; src/__tests__/a11y/theme-token-contrast.test.ts), so buttons
+ *     use bg-primary / text-primary-foreground with no per-page override,
+ *     and no faded hover;
  *   - --muted-foreground on the dark card (#6B7A99 on #161B27, 4.0:1):
  *     ops text needs dark:text-slate-300;
  *   - --destructive as text fails in both themes (#EF4444 on white 3.8:1,
@@ -49,9 +52,12 @@ describe('pharmacy onboarding classes', () => {
     expect(src.match(/hover:bg-primary\/\d+/g) ?? []).toEqual([])
   })
 
-  it.each([FIELDS, ...OPS])('%s: a solid primary button darkens in the dark theme', f => {
+  it.each([FIELDS, ...OPS])('%s: a solid primary button uses the primary token pair, with no dark override', f => {
     const solid = classLists(read(f)).filter(c => /(^|\s)bg-primary(\s|$)/.test(c))
-    for (const c of solid) expect(c).toContain('dark:bg-primary-hover')
+    for (const c of solid) {
+      expect(c).toContain('text-primary-foreground')
+      expect(c).not.toMatch(/dark:(hover:)?bg-blue-\d+/)
+    }
   })
 
   it.each([FIELDS, ...OPS])('%s: muted text is lifted on the dark card', f => {
@@ -78,8 +84,8 @@ describe('the colours those classes stand for', () => {
     ['red-300 error on the dark card', '#FCA5A5', DARK_CARD],
     ['slate-300 on the dark card', '#CBD5E1', DARK_CARD],
     ['slate-300 on the dark page', '#CBD5E1', DARK_BG],
-    ['white on primary-hover (dark button)', WHITE, '#2563EB'],
-    ['white on blue-700 (dark button hover)', WHITE, '#1D4ED8'],
+    ['navy --primary-foreground on dark --primary (button)', '#090E1A', '#5593F7'],
+    ['navy --primary-foreground on dark --primary-hover (button hover)', '#090E1A', '#74B1FB'],
     ['white on primary-hover (light button hover)', WHITE, '#1D4ED8'],
   ])('%s is at least 4.5:1', (_n, fg, bg) => {
     expect(contrast(fg, bg)).toBeGreaterThanOrEqual(4.5)

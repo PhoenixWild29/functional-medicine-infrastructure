@@ -664,7 +664,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadFrequent, children, on
   const buttonClass = (name: QuickActionsPanelName) =>
     `whitespace-nowrap rounded-md border px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
       activePanel === name
-        ? 'border-primary bg-primary/10 text-primary'
+        ? 'border-primary bg-primary/10 text-primary-hover'
         : 'border-border bg-background text-foreground hover:bg-muted/50'
     }`
 
@@ -899,7 +899,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadFrequent, children, on
                       type="button"
                       onClick={() => { void handleSaveProtocol() }}
                       disabled={!newProtocolName.trim() || savingProtocol}
-                      className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                      className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
                     >
                       {savingProtocol ? 'Saving…' : 'Save protocol'}
                     </button>
@@ -907,7 +907,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadFrequent, children, on
                 </>
               )}
               {protocolSaveError && (
-                <p role="alert" className="text-xs text-red-600">{protocolSaveError}</p>
+                <p role="alert" className="text-xs text-red-700">{protocolSaveError}</p>
               )}
             </div>
           )}
@@ -1037,7 +1037,7 @@ export function QuickActionsPanel({ onLoadFavorite, onLoadFrequent, children, on
                     type="button"
                     disabled={!session.patient || !session.provider || loadingProtocol}
                     onClick={() => loadProtocolToSession(protocolDetail)}
-                    className="mt-2 w-full rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="mt-2 w-full rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {loadingProtocol
                       ? 'Loading...'
@@ -1081,7 +1081,7 @@ function FavoriteCard({
   return (
     <div
       data-testid={`favorite-${fav.favorite_id}`}
-      className={`rounded-md border border-border px-3 py-2 transition-colors ${blocked ? 'opacity-60' : ''}`}
+      className={`rounded-md border border-border px-3 py-2 transition-colors ${blocked ? 'bg-muted/40' : ''}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -1103,7 +1103,7 @@ function FavoriteCard({
               </span>
             )}
             {fav.sig_mode !== 'standard' && (
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary-hover">
                 {fav.sig_mode}
               </span>
             )}
@@ -1406,12 +1406,12 @@ function FavoriteEditForm({ favorite: fav, patientState, patient, onCancel, onSa
         </fieldset>
       )}
 
-      {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
+      {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
       <div className="flex gap-1">
         <button
           type="submit"
           disabled={!canSave}
-          className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save changes'}
         </button>

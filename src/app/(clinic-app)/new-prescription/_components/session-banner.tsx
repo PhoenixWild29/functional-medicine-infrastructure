@@ -131,7 +131,7 @@ export function SessionBanner() {
 
         {/* Patient info */}
         <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary-hover">
             {(patient.first_name?.[0] ?? '') + (patient.last_name?.[0] ?? '') || '+'}
           </div>
           <div className="min-w-0">
@@ -191,7 +191,7 @@ export function SessionBanner() {
           <button
             type="button"
             onClick={() => router.push('/new-prescription/review')}
-            className="text-xs font-medium text-primary underline hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="text-xs font-medium text-primary underline hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Review & Send
           </button>

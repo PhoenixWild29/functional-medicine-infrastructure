@@ -39,21 +39,11 @@ import { TEST_PATIENT_DOB, closeTestProposals, latestChoice, latestTestProposal,
 // states exist only inside it, so the all-routes axe spec cannot reach
 // them cold. Stripe's Payment Element iframe is Stripe's.
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
-async function expectNoAxeViolations(page: Page, state: string, staff = false) {
+async function expectNoAxeViolations(page: Page, state: string) {
   const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS)
     .exclude('iframe[name^="__privateStripeFrame"], iframe[src*="js.stripe.com"]').analyze()
-  // On the provider's screens (staff = true) color-contrast is staff debt
-  // (see accessibility-all-routes.spec.ts), recorded, not failed. The
-  // patient's screens keep full contrast enforcement.
   const fmt = (v: (typeof results.violations)[number]) => `${state}: ${v.id} (${v.impact}) ${v.nodes.map(n => n.target.join(' ')).join(', ')}`
-  if (!staff) {
-    expect(results.violations.map(fmt)).toEqual([])
-    return
-  }
-  for (const v of results.violations.filter(v => v.id === 'color-contrast')) {
-    test.info().annotations.push({ type: 'staff-contrast-debt', description: fmt(v).slice(0, 500) })
-  }
-  expect(results.violations.filter(v => v.id !== 'color-contrast').map(fmt)).toEqual([])
+  expect(results.violations.map(fmt)).toEqual([])
 }
 
 async function pickProviderIfListed(page: Page) {
@@ -183,7 +173,7 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     // The plain compound left in Option A becomes optional ("nice to have").
     await optionA.getByLabel(`Required: ${TEST_CATALOG.formulationName}`).uncheck()
     await expect(optionA.getByLabel(`Required: ${TEST_CATALOG.glp1FormulationName}`)).toBeChecked()
-    await expectNoAxeViolations(page, 'Review, two options', true)
+    await expectNoAxeViolations(page, 'Review, two options')
 
     await page.getByRole('button', { name: 'Send to patient for choice' }).click()
     const share = page.getByRole('region', { name: 'Share the plan link' })
@@ -211,7 +201,7 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     expect(planPath).toMatch(/^\/plan\/[A-Za-z0-9_-]{43}$/)
     await share.getByRole('button', { name: 'Show QR code' }).click()
     await expect(share.getByRole('img', { name: 'QR code for the plan link' })).toBeVisible()
-    await expectNoAxeViolations(page, 'Share the plan link, QR shown', true)
+    await expectNoAxeViolations(page, 'Share the plan link, QR shown')
     await expect.poll(() => proposalEvents(proposal.proposal_id)).toEqual(expect.arrayContaining(['link_copied', 'qr_shown']))
 
     // ── 3. The patient, on a phone, with no session ──
@@ -276,11 +266,11 @@ test.describe('Patient protocol choice: the provider proposes, the patient choos
     // ── 4. The provider sees the choice and signs it ──
     await page.goto(`/dashboard?tab=proposed&order=${glp1Line.orderId}`)
     await expect(page.getByRole('region', { name: 'Patient choice' }).getByText('The patient has chosen. Signing comes next.', { exact: true })).toBeVisible({ timeout: 15_000 })
-    await expectNoAxeViolations(page, 'Dashboard, Proposed tab, order drawer', true)
+    await expectNoAxeViolations(page, 'Dashboard, Proposed tab, order drawer')
     await page.goto('/dashboard')
     const queue = page.getByRole('region', { name: 'Plans ready to sign' })
     await expect(queue.getByText('Test chose Foundation plan (1 of 2 items)', { exact: true })).toBeVisible({ timeout: 15_000 })
-    await expectNoAxeViolations(page, 'Dashboard, Plans ready to sign', true)
+    await expectNoAxeViolations(page, 'Dashboard, Plans ready to sign')
     await queue.getByRole('link', { name: 'Review and sign: Test chose Foundation plan (1 of 2 items)' }).click()
     await expect(page).toHaveURL(`/new-prescription/sign?proposal=${proposal.proposal_id}`, { timeout: 15_000 })
     await expect(page.getByTestId(`select-${glp1Line.orderId}`)).toBeChecked({ timeout: 15_000 })

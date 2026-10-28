@@ -470,7 +470,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
                     <span>{toCurrency(s.feeCents)}</span>
                   </div>
                 ))}
-                <div className="flex justify-between text-xs text-emerald-600"><span>Clinic payout</span><span>{toCurrency(totals.clinicPayoutCents)}</span></div>
+                <div className="flex justify-between text-xs text-emerald-700"><span>Clinic payout</span><span>{toCurrency(totals.clinicPayoutCents)}</span></div>
                 <div className="mt-1 flex justify-between border-t border-border pt-1 font-semibold">
                   <span>Patient total, one payment link</span>
                   <span data-testid={`batch-patient-total-${p.patientId}`}>{toCurrency(totals.patientTotalCents)}</span>
@@ -502,7 +502,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
           <button type="button" onClick={clearPad} disabled={submitting} className="text-xs text-muted-foreground underline hover:text-foreground disabled:opacity-50">
             Clear Signature
           </button>
-          {signature?.ok && <span className="text-xs font-medium text-emerald-600">Signature captured</span>}
+          {signature?.ok && <span className="text-xs font-medium text-emerald-700">Signature captured</span>}
         </div>
       </div>
 
@@ -532,7 +532,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
           onClick={handleSignAndSend}
           disabled={!canSend}
           className={`flex-1 rounded-lg px-6 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-            canSend ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'cursor-not-allowed bg-muted text-muted-foreground'
+            canSend ? 'bg-primary text-primary-foreground hover:bg-primary-hover' : 'cursor-not-allowed bg-muted text-muted-foreground'
           }`}
         >
           {submitting ? 'Signing…' : `Sign & Send ${selectedLines.length} Prescription${selectedLines.length !== 1 ? 's' : ''}`}
@@ -589,7 +589,7 @@ function DraftLineList({ patient, selected, selectionIds, problems, disabled, lo
         {!locked && <button
           type="button"
           onClick={() => router.push(builderHref({ kind: 'draft-add', orderId: anchor, returnOrders: selectionIds }))}
-          className="text-xs font-medium text-primary underline hover:text-primary/80"
+          className="text-xs font-medium text-primary underline hover:text-primary-hover"
         >
           + Add prescription
         </button>}
@@ -610,7 +610,7 @@ function DraftLineList({ patient, selected, selectionIds, problems, disabled, lo
           />
         ))}
       </ul>
-      {error && <p className="mt-2 text-xs text-red-600" role="alert">{error}</p>}
+      {error && <p className="mt-2 text-xs text-red-700" role="alert">{error}</p>}
     </div>
   )
 }
@@ -660,10 +660,10 @@ function DraftLineItem({ line, checked, problems, disabled, locked = false, remo
         <div className="shrink-0 text-right">
           <p className="text-sm font-bold text-foreground">{toCurrency(line.retailCents)}</p>
           {!locked && <div className="mt-1 flex justify-end gap-3">
-            <button type="button" onClick={onEdit} disabled={disabled} className="text-[10px] font-medium text-primary underline hover:text-primary/80 disabled:opacity-50">
+            <button type="button" onClick={onEdit} disabled={disabled} className="text-[10px] font-medium text-primary underline hover:text-primary-hover disabled:opacity-50">
               Edit
             </button>
-            <button type="button" onClick={onRemove} disabled={disabled} className="text-[10px] text-red-500 underline hover:text-red-700 disabled:opacity-50">
+            <button type="button" onClick={onRemove} disabled={disabled} className="text-[10px] text-red-700 underline hover:text-red-800 disabled:opacity-50">
               {removing ? 'Removing...' : 'Remove'}
             </button>
           </div>}

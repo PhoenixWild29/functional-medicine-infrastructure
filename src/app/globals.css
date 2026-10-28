@@ -12,7 +12,7 @@
     --card: 0 0% 100%;
     --card-foreground: 222 47% 7%;
     --muted: 210 40% 97%;               /* #F8FAFC slate-50 */
-    --muted-foreground: 215 16% 47%;    /* #64748B slate-500 */
+    --muted-foreground: 215 16% 43%;    /* #5C6B7F: 5.1:1 on --muted, 5.5:1 on white (slate-500 was 4.40:1 on --muted) */
 
     /* Brand Primary */
     --primary: 221 83% 53%;             /* #2563EB blue-600 */
@@ -24,7 +24,7 @@
     --secondary-foreground: 222 47% 11%;
 
     /* Semantic — Destructive */
-    --destructive: 0 84% 60%;           /* #EF4444 red-500 */
+    --destructive: 0 74% 42%;           /* #BA1C1C (red-700): 6.4:1 with white and as text on white (red-500 was 3.8:1) */
     --destructive-foreground: 0 0% 100%;
 
     /* Semantic — Success */
@@ -69,14 +69,14 @@
     --card: 222 39% 10%;                /* #161B27 */
     --card-foreground: 213 27% 92%;
     --muted: 222 35% 16%;               /* #1E2535 */
-    --muted-foreground: 220 20% 55%;    /* #6B7A99 */
-    --primary: 217 91% 60%;             /* #3B82F6 blue-500 */
-    --primary-foreground: 0 0% 100%;
-    --primary-hover: 221 83% 53%;       /* #2563EB blue-600: hover shade, 5.2:1 with white */
+    --muted-foreground: 220 20% 62%;    /* #8B98B1: 5.4:1 on --muted, 6.2:1 on --card (55% was 4.19:1 on --muted) */
+    --primary: 217 91% 65%;             /* #5593F7: 6.0:1 as text on --card, 5.1:1 on --muted */
+    --primary-foreground: 222 47% 7%;   /* dark navy: 6.3:1 on --primary (white on blue-500 was 3.6:1) */
+    --primary-hover: 213 94% 72%;       /* #74B1FB: hover shade, 8.6:1 with --primary-foreground */
     --secondary: 222 35% 16%;
     --secondary-foreground: 213 27% 92%;
-    --destructive: 0 72% 51%;           /* #DC2626 red-600 */
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 91% 71%;           /* #F87272 (red-400): 6.6:1 as text on --card (red-600 was 3.8:1) */
+    --destructive-foreground: 222 47% 7%; /* dark navy: 7.0:1 on --destructive */
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;

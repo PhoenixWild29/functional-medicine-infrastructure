@@ -74,7 +74,7 @@ export function ProductCatalogSummary({ counts }: { counts: ProductCatalogCounts
       </div>
 
       {allUnavailable && (
-        <p className="text-[11px] text-amber-600" role="status">
+        <p className="text-[11px] text-amber-600 dark:text-amber-300" role="status">
           Product catalog counts are temporarily unavailable. The prescription builder is unaffected.
         </p>
       )}

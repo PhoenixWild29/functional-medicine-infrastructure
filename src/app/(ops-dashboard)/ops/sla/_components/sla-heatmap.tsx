@@ -46,11 +46,11 @@ function getSlaColor(row: SlaRow, now: number): SlaColor {
 }
 
 const COLOR_STYLES: Record<SlaColor, { card: string; badge: string; label: string }> = {
-  green:    { card: 'border-emerald-200 bg-emerald-50',      badge: 'bg-emerald-100 text-emerald-700', label: 'On Track' },
-  yellow:   { card: 'border-amber-200 bg-amber-50',          badge: 'bg-amber-100 text-amber-700',     label: 'Approaching' },
-  red:      { card: 'border-red-200 bg-red-50',              badge: 'bg-red-100 text-red-700',         label: 'Breached' },
-  blue:     { card: 'border-blue-200 bg-blue-50',            badge: 'bg-blue-100 text-blue-700',       label: 'Cascade Attempted' },  // NB-01: "Attempted" not "Active"
-  resolved: { card: 'border-border bg-muted/30 opacity-60',  badge: 'bg-muted text-muted-foreground',   label: 'Resolved' },
+  green:    { card: 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40',      badge: 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300', label: 'On Track' },
+  yellow:   { card: 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40',          badge: 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300',     label: 'Approaching' },
+  red:      { card: 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40',              badge: 'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-300',         label: 'Breached' },
+  blue:     { card: 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40',            badge: 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300',       label: 'Cascade Attempted' },  // NB-01: "Attempted" not "Active"
+  resolved: { card: 'border-border bg-muted/30',  badge: 'bg-muted text-muted-foreground',   label: 'Resolved' },
 }
 
 const SLA_LABELS: Record<string, string> = {
@@ -196,7 +196,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
           <h1 className="text-base font-semibold text-foreground">SLA Heatmap</h1>
           {breachCount > 0 && (
             <span
-              className="inline-flex items-center justify-center rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white min-w-[1.5rem]"
+              className="inline-flex items-center justify-center rounded-full bg-red-700 px-2 py-0.5 text-xs font-bold text-white min-w-[1.5rem]"
               aria-label={`${breachCount} active breaches`}
             >
               {breachCount}
@@ -217,7 +217,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
 
       {/* ── Error banner ── */}
       {isError && (
-        <div className="flex items-center justify-between rounded-md border border-orange-300 bg-orange-50 px-4 py-2.5 text-sm text-orange-800" role="alert">
+        <div className="flex items-center justify-between rounded-md border border-orange-300 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/40 px-4 py-2.5 text-sm text-orange-800 dark:text-orange-300" role="alert">
           <span>Connection lost. Showing cached data</span>
           <button type="button" onClick={() => void refetch()} className="underline hover:no-underline focus-visible:outline-none">
             Retry
@@ -225,7 +225,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
         </div>
       )}
       {ackError && (
-        <div className="flex items-center gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700" role="alert">
+        <div className="flex items-center gap-3 rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-4 py-2.5 text-sm text-red-700 dark:text-red-300" role="alert">
           <span>{ackError}</span>
           <button type="button" onClick={() => setAckError(null)} className="underline focus-visible:outline-none">Dismiss</button>
         </div>
@@ -262,7 +262,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
           >
             {view.label}
             {view.id === 'breached' && breachCount > 0 && (
-              <span className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+              <span className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-700 px-1 text-[9px] font-bold text-white">
                 {breachCount}
               </span>
             )}
@@ -320,7 +320,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
                   </div>
 
                   {/* Time remaining */}
-                  <p className={`mt-2 text-xs font-medium ${color === 'red' ? 'text-red-600' : color === 'yellow' ? 'text-amber-600' : 'text-muted-foreground'}`}>
+                  <p className={`mt-2 text-xs font-medium ${color === 'red' ? 'text-red-600 dark:text-red-300' : color === 'yellow' ? 'text-amber-600 dark:text-amber-300' : 'text-muted-foreground'}`}>
                     {timeStr}
                   </p>
 
@@ -334,7 +334,7 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
                     <p className="mt-1 truncate text-[10px] text-muted-foreground">
                       {row.pharmacyName}
                       {row.pharmacyTier && (
-                        <span className="ml-1 opacity-60">{TIER_LABELS[row.pharmacyTier] ?? row.pharmacyTier}</span>
+                        <span className="ml-1">{TIER_LABELS[row.pharmacyTier] ?? row.pharmacyTier}</span>
                       )}
                     </p>
                   )}
@@ -350,13 +350,13 @@ export function SlaHeatmap({ initialSlas, initialHandoff }: Props) {
                           />
                         ))}
                       </div>
-                      <span className="text-[10px] text-amber-600">Tier {row.escalationTier}</span>
+                      <span className="text-[10px] text-amber-600 dark:text-amber-300">Tier {row.escalationTier}</span>
                     </div>
                   )}
 
                   {/* Cascade indicator */}
                   {row.cascadeAttempted && (
-                    <p className="mt-1 text-[10px] font-medium text-blue-600">Cascade attempted</p>
+                    <p className="mt-1 text-[10px] font-medium text-blue-600 dark:text-blue-300">Cascade attempted</p>
                   )}
 
                   {/* Acknowledged indicator */}
@@ -445,7 +445,7 @@ function HandoffReport({ handoff }: { handoff: HandoffMetrics }) {
           <h3 className="mb-2 text-xs font-medium text-muted-foreground">Breaches by SLA Type</h3>
           <div className="flex flex-wrap gap-2">
             {Object.entries(handoff.breachesBySlaType).map(([type, count]) => (
-              <span key={type} className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">
+              <span key={type} className="rounded-full bg-red-100 dark:bg-red-950/40 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:text-red-300">
                 {SLA_LABELS[type] ?? type}: {count}
               </span>
             ))}
@@ -467,7 +467,7 @@ function HandoffReport({ handoff }: { handoff: HandoffMetrics }) {
                     {TIER_LABELS[tier] ?? tier}:
                   </span>
                   {' '}
-                  <span className={isLow ? 'font-semibold text-red-600' : 'text-foreground'}>
+                  <span className={isLow ? 'font-semibold text-red-600 dark:text-red-300' : 'text-foreground'}>
                     {pct}%
                   </span>
                   <span className="text-muted-foreground"> ({success}/{total})</span>
@@ -485,7 +485,7 @@ function Metric({ label, value, highlight = false }: { label: string; value: str
   return (
     <div>
       <p className="text-[10px] text-muted-foreground">{label}</p>
-      <p className={`text-xl font-bold ${highlight ? 'text-red-600' : 'text-foreground'}`}>{value}</p>
+      <p className={`text-xl font-bold ${highlight ? 'text-red-600 dark:text-red-300' : 'text-foreground'}`}>{value}</p>
     </div>
   )
 }

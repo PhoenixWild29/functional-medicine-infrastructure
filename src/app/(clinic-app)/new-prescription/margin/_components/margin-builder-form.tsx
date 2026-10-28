@@ -1102,7 +1102,7 @@ function MarginBuilderFormForLine({
             </span>
 
             <span className="text-muted-foreground">Est. clinic margin</span>
-            <span className={`font-semibold text-right ${clinicMarginCents >= 1000 ? 'text-emerald-600' : 'text-amber-600'}`}>
+            <span className={`font-semibold text-right ${clinicMarginCents >= 1000 ? 'text-emerald-700' : 'text-amber-700'}`}>
               ${toCurrency(clinicMarginCents)}
             </span>
           </div>
@@ -1160,7 +1160,7 @@ function MarginBuilderFormForLine({
               ? 'text-muted-foreground'
               : sigTrimmed.length < 10
               ? 'text-destructive'
-              : 'text-emerald-600'
+              : 'text-emerald-700'
           }`}
         >
           {sigText.length === 0
@@ -1207,7 +1207,7 @@ function MarginBuilderFormForLine({
         <button
           type="submit"
           disabled={!canContinue || isSavingLine}
-          className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {isSavingLine
             ? 'Saving...'
@@ -1223,7 +1223,7 @@ function MarginBuilderFormForLine({
         </button>
       </div>
       {lineError && (
-        <p className="text-center text-xs text-red-600" role="alert">{lineError}</p>
+        <p className="text-center text-xs text-red-700" role="alert">{lineError}</p>
       )}
       {!isEditing && !isDraftMode && rxSession.prescriptionCount > 0 && (
         <p className="text-center text-xs text-muted-foreground">
@@ -1246,7 +1246,7 @@ function MarginBuilderFormForLine({
           Creates the order without signing. The provider can review and sign from the dashboard.
         </p>
         {draftError && (
-          <p className="mt-2 text-center text-xs text-red-600">{draftError}</p>
+          <p className="mt-2 text-center text-xs text-red-700">{draftError}</p>
         )}
       </div>
       )}

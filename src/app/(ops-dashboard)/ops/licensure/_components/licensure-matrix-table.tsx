@@ -16,9 +16,9 @@ const LICENSE_TYPE_LABEL: Record<string, string> = {
 }
 
 const STATUS_CLASS: Record<MatrixCell['status'], string> = {
-  valid:    'border-emerald-200 bg-emerald-50 text-emerald-900',
-  expiring: 'border-amber-300 bg-amber-50 text-amber-900',
-  expired:  'border-red-300 bg-red-50 text-red-900',
+  valid:    'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300',
+  expiring: 'border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300',
+  expired:  'border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-300',
   inactive: 'border-border bg-muted text-muted-foreground',
 }
 
@@ -69,7 +69,7 @@ export function LicensureMatrixTable({ matrix }: { matrix: LicensureMatrix }) {
                     <span className="block">{row.pharmacyName}</span>
                     <span className="block text-muted-foreground">{row.facilityType ?? '503A/503B not recorded'}</span>
                     {row.demo && (
-                      <span data-testid={`licensure-demo-${row.pharmacyId}`} className="mt-1 block text-[11px] font-normal text-amber-800">
+                      <span data-testid={`licensure-demo-${row.pharmacyId}`} className="mt-1 block text-[11px] font-normal text-amber-800 dark:text-amber-300">
                         Demo pharmacy: sterile scope and 503A set by the C5 demo backfill, not verified
                       </span>
                     )}
@@ -93,8 +93,8 @@ export function LicensureMatrixTable({ matrix }: { matrix: LicensureMatrix }) {
                           <span className="block font-medium">{cell.expirationDate ?? 'No expiry on record'}</span>
                           <span className="block">{statusLine(cell)}</span>
                           <span className="block">{cell.licenseType ? (LICENSE_TYPE_LABEL[cell.licenseType] ?? cell.licenseType) : 'Type not recorded'}</span>
-                          <span className={`block ${cell.sterile == null ? 'font-medium text-amber-800' : ''}`}>{sterileLine(cell.sterile)}</span>
-                          {cell.licenseNumber && <span className="block font-mono opacity-70">{cell.licenseNumber}</span>}
+                          <span className={`block ${cell.sterile == null ? 'font-medium text-amber-800 dark:text-amber-300' : ''}`}>{sterileLine(cell.sterile)}</span>
+                          {cell.licenseNumber && <span className="block font-mono">{cell.licenseNumber}</span>}
                         </div>
                       </td>
                     )
