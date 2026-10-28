@@ -34,7 +34,8 @@ it('exists with a down migration, runs in one transaction, and sorts after 20261
     expect(code(s)).toMatch(/COMMIT;$/)
   }
   const versions = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort()
-  expect(versions[versions.length - 1]).toBe(FILE)
+  // Sorts after every migration before it (later ones may follow it).
+  expect(versions.indexOf(FILE)).toBeGreaterThan(versions.indexOf('20261024000011_order_signing_snapshots.sql'))
   expect(versions).toContain('20261024000011_order_signing_snapshots.sql')
 })
 
