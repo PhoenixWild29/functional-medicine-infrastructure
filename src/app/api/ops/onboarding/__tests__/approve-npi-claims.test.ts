@@ -6,8 +6,11 @@
  * them. When an approved clinic's live provider already holds one of the
  * NPIs, Approve is refused (409 NPI_REGISTERED_ELSEWHERE, ops-only words)
  * and nothing changes. A claim the database refuses (unique index, a race)
- * is the same refusal. If the approval itself then fails, the claim is
- * undone.
+ * is the same refusal. Two of the clinic's own providers naming the same
+ * NPI is refused with words that say so (409 NPI_SHARED_IN_CLINIC), not
+ * "an approved clinic". If the approval itself then fails or throws, the
+ * claim is undone, unless another reviewer approved the clinic meanwhile
+ * (then the claim is theirs).
  */
 
 import { NextRequest } from 'next/server'
@@ -31,16 +34,21 @@ import { POST } from '../clinics/[clinicId]/route'
 const req = (body: unknown) => new NextRequest(`http://localhost/api/ops/onboarding/clinics/${CLINIC}`, { method: 'POST', body: JSON.stringify(body) })
 const ctx = { params: Promise.resolve({ clinicId: CLINIC }) }
 
-function world(opts: { elsewhere?: Array<Record<string, unknown>>; claim?: ScriptedAnswer; approve?: ScriptedAnswer } = {}) {
+function world(opts: { elsewhere?: Array<Record<string, unknown>>; claim?: ScriptedAnswer; approve?: ScriptedAnswer | 'throw'; secondProvider?: boolean; statusNow?: string } = {}) {
+  const mine = [{ provider_id: 'p1', clinic_id: CLINIC, first_name: 'Dana', last_name: 'Ruiz', user_id: null, npi_number: NPI }]
+  if (opts.secondProvider) mine.push({ provider_id: 'p2', clinic_id: CLINIC, first_name: 'Sam', last_name: 'Lee', user_id: null, npi_number: NPI })
   return (c: ScriptedCall): ScriptedAnswer | undefined => {
+    // releaseClinicNpis re-reads the clinic before it unclaims.
+    if (c.table === 'clinics' && c.op === 'select' && c.columns === 'onboarding_status') return { data: { onboarding_status: opts.statusNow ?? 'submitted' } }
+    if (c.table === 'clinics' && c.op === 'update' && opts.approve === 'throw') throw new Error('fetch failed')
     if (c.table === 'clinics' && c.op === 'select') return { data: { clinic_id: CLINIC, name: 'Ruiz Family Medicine', onboarding_status: 'submitted', signup_source: 'self_serve', stripe_connect_account_id: 'acct_1RealAccount' } }
-    if (c.table === 'clinics' && c.op === 'update') return opts.approve
+    if (c.table === 'clinics' && c.op === 'update') return opts.approve as ScriptedAnswer | undefined
     if (c.table === 'providers' && c.op === 'update') return c.payload && (c.payload as { npi_claimed?: boolean }).npi_claimed ? opts.claim : undefined
     if (c.table === 'providers' && 'npi_number:in' in c.filters) {
-      return { data: [{ provider_id: 'p1', clinic_id: CLINIC, npi_number: NPI, npi_claimed: false }, ...(opts.elsewhere ?? [])] }
+      return { data: [...mine.map(p => ({ provider_id: p.provider_id, clinic_id: CLINIC, npi_number: NPI, npi_claimed: false })), ...(opts.elsewhere ?? [])] }
     }
-    if (c.table === 'providers') return { data: [{ provider_id: 'p1', clinic_id: CLINIC, first_name: 'Dana', last_name: 'Ruiz', user_id: null, npi_number: NPI }] }
-    if (c.table === 'provider_npi_verifications') return { data: [{ provider_id: 'p1', status: 'verified' }] }
+    if (c.table === 'providers') return { data: mine }
+    if (c.table === 'provider_npi_verifications') return { data: mine.map(p => ({ provider_id: p.provider_id, status: 'verified' })) }
     if (c.table === 'onboarding_invites') return { data: [] }
     return undefined
   }
@@ -84,6 +92,33 @@ it('the approval write fails after the claim: the claim is undone', async () => 
   const res = await POST(req({ action: 'approve' }), ctx)
   expect(res.status).toBe(500)
   expect(claims()).toEqual([{ npi_claimed: true }, { npi_claimed: false }])
+})
+
+it("two of the clinic's own providers share an NPI: 409 that says so, not 'an approved clinic'; nothing claimed or approved", async () => {
+  script = world({ secondProvider: true })
+  const res = await POST(req({ action: 'approve' }), ctx)
+  expect(res.status).toBe(409)
+  const body = await res.json()
+  expect(body.code).toBe('NPI_SHARED_IN_CLINIC')
+  expect(body.error).toContain('this clinic’s providers have the same NPI')
+  expect(body.error).not.toMatch(/approved clinic/)
+  expect(claims()).toEqual([])
+  expect(db.to('clinics', 'update')).toHaveLength(0)
+})
+
+it('the approval write throws after the claim: the claim is undone and logged, a plain 500', async () => {
+  script = world({ approve: 'throw' })
+  const res = await POST(req({ action: 'approve' }), ctx)
+  expect(res.status).toBe(500)
+  expect(claims()).toEqual([{ npi_claimed: true }, { npi_claimed: false }])
+  expect(console.error).toHaveBeenCalledWith(expect.stringContaining('approval did not complete'), expect.anything())
+})
+
+it('another reviewer approved the clinic meanwhile (no row changed): their claim is kept', async () => {
+  script = world({ approve: { data: [] }, statusNow: 'approved' })
+  const res = await POST(req({ action: 'approve' }), ctx)
+  expect(res.status).toBe(409)
+  expect(claims()).toEqual([{ npi_claimed: true }])
 })
 
 it('send back claims nothing', async () => {

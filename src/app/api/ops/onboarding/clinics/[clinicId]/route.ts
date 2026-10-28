@@ -17,7 +17,11 @@
 // clinic's providers' NPIs. When an approved clinic's live provider
 // already holds one, Approve is refused (409 NPI_REGISTERED_ELSEWHERE,
 // ops-only words) and nothing changes; the unique index refuses a claim
-// that races. If the approval write then fails, the claim is undone.
+// that races. Two of the clinic's own providers naming the same NPI is
+// refused with words that say so (409 NPI_SHARED_IN_CLINIC). If the
+// approval write then fails, changes nothing or throws, the claim is
+// undone (compensation in code: claim and approval are two writes, there
+// is no RPC), unless the clinic is approved by then.
 //
 // Approving a clinic with a provider whose NPI is not verified in the
 // national registry needs { licenseChecked: true } (422 otherwise): ops
@@ -35,7 +39,7 @@ import { UUID_RE } from '@/lib/providers/team-access'
 import { loadClinicReview } from '@/lib/onboarding/review'
 import { DEMO_PAYOUT_NOTE, demoPayoutFields, needsDemoPayouts, onlyWithoutPayoutAccount } from '@/lib/clinics/demo-payouts'
 import { LICENSE_CHECK_REQUIRED_MESSAGE, licenseCheckNote, loadProviderSummaries, type ProviderSummary } from '@/lib/onboarding/provider-review'
-import { NPI_REGISTERED_ELSEWHERE, claimClinicNpis, npiRegisteredElsewhereMessage, releaseClinicNpis } from '@/lib/onboarding/npi-claims'
+import { NPI_REGISTERED_ELSEWHERE, NPI_SHARED_IN_CLINIC, claimClinicNpis, npiRegisteredElsewhereMessage, npiSharedInClinicMessage, releaseClinicNpis } from '@/lib/onboarding/npi-claims'
 import { deleteSelfServeSignup } from '@/lib/onboarding/delete-signup'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 
@@ -137,6 +141,9 @@ async function postHandler(request: NextRequest, { params }: { params: Promise<{
   // the unique index refuses one an approved clinic took meanwhile.
   if (action === 'approve') {
     const claim = await claimClinicNpis(supabase, clinicId)
+    if (claim === 'shared') {
+      return NextResponse.json({ error: npiSharedInClinicMessage(), code: NPI_SHARED_IN_CLINIC }, { status: 409 })
+    }
     if (claim === 'conflict') {
       return NextResponse.json({ error: npiRegisteredElsewhereMessage([]), code: NPI_REGISTERED_ELSEWHERE }, { status: 409 })
     }
@@ -160,7 +167,17 @@ async function postHandler(request: NextRequest, { params }: { params: Promise<{
   // Count the rows changed on every path: a clinic that left 'submitted'
   // (a second reviewer won) or gained a Connect account between the read
   // and the write changes nothing, and nothing is recorded.
-  const { data: updated, error: updErr } = await write.select('clinic_id')
+  let updated: unknown, updErr: { message: string } | null
+  try {
+    ({ data: updated, error: updErr } = await write.select('clinic_id'))
+  } catch (err) {
+    // A throw between the claim and the approval must not leave the claim.
+    if (action === 'approve') {
+      console.error(`[ops/onboarding] approval did not complete, releasing NPI claim | clinic=${clinicId}:`, err instanceof Error ? err.name : 'error')
+      await releaseClinicNpis(supabase, clinicId)
+    }
+    throw err
+  }
   if (!updErr && Array.isArray(updated) && updated.length === 0) {
     if (action === 'approve') await releaseClinicNpis(supabase, clinicId)
     return NextResponse.json({ error: 'The clinic changed while you were reviewing it. Reload and try again.' }, { status: 409 })
