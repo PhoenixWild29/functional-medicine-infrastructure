@@ -347,7 +347,7 @@ function npiLabel(status: string | null): string {
 }
 
 function inviteLabel(status: string): string {
-  return ({ pending: 'Invite sent', accepted: 'Account created', revoked: 'Invite revoked', expired: 'Invite expired' } as Record<string, string>)[status] ?? status
+  return ({ pending: 'Invite waiting to be used', accepted: 'Account created', revoked: 'Invite revoked', expired: 'Invite expired' } as Record<string, string>)[status] ?? status
 }
 
 // ── Staff ────────────────────────────────────────────────────
