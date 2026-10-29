@@ -89,7 +89,7 @@ export function OnboardingWizard(props: { state: OnboardingState; initialStep?: 
           </FormAlert>
         )}
         {state.clinic.onboardingStatus === 'submitted' && (
-          <FormAlert tone="info">Submitted. CompoundIQ is reviewing your clinic; you will be able to send orders once it is approved.</FormAlert>
+          <FormAlert tone="info">Submitted. CompoundIQ is reviewing your clinic; you will be able to send orders once it is approved and payouts are set up.</FormAlert>
         )}
         {state.clinic.onboardingStatus === 'approved' && (
           <FormAlert tone="success">

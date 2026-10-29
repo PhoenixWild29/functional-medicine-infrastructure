@@ -104,7 +104,7 @@ test.describe('Clinic onboarding status', () => {
 
     await page.getByRole('region', { name: 'Account under review' }).getByRole('link', { name: 'View what you submitted' }).click()
     await expect(page).toHaveURL(/\/onboarding$/, { timeout: 15_000 })
-    await expect(page.getByText('Submitted. CompoundIQ is reviewing your clinic; you will be able to send orders once it is approved.')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText('Submitted. CompoundIQ is reviewing your clinic; you will be able to send orders once it is approved and payouts are set up.')).toBeVisible({ timeout: 15_000 })
   })
 
   test('#248 approved: no banner; practice details links to Settings. #245: Settings shows "Demo payout account", never the raw id', async ({ page }) => {
