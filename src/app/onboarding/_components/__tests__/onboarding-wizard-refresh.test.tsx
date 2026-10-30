@@ -88,3 +88,11 @@ it('a state that cannot be re-read keeps what is shown', async () => {
   expect(stepButton(/Agreements/)).toHaveTextContent('Not started')
   expect(stepButton(/Practice details/)).toHaveTextContent('Complete')
 })
+
+it('"This is me" hides the email and the button says "Add me as a provider"', () => {
+  render(<OnboardingWizard state={{ ...STATE, steps: { ...STEPS, providers: 'not_started' } }} initialStep="providers" />)
+  expect(screen.getByRole('button', { name: 'Add provider and create invite' })).toBeInTheDocument()
+  fireEvent.click(screen.getByLabelText(/This is me/))
+  expect(screen.queryByLabelText(/^Email/)).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Add me as a provider' })).toBeInTheDocument()
+})

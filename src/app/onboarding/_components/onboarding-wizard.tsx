@@ -290,7 +290,7 @@ function ProvidersStep({ state, readOnly, onChanged, onDone }: { state: Onboardi
             <TextField id="np-lic" label="License number" value={v.licenseNumber} onChange={set('licenseNumber')} error={errors['licenseNumber']} required />
             <TextField id="np-exp" label="License expiry date" type="date" value={v.licenseExpiresOn} onChange={set('licenseExpiresOn')} error={errors['licenseExpiresOn']} required />
           </fieldset>
-          <button type="submit" className={BUTTON_SECONDARY} disabled={busy}>{busy ? 'Adding…' : 'Add provider and create invite'}</button>
+          <button type="submit" className={BUTTON_SECONDARY} disabled={busy}>{busy ? 'Adding…' : self ? 'Add me as a provider' : 'Add provider and create invite'}</button>
         </form>
       )}
 
