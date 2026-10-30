@@ -94,20 +94,22 @@ describe('POST verify', () => {
     expect(loadPlan).not.toHaveBeenCalled()
   })
 
-  it('the 5th wrong one locks it: 423', async () => {
+  it('the 5th wrong one locks it for 15 minutes: 423', async () => {
     verifyPlanDob.mockResolvedValue({ ok: false, reason: 'locked' })
     const res = await post({ action: 'verify', dob: '1985-04-16' })
     expect(res.status).toBe(423)
-    expect(await res.json()).toEqual({ error: expect.any(String), state: 'locked' })
+    expect(await res.json()).toEqual({ error: 'Too many incorrect dates of birth. Try again in 15 minutes, or contact your clinic.', state: 'locked' })
   })
 })
 
 describe('the link state decides first', () => {
-  // An unknown, expired, closed, locked or signed link gets the same answer,
-  // so a request never learns whether a link existed. A database error is
-  // still 503 (it says nothing about the link).
+  // An unknown, expired, closed or signed link gets the same answer, so a
+  // request never learns whether a link existed. A locked link (needs the
+  // right token) says it is locked for 15 minutes (423). A database error
+  // is still 503 (it says nothing about the link).
   it.each([
-    ['not_found', 410, 'closed'], ['expired', 410, 'closed'], ['closed', 410, 'closed'], ['locked', 410, 'closed'], ['signed', 410, 'closed'],
+    ['not_found', 410, 'closed'], ['expired', 410, 'closed'], ['closed', 410, 'closed'], ['signed', 410, 'closed'],
+    ['locked', 423, 'locked'],
     ['unavailable', 503, 'unavailable'],
   ])('%s: %i, the date of birth is not checked', async (state, status, reported) => {
     resolvePlan.mockResolvedValue({ state })
@@ -117,9 +119,9 @@ describe('the link state decides first', () => {
     expect(verifyPlanDob).not.toHaveBeenCalled()
   })
 
-  it('the five closed states answer word for word the same', async () => {
+  it('the four closed states answer word for word the same', async () => {
     const bodies = new Set<string>()
-    for (const state of ['not_found', 'expired', 'closed', 'locked', 'signed']) {
+    for (const state of ['not_found', 'expired', 'closed', 'signed']) {
       resolvePlan.mockResolvedValue({ state })
       bodies.add(JSON.stringify(await (await post({ action: 'verify', dob: '1985-04-15' })).json()))
     }

@@ -4,7 +4,8 @@
  *
  *   - The invite page: full name, password and confirmation; a mismatch
  *     is caught before anything is sent; on success the new account signs
- *     in and goes to MFA enrollment, then the wizard.
+ *     in, sets its own password from an emailed link, then the wizard
+ *     (no two-step setup is promised).
  *   - The wizard: the steps in order with the current one marked
  *     (aria-current="step"); field errors from the server are shown on
  *     their fields (aria-invalid, aria-describedby) with an alert summary;
@@ -71,14 +72,14 @@ describe('the invite page', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('says one password, then two-step sign-in (no second password)', () => {
+  it('one password, no emailed reset, and no two-step setup promised', () => {
     render(<AcceptInviteForm token="tok" pharmacyName="Strive Pharmacy" adminEmail="dana@strive.example" />)
-    expect(screen.getByText(/After this you set up two-step sign-in/i)).toBeInTheDocument()
+    expect(screen.getByText(/Then you go straight to setup/i)).toBeInTheDocument()
     expect(screen.queryByText(/email you a link/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/two-step/i)).not.toBeInTheDocument()
   })
 
-  // One password, set here; the proxy then sends the pharmacy admin to
-  // two-step sign-in setup, then the wizard.
+  // One password, set here; then the pharmacy portal (the wizard).
   it('creates the account, signs in, and goes to the pharmacy portal', async () => {
     fetchMock.mockResolvedValue(reply({ email: 'dana@strive.example' }))
     render(<AcceptInviteForm token="tok" pharmacyName="Strive Pharmacy" adminEmail="dana@strive.example" />)

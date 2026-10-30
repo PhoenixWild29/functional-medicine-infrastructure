@@ -4,7 +4,8 @@
  * HIPAA B3, statically: 20261024000012_rls_require_aal2.sql puts a
  * RESTRICTIVE aal2 policy on exactly the PHI tables in
  * lib/auth/staff-mfa-rls (STAFF_MFA_PHI_TABLES), with the app's rule made
- * stricter (lib/auth/mfa): pharmacy_admin always, every other authenticated
+ * stricter (lib/auth/mfa): pharmacy_admin always (the app no longer forces
+ * it; see lib/auth/staff-mfa-rls), every other authenticated
  * JWT (staff role or not) when the database switch is on. The behaviour is tested on Postgres in
  * src/__tests__/rls-staff-mfa-pglite.test.ts.
  */
@@ -12,7 +13,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { STAFF_MFA_PHI_TABLES, STAFF_MFA_SWITCH_SQL } from '../staff-mfa-rls'
-import { ALWAYS_MFA_ROLES, MFA_ROLES } from '../mfa'
+import { MFA_ROLES } from '../mfa'
 
 const MIGRATIONS = join(process.cwd(), 'supabase', 'migrations')
 const FILE = '20261024000012_rls_require_aal2.sql'
@@ -60,8 +61,11 @@ it("order_sla_deadlines is a PHI table (free-text resolution_notes; B's review, 
 
 it('the rule: aal2 passes, pharmacy_admin always, the switch for every other JWT (no exemption for a non-staff role)', () => {
   const c = code(sql)
-  expect(arrayIn(sql, 'always_roles').sort()).toEqual([...ALWAYS_MFA_ROLES].sort())
-  expect(ALWAYS_MFA_ROLES.every(r => (MFA_ROLES as readonly string[]).includes(r))).toBe(true)
+  // The database still forces pharmacy_admin; the app does not (2026-10-30).
+  // Harmless while the pharmacy portal reads no PHI table (staff-mfa-rls).
+  const always = arrayIn(sql, 'always_roles')
+  expect(always).toEqual(['pharmacy_admin'])
+  expect(always.every(r => (MFA_ROLES as readonly string[]).includes(r))).toBe(true)
   // B's review, F1: no early exit for a JWT whose role is missing or unknown.
   expect(c).not.toMatch(/staff_roles/)
   expect(c).not.toMatch(/app_role IS NULL/)

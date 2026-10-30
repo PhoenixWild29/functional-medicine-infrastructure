@@ -4,10 +4,9 @@
  * shipped order that has none: in the pipeline row and in the order drawer.
  */
 
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { OrderDetailDrawer } from '../_components/order-detail-drawer'
 import { trackingPending } from '@/lib/orders/tracking-pending'
-import { OPS_ACCESS_REASONS } from '@/lib/audit/ops-access-reason'
 import type { PipelineOrder } from '@/types/pipeline'
 
 it('trackingPending: shipped with no tracking number only', () => {
@@ -33,7 +32,5 @@ it('the drawer says "Tracking pending" for a shipped order with no tracking', as
     json: async () => ({ order: { orderId: ORDER, status: 'SHIPPED', clinicName: 'Sunrise', rerouteCount: 0, trackingNumber: null, carrier: null, createdAt: '2026-10-06T10:00:00Z', updatedAt: '2026-10-06T10:00:00Z' }, history: [], submissions: [], slas: [] }),
   })) as unknown as typeof fetch
   render(<OrderDetailDrawer order={order} onClose={() => undefined} onAction={async () => undefined} currentUserEmail={null} />)
-  fireEvent.click(screen.getByLabelText(OPS_ACCESS_REASONS[0]!.label))
-  fireEvent.click(screen.getByRole('button', { name: 'Open order' }))
   await waitFor(() => expect(screen.getByText('Tracking pending')).toBeInTheDocument())
 })

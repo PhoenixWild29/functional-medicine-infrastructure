@@ -6,8 +6,8 @@
 //
 // The account is created server-side (POST /api/onboard/pharmacy/<token>:
 // role and pharmacy in app_metadata, never here). Then it signs in and
-// goes to MFA enrollment, which a pharmacy_admin always needs, and from
-// there to the onboarding wizard.
+// goes to the onboarding wizard. Two-step sign-in, if required, follows
+// through the normal MFA gate (lib/auth/mfa), as for every other role.
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -57,8 +57,7 @@ export function AcceptInviteForm({ token, pharmacyName, adminEmail }: { token: s
     }
     // A full navigation: the session changed in this page, and since Next 16.3
     // the client router reuses a redirect it already saw for a route
-    // (lib/auth/full-navigation). The proxy sends a pharmacy admin to
-    // two-step sign-in setup first, then the wizard.
+    // (lib/auth/full-navigation). One password, set here; then the wizard.
     navigateFully('/pharmacy/onboarding')
   }
 
@@ -66,7 +65,7 @@ export function AcceptInviteForm({ token, pharmacyName, adminEmail }: { token: s
     <form onSubmit={submit} noValidate className="space-y-5" aria-describedby="accept-intro">
       <p id="accept-intro" className="text-sm text-muted-foreground">
         You were invited to set up <strong className="text-foreground">{pharmacyName}</strong> on CompoundIQ. Your account
-        will use <strong className="text-foreground">{adminEmail}</strong>. After this you set up two-step sign-in.
+        will use <strong className="text-foreground">{adminEmail}</strong>. Then you go straight to setup.
       </p>
       <FormAlert message={message} />
       <TextField id="fullName" label="Full name" value={fullName} onChange={setFullName} error={errors['fullName']} autoComplete="name" required maxLength={100} />

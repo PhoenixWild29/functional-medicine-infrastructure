@@ -16,9 +16,10 @@
 //
 //   400 a malformed request, or a choice the rules refuse (required items,
 //       one option, at least one item)
-//   401 { remaining } a wrong date of birth   423 this request's wrong date
-//       was the 5th (the link is now locked)
-//   410 { state: 'closed' } an unknown, expired, closed, locked or signed
+//   401 { remaining } a wrong date of birth   423 the link is locked for
+//       15 minutes after 5 wrong dates (this request's, or earlier ones);
+//       then the tries start again (lib/proposals/token)
+//   410 { state: 'closed' } an unknown, expired, closed or signed
 //       link: one answer, word for word, so a request never learns
 //       whether a link existed (GET: 200 { state: 'closed' })
 //   409 the plan moved on    429 rate limited (per IP and per link)
@@ -52,7 +53,7 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 type Params = { params: Promise<{ token: string }> }
 
 const NOT_ACTIVE  = { status: 410, error: 'This link is no longer active. Please contact your clinic.' }
-const LOCKED      = { status: 423, error: 'Too many incorrect dates of birth. This link is locked; please contact your clinic.' }
+const LOCKED      = { status: 423, error: 'Too many incorrect dates of birth. Try again in 15 minutes, or contact your clinic.' }
 const UNAVAILABLE = { status: 503, error: 'Please try again in a moment.' }
 const NOT_RECORDED = 'This change could not be recorded. Nothing was changed. Try again.'
 const ROUTE = '/api/plan/[token]'
@@ -112,6 +113,9 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
   const now = new Date()
   const r = await resolvePlan(db, token, now)
   if (r.state === 'unavailable') return json({ error: UNAVAILABLE.error, state: 'unavailable' }, UNAVAILABLE.status)
+  // A lock is temporary (15 minutes), so it is said as one, only to a
+  // request that holds the right token (the state needs a token match).
+  if (r.state === 'locked') return json({ error: LOCKED.error, state: 'locked' }, LOCKED.status)
   if (r.state !== 'open') return json({ error: NOT_ACTIVE.error, state: 'closed' }, NOT_ACTIVE.status)
   const proposal = r.proposal
 
@@ -120,9 +124,7 @@ async function postHandler(request: NextRequest, { params }: Params): Promise<Ne
     if (dob.reason === 'wrong') {
       return json({ error: `That date of birth doesn't match. ${dob.remaining} ${dob.remaining === 1 ? 'try' : 'tries'} left.`, remaining: dob.remaining }, 401)
     }
-    // Only the request whose wrong date was the 5th learns of the lock (it
-    // holds the link and was answering the date of birth question); every
-    // later request gets the neutral 410 above.
+    // The request whose wrong date was the 5th, or one sent alongside it.
     const reply = dob.reason === 'locked' ? LOCKED : UNAVAILABLE
     return json({ error: reply.error, state: dob.reason }, reply.status)
   }

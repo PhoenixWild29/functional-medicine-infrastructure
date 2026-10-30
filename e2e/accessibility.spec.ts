@@ -324,7 +324,7 @@ test.describe('Accessibility: the patient plan link (WCAG 2.1 AA)', () => {
   })
 
   for (const [state, title] of [
-    ['locked', 'This link is no longer active'],
+    ['locked', 'This link is locked for now'],
     ['expired', 'This link is no longer active'],
     ['signed', 'This link is no longer active'],
   ] as const) {

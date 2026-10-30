@@ -10,7 +10,10 @@
 //   - Re-sending stores a new hash, so the old link stops matching.
 //   - It dies once the choice is signed, and is closed once the proposal
 //     is declined, expired or cancelled.
-//   - 5 wrong dates of birth lock it (locked_at).
+//   - 5 wrong dates of birth lock it for 15 minutes (locked_at is when).
+//     After that the lock has lapsed: the next date of birth clears it and
+//     the tries start again (lib/proposals/plan). No migration: the lapse
+//     is computed from locked_at.
 //
 // Server only (node:crypto).
 
@@ -19,6 +22,15 @@ import type { ProposalStatus } from './types'
 
 export const PROPOSAL_LINK_TTL_DAYS = 7
 export const MAX_DOB_FAILURES = 5
+export const DOB_LOCK_MINUTES = 15
+
+/** Whether a date of birth lock set at lockedAt still holds at now (15 minutes). */
+export function isDobLockActive(lockedAt: string | null, now: Date): boolean {
+  if (!lockedAt) return false
+  const at = new Date(lockedAt).getTime()
+  if (Number.isNaN(at)) return true
+  return now.getTime() < at + DOB_LOCK_MINUTES * 60 * 1000
+}
 
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/
 
@@ -58,7 +70,8 @@ export function proposalLinkState(
   if (p.status === 'draft') return 'not_found'
   if (p.status === 'signed') return 'signed'
   if (p.status === 'declined' || p.status === 'expired' || p.status === 'cancelled') return 'closed'
-  if (p.locked_at) return 'locked'
   if (!p.expires_at || new Date(p.expires_at).getTime() <= now.getTime()) return 'expired'
+  // A lapsed lock is open: the next date of birth clears it.
+  if (isDobLockActive(p.locked_at, now)) return 'locked'
   return 'open'
 }

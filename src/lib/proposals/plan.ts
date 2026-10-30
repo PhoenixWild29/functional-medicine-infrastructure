@@ -9,7 +9,8 @@
 //
 //   resolvePlan    the link state, and the clinic logo when open
 //   verifyPlanDob  the patient's date of birth; a wrong one counts
-//                  (dob_failed) and the 5th locks the link (locked)
+//                  (dob_failed) and the 5th locks the link for 15 minutes
+//                  (locked); once the lock lapses the tries start again
 //   loadPlan       the options and their DRAFT items, for the patient. No
 //                  wholesale cost, no pharmacy, no clinic name.
 //   quotePlan      the total for a selection, computed here (the patient
@@ -27,7 +28,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import { loadShippingRates } from '@/lib/orders/apply-bundle-shipping'
 import { bundleTotals, computeBundleShipping, dollarsToCents } from '@/lib/orders/shipping'
-import { MAX_DOB_FAILURES, hashProposalToken, isWellFormedProposalToken, proposalLinkState } from './token'
+import { MAX_DOB_FAILURES, hashProposalToken, isDobLockActive, isWellFormedProposalToken, proposalLinkState } from './token'
 import { canTransitionProposal } from './status'
 import type { ProposalEvent, ProposalStatus } from './types'
 
@@ -88,18 +89,48 @@ export type DobResult =
 
 const DOB_RE = /^\d{4}-\d{2}-\d{2}$/
 
-/** The proposal's failure count and lock as they are now; null on a database error. */
-async function currentCount(db: Db, proposalId: string): Promise<{ failures: number; locked: boolean } | null> {
+interface DobCount { failures: number; lockedAt: string | null }
+
+/** The proposal's failure count and lock time as they are now; null on a database error. */
+async function currentCount(db: Db, proposalId: string): Promise<DobCount | null> {
   const { data, error } = await db.from('treatment_proposals').select('dob_failures, locked_at').eq('proposal_id', proposalId).maybeSingle()
   if (error || !data) {
     if (error) console.error('[plan] DOB count lookup failed:', error.message)
     return null
   }
   const row = data as { dob_failures: number; locked_at: string | null }
-  return { failures: row.dob_failures, locked: row.locked_at !== null }
+  return { failures: row.dob_failures, lockedAt: row.locked_at }
+}
+
+/**
+ * The count as it is now, with a lapsed lock (15 minutes, lib/proposals/
+ * token) cleared first: the tries start again at 0. The clear is a
+ * compare-and-set on locked_at, so two requests that both find the lapsed
+ * lock clear it once; a lock set again since is left alone. null on a
+ * database error.
+ */
+async function liveCount(db: Db, proposalId: string, count: DobCount, now: Date): Promise<DobCount | null> {
+  if (!count.lockedAt || isDobLockActive(count.lockedAt, now)) return count
+  const { error } = await db.from('treatment_proposals')
+    .update({ dob_failures: 0, locked_at: null })
+    .eq('proposal_id', proposalId)
+    .eq('locked_at', count.lockedAt)
+  if (error) {
+    console.error('[plan] lapsed DOB lock not cleared:', error.message)
+    return null
+  }
+  const after = await currentCount(db, proposalId)
+  if (!after) return null
+  // Locked again in between (a new lock is active), or cleared: as it is now.
+  return after.lockedAt && !isDobLockActive(after.lockedAt, now) ? { failures: 0, lockedAt: null } : after
 }
 
 export async function verifyPlanDob(db: Db, p: PlanProposal, dob: string, now: Date): Promise<DobResult> {
+  // A lapsed lock is cleared before this date counts, so the tries start again.
+  const start = await liveCount(db, p.proposal_id, { failures: p.dob_failures, lockedAt: p.locked_at }, now)
+  if (!start) return { ok: false, reason: 'unavailable' }
+  if (isDobLockActive(start.lockedAt, now)) return { ok: false, reason: 'locked' }
+
   const { data, error } = await db.from('patients').select('date_of_birth').eq('patient_id', p.patient_id).eq('clinic_id', p.clinic_id).maybeSingle()
   if (error) {
     console.error('[plan] patient lookup failed:', error.message)
@@ -111,7 +142,7 @@ export async function verifyPlanDob(db: Db, p: PlanProposal, dob: string, now: D
     // it was read: the right date does not get past a lock.
     const latest = await currentCount(db, p.proposal_id)
     if (!latest) return { ok: false, reason: 'unavailable' }
-    if (latest.locked) return { ok: false, reason: 'locked' }
+    if (isDobLockActive(latest.lockedAt, now)) return { ok: false, reason: 'locked' }
     if (!p.first_viewed_at) {
       const { error: viewError } = await db.from('treatment_proposals').update({ first_viewed_at: now.toISOString() })
         .eq('proposal_id', p.proposal_id).is('first_viewed_at', null)
@@ -125,9 +156,9 @@ export async function verifyPlanDob(db: Db, p: PlanProposal, dob: string, now: D
   // sent at once all read the same count, so all but one find it already
   // moved on: each of those re-reads the count and tries again, so every
   // wrong date is counted (a burst of guesses used to cost one try). The
-  // count only rises, so this ends within MAX_DOB_FAILURES rounds, at the
-  // lock at the latest.
-  let seen = p.dob_failures
+  // count only rises (a lapsed lock is cleared first, liveCount), so this
+  // ends within MAX_DOB_FAILURES rounds, at the lock at the latest.
+  let seen = start.failures
   let failures = seen + 1
   let counted = false
   for (let round = 0; round <= MAX_DOB_FAILURES && !counted; round++) {
@@ -142,9 +173,10 @@ export async function verifyPlanDob(db: Db, p: PlanProposal, dob: string, now: D
       break
     }
     if (Array.isArray(rows) && rows.length > 0) { counted = true; break }
-    const current = await currentCount(db, p.proposal_id)
+    const read = await currentCount(db, p.proposal_id)
+    const current = read && await liveCount(db, p.proposal_id, read, now)
     if (!current) return { ok: false, reason: 'unavailable' }
-    if (current.locked) return { ok: false, reason: 'locked' }
+    if (isDobLockActive(current.lockedAt, now)) return { ok: false, reason: 'locked' }
     seen = current.failures
   }
   const locked = failures >= MAX_DOB_FAILURES

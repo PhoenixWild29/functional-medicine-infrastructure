@@ -40,6 +40,15 @@ it('a read logs the view (order, the order\'s clinic and patient) and the reason
   ])
 })
 
+// The drawer sends no reason (2026-10-30): the open is still logged as an order view.
+it('a read with no reason logs the view only, exactly as an order view', async () => {
+  const res = await GET({ headers: new Headers() } as never, { params: Promise.resolve({ orderId: ORDER }) })
+  expect(res.status).toBe(200)
+  expect(phiEntries()).toEqual([
+    expect.objectContaining({ action: 'view', resource: 'order', route: '/api/ops/orders/[orderId]/detail', orderId: ORDER, clinicId: 'clinic-1', patientId: 'pt-1' }),
+  ])
+})
+
 it('a non-ops user, or a missing order, logs nothing', async () => {
   session = { user: { id: 'u1', app_metadata: { app_role: 'provider', clinic_id: 'clinic-1' } } }
   expect((await call()).status).toBe(403)

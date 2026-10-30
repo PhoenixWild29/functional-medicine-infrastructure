@@ -11,6 +11,13 @@
 // REQ-OPV-004 AC-OPV-003.5: Stripe payment_intent_id + status.
 //
 // Auth: ops_admin only. Service client for cross-clinic access.
+//
+// Every read is logged as an order view in phi_access_log (compliance C2,
+// HIPAA audit controls), with or without a reason. The access reason
+// (B13, x-ops-access-reason) is optional since 2026-10-30: the drawer no
+// longer asks for one. A listed reason, when a caller sends it, is still
+// logged as a second row (ops_reason_<code>), and the emergency reason
+// keeps its rules below. A value not on the list is refused.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient }  from '@/lib/supabase/server'
@@ -44,9 +51,10 @@ async function getHandler(request: NextRequest, { params }: Params): Promise<Nex
   }
   // An 8-4-4-4-12 hex id, before any of the four queries.
   if (!UUID_RE.test(orderId)) return badRequest('Invalid request', ['orderId'])
-  // B13: ops says why before a patient's order is read (the drawer asks).
-  const reason = parseOpsAccessReason(request.headers?.get(OPS_ACCESS_REASON_HEADER) ?? null)
-  if (!reason) return badRequest('Choose why you are opening this order', ['reason'])
+  // B13: the reason is optional; one that is sent must be on the list.
+  const rawReason = request.headers?.get(OPS_ACCESS_REASON_HEADER) ?? null
+  const reason = rawReason === null ? null : parseOpsAccessReason(rawReason)
+  if (rawReason !== null && !reason) return badRequest('Invalid access reason', ['reason'])
 
   const supabase = createServiceClient()
   const nowMs = Date.now()
@@ -98,7 +106,7 @@ async function getHandler(request: NextRequest, { params }: Params): Promise<Nex
 
   // Compliance C2: ops viewed a patient's order (the medication, the
   // state). The row belongs to the order's clinic, so its admin sees it.
-  // B13: a second row, against the same order, records the reason given.
+  // B13: when a reason is given, a second row against the same order records it.
   const accessed = {
     user: user, action: 'view', route: '/api/ops/orders/[orderId]/detail',
     orderId, clinicId: typeof o['clinic_id'] === 'string' ? o['clinic_id'] : null,
@@ -106,7 +114,7 @@ async function getHandler(request: NextRequest, { params }: Params): Promise<Nex
     headers: request.headers ?? null,
   } as const
   await logPhiAccess({ ...accessed, resource: 'order' })
-  const reasonLogged = await logPhiAccess({ ...accessed, resource: opsAccessReasonResource(reason) })
+  const reasonLogged = reason ? await logPhiAccess({ ...accessed, resource: opsAccessReasonResource(reason) }) : true
   if (reason === 'emergency') {
     // C's review D4: the emergency reason row is the accountability record
     // for a break-glass open; without it, nothing about the order is sent.
