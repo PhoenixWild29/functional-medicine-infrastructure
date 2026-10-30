@@ -28,7 +28,7 @@ beforeEach(() => {
   global.fetch = fetchMock as unknown as typeof fetch
 })
 
-const LABELS = ['Legal name', 'DBA (optional)', 'Address line 1', 'Address line 2 (optional)', 'City', 'State', 'ZIP code', 'Phone', 'Practice NPI (Type 2, optional)', 'Tax ID (last 4 digits)']
+const LABELS = ['Legal name', 'DBA (optional)', 'Address line 1', 'Address line 2 (optional)', 'City', 'State', 'ZIP code', 'Phone', 'Practice NPI (Type 2, optional)', 'Tax ID, last 4 digits (optional)']
 
 it('shows every wizard field with its value', () => {
   render(<PracticeDetailsForm details={DETAILS} canEdit />)

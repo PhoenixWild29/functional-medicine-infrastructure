@@ -1,12 +1,12 @@
 /**
  * Compliance C3 / HIPAA automatic logoff: every clinic page signs the
- * user out after inactivity, 15 minutes by default, configurable.
+ * user out after inactivity, 30 minutes by default, configurable.
  *
  * Before, the timer was 30 minutes, fixed, and each page had to mount it
  * itself: eight clinic pages did, and Settings (and anything added later)
  * did not. It is now mounted once, by the clinic layout and the ops
  * layout, with the timeout read from IDLE_TIMEOUT_MINUTES through
- * src/lib/env (default 15).
+ * src/lib/env (default 30).
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -46,9 +46,9 @@ describe('IDLE_TIMEOUT_MINUTES', () => {
   const saved = process.env['IDLE_TIMEOUT_MINUTES']
   afterEach(() => { if (saved === undefined) delete process.env['IDLE_TIMEOUT_MINUTES']; else process.env['IDLE_TIMEOUT_MINUTES'] = saved })
 
-  it('defaults to 15 when unset', () => {
+  it('defaults to 30 when unset', () => {
     delete process.env['IDLE_TIMEOUT_MINUTES']
-    expect(serverEnv.idleTimeoutMinutes()).toBe(15)
+    expect(serverEnv.idleTimeoutMinutes()).toBe(30)
   })
 
   it('reads a whole number of minutes', () => {
@@ -56,10 +56,10 @@ describe('IDLE_TIMEOUT_MINUTES', () => {
     expect(serverEnv.idleTimeoutMinutes()).toBe(10)
   })
 
-  it('falls back to 15 for anything that is not a positive whole number', () => {
+  it('falls back to 30 for anything that is not a positive whole number', () => {
     for (const bad of ['', '0', '-5', 'abc', '2.5']) {
       process.env['IDLE_TIMEOUT_MINUTES'] = bad
-      expect(serverEnv.idleTimeoutMinutes()).toBe(15)
+      expect(serverEnv.idleTimeoutMinutes()).toBe(30)
     }
   })
 })

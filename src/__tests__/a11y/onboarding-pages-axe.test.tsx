@@ -102,33 +102,35 @@ describe('onboarding wizard', () => {
     expect(nav.querySelector('[aria-current="step"]')!.textContent).toMatch(/providers/i)
   })
 
-  it.each(['baa', 'terms'] as StepKey[])('the %s step shows the final v1.0 text, with no draft banner', step => {
+  it.each(['baa', 'terms'] as StepKey[])('the %s step opens the one Agreements step with both final v1.0 texts, no draft banner', step => {
     render(<OnboardingWizard state={STATE} initialStep={step} />)
     expect(document.getElementById('agreement-draft-banner')).toBeNull()
     expect(document.body.textContent).not.toMatch(/draft|pending legal review/i)
-    expect(screen.getByText(/\(version v1\.0\)/)).toBeInTheDocument()
+    expect(screen.getAllByText(/\(version v1\.0\)/)).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Accept both agreements' })).toBeInTheDocument()
     expect(screen.getByLabelText('Signer name')).toBeInTheDocument()
     expect(screen.getByLabelText('Title')).toBeInTheDocument()
   })
 
   it('the BAA (v1.0 Markdown) renders as headings and lists, not raw Markdown', () => {
     render(<OnboardingWizard state={STATE} initialStep="baa" />)
-    expect(screen.getByRole('heading', { name: '1. Definitions' })).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { name: '1. Definitions' }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('listitem').length).toBeGreaterThan(10)
     expect(screen.queryByText(/^## /)).not.toBeInTheDocument()
-    expect(screen.getByText(/version v1\.0/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/version v1\.0/i).length).toBeGreaterThan(0)
   })
 
-  it('payouts: setup is not live, so the control is disabled and nothing mentions Stripe', () => {
+  it('payouts are not shown until they are live, and nothing mentions Stripe', () => {
     const { container } = render(<OnboardingWizard state={STATE} initialStep="payouts" />)
-    const button = screen.getByRole('button', { name: 'Payout setup: available at launch' })
-    expect(button).toBeDisabled()
+    const nav = screen.getByRole('navigation', { name: /onboarding steps/i })
+    expect(nav.textContent).not.toMatch(/payouts/i)
+    expect(nav.querySelectorAll('li')).toHaveLength(5)
     expect(container.textContent).not.toMatch(/stripe/i)
   })
 
   it('every practice field has a visible label', () => {
     render(<OnboardingWizard state={STATE} initialStep="practice" />)
-    for (const label of ['Legal name', 'DBA (optional)', 'Address line 1', 'City', 'State', 'ZIP code', 'Phone', 'Practice NPI (Type 2, optional)', 'Tax ID (last 4 digits)']) {
+    for (const label of ['Legal name', 'DBA (optional)', 'Address line 1', 'City', 'State', 'ZIP code', 'Phone', 'Practice NPI (Type 2, optional)', 'Tax ID, last 4 digits (optional)']) {
       expect(screen.getByLabelText(label)).toBeInTheDocument()
     }
   })
