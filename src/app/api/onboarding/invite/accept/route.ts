@@ -119,12 +119,12 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   // 2. The account, with role and clinic in app_metadata, confirmed: the
   //    invite link proved the address (lib/auth/create-login).
-  //    B's review P2: whoever sent the link could have opened it, so the
-  //    login must set its own password from an emailed reset link before
-  //    anything else (lib/auth/must-change-password).
+  //    The invitee sets their one password here (Sam, Oct 30: never two).
+  //    No forced emailed reset: it doubled the password step, and Supabase's
+  //    built-in email only reaches project team members.
   const login = await createLogin(supabase, {
     email: invite.email, password, fullName,
-    appMetadata: { ...appMetadataFor({ role: kind, clinicId: invite.clinic_id }), must_change_password: true },
+    appMetadata: appMetadataFor({ role: kind, clinicId: invite.clinic_id }),
   })
   if (!login.ok) {
     await release()

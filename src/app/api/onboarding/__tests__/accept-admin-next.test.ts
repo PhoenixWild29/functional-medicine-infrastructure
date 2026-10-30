@@ -79,5 +79,5 @@ it('never writes signup_source', async () => {
     expect(JSON.stringify(c.payload)).not.toContain('signup_source')
   }
   const attrs = createUser.mock.calls[0]![0] as { app_metadata: Record<string, unknown> }
-  expect(attrs.app_metadata).toEqual({ app_role: 'clinic_admin', clinic_id: CLINIC, must_change_password: true })
+  expect(attrs.app_metadata).toEqual({ app_role: 'clinic_admin', clinic_id: CLINIC })
 })

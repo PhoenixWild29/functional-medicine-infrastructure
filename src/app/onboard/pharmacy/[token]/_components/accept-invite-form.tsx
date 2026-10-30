@@ -57,17 +57,16 @@ export function AcceptInviteForm({ token, pharmacyName, adminEmail }: { token: s
     }
     // A full navigation: the session changed in this page, and since Next 16.3
     // the client router reuses a redirect it already saw for a route
-    // (lib/auth/full-navigation). B's review P2: the new login sets its own
-    // password from an emailed link first (must_change_password; the proxy
-    // holds it on /reset-password), then two-step sign-in and the wizard.
-    navigateFully('/reset-password')
+    // (lib/auth/full-navigation). The proxy sends a pharmacy admin to
+    // two-step sign-in setup first, then the wizard.
+    navigateFully('/pharmacy/onboarding')
   }
 
   return (
     <form onSubmit={submit} noValidate className="space-y-5" aria-describedby="accept-intro">
       <p id="accept-intro" className="text-sm text-muted-foreground">
         You were invited to set up <strong className="text-foreground">{pharmacyName}</strong> on CompoundIQ. Your account
-        will use <strong className="text-foreground">{adminEmail}</strong>. After this we email you a link to set your own password, then you set up two-step sign-in.
+        will use <strong className="text-foreground">{adminEmail}</strong>. After this you set up two-step sign-in.
       </p>
       <FormAlert message={message} />
       <TextField id="fullName" label="Full name" value={fullName} onChange={setFullName} error={errors['fullName']} autoComplete="name" required maxLength={100} />
