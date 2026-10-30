@@ -4,14 +4,14 @@
  * The plan link token (copied from the intake token and its tests): 32
  * random bytes, base64url (43 characters); only its SHA-256 hex is stored;
  * 7 days; revoked when re-sent (a new token replaces the stored hash); dead
- * once the choice is signed, or the proposal is declined, expired,
- * cancelled or locked after 5 wrong dates of birth.
+ * once the choice is signed, or the proposal is declined, expired or
+ * cancelled. 5 wrong dates of birth lock it for 15 minutes only.
  */
 
 import { createHash } from 'node:crypto'
 import {
   hashProposalToken, isWellFormedProposalToken, newProposalToken, proposalLinkExpiresAt, proposalLinkState,
-  PROPOSAL_LINK_TTL_DAYS, MAX_DOB_FAILURES,
+  PROPOSAL_LINK_TTL_DAYS, MAX_DOB_FAILURES, DOB_LOCK_MINUTES, isDobLockActive,
 } from '../token'
 
 const NOW = new Date('2026-10-24T12:00:00Z')
@@ -68,9 +68,23 @@ describe('the link state', () => {
     expect(proposalLinkState(open, token, new Date('2026-10-31T12:00:01Z'))).toBe('expired')
   })
 
-  it('5 wrong dates of birth lock it', () => {
+  it('5 wrong dates of birth lock it for 15 minutes, then it is open again', () => {
     expect(MAX_DOB_FAILURES).toBe(5)
+    expect(DOB_LOCK_MINUTES).toBe(15)
     expect(proposalLinkState({ ...open, locked_at: NOW.toISOString() }, token, NOW)).toBe('locked')
+    expect(proposalLinkState({ ...open, locked_at: '2026-10-24T11:45:01Z' }, token, NOW)).toBe('locked')
+    expect(proposalLinkState({ ...open, locked_at: '2026-10-24T11:45:00Z' }, token, NOW)).toBe('open')
+    expect(proposalLinkState({ ...open, locked_at: '2026-10-23T12:00:00Z' }, token, NOW)).toBe('open')
+  })
+
+  it('an expired link says expired, locked or not', () => {
+    expect(proposalLinkState({ ...open, locked_at: '2026-10-31T11:59:00Z' }, token, new Date('2026-10-31T12:00:01Z'))).toBe('expired')
+  })
+
+  it('isDobLockActive: none, active, lapsed', () => {
+    expect(isDobLockActive(null, NOW)).toBe(false)
+    expect(isDobLockActive('2026-10-24T11:50:00Z', NOW)).toBe(true)
+    expect(isDobLockActive('2026-10-24T11:44:59Z', NOW)).toBe(false)
   })
 
   it('dies once signed; closed once declined, expired or cancelled; nothing before it is sent', () => {

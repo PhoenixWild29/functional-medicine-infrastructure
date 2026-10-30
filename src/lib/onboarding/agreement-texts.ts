@@ -22,7 +22,7 @@
 // clinic's AGREEMENTS, so the clinic agreement routes (isAgreementKey)
 // never take it.
 
-import { BAA_V1_0_TEXT, CLINIC_TERMS_V1_0_TEXT, PHARMACY_TERMS_V1_0_TEXT } from './legal-texts.generated'
+import { BAA_V1_0_TEXT, CLINIC_TERMS_V1_0_TEXT, PHARMACY_TERMS_V1_1_TEXT } from './legal-texts.generated'
 
 export type AgreementKey = 'baa' | 'terms'
 
@@ -41,7 +41,7 @@ export const AGREEMENTS: Record<AgreementKey, AgreementTemplate> = {
 }
 
 export const PHARMACY_TERMS: AgreementTemplate<'pharmacy_terms'> = {
-  key: 'pharmacy_terms', title: 'Pharmacy Terms of Service', version: 'v1.0', text: PHARMACY_TERMS_V1_0_TEXT,
+  key: 'pharmacy_terms', title: 'Pharmacy Terms of Service', version: 'v1.1', text: PHARMACY_TERMS_V1_1_TEXT,
 }
 
 export function isAgreementKey(v: unknown): v is AgreementKey {

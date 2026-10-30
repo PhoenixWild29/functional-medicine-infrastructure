@@ -85,11 +85,11 @@ describe('a flagged pharmacy_admin (new from an invite, aal1, no factor)', () =>
   })
 })
 
-describe('once the flag is cleared, MFA applies as before', () => {
-  it.each([{}, { must_change_password: false }])('the portal at aal1 with no factor: enrollment (%o)', async meta => {
+describe('once the flag is cleared, MFA follows the normal rule (Sam, Oct 30)', () => {
+  it.each([{}, { must_change_password: false }])('the portal at aal1 with no factor: no forced enrollment while REQUIRE_MFA is off (%o)', async meta => {
     getUserMock.mockResolvedValue(admin(meta))
     const res = await proxy(req('/pharmacy/onboarding'))
-    expect(where(res)).toBe('/mfa/enroll')
+    expect(where(res)).not.toBe('/mfa/enroll')
   })
 
   it('an unflagged pharmacy_admin at aal1 is still sent to MFA from the reset page', async () => {

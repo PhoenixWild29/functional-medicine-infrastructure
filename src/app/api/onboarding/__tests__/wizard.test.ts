@@ -125,6 +125,23 @@ describe('providers', () => {
     }))
   })
 
+  it('"This is me": the admin is the provider on their own login, with no email and no invite', async () => {
+    const res = await addProvider(req({ ...NEW, email: '', self: true }))
+    expect(res.status).toBe(201)
+    const body = await res.json() as { link?: string; self?: boolean }
+    expect(body.self).toBe(true)
+    expect(body.link).toBeUndefined()
+    expect(db.to('providers', 'insert')[0]!.payload).toEqual(expect.objectContaining({ clinic_id: CLINIC, user_id: 'admin-1' }))
+    expect(db.to('onboarding_invites', 'insert')).toEqual([])
+  })
+
+  it('"This is me" twice is refused (already a provider here)', async () => {
+    db = scriptedDb(clinicWith('in_progress', c => (c.table === 'providers' && c.op === 'select' && c.filters['user_id'] ? { data: [{ provider_id: PROVIDER }] } : undefined)))
+    const res = await addProvider(req({ ...NEW, email: '', self: true }))
+    expect(res.status).toBe(409)
+    expect(db.to('providers', 'insert')).toEqual([])
+  })
+
   it('refuses an NPI whose check digit is wrong', async () => {
     const res = await addProvider(req({ ...NEW, npiNumber: '1234567890' }))
     expect(res.status).toBe(400)

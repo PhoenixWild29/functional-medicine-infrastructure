@@ -30,7 +30,7 @@ it('open: the flow, with the logo only', async () => {
 it.each([
   ['not_found', 'This link is no longer active'],
   ['expired', 'This link is no longer active'],
-  ['locked', 'This link is no longer active'],
+  ['locked', 'This link is locked for now'],
   ['signed', 'This link is no longer active'],
   ['closed', 'This link is no longer active'],
   ['unavailable', 'This page could not be opened right now'],
@@ -42,9 +42,16 @@ it.each([
   expect((await axe(container)).violations.map(v => v.id)).toEqual([])
 })
 
-it('an unknown, expired, locked, signed or closed link: the same page word for word (it never says whether the link existed)', async () => {
+it('a locked link (15 minutes) says when to try again, not "no longer active"', async () => {
+  resolvePlan.mockResolvedValue({ state: 'locked' })
+  const { container } = await renderPage()
+  expect(screen.getByText('Too many incorrect dates of birth. Try again in 15 minutes, or contact your clinic.')).toBeInTheDocument()
+  expect(container.textContent).not.toMatch(/no longer active/)
+})
+
+it('an unknown, expired, signed or closed link: the same page word for word (it never says whether the link existed)', async () => {
   const texts: string[] = []
-  for (const state of ['not_found', 'expired', 'locked', 'signed', 'closed']) {
+  for (const state of ['not_found', 'expired', 'signed', 'closed']) {
     resolvePlan.mockResolvedValue({ state })
     const { container, unmount } = await renderPage()
     texts.push(container.innerHTML)

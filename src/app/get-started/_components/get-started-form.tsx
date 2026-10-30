@@ -9,7 +9,7 @@
 // self-serve); the page then signs in, as the invite pages do, and goes
 // where the server says: the app under the pending-review banner (solo
 // provider), the clinic wizard, or the pharmacy wizard. Two-step sign-in
-// follows the normal rules (pharmacies always set it up).
+// follows the normal rules, the same for every kind of account.
 //
 // Copy: plain words; no em dashes; no promise of an email or a text (none
 // is sent). The "website" field is a honeypot: hidden from people and
@@ -218,9 +218,6 @@ export function GetStartedForm() {
           <button type="submit" className={`${BUTTON_PRIMARY} w-full`} disabled={busy}>
             {busy ? 'Creating your account…' : 'Create account'}
           </button>
-          {kind === 'pharmacy' && (
-            <p className="text-xs text-slate-600 dark:text-slate-300">Pharmacies set up two-step verification the first time they sign in.</p>
-          )}
         </form>
       )}
 

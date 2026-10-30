@@ -2,7 +2,6 @@ import path from 'node:path'
 import { test, expect, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import { TEST_USERS } from './fixtures/seed'
-import { totpCode } from './fixtures/totp'
 import { MAX_REQUEST_BYTES } from '../src/lib/uploads/limits'
 import { shardEmail, shardId, shardName, shardSlug } from './fixtures/shard'
 import { e2ePassword } from './fixtures/test-password'
@@ -19,8 +18,8 @@ import { e2ePassword } from './fixtures/test-password'
 //
 // Data (service role, E2E project only):
 // - Pharmacy: a pharmacy in onboarding, its application, one TX license
-//   with no document and a pharmacy_admin login (TOTP enrolled at first
-//   sign-in, as pharmacy-onboarding-a11y does). afterAll removes the
+//   with no document and a pharmacy_admin login (password only: REQUIRE_MFA
+//   is off in E2E; any factor from an older run is removed first). afterAll removes the
 //   stored document, the license, the application, the login and the
 //   pharmacy. The small upload writes one license_document_uploaded row
 //   to pharmacy_onboarding_events, which is append-only; it names this
@@ -129,15 +128,12 @@ test.describe('#250 4 MB upload limit: pharmacy license document', () => {
   })
 
   test('a file just over 4 MB: the message, and nothing sent; a small PDF uploads', async ({ page }) => {
-    // First sign-in of a pharmacy_admin: enroll TOTP, then the wizard.
+    // First sign-in of a pharmacy_admin: no two-step setup (REQUIRE_MFA is
+    // off in E2E), straight to the wizard.
     await page.goto('/login')
     await page.getByLabel('Email address').fill(PH_ADMIN.email)
     await page.getByLabel('Password', { exact: true }).fill(PH_ADMIN.password)
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await expect(page).toHaveURL(/\/mfa\/enroll/, { timeout: 15_000 })
-    const secret = (await page.getByTestId('mfa-manual-key').innerText()).replace(/\s+/g, '')
-    await page.getByLabel('6-digit code').fill(totpCode(secret))
-    await page.getByRole('button', { name: /Verify/ }).click()
     await expect(page).toHaveURL(/\/pharmacy\/onboarding/, { timeout: 15_000 })
 
     await page.getByRole('navigation', { name: 'Onboarding steps' }).getByRole('button', { name: /^\d*\s*State licenses/ }).click()

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { verifyCheckoutToken } from '@/lib/auth/checkout-token'
-import { MFA_API_CODES, MFA_PAGES, hasVerifiedTotp, isMfaExemptPath, isMfaRole, mfaEnforcedForUser, mfaGate } from '@/lib/auth/mfa'
+import { MFA_API_CODES, MFA_PAGES, hasVerifiedTotp, isMfaExemptPath, isMfaRole, mfaEnforcedFor, mfaGate } from '@/lib/auth/mfa'
 import { buildCsp, newNonce, permissionsPolicy } from '@/lib/security/headers'
 import { TOKEN_HEADERS, isTokenPath } from '@/lib/security/token-paths'
 import { getUserRole, isDeactivated, ACCOUNT_DEACTIVATED_MESSAGE } from '@/lib/auth/claims'
@@ -430,7 +430,7 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
   // only read when it can matter, so with enforcement off and no factor
   // the request path is exactly what it was.
   if (!isMfaExemptPath(pathname) && !flaggedForReset && isMfaRole(appRole)) {
-    const enforced = mfaEnforcedForUser(appRole, user.email)
+    const enforced = mfaEnforcedFor(user.email)
     const verifiedFactor = hasVerifiedTotp(user)
     if (enforced || verifiedFactor) {
       const { data: claimsData } = await supabase.auth.getClaims()

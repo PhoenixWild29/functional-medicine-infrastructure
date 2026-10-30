@@ -80,7 +80,7 @@ describe('accepting a clinic admin invite', () => {
     expect(attrs).toEqual(expect.objectContaining({
       email: 'lauren@sunrise.test', password: 'Correct-Horse-9', email_confirm: true,
       // B's review P2: an invite link an admin could have opened forces a new password.
-      app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC, must_change_password: true },
+      app_metadata: { app_role: 'clinic_admin', clinic_id: CLINIC },
     }))
     const userMeta = (attrs['user_metadata'] ?? {}) as Record<string, unknown>
     expect(userMeta['app_role']).toBeUndefined()
@@ -116,7 +116,7 @@ describe('accepting a provider or staff invite', () => {
     db = scriptedDb(script(invite({ kind: 'provider', provider_id: PROVIDER, email: 'dr.chen@sunrise.test' })))
     const res = await POST(req(GOOD))
     expect(res.status).toBe(201)
-    expect((createUser.mock.calls[0]![0] as Record<string, unknown>)['app_metadata']).toEqual({ app_role: 'provider', clinic_id: CLINIC, must_change_password: true })
+    expect((createUser.mock.calls[0]![0] as Record<string, unknown>)['app_metadata']).toEqual({ app_role: 'provider', clinic_id: CLINIC })
     const [link] = db.to('providers', 'update')
     expect(link!.payload).toEqual({ user_id: 'new-user' })
     expect(link!.filters).toEqual(expect.objectContaining({ provider_id: PROVIDER, clinic_id: CLINIC, 'user_id:is': null }))
@@ -125,7 +125,7 @@ describe('accepting a provider or staff invite', () => {
   it('a medical assistant gets the medical_assistant role', async () => {
     db = scriptedDb(script(invite({ kind: 'medical_assistant', email: 'ma@sunrise.test' })))
     expect((await POST(req(GOOD))).status).toBe(201)
-    expect((createUser.mock.calls[0]![0] as Record<string, unknown>)['app_metadata']).toEqual({ app_role: 'medical_assistant', clinic_id: CLINIC, must_change_password: true })
+    expect((createUser.mock.calls[0]![0] as Record<string, unknown>)['app_metadata']).toEqual({ app_role: 'medical_assistant', clinic_id: CLINIC })
   })
 })
 

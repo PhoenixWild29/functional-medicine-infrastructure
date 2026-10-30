@@ -30,7 +30,7 @@ type Db = SupabaseClient<Database>
 export type CoachingRole = 'clinic_admin' | 'provider' | 'medical_assistant' | 'pharmacy_admin'
 
 export type ChecklistFacts =
-  | { kind: 'clinic_admin'; approved: boolean; practiceDetails: boolean; agreementsAccepted: boolean; hasTeam: boolean; hasPatients: boolean; sentPrescription: boolean }
+  | { kind: 'clinic_admin'; approved: boolean; solo?: boolean; practiceDetails: boolean; agreementsAccepted: boolean; hasTeam: boolean; hasPatients: boolean; sentPrescription: boolean }
   | { kind: 'provider'; npiVerified: boolean; usedProtocol: boolean; signedPrescription: boolean }
   | { kind: 'medical_assistant'; addedPatient: boolean; startedDraft: boolean }
   | { kind: 'pharmacy_admin'; setupSubmitted: boolean; catalogLoaded: boolean; receivedOrder: boolean }
@@ -67,7 +67,8 @@ export function buildChecklist(_role: CoachingRole, f: ChecklistFacts): Checklis
         // Until approved, practice details live in the onboarding wizard.
         { id: 'practice',           label: 'Enter your practice details',       href: f.approved ? '/settings#clinic-profile' : '/onboarding', done: f.practiceDetails },
         { id: 'agreements',         label: 'Accept the BAA and terms',          href: '/settings/agreements',     done: f.agreementsAccepted },
-        { id: 'team',               label: 'Add your team',                     href: '/settings/team',           done: f.hasTeam },
+        // A solo provider's practice is one person: no team step (Sam, Oct 30).
+        ...(f.solo ? [] : [{ id: 'team',    label: 'Add your team',                     href: '/settings/team',           done: f.hasTeam }]),
         { id: 'patients',           label: 'Add patients: import, a sign-up link or one at a time', href: '/settings#patients', done: f.hasPatients },
         { id: 'first-prescription', label: 'Send your first prescription',      href: '/new-prescription',        done: f.sentPrescription },
       ]
@@ -109,7 +110,7 @@ async function count(q: PromiseLike<{ count: number | null; error: { message: st
 }
 
 async function clinicAdminFacts(db: Db, userId: string, clinicId: string): Promise<ChecklistFacts> {
-  const { data: clinic, error } = await db.from('clinics').select('onboarding_status').eq('clinic_id', clinicId).maybeSingle()
+  const { data: clinic, error } = await db.from('clinics').select('onboarding_status, signup_kind').eq('clinic_id', clinicId).maybeSingle()
   fail('the clinic', error)
   const agreements = await loadClinicAgreements(db, clinicId)
   // The team as Settings > Team reads it (lib/team/team): another active
@@ -120,8 +121,9 @@ async function clinicAdminFacts(db: Db, userId: string, clinicId: string): Promi
     count(db.from('patients').select('patient_id', { count: 'exact', head: true }).eq('clinic_id', clinicId).is('deleted_at', null), 'patients'),
     count(db.from('orders').select('order_id', { count: 'exact', head: true }).eq('clinic_id', clinicId).not('locked_at', 'is', null), 'orders'),
   ])
-  const row = clinic as { onboarding_status?: string | null } | null
+  const row = clinic as { onboarding_status?: string | null; signup_kind?: string | null } | null
   const approved = row?.onboarding_status === 'approved'
+  const solo = row?.signup_kind === 'solo_provider'
   // Done as the wizard's Practice details step is done
   // (clinic_onboarding_steps, the wizard's own record), approved or not:
   // Settings > Clinic Profile saves through the same API and marks it.
@@ -131,6 +133,7 @@ async function clinicAdminFacts(db: Db, userId: string, clinicId: string): Promi
   return {
     kind: 'clinic_admin',
     approved,
+    solo,
     practiceDetails,
     agreementsAccepted: AGREEMENT_KEYS.every(k => agreements[k].latest !== null && !agreements[k].updateAvailable),
     hasTeam:            members.some(m => m.userId !== userId && !m.deactivatedAt) || invites.some(i => i.status === 'pending'),

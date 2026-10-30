@@ -17,8 +17,9 @@ import { seedStaticData, cleanupTestOrders, TEST_IDS, TEST_USERS } from './fixtu
 //      which shows the account as a keyed-hash prefix, never the email.
 //   5. /ops/access-review: ops reads it and filters by date; a clinic user
 //      is refused, page and API.
-//   6. Ops opening an order is asked for a reason first; closing the
-//      prompt opens nothing (no detail request is made).
+//   6. Ops opening an order sees it at once (no "why" prompt, removed
+//      2026-10-30; an optional Emergency access control remains), and the
+//      open is still logged as an order view in phi_access_log.
 //   7. /help: reachable, and its topics work with the keyboard.
 // Seeded users and the shared test clinic only. Step 6 makes one order
 // row, as ops-dashboard.spec.ts does, and removes it. No card is entered,
@@ -130,7 +131,7 @@ test.describe('HIPAA safeguards', () => {
     await expect(page.getByText(/No access in this range/)).toHaveCount(0)
   })
 
-  test('6. ops opening an order is asked for a reason; closing the prompt opens nothing', async ({ page }) => {
+  test('6. ops opening an order sees it at once, and the view is logged', async ({ page }) => {
     const { data: order, error } = await svc().from('orders').insert({
       patient_id: TEST_IDS.patient, provider_id: TEST_IDS.provider, catalog_item_id: TEST_IDS.catalogItem,
       clinic_id: TEST_IDS.clinic, pharmacy_id: TEST_IDS.pharmacyTier1, status: 'SUBMISSION_FAILED', quantity: 1,
@@ -152,15 +153,20 @@ test.describe('HIPAA safeguards', () => {
       await row.getByRole('button', { name: label, exact: true }).click()
 
       const drawer = page.getByRole('dialog', { name: /^Order detail:/ })
-      await expect(drawer.getByText('Why are you opening this order?')).toBeVisible()
-      await expect(drawer.getByRole('button', { name: 'Open order' })).toBeDisabled()
-      await drawer.getByRole('radio', { name: /^Emergency access/ }).check()
-      await expect(drawer.getByText(/Emergency access is reviewed within 24 hours/)).toBeVisible()
+      await expect(drawer).toBeVisible()
+      await expect(drawer.getByText('Loading…')).toHaveCount(0, { timeout: 15_000 })
+      await expect(drawer.getByRole('alert')).toHaveCount(0)
+      await expect(drawer.getByText('Why are you opening this order?')).toHaveCount(0)
+      // Break-glass stays available, but is never asked (not clicked here: it alerts Slack).
+      await expect(drawer.getByRole('button', { name: 'Emergency access' })).toBeVisible()
+      expect(detailCalls).toHaveLength(1)
 
-      // Cancel: close the drawer without opening the order.
-      await drawer.getByRole('button', { name: 'Close detail' }).click()
-      await expect(drawer).toHaveCount(0)
-      expect(detailCalls).toEqual([])
+      // HIPAA audit controls: the open is an order view in the access log.
+      await expect.poll(async () => {
+        const { data } = await svc().from('phi_access_log').select('resource')
+          .eq('order_id', order.order_id).eq('action', 'view')
+        return (data ?? []).map(r => r.resource as string)
+      }, { timeout: 15_000 }).toContain('order')
     } finally {
       await cleanupTestOrders()
     }

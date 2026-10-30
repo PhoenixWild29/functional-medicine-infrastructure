@@ -1,8 +1,8 @@
 /**
  * /onboarding: the step list updates as soon as a step completes. After
- * accepting the BAA (or saving any step) the wizard re-reads
- * GET /api/onboarding/state (and still asks the router to refresh), so
- * the BAA no longer shows "Not started" until the next step saves.
+ * accepting the agreements (BAA and terms, one step) or saving any step the
+ * wizard re-reads GET /api/onboarding/state (and still asks the router to
+ * refresh), so the step no longer shows "Not started" until the next save.
  */
 
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
@@ -32,9 +32,10 @@ beforeEach(() => {
   fetchMock.mockReset().mockImplementation(async (url: string, init?: { method?: string }) => {
     const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body })
     if (url === '/api/onboarding/agreements' && init?.method === 'POST') {
+      const k = JSON.parse(String((init as { body?: string }).body ?? '{}')).agreement as 'baa' | 'terms'
       server = {
-        ...server, steps: { ...server.steps, baa: 'complete' },
-        acceptances: { baa: { version: 'v1.0', signerName: 'Lauren Perkins', signerTitle: 'Owner', acceptedAt: '2026-10-11T12:00:00Z' } },
+        ...server, steps: { ...server.steps, [k]: 'complete' },
+        acceptances: { ...server.acceptances, [k]: { version: 'v1.0', signerName: 'Lauren Perkins', signerTitle: 'Owner', acceptedAt: '2026-10-11T12:00:00Z' } },
       }
       return { ok: true, status: 201, json: async () => ({ ok: true }) }
     }
@@ -51,16 +52,18 @@ beforeEach(() => {
 const stepList = () => screen.getByRole('navigation', { name: 'Onboarding steps' })
 const stepButton = (label: RegExp) => within(stepList()).getByRole('button', { name: label })
 
-it('accepting the BAA marks it Complete in the step list at once', async () => {
+it('accepting both agreements in one step marks Agreements Complete at once', async () => {
   render(<OnboardingWizard state={STATE} initialStep="baa" />)
-  expect(stepButton(/BAA/)).toHaveTextContent('Not started')
+  expect(stepButton(/Agreements/)).toHaveTextContent('Not started')
 
   fireEvent.change(screen.getByLabelText(/Signer name/), { target: { value: 'Lauren Perkins' } })
   fireEvent.change(screen.getByLabelText(/^Title/), { target: { value: 'Owner' } })
-  fireEvent.click(screen.getByRole('checkbox'))
-  fireEvent.click(screen.getByRole('button', { name: /Accept the Business Associate Agreement/ }))
+  for (const box of screen.getAllByRole('checkbox')) fireEvent.click(box)
+  fireEvent.click(screen.getByRole('button', { name: 'Accept both agreements' }))
 
-  await waitFor(() => expect(stepButton(/BAA/)).toHaveTextContent('Complete'))
+  await waitFor(() => expect(stepButton(/Agreements/)).toHaveTextContent('Complete'))
+  const posted = fetchMock.mock.calls.filter(c => c[0] === '/api/onboarding/agreements').map(c => JSON.parse(String(c[1].body)).agreement)
+  expect(posted).toEqual(['baa', 'terms'])
   expect(fetchMock).toHaveBeenCalledWith('/api/onboarding/state', expect.objectContaining({ cache: 'no-store' }))
   expect(refresh).toHaveBeenCalled()
 })
@@ -79,9 +82,9 @@ it('a state that cannot be re-read keeps what is shown', async () => {
   render(<OnboardingWizard state={STATE} initialStep="baa" />)
   fireEvent.change(screen.getByLabelText(/Signer name/), { target: { value: 'Lauren Perkins' } })
   fireEvent.change(screen.getByLabelText(/^Title/), { target: { value: 'Owner' } })
-  fireEvent.click(screen.getByRole('checkbox'))
-  fireEvent.click(screen.getByRole('button', { name: /Accept the Business Associate Agreement/ }))
+  for (const box of screen.getAllByRole('checkbox')) fireEvent.click(box)
+  fireEvent.click(screen.getByRole('button', { name: 'Accept both agreements' }))
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/onboarding/state', expect.anything()))
-  expect(stepButton(/BAA/)).toHaveTextContent('Not started')
+  expect(stepButton(/Agreements/)).toHaveTextContent('Not started')
   expect(stepButton(/Practice details/)).toHaveTextContent('Complete')
 })

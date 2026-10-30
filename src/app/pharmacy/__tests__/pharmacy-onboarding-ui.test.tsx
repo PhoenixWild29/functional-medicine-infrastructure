@@ -4,7 +4,8 @@
  *
  *   - The invite page: full name, password and confirmation; a mismatch
  *     is caught before anything is sent; on success the new account signs
- *     in and goes to MFA enrollment, then the wizard.
+ *     in, sets its own password from an emailed link, then the wizard
+ *     (no two-step setup is promised).
  *   - The wizard: the steps in order with the current one marked
  *     (aria-current="step"); field errors from the server are shown on
  *     their fields (aria-invalid, aria-describedby) with an alert summary;
@@ -71,21 +72,22 @@ describe('the invite page', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('says the password is set again from an emailed link, then two-step sign-in', () => {
+  it('one password, no emailed reset, and no two-step setup promised', () => {
     render(<AcceptInviteForm token="tok" pharmacyName="Strive Pharmacy" adminEmail="dana@strive.example" />)
-    expect(screen.getByText(/we email you a link to set your own password/i)).toBeInTheDocument()
+    expect(screen.getByText(/Then you go straight to setup/i)).toBeInTheDocument()
+    expect(screen.queryByText(/email you a link/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/two-step/i)).not.toBeInTheDocument()
   })
 
-  // B's review P2: the new login must set its own password first (the proxy
-  // sends it to /reset-password); two-step sign-in and the wizard follow.
-  it('creates the account, signs in, and goes to set its own password', async () => {
+  // One password, set here; then the pharmacy portal (the wizard).
+  it('creates the account, signs in, and goes to the pharmacy portal', async () => {
     fetchMock.mockResolvedValue(reply({ email: 'dana@strive.example' }))
     render(<AcceptInviteForm token="tok" pharmacyName="Strive Pharmacy" adminEmail="dana@strive.example" />)
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Dana Ruiz' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'a long passphrase 42' } })
     fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'a long passphrase 42' } })
     fireEvent.click(screen.getByRole('button', { name: /create account/i }))
-    await waitFor(() => expect(navigateFullyMock).toHaveBeenCalledWith('/reset-password'))
+    await waitFor(() => expect(navigateFullyMock).toHaveBeenCalledWith('/pharmacy/onboarding'))
     expect(push).not.toHaveBeenCalled()
     expect(fetchMock).toHaveBeenCalledWith('/api/onboard/pharmacy/tok', expect.objectContaining({ method: 'POST', body: JSON.stringify({ fullName: 'Dana Ruiz', password: 'a long passphrase 42' }) }))
     expect(signInWithPassword).toHaveBeenCalledWith({ email: 'dana@strive.example', password: 'a long passphrase 42' })

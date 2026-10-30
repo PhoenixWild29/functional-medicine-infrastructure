@@ -13,8 +13,8 @@ import AxeBuilder from '@axe-core/playwright'
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
 
 const PAGES = [
-  { path: '/legal/privacy',       heading: 'Privacy Policy' },
-  { path: '/legal/patient-terms', heading: 'Patient Terms of Use' },
+  { path: '/legal/privacy',       heading: 'Privacy Policy',       version: 'Version 1.1. Effective October 30, 2026.' },
+  { path: '/legal/patient-terms', heading: 'Patient Terms of Use', version: 'Version 1.0. Effective October 12, 2026.' },
 ]
 
 async function axeViolations(page: Page): Promise<string[]> {
@@ -34,7 +34,7 @@ test.describe('public legal pages', () => {
       await page.goto(p.path)
       await expect(page).toHaveURL(new RegExp(`${p.path}$`))
       await expect(page.getByRole('heading', { level: 1, name: p.heading })).toBeVisible()
-      await expect(page.getByText('Version 1.0. Effective October 12, 2026.')).toBeVisible()
+      await expect(page.getByText(p.version)).toBeVisible()
       await expect(page.locator('main')).not.toContainText(/draft|pending legal review/i)
       expect(await axeViolations(page)).toEqual([])
       await expectReflowsAt320(page)

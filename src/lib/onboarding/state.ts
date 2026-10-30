@@ -47,6 +47,8 @@ export interface OnboardingProvider {
   npiStatus:  string | null
   licenses:   Array<{ state: string; licenseNumber: string; expiresOn: string }>
   invite:     OnboardingInviteSummary | null
+  /** The provider uses an existing login (the admin's own, "This is me"). */
+  hasLogin?:  boolean
 }
 
 export interface OnboardingAcceptance {
@@ -74,7 +76,7 @@ export async function loadOnboardingState(
       .select('clinic_id, name, onboarding_status, onboarding_review_note, legal_name, dba_name, address_line1, address_line2, city, state, postal_code, contact_phone, practice_npi, tax_id_last4, absorb_shipping')
       .eq('clinic_id', clinicId).maybeSingle(),
     supabase.from('clinic_onboarding_steps').select('step, status').eq('clinic_id', clinicId),
-    supabase.from('providers').select('provider_id, first_name, last_name, npi_number').eq('clinic_id', clinicId).is('deleted_at', null).order('created_at'),
+    supabase.from('providers').select('provider_id, first_name, last_name, npi_number, user_id').eq('clinic_id', clinicId).is('deleted_at', null).order('created_at'),
     supabase.from('onboarding_invites').select('invite_id, kind, email, provider_id, accepted_at, revoked_at, expires_at, created_at').eq('clinic_id', clinicId).order('created_at', { ascending: false }),
     supabase.from('agreement_acceptances').select('agreement, template_version, signer_name, signer_title, accepted_at').eq('clinic_id', clinicId).order('accepted_at', { ascending: false }),
   ])
@@ -135,6 +137,7 @@ export async function loadOnboardingState(
         npiStatus:  (npiRes.data ?? []).find(n => n.provider_id === p.provider_id)?.status ?? null,
         licenses:   (licRes.data ?? []).filter(l => l.provider_id === p.provider_id).map(l => ({ state: l.state, licenseNumber: l.license_number, expiresOn: l.expires_on })),
         invite:     invite ? summary(invite) : null,
+        hasLogin:   Boolean((p as { user_id?: string | null }).user_id),
       }
     }),
     staff: invites.filter(i => i.kind === 'medical_assistant').map(summary),

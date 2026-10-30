@@ -187,8 +187,8 @@ export function PlanFlow({ token, logoUrl }: { token: string; logoUrl: string | 
   if (stage.kind === 'locked') {
     return shell(
       <>
-        <h1 className="text-2xl font-semibold text-foreground">This link is locked</h1>
-        <p className="mt-2 text-base text-muted-foreground">Too many incorrect dates of birth were entered. Please contact your clinic.</p>
+        <h1 className="text-2xl font-semibold text-foreground">This link is locked for now</h1>
+        <p className="mt-2 text-base text-muted-foreground">Too many incorrect dates of birth. Try again in 15 minutes, or contact your clinic.</p>
       </>,
     )
   }

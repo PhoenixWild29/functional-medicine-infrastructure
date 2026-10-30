@@ -64,7 +64,7 @@ Effort scale: S is under a day, M is 1 to 3 days, L is a week or more.
 - **Today:**
   - The switch is `REQUIRE_MFA` (on only if exactly `"true"`, `src/lib/env.ts`). There is also `MFA_ENFORCED_EMAILS`, a per-email list.
   - Both are off in `.env.example`.
-  - It covers provider, medical_assistant, clinic_admin and ops_admin. pharmacy_admin is always enforced (`ALWAYS_MFA_ROLES`, `src/lib/auth/mfa.ts`).
+  - It covers provider, medical_assistant, clinic_admin and ops_admin. Since 2026-10-30 pharmacy_admin follows the same rule as every other role (no longer always enforced; `src/lib/auth/mfa.ts`).
 - **What turning it on does:**
   - On their next page, every staff user with no verified authenticator is sent to `/mfa/enroll?redirectTo=…`. API calls get 401 `MFA_ENROLLMENT_REQUIRED` (`src/middleware.ts`).
   - Users who already have a factor get the `/mfa/challenge` on sign-in. Patients are never affected.

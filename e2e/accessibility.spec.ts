@@ -177,7 +177,7 @@ test.describe('Accessibility: WCAG 2.1 AA (C10)', () => {
 const ONB_CLINIC = shardId('aaaaaaaa-0000-0000-0000-0000000000a1')
 const ONB_ADMIN = { email: shardEmail('test-onboarding-admin@compoundiq.test'), get password() { return e2ePassword() } }
 const ONB_INVITEE = shardEmail('test-onboarding-invitee@compoundiq.test')
-const WIZARD_STEPS = ['Practice details', 'Providers', 'Staff', 'BAA', 'Terms of service', 'Payouts', 'Review and submit']
+const WIZARD_STEPS = ['Practice details', 'Providers', 'Staff', 'Agreements', 'Review and submit']
 
 function e2eService() {
   return createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
@@ -324,7 +324,7 @@ test.describe('Accessibility: the patient plan link (WCAG 2.1 AA)', () => {
   })
 
   for (const [state, title] of [
-    ['locked', 'This link is no longer active'],
+    ['locked', 'This link is locked for now'],
     ['expired', 'This link is no longer active'],
     ['signed', 'This link is no longer active'],
   ] as const) {
