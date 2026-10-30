@@ -13,6 +13,8 @@ import { getUserPharmacyId, getUserRole } from '@/lib/auth/claims'
 import { Providers } from '@/components/providers'
 import { NavSignOutButton } from '@/components/nav-sign-out-button'
 import { BfcacheGuard } from '@/components/bfcache-guard'
+import { HipaaTimeout } from '@/components/hipaa-timeout'
+import { serverEnv } from '@/lib/env'
 import { PharmacyNav } from './_components/pharmacy-nav'
 import { SetupChecklistCard } from '@/components/coaching/setup-checklist-card'
 import { ShowChecklistLink } from '@/components/coaching/show-checklist-link'
@@ -35,6 +37,7 @@ export default async function PharmacyLayout({ children }: { children: React.Rea
   return (
     <Providers>
       <BfcacheGuard />
+      <HipaaTimeout timeoutMinutes={serverEnv.idleTimeoutMinutes()} />
       <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm">
         Skip to main content
       </a>

@@ -13,7 +13,7 @@
 import Link from 'next/link'
 import { PENDING_REVIEW_MESSAGE } from '@/lib/onboarding/pending-review-copy'
 
-export const SUBMITTED_MESSAGE = "Submitted. We're reviewing your clinic; ordering opens once you're approved."
+export const SUBMITTED_MESSAGE = "Submitted. We're reviewing your clinic; ordering opens once you're approved and payouts are set up."
 
 export function PendingReviewBanner({ submitted = false }: { submitted?: boolean }) {
   return (

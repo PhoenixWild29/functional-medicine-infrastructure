@@ -30,11 +30,11 @@ const STEPS = [
   { id: 'practice', label: 'Enter your practice details', href: '/settings#clinic-profile', done: true },
   { id: 'team', label: 'Add your team', href: '/settings/team', done: false },
 ]
-let checklist: unknown = { show: true, hidden: false, notice: 'Waiting for CompoundIQ approval. You can look around and set up; ordering opens when approved.', steps: STEPS }
+let checklist: unknown = { show: true, hidden: false, notice: "Waiting for CompoundIQ approval. You can look around and set up; ordering opens once you're approved and payouts are set up.", steps: STEPS }
 
 beforeEach(() => {
   mockPush.mockClear(); mockRefresh.mockClear(); mockPath = '/dashboard'
-  checklist = { show: true, hidden: false, notice: 'Waiting for CompoundIQ approval. You can look around and set up; ordering opens when approved.', steps: STEPS }
+  checklist = { show: true, hidden: false, notice: "Waiting for CompoundIQ approval. You can look around and set up; ordering opens once you're approved and payouts are set up.", steps: STEPS }
   fetchMock.mockReset().mockImplementation(async (url: string) => {
     if (url === '/api/coaching/checklist') return { ok: true, status: 200, json: async () => checklist }
     if (url === '/api/coaching/prefs') return { ok: true, status: 200, json: async () => ({}) }
@@ -47,7 +47,7 @@ describe('SetupChecklistCard', () => {
   it('lists the steps as links, done or to do, under the approval line', async () => {
     render(<SetupChecklistCard />)
     const card = await screen.findByRole('region', { name: 'Get set up' })
-    expect(within(card).getByText('Waiting for CompoundIQ approval. You can look around and set up; ordering opens when approved.')).toBeInTheDocument()
+    expect(within(card).getByText("Waiting for CompoundIQ approval. You can look around and set up; ordering opens once you're approved and payouts are set up.")).toBeInTheDocument()
     const practice = within(card).getByRole('link', { name: /Enter your practice details/ })
     expect(practice).toHaveAttribute('href', '/settings#clinic-profile')
     expect(practice).toHaveTextContent('Done')

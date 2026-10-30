@@ -31,12 +31,12 @@ const CHOICES: Array<{ kind: Kind; title: string; next: string }> = [
   {
     kind:  'solo_provider',
     title: "I'm a provider (solo practice)",
-    next:  'Add your NPI and state licenses now. Look around right away; you can prescribe once we approve your account.',
+    next:  'Add your NPI and state licenses now. Look around right away; you can order once we approve your account and payouts are set up.',
   },
   {
     kind:  'clinic',
     title: 'I run a clinic or practice',
-    next:  'Next you set up your practice, providers and agreements. Look around right away; ordering opens once we approve your clinic.',
+    next:  'Next you set up your practice, providers and agreements. Look around right away; ordering opens once we approve your clinic and payouts are set up.',
   },
   {
     kind:  'pharmacy',

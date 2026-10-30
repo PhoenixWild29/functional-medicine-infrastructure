@@ -28,7 +28,7 @@ const RUN = randomUUID().slice(0, 8)
 // Per shard (fixtures/shard): cleanup sweeps this prefix, so each shard sweeps only its own.
 const EMAIL_PREFIX = shardPrefix('e2e-onboarding-status-')
 const PASSWORD = e2ePassword()
-const SUBMITTED = "Submitted. We're reviewing your clinic; ordering opens once you're approved."
+const SUBMITTED = "Submitted. We're reviewing your clinic; ordering opens once you're approved and payouts are set up."
 
 function e2eService() {
   return createClient(process.env['E2E_SUPABASE_URL']!, process.env['E2E_SUPABASE_SERVICE_ROLE_KEY']!)
@@ -104,7 +104,7 @@ test.describe('Clinic onboarding status', () => {
 
     await page.getByRole('region', { name: 'Account under review' }).getByRole('link', { name: 'View what you submitted' }).click()
     await expect(page).toHaveURL(/\/onboarding$/, { timeout: 15_000 })
-    await expect(page.getByText('Submitted. CompoundIQ is reviewing your clinic; you will be able to send orders once it is approved.')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText('Submitted. CompoundIQ is reviewing your clinic; you will be able to send orders once it is approved and payouts are set up.')).toBeVisible({ timeout: 15_000 })
   })
 
   test('#248 approved: no banner; practice details links to Settings. #245: Settings shows "Demo payout account", never the raw id', async ({ page }) => {

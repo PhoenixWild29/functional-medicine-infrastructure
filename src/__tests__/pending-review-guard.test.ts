@@ -18,7 +18,7 @@ import { fakeDb } from '@/lib/orders/__tests__/fake-db'
 const CLINIC = 'c0000000-0000-4000-8000-000000000001'
 const ORDER = 'a0000000-0000-4000-8000-000000000001'
 const PATIENT = 'b0000000-0000-4000-8000-000000000001'
-const BANNER = "We're verifying your licenses. You can look around; ordering opens once you're approved."
+const BANNER = "We're verifying your licenses. You can look around; ordering opens once you're approved and payouts are set up."
 
 let db = fakeDb({})
 let role = 'clinic_admin'
