@@ -133,11 +133,11 @@ describe('a clinic and a pharmacy', () => {
     expect(navigateFullyMock).toHaveBeenCalledWith('/onboarding')
   })
 
-  it('a pharmacy: says two-step verification is set up at first sign-in; goes to the pharmacy wizard', async () => {
+  it('a pharmacy: promises no two-step setup; goes to the pharmacy wizard', async () => {
     fetchMock.mockResolvedValue(reply(201, { email: 'dana@example.test', next: '/pharmacy/onboarding' }))
     render(<GetStartedForm />)
     choose(/compounding pharmacy/)
-    expect(screen.getByText(/two-step verification/i)).toBeInTheDocument()
+    expect(screen.queryByText(/two-step/i)).not.toBeInTheDocument()
     fillCommon()
     type('Pharmacy name', 'Strive Compounding')
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create account' })) })

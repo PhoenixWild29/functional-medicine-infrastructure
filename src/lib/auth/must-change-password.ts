@@ -12,7 +12,7 @@
 //   - the proxy (src/proxy.ts) sends every page to /reset-password, and
 //     every API answers 403 MUST_CHANGE_PASSWORD, except the reset paths
 //     themselves, which a flagged login reaches without the MFA gate (its
-//     recovery session is aal1; pharmacy_admin always needs MFA after);
+//     recovery session is aal1; the normal MFA gate applies after);
 //   - /reset-password asks for an emailed reset link: only a recovery
 //     session (the link from the inbox) may set the new password
 //     (api/auth/password), which proves the address belongs to the user.

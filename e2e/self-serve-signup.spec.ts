@@ -16,8 +16,8 @@ import { e2ePassword } from './fixtures/test-password'
 // up from /login with no invite and lands in the product at once. A clinic
 // under review sees the banner on every page; New Prescription opens, and
 // saving a draft or signing is refused on the server with the banner's
-// words. A pharmacy goes to its portal (two-step setup first, as always for
-// pharmacies) and stays inactive. Ops sees each one labelled "Signed up on
+// words. A pharmacy goes straight to its portal (no two-step setup: the
+// same rule as every role, and REQUIRE_MFA is off in E2E) and stays inactive. Ops sees each one labelled "Signed up on
 // their own", with a new count on the tab.
 //
 // Data: reserved @compoundiq.test emails with this run's id. Cleanup in
@@ -298,15 +298,15 @@ test.describe('Self sign-up', () => {
     await expect(page.getByText('Ordering opens at launch')).toHaveCount(0)
   })
 
-  test('a pharmacy: /login > Get started > two-step setup for its portal; inactive, no orders; ops sees it labelled', async ({ page, browser }) => {
+  test('a pharmacy: /login > Get started > straight to its portal; inactive, no orders; ops sees it labelled', async ({ page, browser }) => {
     const address = email('pharmacy')
     const name = `E2E Signup Pharmacy ${RUN}`
     await startFromLogin(page, /compounding pharmacy/)
     await fillCommon(page, address, 'Pharmacy name', name)
     await page.getByRole('button', { name: 'Create account' }).click()
 
-    // Pharmacies always set up two-step sign-in first.
-    await page.waitForURL(url => url.pathname === '/mfa/enroll' || url.pathname.startsWith('/pharmacy/onboarding'), { timeout: 30_000 })
+    // No two-step setup first: the same rule as every role (REQUIRE_MFA is off in E2E).
+    await page.waitForURL(url => url.pathname.startsWith('/pharmacy/onboarding'), { timeout: 30_000 })
 
     const db = e2eService()
     const { data: pharmacy } = await db.from('pharmacies').select('pharmacy_id, is_active, onboarding_status').eq('name', name).single()

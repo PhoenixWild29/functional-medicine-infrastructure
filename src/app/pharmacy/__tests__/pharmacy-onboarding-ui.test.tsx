@@ -4,7 +4,8 @@
  *
  *   - The invite page: full name, password and confirmation; a mismatch
  *     is caught before anything is sent; on success the new account signs
- *     in and goes to MFA enrollment, then the wizard.
+ *     in, sets its own password from an emailed link, then the wizard
+ *     (no two-step setup is promised).
  *   - The wizard: the steps in order with the current one marked
  *     (aria-current="step"); field errors from the server are shown on
  *     their fields (aria-invalid, aria-describedby) with an alert summary;
@@ -71,13 +72,14 @@ describe('the invite page', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('says the password is set again from an emailed link, then two-step sign-in', () => {
+  it('says the password is set again from an emailed link, and promises no two-step setup', () => {
     render(<AcceptInviteForm token="tok" pharmacyName="Strive Pharmacy" adminEmail="dana@strive.example" />)
     expect(screen.getByText(/we email you a link to set your own password/i)).toBeInTheDocument()
+    expect(screen.queryByText(/two-step/i)).not.toBeInTheDocument()
   })
 
   // B's review P2: the new login must set its own password first (the proxy
-  // sends it to /reset-password); two-step sign-in and the wizard follow.
+  // sends it to /reset-password); the wizard follows.
   it('creates the account, signs in, and goes to set its own password', async () => {
     fetchMock.mockResolvedValue(reply({ email: 'dana@strive.example' }))
     render(<AcceptInviteForm token="tok" pharmacyName="Strive Pharmacy" adminEmail="dana@strive.example" />)

@@ -4,7 +4,8 @@
 //
 // Middleware already keeps a pharmacy_admin here and everyone else out;
 // this checks again with getUser() and claims.ts (role and pharmacy from
-// app_metadata). MFA is enforced by middleware for this role.
+// app_metadata). Two-step sign-in follows the normal middleware rule
+// (REQUIRE_MFA, or a factor the user enrolled), as for every other role.
 
 import { redirect } from 'next/navigation'
 import type { Metadata } from 'next'

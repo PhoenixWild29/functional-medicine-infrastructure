@@ -10,7 +10,11 @@
 // passes only if public.staff_mfa_satisfied() is true:
 //
 //   - the JWT's aal is aal2: true;
-//   - pharmacy_admin (ALWAYS_MFA_ROLES): false at aal1, always;
+//   - pharmacy_admin: false at aal1, always. The app no longer forces MFA
+//     on this role (lib/auth/mfa, 2026-10-30), but the migration still
+//     does. It has no effect today: the pharmacy portal reads none of the
+//     tables below. Drop it with a follow-up migration before the portal
+//     reads PHI with a user session;
 //   - any other JWT, with or without a staff role: false at aal1 only when
 //     the database switch security_settings.require_staff_mfa is on (a
 //     missing row counts as on: fail closed). Patients never hold a

@@ -6,8 +6,8 @@
 //
 // The account is created server-side (POST /api/onboard/pharmacy/<token>:
 // role and pharmacy in app_metadata, never here). Then it signs in and
-// goes to MFA enrollment, which a pharmacy_admin always needs, and from
-// there to the onboarding wizard.
+// goes to the onboarding wizard. Two-step sign-in, if required, follows
+// through the normal MFA gate (lib/auth/mfa), as for every other role.
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -59,7 +59,7 @@ export function AcceptInviteForm({ token, pharmacyName, adminEmail }: { token: s
     // the client router reuses a redirect it already saw for a route
     // (lib/auth/full-navigation). B's review P2: the new login sets its own
     // password from an emailed link first (must_change_password; the proxy
-    // holds it on /reset-password), then two-step sign-in and the wizard.
+    // holds it on /reset-password), then the wizard.
     navigateFully('/reset-password')
   }
 
@@ -67,7 +67,7 @@ export function AcceptInviteForm({ token, pharmacyName, adminEmail }: { token: s
     <form onSubmit={submit} noValidate className="space-y-5" aria-describedby="accept-intro">
       <p id="accept-intro" className="text-sm text-muted-foreground">
         You were invited to set up <strong className="text-foreground">{pharmacyName}</strong> on CompoundIQ. Your account
-        will use <strong className="text-foreground">{adminEmail}</strong>. After this we email you a link to set your own password, then you set up two-step sign-in.
+        will use <strong className="text-foreground">{adminEmail}</strong>. After this we email you a link to set your own password, then you go straight to setup.
       </p>
       <FormAlert message={message} />
       <TextField id="fullName" label="Full name" value={fullName} onChange={setFullName} error={errors['fullName']} autoComplete="name" required maxLength={100} />

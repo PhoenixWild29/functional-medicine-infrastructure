@@ -2,7 +2,6 @@ import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { createClient } from '@supabase/supabase-js'
 import { TEST_USERS } from './fixtures/seed'
-import { totpCode } from './fixtures/totp'
 import { hashInviteToken, inviteExpiry, generateInviteToken } from '../src/lib/pharmacy-onboarding/invite-token'
 import { ONBOARDING_STEPS } from '../src/lib/pharmacy-onboarding/steps'
 import { shardEmail, shardId, shardName, shardSlug } from './fixtures/shard'
@@ -19,9 +18,10 @@ import { e2ePassword } from './fixtures/test-password'
 //
 // The block seeds its own data (service role, E2E project only) and
 // removes it afterwards: a pending invite, a pharmacy in onboarding with
-// its application, and a pharmacy_admin login. A pharmacy_admin always
-// signs in with MFA, so the login enrolls a TOTP factor first
-// (e2e/fixtures/totp.ts, as mfa.spec.ts does). Nothing is submitted, so no
+// its application, and a pharmacy_admin login. REQUIRE_MFA is off in E2E
+// and a pharmacy_admin follows the same rule as every role, so the login
+// signs in with a password and lands on the wizard (any factor left from an
+// older run is removed first, or it would be challenged). Nothing is submitted, so no
 // append-only record (BAA acceptance, event) is written.
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
@@ -144,12 +144,9 @@ test.describe('Accessibility: pharmacy onboarding (WCAG 2.1 AA)', () => {
   })
 
   test('wizard: every step has no violations and reflows at 320px', async ({ page }) => {
-    // First sign-in of a pharmacy_admin: enroll TOTP, then land on the wizard.
+    // First sign-in of a pharmacy_admin: no two-step setup (REQUIRE_MFA is
+    // off in E2E), straight to the wizard.
     await signIn(page, PH_ADMIN.email, PH_ADMIN.password)
-    await expect(page).toHaveURL(/\/mfa\/enroll/, { timeout: 15_000 })
-    const secret = (await page.getByTestId('mfa-manual-key').innerText()).replace(/\s+/g, '')
-    await page.getByLabel('6-digit code').fill(totpCode(secret))
-    await page.getByRole('button', { name: /Verify/ }).click()
     await expect(page).toHaveURL(/\/pharmacy\/onboarding/, { timeout: 15_000 })
 
     await expect(page.getByRole('heading', { level: 1, name: 'Set up your pharmacy' })).toBeVisible({ timeout: 15_000 })

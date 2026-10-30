@@ -9,8 +9,9 @@
  *     /api/pharmacy/* (its APIs), plus /mfa and /unauthorized. Every clinic
  *     and ops page and API sends it to /unauthorized (pages) or 403 (APIs).
  *   - Nobody else reaches /pharmacy/* or /api/pharmacy/*.
- *   - MFA is always required for a pharmacy_admin, whatever REQUIRE_MFA
- *     says: at AAL1 it is sent to enroll (no factor) or challenged.
+ *   - MFA follows the same rule as every other role: required only when
+ *     REQUIRE_MFA is on (or the email is in MFA_ENFORCED_EMAILS). A
+ *     pharmacy_admin with a verified factor is still challenged at AAL1.
  *   - Its landing page is the onboarding wizard.
  *   - The public invite link (/onboard/pharmacy/<token>, /api/onboard/*)
  *     needs no session.
@@ -19,7 +20,7 @@
 import { NextRequest } from 'next/server'
 import { getUserPharmacyId, getUserRole, appMetadataFor } from '@/lib/auth/claims'
 import { defaultLandingRoute } from '@/lib/auth/landing-route'
-import { isMfaRole, mfaEnforcedForUser } from '@/lib/auth/mfa'
+import { isMfaRole, mfaEnforcedFor } from '@/lib/auth/mfa'
 
 const getUserMock = jest.fn()
 const getClaimsMock = jest.fn()
@@ -60,10 +61,11 @@ describe('claims', () => {
 })
 
 describe('MFA and landing', () => {
-  it('pharmacy_admin is an MFA role and MFA is always enforced for it', () => {
+  it('pharmacy_admin is an MFA role, not enforced unless REQUIRE_MFA is on', () => {
     expect(isMfaRole('pharmacy_admin')).toBe(true)
-    expect(mfaEnforcedForUser('pharmacy_admin', 'x@y.example')).toBe(true)
-    expect(mfaEnforcedForUser('provider', 'x@y.example')).toBe(false)
+    expect(mfaEnforcedFor('admin@pharmacy.example')).toBe(false)
+    process.env['REQUIRE_MFA'] = 'true'
+    expect(mfaEnforcedFor('admin@pharmacy.example')).toBe(true)
   })
 
   it('lands on the onboarding wizard', () => {
@@ -99,14 +101,23 @@ describe('middleware', () => {
     expect(location(await proxy(req('/mfa/enroll')))).toBe('')
   })
 
-  it('MFA is required even with REQUIRE_MFA off: no factor goes to enroll, a factor is challenged', async () => {
+  it('with REQUIRE_MFA off, no factor passes at AAL1 and an enrolled factor is still challenged', async () => {
+    getClaimsMock.mockResolvedValue({ data: { claims: { aal: 'aal1' } } })
+    getUserMock.mockResolvedValue(pharmacyAdmin([]))
+    expect(location(await proxy(req('/pharmacy/onboarding')))).toBe('')
+    getUserMock.mockResolvedValue(pharmacyAdmin([]))
+    expect((await proxy(req('/api/pharmacy/onboarding'))).status).not.toBe(401)
+    getUserMock.mockResolvedValue(pharmacyAdmin())
+    expect(location(await proxy(req('/pharmacy/onboarding')))).toContain('/mfa/challenge')
+    getUserMock.mockResolvedValue(pharmacyAdmin())
+    expect((await proxy(req('/api/pharmacy/onboarding'))).status).toBe(401)
+  })
+
+  it('with REQUIRE_MFA on, a pharmacy_admin with no factor is sent to enroll like any role', async () => {
+    process.env['REQUIRE_MFA'] = 'true'
     getClaimsMock.mockResolvedValue({ data: { claims: { aal: 'aal1' } } })
     getUserMock.mockResolvedValue(pharmacyAdmin([]))
     expect(location(await proxy(req('/pharmacy/onboarding')))).toContain('/mfa/enroll')
-    getUserMock.mockResolvedValue(pharmacyAdmin())
-    expect(location(await proxy(req('/pharmacy/onboarding')))).toContain('/mfa/challenge')
-    getUserMock.mockResolvedValue(pharmacyAdmin([]))
-    expect((await proxy(req('/api/pharmacy/onboarding'))).status).toBe(401)
   })
 
   it('no other role reaches the pharmacy portal', async () => {
