@@ -3,7 +3,8 @@
  *
  *   - Before the date of birth: "Your provider has a plan ready", the
  *     clinic logo and the date of birth form. No medication, no clinic name.
- *   - A wrong date says how many tries are left; the 5th locks the link.
+ *   - A wrong date says how many tries are left; the 5th locks the link
+ *     for 15 minutes.
  *   - Then one card per option: each item with its name, form and strength,
  *     the directions, quantity / days and price. Required items are locked
  *     on ("Included: your provider marked this as essential"); optional
@@ -95,11 +96,12 @@ describe('before the date of birth', () => {
     expect(await violations(container)).toEqual([])
   })
 
-  it('locked: the form goes, "This link is locked"', async () => {
+  it('locked: the form goes, "This link is locked for now", try again in 15 minutes', async () => {
     fetchMock.mockImplementationOnce(() => reply(423, { error: 'Too many incorrect dates of birth.', state: 'locked' }))
     renderFlow()
     await enterDob('1985-04-16')
-    expect(screen.getByRole('heading', { level: 1, name: 'This link is locked' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'This link is locked for now' })).toBeInTheDocument()
+    expect(screen.getByText('Too many incorrect dates of birth. Try again in 15 minutes, or contact your clinic.')).toBeInTheDocument()
     expect(screen.queryByLabelText('Date of birth')).toBeNull()
   })
 })

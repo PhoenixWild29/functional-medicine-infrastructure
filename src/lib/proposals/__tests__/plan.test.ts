@@ -7,8 +7,9 @@
  *   - resolvePlan: the token states (open, not_found, expired, locked,
  *     signed, closed) and "unavailable" on a database error.
  *   - verifyPlanDob: the patient's date of birth; a wrong one counts
- *     (dob_failed event) and the 5th locks the link (locked_at, locked
- *     event). The first right one records "viewed" once.
+ *     (dob_failed event) and the 5th locks the link for 15 minutes
+ *     (locked_at, locked event); a lapsed lock is cleared and the tries
+ *     start again. The first right one records "viewed" once.
  *   - loadPlan: the options with their DRAFT items (name, form, strength,
  *     sig, quantity, days, price, required). No wholesale cost, no clinic
  *     or pharmacy name in it.
@@ -95,7 +96,8 @@ describe('resolvePlan', () => {
     ['no row', null, 'not_found'],
     ['draft', { ...PROPOSAL_ROW, status: 'draft' }, 'not_found'],
     ['expired', { ...PROPOSAL_ROW, expires_at: '2026-10-24T11:59:59Z' }, 'expired'],
-    ['locked', { ...PROPOSAL_ROW, locked_at: '2026-10-24T11:00:00Z' }, 'locked'],
+    ['locked (within 15 minutes)', { ...PROPOSAL_ROW, locked_at: '2026-10-24T11:50:00Z', dob_failures: 5 }, 'locked'],
+    ['lock lapsed (15 minutes on)', { ...PROPOSAL_ROW, locked_at: '2026-10-24T11:00:00Z', dob_failures: 5 }, 'open'],
     ['signed', { ...PROPOSAL_ROW, status: 'signed' }, 'signed'],
     ['declined', { ...PROPOSAL_ROW, status: 'declined' }, 'closed'],
     ['cancelled', { ...PROPOSAL_ROW, status: 'cancelled' }, 'closed'],
@@ -192,6 +194,49 @@ describe('verifyPlanDob', () => {
     const d = db(c => (c.table === 'treatment_proposals' && c.op === 'select' ? { data: { dob_failures: 5, locked_at: '2026-10-24T11:59:00Z' } } : undefined))
     expect(await verifyPlanDob(d.client as never, proposal({ dob_failures: 2 }), '1985-04-15', NOW)).toEqual({ ok: false, reason: 'locked' })
     expect(events(d)).toEqual([])
+  })
+
+  // The lock lasts 15 minutes (lib/proposals/token). Then the lapsed lock is
+  // cleared (a compare-and-set on locked_at) and the tries start again.
+  it('a lapsed lock is cleared first: a wrong date counts from 0 (4 tries left)', async () => {
+    const LAPSED = '2026-10-24T11:40:00Z'
+    let cleared = false
+    const d = db(c => {
+      if (c.table === 'treatment_proposals' && c.op === 'update') {
+        if ((c.payload as Record<string, unknown>)['locked_at'] === null) cleared = true
+        return { data: [{ proposal_id: PROPOSAL }] }
+      }
+      if (c.table === 'treatment_proposals' && c.op === 'select') return { data: cleared ? { dob_failures: 0, locked_at: null } : { dob_failures: 5, locked_at: LAPSED } }
+      return undefined
+    })
+    expect(await verifyPlanDob(d.client as never, proposal({ dob_failures: 5, locked_at: LAPSED }), '1985-04-16', NOW)).toEqual({ ok: false, reason: 'wrong', remaining: 4 })
+    const upd = d.to('treatment_proposals', 'update')
+    expect(upd[0]!.payload).toEqual({ dob_failures: 0, locked_at: null })
+    expect(upd[0]!.filters).toEqual(expect.objectContaining({ proposal_id: PROPOSAL, locked_at: LAPSED }))
+    expect(upd[1]!.payload).toEqual(expect.objectContaining({ dob_failures: 1 }))
+    expect(upd[1]!.filters).toEqual(expect.objectContaining({ dob_failures: 0 }))
+  })
+
+  it('a lapsed lock and the right date: ok, the lock cleared', async () => {
+    const LAPSED = '2026-10-24T11:40:00Z'
+    let cleared = false
+    const d = db(c => {
+      if (c.table === 'treatment_proposals' && c.op === 'update') {
+        if ((c.payload as Record<string, unknown>)['locked_at'] === null) cleared = true
+        return { data: [{ proposal_id: PROPOSAL }] }
+      }
+      if (c.table === 'treatment_proposals' && c.op === 'select') return { data: cleared ? { dob_failures: 0, locked_at: null } : { dob_failures: 5, locked_at: LAPSED } }
+      return undefined
+    })
+    expect(await verifyPlanDob(d.client as never, proposal({ dob_failures: 5, locked_at: LAPSED }), '1985-04-15', NOW)).toEqual({ ok: true })
+    expect(d.to('treatment_proposals', 'update')[0]!.payload).toEqual({ dob_failures: 0, locked_at: null })
+  })
+
+  it('a lock still within 15 minutes: locked, nothing read or counted', async () => {
+    const d = db()
+    expect(await verifyPlanDob(d.client as never, proposal({ dob_failures: 5, locked_at: '2026-10-24T11:50:00Z' }), '1985-04-15', NOW)).toEqual({ ok: false, reason: 'locked' })
+    expect(d.to('treatment_proposals', 'update')).toHaveLength(0)
+    expect(d.to('patients', 'select')).toHaveLength(0)
   })
 
   it('a database error is "unavailable" and counts nothing', async () => {
