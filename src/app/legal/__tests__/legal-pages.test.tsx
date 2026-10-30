@@ -23,25 +23,25 @@ jest.mock('@/lib/supabase/service', () => ({ createServiceClient: () => { throw 
 const md = (file: string) => readFileSync(join(process.cwd(), file), 'utf8')
 
 describe.each([
-  ['privacy', PrivacyPage, 'Privacy Policy', 'src/content/legal/privacy-policy-v1.0.md'],
-  ['patientTerms', PatientTermsPage, 'Patient Terms of Use', 'src/content/legal/patient-terms-v1.0.md'],
-] as const)('%s', (key, Page, title, file) => {
+  ['privacy', PrivacyPage, 'Privacy Policy', 'src/content/legal/privacy-policy-v1.1.md', '1.1', 'October 30, 2026'],
+  ['patientTerms', PatientTermsPage, 'Patient Terms of Use', 'src/content/legal/patient-terms-v1.0.md', '1.0', 'October 12, 2026'],
+] as const)('%s', (key, Page, title, file, version, effective) => {
   it('renders without a session: the Markdown title as the page heading', () => {
     render(<Page />)
     expect(screen.getByRole('heading', { level: 1, name: title })).toBeInTheDocument()
     expect(screen.getAllByRole('main')).toHaveLength(1)
   })
 
-  it('is the final v1.0 text, with its version line', () => {
+  it('is the final text, with its version line', () => {
     const doc = PUBLIC_LEGAL_DOCUMENTS[key]
     expect(doc.file).toBe(file)
-    expect(doc.version).toBe('1.0')
-    expect(doc.effective).toBe('October 12, 2026')
+    expect(doc.version).toBe(version)
+    expect(doc.effective).toBe(effective)
     const text = md(file).replace(/\r\n/g, '\n')
     expect(text.startsWith(`# ${title}\n`)).toBe(true)
-    expect(text).toContain('_Version 1.0. Effective October 12, 2026._')
+    expect(text).toContain(`_Version ${version}. Effective ${effective}._`)
     render(<Page />)
-    expect(screen.getAllByText('Version 1.0. Effective October 12, 2026.')).toHaveLength(1)
+    expect(screen.getAllByText(`Version ${version}. Effective ${effective}.`)).toHaveLength(1)
   })
 
   it('shows no draft banner, draft line or draft wording', () => {

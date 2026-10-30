@@ -3,8 +3,8 @@
  *
  * Pharmacy Terms of Service, alongside the BAA.
  *
- *   - The text is src/content/legal/pharmacy-terms-v1.0.md, in the shared
- *     agreement source (PHARMACY_TERMS, key pharmacy_terms, v1.0, final).
+ *   - The text is src/content/legal/pharmacy-terms-v1.1.md, in the shared
+ *     agreement source (PHARMACY_TERMS, key pharmacy_terms, v1.1, final).
  *     It is not one of the clinic's agreements. v0.1 is archived.
  *   - The wizard records its acceptance in pharmacy_agreement_acceptances
  *     with template_key 'pharmacy_terms', the version and the server's
@@ -22,7 +22,7 @@ import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { onboardingFake } from '@/__tests__/helpers/onboarding-fake'
 import { AGREEMENTS, PHARMACY_TERMS, isAgreementKey } from '@/lib/onboarding/agreement-texts'
-import { PHARMACY_TERMS_V0_1_TEXT, PHARMACY_TERMS_V1_0_TEXT } from '@/lib/onboarding/legal-texts.generated'
+import { PHARMACY_TERMS_V0_1_TEXT, PHARMACY_TERMS_V1_1_TEXT } from '@/lib/onboarding/legal-texts.generated'
 import { pharmacyAgreement, acceptedText } from '../agreement'
 import { acceptAgreement, loadOnboarding, submitApplication } from '../application'
 import { getApplicationReview, approveApplication } from '../review'
@@ -79,23 +79,23 @@ const accepts = (key: 'baa' | 'pharmacy_terms') => {
 }
 
 describe('the shared source', () => {
-  it('pharmacy_terms v1.0 is the committed Markdown, final, and not a clinic agreement', () => {
-    expect(PHARMACY_TERMS).toEqual(expect.objectContaining({ key: 'pharmacy_terms', version: 'v1.0', title: 'Pharmacy Terms of Service' }))
+  it('pharmacy_terms v1.1 is the committed Markdown, final, and not a clinic agreement', () => {
+    expect(PHARMACY_TERMS).toEqual(expect.objectContaining({ key: 'pharmacy_terms', version: 'v1.1', title: 'Pharmacy Terms of Service' }))
     expect('draft' in PHARMACY_TERMS).toBe(false)
-    expect(PHARMACY_TERMS.text).toBe(md('src/content/legal/pharmacy-terms-v1.0.md'))
-    expect(PHARMACY_TERMS_V1_0_TEXT).toBe(PHARMACY_TERMS.text)
+    expect(PHARMACY_TERMS.text).toBe(md('src/content/legal/pharmacy-terms-v1.1.md'))
+    expect(PHARMACY_TERMS_V1_1_TEXT).toBe(PHARMACY_TERMS.text)
     expect(Object.keys(AGREEMENTS).sort()).toEqual(['baa', 'terms'])
     expect(isAgreementKey('pharmacy_terms')).toBe(false)
   })
 
   it('the pharmacy flow takes both from it, with the hash of the exact text', () => {
-    expect(TERMS()).toEqual(expect.objectContaining({ key: 'pharmacy_terms', version: 'v1.0', text: PHARMACY_TERMS.text, textSha256: sha(PHARMACY_TERMS.text) }))
+    expect(TERMS()).toEqual(expect.objectContaining({ key: 'pharmacy_terms', version: 'v1.1', text: PHARMACY_TERMS.text, textSha256: sha(PHARMACY_TERMS.text) }))
     expect(TERMS()).not.toHaveProperty('banner')
     expect(BAA()).toEqual(expect.objectContaining({ key: 'baa', version: AGREEMENTS.baa.version, text: AGREEMENTS.baa.text }))
   })
 
   it('the text of an accepted version is found by key, version and hash; the BAA v0.1 text that #220 recorded too', () => {
-    expect(acceptedText('pharmacy_terms', 'v1.0', sha(PHARMACY_TERMS.text))).toBe(PHARMACY_TERMS.text)
+    expect(acceptedText('pharmacy_terms', 'v1.1', sha(PHARMACY_TERMS.text))).toBe(PHARMACY_TERMS.text)
     expect(acceptedText('pharmacy_terms', 'v0.1', sha(PHARMACY_TERMS_V0_1_TEXT))).toBe(PHARMACY_TERMS_V0_1_TEXT)
     const v01 = acceptedText('baa', 'v0.1', '14367b35e4b4ef51e6ed53d150275474635929a38c9bb900eef8d6e77ebc064e')
     expect(v01).toContain('# Business Associate Agreement')
@@ -153,7 +153,7 @@ describe('load and submit', () => {
     const r = await loadOnboarding(world({ acceptances: [row('pharmacy_terms')] }).client, PH)
     if (!r.ok) throw new Error(r.error)
     expect(r.state.agreement).toEqual(expect.objectContaining({ key: 'baa', acceptance: null }))
-    expect(r.state.terms).toEqual(expect.objectContaining({ key: 'pharmacy_terms', version: 'v1.0', title: 'Pharmacy Terms of Service', text: PHARMACY_TERMS.text, acceptance: expect.objectContaining({ signerName: 'Dana Ruiz' }) }))
+    expect(r.state.terms).toEqual(expect.objectContaining({ key: 'pharmacy_terms', version: 'v1.1', title: 'Pharmacy Terms of Service', text: PHARMACY_TERMS.text, acceptance: expect.objectContaining({ signerName: 'Dana Ruiz' }) }))
     expect(r.state.stepsCompleted).toContain('terms')
     expect(r.state.stepsCompleted).not.toContain('agreement')
   })
@@ -171,7 +171,7 @@ describe('ops review and approve', () => {
     const r = await getApplicationReview(world({ status: 'submitted', steps: ALL_STEPS, acceptances: [row('baa'), row('pharmacy_terms', { accepted_at: '2026-10-10T09:05:00.000Z' })] }).client, APP)
     if (!r.ok) throw new Error(r.error)
     expect(r.review.acceptances.baa).toEqual(expect.objectContaining({ signerName: 'Dana Ruiz', signerTitle: 'Pharmacist in charge', templateVersion: BAA().version, acceptedAt: '2026-10-10T09:00:00.000Z', hashPrefix: BAA().textSha256.slice(0, 12), current: true }))
-    expect(r.review.acceptances.terms).toEqual(expect.objectContaining({ templateVersion: 'v1.0', acceptedAt: '2026-10-10T09:05:00.000Z', hashPrefix: sha(PHARMACY_TERMS.text).slice(0, 12), current: true }))
+    expect(r.review.acceptances.terms).toEqual(expect.objectContaining({ templateVersion: 'v1.1', acceptedAt: '2026-10-10T09:05:00.000Z', hashPrefix: sha(PHARMACY_TERMS.text).slice(0, 12), current: true }))
   })
 
   it('a terms row is not shown as the BAA', async () => {

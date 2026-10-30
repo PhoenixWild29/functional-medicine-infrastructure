@@ -19,7 +19,7 @@ const md = (rel: string) => readFileSync(join(process.cwd(), 'src', 'content', '
 it.each([
   ['BAA_V1_0_TEXT', 'baa-v1.0.md'],
   ['CLINIC_TERMS_V1_0_TEXT', 'clinic-terms-v1.0.md'],
-  ['PHARMACY_TERMS_V1_0_TEXT', 'pharmacy-terms-v1.0.md'],
+  ['PHARMACY_TERMS_V1_1_TEXT', 'pharmacy-terms-v1.1.md'],
   ['BAA_V0_1_ORIGINAL_TEXT', 'archive/baa-draft-v0.1-original.md'],
   ['BAA_V0_1_1_TEXT', 'archive/baa-draft-v0.1.1.md'],
   ['CLINIC_TERMS_DRAFT_2026_10_2_TEXT', 'archive/clinic-terms-draft-2026-10.2.md'],

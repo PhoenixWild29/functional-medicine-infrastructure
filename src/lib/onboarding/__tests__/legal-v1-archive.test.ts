@@ -33,7 +33,6 @@ describe('current versions are v1.0, final', () => {
   it.each([
     ['clinic BAA', AGREEMENTS.baa, 'baa-v1.0.md'],
     ['clinic terms', AGREEMENTS.terms, 'clinic-terms-v1.0.md'],
-    ['pharmacy terms', PHARMACY_TERMS, 'pharmacy-terms-v1.0.md'],
   ] as const)('%s: version v1.0, the v1.0 file word for word, no draft flag', (_l, a, f) => {
     expect(a.version).toBe('v1.0')
     expect(a.text).toBe(file(f))
@@ -43,7 +42,8 @@ describe('current versions are v1.0, final', () => {
   it('the pharmacy BAA is the same v1.0 BAA', () => {
     expect(pharmacyAgreement('baa').version).toBe('v1.0')
     expect(pharmacyAgreement('baa').text).toBe(file('baa-v1.0.md'))
-    expect(pharmacyAgreement('pharmacy_terms').version).toBe('v1.0')
+    expect(pharmacyAgreement('pharmacy_terms').version).toBe('v1.1')
+    expect(PHARMACY_TERMS.text).toBe(file('pharmacy-terms-v1.1.md'))
   })
 
   it('there is no draft banner to render', () => {
@@ -63,6 +63,7 @@ const ARCHIVED = [
   { key: 'baa',            version: 'v0.1.1',                file: 'archive/baa-draft-v0.1.1.md',             sha: 'b26c8364eaa68733a4d47ddd2d07fb554edc1a2f3fb4ed7b962f4bb16e5277d1' },
   { key: 'terms',          version: 'terms-draft-2026-10.2', file: 'archive/clinic-terms-draft-2026-10.2.md', sha: '6120b276352ef69e3af834e771641cfaa2dd69677ab0aa61564e5dd0591007be' },
   { key: 'pharmacy_terms', version: 'v0.1',                  file: 'archive/pharmacy-terms-draft-v0.1.md',    sha: '770a0ac610e73a63f1551805fd796b90b22ca6bc0b25b94a49f19a7a513d26c5' },
+  { key: 'pharmacy_terms', version: 'v1.0',                  file: 'archive/pharmacy-terms-v1.0.md',          sha: 'efedb4384f2b09a479b55cbb0e7aa178790f1228ba77ec460a9a7657ba9b89ef' },
 ] as const
 
 describe('archived versions: each accepted hash still resolves to its exact text', () => {
@@ -97,7 +98,8 @@ describe('archived versions: each accepted hash still resolves to its exact text
   it('v1.0 acceptances resolve to the v1.0 text', () => {
     expect(verifiedAcceptedText({ agreement: 'baa', version: 'v1.0', textSha256: sha(file('baa-v1.0.md')) })).toBe(file('baa-v1.0.md'))
     expect(verifiedAcceptedText({ agreement: 'terms', version: 'v1.0', textSha256: sha(file('clinic-terms-v1.0.md')) })).toBe(file('clinic-terms-v1.0.md'))
-    expect(acceptedText('pharmacy_terms', 'v1.0', sha(file('pharmacy-terms-v1.0.md')))).toBe(file('pharmacy-terms-v1.0.md'))
+    expect(acceptedText('pharmacy_terms', 'v1.0', sha(file('archive/pharmacy-terms-v1.0.md')))).toBe(file('archive/pharmacy-terms-v1.0.md'))
+    expect(acceptedText('pharmacy_terms', 'v1.1', sha(file('pharmacy-terms-v1.1.md')))).toBe(file('pharmacy-terms-v1.1.md'))
   })
 })
 
@@ -125,7 +127,7 @@ describe('earlier acceptances see "a new version is available"', () => {
     const res = await listPharmacyAgreements(db.client as never, 'ph-1')
     if (!res.ok) throw new Error('read failed')
     for (const a of res.agreements) {
-      expect(a).toEqual(expect.objectContaining({ currentVersion: 'v1.0', acceptedCurrent: false, newVersionAvailable: true }))
+      expect(a).toEqual(expect.objectContaining({ currentVersion: a.key === 'pharmacy_terms' ? 'v1.1' : 'v1.0', acceptedCurrent: false, newVersionAvailable: true }))
     }
   })
 })

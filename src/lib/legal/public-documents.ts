@@ -23,7 +23,7 @@ export interface PublicLegalDocument {
 export const PUBLIC_LEGAL_DOCUMENTS: Record<PublicLegalKey, PublicLegalDocument> = {
   privacy: {
     title: 'Privacy Policy', path: '/legal/privacy',
-    file: 'src/content/legal/privacy-policy-v1.0.md', version: '1.0', effective: 'October 12, 2026',
+    file: 'src/content/legal/privacy-policy-v1.1.md', version: '1.1', effective: 'October 30, 2026',
   },
   patientTerms: {
     title: 'Patient Terms of Use', path: '/legal/patient-terms',
